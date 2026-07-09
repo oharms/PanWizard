@@ -155,26 +155,27 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
   // final segment is used as the property key for assignment.
   const keys = keyPath.split('.');
 
-  // Reject prototype-polluting segments so a key path like "__proto__.x" or
-  // "constructor.prototype.y" can never walk into or mutate Object.prototype.
-  const isForbiddenKey = (k) => k === '__proto__' || k === 'constructor' || k === 'prototype';
+  // Reject prototype-polluting segments up front so a key path like
+  // "__proto__.x" or "constructor.prototype.y" can never walk into or mutate
+  // Object.prototype. Inline literal guard (no helper) so the check is
+  // unambiguous — every remaining assignment is on a vetted key.
+  for (const key of keys) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      error(`Invalid config key "${keyPath}": __proto__/constructor/prototype are not allowed`);
+      return;
+    }
+  }
 
+  // Every segment is now vetted; walk the path building intermediate objects.
   let current = config;
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
-    if (isForbiddenKey(key)) {
-      error(`Invalid config key "${keyPath}": __proto__/constructor/prototype are not allowed`);
-    }
     if (!Object.prototype.hasOwnProperty.call(current, key) || typeof current[key] !== 'object' || current[key] === null) {
       current[key] = {};
     }
     current = current[key];
   }
-  const lastKey = keys[keys.length - 1];
-  if (isForbiddenKey(lastKey)) {
-    error(`Invalid config key "${keyPath}": __proto__/constructor/prototype are not allowed`);
-  }
-  current[lastKey] = parsedValue;
+  current[keys[keys.length - 1]] = parsedValue;
 
   // Write back
   try {
