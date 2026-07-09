@@ -159,11 +159,12 @@ function output(result, raw, rawValue) {
     // Large payloads exceed Claude Code's Bash tool buffer (~50KB).
     // Write to tmpfile and output the path prefixed with @file: so callers can detect it.
     if (json.length > MAX_JSON_SIZE) {
-      // Unpredictable name + exclusive create ('wx') so a pre-planted file or
-      // symlink at the path can't be followed/overwritten on a shared tmpdir.
-      const rand = require('crypto').randomBytes(9).toString('hex');
-      const tmpPath = path.join(os.tmpdir(), `pan-${process.pid}-${rand}.json`);
+      // Create a fresh private directory (mkdtemp → unique, unguessable, owned
+      // by us) and write inside it, so a pre-planted file or symlink on a
+      // shared tmpdir can't be followed or overwritten.
       try {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-'));
+        const tmpPath = path.join(tmpDir, 'out.json');
         fs.writeFileSync(tmpPath, json, { encoding: 'utf-8', flag: 'wx' });
         process.stdout.write('@file:' + tmpPath);
       } catch {

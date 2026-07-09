@@ -834,7 +834,10 @@ function openInBrowser(filePath) {
   } catch {
     return false;
   }
-  if (/[\r\n&|<>^"'`$]/.test(resolved)) return false;
+  // Allowlist barrier: only ordinary path characters may reach the opener.
+  // Anything outside this set (shell/cmd metacharacters, quotes, newlines) is
+  // rejected outright, so a crafted --out value cannot reach Windows `start`.
+  if (!/^[A-Za-z0-9 _.:\\/()-]+$/.test(resolved)) return false;
   try {
     if (process.platform === 'win32') {
       execFileSync('cmd', ['/c', 'start', '', resolved], { stdio: 'ignore' });
