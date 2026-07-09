@@ -34,9 +34,20 @@ function createTempProject() {
 }
 
 function cleanup(tmpDir) {
-  // maxRetries absorbs transient ENOTEMPTY/EBUSY races on macOS/Windows when
-  // a just-exited child process (git, node) still holds a directory handle.
-  fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  // Best-effort removal. maxRetries absorbs short ENOTEMPTY/EBUSY races, but a
+  // DETACHED background process (git gc --auto on macOS detaches after commits)
+  // can hold .git entries past any reasonable retry window. These dirs live in
+  // os.tmpdir(); never fail a suite over cleanup — settle, retry once, warn.
+  try {
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch (err) {
+      console.warn(`cleanup: leaving temp dir behind (${err.code}): ${tmpDir}`);
+    }
+  }
 }
 
 const INSTALLER_PATH = path.join(__dirname, '..', 'bin', 'install.js');
@@ -103,7 +114,7 @@ function createScenarioRunner(runtime) {
   }
 
   function cleanupRunner() {
-    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    cleanup(tmpDir);
   }
 
   return { tmpDir, installedToolsPath, configDir, run, cleanup: cleanupRunner };
