@@ -130,9 +130,13 @@ describe('checkFileConventions', () => {
   test('file paths use forward slashes in output', () => {
     const content = 'console.log("x");\n';
     const rules = [{ id: 'test', antiPattern: /\bconsole\.log\b/, message: 'bad', severity: 'error', fileGlob: null }];
-    const violations = verify.checkFileConventions('lib\\sub\\test.cjs', content, rules);
+    // toPosix converts the PLATFORM separator; build the input with path.sep so
+    // the test exercises the real conversion on Windows and Linux alike (a
+    // literal backslash is a legal filename character on Linux, not a separator).
+    const nativePath = ['lib', 'sub', 'test.cjs'].join(path.sep);
+    const violations = verify.checkFileConventions(nativePath, content, rules);
     assert.ok(violations[0].file.includes('/'), 'should use forward slashes');
-    assert.ok(!violations[0].file.includes('\\'), 'should not have backslashes');
+    assert.equal(violations[0].file, 'lib/sub/test.cjs');
   });
 });
 
