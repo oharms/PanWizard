@@ -1,0 +1,15 @@
+{
+  "experiment_id": "panmd2",
+  "harvested_at": "2026-04-27T12:43:20.435Z",
+  "source_path": "D:\\panmd2",
+  "harvest_path": "d:\\PanWizard\\experiments\\panmd2",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/state.md",
+    ".planning/optimization",
+    ".planning/phases"
+  ],
+  "total_bytes": 47985,
+  "pan_version": "3.7.3"
+}

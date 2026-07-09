@@ -1,0 +1,10 @@
+{
+  "session_id": "sess_20260502T234648",
+  "started_at": "2026-05-02T23:46:48.110Z",
+  "description": "exec-phase 3 --auto",
+  "command": "exec-phase",
+  "phase": "3",
+  "agent_count": 0,
+  "event_count": 0,
+  "ended_at": null
+}

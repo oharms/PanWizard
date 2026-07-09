@@ -1,0 +1,22 @@
+{
+  "experiment_id": "whoolog",
+  "status": "done",
+  "started_at": "2026-05-02T11:29:30.087Z",
+  "ended_at": "2026-05-02T11:55:26.102Z",
+  "pid": 34000,
+  "exit_code": 0,
+  "stop_reason": "success",
+  "elapsed_ms": 1556015,
+  "events": [
+    {
+      "ts": "2026-05-02T11:29:30.087Z",
+      "type": "started",
+      "details": "runtime=claude, prompt=/pan:plan-phase 3 --auto"
+    },
+    {
+      "ts": "2026-05-02T11:55:26.102Z",
+      "type": "completed",
+      "details": "exit_code=0, milestone=completed"
+    }
+  ]
+}

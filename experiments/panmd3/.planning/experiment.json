@@ -1,0 +1,11 @@
+{
+  "experiment_id": "panmd3",
+  "runtime": "claude",
+  "idea_path": "D:\\panmd3\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\panmd-idea.md",
+  "created_at": "2026-04-27T14:33:34.943Z",
+  "status": "ready",
+  "budget": 100,
+  "pan_version": "3.7.3",
+  "path": "D:\\panmd3"
+}

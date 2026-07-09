@@ -1,0 +1,73 @@
+{
+  "name": "pan-wizard",
+  "version": "3.13.1",
+  "description": "Command a bot army for your codebase: an Opus Mission Control delegates whole-project goals to specialist squads and ships behind a human merge gate. Five AI CLIs, zero context rot.",
+  "bin": {
+    "pan-wizard": "bin/install.js"
+  },
+  "files": [
+    "bin",
+    "commands",
+    "pan-wizard-core",
+    "agents",
+    "hooks/dist",
+    "scripts",
+    "assets"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai",
+    "workflow-automation",
+    "context-engineering",
+    "project-automation",
+    "gemini",
+    "gemini-cli",
+    "codex",
+    "codex-cli",
+    "copilot",
+    "copilot-cli",
+    "github-copilot",
+    "opencode",
+    "bot-army",
+    "ai-agents",
+    "subagents",
+    "agent-orchestration"
+  ],
+  "author": "PAN Wizard Contributors",
+  "contributors": [
+    {
+      "name": "oharms",
+      "url": "https://github.com/oharms"
+    }
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oharms/PanWizard.git"
+  },
+  "homepage": "https://github.com/oharms/PanWizard#readme",
+  "bugs": {
+    "url": "https://github.com/oharms/PanWizard/issues"
+  },
+  "engines": {
+    "node": ">=16.7.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@vscode/test-electron": "^2.5.2"
+  },
+  "scripts": {
+    "build:hooks": "node scripts/build-hooks.js",
+    "prepare": "node scripts/install-git-hooks.js",
+    "release:check": "node scripts/release-check.js",
+    "prepublishOnly": "node scripts/release-check.js",
+    "test": "node --test tests/*.test.cjs",
+    "test:scenarios": "node --test tests/scenarios/*.test.cjs",
+    "test:all": "node --test tests/*.test.cjs tests/scenarios/*.test.cjs",
+    "test:e2e": "node --test tests/scenarios/*.test.cjs",
+    "test:vscode": "npx playwright test --config tests/e2e/playwright.config.mjs",
+    "test:watch": "node --test --watch tests/*.test.cjs",
+    "build:plugin": "node scripts/build-plugin.js"
+  }
+}

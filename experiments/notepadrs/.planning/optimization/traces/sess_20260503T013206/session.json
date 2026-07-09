@@ -1,0 +1,22 @@
+{
+  "session_id": "sess_20260503T013206",
+  "started_at": "2026-05-03T01:32:06.330Z",
+  "description": "exec-phase 4 --auto",
+  "command": "exec-phase",
+  "phase": "4",
+  "agent_count": 7,
+  "event_count": 26,
+  "ended_at": "2026-05-03T02:22:15.566Z",
+  "agents": [
+    "pan-planner",
+    "pan-plan-checker",
+    "pan-executor",
+    "orchestrator",
+    "pan-reviewer",
+    "pan-verifier",
+    "general-purpose"
+  ],
+  "type_counts": {
+    "decision": 26
+  }
+}

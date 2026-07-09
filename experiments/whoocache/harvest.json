@@ -1,0 +1,16 @@
+{
+  "experiment_id": "whoocache",
+  "harvested_at": "2026-05-02T13:21:38.189Z",
+  "source_path": "~\\pan-experiments\\whoocache",
+  "harvest_path": "d:\\PanWizard\\experiments\\whoocache",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/state.md",
+    ".planning/run-state.json",
+    ".planning/optimization",
+    ".planning/phases"
+  ],
+  "total_bytes": 419061,
+  "pan_version": "3.7.8"
+}

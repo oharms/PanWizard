@@ -1,0 +1,6 @@
+# Design-tool exports — source of truth lives in the design project, not this repo.
+# Keep: assets/, handoff/*.md, *-brand-draft.md, image-prompts.md, nano-banana-prompts.txt
+*.dc.html
+.thumbnail
+support.js
+uploads/

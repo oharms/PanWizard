@@ -1,0 +1,22 @@
+{
+  "experiment_id": "panloop2",
+  "status": "done",
+  "started_at": "2026-04-27T12:08:39.404Z",
+  "ended_at": "2026-04-27T12:09:27.642Z",
+  "pid": 43304,
+  "exit_code": 0,
+  "stop_reason": "success",
+  "elapsed_ms": 48237,
+  "events": [
+    {
+      "ts": "2026-04-27T12:08:39.405Z",
+      "type": "started",
+      "details": "runtime=claude, prompt=/pan:new-project --auto @.planning/idea.md"
+    },
+    {
+      "ts": "2026-04-27T12:09:27.642Z",
+      "type": "completed",
+      "details": "exit_code=0"
+    }
+  ]
+}

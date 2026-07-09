@@ -1,0 +1,10 @@
+{
+  "session_id": "sess_20260502T203043",
+  "started_at": "2026-05-02T20:30:43.794Z",
+  "description": "plan-phase 2",
+  "command": "plan-phase",
+  "phase": "2",
+  "agent_count": 0,
+  "event_count": 0,
+  "ended_at": null
+}

@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whooemoji",
+  "runtime": "claude",
+  "idea_path": "D:\\whooemoji\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\whooemoji-idea.md",
+  "created_at": "2026-04-27T10:52:04.066Z",
+  "status": "scaffolded",
+  "budget": null,
+  "pan_version": "3.7.1",
+  "path": "D:\\whooemoji"
+}

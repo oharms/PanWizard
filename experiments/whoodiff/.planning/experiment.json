@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whoodiff",
+  "runtime": "claude",
+  "idea_path": "D:\\whoodiff\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\whoodiff-idea.md",
+  "created_at": "2026-04-27T10:23:22.625Z",
+  "status": "scaffolded",
+  "budget": 25,
+  "pan_version": "3.7.1",
+  "path": "D:\\whoodiff"
+}

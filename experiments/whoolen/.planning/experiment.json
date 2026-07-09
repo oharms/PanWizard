@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whoolen",
+  "runtime": "claude",
+  "idea_path": "D:\\whoolen\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\whoolen-idea.md",
+  "created_at": "2026-04-27T10:15:45.067Z",
+  "status": "scaffolded",
+  "budget": 25,
+  "pan_version": "3.7.1",
+  "path": "D:\\whoolen"
+}

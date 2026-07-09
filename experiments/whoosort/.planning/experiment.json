@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whoosort",
+  "runtime": "claude",
+  "idea_path": "D:\\whoosort\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\whoosort-idea.md",
+  "created_at": "2026-04-27T10:12:17.576Z",
+  "status": "scaffolded",
+  "budget": 25,
+  "pan_version": "3.7.1",
+  "path": "D:\\whoosort"
+}

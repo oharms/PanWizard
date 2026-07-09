@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whoouuid",
+  "runtime": "claude",
+  "idea_path": "D:\\whoouuid\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\whoouuid-idea.md",
+  "created_at": "2026-04-27T10:55:34.441Z",
+  "status": "scaffolded",
+  "budget": null,
+  "pan_version": "3.7.1",
+  "path": "D:\\whoouuid"
+}

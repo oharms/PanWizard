@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whoofreq",
+  "runtime": "claude",
+  "idea_path": "D:\\whoofreq\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\whoofreq-idea.md",
+  "created_at": "2026-04-27T10:57:47.080Z",
+  "status": "scaffolded",
+  "budget": null,
+  "pan_version": "3.7.1",
+  "path": "D:\\whoofreq"
+}

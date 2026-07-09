@@ -1,0 +1,89 @@
+# Dependencies
+node_modules/
+
+# Environment & secrets
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test output scratch files
+test-*.txt
+test_output.txt
+
+# Claude memory (user-specific)
+.claude/memory/
+
+# PAN self-installation artifacts (NEVER install PAN into source repo)
+# These are created by the installer — block them from being committed.
+# Dev tools (.claude/commands/*.md, .claude/agents/pan.md, pandev.md) are NOT affected.
+.claude/commands/pan/
+.claude/agents/pan-*.md
+.claude/hooks/
+.claude/pan-wizard-core/
+.claude/pan-file-manifest.json
+.claude/package.json
+.claude/skills/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/*.lock
+
+# Build artifacts
+hooks/dist/
+*.tgz
+
+# VSCode test downloads (E2E tests use system VSCode)
+.vscode-test/
+
+# Runtime install dirs (NEVER install PAN into source repo — use d:\pantesting)
+.codex/
+.gemini/
+.opencode/
+
+# .github/ — Copilot CLI install dir conflicts with GitHub Actions/Dependabot.
+# We narrow-ignore just the installer artifacts so workflows + dependabot can
+# live here too. Mirror of the `.claude/` pattern above.
+.github/agents/pan-*.agent.md
+.github/skills/pan-*/
+.github/hooks/
+.github/pan-wizard-core/
+.github/pan-file-manifest.json
+.github/package.json
+.github/config.json
+.github/CHANGELOG.md
+.github/VERSION
+
+# Test output
+test-results/
+
+# Temporary
+tmp/
+
+# PAN planning state (project-specific, not part of source distribution)
+.planning/
+.tmp/
+
+# v3.7.0+ self-improvement loop: harvested experiment data IS part of the
+# source repo's evidence trail (see ADR-0026). The .planning/ inside
+# experiments/<slug>/ is harvested telemetry, not project working state —
+# negate the ignore for those paths so the harvest is committable.
+!experiments/
+!experiments/**
+
+
+# Plugin build output
+dist/

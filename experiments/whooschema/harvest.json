@@ -1,0 +1,16 @@
+{
+  "experiment_id": "whooschema",
+  "harvested_at": "2026-05-02T13:20:24.255Z",
+  "source_path": "~\\pan-experiments\\whooschema",
+  "harvest_path": "d:\\PanWizard\\experiments\\whooschema",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/state.md",
+    ".planning/run-state.json",
+    ".planning/optimization",
+    ".planning/phases"
+  ],
+  "total_bytes": 428456,
+  "pan_version": "3.7.8"
+}

@@ -1,0 +1,22 @@
+{
+  "experiment_id": "whooschema",
+  "status": "incomplete",
+  "started_at": "2026-05-02T12:44:48.173Z",
+  "ended_at": "2026-05-02T13:19:57.752Z",
+  "pid": 36948,
+  "exit_code": 0,
+  "stop_reason": "incomplete",
+  "elapsed_ms": 2109579,
+  "events": [
+    {
+      "ts": "2026-05-02T12:44:48.173Z",
+      "type": "started",
+      "details": "runtime=claude, prompt=/pan:plan-phase 3 --auto"
+    },
+    {
+      "ts": "2026-05-02T13:19:57.753Z",
+      "type": "incomplete",
+      "details": "exit_code=0 but milestone status=unknown"
+    }
+  ]
+}

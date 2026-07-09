@@ -1,0 +1,11 @@
+{
+  "experiment_id": "panloop",
+  "runtime": "claude",
+  "idea_path": "D:\\panloop\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\panloop-idea.md",
+  "created_at": "2026-04-27T11:29:49.560Z",
+  "status": "ready",
+  "budget": 30,
+  "pan_version": "3.7.1",
+  "path": "D:\\panloop"
+}

@@ -1,0 +1,15 @@
+{
+  "experiment_id": "whoosort",
+  "harvested_at": "2026-04-27T10:14:30.340Z",
+  "source_path": "D:\\whoosort",
+  "harvest_path": "D:\\PanWizard\\experiments\\whoosort",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/state.md",
+    ".planning/optimization",
+    ".planning/phases"
+  ],
+  "total_bytes": 7102,
+  "pan_version": "3.7.1"
+}

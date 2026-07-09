@@ -1,0 +1,13 @@
+{
+  "experiment_id": "whooemoji",
+  "harvested_at": "2026-04-27T10:53:02.466Z",
+  "source_path": "D:\\whooemoji",
+  "harvest_path": "d:\\PanWizard\\experiments\\whooemoji",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/optimization"
+  ],
+  "total_bytes": 994,
+  "pan_version": "3.7.1"
+}

@@ -1,0 +1,20 @@
+{
+  "session_id": "sess_auto_20260427",
+  "started_at": "2026-04-27T12:23:12.381Z",
+  "description": "auto-session (day-scoped)",
+  "auto": true,
+  "event_count": 9,
+  "ended_at": "2026-04-27T12:41:52.328Z",
+  "agent_count": 6,
+  "agents": [
+    "pan-project-researcher",
+    "pan-research-synthesizer",
+    "pan-roadmapper",
+    "pan-plan-checker",
+    "pan-planner",
+    "orchestrator"
+  ],
+  "type_counts": {
+    "decision": 9
+  }
+}

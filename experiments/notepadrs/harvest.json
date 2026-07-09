@@ -1,0 +1,16 @@
+{
+  "experiment_id": "notepadrs",
+  "harvested_at": "2026-05-03T03:27:59.440Z",
+  "source_path": "~\\pan-experiments\\notepadrs",
+  "harvest_path": "d:\\PanWizard\\experiments\\notepadrs",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/state.md",
+    ".planning/run-state.json",
+    ".planning/optimization",
+    ".planning/phases"
+  ],
+  "total_bytes": 1731513,
+  "pan_version": "3.7.10"
+}

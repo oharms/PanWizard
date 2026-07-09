@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whoodb",
+  "runtime": "claude",
+  "idea_path": "~\\pan-experiments\\whoodb\\.planning\\idea.md",
+  "source_idea_path": "d:\\tmp\\idea-whoodb.md",
+  "created_at": "2026-05-02T10:02:25.206Z",
+  "status": "ready",
+  "budget": 45,
+  "pan_version": "3.7.8",
+  "path": "~\\pan-experiments\\whoodb"
+}

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 470" font-family="'JetBrains Mono','SFMono-Regular',Consolas,monospace">
+  <rect width="980" height="470" rx="16" fill="#211E18"/>
+  <rect width="980" height="46" rx="16" fill="#2A251D"/>
+  <rect y="32" width="980" height="14" fill="#2A251D"/>
+  <circle cx="28" cy="23" r="6.5" fill="#FF5A3C"/>
+  <circle cx="50" cy="23" r="6.5" fill="#FFCE4A"/>
+  <circle cx="72" cy="23" r="6.5" fill="#1E8E5A"/>
+  <g transform="translate(434,12) scale(0.22)">
+    <line x1="50" y1="26" x2="26" y2="74" stroke="#5B4BE6" stroke-width="9" stroke-linecap="round"/>
+    <line x1="50" y1="26" x2="74" y2="74" stroke="#5B4BE6" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="50" cy="26" r="13" fill="#FF5A3C"/>
+    <circle cx="26" cy="74" r="11" fill="#FFCE4A"/>
+    <circle cx="74" cy="74" r="11" fill="#1E8E5A"/>
+  </g>
+  <text x="460" y="28" font-family="'Gabarito','Segoe UI',sans-serif" font-size="13" font-weight="700"><tspan fill="#FF9077">Pan</tspan><tspan fill="#A7A091">Wizard · pan army</tspan></text>
+
+  <g transform="translate(40,84)" font-size="14">
+    <text y="0"><tspan fill="#76D2A2">~/billing-app</tspan><tspan fill="#6E685B"> $ </tspan><tspan fill="#FF9077">/pan:army </tspan><tspan fill="#FBF7EE">"ship the billing module"</tspan></text>
+
+    <text y="40"><tspan fill="#FF5A3C" font-weight="700">◆ Mission Control</tspan><tspan fill="#8C8475">  Opus · plans the goal, delegates to squads, never writes code</tspan></text>
+
+    <text y="78"><tspan fill="#76D2A2">  ✓ </tspan><tspan fill="#8A7DF0" font-weight="700">Architecture</tspan><tspan fill="#C9C3B6">  contract designed</tspan><tspan fill="#6E685B"> · read-only</tspan></text>
+
+    <text y="110"><tspan fill="#FF9077">  ◐ </tspan><tspan fill="#FF9077" font-weight="700">Build</tspan><tspan fill="#C9C3B6">  parallel agents — one isolated worktree each</tspan></text>
+    <text y="138"><tspan fill="#6E685B">     ↳ </tspan><tspan fill="#C9C3B6">army/webhooks     </tspan><tspan fill="#FF5A3C">████████</tspan><tspan fill="#3A352C">░░</tspan><tspan fill="#8C8475">  building</tspan></text>
+    <text y="162"><tspan fill="#6E685B">     ↳ </tspan><tspan fill="#C9C3B6">army/invoice-pdf  </tspan><tspan fill="#FF5A3C">██████</tspan><tspan fill="#3A352C">░░░░</tspan><tspan fill="#8C8475">  building</tspan></text>
+    <text y="186"><tspan fill="#6E685B">     ↳ </tspan><tspan fill="#C9C3B6">army/usage-meter  </tspan><tspan fill="#3FB07A">██████████</tspan><tspan fill="#76D2A2">  ✓ ready</tspan></text>
+
+    <text y="224"><tspan fill="#76D2A2">  ◐ </tspan><tspan fill="#76D2A2" font-weight="700">Quality</tspan><tspan fill="#C9C3B6">  adversarial review</tspan><tspan fill="#6E685B"> · queued</tspan></text>
+
+    <text y="256"><tspan fill="#FFD86B">  ⏸ </tspan><tspan fill="#FFD86B" font-weight="700">Release</tspan><tspan fill="#C9C3B6">  squash-merge prepared, CI green</tspan><tspan fill="#FFD86B"> · awaiting human ✋</tspan></text>
+
+    <line x1="0" y1="284" x2="900" y2="284" stroke="#3A352C" stroke-width="1"/>
+
+    <text y="314" font-size="13"><tspan fill="#A7A091">autonomy runs up to the irreversible step — </tspan><tspan fill="#FBF7EE">a human approves every merge.</tspan></text>
+
+    <text y="356"><tspan fill="#76D2A2">~/billing-app</tspan><tspan fill="#6E685B"> $ </tspan><tspan fill="#FBF7EE">▌</tspan></text>
+  </g>
+</svg>

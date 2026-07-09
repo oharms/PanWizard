@@ -1,0 +1,16 @@
+{
+  "experiment_id": "whoolog",
+  "harvested_at": "2026-05-02T11:55:46.264Z",
+  "source_path": "~\\pan-experiments\\whoolog",
+  "harvest_path": "d:\\PanWizard\\experiments\\whoolog",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/state.md",
+    ".planning/run-state.json",
+    ".planning/optimization",
+    ".planning/phases"
+  ],
+  "total_bytes": 417262,
+  "pan_version": "3.7.8"
+}

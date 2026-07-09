@@ -1,0 +1,13 @@
+{
+  "experiment_id": "whoorun",
+  "harvested_at": "2026-04-27T10:28:26.541Z",
+  "source_path": "D:\\whoorun",
+  "harvest_path": "d:\\PanWizard\\experiments\\whoorun",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/optimization"
+  ],
+  "total_bytes": 3802,
+  "pan_version": "3.7.1"
+}

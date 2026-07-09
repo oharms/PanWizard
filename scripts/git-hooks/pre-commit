@@ -1,0 +1,40 @@
+#!/bin/sh
+# PAN Wizard pre-commit hook.
+#
+# Runs `gitleaks protect` against staged changes. Blocks the commit if a
+# secret is detected. The PAN allowlists in .gitleaks.toml are honoured.
+#
+# Install once per clone:
+#   cp scripts/git-hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+# Or with a symlink (Unix / Git Bash):
+#   ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+#
+# Bypass for an emergency (creates a paper trail in the commit log):
+#   SKIP_GITLEAKS=1 git commit -m "..."
+#
+# Exit codes:
+#   0  ok — no secrets detected (or gitleaks not installed; we don't block).
+#   1  gitleaks found something — fix the staged change before committing.
+
+set -e
+
+if [ "${SKIP_GITLEAKS:-}" = "1" ]; then
+  echo "[pre-commit] SKIP_GITLEAKS=1 — gitleaks bypassed."
+  exit 0
+fi
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-commit] gitleaks not installed — skipping secret scan." >&2
+  echo "[pre-commit] Install with: winget install gitleaks.gitleaks" >&2
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CONFIG="$REPO_ROOT/.gitleaks.toml"
+
+if [ -f "$CONFIG" ]; then
+  exec gitleaks protect --staged --no-banner --redact --config "$CONFIG"
+else
+  exec gitleaks protect --staged --no-banner --redact
+fi

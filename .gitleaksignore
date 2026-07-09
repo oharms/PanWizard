@@ -1,0 +1,22 @@
+# Gitleaks ignore list — fingerprints for confirmed false positives in history.
+#
+# Format:  <commit-sha>:<file>:<rule-id>:<line>
+#
+# The .gitleaks.toml allowlist would normally cover these going forward, but
+# rules can change between gitleaks versions and re-flag history. This file
+# locks the known-false-positives at the commit level so a CI gitleaks job
+# stays green even if the allowlist regexes need to be re-tuned.
+#
+# Each line documents WHY the finding is a false positive.
+
+# ── SHA-256 content hashes in pan-file-manifest.json (discord.md entry)
+# Hash value `adb903c6...` is sha256(commands/pan/discord.md), not a Discord
+# token. Discord tokens are dot-separated base64, not 64-char hex.
+74ab15dd7a4907d884971174d973b7f1b3c20034:.claude/pan-file-manifest.json:discord-api-token:106
+161993305ee93baa2b1f2f6425405937373a2f13:.claude/pan-file-manifest.json:discord-api-token:106
+
+# ── Phase filename literal in test fixture
+# String `03-verification.md` / `03-VERIFICATION.md` is a path component passed
+# to path.join() at tests/commands.test.cjs:633 — a filename, not an API key.
+5b5331e89a50167266c6e5a42104047cb540bc6b:tests/commands.test.cjs:generic-api-key:631
+8927fdefddb8458efb97090d1368c722081cb445:tests/commands.test.cjs:generic-api-key:631

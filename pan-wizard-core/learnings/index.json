@@ -1,0 +1,810 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-09T15:40:55.203Z",
+  "topics": [
+    {
+      "name": "experiment-runner",
+      "scope": "internal",
+      "file": "pan-wizard-core/learnings/internal/experiment-runner.md",
+      "patterns": [
+        "P-EXP-001",
+        "P-EXP-002",
+        "P-EXP-003",
+        "P-EXP-004",
+        "P-EXP-005",
+        "P-NPRS-005"
+      ],
+      "size_bytes": 8889,
+      "size_tokens_est": 2223,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "low",
+        "verifier": "low",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "external-research",
+      "scope": "internal",
+      "file": "pan-wizard-core/learnings/internal/external-research.md",
+      "patterns": [
+        "P-RES-001",
+        "P-RES-002",
+        "P-RES-003",
+        "P-RES-004",
+        "P-RES-005",
+        "P-RES-006",
+        "P-RES-007",
+        "P-RES-008"
+      ],
+      "size_bytes": 12400,
+      "size_tokens_est": 3100,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "low",
+        "verifier": "low",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "loop-design",
+      "scope": "internal",
+      "file": "pan-wizard-core/learnings/internal/loop-design.md",
+      "patterns": [
+        "P-1303",
+        "P-1403"
+      ],
+      "size_bytes": 2781,
+      "size_tokens_est": 696,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "low",
+        "verifier": "low",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "pan-dev-bugs",
+      "scope": "internal",
+      "file": "pan-wizard-core/learnings/internal/pan-dev-bugs.md",
+      "patterns": [
+        "P-101",
+        "P-102",
+        "P-301",
+        "P-1301",
+        "P-1302",
+        "P-1304",
+        "P-1401",
+        "P-1402",
+        "P-1404",
+        "P-1501",
+        "P-1502",
+        "P-1701",
+        "P-1501-r2",
+        "P-1501-r3"
+      ],
+      "size_bytes": 16824,
+      "size_tokens_est": 4206,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "low",
+        "verifier": "low",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "adversarial-verification",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/adversarial-verification.md",
+      "patterns": [
+        "P-ADV-001",
+        "P-ADV-002",
+        "P-ADV-003"
+      ],
+      "size_bytes": 5405,
+      "size_tokens_est": 1352,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "low",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "atomic-state",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/atomic-state.md",
+      "patterns": [
+        "P-1201"
+      ],
+      "size_bytes": 1593,
+      "size_tokens_est": 399,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "audit-convergence",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/audit-convergence.md",
+      "patterns": [
+        "P-AUD-001",
+        "P-AUD-002"
+      ],
+      "size_bytes": 3693,
+      "size_tokens_est": 924,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "low",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "autonomous-loop",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/autonomous-loop.md",
+      "patterns": [
+        "P-310",
+        "P-350",
+        "P-360"
+      ],
+      "size_bytes": 10667,
+      "size_tokens_est": 2667,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "medium",
+        "verifier": "low",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "binary-io",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/binary-io.md",
+      "patterns": [
+        "P-1101"
+      ],
+      "size_bytes": 1339,
+      "size_tokens_est": 335,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "comment-syntax",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/comment-syntax.md",
+      "patterns": [
+        "P-501"
+      ],
+      "size_bytes": 1516,
+      "size_tokens_est": 379,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "medium",
+        "verifier": "low",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "composition",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/composition.md",
+      "patterns": [
+        "P-602",
+        "P-802"
+      ],
+      "size_bytes": 2931,
+      "size_tokens_est": 733,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "low",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "concurrency",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/concurrency.md",
+      "patterns": [
+        "P-1204",
+        "P-NPRS-003"
+      ],
+      "size_bytes": 3400,
+      "size_tokens_est": 850,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "dag-scheduler",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/dag-scheduler.md",
+      "patterns": [
+        "P-1206",
+        "P-NPRS-002"
+      ],
+      "size_bytes": 3316,
+      "size_tokens_est": 829,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "low",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "data-driven-design",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/data-driven-design.md",
+      "patterns": [
+        "P-403"
+      ],
+      "size_bytes": 1186,
+      "size_tokens_est": 297,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "low",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "design-process",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/design-process.md",
+      "patterns": [
+        "P-203"
+      ],
+      "size_bytes": 1499,
+      "size_tokens_est": 375,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "low",
+        "verifier": "low",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "empirical-spike",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/empirical-spike.md",
+      "patterns": [
+        "P-NPRS-001"
+      ],
+      "size_bytes": 1898,
+      "size_tokens_est": 475,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "low",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "error-handling",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/error-handling.md",
+      "patterns": [
+        "P-1209"
+      ],
+      "size_bytes": 1726,
+      "size_tokens_est": 432,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "error-paths",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/error-paths.md",
+      "patterns": [
+        "P-1205"
+      ],
+      "size_bytes": 1676,
+      "size_tokens_est": 419,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "external-tool-truth",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/external-tool-truth.md",
+      "patterns": [
+        "P-XTT-001"
+      ],
+      "size_bytes": 1621,
+      "size_tokens_est": 406,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "fix-campaigns",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/fix-campaigns.md",
+      "patterns": [
+        "P-FIX-001",
+        "P-FIX-002",
+        "P-FIX-003"
+      ],
+      "size_bytes": 4897,
+      "size_tokens_est": 1225,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "flaky-triage",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/flaky-triage.md",
+      "patterns": [
+        "P-FLK-001",
+        "P-FLK-002"
+      ],
+      "size_bytes": 3309,
+      "size_tokens_est": 828,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "medium",
+        "verifier": "high",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "glob-semantics",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/glob-semantics.md",
+      "patterns": [
+        "P-205"
+      ],
+      "size_bytes": 1309,
+      "size_tokens_est": 328,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "medium",
+        "verifier": "medium",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "golden-sets",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/golden-sets.md",
+      "patterns": [
+        "P-GLD-001",
+        "P-GLD-002"
+      ],
+      "size_bytes": 3215,
+      "size_tokens_est": 804,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "high",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "harness-isolation",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/harness-isolation.md",
+      "patterns": [
+        "P-ISO-001"
+      ],
+      "size_bytes": 1736,
+      "size_tokens_est": 434,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "low",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "idempotency",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/idempotency.md",
+      "patterns": [
+        "P-IDEM-001"
+      ],
+      "size_bytes": 2445,
+      "size_tokens_est": 612,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "integration-verification",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/integration-verification.md",
+      "patterns": [
+        "P-INT-001",
+        "P-INT-002"
+      ],
+      "size_bytes": 3075,
+      "size_tokens_est": 769,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "low",
+        "verifier": "high",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "invariants",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/invariants.md",
+      "patterns": [
+        "P-901"
+      ],
+      "size_bytes": 1118,
+      "size_tokens_est": 280,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "io-patterns",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/io-patterns.md",
+      "patterns": [
+        "P-401"
+      ],
+      "size_bytes": 1225,
+      "size_tokens_est": 307,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "live-path-honesty",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/live-path-honesty.md",
+      "patterns": [
+        "P-HON-001",
+        "P-HON-002",
+        "P-HON-003"
+      ],
+      "size_bytes": 4975,
+      "size_tokens_est": 1244,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "mcp-security",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/mcp-security.md",
+      "patterns": [
+        "P-MCP-001"
+      ],
+      "size_bytes": 2082,
+      "size_tokens_est": 521,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "medium",
+        "verifier": "medium",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "migration-safety",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/migration-safety.md",
+      "patterns": [
+        "P-MIG-001"
+      ],
+      "size_bytes": 2031,
+      "size_tokens_est": 508,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "numeric-edge-cases",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/numeric-edge-cases.md",
+      "patterns": [
+        "P-601"
+      ],
+      "size_bytes": 1392,
+      "size_tokens_est": 348,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "output-conventions",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/output-conventions.md",
+      "patterns": [
+        "P-402"
+      ],
+      "size_bytes": 1076,
+      "size_tokens_est": 269,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "parser-design",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/parser-design.md",
+      "patterns": [
+        "P-1203"
+      ],
+      "size_bytes": 1742,
+      "size_tokens_est": 436,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "phase-locking",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/phase-locking.md",
+      "patterns": [
+        "P-1208"
+      ],
+      "size_bytes": 1922,
+      "size_tokens_est": 481,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "low",
+        "verifier": "low",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "pipe-friendly-cli",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/pipe-friendly-cli.md",
+      "patterns": [
+        "P-1207"
+      ],
+      "size_bytes": 1608,
+      "size_tokens_est": 402,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "low",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "schema-design",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/schema-design.md",
+      "patterns": [
+        "P-202"
+      ],
+      "size_bytes": 1273,
+      "size_tokens_est": 319,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "medium",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "secret-handling",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/secret-handling.md",
+      "patterns": [
+        "P-SEC-001"
+      ],
+      "size_bytes": 2856,
+      "size_tokens_est": 714,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "service-security",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/service-security.md",
+      "patterns": [
+        "P-SVC-001"
+      ],
+      "size_bytes": 2193,
+      "size_tokens_est": 549,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "single-source-of-truth",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/single-source-of-truth.md",
+      "patterns": [
+        "P-SSOT-001",
+        "P-SSOT-002"
+      ],
+      "size_bytes": 3647,
+      "size_tokens_est": 912,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "streaming-io",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/streaming-io.md",
+      "patterns": [
+        "P-1202"
+      ],
+      "size_bytes": 1480,
+      "size_tokens_est": 370,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "test-integrity",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/test-integrity.md",
+      "patterns": [
+        "P-TI-001"
+      ],
+      "size_bytes": 1915,
+      "size_tokens_est": 479,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "test-patterns",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/test-patterns.md",
+      "patterns": [
+        "P-001",
+        "P-002",
+        "P-204",
+        "P-NPRS-004"
+      ],
+      "size_bytes": 4512,
+      "size_tokens_est": 1128,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "high",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "test-strategy",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/test-strategy.md",
+      "patterns": [
+        "P-201",
+        "P-701"
+      ],
+      "size_bytes": 2648,
+      "size_tokens_est": 662,
+      "agent_relevance": {
+        "planner": "high",
+        "executor": "medium",
+        "verifier": "high",
+        "reviewer": "high"
+      }
+    },
+    {
+      "name": "unicode",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/unicode.md",
+      "patterns": [
+        "P-1001"
+      ],
+      "size_bytes": 1376,
+      "size_tokens_est": 344,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "low"
+      }
+    },
+    {
+      "name": "vendor-pattern",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/vendor-pattern.md",
+      "patterns": [
+        "P-801"
+      ],
+      "size_bytes": 1796,
+      "size_tokens_est": 449,
+      "agent_relevance": {
+        "planner": "medium",
+        "executor": "low",
+        "verifier": "low",
+        "reviewer": "medium"
+      }
+    },
+    {
+      "name": "workaround-catalog",
+      "scope": "universal",
+      "file": "pan-wizard-core/learnings/universal/workaround-catalog.md",
+      "patterns": [
+        "P-WKC-001"
+      ],
+      "size_bytes": 1741,
+      "size_tokens_est": 436,
+      "agent_relevance": {
+        "planner": "low",
+        "executor": "high",
+        "verifier": "medium",
+        "reviewer": "low"
+      }
+    }
+  ],
+  "totals": {
+    "topics": 47,
+    "patterns": 93,
+    "size_bytes": 148954,
+    "size_tokens_est": 37255
+  }
+}

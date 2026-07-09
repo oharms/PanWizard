@@ -1,0 +1,22 @@
+{
+  "experiment_id": "whooflow",
+  "status": "done",
+  "started_at": "2026-05-02T13:36:40.223Z",
+  "ended_at": "2026-05-02T14:15:35.884Z",
+  "pid": 44352,
+  "exit_code": 0,
+  "stop_reason": "success",
+  "elapsed_ms": 2335661,
+  "events": [
+    {
+      "ts": "2026-05-02T13:36:40.223Z",
+      "type": "started",
+      "details": "runtime=claude, prompt=/pan:plan-phase 3 --auto"
+    },
+    {
+      "ts": "2026-05-02T14:15:35.885Z",
+      "type": "completed",
+      "details": "exit_code=0, milestone=completed"
+    }
+  ]
+}

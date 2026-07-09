@@ -1,0 +1,31 @@
+{
+  "session_id": "sess_20260427T113000",
+  "started_at": "2026-04-27T11:30:00Z",
+  "ended_at": "2026-04-27T11:55:00Z",
+  "command": "exec-phase",
+  "phase": "01-build-cli",
+  "experiment_id": "whooo",
+  "agent_count": 1,
+  "agents": [
+    {
+      "agent_id": "claude-direct-build",
+      "task_description": "Implement whooo markdown frontmatter linter per design-spec.md across 4 waves",
+      "status": "completed",
+      "duration_minutes": 25,
+      "files_created": 14,
+      "files_modified": 3,
+      "tests_written": 39,
+      "tests_passing": 39,
+      "deviations_applied": 2
+    }
+  ],
+  "summary": {
+    "total_events": 12,
+    "decisions": 5,
+    "errors": 2,
+    "gaps": 2,
+    "memory_misses": 1,
+    "memory_hits": 1,
+    "surprises": 1
+  }
+}

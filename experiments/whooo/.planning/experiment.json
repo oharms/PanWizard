@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whooo",
+  "runtime": "claude",
+  "idea_path": "D:\\whooo\\.planning\\idea.md",
+  "source_idea_path": "D:\\tmp\\whooo-idea.md",
+  "created_at": "2026-04-27T09:31:13.652Z",
+  "status": "scaffolded",
+  "budget": 60,
+  "pan_version": "3.7.0",
+  "path": "D:\\whooo"
+}

@@ -1,0 +1,11 @@
+{
+  "experiment_id": "whoocache",
+  "runtime": "claude",
+  "idea_path": "~\\pan-experiments\\whoocache\\.planning\\idea.md",
+  "source_idea_path": "d:\\tmp\\idea-whoocache.md",
+  "created_at": "2026-05-02T10:02:14.259Z",
+  "status": "ready",
+  "budget": 40,
+  "pan_version": "3.7.8",
+  "path": "~\\pan-experiments\\whoocache"
+}

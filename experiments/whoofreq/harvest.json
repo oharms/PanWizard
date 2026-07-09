@@ -1,0 +1,13 @@
+{
+  "experiment_id": "whoofreq",
+  "harvested_at": "2026-04-27T10:58:33.629Z",
+  "source_path": "D:\\whoofreq",
+  "harvest_path": "d:\\PanWizard\\experiments\\whoofreq",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/optimization"
+  ],
+  "total_bytes": 625,
+  "pan_version": "3.7.1"
+}

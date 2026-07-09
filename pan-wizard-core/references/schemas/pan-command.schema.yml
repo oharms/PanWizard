@@ -1,0 +1,39 @@
+# Schema describing PAN's commands/pan/*.md frontmatter shape.
+# Used by the dogfood gate (REQ-06) and shipped to PAN as the canonical
+# command-frontmatter schema (consumed by `pan-tools doc-lint`).
+#
+# Schema evolved across two dogfood passes:
+#   - Pass 1: pattern accommodates "pan:" prefix; argument-hint added
+#   - Pass 2 (v3.7.1): added agent, type, argument-instructions per real usage
+#
+# Per P-202 (universal): schemas should be inferred from real files, not authored
+# from imagination. Every field below was added because a real PAN command file
+# uses it.
+
+fields:
+  name:
+    required: true
+    type: string
+    pattern: ^(pan:)?[a-z][a-z0-9-]*$
+  group:
+    required: false
+    type: string
+  description:
+    required: false
+    type: string
+  allowed-tools:
+    required: false
+    type: array
+    items: string
+  argument-hint:
+    required: false
+    type: string
+  argument-instructions:
+    required: false
+    type: string
+  agent:
+    required: false
+    type: string
+  type:
+    required: false
+    type: string

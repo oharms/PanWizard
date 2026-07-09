@@ -1,0 +1,22 @@
+{
+  "experiment_id": "notepadrs",
+  "status": "incomplete",
+  "started_at": "2026-05-03T03:20:19.498Z",
+  "ended_at": "2026-05-03T03:27:19.754Z",
+  "pid": 28972,
+  "exit_code": 0,
+  "stop_reason": "incomplete",
+  "elapsed_ms": 420256,
+  "events": [
+    {
+      "ts": "2026-05-03T03:20:19.498Z",
+      "type": "started",
+      "details": "runtime=claude, prompt=Continue Phase 5 — write 05-04-summary.md, advance state to current_plan: 05-04 done, then run Phase 5 verification, mark Phase 5 complete in roadmap, update milestone status to v1.0 ready"
+    },
+    {
+      "ts": "2026-05-03T03:27:19.754Z",
+      "type": "incomplete",
+      "details": "exit_code=0 but milestone status=milestone_ready"
+    }
+  ]
+}

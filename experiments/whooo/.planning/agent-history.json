@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "max_entries": 50,
+  "entries": [
+    {
+      "agent_id": "claude-direct-build",
+      "task_description": "Implement whooo markdown frontmatter linter per design-spec.md across 4 waves (lib, CLI, tests, dogfood)",
+      "phase": "01-build-cli",
+      "wave": "1-4",
+      "status": "completed",
+      "started_at": "2026-04-27T11:30:00Z",
+      "ended_at": "2026-04-27T11:55:00Z",
+      "duration_minutes": 25,
+      "files_created": [
+        "package.json",
+        "bin/whooo.js",
+        "lib/frontmatter.js",
+        "lib/schema.js",
+        "lib/validate.js",
+        "lib/walk.js",
+        "lib/reporter.js",
+        "test/frontmatter.test.js",
+        "test/schema.test.js",
+        "test/validate.test.js",
+        "test/walk.test.js",
+        "test/cli.test.js",
+        "test/fixtures/basic.schema.yml",
+        "test/fixtures/pan-cmd.schema.yml",
+        "test/fixtures/valid.md",
+        "test/fixtures/missing-required.md",
+        "test/fixtures/wrong-type.md",
+        "test/fixtures/enum-violation.md",
+        "test/fixtures/pattern-mismatch.md",
+        "test/fixtures/malformed-frontmatter.md",
+        "test/fixtures/no-frontmatter.md",
+        "test/fixtures/unknown-field.md"
+      ],
+      "files_modified": [
+        "lib/walk.js",
+        "lib/frontmatter.js",
+        "test/frontmatter.test.js",
+        "test/fixtures/pan-cmd.schema.yml"
+      ],
+      "tests_written": 39,
+      "tests_passing": 39,
+      "deviations_applied": 2,
+      "notes": "Followed phase plan strictly. Two R1 deviations during build (globToRegex root-level fix, block-style YAML lists). Both surfaced via tests + dogfood, fixed inline, regression tests added."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "experiment_id": "whoohash",
+  "harvested_at": "2026-04-27T10:55:27.981Z",
+  "source_path": "D:\\whoohash",
+  "harvest_path": "d:\\PanWizard\\experiments\\whoohash",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/optimization"
+  ],
+  "total_bytes": 646,
+  "pan_version": "3.7.1"
+}

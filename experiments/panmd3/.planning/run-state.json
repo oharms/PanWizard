@@ -1,0 +1,22 @@
+{
+  "experiment_id": "panmd3",
+  "status": "incomplete",
+  "started_at": "2026-04-27T14:34:56.666Z",
+  "ended_at": "2026-04-27T14:35:44.702Z",
+  "pid": 23808,
+  "exit_code": 0,
+  "stop_reason": "incomplete",
+  "elapsed_ms": 48035,
+  "events": [
+    {
+      "ts": "2026-04-27T14:34:56.667Z",
+      "type": "started",
+      "details": "runtime=claude, prompt=/pan:new-project --auto @.planning/idea.md"
+    },
+    {
+      "ts": "2026-04-27T14:35:44.703Z",
+      "type": "incomplete",
+      "details": "exit_code=0 but milestone status=unknown"
+    }
+  ]
+}

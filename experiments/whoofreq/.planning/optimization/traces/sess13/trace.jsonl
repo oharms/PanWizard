@@ -1,0 +1,1 @@
+{"ts":"2026-04-27T15:40:00Z","type":"surprise","description":"Cross-tool dogfood: cat CHANGELOG | whoofreq --top 5 | whoograph rendered live chart of PAN CHANGELOG word frequencies. Validates P-602/P-802 composition with a 4-stage pipe.","impact":"major"}

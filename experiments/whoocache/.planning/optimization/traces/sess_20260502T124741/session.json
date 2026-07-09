@@ -1,0 +1,22 @@
+{
+  "session_id": "sess_20260502T124741",
+  "started_at": "2026-05-02T12:47:41.952Z",
+  "description": "plan-phase 3",
+  "command": "plan-phase",
+  "phase": "3",
+  "agent_count": 6,
+  "event_count": 12,
+  "ended_at": "2026-05-02T13:20:34.927Z",
+  "agents": [
+    "orchestrator",
+    "pan-phase-researcher",
+    "pan-planner",
+    "pan-plan-checker",
+    "pan-executor",
+    "pan-verifier"
+  ],
+  "type_counts": {
+    "decision": 11,
+    "error": 1
+  }
+}

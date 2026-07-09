@@ -1,0 +1,13 @@
+{
+  "experiment_id": "whoojson",
+  "harvested_at": "2026-04-27T10:51:50.071Z",
+  "source_path": "D:\\whoojson",
+  "harvest_path": "d:\\PanWizard\\experiments\\whoojson",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/optimization"
+  ],
+  "total_bytes": 968,
+  "pan_version": "3.7.1"
+}

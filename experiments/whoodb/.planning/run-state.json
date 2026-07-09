@@ -1,0 +1,22 @@
+{
+  "experiment_id": "whoodb",
+  "status": "done",
+  "started_at": "2026-05-02T13:48:52.391Z",
+  "ended_at": "2026-05-02T14:25:41.828Z",
+  "pid": 35428,
+  "exit_code": 0,
+  "stop_reason": "success",
+  "elapsed_ms": 2209437,
+  "events": [
+    {
+      "ts": "2026-05-02T13:48:52.391Z",
+      "type": "started",
+      "details": "runtime=claude, prompt=/pan:plan-phase 3 --auto"
+    },
+    {
+      "ts": "2026-05-02T14:25:41.829Z",
+      "type": "completed",
+      "details": "exit_code=0, milestone=completed"
+    }
+  ]
+}

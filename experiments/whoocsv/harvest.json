@@ -1,0 +1,13 @@
+{
+  "experiment_id": "whoocsv",
+  "harvested_at": "2026-04-27T10:50:34.296Z",
+  "source_path": "D:\\whoocsv",
+  "harvest_path": "d:\\PanWizard\\experiments\\whoocsv",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/optimization"
+  ],
+  "total_bytes": 1588,
+  "pan_version": "3.7.1"
+}

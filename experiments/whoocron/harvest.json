@@ -1,0 +1,13 @@
+{
+  "experiment_id": "whoocron",
+  "harvested_at": "2026-04-27T10:54:16.180Z",
+  "source_path": "D:\\whoocron",
+  "harvest_path": "d:\\PanWizard\\experiments\\whoocron",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/optimization"
+  ],
+  "total_bytes": 509,
+  "pan_version": "3.7.1"
+}

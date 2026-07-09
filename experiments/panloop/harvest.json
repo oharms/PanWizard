@@ -1,0 +1,16 @@
+{
+  "experiment_id": "panloop",
+  "harvested_at": "2026-04-27T12:00:32.369Z",
+  "source_path": "D:\\panloop",
+  "harvest_path": "d:\\PanWizard\\experiments\\panloop",
+  "harvested_paths": [
+    ".planning/idea.md",
+    ".planning/experiment.json",
+    ".planning/state.md",
+    ".planning/run-state.json",
+    ".planning/optimization",
+    ".planning/phases"
+  ],
+  "total_bytes": 75445,
+  "pan_version": "3.7.2"
+}

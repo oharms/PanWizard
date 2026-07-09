@@ -1,0 +1,2 @@
+{"ts":"2026-04-27T15:30:00Z","type":"decision","description":"Kahn's algorithm (in-degree counting) over DFS for primary topo sort. Reason: easy cycle detection via 'sorted.length !== nodes.length'. DFS-color used as a separate cycle path-finder.","impact":"minor","topic":"algorithms"}
+{"ts":"2026-04-27T15:32:00Z","type":"decision","description":"Errors returned in result object {error,cycleNodes}, not thrown. Caller-friendly; downstream tools can switch on .error without try/catch.","impact":"minor","topic":"error-handling","raises_pattern":"P-1201"}

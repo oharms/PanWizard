@@ -1,0 +1,50 @@
+version: 2
+
+# Dependabot keeps both npm dev-deps and GitHub Actions SHA pins fresh.
+# - npm: opens a PR for every minor/patch and a separate PR for any major.
+# - github-actions: rewrites pinned SHAs when the upstream action ships a new
+#   release, with the version comment alongside the SHA.
+# Grouping minor+patch keeps PR noise down; major bumps stay isolated so they
+# can be reviewed individually.
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      dev-minor-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: deps(ci)
+      include: scope
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch

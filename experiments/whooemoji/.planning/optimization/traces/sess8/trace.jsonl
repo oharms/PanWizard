@@ -1,0 +1,2 @@
+{"ts":"2026-04-27T14:50:00Z","type":"decision","description":"Used Unicode property escapes (\p{Extended_Pictographic}, \p{Emoji}) over hand-listed code-point ranges. Single regex, future-proof against new emoji.","impact":"minor","topic":"unicode"}
+{"ts":"2026-04-27T14:52:00Z","type":"surprise","description":"'🚀'.length === 2 in JS (surrogate pair) but counts as 1 emoji. Caught by explicit test asserting both behaviors. UTF-16 length != grapheme count is a recurring source of bugs.","impact":"major","topic":"unicode","raises_pattern":"P-1001"}

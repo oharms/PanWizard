@@ -1,0 +1,49 @@
+# Gitleaks configuration for PAN Wizard.
+#
+# We extend the default ruleset and add narrow allowlists for two confirmed
+# false-positive patterns documented below. The allowlists are SCOPED — they
+# never blanket-disable the underlying rule.
+#
+# Run:  gitleaks detect --no-banner --config .gitleaks.toml
+#       gitleaks protect --staged --no-banner --config .gitleaks.toml
+
+[extend]
+useDefault = true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Allowlist 1 — Manifest content hashes.
+# pan-file-manifest.json maps installed-file paths to their SHA-256 hashes for
+# integrity verification. Each value is a 64-char lowercase hex string. The
+# default `discord-api-token` rule matches because the key `discord.md` sits
+# next to a hex-shaped value, but the value is a SHA-256, not a Discord token.
+# Real Discord tokens are dot-separated base64 segments, e.g.
+#   MTIzNDU2.Xz12.AbCdEfGh
+# We allow only this specific manifest filename, not the whole repo.
+# ─────────────────────────────────────────────────────────────────────────────
+[[allowlists]]
+description = "pan-file-manifest.json SHA-256 content hashes"
+paths = [
+  '''(^|/)pan-file-manifest\.json$''',
+]
+regexes = [
+  # 64-character lowercase hex strings (SHA-256). Matches only the value side
+  # of a "filename": "<hash>" pair.
+  '''"[0-9a-f]{64}"''',
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Allowlist 2 — Test fixture filenames.
+# tests/**/*.test.cjs contains literal `.planning/phases/NN-slug/NN-name.md`
+# path fragments built with path.join(). These can hit `generic-api-key`'s
+# entropy threshold even though they're plain filenames.
+# We scope to test files only.
+# ─────────────────────────────────────────────────────────────────────────────
+[[allowlists]]
+description = "Phase filename literals in test fixtures"
+paths = [
+  '''^tests/.*\.(test\.)?(c?js|mjs)$''',
+]
+regexes = [
+  # NN-name.md or NN-NAME.md — the test phase-path pattern.
+  '''['"][0-9]{2,3}-[A-Za-z0-9_-]+\.md['"]''',
+]

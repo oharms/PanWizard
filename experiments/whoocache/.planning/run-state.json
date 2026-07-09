@@ -1,0 +1,22 @@
+{
+  "experiment_id": "whoocache",
+  "status": "done",
+  "started_at": "2026-05-02T12:47:32.402Z",
+  "ended_at": "2026-05-02T13:21:24.158Z",
+  "pid": 44480,
+  "exit_code": 0,
+  "stop_reason": "success",
+  "elapsed_ms": 2031755,
+  "events": [
+    {
+      "ts": "2026-05-02T12:47:32.403Z",
+      "type": "started",
+      "details": "runtime=claude, prompt=/pan:plan-phase 3 --auto"
+    },
+    {
+      "ts": "2026-05-02T13:21:24.158Z",
+      "type": "completed",
+      "details": "exit_code=0, milestone=completed"
+    }
+  ]
+}

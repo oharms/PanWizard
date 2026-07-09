@@ -1,0 +1,60 @@
+PANWIZARD — NANO BANANA (GEMINI) IMAGE PROMPTS
+================================================
+Brand palette (keep locked in every prompt):
+  Ember coral   #FF5A3C   (primary)
+  Conduit indigo #5B4BE6  (links / secondary)
+  Verify green  #1E8E5A
+  Butter yellow #FFCE4A
+  Ink           #211E18   (dark backgrounds)
+  Paper cream   #F3ECDD / #FBF7EE
+Logo motif: a node-graph — one coral dot branching DOWN to a yellow dot and a
+green dot, joined by indigo connector lines (planner -> executor -> verifier).
+Type vibe: bold rounded geometric sans (Gabarito) + JetBrains Mono.
+Style rules: flat vector, rounded corners (8/16/32px), soft shadows, soft grain,
+generous negative space. NO neon, NO heavy gradients, NO 3D unless asked,
+NO stock-photo people unless asked.
+
+
+1) GITHUB SOCIAL PREVIEW / NPM HERO  (1280 x 640)
+-------------------------------------------------
+Wide developer-brand banner on a deep charcoal-brown background #211E18. A clean
+geometric node-graph logo: one coral #FF5A3C dot branching down to a butter
+#FFCE4A dot and a green #1E8E5A dot, connected by indigo #5B4BE6 lines. To its
+right, a bold rounded sans wordmark "PanWizard" with "Pan" in coral and "Wizard"
+in cream. Subhead "Context engineering that makes AI coding reliable." A small
+cream pill reading "npx pan-wizard@latest" in monospace. Flat vector, soft grain,
+generous negative space, no photo, no 3D. Friendly, premium dev-tool aesthetic.
+
+
+2) HERO ILLUSTRATION — ORCHESTRATION
+------------------------------------
+Isometric flat illustration of three friendly rounded robot agents labelled
+planner, executor and verifier, passing a small glowing token along a connected
+track. Warm cream #F3ECDD background. Strict palette: coral #FF5A3C, indigo
+#5B4BE6, green #1E8E5A, butter #FFCE4A, ink #211E18. Rounded shapes, 16-32px
+corner radii, soft shadows, no heavy gradients, no neon. Calm, approachable,
+editorial vector style. Lots of breathing room.
+
+
+3) APP / CLI AVATAR  (square, 1024 x 1024)
+------------------------------------------
+Square app icon, rounded-square tile filled coral #FF5A3C, a centered minimal
+node-graph glyph in cream #FBF7EE (one dot branching to two dots with thin
+connector lines), subtle inner shadow, flat and crisp, no text. iOS-style icon
+grid with safe-area padding.
+
+
+4) DOCS SECTION HEADER  (wide, soft background)
+-----------------------------------------------
+Abstract soft background for documentation headers: a warm cream #F3ECDD field
+with a few large, out-of-focus rounded shapes in coral, indigo, green and butter
+drifting near the edges. Large empty center for a text overlay. Flat, gentle
+grain, no objects, no people.
+
+
+5) OPTIONAL — FRIENDLY DEVELOPER PHOTO (brand-tinted)
+-----------------------------------------------------
+Natural candid photo of a relaxed developer at a desk, warm daylight, shallow
+depth of field. Color-grade toward the brand: warm cream tones, with a coral
+#FF5A3C accent object in frame (mug, sticky note) and an indigo #5B4BE6 element.
+Soft, friendly, editorial. Leave clean negative space on one side for text.
