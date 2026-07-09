@@ -34,7 +34,9 @@ function createTempProject() {
 }
 
 function cleanup(tmpDir) {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  // maxRetries absorbs transient ENOTEMPTY/EBUSY races on macOS/Windows when
+  // a just-exited child process (git, node) still holds a directory handle.
+  fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
 
 const INSTALLER_PATH = path.join(__dirname, '..', 'bin', 'install.js');
@@ -72,7 +74,7 @@ function createScenarioRunner(runtime) {
       timeout: 30000,
     });
   } catch (err) {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     throw new Error(`Installer failed for ${runtime}: ${err.stderr || err.message}`);
   }
 
@@ -101,7 +103,7 @@ function createScenarioRunner(runtime) {
   }
 
   function cleanupRunner() {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 
   return { tmpDir, installedToolsPath, configDir, run, cleanup: cleanupRunner };

@@ -101,7 +101,7 @@ describe('E2E Validation/Verify Contracts', () => {
     const parsed = JSON.parse(result.output);
     assert.ok(['broken', 'degraded'].includes(parsed.status),
       `broken project should be broken/degraded, got "${parsed.status}"`);
-    fs.rmSync(brokenDir, { recursive: true, force: true });
+    fs.rmSync(brokenDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   test('validate health on missing .planning returns broken', () => {
@@ -111,7 +111,7 @@ describe('E2E Validation/Verify Contracts', () => {
     const parsed = JSON.parse(result.output);
     assert.equal(parsed.status, 'broken', 'missing .planning should be broken');
     assert.ok(parsed.errors.length > 0, 'should have errors');
-    fs.rmSync(emptyDir, { recursive: true, force: true });
+    fs.rmSync(emptyDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   test('verify key-links without args returns error', () => {

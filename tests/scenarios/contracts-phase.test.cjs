@@ -127,6 +127,6 @@ describe('E2E Phase Command Contracts', () => {
     const parsed = JSON.parse(result.output);
     assert.equal(parsed.count, 0, 'empty project should have 0 phases');
     assert.ok(Array.isArray(parsed.directories), 'directories should be array');
-    fs.rmSync(emptyDir, { recursive: true, force: true });
+    fs.rmSync(emptyDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 });

@@ -29,8 +29,8 @@ describe('experiment lifecycle: new -> run -> status -> harvest -> prune', () =>
     tmpHarvestRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-lifecycle-harvest-'));
   });
   after(() => {
-    if (fs.existsSync(tmpExpRoot)) fs.rmSync(tmpExpRoot, { recursive: true, force: true });
-    if (fs.existsSync(tmpHarvestRoot)) fs.rmSync(tmpHarvestRoot, { recursive: true, force: true });
+    if (fs.existsSync(tmpExpRoot)) fs.rmSync(tmpExpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (fs.existsSync(tmpHarvestRoot)) fs.rmSync(tmpHarvestRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   test('step 1: scaffold experiment from idea doc', () => {

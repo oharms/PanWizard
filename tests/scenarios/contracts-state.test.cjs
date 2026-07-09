@@ -117,7 +117,7 @@ describe('E2E State Command Contracts', () => {
     if (parsed.error) {
       assertErrorSchema(parsed);
     }
-    fs.rmSync(emptyDir, { recursive: true, force: true });
+    fs.rmSync(emptyDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   test('state add-decision without --summary flag fails gracefully', () => {

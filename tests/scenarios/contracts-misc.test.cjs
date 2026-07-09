@@ -126,7 +126,7 @@ describe('E2E Roadmap/Config/Template/Misc Contracts', () => {
     const parsed = JSON.parse(result.output);
     assert.equal(parsed.phase_count, 0, 'should have 0 phases');
     assert.equal(parsed.progress_percent, 0, 'should have 0% progress');
-    fs.rmSync(emptyDir, { recursive: true, force: true });
+    fs.rmSync(emptyDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   test('all roadmap/config commands return valid JSON', () => {
