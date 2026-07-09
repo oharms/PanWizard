@@ -39,7 +39,13 @@ function buildStatuslineOutput(data, deps) {
 
     if (session && d.skipBridge !== true) {
       try {
-        const bridgePath = pathMod.join(tmpDir, `claude-ctx-${session}.json`);
+        // Write the bridge file into a per-user 0700 subdir so another user on
+        // a shared host can't symlink-attack the predictable session path.
+        // Mirrors bridgeDir() in pan-context-monitor.js (the reader).
+        const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
+        const bridgeSubdir = pathMod.join(tmpDir, `pan-hooks-${uid}`);
+        try { fsMod.mkdirSync(bridgeSubdir, { recursive: true, mode: 0o700 }); } catch { /* best-effort */ }
+        const bridgePath = pathMod.join(bridgeSubdir, `claude-ctx-${session}.json`);
         fsMod.writeFileSync(bridgePath, JSON.stringify({
           session_id: session,
           remaining_percentage: remaining,

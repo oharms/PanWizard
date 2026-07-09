@@ -154,10 +154,19 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
   // After the loop, `current` points to the parent object and the
   // final segment is used as the property key for assignment.
   const keys = keyPath.split('.');
+
+  // Reject prototype-polluting segments — a key path like
+  // "__proto__.x" or "constructor.prototype.y" must never walk into or
+  // mutate Object.prototype.
+  const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+  if (keys.some(k => FORBIDDEN_KEYS.has(k))) {
+    error(`Invalid config key "${keyPath}": segments __proto__/constructor/prototype are not allowed`);
+  }
+
   let current = config;
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
-    if (current[key] === undefined || typeof current[key] !== 'object') {
+    if (!Object.prototype.hasOwnProperty.call(current, key) || typeof current[key] !== 'object' || current[key] === null) {
       current[key] = {};
     }
     current = current[key];

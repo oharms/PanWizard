@@ -21,6 +21,17 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// Per-user bridge directory inside tmpdir, created 0700 so another user on a
+// shared host can't pre-plant a symlink at a predictable session path or read
+// the bridge files. Both hooks derive the same dir from the same uid, so the
+// statusline→context-monitor IPC channel is preserved.
+function bridgeDir() {
+  const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
+  const dir = path.join(os.tmpdir(), `pan-hooks-${uid}`);
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { /* best-effort */ }
+  return dir;
+}
+
 const WARNING_THRESHOLD = 35;  // remaining_percentage <= 35%
 const CRITICAL_THRESHOLD = 25; // remaining_percentage <= 25%
 const STALE_SECONDS = 60;      // ignore metrics older than 60s
@@ -38,15 +49,18 @@ process.stdin.on('end', () => {
       process.exit(0);
     }
 
-    const tmpDir = os.tmpdir();
+    const tmpDir = bridgeDir();
     const metricsPath = path.join(tmpDir, `claude-ctx-${sessionId}.json`);
 
-    // If no metrics file, this is a subagent or fresh session -- exit silently
-    if (!fs.existsSync(metricsPath)) {
+    // Read metrics directly; absence (subagent/fresh session) or a corrupt
+    // file just means "nothing to warn about" — exit silently. No
+    // existsSync-then-read gap.
+    let metrics;
+    try {
+      metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
+    } catch {
       process.exit(0);
     }
-
-    const metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
     const now = Math.floor(Date.now() / 1000);
 
     // Ignore stale metrics
@@ -67,13 +81,11 @@ process.stdin.on('end', () => {
     let warnData = { callsSinceWarn: 0, lastLevel: null };
     let firstWarn = true;
 
-    if (fs.existsSync(warnPath)) {
-      try {
-        warnData = JSON.parse(fs.readFileSync(warnPath, 'utf8'));
-        firstWarn = false;
-      } catch (e) {
-        // Corrupted file, reset
-      }
+    try {
+      warnData = JSON.parse(fs.readFileSync(warnPath, 'utf8'));
+      firstWarn = false;
+    } catch {
+      // No prior warning file (or corrupted) — treat as first warning.
     }
 
     warnData.callsSinceWarn = (warnData.callsSinceWarn || 0) + 1;

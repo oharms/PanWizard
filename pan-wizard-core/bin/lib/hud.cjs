@@ -822,13 +822,26 @@ ${body}
 
 function openInBrowser(filePath) {
   const { execFileSync } = require('child_process');
+  // Only open a path we can resolve to an existing regular file, and refuse
+  // anything carrying shell/cmd metacharacters — on Windows `start` is a cmd
+  // builtin that re-parses its command line, so a crafted --out value must not
+  // be able to reach it. The allowlist check is the taint barrier; `resolved`
+  // is what actually gets opened.
+  let resolved;
+  try {
+    resolved = path.resolve(filePath);
+    if (!fs.statSync(resolved).isFile()) return false;
+  } catch {
+    return false;
+  }
+  if (/[\r\n&|<>^"'`$]/.test(resolved)) return false;
   try {
     if (process.platform === 'win32') {
-      execFileSync('cmd', ['/c', 'start', '', filePath], { stdio: 'ignore' });
+      execFileSync('cmd', ['/c', 'start', '', resolved], { stdio: 'ignore' });
     } else if (process.platform === 'darwin') {
-      execFileSync('open', [filePath], { stdio: 'ignore' });
+      execFileSync('open', [resolved], { stdio: 'ignore' });
     } else {
-      execFileSync('xdg-open', [filePath], { stdio: 'ignore' });
+      execFileSync('xdg-open', [resolved], { stdio: 'ignore' });
     }
     return true;
   } catch {

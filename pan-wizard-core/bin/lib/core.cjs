@@ -159,9 +159,12 @@ function output(result, raw, rawValue) {
     // Large payloads exceed Claude Code's Bash tool buffer (~50KB).
     // Write to tmpfile and output the path prefixed with @file: so callers can detect it.
     if (json.length > MAX_JSON_SIZE) {
-      const tmpPath = path.join(os.tmpdir(), `pan-${Date.now()}.json`);
+      // Unpredictable name + exclusive create ('wx') so a pre-planted file or
+      // symlink at the path can't be followed/overwritten on a shared tmpdir.
+      const rand = require('crypto').randomBytes(9).toString('hex');
+      const tmpPath = path.join(os.tmpdir(), `pan-${process.pid}-${rand}.json`);
       try {
-        fs.writeFileSync(tmpPath, json, 'utf-8');
+        fs.writeFileSync(tmpPath, json, { encoding: 'utf-8', flag: 'wx' });
         process.stdout.write('@file:' + tmpPath);
       } catch {
         // Tmpfile write failed (disk full, permissions) — truncate and write to stdout

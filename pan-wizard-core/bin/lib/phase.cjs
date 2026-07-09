@@ -133,7 +133,7 @@ function cmdPhaseNextDecimal(cwd, basePhase, raw) {
     const baseExists = dirs.some(dir => dir.startsWith(normalized + '-') || dir === normalized);
 
     // Find existing decimal phases for this base
-    const decimalPattern = new RegExp(`^${normalized}\\.(\\d+)`);
+    const decimalPattern = new RegExp(`^${escapeRegex(normalized)}\\.(\\d+)`);
     const existingDecimals = [];
 
     for (const dir of dirs) {
@@ -444,7 +444,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
   // Normalize input then strip leading zeros for flexible matching
   const normalizedAfter = normalizePhaseName(afterPhase);
   const unpadded = normalizedAfter.replace(/^0+/, '');
-  const afterPhaseEscaped = unpadded.replace(/\./g, '\\.');
+  const afterPhaseEscaped = escapeRegex(unpadded);
   const targetPattern = new RegExp(`#{2,4}\\s*Phase\\s+0*${afterPhaseEscaped}:`, 'i');
   if (!targetPattern.test(content)) {
     error(`Phase ${afterPhase} not found in roadmap.md`);
@@ -458,7 +458,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
   try {
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
     const dirs = entries.filter(entry => entry.isDirectory()).map(entry => entry.name);
-    const decimalPattern = new RegExp(`^${normalizedBase}\\.(\\d+)`);
+    const decimalPattern = new RegExp(`^${escapeRegex(normalizedBase)}\\.(\\d+)`);
     for (const dir of dirs) {
       const decMatch = dir.match(decimalPattern);
       if (decMatch) existingDecimals.push(parseInt(decMatch[1], 10));
@@ -484,7 +484,7 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
   const phaseEntry = `\n### Phase ${decimalPhase}: ${description} (INSERTED)\n\n**Goal:** [Urgent work - to be planned]\n**Requirements**: TBD\n**Depends on:** Phase ${afterPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /pan:plan-phase ${decimalPhase} to break down)\n`;
 
   // Insert after the target phase section
-  const headerPattern = new RegExp(`(#{2,4}\\s*Phase\\s+0*${afterPhaseEscaped}:[^\\n]*\\n)`, 'i');
+  const headerPattern = new RegExp(`(#{2,4}\\s*Phase\\s+0*${afterPhaseEscaped}:[^\\n]*\\n)`, 'i'); // afterPhaseEscaped already run through escapeRegex above
   const headerMatch = content.match(headerPattern);
   if (!headerMatch) {
     error(`Could not find Phase ${afterPhase} header`);

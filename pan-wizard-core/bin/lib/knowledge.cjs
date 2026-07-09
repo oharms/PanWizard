@@ -14,7 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error, safeReadFile, toPosix } = require('./core.cjs');
+const { output, error, safeReadFile, toPosix, escapeRegex } = require('./core.cjs');
 const { PLANNING_DIR } = require('./constants.cjs');
 const { planningPath } = require('./utils.cjs');
 const { listMemoryAgents, readMemory } = require('./memory.cjs');
@@ -56,7 +56,7 @@ function scoreRelevance(question, content) {
   const body = content.toLowerCase();
   let score = 0;
   for (const w of words) {
-    const count = (body.match(new RegExp(`\\b${w.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`, 'g')) || []).length;
+    const count = (body.match(new RegExp(`\\b${escapeRegex(w)}\\b`, 'g')) || []).length;
     score += count;
   }
   return score;

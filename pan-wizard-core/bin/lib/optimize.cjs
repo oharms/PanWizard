@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output } = require('./core.cjs');
+const { output, escapeRegex } = require('./core.cjs');
 const { PLANNING_DIR } = require('./constants.cjs');
 
 // ─── Storage layout ──────────────────────────────────────────────────────────
@@ -1052,7 +1052,7 @@ function unpromotePattern(patternId, opts) {
   // Strip the pattern's body section. Pattern body is a `## P-<id> — ...` heading
   // followed by content until the next `## ` or end-of-file.
   const headingRe = new RegExp(
-    `\\n## ${patternId.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b[^\\n]*[\\s\\S]*?(?=\\n## |$)`,
+    `\\n## ${escapeRegex(patternId)}\\b[^\\n]*[\\s\\S]*?(?=\\n## |$)`,
     ''
   );
   const newBody = parsed.body.replace(headingRe, '');

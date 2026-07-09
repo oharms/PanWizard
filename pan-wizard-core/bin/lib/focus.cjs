@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit } = require('./core.cjs');
+const { output, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex } = require('./core.cjs');
 const {
   PLANNING_DIR, PHASES_DIR, ROADMAP_FILE, PATTERNS_FILE, EFFORT_POINTS, PRIORITY_LEVELS, EFFORT_SIZES,
   FOCUS_MODES, FOCUS_TIERS, FOCUS_DIR,
@@ -457,7 +457,7 @@ function checkDocStaleness(cwd, opts) {
 function checkOldCommandNames(content, file, stale) {
   for (const [oldName, newName] of Object.entries(COMMAND_RENAME_MAP)) {
     // Match /pan:old-name or pan:old-name (command references)
-    const pattern = new RegExp(`pan:${oldName.replace(/-/g, '\\-')}\\b`);
+    const pattern = new RegExp(`pan:${escapeRegex(oldName)}\\b`);
     if (pattern.test(content)) {
       stale.push({ file, entity: 'renamed_command', old: oldName, new: newName });
     }

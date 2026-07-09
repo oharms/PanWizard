@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, toPosix, output, error } = require('./core.cjs');
+const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, toPosix, output, error, escapeRegex } = require('./core.cjs');
 const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
 const {
@@ -995,12 +995,12 @@ function syncRequirementCheckboxes(cwd) {
   let fixed = 0;
   for (const phaseNum of completedPhases) {
     const reqMatch = roadmapContent.match(
-      new RegExp(`Phase\\s+${phaseNum.replace(/\./g, '\\.')}[\\s\\S]*?\\*\\*Requirements:\\*\\*\\s*([^\\n]+)`, 'i')
+      new RegExp(`Phase\\s+${escapeRegex(phaseNum)}[\\s\\S]*?\\*\\*Requirements:\\*\\*\\s*([^\\n]+)`, 'i')
     );
     if (!reqMatch) continue;
     const reqIds = reqMatch[1].replace(/[\[\]]/g, '').split(/[,\s]+/).map(id => id.trim()).filter(Boolean);
     for (const reqId of reqIds) {
-      const escaped = reqId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escaped = escapeRegex(reqId);
       const re = new RegExp(`(- \\[) (\\]\\s*\\*\\*${escaped}\\*\\*)`, 'gi');
       const before = reqContent;
       reqContent = reqContent.replace(re, '$1x$2');

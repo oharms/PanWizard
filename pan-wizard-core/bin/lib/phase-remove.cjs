@@ -47,7 +47,7 @@ function renumberDecimalPhases(phasesDir, baseInt, removedDecimal) {
     const dirs = entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort((left, right) => comparePhaseNum(left, right));
 
     // Find sibling decimals with higher numbers than the removed one
-    const decPattern = new RegExp(`^${baseInt}\\.(\\d+)-(.+)$`);
+    const decPattern = new RegExp(`^${escapeRegex(String(baseInt))}\\.(\\d+)-(.+)$`);
     const toRename = [];
     for (const dir of dirs) {
       const decMatch = dir.match(decPattern);

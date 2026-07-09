@@ -198,7 +198,9 @@ function writeDeepReview(cwd, phaseNum, payload, opts) {
     lines.push('|----------|--------|----------|-------------|------|');
     for (const f of payload.findings) {
       const loc = f.file ? `\`${f.file}${f.line ? `:${f.line}` : ''}\`` : '—';
-      const desc = f.description.replace(/\|/g, '\\|');
+      // Neutralize markdown-table-breaking chars: escape pipes and flatten any
+      // newlines so a finding description can't corrupt the table structure.
+      const desc = String(f.description).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
       lines.push(`| ${f.severity} | ${f.source} | ${f.category} | ${desc} | ${loc} |`);
     }
     lines.push('');
