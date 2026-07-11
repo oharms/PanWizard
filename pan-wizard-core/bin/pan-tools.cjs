@@ -524,6 +524,10 @@ async function main() {
         verify.cmdVerifyArtifacts(cwd, args[2], raw);
       } else if (subcommand === 'key-links') {
         verify.cmdVerifyKeyLinks(cwd, args[2], raw);
+      } else if (subcommand === 'reconcile') {
+        verify.cmdVerifyReconcile(cwd, args[2], raw);
+      } else if (subcommand === 'stubs') {
+        verify.cmdVerifyStubs(cwd, { gate: args.includes('--gate') }, raw);
       } else {
         error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links');
       }
@@ -1301,6 +1305,12 @@ async function main() {
         const exclude = [];
         for (let k = 0; k < args.length; k++) if (args[k] === '--exclude') exclude.push(args[k + 1]);
         docLint.cmdDocLintCounts(cwd, dir, { raw, exclude });
+        break;
+      }
+      if (subcommand === 'flags') {
+        const docDirs = [];
+        for (let k = 0; k < args.length; k++) if (args[k] === '--doc-dir') docDirs.push(args[k + 1]);
+        docLint.cmdDocLintFlags(cwd, { docDirs: docDirs.length ? docDirs : undefined }, raw);
         break;
       }
       // Default: lint a directory

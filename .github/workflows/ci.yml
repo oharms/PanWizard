@@ -63,6 +63,9 @@ jobs:
       - name: Scenario tests
         run: npm run test:scenarios
 
+      - name: Doc↔code link graph (anti-fake — docs can't reference code that doesn't exist)
+        run: node pan-wizard-core/bin/pan-tools.cjs links validate --raw
+
   audit:
     name: npm audit (production)
     runs-on: ubuntu-latest

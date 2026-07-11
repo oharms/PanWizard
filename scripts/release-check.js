@@ -3,15 +3,16 @@
  * release-check.js — Pre-publish validation gate.
  *
  * Wired into `prepublishOnly` so `npm publish` fails BEFORE upload if any
- * gate is red. Runs five checks in order; first failure aborts.
+ * gate is red. Runs seven checks in order; first failure aborts.
  *
  *   1. build:hooks      — hook scripts copy/build cleanly
  *   2. test:all         — full test suite (unit + scenario) passes
  *   3. npm audit        — no known vulnerabilities in production deps
- *                         (we have zero runtime deps, but esbuild dev-dep is checked)
+ *                         (we have zero runtime deps, but the dev-deps are checked)
  *   4. doc-lint counts  — no drift-prone count violations in user-facing docs
- *   5. npm pack dry-run — package builds; size is sane
- *   6. smoke install    — npm pack + install into temp dir + run pan-tools list
+ *   5. links validate   — doc↔code link graph resolves (no broken references)
+ *   6. npm pack dry-run — package builds; size is sane
+ *   7. smoke install    — npm pack + install into temp dir + run pan-tools list
  *                         catches "ships but doesn't actually work" failures
  *
  * Usage:
@@ -56,7 +57,7 @@ function run(cmd, args, opts = {}) {
 }
 
 // Gate 1: build:hooks
-process.stderr.write('\n[release-check] Gate 1/6: build:hooks\n');
+process.stderr.write('\n[release-check] Gate 1/7: build:hooks\n');
 {
   const r = run('npm', ['run', 'build:hooks']);
   logGate('build:hooks', r.status === 0, r.status !== 0 ? `exit ${r.status}` : '');
@@ -64,7 +65,7 @@ process.stderr.write('\n[release-check] Gate 1/6: build:hooks\n');
 }
 
 // Gate 2: test:all
-process.stderr.write('\n[release-check] Gate 2/6: test:all\n');
+process.stderr.write('\n[release-check] Gate 2/7: test:all\n');
 {
   const r = run('npm', ['run', 'test:all']);
   logGate('test:all', r.status === 0, r.status !== 0 ? `exit ${r.status}` : '');
@@ -73,9 +74,9 @@ process.stderr.write('\n[release-check] Gate 2/6: test:all\n');
 
 // Gate 3: npm audit (production deps only)
 if (SKIP_AUDIT) {
-  process.stderr.write('\n[release-check] Gate 3/6: npm audit (SKIPPED)\n');
+  process.stderr.write('\n[release-check] Gate 3/7: npm audit (SKIPPED)\n');
 } else {
-  process.stderr.write('\n[release-check] Gate 3/6: npm audit --omit=dev\n');
+  process.stderr.write('\n[release-check] Gate 3/7: npm audit --omit=dev\n');
   const r = run('npm', ['audit', '--omit=dev', '--audit-level=high'], { capture: true });
   // npm audit exits non-zero on findings. We tolerate moderate; fail on high+.
   const ok = r.status === 0;
@@ -87,13 +88,27 @@ if (SKIP_AUDIT) {
 }
 
 // Gate 4: doc-lint counts on user-facing docs (count-SSoT enforcement)
-process.stderr.write('\n[release-check] Gate 4/6: doc-lint counts docs/\n');
+process.stderr.write('\n[release-check] Gate 4/7: doc-lint counts docs/\n');
 {
   const tools = path.join(REPO_ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
   const docsDir = path.join(REPO_ROOT, 'docs');
   const r = run('node', [tools, 'doc-lint', 'counts', docsDir, '--raw'], { capture: true });
   const ok = r.status === 0;
   logGate('doc-lint counts', ok, ok ? 'no count violations in docs/' : 'drift-prone counts found outside CLAUDE.md');
+  if (!ok) {
+    process.stderr.write((r.stdout || '') + '\n');
+    process.exit(1);
+  }
+}
+
+// Gate 5: doc↔code link graph resolves (anti-fake — a doc cannot reference a
+// code anchor that doesn't exist; deterministic, self-enforcing exit 1).
+process.stderr.write('\n[release-check] Gate 5/7: links validate\n');
+{
+  const tools = path.join(REPO_ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+  const r = run('node', [tools, 'links', 'validate', '--raw'], { capture: true });
+  const ok = r.status === 0;
+  logGate('links validate', ok, ok ? 'doc↔code link graph resolves' : 'broken doc↔code references');
   if (!ok) {
     process.stderr.write((r.stdout || '') + '\n');
     process.exit(1);
@@ -111,8 +126,8 @@ function parseNpmJson(stdout) {
   return JSON.parse(stdout.slice(m));
 }
 
-// Gate 5: npm pack dry-run
-process.stderr.write('\n[release-check] Gate 5/6: npm pack --dry-run\n');
+// Gate 6: npm pack dry-run
+process.stderr.write('\n[release-check] Gate 6/7: npm pack --dry-run\n');
 {
   const r = run('npm', ['pack', '--dry-run', '--json'], { capture: true });
   if (r.status !== 0) {
@@ -137,11 +152,11 @@ process.stderr.write('\n[release-check] Gate 5/6: npm pack --dry-run\n');
   }
 }
 
-// Gate 6: smoke install — pack and install into temp dir, run pan-tools
+// Gate 7: smoke install — pack and install into temp dir, run pan-tools
 if (SKIP_SMOKE) {
-  process.stderr.write('\n[release-check] Gate 6/6: smoke install (SKIPPED)\n');
+  process.stderr.write('\n[release-check] Gate 7/7: smoke install (SKIPPED)\n');
 } else {
-  process.stderr.write('\n[release-check] Gate 6/6: smoke install (npm pack + install + sanity)\n');
+  process.stderr.write('\n[release-check] Gate 7/7: smoke install (npm pack + install + sanity)\n');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-release-smoke-'));
   try {
     // Pack

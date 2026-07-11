@@ -659,6 +659,20 @@ if [ -n "$VERIF" ]; then
 fi
 ```
 
+**Cross-check the written verdict against the mechanical signals (anti-rubber-stamp, ADR-0036).** The `status:` string above is authored by the verifier agent; `reconcile` re-derives the artifact/key-link checks from disk and exits non-zero when a claimed pass contradicts them:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify reconcile "${PHASE_NUMBER}" --raw
+RECONCILE_EXIT=$?
+```
+If `RECONCILE_EXIT` is non-zero:
+```
+⚠ Reconcile gate: Phase ${PHASE_NUMBER} verification says "passed" but the mechanical
+  checks disagree — artifacts fail substance checks or key-links are unwired.
+  This is a rubber-stamped verification. Do NOT auto-advance.
+  Re-run /pan:verify-phase and fix the failing artifacts/key-links.
+```
+STOP — do not auto-advance. Return to user.
+
 If `VERIF_STATUS` is not `passed`:
 ```
 ⚠ Verification gate: Phase ${PHASE_NUMBER} verification status is "${VERIF_STATUS:-missing}"

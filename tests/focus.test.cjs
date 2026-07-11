@@ -22,7 +22,46 @@ const {
   readAutoRun,
   writeAutoRun,
   determineStopReason,
+  verifyTestCount,
 } = require('../pan-wizard-core/bin/lib/focus.cjs');
+
+describe('focus — verifyTestCount (anti-fake regression breaker, ADR-0036)', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+
+  test('disabled by default: keeps the supplied count, marks it unverified', () => {
+    const r = verifyTestCount(tmp, {}, 42);
+    assert.equal(r.verified, false);
+    assert.equal(r.tests_after, 42);
+  });
+
+  test('enabled but no node:test suite present: falls back, stays unverified (no mis-fire)', () => {
+    const r = verifyTestCount(tmp, { focus: { verify_tests: true } }, 42);
+    assert.equal(r.verified, false, 'no suite -> do not claim verification');
+    assert.equal(r.tests_after, 42, 'falls back to supplied value rather than 0');
+  });
+
+  test('enabled with a real passing node:test suite: uses the REAL pass count', () => {
+    fs.writeFileSync(path.join(tmp, 'sample.test.cjs'),
+      "const {test}=require('node:test');const a=require('node:assert');" +
+      "test('one',()=>a.equal(1,1));test('two',()=>a.equal(2,2));\n");
+    const r = verifyTestCount(tmp, { focus: { verify_tests: true } }, 999);
+    assert.equal(r.verified, true);
+    assert.equal(r.tests_after, 2, 'derived from the real suite, not the supplied 999');
+    assert.equal(r.exit_code, 0);
+  });
+
+  test('enabled with a FAILING suite: verified, and count reflects reality (trips the breaker)', () => {
+    fs.writeFileSync(path.join(tmp, 'sample.test.cjs'),
+      "const {test}=require('node:test');const a=require('node:assert');" +
+      "test('ok',()=>a.equal(1,1));test('bad',()=>a.equal(1,2));\n");
+    const r = verifyTestCount(tmp, { focus: { verify_tests: true } }, 999);
+    assert.equal(r.verified, true);
+    assert.notEqual(r.exit_code, 0);
+    assert.equal(r.tests_after, 1, 'only the passing test counts, so tests_after drops -> regression');
+  });
+});
 const { extractPriorityEffort } = require('../pan-wizard-core/bin/lib/frontmatter.cjs');
 const {
   EFFORT_POINTS, PRIORITY_LEVELS, EFFORT_SIZES,

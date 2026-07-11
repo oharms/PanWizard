@@ -7,6 +7,111 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { reconcilePhase, scanStubs } = require('../pan-wizard-core/bin/lib/verify.cjs');
+
+describe('verify stubs — fake-implementation scanner (anti-fake, ADR-0036)', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+  const write = (rel, body) => { fs.mkdirSync(path.join(tmp, path.dirname(rel)), { recursive: true }); fs.writeFileSync(path.join(tmp, rel), body); };
+
+  test('flags "not implemented" and throw-stub as high-severity (blocking)', () => {
+    write('src/a.js', "function pay(){ throw new Error('not implemented'); }\n");
+    write('src/b.js', "function q(){ return NotImplementedError; }\n");
+    const r = scanStubs(tmp, { files: ['src/a.js', 'src/b.js'] });
+    assert.ok(r.blocking >= 2, `expected >=2 blocking, got ${r.blocking}`);
+    assert.ok(r.findings.some(f => f.marker === 'not-implemented' || f.marker === 'throw-stub'));
+  });
+
+  test('flags a hardcoded fake return {ok:true} (medium, non-blocking)', () => {
+    write('src/charge.js', "function chargeCard(){\n  return {ok:true}\n}\n");
+    const r = scanStubs(tmp, { files: ['src/charge.js'] });
+    assert.ok(r.findings.some(f => f.marker === 'fake-ok-return'));
+    assert.equal(r.blocking, 0, 'fake-ok-return is medium, not a hard block');
+  });
+
+  test('TODO markers are low-severity, not blocking', () => {
+    write('src/c.js', "// TODO: wire this up\nfunction f(){ return 1; }\n");
+    const r = scanStubs(tmp, { files: ['src/c.js'] });
+    assert.ok(r.findings.some(f => f.marker === 'todo-marker'));
+    assert.equal(r.blocking, 0);
+  });
+
+  test('clean real code produces no findings', () => {
+    write('src/ok.js', "function add(a,b){ return a+b; }\nmodule.exports={add};\n");
+    const r = scanStubs(tmp, { files: ['src/ok.js'] });
+    assert.equal(r.total, 0);
+  });
+
+  test('non-code files are not scanned', () => {
+    write('README.md', "This feature is not implemented yet.\n");
+    const r = scanStubs(tmp, { files: ['README.md'] });
+    assert.equal(r.scanned, 0);
+    assert.equal(r.total, 0);
+  });
+});
+
+describe('verify reconcile — verdict vs mechanical signals (anti-rubber-stamp, ADR-0036)', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+
+  function scaffold(phaseDir, planFrontmatter, verificationStatus, artifactBody) {
+    const dir = path.join(tmp, '.planning', 'phases', phaseDir);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '01-plan.md'), `---\n${planFrontmatter}\n---\n# Plan\n`);
+    fs.writeFileSync(path.join(dir, '01-verification.md'), `---\nstatus: ${verificationStatus}\n---\n# Verification\n`);
+    if (artifactBody !== undefined) {
+      fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'src', 'charge.js'), artifactBody);
+    }
+    return dir;
+  }
+
+  // parseMustHavesBlock requires exactly 4-space block indent + 6-space items.
+  const planWith = (minLines) =>
+    ['must_haves:', '    artifacts:', '      - path: src/charge.js', `        min_lines: ${minLines}`, '        exports: chargeCard'].join('\n');
+
+  test('rubber stamp: status "passed" but the artifact is a stub -> reconciled:false with a contradiction', () => {
+    scaffold('01-pay', planWith(30), 'passed', "function chargeCard(){ return {ok:true} } // 1 line stub\nmodule.exports={chargeCard};\n");
+    const r = reconcilePhase(tmp, '01');
+    assert.equal(r.found, true);
+    assert.equal(r.claims_pass, true);
+    assert.equal(r.reconciled, false, 'a passed verdict over a stub artifact must be flagged');
+    assert.ok(r.contradictions.length >= 1);
+    assert.match(r.contradictions[0], /artifact substance check/);
+  });
+
+  test('honest pass: status "passed" and the artifact meets its contract -> reconciled:true', () => {
+    const body = Array.from({ length: 40 }, (_, i) => `// line ${i}`).join('\n') + '\nfunction chargeCard(){/*real*/}\nmodule.exports={chargeCard};\n';
+    scaffold('01-pay', planWith(30), 'passed', body);
+    const r = reconcilePhase(tmp, '01');
+    assert.equal(r.reconciled, true);
+    assert.equal(r.contradictions.length, 0);
+  });
+
+  test('not a pass claim: status "gaps_found" with a failing artifact is NOT a contradiction', () => {
+    scaffold('01-pay', planWith(30), 'gaps_found', 'function chargeCard(){}\n');
+    const r = reconcilePhase(tmp, '01');
+    assert.equal(r.claims_pass, false);
+    assert.equal(r.reconciled, true, 'reconcile only contradicts a claimed PASS');
+  });
+
+  test('no must_haves declared: nothing to reconcile -> reconciled:true with a note', () => {
+    const dir = path.join(tmp, '.planning', 'phases', '02-docs');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '01-plan.md'), '---\nphase: 02\n---\n# Plan\n');
+    fs.writeFileSync(path.join(dir, '01-verification.md'), '---\nstatus: passed\n---\n');
+    const r = reconcilePhase(tmp, '02');
+    assert.equal(r.reconciled, true);
+    assert.equal(r.mechanical_signals, 0);
+    assert.match(r.note, /mechanical reconciliation unavailable/);
+  });
+
+  test('missing phase / verification: does not throw, passes through', () => {
+    assert.equal(reconcilePhase(tmp, '99').reconciled, true);
+  });
+});
 
 describe('validate consistency command', () => {
   let tmpDir;

@@ -10,6 +10,51 @@ const path = require('path');
 
 const docLintRoot = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'lib', 'doc-lint');
 
+const os = require('os');
+const { scanDocFlags } = require('../pan-wizard-core/bin/lib/doc-lint.cjs');
+
+describe('doc-lint flags — aspirational CLI-flag checker (anti-fake, ADR-0036)', () => {
+  function scaffold() {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'flags-'));
+    fs.mkdirSync(path.join(d, 'pan-wizard-core', 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(d, 'pan-wizard-core', 'bin', 'x.cjs'),
+      "getArgValue(args,'--raw'); args.includes('--gate'); getArgValue(args,'--token-budget');\n");
+    fs.mkdirSync(path.join(d, 'docs'), { recursive: true });
+    return d;
+  }
+
+  test('flags a documented pan-tools flag absent from source', () => {
+    const d = scaffold();
+    fs.writeFileSync(path.join(d, 'docs', 'cli.md'), 'Run `pan-tools verify --turbo` for speed.\n');
+    const r = scanDocFlags(d, {});
+    assert.equal(r.violation_count, 1);
+    assert.equal(r.violations[0].flag, '--turbo');
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  test('does NOT flag real flags, slash-command flags, non-CLI lines, or anchors', () => {
+    const d = scaffold();
+    fs.writeFileSync(path.join(d, 'docs', 'cli.md'), [
+      'Real: `pan-tools verify --raw` and `pan-tools learn topics-for --token-budget 5000`.',
+      'Slash-command flag (different surface): `/pan:exec-phase --gaps-only`.',
+      'Prose flag, no CLI: pass --verbose in your own scripts.',
+      'Anchor on a pan-tools line: `pan-tools hud` writes the [dashboard](#army--project-dashboard).',
+    ].join('\n') + '\n');
+    const r = scanDocFlags(d, {});
+    assert.equal(r.violation_count, 0, JSON.stringify(r.violations));
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  test('skips frozen/aspirational docs (specs describe proposed flags by design)', () => {
+    const d = scaffold();
+    fs.mkdirSync(path.join(d, 'docs', 'specs'), { recursive: true });
+    fs.writeFileSync(path.join(d, 'docs', 'specs', 'future.md'), 'Proposed: `pan-tools verify --turbo`.\n');
+    const r = scanDocFlags(d, {});
+    assert.equal(r.violation_count, 0);
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+});
+
 describe('doc-lint vendored modules', () => {
   test('all 5 modules ship in pan-wizard-core/bin/lib/doc-lint/', () => {
     for (const f of ['frontmatter.js', 'schema.js', 'validate.js', 'walk.js', 'reporter.js']) {

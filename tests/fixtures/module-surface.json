@@ -314,8 +314,10 @@
     "DEFAULT_SCHEMA_PATH:string",
     "cmdDocLint:function",
     "cmdDocLintCounts:function",
+    "cmdDocLintFlags:function",
     "cmdDocLintSchemaCheck:function",
-    "isCountAllowed:function"
+    "isCountAllowed:function",
+    "scanDocFlags:function"
   ],
   "experiment.cjs": [
     "HARVEST_PATHS:object",
@@ -352,6 +354,7 @@
     "readLatestBatch:function",
     "sortByPriority:function",
     "summarizePriorities:function",
+    "verifyTestCount:function",
     "writeAutoRun:function"
   ],
   "frontmatter.cjs": [
@@ -695,7 +698,9 @@
   ],
   "verify.cjs": [
     "calculateDriftScore:function",
+    "checkArtifacts:function",
     "checkFileConventions:function",
+    "checkKeyLinks:function",
     "checkVerificationGate:function",
     "cmdDepsValidate:function",
     "cmdDriftCheck:function",
@@ -709,7 +714,9 @@
     "cmdVerifyKeyLinks:function",
     "cmdVerifyPhaseCompleteness:function",
     "cmdVerifyPlanStructure:function",
+    "cmdVerifyReconcile:function",
     "cmdVerifyReferences:function",
+    "cmdVerifyStubs:function",
     "cmdVerifySummary:function",
     "collectVerificationStats:function",
     "countRoadmapPhases:function",
@@ -717,6 +724,8 @@
     "getChangedFiles:function",
     "groupGapPatterns:function",
     "parseConventionRules:function",
+    "reconcilePhase:function",
+    "scanStubs:function",
     "syncRequirementCheckboxes:function",
     "syncRoadmapPlanCheckboxes:function",
     "validateRuntimeInstall:function"

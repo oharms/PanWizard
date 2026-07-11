@@ -317,32 +317,22 @@ function cmdVerifyCommits(cwd, hashes, raw) {
  * @param {boolean} raw - If true, output raw value instead of JSON
  * @returns {void}
  */
-function cmdVerifyArtifacts(cwd, planFilePath, raw) {
-  if (!planFilePath) { error('plan file path required'); }
-  const fullPath = path.isAbsolute(planFilePath) ? planFilePath : path.join(cwd, planFilePath);
-  const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
-
-  const artifacts = parseMustHavesBlock(content, 'artifacts');
-  if (artifacts.length === 0) {
-    output({ error: 'No must_haves.artifacts found in frontmatter', path: planFilePath }, raw);
-    return;
-  }
-
+/**
+ * Pure substance check of must_haves.artifacts against disk — no output/exit,
+ * so `verify reconcile` can compose it. Returns {all_passed, passed, total, artifacts}.
+ */
+function checkArtifacts(cwd, planContent) {
+  const artifacts = parseMustHavesBlock(planContent, 'artifacts');
   const results = [];
   for (const artifact of artifacts) {
     if (typeof artifact === 'string') continue; // skip simple string items
     const artPath = artifact.path;
     if (!artPath) continue;
-
-    const artFullPath = path.join(cwd, artPath);
-    const fileContent = safeReadFile(artFullPath);
+    const fileContent = safeReadFile(path.join(cwd, artPath));
     const exists = fileContent !== null;
     const check = { path: artPath, exists, issues: [], passed: false };
-
     if (exists) {
       const lineCount = fileContent.split('\n').length;
-
       if (artifact.min_lines && lineCount < artifact.min_lines) {
         check.issues.push(`Only ${lineCount} lines, need ${artifact.min_lines}`);
       }
@@ -350,8 +340,8 @@ function cmdVerifyArtifacts(cwd, planFilePath, raw) {
         check.issues.push(`Missing pattern: ${artifact.contains}`);
       }
       if (artifact.exports) {
-        const exports = Array.isArray(artifact.exports) ? artifact.exports : [artifact.exports];
-        for (const exp of exports) {
+        const exps = Array.isArray(artifact.exports) ? artifact.exports : [artifact.exports];
+        for (const exp of exps) {
           if (!fileContent.includes(exp)) check.issues.push(`Missing export: ${exp}`);
         }
       }
@@ -359,17 +349,23 @@ function cmdVerifyArtifacts(cwd, planFilePath, raw) {
     } else {
       check.issues.push('File not found');
     }
-
     results.push(check);
   }
-
   const passed = results.filter(r => r.passed).length;
-  output({
-    all_passed: passed === results.length,
-    passed,
-    total: results.length,
-    artifacts: results,
-  }, raw, passed === results.length ? 'valid' : 'invalid');
+  return { all_passed: passed === results.length, passed, total: results.length, artifacts: results };
+}
+
+function cmdVerifyArtifacts(cwd, planFilePath, raw) {
+  if (!planFilePath) { error('plan file path required'); }
+  const fullPath = path.isAbsolute(planFilePath) ? planFilePath : path.join(cwd, planFilePath);
+  const content = safeReadFile(fullPath);
+  if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
+  const r = checkArtifacts(cwd, content);
+  if (r.total === 0) {
+    output({ error: 'No must_haves.artifacts found in frontmatter', path: planFilePath }, raw);
+    return;
+  }
+  output(r, raw, r.all_passed ? 'valid' : 'invalid');
 }
 
 /**
@@ -379,23 +375,16 @@ function cmdVerifyArtifacts(cwd, planFilePath, raw) {
  * @param {boolean} raw - If true, output raw value instead of JSON
  * @returns {void}
  */
-function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
-  if (!planFilePath) { error('plan file path required'); }
-  const fullPath = path.isAbsolute(planFilePath) ? planFilePath : path.join(cwd, planFilePath);
-  const content = safeReadFile(fullPath);
-  if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
-
-  const keyLinks = parseMustHavesBlock(content, 'key_links');
-  if (keyLinks.length === 0) {
-    output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath }, raw);
-    return;
-  }
-
+/**
+ * Pure wiring check of must_haves.key_links against disk — no output/exit.
+ * Returns {all_verified, verified, total, links}.
+ */
+function checkKeyLinks(cwd, planContent) {
+  const keyLinks = parseMustHavesBlock(planContent, 'key_links');
   const results = [];
   for (const link of keyLinks) {
     if (typeof link === 'string') continue;
     const check = { from: link.from, to: link.to, via: link.via || '', verified: false, detail: '' };
-
     const sourceContent = safeReadFile(path.join(cwd, link.from || ''));
     if (!sourceContent) {
       check.detail = 'Source file not found';
@@ -415,29 +404,142 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
           }
         }
       } catch {
-        // Regex compilation failed -- report the invalid pattern to the caller
         check.detail = `Invalid regex pattern: ${link.pattern}`;
       }
+    } else if (sourceContent.includes(link.to || '')) {
+      check.verified = true;
+      check.detail = 'Target referenced in source';
     } else {
-      // No pattern: just check source references target
-      if (sourceContent.includes(link.to || '')) {
-        check.verified = true;
-        check.detail = 'Target referenced in source';
-      } else {
-        check.detail = 'Target not referenced in source';
-      }
+      check.detail = 'Target not referenced in source';
     }
-
     results.push(check);
   }
-
   const verified = results.filter(r => r.verified).length;
-  output({
-    all_verified: verified === results.length,
-    verified,
-    total: results.length,
-    links: results,
-  }, raw, verified === results.length ? 'valid' : 'invalid');
+  return { all_verified: verified === results.length, verified, total: results.length, links: results };
+}
+
+function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
+  if (!planFilePath) { error('plan file path required'); }
+  const fullPath = path.isAbsolute(planFilePath) ? planFilePath : path.join(cwd, planFilePath);
+  const content = safeReadFile(fullPath);
+  if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
+  const r = checkKeyLinks(cwd, content);
+  if (r.total === 0) {
+    output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath }, raw);
+    return;
+  }
+  output(r, raw, r.all_verified ? 'valid' : 'invalid');
+}
+
+// ─── Reconcile: cross-check a written verification verdict against the
+// mechanical signals (ADR-0036 review — closes the rubber-stamp gap). ─────────
+
+function findPhaseDir(cwd, phaseNum) {
+  const base = phasesPath(cwd);
+  let entries;
+  try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch { return null; }
+  const re = new RegExp('^0*' + String(phaseNum).replace(/[^0-9A-Za-z.]/g, '') + '-');
+  for (const e of entries) {
+    if (e.isDirectory() && re.test(e.name)) return path.join(base, e.name);
+  }
+  return null;
+}
+
+/**
+ * Re-derive the mechanical signals for a phase and check them against the
+ * verdict written in its -verification.md. A verification that CLAIMS a pass
+ * while artifacts fail substance checks or key-links are unwired is a
+ * contradiction (a rubber stamp) — reported deterministically, never trusted.
+ * When no must_haves are declared there are no mechanical signals to reconcile,
+ * so the verdict is passed through (reconciled: true, with a note).
+ */
+function reconcilePhase(cwd, phaseNum) {
+  const base = { phase: String(phaseNum), found: false, reconciled: true, contradictions: [] };
+  const dir = findPhaseDir(cwd, phaseNum);
+  if (!dir) return { ...base, note: 'phase directory not found' };
+  let files;
+  try { files = fs.readdirSync(dir); } catch { return { ...base, note: 'phase directory unreadable' }; }
+  const verFile = files.find(f => isVerificationFile(f));
+  if (!verFile) return { ...base, note: 'no verification.md — absence is covered by the verification gate, not reconcile' };
+  const verRaw = safeReadFile(path.join(dir, verFile)) || '';
+  const sm = verRaw.match(/^status:\s*([A-Za-z_-]+)/m);
+  const status = sm ? sm[1].toLowerCase() : 'unknown';
+  const claimsPass = /^(pass|passed|verified|complete|verified_pass)$/.test(status);
+  const planFile = files.find(f => isPlanFile(f));
+  const planContent = planFile ? (safeReadFile(path.join(dir, planFile)) || '') : '';
+  const artifacts = checkArtifacts(cwd, planContent);
+  const keyLinks = checkKeyLinks(cwd, planContent);
+  const signals = artifacts.total + keyLinks.total;
+  const contradictions = [];
+  if (claimsPass) {
+    if (artifacts.total > 0 && !artifacts.all_passed) {
+      contradictions.push(`verification status "${status}" but ${artifacts.total - artifacts.passed}/${artifacts.total} artifact substance check(s) FAIL`);
+    }
+    if (keyLinks.total > 0 && !keyLinks.all_verified) {
+      contradictions.push(`verification status "${status}" but ${keyLinks.total - keyLinks.verified}/${keyLinks.total} key-link(s) UNWIRED`);
+    }
+  }
+  return {
+    phase: String(phaseNum), found: true, verification_status: status, claims_pass: claimsPass,
+    mechanical_signals: signals, artifacts, key_links: keyLinks, contradictions,
+    reconciled: contradictions.length === 0,
+    note: signals === 0 ? 'no must_haves declared — mechanical reconciliation unavailable; verdict trusted' : undefined,
+  };
+}
+
+function cmdVerifyReconcile(cwd, phaseNum, raw) {
+  if (!phaseNum) { error('Usage: verify reconcile <phase>'); }
+  const r = reconcilePhase(cwd, phaseNum);
+  output(r, raw, r.reconciled ? 'valid' : 'invalid');
+  process.exit(r.reconciled ? 0 : 1);
+}
+
+// ─── Stub / fake-return scanner (ADR-0036 review — closes the hardcoded
+// "return {ok:true}" / "not implemented" gap the old anti-pattern grep missed,
+// which only blocked the literal `return {}` and `placeholder`/`coming soon`). ─
+const STUB_PATTERNS = [
+  { re: /\bnot[\s_-]?implemented\b/i, marker: 'not-implemented', severity: 'high' },
+  { re: /\bNotImplemented(Error)?\b/, marker: 'NotImplemented', severity: 'high' },
+  { re: /throw\s+new\s+\w*Error\s*\(\s*['"`][^'"`]*\b(unimplemented|not\s+implemented|stub|todo)\b/i, marker: 'throw-stub', severity: 'high' },
+  { re: /\bres(ponse)?\.status\(\s*501\s*\)/, marker: 'http-501', severity: 'high' },
+  { re: /\b(coming\s+soon|placeholder)\b/i, marker: 'placeholder', severity: 'medium' },
+  { re: /return\s*(\{\s*\}|\[\s*\])\s*;?\s*(\/\/.*)?$/, marker: 'empty-return', severity: 'medium' },
+  { re: /return\s*\{\s*ok\s*:\s*true\s*\}\s*;?\s*(\/\/.*)?$/, marker: 'fake-ok-return', severity: 'medium' },
+  { re: /\b(TODO|FIXME|XXX|HACK)\b/, marker: 'todo-marker', severity: 'low' },
+];
+const STUB_CODE_EXT = /\.(js|cjs|mjs|jsx|ts|tsx|py|go|rb|java|php|rs|c|cc|cpp|h|hpp|cs|kt|swift|scala)$/i;
+
+/**
+ * Scan source files for stub / fake-implementation markers. Defaults to the
+ * git-changed files (so it gates a handoff), or a caller-supplied file list.
+ * `high`-severity markers are the blocking set; TODO markers are informational.
+ * @returns {{scanned, findings: Array, blocking: number, total: number}}
+ */
+function scanStubs(cwd, opts = {}) {
+  let files = Array.isArray(opts.files) ? opts.files : getChangedFiles(cwd);
+  files = (files || []).filter(f => STUB_CODE_EXT.test(f));
+  const findings = [];
+  for (const rel of files) {
+    const content = safeReadFile(path.join(cwd, rel));
+    if (content === null) continue;
+    const lines = content.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      for (const { re, marker, severity } of STUB_PATTERNS) {
+        if (re.test(lines[i])) {
+          findings.push({ file: toPosix(rel), line: i + 1, marker, severity, text: lines[i].trim().slice(0, 160) });
+          break; // one finding per line
+        }
+      }
+    }
+  }
+  const blocking = findings.filter(f => f.severity === 'high').length;
+  return { scanned: files.length, findings, blocking, total: findings.length };
+}
+
+function cmdVerifyStubs(cwd, opts = {}, raw) {
+  const r = scanStubs(cwd, opts);
+  output(r, raw, r.blocking === 0 ? 'valid' : 'invalid');
+  if (opts.gate) process.exit(r.blocking > 0 ? 1 : 0);
 }
 
 /**
@@ -1284,8 +1386,11 @@ function runFullTestCheck(cwd) {
       stdio: ['pipe', 'pipe', 'pipe'],
       encoding: 'utf-8',
     });
-    const testMatch = result.match(/# tests (\d+)/);
-    const passMatch = result.match(/# pass (\d+)/);
+    // Match both TAP ("# tests N") and spec-reporter ("ℹ tests N") summaries —
+    // modern node --test defaults to the spec reporter, which the old "# "-only
+    // regex silently missed (returning tests: null).
+    const testMatch = result.match(/[#ℹ]\s*tests\s+(\d+)/);
+    const passMatch = result.match(/[#ℹ]\s*pass\s+(\d+)/);
     return {
       pass: true,
       exitCode: 0,
@@ -1344,6 +1449,12 @@ module.exports = {
   cmdVerifyCommits,
   cmdVerifyArtifacts,
   cmdVerifyKeyLinks,
+  checkArtifacts,
+  checkKeyLinks,
+  reconcilePhase,
+  cmdVerifyReconcile,
+  scanStubs,
+  cmdVerifyStubs,
   cmdValidateConsistency,
   cmdValidateHealth,
   cmdPreflight,

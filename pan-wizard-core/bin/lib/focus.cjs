@@ -717,6 +717,45 @@ function focusAutoStop(cwd, raw) {
   }, raw);
 }
 
+// Anti-fake (ADR-0036 review): the regression breaker compares tests_after vs
+// tests_before, both historically agent-supplied CLI args that focus-auto never
+// re-ran — so a fabricated "tests green" passed unchecked. When verification is
+// enabled (config.focus.verify_tests), re-run the node:test suite and use the
+// REAL pass count; otherwise keep the supplied value but mark the cycle
+// tests_verified:false so the loop's trust is visible to the HUD/audit/human.
+//
+// Invocation is a fixed execFile('node', ['--test']) — NO shell and NO
+// configurable command string, so there is no command-injection surface (same
+// safe pattern verify.cjs uses). If no node:test suite is present, fall back to
+// the supplied value rather than mis-firing the regression breaker.
+function verifyTestCount(cwd, config, fallback) {
+  const focusCfg = (config && config.focus) || {};
+  if (!focusCfg.verify_tests) return { tests_after: fallback, verified: false };
+  const { execFileSync } = require('child_process');
+  const num = (out, re) => { const m = String(out || '').match(re); return m ? Number(m[1]) : null; };
+  const interpret = (out, exitCode) => {
+    // node --test summary lines use either the TAP marker ("# tests N") or the
+    // spec reporter's info marker ("ℹ tests N"), depending on Node version /
+    // reporter — match both so the count is captured regardless.
+    const total = num(out, /[#ℹ]\s*tests\s+(\d+)/);
+    if (!total) return { tests_after: fallback, verified: false }; // no node:test suite here
+    const passed = num(out, /[#ℹ]\s*pass\s+(\d+)/);
+    return { tests_after: passed !== null ? passed : (exitCode === 0 ? fallback : 0), verified: true, exit_code: exitCode };
+  };
+  // Strip any NODE_TEST_* context so the child runs as a standalone runner with
+  // predictable spec/TAP output — otherwise, when focus-auto is itself invoked
+  // from within a `node --test` process, the child inherits the nested-test
+  // context and emits a serialized format we can't parse.
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) { if (k.startsWith('NODE_TEST')) delete env[k]; }
+  try {
+    const out = execFileSync('node', ['--test'], { cwd, timeout: 120000, stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf-8', env });
+    return interpret(out, 0);
+  } catch (err) {
+    return interpret(err && err.stdout, (err && err.status) || 1);
+  }
+}
+
 function focusAutoUpdate(cwd, raw, getVal) {
   const run = readAutoRun(cwd);
   if (!run) return error('No auto-run in progress. Cannot update.');
@@ -734,6 +773,12 @@ function focusAutoUpdate(cwd, raw, getVal) {
     batch_file: getVal('--batch-file', ''),
     timestamp: new Date().toISOString(),
   };
+
+  // Anti-fake: re-run the suite when verification is enabled; else record that
+  // this count was self-reported (tests_verified:false) so the trust is visible.
+  const tv = verifyTestCount(cwd, loadConfig(cwd), cycle.tests_after);
+  cycle.tests_after = tv.tests_after;
+  cycle.tests_verified = tv.verified;
 
   if (!run.cycles) run.cycles = [];
   run.cycles.push(cycle);
@@ -1016,6 +1061,7 @@ module.exports = {
   writeAutoRun,
   cmdFocusAuto,
   determineStopReason,
+  verifyTestCount,
   // Opus 4.7
   determineContinuation,
   classifyStageDependencies,

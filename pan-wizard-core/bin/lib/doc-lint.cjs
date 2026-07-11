@@ -147,7 +147,13 @@ function cmdDocLintSchemaCheck(cwd, schemaPath, opts = {}) {
 const COUNT_PATTERNS = [
   // "52 commands", "21 agents", "30 modules", "2667 tests", etc.
   // Word boundaries + allowed plurals; case-insensitive matching.
-  { re: /(?<!\.)\b(\d+)\s+(commands?|agents?|modules?|workflows?|templates?|references?|specs?|adrs?|test\s+files?|test\s+suites?)\b/gi,
+  // Bare "N tests" / "N hooks" added (previously only "(N tests)" and
+  // "test files/suites" matched, so "3115 tests" slipped). Adjective-separated
+  // ("slash commands") and hyphen-compound ("sub-agents") variants are left
+  // uncaught on purpose — broadening to them also matched years ("2026
+  // multi-agent") and narrative, breaking the docs-clean invariant; the
+  // CLAUDE.md-table self-audit test is the stronger backstop for the counts.
+  { re: /(?<!\.)\b(\d+)\s+(commands?|agents?|modules?|workflows?|templates?|references?|specs?|adrs?|hooks?|test\s+files?|test\s+suites?|tests?)\b/gi,
     label: 'noun-phrase count' },
   // "27th module", "21st agent", "52nd command" — drift-prone ordinals
   { re: /(?<!\.)\b(\d+)(th|st|nd|rd)\s+(module|reference|agent|command|template|hook|workflow|spec|adr)\b/gi,
@@ -277,10 +283,89 @@ function cmdDocLintCounts(cwd, dir, opts = {}) {
   process.exit(violations.length > 0 ? 1 : 0);
 }
 
+// ─── Aspirational-flag checker (ADR-0036 review — closes the "documented CLI
+// flag that doesn't exist in the parser" gap). Heuristic: a `--flag` that
+// appears in a doc line referencing the PAN CLI but never appears as a literal
+// anywhere in the source is very likely fake or stale. Scoped to PAN-CLI lines
+// to avoid flagging unrelated tool flags (git/npm/node). ─────────────────────
+function collectSourceFlags(cwd, roots) {
+  const flags = new Set();
+  const walk = (dir) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const fp = path.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== 'node_modules') walk(fp); }
+      else if (/\.(cjs|js|mjs)$/.test(e.name)) {
+        let c = ''; try { c = fs.readFileSync(fp, 'utf-8'); } catch { continue; }
+        for (const m of c.matchAll(/--[a-z][a-z0-9-]+/g)) flags.add(m[0]);
+      }
+    }
+  };
+  for (const r of roots) walk(path.join(cwd, r));
+  return flags;
+}
+
+function scanDocFlags(cwd, opts = {}) {
+  const sourceFlags = collectSourceFlags(cwd, opts.sourceRoots || ['pan-wizard-core/bin', 'bin']);
+  const docDirs = opts.docDirs || ['docs'];
+  const collected = [];
+  for (const d of docDirs) {
+    const abs = path.join(cwd, d);
+    if (!fs.existsSync(abs)) continue;
+    for (const f of walkMarkdownFiles(abs)) {
+      if (f.readError) continue;
+      collected.push({ rel: path.join(d, f.relativePath).replace(/\\/g, '/'), content: f.content });
+    }
+  }
+  for (const rel of (opts.files || [])) {
+    try { collected.push({ rel: rel.replace(/\\/g, '/'), content: fs.readFileSync(path.join(cwd, rel), 'utf-8') }); } catch { /* skip */ }
+  }
+  // Scope to `pan-tools <cmd>` lines ONLY — that is the surface whose flags are
+  // parsed in bin/ source. Slash-command flags (`/pan:exec-phase --gaps-only`)
+  // are a different surface: they are parsed by the command/workflow markdown
+  // prompts, so they legitimately never appear in bin/ source and must not be
+  // flagged here.
+  const CLI_CTX = /\bpan-tools\b/;
+  const violations = [];
+  for (const file of collected) {
+    // Skip frozen/aspirational docs (feature specs, ADRs, experiments, archive)
+    // — by design they describe proposed/future flags, same allowlist as counts.
+    if (isCountAllowed(file.rel)) continue;
+    const lines = file.content.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      if (!CLI_CTX.test(lines[i])) continue;
+      // Lookbehind excludes mid-token double-dashes — notably markdown anchors
+      // like `#army--project-dashboard` — so only real ` --flag` tokens match.
+      for (const m of lines[i].matchAll(/(?<![\w#-])(--[a-z][a-z0-9-]+)/g)) {
+        if (!sourceFlags.has(m[1])) violations.push({ file: file.rel, line: i + 1, flag: m[1] });
+      }
+    }
+  }
+  return { source_flags: sourceFlags.size, doc_files: collected.length, violation_count: violations.length, violations };
+}
+
+function cmdDocLintFlags(cwd, opts = {}, raw) {
+  const r = scanDocFlags(cwd, opts);
+  if (raw) {
+    if (r.violation_count === 0) {
+      process.stdout.write(`OK — ${r.doc_files} docs scanned against ${r.source_flags} source flags, no aspirational CLI flags\n`);
+    } else {
+      for (const v of r.violations) process.stdout.write(`${v.file}:${v.line} — ${v.flag} (documented for the PAN CLI but not found in source)\n`);
+      process.stdout.write(`\n${r.violation_count} aspirational flag(s)\n`);
+    }
+  } else {
+    output(r, false);
+  }
+  process.exit(r.violation_count > 0 ? 1 : 0);
+}
+
 module.exports = {
   cmdDocLint,
   cmdDocLintSchemaCheck,
   cmdDocLintCounts,
+  scanDocFlags,
+  cmdDocLintFlags,
   isCountAllowed,
   COUNT_PATTERNS,
   DEFAULT_SCHEMA_PATH,

@@ -5,6 +5,24 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0] - 2026-07-12
+
+### Added — anti-fabrication hardening (ADR-0036 review follow-ups)
+
+Closes the gaps a deep anti-fake review found: the pipeline could still advance a rubber-stamped verification, a fabricated "tests pass", a hardcoded stub, or an aspirational doc flag with no deterministic contradiction.
+
+- **`verify reconcile <phase>`** cross-checks the agent-written `verification.md` `status:` against the mechanical signals (artifact substance + key-link wiring); a claimed pass over failing checks exits non-zero. Wired into the `exec-phase` auto-advance gate so a rubber-stamped verification cannot auto-advance. The artifact/key-link checkers were extracted into pure functions (`checkArtifacts` / `checkKeyLinks`).
+- **`verify stubs`** scans changed files for fake-implementation markers (`not implemented`, throw-stubs, HTTP 501, `return {ok:true}`, empty returns, TODO); high-severity is the blocking set (`--gate`).
+- **`doc-lint flags`** flags documented `pan-tools … --flag` tokens that don't exist in source (a diagnostic — scoped to the pan-tools surface; aspirational-doc dirs excluded).
+- **`doc-lint counts`** now catches bare "N tests" / "N hooks"; a new SSoT self-audit test recomputes every file-based count from disk and asserts CLAUDE.md's table matches, so the counts source-of-truth can no longer drift silently.
+- **`focus auto` regression breaker** re-runs the `node:test` suite and uses the real pass count when `focus.verify_tests` is enabled; otherwise it records `tests_verified: false` so a self-reported count is visible rather than silently trusted.
+- **CI/release gates:** `links validate` (doc↔code graph) added to `release-check.js` and CI; the count SSoT test runs via `npm test`.
+- Fixed a latent bug: `runFullTestCheck` parsed only the TAP (`# tests`) reporter and silently returned `null` on modern Node's spec reporter (`ℹ tests`).
+
+### Fixed — documentation accuracy sweep (`/pan:doc-audit --deep`)
+
+A prose-vs-code audit across the eight core docs corrected content drift, each fix verified against source: `workflow.nyquist_validation` default (`true`→`false`), config key `plan_checker`→`plan_check`, the model-profile matrix (Quality is `inherit` for every agent, not `sonnet`), Codex agent paths (`.md`→`.toml`), stale "Opus 4.7"→"4.8", a dead `/pan:complete-phase` reference and an unimplemented `pan-tools --version`, README-documented flags/config that don't exist (`/pan:health` extra flags, `standards_health`, progress "health subformat"), nonexistent DEVELOPMENT installer-copy steps, and drift-prone counts replaced with qualitative phrasing (count-SSoT). The Nyquist layer is reframed as opt-in.
+
 ## [3.13.1] - 2026-07-09
 
 ### Changed — public-release hygiene sweep
