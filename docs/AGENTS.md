@@ -43,7 +43,7 @@ PAN uses specialized agents, each running as a subagent in a fresh 200K context 
 | `pan-document_code` | Analyzes existing codebase (6 focus areas) | `/pan:map-codebase` (x6 parallel) | Read, Bash, Grep, Glob, Write | cyan |
 | `pan-phase-researcher` | Investigates how to implement a specific phase | `/pan:plan-phase` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
 | `pan-planner` | Creates executable plan.md files with task breakdown | `/pan:plan-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
-| `pan-plan-checker` | Validates plans against phase goals (8 dimensions) | `/pan:plan-phase` | Read, Bash, Glob, Grep | green |
+| `pan-plan-checker` | Validates plans against phase goals across multiple dimensions | `/pan:plan-phase` | Read, Bash, Glob, Grep | green |
 | `pan-executor` | Executes plans with atomic commits and deviation handling | `/pan:exec-phase`, `/pan:quick` | Read, Write, Edit, Bash, Grep, Glob | yellow |
 | `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase` | Read, Write, Bash, Grep, Glob | green |
 | `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase` | Read, Grep, Glob, Bash | yellow |
@@ -861,7 +861,7 @@ Used by: `pan-planner` (must_haves derivation), `pan-verifier` (Observable Truth
 ### 2. Professional Skepticism
 Verify actual state — don't trust claims. The verifier checks real code, not summary.md. The plan-checker validates plans deliver goals, not just describe them. Researchers treat training data as hypothesis.
 
-Used by: `pan-verifier` ("DO NOT trust summary.md"), `pan-phase-researcher` (confidence levels), `pan-plan-checker` (8-dimension validation).
+Used by: `pan-verifier` ("DO NOT trust summary.md"), `pan-phase-researcher` (confidence levels), `pan-plan-checker` (multi-dimension validation).
 
 ### 3. Structured Returns
 Every agent returns data in machine-parseable formats (YAML frontmatter, structured markdown sections, JSON). This enables orchestrators to route results programmatically and enables downstream agents to parse inputs reliably.
@@ -884,10 +884,10 @@ Agent files are installed alongside commands. Location depends on runtime and in
 | Claude Code | `~/.claude/agents/*.md` | `.claude/agents/*.md` |
 | OpenCode | `~/.config/opencode/agents/*.md` | `.opencode/agents/*.md` |
 | Gemini CLI | `~/.gemini/agents/*.md` | `.gemini/agents/*.md` |
-| Codex | `~/.codex/agents/*.md` | `.codex/agents/*.md` |
+| Codex | `~/.codex/agents/*.toml` | `.codex/agents/*.toml` |
 | Copilot CLI | `~/.copilot/agents/*.agent.md` | `.github/agents/*.agent.md` |
 
-> **Note:** Copilot CLI uses `.agent.md` extension (Copilot CLI convention). All other runtimes use `.md`.
+> **Note:** Copilot CLI uses the `.agent.md` extension; Codex uses standalone `.toml` agent files (markdown in `.codex/agents/` is not recognized). Claude, OpenCode, and Gemini use `.md`.
 
 ### Common Customizations
 

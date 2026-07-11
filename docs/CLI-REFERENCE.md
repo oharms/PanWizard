@@ -1761,7 +1761,7 @@ pan-tools config-ensure-section [--raw]
 | `parallelization` | `true` | Enable parallel wave execution |
 | `branching_strategy` | `"none"` | Git branching: `none`, `phase`, `plan` |
 | `workflow.research` | `true` | Enable research phase before planning |
-| `workflow.plan_checker` | `true` | Enable plan-checker agent verification loop |
+| `workflow.plan_check` | `true` | Enable plan-checker agent verification loop |
 | `brave_search` | auto-detected | Brave Search API availability |
 
 ---
@@ -1829,12 +1829,12 @@ For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "st
 
 | Agent | Quality | Balanced | Budget |
 |-------|---------|----------|--------|
-| planner, roadmapper | inherit | sonnet | sonnet |
-| executor | inherit | sonnet | sonnet |
-| researcher, synthesizer | sonnet | sonnet | haiku |
-| verifier, plan-checker | sonnet | sonnet | haiku |
-| debugger, mapper | sonnet | haiku | haiku |
-| integration-checker | sonnet | sonnet | haiku |
+| planner | inherit | inherit | sonnet |
+| roadmapper, executor, debugger | inherit | sonnet | sonnet |
+| researchers, synthesizer, verifier, plan-checker, integration-checker | inherit | sonnet | haiku |
+| document_code (mapper), reviewer | inherit | haiku | haiku |
+
+Quality is `inherit` for **every** agent (all reasoning-tier). `inherit` → the host's selected top model, `sonnet` → mid tier, `haiku` → fast tier. Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
 
 ---
 

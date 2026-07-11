@@ -233,21 +233,22 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
 
 ### Validation Architecture (Nyquist Layer)
 
-During plan-phase research, PAN now maps automated test coverage to each phase
-requirement before any code is written. This ensures that when Claude's executor
-commits a task, a feedback mechanism already exists to verify it within seconds.
+When the Nyquist layer is enabled (`workflow.nyquist_validation` — **off by
+default**; see below), plan-phase research maps automated test coverage to each
+phase requirement before any code is written. This ensures that when Claude's
+executor commits a task, a feedback mechanism already exists to verify it within seconds.
 
 The researcher detects your existing test infrastructure, maps each requirement to
 a specific test command, and identifies any test scaffolding that must be created
 before implementation begins (Wave 0 tasks).
 
-The plan-checker enforces this as an 8th verification dimension: plans where tasks
-lack automated verify commands will not be approved.
+With it enabled, the plan-checker treats test coverage as an additional verification
+dimension: plans whose tasks lack automated verify commands are sent back for revision.
 
 **Output:** `{phase}-validation.md` -- the feedback contract for the phase.
 
-**Disable:** Set `workflow.nyquist_validation: false` in `/pan:settings` for
-rapid prototyping phases where test infrastructure isn't the focus.
+**Enable:** Set `workflow.nyquist_validation: true` in `/pan:settings`. It ships
+off by default; turn it on for phases where planning test coverage up front matters.
 
 ### Execution Wave Coordination
 

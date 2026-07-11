@@ -576,7 +576,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:progress` | Where am I? What's next? (supports `health` subformat) |
+| `/pan:progress` | Where am I? What's next? |
 | `/pan:hud` (alias `/pan:dashboard`) | Render a self-contained HTML dashboard of project + bot-army state to `.planning/hud.html` (`--open`, `--out`, `--stdout`) |
 | `/pan:help` | Show all commands and usage guide |
 | `/pan:update` | Update PAN with changelog preview |
@@ -621,7 +621,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:todo-check` | List pending todos |
 | `/pan:debug [desc]` | Systematic debugging with persistent state |
 | `/pan:quick [--full]` | Execute ad-hoc task with PAN guarantees (`--full` adds plan-checking and verification) |
-| `/pan:health [--repair] [--standards] [--full] [--drift] [--links]` | Validate `.planning/` directory integrity. `--repair` auto-fixes; `--standards` checks compliance; `--full` runs tests + build; `--drift` runs convention drift; `--links` attaches doc-code link-graph summary |
+| `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` auto-fixes detected issues |
 | `/pan:hygiene [--apply] [--trace-age-days N]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat, poisoned cost ledgers, trace debris, fragment planning dirs); `--apply` executes the safe fixes — ledgers are quarantined by rename, never deleted |
 | `/pan:links [--strict]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027, v3.8.0+) |
 | `/pan:phase-tests [N]` | Generate tests for a completed phase based on UAT criteria |
@@ -719,8 +719,7 @@ These spawn additional agents during planning/execution. They improve quality bu
 | `workflow.plan_check` | `true` | Verifies plans achieve phase goals before execution |
 | `workflow.verifier` | `true` | Confirms must-haves were delivered after execution |
 | `workflow.auto_advance` | `false` | Auto-chain discuss → plan → execute without stopping |
-| `workflow.nyquist_validation` | `true` | Map test coverage during planning (Nyquist layer) |
-| `workflow.standards_health` | `true` | Include standards compliance in health reports |
+| `workflow.nyquist_validation` | `false` | Map test coverage during planning (Nyquist layer) |
 
 Use `/pan:settings` to toggle these, or override per-invocation:
 - `/pan:plan-phase --skip-research`

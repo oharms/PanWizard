@@ -78,7 +78,7 @@ pan-wizard/
 
 ```bash
 git clone https://github.com/oharms/PanWizard.git
-cd pan-wizard
+cd PanWizard
 npm install          # Installs devDependencies only (zero runtime deps)
 npm test             # Run unit tests
 npm run test:scenarios  # Run scenario tests (install + integration)
@@ -101,7 +101,7 @@ node bin/install.js --claude --global   # → ~/.claude/
 3. Commands should be thin orchestrators — read state, spawn agents, route results
 4. Call pan-tools for state operations: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs <cmd> [args]`
 5. Reference a workflow if multi-step logic is needed
-6. Add to installer's file copy list in `bin/install.js` (the `commandFiles` array)
+6. That's it — the installer copies `commands/pan/` recursively, so new command files ship automatically (no installer edit needed)
 
 ## How to Add a New Agent
 
@@ -109,7 +109,7 @@ node bin/install.js --claude --global   # → ~/.claude/
 2. Define role, context requirements, constraints, output format using XML structure
 3. Add model profile entry to `core.cjs` MODEL_PROFILES table
 4. Reference from workflow .md that spawns it via Task tool
-5. Add to installer's agent copy list in `bin/install.js`
+5. That's it — the installer copies `agents/` recursively, so new agent files ship automatically (no installer edit needed)
 
 ## How to Add a Core Module Function
 
@@ -191,7 +191,7 @@ Workflows are the Layer 2 orchestration files in `pan-wizard-core/workflows/`. T
 1. Create `pan-wizard-core/workflows/your-workflow.md`
 2. Structure it with XML steps that load state, spawn agents, and route results
 3. Reference it from your command .md file via `@~/.claude/pan-wizard-core/workflows/your-workflow.md`
-4. Add to installer's workflow copy list in `bin/install.js`
+4. That's it — the installer copies `pan-wizard-core/workflows/` recursively, so new workflows ship automatically
 
 **Workflow structure:**
 ```markdown
@@ -221,7 +221,7 @@ References are knowledge documents in `pan-wizard-core/references/` that agents 
 1. Create `pan-wizard-core/references/your-reference.md`
 2. Use XML tags for structured sections: `<overview>`, `<rules>`, `<examples>`, `<anti_patterns>`
 3. Reference from agent .md files: `@~/.claude/pan-wizard-core/references/your-reference.md`
-4. Add to installer's reference copy list in `bin/install.js`
+4. That's it — the installer copies `pan-wizard-core/references/` recursively, so new references ship automatically
 
 **Current references:**
 
@@ -233,6 +233,7 @@ References are knowledge documents in `pan-wizard-core/references/` that agents 
 | `git-integration.md` | Commit format, per-task commits, branching |
 | `git-planning-commit.md` | How pan-tools commits planning docs |
 | `guardrails.md` (v3.6.0+) | Behavioral guardrails — anti-patterns, Code Preservation Principle, Stop-the-Line Rule |
+| `handoff-decisions.md` | Planner→executor decision-trace handoff (locked/open/rejected decisions) |
 | `model-profile-resolution.md` | Agent → model mapping with inherit logic |
 | `model-profiles.md` | quality/balanced/budget profile definitions |
 | `phase-argument-parsing.md` | Normalize phase numbers for lookups |

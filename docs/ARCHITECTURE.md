@@ -207,6 +207,7 @@ Commands never perform heavy work directly. All substantive logic lives in workf
 | **Spec B v2 (v3.0-v3.4)** | cost, preview, review-deep, knowledge, what-if, mcp-bridge |
 | **v3.5 — Optimization & Git** | learn, optimize, git |
 | **Self-Improvement Loop** | experiment |
+| **Bot Army & Observability (v3.11–v3.13)** | army, hud, dashboard, hygiene, links |
 
 ### Command-Only Files (No Workflow)
 
@@ -220,7 +221,7 @@ Several commands are self-contained in their `.md` file and do not delegate to a
 | `research-phase.md` | Self-contained research orchestrator; spawns pan-phase-researcher directly |
 | `focus-scan.md` | Self-contained scan pipeline; calls `pan-tools focus scan` for data |
 | `focus-plan.md` | Self-contained batch planner; calls `pan-tools focus plan` for data |
-| `focus-exec.md` | Self-contained execution pipeline with 6 stages and 10 behavioral rules |
+| `focus-exec.md` | Self-contained execution pipeline with staged waves and per-stage behavioral rules |
 | `focus-sync.md` | Self-contained doc sync; calls `pan-tools focus sync` for data |
 | `focus-auto.md` | Self-contained auto-runner; calls `pan-tools focus auto` for state management |
 | `focus-design.md` | Self-contained 10-phase feature investigation pipeline |
@@ -280,7 +281,7 @@ Agents are Markdown files that define specialized AI roles. Each agent runs as a
 | `pan-document_code` | Analyzes existing codebase (6 focus areas) | `/pan:map-codebase` (x6 parallel) |
 | `pan-phase-researcher` | Investigates how to implement a phase | `/pan:plan-phase` |
 | `pan-planner` | Creates executable plan.md files | `/pan:plan-phase` |
-| `pan-plan-checker` | Validates plans against goals (8 dimensions) | `/pan:plan-phase` |
+| `pan-plan-checker` | Validates plans against goals across multiple dimensions | `/pan:plan-phase` |
 | `pan-executor` | Executes plans with atomic commits | `/pan:exec-phase`, `/pan:quick` |
 | `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase` |
 | `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase` |
@@ -368,7 +369,7 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `config.cjs` | — | Config CRUD: create default `config.json`, get/set with dot-notation paths (e.g., `workflow.auto_advance`), standards catalog (list, select, remove, status, recommend, phase-track, tools) |
 | `state.cjs` | — | state.md operations: load, get, update, patch, json output, `readStateSafe()`, frontmatter sync; writes serialize through lock.cjs (ADR-0030) |
 | `lock.cjs` | — | Advisory file locking (`withFileLock`, stale-steal) + atomic temp-rename writes (`writeFileAtomic`) for .planning/ concurrency (ADR-0030) |
-| `init.cjs` | — | Compound init commands: bootstrap all file paths and config for execute-phase, plan-phase, progress, phase-op, and 8 other workflows |
+| `init.cjs` | — | Compound init commands: bootstrap all file paths and config for execute-phase, plan-phase, progress, phase-op, and the other major workflows |
 | `phase.cjs` | — | Phase CRUD facade: list, add, insert (decimal numbering), complete, next-decimal; re-exports phase-remove.cjs |
 | `phase-remove.cjs` | — | Phase removal + decimal/integer renumbering cascade, roadmap reference rewriting; extracted from phase.cjs |
 | `roadmap.cjs` | — | roadmap.md parsing: get-phase, analyze, update-plan-progress |
@@ -440,6 +441,8 @@ Markdown and JSON files that survive context resets. This is the single source o
     CONVENTIONS.md      Coding patterns and style
     TESTING.md          Test infrastructure and patterns
     CONCERNS.md         Tech debt and risks
+    RELATIONSHIPS.md    Module and component dependency map
+    BEST-PRACTICES.md   Recommended patterns for this codebase
   todos/
     pending/            Captured ideas awaiting work
     done/               Completed todos
@@ -503,7 +506,7 @@ Context documents loaded by agents and workflows at runtime. These provide domai
 
 **Location:** `pan-wizard-core/templates/`
 
-Scaffold templates for all planning files. Used by the `template.cjs` module and the `scaffold` command to create properly structured files. Templates cover: project.md, roadmap.md, state.md, summaries (minimal/standard/complex), research outputs, codebase mapping (9 documents), plans, verification, UAT, debug, discovery, milestones, retrospectives, and more.
+Scaffold templates for all planning files. Used by the `template.cjs` module and the `scaffold` command to create properly structured files. Templates cover: project.md, roadmap.md, state.md, summaries (minimal/standard/complex), research outputs, codebase mapping, plans, verification, UAT, debug, discovery, milestones, retrospectives, and more.
 
 ### Hooks
 
@@ -605,7 +608,7 @@ User                  Command                 Workflow
 7. Researchers write research.md (and optionally validation.md if Nyquist enabled)
 8. Workflow spawns `pan-planner` with project.md + requirements.md + context.md + research.md
 9. Planner creates plan.md files (typically 2-3 per phase)
-10. Workflow spawns `pan-plan-checker` to validate plans across 8 dimensions
+10. Workflow spawns `pan-plan-checker` to validate plans across multiple dimensions
 11. If checker finds blockers, loop back to planner with feedback (up to 3 iterations)
 12. Plans approved — phase is ready for `/pan:exec-phase`
 

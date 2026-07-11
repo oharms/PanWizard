@@ -451,7 +451,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 1. Review each flagged item and determine if it is a true gap or a false positive
 2. For false positives, you can safely ignore them -- they do not block phase completion
-3. Use `/pan:complete-phase N` which performs its own final check and distinguishes critical gaps from acceptable state
+3. Use `/pan:verify-phase N` which performs its own final check and distinguishes critical gaps from acceptable state
 4. If the verifier is consistently too aggressive, consider disabling it for prototyping phases: `workflow.verifier: false` in `/pan:settings`
 
 ---
@@ -513,7 +513,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Current format:** `{type}({phase}-{plan}): {description}`
 
-**Available types:** `feat`, `fix`, `test`, `refactor`, `perf`, `chore`, `docs`
+**Available types:** `feat`, `fix`, `test`, `refactor`, `chore`, `docs`
 
 **Workarounds:**
 
@@ -837,7 +837,7 @@ If none of the above resolves your issue:
 
 1. **Check for known issues:** Review the [PAN Wizard repository](https://github.com/oharms/PanWizard) issues and discussions
 2. **Collect diagnostics:** Run `/pan:health`, copy the output, and note the exact error message and command that triggered it
-3. **Check versions:** Run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs --version` and note your Claude Code version
+3. **Check versions:** Run `cat ~/.claude/pan-wizard-core/VERSION` for your installed PAN version, and note your Claude Code version
 4. **File an issue:** Include the health output, error message, PAN version, and steps to reproduce
 
 ---

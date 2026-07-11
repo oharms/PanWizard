@@ -153,7 +153,7 @@ Run `/pan:cost report`. Since v3.4, a SubagentStop hook auto-captures every sub-
 
 ### When should I use `/pan:exec-phase --hierarchical`?
 
-Only when the phase has ≥4 autonomous plans that genuinely parallelize and the total work is large enough to amortize the ~20-30% orchestration overhead. `pan-conductor` spawns sub-agents in waves with a strict safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude + Opus 4.7 only; other runtimes silently fall back to flat exec. For single-plan or checkpoint-heavy phases, skip the flag — flat exec is cheaper and more predictable.
+Only when the phase has ≥4 autonomous plans that genuinely parallelize and the total work is large enough to amortize the ~20-30% orchestration overhead. `pan-conductor` spawns sub-agents in waves with a strict safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude + Opus 4.8 only; other runtimes silently fall back to flat exec. For single-plan or checkpoint-heavy phases, skip the flag — flat exec is cheaper and more predictable.
 
 ### What is `/pan:army` and how is it different from a normal phase?
 
