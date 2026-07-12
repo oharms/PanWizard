@@ -93,13 +93,11 @@ jobs:
       - name: Build hooks
         run: npm run build:hooks
 
-      - name: Publish (OIDC — provenance temporarily disabled to unblock)
+      - name: Publish with provenance (OIDC)
         # prepublishOnly hook automatically reruns release-check.js (build,
         # tests, audit, doc-lint, pack-dryrun, smoke-install) before upload.
         # If any gate fails, publish aborts and no tarball is uploaded.
-        # NOTE: `--provenance` was dropped to ship v3.15.0 via OIDC; re-add it
-        # once the OIDC provenance path is confirmed working.
-        run: npm publish --access public
+        run: npm publish --provenance --access public
 
       - name: Summary
         run: |
@@ -109,5 +107,5 @@ jobs:
             echo ""
             echo "- Tarball: https://registry.npmjs.org/pan-wizard/-/pan-wizard-$VERSION.tgz"
             echo "- Page: https://www.npmjs.com/package/pan-wizard/v/$VERSION"
-            echo "- Provenance: temporarily disabled (OIDC publish); re-enable once confirmed."
+            echo "- Provenance: visible on the package page (sigstore signature)."
           } >> "$GITHUB_STEP_SUMMARY"

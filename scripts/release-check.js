@@ -121,9 +121,19 @@ process.stderr.write('\n[release-check] Gate 5/7: links validate\n');
 // on its own line — parse from there.
 function parseNpmJson(stdout) {
   try { return JSON.parse(stdout); } catch { /* fall through to extraction */ }
-  const m = stdout.search(/^[[{]s*$/m);
-  if (m === -1) throw new Error('no JSON payload found in npm output');
-  return JSON.parse(stdout.slice(m));
+  // Lifecycle-script output (e.g. `prepare`) can precede the --json payload on
+  // stdout under `npm publish` — and that noise can itself start with '[' (e.g.
+  // a "[install-git-hooks] ..." log line), so we cannot just slice from the
+  // first bracket. Try every line that begins (after optional whitespace) with
+  // '[' or '{' and return the first whose suffix parses as valid JSON.
+  // (The original `/^[[{]s*$/m` had a literal `s` instead of `\s` and matched
+  // nothing, crashing Gate 7 with an uncaught exception.)
+  const lines = stdout.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^\s*[[{]/.test(lines[i])) continue;
+    try { return JSON.parse(lines.slice(i).join('\n')); } catch { /* keep scanning */ }
+  }
+  throw new Error('no JSON payload found in npm output');
 }
 
 // Gate 6: npm pack dry-run
@@ -165,7 +175,14 @@ if (SKIP_SMOKE) {
       logGate('smoke install (pack)', false, `exit ${pack.status}`);
       process.exit(1);
     }
-    const packJson = parseNpmJson(pack.stdout);
+    let packJson;
+    try {
+      packJson = parseNpmJson(pack.stdout);
+    } catch (err) {
+      logGate('smoke install (pack)', false, 'pack JSON parse failed: ' + err.message);
+      process.stderr.write((pack.stdout || '') + '\n' + (pack.stderr || '') + '\n');
+      process.exit(1);
+    }
     const tarball = path.join(tmpDir, packJson[0].filename);
     if (!fs.existsSync(tarball)) {
       logGate('smoke install (pack)', false, `tarball not found at ${tarball}`);
