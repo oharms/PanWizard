@@ -10,7 +10,7 @@ name: Release
 #   5. Watch this workflow run. Done.
 #
 # Security properties:
-#   - Token never leaves GitHub's encrypted secret store; not on your laptop.
+#   - No long-lived token anywhere — OIDC mints a short-lived credential per run.
 #   - `--provenance` cryptographically signs that the tarball was built by THIS
 #     workflow run. Anyone can verify with `npm view pan-wizard --json` and the
 #     sigstore signature visible on https://www.npmjs.com/package/pan-wizard.
@@ -20,11 +20,13 @@ name: Release
 #     anything is uploaded.
 #
 # Prerequisite (one-time):
-#   - GitHub → Settings → Secrets and variables → Actions → New repository
-#     secret → name `NPM_TOKEN`, value = an npm "Automation" token (NOT a
-#     publish-type token — automation tokens bypass 2FA for CI). Create at:
-#     https://www.npmjs.com/settings/oharms/tokens → Generate New Token →
-#     "Automation" → Read and write, scoped to `pan-wizard` only.
+#   - Tokenless via OIDC trusted publishing — no NPM_TOKEN secret. On
+#     npmjs.com → the `pan-wizard` package → Settings → Trusted Publishing,
+#     add a GitHub Actions publisher: organization/user `oharms`, repository
+#     `PanWizard`, workflow filename `release.yml`, allowed action `npm
+#     publish` (leave Environment blank). `npm publish` then exchanges the
+#     runner's OIDC id-token for a short-lived credential — nothing to
+#     rotate, no 2FA. Requires npm >= 11.5.1 (upgraded in a step below).
 
 on:
   push:
@@ -63,11 +65,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Setup Node + npm auth
+      - name: Setup Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for trusted publishing (OIDC needs npm >= 11.5.1)
+        run: npm install -g npm@latest
 
       - name: Verify tag matches package.json version
         # Catches the "tagged v3.8.1 but forgot to bump package.json" footgun
@@ -93,8 +98,6 @@ jobs:
         # tests, audit, doc-lint, pack-dryrun, smoke-install) before upload.
         # If any gate fails, publish aborts and no tarball is uploaded.
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Summary
         run: |
