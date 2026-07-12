@@ -226,3 +226,114 @@ describe('hud — resilient to junk data (field report 2026-06)', () => {
     assert.match(html, new RegExp(d.project.dir_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   });
 });
+
+describe('hud — ledgerReliability', () => {
+  test('a clean ledger is reliable', () => {
+    assert.deepEqual(hud.ledgerReliability({ calls: 3, cost_unknown: 0, suspect_excluded: 0 }), { ok: true });
+  });
+  test('no calls at all is reliable (nothing to misprice)', () => {
+    assert.equal(hud.ledgerReliability({ calls: 0, cost_unknown: 0, suspect_excluded: 0 }).ok, true);
+  });
+  test('more quarantined than survived → legacy capture bug', () => {
+    const r = hud.ledgerReliability({ calls: 2, cost_unknown: 0, suspect_excluded: 5 });
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, 'legacy');
+  });
+  test('every surviving record unpriced → unresolved cost', () => {
+    const r = hud.ledgerReliability({ calls: 3, cost_unknown: 3, suspect_excluded: 0 });
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, 'unresolved');
+  });
+});
+
+describe('hud — scanPlanningActivity (non-phase / focus-auto projects)', () => {
+  test('returns null when there is no .planning or no markdown', () => {
+    assert.equal(hud.scanPlanningActivity(cwd, NOW), null);
+    W('.planning/metrics/tokens.jsonl', '{}\n'); // non-md only
+    assert.equal(hud.scanPlanningActivity(cwd, NOW), null);
+  });
+
+  test('tallies markdown by folder and ignores JSON ledger noise', () => {
+    W('.planning/focus/design-1.md', '# d1');
+    W('.planning/focus/design-2.md', '# d2');
+    W('.planning/cycle-close/finding.md', '# f');
+    // JSON artifacts must never be stat-ed or counted
+    for (let i = 0; i < 50; i++) W(`.planning/focus/batch-${i}.json`, '{}');
+    const a = hud.scanPlanningActivity(cwd, NOW);
+    assert.equal(a.doc_count, 3, 'only .md docs counted');
+    assert.equal(a.folder_count, 2);
+    const focus = a.folders.find(f => f.folder === 'focus');
+    assert.equal(focus.count, 2);
+    assert.equal(a.recent.length, 3);
+    assert.ok(a.recent.every(r => r.name.endsWith('.md')));
+  });
+});
+
+describe('hud — planning-activity panel (graceful degradation)', () => {
+  test('a focus-auto project with no roadmap surfaces its planning docs', () => {
+    W('.planning/focus/design-953-floyd.md', '# floyd');
+    W('.planning/cycle-close/FLAKY-2026.md', '# flaky');
+    const d = hud.collectHudData(cwd, { now: NOW });
+    assert.equal(d.roadmap.length, 0, 'no phase-based roadmap');
+    assert.ok(d.planning_activity && d.planning_activity.doc_count >= 2);
+    const html = hud.renderHud(d);
+    assert.match(html, /planning activity/);
+    assert.match(html, /recently updated/);
+    assert.match(html, /design-953-floyd\.md/);
+  });
+
+  test('a standard phase-based project does NOT show the planning-activity panel', () => {
+    scaffoldProject(); // creates phases → roadmap is present
+    const d = hud.collectHudData(cwd, { now: NOW });
+    assert.ok(d.roadmap.length > 0);
+    const html = hud.renderHud(d);
+    assert.ok(!/planning activity/.test(html), 'roadmap projects keep the roadmap/now-building panels');
+  });
+});
+
+describe('hud — shared rendering foundation (widened exports for phase-report.cjs)', () => {
+  test('exports the primitives phase-report.cjs reuses, with correct types', () => {
+    assert.equal(typeof hud.HUD_CSS, 'string');
+    for (const fn of ['pill', 'bar', 'metricCard', 'fmtUsd', 'fmtTokens', 'relAge', 'pipelineStage']) {
+      assert.equal(typeof hud[fn], 'function', `${fn} exported as a function`);
+    }
+    assert.equal(typeof hud.STATUS_DOT, 'object');
+    assert.equal(typeof hud.MARK_SVG, 'string');
+    assert.equal(typeof hud.CHECK_SVG, 'string');
+  });
+
+  test('the primitives produce the expected shapes (contract for the report module)', () => {
+    assert.match(hud.pill('x', 'ok'), /class="pill ok"/);
+    assert.match(hud.bar(50, 'var(--coral)'), /width:50%/);
+    assert.equal(hud.pipelineStage({ status: 'complete' }), 'verify');
+    assert.equal(hud.pipelineStage({ status: 'researched' }), 'plan');
+    assert.equal(hud.fmtUsd(1.5), '$1.50');
+  });
+
+  test('renderHud output is deterministic given a fixed now (widening exports changed nothing)', () => {
+    scaffoldProject();
+    const d = hud.collectHudData(cwd, { now: NOW });
+    assert.equal(hud.renderHud(d), hud.renderHud(d), 'pure render — identical across calls');
+  });
+});
+
+describe('hud — unresolved-cost ledger (all records unpriced)', () => {
+  test('shows an honest advisory + token volume, never a fake $0.00 spend', () => {
+    W('.planning/focus/x.md', '# x'); // non-phase project
+    const recs = [];
+    for (let i = 0; i < 4; i++) {
+      // unknown model, no cost_usd, small tokens → survives quarantine but unpriceable
+      recs.push(JSON.stringify({ ts: '2026-06-12T08:00:00Z', agent: 'pan-planner', model: 'mystery-model-x', input_tokens: 1200, output_tokens: 300 }));
+    }
+    W('.planning/metrics/tokens.jsonl', recs.join('\n') + '\n');
+    const d = hud.collectHudData(cwd, { now: NOW });
+    assert.equal(d.telemetry.totals.cost_unknown, 4);
+    assert.equal(d.telemetry.totals.calls, 4);
+    const html = hud.renderHud(d);
+    assert.match(html, /cost unresolved/, 'advisory shown');
+    assert.match(html, /Tokens processed/, 'real token volume shown');
+    assert.ok(!/Total spend<\/span><span class="amono">\$0\.00/.test(html), 'no fake $0.00 total spend');
+    // mission Spend card must not claim $0.00 either
+    assert.ok(!/\$0\.00/.test(html), 'no $0.00 anywhere');
+  });
+});

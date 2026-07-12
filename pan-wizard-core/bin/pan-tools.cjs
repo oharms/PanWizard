@@ -148,6 +148,7 @@
  *   preflight [phase|batch]            Validate execution prerequisites
  *   dashboard                          Aggregated project status overview
  *   hud [--out f] [--open] [--stdout]  Single-page HTML army + project dashboard
+ *   report phase <N>|index|all         Per-phase HTML report + project timeline index
  *
  * Session Learnings:
  *   learnings extract                  Extract patterns from session data
@@ -870,6 +871,31 @@ async function main() {
         open: args.includes('--open'),
         stdout: args.includes('--stdout'),
       }, raw);
+      break;
+    }
+
+    case 'report': {
+      const phaseReport = require('./lib/phase-report.cjs');
+      const subcommand = args[1];
+      if (subcommand === 'phase') {
+        phaseReport.cmdReport(cwd, {
+          action: 'phase', phase: args[2],
+          out: getArgValue(args, '--out'),
+          open: args.includes('--open'),
+          stdout: args.includes('--stdout'),
+        }, raw);
+      } else if (subcommand === 'index') {
+        phaseReport.cmdReport(cwd, {
+          action: 'index',
+          out: getArgValue(args, '--out'),
+          open: args.includes('--open'),
+          stdout: args.includes('--stdout'),
+        }, raw);
+      } else if (subcommand === 'all') {
+        phaseReport.cmdReport(cwd, { action: 'all', open: args.includes('--open') }, raw);
+      } else {
+        error('Unknown report subcommand. Available: phase <N>, index, all');
+      }
       break;
     }
 

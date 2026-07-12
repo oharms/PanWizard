@@ -11,7 +11,11 @@
  * Graceful degradation: army-only panels (command stack, campaign, harness,
  * worktrees) render only when a campaign is scheduled or army worktrees
  * exist. A plain PAN project still gets mission, roadmap, telemetry,
- * requirements/quality and activity panels.
+ * requirements/quality and activity panels. A project with no phase/roadmap
+ * layout (focus-auto / autonomous-loop / imported repos) gets a "planning
+ * activity" fallback panel summarising its .planning/ markdown instead of a
+ * bare page. Telemetry never quotes a dollar figure it can't stand behind: a
+ * poisoned or wholly-unpriced ledger degrades to an honest advisory.
  *
  * collectHudData() and renderHud() are pure given their inputs (a `now` Date
  * is injected for testability); cmdHud() is the only side-effecting wrapper.
@@ -134,6 +138,79 @@ function scanVerification(cwd) {
     }
   }
   return found;
+}
+
+/** Humanize a file mtime as an age relative to `now` ("3d ago"). */
+function relAge(mtimeMs, now) {
+  const ref = now instanceof Date ? now.getTime() : Number(now);
+  const diff = ref - Number(mtimeMs);
+  if (!isFinite(diff)) return '';
+  if (diff < 60000) return 'just now';
+  const min = Math.floor(diff / 60000);
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days < 30) return `${days}d ago`;
+  const mo = Math.floor(days / 30);
+  return `${mo}mo ago`;
+}
+
+/**
+ * Fallback signal for projects that don't use the phase/state/roadmap layout
+ * (focus-auto / autonomous-loop projects, imported repos, ad-hoc `.planning/`
+ * trees): surface whatever markdown lives under `.planning/` so the HUD isn't
+ * a dead shell. Only `.md` docs are stat-ed — a focus-auto ledger can hold
+ * tens of thousands of JSON artifacts, and we never stat those. The walk is
+ * depth- and entry-bounded so a pathological tree can't stall the render.
+ * Returns null when there are no docs to show.
+ */
+function scanPlanningActivity(cwd, now) {
+  const root = planningPath(cwd);
+  let topEntries;
+  try { topEntries = fs.readdirSync(root, { withFileTypes: true }); } catch { return null; }
+
+  const docs = [];          // { rel, folder, mtime }
+  const byFolder = {};      // folder name -> md count
+  let visited = 0;
+  const MAX_ENTRIES = 40000; // backstop against pathological trees
+  const MAX_DEPTH = 3;
+
+  function record(fp, folder) {
+    let st;
+    try { st = fs.statSync(fp); } catch { return; }
+    byFolder[folder] = (byFolder[folder] || 0) + 1;
+    docs.push({ rel: toPosix(path.relative(root, fp)), folder, mtime: st.mtimeMs });
+  }
+
+  function walk(dir, folder, depth) {
+    if (depth > MAX_DEPTH || visited > MAX_ENTRIES) return;
+    let ents = [];
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (visited++ > MAX_ENTRIES) return;
+      if (e.isDirectory()) walk(path.join(dir, e.name), folder, depth + 1);
+      else if (e.name.endsWith('.md')) record(path.join(dir, e.name), folder);
+    }
+  }
+
+  for (const e of topEntries) {
+    if (visited++ > MAX_ENTRIES) break;
+    if (e.isDirectory()) walk(path.join(root, e.name), e.name, 1);
+    else if (e.name.endsWith('.md')) record(path.join(root, e.name), '(root)');
+  }
+
+  if (!docs.length) return null;
+  docs.sort((a, b) => b.mtime - a.mtime);
+  const folders = Object.keys(byFolder)
+    .map(f => ({ folder: f, count: byFolder[f] }))
+    .sort((a, b) => b.count - a.count);
+  const recent = docs.slice(0, 8).map(d => ({
+    name: d.rel.split('/').pop(),
+    folder: d.folder,
+    when: relAge(d.mtime, now),
+  }));
+  return { doc_count: docs.length, folder_count: folders.length, folders, recent };
 }
 
 function recentCommits(cwd, limit) {
@@ -278,6 +355,7 @@ function collectHudData(cwd, opts = {}) {
     telemetry,
     requirements: scanRequirements(cwd),
     quality: scanVerification(cwd),
+    planning_activity: scanPlanningActivity(cwd, now),
     activity: recentCommits(cwd, 8),
   };
 }
@@ -343,6 +421,36 @@ function fmtTokens(n) {
   return String(v);
 }
 
+/**
+ * Assess whether a cost ledger is trustworthy enough to show dollar figures.
+ * Two failure modes are treated as "don't quote a number":
+ *   - legacy: more records were quarantined as implausible than survived (the
+ *     pre-v3.12.4 transcript-oversum bug) — reset advised.
+ *   - unresolved: every surviving record lacks a resolvable model→rate, so the
+ *     computed spend is a misleading $0 even though real tokens were spent.
+ * Returns { ok:true } when figures are safe to display.
+ */
+function ledgerReliability(totals) {
+  const t = totals || {};
+  const calls = t.calls || 0;
+  const suspect = t.suspect_excluded || 0;
+  const unknown = t.cost_unknown || 0;
+  if (suspect > calls) {
+    const total = suspect + calls;
+    return {
+      ok: false, kind: 'legacy',
+      message: `${suspect} of ${total} cost records are implausible (the pre-v3.12.4 telemetry capture bug). Reset the ledger with <b>pan-tools cost clear</b> — records captured after the fix are accurate.`,
+    };
+  }
+  if (calls > 0 && unknown >= calls) {
+    return {
+      ok: false, kind: 'unresolved',
+      message: `None of ${calls} cost records carry a resolvable model→rate, so spend can't be priced (it would read $0). Set <b>cost.rates</b> in .planning/config.json, or record a model on each call, to price them. Token volume below is still accurate.`,
+    };
+  }
+  return { ok: true };
+}
+
 function relDue(nextIso, nowIso) {
   const a = new Date(nextIso).getTime();
   const b = new Date(nowIso).getTime();
@@ -403,22 +511,29 @@ function renderMission(d) {
   const req = d.requirements;
   const tok = d.telemetry.totals.input_tokens + d.telemetry.totals.output_tokens;
   const cache = d.telemetry.cache_hit_rate_pct;
+  const rel = ledgerReliability(d.telemetry.totals);
+  const spendCard = rel.ok
+    ? metricCard({
+      label: 'Spend', value: fmtUsd(d.telemetry.totals.cost_usd),
+      sub: `${fmtTokens(tok)} tok${cache == null ? '' : ' · ' + cache + '% cache'}`,
+    })
+    : metricCard({
+      label: 'Spend', value: '—',
+      sub: rel.kind === 'unresolved' ? `${fmtTokens(tok)} tok · cost n/a` : 'ledger unreliable',
+    });
   const cards = [
     metricCard({
       label: 'Progress', value: prog.percent == null ? '—' : String(prog.percent), unit: prog.percent == null ? '' : '%',
       barPct: prog.percent, barColor: 'var(--coral)', sub: prog.total ? `${prog.completed} / ${prog.total} phases` : 'no phases',
     }),
     metricCard({
-      label: 'Phase', value: st.current_phase || prog.completed || 0, unit: prog.total ? ` / ${prog.total}` : '',
+      label: 'Phase', value: st.current_phase || (prog.total ? prog.completed : '—'), unit: prog.total ? ` / ${prog.total}` : '',
       sub: st.current_phase_name || '',
     }),
     req
       ? metricCard({ label: 'Requirements', value: req.done, unit: ` / ${req.total}`, barPct: Math.round((req.done / req.total) * 100), barColor: 'var(--indigo)', sub: `${req.total - req.done} open` })
       : metricCard({ label: 'Requirements', value: '—', sub: 'none tracked' }),
-    metricCard({
-      label: 'Spend', value: fmtUsd(d.telemetry.totals.cost_usd),
-      sub: `${fmtTokens(tok)} tok${cache == null ? '' : ' · ' + cache + '% cache'}`,
-    }),
+    spendCard,
   ].join('');
   return `
   <section class="panel mission">
@@ -567,6 +682,32 @@ function renderRoadmap(d) {
   </section>`;
 }
 
+// Graceful degradation: projects without a phase/state/roadmap layout still
+// have real signal under .planning/ (focus-auto designs, ADRs, findings). Show
+// it — but only when there's no roadmap, so standard projects are unchanged.
+function renderPlanningActivity(d) {
+  const a = d.planning_activity;
+  if (!a || d.roadmap.length) return '';
+  const maxCount = a.folders.reduce((m, f) => Math.max(m, f.count), 0) || 1;
+  const folderBars = a.folders.slice(0, 7).map(f => {
+    const pct = Math.round((f.count / maxCount) * 100);
+    return `<div class="sqbar"><div class="sqbar-h"><span>${esc(f.folder)}</span><span>${esc(f.count)}</span></div>`
+      + `<div class="bar"><span style="width:${pct}%;background:var(--indigo)"></span></div></div>`;
+  }).join('');
+  const recent = a.recent.map(r =>
+    `<div class="row"><span class="amono"><span class="dot" style="background:var(--coral)"></span>${esc(r.name)}</span>`
+    + `<span class="amono dim">${esc(r.folder)} · ${esc(r.when)}</span></div>`
+  ).join('');
+  return `
+  <section class="panel">
+    <div class="ph">planning activity</div>
+    <div class="row"><span class="rl">Documents</span><span class="amono">${esc(a.doc_count)} across ${esc(a.folder_count)} folder${a.folder_count === 1 ? '' : 's'}</span></div>
+    <div class="sqbars" style="margin-top:8px">${folderBars}</div>
+    <div class="ph" style="margin-top:18px">recently updated</div>
+    ${recent}
+  </section>`;
+}
+
 function renderHarness(d) {
   if (!d.army_active) return '';
   const h = d.harness;
@@ -586,15 +727,20 @@ function renderHarness(d) {
 
 function renderTelemetry(d) {
   const t = d.telemetry;
-  // A ledger where most records are implausible is the pre-v3.12.4 capture bug —
-  // don't present salvaged numbers as if trustworthy; tell the user to reset it.
-  if (t.totals.suspect_excluded > t.totals.calls) {
-    const total = t.totals.suspect_excluded + t.totals.calls;
+  // Don't present salvaged or uncomputable numbers as if trustworthy — a
+  // poisoned or unpriced ledger gets an honest advisory instead of a fake $0.
+  const rel = ledgerReliability(t.totals);
+  if (!rel.ok) {
+    const label = rel.kind === 'legacy' ? 'legacy ledger — unreliable' : 'cost unresolved';
+    const tokLine = rel.kind === 'unresolved'
+      ? `<div class="row" style="margin-top:10px"><span class="rl">Tokens processed</span><span class="amono">${fmtTokens(t.totals.input_tokens + t.totals.output_tokens)} · ${t.totals.calls} calls</span></div>`
+      : '';
     return `
   <section class="panel">
     <div class="ph">telemetry</div>
-    <div class="row noborder"><span class="rl">Status</span>${pill('legacy ledger — unreliable', 'warn')}</div>
-    <div class="amono dim" style="margin-top:10px;line-height:1.6;">${t.totals.suspect_excluded} of ${total} cost records are implausible (the pre-v3.12.4 telemetry capture bug). Reset the ledger with <b>pan-tools cost clear</b> — records captured after the fix are accurate.</div>
+    <div class="row noborder"><span class="rl">Status</span>${pill(label, 'warn')}</div>
+    <div class="amono dim" style="margin-top:10px;line-height:1.6;">${rel.message}</div>
+    ${tokLine}
   </section>`;
   }
   const keys = Object.keys(t.by_squad).sort((a, b) => t.by_squad[b].cost - t.by_squad[a].cost);
@@ -794,13 +940,16 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);fon
 function renderHud(d) {
   const leftCol = [renderCampaign(d), renderRoadmap(d)].filter(Boolean).join('');
   const rightCol = [renderHarness(d), renderTelemetry(d)].filter(Boolean).join('');
-  const grid = (leftCol || rightCol)
+  // Two columns only when both have content; otherwise render full-width so a
+  // lone panel (e.g. telemetry on a non-army project) doesn't float in half.
+  const grid = (leftCol && rightCol)
     ? `<div class="grid"><div class="gcol">${leftCol}</div><div class="gcol">${rightCol}</div></div>`
-    : '';
+    : (leftCol || rightCol);
   const body = [
     renderTopBar(d),
     renderMission(d),
     renderNowBuilding(d),
+    renderPlanningActivity(d),
     renderCommandStack(d),
     grid,
     renderWorktrees(d),
@@ -883,6 +1032,7 @@ function cmdHud(cwd, opts = {}, raw) {
   const sections = [
     'mission',
     data.roadmap.length && 'now-building',
+    (!data.roadmap.length && data.planning_activity) && 'planning-activity',
     data.army_active && 'command-stack',
     data.campaign && 'campaign',
     data.army_active && 'safety-harness',
@@ -909,7 +1059,26 @@ module.exports = {
   scanPhases,
   scanRequirements,
   scanVerification,
+  scanPlanningActivity,
+  ledgerReliability,
   buildArmy,
   telemetryBySquad,
   esc,
+  // shared rendering foundation — reused verbatim by phase-report.cjs so both
+  // surfaces look identical. Exporting these adds NO logic and cannot change
+  // HUD output (a golden snapshot test guards that). openInBrowser is
+  // deliberately NOT shared: its inline allowlist is a CodeQL taint barrier
+  // that must stay a literal, so phase-report.cjs carries its own byte-copy.
+  HUD_CSS,
+  pill,
+  bar,
+  metricCard,
+  fmtUsd,
+  fmtTokens,
+  relAge,
+  pipelineStage,
+  STATUS_KIND,
+  STATUS_DOT,
+  MARK_SVG,
+  CHECK_SVG,
 };

@@ -5,6 +5,27 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0] - 2026-07-12
+
+### Added — per-phase HTML reports (`pan-tools report` / `pan:report`, M1)
+
+The HUD is a single project-level snapshot; the work a project leaves behind phase by phase (`plan.md`, `summary.md`, `verification.md`) had no graphical, shareable form. The new `report` command renders self-contained HTML for the phases of a project, reusing the HUD's rendering foundation so both surfaces look identical. This is milestone 1 — the manual command; automatic generation as a build deliverable (workflow/focus-auto/army wiring) follows in later milestones.
+
+- **`pan-tools report phase <N>`** writes a self-contained `.planning/phases/<NN-slug>/<NN>-report.html` — dark hero, the full-roadmap stepper with this phase as the "now" dot, a metric strip, and panels for objective & success criteria, what changed, verification & quality, and gaps.
+- **`pan-tools report index`** writes `.planning/report-index.html`, a project timeline whose rows link to each phase report; **`report all`** regenerates every report plus the index.
+- **Honest by construction.** The `verify reconcile` verdict is shown beside the (rubber-stampable) self-reported verification status; status is framed as a current-disk snapshot; per-phase requirements are derived from plan/summary frontmatter (never the global count); and any spend routes through `ledgerReliability()` so a poisoned or unpriced ledger never renders a fake `$0`.
+- **Deterministic writes.** The only volatile value (the generated-at timestamp) is ignored when comparing to the existing file, so re-running rewrites nothing when phase data is unchanged — no git churn.
+- **Graceful degradation.** Empty/researched/planned phases render valid honest reports; a phase-less (focus-auto) project has nothing to report, so `index` exits with a pointer to `pan:hud` rather than emitting a dead shell.
+- **New module `phase-report.cjs`** follows the HUD's pure-collect / pure-render / thin-cmd split. It reuses `hud.cjs`'s styling primitives (now exported: `HUD_CSS`, `pill`, `bar`, `metricCard`, `pipelineStage`, …) with zero HUD logic change. The browser opener's inline allowlist barrier is duplicated byte-identically (a CodeQL taint barrier must stay a literal, not a shared helper) — a test asserts the two copies never diverge.
+
+### Fixed — HUD is now useful for non-phase projects and honest about cost
+
+The dashboard was built around the standard phase/state/roadmap layout, so a focus-auto or imported project (no `state.md`/`roadmap.md`/`phases/`) rendered a near-empty shell — and a poisoned or unpriced cost ledger was presented as a real `$0.00` spend.
+
+- **Planning-activity fallback panel.** When a project has no phase/roadmap layout, the HUD now summarises its `.planning/` markdown — document count by folder plus the most-recently-updated docs — instead of leaving mission + telemetry floating on a bare page. Only markdown is stat-ed (a focus-auto ledger can hold tens of thousands of JSON artifacts, which are never walked); the scan is depth- and entry-bounded. Standard phase-based projects are unchanged (the panel is suppressed when a roadmap exists).
+- **Honest cost degradation.** Telemetry and the mission "Spend" card no longer show a fabricated `$0.00`. A shared `ledgerReliability()` check detects two failure modes — the pre-v3.12.4 transcript-oversum bug (more records quarantined than survived) *and* a wholly-unpriced ledger (every surviving record lacks a resolvable model→rate) — and renders an advisory plus the real token volume rather than a dollar figure the data can't support.
+- **Cleaner empties.** `Phase 0` and `Progress —` no longer read as if `0` were a real phase; a lone panel renders full-width instead of floating in a lopsided half-grid.
+
 ## [3.14.0] - 2026-07-12
 
 ### Added — anti-fabrication hardening (ADR-0036 review follow-ups)

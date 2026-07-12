@@ -46,7 +46,7 @@ pan-tools hud [--out <file>] [--open] [--stdout]
 
 <panels>
 
-The dashboard is composed of up to ten panels. Panels render only when they have data — a plain (non-army) project still gets a complete, useful page.
+Panels render only when they have data — a plain (non-army) project still gets a complete, useful page.
 
 | Panel | What it shows | Source |
 |-------|---------------|--------|
@@ -56,11 +56,12 @@ The dashboard is composed of up to ten panels. Panels render only when they have
 | **Safety harness** *(army)* | Merge gate, abort switch (pause), active worktrees, daily budget, concurrency | config + pause file + worktrees + schedule |
 | **Worktrees** *(army)* | Active `army/*` branches and their paths | `git worktree list` |
 | **Roadmap** | Every phase with status + completion | phases on disk |
+| **Planning activity** *(fallback)* | Document count by `.planning/` folder + most-recently-updated docs — for projects with no phase/roadmap layout | `.planning/**/*.md` |
 | **Telemetry** | Total spend, tokens, cache-hit rate, by-squad breakdown | cost ledger |
 | **Requirements & quality** | Requirements done/open + last verification artifacts | `requirements.md`, phase `*-verification.md` / `*-uat.md` |
 | **Recent activity** | Last commits (the army's committed output) | `git log` |
 
-*(army)* panels appear only when a campaign is scheduled or army worktrees exist — graceful degradation per ADR-0035.
+*(army)* panels appear only when a campaign is scheduled or army worktrees exist — graceful degradation per ADR-0035. The *(fallback)* **Planning activity** panel appears only when there is no phase/roadmap layout, so it fills the gap for focus-auto and imported projects instead of leaving a bare page. Telemetry shows an honest advisory (never a fabricated `$0.00`) when the cost ledger is poisoned or every record is unpriced.
 
 </panels>
 

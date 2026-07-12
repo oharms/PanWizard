@@ -386,13 +386,27 @@
     "getTagList:function"
   ],
   "hud.cjs": [
+    "CHECK_SVG:string",
+    "HUD_CSS:string",
     "HUD_FILE:string",
+    "MARK_SVG:string",
+    "STATUS_DOT:object",
+    "STATUS_KIND:object",
+    "bar:function",
     "buildArmy:function",
     "cmdHud:function",
     "collectHudData:function",
     "esc:function",
+    "fmtTokens:function",
+    "fmtUsd:function",
+    "ledgerReliability:function",
+    "metricCard:function",
+    "pill:function",
+    "pipelineStage:function",
+    "relAge:function",
     "renderHud:function",
     "scanPhases:function",
+    "scanPlanningActivity:function",
     "scanRequirements:function",
     "scanVerification:function",
     "telemetryBySquad:function"
@@ -548,6 +562,18 @@
     "renumberIntegerPhases:function",
     "updateRoadmapAfterRemoval:function",
     "updateStateAfterPhaseRemoval:function"
+  ],
+  "phase-report.cjs": [
+    "INDEX_FILE:string",
+    "REPORT_SUFFIX:string",
+    "cmdReport:function",
+    "collectIndexData:function",
+    "collectPhaseData:function",
+    "extractPhaseGoal:function",
+    "renderIndexHtml:function",
+    "renderPhaseHtml:function",
+    "resolvePhase:function",
+    "stripVolatile:function"
   ],
   "phase.cjs": [
     "classifyPlanTier:function",
