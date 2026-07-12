@@ -121,17 +121,35 @@ process.stderr.write('\n[release-check] Gate 5/7: links validate\n');
 // on its own line — parse from there.
 function parseNpmJson(stdout) {
   try { return JSON.parse(stdout); } catch { /* fall through to extraction */ }
-  // Lifecycle-script output (e.g. `prepare`) can precede the --json payload on
-  // stdout under `npm publish` — and that noise can itself start with '[' (e.g.
-  // a "[install-git-hooks] ..." log line), so we cannot just slice from the
-  // first bracket. Try every line that begins (after optional whitespace) with
-  // '[' or '{' and return the first whose suffix parses as valid JSON.
-  // (The original `/^[[{]s*$/m` had a literal `s` instead of `\s` and matched
-  // nothing, crashing Gate 7 with an uncaught exception.)
-  const lines = stdout.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    if (!/^\s*[[{]/.test(lines[i])) continue;
-    try { return JSON.parse(lines.slice(i).join('\n')); } catch { /* keep scanning */ }
+  // Under `npm publish`, lifecycle-script output (e.g. `prepare`) lands on
+  // `npm pack --json` stdout BEFORE and AFTER the JSON payload, and that noise
+  // can itself contain brackets (e.g. "[install-git-hooks] ..."). So we can't
+  // slice by line/first-bracket. Walk the string; for each '[' or '{' find its
+  // matching close (string/escape-aware) and return the first slice that parses.
+  // (The original `/^[[{]s*$/m` had a literal `s` for `\s`, matched nothing, and
+  // crashed Gate 7; a naive "first bracket" fix trips on the noise brackets.)
+  for (let i = 0; i < stdout.length; i++) {
+    const open = stdout[i];
+    if (open !== '[' && open !== '{') continue;
+    const close = open === '[' ? ']' : '}';
+    let depth = 0, inStr = false, esc = false;
+    for (let j = i; j < stdout.length; j++) {
+      const c = stdout[j];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') inStr = true;
+      else if (c === open) depth++;
+      else if (c === close) {
+        depth--;
+        if (depth === 0) {
+          try { return JSON.parse(stdout.slice(i, j + 1)); } catch { break; }
+        }
+      }
+    }
   }
   throw new Error('no JSON payload found in npm output');
 }
