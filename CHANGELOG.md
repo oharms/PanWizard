@@ -5,6 +5,11 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.1] - 2026-07-12
+
+### Fixed
+- Replaced the empty Documentation-section header image. `pan-docs-header.png` shipped as a blank blurred background (the foreground title/logo was never composited on), so it rendered as an empty smear on the npm package page. The Documentation section now uses the developer illustration (`pan-developer.png`).
+
 ## [3.15.0] - 2026-07-12
 
 ### Added — per-phase HTML reports (`pan-tools report` / `pan:report`, M1)

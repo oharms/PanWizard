@@ -834,7 +834,7 @@ This removes all PAN commands, agents, hooks, and settings while preserving your
 ## Documentation
 
 <div align="center">
-<img src="https://cdn.jsdelivr.net/npm/pan-wizard@latest/assets/pan-docs-header.png" alt="" width="720" />
+<img src="https://cdn.jsdelivr.net/npm/pan-wizard@latest/assets/pan-developer.png" alt="A developer reading the PAN Wizard documentation" width="600" />
 </div>
 
 | Document | Audience | What it covers |
