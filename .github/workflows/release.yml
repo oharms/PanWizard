@@ -94,22 +94,9 @@ jobs:
         run: npm run build:hooks
 
       - name: Publish with provenance (OIDC)
-        # prepublishOnly hook reruns release-check.js before upload. Capture the
-        # output and, on failure, write its tail to the job summary so the real
-        # error is retrievable via the checks API (public repo) without needing
-        # log-download auth.
-        run: |
-          set -o pipefail
-          if ! npm publish --provenance --access public 2>&1 | tee /tmp/pub.log; then
-            {
-              echo "### Publish failed"
-              echo ""
-              echo '```'
-              tail -n 100 /tmp/pub.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+        # prepublishOnly hook reruns release-check.js before upload; if any gate
+        # fails the publish aborts and nothing is uploaded.
+        run: npm publish --provenance --access public
 
       - name: Summary
         run: |

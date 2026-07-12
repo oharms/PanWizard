@@ -116,66 +116,28 @@ process.stderr.write('\n[release-check] Gate 5/7: links validate\n');
 }
 
 
-// npm runs lifecycle scripts (prepare) before pack; any of their stdout noise
-// lands ahead of the --json payload. npm pretty-prints the JSON array starting
-// on its own line — parse from there.
-function parseNpmJson(stdout) {
-  try { return JSON.parse(stdout); } catch { /* fall through to extraction */ }
-  // Under `npm publish`, lifecycle-script output (e.g. `prepare`) lands on
-  // `npm pack --json` stdout BEFORE and AFTER the JSON payload, and that noise
-  // can itself contain brackets (e.g. "[install-git-hooks] ..."). So we can't
-  // slice by line/first-bracket. Walk the string; for each '[' or '{' find its
-  // matching close (string/escape-aware) and return the first slice that parses.
-  // (The original `/^[[{]s*$/m` had a literal `s` for `\s`, matched nothing, and
-  // crashed Gate 7; a naive "first bracket" fix trips on the noise brackets.)
-  for (let i = 0; i < stdout.length; i++) {
-    const open = stdout[i];
-    if (open !== '[' && open !== '{') continue;
-    const close = open === '[' ? ']' : '}';
-    let depth = 0, inStr = false, esc = false;
-    for (let j = i; j < stdout.length; j++) {
-      const c = stdout[j];
-      if (inStr) {
-        if (esc) esc = false;
-        else if (c === '\\') esc = true;
-        else if (c === '"') inStr = false;
-        continue;
-      }
-      if (c === '"') inStr = true;
-      else if (c === open) depth++;
-      else if (c === close) {
-        depth--;
-        if (depth === 0) {
-          try { return JSON.parse(stdout.slice(i, j + 1)); } catch { break; }
-        }
-      }
-    }
-  }
-  throw new Error('no JSON payload found in npm output');
-}
+// NOTE: we deliberately do NOT parse `npm pack --json` stdout. Under
+// `npm publish` the runner routes the child pack's lifecycle-script output onto
+// stdout (foreground-scripts), and that noise can include a decoy JSON object —
+// any string heuristic then picks the wrong payload (Gate 7 crashed on
+// packJson[0].filename with "0 files"). Instead, pack into a temp dir and read
+// the .tgz npm actually wrote: a filesystem op that stdout noise cannot corrupt.
 
-// Gate 6: npm pack dry-run
-process.stderr.write('\n[release-check] Gate 6/7: npm pack --dry-run\n');
+// Gate 6: npm pack — produces a non-empty, sanely-sized tarball (read the file,
+// never parse stdout)
+process.stderr.write('\n[release-check] Gate 6/7: npm pack (size sanity)\n');
 {
-  const r = run('npm', ['pack', '--dry-run', '--json'], { capture: true });
-  if (r.status !== 0) {
-    logGate('npm pack dry-run', false, `exit ${r.status}`);
+  const tmp6 = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-release-pack-'));
+  const r = run('npm', ['pack', '--pack-destination', tmp6], { capture: true });
+  const tgz = r.status === 0 ? fs.readdirSync(tmp6).find(f => f.endsWith('.tgz')) : null;
+  const size = tgz ? fs.statSync(path.join(tmp6, tgz)).size : 0;
+  const sizeMB = (size / 1024 / 1024).toFixed(2);
+  // Sane = a non-empty tarball under 50MB (large for a zero-runtime-dep tool)
+  const ok = r.status === 0 && !!tgz && size > 0 && size < 50 * 1024 * 1024;
+  logGate('npm pack', ok, tgz ? `${sizeMB}MB tarball` : `no tarball (exit ${r.status})`);
+  fs.rmSync(tmp6, { recursive: true, force: true });
+  if (!ok) {
     process.stderr.write((r.stderr || '') + '\n');
-    process.exit(1);
-  }
-  // Parse the JSON output to check size
-  try {
-    const parsed = parseNpmJson(r.stdout);
-    const entry = Array.isArray(parsed) ? parsed[0] : parsed;
-    const size = entry.size || 0;
-    const fileCount = entry.files ? entry.files.length : 0;
-    const sizeMB = (size / 1024 / 1024).toFixed(2);
-    // Flag if pack size exceeds 50MB — large for a zero-runtime-dep tool
-    const ok = size < 50 * 1024 * 1024;
-    logGate('npm pack dry-run', ok, `${sizeMB}MB, ${fileCount} files`);
-    if (!ok) process.exit(1);
-  } catch (err) {
-    logGate('npm pack dry-run', false, 'JSON parse failed: ' + err.message);
     process.exit(1);
   }
 }
@@ -187,25 +149,19 @@ if (SKIP_SMOKE) {
   process.stderr.write('\n[release-check] Gate 7/7: smoke install (npm pack + install + sanity)\n');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-release-smoke-'));
   try {
-    // Pack
-    const pack = run('npm', ['pack', '--pack-destination', tmpDir, '--json'], { capture: true });
+    // Pack — read the .tgz npm writes to tmpDir; never parse its stdout (see note).
+    const pack = run('npm', ['pack', '--pack-destination', tmpDir], { capture: true });
     if (pack.status !== 0) {
       logGate('smoke install (pack)', false, `exit ${pack.status}`);
+      process.stderr.write((pack.stderr || '') + '\n');
       process.exit(1);
     }
-    let packJson;
-    try {
-      packJson = parseNpmJson(pack.stdout);
-    } catch (err) {
-      logGate('smoke install (pack)', false, 'pack JSON parse failed: ' + err.message);
-      process.stderr.write((pack.stdout || '') + '\n' + (pack.stderr || '') + '\n');
+    const tgz = fs.readdirSync(tmpDir).find(f => f.endsWith('.tgz'));
+    if (!tgz) {
+      logGate('smoke install (pack)', false, `no .tgz produced in ${tmpDir}`);
       process.exit(1);
     }
-    const tarball = path.join(tmpDir, packJson[0].filename);
-    if (!fs.existsSync(tarball)) {
-      logGate('smoke install (pack)', false, `tarball not found at ${tarball}`);
-      process.exit(1);
-    }
+    const tarball = path.join(tmpDir, tgz);
     // Install into a separate fake project dir
     const installDir = path.join(tmpDir, 'install-target');
     fs.mkdirSync(installDir, { recursive: true });
