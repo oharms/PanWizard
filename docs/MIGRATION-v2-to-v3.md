@@ -14,11 +14,11 @@ node <path-to-PanWizard>/bin/install.js --claude --local
 # (or --codex, --gemini, --opencode, --copilot, --all)
 ```
 
-That's it. Your project keeps working. You now have access to nine new commands if you want them.
+That's it. Your project keeps working. You now have access to several new commands if you want them.
 
 ## What Changed
 
-### Nine new commands
+### New commands
 
 | Command | Release | Purpose |
 |---------|---------|---------|
@@ -45,7 +45,7 @@ All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/p
 - `/pan:exec-phase <N> --deep-review` (v3.4) — auto-invoke `/pan:review-deep` after the normal reviewer step.
 - `/pan:focus-exec --deep-review` (v3.4) — same integration for focus campaigns.
 
-### Eight new agents
+### New agents
 
 - `pan-previewer` (v3.1) — foresight synthesis
 - `pan-hardener` (v3.2) — OWASP + STRIDE security audit
@@ -55,8 +55,6 @@ All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/p
 - `pan-conductor` (v3.4) — hierarchical orchestrator
 - `pan-optimizer` (v3.5) — circular optimization analyst
 - `pan-distiller` (v3.5) — AI code-bloat judgment (span-only contract)
-
-Total agent count: 12 → 20.
 
 ### New `.planning/` subdirectories
 
@@ -101,7 +99,7 @@ The installer adds one new entry to `.claude/settings.json` under `hooks.Subagen
 
 The hook is non-blocking and silently no-ops on runtimes that don't fire SubagentStop. Nothing else in settings.json changes.
 
-### Shipped hook count: 3 → 5
+### Shipped hooks
 
 - `pan-statusline.js` (unchanged)
 - `pan-context-monitor.js` (unchanged)
@@ -109,9 +107,9 @@ The hook is non-blocking and silently no-ops on runtimes that don't fire Subagen
 - `pan-cost-logger.js` (new in v3.4)
 - `pan-trace-logger.js` (new in v3.5 — circular optimization tracing)
 
-### Core module count: 17 → 27
+### New core modules
 
-Ten new modules in `pan-wizard-core/bin/lib/`. See [ARCHITECTURE.md](ARCHITECTURE.md#layer-4-core-library) for per-module descriptions:
+New modules in `pan-wizard-core/bin/lib/`. See [ARCHITECTURE.md](ARCHITECTURE.md#layer-4-core-library) for per-module descriptions:
 
 - `bus.cjs` (v3.0)
 - `cost.cjs` (v3.0)
@@ -156,10 +154,7 @@ node <PanWizard-repo>/bin/install.js --claude --local
 ```
 
 The installer:
-- Removes the old `pan-wizard-core/` and re-copies the v3.4 version
-- Re-copies agent files (now 18, was 12)
-- Re-copies command files (now 48, was 42)
-- Re-copies hook files (now 4, was 3)
+- Removes the old `pan-wizard-core/` and re-copies the updated core modules, agents, commands, and hooks
 - Updates `pan-file-manifest.json` with the new file hashes
 - Adds `SubagentStop` hook entry to settings.json (if absent)
 
@@ -168,7 +163,7 @@ The installer:
 ```bash
 # Check version
 cat .claude/pan-wizard-core/VERSION
-# Should show: 3.4.0
+# Should show the v3.5 version
 
 # Smoke-test a new command
 node .claude/pan-wizard-core/bin/pan-tools.cjs cost report --format table
@@ -204,7 +199,7 @@ node bin/install.js --claude --local
 
 Your `.planning/` data survives. New directories (`metrics/`, `bus/`, etc.) remain on disk but are ignored by v2.x.
 
-### Partial rollback (keep v3.4 but disable specific features)
+### Partial rollback (keep v3.5 but disable specific features)
 
 - **Disable auto cost logging:** remove the SubagentStop entry from `.claude/settings.json`
 - **Disable `--hierarchical`:** simply don't pass the flag; there's no global setting
@@ -243,9 +238,9 @@ Partially:
 - `/pan:mcp-bridge`: Claude Code only (MCP is a Claude-first protocol).
 - `/pan:exec-phase --hierarchical`: Claude + Opus 4.7 only; falls back to flat exec silently elsewhere.
 
-### What if I want to skip v3.0-v3.3 and go straight to v3.4?
+### What if I want to skip v3.0-v3.4 and go straight to v3.5?
 
-Each release is additive, so installing v3.4.0 directly is fine — you get all prior waves' functionality too. There's no staged migration path.
+Each release is additive, so installing v3.5.0 directly is fine — you get all prior waves' functionality too. There's no staged migration path.
 
 ### My installer says "SubagentStop hook already configured." Is that bad?
 
@@ -255,6 +250,6 @@ No — the installer is idempotent. If the hook entry already exists (from a pre
 
 - [CHANGELOG.md](../CHANGELOG.md) — per-release changelog with every new file + test count
 - [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md) — design decisions behind Spec B v2
-- [ARCHITECTURE.md](ARCHITECTURE.md) — full v3.4 system design
+- [ARCHITECTURE.md](ARCHITECTURE.md) — full system design
 - [CLI-REFERENCE.md](CLI-REFERENCE.md) — every new CLI subcommand with examples
 - [USER-GUIDE.md](USER-GUIDE.md) — Spec B v2 user-facing features walkthrough

@@ -207,7 +207,7 @@ Commands never perform heavy work directly. All substantive logic lives in workf
 | **Spec B v2 (v3.0-v3.4)** | cost, preview, review-deep, knowledge, what-if, mcp-bridge |
 | **v3.5 — Optimization & Git** | learn, optimize, git |
 | **Self-Improvement Loop** | experiment |
-| **Bot Army & Observability (v3.11–v3.13)** | army, hud, dashboard, hygiene, links |
+| **Bot Army & Observability (v3.11–v3.15)** | army, hud, report, dashboard, hygiene, links |
 
 ### Command-Only Files (No Workflow)
 
@@ -354,6 +354,7 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | **Worktree** (v3.11, ADR-0033) | `worktree list`, `worktree create <task>`, `worktree remove <path>` |
 | **Campaign** (v3.12, ADR-0034) | `campaign schedule`, `campaign status`, `campaign due`, `campaign record-run` |
 | **HUD** (v3.12, ADR-0035) | `hud [--out <f>] [--open] [--stdout]` |
+| **Report** (v3.15) | `report phase <N>`, `report index`, `report all` (`[--out <f>] [--open] [--stdout]`) |
 | **Standards** | `standards list`, `standards select`, `standards remove`, `standards status`, `standards recommend`, `standards phase-track`, `standards tools` |
 | **Operations** | `preflight`, `dashboard`, `learnings extract`, `learnings list`, `learnings prune`, `deps validate` |
 | **Utility** | `resolve-model`, `generate-slug`, `current-timestamp`, `context-budget`, `websearch`, `progress`, `todo` |
@@ -408,6 +409,7 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `hud.cjs` | — | **(v3.12, ADR-0035)** Single-page HTML army + project dashboard. `collectHudData` (pure: aggregates state.md, roadmap/phases, squad registry, campaign schedule, army worktrees, cost ledger, requirements, verification, git log), `renderHud` (self-contained HTML — no server/network/external assets), `cmdHud`. A read-only **view**: owns no state, writes only `.planning/hud.html`. Army-only panels degrade gracefully when no campaign/worktrees exist. Reads `squads.cjs` + `campaign.cjs` + `worktree.cjs` + `cost.cjs`. |
 | `skill-align.cjs` | — | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass. `buildSkillIndex(root)` walks commands/templates/references + learnings topics on the fly (nothing persisted); `alignTasks(root, tasks, opts)` scores draft planner tasks via `scoreRelevance` (glue-word stop-list, capped scoring head) and returns per-task top-k matches plus a deduped, token-budgeted `vocabulary` hint list with explicit `dropped` overflow. Advisory + fail-open: missing roots are skipped and reported. Used by `pan-planner`'s `skill_alignment` step. `cmdSkillsIndex` / `cmdSkillsAlign`. |
 | `hygiene.cjs` | — | **(v3.13)** Project cleanup + version alignment. `scanHygiene` runs seven checks: per-runtime manifest version vs latest, untracked installs, legacy uppercase planning filenames, `.tmp` orphans, memory-log bloat, poisoned cost ledgers (via `cost.cjs isSuspectRecord`), stale trace sessions, fragment `.planning/` dirs. `cleanHygiene` applies only the safe subset (case-hop renames, orphan deletion, `compactMemory`, ledger quarantine-by-rename, trace pruning) — dry-run by default, `--apply` to execute; installer re-runs and fragment removal always stay manual. `cmdHygieneScan` / `cmdHygieneClean`. |
+| `phase-report.cjs` | — | **(v3.15)** Per-phase graphical HTML report + project-level timeline index (`pan-tools report phase <N>` \| `index` \| `all`). Three layers mirroring hud.cjs: `collectPhaseData`/`collectIndexData` (pure `.planning/` reads), `renderPhaseHtml`/`renderIndexHtml` (pure self-contained docs), `cmdReport` (only side-effecting layer). Reuses hud.cjs's rendering foundation verbatim so both surfaces render identically. |
 
 ---
 

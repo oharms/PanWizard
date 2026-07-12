@@ -128,7 +128,8 @@ You have a Django web app and want to add a REST API layer.
 /pan:map-codebase
 ```
 
-PAN spawns six mapper agents that scan the repository in parallel. They
+PAN spawns parallel mapper agents that scan the repository, sharded by focus
+area. They
 catalog models, views, URL patterns, middleware, settings, test structure,
 dependency versions, module relationships, and best practices. The output is
 a structured understanding of what already exists, stored so that subsequent
@@ -273,7 +274,8 @@ When you need to stop mid-session:
 ```
 
 PAN writes current progress, open decisions, and any partial work notes to
-`.planning/state.md` so that `/pan:resume` can pick up cleanly next time.
+a `.continue-here.md` handoff file in the active phase directory so that
+`/pan:resume` can pick up cleanly next time.
 
 ---
 
@@ -299,15 +301,15 @@ parallel sub-agents use lighter ones.
 
 ```
 PAN: Current settings:
-  research_enabled: true
-  plan_check_enabled: true
-  auto_verify: false
+  research: true
+  plan_check: true
+  verifier: false
 
 What would you like to change?
 You: Disable research and plan-check.
 ```
 
-With these off, `plan-phase` skips the four researcher agents and the
+With these off, `plan-phase` skips the researcher agent and the
 plan-checker agent. Planning still happens, but it relies on the model's
 built-in knowledge instead of dedicated research passes.
 

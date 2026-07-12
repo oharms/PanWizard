@@ -117,6 +117,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `hud.cjs` | **(v3.12, ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
 | `skill-align.cjs` | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
 | `hygiene.cjs` | **(v3.13)** Project cleanup + version alignment: `hygiene scan` (version drift per runtime manifest, legacy uppercase filenames, .tmp orphans, memory bloat, poisoned ledgers, stale traces, fragment planning dirs), `hygiene clean [--apply]` (dry-run by default; safe fixes only — renames, compaction, quarantine-by-rename, trace pruning; installer re-runs and fragment removal stay manual). |
+| `phase-report.cjs` | **(v3.15)** Per-phase HTML report + project timeline index: `report phase <N>`, `report index`, `report all` (`--out`/`--open`/`--stdout`). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. |
 
 ---
 
@@ -311,6 +312,9 @@ Quick reference of all CLI commands grouped by category.
 | 183 | `skills align` | Planning (SAD) | skill-align.cjs |
 | 184 | `hygiene scan` | System | hygiene.cjs |
 | 185 | `hygiene clean` | System | hygiene.cjs |
+| 186 | `report phase <N>` | Observability | phase-report.cjs |
+| 187 | `report index` | Observability | phase-report.cjs |
+| 188 | `report all` | Observability | phase-report.cjs |
 
 ---
 
@@ -2426,6 +2430,12 @@ Scheduled, self-resuming bot-army campaigns. PAN is not a daemon: this module ow
 Generates a single self-contained HTML dashboard of the project + bot army (default `.planning/hud.html`). Aggregates existing state — `state.md`, roadmap/phases, the squad registry, the campaign schedule, army worktrees, the cost ledger, `requirements.md`, verification artifacts, and git history — into up to ten panels. It is a read-only **view**: it writes only its own rendered file and creates no new state. Army-only panels (command stack, campaign, safety harness, worktrees) self-hide on plain (non-army) projects. `--out` overrides the path, `--open` launches the default browser, `--stdout` prints HTML instead of writing. The file is dependency-free (inlined CSS, no `<script>`, no network) and identical across all five runtimes. Distinct from the JSON `pan-tools dashboard` command (`state.cjs`), which prints a compact project overview rather than HTML.
 
 **Module:** `hud.cjs`
+
+### `report phase <N> | index | all [--out <file>] [--open] [--stdout]` (v3.15)
+
+Generates self-contained HTML reports for a project's phases, reusing the HUD's rendering. `report phase <N>` writes one phase's report (objective, roadmap position, what changed, verification verdict and gaps) to `.planning/phases/<NN-slug>/<NN>-report.html`; `report index` writes the project timeline to `.planning/report-index.html`, where each row links to a phase report; `report all` regenerates every phase report plus the index in one pass. Like `hud`, these are read-only **views** — every value is read from what PAN already tracks on disk (phase `plan`/`summary`/`verification` artifacts and their frontmatter, `roadmap.md`, and the cost ledger), and the command writes only its rendered file(s), so it can never corrupt planning data. Writes are deterministic: re-running with unchanged phase data rewrites nothing (the volatile generated-at timestamp is ignored when comparing), so reports produce no git churn. `--out` overrides the path, `--open` best-effort launches the default browser, `--stdout` prints HTML instead of writing (for `phase`/`index`). A phase-less (focus-auto) project has nothing to report; `index` exits with a message pointing to `pan-tools hud` instead.
+
+**Module:** `phase-report.cjs`
 
 ### `focus auto`
 

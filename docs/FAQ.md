@@ -153,7 +153,7 @@ Run `/pan:cost report`. Since v3.4, a SubagentStop hook auto-captures every sub-
 
 ### When should I use `/pan:exec-phase --hierarchical`?
 
-Only when the phase has ≥4 autonomous plans that genuinely parallelize and the total work is large enough to amortize the ~20-30% orchestration overhead. `pan-conductor` spawns sub-agents in waves with a strict safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude + Opus 4.8 only; other runtimes silently fall back to flat exec. For single-plan or checkpoint-heavy phases, skip the flag — flat exec is cheaper and more predictable.
+Only when the phase has ≥4 autonomous plans that genuinely parallelize and the total work is large enough to amortize the ~20-30% orchestration overhead. `pan-conductor` spawns sub-agents in waves with a strict safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude + Opus only; other runtimes silently fall back to flat exec. For single-plan or checkpoint-heavy phases, skip the flag — flat exec is cheaper and more predictable.
 
 ### What is `/pan:army` and how is it different from a normal phase?
 
@@ -195,7 +195,7 @@ The `distill` focus-auto category targets **AI-generated code bloat** via a 5-pa
 
 ### What does `/pan:git` give me that raw `git` doesn't?
 
-Phase-aware naming + safety guardrails matching the project's `.claude/commands/commit.md` quality bar. `/pan:git commit --type feat --message "..."` runs deleted-file detection and sensitive-file pattern checks (env, key, secret, token, credentials) before allowing the commit. `/pan:git branch create --phase 3` auto-names the branch `pan/phase-3` per your `phase_branch_template` config. `/pan:git push` validates the remote exists and requires explicit `--force` for force-push. `/pan:git rollback` lists `pan-rollback-*` snapshot tags created by exec-phase and resets to one (with `--dry-run` preview). Subcommands: commit, branch, push, status, log, stash, diff, rollback, tag, sync. Works on any git repo regardless of whether `.planning/` exists.
+Phase-aware naming + safety guardrails matching the project's `.claude/commands/commit.md` quality bar. `/pan:git commit --type feat --message "..."` runs deleted-file detection and sensitive-file pattern checks (env, key, secret, token, credentials) before allowing the commit. `/pan:git branch create --phase 3` auto-names the branch `pan/phase-3`. `/pan:git push` validates the remote exists and requires explicit `--force` for force-push. `/pan:git rollback` lists `pan-rollback-*` snapshot tags created by exec-phase and resets to one (with `--dry-run` preview). Subcommands: commit, branch, push, status, log, stash, diff, rollback, tag, sync. Works on any git repo regardless of whether `.planning/` exists.
 
 ## Customization
 

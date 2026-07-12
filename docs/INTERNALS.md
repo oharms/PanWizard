@@ -207,8 +207,8 @@ PAN uses three profiles to control which model tier each agent type uses. Tiers 
 | Tier | Anthropic | OpenAI | Google | Default |
 |------|-----------|--------|--------|---------|
 | `reasoning` | inherit (Opus) | inherit | inherit | inherit |
-| `mid` | Sonnet | mid | mid | Sonnet |
-| `fast` | Haiku | fast | fast | Haiku |
+| `mid` | Sonnet | mid | gemini-2.5-flash | Sonnet |
+| `fast` | Haiku | fast | gemini-2.5-flash-lite | Haiku |
 
 Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) are supported for backward compatibility.
 
@@ -283,8 +283,8 @@ PAN supports three git branching strategies for project organization.
 | Strategy | When branches are created | Branch template |
 |----------|--------------------------|-----------------|
 | `none` (default) | No branches -- all work on current branch | -- |
-| `phase` | New branch per phase | `pan/{phase}-{slug}` |
-| `milestone` | New branch per milestone | `pan/v{milestone}` |
+| `phase` | New branch per phase | `pan/phase-{phase}-{slug}` |
+| `milestone` | New branch per milestone | `pan/{milestone}-{slug}` |
 
 ### Template Variables
 
@@ -307,8 +307,8 @@ When completing a phase or milestone:
 {
   "git": {
     "branching_strategy": "phase",
-    "branch_template": "pan/{phase}-{slug}",
-    "merge_strategy": "squash"
+    "phase_branch_template": "pan/phase-{phase}-{slug}",
+    "milestone_branch_template": "pan/{milestone}-{slug}"
   }
 }
 ```
@@ -443,6 +443,7 @@ PAN's agents load knowledge from reference files at runtime using `@`-syntax. Th
 | `guardrails.md` (v3.6.0+) | Behavioral guardrails — anti-patterns, Code Preservation, Stop-the-Line | High |
 | `tdd.md` | Test-driven development cycle, when to apply | High |
 | `verification-patterns.md` | Stub detection, wiring checks, verification scripts | High |
+| `handoff-decisions.md` | Decisions-trace schema for planner/executor/verifier handoff | High |
 | `git-integration.md` | Commit strategy, per-task commits, recovery | High |
 | `model-profiles.md` | Agent model selection by profile | High |
 | `questioning.md` | Discussion philosophy, question techniques | High |

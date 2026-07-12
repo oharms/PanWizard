@@ -19,7 +19,7 @@ PAN includes 5 built-in Claude Code hooks that enhance the development experienc
 **What it does:**
 1. Reads the session's context window metrics from Claude Code's environment
 2. Formats a status line showing usage percentage
-3. Writes metrics to a bridge file at `/tmp/claude-ctx-{session_id}.json`
+3. Writes metrics to a bridge file at `<os-tmpdir>/pan-hooks-<uid>/claude-ctx-{session_id}.json` — a per-user `0700` subdirectory of the OS temp dir (`os.tmpdir()`), not literally `/tmp` on non-POSIX hosts such as Windows
 
 The bridge file enables the context monitor to read metrics without coupling to the statusline's execution cycle.
 
@@ -32,6 +32,8 @@ The bridge file enables the context monitor to read metrics without coupling to 
   "timestamp": 1708200000
 }
 ```
+
+> Note: `used_pct` is rescaled so 80% real usage displays as 100% — it will not equal `100 − remaining_percentage`.
 
 ### pan-context-monitor.js
 
@@ -148,7 +150,7 @@ The update check runs once per session and doesn't block tool execution.
 Statusline Hook (pan-statusline.js)
     | writes
     v
-/tmp/claude-ctx-{session_id}.json     (bridge file)
+<os-tmpdir>/pan-hooks-<uid>/claude-ctx-{session_id}.json  (bridge file — not literally /tmp)
     ^ reads
     |
 Context Monitor (pan-context-monitor.js, PostToolUse)
@@ -286,15 +288,18 @@ Hooks receive JSON on stdin with context about the event:
 
 ### Hook Output
 
-Hooks can return JSON on stdout:
+Hooks can return JSON on stdout. For `PostToolUse`, the payload is a nested envelope:
 
 ```json
 {
-  "additionalContext": "Warning: context usage at 72%"
+  "hookSpecificOutput": {
+    "hookEventName": "PostToolUse",
+    "additionalContext": "Warning: context usage at 72%"
+  }
 }
 ```
 
-The `additionalContext` field injects text into the agent's conversation — this is how the context monitor communicates warnings.
+The `additionalContext` field (nested under `hookSpecificOutput`) injects text into the agent's conversation — this is the exact shape the context monitor emits to communicate warnings.
 
 ### Worked Example: Phase Completion Logger
 

@@ -2,7 +2,7 @@
 
 **Last verified:** March 2026
 
-PAN Wizard occupies a unique position in the AI coding tool landscape: it's an **orchestration layer** that works WITH your AI coding tool (Claude Code, OpenCode, Gemini CLI, Codex), not a replacement for it. While most tools try to be the smartest single agent, PAN makes any agent reliable through structured workflows, context management, and verification.
+PAN Wizard occupies a unique position in the AI coding tool landscape: it's an **orchestration layer** that works WITH your AI coding tool (Claude Code, OpenCode, Gemini CLI, Codex, and Copilot CLI), not a replacement for it. While most tools try to be the smartest single agent, PAN makes any agent reliable through structured workflows, context management, and verification.
 
 ---
 
@@ -20,7 +20,7 @@ PAN Wizard occupies a unique position in the AI coding tool landscape: it's an *
 | **Post-Execution Verification** | Auto verifier + human UAT | None | Iterative error-fix | None | Run tests manually | Run tests manually | Auto-fix loop | Auto-fix loop |
 | **Git Integration** | Atomic commits per task | Auto-commit per edit | Basic | Basic | None built-in | Basic | Basic | Basic |
 | **Session Persistence** | state.md + pause/resume + handoff | None | Notepad (manual) | None | Task history | Memories | None | Cloud state |
-| **Cross-Platform Runtime** | Claude Code, OpenCode, Gemini CLI, Codex | Any LLM (BYOK) | Cursor IDE only | VS Code, JetBrains | VS Code | Windsurf IDE only | VS Code, JetBrains, CLI | Cloud only |
+| **Cross-Platform Runtime** | Claude Code, OpenCode, Gemini CLI, Codex, Copilot CLI | Any LLM (BYOK) | Cursor IDE only | VS Code, JetBrains | VS Code | Windsurf IDE only | VS Code, JetBrains, CLI | Cloud only |
 | **Model Flexibility** | Multi-model routing (tier aliases + provider mapping) | Any model (BYOK) | Multi-model + BYOK | Any model + local | Any provider | Multi-model | OpenAI + Anthropic + Google | Proprietary |
 | **Open Source** | Yes (MIT) | Yes (Apache 2.0) | No | Yes (Apache 2.0) | Yes (Apache 2.0) | No | No | No |
 | **Zero Dependencies** | Yes (only Node builtins) | No (Python + deps) | No (Electron) | No (Node + deps) | No (Node + deps) | No (Electron) | No | No |

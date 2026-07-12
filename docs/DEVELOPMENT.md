@@ -252,7 +252,7 @@ Templates in `pan-wizard-core/templates/` scaffold new project files. The `templ
 3. `cmdTemplateSelect()` auto-selects summary template based on plan complexity:
    - **minimal** — ≤2 tasks, ≤3 files, no decisions
    - **standard** — typical plans
-   - **complex** — 6+ files or decisions present
+   - **complex** — 7+ files, 6+ tasks, or decisions present
 
 **Template categories:**
 
@@ -287,4 +287,4 @@ The army turns PAN's agents into a coordinated, role-scoped army. The substrate 
 2. Build hooks: `npm run build:hooks`
 3. Update version in `package.json`
 4. Update `CHANGELOG.md` with new version entry
-5. `npm publish` (triggers `prepublishOnly` which rebuilds hooks)
+5. `npm publish` (triggers `prepublishOnly`, which runs the release-check gates — tests, hook rebuild, npm pack dry-run, etc.)

@@ -921,6 +921,8 @@ This writes a schedule descriptor (`.planning/orchestration/schedule.json`) — 
 
 The file is fully self-contained — send `.planning/hud.html` to anyone and it opens with no dependencies. During a campaign, re-run after each cycle to watch squads, budget, worktrees, and committed output evolve.
 
+**Per-phase reports (`/pan:report`).** Where `/pan:hud` renders the whole project at once, `/pan:report` (`pan-tools report phase <N> | index | all`) reuses the HUD's rendering to produce per-phase HTML reports — one page per phase, plus a project-level timeline index that links them together. Same self-contained, read-only, view-only guarantees as the dashboard.
+
 ### Git Integration
 
 **Commit Format:**
@@ -982,7 +984,7 @@ requirements.md (checklist + traceability table)
     ↓ Traceability table updated: Pending → Complete
 ```
 
-The `complete-phase` command automatically marks requirement IDs as completed in both the checklist and the traceability table.
+When a phase completes (the verify/exec-phase flow), PAN automatically marks that phase's requirement IDs as completed in both the checklist and the traceability table.
 
 ### Global Defaults
 

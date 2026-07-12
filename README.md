@@ -696,7 +696,7 @@ Control which Claude model each agent uses. Balance quality vs token spend.
 
 | Profile | Planning | Execution | Verification |
 |---------|----------|-----------|--------------|
-| `quality` | Opus | Opus | Sonnet |
+| `quality` | Opus | Opus | Opus |
 | `balanced` (default) | Opus | Sonnet | Sonnet |
 | `budget` | Sonnet | Sonnet | Haiku |
 

@@ -38,6 +38,9 @@ plan: "01"
 type: feature|fix|refactor|test|docs
 autonomous: true|false
 wave: 1
+depends_on: []
+files_modified: []
+must_haves: []
 ---
 ```
 
@@ -466,7 +469,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Diagnostic steps:**
 
-1. Check current config: look at `.planning/config.json` for the `git` section
+1. Check current config: look at `.planning/config.json` for the `branching_strategy` and branch template keys
 2. Check all branches: `git branch -a`
 3. Check where the commits are: `git log --all --oneline --graph -20`
 
@@ -474,11 +477,9 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 ```json
 {
-  "git": {
-    "branching_strategy": "phase",
-    "phase_branch_template": "pan/{phase}-{slug}",
-    "milestone_branch_template": "pan/{milestone}"
-  }
+  "branching_strategy": "phase",
+  "phase_branch_template": "pan/phase-{phase}-{slug}",
+  "milestone_branch_template": "pan/{milestone}-{slug}"
 }
 ```
 
@@ -604,7 +605,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
   "model_profile": "balanced",
   "model_overrides": {
     "pan-executor": "opus",
-    "pan-researcher": "haiku"
+    "pan-phase-researcher": "haiku"
   }
 }
 ```

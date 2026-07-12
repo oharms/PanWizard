@@ -102,7 +102,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git branch delete --name featur
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git branch current
 ```
 
-**Phase naming convention:** `pan/phase-{N}` — matches `phase_branch_template` in `.planning/config.json`
+**Phase naming convention:** `pan/phase-{N}` — the branch is named `pan/phase-{N}` directly (hardcoded; not derived from any config template)
 
 ---
 
