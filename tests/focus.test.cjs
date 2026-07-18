@@ -1601,6 +1601,70 @@ describe('focus auto checkpoint commits', () => {
     assert.equal(logAfter, logBefore, 'no new commits should be created');
   });
 
+  test('--update respects commit_docs=false config (M3)', () => {
+    const configPath = path.join(gitDir, '.planning', 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    config.commit_docs = false;
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    execSync('git add .', { cwd: gitDir, stdio: 'pipe' });
+    execSync('git commit -m "config"', { cwd: gitDir, stdio: 'pipe' });
+
+    runPanTools('focus auto --category cleanup', gitDir);
+    fs.writeFileSync(path.join(gitDir, '.planning', 'cycle-result.md'), '# cycle');
+    const logBefore = execSync('git log --oneline', { cwd: gitDir, encoding: 'utf-8' }).trim().split('\n').length;
+    const r = runPanTools(
+      'focus auto --update --items-completed 2 --points-used 5 --tests-before 100 --tests-after 102',
+      gitDir
+    );
+    assert.ok(r.success);
+    const data = JSON.parse(r.output);
+    assert.equal(data.commit_hash, null, 'should not commit when commit_docs=false');
+    const logAfter = execSync('git log --oneline', { cwd: gitDir, encoding: 'utf-8' }).trim().split('\n').length;
+    assert.equal(logAfter, logBefore, 'no new commits should be created');
+  });
+
+  test('--update regenerates + commits phase reports when phase_reports.enabled (M3)', () => {
+    // Opt in and give the project a real phase to report on.
+    const configPath = path.join(gitDir, '.planning', 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    config.workflow = Object.assign({}, config.workflow, { phase_reports: { enabled: true, open: false, theme: 'auto', index: true } });
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    fs.mkdirSync(path.join(gitDir, '.planning', 'phases', '01-scaffold'), { recursive: true });
+    fs.writeFileSync(path.join(gitDir, '.planning', 'phases', '01-scaffold', '01-01-plan.md'), '---\nrequirements: [R1]\n---\n# p');
+    fs.writeFileSync(path.join(gitDir, '.planning', 'phases', '01-scaffold', '01-01-summary.md'), '---\nsubsystem: scaffold\nrequirements-completed: [R1]\n---\n# s');
+    execSync('git add .', { cwd: gitDir, stdio: 'pipe' });
+    execSync('git commit -m "phase"', { cwd: gitDir, stdio: 'pipe' });
+
+    runPanTools('focus auto --category cleanup', gitDir);
+    const r = runPanTools(
+      'focus auto --update --items-completed 1 --points-used 3 --tests-before 100 --tests-after 101',
+      gitDir
+    );
+    assert.ok(r.success, r.error);
+    const data = JSON.parse(r.output);
+    assert.ok(data.commit_hash, 'checkpoint commits');
+    // The report HTML and index were generated and committed as part of the checkpoint.
+    const report = path.join(gitDir, '.planning', 'phases', '01-scaffold', '01-report.html');
+    const index = path.join(gitDir, '.planning', 'report-index.html');
+    assert.ok(fs.existsSync(report), 'per-phase report generated');
+    assert.ok(fs.existsSync(index), 'timeline index generated');
+    const tracked = execSync('git ls-files .planning', { cwd: gitDir, encoding: 'utf-8' });
+    assert.ok(/01-report\.html/.test(tracked), 'report is committed, not left untracked');
+    assert.ok(/report-index\.html/.test(tracked), 'index is committed');
+  });
+
+  test('--update generates no reports when phase_reports disabled (default)', () => {
+    fs.mkdirSync(path.join(gitDir, '.planning', 'phases', '01-scaffold'), { recursive: true });
+    fs.writeFileSync(path.join(gitDir, '.planning', 'phases', '01-scaffold', '01-01-plan.md'), '# p');
+    execSync('git add .', { cwd: gitDir, stdio: 'pipe' });
+    execSync('git commit -m "phase"', { cwd: gitDir, stdio: 'pipe' });
+
+    runPanTools('focus auto --category cleanup', gitDir);
+    runPanTools('focus auto --update --items-completed 1 --points-used 3 --tests-before 100 --tests-after 101', gitDir);
+    assert.ok(!fs.existsSync(path.join(gitDir, '.planning', 'phases', '01-scaffold', '01-report.html')), 'no report when feature off');
+    assert.ok(!fs.existsSync(path.join(gitDir, '.planning', 'report-index.html')), 'no index when feature off');
+  });
+
   test('--update works in non-git dir (no commit, no crash)', () => {
     const noGitDir = createTempProject();
     runPanTools('config-ensure-section', noGitDir);

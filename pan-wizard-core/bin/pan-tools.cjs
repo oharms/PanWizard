@@ -890,6 +890,7 @@ async function main() {
           out: getArgValue(args, '--out'),
           open: args.includes('--open'),
           stdout: args.includes('--stdout'),
+          bundle: args.includes('--bundle'),
         }, raw);
       } else if (subcommand === 'all') {
         phaseReport.cmdReport(cwd, { action: 'all', open: args.includes('--open') }, raw);

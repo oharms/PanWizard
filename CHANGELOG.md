@@ -5,6 +5,18 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.0] - 2026-07-18
+
+### Added — bundle export + focus-auto / army report wiring (`pan-tools report`, M3)
+
+Milestone 3 completes the per-phase report feature: a single-file export form, and automatic generation on the two remaining execution paths (the focus-auto loop and the bot-army campaign). Still opt-in and default-off via `workflow.phase_reports`.
+
+- **`pan-tools report index --bundle`** writes one self-contained `.planning/report-bundle.html` — the timeline plus every phase report inlined under in-page anchors, with no links to sibling files. It's the form to email or attach: a single document that stays whole when moved off-disk. (Regular `report index` still writes the linked, multi-file timeline.)
+- **focus-auto checkpoints regenerate reports.** When `workflow.phase_reports.enabled` is `true`, each focus-auto cycle refreshes the per-phase reports + index before its checkpoint commit, so the committed `.planning/` snapshot carries current HTML. Generation is best-effort (never blocks the checkpoint), never opens a browser, and no-ops for phase-less projects.
+- **focus-auto now honors `commit_docs`.** The auto checkpoint commit was gated only on `focus.auto_commit`; it now also respects the global `commit_docs` switch (`commit_docs: false` hands the `.planning/` commit — and any report regeneration — back to the user), matching the rest of PAN's planning-doc commit path.
+- **army generates reports at INTEGRATE, single-writer index post-merge.** The campaign command now documents generating a mission's per-phase report in its built tree before the squash-merge (so it rides along as a deliverable), and rebuilding the shared timeline index exactly once — from Mission Control, on the integration branch, after the merge lands — so `report-index.html` stays consistent while builds run in parallel worktrees. A worktree never regenerates the shared index.
+- **New export `renderAllToDisk`** on `phase-report.cjs` — a stdout-free, no-browser sibling of `report all` used by the focus-auto checkpoint, so report output is never interleaved into the runner's own JSON.
+
 ## [3.16.0] - 2026-07-18
 
 ### Added — phase reports auto-generate at the verify→complete gate (`pan-tools report`, M2)

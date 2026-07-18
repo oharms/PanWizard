@@ -44,6 +44,7 @@ const cost = require('./cost.cjs');
 
 const REPORT_SUFFIX = '-report.html';
 const INDEX_FILE = 'report-index.html';
+const BUNDLE_FILE = 'report-bundle.html';
 
 // ─── small helpers ─────────────────────────────────────────────────────────────
 
@@ -548,7 +549,8 @@ function indexHero(d) {
   </section>`;
 }
 
-function indexTimeline(d) {
+function indexTimeline(d, hrefFn) {
+  const href = hrefFn || ((p) => p.href);
   const rows = d.phases.map((p, i) => {
     const color = STATUS_DOT[p.status] || '#C9C0AE';
     const isLast = i === d.phases.length - 1;
@@ -560,7 +562,7 @@ function indexTimeline(d) {
     return `
     <div class="trow">
       <div class="rail"><span class="rd" style="background:${color}"></span>${isLast ? '' : `<span class="rl" style="background:${railColor}"></span>`}</div>
-      <a class="tcard" href="${esc(p.href)}">
+      <a class="tcard" href="${esc(href(p))}">
         <div>
           <div class="tt">${esc(p.number)}${p.name ? ' · ' + esc(p.name) : ''}</div>
           <div class="tsub"><span class="mini">${mini}</span><span>${p.plansTotal ? p.plansDone + ' / ' + p.plansTotal + ' plans' : 'no plans'}</span>${p.has_report ? '' : '<span>· report pending</span>'}</div>
@@ -575,6 +577,33 @@ function indexTimeline(d) {
 function renderIndexHtml(d) {
   const body = [indexTopBar(d), indexHero(d), indexTimeline(d)].join('\n');
   return docShell(`PanWizard · ${d.project} — timeline`, body, d.generated_at);
+}
+
+/**
+ * Bundle: the timeline index plus EVERY phase report inlined into one
+ * self-contained document, cross-linked by in-page #phase-NN anchors. Because
+ * navigation is anchors (not sibling files), the links never dangle when the
+ * single file is emailed or copied on its own. (indexData, phaseDatas) are pure.
+ */
+function renderBundleHtml(indexData, phaseDatas) {
+  const anchorHref = (p) => '#phase-' + encodeURIComponent(String(p.number));
+  const sections = (phaseDatas || []).filter(Boolean).map(d => `
+  <section id="phase-${esc(d.phase.number)}" style="margin-top:26px;border-top:1px solid var(--border);padding-top:8px">
+    <div class="crumbs"><a href="#top">↑ back to timeline</a></div>
+    ${reportHero(d)}
+    ${reportMetrics(d)}
+    <div class="grid"><div class="gcol">${reportObjective(d)}</div><div class="gcol">${reportVerification(d)}</div></div>
+    ${reportChanges(d)}
+    ${reportGaps(d)}
+  </section>`).join('\n');
+  const body = [
+    '<span id="top"></span>',
+    indexTopBar(indexData),
+    indexHero(indexData),
+    indexTimeline(indexData, anchorHref),
+    sections,
+  ].filter(Boolean).join('\n');
+  return docShell(`PanWizard · ${indexData.project} — full report`, body, indexData.generated_at);
 }
 
 // ─── side effects (the only impure layer) ────────────────────────────────────────
@@ -667,6 +696,19 @@ function cmdReport(cwd, opts = {}, raw) {
   if (action === 'index') {
     const data = collectIndexData(cwd, { now });
     if (!data) return error('No phases found — nothing to index (phase-less / focus-auto project). Use `pan-tools hud` instead.');
+    if (opts.bundle) {
+      const phaseDatas = data.phases.map(p => collectPhaseData(cwd, p.number, { now })).filter(Boolean);
+      const html = renderBundleHtml(data, phaseDatas);
+      if (opts.stdout) { process.stdout.write(html); return; }
+      const outPath = opts.out ? path.resolve(cwd, opts.out) : path.join(planningPath(cwd), BUNDLE_FILE);
+      const res = writeIfChanged(outPath, html);
+      const opened = opts.open && res.written ? openInBrowser(outPath) : false;
+      return output(
+        { action: 'bundle', phases: phaseDatas.length, path: toPosix(outPath), bytes: Buffer.byteLength(html), written: res.written, opened },
+        raw,
+        `bundle ${res.written ? 'written' : 'unchanged'}: ${toPosix(outPath)}`,
+      );
+    }
     const html = renderIndexHtml(data);
     if (opts.stdout) { process.stdout.write(html); return; }
     const outPath = opts.out ? path.resolve(cwd, opts.out) : path.join(planningPath(cwd), INDEX_FILE);
@@ -680,42 +722,62 @@ function cmdReport(cwd, opts = {}, raw) {
   }
 
   if (action === 'all') {
-    const dirs = listPhaseDirs(cwd);
-    if (!dirs.length) return error('No phases found — nothing to report.');
-    const reports = [];
-    for (const dirName of dirs) {
-      const { number } = parsePhaseDir(dirName);
-      const data = collectPhaseData(cwd, number, { now });
-      if (!data) continue;
-      const outPath = path.join(data.phase.dir, `${data.phase.number}${REPORT_SUFFIX}`);
-      const res = writeIfChanged(outPath, renderPhaseHtml(data));
-      reports.push({ phase: data.phase.number, path: toPosix(outPath), written: res.written });
-    }
-    const idx = collectIndexData(cwd, { now });
-    let index = { path: null, written: false };
-    if (idx) {
-      const outPath = path.join(planningPath(cwd), INDEX_FILE);
-      const res = writeIfChanged(outPath, renderIndexHtml(idx));
-      index = { path: toPosix(outPath), written: res.written };
-    }
+    const res = renderAllToDisk(cwd, { now });
+    if (!res) return error('No phases found — nothing to report.');
     return output(
-      { action, reports, index },
+      { action, reports: res.reports, index: res.index },
       raw,
-      `generated ${reports.length} phase report(s)${index.path ? ' + index' : ''}`,
+      `generated ${res.reports.length} phase report(s)${res.index.path ? ' + index' : ''}`,
     );
   }
 
   return error('Unknown report action. Available: phase <N>, index, all');
 }
 
+/**
+ * Regenerate every phase report + the timeline index straight to disk.
+ * Programmatic sibling of `cmdReport('all')` with NO stdout side effects and
+ * no browser opening — used by focus-auto / army in-tree checkpoints, which
+ * emit their own JSON and must not have report output interleaved into it.
+ * @param {string} cwd
+ * @param {{now?:Date}} opts
+ * @returns {{reports:Array<{phase:string,path:string,written:boolean}>, index:{path:string|null,written:boolean}}|null}
+ *   null when the project has no phases (phase-less / focus-auto-only).
+ */
+function renderAllToDisk(cwd, opts = {}) {
+  const now = opts.now;
+  const dirs = listPhaseDirs(cwd);
+  if (!dirs.length) return null;
+  const reports = [];
+  for (const dirName of dirs) {
+    const { number } = parsePhaseDir(dirName);
+    const data = collectPhaseData(cwd, number, { now });
+    if (!data) continue;
+    const outPath = path.join(data.phase.dir, `${data.phase.number}${REPORT_SUFFIX}`);
+    const res = writeIfChanged(outPath, renderPhaseHtml(data));
+    reports.push({ phase: data.phase.number, path: toPosix(outPath), written: res.written });
+  }
+  const idx = collectIndexData(cwd, { now });
+  let index = { path: null, written: false };
+  if (idx) {
+    const outPath = path.join(planningPath(cwd), INDEX_FILE);
+    const res = writeIfChanged(outPath, renderIndexHtml(idx));
+    index = { path: toPosix(outPath), written: res.written };
+  }
+  return { reports, index };
+}
+
 module.exports = {
   REPORT_SUFFIX,
   INDEX_FILE,
+  BUNDLE_FILE,
   collectPhaseData,
   collectIndexData,
   renderPhaseHtml,
   renderIndexHtml,
+  renderBundleHtml,
   cmdReport,
+  renderAllToDisk,
   // exported for focused unit tests
   resolvePhase,
   extractPhaseGoal,

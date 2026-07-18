@@ -2,7 +2,7 @@
 name: pan:report
 group: Observability
 description: Generate a self-contained HTML report for one phase, or a project-level timeline index linking every phase report
-argument-hint: "phase <N> | index | all [--out <file>] [--open] [--stdout]"
+argument-hint: "phase <N> | index [--bundle] | all [--out <file>] [--open] [--stdout]"
 allowed-tools:
   - Read
   - Bash
@@ -24,7 +24,7 @@ Reports are honest by construction: the `verify reconcile` verdict is shown besi
 
 ```
 pan-tools report phase <N> [--out <file>] [--open] [--stdout]
-pan-tools report index      [--out <file>] [--open] [--stdout]
+pan-tools report index      [--out <file>] [--open] [--stdout] [--bundle]
 pan-tools report all        [--open]
 ```
 
@@ -37,6 +37,7 @@ pan-tools report all        [--open]
 - `--out <file>` — write to a custom path instead of the default (relative paths resolve against the project root).
 - `--open` — best-effort: launch the written file in the default browser (cross-platform; silently no-ops if no opener is available, and never opens when nothing was written).
 - `--stdout` — print the HTML to stdout instead of writing a file (for `phase`/`index`).
+- `--bundle` (on `index`) — emit one self-contained `.planning/report-bundle.html`: the timeline plus every phase report inlined under in-page anchors, with no links to sibling files. This is the form to email or attach — a single file that stays whole when moved off-disk.
 
 **Behaviour worth knowing:**
 - **Deterministic writes.** Re-running with unchanged phase data rewrites nothing (the only volatile value, the generated-at timestamp, is ignored when comparing) — so reports produce no git churn.
@@ -61,7 +62,7 @@ pan-tools report all        [--open]
 
 **Review a phase:** run `pan-tools report phase <N> --open` to see one phase's objective, what changed, and its verification verdict at a glance.
 
-**Share the project:** `pan-tools report index` builds the timeline entry point — send `.planning/report-index.html` and the linked phase files, or open the index and click through.
+**Share the project:** `pan-tools report index` builds the timeline entry point — send `.planning/report-index.html` and the linked phase files, or open the index and click through. To hand someone a single file instead, `pan-tools report index --bundle` inlines every phase into one `.planning/report-bundle.html` that survives being emailed or moved.
 
 **Refresh everything:** `pan-tools report all` after a milestone regenerates every report; unchanged ones are skipped, so only what actually moved is rewritten.
 

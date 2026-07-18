@@ -236,6 +236,23 @@ describe('phase-report — cmdReport via dispatcher', () => {
     assert.match(fs.readFileSync(out, 'utf-8'), /phases\/03-auth-sessions\/03-report\.html/);
   });
 
+  test('report index --bundle writes a single self-contained file with in-page anchors', () => {
+    scaffold();
+    const r = runPanTools('report index --bundle', cwd);
+    assert.equal(r.success, true, r.error);
+    const out = path.join(cwd, '.planning', 'report-bundle.html');
+    assert.ok(fs.existsSync(out), 'report-bundle.html written');
+    const html = fs.readFileSync(out, 'utf-8');
+    // every phase inlined under an anchor, timeline links to anchors (never files)
+    assert.match(html, /id="phase-01"/);
+    assert.match(html, /id="phase-03"/);
+    assert.match(html, /href="#phase-01"/);
+    assert.ok(!/href="phases\//.test(html), 'bundle must not link to sibling files (would dangle when emailed)');
+    assert.ok(!/https?:\/\/|<script/.test(html), 'self-contained');
+    // no separate per-phase files written for a bundle
+    assert.ok(!fs.existsSync(path.join(cwd, '.planning', 'report-index.html')), 'bundle does not also write the index');
+  });
+
   test('report all generates every phase report + index, and all index links resolve on disk', () => {
     scaffold();
     const r = runPanTools('report all', cwd);

@@ -564,12 +564,15 @@
     "updateStateAfterPhaseRemoval:function"
   ],
   "phase-report.cjs": [
+    "BUNDLE_FILE:string",
     "INDEX_FILE:string",
     "REPORT_SUFFIX:string",
     "cmdReport:function",
     "collectIndexData:function",
     "collectPhaseData:function",
     "extractPhaseGoal:function",
+    "renderAllToDisk:function",
+    "renderBundleHtml:function",
     "renderIndexHtml:function",
     "renderPhaseHtml:function",
     "resolvePhase:function",

@@ -809,11 +809,48 @@ function focusAutoUpdate(cwd, raw, getVal) {
   }, raw);
 }
 
+/**
+ * Whether opt-in HTML phase reports are enabled for this project.
+ * Reads the raw config.json (loadConfig doesn't surface the workflow block);
+ * absent / malformed config → disabled.
+ */
+function phaseReportsEnabled(cwd) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(planningPath(cwd), 'config.json'), 'utf-8'));
+    return !!(raw.workflow && raw.workflow.phase_reports && raw.workflow.phase_reports.enabled);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Regenerate every phase report + index as part of a focus-auto checkpoint,
+ * when the feature is enabled. Best-effort and side-effect-light: never opens a
+ * browser, and silently no-ops for phase-less / focus-auto-only projects. The
+ * fresh HTML lands in .planning/ so the checkpoint's `git add` sweeps it in.
+ */
+function maybeRenderPhaseReports(cwd) {
+  if (!phaseReportsEnabled(cwd)) return;
+  try {
+    const { renderAllToDisk } = require('./phase-report.cjs');
+    renderAllToDisk(cwd, {});
+  } catch {
+    // Report generation must never block the checkpoint commit.
+  }
+}
+
 function focusAutoCheckpointCommit(cwd, cycle, run) {
   if (!isGitRepo(cwd)) return null;
   const config = loadConfig(cwd);
   const autoCommit = config.focus && config.focus.auto_commit !== undefined ? config.focus.auto_commit : true;
   if (!autoCommit) return null;
+  // commit_docs is the global switch for committing planning artifacts; focus-auto
+  // is a planning-doc committer, so honor it. commit_docs=false → hands the .planning
+  // commit (and any report regeneration) back to the user.
+  if (config.commit_docs === false) return null;
+  // Enabled projects: refresh the HTML reports before staging so the committed
+  // .planning/ snapshot reflects this cycle.
+  maybeRenderPhaseReports(cwd);
   const status = execGit(cwd, ['status', '--porcelain', PLANNING_DIR + '/']);
   if (status.exitCode !== 0 || !status.stdout) return null;
   execGit(cwd, ['add', PLANNING_DIR + '/']);
