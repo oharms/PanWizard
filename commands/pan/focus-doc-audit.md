@@ -156,7 +156,7 @@ For each target document, extract every verifiable claim.
 | Category | Pattern | Example |
 |----------|---------|---------|
 | **Version claim** | `v1.2.3`, `version 1.2`, `Version: X` | "Currently at v3.1.0" |
-| **Count claim** | Number + noun | "42 test suites", "15 API endpoints" |
+| **Count claim** | Number + noun | "42 database tables", "15 API endpoints" |
 | **File path claim** | Path-like strings | "`src/core/handler.ts`" |
 | **Command claim** | Code block with shell prefix or instruction | "`npm run build`" |
 | **Feature claim** | "supports X", "includes Y", "provides Z" | "Supports hot reloading" |
