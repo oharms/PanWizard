@@ -53,6 +53,8 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       verifier: true,
       nyquist_validation: false,
       phase_record_compact: false,
+      // M2: opt-in per-phase HTML reports at the verify→complete gate.
+      phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },
     parallelization: true,
     brave_search: hasBraveSearch,

@@ -817,3 +817,42 @@ describe('loadConfig build/verification/concurrency keys', () => {
     assert.deepStrictEqual(c.concurrency, { serial_build: false });
   });
 });
+
+describe('config — phase_reports gate (M2)', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  const DEFAULT_PR = { enabled: false, open: false, theme: 'auto', index: true };
+
+  test('config-ensure-section writes the default phase_reports block', () => {
+    const r = runPanTools('config-ensure-section', tmpDir);
+    assert.ok(r.success, r.error);
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'));
+    assert.deepStrictEqual(cfg.workflow.phase_reports, DEFAULT_PR);
+  });
+
+  test('config-get resolves the gate to false by default (opt-in)', () => {
+    runPanTools('config-ensure-section', tmpDir);
+    const r = runPanTools('config-get workflow.phase_reports.enabled', tmpDir);
+    assert.ok(r.success, r.error);
+    assert.strictEqual(r.output.trim(), 'false');
+  });
+
+  test('the shipped template and buildConfigDefaults agree on phase_reports', () => {
+    const tmpl = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'pan-wizard-core', 'templates', 'config.json'), 'utf-8'));
+    runPanTools('config-ensure-section', tmpDir);
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'));
+    assert.deepStrictEqual(tmpl.workflow.phase_reports, DEFAULT_PR, 'template carries the default block');
+    assert.deepStrictEqual(tmpl.workflow.phase_reports, cfg.workflow.phase_reports, 'both default sources agree');
+  });
+
+  test('config-set enables the gate; config-get roundtrips true', () => {
+    runPanTools('config-ensure-section', tmpDir);
+    const setR = runPanTools('config-set workflow.phase_reports.enabled true', tmpDir);
+    assert.ok(setR.success, setR.error);
+    const getR = runPanTools('config-get workflow.phase_reports.enabled', tmpDir);
+    assert.ok(getR.success, getR.error);
+    assert.match(getR.output, /true/);
+  });
+});

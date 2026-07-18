@@ -602,8 +602,24 @@ The CLI handles:
 
 Extract from result: `next_phase`, `next_phase_name`, `is_last_phase`.
 
+**Phase reports (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the self-contained per-phase HTML report — and, when `workflow.phase_reports.index` is `true`, the project timeline index — at this verify→complete gate so they ship with the phase and ride the commit below. Disabled by default; phase-less projects are skipped automatically by `report`. Never opens a browser here (that's reserved for a manual `pan-tools report --open`).
+
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(phase-{X}): complete phase execution" --files .planning/roadmap.md .planning/state.md .planning/requirements.md {phase_dir}/*-verification.md
+REPORT_FILES=""
+if [ "$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.phase_reports.enabled 2>/dev/null || echo false)" = "true" ]; then
+  if node ~/.claude/pan-wizard-core/bin/pan-tools.cjs report phase "${PHASE_NUMBER}" >/dev/null 2>&1; then
+    REPORT_FILES="{phase_dir}/*-report.html"
+    if [ "$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.phase_reports.index 2>/dev/null || echo true)" = "true" ]; then
+      node ~/.claude/pan-wizard-core/bin/pan-tools.cjs report index >/dev/null 2>&1 && REPORT_FILES="$REPORT_FILES .planning/report-index.html"
+    fi
+  fi
+fi
+```
+
+The report files are appended to the completion commit's `--files` list (`$REPORT_FILES`, empty when disabled), so `cmdCommit` still honors `commit_docs` + gitignore + safety checks with no new commit logic:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(phase-{X}): complete phase execution" --files .planning/roadmap.md .planning/state.md .planning/requirements.md {phase_dir}/*-verification.md $REPORT_FILES
 ```
 
 **Circular optimization — finalize trace session:**

@@ -5,6 +5,15 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.0] - 2026-07-18
+
+### Added — phase reports auto-generate at the verify→complete gate (`pan-tools report`, M2)
+
+Milestone 2 of the per-phase report feature: reports now appear as a build deliverable instead of a manual step. Opt-in and default-off, so existing projects are unchanged.
+
+- **New config flag `workflow.phase_reports`** — a boolean or `{ enabled, open, theme, index }` object, defaulting to `{ enabled: false, open: false, theme: "auto", index: true }`. Added to both default sources (`buildConfigDefaults` and the shipped `templates/config.json`), which a test asserts agree.
+- **`exec-phase` gate** — when `workflow.phase_reports.enabled` is `true`, the verify→complete step generates the per-phase HTML report (and, when `index` is true, the project timeline index) and appends them to the existing completion commit's `--files` list, so they ride the same `cmdCommit` that already honors `commit_docs` + gitignore + safety checks. Phase-less projects are skipped automatically; no browser is opened on this path.
+
 ## [3.15.1] - 2026-07-12
 
 ### Fixed
