@@ -1,6 +1,6 @@
 ---
 topic: adversarial-verification
-last_updated: 2026-07-18T08:42:29.851Z
+last_updated: 2026-07-09T14:21:24.882Z
 patterns:
   - id: P-ADV-001
     summary: Two-stage audit: fan out cheap read-only finders, then one independent verifier per finding whose default stance is refute — expect a third to a half of raw findings to die, and action only survivors
@@ -14,10 +14,6 @@ patterns:
     summary: Confirmation requires a REACHABLE trigger on the deployed surface, and severity is calibrated against named prior-round precedents — the recurring false-positive shapes are: unreachable fallback, value nothing consumes, happy-path-only proof, inverted causal mechanism, and code mirroring an authoritative sibling's intended semantics
     promoted_at: 2026-07-09T14:21:24.882Z
     source_experiments: [lending-audit-rounds-3-4]
-  - id: P-FH-007
-    summary: Reproduce the bug with a failing test before building the fix; non-reproduction means stop
-    promoted_at: 2026-07-18T08:42:29.851Z
-    source_experiments: [field-harvest-2026-07]
 ---
 
 # Adversarial Verification (AI-derived)
@@ -47,11 +43,3 @@ patterns:
 **Rule:** A finding is confirmed only with a concrete failing input/state that is reachable on the deployed surface. Check the five false-positive shapes before confirming: (1) is the flagged code reachable? (2) does anything consume the value? (3) is the proof happy-path-only? (4) is the causal mechanism actually as described? (5) does the code intentionally mirror an authoritative sibling? Assign severity by citing a comparable prior finding, not freehand.
 
 **Applies in:** Verifier prompts, audit verdict schemas, severity rubrics for multi-round reviews.
-
-## P-FH-007 — Reproduce the bug with a failing test before building the fix; non-reproduction means stop
-
-**Evidence:** A planned ABI/concurrency fix was authored to eliminate a corruption bug; the first task wrote an aggressive reproduction test, but it passed across hundreds of thousands of iterations because earlier stacked fixes already covered the shape. The premise was formally rejected and the multi-task fix abandoned, with the repro retained as documentation.
-
-**Rule:** Before implementing a fix for a reported bug, first write a test that actually reproduces it on the current tree and confirm it fails. If the bug will not reproduce — because prior stacked fixes already cover that exact shape — the premise is resolved: mark the planned fix superseded and abandon it rather than building speculative machinery for a bug that no longer exists. Keep the (now-passing) repro test as documentation.
-
-**Applies in:** bug-fix workflows; regression triage

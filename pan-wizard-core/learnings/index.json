@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-18T08:42:44.490Z",
+  "generated_at": "2026-07-09T15:40:55.203Z",
   "topics": [
     {
       "name": "experiment-runner",
@@ -99,11 +99,10 @@
       "patterns": [
         "P-ADV-001",
         "P-ADV-002",
-        "P-ADV-003",
-        "P-FH-007"
+        "P-ADV-003"
       ],
-      "size_bytes": 6588,
-      "size_tokens_est": 1647,
+      "size_bytes": 5405,
+      "size_tokens_est": 1352,
       "agent_relevance": {
         "planner": "medium",
         "executor": "low",
@@ -112,31 +111,14 @@
       }
     },
     {
-      "name": "ambient-context",
-      "scope": "universal",
-      "file": "pan-wizard-core/learnings/universal/ambient-context.md",
-      "patterns": [
-        "P-FH-017"
-      ],
-      "size_bytes": 1392,
-      "size_tokens_est": 348,
-      "agent_relevance": {
-        "planner": "low",
-        "executor": "medium",
-        "verifier": "low",
-        "reviewer": "low"
-      }
-    },
-    {
       "name": "atomic-state",
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/atomic-state.md",
       "patterns": [
-        "P-1201",
-        "P-FH-023"
+        "P-1201"
       ],
-      "size_bytes": 2569,
-      "size_tokens_est": 643,
+      "size_bytes": 1593,
+      "size_tokens_est": 399,
       "agent_relevance": {
         "planner": "medium",
         "executor": "high",
@@ -180,22 +162,6 @@
       }
     },
     {
-      "name": "benchmark-attribution",
-      "scope": "universal",
-      "file": "pan-wizard-core/learnings/universal/benchmark-attribution.md",
-      "patterns": [
-        "P-FH-002"
-      ],
-      "size_bytes": 1773,
-      "size_tokens_est": 444,
-      "agent_relevance": {
-        "planner": "low",
-        "executor": "medium",
-        "verifier": "low",
-        "reviewer": "low"
-      }
-    },
-    {
       "name": "binary-io",
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/binary-io.md",
@@ -208,22 +174,6 @@
         "planner": "low",
         "executor": "high",
         "verifier": "medium",
-        "reviewer": "low"
-      }
-    },
-    {
-      "name": "cache-keying",
-      "scope": "universal",
-      "file": "pan-wizard-core/learnings/universal/cache-keying.md",
-      "patterns": [
-        "P-FH-011"
-      ],
-      "size_bytes": 1555,
-      "size_tokens_est": 389,
-      "agent_relevance": {
-        "planner": "low",
-        "executor": "medium",
-        "verifier": "low",
         "reviewer": "low"
       }
     },
@@ -266,32 +216,15 @@
       "file": "pan-wizard-core/learnings/universal/concurrency.md",
       "patterns": [
         "P-1204",
-        "P-NPRS-003",
-        "P-FH-008"
+        "P-NPRS-003"
       ],
-      "size_bytes": 4547,
-      "size_tokens_est": 1137,
+      "size_bytes": 3400,
+      "size_tokens_est": 850,
       "agent_relevance": {
         "planner": "medium",
         "executor": "high",
         "verifier": "high",
         "reviewer": "medium"
-      }
-    },
-    {
-      "name": "connection-pooling",
-      "scope": "universal",
-      "file": "pan-wizard-core/learnings/universal/connection-pooling.md",
-      "patterns": [
-        "P-FH-031"
-      ],
-      "size_bytes": 1853,
-      "size_tokens_est": 464,
-      "agent_relevance": {
-        "planner": "low",
-        "executor": "medium",
-        "verifier": "low",
-        "reviewer": "low"
       }
     },
     {
@@ -328,22 +261,6 @@
       }
     },
     {
-      "name": "dependency-confusion",
-      "scope": "universal",
-      "file": "pan-wizard-core/learnings/universal/dependency-confusion.md",
-      "patterns": [
-        "P-FH-018"
-      ],
-      "size_bytes": 1403,
-      "size_tokens_est": 351,
-      "agent_relevance": {
-        "planner": "low",
-        "executor": "medium",
-        "verifier": "low",
-        "reviewer": "low"
-      }
-    },
-    {
       "name": "design-process",
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/design-process.md",
@@ -364,11 +281,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/empirical-spike.md",
       "patterns": [
-        "P-NPRS-001",
-        "P-FH-001"
+        "P-NPRS-001"
       ],
-      "size_bytes": 3327,
-      "size_tokens_est": 832,
+      "size_bytes": 1898,
+      "size_tokens_est": 475,
       "agent_relevance": {
         "planner": "high",
         "executor": "medium",
@@ -381,11 +297,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/error-handling.md",
       "patterns": [
-        "P-1209",
-        "P-FH-022"
+        "P-1209"
       ],
-      "size_bytes": 2568,
-      "size_tokens_est": 642,
+      "size_bytes": 1726,
+      "size_tokens_est": 432,
       "agent_relevance": {
         "planner": "medium",
         "executor": "high",
@@ -414,12 +329,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/external-tool-truth.md",
       "patterns": [
-        "P-XTT-001",
-        "P-FH-006",
-        "P-FH-014"
+        "P-XTT-001"
       ],
-      "size_bytes": 3961,
-      "size_tokens_est": 991,
+      "size_bytes": 1621,
+      "size_tokens_est": 406,
       "agent_relevance": {
         "planner": "low",
         "executor": "high",
@@ -467,11 +380,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/glob-semantics.md",
       "patterns": [
-        "P-205",
-        "P-FH-019"
+        "P-205"
       ],
-      "size_bytes": 2192,
-      "size_tokens_est": 548,
+      "size_bytes": 1309,
+      "size_tokens_est": 328,
       "agent_relevance": {
         "planner": "low",
         "executor": "medium",
@@ -501,12 +413,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/harness-isolation.md",
       "patterns": [
-        "P-ISO-001",
-        "P-FH-004",
-        "P-FH-033"
+        "P-ISO-001"
       ],
-      "size_bytes": 4260,
-      "size_tokens_est": 1065,
+      "size_bytes": 1736,
+      "size_tokens_est": 434,
       "agent_relevance": {
         "planner": "high",
         "executor": "medium",
@@ -536,11 +446,10 @@
       "file": "pan-wizard-core/learnings/universal/integration-verification.md",
       "patterns": [
         "P-INT-001",
-        "P-INT-002",
-        "P-FH-025"
+        "P-INT-002"
       ],
-      "size_bytes": 4121,
-      "size_tokens_est": 1031,
+      "size_bytes": 3075,
+      "size_tokens_est": 769,
       "agent_relevance": {
         "planner": "high",
         "executor": "low",
@@ -553,11 +462,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/invariants.md",
       "patterns": [
-        "P-901",
-        "P-FH-024"
+        "P-901"
       ],
-      "size_bytes": 2326,
-      "size_tokens_est": 582,
+      "size_bytes": 1118,
+      "size_tokens_est": 280,
       "agent_relevance": {
         "planner": "medium",
         "executor": "high",
@@ -588,13 +496,10 @@
       "patterns": [
         "P-HON-001",
         "P-HON-002",
-        "P-HON-003",
-        "P-FH-003",
-        "P-FH-015",
-        "P-FH-032"
+        "P-HON-003"
       ],
-      "size_bytes": 8636,
-      "size_tokens_est": 2159,
+      "size_bytes": 4975,
+      "size_tokens_est": 1244,
       "agent_relevance": {
         "planner": "medium",
         "executor": "high",
@@ -623,11 +528,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/migration-safety.md",
       "patterns": [
-        "P-MIG-001",
-        "P-FH-028"
+        "P-MIG-001"
       ],
-      "size_bytes": 3337,
-      "size_tokens_est": 835,
+      "size_bytes": 2031,
+      "size_tokens_est": 508,
       "agent_relevance": {
         "planner": "high",
         "executor": "high",
@@ -640,11 +544,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/numeric-edge-cases.md",
       "patterns": [
-        "P-601",
-        "P-FH-009"
+        "P-601"
       ],
-      "size_bytes": 2614,
-      "size_tokens_est": 654,
+      "size_bytes": 1392,
+      "size_tokens_est": 348,
       "agent_relevance": {
         "planner": "low",
         "executor": "high",
@@ -721,13 +624,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/schema-design.md",
       "patterns": [
-        "P-202",
-        "P-FH-020",
-        "P-FH-021",
-        "P-FH-034"
+        "P-202"
       ],
-      "size_bytes": 4574,
-      "size_tokens_est": 1144,
+      "size_bytes": 1273,
+      "size_tokens_est": 319,
       "agent_relevance": {
         "planner": "high",
         "executor": "medium",
@@ -756,12 +656,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/service-security.md",
       "patterns": [
-        "P-SVC-001",
-        "P-FH-016",
-        "P-FH-026"
+        "P-SVC-001"
       ],
-      "size_bytes": 4239,
-      "size_tokens_est": 1060,
+      "size_bytes": 2193,
+      "size_tokens_est": 549,
       "agent_relevance": {
         "planner": "medium",
         "executor": "high",
@@ -775,11 +673,10 @@
       "file": "pan-wizard-core/learnings/universal/single-source-of-truth.md",
       "patterns": [
         "P-SSOT-001",
-        "P-SSOT-002",
-        "P-FH-027"
+        "P-SSOT-002"
       ],
-      "size_bytes": 4805,
-      "size_tokens_est": 1202,
+      "size_bytes": 3647,
+      "size_tokens_est": 912,
       "agent_relevance": {
         "planner": "high",
         "executor": "high",
@@ -808,14 +705,10 @@
       "scope": "universal",
       "file": "pan-wizard-core/learnings/universal/test-integrity.md",
       "patterns": [
-        "P-TI-001",
-        "P-FH-005",
-        "P-FH-012",
-        "P-FH-013",
-        "P-FH-030"
+        "P-TI-001"
       ],
-      "size_bytes": 6324,
-      "size_tokens_est": 1581,
+      "size_bytes": 1915,
+      "size_tokens_est": 479,
       "agent_relevance": {
         "planner": "medium",
         "executor": "high",
@@ -848,12 +741,10 @@
       "file": "pan-wizard-core/learnings/universal/test-strategy.md",
       "patterns": [
         "P-201",
-        "P-701",
-        "P-FH-010",
-        "P-FH-029"
+        "P-701"
       ],
-      "size_bytes": 5006,
-      "size_tokens_est": 1252,
+      "size_bytes": 2648,
+      "size_tokens_est": 662,
       "agent_relevance": {
         "planner": "high",
         "executor": "medium",
@@ -911,9 +802,9 @@
     }
   ],
   "totals": {
-    "topics": 52,
-    "patterns": 127,
-    "size_bytes": 189969,
-    "size_tokens_est": 47510
+    "topics": 47,
+    "patterns": 93,
+    "size_bytes": 148954,
+    "size_tokens_est": 37255
   }
 }

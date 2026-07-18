@@ -1,15 +1,11 @@
 ---
 topic: migration-safety
-last_updated: 2026-07-18T08:42:29.858Z
+last_updated: 2026-07-09T14:04:40.516Z
 patterns:
   - id: P-MIG-001
     summary: Never let unattended startup auto-migrate run destructive or irreversible DDL — a partial apply half-marks migration history and crash-loops the service; gate schema swaps behind a manual, backed-up apply with restore proven on a copy
     promoted_at: 2026-07-09T14:04:40.516Z
     source_experiments: [compliance-army-v1.1]
-  - id: P-FH-028
-    summary: Treat a framework/runtime major upgrade as atomic, leaf-up, no-blanket-suppress
-    promoted_at: 2026-07-18T08:42:29.858Z
-    source_experiments: [field-harvest-2026-07]
 ---
 
 # Migration Safety (AI-derived)
@@ -23,11 +19,3 @@ patterns:
 **Rule:** Unattended auto-migration may only ever apply additive, reversible changes. Destructive or irreversible DDL requires: a manual off-peak apply, a taken-and-TESTED backup (restore proven on a copy first), and an explicit rollback path. Prefer additive discriminator columns over updatable views for type splits — INSERT through a filtered view does not populate the discriminator. Record NO-GO decisions durably so the next campaign does not re-litigate them.
 
 **Applies in:** Database migrations, deploy pipelines, EF/ORM startup hooks, brownfield schema evolution.
-
-## P-FH-028 — Treat a framework/runtime major upgrade as atomic, leaf-up, no-blanket-suppress
-
-**Evidence:** A runtime major-version upgrade was planned as a mandatory sequential grind executed bottom-up, with the analyzer-as-error storm fixed at root cause (per-rule justified suppression only), prior runtime images retained for rollback, and each bulk-delete site re-verified against the ORM's changed conditional-delete contract.
-
-**Rule:** A major framework/runtime upgrade is all-or-nothing (a half-applied upgrade is a broken build), so sequence every item as mandatory and dependency-ordered leaf-up (lowest-level libraries first, then apps, then tests). Do not weaken the strictness that catches breakage: never blanket-suppress newly-promoted compiler warnings-as-errors — fix the root cause or suppress a single rule with written justification. Keep the previous runtime images/artifacts for instant rollback, and re-verify every bulk/ORM operation whose semantics the new major version changed, without weakening any test to make it pass.
-
-**Applies in:** framework/runtime major upgrades
