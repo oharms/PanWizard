@@ -30,7 +30,7 @@ That's it. Your project keeps working. You now have access to several new comman
 | `/pan:mcp-bridge` | v3.3 | Discover available MCP tools + recommend for a phase |
 | `/pan:learn` | v3.5 | Analyze trace events, generate optimization report |
 | `/pan:optimize` | v3.5 | Apply optimizer recommendations, manage trace sessions, view stats |
-| `/pan:git` | v3.5 | Phase-aware git workflow with safety guardrails (10 subcommands) |
+| `/pan:git` | v3.5 | Phase-aware git workflow with safety guardrails (multiple subcommands) |
 
 All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/pan:exec-phase`, `/pan:verify-phase`, etc.) is unchanged.
 

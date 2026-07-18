@@ -553,7 +553,7 @@ You're never locked in. The system adapts.
 
 PAN is not a replacement for your IDE or AI agent — it's the orchestration layer that handles everything *around* them: breaking work into context-safe chunks, researching before planning, verifying after execution, and maintaining state across sessions.
 
-> For the full comparison across 8 tools and 15+ dimensions, see [COMPARISON.md](docs/COMPARISON.md).
+> For the full comparison across the major AI coding tools and many dimensions, see [COMPARISON.md](docs/COMPARISON.md).
 
 ---
 
