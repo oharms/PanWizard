@@ -5,6 +5,42 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.18.0] - 2026-07-19
+
+### Added — PAN-Z: a ZCode-native subsystem (experimental preview)
+
+**PAN-Z** brings the PAN workflow to [ZCode](https://zcode.z.ai), z.ai's GLM-5.2
+coding-agent harness. ZCode has no slash-commands or hooks to host PAN directly, so
+PAN-Z takes the opposite approach: it reuses PAN's engine unchanged and exposes it to
+ZCode over **MCP**. Design verified by a 38-agent adversarial review; the security-
+critical merge gate was then hardened by a second review. Shipped as a **separate,
+opt-in subsystem** (`pan-zcode/`), not wired into the five-runtime installer.
+
+> **ZCode is beta and PAN-Z is a preview.** ZCode's on-disk formats change frequently,
+> and two facts — whether a subagent can call MCP tools, and whether local stdio MCP
+> calls are metered — can only be confirmed on a live ZCode install (the M0 verify
+> spike). Both have documented fallbacks, so the design holds either way. See
+> `pan-zcode/README.md` and `pan-zcode/KNOWN-BETA-RISKS.md`.
+
+- **Zero-dependency MCP bridge** (`pan-zcode/mcp/`) — a hand-rolled JSON-RPC 2.0 stdio
+  server that maps `pan-tools` verbs to MCP tools/resources by spawning the CLI
+  shell-less; the engine (`pan-wizard-core`) is reused byte-for-byte. A hard guardrail
+  prevents ever exposing a force/reset/rebase/push verb.
+- **Model-proof, two-lock merge gate** — `pan_confirm_merge` refuses a protected-branch
+  write unless CI is green, verification passed, and a human-origin, per-request,
+  single-use approval token (env `PAN_MERGE_APPROVAL`) is present; any agent-supplied
+  approval is ignored, approval is bound to the exact staged branch, and only
+  `merge --squash` + `commit` are ever issued. Server-side branch protection is the
+  documented second lock for ZCode's Full Access mode.
+- **Deterministic orchestrator** — a pure `next-action` state machine with safety caps,
+  a regression circuit-breaker, and the human gate as a hard barrier.
+- **Content port + bundle installer** — Claude agents → ZCode subagents (drops `Task`
+  for no-nesting; maps PAN tiers to `inherit`), and `pan-zcode/bin/install-zcode.js`
+  assembles the agents + MCP config into a `--target` dir (refusing to write inside the
+  source repo) to finish setup via ZCode's own Import.
+- **Design specs** for both this subsystem and GLM-via-existing-runtimes are recorded
+  under `docs/specs/`.
+
 ## [3.17.0] - 2026-07-18
 
 ### Added — bundle export + focus-auto / army report wiring (`pan-tools report`, M3)

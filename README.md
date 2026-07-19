@@ -201,6 +201,29 @@ npm run test:all        # All tests (unit + scenario)
 
 </details>
 
+<details>
+<summary><strong>Experimental: ZCode support (preview) — ZCode is beta</strong></summary>
+
+**PAN-Z** is an experimental, separate subsystem that brings the PAN workflow to
+[ZCode](https://zcode.z.ai), z.ai's GLM coding-agent harness. ZCode has no
+slash-commands or hooks to host PAN directly, so PAN-Z instead exposes PAN's engine to
+ZCode over **MCP**: PAN's agents become ZCode subagents, and the deterministic engine —
+including a model-proof human merge gate — is reached as MCP tools.
+
+> **ZCode is beta**, and its on-disk formats change frequently. PAN-Z is a **preview**:
+> two facts (whether a subagent can call MCP tools, and whether local MCP calls are
+> metered) can only be confirmed on a live ZCode install. See
+> [`pan-zcode/README.md`](pan-zcode/README.md) and
+> [`pan-zcode/KNOWN-BETA-RISKS.md`](pan-zcode/KNOWN-BETA-RISKS.md).
+
+```bash
+# From an installed pan-wizard package, build the ZCode bundle into a target dir
+node "$(npm root -g)/pan-wizard/pan-zcode/bin/install-zcode.js" --target ./zcode-bundle
+# then finish setup inside ZCode per the generated INSTALL-ZCODE.md
+```
+
+</details>
+
 ### Recommended: Skip Permissions Mode
 
 PAN is designed for frictionless automation. Run Claude Code with:

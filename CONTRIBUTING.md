@@ -64,8 +64,9 @@ Output goes to `hooks/dist/`.
 ```
 pan-wizard/
   bin/                  # Installer entry point (install.js)
-  commands/pan/         # 38 command .md files (Claude Code format)
-  agents/               # 11 agent .md files
+  commands/pan/         # command .md files (Claude Code format)
+  agents/               # agent .md files
+  pan-zcode/            # Experimental: ZCode subsystem (MCP bridge; ZCode is beta)
   pan-wizard-core/      # Core library
     bin/lib/            # CJS modules (config, state, init, verify, etc.)
     bin/pan-tools.cjs   # CLI tool for commands/agents to call
