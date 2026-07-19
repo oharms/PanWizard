@@ -811,6 +811,20 @@ Copilot CLI uses different tool names than Claude Code. The installer maps them 
 | TodoWrite | todo |
 | Task (Agent) | agent |
 
+### Experimental: ZCode via the PAN-Z MCP bridge (preview)
+
+The five runtimes above are reached by install-time **format conversion** — the same
+command/agent content, rewritten per runtime. [ZCode](https://zcode.z.ai) (z.ai's GLM
+harness, **beta**) can't host that: it has no custom slash-commands, hooks, or project
+config. So **PAN-Z** (`pan-zcode/`) takes the inverse approach — instead of converting
+content *into* ZCode, it exposes PAN's engine *to* ZCode over **MCP**. A zero-dependency
+JSON-RPC stdio server spawns `pan-tools` verbs as MCP tools/resources; PAN's agents are
+ported to ZCode subagents; and the human merge gate + orchestrator move into deterministic
+MCP tools. It is a **separate, opt-in subsystem with its own installer**
+(`pan-zcode/bin/install-zcode.js`) — deliberately **not** a sixth target of `bin/install.js`.
+As a preview against a fast-moving Beta, its ZCode-runtime behaviors are gated behind an
+empirical verify spike (see `pan-zcode/KNOWN-BETA-RISKS.md`).
+
 ---
 
 ## Key Design Decisions

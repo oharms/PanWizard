@@ -57,15 +57,15 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 41 |
 | References (`pan-wizard-core/references/*.md`) | 15 |
-| Unit test files (`tests/*.test.cjs`) | 87 |
+| Unit test files (`tests/*.test.cjs`) | 90 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 35 |
-| Total tests (npm run test:all) | 3189 |
-| Total test suites | 681 |
+| Total tests (npm run test:all) | 3235 |
+| Total test suites | 691 |
 | Hooks (`hooks/*.js`) | 5 |
-| Specs (`docs/specs/*.md`) | 42 |
+| Specs (`docs/specs/*.md`) | 44 |
 | ADRs (`docs/decisions/ADR-*.md`) | 39 |
 
-These are reflective of `main` at v3.17.0. They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
+These are reflective of `main` at v3.18.0. They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
 
 ---
 
@@ -133,6 +133,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `commands/pan/*.md` — Command definitions (copied by installer)
 - `agents/*.md` — Agent definitions (copied by installer)
 - `hooks/*.js` — Hooks (source, built → `hooks/dist/`)
+- `pan-zcode/*` — **Experimental (preview):** ZCode-native subsystem. A zero-dep MCP bridge (`pan-zcode/mcp/`) wraps `pan-tools` for z.ai's ZCode harness (beta); its own installer (`pan-zcode/bin/install-zcode.js`) is separate from `bin/install.js` and is NOT a 6th runtime of the main installer. See `pan-zcode/README.md`.
 
 ### Tests
 
