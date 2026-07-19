@@ -21,23 +21,34 @@ pan-zcode/mcp  (this subsystem)  a thin, zero-dep bridge — verbs → MCP tools
 pan-wizard-core  (reused as-is)  the deterministic engine; .planning/ stays the state store
 ```
 
-## Status — M1 (bridge core)
+## Status — M1–M5 built (M0 is the human verify spike)
 
-- `mcp/tool-registry.cjs` — pure map of safe `pan-tools` verbs → MCP tools/resources, with a
-  hard guardrail against ever exposing a force/reset/rebase/push verb.
-- `mcp/server.cjs` — a **zero-dependency** JSON-RPC 2.0 stdio MCP server (hand-rolled to keep
-  PAN's zero-runtime-dep charter). Read verbs are MCP resources; actionable verbs are tools with
-  accurate `readOnlyHint` / `destructiveHint`. The child process is launched shell-less
-  (`execFile`, argv array) and every tool argument is validated to a strict shape.
+- **M1 — bridge core.** `mcp/tool-registry.cjs` (pure verb→tool/resource map, with a hard
+  guardrail against exposing a force/reset/rebase/push verb) + `mcp/server.cjs` (a
+  **zero-dependency** JSON-RPC 2.0 stdio MCP server; reads → resources, actions → tools with
+  accurate hints; shell-less `execFile` spawn; `@file:` overflow protocol; protocol-version
+  negotiation; strict per-arg validation).
+- **M2 — determinism grafts.** `mcp/merge-gate.cjs` (two-step, model-proof merge: a human-origin
+  env token that ignores agent-supplied approval; never force/reset/push) + `mcp/orchestrator.cjs`
+  (the deterministic `next-action` state machine with safety caps + regression circuit-breaker),
+  exposed as native MCP tools via `mcp/native-tools.cjs`.
+- **M3 — content port.** `lib/convert-agent.cjs` — Claude agents → ZCode subagents (reusing the
+  installer's frontmatter helpers): drops `Task` (no nesting), maps PAN tiers → `inherit`,
+  preserves the body; plus a command → skill wrapper.
+- **M4 — bundle + install.** `bin/install-zcode.js` — assembles `agents/` + `pan-mcp.json` +
+  manifest + `INSTALL-ZCODE.md` into a `--target` dir; refuses to write inside the source repo;
+  drives ZCode's own Import to finish.
+- **M5 — hardening + docs.** Full test matrix + [`KNOWN-BETA-RISKS.md`](KNOWN-BETA-RISKS.md)
+  (the beta-churn ledger + the M0 go/no-go questions).
 
-Tests: `tests/pan-zcode-mcp.test.cjs`.
+Tests: `tests/pan-zcode-mcp.test.cjs`, `tests/pan-zcode-orchestration.test.cjs`,
+`tests/pan-zcode-install.test.cjs`.
 
-## Not yet built
+## Still pending — M0 (needs a real ZCode install)
 
-- **M0** — a go/no-go verify spike on a real ZCode install (can a subagent call MCP? are local
-  stdio calls metered?). These two facts can only be settled empirically.
-- **M2** — `merge-gate.cjs` (token-gated, model-proof merge) + `orchestrator.cjs` (`next-action`).
-- **M3–M5** — agent/command → subagent/skill port, plugin bundle + pull-based install, hardening.
+Two go/no-go facts can only be settled empirically: **can a subagent call MCP tools?** and **are
+local stdio MCP calls metered?** Both have folded-in fallbacks (see `KNOWN-BETA-RISKS.md`), so the
+design holds either way — but confirm them before relying on the richer paths.
 
 ## Zero dependencies
 

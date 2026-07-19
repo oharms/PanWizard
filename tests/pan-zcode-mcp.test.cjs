@@ -21,10 +21,10 @@ function fakeSpawn(recorder, out = '{"ok":true}') {
 }
 
 describe('pan-zcode registry', () => {
-  test('every tool has name/verb/description/inputSchema and boolean hints', () => {
+  test('every tool has a verb OR a handler, plus description/inputSchema and boolean hints', () => {
     for (const t of reg.TOOLS) {
       assert.match(t.name, /^pan_[a-z_]+$/);
-      assert.ok(t.verb && t.description && t.inputSchema, `${t.name} well-formed`);
+      assert.ok((t.verb || typeof t.handler === 'function') && t.description && t.inputSchema, `${t.name} well-formed`);
       assert.equal(typeof t.readOnly, 'boolean');
       assert.equal(typeof t.destructive, 'boolean');
     }
@@ -34,9 +34,9 @@ describe('pan-zcode registry', () => {
     }
   });
 
-  test('no tool or resource exposes a history-rewriting / force git verb', () => {
+  test('no spawn-backed verb exposes a history-rewriting / force git op', () => {
     for (const entry of [...reg.TOOLS, ...reg.RESOURCES]) {
-      assert.ok(!reg.FORBIDDEN_VERB.test(entry.verb), `verb "${entry.verb}" must not be exposed`);
+      if (entry.verb) assert.ok(!reg.FORBIDDEN_VERB.test(entry.verb), `verb "${entry.verb}" must not be exposed`);
     }
     // and the guard actually bites
     assert.ok(reg.FORBIDDEN_VERB.test('push'));
@@ -44,8 +44,10 @@ describe('pan-zcode registry', () => {
     assert.ok(reg.FORBIDDEN_VERB.test('reset'));
   });
 
-  test('no M1 tool is destructive (gated mutators arrive in M2)', () => {
-    assert.ok(reg.TOOLS.every((t) => t.destructive === false));
+  test('the only destructive tool is the gated merge; all spawn (M1) tools are non-destructive', () => {
+    assert.ok(reg.SPAWN_TOOLS.every((t) => t.destructive === false));
+    const destructive = reg.TOOLS.filter((t) => t.destructive).map((t) => t.name);
+    assert.deepEqual(destructive, ['pan_confirm_merge']);
   });
 });
 

@@ -94,10 +94,24 @@ function toMcpResource(r) {
  * @param {{panToolsPath?:string, cwd?:string, spawnImpl?:Function}} opts
  *   spawnImpl(nodeArgs)->{ok,stdout,stderr} is injectable for tests.
  */
+/** Shell-less git executor bound to a cwd, for native merge-gate tools. */
+function makeDefaultGit(cwd) {
+  return function git(gitArgs) {
+    try {
+      const stdout = execFileSync('git', gitArgs, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { ok: true, stdout: String(stdout).trim(), stderr: '' };
+    } catch (e) {
+      return { ok: false, stdout: '', stderr: e.stderr ? String(e.stderr).trim() : (e.message || 'git failed') };
+    }
+  };
+}
+
 function createServer(opts = {}) {
   const panToolsPath = opts.panToolsPath || process.env.PAN_TOOLS_PATH || defaultPanToolsPath();
   const cwd = opts.cwd || process.env.PAN_PROJECT_ROOT || process.cwd();
   const spawn = opts.spawnImpl || defaultSpawn;
+  const gitImpl = opts.gitImpl || makeDefaultGit(cwd);
+  const env = opts.env || process.env;
 
   function runVerb(verb, extraArgs) {
     // Defense in depth: the verb always comes from the registry, but re-check the
@@ -119,6 +133,17 @@ function createServer(opts = {}) {
   function callTool(name, input) {
     const tool = reg.byToolName[name];
     if (!tool) return { error: { code: -32602, message: `Unknown tool: ${name}` } };
+    // Native, in-process tools (orchestrator / merge gate) run a handler; a thrown
+    // Error means bad params (-32602), matching the spawn-tool validation path.
+    if (typeof tool.handler === 'function') {
+      try {
+        const out = tool.handler({ cwd, input: input || {}, env, gitImpl });
+        const text = (out && out.text != null) ? out.text : JSON.stringify(out && out.json);
+        return { result: { content: [{ type: 'text', text }], isError: !!(out && out.isError) } };
+      } catch (e) {
+        return { error: { code: -32602, message: String((e && e.message) || e) } };
+      }
+    }
     let extra;
     try { extra = tool.args ? tool.args(input || {}) : []; }
     catch (e) { return { error: { code: -32602, message: String((e && e.message) || e) } }; }

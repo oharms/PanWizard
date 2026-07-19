@@ -36,8 +36,8 @@ const RESOURCES = [
   { uri: 'pan://progress', name: 'Progress',      verb: 'progress', description: 'Requirement and plan completion progress.' },
 ];
 
-/** Actionable verbs → MCP tools. M1 exposes only read / safe-write verbs. */
-const TOOLS = [
+/** Actionable pan-tools verbs → MCP tools (each spawns `node pan-tools.cjs <verb>`). */
+const SPAWN_TOOLS = [
   {
     name: 'pan_resolve_model', title: 'Resolve model for an agent', verb: 'resolve-model',
     description: 'Resolve the model tier/id PAN would use for an agent under the active profile.',
@@ -77,12 +77,18 @@ const TOOLS = [
  */
 const FORBIDDEN_VERB = /(^|-)(push|reset|rebase|force)($|-)/;
 
+// Native, in-process tools (M2: orchestrator + merge gate) join the spawn-backed
+// tools into one advertised list. Required after SPAWN_TOOLS/FORBIDDEN_VERB so the
+// native module (which imports nothing back from here) composes cleanly — no cycle.
+const { NATIVE_TOOLS } = require('./native-tools.cjs');
+const TOOLS = [...SPAWN_TOOLS, ...NATIVE_TOOLS];
+
 const byToolName = Object.create(null);
 for (const t of TOOLS) byToolName[t.name] = t;
 const byResourceUri = Object.create(null);
 for (const r of RESOURCES) byResourceUri[r.uri] = r;
 
 module.exports = {
-  TOOLS, RESOURCES, byToolName, byResourceUri, FORBIDDEN_VERB,
+  TOOLS, SPAWN_TOOLS, NATIVE_TOOLS, RESOURCES, byToolName, byResourceUri, FORBIDDEN_VERB,
   AGENT_RE, PHASE_RE, QUERY_RE, str,
 };
