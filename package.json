@@ -56,7 +56,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^3.0.0"
   },
   "scripts": {
     "build:hooks": "node scripts/build-hooks.js",
