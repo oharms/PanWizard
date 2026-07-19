@@ -57,9 +57,31 @@ MCP tools, and whether local stdio MCP calls are metered. Until confirmed, the p
 Agent makes every pan-mcp call.
 `;
 
+/** Real path of the nearest EXISTING ancestor of p, with the not-yet-created tail re-attached. */
+function realpathNearest(p) {
+  const tail = [];
+  let cur = path.resolve(p);
+  for (;;) {
+    try {
+      const real = fs.realpathSync(cur);
+      return tail.length ? path.join(real, ...tail) : real;
+    } catch {
+      const parent = path.dirname(cur);
+      if (parent === cur) return path.resolve(p); // hit the root; nothing existed
+      tail.unshift(path.basename(cur));
+      cur = parent;
+    }
+  }
+}
+
 function assertNotInSourceRepo(destDir, repoRoot) {
-  const d = path.resolve(destDir);
-  const r = path.resolve(repoRoot);
+  // Resolve symlinks/junctions (a --target under a junction into the repo would else
+  // slip past) and case-fold on case-insensitive filesystems (NTFS/APFS) so a
+  // case-variant path can't bypass the guard.
+  const ci = process.platform === 'win32' || process.platform === 'darwin';
+  const norm = (p) => { const r = realpathNearest(p); return ci ? r.toLowerCase() : r; };
+  const d = norm(destDir);
+  const r = norm(repoRoot);
   if (d === r || d.startsWith(r + path.sep)) {
     throw new Error('Refusing to write the PAN-Z bundle inside the PAN source repo. Choose a --target outside it.');
   }

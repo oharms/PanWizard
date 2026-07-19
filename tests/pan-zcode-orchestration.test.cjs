@@ -83,11 +83,11 @@ describe('merge-gate decision logic', () => {
     } finally { cleanup(cwd); }
   });
 
-  test('a human token that matches the request id, with CI+verify, allows the merge', () => {
+  test('the per-request token, with CI+verify, allows the merge of the staged branch', () => {
     const cwd = createTempProject();
     try {
       const rec = gate.requestMerge(cwd, { branch: 'army/ok', ci_green: true, verify_pass: true });
-      const v = gate.evaluateMerge(cwd, { branch: 'army/ok' }, { PAN_MERGE_APPROVAL: rec.id });
+      const v = gate.evaluateMerge(cwd, { branch: 'army/ok' }, { PAN_MERGE_APPROVAL: rec.approval_token });
       assert.equal(v.allowed, true);
       assert.deepEqual(v.reasons, []);
     } finally { cleanup(cwd); }
@@ -97,11 +97,41 @@ describe('merge-gate decision logic', () => {
     const cwd = createTempProject();
     try {
       gate.requestMerge(cwd, { branch: 'army/ok', ci_green: true, verify_pass: true });
-      const stale = gate.evaluateMerge(cwd, { branch: 'army/ok' }, { PAN_MERGE_APPROVAL: 'some-other-id' });
+      const stale = gate.evaluateMerge(cwd, { branch: 'army/ok' }, { PAN_MERGE_APPROVAL: 'some-other-token' });
       assert.equal(stale.allowed, false);
       // Even if the agent passes its own "approval", it is never consulted:
       const forged = gate.evaluateMerge(cwd, { branch: 'army/ok', approved: true, approval_token: 'yes' }, {});
       assert.equal(forged.allowed, false);
+    } finally { cleanup(cwd); }
+  });
+
+  test('approval is bound to the EXACT branch — a look-alike that slugifies the same is refused', () => {
+    const cwd = createTempProject();
+    try {
+      // 'cleanup/docs' and 'cleanup-docs' collapse to the same file slug but are different branches.
+      const rec = gate.requestMerge(cwd, { branch: 'cleanup/docs', ci_green: true, verify_pass: true });
+      const v = gate.evaluateMerge(cwd, { branch: 'cleanup-docs' }, { PAN_MERGE_APPROVAL: rec.approval_token });
+      assert.equal(v.allowed, false);
+      assert.ok(v.reasons.includes('branch_mismatch'), 'a look-alike branch cannot ride a token approved for another');
+    } finally { cleanup(cwd); }
+  });
+
+  test('the human token is single-use — a re-requested merge needs fresh approval (no replay)', () => {
+    const cwd = createTempProject();
+    try {
+      const rec1 = gate.requestMerge(cwd, { branch: 'army/re', ci_green: true, verify_pass: true });
+      const env = { PAN_MERGE_APPROVAL: rec1.approval_token };
+      const git = () => ({ ok: true, stdout: '', stderr: '' });
+      assert.equal(gate.confirmMerge(cwd, { branch: 'army/re' }, env, git).merged, true);
+      assert.ok(!('PAN_MERGE_APPROVAL' in env), 'token consumed on a successful merge');
+      // Agent re-stages the same branch with new (unreviewed) commits → a fresh token.
+      const rec2 = gate.requestMerge(cwd, { branch: 'army/re', ci_green: true, verify_pass: true });
+      assert.notEqual(rec2.approval_token, rec1.approval_token);
+      // Replaying the OLD token cannot approve the new request…
+      const replay = gate.evaluateMerge(cwd, { branch: 'army/re' }, { PAN_MERGE_APPROVAL: rec1.approval_token });
+      assert.equal(replay.allowed, false);
+      // …only fresh human approval of the NEW token works.
+      assert.equal(gate.evaluateMerge(cwd, { branch: 'army/re' }, { PAN_MERGE_APPROVAL: rec2.approval_token }).allowed, true);
     } finally { cleanup(cwd); }
   });
 
@@ -116,7 +146,7 @@ describe('merge-gate decision logic', () => {
       assert.equal(denied.merged, false);
       assert.equal(gitCalls.length, 0);
       // Allowed: token present → merge + commit, nothing else.
-      const ok = gate.confirmMerge(cwd, { branch: 'army/ok' }, { PAN_MERGE_APPROVAL: rec.id }, gitImpl);
+      const ok = gate.confirmMerge(cwd, { branch: 'army/ok' }, { PAN_MERGE_APPROVAL: rec.approval_token }, gitImpl);
       assert.equal(ok.merged, true);
       const verbs = gitCalls.map((a) => a[0]);
       assert.deepEqual(verbs, ['merge', 'commit']);
