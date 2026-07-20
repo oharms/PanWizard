@@ -51,7 +51,7 @@ jobs:
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@f779452ac5af1c261dce0346a8f964149f49322b # v3.27.5
+        uses: github/codeql-action/init@7188fc363630916deb702c7fdcf4e481b751f97a # v3.27.5
         with:
           languages: ${{ matrix.language }}
           # security-extended adds rules above the default ruleset (no perf hit
