@@ -2492,7 +2492,7 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
           console.log(`
   ${yellow}ℹ${reset} PAN's multi-agent workflows are tuned for frontier reasoning models. Default model "${modelField}" lacks: ${missing}.
      Features degrade gracefully, but for best results select claude-fable-5 (PAN's recommended flagship — deepest
-     long-horizon reasoning for the bot army) or claude-opus-4-8 (same 1M context at half the cost).`);
+     long-horizon reasoning for the bot army), or an Opus-tier model (claude-opus-5 / claude-opus-4-8) at lower cost.`);
         }
       }
     } catch {

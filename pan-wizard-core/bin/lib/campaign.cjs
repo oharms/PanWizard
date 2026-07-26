@@ -76,6 +76,9 @@ function writeSchedule(cwd, opts, now) {
     source: opts.source ?? existing.source ?? 'backlog',
     cadence,
     daily_budget: opts.daily_budget != null ? Number(opts.daily_budget) : (existing.daily_budget ?? 300),
+    // Advisory by default: the daily budget is tracked + surfaced but does not block
+    // a due run unless explicitly enforced.
+    enforce_budget: opts.enforce_budget != null ? Boolean(opts.enforce_budget) : (existing.enforce_budget ?? false),
     enabled: opts.enabled != null ? Boolean(opts.enabled) : (existing.enabled ?? true),
     paused: opts.paused != null ? Boolean(opts.paused) : (existing.paused ?? false),
     next_due: existing.next_due ?? at.toISOString(),
@@ -108,7 +111,7 @@ function isRunDue(schedule, now) {
   const spent = spentToday(schedule, at);
   if (!schedule.enabled) return { due: false, reason: 'disabled', next_due: schedule.next_due, spent_today: spent };
   if (schedule.paused) return { due: false, reason: 'paused', next_due: schedule.next_due, spent_today: spent };
-  if (schedule.daily_budget != null && spent >= schedule.daily_budget) {
+  if (schedule.enforce_budget && schedule.daily_budget != null && spent >= schedule.daily_budget) {
     return { due: false, reason: 'budget_exhausted_today', next_due: schedule.next_due, spent_today: spent };
   }
   const due = new Date(schedule.next_due);

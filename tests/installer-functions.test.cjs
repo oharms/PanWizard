@@ -646,6 +646,16 @@ describe('detectModelCapabilities', () => {
     assert.deepEqual(r, { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' });
   });
 
+  test('claude-opus-5 is recognized (no false "lacks 1M/thinking" warning on the flagship)', () => {
+    const r = lib.detectModelCapabilities('claude-opus-5');
+    assert.deepEqual(r, { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' });
+  });
+
+  test('claude-sonnet-5 is recognized as a 1M mid-tier model', () => {
+    const r = lib.detectModelCapabilities('claude-sonnet-5');
+    assert.deepEqual(r, { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' });
+  });
+
   test('opus-4-8 has all capabilities including 1M', () => {
     const r = lib.detectModelCapabilities('claude-opus-4-8');
     assert.deepEqual(r, { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' });

@@ -64,15 +64,24 @@ describe('campaign — schedule + due', () => {
     assert.equal(c.isRunDue(c.readSchedule(cwd), T0).reason, 'paused');
   });
 
-  test('daily budget exhaustion blocks further runs same day', () => {
+  test('daily budget is advisory by default — an exhausted budget does NOT block a due run', () => {
     c.writeSchedule(cwd, { cadence: 'hourly', daily_budget: 100 }, T0);
     c.recordRun(cwd, { items_landed: 1, points_used: 100 }, new Date('2026-06-12T09:30:00Z'));
     const s = c.readSchedule(cwd);
     const later = new Date('2026-06-12T11:00:00Z'); // past hourly next_due, same UTC day
     const d = c.isRunDue(s, later);
+    assert.equal(d.due, true, 'budget over-run is an indication, not a blocker, by default');
+    assert.equal(d.spent_today, 100, 'spend is still tracked + surfaced');
+  });
+
+  test('daily budget blocks only when explicitly enforced (enforce_budget:true)', () => {
+    c.writeSchedule(cwd, { cadence: 'hourly', daily_budget: 100, enforce_budget: true }, T0);
+    c.recordRun(cwd, { items_landed: 1, points_used: 100 }, new Date('2026-06-12T09:30:00Z'));
+    const s = c.readSchedule(cwd);
+    const later = new Date('2026-06-12T11:00:00Z');
+    const d = c.isRunDue(s, later);
     assert.equal(d.due, false);
     assert.equal(d.reason, 'budget_exhausted_today');
-    assert.equal(d.spent_today, 100);
   });
 
   test('budget resets next day', () => {

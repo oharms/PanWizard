@@ -33,7 +33,7 @@ This command runs improvement campaigns on the **host project's source code** �
 <completion_contract>
 A campaign is complete when ANY stop condition is met:
 1. Max cycles reached (--max-cycles, default 10)
-2. Total budget exhausted (--total-budget, default 200)
+2. Total budget exhausted (--total-budget) — **advisory by default**: tracked and surfaced but does NOT stop the run unless `--enforce-budget` (or config `budget.enforce: true`) is set
 3. Scan returns zero items for the selected category
 4. Context window drops below 25% (CRITICAL threshold)
 5. User sends /pan:focus-auto --stop
@@ -100,7 +100,8 @@ Wait for the user's reply before proceeding. Do not guess or pick a default cate
 | `--mode` | category-dependent | bugfix, balanced, features, full |
 | `--budget` | category-dependent | Points per cycle (5-100) |
 | `--max-cycles` | 10 | Maximum iterations (1-50) |
-| `--total-budget` | 500 | Cumulative points cap (5-5000) |
+| `--total-budget` | 500 | Cumulative point budget (5-5000). Advisory by default (tracked/surfaced, not a stop). |
+| `--enforce-budget` | off | Make `--total-budget` a hard stop again (also settable via config `budget.enforce: true`). |
 | `--continue` | — | Resume stopped/interrupted run |
 | `--stop` | — | Gracefully stop active run |
 | `--status` | — | Show current campaign progress |

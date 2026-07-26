@@ -1458,8 +1458,19 @@ describe('cmdFocusAuto state machine', () => {
     assert.equal(data.stop_reason, 'max_cycles');
   });
 
-  test('--update detects budget_cap stop', () => {
+  test('budget is advisory by default — an over-budget cycle does NOT stop the run', () => {
     runPanTools('focus auto --category cleanup --total-budget 10', tmpDir);
+    const r = runPanTools(
+      'focus auto --update --items-completed 3 --points-used 15 --tests-before 100 --tests-after 100',
+      tmpDir
+    );
+    assert.ok(r.success);
+    const data = JSON.parse(r.output);
+    assert.notEqual(data.stop_reason, 'budget_cap', 'budget over-run is an indication, not a stop, by default');
+  });
+
+  test('--enforce-budget makes the budget a hard stop again', () => {
+    runPanTools('focus auto --category cleanup --total-budget 10 --enforce-budget', tmpDir);
     const r = runPanTools(
       'focus auto --update --items-completed 3 --points-used 15 --tests-before 100 --tests-after 100',
       tmpDir

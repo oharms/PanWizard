@@ -863,7 +863,9 @@ function focusAutoCheckpointCommit(cwd, cycle, run) {
 
 function determineStopReason(cycle, run) {
   if (cycle.tests_after < cycle.tests_before) return 'regression';
-  if (run.totals.points_used >= run.total_budget) return 'budget_cap';
+  // Budget is advisory by default — it only STOPS the run when explicitly enforced.
+  // Otherwise the overage is tracked/surfaced (indication) and the loop continues.
+  if (run.budget_enforce && run.totals.points_used >= run.total_budget) return 'budget_cap';
   if (run.totals.cycles_completed >= run.max_cycles) return 'max_cycles';
   if (cycle.items_completed === 0) {
     // Security category gets a descriptive stop reason rather than generic zero_completed
@@ -929,6 +931,10 @@ function focusAutoInit(cwd, raw, getVal, hasFlag) {
   const budget = Number(getVal('--budget', String(defaults.budget)));
   const maxCycles = Number(getVal('--max-cycles', String(DEFAULT_MAX_CYCLES)));
   const totalBudget = Number(getVal('--total-budget', String(DEFAULT_TOTAL_BUDGET)));
+  // Budget is advisory by default (tracked + surfaced, never a hard stop). Enforce
+  // only when the user opts in via config `budget.enforce` or `--enforce-budget`.
+  const budgetConfig = loadConfig(cwd).budget || {};
+  const budgetEnforce = hasFlag('--enforce-budget') || budgetConfig.enforce === true;
 
   if (!FOCUS_MODES.includes(mode)) return error(`Mode must be one of: ${FOCUS_MODES.join(', ')}`);
   if (budget < BUDGET_MIN || budget > BUDGET_MAX) return error(`Budget must be between ${BUDGET_MIN} and ${BUDGET_MAX}`);
@@ -947,6 +953,7 @@ function focusAutoInit(cwd, raw, getVal, hasFlag) {
     budget_per_cycle: budget,
     max_cycles: maxCycles,
     total_budget: totalBudget,
+    budget_enforce: budgetEnforce,
     priority_range: category ? CATEGORY_PRIORITY_RANGE[category] : { min: 0, max: 6 },
     deep_review_enabled: hasFlag('--deep-review'),
     tests_baseline: null,

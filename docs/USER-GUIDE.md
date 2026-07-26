@@ -581,22 +581,23 @@ PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-s
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
 | pan-planner | reasoning | reasoning | mid |
-| pan-roadmapper | reasoning | mid | mid |
-| pan-executor | reasoning | mid | mid |
-| pan-phase-researcher | reasoning | mid | fast |
-| pan-project-researcher | reasoning | mid | fast |
-| pan-research-synthesizer | reasoning | mid | fast |
-| pan-debugger | reasoning | mid | mid |
-| pan-document_code | reasoning | fast | fast |
-| pan-verifier | reasoning | mid | fast |
-| pan-plan-checker | reasoning | mid | fast |
-| pan-integration-checker | reasoning | mid | fast |
-| pan-reviewer | reasoning | fast | fast |
+| pan-roadmapper | reasoning | reasoning | mid |
+| pan-executor | reasoning | reasoning | mid |
+| pan-phase-researcher | reasoning | reasoning | fast |
+| pan-project-researcher | reasoning | reasoning | fast |
+| pan-research-synthesizer | reasoning | reasoning | fast |
+| pan-debugger | reasoning | reasoning | mid |
+| pan-document_code | reasoning | reasoning | fast |
+| pan-verifier | reasoning | reasoning | fast |
+| pan-plan-checker | reasoning | reasoning | fast |
+| pan-integration-checker | reasoning | reasoning | fast |
+| pan-reviewer | reasoning | reasoning | fast |
 
-**Profile philosophy:**
-- **quality** -- Reasoning tier for all agents. Use when quota is available and the work is critical.
-- **balanced** -- Reasoning only for planning, mid for execution, fast for read-only tasks. The default for good reason.
-- **budget** -- Mid for code-writing agents, fast for research and verification. Use for high-volume work or less critical phases.
+**Profile philosophy (cost reset):**
+- **quality** and **balanced** -- Every agent runs on the `reasoning` tier, i.e. **`inherit` — the model you launched with**. PAN respects your model choice by default and does not silently demote agents to cheaper models; context isolation (each subagent in its own window), not a weaker model, is what keeps the main conversation clean.
+- **budget** -- The opt-in cheap mode: mid for code-writing agents, fast for research and verification. Choose it explicitly for high-volume or less-critical work. Cheapness is opt-in, not the default.
+
+> Model tiering is **advisory** (it powers `/pan:cost` and per-invocation hints). Native Claude Code delegation uses each agent file's static `model:` — unset means `inherit`. Three security agents deliberately pin `model: opus` in their own frontmatter.
 
 ### Routing Strategies
 
@@ -900,7 +901,7 @@ The same caps that bound hierarchical exec bound the campaign — delegation-dep
 /pan:army "burn down the v1 backlog" --schedule daily --daily-budget 200
 ```
 
-This writes a schedule descriptor (`.planning/orchestration/schedule.json`) — PAN does **not** run itself in the background (it's not a daemon). You wire an external trigger that polls `pan-tools campaign due` and runs `/pan:army --continue` when it reports due: a host scheduler (Claude Code routines / cron / scheduled tasks), a `/loop`, or simply the next time you open the project (a due campaign is surfaced as a nudge). Each day's run stops at `--daily-budget` and resumes the next day. Manage it with `pan-tools campaign status` (active/paused, spent today, next-due) and `campaign schedule --pause | --resume | --disable`.
+This writes a schedule descriptor (`.planning/orchestration/schedule.json`) — PAN does **not** run itself in the background (it's not a daemon). You wire an external trigger that polls `pan-tools campaign due` and runs `/pan:army --continue` when it reports due: a host scheduler (Claude Code routines / cron / scheduled tasks), a `/loop`, or simply the next time you open the project (a due campaign is surfaced as a nudge). The `--daily-budget` is advisory by default (it surfaces the day's spend); set `budget.enforce` / `enforce_budget` if you want it to actually pause the day's run. Manage it with `pan-tools campaign status` (active/paused, spent today, next-due) and `campaign schedule --pause | --resume | --disable`.
 
 **The one thing scheduling never changes:** the merge to a protected branch stays an `always-ask` human gate. A scheduled campaign runs the backlog down to staged, reviewed, green PRs unattended — and waits for you at every merge. Autonomy runs up to the irreversible step, a human at the step.
 

@@ -15,7 +15,9 @@
  * are reproducible.
  */
 
-const DEFAULT_CAPS = { maxCycles: 25, budget: Infinity };
+// Budget is advisory by default (enforceBudget:false) — it never stops the loop
+// unless the caller opts in. maxCycles remains a hard safety stop.
+const DEFAULT_CAPS = { maxCycles: 25, budget: Infinity, enforceBudget: false };
 const PHASE_NEXT = {
   none: 'plan',
   researched: 'plan',
@@ -47,7 +49,7 @@ function nextAction(state, caps) {
     return { action: 'stop', reason: 'regression', done: true };
   }
   if ((state.cycles || 0) >= c.maxCycles) return { action: 'stop', reason: 'max_cycles', done: true };
-  if ((state.points_used || 0) >= c.budget) return { action: 'stop', reason: 'budget_cap', done: true };
+  if (c.enforceBudget && (state.points_used || 0) >= c.budget) return { action: 'stop', reason: 'budget_cap', done: true };
 
   // The human merge gate is a barrier: while a merge awaits approval, do nothing else.
   if (state.awaiting_approval) return { action: 'await_approval', reason: 'human_gate', done: false };

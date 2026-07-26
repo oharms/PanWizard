@@ -1016,8 +1016,17 @@ function detectModelCapabilities(modelName) {
   const n = modelName.toLowerCase();
 
   // Anthropic Claude family
-  if (n.includes('fable')) {
+  if (n.includes('fable') || n.includes('mythos')) {
     return { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' };
+  }
+  // Claude 5 family (Opus 5, Sonnet 5) — 1M context, extended thinking, prompt caching.
+  // Without this, `claude-opus-5` falls through to `unknown` and the installer prints
+  // a FALSE "your model lacks 1M context / extended thinking" warning on the flagship.
+  if (n.includes('opus-5')) {
+    return { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' };
+  }
+  if (n.includes('sonnet-5')) {
+    return { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' };
   }
   if (n.includes('opus-4-8') || n.includes('opus-4.8')
     || n.includes('opus-4-7') || n.includes('opus-4.7')
