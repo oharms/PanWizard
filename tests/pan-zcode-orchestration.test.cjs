@@ -48,9 +48,12 @@ describe('orchestrator.nextAction', () => {
     assert.equal(r.reason, 'regression');
   });
 
-  test('safety caps: max_cycles and budget both stop the loop', () => {
+  test('max_cycles is a hard stop; budget is advisory unless enforced', () => {
     assert.equal(nextAction({ cycles: 25, phases: phases(['planned']) }, { maxCycles: 25 }).reason, 'max_cycles');
-    assert.equal(nextAction({ points_used: 200, phases: phases(['planned']) }, { budget: 200 }).reason, 'budget_cap');
+    // Budget over-run does NOT stop by default (advisory) …
+    assert.notEqual(nextAction({ points_used: 200, phases: phases(['planned']) }, { budget: 200 }).reason, 'budget_cap');
+    // … it stops only when the caller opts in.
+    assert.equal(nextAction({ points_used: 200, phases: phases(['planned']) }, { budget: 200, enforceBudget: true }).reason, 'budget_cap');
   });
 
   test('an explicit abort outranks everything', () => {

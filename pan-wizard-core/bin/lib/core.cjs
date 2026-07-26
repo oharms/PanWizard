@@ -47,34 +47,44 @@ const COST_MULTIPLIERS = { reasoning: 15, mid: 3, fast: 1 };
 
 // ─── Model Profile Table ─────────────────────────────────────────────────────
 
+// COST RESET (2026-07): quality + balanced (the default) both resolve to the
+// `reasoning` tier for EVERY agent — i.e. the DEFAULT model you launched with
+// (`inherit`). PAN no longer silently demotes agents to cheaper models; context
+// isolation (each subagent runs in its own window), not a cheaper model, is what
+// keeps the main conversation clean. Cheapness is now OPT-IN: choose the `budget`
+// profile (the only column that still down-tiers) or pin a specific agent via
+// config `model_overrides`. The 3 security agents additionally pin `model: opus`
+// in their own frontmatter (a native, deliberate exception). resolve-model /
+// MODEL_PROFILES is advisory + cost-estimation; native Claude Code delegation
+// reads each agent file's static `model:` (unset → inherit).
 const MODEL_PROFILES = {
   // Original planning/execution agents (pre-v3.0)
   'pan-planner':              { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
-  'pan-roadmapper':           { quality: 'reasoning', balanced: 'mid',      budget: 'mid' },
-  'pan-executor':             { quality: 'reasoning', balanced: 'mid',      budget: 'mid' },
-  'pan-phase-researcher':     { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-project-researcher':   { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-research-synthesizer': { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-debugger':             { quality: 'reasoning', balanced: 'mid',      budget: 'mid' },
-  'pan-document_code':        { quality: 'reasoning', balanced: 'fast',     budget: 'fast' },
-  'pan-verifier':             { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-plan-checker':         { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-integration-checker':  { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-reviewer':             { quality: 'reasoning', balanced: 'fast',     budget: 'fast' },
+  'pan-roadmapper':           { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
+  'pan-executor':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
+  'pan-phase-researcher':     { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-project-researcher':   { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-research-synthesizer': { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-debugger':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
+  'pan-document_code':        { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-verifier':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-plan-checker':         { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-integration-checker':  { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-reviewer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   // Spec B v2 agents (v3.0–v3.4) — added v3.7.5 to close MODEL_PROFILES drift
   'pan-conductor':            { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
-  'pan-counterfactual':       { quality: 'reasoning', balanced: 'mid',      budget: 'mid' },
-  'pan-hardener':             { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-meta-reviewer':        { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-knowledge':            { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-previewer':            { quality: 'reasoning', balanced: 'fast',     budget: 'fast' },
+  'pan-counterfactual':       { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
+  'pan-hardener':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-meta-reviewer':        { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-knowledge':            { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-previewer':            { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   // v3.5 agents
-  'pan-optimizer':            { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
-  'pan-distiller':            { quality: 'reasoning', balanced: 'fast',     budget: 'fast' },
+  'pan-optimizer':            { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-distiller':            { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   // v3.7.0 self-improvement loop — observation-only watchdog
-  'pan-experiment-runner':    { quality: 'reasoning', balanced: 'fast',     budget: 'fast' },
+  'pan-experiment-runner':    { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   // ADR-0033 bot-army — Release squad
-  'pan-release':              { quality: 'reasoning', balanced: 'mid',      budget: 'fast' },
+  'pan-release':              { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
 };
 
 // ─── Effort Profiles (2026-06, adaptive-thinking era) ───────────────────────
@@ -279,7 +289,7 @@ function loadConfig(cwd) {
       verifier: get('verifier', { section: 'workflow', field: 'verifier' }) ?? defaults.verifier,
       parallelization,
       brave_search: get('brave_search') ?? defaults.brave_search,
-      budget: parsed.budget || { default_points: 50, micro_threshold_tasks: 3, micro_threshold_files: 2 },
+      budget: parsed.budget || { default_points: 50, micro_threshold_tasks: 3, micro_threshold_files: 2, enforce: false },
       commit: parsed.commit || { safety_checks: true, conventional_types: true, sensitive_patterns: ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'] },
       execution: parsed.execution || { default_mode: 'wave_order', rollback_snapshots: true, error_pattern_learning: true },
       focus: parsed.focus || { auto_commit: true },

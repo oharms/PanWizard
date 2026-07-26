@@ -62,6 +62,10 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       default_points: 50,
       micro_threshold_tasks: 3,
       micro_threshold_files: 2,
+      // Budget is ADVISORY by default: point/spend caps are tracked and surfaced
+      // (HUD, telemetry) but never STOP a run. Set enforce:true (or pass
+      // --enforce-budget) to make the cap a hard stop again.
+      enforce: false,
     },
     commit: {
       safety_checks: true,

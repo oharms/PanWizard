@@ -33,7 +33,7 @@ This command runs improvement campaigns on the **host project's source code** â€
 <completion_contract>
 A campaign is complete when ANY stop condition is met:
 1. Max cycles reached (--max-cycles, default 10)
-2. Total budget exhausted (--total-budget, default 200)
+2. Total budget exhausted (--total-budget) â€” **advisory by default**: tracked and surfaced but does NOT stop the run unless `--enforce-budget` (or config `budget.enforce: true`) is set
 3. Scan returns zero items for the selected category
 4. Context window drops below 25% (CRITICAL threshold)
 5. User sends /pan:focus-auto --stop

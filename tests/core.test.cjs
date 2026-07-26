@@ -320,12 +320,12 @@ describe('resolve-model command', () => {
     cleanup(tmpDir);
   });
 
-  test('known agent type returns model for default balanced profile', () => {
+  test('known agent type inherits the default model in the balanced profile (cost reset)', () => {
     const result = runPanTools('resolve-model pan-executor', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    assert.strictEqual(output.model, 'sonnet', 'pan-executor balanced profile should be sonnet');
+    assert.strictEqual(output.model, 'inherit', 'pan-executor balanced profile inherits the main model after the cost reset');
     assert.strictEqual(output.profile, 'balanced');
     assert.ok(!output.error, 'should not have error field');
     assert.ok(!output.unknown_agent, 'known agent should not have unknown_agent flag');
@@ -366,7 +366,7 @@ describe('resolve-model command', () => {
   test('raw flag outputs plain model name', () => {
     const result = runPanTools('resolve-model pan-executor --raw', tmpDir);
     assert.ok(result.success, `Command failed: ${result.error}`);
-    assert.strictEqual(result.output, 'sonnet');
+    assert.strictEqual(result.output, 'inherit');
   });
 });
 
@@ -1112,13 +1112,22 @@ describe('resolveModelInternal', () => {
     assert.ok(['inherit', 'sonnet', 'haiku'].includes(result), 'should return valid model tier from balanced profile');
   });
 
-  test('pan-reviewer resolves to haiku in balanced profile', () => {
+  test('pan-reviewer inherits the default model in balanced profile (cost reset)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify({ model_profile: 'balanced' })
     );
     const result = resolveModelInternal(tmpDir, 'pan-reviewer');
-    assert.strictEqual(result, 'haiku');
+    assert.strictEqual(result, 'inherit');
+  });
+
+  test('pan-reviewer resolves to haiku in the opt-in budget profile', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ model_profile: 'budget' })
+    );
+    const result = resolveModelInternal(tmpDir, 'pan-reviewer');
+    assert.strictEqual(result, 'haiku', 'cheapness is still available on demand via budget');
   });
 
   test('pan-reviewer resolves to inherit (opus) in quality profile', () => {
@@ -1130,31 +1139,31 @@ describe('resolveModelInternal', () => {
     assert.strictEqual(result, 'inherit');
   });
 
-  test('forces reasoning tier when context_estimate exceeds 1M threshold', () => {
+  test('forces reasoning tier when context_estimate exceeds 1M threshold (budget profile)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
-      JSON.stringify({ model_profile: 'balanced' })
+      JSON.stringify({ model_profile: 'budget' })
     );
-    // pan-reviewer is haiku in balanced — big context should override to inherit (reasoning).
+    // pan-reviewer is fast in budget — big context should override up to inherit (reasoning).
     const result = resolveModelInternal(tmpDir, 'pan-reviewer', { context_estimate: 900000 });
     assert.strictEqual(result, 'inherit');
   });
 
-  test('upgrades fast tier to mid when thinking required', () => {
+  test('upgrades fast tier to mid when thinking required (budget profile)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
-      JSON.stringify({ model_profile: 'balanced' })
+      JSON.stringify({ model_profile: 'budget' })
     );
     const result = resolveModelInternal(tmpDir, 'pan-reviewer', { needs_thinking: true });
     assert.strictEqual(result, 'sonnet');
   });
 
-  test('downgrades mid to fast when cache warm + small context + no thinking', () => {
+  test('downgrades mid to fast when cache warm + small context + no thinking (budget profile)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
-      JSON.stringify({ model_profile: 'balanced' })
+      JSON.stringify({ model_profile: 'budget' })
     );
-    // pan-executor is 'mid' in balanced. With cache warm + small ctx → fast.
+    // pan-executor is 'mid' in budget. With cache warm + small ctx → fast.
     const result = resolveModelInternal(tmpDir, 'pan-executor', {
       cache_warm: true,
       context_estimate: 10000,
@@ -1436,13 +1445,13 @@ describe('resolveModelInternal routing', () => {
   beforeEach(() => { tmpDir = createTempProject(); });
   afterEach(() => cleanup(tmpDir));
 
-  test('static strategy returns same as before (backward compat)', () => {
+  test('static strategy returns the balanced-profile model (inherit after reset)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'config.json'),
       JSON.stringify({ model_profile: 'balanced', routing: { strategy: 'static' } })
     );
     const result = resolveModelInternal(tmpDir, 'pan-executor');
-    assert.strictEqual(result, 'sonnet');
+    assert.strictEqual(result, 'inherit');
   });
 
   test('per-agent override takes precedence over routing strategy', () => {
@@ -1523,12 +1532,12 @@ describe('estimateCostMultiplier', () => {
     }
   });
 
-  test('quality is more expensive than balanced, balanced more than budget', () => {
+  test('quality and balanced cost the same (both inherit after reset); budget is cheaper', () => {
     const q = estimateCostMultiplier('quality');
     const b = estimateCostMultiplier('balanced');
     const bg = estimateCostMultiplier('budget');
-    assert.ok(q.average > b.average, 'quality should cost more than balanced');
-    assert.ok(b.average > bg.average, 'balanced should cost more than budget');
+    assert.strictEqual(q.average, b.average, 'quality and balanced both inherit the main model after the cost reset');
+    assert.ok(b.average > bg.average, 'the opt-in budget profile still costs less');
   });
 });
 
@@ -1629,8 +1638,8 @@ describe('resolveModelInternal per-phase override', () => {
 
   test('falls back to profile when phase has no model_tier', () => {
     const result = resolveModelInternal(tmpDir, 'pan-executor', { phaseNum: 3 });
-    // pan-executor balanced = mid → sonnet
-    assert.strictEqual(result, 'sonnet', 'should fall back to profile-based resolution');
+    // pan-executor balanced = reasoning → inherit (cost reset)
+    assert.strictEqual(result, 'inherit', 'should fall back to profile-based resolution');
   });
 
   test('per-agent override still takes precedence over per-phase', () => {

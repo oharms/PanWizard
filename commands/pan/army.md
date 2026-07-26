@@ -78,13 +78,13 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 |------|---------|--------|
 | `--source` | `backlog` | Work selection (delegates to focus-auto): `backlog` = ranked roadmap/requirements items; `scan` = category code-scan. |
 | `--max-cycles` | 5 | Mission items landed before stopping. |
-| `--total-budget` | 300 | Cumulative point ceiling. |
+| `--total-budget` | 300 | Cumulative point budget. **Advisory by default** — tracked/surfaced but not a hard stop unless `--enforce-budget` / config `budget.enforce: true`. |
 | `--squads` | all | Restrict to a subset, e.g. `--squads architecture,build,quality`. |
 | `--no-build-worktrees` | off | Build in the main tree instead of branch-per-agent worktrees (small/serial projects). |
 | `--push` | off | Push approved merges to origin (still human-gated). |
 | `--clean-seal` | off | One clean build + full verification after the last item (commands from config). |
 | `--schedule` | off | Arm a self-resuming campaign at this cadence (`hourly`/`daily`/`weekly`/`Nh`/`Nd`) instead of running once — writes the schedule descriptor (ADR-0034). Pair with `--daily-budget`. |
-| `--daily-budget` | 300 | Per-day point ceiling for a scheduled campaign; the day's run stops when reached, resumes next day. |
+| `--daily-budget` | 300 | Per-day point budget for a scheduled campaign. Advisory by default (an indicator of the day's spend); it only pauses the day's run when `budget.enforce`/`enforce_budget` is set. |
 | `--dry-run` | off | Plan + squad delegation preview only; STOP. |
 | `--continue` / `--stop` / `--status` | — | Resume / halt / report from `.planning/orchestration/` + focus-auto state. |
 
@@ -141,14 +141,14 @@ PAN is not a daemon — it cannot wake itself while the session is closed. `--sc
 - **Arm:** `/pan:army "<goal>" --schedule daily --daily-budget 200` writes `.planning/orchestration/schedule.json` (cadence, daily budget, next-due) instead of running once.
 - **The trigger (you wire one):** a host scheduler (Claude Code routines / cron / scheduled-tasks) or a `/loop` runs `pan-tools campaign due` and, when it reports due, invokes `/pan:army --continue`. On next session open, a due campaign is surfaced as a nudge.
 - **Resume (`--continue`):** read the schedule + `.planning/orchestration/` + focus-auto state. If `campaign due` is true and the day's `--daily-budget` isn't spent, run the next mission(s), then `campaign record-run` (advances next-due, accrues the day's spend). If not due or budget-spent, report next-due and STOP.
-- **Bounded spend:** the per-day budget caps each day's run; the per-run `--total-budget` and the conductor caps still bound each cycle. A scheduled campaign runs the backlog down to staged, reviewed, green PRs over days — and still waits for a human at every merge.
+- **Bounded spend:** point budgets (`--total-budget`, `--daily-budget`) are **advisory indicators by default** — they're tracked and surfaced, not hard stops, unless `budget.enforce` / `--enforce-budget` is set. The real bounds are `--max-cycles`, the conductor caps, the abort file, and the human merge gate at every integrate. A scheduled campaign runs the backlog down to staged, reviewed, green PRs over days.
 
 Manage it: `pan-tools campaign status` (active/paused, spent today, next-due), `campaign schedule --pause` / `--resume` / `--disable`.
 
 ---
 
 ## Completion contract
-The campaign is complete when ANY holds: `--max-cycles` reached · `--total-budget` exhausted · backlog empty · abort file present · context < 25% · a mission cannot pass Quality and can't be cleanly reverted (HARD STOP — preserve state, report). Always run `--clean-seal` (unless omitted) after the last item.
+The campaign is complete when ANY holds: `--max-cycles` reached · backlog empty · abort file present · context < 25% · a mission cannot pass Quality and can't be cleanly reverted (HARD STOP — preserve state, report). (Budget exhaustion is advisory by default — a stop condition only when `budget.enforce`/`--enforce-budget` is set.) Always run `--clean-seal` (unless omitted) after the last item.
 
 ## NEVER DO
 - Let Mission Control write code, or let a squad agent spawn further agents (depth cap).

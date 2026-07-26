@@ -5,6 +5,18 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.0] - 2026-07-26
+
+### Changed — cost reset: quality-by-default, budget is now advisory
+
+PAN was designed when the scarce resource was context and the expensive move was using a big model. Both premises changed: subagents run in isolated context windows (isolation, not a cheaper model, is what keeps the main conversation clean), and current models make quality-by-default the right posture. This release resets PAN's cost behavior to respect the model you launched with.
+
+- **Default model is now `inherit` for every agent.** `MODEL_PROFILES` no longer demotes agents to cheaper tiers in the default (`balanced`) profile — `quality` and `balanced` both resolve to the `reasoning` tier (i.e. `inherit`, the main conversation's model). Cheapness is **opt-in**: choose the `budget` profile (the only column that still down-tiers) or pin an agent via config `model_overrides`. The three security agents still deliberately pin `model: opus` in their own frontmatter. (Model tiering was already advisory for native Claude Code delegation, which reads each agent file's static `model:`; this makes the advisory layer honest.)
+- **Budget is advisory by default — an indicator, not a blocker.** Point budgets (`--total-budget`, `--daily-budget`) are tracked and surfaced but no longer stop a run. Enforce a hard cap explicitly with the new `budget.enforce: true` config (or `--enforce-budget` on `focus-auto`, `enforce_budget` on a campaign schedule). The real bounds remain `--max-cycles`, the conductor caps, the abort file, and the human merge gate.
+- **Opus 5 recognized.** `detectModelCapabilities` now knows `claude-opus-5` and `claude-sonnet-5` (1M context, extended thinking, prompt caching), so the installer no longer prints a false "your model lacks 1M context / extended thinking" warning on the flagship and recommend a downgrade.
+
+Docs (USER-GUIDE, AGENTS model-profile tables, army/focus-auto budget language) updated to match.
+
 ## [3.18.0] - 2026-07-19
 
 ### Added — PAN-Z: a ZCode-native subsystem (experimental preview)

@@ -617,34 +617,34 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
 | pan-planner | reasoning | reasoning | mid |
-| pan-roadmapper | reasoning | mid | mid |
-| pan-executor | reasoning | mid | mid |
-| pan-phase-researcher | reasoning | mid | fast |
-| pan-project-researcher | reasoning | mid | fast |
-| pan-research-synthesizer | reasoning | mid | fast |
-| pan-debugger | reasoning | mid | mid |
-| pan-document_code | reasoning | fast | fast |
-| pan-verifier | reasoning | mid | fast |
-| pan-plan-checker | reasoning | mid | fast |
-| pan-integration-checker | reasoning | mid | fast |
-| pan-reviewer | reasoning | fast | fast |
+| pan-roadmapper | reasoning | reasoning | mid |
+| pan-executor | reasoning | reasoning | mid |
+| pan-phase-researcher | reasoning | reasoning | fast |
+| pan-project-researcher | reasoning | reasoning | fast |
+| pan-research-synthesizer | reasoning | reasoning | fast |
+| pan-debugger | reasoning | reasoning | mid |
+| pan-document_code | reasoning | reasoning | fast |
+| pan-verifier | reasoning | reasoning | fast |
+| pan-plan-checker | reasoning | reasoning | fast |
+| pan-integration-checker | reasoning | reasoning | fast |
+| pan-reviewer | reasoning | reasoning | fast |
 | pan-conductor (v3.4+) | reasoning | reasoning | mid |
-| pan-counterfactual (v3.3+) | reasoning | mid | mid |
-| pan-hardener (v3.2+) | reasoning | mid | fast |
-| pan-meta-reviewer (v3.2+) | reasoning | mid | fast |
-| pan-knowledge (v3.2+) | reasoning | mid | fast |
-| pan-previewer (v3.1+) | reasoning | fast | fast |
-| pan-optimizer (v3.5+) | reasoning | mid | fast |
-| pan-distiller (v3.5+) | reasoning | fast | fast |
-| pan-experiment-runner | reasoning | fast | fast |
-| pan-release (v3.11+) | reasoning | mid | fast |
+| pan-counterfactual (v3.3+) | reasoning | reasoning | mid |
+| pan-hardener (v3.2+) | reasoning | reasoning | fast |
+| pan-meta-reviewer (v3.2+) | reasoning | reasoning | fast |
+| pan-knowledge (v3.2+) | reasoning | reasoning | fast |
+| pan-previewer (v3.1+) | reasoning | reasoning | fast |
+| pan-optimizer (v3.5+) | reasoning | reasoning | fast |
+| pan-distiller (v3.5+) | reasoning | reasoning | fast |
+| pan-experiment-runner | reasoning | reasoning | fast |
+| pan-release (v3.11+) | reasoning | reasoning | fast |
 
 **Tier mapping by provider:** Anthropic: reasoning → inherit (Opus), mid → Sonnet, fast → Haiku. OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents. Legacy names (`opus`, `sonnet`, `haiku`) still work as aliases.
 
-**Design rationale:**
-- **Reasoning for planning** — Architecture decisions benefit most from stronger reasoning
-- **Mid for execution** — Executors follow explicit plan instructions; the reasoning is already done
-- **Fast for read-only** — Codebase mapping and budget-tier research only need structured extraction
+**Design rationale (cost reset, 2026-07):**
+- **quality + balanced both inherit** — every agent runs on the model you launched with; PAN no longer demotes agents to cheaper models by default. Context isolation, not a weaker model, keeps the main conversation clean.
+- **budget is the opt-in cheap mode** — mid for code-writing agents, fast for research/verification; choose it explicitly for high-volume work.
+- Tiering is **advisory** (powers `/pan:cost`); native delegation reads each agent file's static `model:` (unset → `inherit`).
 
 ### Reasoning effort (adaptive-thinking era, v3.9.0+)
 
