@@ -100,7 +100,8 @@ Wait for the user's reply before proceeding. Do not guess or pick a default cate
 | `--mode` | category-dependent | bugfix, balanced, features, full |
 | `--budget` | category-dependent | Points per cycle (5-100) |
 | `--max-cycles` | 10 | Maximum iterations (1-50) |
-| `--total-budget` | 500 | Cumulative points cap (5-5000) |
+| `--total-budget` | 500 | Cumulative point budget (5-5000). Advisory by default (tracked/surfaced, not a stop). |
+| `--enforce-budget` | off | Make `--total-budget` a hard stop again (also settable via config `budget.enforce: true`). |
 | `--continue` | — | Resume stopped/interrupted run |
 | `--stop` | — | Gracefully stop active run |
 | `--status` | — | Show current campaign progress |

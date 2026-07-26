@@ -79,6 +79,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 | `--source` | `backlog` | Work selection (delegates to focus-auto): `backlog` = ranked roadmap/requirements items; `scan` = category code-scan. |
 | `--max-cycles` | 5 | Mission items landed before stopping. |
 | `--total-budget` | 300 | Cumulative point budget. **Advisory by default** — tracked/surfaced but not a hard stop unless `--enforce-budget` / config `budget.enforce: true`. |
+| `--enforce-budget` | off | Make the point budgets hard stops again (also settable via config `budget.enforce: true`). |
 | `--squads` | all | Restrict to a subset, e.g. `--squads architecture,build,quality`. |
 | `--no-build-worktrees` | off | Build in the main tree instead of branch-per-agent worktrees (small/serial projects). |
 | `--push` | off | Push approved merges to origin (still human-gated). |
