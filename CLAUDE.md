@@ -65,7 +65,7 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Specs (`docs/specs/*.md`) | 44 |
 | ADRs (`docs/decisions/ADR-*.md`) | 39 |
 
-These are reflective of `main` at v3.21.0. They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
+These are reflective of `main` at v3.21.1. They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
 
 ---
 

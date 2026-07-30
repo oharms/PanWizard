@@ -102,6 +102,7 @@ Wait for the user's reply before proceeding. Do not guess or pick a default cate
 | `--max-cycles` | 10 | Maximum iterations (1-50) |
 | `--total-budget` | 500 | Cumulative point budget (5-5000). Advisory by default (tracked/surfaced, not a stop). |
 | `--enforce-budget` | off | Make `--total-budget` a hard stop again (also settable via config `budget.enforce: true`). |
+| `--verify-reserve` | 0.15 | Fraction of `--total-budget` (0–0.5) held back for the final re-verification pass so it can't be starved (config `budget.verify_reserve`). Advisory by default — surfaced as `into_verify_reserve`; under `--enforce-budget` it stops **new work** early (`budget_reserve_reached`) and Phase 3 spends the reserve on the clean re-verification. |
 | `--continue` | — | Resume stopped/interrupted run |
 | `--stop` | — | Gracefully stop active run |
 | `--status` | — | Show current campaign progress |
@@ -344,6 +345,7 @@ Run: `pan-tools focus auto --update --items-completed N --items-failed N --point
 
 Check the response for stop conditions:
 - `regression`: Tests decreased — STOP IMMEDIATELY
+- `budget_reserve_reached`: New-work spend crossed into the reserved headroom (enforced runs) — stop taking on new items and go to Phase 3, which spends the reserve on the final re-verification pass
 - `budget_cap`: Cumulative budget exceeded — go to Phase 3
 - `max_cycles`: Maximum iterations reached — go to Phase 3
 - `zero_completed`: No items completed in this cycle — go to Phase 3
@@ -391,8 +393,9 @@ Then continue immediately to the next cycle (back to Step 2.1).
 
 ### Phase 3: Campaign End
 
-1. Run `pan-tools focus auto --status` to get final state
-2. Display campaign summary:
+1. **Final re-verification pass (spend the verify reserve).** Run `pan-tools focus auto --status` and read `stop_reason` / `into_verify_reserve` / `verify_reserve`. Run one clean build + full verification directly (commands from `config.json → build`/`verification`) — the same pass `--clean-seal` performs — when ANY holds: the stop reason is `budget_reserve_reached`, `--clean-seal` is set, or `into_verify_reserve` is true. This is what the reserved budget is FOR: the run stopped taking on **new** work early (at `budget_reserve_reached`) precisely so this closing verification has headroom and isn't starved. Run the verification commands directly — do NOT `focus auto --update` here (the run is already `completed`; its status update is refused, and the verification agents' spend is captured by the cost hooks automatically). If verification fails, treat it as a HARD STOP (preserve state, report) rather than sealing green. Skip this step only when none of the three conditions hold (advisory run that never entered the reserve and no `--clean-seal`).
+2. Run `pan-tools focus auto --status` to get final state
+3. Display campaign summary:
 
 ```
 ## Campaign Complete
@@ -408,7 +411,7 @@ Then continue immediately to the next cycle (back to Step 2.1).
 | Stop reason | <reason> |
 ```
 
-3. Remove safety tag: `git tag -d focus-auto-baseline 2>/dev/null`
+4. Remove safety tag: `git tag -d focus-auto-baseline 2>/dev/null`
 
 ## 6-Layer Safety Harness
 
@@ -416,6 +419,7 @@ Then continue immediately to the next cycle (back to Step 2.1).
 |-------|-----------|--------|
 | Per-cycle budget | `--budget N` per cycle | Limits single-cycle damage |
 | Cumulative budget | `--total-budget N` | Prevents runaway spending |
+| Verify reserve | `--verify-reserve F` | Holds back a budget fraction so the final re-verification isn't starved — stops new work early under enforcement (`budget_reserve_reached`) and spends the reserve on the clean re-verify in Phase 3 |
 | Iteration limit | `--max-cycles N` | Hard stop on loop count |
 | Regression circuit breaker | tests_after < tests_before | Immediate stop, status=stopped |
 | Zero-completed guard | 0 items done in a cycle | Stop — further cycles won't help |

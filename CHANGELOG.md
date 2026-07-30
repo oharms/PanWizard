@@ -5,6 +5,18 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.1] - 2026-07-30
+
+### Changed — close the verify-reserve loop in the orchestration layer
+
+v3.21.0 added the verify-reserve at the lib layer (it holds back budget and stops **new** work early under enforcement), but spending that reserve on a closing re-verification is orchestration behavior that lives in the command markdown. This release wires it:
+
+- **`/pan:focus-auto` Phase 3** now runs the clean build + full verification directly when the run entered the reserve (`budget_reserve_reached`), `--clean-seal` is set, or `into_verify_reserve` is true — that closing pass is what the reserved headroom exists for. It runs the verification commands directly (the run is already `completed`, so no `focus auto --update`; the verification agents' spend is captured by the cost hooks). A failed verification is a HARD STOP, not a green seal.
+- **`/pan:army`** documents the reserve the same way: under `--enforce-budget`, crossing into the reserve stops taking on new missions but the reserved points fund the closing `--clean-seal` re-verification before the last INTEGRATE.
+- Both commands document the `--verify-reserve` flag and the `budget_reserve_reached` stop reason; `--verify-reserve` is added to focus-auto's safety-harness table.
+
+No CLI/lib surface change — the `--verify-reserve` flag and `budget.verify_reserve` config shipped in 3.21.0.
+
 ## [3.21.0] - 2026-07-30
 
 ### Added / Fixed — telemetry P1/P2: PAN can now measure its own work
