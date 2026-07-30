@@ -505,6 +505,9 @@ function cmdStateRecordSession(cwd, options, raw) {
 
   if (updated.length > 0) {
     writeStateMd(statePath, content, cwd);
+    // Normal-flow checkpoint: reconcile the always-loaded project memory once
+    // the session is recorded (no-op when already lean; never throws).
+    try { require('./memory-optimize.cjs').maybeAutoOptimizeMemory(cwd); } catch { /* best-effort */ }
     output({ recorded: true, updated }, raw, 'true');
   } else {
     output({ recorded: false, reason: 'No session fields found in state.md' }, raw, 'false');
@@ -1021,6 +1024,7 @@ module.exports = {
   stateExtractField,
   stateReplaceField,
   writeStateMd,
+  syncStateFrontmatter,
   cmdStateLoad,
   cmdStateGet,
   cmdStatePatch,

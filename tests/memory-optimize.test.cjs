@@ -8,7 +8,7 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { optimizeStateContent } = require('../pan-wizard-core/bin/lib/memory-optimize.cjs');
+const { optimizeStateContent, maybeAutoOptimizeMemory, autoOptimizeEnabled } = require('../pan-wizard-core/bin/lib/memory-optimize.cjs');
 const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
 
 const S = (...lines) => lines.join('\n');
@@ -123,5 +123,72 @@ describe('memory optimize — command (dispatcher)', () => {
     const r = runPanTools('memory optimize', cwd);
     assert.ok(r.success, r.error);
     assert.equal(JSON.parse(r.output).state.reason, 'no_state_md');
+  });
+});
+
+describe('maybeAutoOptimizeMemory — auto-wiring (A3)', () => {
+  let cwd;
+  beforeEach(() => { cwd = createTempProject(); });
+  afterEach(() => { cleanup(cwd); });
+
+  const writeState = (body) => fs.writeFileSync(path.join(cwd, '.planning', 'state.md'), body, 'utf-8');
+  const writeConfig = (obj) => fs.writeFileSync(path.join(cwd, '.planning', 'config.json'), JSON.stringify(obj), 'utf-8');
+  const bloated = () => S('# State', '', '## Decisions', ...Array.from({ length: 15 }, (_, i) => `- d${i + 1}`), '');
+
+  test('enabled by default; absent/malformed config → on', () => {
+    assert.equal(autoOptimizeEnabled(cwd), true);
+    fs.writeFileSync(path.join(cwd, '.planning', 'config.json'), '{ not json', 'utf-8');
+    assert.equal(autoOptimizeEnabled(cwd), true);
+  });
+
+  test('no-op (clean) leaves state.md byte-for-byte and writes no archive', () => {
+    const lean = S('# State', '', '## Decisions', '- only one', '');
+    writeState(lean);
+    const r = maybeAutoOptimizeMemory(cwd);
+    assert.deepEqual(r, { optimized: false, reason: 'clean' });
+    assert.equal(fs.readFileSync(path.join(cwd, '.planning', 'state.md'), 'utf-8'), lean);
+    assert.equal(fs.existsSync(path.join(cwd, '.planning', 'memory', 'state-archive.md')), false, 'no archive when clean');
+  });
+
+  test('missing state.md → reason no_state_md, never throws', () => {
+    assert.deepEqual(maybeAutoOptimizeMemory(cwd), { optimized: false, reason: 'no_state_md' });
+  });
+
+  test('config opt-out (memory.auto_optimize:false) skips reconcile even when bloated', () => {
+    writeConfig({ memory: { auto_optimize: false } });
+    const body = bloated();
+    writeState(body);
+    assert.deepEqual(maybeAutoOptimizeMemory(cwd), { optimized: false, reason: 'disabled' });
+    assert.equal(fs.readFileSync(path.join(cwd, '.planning', 'state.md'), 'utf-8'), body, 'untouched when disabled');
+  });
+
+  test('bloated + enabled → reconciles, caps to DEFAULT_KEEP, archives overflow', () => {
+    writeState(bloated());
+    const r = maybeAutoOptimizeMemory(cwd);
+    assert.equal(r.optimized, true);
+    assert.ok(r.archived >= 3, 'overflow archived');
+    const state = fs.readFileSync(path.join(cwd, '.planning', 'state.md'), 'utf-8');
+    assert.ok(!/- d1\b/.test(state) && /- d15/.test(state), 'oldest trimmed, newest kept');
+    assert.ok(fs.existsSync(path.join(cwd, '.planning', 'memory', 'state-archive.md')), 'archive written');
+  });
+});
+
+describe('normal-flow auto-optimize (state record-session)', () => {
+  let cwd;
+  beforeEach(() => { cwd = createTempProject(); });
+  afterEach(() => { cleanup(cwd); });
+
+  test('recording a session reconciles the always-loaded memory as a side effect', () => {
+    const body = S(
+      '# State', '',
+      '## Session', '**Last session:** never', '**Last Date:** never', '',
+      '## Decisions', ...Array.from({ length: 15 }, (_, i) => `- decision ${i + 1}`), '',
+    );
+    fs.writeFileSync(path.join(cwd, '.planning', 'state.md'), body, 'utf-8');
+    const r = runPanTools('state record-session --stopped-at "phase 2"', cwd);
+    assert.ok(r.success, r.error);
+    const state = fs.readFileSync(path.join(cwd, '.planning', 'state.md'), 'utf-8');
+    assert.ok(/\*\*Last session:\*\* \d{4}-/.test(state), 'session recorded');
+    assert.ok(!/- decision 1\b/.test(state) && /- decision 15/.test(state), 'memory auto-reconciled during the normal flow');
   });
 });

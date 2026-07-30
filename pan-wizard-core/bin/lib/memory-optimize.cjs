@@ -205,7 +205,49 @@ function cmdMemoryOptimize(cwd, opts = {}, raw) {
   output(result, raw, summary);
 }
 
+// ─── Auto-optimize (A3) — flow-embedded reconcile ────────────────────────────
+
+/**
+ * Whether auto-optimize is enabled for this project. Reads config.json directly
+ * (loadConfig doesn't surface the memory block) and defaults to ON — the point
+ * of the feature is that reconcile happens automatically, not by hand. Set
+ * `memory.auto_optimize: false` in .planning/config.json to opt out. Absent or
+ * malformed config → enabled.
+ */
+function autoOptimizeEnabled(cwd) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(planningPath(cwd), 'config.json'), 'utf-8'));
+    return !(raw.memory && raw.memory.auto_optimize === false);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Reconcile state.md as an embedded step of a flow (focus checkpoint, normal
+ * session record). Best-effort and side-effect-light: honors the config gate,
+ * is a true no-op when state.md is already lean (zero git churn), archives any
+ * overflow, and NEVER throws into the calling flow. Returns a small status.
+ * @returns {{optimized:boolean, reason?:string, sections?:string[], archived?:number}}
+ */
+function maybeAutoOptimizeMemory(cwd, opts = {}) {
+  try {
+    if (!autoOptimizeEnabled(cwd)) return { optimized: false, reason: 'disabled' };
+    const statePath = path.join(planningPath(cwd), 'state.md');
+    const before = safeReadFile(statePath);
+    if (before == null) return { optimized: false, reason: 'no_state_md' };
+    const opt = optimizeStateContent(before, { keep: opts.keep });
+    if (!opt.changed) return { optimized: false, reason: 'clean' };
+    appendArchive(cwd, opt.archived, opts.now);
+    writeStateMd(statePath, opt.content, cwd);
+    return { optimized: true, sections: opt.sectionsTouched, archived: opt.archived.length };
+  } catch {
+    return { optimized: false, reason: 'error' };
+  }
+}
+
 module.exports = {
   optimizeStateContent, reconcileBullets, parseSections, joinSections, cmdMemoryOptimize,
+  maybeAutoOptimizeMemory, autoOptimizeEnabled,
   APPEND_HEAVY, PLACEHOLDER, DEFAULT_KEEP, STATE_ARCHIVE_FILE,
 };

@@ -957,8 +957,12 @@ async function main() {
           apply: args.includes('--apply'),
           keep: keepArg ? Number(keepArg) : undefined,
         }, raw);
+      } else if (subcommand === 'rebuild') {
+        require('./lib/memory-rebuild.cjs').cmdMemoryRebuild(cwd, {
+          apply: args.includes('--apply'),
+        }, raw);
       } else {
-        error('Unknown memory subcommand. Available: read, append, list, compact, select, budget, optimize');
+        error('Unknown memory subcommand. Available: read, append, list, compact, select, budget, optimize, rebuild');
       }
       break;
     }
