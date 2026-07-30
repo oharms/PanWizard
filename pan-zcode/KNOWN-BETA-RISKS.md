@@ -27,6 +27,14 @@ hard-depend on, and the go/no-go facts that can only be settled on a real ZCode 
 - **User-global subagents only.** No repo-scoped rosters or per-project model profiles.
 - **Genuinely lost:** scheduled self-resuming multi-day campaigns (no headless/daemon),
   background execution, committable permissions, and custom slash-commands.
+- **Bridge scope is tool/resource exposure ONLY — never agent session state.** The MCP
+  server exposes `pan-tools` verbs as `tools/call` + `resources/read`; it deliberately
+  does not represent rich agent session state (diffs, streaming, live thread lifecycle).
+  This is by design, not an omission: MCP cannot faithfully carry that state — a point
+  OpenAI made explicitly when it built the Codex "harness" as a native Rust core rather
+  than over MCP (2026). Do NOT extend the bridge to stream diffs or proxy session state
+  through it; keep the CLI's JSON contract as the tool contract. (Codex-adapter audit,
+  2026-07-30.)
 
 ## Format-drift policy
 

@@ -21,6 +21,8 @@ pan-zcode/mcp  (this subsystem)  a thin, zero-dep bridge — verbs → MCP tools
 pan-wizard-core  (reused as-is)  the deterministic engine; .planning/ stays the state store
 ```
 
+**Scope boundary (by design):** the bridge exposes `pan-tools` verbs as MCP tools/resources and nothing more. It intentionally does **not** carry rich agent *session state* — diffs, streaming, live thread lifecycle — because MCP can't faithfully represent it (the reason OpenAI built the Codex harness as a native Rust core rather than over MCP). Keep the bridge to tool/resource exposure; the CLI's JSON contract is the tool contract. See `KNOWN-BETA-RISKS.md`.
+
 ## Status — M1–M5 built (M0 is the human verify spike)
 
 - **M1 — bridge core.** `mcp/tool-registry.cjs` (pure verb→tool/resource map, with a hard

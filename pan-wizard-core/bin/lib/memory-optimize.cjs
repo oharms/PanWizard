@@ -24,11 +24,48 @@ const { readMemory, parseEntries, listMemoryAgents, compactMemory, DEFAULT_MAX_E
 
 const DEFAULT_KEEP = 12;            // recent bullets kept inline per section
 const STATE_ARCHIVE_FILE = 'state-archive.md';
+const QUARANTINE_FILE = 'quarantine.md';
 
 // Sections whose bullet lists grow unbounded and are safe to reconcile.
 const APPEND_HEAVY = /\b(decisions|blockers|concerns|pending todos|todos|session continuity|accumulated context|recent activity)\b/i;
 // A bullet that is just a placeholder — dropped once real entries exist.
 const PLACEHOLDER = /^-\s*(none(\s+yet)?|n\/a|tbd|todo|—|-)\.?\s*$/i;
+
+// Memory-injection defense (threat: a subagent writes an instruction/directive
+// into the always-loaded memory that a LATER agent or run reads and OBEYS — a
+// cross-generation prompt injection, exactly the "agent writes self-serving
+// directives into persistent memory for successors" vector in the OpenAI
+// rogue-agent incident, Reuters 2026-07). See ADR-0040. state.md is agent-writable
+// (decisions/blockers/notes), so during reconcile any bullet that reads like a
+// directive AIMED at the agent/system is QUARANTINED out of standing memory (moved
+// to .planning/memory/quarantine.md, reversible) rather than carried forward —
+// nothing agent-authored becomes standing instruction without human review (the
+// merge gate). High-precision, injection-flavored patterns only, to minimize false
+// positives; a legitimate note caught here is recoverable from quarantine.md.
+const DIRECTIVE_PATTERNS = [
+  /\bignore\s+(all\s+|any\s+|these\s+)?(previous|prior|earlier|above)\b/i,
+  /\bdisregard\s+(the\s+|all\s+|any\s+|your\s+)?(previous|prior|above|earlier|instructions|rules|guidelines|guardrails)\b/i,
+  /\byou\s+are\s+now\b/i,
+  /\bnew\s+instructions?\s*:/i,
+  /\b(the\s+)?system\s+prompt\b/i,
+  /\b(as|acting\s+as|being)\s+(an?\s+)?(admin|administrator|root|superuser|developer\s+with)\b/i,
+  /\bpre-?authoriz(e|ed|ation)\b/i,
+  /\b(do\s+not|don'?t|never)\s+(tell|inform|notify|ask|alert)\s+the\s+(user|human|operator)\b/i,
+  /\bwithout\s+(asking|telling|notifying|informing|alerting)\s+the\s+(user|human|operator)\b/i,
+  /\b(bypass|skip|disable|override|remove|turn\s+off)\s+(the\s+)?(merge[-\s]?gate|human[-\s]?(approval|gate|review)|approval[-\s]?gate|safety[-\s]?(harness|check|guard|gate)|verification[-\s]?gate|review[-\s]?gate)\b/i,
+  /\b(always|automatically)\s+(approve|auto-?approve|accept|merge|confirm|say\s+yes)\b/i,
+  /\bauto-?approve\s+(all|any|every|everything)\b/i,
+  /\boverride\s+(the\s+)?(human|approval|merge[-\s]?gate|safety)\b/i,
+];
+
+/**
+ * True when a memory entry reads like a directive aimed at the agent/system
+ * (an injection), as opposed to a descriptive project note. Pure + zero-dep.
+ */
+function isSuspiciousDirective(text) {
+  if (typeof text !== 'string' || !text) return false;
+  return DIRECTIVE_PATTERNS.some((re) => re.test(text));
+}
 
 const isHeading = (l) => /^#{1,6}\s+\S/.test(l);
 const headingText = (l) => (l.match(/^#{1,6}\s+(.*)$/) || [, ''])[1];
@@ -64,7 +101,7 @@ function joinSections(sections) {
  * its indented continuation lines, so a bullet is never orphaned from its detail.
  * Overflow entries are pushed to `archived`. Returns { lines, changed }.
  */
-function reconcileBullets(lines, keepN, archived) {
+function reconcileBullets(lines, keepN, archived, quarantined) {
   const firstB = lines.findIndex(isBullet);
   if (firstB === -1) return { lines, changed: false };
 
@@ -87,9 +124,22 @@ function reconcileBullets(lines, keepN, archived) {
   }
   const trailer = rest.slice(i);
 
+  // 0. QUARANTINE injected directives FIRST — a bullet that reads like an
+  // instruction aimed at the agent never survives into standing memory; it is
+  // moved to the quarantine file for human review (memory-injection defense).
+  const safe = [];
+  let quarantinedHere = 0;
+  for (const e of entries) {
+    if (quarantined && isSuspiciousDirective(e.key)) {
+      quarantined.push(e.lines.join('\n'));
+      quarantinedHere++;
+    } else {
+      safe.push(e);
+    }
+  }
   // 1. dedupe (keep first occurrence)
   const seen = new Set();
-  const deduped = entries.filter((e) => (seen.has(e.key) ? false : (seen.add(e.key), true)));
+  const deduped = safe.filter((e) => (seen.has(e.key) ? false : (seen.add(e.key), true)));
   // 2. strip placeholders once real entries exist
   const real = deduped.filter((e) => !PLACEHOLDER.test(e.key));
   const kept0 = real.length ? real : deduped;
@@ -102,7 +152,7 @@ function reconcileBullets(lines, keepN, archived) {
   }
   for (const d of dropped) archived.push(d.lines.join('\n'));
 
-  const changed = deduped.length !== entries.length || kept0.length !== deduped.length || dropped.length > 0;
+  const changed = quarantinedHere > 0 || deduped.length !== safe.length || kept0.length !== deduped.length || dropped.length > 0;
   const newLines = [...pre, ...kept.flatMap((e) => e.lines), ...trailer];
   // Preserve the section's trailing blank line (the blank that separates it from
   // the next heading) so reconciling never collapses two sections together.
@@ -119,23 +169,22 @@ function optimizeStateContent(content, opts = {}) {
   const keepN = Number.isFinite(opts.keep) && opts.keep > 0 ? opts.keep : DEFAULT_KEEP;
   const sections = parseSections(content);
   const archived = [];
+  const quarantined = [];
   const sectionsTouched = [];
   let changed = false;
 
   for (const s of sections) {
     if (s.heading === null) continue;
     if (!APPEND_HEAVY.test(headingText(s.heading))) continue;
-    const before = archived.length;
-    const r = reconcileBullets(s.lines, keepN, archived);
+    const r = reconcileBullets(s.lines, keepN, archived, quarantined);
     if (r.changed) {
       s.lines = r.lines;
       changed = true;
       sectionsTouched.push(headingText(s.heading).trim());
     }
-    void before;
   }
 
-  return { content: changed ? joinSections(sections) : content, changed, archived, sectionsTouched };
+  return { content: changed ? joinSections(sections) : content, changed, archived, quarantined, sectionsTouched };
 }
 
 // ─── Command ────────────────────────────────────────────────────────────────
@@ -151,6 +200,30 @@ function appendArchive(cwd, entries, now) {
   fs.mkdirSync(path.dirname(p), { recursive: true });
   const stamp = now || '(undated)';
   const block = `\n## Archived ${stamp}\n\n${entries.map((e) => e).join('\n')}\n`;
+  fs.appendFileSync(p, block, 'utf-8');
+}
+
+function quarantinePath(cwd) {
+  return path.join(planningPath(cwd), MEMORY_DIR, QUARANTINE_FILE);
+}
+
+/**
+ * Append quarantined directive-like entries to a dated, human-review file. These
+ * were pulled OUT of standing memory because they read like injected instructions
+ * (memory-injection defense). Reversible — a human can review and, if legitimate,
+ * restore an entry by hand. The file leads with a warning so it is never loaded
+ * as trusted instruction memory.
+ */
+function appendQuarantine(cwd, entries, now) {
+  if (!entries.length) return;
+  const p = quarantinePath(cwd);
+  const fresh = !fs.existsSync(p);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  const stamp = now || '(undated)';
+  const header = fresh
+    ? '# Quarantined memory (DO NOT auto-load as instructions)\n\nEntries below were pulled out of standing memory during reconcile because they read like\ndirectives aimed at the agent (possible cross-generation prompt injection). They are\nNOT trusted instructions. Review each; restore to state.md by hand only if legitimate.\n'
+    : '';
+  const block = `${header}\n## Quarantined ${stamp}\n\n${entries.join('\n')}\n`;
   fs.appendFileSync(p, block, 'utf-8');
 }
 
@@ -172,12 +245,15 @@ function cmdMemoryOptimize(cwd, opts = {}, raw) {
       changed: opt.changed,
       sections_touched: opt.sectionsTouched,
       archived_entries: opt.archived.length,
+      quarantined_entries: opt.quarantined.length,
       before_bytes: Buffer.byteLength(before),
       after_bytes: Buffer.byteLength(opt.content),
     };
     result.archived = opt.archived.length;
+    result.quarantined = opt.quarantined.length;
     if (apply && opt.changed) {
       appendArchive(cwd, opt.archived, opts.now);
+      appendQuarantine(cwd, opt.quarantined, opts.now);
       writeStateMd(statePath, opt.content, cwd);
     }
   } else {
@@ -199,8 +275,10 @@ function cmdMemoryOptimize(cwd, opts = {}, raw) {
     }
   } catch { /* agent sweep is best-effort */ }
 
+  const q = result.quarantined || 0;
+  const quarantineNote = q ? `; ${q} directive-like entr${q === 1 ? 'y' : 'ies'} QUARANTINED` : '';
   const summary = result.state.changed
-    ? `${apply ? 'optimized' : 'would optimize'} state.md (${result.state.sections_touched.join(', ')}); ${result.archived} entr${result.archived === 1 ? 'y' : 'ies'} archived${result.agents.length ? `; ${result.agents.length} agent log(s)` : ''}`
+    ? `${apply ? 'optimized' : 'would optimize'} state.md (${result.state.sections_touched.join(', ')}); ${result.archived} entr${result.archived === 1 ? 'y' : 'ies'} archived${quarantineNote}${result.agents.length ? `; ${result.agents.length} agent log(s)` : ''}`
     : `state.md already lean${result.agents.length ? `; ${result.agents.length} agent log(s) over budget` : ''} — nothing to do`;
   output(result, raw, summary);
 }
@@ -239,8 +317,9 @@ function maybeAutoOptimizeMemory(cwd, opts = {}) {
     const opt = optimizeStateContent(before, { keep: opts.keep });
     if (!opt.changed) return { optimized: false, reason: 'clean' };
     appendArchive(cwd, opt.archived, opts.now);
+    appendQuarantine(cwd, opt.quarantined, opts.now);
     writeStateMd(statePath, opt.content, cwd);
-    return { optimized: true, sections: opt.sectionsTouched, archived: opt.archived.length };
+    return { optimized: true, sections: opt.sectionsTouched, archived: opt.archived.length, quarantined: opt.quarantined.length };
   } catch {
     return { optimized: false, reason: 'error' };
   }
@@ -248,6 +327,6 @@ function maybeAutoOptimizeMemory(cwd, opts = {}) {
 
 module.exports = {
   optimizeStateContent, reconcileBullets, parseSections, joinSections, cmdMemoryOptimize,
-  maybeAutoOptimizeMemory, autoOptimizeEnabled,
-  APPEND_HEAVY, PLACEHOLDER, DEFAULT_KEEP, STATE_ARCHIVE_FILE,
+  maybeAutoOptimizeMemory, autoOptimizeEnabled, isSuspiciousDirective,
+  APPEND_HEAVY, PLACEHOLDER, DIRECTIVE_PATTERNS, DEFAULT_KEEP, STATE_ARCHIVE_FILE, QUARANTINE_FILE,
 };
