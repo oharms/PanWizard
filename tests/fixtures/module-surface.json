@@ -220,6 +220,8 @@
     "VALIDATION_SUFFIX:string",
     "VALID_COMMIT_TYPES:object",
     "VERIFICATION_SUFFIX:string",
+    "VERIFY_RESERVE_FLOOR:number",
+    "VERIFY_RESERVE_FRACTION:number",
     "WARNING_THRESHOLD:number",
     "getPlanId:function",
     "getSummaryId:function",
@@ -565,6 +567,7 @@
     "cmdOptimizeList:function",
     "cmdOptimizeStats:function",
     "cmdOptimizeTrace:function",
+    "computeSessionCostAndCommits:function",
     "deriveActionsFromAnalysis:function",
     "endTraceSession:function",
     "generateLocalReport:function",
@@ -581,6 +584,9 @@
     "parseAutoApplyBlock:function",
     "promotePattern:function",
     "readTraceSession:function",
+    "reconcileAllTraceSessions:function",
+    "reconcileSessionMeta:function",
+    "reconcileTraceSession:function",
     "unpromotePattern:function"
   ],
   "phase-remove.cjs": [

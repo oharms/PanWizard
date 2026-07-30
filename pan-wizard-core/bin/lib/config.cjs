@@ -66,6 +66,9 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       // (HUD, telemetry) but never STOP a run. Set enforce:true (or pass
       // --enforce-budget) to make the cap a hard stop again.
       enforce: false,
+      // Fraction of the spawn budget held back for re-verification (0..0.5).
+      // Surfaced as an indicator always; a hard early stop only under enforce.
+      verify_reserve: 0.15,
     },
     commit: {
       safety_checks: true,

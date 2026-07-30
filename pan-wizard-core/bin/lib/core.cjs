@@ -296,6 +296,9 @@ function loadConfig(cwd) {
       model_overrides: parsed.model_overrides || {},
       effort_overrides: parsed.effort_overrides || {},
       routing: parsed.routing || { strategy: 'static', provider: 'auto' },
+      // Cost dashboard config: `cost.rates` per-model overrides (surfaced so the
+      // documented override actually reaches cost.cjs — it was dropped before).
+      cost: parsed.cost || {},
       // ADR-0031: project build/verification commands. null = not configured
       // (focus-auto --clean-seal then asks or skips rather than guessing).
       build: parsed.build || null,
@@ -312,6 +315,7 @@ function loadConfig(cwd) {
       model_overrides: {},
       effort_overrides: {},
       routing: { strategy: 'static', provider: 'auto' },
+      cost: {},
       build: null,
       verification: null,
       concurrency: { serial_build: false },

@@ -477,3 +477,31 @@ describe('cost — CLI dispatch', () => {
     assert.equal(rJson.totals.calls, 0);
   });
 });
+
+describe('cost — v3.21.0 (config rates on append + malformed row counting)', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('appended cost_usd honors config.cost.rates overrides', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'config.json'),
+      JSON.stringify({ cost: { rates: { 'claude-opus-4-8': { input: 999, output: 999, cache_read: 0, cache_write: 0 } } } }),
+    );
+    appendRecord(tmpDir, { model: 'claude-opus-4-8', input_tokens: 1000000, output_tokens: 0 });
+    const rec = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'metrics', 'tokens.jsonl'), 'utf-8').trim());
+    assert.equal(rec.cost_usd, 999, 'custom $999/1M input rate applied at append time, not DEFAULT_RATES');
+  });
+
+  test('aggregate surfaces malformed_skipped for torn JSONL rows', () => {
+    const f = path.join(tmpDir, '.planning', 'metrics', 'tokens.jsonl');
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f,
+      JSON.stringify({ agent: 'a', model: 'claude-opus-4-8', input_tokens: 10 }) + '\n'
+      + '{ truncated mid-write\n'
+      + JSON.stringify({ agent: 'b', model: 'claude-opus-4-8', input_tokens: 20 }) + '\n');
+    const agg = aggregate(tmpDir);
+    assert.equal(agg.totals.calls, 2, 'two valid rows counted');
+    assert.equal(agg.totals.malformed_skipped, 1, 'the torn row is counted, not silently dropped');
+  });
+});

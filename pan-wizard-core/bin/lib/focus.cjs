@@ -15,7 +15,7 @@ const {
   BUDGET_LIMIT_BUGFIX, BUDGET_LIMIT_FULL, STABILITY_RATIO, FEATURE_RATIO,
   DIMINISHING_RETURNS_THRESHOLD,
   AUTO_RUN_FILE, FOCUS_CATEGORIES, FOCUS_SOURCES, CATEGORY_PRIORITY_RANGE, CATEGORY_DEFAULTS,
-  DEFAULT_MAX_CYCLES, DEFAULT_TOTAL_BUDGET,
+  DEFAULT_MAX_CYCLES, DEFAULT_TOTAL_BUDGET, VERIFY_RESERVE_FRACTION, VERIFY_RESERVE_FLOOR,
   BUDGET_MIN, BUDGET_MAX, MAX_CYCLES_MIN, MAX_CYCLES_MAX, TOTAL_BUDGET_MIN, TOTAL_BUDGET_MAX,
   AUTORUN_STATUSES, DOC_SYNC_FILES, COMMAND_RENAME_MAP,
 } = require('./constants.cjs');
@@ -693,12 +693,28 @@ function generateRunId(cwd) {
  * @param {boolean} raw - Raw output mode
  * @param {...string} args - CLI arguments
  */
+/**
+ * Advisory budget indicators for a run: raw remaining, the verify reserve, the
+ * remaining budget for NEW work (excludes the reserve), and whether spend has
+ * crossed into the reserved headroom. Pure — no behavior change; surfaced so the
+ * human/HUD can see the reserve even when it isn't being enforced.
+ */
+function budgetIndicators(run) {
+  const used = run.totals ? run.totals.points_used : 0;
+  const reserve = run.verify_reserve || 0;
+  return {
+    budget_remaining: run.total_budget - used,
+    verify_reserve: reserve,
+    new_work_budget_remaining: run.total_budget - reserve - used,
+    into_verify_reserve: reserve > 0 && used >= run.total_budget - reserve,
+  };
+}
+
 function focusAutoStatus(cwd, raw) {
   const run = readAutoRun(cwd);
   if (!run) return error('No auto-run found. Start with: focus auto --category <name>');
-  const budgetRemaining = run.total_budget - (run.totals ? run.totals.points_used : 0);
   const cyclesRemaining = run.max_cycles - (run.totals ? run.totals.cycles_completed : 0);
-  return output({ ...run, budget_remaining: budgetRemaining, cycles_remaining: cyclesRemaining }, raw);
+  return output({ ...run, ...budgetIndicators(run), cycles_remaining: cyclesRemaining }, raw);
 }
 
 function focusAutoStop(cwd, raw) {
@@ -781,6 +797,30 @@ function focusAutoUpdate(cwd, raw, getVal) {
   cycle.tests_verified = tv.verified;
 
   if (!run.cycles) run.cycles = [];
+
+  // Attribution: anchor this cycle to a start, measure its wall-clock duration,
+  // name the driving command, and JOIN to the authoritative cost ledger so the
+  // cycle carries the agents + dollars behind its item counts (not just a
+  // self-reported points estimate). windowStart = the prior cycle's end, or the
+  // run start for cycle 1. Server-side join — no fakeable CLI arg.
+  const windowStart = run.cycles.length ? run.cycles[run.cycles.length - 1].timestamp : run.started_at;
+  cycle.started_at = windowStart || null;
+  const durMs = windowStart ? (new Date(cycle.timestamp) - new Date(windowStart)) : NaN;
+  cycle.duration_ms = Number.isFinite(durMs) ? durMs : null;
+  cycle.command = getVal('--command', run.category || run.source || null);
+  cycle.cost_usd = null;
+  cycle.tokens = null;
+  cycle.agents = [];
+  if (windowStart) {
+    try {
+      const agg = require('./cost.cjs').aggregate(cwd, { since: windowStart, until: cycle.timestamp });
+      if (agg && agg.totals) {
+        cycle.cost_usd = agg.totals.calls > 0 ? agg.totals.cost_usd : null;
+        cycle.tokens = { input: agg.totals.input_tokens, output: agg.totals.output_tokens, cache_read: agg.totals.cache_read_tokens };
+        cycle.agents = agg.by_agent ? Object.keys(agg.by_agent) : [];
+      }
+    } catch { /* cost is observability, never the critical path */ }
+  }
   run.cycles.push(cycle);
 
   if (!run.totals) {
@@ -868,7 +908,13 @@ function determineStopReason(cycle, run) {
   if (cycle.tests_after < cycle.tests_before) return 'regression';
   // Budget is advisory by default — it only STOPS the run when explicitly enforced.
   // Otherwise the overage is tracked/surfaced (indication) and the loop continues.
+  // Hard cap (full budget) is evaluated FIRST so it remains the absolute boundary;
+  // the softer verify-reserve stop only fires in the band below it.
   if (run.budget_enforce && run.totals.points_used >= run.total_budget) return 'budget_cap';
+  // Verify-reserve: under enforcement, stop once new-work spend crosses into the
+  // reserved headroom so re-verification still has points. Advisory mode never trips.
+  const reserve = run.verify_reserve || 0;
+  if (run.budget_enforce && reserve > 0 && run.totals.points_used >= run.total_budget - reserve) return 'budget_reserve_reached';
   if (run.totals.cycles_completed >= run.max_cycles) return 'max_cycles';
   if (cycle.items_completed === 0) {
     // Security category gets a descriptive stop reason rather than generic zero_completed
@@ -905,9 +951,8 @@ function focusAutoContinue(cwd, raw) {
   run.status = run.totals && run.totals.cycles_completed > 0 ? AUTORUN_STATUSES.IN_PROGRESS : AUTORUN_STATUSES.INITIALIZED;
   run.stop_reason = null;
   writeAutoRun(cwd, run);
-  const budgetRemaining = run.total_budget - (run.totals ? run.totals.points_used : 0);
   const cyclesRemaining = run.max_cycles - (run.totals ? run.totals.cycles_completed : 0);
-  return output({ ...run, budget_remaining: budgetRemaining, cycles_remaining: cyclesRemaining }, raw);
+  return output({ ...run, ...budgetIndicators(run), cycles_remaining: cyclesRemaining }, raw);
 }
 
 function focusAutoInit(cwd, raw, getVal, hasFlag) {
@@ -938,6 +983,15 @@ function focusAutoInit(cwd, raw, getVal, hasFlag) {
   // only when the user opts in via config `budget.enforce` or `--enforce-budget`.
   const budgetConfig = loadConfig(cwd).budget || {};
   const budgetEnforce = hasFlag('--enforce-budget') || budgetConfig.enforce === true;
+  // Verify-reserve: hold back a fraction of the spawn budget so re-verification
+  // isn't starved of points. Advisory by default (surfaced as an indicator);
+  // only a hard early stop under --enforce-budget. Clamp the fraction to 0..0.5.
+  const reserveRaw = getVal('--verify-reserve', null);
+  let reserveFraction = reserveRaw != null ? Number(reserveRaw)
+    : (typeof budgetConfig.verify_reserve === 'number' ? budgetConfig.verify_reserve : VERIFY_RESERVE_FRACTION);
+  if (!Number.isFinite(reserveFraction) || reserveFraction < 0) reserveFraction = 0;
+  if (reserveFraction > 0.5) reserveFraction = 0.5;
+  const verifyReserve = reserveFraction > 0 ? Math.max(VERIFY_RESERVE_FLOOR, Math.ceil(totalBudget * reserveFraction)) : 0;
 
   if (!FOCUS_MODES.includes(mode)) return error(`Mode must be one of: ${FOCUS_MODES.join(', ')}`);
   if (budget < BUDGET_MIN || budget > BUDGET_MAX) return error(`Budget must be between ${BUDGET_MIN} and ${BUDGET_MAX}`);
@@ -947,6 +1001,7 @@ function focusAutoInit(cwd, raw, getVal, hasFlag) {
   const runData = {
     run_id: generateRunId(cwd),
     status: AUTORUN_STATUSES.INITIALIZED,
+    started_at: new Date().toISOString(),
     source: source,
     category: category,
     mode: mode,
@@ -957,6 +1012,7 @@ function focusAutoInit(cwd, raw, getVal, hasFlag) {
     max_cycles: maxCycles,
     total_budget: totalBudget,
     budget_enforce: budgetEnforce,
+    verify_reserve: verifyReserve,
     priority_range: category ? CATEGORY_PRIORITY_RANGE[category] : { min: 0, max: 6 },
     deep_review_enabled: hasFlag('--deep-review'),
     tests_baseline: null,

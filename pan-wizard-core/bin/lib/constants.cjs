@@ -183,6 +183,12 @@ const DEFAULT_MAX_CYCLES = 10;
 
 /** Default cumulative budget cap for auto-runner */
 const DEFAULT_TOTAL_BUDGET = 500;
+// Fraction of the spawn budget held back for re-verification so a run can't
+// exhaust its points on Build/Execute before the quality gate re-checks the
+// work. Advisory by default (an indicator); a hard early stop only under
+// --enforce-budget. FLOOR guards tiny budgets from a zero reserve.
+const VERIFY_RESERVE_FRACTION = 0.15;
+const VERIFY_RESERVE_FLOOR = 1;
 
 // ─── Standards ──────────────────────────────────────────────────────────────
 
@@ -717,6 +723,8 @@ module.exports = {
   CATEGORY_DEFAULTS,
   DEFAULT_MAX_CYCLES,
   DEFAULT_TOTAL_BUDGET,
+  VERIFY_RESERVE_FRACTION,
+  VERIFY_RESERVE_FLOOR,
   // Standards
   STANDARDS_FILE,
   STANDARDS_CATEGORIES,

@@ -1297,6 +1297,7 @@ async function main() {
         const traceSub = args[2];
         optimize.cmdOptimizeTrace(cwd, traceSub, {
           sessionId: getArgValue(args, '--session'),
+          all: args.includes('--all'),
           description: getArgValue(args, '--description'),
           command: getArgValue(args, '--command'),
           phase: getArgValue(args, '--phase'),

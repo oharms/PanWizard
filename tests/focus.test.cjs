@@ -1997,3 +1997,53 @@ describe('determineStopReason — security_complete', () => {
     assert.equal(determineStopReason(cycle, run), null);
   });
 });
+
+describe('telemetry P1/P2 — focus-auto cycle attribution + verify-reserve', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('run is anchored with started_at; each cycle records started_at/duration_ms/command', () => {
+    runPanTools('focus auto --category cleanup', tmpDir);
+    assert.ok(readAutoRun(tmpDir).started_at, 'run anchored with started_at');
+    runPanTools('focus auto --update --items-completed 2 --points-used 5 --tests-before 100 --tests-after 100', tmpDir);
+    const c = readAutoRun(tmpDir).cycles[0];
+    assert.ok(c.started_at, 'cycle 1 anchored to the run start');
+    assert.ok(typeof c.duration_ms === 'number' && c.duration_ms >= 0, 'measured wall-clock duration');
+    assert.equal(c.command, 'cleanup', 'command defaults to the run category');
+  });
+
+  test('cycle joins the cost ledger for agent + dollar attribution', () => {
+    runPanTools('focus auto --category cleanup', tmpDir);
+    require('../pan-wizard-core/bin/lib/cost.cjs').appendRecord(tmpDir, { agent: 'pan-hardener', model: 'claude-opus-4-8', input_tokens: 100000, output_tokens: 2000 });
+    runPanTools('focus auto --update --items-completed 1 --points-used 5 --tests-before 100 --tests-after 100', tmpDir);
+    const c = readAutoRun(tmpDir).cycles[0];
+    assert.ok(c.cost_usd > 0, 'measured dollars attributed to the cycle');
+    assert.deepEqual(c.agents, ['pan-hardener']);
+    assert.ok(c.tokens.input >= 100000);
+  });
+
+  test('cycle cost is null (not 0) when the ledger is empty', () => {
+    runPanTools('focus auto --category cleanup', tmpDir);
+    runPanTools('focus auto --update --items-completed 1 --points-used 5 --tests-before 100 --tests-after 100', tmpDir);
+    const c = readAutoRun(tmpDir).cycles[0];
+    assert.equal(c.cost_usd, null);
+    assert.deepEqual(c.agents, []);
+  });
+
+  test('verify-reserve hard-stops under --enforce-budget before the full cap', () => {
+    runPanTools('focus auto --category cleanup --total-budget 100 --enforce-budget --verify-reserve 0.2', tmpDir);
+    const r = runPanTools('focus auto --update --items-completed 1 --points-used 85 --tests-before 100 --tests-after 100', tmpDir);
+    assert.equal(JSON.parse(r.output).stop_reason, 'budget_reserve_reached');
+  });
+
+  test('verify-reserve is advisory by default — surfaced in status, not enforced', () => {
+    runPanTools('focus auto --category cleanup --total-budget 100 --verify-reserve 0.2', tmpDir);
+    const r = runPanTools('focus auto --update --items-completed 1 --points-used 85 --tests-before 100 --tests-after 100', tmpDir);
+    assert.notEqual(JSON.parse(r.output).stop_reason, 'budget_reserve_reached', 'advisory mode never stops');
+    const s = JSON.parse(runPanTools('focus auto --status', tmpDir).output);
+    assert.equal(s.verify_reserve, 20);
+    assert.equal(s.into_verify_reserve, true);
+    assert.equal(s.new_work_budget_remaining, -5, 'total 100 - reserve 20 - used 85');
+  });
+});

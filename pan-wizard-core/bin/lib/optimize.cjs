@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, escapeRegex } = require('./core.cjs');
+const { output, escapeRegex, execGit } = require('./core.cjs');
 const { PLANNING_DIR } = require('./constants.cjs');
 
 // ─── Storage layout ──────────────────────────────────────────────────────────
@@ -172,6 +172,65 @@ function logTraceEvent(cwd, event, sessionId) {
   }
 }
 
+/**
+ * Recompute a session's counters straight from its trace.jsonl — the single
+ * source of truth for event_count/agent_count/agents/type_counts, plus a count
+ * of malformed (unparseable) rows that would otherwise vanish silently. Pure
+ * read; never writes. Used by endTraceSession, the reconcile subcommand, and the
+ * reconcile-on-read overlay so the counting logic lives in exactly one place.
+ */
+function reconcileSessionMeta(cwd, sessionId) {
+  const sessionDir = path.join(getTracesDir(cwd), sessionId);
+  let eventCount = 0;
+  let malformed = 0;
+  const agentNames = new Set();
+  const typeCounts = {};
+  try {
+    const raw = fs.readFileSync(path.join(sessionDir, TRACE_EVENT_FILE), 'utf-8');
+    raw.trim().split('\n').filter(Boolean).forEach(line => {
+      let e;
+      try { e = JSON.parse(line); } catch { malformed++; return; }
+      eventCount++;
+      if (e.agent) agentNames.add(e.agent);
+      typeCounts[e.type] = (typeCounts[e.type] || 0) + 1;
+    });
+  } catch { /* no trace.jsonl yet */ }
+  return {
+    event_count: eventCount,
+    agent_count: agentNames.size,
+    agents: Array.from(agentNames),
+    type_counts: typeCounts,
+    malformed_count: malformed,
+  };
+}
+
+/**
+ * Compute the measured dollar cost + commit count for a session's [started_at,
+ * ended_at||now] window, folding the authoritative per-agent cost ledger
+ * (tokens.jsonl, suspect rows already quarantined) into the session so the
+ * autonomous-overhead metrics work. cost_usd is null when the ledger has no
+ * in-window rows; commit_count is null when git is unavailable — never a
+ * fabricated 0 (0 would make minutes_per_commit Infinity). Best-effort.
+ */
+function computeSessionCostAndCommits(cwd, meta) {
+  const out = { cost_usd: null, commit_count: null };
+  if (!meta || !meta.started_at) return out;
+  const since = meta.started_at;
+  const until = meta.ended_at || new Date().toISOString();
+  try {
+    const cost = require('./cost.cjs');
+    const agg = cost.aggregate(cwd, { since, until });
+    if (agg && agg.totals && agg.totals.calls > 0) out.cost_usd = agg.totals.cost_usd;
+  } catch { /* cost is observability, never the critical path */ }
+  try {
+    const r = execGit(cwd, ['log', '--oneline', '--since', since, '--until', until]);
+    if (r && r.exitCode === 0) {
+      out.commit_count = r.stdout ? r.stdout.split('\n').filter(Boolean).length : 0;
+    }
+  } catch { /* non-repo / git absent → leave null */ }
+  return out;
+}
+
 function endTraceSession(cwd, sessionId) {
   const sid = sessionId || getCurrentSessionId(cwd);
   if (!sid) return { error: 'No active session' };
@@ -183,40 +242,81 @@ function endTraceSession(cwd, sessionId) {
     let meta = {};
     try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch {}
 
-    let eventCount = 0;
-    const agentNames = new Set();
-    const typeCounts = {};
-
-    try {
-      const raw = fs.readFileSync(path.join(sessionDir, TRACE_EVENT_FILE), 'utf-8');
-      raw.trim().split('\n').filter(Boolean).forEach(line => {
-        try {
-          const e = JSON.parse(line);
-          eventCount++;
-          if (e.agent) agentNames.add(e.agent);
-          typeCounts[e.type] = (typeCounts[e.type] || 0) + 1;
-        } catch {}
-      });
-    } catch {}
-
+    const counts = reconcileSessionMeta(cwd, sid);
     meta.ended_at = new Date().toISOString();
-    meta.event_count = eventCount;
-    meta.agent_count = agentNames.size;
-    meta.agents = Array.from(agentNames);
-    meta.type_counts = typeCounts;
+    meta.event_count = counts.event_count;
+    meta.agent_count = counts.agent_count;
+    meta.agents = counts.agents;
+    meta.type_counts = counts.type_counts;
+    if (counts.malformed_count) meta.malformed_count = counts.malformed_count;
+
+    // Fold measured cost + commit count into the session so overhead.* metrics
+    // and `optimize stats` carry real dollars, not perpetual nulls.
+    const cc = computeSessionCostAndCommits(cwd, meta);
+    if (cc.cost_usd != null) meta.cost_usd = cc.cost_usd;
+    if (cc.commit_count != null) meta.commit_count = cc.commit_count;
 
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
 
+    // Clear the active-session pointer so the next SubagentStop opens a fresh
+    // session — but ONLY when we ended the session it points at (ending session
+    // A explicitly must not orphan a different active session B).
+    try {
+      if (getCurrentSessionId(cwd) === sid) {
+        fs.unlinkSync(path.join(getOptimizeDir(cwd), CURRENT_SESSION_FILE));
+      }
+    } catch { /* best-effort */ }
+
     return {
       session_id: sid,
-      event_count: eventCount,
-      agent_count: agentNames.size,
-      type_counts: typeCounts,
+      event_count: counts.event_count,
+      agent_count: counts.agent_count,
+      type_counts: counts.type_counts,
+      malformed_count: counts.malformed_count,
+      cost_usd: meta.cost_usd != null ? meta.cost_usd : null,
+      commit_count: meta.commit_count != null ? meta.commit_count : null,
       ended_at: meta.ended_at,
     };
   } catch (e) {
     return { error: e.message };
   }
+}
+
+/**
+ * Rewrite session.json from trace.jsonl WITHOUT ending the session (ended_at is
+ * left untouched). Powers `optimize trace reconcile`, so hook-driven auto-sessions
+ * that never call `end` still get accurate counters.
+ */
+function reconcileTraceSession(cwd, sessionId) {
+  const sid = sessionId || getCurrentSessionId(cwd);
+  if (!sid) return { error: 'No session to reconcile' };
+  try {
+    const metaPath = path.join(getTracesDir(cwd), sid, OPT_SESSION_FILE);
+    let meta = {};
+    try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch {}
+    const counts = reconcileSessionMeta(cwd, sid);
+    meta.event_count = counts.event_count;
+    meta.agent_count = counts.agent_count;
+    meta.agents = counts.agents;
+    meta.type_counts = counts.type_counts;
+    if (counts.malformed_count) meta.malformed_count = counts.malformed_count;
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
+    return { session_id: sid, reconciled: true, event_count: counts.event_count, malformed_count: counts.malformed_count };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+/** Reconcile every session dir (used by `optimize trace reconcile --all`). */
+function reconcileAllTraceSessions(cwd) {
+  const results = [];
+  try {
+    const tracesDir = getTracesDir(cwd);
+    for (const e of fs.readdirSync(tracesDir, { withFileTypes: true })) {
+      if (e.isDirectory() && e.name.startsWith('sess_')) results.push(reconcileTraceSession(cwd, e.name));
+    }
+  } catch { /* no traces dir */ }
+  return { reconciled: results.length, sessions: results };
 }
 
 function readTraceSession(cwd, sessionId) {
@@ -229,14 +329,25 @@ function readTraceSession(cwd, sessionId) {
     } catch {}
 
     const events = [];
+    let malformed = 0;
     try {
       const raw = fs.readFileSync(path.join(sessionDir, TRACE_EVENT_FILE), 'utf-8');
       raw.trim().split('\n').filter(Boolean).forEach(line => {
-        try { events.push(JSON.parse(line)); } catch {}
+        try { events.push(JSON.parse(line)); } catch { malformed++; }
       });
     } catch {}
 
-    return { session_id: sessionId, metadata, events, event_count: events.length };
+    // Reconcile-on-read: an unfinalized meta (no ended_at) or a stale zero
+    // event_count is overlaid with the live counts derived from the events just
+    // read, so consumers of metadata (e.g. optimize stats) never see a stale 0.
+    if (!metadata.ended_at || !metadata.event_count) {
+      const typeCounts = {};
+      const agents = new Set();
+      for (const e of events) { typeCounts[e.type] = (typeCounts[e.type] || 0) + 1; if (e.agent) agents.add(e.agent); }
+      metadata = { ...metadata, event_count: events.length, agent_count: agents.size, agents: Array.from(agents), type_counts: typeCounts };
+    }
+
+    return { session_id: sessionId, metadata, events, event_count: events.length, malformed_count: malformed };
   } catch (e) {
     return { error: e.message };
   }
@@ -256,6 +367,14 @@ function listTraceSessions(cwd) {
       try {
         meta = JSON.parse(fs.readFileSync(path.join(sessionDir, OPT_SESSION_FILE), 'utf-8'));
       } catch {}
+      // Reconcile-on-read: unfinalized (no ended_at) or stale-zero sessions —
+      // every hook-driven auto-session — get live counts from trace.jsonl so
+      // getOptimizeStats doesn't sum perpetual zeros. Finalized sessions with a
+      // real count stay cheap (session.json read only).
+      if (!meta.ended_at || !meta.event_count) {
+        const counts = reconcileSessionMeta(cwd, e.name);
+        meta = { ...meta, event_count: counts.event_count, agent_count: counts.agent_count, agents: counts.agents, type_counts: counts.type_counts };
+      }
       return meta;
     }).sort((a, b) => (b.started_at || '').localeCompare(a.started_at || ''));
 
@@ -291,11 +410,18 @@ function analyzeEvents(events, sessionMeta) {
   const agentStats = {};
   events.forEach(e => {
     if (!e.agent) return;
-    if (!agentStats[e.agent]) agentStats[e.agent] = { total: 0, errors: 0, gaps: 0, corrections: 0 };
+    if (!agentStats[e.agent]) agentStats[e.agent] = { total: 0, errors: 0, gaps: 0, corrections: 0, input_tokens: 0, output_tokens: 0, total_tokens: 0 };
     agentStats[e.agent].total++;
     if (e.type === 'error') agentStats[e.agent].errors++;
     if (e.type === 'gap') agentStats[e.agent].gaps++;
     if (e.type === 'correction') agentStats[e.agent].corrections++;
+    // Sum the per-call tokens the trace logger now writes — ONLY on completion
+    // events, so the redundancy event that mirrors output_tokens isn't counted twice.
+    if (e.category === 'agent_completion' && e.context) {
+      agentStats[e.agent].input_tokens += e.context.input_tokens || 0;
+      agentStats[e.agent].output_tokens += e.context.output_tokens || 0;
+      agentStats[e.agent].total_tokens += e.context.total_tokens || ((e.context.input_tokens || 0) + (e.context.output_tokens || 0));
+    }
   });
 
   Object.keys(agentStats).forEach(a => {
@@ -305,9 +431,20 @@ function analyzeEvents(events, sessionMeta) {
 
   const wastedTokens = redundancies.reduce((sum, e) => sum + (e.tokens_wasted || 0), 0);
 
-  // ── Timing analysis from wall-clock timestamps ────────────────────────────
-  // Token data is unavailable (Claude Code SubagentStop doesn't populate usage).
-  // Use event timestamps + session start/end for meaningful timing analysis.
+  // Sum the authoritative per-call tokens (written by the SubagentStop hooks
+  // since v3.20.0) across completion events — the redundancy events mirror
+  // output_tokens, so restrict to agent_completion to avoid double-counting.
+  const completions = events.filter(e => e.category === 'agent_completion' && e.context);
+  const tokenTotals = completions.reduce((acc, e) => {
+    acc.input += e.context.input_tokens || 0;
+    acc.output += e.context.output_tokens || 0;
+    acc.cache_read += e.context.cache_read_tokens || 0;
+    return acc;
+  }, { input: 0, output: 0, cache_read: 0 });
+
+  // ── Timing analysis ───────────────────────────────────────────────────────
+  // Prefer measured per-agent duration_ms (hooks derive it from the transcript
+  // slice); fall back to the inter-event wall-clock gap when it's absent.
   const timing = {};
 
   // Session total duration
@@ -381,6 +518,10 @@ function analyzeEvents(events, sessionMeta) {
       wasted_tokens: wastedTokens,
       reviewer_corrections: reviewerCorrections.length,
       memory_primed_count: memoryPrimed.length,
+      total_input_tokens: tokenTotals.input,
+      total_output_tokens: tokenTotals.output,
+      total_cache_read_tokens: tokenTotals.cache_read,
+      total_tokens: tokenTotals.input + tokenTotals.output,
     },
     timing,
     overhead,
@@ -405,11 +546,21 @@ function generateLocalReport(cwd, sessionId) {
   const session = readTraceSession(cwd, sessionId);
   if (session.error) return session;
 
+  // Fold measured cost + commit count into the metadata before analysis so the
+  // autonomous-overhead metrics populate even for hook-driven auto-sessions that
+  // never call `optimize trace end`. Only fill fields a producer didn't set.
+  const metadata = session.metadata || {};
+  if (typeof metadata.cost_usd !== 'number' || typeof metadata.commit_count !== 'number') {
+    const cc = computeSessionCostAndCommits(cwd, metadata);
+    if (typeof metadata.cost_usd !== 'number' && cc.cost_usd != null) metadata.cost_usd = cc.cost_usd;
+    if (typeof metadata.commit_count !== 'number' && cc.commit_count != null) metadata.commit_count = cc.commit_count;
+  }
+
   return {
     session_id: sessionId,
     generated_at: new Date().toISOString(),
-    metadata: session.metadata,
-    ...analyzeEvents(session.events, session.metadata),
+    metadata,
+    ...analyzeEvents(session.events, metadata),
     raw_events: session.events,
   };
 }
@@ -622,8 +773,12 @@ function cmdOptimizeTrace(cwd, sub, opts, raw) {
   } else if (sub === 'show') {
     if (!opts.sessionId) { output({ error: 'Session ID required (--session <id>)' }, raw); return; }
     output(readTraceSession(cwd, opts.sessionId), raw);
+  } else if (sub === 'reconcile') {
+    // Rewrite session.json counters from trace.jsonl without ending the session,
+    // so hook-driven auto-sessions that never call `end` still report real numbers.
+    output(opts.all ? reconcileAllTraceSessions(cwd) : reconcileTraceSession(cwd, opts.sessionId), raw);
   } else {
-    output({ error: 'Unknown trace subcommand. Available: init, log, end, current, list, show' }, raw);
+    output({ error: 'Unknown trace subcommand. Available: init, log, end, current, list, show, reconcile' }, raw);
   }
 }
 
@@ -1087,6 +1242,10 @@ module.exports = {
   endTraceSession,
   readTraceSession,
   listTraceSessions,
+  reconcileSessionMeta,
+  reconcileTraceSession,
+  reconcileAllTraceSessions,
+  computeSessionCostAndCommits,
   // Analysis
   analyzeEvents,
   generateLocalReport,
