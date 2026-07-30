@@ -53,19 +53,19 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Version | (see `package.json`) |
 | Commands (`commands/pan/*.md`) | 58 |
 | Agents (`agents/*.md`) | 22 |
-| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 47 |
+| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 50 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 41 |
 | References (`pan-wizard-core/references/*.md`) | 15 |
-| Unit test files (`tests/*.test.cjs`) | 90 |
+| Unit test files (`tests/*.test.cjs`) | 93 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 35 |
-| Total tests (npm run test:all) | 3240 |
-| Total test suites | 691 |
+| Total tests (npm run test:all) | 3278 |
+| Total test suites | 700 |
 | Hooks (`hooks/*.js`) | 5 |
 | Specs (`docs/specs/*.md`) | 44 |
 | ADRs (`docs/decisions/ADR-*.md`) | 39 |
 
-These are reflective of `main` at v3.19.0. They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
+These are reflective of `main` at v3.20.0. They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
 
 ---
 

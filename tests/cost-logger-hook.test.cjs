@@ -128,6 +128,17 @@ describe('pan-cost-logger — appendRecord', () => {
     assert.equal(lines.length, 2);
   });
 
+  test('dedup guard: skips an exact-duplicate of the immediately-preceding row (ignoring ts)', () => {
+    const mk = () => buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'dup', session_id: 's1' });
+    assert.equal(appendRecord(tmpDir, mk()), true);
+    assert.equal(appendRecord(tmpDir, mk()), false, 'a re-fired identical SubagentStop is not double-logged');
+    const file = path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE);
+    assert.equal(fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean).length, 1);
+    // a genuinely different record still appends
+    assert.equal(appendRecord(tmpDir, buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'other', session_id: 's1' })), true);
+    assert.equal(fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean).length, 2);
+  });
+
   test('returns false silently on write error (non-blocking)', () => {
     // Point at a path that can't be written: a file where the parent is also a file.
     const badCwd = path.join(tmpDir, '.planning', 'metrics');

@@ -1,4 +1,13 @@
 {
+  "agents-md.cjs": [
+    "PAN_AGENTS_BEGIN:string",
+    "PAN_AGENTS_END:string",
+    "buildAgentsMdSection:function",
+    "ensureClaudeMdImport:function",
+    "removeAgentsMdSection:function",
+    "removeClaudeMdImport:function",
+    "upsertAgentsMdSection:function"
+  ],
   "bridge.cjs": [
     "BRIDGE_DIR:string",
     "TOOLS_FILE:string",
@@ -493,6 +502,27 @@
     "withFileLock:function",
     "writeFileAtomic:function"
   ],
+  "memory-optimize.cjs": [
+    "APPEND_HEAVY:object",
+    "DEFAULT_KEEP:number",
+    "PLACEHOLDER:object",
+    "STATE_ARCHIVE_FILE:string",
+    "autoOptimizeEnabled:function",
+    "cmdMemoryOptimize:function",
+    "joinSections:function",
+    "maybeAutoOptimizeMemory:function",
+    "optimizeStateContent:function",
+    "parseSections:function",
+    "reconcileBullets:function"
+  ],
+  "memory-rebuild.cjs": [
+    "PAN_SOURCE_ROOT:string",
+    "RUNTIME_DIRS:object",
+    "cmdMemoryRebuild:function",
+    "detectRuntimes:function",
+    "isInsideSourceRepo:function",
+    "rebuildFile:function"
+  ],
   "memory.cjs": [
     "DEFAULT_MAX_ENTRIES:number",
     "MEMORY_DIR:string",
@@ -679,6 +709,7 @@
     "readStateSafe:function",
     "stateExtractField:function",
     "stateReplaceField:function",
+    "syncStateFrontmatter:function",
     "writeStateMd:function"
   ],
   "template.cjs": [

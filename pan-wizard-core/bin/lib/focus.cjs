@@ -848,6 +848,9 @@ function focusAutoCheckpointCommit(cwd, cycle, run) {
   // is a planning-doc committer, so honor it. commit_docs=false → hands the .planning
   // commit (and any report regeneration) back to the user.
   if (config.commit_docs === false) return null;
+  // Reconcile the always-loaded project memory before staging so the committed
+  // .planning/ snapshot carries the trimmed state.md (no-op when already lean).
+  try { require('./memory-optimize.cjs').maybeAutoOptimizeMemory(cwd); } catch { /* never block the checkpoint */ }
   // Enabled projects: refresh the HTML reports before staging so the committed
   // .planning/ snapshot reflects this cycle.
   maybeRenderPhaseReports(cwd);

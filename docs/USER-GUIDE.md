@@ -516,6 +516,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 |---------|---------|---------|------------------|
 | `planning.commit_docs` | `true`, `false` | `true` | Whether `.planning/` files are committed to git |
 | `planning.search_gitignored` | `true`, `false` | `false` | Add `--no-ignore` to broad searches to include `.planning/` |
+| `memory.auto_optimize` | `true`, `false` | `true` | Reconcile the always-loaded project memory (dedupe / cap-with-archive state.md's append-heavy sections) automatically at the focus-auto checkpoint and normal-flow session record. No-op when already lean; opt out to reconcile only via `pan-tools memory optimize`. |
 
 > **Note:** If `.planning/` is in `.gitignore`, `commit_docs` is automatically `false` regardless of the config value.
 
