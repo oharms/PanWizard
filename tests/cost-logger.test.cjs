@@ -55,17 +55,20 @@ describe('buildCostRecord — model resolution', () => {
     assert.equal(rec.model, 'claude-fable-5');
   });
 
-  test('falls back to the transcript model when the payload has none', () => {
+  test('transcript slice is authoritative over the payload usage (cumulative-counter fix)', () => {
     const p = writeTranscript([
       { type: 'assistant', message: { model: 'claude-opus-4-8-20260301', usage: { input_tokens: 7, output_tokens: 3 } } },
     ]);
     const rec = buildCostRecord({
       hook_event_name: 'SubagentStop',
       transcript_path: p,
-      usage: { input_tokens: 11, output_tokens: 4 }, // usage present — model pass must still run
+      // SubagentStop `usage` is a CUMULATIVE session counter — it must NOT override
+      // the per-call transcript slice when a transcript is available (the P0 fix).
+      usage: { input_tokens: 11, output_tokens: 4 },
     }, tmpDir);
-    assert.equal(rec.model, 'claude-opus-4-8-20260301', 'model should come from the transcript');
-    assert.equal(rec.input_tokens, 11, 'payload usage must not be overwritten');
+    assert.equal(rec.model, 'claude-opus-4-8-20260301', 'model comes from the transcript');
+    assert.equal(rec.input_tokens, 7, 'per-call transcript slice wins over the cumulative payload usage');
+    assert.equal(rec.output_tokens, 3);
   });
 
   test('transcript supplies both usage and model in headless mode (P-1805 path)', () => {
@@ -115,5 +118,28 @@ describe('buildCostRecord — per-subagent delta (field report 2026-06)', () => 
     const tail = readUsageFromTranscript(p, null, 2);
     assert.equal(tail.input_tokens, 4, 'only the 3rd record');
     assert.equal(tail.lineCount, 3);
+  });
+});
+
+describe('buildCostRecord — plausibility guard (cumulative-counter safety net)', () => {
+  test('no transcript: impossible per-call magnitudes from a cumulative usage are dropped to 0', () => {
+    // Real field values from the cumulative-counter bug (2026-07): a single
+    // SubagentStop usage carrying tens-of-millions output + billions cache-read.
+    const rec = buildCostRecord({
+      hook_event_name: 'SubagentStop',
+      usage: { output_tokens: 41296311, cache_read_input_tokens: 13955330167 },
+    }, tmpDir);
+    assert.equal(rec.output_tokens, 0, 'impossible per-call output dropped');
+    assert.equal(rec.cache_read_tokens, 0, 'impossible per-call cache-read dropped');
+  });
+
+  test('no transcript: a normal small usage passes through unchanged', () => {
+    const rec = buildCostRecord({
+      hook_event_name: 'SubagentStop',
+      usage: { input_tokens: 1200, output_tokens: 300, cache_read_input_tokens: 8000 },
+    }, tmpDir);
+    assert.equal(rec.input_tokens, 1200);
+    assert.equal(rec.output_tokens, 300);
+    assert.equal(rec.cache_read_tokens, 8000);
   });
 });

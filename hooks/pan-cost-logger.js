@@ -56,41 +56,41 @@ function buildCostRecord(data, cwd) {
   // Only log actual subagent stops; ignore other Stop variants.
   if (data.hook_event_name && data.hook_event_name !== 'SubagentStop') return null;
 
-  // P-1805 (v3.7.8): if data.usage is missing/empty (Claude Code headless mode
-  // doesn't include it in the SubagentStop payload), fall back to reading the
-  // transcript_path JSONL and summing usage across the subagent's messages.
-  // Same approach as pan-trace-logger.js for consistency.
-  //
-  // 2026-06: the SubagentStop payload carries no model id either, which left
-  // every hook record with model:null and /pan:cost unable to price it. The
-  // transcript's assistant messages carry message.model right next to the
-  // usage we already read — capture it whenever data.model is absent.
-  let inputTokens = extractNumber(data.usage, 'input_tokens');
-  let outputTokens = extractNumber(data.usage, 'output_tokens');
-  let cacheRead = extractNumber(data.usage, 'cache_read_input_tokens');
-  let cacheWrite = extractNumber(data.usage, 'cache_creation_input_tokens');
+  // Per-call token counts come from the transcript SLICE — the records since
+  // this transcript's previous SubagentStop cursor. The SubagentStop `data.usage`,
+  // when Claude Code supplies it, is a CUMULATIVE session counter, NOT this
+  // subagent's delta, so logging it verbatim stamped impossible per-row magnitudes
+  // (tens of millions of output tokens, billions of cache-read) onto every record
+  // and made /pan:cost and the optimizer unusable (field reports 2026-06 / 2026-07).
+  // The transcript slice is the authoritative per-invocation delta; `data.usage`
+  // is a guarded fallback used only when no transcript is available.
   let model = typeof data.model === 'string' && data.model ? data.model : null;
-  const needUsage = (inputTokens + outputTokens + cacheRead + cacheWrite) === 0;
-  if ((needUsage || !model) && data.transcript_path) {
-    // Attribute only the transcript slice since the previous SubagentStop for
-    // this transcript, so a shared-session transcript is never re-summed on
-    // every event (field report 2026-06 — the billion-token cache-read bug).
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  if (data.transcript_path) {
     const cursor = readCursor(cwd);
     const since = cursor[data.transcript_path] || 0;
     const fromTranscript = readUsageFromTranscript(data.transcript_path, data.session_id, since);
-    if (needUsage) {
-      inputTokens = fromTranscript.input_tokens;
-      outputTokens = fromTranscript.output_tokens;
-      cacheRead = fromTranscript.cache_read_input_tokens;
-      cacheWrite = fromTranscript.cache_creation_input_tokens;
-    }
+    inputTokens = fromTranscript.input_tokens;
+    outputTokens = fromTranscript.output_tokens;
+    cacheRead = fromTranscript.cache_read_input_tokens;
+    cacheWrite = fromTranscript.cache_creation_input_tokens;
     if (!model) model = fromTranscript.model;
-    // Advance the cursor to the end of the transcript so the next subagent's
-    // record starts fresh (these slices partition the transcript — no overlap).
+    // Advance the cursor so the next subagent's record starts fresh — the slices
+    // partition the transcript, so it is never re-summed on every event.
     if (fromTranscript.lineCount > since) {
       cursor[data.transcript_path] = fromTranscript.lineCount;
       writeCursor(cwd, cursor);
     }
+  } else {
+    // No transcript to slice — best-effort from data.usage, plausibility-guarded
+    // so a cumulative counter can never slip through as a per-call value.
+    inputTokens = clampPlausible(extractNumber(data.usage, 'input_tokens'));
+    outputTokens = clampPlausible(extractNumber(data.usage, 'output_tokens'));
+    cacheRead = clampPlausible(extractNumber(data.usage, 'cache_read_input_tokens'));
+    cacheWrite = clampPlausible(extractNumber(data.usage, 'cache_creation_input_tokens'));
   }
 
   const record = {
@@ -116,6 +116,15 @@ function extractNumber(obj, key) {
   if (!obj || typeof obj !== 'object') return 0;
   const v = obj[key];
   return typeof v === 'number' ? v : 0;
+}
+
+// A single subagent call's token counts never realistically exceed this; a value
+// above it is a cumulative session counter that leaked in, so we drop it to 0
+// rather than poison the ledger. Generous vs. any real call, tiny vs. the
+// billions/tens-of-millions the cumulative bug produced.
+const PLAUSIBLE_MAX = 20000000;
+function clampPlausible(n) {
+  return typeof n === 'number' && n >= 0 && n <= PLAUSIBLE_MAX ? n : 0;
 }
 
 /**
@@ -184,11 +193,32 @@ function appendRecord(cwd, record) {
   try {
     const dir = path.join(cwd, '.planning', METRICS_DIR);
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, TOKENS_FILE), JSON.stringify(record) + '\n', 'utf-8');
+    const file = path.join(dir, TOKENS_FILE);
+    // Idempotency guard: a re-fired SubagentStop must not double-log. Skip the
+    // append when this record is identical (every field but the timestamp) to
+    // the immediately-preceding row — the source of ~57% duplicate rows in the
+    // field (2026-07). Best-effort: any read error just proceeds with the append.
+    if (isDuplicateOfLastRecord(file, record)) return false;
+    fs.appendFileSync(file, JSON.stringify(record) + '\n', 'utf-8');
     return true;
   } catch {
     return false;
   }
+}
+
+/** True when `record` equals the last JSONL row of `file`, ignoring `ts`. */
+function isDuplicateOfLastRecord(file, record) {
+  let prev;
+  try {
+    const raw = fs.readFileSync(file, 'utf-8');
+    const lines = raw.split('\n').filter(Boolean);
+    if (!lines.length) return false;
+    prev = JSON.parse(lines[lines.length - 1]);
+  } catch {
+    return false; // no file / unreadable / bad JSON → not a duplicate
+  }
+  const strip = (r) => { const { ts, ...rest } = r; return JSON.stringify(rest); };
+  return strip(prev) === strip(record);
 }
 
 // ─── Stdin driver ───────────────────────────────────────────────────────────

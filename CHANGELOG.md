@@ -5,6 +5,18 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.0] - 2026-07-30
+
+### Fixed — telemetry integrity: per-call token accounting (the "impossible magnitudes" bug)
+
+The `SubagentStop` cost/trace hooks were logging Claude Code's **cumulative** session token counter as if it were the just-finished subagent's per-call usage, stamping physically-impossible magnitudes (tens of millions of output tokens, billions of cache-read) onto ledger and trace rows — which made `/pan:cost` and the optimizer unusable and left PAN unable to measure its own performance. Discovered by mining PAN's own telemetry across real project installs.
+
+- **Transcript slice is now authoritative.** Both `pan-cost-logger.js` and `pan-trace-logger.js` derive per-call tokens from the transcript slice since the previous `SubagentStop` cursor (the mechanism that already existed for headless mode) whenever a transcript is available, instead of trusting the cumulative `data.usage`. `data.usage` is now only a fallback when no transcript is present.
+- **Plausibility guard.** In the no-transcript fallback, a token field above a per-call ceiling (a cumulative counter that leaked in) is dropped to 0 rather than poisoning the ledger.
+- **Idempotent append (dedup guard).** A re-fired `SubagentStop` that produces a row identical (every field but the timestamp) to the immediately-preceding row is skipped — eliminating the ~57% duplicate rows observed in the field.
+
+New tests cover all three (`tests/cost-logger.test.cjs`, `tests/cost-logger-hook.test.cjs`, and a new `tests/trace-logger.test.cjs`); the tests that previously codified the cumulative behavior were corrected.
+
 ## [3.19.0] - 2026-07-26
 
 ### Changed — cost reset: quality-by-default, budget is now advisory

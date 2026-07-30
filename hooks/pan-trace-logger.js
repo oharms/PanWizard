@@ -98,6 +98,14 @@ function extractNumber(obj, key) {
   return typeof v === 'number' ? v : 0;
 }
 
+// Drop implausibly large per-call token counts (a cumulative counter that leaked
+// through the no-transcript fallback) to 0 rather than record them. Mirrors
+// pan-cost-logger's guard.
+const PLAUSIBLE_MAX = 20000000;
+function clampPlausible(n) {
+  return typeof n === 'number' && n >= 0 && n <= PLAUSIBLE_MAX ? n : 0;
+}
+
 /**
  * P-1805 (v3.7.8): extract usage totals by reading the SubagentStop transcript.
  * The hook payload from Claude Code in headless mode does NOT include
@@ -183,13 +191,15 @@ function buildTraceEvents(data, sessionId, cwd) {
   const ts = new Date().toISOString();
   const agent = data.agent_type || data.subagent_type || 'unknown';
 
-  // P-1805: prefer usage from data.usage when present (interactive Claude Code path).
-  // Fall back to reading the transcript file (headless `claude -p` path — usage
-  // not in payload but discoverable via transcript_path).
-  let inputTokens = extractNumber(data.usage, 'input_tokens');
-  let outputTokens = extractNumber(data.usage, 'output_tokens');
-  let cacheRead = extractNumber(data.usage, 'cache_read_input_tokens');
-  if ((inputTokens + outputTokens + cacheRead) === 0 && data.transcript_path) {
+  // Per-call tokens come from the transcript SLICE. The SubagentStop `data.usage`,
+  // when present, is a CUMULATIVE session counter — not this subagent's delta — so
+  // logging it verbatim produced impossible per-row magnitudes (see pan-cost-logger
+  // for the full rationale). The slice is authoritative; data.usage is only a
+  // plausibility-guarded fallback when no transcript is available.
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheRead = 0;
+  if (data.transcript_path) {
     const cursor = readTraceCursor(cwd);
     const since = cursor[data.transcript_path] || 0;
     const fromTranscript = readUsageFromTranscript(data.transcript_path, data.session_id, since);
@@ -200,6 +210,10 @@ function buildTraceEvents(data, sessionId, cwd) {
       cursor[data.transcript_path] = fromTranscript.lineCount;
       writeTraceCursor(cwd, cursor);
     }
+  } else {
+    inputTokens = clampPlausible(extractNumber(data.usage, 'input_tokens'));
+    outputTokens = clampPlausible(extractNumber(data.usage, 'output_tokens'));
+    cacheRead = clampPlausible(extractNumber(data.usage, 'cache_read_input_tokens'));
   }
   const totalTokens = inputTokens + outputTokens;
 
@@ -261,12 +275,37 @@ function appendTraceEvents(cwd, events, sessionId) {
   try {
     const sessionDir = path.join(getTracesDir(cwd), sessionId);
     fs.mkdirSync(sessionDir, { recursive: true });
+    const file = path.join(sessionDir, TRACE_EVENT_FILE);
+    // Idempotency guard: a re-fired SubagentStop must not double-log. If this
+    // batch's completion event duplicates the last agent_completion already in
+    // the file (every field but ts), skip the whole batch — the source of the
+    // ~57% duplicate completion rows in the field (2026-07).
+    const completion = events.find(e => e && e.category === 'agent_completion');
+    if (completion && isDuplicateCompletion(file, completion)) return false;
     const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
-    fs.appendFileSync(path.join(sessionDir, TRACE_EVENT_FILE), lines, 'utf-8');
+    fs.appendFileSync(file, lines, 'utf-8');
     return true;
   } catch {
     return false;
   }
+}
+
+/** True when `completion` matches the file's last agent_completion row, ignoring ts. */
+function isDuplicateCompletion(file, completion) {
+  let last;
+  try {
+    const raw = fs.readFileSync(file, 'utf-8');
+    for (const line of raw.split('\n')) {
+      if (!line) continue;
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      if (e && e.category === 'agent_completion') last = e;
+    }
+  } catch {
+    return false;
+  }
+  if (!last) return false;
+  const strip = (e) => { const { ts, ...rest } = e; return JSON.stringify(rest); };
+  return strip(last) === strip(completion);
 }
 
 // ─── Stdin driver ────────────────────────────────────────────────────────────
