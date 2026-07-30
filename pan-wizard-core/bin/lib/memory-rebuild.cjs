@@ -32,6 +32,24 @@ const {
   upsertAgentsMdSection,
   ensureClaudeMdImport,
 } = require('./agents-md.cjs');
+const { isSuspiciousDirective } = require('./memory-optimize.cjs');
+
+/**
+ * Scan a procedural-memory file (AGENTS.md / CLAUDE.md) for lines that read like
+ * directives aimed at the agent — a memory-injection risk in the ALWAYS-loaded
+ * instruction files (ADR-0040). rebuild owns only the marker-fenced PAN section
+ * (regenerated from a fixed template, so it can't be poisoned); user content is
+ * preserved by contract, so here we WARN rather than auto-edit — surfacing
+ * suspect lines for human review instead of silently rewriting the user's file.
+ */
+function scanForDirectives(file, content, warnings) {
+  if (typeof content !== 'string') return;
+  content.split('\n').forEach((line, i) => {
+    if (isSuspiciousDirective(line)) {
+      warnings.push({ file, line: i + 1, text: line.trim().slice(0, 200) });
+    }
+  });
+}
 
 // Source repo root — mirrors experiment.cjs / install.js. __dirname is
 // .../pan-wizard-core/bin/lib, so three levels up is the repo (or install) root.
@@ -106,6 +124,7 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
 
   const runtimes = detectRuntimes(cwd);
   const targets = [];
+  const warnings = [];
 
   // 1. AGENTS.md — universal PAN section (all runtimes read it natively).
   {
@@ -113,6 +132,7 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
     const existing = safeReadFile(p);
     const desired = upsertAgentsMdSection(existing, buildAgentsMdSection());
     targets.push({ file: 'AGENTS.md', ...rebuildFile(p, existing, desired, apply) });
+    scanForDirectives('AGENTS.md', desired, warnings);
   }
 
   // 2. CLAUDE.md — Claude bridge, only when the Claude runtime is installed.
@@ -121,6 +141,7 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
     const existing = safeReadFile(p);
     const desired = ensureClaudeMdImport(existing);
     targets.push({ file: 'CLAUDE.md', ...rebuildFile(p, existing, desired, apply) });
+    scanForDirectives('CLAUDE.md', desired, warnings);
   }
 
   // 3. state.md — re-derive YAML frontmatter from the body (progress/status).
@@ -139,10 +160,12 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
     runtimes,
     rebuilt: targets,
     changed_count: changed.length,
+    directive_warnings: warnings,
   };
-  const summary = changed.length === 0
+  const warnNote = warnings.length ? `; ⚠ ${warnings.length} directive-like line(s) in procedural memory — review (not auto-edited)` : '';
+  const summary = (changed.length === 0
     ? `tools memory already current (${targets.map((t) => t.file).join(', ')}) — nothing to do`
-    : `${apply ? 'rebuilt' : 'would rebuild'} ${changed.map((t) => `${t.file} (${t.action})`).join(', ')}`;
+    : `${apply ? 'rebuilt' : 'would rebuild'} ${changed.map((t) => `${t.file} (${t.action})`).join(', ')}`) + warnNote;
   output(result, raw, summary);
 }
 
@@ -151,6 +174,7 @@ module.exports = {
   detectRuntimes,
   isInsideSourceRepo,
   rebuildFile,
+  scanForDirectives,
   PAN_SOURCE_ROOT,
   RUNTIME_DIRS,
 };

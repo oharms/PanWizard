@@ -507,10 +507,13 @@
   "memory-optimize.cjs": [
     "APPEND_HEAVY:object",
     "DEFAULT_KEEP:number",
+    "DIRECTIVE_PATTERNS:object",
     "PLACEHOLDER:object",
+    "QUARANTINE_FILE:string",
     "STATE_ARCHIVE_FILE:string",
     "autoOptimizeEnabled:function",
     "cmdMemoryOptimize:function",
+    "isSuspiciousDirective:function",
     "joinSections:function",
     "maybeAutoOptimizeMemory:function",
     "optimizeStateContent:function",
@@ -523,7 +526,8 @@
     "cmdMemoryRebuild:function",
     "detectRuntimes:function",
     "isInsideSourceRepo:function",
-    "rebuildFile:function"
+    "rebuildFile:function",
+    "scanForDirectives:function"
   ],
   "memory.cjs": [
     "DEFAULT_MAX_ENTRIES:number",
