@@ -95,6 +95,9 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `focus.cjs` | Focus workflow scan/plan/sync/exec/auto/design + Opus 4.7: `focus classify-stages`, `focus reflection` |
 | `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices + Opus 4.7: `codebase estimate-size` |
 | `memory.cjs` | **(v2.10.0, E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact` |
+| `memory-optimize.cjs` | Reconcile the always-loaded project memory: `memory optimize [--apply] [--keep N]` (dedupe / placeholder-strip / cap-with-archive state.md); also runs automatically in the focus + normal flows |
+| `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply]` (AGENTS.md PAN section, CLAUDE.md bridge, state.md frontmatter) |
+| `agents-md.cjs` | Single source for the AGENTS.md PAN section + CLAUDE.md `@AGENTS.md` bridge builders (shared by the installer and `memory rebuild`) |
 | `core.cjs` (CLI surface) | **(v2.10.0, E-1)** Prompt cache: `cache prime [--summary]` (wraps `buildCachedContext`) |
 | `cost.cjs` | **(v3.0, Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, plus `models check` rate-table staleness (v3.9). Log at `.planning/metrics/tokens.jsonl`. |
 | `bus.cjs` | **(v3.0, Y-7)** Agent message channels: `bus publish`, `bus drain`, `bus list`. Channels at `.planning/bus/<channel>.jsonl`. |
@@ -315,6 +318,8 @@ Quick reference of all CLI commands grouped by category.
 | 186 | `report phase <N>` | Observability | phase-report.cjs |
 | 187 | `report index` | Observability | phase-report.cjs |
 | 188 | `report all` | Observability | phase-report.cjs |
+| 189 | `memory optimize` | Memory | memory-optimize.cjs |
+| 190 | `memory rebuild` | Memory | memory-rebuild.cjs |
 
 ---
 
@@ -1767,6 +1772,7 @@ pan-tools config-ensure-section [--raw]
 | `workflow.research` | `true` | Enable research phase before planning |
 | `workflow.plan_check` | `true` | Enable plan-checker agent verification loop |
 | `workflow.phase_reports` | `{ enabled: false, open: false, theme: "auto", index: true }` | Opt-in HTML phase reports as a build deliverable. When `enabled`, the verify→complete gate, focus-auto checkpoints, and army INTEGRATE regenerate per-phase reports (and, when `index`, the timeline index); default off. |
+| `memory.auto_optimize` | `true` | Reconcile the always-loaded project memory automatically at the focus-auto checkpoint and the normal-flow session record. No-op when state.md is already lean. Set `false` to opt out and reconcile only via `memory optimize`. |
 | `brave_search` | auto-detected | Brave Search API availability |
 
 ---
@@ -2981,6 +2987,55 @@ pan-tools memory compact <agent> 50
 **JSON output:**
 ```json
 { "compacted": true, "kept": 50, "removed": 42 }
+```
+
+### `memory optimize [--apply] [--keep N]`
+
+Reconcile the always-loaded project memory so it stays small. Reconciles state.md's append-heavy bullet sections (Decisions / Blockers / Concerns / Todos / Session Continuity): dedupe, strip placeholders once real entries exist, and cap to the most-recent `N` (default 12), **archiving** the overflow to `.planning/memory/state-archive.md` — nothing is hard-deleted. Also consolidates any per-agent episodic log over the entry cap. Tables, prose, sub-bullets, and every non-target section are preserved byte-for-byte.
+
+Dry-run by default (reports what *would* change); pass `--apply` to write. Idempotent — a second run on already-lean content is a no-op.
+
+```
+pan-tools memory optimize            # dry-run: report what would change
+pan-tools memory optimize --apply    # write the reconciled state.md + archive
+pan-tools memory optimize --apply --keep 20
+```
+
+**JSON output:**
+```json
+{
+  "apply": true,
+  "state": { "changed": true, "sections_touched": ["Decisions"], "archived_entries": 3 },
+  "agents": [],
+  "archived": 3
+}
+```
+
+> Auto-optimize also runs automatically inside the focus-auto checkpoint and the normal-flow session record, gated by `memory.auto_optimize` in `.planning/config.json` (default on). Running `memory optimize` by hand is only needed for an out-of-band pass or a custom `--keep`.
+
+### `memory rebuild [--apply]`
+
+Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by every runtime), the `@AGENTS.md` bridge in `CLAUDE.md` (only when the Claude runtime is installed), and state.md's YAML frontmatter (re-derived from the body). User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
+
+Dry-run by default; pass `--apply` to write. A second run changes nothing.
+
+```
+pan-tools memory rebuild             # dry-run: report the derived targets
+pan-tools memory rebuild --apply     # regenerate AGENTS.md / CLAUDE.md / state.md frontmatter
+```
+
+**JSON output:**
+```json
+{
+  "apply": true,
+  "runtimes": ["claude", "copilot"],
+  "rebuilt": [
+    { "file": "AGENTS.md", "action": "update", "wrote": true },
+    { "file": "CLAUDE.md", "action": "unchanged", "wrote": false },
+    { "file": ".planning/state.md", "action": "update", "wrote": true }
+  ],
+  "changed_count": 2
+}
 ```
 
 ---

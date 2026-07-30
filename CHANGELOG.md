@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.20.0] - 2026-07-30
 
+### Added — memory optimization: keep the always-loaded project memory small, automatically
+
+PAN's project memory (state.md and the per-agent episodic logs) is loaded on every run, so unbounded growth in the append-heavy sections is a direct context-rot cost. Two new `pan-tools memory` subcommands reconcile and regenerate it, grounded in a short memory-management research pass (reconcile-on-write over blind-append; retain by recency+importance over FIFO; reversible archival over lossy re-summarization; rebuild as an idempotent projection from source).
+
+- **`memory optimize [--apply] [--keep N]`** — reconciles state.md's append-heavy bullet sections (Decisions / Blockers / Concerns / Todos / Session Continuity): dedupe, strip placeholders once real entries exist, and cap to the most-recent N, **archiving** the overflow to `.planning/memory/state-archive.md` (reversible — nothing is hard-deleted). Also consolidates any per-agent episodic log over the entry cap. Tables, prose, sub-bullets, and every non-target section are preserved byte-for-byte. Dry-run by default; idempotent (a second run on lean content is a no-op).
+- **`memory rebuild [--apply]`** — regenerates the DERIVED tools-memory as an idempotent projection: the marker-fenced PAN section in `AGENTS.md` (read natively by every runtime), the `@AGENTS.md` bridge in `CLAUDE.md` (Claude only), and state.md's YAML frontmatter (re-derived from the body). User content outside PAN's markers is never touched; refuses to run inside the PAN source repository.
+- **Automatic reconcile in the flows.** Auto-optimize now runs as an embedded step of the focus-auto checkpoint and the normal-flow session record, so trimming happens without a manual command. Gated by `memory.auto_optimize` in `.planning/config.json` (default on); a true no-op when state.md is already lean.
+
+The AGENTS.md/CLAUDE.md builders moved to a shipped single-source module so the installer and the installed `memory rebuild` emit byte-identical content.
+
 ### Fixed — telemetry integrity: per-call token accounting (the "impossible magnitudes" bug)
 
 The `SubagentStop` cost/trace hooks were logging Claude Code's **cumulative** session token counter as if it were the just-finished subagent's per-call usage, stamping physically-impossible magnitudes (tens of millions of output tokens, billions of cache-read) onto ledger and trace rows — which made `/pan:cost` and the optimizer unusable and left PAN unable to measure its own performance. Discovered by mining PAN's own telemetry across real project installs.
