@@ -951,8 +951,14 @@ async function main() {
         }, raw);
       } else if (subcommand === 'budget') {
         memory.cmdMemoryBudget(cwd, raw);
+      } else if (subcommand === 'optimize') {
+        const keepArg = getArgValue(args, '--keep');
+        require('./lib/memory-optimize.cjs').cmdMemoryOptimize(cwd, {
+          apply: args.includes('--apply'),
+          keep: keepArg ? Number(keepArg) : undefined,
+        }, raw);
       } else {
-        error('Unknown memory subcommand. Available: read, append, list, compact, select, budget');
+        error('Unknown memory subcommand. Available: read, append, list, compact, select, budget, optimize');
       }
       break;
     }
