@@ -125,3 +125,13 @@ describe('campaign — isDreamDue', () => {
     assert.equal(c.isDreamDue(c.readSchedule(cwd), T0), true);
   });
 });
+
+describe('telemetry P1/P2 — campaign verify-reserve indicators (status only)', () => {
+  const { runPanTools } = require('./helpers.cjs');
+  test('campaign status surfaces verify_reserve without moving the due threshold', () => {
+    c.writeSchedule(cwd, { cadence: 'daily', daily_budget: 100 }, T0);
+    const s = JSON.parse(runPanTools('campaign status', cwd).output);
+    assert.equal(s.verify_reserve, 15, 'ceil(100 * 0.15)');
+    assert.equal(typeof s.into_verify_reserve, 'boolean');
+  });
+});

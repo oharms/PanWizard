@@ -925,3 +925,78 @@ describe('pan-trace-logger appendTraceEvents', () => {
     assert.ok(fs.existsSync(path.join(getTracesDir(cwd), 'sess_nonexistent', TRACE_EVENT_FILE)));
   });
 });
+
+describe('telemetry P1/P2 — session reconcile-on-read + token aggregation + overhead', () => {
+  let cwd;
+  beforeEach(() => { cwd = createTempProject(); });
+  afterEach(() => { cleanup(cwd); });
+
+  const { reconcileTraceSession, computeSessionCostAndCommits } = require('../pan-wizard-core/bin/lib/optimize.cjs');
+  const cost = require('../pan-wizard-core/bin/lib/cost.cjs');
+
+  function seedTrace(sid, rows) {
+    const dir = path.join(getTracesDir(cwd), sid);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'trace.jsonl'), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  }
+
+  test('getOptimizeStats counts events from trace.jsonl even when session.json says 0', () => {
+    const { session_id } = initTraceSession(cwd, {}); // meta.event_count = 0, ended_at = null
+    seedTrace(session_id, [
+      { type: 'decision', agent: 'a', category: 'agent_completion' },
+      { type: 'error', agent: 'b' },
+      { type: 'decision', agent: 'a' },
+    ]);
+    const stats = getOptimizeStats(cwd);
+    assert.equal(stats.total_events_traced, 3, 'reconciled from trace.jsonl, not the stale 0');
+    assert.equal(stats.total_errors_traced, 1);
+  });
+
+  test('optimize trace reconcile rewrites session.json without ending it', () => {
+    const { session_id } = initTraceSession(cwd, {});
+    seedTrace(session_id, [{ type: 'decision', agent: 'a' }, { type: 'gap', agent: 'a' }]);
+    const r = reconcileTraceSession(cwd, session_id);
+    assert.equal(r.event_count, 2);
+    const meta = JSON.parse(fs.readFileSync(path.join(getTracesDir(cwd), session_id, 'session.json'), 'utf-8'));
+    assert.equal(meta.event_count, 2);
+    assert.equal(meta.ended_at, null, 'reconcile does not end the session');
+    assert.equal(meta.type_counts.gap, 1);
+  });
+
+  test('readTraceSession counts malformed rows instead of swallowing them', () => {
+    const { session_id } = initTraceSession(cwd, {});
+    const dir = path.join(getTracesDir(cwd), session_id);
+    fs.writeFileSync(path.join(dir, 'trace.jsonl'), JSON.stringify({ type: 'decision', agent: 'a' }) + '\n{ broken json\n');
+    assert.equal(readTraceSession(cwd, session_id).malformed_count, 1);
+  });
+
+  test('endTraceSession clears current-session only when it points at the ended session', () => {
+    const a = initTraceSession(cwd, { forceNew: true }).session_id;
+    endTraceSession(cwd, a);
+    assert.equal(getCurrentSessionId(cwd), null, 'pointer cleared for the ended active session');
+  });
+
+  test('analyzeEvents sums per-call tokens from completion events (no double-count)', () => {
+    const out = analyzeEvents([
+      { type: 'decision', category: 'agent_completion', agent: 'a', context: { input_tokens: 100, output_tokens: 50, total_tokens: 150 } },
+      { type: 'redundancy', category: 'uncached_heavy_run', agent: 'a', context: { output_tokens: 50 } },
+    ]);
+    assert.equal(out.summary.total_tokens, 150, 'redundancy event not double-counted');
+    assert.equal(out.summary.total_input_tokens, 100);
+    assert.equal(out.agent_stats.a.total_tokens, 150);
+  });
+
+  test('overhead.total_cost_usd is folded in from the in-window cost ledger', () => {
+    const { session_id } = initTraceSession(cwd, {});
+    const meta = JSON.parse(fs.readFileSync(path.join(getTracesDir(cwd), session_id, 'session.json'), 'utf-8'));
+    cost.appendRecord(cwd, { ts: meta.started_at, agent: 'a', model: 'claude-opus-4-8', input_tokens: 1000, output_tokens: 500 });
+    seedTrace(session_id, [{ type: 'decision', agent: 'a', category: 'agent_completion', context: { input_tokens: 1000, output_tokens: 500 } }]);
+    const report = generateLocalReport(cwd, session_id);
+    assert.ok(typeof report.overhead.total_cost_usd === 'number' && report.overhead.total_cost_usd > 0, 'dollars surfaced from the ledger');
+  });
+
+  test('computeSessionCostAndCommits leaves commit_count null outside a git repo', () => {
+    const r = computeSessionCostAndCommits(cwd, { started_at: '2026-07-30T00:00:00Z', ended_at: '2026-07-30T01:00:00Z' });
+    assert.equal(r.commit_count, null, 'no fabricated 0 when git is unavailable');
+  });
+});

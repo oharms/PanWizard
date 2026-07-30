@@ -5,6 +5,27 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.0] - 2026-07-30
+
+### Added / Fixed — telemetry P1/P2: PAN can now measure its own work
+
+The v3.20.0 fix made per-call token accounting correct at the source; this release makes the rest of the telemetry pipeline actually *use* that data — closing a verified backlog of 14 producer/consumer gaps found by re-scanning PAN's own instrumentation.
+
+**Richer SubagentStop rows.** Both cost and trace hooks now record, per subagent call:
+- **`duration_ms`** — measured from the transcript slice's first→last record timestamp (`null`, never a fabricated `0`, when timestamps are absent).
+- **`command` / `phase`** — backfilled from the active trace session when the payload omits them (it always does); cost rows also get a **`tier`** reverse-mapped from the model family.
+- **`model`** — the trace logger now falls back to the transcript model like the cost logger already did, so the two streams agree per event.
+- **schema version (`v`)**, and **clamp provenance** (`token_source` + `clamped`) so a plausibility-guarded fallback zero is distinguishable from a genuine zero.
+
+**Session lifecycle.** Hook-driven auto-sessions were created with `event_count: 0` and never finalized, so `optimize stats` reported zero events over hundreds of real rows. Now:
+- **Reconcile-on-read** — `optimize stats` / session listing derive live counts from `trace.jsonl` when a session is unfinalized, and a new **`optimize trace reconcile [--all|--session <id>]`** rewrites `session.json` counters without ending the session.
+- Day-scoped auto-sessions **roll over** at day boundaries (the stale one is finalized), and ending a session clears the active-session pointer.
+- `analyzeEvents` now **aggregates the per-call tokens** into summary + per-agent totals, and **session overhead** metrics (`total_cost_usd`, `commit_count`, cost-per-commit) populate from the real cost ledger + git history.
+
+**Cost accuracy.** `cost append` now prices at your **`config.cost.rates`** overrides instead of frozen defaults (and `loadConfig` actually surfaces the `cost` section — the documented override was previously inert). Readers **count malformed JSONL rows** (`malformed_skipped`) instead of silently dropping them.
+
+**Focus-auto attribution + verify-reserve.** Each focus-auto cycle now carries `started_at` / `duration_ms` / `command` and **joins the cost ledger** for real per-cycle agent + dollar attribution. A new **verify-reserve** holds back a fraction of the spawn budget (`budget.verify_reserve`, default 0.15, or `--verify-reserve`) so re-verification isn't starved — advisory by default (surfaced as `new_work_budget_remaining` / `into_verify_reserve`), a hard early stop (`budget_reserve_reached`) only under `--enforce-budget`, evaluated after the full-budget cap so the existing hard boundary is unchanged.
+
 ## [3.20.0] - 2026-07-30
 
 ### Added — memory optimization: keep the always-loaded project memory small, automatically

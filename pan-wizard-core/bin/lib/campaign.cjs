@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const { output, error } = require('./core.cjs');
-const { PLANNING_DIR } = require('./constants.cjs');
+const { PLANNING_DIR, VERIFY_RESERVE_FRACTION } = require('./constants.cjs');
 
 const ORCH_DIR = 'orchestration';
 const SCHEDULE_FILE = 'schedule.json';
@@ -169,12 +169,19 @@ function cmdCampaignStatus(cwd, raw) {
   if (!schedule) return output({ scheduled: false }, raw, 'No campaign scheduled');
   const at = new Date();
   const d = isRunDue(schedule, at);
+  // Advisory verify-reserve indicators (status only — does not move the isRunDue
+  // trip threshold): how much of the daily budget is held back for re-verification
+  // and whether today's spend has crossed into it.
+  const fraction = typeof schedule.verify_reserve === 'number' ? schedule.verify_reserve : VERIFY_RESERVE_FRACTION;
+  const verifyReserve = schedule.daily_budget != null && fraction > 0 ? Math.ceil(schedule.daily_budget * fraction) : 0;
+  const intoReserve = verifyReserve > 0 && schedule.daily_budget != null && d.spent_today >= schedule.daily_budget - verifyReserve;
   const result = {
     scheduled: true, enabled: schedule.enabled, paused: schedule.paused,
     cadence: schedule.cadence, daily_budget: schedule.daily_budget,
     next_due: schedule.next_due, last_run: schedule.last_run,
     spent_today: d.spent_today, runs: (schedule.history || []).length,
     due: d.due, reason: d.reason,
+    verify_reserve: verifyReserve, into_verify_reserve: intoReserve,
   };
   const human = `Campaign ${schedule.enabled ? (schedule.paused ? 'paused' : 'active') : 'disabled'} · ${schedule.cadence} · spent ${d.spent_today}/${schedule.daily_budget} today · next ${schedule.next_due} · ${d.due ? 'DUE NOW' : d.reason}`;
   output(result, raw, human);

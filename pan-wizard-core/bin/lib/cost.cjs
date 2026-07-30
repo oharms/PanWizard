@@ -148,10 +148,13 @@ function appendRecord(cwd, rec) {
     phase: rec.phase || null,
     session: rec.session || null,
   };
-  // Allow caller-supplied cost override; otherwise compute.
+  // Allow caller-supplied cost override; otherwise compute at the user's
+  // configured rates (config.cost.rates) — without this, CLI-appended rows froze
+  // at DEFAULT_RATES while hook rows (cost_usd:null) got config rates at read
+  // time, so the two producers priced identical tokens differently.
   normalized.cost_usd = typeof rec.cost_usd === 'number'
     ? rec.cost_usd
-    : computeCost(normalized);
+    : computeCost(normalized, loadConfig(cwd)?.cost?.rates);
 
   try {
     fs.mkdirSync(metricsDir(cwd), { recursive: true });
@@ -167,7 +170,16 @@ function appendRecord(cwd, rec) {
  * @param {string} cwd
  * @returns {Array<Object>}
  */
+// Count of malformed (unparseable) rows dropped by the most recent readRecords
+// call. A crash mid-append or interleaved concurrent appends can leave a torn
+// row; surfacing the count (rather than swallowing it) mirrors the existing
+// suspect_excluded contract. Module-level so aggregate() can read it without a
+// breaking change to readRecords' bare-array return (consumed as an array by
+// aggregate, memory.cjs, and hygiene.cjs).
+let _lastReadMalformed = 0;
+
 function readRecords(cwd) {
+  _lastReadMalformed = 0;
   const raw = safeReadFile(tokensFile(cwd));
   if (!raw) return [];
   const records = [];
@@ -175,7 +187,7 @@ function readRecords(cwd) {
     if (!line.trim()) continue;
     try {
       records.push(JSON.parse(line));
-    } catch { /* skip malformed line */ }
+    } catch { _lastReadMalformed += 1; }
   }
   return records;
 }
@@ -207,6 +219,7 @@ function isSuspectRecord(r) {
 
 function aggregate(cwd, opts) {
   const records = readRecords(cwd);
+  const malformedSkipped = _lastReadMalformed; // captured before any later read
   const since = opts?.since ? new Date(opts.since).getTime() : null;
   const until = opts?.until ? new Date(opts.until).getTime() : null;
   const config = loadConfig(cwd);
@@ -229,6 +242,7 @@ function aggregate(cwd, opts) {
     cost_usd: 0,
     cost_unknown: 0,
     suspect_excluded: 0,
+    malformed_skipped: malformedSkipped,
   };
 
   const byAgent = {};
@@ -305,7 +319,7 @@ function renderTable(agg) {
   lines.push(window);
   lines.push('');
   lines.push('Totals');
-  lines.push(`  Calls              : ${agg.totals.calls}`);
+  lines.push(`  Calls              : ${agg.totals.calls}${agg.totals.malformed_skipped > 0 ? ` (+${agg.totals.malformed_skipped} malformed)` : ''}`);
   lines.push(`  Input tokens       : ${agg.totals.input_tokens.toLocaleString()}`);
   lines.push(`  Output tokens      : ${agg.totals.output_tokens.toLocaleString()}`);
   lines.push(`  Cache read         : ${agg.totals.cache_read_tokens.toLocaleString()}`);

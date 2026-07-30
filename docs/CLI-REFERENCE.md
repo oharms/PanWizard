@@ -106,7 +106,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `knowledge.cjs` | **(v3.2, Y-3)** Grounded Q&A: `knowledge ask`, `knowledge discuss`, `knowledge playbook`. |
 | `whatif.cjs` | **(v3.3, Y-4)** Counterfactual worktree: `whatif prepare`, `whatif report`, `whatif cleanup`. |
 | `bridge.cjs` | **(v3.3, Y-5)** MCP discovery: `bridge list`, `bridge recommend`, `bridge cache`. |
-| `optimize.cjs` | **(v3.5)** Circular optimization loop: `optimize trace init/end/current/list/log`, `optimize learn`, `optimize apply`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. |
+| `optimize.cjs` | **(v3.5)** Circular optimization loop: `optimize trace init/end/current/list/log/reconcile`, `optimize learn`, `optimize apply`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` (v3.21) rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
 | `git.cjs` | **(v3.5)** Phase-aware git workflow: `git commit/branch/push/status/log/stash/diff/rollback/tag/sync`. Reuses `runCommitSafetyChecks` for commit hardening. |
 | `distill.cjs` | **(v3.5)** AI code-bloat optimizer (5-pass pipeline): `distill scan/analyze/report`. Cross-session memory at `.planning/memory/distill-patterns.md`. |
 | `doc-lint.cjs` | Markdown frontmatter + structure linter: `doc-lint <dir>`, `doc-lint schema-check`. |
@@ -320,6 +320,7 @@ Quick reference of all CLI commands grouped by category.
 | 188 | `report all` | Observability | phase-report.cjs |
 | 189 | `memory optimize` | Memory | memory-optimize.cjs |
 | 190 | `memory rebuild` | Memory | memory-rebuild.cjs |
+| 191 | `optimize trace reconcile` | Optimization | optimize.cjs |
 
 ---
 
@@ -1773,6 +1774,9 @@ pan-tools config-ensure-section [--raw]
 | `workflow.plan_check` | `true` | Enable plan-checker agent verification loop |
 | `workflow.phase_reports` | `{ enabled: false, open: false, theme: "auto", index: true }` | Opt-in HTML phase reports as a build deliverable. When `enabled`, the verify→complete gate, focus-auto checkpoints, and army INTEGRATE regenerate per-phase reports (and, when `index`, the timeline index); default off. |
 | `memory.auto_optimize` | `true` | Reconcile the always-loaded project memory automatically at the focus-auto checkpoint and the normal-flow session record. No-op when state.md is already lean. Set `false` to opt out and reconcile only via `memory optimize`. |
+| `budget.enforce` | `false` | Make the spawn/point budget a hard stop. Advisory by default (tracked + surfaced, never stops a run). |
+| `budget.verify_reserve` | `0.15` | Fraction of the spawn budget (0–0.5) held back for re-verification so it can't be starved. Surfaced as `new_work_budget_remaining` / `into_verify_reserve` always; a hard early stop (`budget_reserve_reached`) only under `budget.enforce` / `--enforce-budget`. Override per-run with `--verify-reserve`. |
+| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25 } }`. Applied to both `cost append` and aggregate reporting. |
 | `brave_search` | auto-detected | Brave Search API availability |
 
 ---

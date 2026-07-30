@@ -23,6 +23,68 @@ const TRACES_DIR = 'traces';
 const CURRENT_SESSION_FILE = 'current-session';
 const TRACE_EVENT_FILE = 'trace.jsonl';
 
+// Trace event schema version — kept in sync by hand with pan-cost-logger.js +
+// cost.cjs (standalone zero-dep hooks can't share a module). See that file.
+const SCHEMA_V = 2;
+
+// YYYYMMDD stamp for a Date (the day-scope of an auto-session id).
+function dayStamp(d) {
+  return d.toISOString().replace(/[-:T]/g, '').slice(0, 8);
+}
+
+// Duration of a transcript slice from its first→last record timestamp; null when
+// either bound is missing/unparseable (never a fabricated 0).
+function durationFromSpan(firstTs, lastTs) {
+  if (!firstTs || !lastTs) return null;
+  const a = Date.parse(firstTs);
+  const b = Date.parse(lastTs);
+  return Number.isFinite(a) && Number.isFinite(b) ? b - a : null;
+}
+
+// Read a session's persisted command/phase (written by optimize.cjs
+// initTraceSession) so hook events can inherit them. Best-effort → {} on miss.
+function readSessionMetaById(cwd, sid) {
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(getTracesDir(cwd), sid, 'session.json'), 'utf-8'));
+    return meta && typeof meta === 'object' ? meta : {};
+  } catch {
+    return {};
+  }
+}
+
+// Finalize a session in place: recompute event_count / type_counts / agents from
+// its trace.jsonl and stamp ended_at. Inlined (the hook can't import optimize.cjs)
+// and mirrors optimize.cjs endTraceSession's count loop so day-rollover leaves a
+// properly-closed session behind. Best-effort; never throws.
+function finalizeSession(cwd, sid) {
+  try {
+    const sessionDir = path.join(getTracesDir(cwd), sid);
+    const metaPath = path.join(sessionDir, 'session.json');
+    let meta = {};
+    try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')); } catch { return; }
+    let eventCount = 0;
+    const agentNames = new Set();
+    const typeCounts = {};
+    try {
+      const raw = fs.readFileSync(path.join(sessionDir, TRACE_EVENT_FILE), 'utf-8');
+      raw.trim().split('\n').filter(Boolean).forEach((line) => {
+        try {
+          const e = JSON.parse(line);
+          eventCount++;
+          if (e.agent) agentNames.add(e.agent);
+          typeCounts[e.type] = (typeCounts[e.type] || 0) + 1;
+        } catch { /* skip malformed */ }
+      });
+    } catch { /* no trace.jsonl */ }
+    meta.ended_at = new Date().toISOString();
+    meta.event_count = eventCount;
+    meta.agent_count = agentNames.size;
+    meta.agents = Array.from(agentNames);
+    meta.type_counts = typeCounts;
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
+  } catch { /* best-effort */ }
+}
+
 function getOptimizeDir(cwd) {
   return path.join(cwd, PLANNING_DIR, OPTIMIZE_DIR);
 }
@@ -65,12 +127,23 @@ function writeTraceCursor(cwd, cursor) {
  * @returns {string} The active session ID
  */
 function ensureSessionId(cwd) {
+  const now = new Date();
+  const stamp = dayStamp(now); // YYYYMMDD
   const existing = getCurrentSessionId(cwd);
-  if (existing) return existing;
+  if (existing) {
+    // Day-rollover: a stale day-scoped auto-session from a previous day must not
+    // keep accumulating today's rows. Finalize it and mint a fresh one. Explicit
+    // (non-auto) sessions stay sticky — only auto-sessions roll over.
+    const m = /^sess_auto_(\d{8})$/.exec(existing);
+    if (m && m[1] !== stamp) {
+      finalizeSession(cwd, existing);
+      // fall through to mint a new day-scoped session below
+    } else {
+      return existing;
+    }
+  }
 
   // Create a day-scoped auto session
-  const now = new Date();
-  const stamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 8); // YYYYMMDD
   const sessionId = `sess_auto_${stamp}`;
   try {
     const sessionDir = path.join(getTracesDir(cwd), sessionId);
@@ -131,6 +204,9 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
     output_tokens: 0,
     cache_read_input_tokens: 0,
     cache_creation_input_tokens: 0,
+    model: null,
+    first_ts: null,
+    last_ts: null,
     lineCount: 0,
   };
   if (!transcriptPath || typeof transcriptPath !== 'string') return totals;
@@ -154,6 +230,15 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
     // Filter to entries from this subagent if a session_id is provided.
     // The transcript may include parent + child traffic; session_id discriminates.
     if (sessionId && entry.session_id && entry.session_id !== sessionId) continue;
+    // Span of this subagent's slice (after the session filter) for duration_ms,
+    // and the model id (mirrors pan-cost-logger — keep the last model seen).
+    const entryTs = typeof entry.timestamp === 'string' ? entry.timestamp : null;
+    if (entryTs) {
+      if (!totals.first_ts) totals.first_ts = entryTs;
+      totals.last_ts = entryTs;
+    }
+    const entryModel = entry.message?.model || entry.model || null;
+    if (typeof entryModel === 'string' && entryModel) totals.model = entryModel;
     // Usage typically lives on assistant message records.
     const usage = entry.usage
       || entry.message?.usage
@@ -196,9 +281,13 @@ function buildTraceEvents(data, sessionId, cwd) {
   // logging it verbatim produced impossible per-row magnitudes (see pan-cost-logger
   // for the full rationale). The slice is authoritative; data.usage is only a
   // plausibility-guarded fallback when no transcript is available.
+  let model = typeof data.model === 'string' && data.model ? data.model : null;
   let inputTokens = 0;
   let outputTokens = 0;
   let cacheRead = 0;
+  let durationMs = null;
+  let tokenSource = data.transcript_path ? 'transcript' : 'usage-fallback';
+  let clamped = false;
   if (data.transcript_path) {
     const cursor = readTraceCursor(cwd);
     const since = cursor[data.transcript_path] || 0;
@@ -206,35 +295,52 @@ function buildTraceEvents(data, sessionId, cwd) {
     inputTokens = fromTranscript.input_tokens;
     outputTokens = fromTranscript.output_tokens;
     cacheRead = fromTranscript.cache_read_input_tokens;
+    durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts);
+    if (!model) model = fromTranscript.model;
     if (cwd && fromTranscript.lineCount > since) {
       cursor[data.transcript_path] = fromTranscript.lineCount;
       writeTraceCursor(cwd, cursor);
     }
   } else {
-    inputTokens = clampPlausible(extractNumber(data.usage, 'input_tokens'));
-    outputTokens = clampPlausible(extractNumber(data.usage, 'output_tokens'));
-    cacheRead = clampPlausible(extractNumber(data.usage, 'cache_read_input_tokens'));
+    const rawIn = extractNumber(data.usage, 'input_tokens');
+    const rawOut = extractNumber(data.usage, 'output_tokens');
+    const rawCr = extractNumber(data.usage, 'cache_read_input_tokens');
+    inputTokens = clampPlausible(rawIn);
+    outputTokens = clampPlausible(rawOut);
+    cacheRead = clampPlausible(rawCr);
+    clamped = [rawIn, rawOut, rawCr].some((n) => n > PLAUSIBLE_MAX);
   }
   const totalTokens = inputTokens + outputTokens;
+
+  // Inherit command/phase from the active session when the payload omits them
+  // (mirrors optimize.cjs logTraceEvent's W3 phase-inheritance, which the hook
+  // path otherwise bypasses).
+  const sessionMeta = cwd ? readSessionMetaById(cwd, sessionId) : {};
+  const phase = data.phase || sessionMeta.phase || null;
 
   const events = [];
 
   // Core completion event
   events.push({
+    v: SCHEMA_V,
     ts,
     session: sessionId,
     agent,
-    phase: data.phase || null,
+    phase,
     type: 'decision',
     category: 'agent_completion',
     description: `${agent} completed`,
     context: {
-      model: data.model || null,
+      model,
+      command: data.command || sessionMeta.command || null,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cache_read_tokens: cacheRead,
       total_tokens: totalTokens,
+      duration_ms: durationMs,
       exit_code: data.exit_code || 0,
+      token_source: tokenSource,
+      clamped,
     },
     impact: 'trivial',
     correction: null,
@@ -245,10 +351,11 @@ function buildTraceEvents(data, sessionId, cwd) {
   // (expensive agent run that wasn't cached — may be repeated research)
   if (outputTokens > 3000 && cacheRead === 0) {
     events.push({
+      v: SCHEMA_V,
       ts,
       session: sessionId,
       agent,
-      phase: data.phase || null,
+      phase,
       type: 'redundancy',
       category: 'uncached_heavy_run',
       description: `${agent} produced ${outputTokens} output tokens with zero cache hits — possible repeated research`,

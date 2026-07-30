@@ -143,3 +143,65 @@ describe('buildCostRecord — plausibility guard (cumulative-counter safety net)
     assert.equal(rec.cache_read_tokens, 8000);
   });
 });
+
+describe('buildCostRecord — v3.21.0 enrichment (duration / tier / provenance / schema)', () => {
+  test('duration_ms is the first→last timestamp span of the slice', () => {
+    const p = writeTranscript([
+      { type: 'assistant', timestamp: '2026-07-30T10:00:00.000Z', message: { model: 'claude-opus-4-8', usage: { input_tokens: 10, output_tokens: 5 } } },
+      { type: 'assistant', timestamp: '2026-07-30T10:00:05.000Z', message: { usage: { output_tokens: 7 } } },
+    ]);
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir);
+    assert.equal(rec.duration_ms, 5000);
+  });
+
+  test('duration_ms is null (not 0) when records carry no timestamp', () => {
+    const p = writeTranscript([{ type: 'assistant', message: { usage: { input_tokens: 10 } } }]);
+    assert.equal(buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir).duration_ms, null);
+  });
+
+  test('tier is reverse-mapped from the model family', () => {
+    // Distinct paths — the cost cursor is keyed by transcript_path, so reusing
+    // one path across two buildCostRecord calls would skip the second slice.
+    const opus = path.join(tmpDir, 'opus.jsonl');
+    fs.writeFileSync(opus, JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-4-8', usage: { input_tokens: 1 } } }) + '\n');
+    assert.equal(buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: opus }, tmpDir).tier, 'reasoning');
+    const haiku = path.join(tmpDir, 'haiku.jsonl');
+    fs.writeFileSync(haiku, JSON.stringify({ type: 'assistant', message: { model: 'claude-haiku-4-5', usage: { input_tokens: 1 } } }) + '\n');
+    assert.equal(buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: haiku }, tmpDir).tier, 'fast');
+  });
+
+  test('every record carries the numeric schema version', () => {
+    const p = writeTranscript([{ type: 'assistant', message: { model: 'claude-opus-4-8', usage: { input_tokens: 1 } } }]);
+    assert.equal(typeof buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir).v, 'number');
+  });
+
+  test('a clamped fallback zero is marked, distinguishable from a real zero', () => {
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', usage: { output_tokens: 5e8 } }, tmpDir);
+    assert.equal(rec.output_tokens, 0, 'implausible value dropped');
+    assert.equal(rec.clamped, true, 'marked as clamped');
+    assert.equal(rec.token_source, 'usage-fallback');
+  });
+
+  test('a genuine transcript zero is NOT marked clamped', () => {
+    const p = writeTranscript([{ type: 'assistant', message: { model: 'claude-opus-4-8', usage: { input_tokens: 0, output_tokens: 0 } } }]);
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir);
+    assert.equal(rec.clamped, false);
+    assert.equal(rec.token_source, 'transcript');
+  });
+
+  test('command/phase are backfilled from the active trace session', () => {
+    const optDir = path.join(tmpDir, '.planning', 'optimization');
+    fs.mkdirSync(path.join(optDir, 'traces', 'sess_x'), { recursive: true });
+    fs.writeFileSync(path.join(optDir, 'current-session'), 'sess_x\n');
+    fs.writeFileSync(path.join(optDir, 'traces', 'sess_x', 'session.json'), JSON.stringify({ command: 'exec-phase', phase: '07' }));
+    const p = writeTranscript([{ type: 'assistant', message: { model: 'claude-opus-4-8', usage: { input_tokens: 1 } } }]);
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir);
+    assert.equal(rec.command, 'exec-phase');
+    assert.equal(rec.phase, '07');
+  });
+
+  test('command stays null when no active session exists', () => {
+    const p = writeTranscript([{ type: 'assistant', message: { model: 'claude-opus-4-8', usage: { input_tokens: 1 } } }]);
+    assert.equal(buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir).command, null);
+  });
+});
