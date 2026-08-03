@@ -30,7 +30,7 @@
  *   - hit rate: cache_read / (cache_read + input - cache_write) if any cache activity
  *
  * Rate table is approximate — real pricing comes from the provider's API.
- * Rates are US dollars per million tokens, indicative as of 2026-06. Users
+ * Rates are US dollars per million tokens, indicative as of 2026-08. Users
  * can override with `.planning/config.json` → `cost.rates`.
  */
 
@@ -48,19 +48,29 @@ const TOKENS_FILE = 'tokens.jsonl';
  * Override per-model in config.json → cost.rates.
  */
 const DEFAULT_RATES = {
-  // Anthropic — verified against platform pricing 2026-06. Opus 4.6+ is $5/$25
-  // (the old $15/$75 Opus pricing ended with the 4.5 generation). Cache rates
-  // follow Anthropic's convention: read ≈ 0.1× input, write ≈ 1.25× input.
+  // Anthropic — verified against platform pricing 2026-08. Opus 4.6+/Opus 5 are
+  // $5/$25 (the old $15/$75 Opus pricing ended with the 4.5 generation). Cache
+  // rates follow Anthropic's convention: read ≈ 0.1× input, write ≈ 1.25× input.
   'claude-fable-5':     { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
+  'claude-opus-5':      { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-8':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-7':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-6':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
+  // Sonnet 5 standard is $3/$15; a launch promo runs $2/$10 through 2026-08-31.
+  // We track the stable post-promo rate (the table is indicative; the staleness
+  // checker flags it for re-verification).
+  'claude-sonnet-5':    { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
   'claude-sonnet-4-6':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
   'claude-haiku-4-5':   { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25 },
 
-  // OpenAI — verified against published pricing 2026-06 ($5/$30 standard tier).
-  // Prompt caching is a 90% input discount with no separate write charge, so
-  // cache_write bills at the plain input rate.
+  // OpenAI — verified against published pricing 2026-08. Prompt caching is a 90%
+  // input discount with no separate write charge, so cache_write bills at the
+  // plain input rate. GPT-5.6 ships in three tiers; the bare `gpt-5.6` id prices
+  // as the Sol flagship, with tier-specific keys for Terra/Luna (longest-prefix
+  // match wins in resolveRate). Luna reflects the 2026-07-30 price cut.
+  'gpt-5.6':            { input: 5.0,  output: 30.0, cache_read: 0.5,  cache_write: 5.0 },
+  'gpt-5.6-terra':      { input: 2.0,  output: 12.0, cache_read: 0.2,  cache_write: 2.0 },
+  'gpt-5.6-luna':       { input: 0.20, output: 1.20, cache_read: 0.02, cache_write: 0.20 },
   'gpt-5.5':            { input: 5.0,  output: 30.0, cache_read: 0.5,  cache_write: 5.0 },
 
   // Google Gemini — published rates (per million tokens, approximate; users can override via config.json → cost.rates).
@@ -406,7 +416,7 @@ function cmdCostClear(cwd, raw) {
 // Bump this whenever the table is re-verified; `models check` flags the table
 // once it is older than RATES_STALE_AFTER_DAYS (provider prices move faster
 // than PAN releases do).
-const RATES_VERIFIED_AT = '2026-06-10';
+const RATES_VERIFIED_AT = '2026-08-03';
 const RATES_STALE_AFTER_DAYS = 180;
 const RATE_TIERS = ['reasoning', 'mid', 'fast'];
 
