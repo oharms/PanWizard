@@ -11,7 +11,9 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { createServer } = require('../pan-zcode/mcp/server.cjs');
+const {
+  createServer, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST,
+} = require('../pan-zcode/mcp/server.cjs');
 const reg = require('../pan-zcode/mcp/tool-registry.cjs');
 const { createTempProject, cleanup, TOOLS_PATH } = require('./helpers.cjs');
 
@@ -146,6 +148,60 @@ describe('pan-zcode MCP protocol (injected spawn)', () => {
     const f = s2.handle({ jsonrpc: '2.0', id: 8, method: 'resources/read', params: { uri: 'pan://state' } });
     assert.equal(f.error.code, -32603);
     assert.match(f.error.message, /boom/);
+  });
+});
+
+describe('pan-zcode MCP dual-era (2026-07-28 stateless spec)', () => {
+  const meta = (version) => ({ _meta: { 'io.modelcontextprotocol/protocolVersion': version } });
+
+  test('server/discover returns a DiscoverResult advertising the modern version', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'server/discover', params: meta(MODERN_PROTOCOL_VERSION) });
+    assert.equal(r.result.resultType, 'complete');
+    assert.deepEqual(r.result.supportedVersions, SUPPORTED_VERSIONS_LIST);
+    assert.ok(r.result.supportedVersions.includes(MODERN_PROTOCOL_VERSION));
+    assert.ok(r.result.capabilities.tools && r.result.capabilities.resources);
+    assert.equal(r.result._meta['io.modelcontextprotocol/serverInfo'].name, 'pan-mcp');
+    // caching hints per the spec's CacheableResult contract
+    assert.equal(typeof r.result.ttlMs, 'number');
+    assert.equal(r.result.cacheScope, 'public');
+  });
+
+  test('a modern request on a supported version is served and its result carries resultType:complete', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: meta(MODERN_PROTOCOL_VERSION) });
+    assert.equal(r.result.resultType, 'complete');
+    assert.equal(r.result.tools.length, reg.TOOLS.length);
+  });
+
+  test('an unsupported modern version → UnsupportedProtocolVersionError (-32022) listing what we support', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: meta('1900-01-01') });
+    assert.equal(r.error.code, -32022);
+    assert.deepEqual(r.error.data.supported, SUPPORTED_VERSIONS_LIST);
+    assert.equal(r.error.data.requested, '1900-01-01');
+  });
+
+  test('legacy requests (no _meta) keep the pre-2026 result shape — NO resultType stamped', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const ping = s.handle({ jsonrpc: '2.0', id: 4, method: 'ping' });
+    assert.deepEqual(ping.result, {}, 'legacy ping result is unchanged');
+    const tl = s.handle({ jsonrpc: '2.0', id: 5, method: 'tools/list' });
+    assert.equal(tl.result.resultType, undefined, 'legacy tools/list carries no resultType');
+  });
+
+  test('the legacy initialize handshake never negotiates the modern per-request revision', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 6, method: 'initialize', params: { protocolVersion: MODERN_PROTOCOL_VERSION } });
+    assert.notEqual(r.result.protocolVersion, MODERN_PROTOCOL_VERSION,
+      'a handshake cannot select a stateless-era version; falls back to a legacy one');
+    assert.equal(r.result.protocolVersion, '2025-06-18');
+  });
+
+  test('server/discover is reachable by a legacy probe too (no _meta) and still lists modern support', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 7, method: 'server/discover' });
+    assert.ok(r.result.supportedVersions.includes(MODERN_PROTOCOL_VERSION));
   });
 });
 

@@ -119,6 +119,39 @@ describe('cost — resolveRate', () => {
     const preview = resolveRate('gemini-3.1-pro-preview', null, null);
     assert.deepEqual(preview, r, 'preview id should carry the same rate');
   });
+
+  test('claude-opus-5 has explicit rate ($5/$25, verified 2026-08)', () => {
+    const r = resolveRate('claude-opus-5', null, null);
+    assert.ok(r, 'claude-opus-5 should resolve to a rate');
+    assert.equal(r.input, 5.0);
+    assert.equal(r.output, 25.0);
+    // versioned id prefix-matches the family
+    assert.deepEqual(resolveRate('claude-opus-5-20260724', null, null), r);
+  });
+
+  test('claude-sonnet-5 has explicit rate ($3/$15 post-promo, verified 2026-08)', () => {
+    const r = resolveRate('claude-sonnet-5', null, null);
+    assert.ok(r, 'claude-sonnet-5 should resolve to a rate');
+    assert.equal(r.input, 3.0);
+    assert.equal(r.output, 15.0);
+  });
+
+  test('gpt-5.6 tiers: bare id prices as Sol; Terra/Luna win by longest-prefix (verified 2026-08)', () => {
+    const sol = resolveRate('gpt-5.6', null, null);
+    assert.ok(sol, 'gpt-5.6 should resolve to a rate');
+    assert.equal(sol.input, 5.0);
+    assert.equal(sol.output, 30.0);
+    // A "gpt-5.6-sol" id has no explicit key → prefix-matches the Sol base.
+    assert.deepEqual(resolveRate('gpt-5.6-sol', null, null), sol);
+    // Terra/Luna have explicit keys; longest-prefix match must pick them, not the
+    // shorter `gpt-5.6` base, even for versioned ids.
+    const terra = resolveRate('gpt-5.6-terra-20260731', null, null);
+    assert.equal(terra.input, 2.0);
+    assert.equal(terra.output, 12.0);
+    const luna = resolveRate('gpt-5.6-luna', null, null);
+    assert.equal(luna.input, 0.20);
+    assert.equal(luna.output, 1.20);
+  });
 });
 
 describe('cost — rate-table staleness (models check)', () => {
