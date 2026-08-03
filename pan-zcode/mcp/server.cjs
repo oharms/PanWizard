@@ -4,8 +4,12 @@
  * PAN-Z MCP bridge server (M1).
  *
  * A dependency-free JSON-RPC 2.0 server over stdio implementing the small MCP
- * surface ZCode needs: initialize / tools/list / tools/call / resources/list /
- * resources/read / ping. Each pan-tools verb is reached by spawning
+ * surface ZCode needs: server/discover / initialize / tools/list / tools/call /
+ * resources/list / resources/read / ping. It is a DUAL-ERA server (see the MCP
+ * 2026-07-28 versioning spec): legacy clients open with the `initialize`
+ * handshake; modern clients (2026-07-28+) declare their protocol version in each
+ * request's `_meta` and MAY probe `server/discover` first. Each pan-tools verb is
+ * reached by spawning
  *   node <pan-tools.cjs> <verb> [args] --raw --cwd <root>
  * and returning its JSON — the CLI's JSON contract IS the tool contract, so the
  * PAN engine (pan-wizard-core) is reused byte-for-byte with no refactor.
@@ -26,11 +30,21 @@ const os = require('os');
 const path = require('path');
 const reg = require('./tool-registry.cjs');
 
+// Legacy `initialize` default: when a handshake-era client omits protocolVersion
+// we answer with this (never a modern version — a legacy client can't speak it).
 const PROTOCOL_VERSION = '2025-06-18';
-// Versions whose method shapes this server actually implements. During
-// `initialize` we echo the client's requested version only if it's one of these,
-// otherwise we answer with our latest — never claim to speak a version we don't.
-const SUPPORTED_PROTOCOL_VERSIONS = new Set(['2025-06-18', '2025-03-26', '2024-11-05']);
+// The modern (per-request `_meta`, stateless) revision this bridge speaks.
+const MODERN_PROTOCOL_VERSION = '2026-07-28';
+// `_meta` key a modern client uses to declare its protocol version per request.
+const META_PROTOCOL_VERSION_KEY = 'io.modelcontextprotocol/protocolVersion';
+// `_meta` key under which a server identifies itself in modern results.
+const META_SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo';
+// Every version whose method shapes this server actually implements — the modern
+// revision plus the legacy handshake revisions. Used both for the legacy
+// `initialize` echo and for modern per-request version negotiation; we never
+// claim to speak a version we don't. Newest first (the `server/discover` order).
+const SUPPORTED_VERSIONS_LIST = [MODERN_PROTOCOL_VERSION, '2025-06-18', '2025-03-26', '2024-11-05'];
+const SUPPORTED_PROTOCOL_VERSIONS = new Set(SUPPORTED_VERSIONS_LIST);
 const SERVER_INFO = { name: 'pan-mcp', version: '0.1.0' };
 
 /** Default engine location: pan-wizard-core is a sibling of pan-zcode/. */
@@ -77,7 +91,11 @@ function resolveOverflow(stdout) {
 }
 
 function rpcResult(id, result) { return { jsonrpc: '2.0', id, result }; }
-function rpcError(id, code, message) { return { jsonrpc: '2.0', id, error: { code, message } }; }
+function rpcError(id, code, message, data) {
+  const error = { code, message };
+  if (data !== undefined) error.data = data;
+  return { jsonrpc: '2.0', id, error };
+}
 
 function toMcpTool(t) {
   return {
@@ -173,26 +191,67 @@ function createServer(opts = {}) {
     // the dispatch — this also stops any request-method sent id-less from emitting
     // an id-less response frame.
     if (id === undefined || id === null) return null;
+
+    // Era detection: a modern client (2026-07-28+) declares its protocol version
+    // in `_meta` on every request; a legacy client uses the `initialize` handshake
+    // and carries no such field. Gating modern behavior on this presence keeps the
+    // legacy path byte-for-byte unchanged.
+    const requestedVersion = params && params._meta && params._meta[META_PROTOCOL_VERSION_KEY];
+    const isModern = typeof requestedVersion === 'string';
+
+    // Stateless per-request version negotiation: if a modern client asks for a
+    // version we don't implement, answer with UnsupportedProtocolVersionError
+    // listing what we do support, so it can retry on a mutually-supported version.
+    if (isModern && !SUPPORTED_PROTOCOL_VERSIONS.has(requestedVersion)) {
+      return rpcError(id, -32022, 'Unsupported protocol version',
+        { supported: SUPPORTED_VERSIONS_LIST, requested: requestedVersion });
+    }
+
+    // Modern results MUST carry a `resultType`; legacy results MUST NOT change
+    // shape (clients treat an absent resultType as "complete"). Stamp it only on
+    // the modern path.
+    const reply = (result) => rpcResult(id,
+      isModern && result && typeof result === 'object' && result.resultType === undefined
+        ? { resultType: 'complete', ...result }
+        : result);
+
     switch (method) {
+      // Modern stateless discovery probe (MUST be implemented). Also the stdio
+      // backward-compat probe: a dual-era client sends this first; a real
+      // DiscoverResult identifies us as modern-capable, and its supportedVersions
+      // let the client pick a version before issuing any tools/resources call.
+      case 'server/discover':
+        return rpcResult(id, {
+          resultType: 'complete',
+          supportedVersions: SUPPORTED_VERSIONS_LIST,
+          capabilities: { tools: {}, resources: {} },
+          instructions: 'PAN Wizard engine bridge: planning, verification, and orchestration tools backed by the pan-tools CLI. All tools are read-only except the gated pan_confirm_merge.',
+          ttlMs: 3600000,
+          cacheScope: 'public',
+          _meta: { [META_SERVER_INFO_KEY]: SERVER_INFO },
+        });
       case 'initialize': {
         const requested = params && params.protocolVersion;
-        const negotiated = SUPPORTED_PROTOCOL_VERSIONS.has(requested) ? requested : PROTOCOL_VERSION;
+        // A legacy handshake must not negotiate a modern (per-request `_meta`)
+        // revision, so only echo legacy versions; anything else falls back.
+        const negotiated = (requested && requested !== MODERN_PROTOCOL_VERSION
+          && SUPPORTED_PROTOCOL_VERSIONS.has(requested)) ? requested : PROTOCOL_VERSION;
         return rpcResult(id, { protocolVersion: negotiated, capabilities: { tools: {}, resources: {} }, serverInfo: SERVER_INFO });
       }
       case 'ping':
-        return rpcResult(id, {});
+        return reply({});
       case 'tools/list':
-        return rpcResult(id, { tools: reg.TOOLS.map(toMcpTool) });
+        return reply({ tools: reg.TOOLS.map(toMcpTool) });
       case 'resources/list':
-        return rpcResult(id, { resources: reg.RESOURCES.map(toMcpResource) });
+        return reply({ resources: reg.RESOURCES.map(toMcpResource) });
       case 'tools/call': {
         const out = callTool(params && params.name, params && params.arguments);
-        return out.error ? rpcError(id, out.error.code, out.error.message) : rpcResult(id, out.result);
+        return out.error ? rpcError(id, out.error.code, out.error.message) : reply(out.result);
       }
       case 'resources/read': {
         const out = readResource(params && params.uri);
         if (out.unknown) return rpcError(id, -32602, `Unknown resource: ${params && params.uri}`);
-        return out.error ? rpcError(id, out.error.code, out.error.message) : rpcResult(id, out.result);
+        return out.error ? rpcError(id, out.error.code, out.error.message) : reply(out.result);
       }
       default:
         return rpcError(id, -32601, `Method not found: ${method}`);
@@ -226,4 +285,7 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { createServer, defaultPanToolsPath, defaultSpawn, PROTOCOL_VERSION, SERVER_INFO, toMcpTool, toMcpResource };
+module.exports = {
+  createServer, defaultPanToolsPath, defaultSpawn, SERVER_INFO, toMcpTool, toMcpResource,
+  PROTOCOL_VERSION, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST, META_PROTOCOL_VERSION_KEY,
+};

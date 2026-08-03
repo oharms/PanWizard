@@ -28,8 +28,11 @@ pan-wizard-core  (reused as-is)  the deterministic engine; .planning/ stays the 
 - **M1 — bridge core.** `mcp/tool-registry.cjs` (pure verb→tool/resource map, with a hard
   guardrail against exposing a force/reset/rebase/push verb) + `mcp/server.cjs` (a
   **zero-dependency** JSON-RPC 2.0 stdio MCP server; reads → resources, actions → tools with
-  accurate hints; shell-less `execFile` spawn; `@file:` overflow protocol; protocol-version
-  negotiation; strict per-arg validation).
+  accurate hints; shell-less `execFile` spawn; `@file:` overflow protocol; strict per-arg
+  validation). **Dual-era** per the MCP 2026-07-28 stateless spec (ADR-0041): legacy clients
+  use the `initialize` handshake; modern clients declare their protocol version in each
+  request's `_meta`, probe `server/discover`, and get `UnsupportedProtocolVersionError`
+  (`-32022`) on a version mismatch.
 - **M2 — determinism grafts.** `mcp/merge-gate.cjs` (two-step, model-proof merge: a human-origin
   env token that ignores agent-supplied approval; never force/reset/push) + `mcp/orchestrator.cjs`
   (the deterministic `next-action` state machine with safety caps + regression circuit-breaker),
@@ -51,6 +54,13 @@ Tests: `tests/pan-zcode-mcp.test.cjs`, `tests/pan-zcode-orchestration.test.cjs`,
 Two go/no-go facts can only be settled empirically: **can a subagent call MCP tools?** and **are
 local stdio MCP calls metered?** Both have folded-in fallbacks (see `KNOWN-BETA-RISKS.md`), so the
 design holds either way — but confirm them before relying on the richer paths.
+
+A third M0 checkpoint (added 2026-08): **which protocol era does the real ZCode client speak?**
+The bridge is now dual-era (ADR-0041), so it answers both a legacy `initialize` handshake and a
+modern `server/discover` probe. Confirm on a real install which path ZCode takes and that the
+version it declares is in our supported list; if ZCode ever declares a revision newer than
+`2026-07-28`, add it to `SUPPORTED_VERSIONS_LIST` in `mcp/server.cjs` once its method shapes are
+implemented.
 
 ## Zero dependencies
 
