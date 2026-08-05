@@ -72,4 +72,4 @@ The optimization report in `.planning/optimization/reports/` contains:
 
 **See also:** `/pan:optimize`, `/pan:exec-phase`, `/pan:experiment` (v3.7.0+ self-improvement loop)
 
-Follow the workflow at `.claude/workflows/learn.md` (or `pan-wizard-core/workflows/learn.md`).
+Follow the workflow at `~/.claude/pan-wizard-core/workflows/learn.md`.

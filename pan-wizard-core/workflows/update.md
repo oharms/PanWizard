@@ -14,10 +14,12 @@ Detect whether PAN is installed locally or globally by checking both locations a
 ```bash
 # Check local first (takes priority only if valid)
 # Paths templated at install time for runtime compatibility
-LOCAL_VERSION_FILE="./.claude/pan-wizard-core/VERSION"
-LOCAL_MARKER_FILE="./.claude/pan-wizard-core/workflows/update.md"
-GLOBAL_VERSION_FILE="$HOME/.claude/pan-wizard-core/VERSION"
-GLOBAL_MARKER_FILE="$HOME/.claude/pan-wizard-core/workflows/update.md"
+LOCAL_VERSION_FILE="~/.claude/pan-wizard-core/VERSION"
+LOCAL_MARKER_FILE="~/.claude/pan-wizard-core/workflows/update.md"
+# Canonical ~/.claude/ so the installer templates these to the real install
+# location per runtime/install-type ($HOME/.claude was never rewritten — M55).
+GLOBAL_VERSION_FILE="~/.claude/pan-wizard-core/VERSION"
+GLOBAL_MARKER_FILE="~/.claude/pan-wizard-core/workflows/update.md"
 
 if [ -f "$LOCAL_VERSION_FILE" ] && [ -f "$LOCAL_MARKER_FILE" ] && grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$LOCAL_VERSION_FILE"; then
   cat "$LOCAL_VERSION_FILE"
@@ -166,7 +168,7 @@ Clear the update cache so statusline indicator disappears:
 
 **If LOCAL install:**
 ```bash
-rm -f ./.claude/cache/pan-update-check.json
+rm -f ~/.claude/cache/pan-update-check.json
 ```
 
 **If GLOBAL install:**
