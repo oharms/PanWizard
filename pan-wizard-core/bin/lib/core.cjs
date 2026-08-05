@@ -60,6 +60,7 @@ const COST_MULTIPLIERS = { reasoning: 15, mid: 3, fast: 1 };
 const MODEL_PROFILES = {
   // Original planning/execution agents (pre-v3.0)
   'pan-planner':              { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
+  'pan-designer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-roadmapper':           { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-executor':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-phase-researcher':     { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
@@ -104,6 +105,7 @@ const EFFORT_ORDER = ['low', 'medium', 'high', 'xhigh'];
 const AGENT_BASE_EFFORT = {
   // Heavy planning/orchestration/debugging — deepest reasoning
   'pan-planner':              'xhigh',
+  'pan-designer':             'xhigh',
   'pan-conductor':            'xhigh',
   'pan-debugger':             'xhigh',
   'pan-plan-checker':         'xhigh',

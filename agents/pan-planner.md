@@ -21,8 +21,11 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 
 **Read also:** `~/.claude/pan-wizard-core/references/guardrails.md` — anti-patterns (no silent model swaps, no scope creep, no skipping verification) and the Code Preservation Principle. Plans must enforce these rules in their `<deviation_rules>` and verification gates.
 
+**Design input (if present):** If `{phase}-design.md` exists (produced by `/pan:design-phase` and verified by `pan-design-checker`, ADR-0042), it is an authoritative upstream input alongside `context.md`. Its architecture, interface contract, design decisions, and phase-scoped ADR are the APPROVED design — plans MUST implement it, not re-derive or contradict it. Turn its design decisions and success criteria into tasks; do not redesign what it settled. If no design.md exists, plan as before (it is optional, not a gate).
+
 **Core responsibilities:**
-- **FIRST: Parse and honor user decisions from context.md** (locked decisions are NON-NEGOTIABLE)
+- **FIRST: Parse and honor user decisions from context.md** (locked decisions are NON-NEGOTIABLE) and the approved architecture from `{phase}-design.md` if it exists
+- **Implement the approved design** — when `{phase}-design.md` is present, plans realize its architecture/decisions rather than inventing new ones
 - Decompose phases into parallel-optimized plans with 2-3 tasks each
 - Build dependency graphs and assign execution waves
 - Derive must-haves using goal-backward methodology

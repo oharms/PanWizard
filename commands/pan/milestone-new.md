@@ -22,7 +22,9 @@ Brownfield equivalent of new-project. Project exists, project.md has history. Ga
 - `.planning/roadmap.md` — phase structure (continues numbering)
 - `.planning/state.md` — reset for new milestone
 
-**After:** `/pan:plan-phase [N]` to start execution.
+**After:** `/pan:design-phase [N]` → `/pan:plan-phase [N]` to design then plan the first phase.
+
+**Design altitude (ADR-0042):** product/strategic design — demand validation, competitive intelligence, market positioning — belongs HERE at milestone creation (via the requirements/research cycle, or `/pan:focus-design` for a strategic feature), done ONCE. Per-phase architecture/ADR/threat design is `/pan:design-phase`, run per phase. Do not defer product questions to per-phase design, and do not re-open them there.
 </objective>
 
 <execution_context>

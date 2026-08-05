@@ -114,6 +114,77 @@ describe('pan-design-checker agent', () => {
   });
 });
 
+describe('pan-designer agent (main-flow design producer)', () => {
+  const raw = read('agents', 'pan-designer.md');
+  const data = extractFrontmatter(raw);
+
+  test('valid frontmatter: name, xhigh effort, can Write the artifact', () => {
+    assert.equal(data.name, 'pan-designer');
+    assert.equal(data.effort, 'xhigh');
+    assert.ok(String(data.tools).includes('Write'), 'produces design.md, so needs Write');
+  });
+
+  test('runs the phase tier, cites the shared reference + template', () => {
+    assert.match(raw, /design-methodology\.md/);
+    assert.match(raw, /templates\/design\.md|design\.md/);
+    assert.match(raw, /\bphase\b tier|`phase` tier/i);
+  });
+
+  test('respects the altitude boundary (no per-phase product/competitive design)', () => {
+    assert.match(raw, /altitude/i);
+    assert.match(raw, /competitive|demand/i);
+  });
+});
+
+describe('/pan:design-phase command (main-flow design step)', () => {
+  const raw = read('commands', 'pan', 'design-phase.md');
+  const data = extractFrontmatter(raw);
+
+  test('valid frontmatter: Phase Lifecycle group, pan-designer agent', () => {
+    assert.equal(data.name, 'pan:design-phase');
+    assert.equal(data.group, 'Phase Lifecycle');
+    assert.equal(data.agent, 'pan-designer');
+  });
+
+  test('orchestrates designer → checker with a capped reflexion loop', () => {
+    assert.match(raw, /pan-designer/);
+    assert.match(raw, /pan-design-checker/);
+    assert.match(raw, /2 revision iterations|Max 2/i);
+  });
+
+  test('design is optional: auto-skip trivial, --skip-design, and hands off to plan-phase', () => {
+    assert.match(raw, /--skip-design/);
+    assert.match(raw, /trivial/i);
+    assert.match(raw, /plan-phase/);
+    assert.match(raw, /optional upstream input/i);
+  });
+});
+
+describe('main-flow wiring consumes the design (ADR-0042)', () => {
+  test('pan-planner treats {phase}-design.md as an authoritative upstream input', () => {
+    const raw = read('agents', 'pan-planner.md');
+    assert.match(raw, /design\.md/);
+    assert.match(raw, /approved design|approved architecture/i);
+  });
+
+  test('pan-plan-checker adds a Design Conformance dimension', () => {
+    const raw = read('agents', 'pan-plan-checker.md');
+    assert.match(raw, /Design Conformance/);
+    assert.match(raw, /design\.md/);
+  });
+
+  test('plan-phase documents the optional design.md input', () => {
+    const raw = read('commands', 'pan', 'plan-phase.md');
+    assert.match(raw, /design\.md/);
+  });
+
+  test('milestone-new states the altitude split (product design once, not per phase)', () => {
+    const raw = read('commands', 'pan', 'milestone-new.md');
+    assert.match(raw, /altitude/i);
+    assert.match(raw, /design-phase/);
+  });
+});
+
 describe('focus-flow wiring (independent verification closes the self-review gap)', () => {
   const md = read('commands', 'pan', 'focus-design.md');
 
