@@ -2481,9 +2481,10 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
   // features Spec A relies on (1M ctx, extended thinking, prompt caching).
   if (!args.includes('--skip-warnings')) {
     try {
-      const settingsPath = path.join(targetDir, 'settings.json');
-      const settingsRaw = fs.readFileSync(settingsPath, 'utf-8');
-      const settings = JSON.parse(settingsRaw);
+      // Use the `settings` param already resolved for this install. The prior
+      // re-derivation read a nonexistent `targetDir`, throwing a ReferenceError
+      // that the bare catch swallowed — so this warning could never fire (M5,
+      // ADR audit 2026-08).
       const modelField = settings && settings.model;
       if (typeof modelField === 'string' && modelField.trim()) {
         const caps = detectModelCapabilities(modelField);

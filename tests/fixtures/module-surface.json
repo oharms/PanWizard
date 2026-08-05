@@ -103,6 +103,7 @@
     "shouldSkipTests:function"
   ],
   "config.cjs": [
+    "buildConfigDefaults:function",
     "cmdConfigEnsureSection:function",
     "cmdConfigGet:function",
     "cmdConfigSet:function",

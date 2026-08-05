@@ -541,8 +541,9 @@ function scanStubs(cwd, opts = {}) {
 
 function cmdVerifyStubs(cwd, opts = {}, raw) {
   const r = scanStubs(cwd, opts);
-  output(r, raw, r.blocking === 0 ? 'valid' : 'invalid');
-  if (opts.gate) process.exit(r.blocking > 0 ? 1 : 0);
+  // --gate must exit non-zero on blocking findings; output() used to hard-exit 0
+  // before the gate check, so the gate was dead (M30, ADR audit 2026-08).
+  output(r, raw, r.blocking === 0 ? 'valid' : 'invalid', opts.gate ? (r.blocking > 0 ? 1 : 0) : 0);
 }
 
 /**
@@ -922,17 +923,13 @@ function repairIssues(cwd, repairs) {
       switch (repair) {
         case 'createConfig':
         case 'resetConfig': {
-          // Write a fresh config.json with sensible defaults
-          const defaults = {
-            model_profile: 'balanced',
-            commit_docs: true,
-            search_gitignored: false,
-            branching_strategy: 'none',
-            research: true,
-            plan_checker: true,
-            verifier: true,
-            parallelization: true,
-          };
+          // Write the canonical NESTED config via buildConfigDefaults. The old
+          // flat literal (research/plan_checker/verifier at top level) did NOT
+          // match the schema the gate reads (config.workflow.verifier), so
+          // --repair silently disabled the verification gate (M31, ADR audit
+          // 2026-08; note the flat form also drifted plan_checker vs plan_check).
+          const { buildConfigDefaults } = require('./config.cjs');
+          const defaults = buildConfigDefaults(false, {});
           fs.writeFileSync(configFullPath, JSON.stringify(defaults, null, 2), 'utf-8');
           repairActions.push({ action: repair, success: true, path: CONFIG_FILE });
           break;

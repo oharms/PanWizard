@@ -134,4 +134,16 @@ describe('telemetry P1/P2 — campaign verify-reserve indicators (status only)',
     assert.equal(s.verify_reserve, 15, 'ceil(100 * 0.15)');
     assert.equal(typeof s.into_verify_reserve, 'boolean');
   });
+
+  test('campaign due is exit-coded per its contract: not-due exits non-zero (M9)', () => {
+    const { createTempProject, cleanup } = require('./helpers.cjs');
+    const tmp = createTempProject();
+    try {
+      // No schedule configured → not due → exit 1 so `campaign due && run` gates.
+      const r = runPanTools('campaign due', tmp);
+      assert.equal(r.success, false, 'not-due must exit non-zero');
+      const j = JSON.parse(r.output);
+      assert.equal(j.due, false);
+    } finally { cleanup(tmp); }
+  });
 });

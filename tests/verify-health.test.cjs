@@ -62,6 +62,16 @@ describe('validate health command', () => {
     assert.strictEqual(output.repairable_count, 0, 'nothing to repair');
   });
 
+  test('--repair writes the canonical NESTED config so the verifier gate stays enabled (M31)', () => {
+    createHealthyProject(tmpDir);
+    fs.unlinkSync(path.join(tmpDir, '.planning', 'config.json')); // force createConfig repair
+    const result = runPanTools('validate health --repair', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'));
+    assert.equal(cfg.workflow && cfg.workflow.verifier, true, 'gate reads config.workflow.verifier — must be nested & true');
+    assert.equal(cfg.verifier, undefined, 'must NOT write the legacy flat "verifier" key that silently disabled the gate');
+  });
+
   test('missing .planning directory reports status broken with E001', () => {
     // Remove the .planning directory entirely
     fs.rmSync(path.join(tmpDir, '.planning'), { recursive: true, force: true });

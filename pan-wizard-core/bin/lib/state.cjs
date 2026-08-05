@@ -1012,7 +1012,9 @@ function cmdDashboard(cwd, raw) {
     lines.push(`Blockers: ${blockerCount}`);
     if (lastActivity) lines.push(`Last Activity: ${lastActivity}${lastActivityDesc ? ' — ' + lastActivityDesc : ''}`);
     if (nextPhase) lines.push(`Next Phase: ${nextPhase.number} — ${nextPhase.name}`);
-    output(result, false, lines.join('\n'));
+    // raw=true so output() emits the human summary; passing false discarded it
+    // and printed JSON, making the whole lines[] block dead (M28, ADR audit 2026-08).
+    output(result, true, lines.join('\n'));
     return;
   }
 

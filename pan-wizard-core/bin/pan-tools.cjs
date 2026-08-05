@@ -1466,11 +1466,12 @@ async function main() {
           for (const v of result.violations) {
             lines.push(`[${v.severity.toUpperCase()}] ${v.code} ${v.pattern_id}: ${v.message}`);
           }
-          output(result, true, lines.join('\n'));
+          output(result, true, lines.join('\n'), result.summary.status === 'fail' ? 1 : 0);
         } else {
-          output(result, false);
+          output(result, false, undefined, result.summary.status === 'fail' ? 1 : 0);
         }
-        if (result.summary.status === 'fail') process.exit(1);
+        // exit code carried through output() above (it used to hard-exit 0
+        // before this check, so `learn lint` never gated — M32, ADR audit 2026-08).
         break;
       }
 

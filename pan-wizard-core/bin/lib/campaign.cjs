@@ -190,8 +190,9 @@ function cmdCampaignStatus(cwd, raw) {
 function cmdCampaignDue(cwd, raw) {
   const schedule = readSchedule(cwd);
   const d = isRunDue(schedule, new Date());
-  // exit-coded so a host scheduler can gate: 0 = due, 1 = not due
-  output({ due: d.due, reason: d.reason, next_due: d.next_due }, raw, d.due ? 'due' : `not due (${d.reason})`);
+  // exit-coded so a host scheduler can gate: 0 = due, 1 = not due (M9 — output()
+  // used to hard-exit 0, so the documented gate always fired the run).
+  output({ due: d.due, reason: d.reason, next_due: d.next_due }, raw, d.due ? 'due' : `not due (${d.reason})`, d.due ? 0 : 1);
 }
 
 module.exports = {

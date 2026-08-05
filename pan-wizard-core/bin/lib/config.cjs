@@ -637,6 +637,7 @@ function cmdStandardsTools(cwd, standardId, raw) {
 }
 
 module.exports = {
+  buildConfigDefaults,
   cmdConfigEnsureSection,
   cmdConfigSet,
   cmdConfigGet,
