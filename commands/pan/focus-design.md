@@ -22,7 +22,7 @@ Research, design, and specify a new feature with strategic analysis. $ARGUMENTS
 
 **Goal:** Produce a best-of-breed feature specification that (a) validates the problem with evidence, (b) maps the competitive landscape, (c) identifies strategic differentiation, (d) designs an architecturally sound implementation, (e) plans for error handling, security, and testability from day one, (f) defines an incremental delivery ladder, and (g) outputs a ready-to-implement spec with ADR, test plan, and implementation tasks.
 
-**Methodology:** Synthesizes Spec-Driven Development, Blue Ocean Strategy, Wardley Mapping, STRIDE-lite threat modeling, Architecture Decision Records, and structured workflow methodology into a single investigative pipeline.
+**Methodology:** Synthesizes Spec-Driven Development, Blue Ocean Strategy, Wardley Mapping, STRIDE-lite threat modeling, Architecture Decision Records, and structured workflow methodology into a single investigative pipeline. The design-quality bar and depth tiers are the shared ones in `~/.claude/pan-wizard-core/references/design-methodology.md` (this pipeline runs the `feature`/`full` tiers; the main flow's `/pan:design-phase` runs the `phase` tier) — and the same independent verifier, `pan-design-checker`, gates both (ADR-0042).
 
 ---
 
@@ -883,6 +883,16 @@ Before writing the ADR file, verify ALL of these:
 - **Straw-man options:** Including obviously bad alternatives just to make the chosen option look good
 - **Missing migration strategy:** Documenting breaking changes without explaining how to handle them
 
+### 5.4 Independent Verification (pan-design-checker)
+
+The self-check in 5.2 is necessary but not sufficient — an author is a poor judge of their own design. After the ADR and design synthesis are drafted, spawn **`pan-design-checker`** for an *independent, adversarial* pass (the same assurance model `/pan:plan-phase` gets from `pan-plan-checker`).
+
+- Pass the checker a `<files_to_read>` block: the drafted ADR + spec, the feature boundary/spec, and any `context.md`.
+- The checker verifies the seven dimensions in `~/.claude/pan-wizard-core/references/design-methodology.md` at the `feature`/`full` tier: requirement coverage, ≥2 machine-checkable criteria, architecture conformance (independently confirmed against the codebase — not the design's own claims), ADR honesty, threat coverage, testability, and scope discipline.
+- **Reflexion loop:** if the checker returns gaps, revise the affected phase output and re-check. Cap at **2 revision iterations** (design → check → revise → check → final); re-read each critique and fix only genuine gaps, not false positives from missing context. On the final iteration, record any remaining gaps as caveats rather than looping further.
+
+Do not proceed to Phase 10 output until the checker PASSES or the 2-iteration cap is reached.
+
 ---
 
 ## Phase 6: Error Handling & Diagnostics Design
@@ -1038,6 +1048,8 @@ Write complete spec to: `docs/specs/<feature_name>_featureai.md`
 Write ADR to: `docs/decisions/ADR-NNNN-<feature_name>.md`
 
 **ADR completeness gate:** Before saving, verify the ADR passes ALL checks from Phase 5.2. The ADR file must contain every section defined in Phase 5.1 with substantive content — no placeholder brackets, no skeleton sections, no missing tables. If any section would be empty, go back to the relevant phase and extract the content.
+
+**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design to `/pan:focus-plan`.
 
 **Minimum ADR size:** A proper ADR for a `--full` mode investigation should be 80-200+ lines. If the ADR is under 60 lines, it is almost certainly missing required sections. For `--internal` mode, minimum 60 lines. For `--outward` mode, minimum 70 lines.
 

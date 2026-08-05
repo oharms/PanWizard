@@ -653,6 +653,7 @@ const CACHEABLE_CONTEXT_FILES = [
 /** Default thinking budget (tokens) for verification-heavy agents */
 const THINKING_BUDGETS = {
   'pan-plan-checker': 8000,
+  'pan-design-checker': 8000,
   'pan-verifier': 6000,
   'pan-integration-checker': 6000,
   'pan-reviewer': 4000,

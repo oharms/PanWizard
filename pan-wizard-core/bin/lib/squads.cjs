@@ -40,7 +40,7 @@ const SQUADS = Object.freeze({
     access: 'read-only',
     summary: 'Designs the system before code — contract-first.',
     agents: Object.freeze([
-      'pan-roadmapper', 'pan-planner', 'pan-plan-checker',
+      'pan-roadmapper', 'pan-planner', 'pan-plan-checker', 'pan-design-checker',
       'pan-project-researcher', 'pan-phase-researcher', 'pan-research-synthesizer',
     ]),
   }),

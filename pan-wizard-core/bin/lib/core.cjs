@@ -69,6 +69,7 @@ const MODEL_PROFILES = {
   'pan-document_code':        { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-verifier':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-plan-checker':         { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-design-checker':       { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-integration-checker':  { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-reviewer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   // Spec B v2 agents (v3.0–v3.4) — added v3.7.5 to close MODEL_PROFILES drift
@@ -106,6 +107,7 @@ const AGENT_BASE_EFFORT = {
   'pan-conductor':            'xhigh',
   'pan-debugger':             'xhigh',
   'pan-plan-checker':         'xhigh',
+  'pan-design-checker':       'xhigh',
   // Execution and verification — thorough but bounded
   'pan-executor':             'high',
   'pan-roadmapper':           'high',
