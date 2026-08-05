@@ -280,10 +280,18 @@ off by default; turn it on for phases where planning test coverage up front matt
 ```
   /pan:map-codebase
          │
-         ├── Stack Mapper     -> codebase/STACK.md
-         ├── Arch Mapper      -> codebase/ARCHITECTURE.md
-         ├── Convention Mapper -> codebase/CONVENTIONS.md
-         └── Concern Mapper   -> codebase/CONCERNS.md
+         ▼
+  parallel mapper agents
+         │
+         ├── codebase/stack.md
+         ├── codebase/integrations.md
+         ├── codebase/architecture.md
+         ├── codebase/structure.md
+         ├── codebase/conventions.md
+         ├── codebase/testing.md
+         ├── codebase/concerns.md
+         ├── codebase/relationships.md
+         └── codebase/best-practices.md
                 │
         ┌───────▼──────────┐
         │ /pan:new-project │  <- Questions focus on what you're ADDING
@@ -1255,7 +1263,7 @@ For reference, here is what PAN creates in your project:
 | `patterns.md` | `appendErrorPattern()` | Error patterns (PAT-NNN) for cross-session learning. | Append-only, auto-increment |
 | `session-history.md` | `appendSessionSummary()` | Session summaries with phase, test counts, decisions. | Keeps last 20 entries |
 | `research/` | `/pan:new-project` | Parallel research outputs (stack, features, architecture, pitfalls) plus synthesis. | Read-only after creation |
-| `codebase/` | `/pan:map-codebase` | Brownfield analysis: STACK.md, ARCHITECTURE.md, CONVENTIONS.md, CONCERNS.md. | Read-only after creation |
+| `codebase/` | `/pan:map-codebase` | Brownfield analysis — the codebase-map documents (`stack.md`, `integrations.md`, `architecture.md`, `structure.md`, `conventions.md`, `testing.md`, `concerns.md`, `relationships.md`, `best-practices.md`). | Read-only after creation |
 | `context.md` | `/pan:discuss-phase` | Your implementation preferences for a phase. Feeds into research and planning. | Keep under 300 lines |
 | `research.md` | `/pan:plan-phase` | Ecosystem research for a phase (libraries, patterns, pitfalls). | Read-only after creation |
 | `plan.md` | `/pan:plan-phase` | Atomic execution plan with XML-structured tasks, verification steps. | 2-3 tasks per plan |

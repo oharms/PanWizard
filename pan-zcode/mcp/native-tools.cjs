@@ -43,7 +43,7 @@ const NATIVE_TOOLS = [
   {
     name: 'pan_confirm_merge',
     title: 'Confirm a human-approved merge',
-    description: 'Perform a squash-merge ONLY if CI is green, verify passed, and a human-origin approval token (env PAN_MERGE_APPROVAL equal to the request id) is present. Any agent-supplied approval is ignored; never force-pushes or rewrites history.',
+    description: 'Perform a squash-merge ONLY if CI is green, verify passed, and a human-origin approval token (env PAN_MERGE_APPROVAL equal to the request\'s approval_token) is present. Any agent-supplied approval is ignored; never force-pushes or rewrites history.',
     readOnly: false, destructive: true,
     inputSchema: {
       type: 'object', additionalProperties: false, required: ['branch'],

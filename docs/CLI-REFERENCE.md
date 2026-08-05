@@ -773,18 +773,18 @@ pan-tools phase complete 5 [--raw]
 
 Commands for discovering phase directories and their contents.
 
-### `phases list [--type plan|summary] [--phase N] [--include-archived]`
+### `phases list [--type plans|summaries] [--phase N] [--include-archived]`
 
 List phase directories or files within phases.
 
 ```
 pan-tools phases list [--raw]
-pan-tools phases list --type plan --phase 5 [--raw]
+pan-tools phases list --type plans --phase 5 [--raw]
 pan-tools phases list --include-archived [--raw]
 ```
 
 **Flags:**
-- `--type plan|summary` — List files of a specific type instead of directories
+- `--type plans|summaries` — List files of a specific type instead of directories
 - `--phase N` — Filter to a specific phase
 - `--include-archived` — Include phases from archived milestones
 
@@ -3402,13 +3402,11 @@ Enumerate experiments under root with `{slug, runtime, status, created_at, path}
 
 Print the experiment's `experiment.json` manifest.
 
-### `experiment run <slug> [--root <dir>] [--prompt <text>] [--timeout-ms N] [--capture-metrics]` (v3.7.0+)
+### `experiment run <slug> [--root <dir>] [--prompt <text>] [--timeout <seconds>]` (v3.7.0+)
 
-Spawn the runtime adapter against the experiment via `spawnSync`, observe via `run-state.json`, return final status. Adapters live in `runner.cjs#RUNTIME_RUNNERS` — claude/codex/gemini/opencode supported, copilot is null. Default prompt: `/pan:new-project --auto @.planning/idea.md`. Default timeout: 30 min.
+Spawn the runtime adapter against the experiment via `spawnSync`, observe via `run-state.json`, return final status. Adapters live in `runner.cjs#RUNTIME_RUNNERS` — claude/codex/gemini/opencode supported, copilot is null. Default prompt: `/pan:new-project --auto @.planning/idea.md`. `--timeout` is in seconds; default 3600 (60 min).
 
 **Incomplete-run detection:** When `exit_code: 0` but `state.md` shows `status != completed`, the runner returns `stop_reason: "incomplete"` (not `success`). Distinguishes real milestone-done from premature exits.
-
-**`--capture-metrics`:** Switches the claude adapter to `claude --output-format json`, parses the trailing usage envelope from stdout, and persists `{total_cost_usd, num_turns, session_id, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, billing_pool}` under `runState.metrics`. Other runtimes ignore the flag.
 
 **Billing note (Claude runtime):** since June 15, 2026, headless `claude -p` / Agent SDK usage draws from a separate monthly **Agent SDK credit pool** on Claude subscriptions — it does not count against interactive session limits, and vice versa. Experiment runs are therefore tagged `billing_pool: "agent_sdk"` in `runState.metrics` so downstream analysis (`/pan:learn`, billing reconciliation) can separate experiment spend from interactive spend. Codex/Gemini/OpenCode runs bill per their own provider's CLI policy and carry `billing_pool: null`.
 
@@ -3420,13 +3418,13 @@ Read snapshot from `<expPath>/.planning/run-state.json`: status, started_at, end
 
 Send SIGTERM to the running spawn (best-effort; falls back to recording manual stop in run-state.json if the pid is gone).
 
-### `experiment harvest <slug> [--root <dir>] [--out <dir>]` (v3.7.0)
+### `experiment harvest <slug> [--root <dir>] [--source-root <dir>] [--force]` (v3.7.0)
 
-Copy `learnings/`, `traces/`, `run-state.json`, `agent-history.json`, `experiment.json`, and the rendered `commands/pan/`, `agents/`, references back into the harvest output dir. Non-destructive — leaves the experiment folder intact for re-runs.
+Copy `learnings/`, `traces/`, `run-state.json`, `agent-history.json`, `experiment.json`, and the rendered `commands/pan/`, `agents/`, references back into a fixed destination at `<source-root>/experiments/<slug>/`. `--source-root` selects the PAN source root (destination base); `--force` overwrites an existing harvest at that path. Non-destructive — leaves the experiment folder intact for re-runs.
 
-### `experiment prune <slug> [--root <dir>] [--keep-harvest]` (v3.7.0)
+### `experiment prune <slug> [--root <dir>] [--hard]` (v3.7.0)
 
-Delete the experiment folder. With `--keep-harvest`, leave any harvested artifacts in place at the harvest output path.
+Remove the experiment. Default is a soft prune — the experiment folder is archive-renamed (preserved, not deleted). With `--hard`, the folder is permanently deleted.
 
 ### `learn promote --pattern <id> --scope <s> --topic <t> [--summary] [--evidence] [--rule] [--applies-in] [--source-experiments csv]`
 
@@ -3464,9 +3462,17 @@ Markdown frontmatter + structure linter, vendored from the whooo experiment. Val
 
 Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command` for files under `commands/pan/`). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. JSON output suitable for CI gates; human output for terminal review.
 
-### `doc-lint schema-check [--schemas-dir <path>]` (v3.7.1)
+### `doc-lint schema-check <path>` (v3.7.1)
 
-Verify the YAML schemas themselves are syntactically valid before they're used to lint anything. Schemas live at `pan-wizard-core/references/schemas/*.schema.yml`.
+Verify the YAML schema at `<path>` is syntactically valid before it's used to lint anything. `<path>` is a required positional argument. Schemas live at `pan-wizard-core/references/schemas/*.schema.yml`.
+
+### `doc-lint counts <dir> [--exclude <glob>]` (v3.7.1)
+
+Scan `<dir>` for embedded numeric counts that violate the single-source-of-truth policy (counts belong only in `CLAUDE.md`). Repeat `--exclude` to skip paths. Reports each offending count with its file and line.
+
+### `doc-lint flags [--doc-dir <dir>]` (v3.7.1)
+
+Detect aspirational or stale `--flags` documented for the PAN CLI that never appear as literals in the source (`pan-wizard-core/bin`, `bin`). Repeat `--doc-dir` to scan directories other than the default `docs`. Reports each doc-only flag with its file and line.
 
 ---
 

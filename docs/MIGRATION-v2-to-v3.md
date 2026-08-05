@@ -186,18 +186,16 @@ If missing, re-run the installer — the idempotent flow adds the entry.
 
 Every v3.x feature is additive. Rollback options:
 
-### Full rollback to v2.10.0
+### Full rollback (uninstall)
+
+Rolling back means uninstalling PAN — there is no public v2.x to reinstall. The public release history begins at v3.13.1; v2.x was never published, so its artifacts are not publicly available.
 
 ```bash
 # Uninstall PAN entirely
 node <PanWizard-repo>/bin/install.js --uninstall --claude --local
-
-# Check out v2.10.0 tag or commit, then re-install
-git checkout v2.10.0
-node bin/install.js --claude --local
 ```
 
-Your `.planning/` data survives. New directories (`metrics/`, `bus/`, etc.) remain on disk but are ignored by v2.x.
+Your `.planning/` data survives the uninstall. New directories (`metrics/`, `bus/`, etc.) remain on disk but are inert once PAN is removed.
 
 ### Partial rollback (keep v3.5 but disable specific features)
 

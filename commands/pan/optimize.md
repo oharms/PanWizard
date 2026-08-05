@@ -23,7 +23,7 @@ Manage the circular optimization loop: apply recommendations, view stats, list r
 /pan:optimize stats
 /pan:optimize trace init [--description "what you're building"]
 /pan:optimize trace end
-/pan:optimize trace status
+/pan:optimize trace current
 /pan:optimize trace list
 ```
 
@@ -67,7 +67,7 @@ Start a new trace session before running a build. The hook fires automatically o
 ### trace end
 Finalize the current trace session (writes summary stats to session.json).
 
-### trace status
+### trace current
 Show the active trace session ID and event count.
 
 ### trace list

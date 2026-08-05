@@ -5,7 +5,7 @@ require-code-mention: true
 # ADR-0027: Doc–Code Link Graph — `@pan:` Source Anchors & `links validate` Lint
 
 ## Status
-Proposed
+Accepted — 2026-05-03. Ships in v3.8.0. Implemented in `pan-wizard-core/bin/lib/links.cjs` (`links validate`; also wired into `pan-tools validate health --links`). Spec: `docs/specs/doc_code_link_graph_featureai.md`.
 
 ## Context
 

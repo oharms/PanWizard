@@ -88,10 +88,12 @@ npm run build:hooks  # Copy hooks from hooks/ to hooks/dist/ (no bundling — pu
 
 ### Local Testing
 
+Never install into the clone itself — `bin/install.js` has a hard `PAN_SOURCE_ROOT` guard that refuses to run from the source repo. Install into a separate scratch directory instead:
+
 ```bash
-# Install locally to test changes
-node bin/install.js --claude --local    # → ./.claude/
-node bin/install.js --claude --global   # → ~/.claude/
+# From a scratch dir alongside the clone, install to test changes
+cd ../pan-test && node ../PanWizard/bin/install.js --claude --local    # → ./.claude/
+cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.claude/
 ```
 
 ## How to Add a New Command

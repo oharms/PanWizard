@@ -1,5 +1,5 @@
 <purpose>
-Display the complete PAN command reference. Output ONLY the reference content. Do NOT add project-specific analysis, git status, next-step suggestions, or any commentary beyond the reference.
+Display the PAN command reference. Output ONLY the reference content. Do NOT add project-specific analysis, git status, next-step suggestions, or any commentary beyond the reference.
 </purpose>
 
 <reference>
@@ -148,7 +148,6 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 **Flags:**
 - `--mode <mode>` — select execution mode (default: balanced)
 - `--budget N` — override point budget (5-100)
-- `--dry-run` — show what would be selected without writing
 - `--lean` — exclude items with RS < 1.5
 
 ### Step 3: `/pan:focus-exec`
@@ -208,7 +207,9 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 ---
 
-## All Commands (42)
+## All Commands
+
+> This table is a **curated subset** of the most-used commands, not an exhaustive list. For the full, always-current command set, browse the `commands/pan/*.md` files in your install (each `.md` is one `/pan:<name>` command).
 
 ### Getting Started
 | Command | Description |

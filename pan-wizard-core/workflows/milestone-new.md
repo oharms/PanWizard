@@ -17,12 +17,12 @@ Read all files referenced by the invoking prompt's execution_context before star
 - Read project.md (existing project, validated requirements, decisions)
 - Read milestones.md (what shipped previously)
 - Read state.md (pending todos, blockers)
-- Check for MILESTONE-context.md (from /pan:discuss-milestone)
+- Check for MILESTONE-context.md (optional pre-seeded context, if the user prepared one)
 
 ## 2. Gather Milestone Goals
 
 **If MILESTONE-context.md exists:**
-- Use features and scope from discuss-milestone
+- Use features and scope from MILESTONE-context.md
 - Present summary for confirmation
 
 **If no context file:**
@@ -151,7 +151,7 @@ Use template: ~/.claude/pan-wizard-core/templates/research-project/{FILE}
 | QUESTION | What stack additions/changes are needed for [new features]? | How do [target features] typically work? Expected behavior? | How do [target features] integrate with existing architecture? | Common mistakes when adding [target features] to [domain]? |
 | CONSUMER | Specific libraries with versions for NEW capabilities, integration points, what NOT to add | Table stakes vs differentiators vs anti-features, complexity noted, dependencies on existing | Integration points, new components, data flow changes, suggested build order | Warning signs, prevention strategy, which phase should address it |
 | GATES | Versions current (verify with Context7), rationale explains WHY, integration considered | Categories clear, complexity noted, dependencies identified | Integration points identified, new vs modified explicit, build order considers deps | Pitfalls specific to adding these features, integration pitfalls covered, prevention actionable |
-| FILE | STACK.md | FEATURES.md | ARCHITECTURE.md | PITFALLS.md |
+| FILE | stack.md | features.md | architecture.md | pitfalls.md |
 
 After all 4 complete, spawn synthesizer:
 

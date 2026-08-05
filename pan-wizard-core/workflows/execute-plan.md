@@ -94,14 +94,13 @@ Fresh context per subagent preserves peak quality. Main context stays lean.
 if [ ! -f .planning/agent-history.json ]; then
   echo '{"version":"1.0","max_entries":50,"entries":[]}' > .planning/agent-history.json
 fi
-rm -f .planning/current-agent-id.txt
 if [ -f .planning/current-agent-id.txt ]; then
   INTERRUPTED_ID=$(cat .planning/current-agent-id.txt)
   echo "Found interrupted agent: $INTERRUPTED_ID"
 fi
 ```
 
-If interrupted: ask user to resume (Task `resume` parameter) or start fresh.
+If interrupted: ask user to resume (Task `resume` parameter) or start fresh. Only AFTER that decision (per the tracking protocol below — resume detection must see the stale id first) clear the marker with `rm -f .planning/current-agent-id.txt`.
 
 **Tracking protocol:** On spawn: write agent_id to `current-agent-id.txt`, append to agent-history.json: `{"agent_id":"[id]","task_description":"[desc]","phase":"[phase]","plan":"[plan]","segment":[num|null],"timestamp":"[ISO]","status":"spawned","completion_timestamp":null}`. On completion: status → "completed", set completion_timestamp, delete current-agent-id.txt. Prune: if entries > max_entries, remove oldest "completed" (never "spawned").
 

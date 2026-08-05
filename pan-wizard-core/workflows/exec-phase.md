@@ -286,11 +286,23 @@ When executor returns a checkpoint AND `AUTO_CFG` is `"true"`:
    [Awaiting section from agent return]
    ```
 5. User responds: "approved"/"done" | issue description | decision selection
-6. **Spawn continuation agent (NOT resume)** using continuation-prompt.md template:
-   - `{completed_tasks_table}`: From checkpoint return
-   - `{resume_task_number}` + `{resume_task_name}`: Current task
-   - `{user_response}`: What user provided
-   - `{resume_instructions}`: Based on checkpoint type
+6. **Spawn continuation agent (NOT resume)** with a prompt built inline from this structure:
+   ```
+   Continue executing plan {plan_id}. A previous agent paused at a checkpoint.
+
+   ## Already completed
+   {completed_tasks_table}    ← the completed-tasks table from the checkpoint return
+
+   ## Resume point
+   Task {resume_task_number}: {resume_task_name}    ← the current (paused) task
+   User response to checkpoint: {user_response}      ← "approved"/"done", the chosen decision option, or the issue description the user typed
+
+   ## Instructions
+   {resume_instructions}      ← derived from the checkpoint type: human-verify → "resume the paused task";
+                                decision → "apply the selected option, then continue"; issue → "address the
+                                described issue first, then continue". Verify the previous commits before proceeding.
+   ```
+   All five placeholders are defined here — there is no separate template file to load.
 7. Continuation agent verifies previous commits, continues from resume point
 8. Repeat until plan completes or user stops
 

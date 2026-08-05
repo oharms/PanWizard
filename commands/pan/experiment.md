@@ -17,8 +17,8 @@ allowed-tools:
 > **Self-protection:** This command **scaffolds external project folders OUTSIDE the PAN source repo** to drive autonomous AI coding sessions against fresh ideas, then harvests the resulting telemetry back into `pan-wizard-core/learnings/`. It is a **PAN-development tool**, not a feature for end-users of PAN to invoke on their own projects.
 
 **Spec:** `docs/specs/self_improvement_loop_featureai.md`
-**ADR:** ADR-0026 (pending W4)
-**Status:** v3.7.0 W1+W2+W3 — scaffolding (`new`/`list`/`manifest`) + external runner (`run`/`status`/`stop`) + harvest (`harvest`/`prune`); W4 adds promote integration with `/pan:learn`.
+**ADR:** ADR-0026 (Accepted — shipped W1-W4 in v3.7.0)
+**Status:** v3.7.0 — scaffolding (`new`/`list`/`manifest`) + external runner (`run`/`status`/`stop`) + harvest (`harvest`/`prune`) + promote integration with `/pan:learn` (`learn promote`/`unpromote`/`list-promoted`).
 
 ---
 
@@ -31,7 +31,7 @@ allowed-tools:
 ## When NOT to use this
 
 - Building production user features. Use `/pan:new-project` and `/pan:exec-phase` directly.
-- Validating a single-file change. The experiment loop is heavy — use `npm test` and `/pan:check`.
+- Validating a single-file change. The experiment loop is heavy — use `npm test` and `/pan:quick`.
 - Inside the PAN source repo. The command **refuses** to scaffold experiments inside `d:\PanWizard\` (or wherever the source is cloned). The experiment root defaults to `~/pan-experiments/`.
 
 ---
@@ -163,17 +163,21 @@ Remove the experiment folder after harvest.
 
 **Returns:** `{ pruned: <slug>, mode: "soft"|"hard", archive_path? }`.
 
-## Subcommands (W4 — coming soon)
+## Promote integration (shipped, W4)
 
-| Subcommand | Wave | Purpose |
-|------------|------|---------|
-| `archive <slug>` | W4 | Alias for `prune` (kept for clarity in scripts) |
-| `delete <slug> --confirm` | W4 | Alias for `prune --hard` with confirmation prompt |
-
-W4 also adds:
+The self-improvement loop closes via `/pan:learn` and the `learn` CLI:
 - `/pan:learn --experiment <slug>` — runs pan-optimizer over harvested data
 - `pan-tools learn promote --pattern <id> --scope universal --topic <name>` — extracts a finding into `pan-wizard-core/learnings/{universal,internal}/<topic>.md`
-- `pan-tools learn unpromote/list-promoted` — rollback and inventory
+- `pan-tools learn unpromote` / `learn list-promoted` — rollback and inventory
+
+## Not yet shipped
+
+| Subcommand | Purpose |
+|------------|---------|
+| `archive <slug>` | Alias for `prune` (kept for clarity in scripts) |
+| `delete <slug> --confirm` | Alias for `prune --hard` with confirmation prompt |
+
+Until these land, use `prune` / `prune --hard` directly.
 
 ---
 

@@ -1,5 +1,6 @@
 # /featureAI — GLM (z.ai) Provider Support & ZCode Interop
 
+**Status:** Proposed — not implemented; ZCode Surface B superseded by [`docs/specs/pan_zcode_mcp_bridge_featureai.md`](pan_zcode_mcp_bridge_featureai.md) / ADR-0041.
 **Source:** User request — "make PAN work with ZCode / GLM."
 **Lineage:** Concrete, shippable instance of [`multi_model_routing_featureai.md`](multi_model_routing_featureai.md) (that spec anticipated non-Anthropic providers; this one lands the first real one). Reuses the existing `PROVIDER_MODELS` / `detectProvider` / `resolveTierToModel` seam.
 

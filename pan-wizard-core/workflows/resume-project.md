@@ -67,7 +67,7 @@ ls .planning/phases/*/.continue-here*.md 2>/dev/null
 
 # Check for plans without summaries (incomplete execution)
 for plan in .planning/phases/*/*-plan.md; do
-  summary="${plan/PLAN/SUMMARY}"
+  summary="${plan%-plan.md}-summary.md"
   [ ! -f "$summary" ] && echo "Incomplete: $plan"
 done 2>/dev/null
 

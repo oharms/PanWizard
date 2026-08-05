@@ -536,15 +536,38 @@ function convertClaudeToCopilotAgent(content) {
   if (frontmatter) {
     name = extractFrontmatterField(frontmatter, 'name') || '';
     description = extractFrontmatterField(frontmatter, 'description') || '';
-    const toolsMatch = frontmatter.match(/allowed_tools:\s*\n((?:\s*-\s*.+\n?)*)/);
-    if (toolsMatch) {
-      const toolLines = toolsMatch[1].match(/^\s*-\s*(.+)$/gm) || [];
-      for (const line of toolLines) {
-        const toolName = line.replace(/^\s*-\s*/, '').trim();
-        const copilotTool = convertCopilotToolName(toolName);
-        if (copilotTool && !copilotTools.includes(copilotTool)) {
-          copilotTools.push(copilotTool);
+    // Parse the same frontmatter shapes the Gemini/OpenCode converters handle:
+    // an inline `tools:` comma list AND an `allowed-tools:` YAML block list.
+    // (No PAN agent uses the legacy `allowed_tools:` block, so the previous
+    // regex left every Copilot agent with no tool restrictions.)
+    const lines = frontmatter.split('\n');
+    let inAllowedTools = false;
+    const rawTools = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('allowed-tools:')) { inAllowedTools = true; continue; }
+      if (trimmed.startsWith('tools:')) {
+        const toolsValue = trimmed.substring(6).trim();
+        if (toolsValue) {
+          rawTools.push(...toolsValue.split(',').map(t => t.trim()).filter(t => t));
+        } else {
+          inAllowedTools = true;
         }
+        continue;
+      }
+      if (inAllowedTools) {
+        if (trimmed.startsWith('- ')) {
+          rawTools.push(trimmed.substring(2).trim());
+          continue;
+        } else if (trimmed && !trimmed.startsWith('-')) {
+          inAllowedTools = false;
+        }
+      }
+    }
+    for (const toolName of rawTools) {
+      const copilotTool = convertCopilotToolName(toolName);
+      if (copilotTool && !copilotTools.includes(copilotTool)) {
+        copilotTools.push(copilotTool);
       }
     }
   }

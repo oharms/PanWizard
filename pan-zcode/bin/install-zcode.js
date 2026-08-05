@@ -48,7 +48,7 @@ PAN-Z bridges PAN's engine to ZCode over MCP. Finish setup inside ZCode:
 3. **Protect your branches.** The merge gate (\`pan_confirm_merge\`) is one lock; the
    real, non-bypassable one is **server-side branch protection** on your remote. Enable
    required reviews so a raw push under Full Access cannot merge. Approve a staged merge
-   by setting \`PAN_MERGE_APPROVAL=<request-id>\` in the MCP server's environment.
+   by setting \`PAN_MERGE_APPROVAL=<approval_token>\` in the MCP server's environment.
 
 4. **Never run the install/import step in ZCode Full Access mode.**
 

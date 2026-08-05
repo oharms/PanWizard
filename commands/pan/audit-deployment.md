@@ -111,18 +111,18 @@ Record all findings with severity: CRITICAL (missing core), WARNING (missing opt
 Check `.planning/` directory in the target:
 
 **2.1 Core Planning Files**
-- [ ] `.planning/config.json` — exists, valid JSON, has required keys (mode, depth, model_profile, workflow)
+- [ ] `.planning/config.json` — exists, valid JSON, has expected keys (`model_profile`, `commit_docs`, `workflow`, `budget`)
 - [ ] `.planning/project.md` — exists, has "What This Is", "Core Value", "Requirements" sections
 - [ ] `.planning/state.md` — exists, has "Current Position", "Performance Metrics" sections
 - [ ] `.planning/roadmap.md` — exists, has phase table
 - [ ] `.planning/requirements.md` — exists if project used requirements tracking
 
 **2.2 Phase Directories**
-- Scan for `phase_*` or `*-*` numbered directories
+- Scan `.planning/phases/` for numbered phase directories
 - For each phase directory:
-  - [ ] PLAN.md exists (phase summary)
-  - [ ] At least one plan_*.md file exists
-  - [ ] verification.md exists (phase was verified)
+  - [ ] At least one `*-plan.md` file exists (phase was planned)
+  - [ ] A matching `*-summary.md` file exists (phase was executed)
+  - [ ] A `*-verification.md` file exists (phase was verified)
 - Count: total phases, phases with plans, phases verified, phases with gaps
 
 **2.3 Research Artifacts** (if brownfield/research was enabled)
@@ -138,10 +138,10 @@ Check `.planning/` directory in the target:
 
 **2.5 Config Sanity**
 - Validate config.json values are within expected ranges
-- mode: "yolo" | "interactive"
-- depth: "quick" | "standard" | "comprehensive"
-- model_profile: "quality" | "balanced" | "budget"
-- workflow agents: all boolean
+- `model_profile`: "quality" | "balanced" | "budget"
+- `commit_docs`: boolean
+- `workflow.*` toggles (research, plan_check, verifier, ...): all boolean
+- `budget`: `default_points` numeric, `enforce` boolean
 </step>
 
 <step name="workflow_quality_audit">

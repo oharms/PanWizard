@@ -20,11 +20,11 @@
 
 PAN itself is free and open source. Token costs depend on your Claude/model usage:
 
-| Profile | Typical per-phase cost | Best for |
+| Profile | Model resolution | Best for |
 |---------|----------------------|----------|
-| `quality` | Higher (Opus for most agents) | Critical architecture work |
-| `balanced` | Moderate (Opus for planning, Sonnet for execution) | Normal development |
-| `budget` | Lower (Sonnet + Haiku) | High-volume work, prototyping |
+| `quality` | Every agent at the session model (reasoning tier) | Critical architecture work |
+| `balanced` | Every agent at the session model (reasoning tier) | Normal development |
+| `budget` | Sonnet / Haiku step-down mix | High-volume work, prototyping |
 
 Reduce costs further by disabling optional agents:
 ```
@@ -233,7 +233,7 @@ Or override specific agents in `.planning/config.json`:
 
 1. Restart your runtime to reload commands
 2. Verify files exist in `~/.claude/commands/pan/` (global) or `.claude/commands/pan/` (local)
-3. For Codex, check `~/.codex/skills/pan-*/SKILL.md`
+3. For Codex, check `~/.agents/skills/pan-*/SKILL.md` (global) or `./.agents/skills/pan-*/SKILL.md` (local)
 4. Re-run `npx pan-wizard` to reinstall
 
 ### Context degradation during long sessions

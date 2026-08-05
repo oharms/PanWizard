@@ -96,25 +96,32 @@ try ("run `doto add 'Buy milk' --priority high` and confirm it appears in
 `doto list`") and asks you to confirm or flag issues. Fixes are applied
 immediately. When you approve, `.planning/phases/01-{name}/verification.md` is written.
 
-### Step 6 -- Complete the milestone
-
-```
-/pan:milestone-done
-```
-
-PAN archives Phase 1 artifacts, tags the release (`v0.1.0`), and updates
-`.planning/roadmap.md` to mark Phase 1 as complete.
-
-### Step 7 -- Continue to Phase 2
+### Step 6 -- Continue through the remaining phases
 
 ```
 /pan:discuss-phase 2
 /pan:plan-phase 2
 /pan:exec-phase 2
 /pan:verify-phase 2
+
+/pan:discuss-phase 3
+/pan:plan-phase 3
+/pan:exec-phase 3
+/pan:verify-phase 3
 ```
 
-Repeat the cycle. Each phase builds on the verified output of the previous one.
+Repeat the cycle for Phase 2 (Filtering & Tags) and Phase 3 (Packaging & Docs).
+Each phase builds on the verified output of the previous one.
+
+### Step 7 -- Complete the milestone
+
+```
+/pan:milestone-done
+```
+
+Once all three phases are verified, `/pan:milestone-done` archives the
+milestone's phase artifacts, tags the release (`v0.1.0`), and updates
+`.planning/roadmap.md` to mark the milestone complete.
 
 ---
 

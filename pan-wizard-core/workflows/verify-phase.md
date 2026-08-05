@@ -63,7 +63,12 @@ Extract **phase goal** from roadmap.md (the outcome to verify, not tasks) and **
 If `phase_number` > 1:
 ```bash
 PREV=$((phase_number - 1))
-PREV_VERIF=$(ls .planning/phase-${PREV}*/*-verification.md 2>/dev/null | head -1)
+# Resolve the previous phase's directory via find-phase (handles zero-padding
+# and the .planning/phases/ layout), like exec-phase does — do NOT glob
+# .planning/phase-N*/ (wrong dir, unpadded, matches nothing). With --raw,
+# find-phase prints the resolved directory path (empty if not found).
+PREV_DIR=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "${PREV}" --raw 2>/dev/null)
+PREV_VERIF=$([ -n "$PREV_DIR" ] && ls "$PREV_DIR"/*-verification.md 2>/dev/null | head -1)
 ```
 
 If `PREV_VERIF` is empty:

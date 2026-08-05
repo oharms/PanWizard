@@ -433,20 +433,20 @@ Markdown and JSON files that survive context resets. This is the single source o
   session-history.md    Session summaries (last 20 entries)
   research/             Domain research from /pan:new-project
     summary.md          Synthesized findings
-    STACK.md            Recommended tech stack
-    FEATURES.md         Feature prioritization
-    ARCHITECTURE.md     Architecture patterns
-    PITFALLS.md         Common pitfalls and warnings
+    stack.md            Recommended tech stack
+    features.md         Feature prioritization
+    architecture.md     Architecture patterns
+    pitfalls.md         Common pitfalls and warnings
   codebase/             Brownfield analysis from /pan:map-codebase
-    STACK.md            Current tech stack
-    INTEGRATIONS.md     External services and APIs
-    ARCHITECTURE.md     System design and patterns
-    STRUCTURE.md        Directory layout guide
-    CONVENTIONS.md      Coding patterns and style
-    TESTING.md          Test infrastructure and patterns
-    CONCERNS.md         Tech debt and risks
-    RELATIONSHIPS.md    Module and component dependency map
-    BEST-PRACTICES.md   Recommended patterns for this codebase
+    stack.md            Current tech stack
+    integrations.md     External services and APIs
+    architecture.md     System design and patterns
+    structure.md        Directory layout guide
+    conventions.md      Coding patterns and style
+    testing.md          Test infrastructure and patterns
+    concerns.md         Tech debt and risks
+    relationships.md    Module and component dependency map
+    best-practices.md   Recommended patterns for this codebase
   todos/
     pending/            Captured ideas awaiting work
     done/               Completed todos
@@ -546,7 +546,7 @@ Interactive CLI that copies commands, agents, hooks, and core library to the cor
 | Copilot CLI | `~/.copilot/` | `.github/` | `skills/pan-*/SKILL.md`, `agents/*.agent.md` |
 
 **Install-time conversions:**
-- **Codex:** Commands converted to `SKILL.md` format with skill adapter headers
+- **Codex:** Commands converted to `SKILL.md` format with skill adapter headers; hooks registered in `.codex/hooks.json` (Codex has supported hooks since 2026-06)
 - **Copilot CLI:** Commands converted to `SKILL.md` with YAML frontmatter; agents converted to `.agent.md` with tools list; hooks registered in `.github/hooks/pan.json` (`version: 1` schema, `type: "command"` entries); tool names mapped (Claude → Copilot CLI: `Read→read`, `Bash→bash`, `Grep→search`, `WebSearch→web`, `Task→agent`, etc.)
 - **OpenCode:** Slash command prefix converted from `/pan:` to `/pan-`
 
@@ -796,7 +796,7 @@ PAN installs to 5 runtimes with format conversion at install time. The core work
 |-----------|---------------------------|-------|-------------|
 | Commands | `commands/pan/*.md` | `.agents/skills/pan-*/SKILL.md` | `skills/pan-*/SKILL.md` |
 | Agents | `agents/*.md` | `agents/*.toml` | `agents/*.agent.md` |
-| Hooks | `hooks/*.js` in `settings.json` | Not supported | `hooks/*.js` in `.github/hooks/pan.json` |
+| Hooks | `hooks/*.js` in `settings.json` | `hooks/*.js` in `.codex/hooks.json` (since 2026-06) | `hooks/*.js` in `.github/hooks/pan.json` |
 | Config | `settings.json` | `config.toml` | `config.json` |
 
 ### Tool Name Mapping (Copilot CLI)

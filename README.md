@@ -729,11 +729,11 @@ Control which Claude model each agent uses. Balance quality vs token spend.
 
 | Profile | Planning | Execution | Verification |
 |---------|----------|-----------|--------------|
-| `quality` | Opus | Opus | Opus |
-| `balanced` (default) | Opus | Sonnet | Sonnet |
+| `quality` | reasoning | reasoning | reasoning |
+| `balanced` (default) | reasoning | reasoning | reasoning |
 | `budget` | Sonnet | Sonnet | Haiku |
 
-> Simplified view — actual model assignment varies by agent role. See [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
+> `reasoning` = the session model (inherit) — every agent runs on the model you launched the session with. Both `quality` and `balanced` resolve this way; only `budget` steps down to a Sonnet/Haiku mix. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
 
 Switch profiles:
 ```

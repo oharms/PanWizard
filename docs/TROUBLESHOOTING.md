@@ -683,7 +683,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Symptom:** Two Claude Code sessions running PAN on the same project produce conflicting commits, corrupted state.md, or duplicated work.
 
-**Root cause:** PAN's state management is file-based and does not implement locking. Concurrent sessions writing to the same state.md or committing to the same branch will conflict.
+**Root cause:** `state.md` writes are serialized via advisory file locking plus atomic writes (ADR-0030), but PAN does not coordinate whole-session concurrency. Two sessions can still commit to the same branch, race on other artifacts, or duplicate work — keep to one session per project.
 
 **Prevention:** Do not run multiple PAN sessions on the same project simultaneously. PAN is designed for single-session operation.
 

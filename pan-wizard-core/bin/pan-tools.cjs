@@ -33,7 +33,7 @@
  *     [--limit N] [--freshness day|week|month]
  *
  * Phase Listing:
- *   phases list [--type plan|summary]  List phases with optional type filter
+ *   phases list [--type plans|summaries]  List phases with optional type filter
  *     [--phase N] [--include-archived]
  *
  * Phase Operations:
