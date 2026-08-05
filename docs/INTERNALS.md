@@ -217,11 +217,11 @@ Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) ar
 | Agent Role | Quality | Balanced | Budget |
 |-----------|---------|----------|--------|
 | Planner | reasoning | reasoning | mid |
-| Researcher | reasoning | mid | fast |
-| Executor | reasoning | mid | mid |
-| Verifier | reasoning | mid | fast |
-| Plan Checker | reasoning | mid | fast |
-| Codebase Mapper | reasoning | fast | fast |
+| Researcher | reasoning | reasoning | fast |
+| Executor | reasoning | reasoning | mid |
+| Verifier | reasoning | reasoning | fast |
+| Plan Checker | reasoning | reasoning | fast |
+| Codebase Mapper | reasoning | reasoning | fast |
 
 ### Routing Pipeline
 
@@ -249,12 +249,12 @@ Relative cost per tier: reasoning = 15×, mid = 3×, fast = 1×. The `estimate-c
 ### When to Use Each
 
 - **Quality:** Complex architectural work, critical production code, unfamiliar domains
-- **Balanced (default):** Most projects -- reasoning reasons about design, mid executes instructions
+- **Balanced (default):** Most projects -- both quality and balanced run every agent at the reasoning tier
 - **Budget:** Prototyping, familiar patterns, cost-sensitive work
 
 ### Design Rationale
 
-Planning is high-value reasoning (benefits from top tier). Execution follows explicit instructions (mid tier is sufficient). Research is information gathering (fast tier is cheap and adequate).
+Both the quality and balanced profiles run every agent at the reasoning tier — planning, execution, research, and verification all benefit from top-tier reasoning by default. Cost savings come only from the opt-in `budget` profile, which steps agents down to mid/fast tiers for prototyping, familiar patterns, and cost-sensitive work.
 
 ### Per-Agent Overrides
 

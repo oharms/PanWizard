@@ -41,6 +41,8 @@ PAN uses specialized agents, each running as a subagent in a fresh 200K context 
 | `pan-research-synthesizer` | Synthesizes parallel research into summary.md | `/pan:new-project` | Read, Write, Bash | purple |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Glob, Grep | purple |
 | `pan-document_code` | Analyzes existing codebase (6 focus areas) | `/pan:map-codebase` (x6 parallel) | Read, Bash, Grep, Glob, Write | cyan |
+| `pan-designer` | Designs a phase before planning — architecture, ADR, threat-lite; spawned by /pan:design-phase | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | cyan |
+| `pan-design-checker` | Independently verifies a design before planning; spawned by /pan:design-phase | `/pan:design-phase` | Read, Bash, Glob, Grep | green |
 | `pan-phase-researcher` | Investigates how to implement a specific phase | `/pan:plan-phase` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
 | `pan-planner` | Creates executable plan.md files with task breakdown | `/pan:plan-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
 | `pan-plan-checker` | Validates plans against phase goals across multiple dimensions | `/pan:plan-phase` | Read, Bash, Glob, Grep | green |
@@ -619,6 +621,8 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 | pan-planner | reasoning | reasoning | mid |
 | pan-roadmapper | reasoning | reasoning | mid |
 | pan-executor | reasoning | reasoning | mid |
+| pan-designer | reasoning | reasoning | mid |
+| pan-design-checker | reasoning | reasoning | fast |
 | pan-phase-researcher | reasoning | reasoning | fast |
 | pan-project-researcher | reasoning | reasoning | fast |
 | pan-research-synthesizer | reasoning | reasoning | fast |
@@ -655,6 +659,8 @@ Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the 
 | `pan-plan-checker` | xhigh | Highest — catching logic gaps before execution avoids the most rework |
 | `pan-debugger` | xhigh | Hypothesis-tree generation and Bayesian prior ranking |
 | `pan-conductor` (v3.4+) | xhigh | Decomposition + safety-harness enforcement decisions |
+| `pan-designer` | xhigh | Architecture, ADR, and threat-lite design before planning |
+| `pan-design-checker` | xhigh | Independent design verification before planning |
 | `pan-verifier` | high | Goal-backward analysis across phase artifacts |
 | `pan-integration-checker` | high | Cross-phase wiring verification |
 | `pan-previewer` (v3.1+) | high | Multi-mode synthesis of structured foresight inputs |

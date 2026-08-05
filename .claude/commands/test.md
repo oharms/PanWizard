@@ -24,7 +24,7 @@ Unit/scenario tests are safe to run here. Installation testing goes to `d:\pante
 
 | Scope | Command | Tests | Time |
 |-------|---------|-------|------|
-| Unit | `npm test` | 1649+ across 54 files | ~30s |
+| Unit | `npm test` | `tests/*.test.cjs` | ~30s |
 | Scenarios | `npm run test:scenarios` | tests/scenarios/ | ~15s |
 | All | `npm run test:all` | Everything | ~45s |
 | Install | See integration section | Manual verification | ~20s |
@@ -39,7 +39,7 @@ npm test
 
 This runs all `tests/*.test.cjs` files via Node.js test runner.
 
-**Expected:** 1649+ tests passing, 0 failures.
+**Expected:** all tests passing, 0 failures.
 
 ## Scenario Tests
 

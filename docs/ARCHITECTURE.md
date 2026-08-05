@@ -196,7 +196,7 @@ Commands never perform heavy work directly. All substantive logic lives in workf
 | Category | Commands |
 |----------|----------|
 | **Getting Started** | new-project, map-codebase |
-| **Phase Lifecycle** | discuss-phase, plan-phase, exec-phase, research-phase, verify-phase |
+| **Phase Lifecycle** | discuss-phase, design-phase, plan-phase, exec-phase, research-phase, verify-phase |
 | **Phase Management** | add-phase, insert-phase, remove-phase, assumptions, phase-tests, phase-budget |
 | **Session & Progress** | progress, quick, pause, resume, profile |
 | **Milestone** | milestone-new, milestone-done, milestone-audit, milestone-gaps, milestone-cleanup |
@@ -279,6 +279,8 @@ Agents are Markdown files that define specialized AI roles. Each agent runs as a
 | `pan-research-synthesizer` | Synthesizes parallel research outputs | `/pan:new-project` |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` |
 | `pan-document_code` | Analyzes existing codebase (6 focus areas) | `/pan:map-codebase` (x6 parallel) |
+| `pan-designer` | Designs specs before planning | `/pan:design-phase` |
+| `pan-design-checker` | Validates design specs | `/pan:design-phase` |
 | `pan-phase-researcher` | Investigates how to implement a phase | `/pan:plan-phase` |
 | `pan-planner` | Creates executable plan.md files | `/pan:plan-phase` |
 | `pan-plan-checker` | Validates plans against goals across multiple dimensions | `/pan:plan-phase` |
@@ -493,6 +495,7 @@ Context documents loaded by agents and workflows at runtime. These provide domai
 | `checkpoints.md` | Checkpoint types and protocols for human interaction points |
 | `continuation-format.md` | Standard format for presenting next steps after commands |
 | `decimal-phase-calculation.md` | Algorithm for calculating next decimal phase number |
+| `design-methodology.md` | Design methodology for the design phase (architecture, ADR, threat-lite) |
 | `git-integration.md` | Git operations, commit format, branching strategies |
 | `git-planning-commit.md` | How to commit `.planning/` artifacts (respects `commit_docs` config) |
 | `model-profile-resolution.md` | How to resolve model profiles once at orchestration start |
@@ -524,7 +527,7 @@ The shipped hooks (copied to `hooks/dist/` by `npm run build:hooks` — pure Nod
 | `pan-cost-logger.js` (v3.4+) | SubagentStop | Appends subagent cost record to `.planning/metrics/tokens.jsonl` (consumed by `/pan:cost`) |
 | `pan-trace-logger.js` (v3.5+) | SubagentStop | Appends decision/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` (consumed by `/pan:learn`, `/pan:optimize`); auto-creates day-scoped trace session |
 
-The statusline hook produces metrics; the context monitor consumes them. They communicate through a bridge file (`/tmp/claude-ctx-{session_id}.json`) to avoid coupling. The two SubagentStop hooks (cost-logger and trace-logger) fire in parallel after every sub-agent completion and write to independent log files.
+The statusline hook produces metrics; the context monitor consumes them. They communicate through a bridge file (`<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`, a per-user 0700 dir) to avoid coupling. The two SubagentStop hooks (cost-logger and trace-logger) fire in parallel after every sub-agent completion and write to independent log files.
 
 **Runtime support:** Claude Code and Gemini CLI register hooks in `settings.json`. Copilot CLI registers hooks in `.github/hooks/pan.json` (its `version: 1` schema with `type: "command"` entries and `sessionStart`/`postToolUse`/`subagentStop` events; since June 2026 — not `config.json`). Codex registers hooks in `.codex/hooks.json` (Claude-compatible PascalCase events, PAN entries merged non-destructively alongside any user hooks; loads once the project is trusted). The Copilot statusline registers in the documented settings read paths — `~/.copilot/settings.json` (global) or `.github/copilot/settings.json` (repo-level) — and is experimental on Copilot's side (`copilot --experimental`). OpenCode does not support hooks.
 

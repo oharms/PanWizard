@@ -7,11 +7,11 @@ description: End a PAN Wizard development session by verifying state and preserv
 ## Current State
 
 ### Uncommitted Changes
-!`cd d:\PanWizard && git status --short 2>/dev/null`
-!`cd d:\PanWizard && git diff --stat 2>/dev/null | tail -5`
+!`cd d:\PanWizard && git status --short 2>$null`
+!`cd d:\PanWizard && git diff --stat 2>$null | Select-Object -Last 5`
 
 ### Commits This Session
-!`cd d:\PanWizard && git log --oneline --since="8 hours ago" 2>/dev/null | head -10`
+!`cd d:\PanWizard && git log --oneline --since="8 hours ago" 2>$null | Select-Object -First 10`
 
 ---
 

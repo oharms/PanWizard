@@ -71,14 +71,14 @@ node d:\PanWizard\bin\install.js --claude --local
 node d:\PanWizard\bin\install.js --codex --local
 node d:\PanWizard\bin\install.js --gemini --local
 node d:\PanWizard\bin\install.js --opencode --local
-node d:\PanWizard\bin\install.js --github --local
+node d:\PanWizard\bin\install.js --copilot --local
 ```
 
 Verify each installed correctly:
-- Commands present (42 in `commands/pan/`)
-- Agents present (12 in `agents/`)
+- Commands present in `commands/pan/`
+- Agents present in `agents/`
 - Core modules present (`pan-wizard-core/bin/`)
-- Hooks present (3 in `hooks/`)
+- Hooks present in `hooks/`
 - Manifest present (`pan-file-manifest.json`)
 
 ---

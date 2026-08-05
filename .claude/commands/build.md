@@ -22,6 +22,8 @@ npm run build:hooks
    - `pan-check-update.js`
    - `pan-context-monitor.js`
    - `pan-statusline.js`
+   - `pan-cost-logger.js`
+   - `pan-trace-logger.js`
 
 4. **Check timestamps** to confirm fresh build:
 
