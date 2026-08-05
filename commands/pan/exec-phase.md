@@ -62,7 +62,7 @@ Phase: $ARGUMENTS
 - `--skip-review` — Skip automatic code review after execution completes.
 - `--fast` — Skip both test generation and code review (implies `--skip-tests --skip-review`).
 - `--deep-review` (v3.4+) — After the normal reviewer step, also run `/pan:review-deep <phase>` (security audit via pan-hardener + cross-check via pan-meta-reviewer). Produces `.planning/reviews/<N>/deep-review.md`. Recommended for phases touching auth, payment, PII, migrations, or public APIs. Costs roughly 3× a normal review.
-- `--hierarchical` (v3.4+, Claude + Opus 4.7 only) — Spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in sequence. Bounded by safety harness: max 2 nesting levels, 12 spawns per phase, budget ceiling, `.planning/orchestration/abort` kill-switch. On non-Claude runtimes or older models, this flag is a no-op with a warning and falls back to flat exec. Use only for large phases (≥4 autonomous plans) where wall-clock reduction justifies the ~20-30% orchestration tax.
+- `--hierarchical` (v3.4+, Claude + Opus 4.8 only) — Spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in sequence. Bounded by safety harness: max 2 nesting levels, 12 spawns per phase, budget ceiling, `.planning/orchestration/abort` kill-switch. On non-Claude runtimes or older models, this flag is a no-op with a warning and falls back to flat exec. Use only for large phases (≥4 autonomous plans) where wall-clock reduction justifies the ~20-30% orchestration tax.
 
 Context files are resolved inside the workflow via `pan-tools init execute-phase` and per-subagent `<files_to_read>` blocks.
 </context>

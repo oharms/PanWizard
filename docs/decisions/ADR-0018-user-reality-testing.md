@@ -1,7 +1,7 @@
 # ADR-0018: User Reality Testing System
 
 ## Status
-Proposed
+Accepted (shipped in v2.3.0 — 2026-03-03)
 
 ## Context
 PAN Wizard supports 5 AI coding tool runtimes (Claude Code, OpenCode, Gemini CLI, Codex, Copilot CLI) across 3 platforms (Windows, Mac, Linux). The existing test suite (1,314 tests, 42 files) validates individual core modules and CLI commands in isolation using `node:test` and temp directories.

@@ -837,6 +837,29 @@ describe('router error paths', () => {
     assert.ok(result.error.includes('Unknown verify subcommand'), 'should mention unknown verify subcommand');
   });
 
+  test('unknown verify subcommand error lists reconcile and stubs (L15 regression)', () => {
+    const result = runPanTools('verify bogus');
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error.includes('reconcile'), 'should list the reconcile subcommand');
+    assert.ok(result.error.includes('stubs'), 'should list the stubs subcommand');
+  });
+
+  test('no-arg usage lists routed commands beyond standards (L14 regression)', () => {
+    const result = runPanTools('');
+    assert.strictEqual(result.success, false);
+    // A representative sample of the ~29 previously-omitted routed commands.
+    for (const cmd of ['git', 'experiment', 'memory', 'optimize', 'learn', 'hygiene', 'cost', 'worktree', 'bridge']) {
+      assert.ok(result.error.includes(cmd), `usage should mention "${cmd}"`);
+    }
+  });
+
+  test('batch-commit reports a parse error for malformed JSON (L16 regression)', () => {
+    // Previously swallowed → misleading 'no_items'. Must surface the parse error.
+    const result = runPanTools('batch-commit not-valid-json');
+    assert.strictEqual(result.success, false);
+    assert.ok(/Invalid JSON for batch-commit/.test(result.error), 'should report the parse failure');
+  });
+
   test('unknown validate subcommand returns error', () => {
     const result = runPanTools('validate bogus');
     assert.strictEqual(result.success, false);

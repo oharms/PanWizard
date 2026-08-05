@@ -121,6 +121,10 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `skill-align.cjs` | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
 | `hygiene.cjs` | **(v3.13)** Project cleanup + version alignment: `hygiene scan` (version drift per runtime manifest, legacy uppercase filenames, .tmp orphans, memory bloat, poisoned ledgers, stale traces, fragment planning dirs), `hygiene clean [--apply]` (dry-run by default; safe fixes only — renames, compaction, quarantine-by-rename, trace pruning; installer re-runs and fragment removal stay manual). |
 | `phase-report.cjs` | **(v3.15)** Per-phase HTML report + project timeline index: `report phase <N>`, `report index` (`--bundle` for one self-contained inlined file), `report all` (`--out`/`--open`/`--stdout`). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`; bundle `.planning/report-bundle.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. Opt-in auto-generation at the verify→complete gate, focus-auto checkpoints, and army INTEGRATE via `workflow.phase_reports`. |
+| `links.cjs` | Doc-Code Link Graph engine behind `links validate` (ADR-0027): parses frontmatter link declarations, resolves doc↔code references, and reports dangling/stale links. |
+| `constants.cjs` | Shared constants used across the dispatcher — e.g. `COMMAND_RENAME_MAP` (legacy→current command names) and `FOCUS_CATEGORIES`. No CLI surface; imported by other modules. |
+| `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
+| `utils.cjs` | Cross-cutting helpers (path normalization via `toPosix()`, safe reads, small parsers) shared by the other modules. No CLI surface. |
 
 ---
 
@@ -321,6 +325,12 @@ Quick reference of all CLI commands grouped by category.
 | 189 | `memory optimize` | Memory | memory-optimize.cjs |
 | 190 | `memory rebuild` | Memory | memory-rebuild.cjs |
 | 191 | `optimize trace reconcile` | Optimization | optimize.cjs |
+| 192 | `verify reconcile` | Verification | verify.cjs |
+| 193 | `verify stubs` | Verification | verify.cjs |
+| 194 | `memory select` | Memory | memory.cjs |
+| 195 | `memory budget` | Memory | memory.cjs |
+| 196 | `doc-lint counts` | Linting | doc-lint.cjs |
+| 197 | `doc-lint flags` | Linting | doc-lint.cjs |
 
 ---
 
@@ -1322,6 +1332,30 @@ pan-tools verify key-links .planning/phases/05-setup/05-01-plan.md [--raw]
 
 ---
 
+### `verify reconcile <phase>`
+
+Cross-check a phase's recorded verification against its actual state so a rubber-stamped "verified" can't slip through. Exits non-zero when a contradiction is found (so `exec-phase`'s auto-advance gate stops), zero when reconciled.
+
+```
+pan-tools verify reconcile 5 [--raw]
+```
+
+**`--raw` output:** `valid` or `invalid`.
+
+---
+
+### `verify stubs [--gate]`
+
+Scan the working tree for stub / fake-return markers (`not implemented`, `NotImplemented`, `throw new Error("stub"/"todo")`, HTTP `501`, `coming soon`/`placeholder`, etc.) that indicate unfinished work. With `--gate`, exits non-zero when blocking (high-severity) findings exist; without it, always reports and exits zero.
+
+```
+pan-tools verify stubs [--gate] [--raw]
+```
+
+**`--raw` output:** `valid` or `invalid`.
+
+---
+
 ## 10. Progress & Context
 
 Commands for viewing project progress and estimating context window utilization.
@@ -1853,7 +1887,7 @@ Quality is `inherit` for **every** agent (all reasoning-tier). `inherit` → the
 
 ---
 
-### `commit <message> [--files f1 f2] [--amend] [--type TYPE] [--force]`
+### `commit <message> [--files f1 f2] [--amend] [--type TYPE] [--force] [--fail-on-error]`
 
 Commit planning docs to git. Respects `commit_docs` config setting and `.gitignore`. Includes safety checks for deleted and sensitive files.
 
@@ -1871,6 +1905,7 @@ pan-tools commit "bugfix" --type fix --force
 - `--amend` — Amend the previous commit instead of creating a new one
 - `--type TYPE` — Conventional commit type prefix. Valid: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`. Prepends `type: ` to message.
 - `--force` — Skip deleted-file safety check
+- `--fail-on-error` — Exit non-zero when git refuses the commit (e.g. missing identity) instead of returning `commit_failed` with exit 0. Lets autonomous loops detect the silent-failure case where the artifact never actually landed. (`nothing_to_commit` is still a success.)
 
 **Safety checks** (enabled by default via `config.commit.safety_checks`):
 - **Deleted files:** Blocks commit if deleted files in staging (use `--force` to override)
@@ -2458,7 +2493,7 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
                      [--status] [--stop] [--update] [--continue] [--dry-run] [--raw]
 ```
 
-**Categories:** cleanup (P3-P5), tests (P2-P5), stability (P0-P2), features (P3-P5), docs (P5-P6), optimize (P1-P4), prompts (P0-P6)
+**Categories:** cleanup (P3-P5), tests (P2-P5), stability (P0-P2), features (P3-P5), docs (P5-P6), optimize (P1-P4), prompts (P0-P6), security (P0-P2), distill (P1-P5)
 
 **Work source (ADR-0031):** `--source scan` (default) selects work by category code-scan; `--source backlog` ranks actionable `roadmap.md`/`requirements.md` items by value/effort. `--parallel-research`/`--parallel-verify` fan those stages out via the Workflow tool (implement/exec stays serial); `--clean-seal` runs one clean build + full verification after the last item. All default off.
 
@@ -2993,6 +3028,27 @@ pan-tools memory compact <agent> 50
 { "compacted": true, "kept": 50, "removed": 42 }
 ```
 
+### `memory select <agent> [--cue <text>] [--token-budget N] [--recency-floor N]`
+
+Return a budget-bounded selection of an agent's memory entries for loading into a spawn. Always keeps the most-recent `--recency-floor` entries, then fills the remaining `--token-budget` with entries most relevant to `--cue` (both fall back to built-in defaults). Read-only.
+
+```
+pan-tools memory select pan-executor --cue "auth refactor" --token-budget 2000 --recency-floor 5 [--raw]
+```
+
+**JSON output:**
+```json
+{ "agent": "pan-executor", "cue": "auth refactor", "selected": [], "total_tokens": 0, "considered": 0, "dropped": 0, "mode": "empty" }
+```
+
+### `memory budget`
+
+Report the total token footprint of all agent memory files against the project's typical per-call input size (median from the cost log), so you can see how much of a spawn's context memory is consuming. Read-only.
+
+```
+pan-tools memory budget [--raw]
+```
+
 ### `memory optimize [--apply] [--keep N]`
 
 Reconcile the always-loaded project memory so it stays small. Reconciles state.md's append-heavy bullet sections (Decisions / Blockers / Concerns / Todos / Session Continuity): dedupe, strip placeholders once real entries exist, and cap to the most-recent `N` (default 12), **archiving** the overflow to `.planning/memory/state-archive.md` — nothing is hard-deleted. Also consolidates any per-agent episodic log over the entry cap. Tables, prose, sub-bullets, and every non-target section are preserved byte-for-byte.
@@ -3325,7 +3381,7 @@ Publishes an audit entry to the `review-handoff` bus channel via `bus.cjs`.
 
 Same merge logic as above but returns the payload without writing a file. Useful for piping.
 
-### `knowledge ask <question> [--max-sources N]` (v3.2, Y-3)
+### `knowledge ask <question> [--max-sources N] [--recall-cue <text>]` (v3.2, Y-3)
 
 Retrieve candidate source files for a natural-language question, scored by keyword frequency across `CITATION_ROOTS` (`.planning/` + `docs/` + top-level `README/CHANGELOG/CLAUDE.md`).
 
@@ -3333,9 +3389,10 @@ Retrieve candidate source files for a natural-language question, scored by keywo
 
 ```
 pan-tools knowledge ask "why does phase 4 have a race condition fix?"
+pan-tools knowledge ask "how is auth wired?" --recall-cue "session tokens"
 ```
 
-Returns `{question, sources: [{file, score, bytes}], total_candidates, returned}`. Always includes `project.md` + `requirements.md` even when they score zero.
+Returns `{question, sources: [{file, score, bytes}], total_candidates, returned}`. Always includes `project.md` + `requirements.md` even when they score zero. `--recall-cue <text>` re-scores the same candidates against a second cue and adds a `recall_cue` + `recall_sources` view to the payload (no extra filesystem walk).
 
 ### `knowledge discuss <phase> --subcmd read|append ...` (v3.2, Y-3)
 
@@ -3394,9 +3451,9 @@ The autonomous external-build loop: scaffold an experiment folder, drive an exte
 
 Scaffold a new experiment folder at `<root>/<slug>/`. Copies `<idea>` to `<root>/<slug>/.planning/idea.md`, writes the `experiment.json` manifest, and (unless `--skip-installer`) runs the PAN installer for the chosen runtime inside the experiment dir. Default root: `~/pan-experiments/`. Default runtime: `claude`. Hard `PAN_SOURCE_ROOT` guard refuses to scaffold inside the source repo.
 
-### `experiment list [--root <dir>]` (v3.7.0)
+### `experiment list [--root <dir>] [--include-archived]` (v3.7.0)
 
-Enumerate experiments under root with `{slug, runtime, status, created_at, path}` per entry.
+Enumerate experiments under root with `{slug, runtime, status, created_at, path}` per entry. By default archived experiments are omitted; pass `--include-archived` to list them too.
 
 ### `experiment manifest <slug> [--root <dir>]` (v3.7.0)
 

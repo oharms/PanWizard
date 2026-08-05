@@ -1,7 +1,7 @@
 # ADR-0005: Command Naming Restructure
 
 ## Status
-Proposed
+Accepted (shipped in v1.0.0 — 2026-03-01)
 
 ## Context
 

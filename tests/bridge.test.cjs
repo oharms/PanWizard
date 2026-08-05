@@ -197,6 +197,15 @@ describe('bridge — recommendForPhase', () => {
     assert.ok(r.error);
   });
 
+  test('populates phase_name from the phase directory (L5 regression)', () => {
+    // Regression: recommendForPhase used to read phaseInfo.name (nonexistent),
+    // so phase_name was always null.
+    seedCache([{ name: 'linear', tools: [{ name: 'linear.updateTicket', description: 'Update Linear ticket' }] }]);
+    scaffoldPhase('01', 'setup-auth', 'Update the Linear ticket after auth setup.');
+    const r = recommendForPhase(tmpDir, '01');
+    assert.equal(r.phase_name, 'setup-auth');
+  });
+
   test('ranks tools by relevance to plan keywords', () => {
     seedCache([
       { name: 'linear', tools: [

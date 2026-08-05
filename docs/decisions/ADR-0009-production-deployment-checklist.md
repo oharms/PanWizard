@@ -1,7 +1,7 @@
 # ADR-0009: Production Deployment Checklist
 
 ## Status
-Proposed
+Accepted (shipped in v1.0.0 — 2026-03-01)
 
 ## Context
 

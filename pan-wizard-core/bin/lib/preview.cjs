@@ -139,7 +139,7 @@ function buildPhasePreview(cwd, phaseNum) {
 
   return {
     phase: String(phaseNum),
-    phase_name: phaseInfo.name || (roadmapPhase && roadmapPhase.phase_name) || null,
+    phase_name: phaseInfo.phase_name || (roadmapPhase && roadmapPhase.phase_name) || null,
     directory: toPosix(phaseInfo.directory),
     status,
     plan_count: planFiles.length,

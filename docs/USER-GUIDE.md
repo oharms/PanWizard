@@ -433,7 +433,7 @@ pan-tools standards tools              # What external tools can help verify?
 pan-tools standards tools owasp-top10  # Tools for a specific standard
 ```
 
-**How it works:** Selected standards are stored in `.planning/standards.md` as Markdown checklists. Agents naturally read this file as context. The verifier (Step 7b) runs per-phase standards tracking, auto-ticks checklist items it can confirm, and recommends external tools when coverage is low. The plan-checker (Dimension 9) references selected standards when standards.md exists. The focus-design Phase 7 (Security) automatically cross-references selected standards.
+**How it works:** Selected standards are stored in `.planning/standards.md` as Markdown checklists. Agents naturally read this file as context. The verifier (Step 7b) runs per-phase standards tracking, auto-ticks checklist items it can confirm, and recommends external tools when coverage is low. The plan-checker's Standards Awareness dimension references selected standards when standards.md exists. The focus-design Phase 7 (Security) automatically cross-references selected standards.
 
 **Available standards:** OWASP Top 10, OWASP ASVS L1, OWASP LLM Top 10, OWASP Agentic Top 10, WCAG 2.2, NIST SSDF, ISO 25010, STRIDE, CWE Top 25, SOC 2 Dev Controls, TOGAF ADM, Conventional Commits.
 
@@ -541,7 +541,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 | `workflow.research` | `true`, `false` | `true` | Domain investigation before planning |
 | `workflow.plan_check` | `true`, `false` | `true` | Plan verification loop (up to 3 iterations) |
 | `workflow.verifier` | `true`, `false` | `true` | Post-execution verification against phase goals |
-| `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; 8th plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
+| `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; across phase boundaries the chain follows `transition.md`'s YOLO branch — in-context continuation, no `/clear` required. Equivalent to passing `--auto` on every `/pan:` command. |
 | `workflow.phase_record_compact` | `true`, `false` | `false` | When combined with the lightweight-phase bypass (1-plan trivial phases), collapses per-phase context.md + research.md + summary.md into a single `${N}-record.md`. Cuts ~4 commits per trivial phase. Substantive phases (>1 plan, non-trivial change_class) ignore this flag. |
 

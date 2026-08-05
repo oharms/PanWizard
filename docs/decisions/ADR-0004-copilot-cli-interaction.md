@@ -1,7 +1,7 @@
 # ADR-0004: Copilot CLI Interactive Experience Optimization
 
 ## Status
-Proposed
+Accepted (shipped in v1.0.0 — 2026-03-01)
 
 ## Context
 PAN Wizard supports 5 AI CLI runtimes. Four of them (Claude Code, OpenCode, Gemini CLI, Codex)

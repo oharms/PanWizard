@@ -6644,7 +6644,7 @@ Anchors cluster at the top of a file under a single banner; comment leader must 
 - ADR-0027 — Doc–Code Link Graph
 - `docs/specs/doc_code_link_graph_featureai.md` — wire-level spec
 - `pan-tools doc-lint` — frontmatter schema validator (orthogonal concern)
-- `pan-tools verify-key-links` — legacy frontmatter-only link verifier (subsumed; both still ship)
+- `pan-tools verify key-links` — legacy frontmatter-only link verifier (subsumed; both still ship)
 ```
 
 

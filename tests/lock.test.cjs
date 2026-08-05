@@ -43,6 +43,35 @@ describe('acquireLock / releaseLock', () => {
     assert.equal(acquired, true, 'stale lock should be stolen');
     releaseLock(lockPath);
   });
+
+  test('after stealing a stale lock, the new holder writes its OWN pid', () => {
+    // L12: rename-based steal must leave a lock owned by the stealer, not the
+    // stale pid, so releaseLock ownership checks work.
+    const target = path.join(tmpDir, 'state.md');
+    const lockPath = target + '.lock';
+    fs.writeFileSync(lockPath, '99999');
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(lockPath, old, old);
+    const { acquired } = acquireLock(target, { retries: 2, intervalMs: 5, staleMs: 10_000 });
+    assert.equal(acquired, true);
+    assert.equal(fs.readFileSync(lockPath, 'utf8').trim(), String(process.pid),
+      'stolen lock should now be owned by this process');
+    // No stray .steal.* temp files left behind.
+    const steals = fs.readdirSync(tmpDir).filter(f => f.includes('.steal.'));
+    assert.equal(steals.length, 0, 'steal temp files must be cleaned up');
+    releaseLock(lockPath);
+  });
+
+  test('releaseLock will NOT delete a lock owned by another process (L12)', () => {
+    // A successor may hold the lock after our stale lock was stolen; our
+    // releaseLock must not delete their fresh lock.
+    const target = path.join(tmpDir, 'state.md');
+    const lockPath = target + '.lock';
+    fs.writeFileSync(lockPath, '77777'); // owned by a different pid
+    releaseLock(lockPath);
+    assert.ok(fs.existsSync(lockPath), "another process's lock must survive our release");
+    assert.equal(fs.readFileSync(lockPath, 'utf8').trim(), '77777');
+  });
 });
 
 describe('withFileLock', () => {

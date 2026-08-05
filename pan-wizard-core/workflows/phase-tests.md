@@ -47,7 +47,7 @@ Exit.
 
 Read the phase artifacts (in order of priority):
 1. `${phase_dir}/*-summary.md` — what was implemented, files changed
-2. `${phase_dir}/context.md` — acceptance criteria, decisions
+2. `${phase_dir}/*-context.md` — acceptance criteria, decisions
 3. `${phase_dir}/*-verification.md` — user-verified scenarios (if UAT was done)
 
 If no summary.md exists:
@@ -341,7 +341,7 @@ If there are passing tests to commit:
 
 ```bash
 git add {test files}
-git commit -m "test(phase-${phase_number}): add unit and E2E tests from add-tests command"
+git commit -m "test(phase-${phase_number}): add unit and E2E tests from phase-tests command"
 ```
 
 Present next steps:

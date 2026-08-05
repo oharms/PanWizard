@@ -614,7 +614,7 @@ The CLI handles:
 
 Extract from result: `next_phase`, `next_phase_name`, `is_last_phase`.
 
-**Phase reports (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the self-contained per-phase HTML report — and, when `workflow.phase_reports.index` is `true`, the project timeline index — at this verify→complete gate so they ship with the phase and ride the commit below. Disabled by default; phase-less projects are skipped automatically by `report`. Never opens a browser here (that's reserved for a manual `pan-tools report --open`).
+**Phase reports (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the self-contained per-phase HTML report — and, when `workflow.phase_reports.index` is `true`, the project timeline index — at this verify→complete gate so they ship with the phase and ride the commit below. Disabled by default; phase-less projects are skipped automatically by `report`. Never opens a browser here (that's reserved for a manual `pan-tools report index --open`).
 
 ```bash
 REPORT_FILES=""

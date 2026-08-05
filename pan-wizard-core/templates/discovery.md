@@ -1,8 +1,8 @@
 # Discovery Template
 
-Template for `.planning/phases/XX-name/DISCOVERY.md` - shallow research for library/option decisions.
+Template for `.planning/phases/XX-name/discovery.md` - shallow research for library/option decisions.
 
-**Purpose:** Answer "which library/option should we use" questions during mandatory discovery in plan-phase.
+**Purpose:** Answer "which library/option should we use" questions when a phase needs a quick option comparison before planning.
 
 For deep ecosystem research ("how do experts build this"), use `/pan:research-phase` which produces research.md.
 
@@ -71,7 +71,7 @@ Before completing discovery, verify:
 
 
 <output_structure>
-Create `.planning/phases/XX-name/DISCOVERY.md`:
+Create `.planning/phases/XX-name/discovery.md`:
 
 ```markdown
 # [Topic] Discovery

@@ -564,7 +564,7 @@ function cmdStandardsPhaseTrack(cwd, phaseNum, raw) {
   if (!combinedContent) {
     output({
       phase: phaseNum,
-      phase_name: phase.name,
+      phase_name: phase.phase_name,
       relevant_standards: [],
       compliance: [],
       message: 'No plan files found in phase',
@@ -584,7 +584,7 @@ function cmdStandardsPhaseTrack(cwd, phaseNum, raw) {
 
   output({
     phase: phaseNum,
-    phase_name: phase.name,
+    phase_name: phase.phase_name,
     relevant_standards: detectedIds,
     compliance,
   }, raw, compliance.map(c => `${c.standard_id}: ${c.selected ? c.coverage || 'N/A' : 'not selected'}`).join('\n'));

@@ -1,7 +1,7 @@
 # ADR-0020: AI Drift Prevention System
 
 ## Status
-Proposed
+Accepted (shipped in v2.6.0 — 2026-03-08)
 
 ## Context
 AI coding assistants gradually deviate from project conventions during extended sessions ("AI drift"). This manifests as wrong patterns (console.log instead of output()), forgotten naming conventions, scope creep, and lost project state. PAN Wizard already has the strongest drift prevention infrastructure in the market — state tracking, deviation rules, verification, cross-session resume — but lacks active enforcement and quantitative measurement. No competitor tool (Aider, Cursor, Cline, Windsurf, Copilot WS) offers built-in drift scoring. The industry is shifting from code generation speed to code quality in 2026, making this strategically timed.

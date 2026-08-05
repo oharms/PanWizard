@@ -1,7 +1,7 @@
 # ADR-0006: PAN Focus Commands — Strategic Project Management
 
 ## Status
-Proposed
+Accepted (shipped in v1.0.0 — 2026-03-01)
 
 ## Context
 

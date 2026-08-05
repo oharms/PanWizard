@@ -168,8 +168,8 @@ cat .claude/pan-wizard-core/VERSION
 # Smoke-test a new command
 node .claude/pan-wizard-core/bin/pan-tools.cjs cost report --format table
 
-# Smoke-test focus system still works
-node .claude/pan-wizard-core/bin/pan-tools.cjs focus scan --help
+# Smoke-test focus system still works (prints the command list — no side effects)
+node .claude/pan-wizard-core/bin/pan-tools.cjs
 ```
 
 ### 4. Optional: enable the auto cost logger

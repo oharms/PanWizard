@@ -157,8 +157,9 @@ Extract from result: `completed_phase`, `plans_executed`, `next_phase`, `next_ph
 
 <step name="archive_prompts">
 
-If prompts were generated for the phase, they stay in place.
-The `completed/` subfolder pattern from create-meta-prompts handles archival.
+If prompts were generated for the phase, they stay in place — plans and
+summaries remain in the phase directory as the durable record. No separate
+archival step is performed.
 
 </step>
 

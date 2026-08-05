@@ -1,7 +1,7 @@
 # ADR-0011: Help Document & Command Descriptions End-to-End Rewrite
 
 ## Status
-Proposed
+Accepted (shipped in v2.2.0 — 2026-03-02)
 
 ## Context
 

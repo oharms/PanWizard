@@ -470,6 +470,29 @@ describe('E2E: Install and run from installed location', () => {
         assert.ok(stderr.includes('Refusing'), `stderr should mention refusal, got: ${stderr}`);
       }
     });
+
+    test('installer refuses to run from a SUBDIRECTORY of the source repo (L2 regression)', () => {
+      // The guard used to exact-match the repo root only, so `cd sub && install`
+      // planted un-ignored artifacts inside the repo. It must now refuse from any
+      // subdir. Use a throwaway subdir and clean it up (removing any artifacts a
+      // regression would leave).
+      const subDir = path.join(PROJECT_ROOT, '.pan-guard-subdir-test');
+      fs.mkdirSync(subDir, { recursive: true });
+      try {
+        execSync(`node "${INSTALLER}" --claude --local`, {
+          cwd: subDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        assert.fail('installer should have refused from a source-repo subdir');
+      } catch (err) {
+        assert.ok(err.status !== 0, 'should exit with non-zero status');
+        const stderr = err.stderr?.toString() || '';
+        assert.ok(stderr.includes('Refusing to install'), `stderr should mention refusal, got: ${stderr}`);
+      } finally {
+        fs.rmSync(subDir, { recursive: true, force: true });
+      }
+    });
   });
 });
 

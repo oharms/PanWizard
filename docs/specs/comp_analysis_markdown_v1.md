@@ -1,5 +1,7 @@
 # PAN Wizard: competitive landscape and strategic enhancement roadmap
 
+> **Status:** Reference — point-in-time competitive snapshot (market data current as of early 2026). Figures describe the landscape and PAN's capabilities at authoring time and are not maintained; for current PAN counts see `CLAUDE.md`.
+
 **PAN Wizard occupies a rare and defensible position in the AI coding tools market — it is the only open-source, zero-dependency workflow orchestration layer that installs across five major AI coding runtimes and enforces structured lifecycle phases.** This positions PAN not as a competitor to Claude Code or Cursor, but as an orchestration meta-layer that makes every underlying tool more effective. In a **$4B+ market** growing at 25–46% CAGR, where 84% of developers use AI tools but only 29% trust the output, PAN's lifecycle enforcement and quality verification directly address the industry's most critical gap: the transition from AI speed to AI quality.
 
 The competitive analysis reveals that multi-agent orchestration, context engineering, and verification are the three battleground capabilities defining market leaders in 2026. PAN already has structural advantages in all three areas. What follows is a detailed assessment of the competitive landscape, market positioning, technical innovation opportunities, and actionable recommendations for achieving market leadership.
@@ -24,7 +26,7 @@ PAN is architecturally distinct from all of these tools. It does not generate co
 |---|---|---|---|---|---|
 | Multi-runtime support | 5 runtimes | 1 (OpenAI) | 1 (VS Code) | 1 (Anthropic) | Multi-IDE |
 | Structured lifecycle phases | ✅ Enforced | ❌ Ad hoc | Partial (modes) | ❌ Ad hoc | ✅ Enforced |
-| Specialized agents | 12 agents | Custom agents | 5 modes | Agent Teams | Droids |
+| Specialized agents | Multi-agent suite | Custom agents | 5 modes | Agent Teams | Droids |
 | Context rot prevention | Fresh 200K windows | Compaction | Diff-based edits | Compaction | Proprietary |
 | Persistent state | .planning/ directory | Session resume | Roo Cloud | CLAUDE.md | Durable memory |
 | Parallel execution | Wave-based | Subagent parallel | Roo Cloud | Agent Teams | Multi-Droid |
@@ -98,7 +100,7 @@ Based on the competitive analysis and market trends, seven technical enhancement
 
 **1. MCP integration as a first-class primitive.** With 97M+ monthly SDK downloads and adoption by every major AI coding tool, MCP is the universal integration standard. PAN should both consume MCP servers (GitHub, Playwright, Context7, Filesystem, Docker, Sentry) and expose itself as an MCP server, enabling other tools to invoke PAN workflows. This single integration would dramatically expand PAN's utility and ecosystem reach.
 
-**2. Multi-model routing within agent workflows.** The research shows **30–70% cost reduction** is achievable through intelligent model routing. PAN's 12 agents should support configurable model assignment — reasoning models (Claude Opus, GPT-5) for architecture and planning agents, mid-tier models (Sonnet, GPT-4.5) for coding agents, lightweight models (Haiku, GPT-4.5-mini) for verification and formatting agents. Stanford's FrugalGPT research demonstrated up to 98% cost reduction with cascade routing patterns.
+**2. Multi-model routing within agent workflows.** The research shows **30–70% cost reduction** is achievable through intelligent model routing. PAN's agents should support configurable model assignment — reasoning models (Claude Opus, GPT-5) for architecture and planning agents, mid-tier models (Sonnet, GPT-4.5) for coding agents, lightweight models (Haiku, GPT-4.5-mini) for verification and formatting agents. Stanford's FrugalGPT research demonstrated up to 98% cost reduction with cascade routing patterns.
 
 **3. AST-aware context engineering.** Enhance PAN's context management with Tree-sitter-based code parsing to build repository maps (following Aider's proven approach) and semantic chunking that preserves function boundaries. Tools like CocoIndex Code save ~70% of tokens through AST-based indexing. Combined with PAN's existing fresh-window approach, this would create the most sophisticated context management in the open-source space.
 

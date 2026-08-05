@@ -60,6 +60,32 @@ describe('detectLanguages', () => {
     assert.strictEqual(result.files_by_language.javascript, undefined);
   });
 
+  test('JS-only project with a bare tsconfig stays javascript (L6 regression)', () => {
+    // A tsconfig.json is common for editor type-checking of plain JS. With no
+    // actual .ts source files, the merge must NOT relabel the project as TS.
+    const src = path.join(tmpDir, 'src');
+    fs.mkdirSync(src, { recursive: true });
+    fs.writeFileSync(path.join(src, 'app.js'), 'module.exports = {};');
+    fs.writeFileSync(path.join(src, 'util.js'), 'module.exports = {};');
+    fs.writeFileSync(path.join(tmpDir, 'tsconfig.json'), '{ "allowJs": true }');
+    const result = detectLanguages(tmpDir);
+    assert.strictEqual(result.primary, 'javascript');
+    assert.ok(Array.isArray(result.files_by_language.javascript));
+    assert.strictEqual(result.files_by_language.javascript.length, 2);
+  });
+
+  test('JS project with a stray .ts but no tsconfig is not relabeled (L6 regression)', () => {
+    const src = path.join(tmpDir, 'src');
+    fs.mkdirSync(src, { recursive: true });
+    for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(src, `mod${i}.js`), 'x');
+    fs.writeFileSync(path.join(src, 'stray.ts'), 'export default {};');
+    const result = detectLanguages(tmpDir);
+    assert.strictEqual(result.primary, 'javascript');
+    // No merge without tsconfig — both language buckets survive independently.
+    assert.ok(result.files_by_language.javascript && result.files_by_language.javascript.length === 5);
+    assert.ok(result.files_by_language.typescript && result.files_by_language.typescript.length === 1);
+  });
+
   test('mixed project detects primary and secondary', () => {
     const src = path.join(tmpDir, 'src');
     fs.mkdirSync(src, { recursive: true });

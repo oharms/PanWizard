@@ -717,6 +717,36 @@ describe('standards-status command', () => {
   });
 });
 
+describe('standards-phase-track command', () => {
+  let tmpDir;
+
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('includes phase_name from the phase directory (L8 regression)', () => {
+    // Regression: output read phase.name (nonexistent), so phase_name vanished
+    // from the JSON. It must resolve from the phase dir slug.
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-setup-auth');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-plan.md'), '# Plan\nImplement authentication and login flow.');
+
+    const result = runPanTools('standards phase-track 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_name, 'setup-auth');
+  });
+
+  test('includes phase_name in the no-plan-files branch (L8 regression)', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '02-billing');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    const result = runPanTools('standards phase-track 2', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_name, 'billing');
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // config routing defaults
 // ─────────────────────────────────────────────────────────────────────────────

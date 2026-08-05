@@ -79,7 +79,7 @@ function buildCounterfactualContext(cwd, phaseNum, scenario) {
 
   return {
     phase: String(phaseNum),
-    phase_name: phaseInfo.name || null,
+    phase_name: phaseInfo.phase_name || null,
     directory: toPosix(phaseInfo.directory),
     scenario,
     slug: scenarioSlug(scenario),

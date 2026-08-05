@@ -5,7 +5,7 @@ require-code-mention: true
 # ADR-0021: Codebase Mapper v2 — Advanced Codebase Import & Analysis
 
 ## Status
-Proposed
+Accepted (shipped in v2.7.0 — 2026-03-08)
 
 ## Context
 

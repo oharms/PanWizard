@@ -43,6 +43,22 @@ const PAN_SOURCE_ROOT = path.resolve(__dirname, '..');
 // Windows paths are case-insensitive; normalize for comparison
 const normPath = p => process.platform === 'win32' ? p.toLowerCase() : p;
 
+/**
+ * True when `cwd` is the PAN source repo root OR any subdirectory of it — a
+ * containment check, not an exact match, so `cd docs && node ../bin/install.js`
+ * is also refused (a subdir install plants un-ignored .claude/AGENTS.md/etc.
+ * because .gitignore's self-install patterns are root-anchored). Uses
+ * fs.realpathSync on both sides so a symlink/junction into the repo can't bypass
+ * the guard (path.resolve alone does not canonicalize). Mirrors the
+ * memory-rebuild module's isInsideSourceRepo() helper.
+ */
+function isInsideSourceRepo(cwd) {
+  const realOr = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+  const abs = normPath(realOr(cwd));
+  const src = normPath(realOr(PAN_SOURCE_ROOT));
+  return abs === src || abs.startsWith(src + path.sep) || abs.startsWith(src + '/');
+}
+
 // IMPROVEMENT-TODO P0 (v3.7.10): warning collector for non-fatal install
 // failures. Replaces silent `catch {}` blocks in copy paths. Surfaced at end
 // of install if non-empty. Required failures still throw / exit non-zero.
@@ -863,8 +879,8 @@ function uninstall(isGlobal, runtime = 'claude') {
   if (runtime === 'codex') runtimeLabel = 'Codex';
   if (runtime === 'copilot') runtimeLabel = 'GitHub Copilot CLI';
 
-  // Guard: never uninstall from the PAN source repository itself
-  if (normPath(path.resolve(process.cwd())) === normPath(PAN_SOURCE_ROOT)) {
+  // Guard: never uninstall from the PAN source repository itself (or any subdir)
+  if (isInsideSourceRepo(process.cwd())) {
     console.error(`\n  ${red}✗${reset} Refusing to uninstall from PAN's own source repository.`);
     console.error(`  Run from your target project directory instead.\n`);
     process.exit(1);
@@ -1319,6 +1335,14 @@ function uninstall(isGlobal, runtime = 'claude') {
         writeSettings(settingsPath, settings);
       }
       removedCount++;
+    } else if (Object.keys(settings).length === 0) {
+      // No PAN entries to strip, but the file is an empty {} — a spurious
+      // artifact older installs left behind (e.g. OpenCode, whose real config is
+      // opencode.json). It holds no user data, so remove it rather than claiming
+      // it as a preserved user file.
+      fs.unlinkSync(settingsPath);
+      console.log(`  ${green}✓${reset} Removed empty settings.json`);
+      removedCount++;
     }
   }
 
@@ -1358,9 +1382,17 @@ function uninstall(isGlobal, runtime = 'claude') {
         }
 
         if (modified) {
-          fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+          // If stripping PAN permissions emptied the config, remove the file
+          // rather than leaving a spurious {} behind — PAN created it via
+          // configureOpencodePermissions, so an empty result is not a user file.
+          if (Object.keys(config).length === 0) {
+            fs.unlinkSync(configPath);
+            console.log(`  ${green}✓${reset} Removed empty opencode.json`);
+          } else {
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+            console.log(`  ${green}✓${reset} Removed PAN permissions from opencode.json`);
+          }
           removedCount++;
-          console.log(`  ${green}✓${reset} Removed PAN permissions from opencode.json`);
         }
       } catch (e) {
         // Ignore JSON parse errors
@@ -1637,6 +1669,22 @@ function writeManifest(configDir, runtime = 'claude', isGlobal = false) {
       }
     }
   }
+  // Claude native skill shims: flat skills/pan-*.md files (E-5). Only the Claude
+  // runtime's nested-commands install writes these; under --unified-skills the
+  // shared .agents/skills tree above already covers skills. Tracking them lets
+  // verifyInstall catch silent shim-write failures and saveLocalPatches back up
+  // user edits — the codex/copilot SKILL.md branch above matches directories, not
+  // these flat files.
+  if (runtime === 'claude' && !unifiedSkills) {
+    const claudeSkillsDir = path.join(configDir, 'skills');
+    if (fs.existsSync(claudeSkillsDir)) {
+      for (const file of fs.readdirSync(claudeSkillsDir)) {
+        if (file.startsWith('pan-') && file.endsWith('.md')) {
+          manifest.files['skills/' + file] = fileHash(path.join(claudeSkillsDir, file));
+        }
+      }
+    }
+  }
   if (fs.existsSync(agentsDir)) {
     for (const file of fs.readdirSync(agentsDir)) {
       if (file.startsWith('pan-') && (file.endsWith('.md') || file.endsWith('.toml'))) {
@@ -1778,8 +1826,8 @@ function install(isGlobal, runtime = 'claude') {
   if (isCodex) runtimeLabel = 'Codex';
   if (isCopilot) runtimeLabel = 'GitHub Copilot CLI';
 
-  // Guard: never install into the PAN source repository itself
-  if (normPath(path.resolve(process.cwd())) === normPath(PAN_SOURCE_ROOT)) {
+  // Guard: never install into the PAN source repository itself (or any subdir)
+  if (isInsideSourceRepo(process.cwd())) {
     console.error(`\n  ${red}✗${reset} Refusing to install PAN into its own source repository.`);
     console.error(`  Run the installer from your target project directory instead.\n`);
     console.error(`  Example: cd /path/to/my-project && node ${path.resolve(__dirname, 'install.js')} --claude --local\n`);
@@ -2044,7 +2092,13 @@ function install(isGlobal, runtime = 'claude') {
           // stripThinkingFrontmatter so `effort:` survives to be mapped to
           // Codex's native model_reasoning_effort field.
           if (isCodex) {
-            const toml = convertClaudeAgentToCodexToml(stripSubTags(content));
+            // Rewrite /pan:command mentions to Codex's $pan-command syntax before
+            // TOML conversion — the command/skill path already does this, but the
+            // agent path previously shipped invalid /pan: invocations in
+            // developer_instructions (audit L3).
+            const toml = convertClaudeAgentToCodexToml(
+              convertSlashCommandsToCodexSkillMentions(stripSubTags(content))
+            );
             if (toml) {
               const tomlName = entry.name.replace(/\.md$/, '.toml');
               fs.writeFileSync(path.join(agentsDest, tomlName), toml);
@@ -2153,9 +2207,21 @@ function install(isGlobal, runtime = 'claude') {
           const srcFile = path.join(hooksSrc, entry);
           if (fs.statSync(srcFile).isFile()) {
             const destFile = path.join(hooksDest, entry);
-            // Template .js files to replace '.claude' with runtime-specific config dir
+            // Template .js files to replace '.claude' with runtime-specific config dir.
+            // '.claude' plays two roles in the hooks: home-anchored (cache dir,
+            // global VERSION → machine-global config dir) and project-anchored
+            // (project VERSION → per-project config dir). Templating both with a
+            // single token planted a stray ~/.github (Copilot --local) and a dead
+            // project VERSION check (Copilot --global), since Copilot's global dir
+            // is .copilot but its project dir is .github (audit L37). Resolve each
+            // role independently and context-anchored so it's correct in both modes.
             if (entry.endsWith('.js')) {
               let content = fs.readFileSync(srcFile, 'utf8');
+              const homeDirToken = getConfigDirFromHome(runtime, true); // machine-global config dir
+              const projectDirToken = `'${getDirName(runtime)}'`;        // per-project config dir
+              content = content.replace(/(join\(\s*homeDir\s*,\s*)'\.claude'/g, `$1${homeDirToken}`);
+              content = content.replace(/(join\(\s*cwd\s*,\s*)'\.claude'/g, `$1${projectDirToken}`);
+              // Fallback for any unanchored '.claude' occurrences.
               content = content.replace(/'\.claude'/g, configDirReplacement);
               fs.writeFileSync(destFile, content);
             } else {
@@ -2494,10 +2560,11 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
     }
   }
 
-  // Write settings/config when runtime supports it. For Copilot, skip the
-  // write when there is nothing to persist (avoids creating an empty
-  // .github/copilot/settings.json).
-  if (!isCodex && !(isCopilot && Object.keys(settings).length === 0)) {
+  // Write settings/config when runtime supports it. Skip the write entirely when
+  // there is nothing to persist — avoids creating a spurious empty settings.json
+  // (Copilot's .github/copilot/settings.json and, notably, OpenCode's .opencode/
+  // settings.json, which OpenCode doesn't even use — its config is opencode.json).
+  if (!isCodex && Object.keys(settings).length > 0) {
     if (isCopilot) {
       try { fs.mkdirSync(path.dirname(settingsPath), { recursive: true }); } catch { /* surfaced by writeSettings */ }
     }

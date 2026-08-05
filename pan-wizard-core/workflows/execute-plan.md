@@ -422,7 +422,7 @@ FIRST_TASK=$(git log --oneline --grep="feat({phase}-{plan}):" --grep="fix({phase
 git diff --name-only ${FIRST_TASK}^..HEAD 2>/dev/null
 ```
 
-Update only structural changes: new src/ dir → STRUCTURE.md | deps → STACK.md | file pattern → CONVENTIONS.md | API client → INTEGRATIONS.md | config → STACK.md | renamed → update paths. Skip code-only/bugfix/content changes.
+Update only structural changes: new src/ dir → structure.md | deps → stack.md | file pattern → conventions.md | API client → integrations.md | config → stack.md | renamed → update paths. Skip code-only/bugfix/content changes.
 
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "" --files .planning/codebase/*.md --amend

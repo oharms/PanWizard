@@ -111,6 +111,17 @@ describe('Codex: install structure', () => {
     assert.match(planner, /^model_reasoning_effort = "xhigh"$/m);
   });
 
+  test('agent TOML files use $pan- syntax, not /pan: (L3 regression)', () => {
+    const agentsDir = path.join(tempDir, '.codex', 'agents');
+    const tomlFiles = fs.readdirSync(agentsDir).filter(f => f.endsWith('.toml'));
+    for (const f of tomlFiles) {
+      const content = fs.readFileSync(path.join(agentsDir, f), 'utf8');
+      const claudeRefs = content.match(/\/pan:[a-z0-9-]+/gi) || [];
+      assert.equal(claudeRefs.length, 0,
+        `${f} should not contain /pan: invocations, found: ${claudeRefs.join(', ')}`);
+    }
+  });
+
   test('pan-wizard-core is installed', () => {
     const panDir = path.join(tempDir, '.codex', 'pan-wizard-core');
     assert.ok(fs.existsSync(panDir), 'pan-wizard-core dir should exist');

@@ -1,7 +1,7 @@
 # ADR-0014: Internal Cleanup & Code Quality Hardening
 
 ## Status
-Proposed
+Accepted (shipped in v2.3.0 — 2026-03-03)
 
 ## Context
 PAN Wizard v2.3.0 has 15 core modules (4,770+ LOC), a CLI dispatcher (735+ LOC), and an installer (2,636 LOC) that have accumulated technical debt across 23 development sessions. A comprehensive 5-agent parallel audit identified ~170 issues:

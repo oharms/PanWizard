@@ -186,9 +186,9 @@ Format completion message (changelog was already shown in confirmation step):
 ║  PAN Updated: v1.5.10 → v1.5.15                           ║
 ╚═══════════════════════════════════════════════════════════╝
 
-⚠️  Restart Claude Code to pick up the new commands.
+⚠️  Restart your AI coding tool to pick up the new commands.
 
-[View full changelog](https://github.com/pan-wizard-core/blob/main/CHANGELOG.md)
+[View full changelog](https://github.com/oharms/PanWizard/blob/main/CHANGELOG.md)
 ```
 </step>
 
