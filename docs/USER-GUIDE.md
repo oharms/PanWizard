@@ -145,7 +145,7 @@ Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purp
 
 #### Advanced features
 
-- **`--hierarchical` flag on `/pan:exec-phase` (v3.4)** — spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in waves. Bounded by a safety harness (2-level nesting, 12-spawn cap, budget ceiling, abort file). Claude + Opus 4.7 only; falls back silently to flat exec elsewhere. Use for phases with ≥4 autonomous plans where wall-clock reduction justifies the ~20-30% orchestration tax.
+- **`--hierarchical` flag on `/pan:exec-phase` (v3.4)** — spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in waves. Bounded by a safety harness (2-level nesting, 12-spawn cap, budget ceiling, abort file). Claude + Opus 4.8 only; falls back silently to flat exec elsewhere. Use for phases with ≥4 autonomous plans where wall-clock reduction justifies the ~20-30% orchestration tax.
 - **`--deep-review` flag on `/pan:exec-phase` and `/pan:focus-exec` (v3.4)** — auto-invoke `/pan:review-deep` after the normal reviewer step. Recommended for high-stakes batches.
 - **Automatic cost logging (v3.4)** — `hooks/pan-cost-logger.js` registered as a SubagentStop hook. Every sub-agent completion appends a record to `.planning/metrics/tokens.jsonl`. Visible in `/pan:cost report` without any manual `cost append` calls.
 

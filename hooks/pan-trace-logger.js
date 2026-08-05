@@ -139,11 +139,42 @@ function readTraceCursor(cwd) {
   try { const c = JSON.parse(fs.readFileSync(traceCursorPath(cwd), 'utf-8')); return c && typeof c === 'object' ? c : {}; }
   catch { return {}; }
 }
+
+// N17: reserved key in the cursor map recording, per transcript, the idempotency
+// key of the event that last consumed (or was recorded at) that cursor position.
+// Mirrors pan-cost-logger — an empty-slice event is a true re-fire / dual
+// registration ONLY when its key matches this; a parallel sibling (different
+// agent) or a first-fire (unreadable transcript) has a different key and must be
+// recorded, not dropped. Exempt from the file-path prune in writeTraceCursor.
+const CONSUME_KEYS = '__consumeKeys';
+function idemKey(sessionId, agent, transcriptPath, pos) {
+  return `${sessionId || ''}|${agent || ''}|${transcriptPath || ''}|${pos}`;
+}
+function getConsumeKey(cursor, transcriptPath) {
+  const ck = cursor && cursor[CONSUME_KEYS];
+  return ck && typeof ck === 'object' ? (ck[transcriptPath] || null) : null;
+}
+function setConsumeKey(cursor, transcriptPath, key) {
+  if (!cursor[CONSUME_KEYS] || typeof cursor[CONSUME_KEYS] !== 'object') cursor[CONSUME_KEYS] = {};
+  cursor[CONSUME_KEYS][transcriptPath] = key;
+}
+
 function writeTraceCursor(cwd, cursor) {
   try {
     // Prune dead-transcript keys so the cursor map stays bounded (L40, ADR audit 2026-08).
     const pruned = {};
-    for (const [tp, v] of Object.entries(cursor)) { if (tp && fs.existsSync(tp)) pruned[tp] = v; }
+    for (const [tp, v] of Object.entries(cursor)) {
+      if (tp === CONSUME_KEYS) continue; // reserved marker — handled below (not a path)
+      if (tp && fs.existsSync(tp)) pruned[tp] = v;
+    }
+    // Preserve the reserved consume-key marker (N17), pruning its dead-transcript
+    // entries so it stays bounded like the cursor map itself.
+    const ck = cursor[CONSUME_KEYS];
+    if (ck && typeof ck === 'object') {
+      const prunedCk = {};
+      for (const [tp, key] of Object.entries(ck)) { if (tp && fs.existsSync(tp)) prunedCk[tp] = key; }
+      if (Object.keys(prunedCk).length) pruned[CONSUME_KEYS] = prunedCk;
+    }
     fs.mkdirSync(path.dirname(traceCursorPath(cwd)), { recursive: true });
     fs.writeFileSync(traceCursorPath(cwd), JSON.stringify(pruned), 'utf-8');
   } catch { /* best-effort — never block the agent loop */ }
@@ -328,15 +359,35 @@ function buildTraceEvents(data, sessionId, cwd) {
     durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts);
     if (!model) model = fromTranscript.model;
     if (cwd && fromTranscript.lineCount > since) {
+      // A real slice. Advance the cursor and remember which event consumed up to
+      // here (N17) so a later empty-slice event can tell an identical re-fire from
+      // a parallel sibling.
       cursor[data.transcript_path] = fromTranscript.lineCount;
+      setConsumeKey(cursor, data.transcript_path, idemKey(data.session_id, agent, data.transcript_path, fromTranscript.lineCount));
       writeTraceCursor(cwd, cursor);
     } else if (cwd && fromTranscript.lineCount <= since) {
-      // No transcript records past the cursor: this event consumed NO slice of
-      // its own. A re-fired SubagentStop — or a dual global+local hook
-      // registration sharing this cursor — lands here and would otherwise append
-      // a phantom all-zero completion row the dedup can't catch (the zeros differ
-      // from the real row it follows). Emit nothing so nothing is appended (M61).
-      return [];
+      // No transcript records past the cursor: this event consumed NO slice of its
+      // own. Two situations land here (N17):
+      //   • An identical re-fire / dual global+local hook registration — the SAME
+      //     event firing twice at the same cursor. Its all-zero completion row is a
+      //     phantom the dedup can't catch (zeros differ from the real row it
+      //     follows), so emit nothing (M61).
+      //   • A PARALLEL SIBLING (a different subagent whose sibling already consumed
+      //     the shared transcript to EOF and advanced this shared cursor) or a
+      //     FIRST FIRE with a missing/unreadable transcript. These are legitimate
+      //     spawns that must be RECORDED (zero tokens), not dropped.
+      // The idempotency key distinguishes them: emit nothing ONLY on an exact match
+      // with the key that last consumed this position; otherwise fall through and
+      // emit the completion.
+      const thisKey = idemKey(data.session_id, agent, data.transcript_path, since);
+      const lastKey = getConsumeKey(cursor, data.transcript_path);
+      if (lastKey && lastKey === thisKey) {
+        return []; // identical re-fire → emit nothing (M61)
+      }
+      // Sibling / first-fire: remember this key so an identical re-fire of THIS
+      // event is subsequently dropped, then fall through to emit the completion.
+      setConsumeKey(cursor, data.transcript_path, thisKey);
+      writeTraceCursor(cwd, cursor);
     }
   } else {
     const rawIn = extractNumber(data.usage, 'input_tokens');

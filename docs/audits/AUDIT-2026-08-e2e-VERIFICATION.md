@@ -6,18 +6,69 @@
 
 ---
 
-## Verdict
+## Round 2 — re-verification of the `b1fa91f` sweep (2026-08-05)
+
+**Verified at:** `fix/e2e-audit-highs-2026-08` @ `b1fa91f` · 24 agents (6 item-verifiers with live repro, 1 hunk-by-hunk regression reviewer over the sweep's diff, 17 adversarial re-checks) · full suite at HEAD: **3466 tests / 742 suites / 0 failures**
+
+Commit `b1fa91f` claimed to resolve all 15 outstanding items and all 14 regressions (N1–N14) from Round 1. Result: **25 of 29 verified FIXED · 4 not fully resolved · 9 unique new issues introduced (2 High), numbered N15–N23 below.**
+
+**Verified FIXED (25):** H7, L34*, L36, L47, M26, M33, M34, M45, M57, M60, M61, M62, M64, M65, N1, N2, N3, N4, N5, N6, N7, N8, N9, N11, N13. Highlights: N1's uninstall guard was live-tested with BOM-prefixed and JSONC settings files (both survive byte-identical, while the installer's own bare `{}` is still cleaned) plus a discriminating control against the pre-fix installer, which deletes them; N2/N3's single-templated-path scope detection was executed from the installed copies of `update.md` across all 5 runtimes in both local and fake-home global installs (correct LOCAL/GLOBAL in all 12 variants, including `--config-dir` and `--unified-skills`); M61/M62 were verified with double-fired SubagentStop fixtures and non-PAN-directory no-op checks; the promised M30/M32 CLI exit-code tests exist and assert non-zero at CLI level (N5).
+
+\*L34's edit landed as suggested but the replacement pattern over-corrects — see N18.
+
+### Not fully resolved (4) — each upheld by an adversarial re-check
+
+- **M6 — PARTIAL.** The guard work landed (secondary runtimes' custom statuslines survive; N4's interactive consent is honored), but the audit's literal repro still clobbers byte-identically: the Fix #330 legacy migration (`bin/install.js:840-850`, invoked via `cleanupOrphanedHooks`) renames ANY `statusLine` command containing `statusline.js` (without `pan-`) to `pan-statusline.js`, after which `isPanStatusline` classifies the user's command as PAN-owned and the new guard stands down. Corollary: even the protective "skip" path corrupts such names (`my-custom-statusline.js` → `my-custom-pan-statusline.js`, a nonexistent file). No hunk in `b1fa91f` touches this mechanism — the fix belongs in the Fix #330 migration, which must stop rewriting non-PAN commands.
+- **N10 — NOT_FIXED.** CLI-REFERENCE still claims `verify stubs` scans the working tree; `scanStubs` scans uncommitted git-changed files vs HEAD + index. Untouched by the sweep.
+- **N12 — PARTIAL.** exec-phase.md/AGENTS.md/ARCHITECTURE.md were aligned, but Opus 4.7 references remain at `docs/USER-GUIDE.md:148` and `docs/MIGRATION-v2-to-v3.md:44`/`:237`, and `docs/SKILLS-FULL-TEXT.md` was never regenerated (see N22).
+- **N14 — NOT_FIXED.** The L2 guard test still creates an un-gitignored directory inside the source repo and its refusal assertion is still swallowed by the test's own catch block.
+
+### New issues introduced by `b1fa91f` (N15–N23; 12 confirmed reports deduped to 9)
+
+#### N15. [High] `hooks/pan-context-monitor.js:45` (+ `pan-statusline.js:56`) — M60 mode check permanently disables the hook bridge on Windows
+
+Windows fakes POSIX mode bits: a directory the hook itself just created with `mode: 0o700` lstats as `0o666`, so `(st.mode & 0o077) !== 0` is always true, `bridgeDir()` returns null on every call, and pan-context-monitor exits early on every PostToolUse. The CONTEXT MONITOR WARNING/CRITICAL injections are silently dead on win32 — one of the three CI OSes and this project's own dev platform. The fail-closed hardening became fail-always. Fix: skip the POSIX mode check (keep the symlink check) when `process.platform === 'win32'` / `process.getuid` is unavailable, or use a platform-appropriate ownership check.
+
+#### N16. [High] `tests/scenarios/global-install.test.cjs:136` — Codex `--global` test writes 59 broken pan-* skills into the developer's REAL `~/.agents/skills`
+
+The test overrides `CODEX_HOME` only, but the codex-global branch (`bin/install.js:1950`) resolves skills via `getCodexSkillsRoot(true)` = `path.join(os.homedir(), '.agents', 'skills')` — the real home. Every `npm run test:scenarios`/`test:all` run first DELETES existing pan-* skill dirs there, then writes replacements whose pan-tools paths point at the test's temp CODEX_HOME, which the test then deletes. Confirmed on the dev machine: 59 broken pan-* dirs present in `~/.agents/skills` after suite runs. Fix: make the skills root honor the home override in tests, and add an assertion that nothing is written outside the sandbox.
+
+#### N17. [Medium] `hooks/pan-cost-logger.js:177` (+ `pan-trace-logger.js:333`) — M61 empty-slice guard drops legitimate completion rows
+
+Two reachable cases: (a) parallel subagents sharing the session transcript — sibling A's SubagentStop consumes to EOF and advances the shared per-transcript cursor, so B's hook sees `lineCount <= since`, flags `__emptySlice`, and drops B's row entirely (this is PAN's own executor+verifier wave topology, the very case the cursor design documents); (b) a first fire whose `transcript_path` is missing/unreadable returns `lineCount=0` and is dropped instead of at least counting the spawn. `/pan:cost` undercounts spawns and averages.
+
+#### N18. [Low] `agents/pan-verifier.md:97` (+ verify-phase.md) — the L34 replacement grep can never match
+
+The new `'^\| *$PHASE_NUM '` anchors the bare phase number as the first table cell, but the shipped requirements template formats traceability rows as `| AUTH-01 | Phase 1 | Pending |` — ID first, phase in column 2 prefixed with "Phase". The old broken pattern matched everything (noisy, but the relevant rows were included); the new one matches nothing (silent zero requirements context).
+
+#### N19. [Low] `pan-wizard-core/workflows/update.md:38` — 'Parse output' prose still describes the deleted dual-location check, glossing GLOBAL as "local missing/invalid, global install is valid"; under single-path detection GLOBAL only means this install is global-scoped.
+
+#### N20. [Low] `tests/scenarios/global-install.test.cjs:274` — the statusline guard (M6/N4), a branch that has now regressed twice across fix passes, still has zero test coverage; both regressions were invisible to a green suite.
+
+#### N21. [Low] `docs/audits/AUDIT-2026-08-e2e-ROADMAP.md:11` — the roadmap claimed the sweep "fixed all 15 outstanding items," but `b1fa91f` contains no hunk for M6's residual mechanism. *Corrected in this documentation update.*
+
+#### N22. [Low] `docs/SKILLS-FULL-TEXT.md:1633` — the auto-generated compendium was never regenerated after any fix pass: it still ships the false experiment-stop SIGTERM promise (M26), the pre-fix 30-minute timeout default, `trace status` (M39/N11), and the Opus 4.7 gate (N12). Regenerate it whenever its source docs change.
+
+#### N23. [Low] Audit-doc cross-label errors: this report's Round-1 intro mislabeled the duplicate pair as "N2/N6" (correct: N2/N3) and the L36 overlap as "N9" (correct: N8); the roadmap cited "N12" for the missing exit-code tests (correct: N5). *Corrected in this documentation update.*
+
+**Refuted on re-check (1):** a claim that CLI-REFERENCE's bus drain section still documented a third stale "truncate to zero bytes" location.
+
+**Open ledger after Round 2:** M6, N10, N12 (residual), N14, N15, N16, N17, N18, N19, N20, N22 — 11 items (N21/N23 corrected by this documentation update).
+
+---
+
+## Round 1 verdict (at `4baf609`)
 
 **The fix pass is substantially real but the roadmap's "ALL 137 FINDINGS RESOLVED" claim is false.**
 
 - **122 of 137 findings verified resolved** — including all live-reproduced: every High was re-tested end-to-end (fresh sandbox installs, hook execution, CLI exit codes, data-loss fixtures).
 - **15 findings are NOT fully resolved**: 4 not fixed at all (M33, M61, M62, L36), 11 partially fixed (H7, M6, M26, M34, M45, M57, M60, M64, M65, L34, L47). Every one of these was adversarially re-checked by an independent agent attempting to prove it fixed — all 15 were upheld.
-- **The fix commits introduced 14 new confirmed issues** (2 High, 3 Medium, 9 Low), each confirmed by an independent re-checker. The two High regressions: **uninstall can silently delete a user's unparseable settings.json** (data loss), and the **M55 fix collapsed /pan:update's local/global detection so every global install updates in the wrong mode** (note: N2 and N6 below are the same root defect reported through two channels; likewise N9 overlaps outstanding item L36).
-- Full test suite at HEAD: **3445 tests / 733 suites / 0 failures** — green, but note two of the new issues are precisely about promised regression tests that were never added (N12) or assert vacuously (N13).
+- **The fix commits introduced 14 new confirmed issues** (2 High, 3 Medium, 9 Low), each confirmed by an independent re-checker. The two High regressions: **uninstall can silently delete a user's unparseable settings.json** (data loss), and the **M55 fix collapsed /pan:update's local/global detection so every global install updates in the wrong mode** (note: N2 and N3 below are the same root defect reported through two channels; likewise N8 overlaps outstanding item L36).
+- Full test suite at HEAD: **3445 tests / 733 suites / 0 failures** — green, but note two of the new issues are precisely about promised regression tests that were never added (N5) or assert vacuously (N13).
 
 ### Recommended next steps
 
-1. Fix the 2 High regressions (N5 uninstall data loss, N2/N6 update.md global misdetection) before this branch merges.
+1. Fix the 2 High regressions (N1 uninstall data loss, N2/N3 update.md global misdetection) before this branch merges.
 2. Sweep the 15 outstanding items — most are small doc/content edits; M61/M62 (hook cursor/global-install pollution) are the only code-shaped ones.
 3. Correct the ROADMAP status block (it currently claims all 137 resolved — N1).
 4. Fold the remaining new Lows into the same sweep.

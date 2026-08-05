@@ -217,6 +217,89 @@ describe('pan-cost-logger — M61 re-fired SubagentStop guard', () => {
   });
 });
 
+describe('pan-cost-logger — N17 empty-slice: re-fires dropped, siblings + first-fires recorded', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  const rows = () => {
+    const f = path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE);
+    return fs.existsSync(f) ? fs.readFileSync(f, 'utf-8').split('\n').filter(Boolean) : [];
+  };
+
+  test('(1) a dual-fire of the IDENTICAL event yields exactly ONE ledger row (M61 preserved)', () => {
+    const p = path.join(tmpDir, 'transcript.jsonl');
+    fs.writeFileSync(p, JSON.stringify({
+      type: 'assistant',
+      message: { model: 'claude-opus-4-8', usage: { input_tokens: 5100, output_tokens: 250 } },
+    }) + '\n');
+    // The SAME event (same session, agent, transcript, cursor position) firing twice —
+    // exactly the dual global+local hook registration case M61 guards.
+    const data = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+
+    const r1 = buildCostRecord(data, tmpDir);
+    assert.equal(r1.input_tokens, 5100);
+    assert.equal(appendRecord(tmpDir, r1), true);
+
+    const r2 = buildCostRecord(data, tmpDir);
+    assert.equal(r2.__emptySlice, true, 'the identical re-fire is flagged an empty slice');
+    assert.equal(appendRecord(tmpDir, r2), false, 'the phantom re-fire row is dropped');
+
+    assert.equal(rows().length, 1, 'exactly one real row survives');
+  });
+
+  test('(2) two DISTINCT sibling subagents sharing a transcript yield TWO rows (N17a)', () => {
+    // PAN's executor+verifier wave topology: siblings share one session transcript.
+    // Sibling A consumes it to EOF and advances the shared per-transcript cursor;
+    // sibling B then sees an empty slice but is a DIFFERENT agent, so its spawn must
+    // still be recorded (zero tokens), not dropped as a phantom re-fire.
+    const p = path.join(tmpDir, 'shared-transcript.jsonl');
+    fs.writeFileSync(p, JSON.stringify({
+      type: 'assistant',
+      message: { model: 'claude-opus-4-8', usage: { input_tokens: 4200, output_tokens: 180 } },
+    }) + '\n');
+
+    const rA = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' }, tmpDir);
+    assert.equal(rA.input_tokens, 4200, 'sibling A gets the real slice');
+    assert.equal(appendRecord(tmpDir, rA), true);
+
+    const rB = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-verifier', transcript_path: p, session_id: 's1' }, tmpDir);
+    assert.ok(!rB.__emptySlice, 'a parallel sibling is NOT flagged as a phantom re-fire');
+    assert.equal(rB.input_tokens, 0, 'the sibling saw an empty slice → zero tokens, but the spawn is counted');
+    assert.equal(rB.agent, 'pan-verifier');
+    assert.equal(appendRecord(tmpDir, rB), true, 'the sibling row is recorded');
+
+    assert.equal(rows().length, 2, 'both sibling spawns are counted');
+  });
+
+  test('(3) a first fire whose transcript is unreadable yields ONE row (N17b)', () => {
+    // transcript_path points at a file that does not exist → lineCount=0, since=0.
+    // This first fire must still count the spawn (zero tokens), not be dropped.
+    const missing = path.join(tmpDir, 'does-not-exist.jsonl');
+    const r = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-planner', transcript_path: missing, session_id: 's9' }, tmpDir);
+    assert.ok(!r.__emptySlice, 'a first fire with an unreadable transcript is not dropped');
+    assert.equal(r.input_tokens, 0);
+    assert.equal(r.agent, 'pan-planner');
+    assert.equal(appendRecord(tmpDir, r), true, 'the spawn is recorded');
+
+    assert.equal(rows().length, 1);
+  });
+
+  test('a re-fire of a RECORDED sibling (same key) is still dropped (dual-registration of the sibling)', () => {
+    const p = path.join(tmpDir, 't.jsonl');
+    fs.writeFileSync(p, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 100, output_tokens: 10 } } }) + '\n');
+    // A consumes the slice; B is a sibling recorded at the empty cursor.
+    appendRecord(tmpDir, buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'A', transcript_path: p, session_id: 's1' }, tmpDir));
+    const rB = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'B', transcript_path: p, session_id: 's1' }, tmpDir);
+    assert.equal(appendRecord(tmpDir, rB), true);
+    // B's SubagentStop re-fires (dual registration): identical key → must be dropped.
+    const rB2 = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'B', transcript_path: p, session_id: 's1' }, tmpDir);
+    assert.equal(rB2.__emptySlice, true, 'the sibling re-fire matches the stored key → dropped');
+    assert.equal(appendRecord(tmpDir, rB2), false);
+    assert.equal(rows().length, 2, 'A + B only — no phantom third row');
+  });
+});
+
 describe('pan-cost-logger — M62 PAN-project gate', () => {
   test('isPanProject: true for a .planning/ tree, a local install marker, else false', () => {
     const plan = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-m62-plan-'));

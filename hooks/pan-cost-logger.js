@@ -101,13 +101,48 @@ function readCursor(cwd) {
     return c && typeof c === 'object' ? c : {};
   } catch { return {}; }
 }
+
+// N17: reserved key in the cursor map recording, per transcript, the idempotency
+// key of the event that last consumed (or was recorded at) that cursor position.
+// An empty-slice event is a true re-fire / dual-registration ONLY when its key
+// equals this stored key; a PARALLEL SIBLING (different agent at the same cursor)
+// or a FIRST FIRE (unreadable transcript, since===0) carries a different key and
+// must be recorded, not dropped. This name can never collide with a transcript
+// path (an absolute file path), and writeCursor exempts it from the file-path prune.
+const CONSUME_KEYS = '__consumeKeys';
+// Distinguishes a specific SubagentStop event at a specific cursor position:
+// identical for a dual-registration re-fire (same session, agent, transcript, since),
+// different for a sibling (different agent) or a first-fire (since===0).
+function idemKey(sessionId, agent, transcriptPath, pos) {
+  return `${sessionId || ''}|${agent || ''}|${transcriptPath || ''}|${pos}`;
+}
+function getConsumeKey(cursor, transcriptPath) {
+  const ck = cursor && cursor[CONSUME_KEYS];
+  return ck && typeof ck === 'object' ? (ck[transcriptPath] || null) : null;
+}
+function setConsumeKey(cursor, transcriptPath, key) {
+  if (!cursor[CONSUME_KEYS] || typeof cursor[CONSUME_KEYS] !== 'object') cursor[CONSUME_KEYS] = {};
+  cursor[CONSUME_KEYS][transcriptPath] = key;
+}
+
 function writeCursor(cwd, cursor) {
   try {
     // Prune keys for transcripts that no longer exist so the map can't grow
     // without bound over a long-lived project (L40, ADR audit 2026-08).
     const pruned = {};
     for (const [tp, v] of Object.entries(cursor)) {
+      if (tp === CONSUME_KEYS) continue; // reserved marker — handled below (not a path)
       if (tp && fs.existsSync(tp)) pruned[tp] = v;
+    }
+    // Preserve the reserved consume-key marker (N17), but prune its entries for
+    // transcripts that no longer exist so it stays bounded like the cursor map.
+    const ck = cursor[CONSUME_KEYS];
+    if (ck && typeof ck === 'object') {
+      const prunedCk = {};
+      for (const [tp, key] of Object.entries(ck)) {
+        if (tp && fs.existsSync(tp)) prunedCk[tp] = key;
+      }
+      if (Object.keys(prunedCk).length) pruned[CONSUME_KEYS] = prunedCk;
     }
     fs.mkdirSync(path.dirname(cursorFilePath(cwd)), { recursive: true });
     fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(pruned), 'utf-8');
@@ -147,10 +182,12 @@ function buildCostRecord(data, cwd) {
   // from a genuine zero-token run.
   let tokenSource = data.transcript_path ? 'transcript' : 'usage-fallback';
   let clamped = false;
-  // Set when a transcript-sourced event consumed no new records (a re-fire /
-  // dual-registration). Carried on the returned record as a transient flag so
-  // appendRecord can drop the phantom row; never written to the ledger (M61).
+  // Set when a transcript-sourced event consumed no new records AND is an
+  // identical re-fire / dual-registration. Carried on the returned record as a
+  // transient flag so appendRecord can drop the phantom row; never written to
+  // the ledger (M61).
   let emptySlice = false;
+  const agent = data.agent_type || data.subagent_type || null;
   if (data.transcript_path) {
     const cursor = readCursor(cwd);
     const since = cursor[data.transcript_path] || 0;
@@ -161,20 +198,38 @@ function buildCostRecord(data, cwd) {
     cacheWrite = fromTranscript.cache_creation_input_tokens;
     durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts);
     if (!model) model = fromTranscript.model;
-    // Advance the cursor so the next subagent's record starts fresh — the slices
-    // partition the transcript, so it is never re-summed on every event.
     if (fromTranscript.lineCount > since) {
+      // A real slice. Advance the cursor so the next subagent's record starts
+      // fresh — the slices partition the transcript, so it is never re-summed on
+      // every event. Remember which event consumed up to here (N17) so a later
+      // empty-slice event can tell an identical re-fire from a parallel sibling.
       cursor[data.transcript_path] = fromTranscript.lineCount;
+      setConsumeKey(cursor, data.transcript_path, idemKey(data.session_id, agent, data.transcript_path, fromTranscript.lineCount));
       writeCursor(cwd, cursor);
     } else {
       // No transcript records past the cursor: this event consumed NO slice of
-      // its own. A re-fired SubagentStop — or a dual global+local hook
-      // registration that shares this cursor — lands here and would otherwise
-      // append a phantom all-zero row. The last-row dedup can't catch it (the
-      // zeros differ from the real row the re-fire follows), so flag the record
-      // and let appendRecord drop it (M61). Transient field — appendRecord
-      // never persists it.
-      emptySlice = true;
+      // its own. Two very different situations land here (N17):
+      //   • An identical re-fire / dual global+local hook registration — the SAME
+      //     event firing twice at the same cursor. Its all-zero row is a phantom
+      //     (the last-row dedup can't catch it — the zeros differ from the real
+      //     row the re-fire follows), so flag it and let appendRecord drop it (M61).
+      //   • A PARALLEL SIBLING (a different subagent whose sibling already consumed
+      //     the shared transcript to EOF and advanced this shared cursor) or a
+      //     FIRST FIRE whose transcript_path is missing/unreadable (lineCount=0,
+      //     since=0). These are legitimate spawns that must be RECORDED with zero
+      //     tokens, not dropped — dropping them undercounts /pan:cost.
+      // The idempotency key distinguishes them: DROP only on an exact match with
+      // the key that last consumed this position (true re-fire); otherwise record.
+      const thisKey = idemKey(data.session_id, agent, data.transcript_path, since);
+      const lastKey = getConsumeKey(cursor, data.transcript_path);
+      if (lastKey && lastKey === thisKey) {
+        emptySlice = true; // identical re-fire → appendRecord drops the phantom row (M61)
+      } else {
+        // Sibling / first-fire: record the spawn (zero tokens) and remember this
+        // key so a subsequent identical re-fire of THIS event is dropped.
+        setConsumeKey(cursor, data.transcript_path, thisKey);
+        writeCursor(cwd, cursor);
+      }
     }
   } else {
     // No transcript to slice — best-effort from data.usage, plausibility-guarded
@@ -200,7 +255,7 @@ function buildCostRecord(data, cwd) {
   const record = {
     v: SCHEMA_V,
     ts: new Date().toISOString(),
-    agent: data.agent_type || data.subagent_type || null,
+    agent,
     command,
     model,
     tier: tierForModel(model),

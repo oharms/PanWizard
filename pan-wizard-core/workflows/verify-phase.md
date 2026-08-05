@@ -50,7 +50,7 @@ Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `has_plans`, 
 Then load phase details and list plans/summaries:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${phase_number}"
-grep -E "^\| *${phase_number} " .planning/requirements.md 2>/dev/null
+grep -E "^\|[^|]*\| *Phase +${phase_number} " .planning/requirements.md 2>/dev/null
 ls "$phase_dir"/*-summary.md "$phase_dir"/*-plan.md 2>/dev/null
 ```
 

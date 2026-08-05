@@ -444,7 +444,7 @@ Milestone retrospective — analyze estimation accuracy, verification patterns, 
 
 **Tools:** Read, Bash, Glob, Grep  
 **Group:** Milestone Lifecycle  
-**Lines:** 33
+**Lines:** 36
 
 ---
 
@@ -774,7 +774,7 @@ Manage external experiments — scaffold, run, harvest, promote findings back to
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Self-Improvement  
-**Lines:** 221
+**Lines:** 225
 
 #### /pan:learn
 
@@ -858,7 +858,7 @@ Validate the doc-code link graph — inline wiki-style refs, source-comment anch
 
 **Tools:** Bash, Read, Grep  
 **Group:** Validation  
-**Lines:** 102
+**Lines:** 104
 
 ---
 

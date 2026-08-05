@@ -1346,7 +1346,7 @@ pan-tools verify reconcile 5 [--raw]
 
 ### `verify stubs [--gate]`
 
-Scan the working tree for stub / fake-return markers (`not implemented`, `NotImplemented`, `throw new Error("stub"/"todo")`, HTTP `501`, `coming soon`/`placeholder`, etc.) that indicate unfinished work. With `--gate`, exits non-zero when blocking (high-severity) findings exist; without it, always reports and exits zero.
+Scan the uncommitted/changed file set (git diff vs HEAD plus staged/index changes, so it gates a handoff) for stub / fake-return markers (`not implemented`, `NotImplemented`, `throw new Error("stub"/"todo")`, HTTP `501`, `coming soon`/`placeholder`, etc.) that indicate unfinished work. With `--gate`, exits non-zero when blocking (high-severity) findings exist; without it, always reports and exits zero.
 
 ```
 pan-tools verify stubs [--gate] [--raw]

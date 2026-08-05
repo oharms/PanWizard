@@ -33,10 +33,10 @@ else
 fi
 ```
 
-Parse output:
-- If last line is "LOCAL": local install is valid; installed version is first line; use `--local`
-- If last line is "GLOBAL": local missing/invalid, global install is valid; installed version is first line; use `--global`
-- If "UNKNOWN": proceed to install step (treat as version 0.0.0)
+Parse output (there is ONE install; scope is derived from the shape of the single templated prefix):
+- If last line is "LOCAL": this install is local-scoped (templated prefix is `./`-relative); installed version is first line; use `--local`
+- If last line is "GLOBAL": this install is global-scoped (templated prefix is an absolute path); installed version is first line; use `--global`
+- If "UNKNOWN": the VERSION/marker files are missing or invalid; proceed to install step (treat as version 0.0.0)
 
 **If VERSION file missing:**
 ```

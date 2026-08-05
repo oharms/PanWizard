@@ -474,24 +474,33 @@ describe('E2E: Install and run from installed location', () => {
     test('installer refuses to run from a SUBDIRECTORY of the source repo (L2 regression)', () => {
       // The guard used to exact-match the repo root only, so `cd sub && install`
       // planted un-ignored artifacts inside the repo. It must now refuse from any
-      // subdir. Use a throwaway subdir and clean it up (removing any artifacts a
-      // regression would leave).
-      const subDir = path.join(PROJECT_ROOT, '.pan-guard-subdir-test');
+      // subdir. N14: the throwaway subdir MUST live on a gitignored path — nest it
+      // under node_modules/ (always .gitignore'd, and present after `npm ci`) so a
+      // regression that plants .claude/ artifacts, or an abnormal exit (Ctrl+C, CI
+      // timeout) between mkdir and cleanup, can never leave untracked files in the
+      // repo. It is still a real subdirectory of the source repo, so the guard fires.
+      const subDir = path.join(PROJECT_ROOT, 'node_modules', '.pan-guard-subdir-test');
       fs.mkdirSync(subDir, { recursive: true });
+      // N14: hoist the caught error OUT of the try block. Calling assert.fail()
+      // inside the try lets the catch swallow its AssertionError (which has no
+      // .status), so a regression was mis-diagnosed as a stderr-content failure
+      // instead of "installer did not refuse". Assert only after cleanup.
+      let err;
       try {
         execSync(`node "${INSTALLER}" --claude --local`, {
           cwd: subDir,
           encoding: 'utf-8',
           stdio: ['pipe', 'pipe', 'pipe'],
         });
-        assert.fail('installer should have refused from a source-repo subdir');
-      } catch (err) {
-        assert.ok(err.status !== 0, 'should exit with non-zero status');
-        const stderr = err.stderr?.toString() || '';
-        assert.ok(stderr.includes('Refusing to install'), `stderr should mention refusal, got: ${stderr}`);
+      } catch (e) {
+        err = e;
       } finally {
         fs.rmSync(subDir, { recursive: true, force: true });
       }
+      assert.ok(err, 'installer should have refused (non-zero exit) from a source-repo subdir');
+      assert.ok(err.status !== 0, 'should exit with non-zero status');
+      const stderr = err.stderr?.toString() || '';
+      assert.ok(stderr.includes('Refusing to install'), `stderr should mention refusal, got: ${stderr}`);
     });
   });
 });

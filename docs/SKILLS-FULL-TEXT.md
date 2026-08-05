@@ -456,18 +456,18 @@ Record all findings with severity: CRITICAL (missing core), WARNING (missing opt
 Check `.planning/` directory in the target:
 
 **2.1 Core Planning Files**
-- [ ] `.planning/config.json` — exists, valid JSON, has required keys (mode, depth, model_profile, workflow)
+- [ ] `.planning/config.json` — exists, valid JSON, has expected keys (`model_profile`, `commit_docs`, `workflow`, `budget`)
 - [ ] `.planning/project.md` — exists, has "What This Is", "Core Value", "Requirements" sections
 - [ ] `.planning/state.md` — exists, has "Current Position", "Performance Metrics" sections
 - [ ] `.planning/roadmap.md` — exists, has phase table
 - [ ] `.planning/requirements.md` — exists if project used requirements tracking
 
 **2.2 Phase Directories**
-- Scan for `phase_*` or `*-*` numbered directories
+- Scan `.planning/phases/` for numbered phase directories
 - For each phase directory:
-  - [ ] PLAN.md exists (phase summary)
-  - [ ] At least one plan_*.md file exists
-  - [ ] verification.md exists (phase was verified)
+  - [ ] At least one `*-plan.md` file exists (phase was planned)
+  - [ ] A matching `*-summary.md` file exists (phase was executed)
+  - [ ] A `*-verification.md` file exists (phase was verified)
 - Count: total phases, phases with plans, phases verified, phases with gaps
 
 **2.3 Research Artifacts** (if brownfield/research was enabled)
@@ -483,10 +483,10 @@ Check `.planning/` directory in the target:
 
 **2.5 Config Sanity**
 - Validate config.json values are within expected ranges
-- mode: "yolo" | "interactive"
-- depth: "quick" | "standard" | "comprehensive"
-- model_profile: "quality" | "balanced" | "budget"
-- workflow agents: all boolean
+- `model_profile`: "quality" | "balanced" | "budget"
+- `commit_docs`: boolean
+- `workflow.*` toggles (research, plan_check, verifier, ...): all boolean
+- `budget`: `default_points` numeric, `enforce` boolean
 </step>
 
 <step name="workflow_quality_audit">
@@ -495,7 +495,7 @@ Check `.planning/` directory in the target:
 Assess how well the project workflow was followed:
 
 **3.1 Planning Quality**
-For each phase with a PLAN.md:
+For each phase with plan files (`*-plan.md`, e.g. `01-01-plan.md`):
 - Does it have clear objectives?
 - Does it reference requirements?
 - Are plans sequential with dependencies noted?
@@ -571,7 +571,7 @@ Verification Coverage: <N>%
 - [P-W01] <description> — <suggestion>
 
 ### Phase Health
-| Phase | PLAN.md | Plans | Verified | Status |
+| Phase | Planned | Plans | Verified | Status |
 |-------|---------|-------|----------|--------|
 | 01    | ✓       | 3     | ✓        | Complete |
 | 02    | ✓       | 5     | ✗        | Unverified |
@@ -1421,7 +1421,7 @@ Phase: $ARGUMENTS
 - `--skip-review` — Skip automatic code review after execution completes.
 - `--fast` — Skip both test generation and code review (implies `--skip-tests --skip-review`).
 - `--deep-review` (v3.4+) — After the normal reviewer step, also run `/pan:review-deep <phase>` (security audit via pan-hardener + cross-check via pan-meta-reviewer). Produces `.planning/reviews/<N>/deep-review.md`. Recommended for phases touching auth, payment, PII, migrations, or public APIs. Costs roughly 3× a normal review.
-- `--hierarchical` (v3.4+, Claude + Opus 4.7 only) — Spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in sequence. Bounded by safety harness: max 2 nesting levels, 12 spawns per phase, budget ceiling, `.planning/orchestration/abort` kill-switch. On non-Claude runtimes or older models, this flag is a no-op with a warning and falls back to flat exec. Use only for large phases (≥4 autonomous plans) where wall-clock reduction justifies the ~20-30% orchestration tax.
+- `--hierarchical` (v3.4+, Claude + Opus 4.8 only) — Spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in sequence. Bounded by safety harness: max 2 nesting levels, 12 spawns per phase, budget ceiling, `.planning/orchestration/abort` kill-switch. On non-Claude runtimes or older models, this flag is a no-op with a warning and falls back to flat exec. Use only for large phases (≥4 autonomous plans) where wall-clock reduction justifies the ~20-30% orchestration tax.
 
 Context files are resolved inside the workflow via `pan-tools init execute-phase` and per-subagent `<files_to_read>` blocks.
 </context>
@@ -1456,7 +1456,7 @@ pan-tools cache prime --summary
 
 This returns `{blocks: [{path, bytes, cache}], total_bytes, sha}` for the cacheable set (project.md, requirements.md, roadmap.md, state.md, standards.md). The `sha` is stable across identical inputs, so repeated calls within the phase hit cached reads.
 
-When spawning subagents for wave execution, include the cacheable block paths in each agent's system-context so the host runtime (Claude Code with Opus 4.7) can mark them `cache_control: ephemeral`. On non-Claude runtimes or older models, this step is a no-op — nothing breaks, just no savings.
+When spawning subagents for wave execution, include the cacheable block paths in each agent's system-context so the host runtime (Claude Code with Opus 4.8) can mark them `cache_control: ephemeral`. On non-Claude runtimes or older models, this step is a no-op — nothing breaks, just no savings.
 </cache_priming>
 
 <process>
@@ -1512,7 +1512,7 @@ GOOD: Test fails → read the test intent → fix the code to match the expected
 
 ---
 
-### /pan:experiment (221 lines)
+### /pan:experiment (225 lines)
 
 ```markdown
 ---
@@ -1534,8 +1534,8 @@ allowed-tools:
 > **Self-protection:** This command **scaffolds external project folders OUTSIDE the PAN source repo** to drive autonomous AI coding sessions against fresh ideas, then harvests the resulting telemetry back into `pan-wizard-core/learnings/`. It is a **PAN-development tool**, not a feature for end-users of PAN to invoke on their own projects.
 
 **Spec:** `docs/specs/self_improvement_loop_featureai.md`
-**ADR:** ADR-0026 (pending W4)
-**Status:** v3.7.0 W1+W2+W3 — scaffolding (`new`/`list`/`manifest`) + external runner (`run`/`status`/`stop`) + harvest (`harvest`/`prune`); W4 adds promote integration with `/pan:learn`.
+**ADR:** ADR-0026 (Accepted — shipped W1-W4 in v3.7.0)
+**Status:** v3.7.0 — scaffolding (`new`/`list`/`manifest`) + external runner (`run`/`status`/`stop`) + harvest (`harvest`/`prune`) + promote integration with `/pan:learn` (`learn promote`/`unpromote`/`list-promoted`).
 
 ---
 
@@ -1548,7 +1548,7 @@ allowed-tools:
 ## When NOT to use this
 
 - Building production user features. Use `/pan:new-project` and `/pan:exec-phase` directly.
-- Validating a single-file change. The experiment loop is heavy — use `npm test` and `/pan:check`.
+- Validating a single-file change. The experiment loop is heavy — use `npm test` and `/pan:quick`.
 - Inside the PAN source repo. The command **refuses** to scaffold experiments inside `d:\PanWizard\` (or wherever the source is cloned). The experiment root defaults to `~/pan-experiments/`.
 
 ---
@@ -1614,7 +1614,7 @@ Spawn the external AI runtime against the experiment folder. **Synchronous** —
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--timeout <sec>` | `1800` (30 min) | Hard timeout in seconds; runner sends SIGTERM at deadline |
+| `--timeout <sec>` | `3600` (60 min) | Hard timeout in seconds; runner sends SIGTERM at deadline |
 | `--prompt <text>` | `/pan:new-project --auto @.planning/idea.md` | Prompt passed to the external runtime |
 | `--root <path>` | `~/pan-experiments/` | Override the experiment root |
 
@@ -1622,7 +1622,7 @@ Spawn the external AI runtime against the experiment folder. **Synchronous** —
 
 **Runtime support:** claude / codex / gemini / opencode (via `RUNTIME_RUNNERS` adapter map in `runner.cjs`). GitHub Copilot CLI is **unsupported** for the `run` subcommand — no documented headless prompt mode. Copilot users can still scaffold and harvest manually.
 
-**Billing note (Claude runtime):** headless `claude -p` runs bill against the **Claude Agent SDK credit pool** — a monthly allotment separate from your interactive subscription limits (Anthropic split the two effective June 15, 2026). Experiment runs do not consume interactive-session quota, but heavy experimentation can exhaust the SDK pool independently. Captured metrics are tagged `billing_pool: "agent_sdk"` so you can reconcile experiment spend separately.
+**Billing note (Claude runtime):** headless `claude -p` runs bill against the **Claude Agent SDK credit pool** — a monthly allotment separate from your interactive subscription limits (Anthropic split the two effective June 15, 2026). Experiment runs do not consume interactive-session quota, but heavy experimentation can exhaust the SDK pool independently. Note: the CLI `experiment run` does not capture a metrics envelope — the `billing_pool: "agent_sdk"` tagging is produced only via the runner module's capture-metrics API, not from the command line, so CLI run-state has no `metrics` key to reconcile against.
 
 ### `/pan:experiment status <slug>`
 
@@ -1630,7 +1630,7 @@ Read the current `run-state.json` snapshot. Returns the full state object (`stat
 
 ### `/pan:experiment stop <slug>`
 
-Gracefully halt a running experiment. Reads pid from `run-state.json`, sends SIGTERM, writes `status: failed, stop_reason: manual` to the run state. Returns the updated state.
+Finalize and record a stopped experiment. This **cannot** terminate an already-running synchronous experiment: while a run is in flight the runner blocks and no pid is available to signal, so `stop` only reconciles the run-state after the fact. If a completed run left the state un-finalized, it records `status: failed, stop_reason: manual` and returns the updated state. If no pid is recorded (an in-flight run), it returns an error and writes nothing.
 
 If the experiment has already finished, returns the existing run state without error.
 
@@ -1680,17 +1680,21 @@ Remove the experiment folder after harvest.
 
 **Returns:** `{ pruned: <slug>, mode: "soft"|"hard", archive_path? }`.
 
-## Subcommands (W4 — coming soon)
+## Promote integration (shipped, W4)
 
-| Subcommand | Wave | Purpose |
-|------------|------|---------|
-| `archive <slug>` | W4 | Alias for `prune` (kept for clarity in scripts) |
-| `delete <slug> --confirm` | W4 | Alias for `prune --hard` with confirmation prompt |
-
-W4 also adds:
+The self-improvement loop closes via `/pan:learn` and the `learn` CLI:
 - `/pan:learn --experiment <slug>` — runs pan-optimizer over harvested data
 - `pan-tools learn promote --pattern <id> --scope universal --topic <name>` — extracts a finding into `pan-wizard-core/learnings/{universal,internal}/<topic>.md`
-- `pan-tools learn unpromote/list-promoted` — rollback and inventory
+- `pan-tools learn unpromote` / `learn list-promoted` — rollback and inventory
+
+## Not yet shipped
+
+| Subcommand | Purpose |
+|------------|---------|
+| `archive <slug>` | Alias for `prune` (kept for clarity in scripts) |
+| `delete <slug> --confirm` | Alias for `prune --hard` with confirmation prompt |
+
+Until these land, use `prune` / `prune --hard` directly.
 
 ---
 
@@ -6534,13 +6538,13 @@ The optimization report in `.planning/optimization/reports/` contains:
 
 **See also:** `/pan:optimize`, `/pan:exec-phase`, `/pan:experiment` (v3.7.0+ self-improvement loop)
 
-Follow the workflow at `.claude/workflows/learn.md` (or `pan-wizard-core/workflows/learn.md`).
+Follow the workflow at `~/.claude/pan-wizard-core/workflows/learn.md`.
 ```
 
 
 ---
 
-### /pan:links (102 lines)
+### /pan:links (104 lines)
 
 ```markdown
 ---
@@ -6556,6 +6560,8 @@ allowed-tools:
 # /pan:links
 
 Validate the doc-code link graph. Walks `docs/`, `pan-wizard-core/`, `commands/`, and `agents/` for inline `[[<id>]]` references and `// @pan: <id>` source-comment anchors. Reports broken refs, stale anchors, and uncovered backlink contracts.
+
+> **User projects:** the default roots (`docs/`, `pan-wizard-core/`, `commands/`, `agents/`) are the **PAN source-repo** layout. A typical user project has none of these, so a bare `/pan:links` scans almost nothing and reports a hollow `pass`. In a user project you **must** point it at your own layout with `--doc-root` / `--source-root` (both repeatable), e.g. `/pan:links --doc-root docs --source-root src`. Treat any run where `doc_files_scanned` (or `source_files_scanned`) is `0` as a **warning that the roots are misconfigured**, not a clean pass.
 
 **Usage:**
 ```
@@ -7415,7 +7421,7 @@ Manage the circular optimization loop: apply recommendations, view stats, list r
 /pan:optimize stats
 /pan:optimize trace init [--description "what you're building"]
 /pan:optimize trace end
-/pan:optimize trace status
+/pan:optimize trace current
 /pan:optimize trace list
 ```
 
@@ -7459,7 +7465,7 @@ Start a new trace session before running a build. The hook fires automatically o
 ### trace end
 Finalize the current trace session (writes summary stats to session.json).
 
-### trace status
+### trace current
 Show the active trace session ID and event count.
 
 ### trace list
@@ -7526,7 +7532,7 @@ Check for local patches directory:
 PATCHES_DIR=~/.claude/pan-local-patches
 # Local install fallback
 if [ ! -d "$PATCHES_DIR" ]; then
-  PATCHES_DIR=./.claude/pan-local-patches
+  PATCHES_DIR=~/.claude/pan-local-patches
 fi
 ```
 
@@ -8668,7 +8674,7 @@ The workflow handles all resumption logic including:
 
 ---
 
-### /pan:retro (33 lines)
+### /pan:retro (36 lines)
 
 ```markdown
 ---
@@ -8687,7 +8693,7 @@ Analyze completed milestone work to identify process improvement opportunities.
 
 Examines roadmap phases (planned vs completed, gap closures), verification results (pass rates, common gaps), and estimation accuracy. Output guides future planning improvements.
 
-This is a reflection command — it does not modify any files.
+This is a reflection command — **read-only by default**: with no flags it does not modify any files. Passing `--write-memory` (as `/pan:army` does) is the one exception — it appends recurring-pattern entries to agent memory so they persist into the next mission.
 </objective>
 
 <execution_context>
@@ -8696,6 +8702,9 @@ This is a reflection command — it does not modify any files.
 
 <context>
 No arguments required. Operates on the current `.planning/` directory.
+
+**Flags:**
+- `--write-memory` — after analysis, append recurring-pattern entries to agent memory (used by `/pan:army`). Without this flag the command is strictly read-only.
 
 The retro command is typically run after `/pan:milestone-done` to reflect on the milestone before starting the next one.
 </context>
@@ -8871,11 +8880,11 @@ Routes to the settings workflow which handles:
 </objective>
 
 <execution_context>
-@./.claude/pan-wizard-core/workflows/settings.md
+@~/.claude/pan-wizard-core/workflows/settings.md
 </execution_context>
 
 <process>
-**Follow the settings workflow** from `@./.claude/pan-wizard-core/workflows/settings.md`.
+**Follow the settings workflow** from `@~/.claude/pan-wizard-core/workflows/settings.md`.
 
 The workflow handles all logic including:
 1. Config file creation with defaults if missing
@@ -9264,7 +9273,7 @@ git branch -D <branch_name>
 - `<parent>/pan-whatif-<phase>-<slug>-<ts>/` — the worktree (temporary, deleted after report)
 - branch `pan-whatif/<phase>-<slug>-<ts>` — the worktree's branch (deleted after report)
 
-Filename + branch include a timestamp so running what-if multiple times on the same phase+scenario produces distinct reports without overwriting.
+The worktree dir and branch include a timestamp, so concurrent/repeat runs never collide there. The **report** is keyed on phase+slug only (no timestamp), so re-running what-if on the same phase+scenario **overwrites** the previous report at `.planning/counterfactuals/<phase>-<slug>.md`. Rename or copy a report you want to keep before re-running the same scenario.
 
 </output_paths>
 

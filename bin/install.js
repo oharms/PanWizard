@@ -837,14 +837,19 @@ function cleanupOrphanedHooks(settings) {
     console.log(`  ${green}✓${reset} Removed orphaned hook registrations`);
   }
 
-  // Fix #330: Update statusLine if it points to old statusline.js path
+  // Fix #330: migrate PAN's OWN legacy hooks/statusline.js path to
+  // pan-statusline.js. Anchor on the FILE BASENAME (start-of-string or a path
+  // separator before `statusline.js`) so a user's custom command like
+  // `my-custom-statusline.js` is NOT rewritten — the old substring match both
+  // corrupted such names (→ my-custom-pan-statusline.js) and then made the M6/N4
+  // statusline guard misclassify them as PAN-owned and stand down (M6 residual).
+  const legacyStatusline = /(^|[\\/])statusline\.js\b/;
   if (settings.statusLine && settings.statusLine.command &&
-      settings.statusLine.command.includes('statusline.js') &&
+      legacyStatusline.test(settings.statusLine.command) &&
       !settings.statusLine.command.includes('pan-statusline.js')) {
-    // Replace old path with new path
     settings.statusLine.command = settings.statusLine.command.replace(
-      /statusline\.js/,
-      'pan-statusline.js'
+      legacyStatusline,
+      '$1pan-statusline.js'
     );
     console.log(`  ${green}✓${reset} Updated statusline path (statusline.js → pan-statusline.js)`);
   }

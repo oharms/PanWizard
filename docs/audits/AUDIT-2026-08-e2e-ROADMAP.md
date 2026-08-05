@@ -4,11 +4,15 @@
 
 > Point-in-time planning doc; counts describe the audit run and are exempt from the live-counts policy.
 
-## Status — follow-up sweep applied (2026-08-05); pending independent re-verification
+## Status — Round-2 open items swept (2026-08-05); pending Round-3 re-verification
+
+> **Round-2 follow-up (this change):** all 11 items the Round-2 re-audit left open are now addressed — the 2 new High regressions (**N15** M60 mode-check disabling the Windows bridge → POSIX mode/uid gate now applies only where `getuid` exists; **N16** the Codex `--global` test writing into the real `~/.agents/skills` → `runInstaller` now sandboxes `HOME`/`USERPROFILE` into the temp cwd), plus **M6** (Fix #330 migration now anchors on the `statusline.js` basename so custom names aren't rewritten/misclassified), **N17** (empty-slice guard now keyed by an idempotency marker — drops true re-fires, records parallel siblings + first-fires), **N10, N12-residual, N14, N18, N19, N20, N22**. Both High fixes live-verified (win32 bridge usable; HOME sandboxed). Full suite: **3473 / 744 / 0 fail**, doc-lint + parity lint green. **NOT yet independently re-verified — treat as "fixed + suite-green" pending a Round-3 pass.** History below is preserved verbatim; do not re-inflate.
+
+## Status — Round-2 re-audit of the `b1fa91f` sweep: 25/29 verified; 11 items open (2026-08-05)
 
 > **History (do not re-inflate):** the original banner falsely claimed "ALL 137 RESOLVED." The independent fix-verification re-audit ([`AUDIT-2026-08-e2e-VERIFICATION.md`](AUDIT-2026-08-e2e-VERIFICATION.md) @ `4baf609`) corrected that to **122/137 verified**, with **15 outstanding** (H7, M6, M26, M33, M34, M45, M57, M60, M61, M62, M64, M65, L34, L47 + L36) and **14 fix-pass regressions (2 High: N1 uninstall-deletes-unparseable-settings, N2 update.md local/global collapse)**.
 >
-> **This sweep** then fixed all 15 outstanding items and all 14 regressions (N1–N14): the 2 High regressions (settings-preservation + install-scope detection derived from the templated path), the M60 bridge-dir fail-closed hardening, M61/M62 hook guards, the missing M30/M32 CLI exit-code tests, and the doc/content residuals. Full suite: **3466 tests / 742 suites / 0 failures**, doc-lint + parity lint green. **This has NOT yet been independently re-verified** — treat "resolved" as "fixed + suite-green", pending a re-audit pass.
+> **The `b1fa91f` sweep** claimed all 29 (15 outstanding + N1–N14). The **Round-2 independent re-audit** (see the Round 2 section of the verification report) verified **25 of 29 FIXED** — including both High regressions with live repro across all 5 runtimes in local and global modes, and the previously-missing M30/M32 CLI exit-code tests (N5). **Still open (4):** M6 (root cause is the untouched Fix #330 migration at `bin/install.js:840-850`, which renames non-PAN `*statusline.js` commands and defeats the new guard), N10 (verify-stubs scan-scope doc claim), N12 residual (Opus 4.7 refs in USER-GUIDE/MIGRATION), N14 (L2 guard test un-gitignored fixture + swallowed assertion). **The sweep introduced N15–N23** (9 unique; **2 High:** N15 — the M60 mode check kills the hook bridge on Windows entirely; N16 — the new Codex global-install test deletes/overwrites the developer's real `~/.agents/skills` on every suite run). Full suite at `b1fa91f`: **3466 / 742 / 0 fail** — green, but N15/N16/N20 show the suite is blind to exactly these classes. **Open ledger: M6, N10, N12, N14, N15, N16, N17, N18, N19, N20, N22** (N21/N23 were doc errors, corrected).
 
 - **Part 1 (9 High):** 8 fully verified fixed via live reproduction; **H7 PARTIAL** (Example 6's closing "Continue normally" block still shows the old renumbering flow).
 - **Part 2 (80 Medium + 48 Low):** all 7 batches below were executed, but verification upheld **14 outstanding items**: NOT_FIXED M33, M61, M62, L36; PARTIAL M6, M26, M34, M45, M57, M60, M64, M65, L34, L47.
@@ -21,7 +25,7 @@
   - **G** Low-tail hygiene (L1–L48)
 - **The fix pass introduced 14 new confirmed issues (N1–N14** in the verification report**)**, including 2 High: uninstall can delete a user's unparseable `settings.json` (`bin/install.js`), and the M55 fix collapsed `update.md`'s local/global detection so global installs update as LOCAL.
 
-Full suite: **3445 tests / 733 suites / 0 failures** at `4baf609` — but N12 (promised M30/M32 exit-code tests never added) and N13/N14 (vacuous assertions) mean green CI under-covers two of the fixed gates. The remainder of this document is the original planning record.
+Full suite: **3445 tests / 733 suites / 0 failures** at `4baf609` — but N5 (promised M30/M32 exit-code tests never added), N13 (vacuous traversal assertion), and N14 (swallowed guard assertion) meant green CI under-covered the fixed gates. The remainder of this document is the original planning record.
 
 ---
 

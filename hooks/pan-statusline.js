@@ -51,9 +51,13 @@ function buildStatuslineOutput(data, deps) {
         try {
           fsMod.mkdirSync(bridgeSubdir, { recursive: true, mode: 0o700 });
           const st = fsMod.lstatSync(bridgeSubdir);
-          secure = !st.isSymbolicLink()
-            && !(typeof process.getuid === 'function' && st.uid !== process.getuid())
-            && (st.mode & 0o077) === 0;
+          // Symlink check is cross-platform; POSIX ownership/mode checks apply
+          // only where getuid exists (Windows fakes mode bits — gating on them
+          // there disabled the bridge entirely, N15).
+          secure = !st.isSymbolicLink();
+          if (secure && typeof process.getuid === 'function') {
+            secure = st.uid === process.getuid() && (st.mode & 0o077) === 0;
+          }
         } catch { secure = false; }
         if (secure) {
           const bridgePath = pathMod.join(bridgeSubdir, `claude-ctx-${session}.json`);

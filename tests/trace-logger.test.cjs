@@ -116,6 +116,58 @@ describe('pan-trace-logger — M61 re-fired SubagentStop guard', () => {
   });
 });
 
+describe('pan-trace-logger — N17 empty-slice: re-fires dropped, siblings + first-fires recorded', () => {
+  const completions = (sessionId) => fs.readFileSync(traceFile(sessionId), 'utf-8')
+    .split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    .filter((e) => e.category === 'agent_completion');
+
+  test('(1) a dual-fire of the IDENTICAL event yields exactly ONE completion row (M61 preserved)', () => {
+    const p = path.join(tmpDir, 'dual.jsonl');
+    fs.writeFileSync(p, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 5100, output_tokens: 250 } } }) + '\n');
+    const data = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+
+    const first = buildTraceEvents(data, 'sess1', tmpDir);
+    assert.ok(completionOf(first));
+    assert.equal(appendTraceEvents(tmpDir, first, 'sess1'), true);
+
+    const second = buildTraceEvents(data, 'sess1', tmpDir);
+    assert.deepEqual(second, [], 'the identical re-fire emits nothing');
+    assert.equal(appendTraceEvents(tmpDir, second, 'sess1'), false);
+
+    assert.equal(completions('sess1').length, 1);
+  });
+
+  test('(2) two DISTINCT sibling subagents sharing a transcript yield TWO completion rows (N17a)', () => {
+    const p = path.join(tmpDir, 'shared.jsonl');
+    fs.writeFileSync(p, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 4200, output_tokens: 180 } } }) + '\n');
+
+    const evA = buildTraceEvents({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' }, 'sess1', tmpDir);
+    assert.equal(completionOf(evA).context.input_tokens, 4200, 'sibling A gets the real slice');
+    assert.equal(appendTraceEvents(tmpDir, evA, 'sess1'), true);
+
+    const evB = buildTraceEvents({ hook_event_name: 'SubagentStop', agent_type: 'pan-verifier', transcript_path: p, session_id: 's1' }, 'sess1', tmpDir);
+    const cB = completionOf(evB);
+    assert.ok(cB, 'a parallel sibling still emits a completion (not dropped as a phantom)');
+    assert.equal(cB.context.input_tokens, 0, 'empty slice → zero tokens, but the spawn is counted');
+    assert.equal(cB.agent, 'pan-verifier');
+    assert.equal(appendTraceEvents(tmpDir, evB, 'sess1'), true);
+
+    assert.equal(completions('sess1').length, 2, 'both sibling spawns are counted');
+  });
+
+  test('(3) a first fire whose transcript is unreadable yields ONE completion row (N17b)', () => {
+    const missing = path.join(tmpDir, 'missing.jsonl');
+    const ev = buildTraceEvents({ hook_event_name: 'SubagentStop', agent_type: 'pan-planner', transcript_path: missing, session_id: 's9' }, 'sess1', tmpDir);
+    const c = completionOf(ev);
+    assert.ok(c, 'a first fire with an unreadable transcript still emits a completion');
+    assert.equal(c.context.input_tokens, 0);
+    assert.equal(c.agent, 'pan-planner');
+    assert.equal(appendTraceEvents(tmpDir, ev, 'sess1'), true);
+
+    assert.equal(completions('sess1').length, 1);
+  });
+});
+
 describe('pan-trace-logger — M62 PAN-project gate', () => {
   test('isPanProject: true for .planning/ or a local install marker, else false', () => {
     const plan = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-t62-plan-'));

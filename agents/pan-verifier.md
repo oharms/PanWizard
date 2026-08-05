@@ -94,7 +94,7 @@ Proceed to Step 1.
 ls "$PHASE_DIR"/*-plan.md 2>/dev/null
 ls "$PHASE_DIR"/*-summary.md 2>/dev/null
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM"
-grep -E "^\| *$PHASE_NUM " .planning/requirements.md 2>/dev/null
+grep -E "^\|[^|]*\| *Phase +$PHASE_NUM " .planning/requirements.md 2>/dev/null
 ```
 
 Extract phase goal from roadmap.md — this is the outcome to verify, not the tasks.

@@ -40,9 +40,15 @@ function bridgeDir() {
     // group/other-accessible; fail CLOSED (null) otherwise — the bridge is
     // best-effort observability, so skipping beats a leak (M60, ADR audit 2026-08).
     const st = fs.lstatSync(dir);
-    if (st.isSymbolicLink()) return null;
-    if (typeof process.getuid === 'function' && st.uid !== process.getuid()) return null;
-    if ((st.mode & 0o077) !== 0) return null;
+    if (st.isSymbolicLink()) return null; // cross-platform
+    // POSIX ownership/mode checks ONLY where they're meaningful. Windows fakes
+    // mode bits — a dir just created with mode 0o700 lstats as 0o666 — so
+    // applying the mode/uid gate there returned null on every call and disabled
+    // the bridge entirely (N15). The finding's threat model is shared Unix hosts.
+    if (typeof process.getuid === 'function') {
+      if (st.uid !== process.getuid()) return null;
+      if ((st.mode & 0o077) !== 0) return null;
+    }
     return dir;
   } catch { return null; }
 }

@@ -41,7 +41,7 @@ All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/p
 
 ### Two new flags on existing commands
 
-- `/pan:exec-phase <N> --hierarchical` (v3.4) — spawn `pan-conductor` as top-level orchestrator. Claude + Opus 4.7 only; silently falls back to flat exec elsewhere.
+- `/pan:exec-phase <N> --hierarchical` (v3.4) — spawn `pan-conductor` as top-level orchestrator. Claude + Opus 4.8 only; silently falls back to flat exec elsewhere.
 - `/pan:exec-phase <N> --deep-review` (v3.4) — auto-invoke `/pan:review-deep` after the normal reviewer step.
 - `/pan:focus-exec --deep-review` (v3.4) — same integration for focus campaigns.
 
@@ -234,7 +234,7 @@ Partially:
 - `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:what-if`, `/pan:review-deep`: **yes** on all 5 runtimes. Agent quality varies with model capability.
 - `/pan:preview phases` (1M-context single-shot): Opus 4.7 only for the fast path; other models take sharded fallback.
 - `/pan:mcp-bridge`: Claude Code only (MCP is a Claude-first protocol).
-- `/pan:exec-phase --hierarchical`: Claude + Opus 4.7 only; falls back to flat exec silently elsewhere.
+- `/pan:exec-phase --hierarchical`: Claude + Opus 4.8 only; falls back to flat exec silently elsewhere.
 
 ### What if I want to skip v3.0-v3.4 and go straight to v3.5?
 

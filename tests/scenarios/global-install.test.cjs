@@ -32,7 +32,12 @@ function runInstaller(flags, cwd, extraEnv) {
     encoding: 'utf-8',
     stdio: ['pipe', 'pipe', 'pipe'],
     timeout: 60000,
-    env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+    // Sandbox HOME/USERPROFILE into the temp cwd so ANY home-based resolution
+    // lands in the sandbox, never the developer's real home. The Codex --global
+    // skills tree resolves to ~/.agents/skills (home-based, NOT CODEX_HOME), so
+    // without this the test wrote 59 pan-* skills into the real ~/.agents/skills
+    // on every suite run (N16). extraEnv may still override.
+    env: { ...process.env, HOME: cwd, USERPROFILE: cwd, ...(extraEnv || {}) },
   });
 }
 
