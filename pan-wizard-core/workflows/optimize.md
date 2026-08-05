@@ -23,7 +23,7 @@ Manage the circular optimization loop — apply reports, check stats, control tr
 
 Run:
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize list
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize list
 ```
 
 Use the most recent `.md` report (the full opt-report, not the `-analysis.json`).
@@ -33,7 +33,7 @@ If `--report <filename>` was specified, use that file from `.planning/optimizati
 ### Step 2 — Run apply
 
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize apply [--report <path>]
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize apply [--report <path>]
 ```
 
 ### Step 3 — Present results
@@ -63,7 +63,7 @@ If `--description "..."` was provided, extract it from the args.
 ### Step 2 — Initialize session
 
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize trace init [--description "..."]
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace init [--description "..."]
 ```
 
 Show the user the session ID and confirm that:
@@ -76,7 +76,7 @@ Show the user the session ID and confirm that:
 ## trace end
 
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize trace end
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace end
 ```
 
 Show: session ID, event count, agent count, type breakdown.
@@ -86,7 +86,7 @@ Show: session ID, event count, agent count, type breakdown.
 ## trace status
 
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize trace current
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace current
 ```
 
 If active: show session ID and instruct how to view events.
@@ -97,7 +97,7 @@ If none: tell user to run `/pan:optimize trace init` before their next build.
 ## stats
 
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize stats
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize stats
 ```
 
 Present as a summary table:

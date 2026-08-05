@@ -158,7 +158,17 @@ function drain(cwd, channel, opts) {
   const file = channelFile(cwd, channel);
   if (mode === 'consume') {
     try {
-      fs.writeFileSync(file, '', 'utf-8');
+      // Consume ONLY the drained window (offset .. offset+limit). Truncating the
+      // whole file to empty silently destroyed every message outside that window
+      // — anything before the offset, or beyond the read limit / the 1000-message
+      // default on large channels (H2, ADR audit 2026-08). Splice out the consumed
+      // lines and write the remainder back.
+      let allLines = [];
+      try { allLines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean); } catch { allLines = []; }
+      const offset = Math.max(0, Number(opts?.offset) || 0);
+      const consumed = read.entries.length; // raw lines actually returned by readChannel
+      const remaining = allLines.slice(0, offset).concat(allLines.slice(offset + consumed));
+      fs.writeFileSync(file, remaining.length ? remaining.join('\n') + '\n' : '', 'utf-8');
     } catch (e) {
       return { ...read, mode, drain_error: e.message };
     }

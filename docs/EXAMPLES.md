@@ -351,19 +351,21 @@ The team needs a webhook integration before the next demo. Insert it as a
 new phase:
 
 ```
-/pan:insert-phase 4 "Webhook Integration"
+/pan:insert-phase 3 "Webhook Integration"
 ```
 
-PAN inserts the new phase at position 4, shifting Notifications to 5 and
-Admin Panel to 6. The roadmap updates:
+The first argument is the phase to insert *after*. PAN uses decimal numbering
+and never renumbers existing phases: it inserts `Phase 3.1: Webhook Integration`
+right after Phase 3. Notifications stays at 4, Admin Panel stays at 5 — every
+existing phase number is preserved. The roadmap updates:
 
 ```
 Phase 1: User authentication     [complete]
 Phase 2: Dashboard               [complete]
 Phase 3: Reporting               [in progress]
-Phase 4: Webhook Integration     [pending]      <-- new
-Phase 5: Notifications           [pending]
-Phase 6: Admin panel             [pending]
+Phase 3.1: Webhook Integration   [pending]      <-- inserted (URGENT)
+Phase 4: Notifications           [pending]
+Phase 5: Admin panel             [pending]
 ```
 
 ### Descoping work that is no longer needed
@@ -371,15 +373,15 @@ Phase 6: Admin panel             [pending]
 The admin panel has been deprioritized indefinitely:
 
 ```
-/pan:remove-phase 6
+/pan:remove-phase 5
 ```
 
 ```
 Phase 1: User authentication     [complete]
 Phase 2: Dashboard               [complete]
 Phase 3: Reporting               [in progress]
-Phase 4: Webhook Integration     [pending]
-Phase 5: Notifications           [pending]
+Phase 3.1: Webhook Integration   [pending]
+Phase 4: Notifications           [pending]
 ```
 
 The roadmap stays clean, phase numbers stay sequential, and all state

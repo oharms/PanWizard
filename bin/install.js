@@ -2098,10 +2098,13 @@ function install(isGlobal, runtime = 'claude') {
     failures.push('VERSION');
   }
 
-  if (!isCodex) {
-    // Write package.json to force CommonJS mode for PAN scripts
-    // Prevents "require is not defined" errors when project has "type": "module"
-    // Node.js walks up looking for package.json - this stops inheritance from project
+  {
+    // Write package.json to force CommonJS mode for PAN scripts — for ALL
+    // runtimes, INCLUDING Codex. The shipped hooks use require(); without this
+    // marker Node walks up to the project's package.json and, in a
+    // "type":"module" project, crashes every hook with "require is not defined"
+    // (H1, ADR audit 2026-08). The uninstall step (see "Remove PAN package.json")
+    // removes this marker for any runtime, so writing it for Codex is symmetric.
     try {
       const pkgJsonDest = path.join(targetDir, 'package.json');
       fs.writeFileSync(pkgJsonDest, '{"type":"commonjs"}\n');

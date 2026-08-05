@@ -44,8 +44,8 @@ AskUserQuestion([
     header: "Model",
     multiSelect: false,
     options: [
-      { label: "Quality", description: "Opus everywhere except verification (highest cost)" },
-      { label: "Balanced (Recommended)", description: "Opus for planning, Sonnet for execution/verification" },
+      { label: "Quality", description: "reasoning tier for every agent (highest cost)" },
+      { label: "Balanced (Recommended)", description: "reasoning tier for every agent (quality and balanced are identical post-COST-RESET); use budget to step down" },
       { label: "Budget", description: "Sonnet for writing, Haiku for research/verification (lowest cost)" }
     ]
   },

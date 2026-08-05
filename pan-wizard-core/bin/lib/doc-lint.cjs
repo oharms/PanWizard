@@ -178,6 +178,7 @@ const COUNT_ALLOWED_RE = /(^|[\\/])(CLAUDE\.md|CHANGELOG\.md|MEMORY\.md|SKILLS-F
 const COUNT_ALLOWED_DIR_SEGMENTS = [
   'decisions',  // ADRs — frozen
   'specs',      // feature specs — frozen
+  'audits',     // audit reports — point-in-time snapshots, exempt by their own preamble
   'experiments', // harvested experiment artifacts
   'learnings',  // AI-derived patterns; evidence quotes reference numbers
   'archive',    // archived old docs

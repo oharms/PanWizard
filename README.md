@@ -136,7 +136,7 @@ Verify with:
 - Codex: `$pan-help`
 
 > [!NOTE]
-> Codex and Copilot CLI installations use skills (`skills/pan-*/SKILL.md`) rather than custom prompts.
+> Codex and Copilot CLI installations use skills rather than custom prompts. Codex uses the shared `.agents/skills/pan-*/SKILL.md` tree; Copilot CLI uses `skills/pan-*/SKILL.md` under `.github` (local) or `~/.copilot` (global).
 
 ### Staying Updated
 
@@ -183,17 +183,26 @@ Add `--unified-skills` to install commands as one shared `.agents/skills/` tree 
 <details>
 <summary><strong>Development Installation</strong></summary>
 
-Clone the repository and run the installer locally:
+Clone the repository, then run the installer from a **separate** project
+directory. The installer hard-refuses to install into its own source repo (a
+`PAN_SOURCE_ROOT` guard exits with an error), so point it at a different target:
 
 ```bash
+# 1. Get the source
 git clone https://github.com/oharms/PanWizard.git
-cd PanWizard
-node bin/install.js --claude --local
+
+# 2. Install into a DIFFERENT project directory (never the PanWizard source dir)
+cd /path/to/some-test-project
+node /path/to/PanWizard/bin/install.js --claude --local
 ```
 
-Installs to `./.claude/` for testing modifications before contributing.
+Installs to the test project's `./.claude/` so you can try local modifications
+before contributing.
+
+Run the test suite from inside the cloned source repo:
 
 ```bash
+cd /path/to/PanWizard
 npm test                # Unit tests
 npm run test:scenarios  # Scenario tests
 npm run test:all        # All tests (unit + scenario)
@@ -811,7 +820,7 @@ This prevents Claude from reading these files entirely, regardless of what comma
 **Commands not found after install?**
 - Restart your runtime to reload commands/skills
 - Verify files exist in `~/.claude/commands/pan/` (global) or `./.claude/commands/pan/` (local)
-- For Codex, verify skills exist in `~/.codex/skills/pan-*/SKILL.md` (global) or `./.codex/skills/pan-*/SKILL.md` (local)
+- For Codex, verify skills exist in `~/.agents/skills/pan-*/SKILL.md` (global) or `./.agents/skills/pan-*/SKILL.md` (local)
 - For Copilot CLI, verify skills exist in `~/.copilot/skills/pan-*/SKILL.md` (global) or `./.github/skills/pan-*/SKILL.md` (local)
 
 **Commands not working as expected?**

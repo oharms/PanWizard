@@ -165,7 +165,7 @@ function resolveEffortInternal(cwd, agentType) {
  * @param {boolean} [raw] - If true and rawValue is provided, output rawValue as plain string
  * @param {string} [rawValue] - Plain string to output when raw mode is active
  */
-function output(result, raw, rawValue) {
+function output(result, raw, rawValue, exitCode = 0) {
   if (raw && rawValue !== undefined) {
     process.stdout.write(String(rawValue));
   } else {
@@ -190,7 +190,7 @@ function output(result, raw, rawValue) {
       process.stdout.write(json);
     }
   }
-  process.exit(0);
+  process.exit(exitCode);
 }
 
 /**

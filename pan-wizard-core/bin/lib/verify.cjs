@@ -490,8 +490,11 @@ function reconcilePhase(cwd, phaseNum) {
 function cmdVerifyReconcile(cwd, phaseNum, raw) {
   if (!phaseNum) { error('Usage: verify reconcile <phase>'); }
   const r = reconcilePhase(cwd, phaseNum);
-  output(r, raw, r.reconciled ? 'valid' : 'invalid');
-  process.exit(r.reconciled ? 0 : 1);
+  // Exit non-zero on contradiction so exec-phase's auto-advance gate actually
+  // stops on a rubber-stamped verification. output() previously hard-coded
+  // exit 0, making the old trailing process.exit dead code (H3, ADR audit
+  // 2026-08); the exitCode arg restores the gate.
+  output(r, raw, r.reconciled ? 'valid' : 'invalid', r.reconciled ? 0 : 1);
 }
 
 // ─── Stub / fake-return scanner (ADR-0036 review — closes the hardcoded

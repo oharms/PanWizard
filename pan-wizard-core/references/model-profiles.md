@@ -52,31 +52,35 @@ PAN never selects your host model — it recommends one. Because the `reasoning`
 
 ## Profile Definitions
 
+Since the 2026-07 **COST RESET**, `quality` and `balanced` are identical — both route every agent to the `reasoning` tier. Only the opt-in `budget` profile steps agents below reasoning (to `mid`/`fast` per the last column). The table below is illustrative; `core.cjs` `MODEL_PROFILES` is the source of truth and covers the full agent roster.
+
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
 | pan-planner | reasoning | reasoning | mid |
-| pan-roadmapper | reasoning | mid | mid |
-| pan-executor | reasoning | mid | mid |
-| pan-phase-researcher | reasoning | mid | fast |
-| pan-project-researcher | reasoning | mid | fast |
-| pan-research-synthesizer | reasoning | mid | fast |
-| pan-debugger | reasoning | mid | mid |
-| pan-document_code | reasoning | fast | fast |
-| pan-verifier | reasoning | mid | fast |
-| pan-plan-checker | reasoning | mid | fast |
-| pan-integration-checker | reasoning | mid | fast |
-| pan-reviewer | reasoning | fast | fast |
+| pan-roadmapper | reasoning | reasoning | mid |
+| pan-executor | reasoning | reasoning | mid |
+| pan-phase-researcher | reasoning | reasoning | fast |
+| pan-project-researcher | reasoning | reasoning | fast |
+| pan-research-synthesizer | reasoning | reasoning | fast |
+| pan-debugger | reasoning | reasoning | mid |
+| pan-document_code | reasoning | reasoning | fast |
+| pan-verifier | reasoning | reasoning | fast |
+| pan-plan-checker | reasoning | reasoning | fast |
+| pan-integration-checker | reasoning | reasoning | fast |
+| pan-reviewer | reasoning | reasoning | fast |
 
 ### Profile Philosophy
+
+Post-COST-RESET, `quality` and `balanced` are the same profile in practice — both give every agent the `reasoning` tier. Cost savings come only from opting into `budget`.
 
 **quality** — Maximum reasoning power
 - Reasoning tier for ALL agents. Use when quota is available, critical architecture work, or maximum quality is desired.
 
-**balanced** (default) — Smart allocation
-- Reasoning only for planning (where architecture decisions happen). Mid for execution. Fast for read-only tasks. Good balance of quality and cost.
+**balanced** (default) — Reasoning everywhere
+- Identical to `quality` since the COST RESET: reasoning tier for every agent. It remains the default so new projects get full reasoning power out of the box. Switch to `budget` when you need to cut token spend.
 
 **budget** — Minimal token spend
-- Mid for anything that writes code. Fast for research and verification. Use for high-volume work or less critical phases.
+- The only profile that steps agents below reasoning: mid for anything that writes code, fast for research and verification (see the `budget` column). Use for high-volume work or less critical phases.
 
 ### Cost Multipliers
 
@@ -246,17 +250,19 @@ Runtime: `/pan:profile <profile>`
 
 ## Design Rationale
 
-**Why reasoning for pan-planner?**
-Planning involves architecture decisions, goal decomposition, and task design. This is where model quality has the highest impact.
+Since the 2026-07 COST RESET, `quality` and `balanced` put every agent on the `reasoning` tier — so the notes below explain the tier each agent *steps down to* under `budget`, the only profile that now drops below reasoning.
 
-**Why mid for pan-executor?**
-Executors follow explicit PLAN.md instructions. The plan already contains the reasoning; execution is implementation.
+**Why reasoning for pan-planner (and every agent under quality/balanced)?**
+Planning involves architecture decisions, goal decomposition, and task design — where model quality has the highest impact. Post-COST-RESET the reasoning tier is inexpensive enough that every agent stays on it unless you opt into budget.
 
-**Why mid (not fast) for verifiers in balanced?**
-Verification requires goal-backward reasoning — checking if code *delivers* what the phase promised, not just pattern matching.
+**Why mid for pan-executor under budget?**
+Executors follow explicit PLAN.md instructions. The plan already contains the reasoning; execution is implementation, so `budget` can safely step them to mid.
 
-**Why fast for pan-document_code?**
+**Why fast for verifiers under budget?**
+Verification ideally uses goal-backward reasoning, but under `budget` the check degrades gracefully to fast pattern-matching to save tokens.
+
+**Why fast for pan-document_code under budget?**
 Read-only exploration and pattern extraction. No reasoning required, just structured output from file contents.
 
-**Why fast for pan-reviewer in balanced?**
-Code review is pattern-matching against known conventions and security rules. Fast handles checklist-style verification efficiently.
+**Why fast for pan-reviewer under budget?**
+Code review is pattern-matching against known conventions and security rules. Fast handles checklist-style verification efficiently when budget is engaged.

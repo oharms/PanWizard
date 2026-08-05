@@ -420,7 +420,7 @@ If FAIL: return to planner with specific fixes. Same revision loop as other dime
 Skip if: No `.planning/standards.md` file exists. Output: "Dimension 10: SKIPPED (no standards selected)"
 
 **Process:**
-1. Run `node ./.claude/pan-wizard-core/bin/pan-tools.cjs standards status`
+1. Run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs standards status`
 2. Parse `checks` array for selected standards and their categories
 3. For each relevant standard (matching phase's domain — security for auth, accessibility for UI):
    - Check that plan tasks address applicable checklist items
@@ -532,7 +532,7 @@ issue:
 
 Load phase operation context:
 ```bash
-INIT=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE_ARG}")
+INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE_ARG}")
 ```
 
 Extract from init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`.
@@ -543,7 +543,7 @@ Orchestrator provides context.md content in the verification prompt. If provided
 ls "$phase_dir"/*-plan.md 2>/dev/null
 # Read research for Nyquist validation data
 cat "$phase_dir"/*-research.md 2>/dev/null
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$phase_number"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$phase_number"
 ls "$phase_dir"/*-BRIEF.md 2>/dev/null
 ```
 
@@ -556,7 +556,7 @@ Use pan-tools to validate plan structure:
 ```bash
 for plan in "$PHASE_DIR"/*-plan.md; do
   echo "=== $plan ==="
-  PLAN_STRUCTURE=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structure "$plan")
+  PLAN_STRUCTURE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structure "$plan")
   echo "$PLAN_STRUCTURE"
 done
 ```
@@ -574,7 +574,7 @@ Map errors/warnings to verification dimensions:
 Extract must_haves from each plan using pan-tools:
 
 ```bash
-MUST_HAVES=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs frontmatter get "$PLAN_PATH" --field must_haves)
+MUST_HAVES=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs frontmatter get "$PLAN_PATH" --field must_haves)
 ```
 
 Returns JSON: `{ truths: [...], artifacts: [...], key_links: [...] }`
@@ -617,7 +617,7 @@ For each requirement: find covering task(s), verify action is specific, flag gap
 Use pan-tools plan-structure verification (already run in Step 2):
 
 ```bash
-PLAN_STRUCTURE=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structure "$PLAN_PATH")
+PLAN_STRUCTURE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structure "$PLAN_PATH")
 ```
 
 The `tasks` array in the result shows each task's completeness:

@@ -90,6 +90,22 @@ describe('verify reconcile — verdict vs mechanical signals (anti-rubber-stamp,
     assert.equal(r.contradictions.length, 0);
   });
 
+  // H3: the CLI exit code (not just the pure function) gates exec-phase's
+  // auto-advance. output() used to hard-code exit 0, so a rubber stamp advanced.
+  test('CLI: reconcile exits NON-ZERO on a rubber-stamped pass (H3 — un-deadens the gate)', () => {
+    scaffold('01-pay', planWith(30), 'passed', "function chargeCard(){ return {ok:true} }\nmodule.exports={chargeCard};\n");
+    const r = runPanTools('verify reconcile 01 --raw', tmp);
+    assert.equal(r.success, false, 'contradiction must exit non-zero so auto-advance stops');
+    assert.match(`${r.output || ''}${r.error || ''}`, /invalid/);
+  });
+
+  test('CLI: reconcile exits ZERO on an honest pass (H3)', () => {
+    const body = Array.from({ length: 40 }, (_, i) => `// line ${i}`).join('\n') + '\nfunction chargeCard(){}\nmodule.exports={chargeCard};\n';
+    scaffold('01-pay', planWith(30), 'passed', body);
+    const r = runPanTools('verify reconcile 01 --raw', tmp);
+    assert.equal(r.success, true, 'honest pass must exit zero');
+  });
+
   test('not a pass claim: status "gaps_found" with a failing artifact is NOT a contradiction', () => {
     scaffold('01-pay', planWith(30), 'gaps_found', 'function chargeCard(){}\n');
     const r = reconcilePhase(tmp, '01');

@@ -43,6 +43,13 @@ describe('Codex: install structure', () => {
     assert.ok(fs.existsSync(path.join(tempDir, '.codex')), '.codex dir should exist');
   });
 
+  test('.codex has the {"type":"commonjs"} marker so CJS hooks survive ESM projects (H1)', () => {
+    const pkg = path.join(tempDir, '.codex', 'package.json');
+    assert.ok(fs.existsSync(pkg), '.codex/package.json marker should exist');
+    assert.equal(JSON.parse(fs.readFileSync(pkg, 'utf-8')).type, 'commonjs',
+      'marker prevents "require is not defined" when the host project is type:module');
+  });
+
   test('skills directory has pan-* skill directories', () => {
     const skillsDir = path.join(tempDir, '.agents', 'skills');
     assert.ok(fs.existsSync(skillsDir), 'skills dir should exist');
