@@ -337,15 +337,22 @@ function cmdGit(cwd, subcommand, args, raw) {
   const hasFlag = flag => args.includes(flag);
 
   switch (subcommand) {
-    case 'commit':
+    case 'commit': {
+      // M20: filter positional file paths from args AFTER dropping the leading
+      // subcommand token ('commit'). Operating on the full args left 'commit'
+      // itself in the files list, so a path literally named 'commit' got staged.
+      // Also drop the value that follows --type / --message so a flag's argument
+      // is never mistaken for a file path.
+      const commitArgs = args.slice(1);
       return cmdGitCommit(cwd, {
         type: getOpt('--type', null),
         message: getOpt('--message', null),
         all: hasFlag('--all'),
         amend: hasFlag('--amend'),
         force: hasFlag('--force'),
-        files: args.filter((a, i) => a !== '--type' && a !== '--message' && !a.startsWith('--') && args[i - 1] !== '--type' && args[i - 1] !== '--message'),
+        files: commitArgs.filter((a, i) => !a.startsWith('--') && commitArgs[i - 1] !== '--type' && commitArgs[i - 1] !== '--message'),
       }, raw);
+    }
     case 'branch':
       return cmdGitBranch(cwd, sub2, {
         name: getOpt('--name', null),

@@ -152,7 +152,11 @@ function isDreamDue(schedule, now) {
   if (!schedule.last_run) return false;
   const last = new Date(schedule.last_run);
   if (isNaN(last)) return false;
-  return !sameUtcDay(last, at) || (schedule.history || []).length > 0;
+  // Due only once the last run rolled over into a NEW calendar day AND there is
+  // recorded activity to reflect on. The old `||` made this permanently true
+  // after the first run (history is never empty once a run is recorded), which
+  // contradicted the "once per calendar day that had activity" contract.
+  return !sameUtcDay(last, at) && (schedule.history || []).length > 0;
 }
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────

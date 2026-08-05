@@ -156,7 +156,31 @@ function newExperiment(slug, opts = {}) {
   // going because the workflow-level commit step exit code was 0.
   initExperimentGit(expPath);
 
-  // Optional: invoke installer for the chosen runtime in the experiment folder
+  // Optional: invoke installer for the chosen runtime in the experiment folder.
+  // M16: the installer only ships in the PAN SOURCE repo (bin/install.js). In an
+  // INSTALLED host project PAN_SOURCE_ROOT resolves to the config dir (e.g.
+  // .claude/), which never contains bin/install.js — so the installer step would
+  // always fail. Detect the missing installer up front and default to skip with a
+  // clear note, rather than attempting a spawn that is doomed to error.
+  const installerPresent = fs.existsSync(path.join(PAN_SOURCE_ROOT, 'bin', 'install.js'));
+  if (!opts.skipInstaller && !installerPresent) {
+    manifest.status = 'scaffolded';
+    manifest.installer_skipped = 'installer not available (bin/install.js absent — PAN is installed, not running from source); run the PAN installer manually in the experiment folder if a runtime is needed';
+    try {
+      fs.writeFileSync(
+        path.join(expPath, '.planning', 'experiment.json'),
+        JSON.stringify(manifest, null, 2)
+      );
+    } catch { /* best effort — non-fatal */ }
+    return {
+      experiment_id: slug,
+      path: expPath,
+      runtime,
+      idea_path: manifest.idea_path,
+      created_at: createdAt,
+      installer_skipped: manifest.installer_skipped,
+    };
+  }
   if (!opts.skipInstaller) {
     const installerError = runInstaller(expPath, runtime);
     if (installerError) {

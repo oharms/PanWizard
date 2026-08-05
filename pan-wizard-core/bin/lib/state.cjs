@@ -456,6 +456,14 @@ function cmdStateResolveBlocker(cwd, text, raw) {
       return !line.toLowerCase().includes(text.toLowerCase());
     });
 
+    // M27: if nothing was removed, no blocker matched the given text. Report
+    // resolved:false rather than falsely claiming a resolution (and skip the
+    // write entirely — the file is unchanged).
+    if (filtered.length === lines.length) {
+      output({ resolved: false, reason: 'no matching blocker', blocker: text }, raw, 'false');
+      return;
+    }
+
     let newBody = filtered.join('\n');
     // If section is now empty, add placeholder
     if (!newBody.trim() || !newBody.includes('- ')) {

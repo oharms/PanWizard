@@ -96,20 +96,35 @@ function tokensFile(cwd) {
   return path.join(metricsDir(cwd), TOKENS_FILE);
 }
 
+// Longest-prefix family match against a rates table. Transcript/hook-captured
+// ids are versioned ("claude-opus-4-8-20260301", "claude-fable-5[1m]") while
+// rate tables use family keys — match the longest key the model starts with so
+// the most specific family wins.
+function familyPrefixRate(rates, model) {
+  const families = Object.keys(rates)
+    .filter(k => model.startsWith(k))
+    .sort((a, b) => b.length - a.length);
+  return families.length > 0 ? rates[families[0]] : null;
+}
+
 function resolveRate(model, tier, configRates) {
+  // Config overrides win over the built-in table — including for versioned ids.
+  // Without the family-prefix pass here, a cost.rates override keyed on a family
+  // ("claude-opus-5") was silently ignored for the versioned id the hooks
+  // actually record ("claude-opus-5-20260101"), which fell through to
+  // DEFAULT_RATES instead.
   if (configRates) {
     if (model && configRates[model]) return configRates[model];
+    if (model) {
+      const fam = familyPrefixRate(configRates, model);
+      if (fam) return fam;
+    }
     if (tier && configRates[tier]) return configRates[tier];
   }
   if (model && DEFAULT_RATES[model]) return DEFAULT_RATES[model];
-  // Transcript/hook-captured ids are versioned ("claude-opus-4-8-20260301",
-  // "claude-fable-5[1m]") while the table uses family keys — prefix-match,
-  // longest key first so the most specific family wins.
   if (model) {
-    const families = Object.keys(DEFAULT_RATES)
-      .filter(k => model.startsWith(k))
-      .sort((a, b) => b.length - a.length);
-    if (families.length > 0) return DEFAULT_RATES[families[0]];
+    const fam = familyPrefixRate(DEFAULT_RATES, model);
+    if (fam) return fam;
   }
   if (tier && DEFAULT_RATES[tier]) return DEFAULT_RATES[tier];
   return null;

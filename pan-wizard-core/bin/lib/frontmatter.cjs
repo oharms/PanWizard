@@ -157,7 +157,10 @@ function renderYamlEntry(lines, key, value, depth) {
   if (Array.isArray(value)) {
     if (value.length === 0) {
       lines.push(`${indent}${key}: []`);
-    } else if (value.every(item => typeof item === 'string') && value.length <= MAX_INLINE_ARRAY_ITEMS && value.join(', ').length < MAX_INLINE_ARRAY_WIDTH) {
+    } else if (value.every(item => typeof item === 'string') && value.length <= MAX_INLINE_ARRAY_ITEMS && value.join(', ').length < MAX_INLINE_ARRAY_WIDTH && value.every(item => !item.includes(','))) {
+      // Inline form `[a, b, c]` is delimited by ', ', so an item that itself
+      // contains a comma would be re-split into multiple items on parse (lossy).
+      // Force multi-line ("- item") for those arrays so each item survives whole.
       lines.push(`${indent}${key}: [${value.join(', ')}]`);
     } else {
       lines.push(`${indent}${key}:`);

@@ -404,23 +404,35 @@ function checkDocStaleness(cwd, opts) {
   const current = [];
   const options = opts || {};
 
-  // Count actuals
+  // Count actuals. M17: a filesystem count only reconciles a documented count
+  // when the corresponding SOURCE directory actually exists. In an INSTALLED
+  // host project commands/pan, agents/, and pan-wizard-core/bin/lib are all
+  // absent — reconciling a documented "N commands" against an actual of 0 there
+  // is a false positive, so the per-entity check is SKIPPED when its dir is
+  // missing (tracked via *Present flags below). Explicit --tests/--suites and the
+  // version cross-reference are layout-independent and always run.
   let commandCount = 0;
+  let commandsPresent = false;
   try {
     const cmdDir = path.join(cwd, 'commands', 'pan');
     commandCount = fs.readdirSync(cmdDir).filter(f => f.endsWith('.md')).length;
+    commandsPresent = true;
   } catch { /* no commands dir */ }
 
   let agentCount = 0;
+  let agentsPresent = false;
   try {
     const agentDir = path.join(cwd, 'agents');
     agentCount = fs.readdirSync(agentDir).filter(f => f.endsWith('.md')).length;
+    agentsPresent = true;
   } catch { /* no agents dir */ }
 
   let moduleCount = 0;
+  let modulesPresent = false;
   try {
     const libDir = path.join(cwd, 'pan-wizard-core', 'bin', 'lib');
     moduleCount = fs.readdirSync(libDir).filter(f => f.endsWith('.cjs')).length;
+    modulesPresent = true;
   } catch { /* no lib dir */ }
 
   const actuals = { commands: commandCount, agents: agentCount, modules: moduleCount };
@@ -429,9 +441,9 @@ function checkDocStaleness(cwd, opts) {
   for (const relFile of DOC_SYNC_FILES) {
     const content = safeReadFile(path.join(cwd, relFile));
     if (!content) continue;
-    checkCount(content, relFile, 'commands', commandCount, stale, current);
-    checkCount(content, relFile, 'agents', agentCount, stale, current);
-    checkCount(content, relFile, 'modules', moduleCount, stale, current);
+    if (commandsPresent) checkCount(content, relFile, 'commands', commandCount, stale, current);
+    if (agentsPresent) checkCount(content, relFile, 'agents', agentCount, stale, current);
+    if (modulesPresent) checkCount(content, relFile, 'modules', moduleCount, stale, current);
 
     // Check test/suite counts if provided
     if (options.tests != null) {
@@ -789,6 +801,13 @@ function focusAutoUpdate(cwd, raw, getVal) {
     batch_file: getVal('--batch-file', ''),
     timestamp: new Date().toISOString(),
   };
+
+  // M18: wire --prompts-remaining so the `prompts_complete` stop reason is
+  // reachable (focus-auto.md step 8 instructs recording it). Absent → null, so
+  // determineStopReason's `prompts_remaining === 0` check never fires spuriously
+  // for non-prompts categories or when the flag isn't supplied.
+  const promptsRemainingRaw = getVal('--prompts-remaining', null);
+  cycle.prompts_remaining = promptsRemainingRaw != null ? Number(promptsRemainingRaw) : null;
 
   // Anti-fake: re-run the suite when verification is enabled; else record that
   // this count was self-reported (tests_verified:false) so the trust is visible.

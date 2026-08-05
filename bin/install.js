@@ -767,8 +767,14 @@ function cleanupOrphanedFiles(configDir) {
   for (const relPath of orphanedFiles) {
     const fullPath = path.join(configDir, relPath);
     if (fs.existsSync(fullPath)) {
-      fs.unlinkSync(fullPath);
-      console.log(`  ${green}✓${reset} Removed orphaned ${relPath}`);
+      // A locked/permission-denied legacy file must not abort the whole install
+      // with an unhandled exception — surface it as a warning (M3, ADR audit 2026-08).
+      try {
+        fs.unlinkSync(fullPath);
+        console.log(`  ${green}✓${reset} Removed orphaned ${relPath}`);
+      } catch (err) {
+        pushInstallWarning('staleCleanup', relPath, err);
+      }
     }
   }
 }
@@ -1684,7 +1690,7 @@ function saveLocalPatches(configDir) {
     // can't be backed up under patchesDir — path.join would collapse the
     // `..` and write outside the patches tree. Skip them; they're still
     // overwritten cleanly on reinstall.
-    if (relPath.split('/').includes('..')) continue;
+    if (relPath.split(/[\\/]/).includes('..')) continue; // M79: catch backslash '..' on Windows too
     const fullPath = path.join(configDir, relPath);
     if (!fs.existsSync(fullPath)) continue;
     const currentHash = fileHash(fullPath);
@@ -2450,15 +2456,25 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
   const isCopilot = runtime === 'copilot';
 
   if (shouldInstallStatusline && !isOpencode && !isCodex) {
-    // Same schema everywhere — Copilot CLI also uses {type: "command", command}
-    // in settings.json (statusline is experimental there as of 2026-05).
-    settings.statusLine = {
-      type: 'command',
-      command: statuslineCommand
-    };
-    console.log(`  ${green}✓${reset} Configured statusline`);
-    if (isCopilot) {
-      console.log(`  ${dim}ℹ Copilot CLI statusline is experimental — if it doesn't render, start with 'copilot --experimental'${reset}`);
+    // Preserve a user's EXISTING custom statusline in THIS runtime's settings.
+    // finishInstall runs per runtime, so this is the per-runtime check the old
+    // primary-only guard skipped — it clobbered custom Gemini/Copilot
+    // statuslines (M6, ADR audit 2026-08). PAN's own statusline is replaceable.
+    const existingCmd = settings.statusLine && settings.statusLine.command;
+    const isPanStatusline = typeof existingCmd === 'string' && /pan-statusline/.test(existingCmd);
+    if (settings.statusLine && !isPanStatusline && !args.includes('--force-statusline')) {
+      console.log(`  ${dim}ℹ Kept your existing statusline (pass --force-statusline to replace it)${reset}`);
+    } else {
+      // Same schema everywhere — Copilot CLI also uses {type: "command", command}
+      // in settings.json (statusline is experimental there as of 2026-05).
+      settings.statusLine = {
+        type: 'command',
+        command: statuslineCommand
+      };
+      console.log(`  ${green}✓${reset} Configured statusline`);
+      if (isCopilot) {
+        console.log(`  ${dim}ℹ Copilot CLI statusline is experimental — if it doesn't render, start with 'copilot --experimental'${reset}`);
+      }
     }
   }
 

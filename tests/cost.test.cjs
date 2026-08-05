@@ -63,6 +63,16 @@ describe('cost — resolveRate', () => {
     assert.equal(r.input, 1);
   });
 
+  // M13 regression: config overrides must get the same longest-prefix family
+  // matching as DEFAULT_RATES, so an override keyed on the family applies to the
+  // versioned id the hooks actually record.
+  test('config override family-prefix-matches versioned model ids', () => {
+    const overrides = { 'claude-opus-5': { input: 7, output: 7, cache_read: 0.7, cache_write: 7 } };
+    const r = resolveRate('claude-opus-5-20260101', null, overrides);
+    assert.ok(r, 'versioned id should resolve to the family override');
+    assert.equal(r.input, 7, 'config override applies, not DEFAULT_RATES');
+  });
+
   test('gemini-2.5-pro has explicit rate', () => {
     const r = resolveRate('gemini-2.5-pro', null, null);
     assert.ok(r, 'gemini-2.5-pro should resolve to a rate');

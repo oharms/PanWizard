@@ -599,6 +599,16 @@ describe('reconstructFrontmatter', () => {
     assert.ok(result.includes('tags: [api, auth]'), 'short array rendered inline');
   });
 
+  // M19: an item that itself contains ', ' must NOT render inline, or it would
+  // re-split into multiple items on parse. Force multi-line so it survives whole.
+  test('array item containing a comma survives serialize -> parse as one item', () => {
+    const original = { deps: ['a, b', 'c'] };
+    const yaml = reconstructFrontmatter(original);
+    assert.ok(!yaml.includes('[a, b, c]'), 'must not render the comma item inline');
+    const reExtracted = extractFrontmatter(`---\n${yaml}\n---\n`);
+    assert.deepStrictEqual(reExtracted.deps, ['a, b', 'c'], 'comma item preserved intact');
+  });
+
   test('serializes long arrays as multi-line', () => {
     const longItems = ['item-one', 'item-two', 'item-three', 'item-four'];
     const result = reconstructFrontmatter({ items: longItems });

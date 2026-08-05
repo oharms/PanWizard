@@ -263,14 +263,19 @@ function cmdMemoryOptimize(cwd, opts = {}, raw) {
   // Consolidate any per-agent log over the entry cap (reuses compactMemory, which
   // no-ops under the cap). Dry-run counts entries without writing.
   try {
-    for (const a of listMemoryAgents(cwd)) {
-      const rawMem = readMemory(cwd, a);
-      if (rawMem == null) continue;
-      const count = parseEntries(rawMem).length;
+    // M21: listMemoryAgents(cwd) returns { agents: [{ agent, entries }] }, and
+    // readMemory(cwd, name) returns { agent, entries, raw }. The old loop iterated
+    // the return OBJECT directly (a TypeError, silently swallowed by this catch)
+    // and passed the whole object to readMemory/parseEntries — so the agent-log
+    // consolidation never ran. Iterate .agents, read each by name, count entries.
+    for (const a of listMemoryAgents(cwd).agents) {
+      const mem = readMemory(cwd, a.agent);
+      if (mem == null) continue;
+      const count = parseEntries(mem.raw).length;
       if (count > DEFAULT_MAX_ENTRIES) {
         let removed = 0;
-        if (apply) { const r = compactMemory(cwd, a, DEFAULT_MAX_ENTRIES); removed = (r && r.removed) || 0; }
-        result.agents.push({ agent: a, entries: count, over_cap: true, compacted: apply, removed });
+        if (apply) { const r = compactMemory(cwd, a.agent, DEFAULT_MAX_ENTRIES); removed = (r && r.removed) || 0; }
+        result.agents.push({ agent: a.agent, entries: count, over_cap: true, compacted: apply, removed });
       }
     }
   } catch { /* agent sweep is best-effort */ }

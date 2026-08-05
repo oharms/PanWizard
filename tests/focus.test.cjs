@@ -388,6 +388,30 @@ describe('checkDocStaleness', () => {
     assert.equal(stale.filter(s => s.entity === 'commands').length, 0);
     assert.equal(current.filter(s => s.entity === 'commands').length, 1);
   });
+
+  // M17: in an INSTALLED host project the source dirs (commands/pan, agents,
+  // pan-wizard-core/bin/lib) are absent, so a documented "N commands/agents/
+  // modules" must NOT reconcile against an actual of 0 (false positive). The
+  // per-entity check is skipped when its source dir is missing.
+  test('does not report stale counts for entities whose source dir is absent', () => {
+    // No commands/pan/, agents/, or lib dir — only a doc mentioning counts.
+    fs.writeFileSync(path.join(tmpDir, 'README.md'), 'This project has 5 commands, 2 agents, and 9 modules.');
+    const { stale } = checkDocStaleness(tmpDir);
+    assert.equal(stale.filter(s => ['commands', 'agents', 'modules'].includes(s.entity)).length, 0,
+      'absent source dirs must not produce false stale-count findings');
+  });
+
+  test('reconciles only the entities whose source dir is present', () => {
+    // agents/ present (2), but no commands/pan or lib dir.
+    const agentDir = path.join(tmpDir, 'agents');
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, 'a.md'), '');
+    fs.writeFileSync(path.join(agentDir, 'b.md'), '');
+    fs.writeFileSync(path.join(tmpDir, 'README.md'), 'Has 5 agents and 12 commands.');
+    const { stale } = checkDocStaleness(tmpDir);
+    assert.ok(stale.find(s => s.entity === 'agents'), 'agents reconciled (dir present)');
+    assert.equal(stale.filter(s => s.entity === 'commands').length, 0, 'commands skipped (dir absent)');
+  });
 });
 
 // ─── Unit: readLatestBatch ──────────────────────────────────────────────────
@@ -1422,6 +1446,20 @@ describe('cmdFocusAuto state machine', () => {
     assert.equal(data.total_points_used, 12);
     assert.equal(data.stop_reason, null);
     assert.equal(data.status, 'in_progress');
+  });
+
+  // M18: --update must parse and record --prompts-remaining so the
+  // `prompts_complete` stop reason is actually reachable end-to-end (previously
+  // the value was never recorded, so the stop branch was dead).
+  test('--update wires --prompts-remaining so prompts_complete fires', () => {
+    runPanTools('focus auto --category prompts', tmpDir);
+    const r = runPanTools(
+      'focus auto --update --items-completed 1 --points-used 5 --tests-before 100 --tests-after 100 --prompts-remaining 0',
+      tmpDir
+    );
+    assert.ok(r.success, r.error);
+    const data = JSON.parse(r.output);
+    assert.equal(data.stop_reason, 'prompts_complete');
   });
 
   test('--update detects regression (tests_after < tests_before)', () => {

@@ -41,11 +41,19 @@ function cmdPhasesList(cwd, options, raw) {
     // Get all phase directories
     let dirs = entries.filter(entry => entry.isDirectory()).map(entry => entry.name);
 
-    // Include archived phases if requested
+    // Include archived phases if requested. Archived entries are DECORATED
+    // display strings ("<name> [<milestone>]") that do not exist under
+    // phasesDir — their real location is getArchivedPhaseDirs()'s fullPath
+    // (under .planning/milestones/). M24: track that real path so a later
+    // --type read opens the archive dir instead of crashing with ENOENT on the
+    // decorated name joined to phasesDir.
+    const archivedPaths = new Map();
     if (includeArchived) {
       const archived = getArchivedPhaseDirs(cwd);
       for (const arch of archived) {
-        dirs.push(`${arch.name} [${arch.milestone}]`);
+        const decorated = `${arch.name} [${arch.milestone}]`;
+        dirs.push(decorated);
+        archivedPaths.set(decorated, arch.fullPath);
       }
     }
 
@@ -67,7 +75,7 @@ function cmdPhasesList(cwd, options, raw) {
     if (type) {
       const files = [];
       for (const dir of dirs) {
-        const dirPath = path.join(phasesDir, dir);
+        const dirPath = archivedPaths.get(dir) || path.join(phasesDir, dir);
         const dirFiles = fs.readdirSync(dirPath);
 
         let filtered;

@@ -246,11 +246,19 @@ function writeDeepReview(cwd, phaseNum, payload, opts) {
 
 // ─── CLI wrappers ───────────────────────────────────────────────────────────
 
+// M25: input files must resolve against the passed cwd, not process.cwd().
+// A relative --reviewer-file/--hardener-file/--meta-file was read from the
+// process working directory, silently missing the file when --cwd differed.
+function resolveAgainstCwd(cwd, p) {
+  if (!p) return p;
+  return path.isAbsolute(p) ? p : path.join(cwd, p);
+}
+
 function cmdReviewDeepMerge(cwd, phaseNum, opts, raw) {
   if (!phaseNum) error('Usage: review-deep merge <phase> --reviewer-file X --hardener-file Y [--meta-file Z]');
-  const reviewerContent = opts.reviewerFile ? safeReadFile(opts.reviewerFile) : '';
-  const hardenerContent = opts.hardenerFile ? safeReadFile(opts.hardenerFile) : '';
-  const metaContent = opts.metaFile ? safeReadFile(opts.metaFile) : '';
+  const reviewerContent = opts.reviewerFile ? safeReadFile(resolveAgainstCwd(cwd, opts.reviewerFile)) : '';
+  const hardenerContent = opts.hardenerFile ? safeReadFile(resolveAgainstCwd(cwd, opts.hardenerFile)) : '';
+  const metaContent = opts.metaFile ? safeReadFile(resolveAgainstCwd(cwd, opts.metaFile)) : '';
   if (!reviewerContent && !hardenerContent && !metaContent) {
     output({ error: 'No input files provided or readable' }, raw);
     return;
@@ -264,9 +272,9 @@ function cmdReviewDeepMerge(cwd, phaseNum, opts, raw) {
 function cmdReviewDeepAnalyze(cwd, phaseNum, opts, raw) {
   // Returns the merged payload WITHOUT writing a file. Useful for piping.
   if (!phaseNum) error('Usage: review-deep analyze <phase> --reviewer-file X --hardener-file Y [--meta-file Z]');
-  const reviewerContent = opts.reviewerFile ? safeReadFile(opts.reviewerFile) : '';
-  const hardenerContent = opts.hardenerFile ? safeReadFile(opts.hardenerFile) : '';
-  const metaContent = opts.metaFile ? safeReadFile(opts.metaFile) : '';
+  const reviewerContent = opts.reviewerFile ? safeReadFile(resolveAgainstCwd(cwd, opts.reviewerFile)) : '';
+  const hardenerContent = opts.hardenerFile ? safeReadFile(resolveAgainstCwd(cwd, opts.hardenerFile)) : '';
+  const metaContent = opts.metaFile ? safeReadFile(resolveAgainstCwd(cwd, opts.metaFile)) : '';
   output(mergeReviews(reviewerContent, hardenerContent, metaContent), raw);
 }
 

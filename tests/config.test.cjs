@@ -256,6 +256,20 @@ describe('config-set command', () => {
     assert.ok(result.error.includes('Usage:'), 'error should include usage message');
   });
 
+  // M11 regression: a key with no value used to report updated:true while
+  // JSON.stringify silently dropped the `undefined` assignment (wrote nothing).
+  test('errors on missing value (does not report a phantom update)', () => {
+    runPanTools('config-ensure-section', tmpDir);
+
+    const result = runPanTools('config-set model_profile', tmpDir);
+    assert.ok(!result.success, 'should fail when value is missing');
+    assert.ok(result.error.includes('Usage:'), 'error should include usage message');
+
+    // The existing value must be untouched (no phantom write of undefined).
+    const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'));
+    assert.strictEqual(config.model_profile, 'balanced', 'value should be unchanged');
+  });
+
   test('creates deeply nested keys with multiple dot segments', () => {
     runPanTools('config-ensure-section', tmpDir);
 

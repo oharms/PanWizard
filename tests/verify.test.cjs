@@ -987,6 +987,36 @@ describe('validate deployment command', () => {
     assert.strictEqual(data.runtimes.claude.modified.length, 1);
   });
 
+  // M29: the hook-path integrity check must descend into the NESTED Claude hook
+  // shape ({ matcher, hooks: [{ command }] }). Previously it only read the outer
+  // group.command (undefined there) so it validated nothing — a broken hook path
+  // was reported as clean.
+  test('validates hook paths nested under group.hooks[] (settings integrity)', () => {
+    const claudeDir = path.join(tmpDir, '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, 'pan-file-manifest.json'), JSON.stringify({
+      version: '3.0.0',
+      files: {},
+    }));
+    // Nested shape with a command pointing at a hook .js file that does NOT exist.
+    fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({
+      hooks: {
+        PostToolUse: [
+          { matcher: 'Write', hooks: [{ type: 'command', command: 'node .claude/hooks/dist/missing.js' }] },
+        ],
+      },
+    }));
+
+    const result = runPanTools('validate deployment', tmpDir);
+    assert.ok(result.success, result.error);
+    const data = JSON.parse(result.output);
+    assert.strictEqual(data.runtimes.claude.settings_ok, false, 'nested broken hook path must be caught');
+    assert.ok(
+      data.runtimes.claude.settings_issues.some(s => s.includes('missing.js')),
+      `expected a hook-path issue for missing.js, got ${JSON.stringify(data.runtimes.claude.settings_issues)}`
+    );
+  });
+
   test('detects multiple runtimes', () => {
     // Create two minimal installations
     for (const dir of ['.claude', '.codex']) {

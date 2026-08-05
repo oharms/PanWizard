@@ -140,6 +140,12 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
     error('Usage: config-set <key.path> <value>');
   }
 
+  // A missing value would be assigned as `undefined`, which JSON.stringify drops
+  // — so the command reported updated:true while writing nothing. Reject it.
+  if (value === undefined) {
+    error('Usage: config-set <key.path> <value>');
+  }
+
   // Parse value (handle booleans and numbers)
   let parsedValue = value;
   if (value === 'true') parsedValue = true;

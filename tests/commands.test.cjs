@@ -660,6 +660,16 @@ describe('scaffold command', () => {
     assert.strictEqual(output.created, false, 'should not overwrite');
     assert.strictEqual(output.reason, 'already_exists');
   });
+
+  // M10 regression: scaffold context/uat/verification without --phase used to
+  // hit path.join(null, …) and crash with a raw TypeError. It must now return a
+  // clean usage error instead.
+  test('errors (does not crash) for context scaffold with no --phase', () => {
+    const result = runPanTools('scaffold context', tmpDir);
+    assert.ok(!result.success, 'should fail without --phase');
+    assert.ok(/--phase required/.test(result.error), 'should be a usage error');
+    assert.ok(!/TypeError/.test(result.error), 'must not be a raw TypeError crash');
+  });
 });
 
 // ── websearch error cases ───────────────────────────────────────────────────

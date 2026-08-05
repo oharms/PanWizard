@@ -769,6 +769,14 @@ function cmdScaffold(cwd, type, options, raw) {
     error(`Phase ${phase} directory not found`);
   }
 
+  // Every artifact type except phase-dir writes into a resolved phase directory.
+  // Without --phase there is no directory to write to, so guard before the
+  // switch — otherwise path.join(phaseDir, …) below crashes with a raw
+  // TypeError instead of a usage error.
+  if (!phaseDir && type !== 'phase-dir') {
+    error(`--phase required for ${type} scaffold`);
+  }
+
   let filePath, content;
 
   switch (type) {

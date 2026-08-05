@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { PLANNING_DIR, PHASES_DIR, MILESTONES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible } = require('./utils.cjs');
-const { output, error, isGitRepo, execGit } = require('./core.cjs');
+const { output, error, isGitRepo, execGit, escapeRegex } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
 
@@ -47,20 +47,24 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
 
   for (const reqId of reqIds) {
     let found = false;
+    // Escape the requirement ID before interpolating into RegExp — an ID with
+    // regex metacharacters otherwise crashes or mis-matches (M22, ADR audit
+    // 2026-08). Matches the escapeRegex convention in phase-remove.cjs/knowledge.cjs.
+    const reqEsc = escapeRegex(reqId);
 
     // Update checkbox: - [ ] **REQ-ID** -> - [x] **REQ-ID**
-    const checkboxPattern = new RegExp(`(-\\s*\\[)[ ](\\]\\s*\\*\\*${reqId}\\*\\*)`, 'gi');
+    const checkboxPattern = new RegExp(`(-\\s*\\[)[ ](\\]\\s*\\*\\*${reqEsc}\\*\\*)`, 'gi');
     if (checkboxPattern.test(reqContent)) {
       reqContent = reqContent.replace(checkboxPattern, '$1x$2');
       found = true;
     }
 
     // Update traceability table: | REQ-ID | Phase N | Pending | -> | REQ-ID | Phase N | Complete |
-    const tablePattern = new RegExp(`(\\|\\s*${reqId}\\s*\\|[^|]+\\|)\\s*Pending\\s*(\\|)`, 'gi');
+    const tablePattern = new RegExp(`(\\|\\s*${reqEsc}\\s*\\|[^|]+\\|)\\s*Pending\\s*(\\|)`, 'gi');
     if (tablePattern.test(reqContent)) {
       // Re-create regex since test() advances lastIndex for global regex
       reqContent = reqContent.replace(
-        new RegExp(`(\\|\\s*${reqId}\\s*\\|[^|]+\\|)\\s*Pending\\s*(\\|)`, 'gi'),
+        new RegExp(`(\\|\\s*${reqEsc}\\s*\\|[^|]+\\|)\\s*Pending\\s*(\\|)`, 'gi'),
         '$1 Complete $2'
       );
       found = true;

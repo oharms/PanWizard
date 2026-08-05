@@ -569,6 +569,19 @@ describe('parseAutoApplyBlock', () => {
     assert.equal(actions[0].type, 'memory');
   });
 
+  test('apply skips a memory action whose path escapes the project root (M23 — containment)', () => {
+    const tmp = createTempProject();
+    try {
+      const reportPath = path.join(tmp, 'opt-report.md');
+      fs.writeFileSync(reportPath,
+        '## Auto-Apply Actions\n\n```json\n[{"type":"memory","path":"../escaped.md","content":"x"}]\n```\n');
+      const r = applyReportRecommendations(tmp, reportPath);
+      assert.equal(r.applied.length, 0, 'a ../ escape must not be applied');
+      assert.ok(r.skipped.some(s => /escapes project root/.test(s.reason)), 'skipped with containment reason');
+      assert.ok(!fs.existsSync(path.join(path.dirname(tmp), 'escaped.md')), 'nothing written outside the project');
+    } finally { cleanup(tmp); }
+  });
+
   test('returns null on invalid JSON', () => {
     const report = `## Auto-Apply Actions\n\n\`\`\`json\n[not valid\n\`\`\``;
     assert.equal(parseAutoApplyBlock(report), null);

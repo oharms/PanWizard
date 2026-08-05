@@ -403,7 +403,9 @@ describe('state resolve-blocker command', () => {
     assert.ok(state.includes('Waiting for design review'), 'other blockers should remain');
   });
 
-  test('returns resolved true even when no blocker matches (case-insensitive search)', () => {
+  // M27: when no blocker matches the given text, resolve-blocker must report
+  // resolved:false (with a reason), not falsely claim a resolution.
+  test('returns resolved false when no blocker matches (case-insensitive search)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'state.md'),
       `# Project State
@@ -419,8 +421,8 @@ describe('state resolve-blocker command', () => {
     assert.ok(result.success, `Command failed: ${result.error}`);
 
     const output = JSON.parse(result.output);
-    // The implementation always returns resolved: true when Blockers section exists
-    assert.strictEqual(output.resolved, true, 'should report resolved even when no match');
+    assert.strictEqual(output.resolved, false, 'should report NOT resolved when no match');
+    assert.strictEqual(output.reason, 'no matching blocker', 'should explain why');
 
     // Verify existing blockers were NOT removed
     const state = fs.readFileSync(path.join(tmpDir, '.planning', 'state.md'), 'utf-8');

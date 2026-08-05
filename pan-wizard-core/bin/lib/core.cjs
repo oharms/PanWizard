@@ -593,8 +593,13 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
 
   try {
     const content = fs.readFileSync(roadmapPath, 'utf-8');
-    const escapedPhase = escapeRegex(phaseNum.toString());
-    const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+${escapedPhase}:\\s*([^\\n]+)`, 'i');
+    // Normalize the phase number so a padded id ('01') still matches an
+    // unpadded 'Phase 1:' heading (and vice-versa) — matching findPhaseInternal,
+    // which accepts both forms. Strip leading zeros, then allow any zero-padding
+    // in the heading via the `0*` prefix.
+    const unpadded = phaseNum.toString().trim().replace(/^0+(?=\d)/, '');
+    const escapedPhase = escapeRegex(unpadded);
+    const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+0*${escapedPhase}:\\s*([^\\n]+)`, 'i');
     const headerMatch = content.match(phasePattern);
     if (!headerMatch) return null;
 

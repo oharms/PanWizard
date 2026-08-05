@@ -626,8 +626,19 @@ function applyReportRecommendations(cwd, reportPath) {
   const applied = [];
   const skipped = [];
 
+  const resolvedCwd = path.resolve(cwd);
   for (const action of actions) {
     try {
+      // Containment: action.path on memory writes is report/agent-authored and
+      // must stay inside the project. A `../` (or absolute) path otherwise
+      // escapes and writes anywhere the process can (M23, ADR audit 2026-08).
+      if (action.type === 'memory' || action.type === 'memory_append') {
+        const abs = path.resolve(cwd, action.path || '');
+        if (abs !== resolvedCwd && !abs.startsWith(resolvedCwd + path.sep)) {
+          skipped.push({ action, reason: 'path escapes project root — skipped' });
+          continue;
+        }
+      }
       if (action.type === 'memory') {
         // Write new memory entry (skip if file exists to avoid overwriting manual edits)
         const memPath = path.join(cwd, action.path);

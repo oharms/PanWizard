@@ -123,6 +123,26 @@ describe('phases list command', () => {
     assert.deepStrictEqual(output.files, ['01-01-plan.md'], 'should only list phase 01 plans');
     assert.strictEqual(output.phase_dir, 'foundation', 'should report phase name without number prefix');
   });
+
+  // M24: --type plans --include-archived used to crash with ENOENT — archived
+  // entries are decorated display strings ("<name> [<milestone>]"), not real
+  // paths under phases/. The fix reads them from their archive fullPath.
+  test('--type plans --include-archived reads archived plans without crashing', () => {
+    // Live phase with a plan.
+    const liveDir = path.join(tmpDir, '.planning', 'phases', '02-api');
+    fs.mkdirSync(liveDir, { recursive: true });
+    fs.writeFileSync(path.join(liveDir, '02-01-plan.md'), '# Live Plan');
+    // Archived milestone with a phase + plan under .planning/milestones/v1.0-phases/.
+    const archDir = path.join(tmpDir, '.planning', 'milestones', 'v1.0-phases', '01-foundation');
+    fs.mkdirSync(archDir, { recursive: true });
+    fs.writeFileSync(path.join(archDir, '01-01-plan.md'), '# Archived Plan');
+
+    const result = runPanTools('phases list --type plans --include-archived', tmpDir);
+    assert.ok(result.success, `Command failed (regression — should not ENOENT): ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.ok(output.files.includes('02-01-plan.md'), 'live plan listed');
+    assert.ok(output.files.includes('01-01-plan.md'), 'archived plan listed from its real path');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
