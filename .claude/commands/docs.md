@@ -74,7 +74,7 @@ Read each doc and verify claims match the actual codebase:
 1. **README.md** — Install commands work? Feature claims accurate?
 2. **CLI-REFERENCE.md** — All flags documented? Examples correct?
 3. **Test counts** in CLAUDE.md — Match actual `npm test` output?
-4. **File counts** — "42 commands", "12 agents" still accurate?
+4. **File counts** — does any doc embed a count outside CLAUDE.md? (it must not — delete such numbers).
 
 ### Never Do
 - Update docs without reading the code first

@@ -38,4 +38,4 @@ npm run test:all
 - Unit tests use OS temp directories — safe to run from source repo
 - Scenario tests use OS temp directories — also safe
 - Integration install testing MUST go to `d:\pantesting`
-- Expected: 1649+ tests, 0 failures
+- Expected: all tests passing, 0 failures (see CLAUDE.md counts table for the current total)

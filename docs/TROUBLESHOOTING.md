@@ -640,9 +640,9 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Immediate recovery:**
 
-1. Run `/pan:pause` -- this saves progress to a pause.md handoff document
+1. Run `/pan:pause` -- this saves progress to a `.continue-here.md` handoff document
 2. Start a new Claude Code session
-3. Run `/pan:resume` -- this restores context from state.md, roadmap.md, recent summary.md files, and pause.md
+3. Run `/pan:resume` -- this restores context from state.md, roadmap.md, recent summary.md files, and `.continue-here.md`
 
 **Prevention strategies:**
 
@@ -661,7 +661,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 |--------|---------|--------------|
 | state.md | Current phase, plan, status, decisions | Yes |
 | roadmap.md | Project overview, phase list, progress | Yes |
-| pause.md | Handoff notes from pause | If exists |
+| .continue-here.md | Handoff notes from pause | If exists |
 | Recent summary.md | Latest completed plan details | Latest 1-2 |
 | project.md | Project brief | Yes |
 

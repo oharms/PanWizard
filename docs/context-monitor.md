@@ -1,6 +1,6 @@
 # Context Window Monitor
 
-> **Note:** This document is superseded by [HOOKS.md](HOOKS.md), which covers all three built-in hooks including the context monitor. This file is retained for backward compatibility.
+> **Note:** This document is superseded by [HOOKS.md](HOOKS.md), which covers all five built-in hooks including the context monitor. This file is retained for backward compatibility.
 
 A PostToolUse hook that warns the agent when context window usage is high.
 
@@ -10,7 +10,7 @@ The statusline shows context usage to the **user**, but the **agent** has no awa
 
 ## How It Works
 
-1. The statusline hook writes context metrics to `/tmp/claude-ctx-{session_id}.json`
+1. The statusline hook writes context metrics to `<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json` (a per-user 0700 directory)
 2. After each tool use, the context monitor reads these metrics
 3. When remaining context drops below thresholds, it injects a warning as `additionalContext`
 4. The agent receives the warning in its conversation and can act accordingly
@@ -36,7 +36,7 @@ To avoid spamming the agent with repeated warnings:
 Statusline Hook (pan-statusline.js)
     | writes
     v
-/tmp/claude-ctx-{session_id}.json
+<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json
     ^ reads
     |
 Context Monitor (pan-context-monitor.js, PostToolUse)

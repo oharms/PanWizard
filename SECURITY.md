@@ -6,8 +6,8 @@ PAN Wizard is a fast-moving project. Only the latest minor release receives secu
 
 | Version | Supported          |
 |---------|--------------------|
-| 3.13.x  | :white_check_mark: |
-| < 3.13  | :x: — upgrade to the latest 3.x |
+| 3.22.x  | :white_check_mark: |
+| < 3.22  | :x: — upgrade to the latest 3.x |
 
 Run `npm view pan-wizard version` to check the current release.
 
@@ -61,7 +61,7 @@ We coordinate disclosure with the reporter:
 
 - Zero runtime dependencies — supply-chain attack surface is the Node stdlib only.
 - `npm audit --omit=dev` is enforced as a release gate in [scripts/release-check.js](scripts/release-check.js).
-- Hooks ship via [hooks/dist/](hooks/dist/) bundled by esbuild — auditable in one place.
+- Hooks ship via [hooks/dist/](hooks/dist/) as pure Node.js — copy-only, no bundler — auditable in one place.
 - The installer refuses to run inside its own source repo (`PAN_SOURCE_ROOT` guard in `bin/install.js`).
 - CI runs CodeQL JavaScript analysis on every push to `main` and weekly.
 - Dependabot opens PRs for npm dev-deps and GitHub Actions weekly.

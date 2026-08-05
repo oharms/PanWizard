@@ -17,7 +17,7 @@ ALL installation testing MUST happen in `d:\pantesting`.
 /run --codex             # Install Codex runtime only
 /run --gemini            # Install Gemini runtime only
 /run --opencode          # Install OpenCode runtime only
-/run --github            # Install GitHub runtime only
+/run --copilot           # Install Copilot (.github) runtime only
 /run --clean             # Clean d:\pantesting first, then install all
 ```
 
@@ -54,13 +54,7 @@ Write-Host "Manifest: $(Test-Path d:\pantesting\.claude\pan-file-manifest.json)"
 
 ### Expected Counts (verify against source)
 
-| Item | Expected |
-|------|----------|
-| Commands | 42 (in `commands/pan/`) |
-| Agents | 12 (in `agents/`) |
-| Core modules | 16+ (in `pan-wizard-core/bin/lib/`) |
-| Hooks | 3 (in `hooks/dist/`) |
-| Manifest | 1 (`pan-file-manifest.json`) |
+Verify the installed counts match the source repo — compare against **CLAUDE.md's counts table** (the single source of truth). Do not hardcode counts here.
 
 ## Never Do
 

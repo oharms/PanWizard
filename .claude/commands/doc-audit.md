@@ -66,10 +66,7 @@ CHANGELOG.md     ← historical record (frozen-in-time, never update past entrie
 
 ### 4. Cross-Document Consistency
 - [ ] Version number identical in: package.json, CLAUDE.md, README.md, CHANGELOG.md
-- [ ] Test count identical in: CLAUDE.md (3 places), README.md, DEVELOPMENT.md
-- [ ] Command count identical in: CLAUDE.md, README.md, ARCHITECTURE.md, DEVELOPMENT.md, USER-GUIDE.md
-- [ ] Agent count identical in: CLAUDE.md, README.md, ARCHITECTURE.md, DEVELOPMENT.md, AGENTS.md
-- [ ] Module count identical in: CLAUDE.md, ARCHITECTURE.md, DEVELOPMENT.md
+- [ ] Counts appear ONLY in CLAUDE.md — any drift-prone count in another doc is a violation (delete it, don't sync it)
 - [ ] Runtime list (5 runtimes) consistent across: CLAUDE.md, README.md, USER-GUIDE.md, install.js
 - [ ] CLI flag names consistent between: install.js arg parser, CLI-REFERENCE.md, README.md
 
@@ -106,7 +103,7 @@ The most important check: does the document's **prose actually describe what the
 - [ ] **Agent tool access claims** — if AGENTS.md says pan-reviewer has "Read, Grep, Glob, Bash", verify the agent markdown
 - [ ] **Model profile table** — verify MODEL_PROFILES in core.cjs matches what docs/AGENTS.md shows
 - [ ] **Test patterns described in CLAUDE.md** — verify they match actual test helper implementations
-- [ ] **Configuration options** — verify config keys in docs match loadConfig() in config.cjs
+- [ ] **Configuration options** — verify config keys in docs match buildConfigDefaults()/cmdConfigGet() in config.cjs
 
 **Sampling strategy:**
 1. **Always verify**: CLAUDE.md entirely, README.md install section, CLI-REFERENCE.md flags
@@ -185,7 +182,7 @@ For each target document, verify prose descriptions match the code:
 2. **Read actual source files** for each claim:
    - For counts: actually count the files/functions
    - For CLI flags: read the argument parser in install.js and pan-tools.cjs
-   - For config: read loadConfig() in config.cjs
+   - For config: read buildConfigDefaults()/cmdConfigGet() in config.cjs
    - For architecture claims: trace the actual module structure
 3. **Verdict each claim:**
    - Matches code → ✅ verified

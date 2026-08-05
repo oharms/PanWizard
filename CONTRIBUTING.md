@@ -33,18 +33,21 @@ Thank you for your interest in contributing to PAN Wizard!
 
 ```bash
 git clone https://github.com/oharms/PanWizard.git
-cd pan-wizard
+cd PanWizard
 npm install
 npm test
 ```
 
 ### Local Install for Testing
 
-Install PAN from your local clone to test changes:
+Install PAN from your local clone to test changes. The installer refuses to
+run inside its own source repo (`PAN_SOURCE_ROOT` guard), so run it from a
+**separate** directory and point it at your clone:
 
 ```bash
-node bin/install.js --claude --local   # Install to ./.claude/
-node bin/install.js --claude --global  # Install to ~/.claude/
+cd <some-test-dir>                                     # NOT the clone root
+node <path-to-clone>/bin/install.js --claude --local   # Install to ./.claude/
+node <path-to-clone>/bin/install.js --claude --global  # Install to ~/.claude/
 ```
 
 ### Building Hooks
@@ -62,7 +65,7 @@ Output goes to `hooks/dist/`.
 ## Project Structure
 
 ```
-pan-wizard/
+PanWizard/
   bin/                  # Installer entry point (install.js)
   commands/pan/         # command .md files (Claude Code format)
   agents/               # agent .md files
@@ -74,9 +77,7 @@ pan-wizard/
     references/         # Reference docs loaded by agents
     templates/          # File templates (config.json, plans, etc.)
   hooks/
-    pan-statusline.js   # Hook source files
-    pan-context-monitor.js
-    pan-check-update.js
+    pan-*.js            # Hook source files
     dist/               # Built hooks (copied output)
   scripts/              # Build scripts
   tests/                # Test suite (node:test + node:assert)

@@ -56,7 +56,7 @@ package.json                                       ← Version number
    ```
    | Document | Status | Changes |
    |----------|--------|---------|
-   | CLAUDE.md | Updated | Test count 1622→1649 |
+   | CLAUDE.md | Updated | Counts table refreshed |
    | README.md | Current | No changes needed |
    ```
 

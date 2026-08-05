@@ -172,6 +172,10 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
              │  └──────────┬─────────┘    │
              │             │              │
              │  ┌──────────▼─────────┐    │
+             │  │ /pan:design-phase  │    │  <- Architecture, ADR, threat-lite
+             │  └──────────┬─────────┘    │
+             │             │              │
+             │  ┌──────────▼─────────┐    │
              │  │ /pan:plan-phase    │    │  <- Research + Plan + Verify
              │  └──────────┬─────────┘    │
              │             │              │
@@ -297,6 +301,7 @@ off by default; turn it on for phases where planning test coverage up front matt
 | `/pan:new-project` | Full project init: questions, research, requirements, roadmap | Start of a new project |
 | `/pan:new-project --auto @idea.md` | Automated init from document | Have a PRD or idea doc ready |
 | `/pan:discuss-phase [N]` | Capture implementation decisions | Before planning, to shape how it gets built |
+| `/pan:design-phase [N]` | Design a phase — architecture, ADR, threat-lite — before planning | After discussing, before planning |
 | `/pan:plan-phase [N]` | Research + plan + verify | Before executing a phase |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves | After planning is complete |
 | `/pan:verify-phase [N]` | Manual UAT with auto-diagnosis | After execution completes |
@@ -1105,7 +1110,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Context Monitor Warnings Not Showing
 
 **Cause:** Hooks not installed, or bridge file stale.
-**Fix:** Re-run `npx pan-wizard` to reinstall hooks. Check `~/.claude/settings.json` for hook registration. The statusline hook must be running for the context monitor to work (they communicate via `/tmp/claude-ctx-{session_id}.json`).
+**Fix:** Re-run `npx pan-wizard` to reinstall hooks. Check `~/.claude/settings.json` for hook registration. The statusline hook must be running for the context monitor to work (they communicate via `<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`).
 
 ### Wrong Model Being Used for Agents
 

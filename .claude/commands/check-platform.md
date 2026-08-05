@@ -33,7 +33,7 @@ This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `d:\pante
    node d:\PanWizard\bin\install.js --codex --local
    node d:\PanWizard\bin\install.js --gemini --local
    node d:\PanWizard\bin\install.js --opencode --local
-   node d:\PanWizard\bin\install.js --github --local
+   node d:\PanWizard\bin\install.js --copilot --local
    ```
 
 5. **Check runtime-specific paths**:

@@ -588,6 +588,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 |---------|--------------|
 | `/pan:new-project [--auto]` | Full initialization: questions → research → requirements → roadmap |
 | `/pan:discuss-phase [N] [--auto]` | Capture implementation decisions before planning |
+| `/pan:design-phase [N]` | Design a phase — architecture, ADR, threat-lite — before planning |
 | `/pan:plan-phase [N] [--auto]` | Research + plan + verify for a phase |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves, verify when complete |
 | `/pan:verify-phase [N]` | Manual user acceptance testing ¹ |

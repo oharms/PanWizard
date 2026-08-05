@@ -97,7 +97,7 @@ npm run test:all
 ### Phase 7: Install Verify (if installer/shipped files changed)
 ```powershell
 cd d:\pantesting
-Remove-Item .claude, .codex -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item .claude, .codex, .gemini, .opencode, .github -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 
