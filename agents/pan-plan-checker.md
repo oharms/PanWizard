@@ -55,6 +55,19 @@ If context.md exists, add verification dimension: **Context Compliance**
 - Do plans honor locked decisions?
 - Are deferred ideas excluded?
 - Are discretion areas handled appropriately?
+
+**{phase}-design.md** (if exists) — the APPROVED design from `/pan:design-phase`, already verified by `pan-design-checker` (ADR-0042).
+
+| Section | How You Use It |
+|---------|----------------|
+| Architecture & interface contract | Plans MUST implement this architecture. Flag if a plan invents a different one or contradicts the interface contract. |
+| Design decisions / ADR | LOCKED — plans must realize these decisions, not re-open them. |
+| Success criteria (machine-checkable) | Every machine-checkable criterion must have a task that satisfies it, with its named check. |
+
+If design.md exists, add verification dimension: **Design Conformance**
+- Do the plans implement the approved architecture and interface contract (not a re-derived one)?
+- Is every machine-checkable success criterion covered by a task?
+- Do the plans avoid contradicting or silently re-deciding what the ADR settled?
 </upstream_input>
 
 <core_principle>

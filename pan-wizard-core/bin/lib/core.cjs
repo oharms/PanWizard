@@ -60,6 +60,7 @@ const COST_MULTIPLIERS = { reasoning: 15, mid: 3, fast: 1 };
 const MODEL_PROFILES = {
   // Original planning/execution agents (pre-v3.0)
   'pan-planner':              { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
+  'pan-designer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-roadmapper':           { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-executor':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-phase-researcher':     { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
@@ -69,6 +70,7 @@ const MODEL_PROFILES = {
   'pan-document_code':        { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-verifier':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-plan-checker':         { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-design-checker':       { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-integration-checker':  { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-reviewer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   // Spec B v2 agents (v3.0–v3.4) — added v3.7.5 to close MODEL_PROFILES drift
@@ -103,9 +105,11 @@ const EFFORT_ORDER = ['low', 'medium', 'high', 'xhigh'];
 const AGENT_BASE_EFFORT = {
   // Heavy planning/orchestration/debugging — deepest reasoning
   'pan-planner':              'xhigh',
+  'pan-designer':             'xhigh',
   'pan-conductor':            'xhigh',
   'pan-debugger':             'xhigh',
   'pan-plan-checker':         'xhigh',
+  'pan-design-checker':       'xhigh',
   // Execution and verification — thorough but bounded
   'pan-executor':             'high',
   'pan-roadmapper':           'high',
