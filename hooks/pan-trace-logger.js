@@ -115,8 +115,13 @@ function readTraceCursor(cwd) {
   catch { return {}; }
 }
 function writeTraceCursor(cwd, cursor) {
-  try { fs.mkdirSync(path.dirname(traceCursorPath(cwd)), { recursive: true }); fs.writeFileSync(traceCursorPath(cwd), JSON.stringify(cursor), 'utf-8'); }
-  catch { /* best-effort — never block the agent loop */ }
+  try {
+    // Prune dead-transcript keys so the cursor map stays bounded (L40, ADR audit 2026-08).
+    const pruned = {};
+    for (const [tp, v] of Object.entries(cursor)) { if (tp && fs.existsSync(tp)) pruned[tp] = v; }
+    fs.mkdirSync(path.dirname(traceCursorPath(cwd)), { recursive: true });
+    fs.writeFileSync(traceCursorPath(cwd), JSON.stringify(pruned), 'utf-8');
+  } catch { /* best-effort — never block the agent loop */ }
 }
 
 /**

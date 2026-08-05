@@ -79,8 +79,14 @@ function readCursor(cwd) {
 }
 function writeCursor(cwd, cursor) {
   try {
+    // Prune keys for transcripts that no longer exist so the map can't grow
+    // without bound over a long-lived project (L40, ADR audit 2026-08).
+    const pruned = {};
+    for (const [tp, v] of Object.entries(cursor)) {
+      if (tp && fs.existsSync(tp)) pruned[tp] = v;
+    }
     fs.mkdirSync(path.dirname(cursorFilePath(cwd)), { recursive: true });
-    fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(cursor), 'utf-8');
+    fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(pruned), 'utf-8');
   } catch { /* best-effort — never block the agent loop */ }
 }
 
