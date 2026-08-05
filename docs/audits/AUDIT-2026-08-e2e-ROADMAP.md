@@ -4,10 +4,14 @@
 
 > Point-in-time planning doc; counts describe the audit run and are exempt from the live-counts policy.
 
-## Status — ✅ ALL 137 FINDINGS RESOLVED (2026-08-05)
+## Status — follow-up sweep applied (2026-08-05); pending independent re-verification
 
-- **Part 1 (9 High): ✅ DONE** — H1/H4/H6 runtime-parity, H3 dead gate, H2 data loss, H5/H7/H8/H9 misleading docs. Tested + verified live in `d:\pantesting`.
-- **Part 2 (80 Medium + 48 Low): ✅ DONE** — all 7 batches below complete:
+> **History (do not re-inflate):** the original banner falsely claimed "ALL 137 RESOLVED." The independent fix-verification re-audit ([`AUDIT-2026-08-e2e-VERIFICATION.md`](AUDIT-2026-08-e2e-VERIFICATION.md) @ `4baf609`) corrected that to **122/137 verified**, with **15 outstanding** (H7, M6, M26, M33, M34, M45, M57, M60, M61, M62, M64, M65, L34, L47 + L36) and **14 fix-pass regressions (2 High: N1 uninstall-deletes-unparseable-settings, N2 update.md local/global collapse)**.
+>
+> **This sweep** then fixed all 15 outstanding items and all 14 regressions (N1–N14): the 2 High regressions (settings-preservation + install-scope detection derived from the templated path), the M60 bridge-dir fail-closed hardening, M61/M62 hook guards, the missing M30/M32 CLI exit-code tests, and the doc/content residuals. Full suite: **3466 tests / 742 suites / 0 failures**, doc-lint + parity lint green. **This has NOT yet been independently re-verified** — treat "resolved" as "fixed + suite-green", pending a re-audit pass.
+
+- **Part 1 (9 High):** 8 fully verified fixed via live reproduction; **H7 PARTIAL** (Example 6's closing "Continue normally" block still shows the old renumbering flow).
+- **Part 2 (80 Medium + 48 Low):** all 7 batches below were executed, but verification upheld **14 outstanding items**: NOT_FIXED M33, M61, M62, L36; PARTIAL M6, M26, M34, M45, M57, M60, M64, M65, L34, L47.
   - **A** parity lint + path sweep (M37/M41/M52/M54/M55) + preventive `tests/shipped-content-prefix.test.cjs`
   - **B** dead gates & exit codes (M5/M9/M28/M30/M31/M32)
   - **C** core correctness/robustness/security (M3/M6/M8/M10–M29/M79)
@@ -15,8 +19,9 @@
   - **E** docs corrections (M63–M78)
   - **F** test-coverage holes (M57/M58/M59)
   - **G** Low-tail hygiene (L1–L48)
+- **The fix pass introduced 14 new confirmed issues (N1–N14** in the verification report**)**, including 2 High: uninstall can delete a user's unparseable `settings.json` (`bin/install.js`), and the M55 fix collapsed `update.md`'s local/global detection so global installs update as LOCAL.
 
-Full suite: **3445 tests / 733 suites / 0 failures.** ~50 regression tests added across the effort. The remainder of this document is the original planning record.
+Full suite: **3445 tests / 733 suites / 0 failures** at `4baf609` — but N12 (promised M30/M32 exit-code tests never added) and N13/N14 (vacuous assertions) mean green CI under-covers two of the fixed gates. The remainder of this document is the original planning record.
 
 ---
 

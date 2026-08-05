@@ -102,6 +102,124 @@ describe('M57: global install into an explicit --config-dir', () => {
     assert.ok(!fs.existsSync(path.join(workDir, 'CLAUDE.md')), 'no project CLAUDE.md');
     assert.ok(!fs.existsSync(path.join(workDir, 'AGENTS.md')), 'no project AGENTS.md');
   });
+
+  // M57 gap (1): global path rewriting in INSTALLED content had no assertion —
+  // shipped-content-prefix.test.cjs lints only the source tree, and the other
+  // global tests never read installed .md. A regression in the rewrite would ship
+  // to npm unseen. Assert the installed commands carry the absolute config-dir
+  // path to pan-tools and carry no residual ~/.claude/ reference.
+  test('installed command content rewrites ~/.claude paths to the global config dir', () => {
+    const cmdDir = path.join(configDir, 'commands', 'pan');
+    const files = fs.readdirSync(cmdDir).filter(f => f.endsWith('.md'));
+    assert.ok(files.length > 0, 'commands were installed');
+    const posixConfig = configDir.replace(/\\/g, '/');
+    let sawAbsoluteCorePath = false;
+    for (const f of files) {
+      const content = fs.readFileSync(path.join(cmdDir, f), 'utf8');
+      assert.ok(!/~\/\.claude\//.test(content), `${f} must not keep a literal ~/.claude/ ref`);
+      assert.ok(!/\.\/\.claude\//.test(content), `${f} must not keep a literal ./.claude/ ref`);
+      if (content.includes(`${posixConfig}/pan-wizard-core/bin/pan-tools.cjs`)) sawAbsoluteCorePath = true;
+    }
+    assert.ok(sawAbsoluteCorePath, 'at least one command invokes pan-tools via the absolute global config-dir path');
+  });
+});
+
+// ── M57 gap (3): env-var resolution for Codex / OpenCode / Copilot (all 5 runtimes)
+
+describe('M57: Codex --global honors CODEX_HOME', () => {
+  let workDir;
+  before(() => { workDir = mkTmp('pan-global-codex-'); });
+  after(() => rmTmp(workDir));
+
+  test('codex global install resolves to CODEX_HOME when no --config-dir is given', () => {
+    const codexHome = path.join(workDir, 'codex-home');
+    runInstaller('--codex --global --skip-warnings', workDir, { CODEX_HOME: codexHome, CLAUDE_CONFIG_DIR: '' });
+    assert.ok(
+      fs.existsSync(path.join(codexHome, 'pan-wizard-core', 'VERSION')),
+      'codex global install should resolve to CODEX_HOME'
+    );
+  });
+});
+
+describe('M57: OpenCode --global precedence chain', () => {
+  let workDir;
+  before(() => { workDir = mkTmp('pan-global-oc-'); });
+  after(() => rmTmp(workDir));
+
+  // Neutralize any inherited opencode env so each test controls the chain.
+  const baseEnv = { OPENCODE_CONFIG_DIR: '', OPENCODE_CONFIG: '', XDG_CONFIG_HOME: '' };
+
+  test('OPENCODE_CONFIG_DIR wins over OPENCODE_CONFIG and XDG_CONFIG_HOME', () => {
+    const dir = path.join(workDir, 'oc-explicit');
+    runInstaller('--opencode --global --skip-warnings', workDir, {
+      ...baseEnv,
+      OPENCODE_CONFIG_DIR: dir,
+      OPENCODE_CONFIG: path.join(workDir, 'oc-file', 'opencode.json'),
+      XDG_CONFIG_HOME: path.join(workDir, 'oc-xdg'),
+    });
+    assert.ok(fs.existsSync(path.join(dir, 'pan-wizard-core', 'VERSION')), 'lands in OPENCODE_CONFIG_DIR');
+    assert.ok(!fs.existsSync(path.join(workDir, 'oc-file', 'pan-wizard-core')), 'OPENCODE_CONFIG dir untouched');
+    assert.ok(!fs.existsSync(path.join(workDir, 'oc-xdg', 'opencode', 'pan-wizard-core')), 'XDG dir untouched');
+  });
+
+  test('OPENCODE_CONFIG (a file) resolves to its dirname when OPENCODE_CONFIG_DIR is unset', () => {
+    const cfgDir = path.join(workDir, 'oc-cfgfile');
+    runInstaller('--opencode --global --skip-warnings', workDir, {
+      ...baseEnv,
+      OPENCODE_CONFIG: path.join(cfgDir, 'opencode.json'),
+      XDG_CONFIG_HOME: path.join(workDir, 'oc-xdg2'),
+    });
+    assert.ok(fs.existsSync(path.join(cfgDir, 'pan-wizard-core', 'VERSION')), 'lands in dirname(OPENCODE_CONFIG)');
+    assert.ok(!fs.existsSync(path.join(workDir, 'oc-xdg2', 'opencode', 'pan-wizard-core')), 'XDG not used when OPENCODE_CONFIG set');
+  });
+
+  test('XDG_CONFIG_HOME/opencode is used when only XDG is set', () => {
+    const xdg = path.join(workDir, 'oc-xdgonly');
+    runInstaller('--opencode --global --skip-warnings', workDir, { ...baseEnv, XDG_CONFIG_HOME: xdg });
+    assert.ok(
+      fs.existsSync(path.join(xdg, 'opencode', 'pan-wizard-core', 'VERSION')),
+      'lands in XDG_CONFIG_HOME/opencode'
+    );
+  });
+});
+
+describe('M57: Copilot --global honors COPILOT_CONFIG_DIR', () => {
+  let workDir;
+  before(() => { workDir = mkTmp('pan-global-copilot-'); });
+  after(() => rmTmp(workDir));
+
+  test('copilot global install resolves to COPILOT_CONFIG_DIR', () => {
+    const dir = path.join(workDir, 'copilot-cfg');
+    runInstaller('--copilot --global --skip-warnings', workDir, { COPILOT_CONFIG_DIR: dir });
+    assert.ok(
+      fs.existsSync(path.join(dir, 'pan-wizard-core', 'VERSION')),
+      'copilot global install should resolve to COPILOT_CONFIG_DIR'
+    );
+  });
+});
+
+// ── M57 gap (2): --global --uninstall cleanup (incl. the global opencode.json branch)
+
+describe('M57: OpenCode --global --uninstall cleanup', () => {
+  let workDir;
+  before(() => { workDir = mkTmp('pan-global-ocuninstall-'); });
+  after(() => rmTmp(workDir));
+
+  test('a global uninstall removes the core payload and cleans the global opencode.json', () => {
+    const ocDir = path.join(workDir, 'oc-uninstall');
+    const env = { OPENCODE_CONFIG_DIR: ocDir, OPENCODE_CONFIG: '', XDG_CONFIG_HOME: '' };
+    runInstaller('--opencode --global --skip-warnings', workDir, env);
+    assert.ok(fs.existsSync(path.join(ocDir, 'pan-wizard-core', 'VERSION')), 'installed first');
+
+    runInstaller('--opencode --global --uninstall --skip-warnings', workDir, env);
+    assert.ok(!fs.existsSync(path.join(ocDir, 'pan-wizard-core')), 'core payload removed on global uninstall');
+    // The global opencode.json PAN entries must be cleaned: the installer removes
+    // pan-wizard-core permission keys and deletes the file if it becomes empty.
+    const cfgPath = path.join(ocDir, 'opencode.json');
+    if (fs.existsSync(cfgPath)) {
+      assert.ok(!fs.readFileSync(cfgPath, 'utf8').includes('pan-wizard-core'), 'no PAN entries left in global opencode.json');
+    }
+  });
 });
 
 // ── M57: config-dir resolution precedence ─────────────────────────────────────

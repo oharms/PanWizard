@@ -1336,13 +1336,22 @@ function uninstall(isGlobal, runtime = 'claude') {
       }
       removedCount++;
     } else if (Object.keys(settings).length === 0) {
-      // No PAN entries to strip, but the file is an empty {} — a spurious
-      // artifact older installs left behind (e.g. OpenCode, whose real config is
-      // opencode.json). It holds no user data, so remove it rather than claiming
-      // it as a preserved user file.
-      fs.unlinkSync(settingsPath);
-      console.log(`  ${green}✓${reset} Removed empty settings.json`);
-      removedCount++;
+      // No PAN entries and the parsed object is empty — but readSettings()
+      // returns {} on ANY parse failure (BOM, comments, trailing comma), so an
+      // empty object does NOT prove the file holds no user data. Only remove it
+      // when the RAW bytes are literally an empty object; otherwise leave the
+      // user's (unparseable) file untouched (N1 regression fix, ADR audit 2026-08).
+      let rawIsEmptyObject = false;
+      try {
+        rawIsEmptyObject = fs.readFileSync(settingsPath, 'utf8').replace(/^﻿/, '').trim() === '{}';
+      } catch { /* unreadable — never delete */ }
+      if (rawIsEmptyObject) {
+        try {
+          fs.unlinkSync(settingsPath);
+          console.log(`  ${green}✓${reset} Removed empty settings.json`);
+          removedCount++;
+        } catch (err) { pushInstallWarning('staleCleanup', settingsPath, err); }
+      }
     }
   }
 
@@ -2532,7 +2541,7 @@ function install(isGlobal, runtime = 'claude') {
 /**
  * Apply statusline config, then print completion message
  */
-function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallStatusline, runtime = 'claude', isGlobal = true) {
+function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallStatusline, runtime = 'claude', isGlobal = true, isPrimaryStatusline = true) {
   const isOpencode = runtime === 'opencode';
   const isCodex = runtime === 'codex';
   const isCopilot = runtime === 'copilot';
@@ -2544,7 +2553,10 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
     // statuslines (M6, ADR audit 2026-08). PAN's own statusline is replaceable.
     const existingCmd = settings.statusLine && settings.statusLine.command;
     const isPanStatusline = typeof existingCmd === 'string' && /pan-statusline/.test(existingCmd);
-    if (settings.statusLine && !isPanStatusline && !args.includes('--force-statusline')) {
+    // Preserve an existing custom statusline only for SECONDARY runtimes (not
+    // prompted). The primary runtime's shouldInstallStatusline already carries
+    // the user's interactive answer, so don't second-guess it (N4 fix).
+    if (settings.statusLine && !isPanStatusline && !isPrimaryStatusline && !args.includes('--force-statusline')) {
       console.log(`  ${dim}ℹ Kept your existing statusline (pass --force-statusline to replace it)${reset}`);
     } else {
       // Same schema everywhere — Copilot CLI also uses {type: "command", command}
@@ -2747,13 +2759,20 @@ function installAllRuntimes(runtimes, isGlobal, isInteractive) {
   const finalize = (shouldInstallStatusline) => {
     for (const result of results) {
       const useStatusline = statuslineRuntimes.includes(result.runtime) && shouldInstallStatusline;
+      // The primary runtime is the one handleStatusline actually prompted about,
+      // so its shouldInstallStatusline reflects explicit user consent — honor it
+      // even over an existing custom statusline. Secondary runtimes were NOT
+      // prompted, so their existing custom statuslines are preserved (N4 fix keeps
+      // the interactive "replace" working; M6 still protects the others).
+      const isPrimaryStatusline = !!primaryStatuslineResult && result.runtime === primaryStatuslineResult.runtime;
       finishInstall(
         result.settingsPath,
         result.settings,
         result.statuslineCommand,
         useStatusline,
         result.runtime,
-        isGlobal
+        isGlobal,
+        isPrimaryStatusline
       );
     }
   };

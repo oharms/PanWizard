@@ -399,9 +399,9 @@ references update automatically.
 ```
 /pan:exec-phase 3     # finish current work
 /pan:verify-phase 3
-/pan:discuss-phase 4     # move to the inserted phase
-/pan:plan-phase 4
-/pan:exec-phase 4
+/pan:discuss-phase 3.1     # move to the inserted phase
+/pan:plan-phase 3.1
+/pan:exec-phase 3.1
 ```
 
 ---

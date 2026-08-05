@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // pan-trace-logger — SubagentStop hook (v3.5+).
 //
-// Fires alongside pan-cost-logger on every SubagentStop event. If a trace
-// session is active (.planning/optimization/current-session exists), this
-// hook appends a completion event to the trace. This is the automatic
-// instrumentation layer of the circular optimization loop — no extra user
-// action required.
+// Fires alongside pan-cost-logger on every SubagentStop event. In a PAN project
+// (see isPanProject — M62) it ensures a day-scoped trace session exists and
+// appends a completion event to it. This is the automatic instrumentation layer
+// of the circular optimization loop — no extra user action required. Outside a
+// PAN project the hook no-ops, so a global install does not create .planning/
+// trace artifacts in every repo the user opens.
 //
 // Events logged per subagent:
 //   - completion: agent finished, tokens used, exit status
@@ -16,6 +17,30 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
+const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'];
+
+// M62: only instrument actual PAN projects. A global-install hook fires in EVERY
+// repo the user opens; without this gate it silently creates .planning/
+// optimization + trace artifacts in non-PAN repos. A project counts as PAN if it
+// already has a .planning/ tree (a /pan command created it) OR carries a local
+// PAN install (a manifest / core payload under a runtime config dir — covers a
+// fresh local install before any .planning/ exists). Global installs in a plain
+// repo match neither, so the hook no-ops. Best-effort — never throws.
+function isPanProject(cwd) {
+  try {
+    if (!cwd) return false;
+    if (fs.existsSync(path.join(cwd, '.planning'))) return true;
+    for (const d of PAN_RUNTIME_DIRS) {
+      if (fs.existsSync(path.join(cwd, d, 'pan-file-manifest.json'))) return true;
+      if (fs.existsSync(path.join(cwd, d, 'pan-wizard-core'))) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 const PLANNING_DIR = '.planning';
 const OPTIMIZE_DIR = 'optimization';
@@ -305,6 +330,13 @@ function buildTraceEvents(data, sessionId, cwd) {
     if (cwd && fromTranscript.lineCount > since) {
       cursor[data.transcript_path] = fromTranscript.lineCount;
       writeTraceCursor(cwd, cursor);
+    } else if (cwd && fromTranscript.lineCount <= since) {
+      // No transcript records past the cursor: this event consumed NO slice of
+      // its own. A re-fired SubagentStop — or a dual global+local hook
+      // registration sharing this cursor — lands here and would otherwise append
+      // a phantom all-zero completion row the dedup can't catch (the zeros differ
+      // from the real row it follows). Emit nothing so nothing is appended (M61).
+      return [];
     }
   } else {
     const rawIn = extractNumber(data.usage, 'input_tokens');
@@ -430,7 +462,11 @@ if (require.main === module) {
     try {
       const data = JSON.parse(input);
       const cwd = data.cwd || data.workspace?.current_dir || process.cwd();
-      // Always ensure a session exists — creates a day-scoped auto-session if needed
+      // M62: a global-install hook fires in every repo; skip non-PAN projects so
+      // we don't create .planning/ optimization + trace artifacts in them.
+      if (!isPanProject(cwd)) return;
+      // In a PAN project, ensure a session exists — creates a day-scoped
+      // auto-session if needed.
       const sessionId = ensureSessionId(cwd);
       const events = buildTraceEvents(data, sessionId, cwd);
       appendTraceEvents(cwd, events, sessionId);
@@ -445,6 +481,7 @@ module.exports = {
   appendTraceEvents,
   getCurrentSessionId,
   ensureSessionId,
+  isPanProject,
   PLANNING_DIR,
   OPTIMIZE_DIR,
   TRACES_DIR,

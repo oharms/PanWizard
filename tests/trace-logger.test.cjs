@@ -10,10 +10,13 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { spawnSync } = require('child_process');
 const {
-  buildTraceEvents, appendTraceEvents,
-  PLANNING_DIR, OPTIMIZE_DIR, TRACES_DIR, TRACE_EVENT_FILE,
+  buildTraceEvents, appendTraceEvents, isPanProject,
+  PLANNING_DIR, OPTIMIZE_DIR, TRACES_DIR, TRACE_EVENT_FILE, CURRENT_SESSION_FILE,
 } = require('../hooks/pan-trace-logger.js');
+
+const TRACE_HOOK = path.join(__dirname, '..', 'hooks', 'pan-trace-logger.js');
 
 let tmpDir;
 beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-tracelog-')); });
@@ -88,6 +91,76 @@ describe('pan-trace-logger — appendTraceEvents dedup', () => {
   });
 });
 
+describe('pan-trace-logger — M61 re-fired SubagentStop guard', () => {
+  test('a re-fire with no new transcript records emits nothing (no phantom completion row)', () => {
+    const p = path.join(tmpDir, 'transcript.jsonl');
+    fs.writeFileSync(p, JSON.stringify({
+      type: 'assistant',
+      message: { model: 'claude-opus-4-8', usage: { input_tokens: 5100, output_tokens: 250 } },
+    }) + '\n');
+    const data = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+
+    const first = buildTraceEvents(data, 'sess1', tmpDir);
+    assert.ok(completionOf(first), 'first fire emits a completion event');
+    assert.equal(appendTraceEvents(tmpDir, first, 'sess1'), true);
+
+    // Cursor is now past every record → the re-fire's slice is empty → no events.
+    const second = buildTraceEvents(data, 'sess1', tmpDir);
+    assert.deepEqual(second, [], 'a re-fire with an empty slice emits nothing');
+    assert.equal(appendTraceEvents(tmpDir, second, 'sess1'), false);
+
+    const completions = fs.readFileSync(traceFile('sess1'), 'utf-8')
+      .split('\n').filter(Boolean).map((l) => JSON.parse(l))
+      .filter((e) => e.category === 'agent_completion');
+    assert.equal(completions.length, 1, 'exactly one real completion row survives');
+  });
+});
+
+describe('pan-trace-logger — M62 PAN-project gate', () => {
+  test('isPanProject: true for .planning/ or a local install marker, else false', () => {
+    const plan = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-t62-plan-'));
+    const inst = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-t62-inst-'));
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-t62-plain-'));
+    try {
+      fs.mkdirSync(path.join(plan, '.planning'), { recursive: true });
+      assert.equal(isPanProject(plan), true);
+      fs.mkdirSync(path.join(inst, '.opencode', 'pan-wizard-core'), { recursive: true });
+      assert.equal(isPanProject(inst), true, 'a local core payload marks a PAN project');
+      assert.equal(isPanProject(plain), false);
+    } finally {
+      for (const d of [plan, inst, plain]) fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  test('the stdin driver no-ops in a non-PAN repo (no optimization/trace artifacts)', () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-t62-drv-'));
+    try {
+      const payload = { hook_event_name: 'SubagentStop', cwd: plain, session_id: 'test-sess', agent_type: 'pan-executor' };
+      const res = spawnSync(process.execPath, [TRACE_HOOK], { input: JSON.stringify(payload), cwd: plain, encoding: 'utf8' });
+      assert.equal(res.status, 0, 'hook never blocks the agent loop');
+      assert.ok(!fs.existsSync(path.join(plain, PLANNING_DIR)), 'no .planning/ pollution in a non-PAN repo');
+    } finally {
+      fs.rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
+  test('the stdin driver creates a trace session in a PAN project', () => {
+    const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-t62-proj-'));
+    try {
+      fs.mkdirSync(path.join(proj, PLANNING_DIR), { recursive: true }); // marks it a PAN project
+      const payload = { hook_event_name: 'SubagentStop', cwd: proj, session_id: 's', agent_type: 'pan-executor' };
+      const res = spawnSync(process.execPath, [TRACE_HOOK], { input: JSON.stringify(payload), cwd: proj, encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      assert.ok(
+        fs.existsSync(path.join(proj, PLANNING_DIR, OPTIMIZE_DIR, CURRENT_SESSION_FILE)),
+        'an auto trace session is created in a PAN project'
+      );
+    } finally {
+      fs.rmSync(proj, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('pan-trace-logger — v3.21.0 enrichment', () => {
   const { ensureSessionId, getCurrentSessionId } = require('../hooks/pan-trace-logger.js');
 
@@ -100,12 +173,17 @@ describe('pan-trace-logger — v3.21.0 enrichment', () => {
   });
 
   test('duration_ms is the transcript slice span; null without timestamps', () => {
-    const p = writeTranscript([
+    // Distinct transcript paths: the trace cursor is keyed by transcript_path, so
+    // reusing one path across two buildTraceEvents calls would leave the second
+    // slice empty (cursor already past it) and emit nothing (the M61 re-fire guard).
+    const p = path.join(tmpDir, 'dur-span.jsonl');
+    fs.writeFileSync(p, [
       { type: 'assistant', timestamp: '2026-07-30T10:00:00.000Z', message: { usage: { input_tokens: 10 } } },
       { type: 'assistant', timestamp: '2026-07-30T10:00:03.000Z', message: { usage: { output_tokens: 4 } } },
-    ]);
+    ].map((l) => JSON.stringify(l)).join('\n') + '\n');
     assert.equal(completionOf(buildTraceEvents({ hook_event_name: 'SubagentStop', transcript_path: p }, 's', tmpDir)).context.duration_ms, 3000);
-    const p2 = writeTranscript([{ type: 'assistant', message: { usage: { input_tokens: 1 } } }]);
+    const p2 = path.join(tmpDir, 'dur-none.jsonl');
+    fs.writeFileSync(p2, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 1 } } }) + '\n');
     assert.equal(completionOf(buildTraceEvents({ hook_event_name: 'SubagentStop', transcript_path: p2 }, 's', tmpDir)).context.duration_ms, null);
   });
 

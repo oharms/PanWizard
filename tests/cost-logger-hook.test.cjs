@@ -9,10 +9,14 @@
 const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { buildCostRecord, appendRecord, METRICS_DIR, TOKENS_FILE } =
+const { spawnSync } = require('child_process');
+const { buildCostRecord, appendRecord, isPanProject, METRICS_DIR, TOKENS_FILE } =
   require('../hooks/pan-cost-logger.js');
 const { createTempProject, cleanup } = require('./helpers.cjs');
+
+const COST_HOOK = path.join(__dirname, '..', 'hooks', 'pan-cost-logger.js');
 
 describe('pan-cost-logger — buildCostRecord', () => {
   test('returns null for non-object input', () => {
@@ -166,6 +170,92 @@ describe('pan-cost-logger — appendRecord', () => {
     assert.equal(parsed.agent, 'pan-executor');
     assert.equal(parsed.input_tokens, 1000);
     assert.equal(parsed.source, 'hook');
+  });
+});
+
+describe('pan-cost-logger — M61 re-fired SubagentStop guard', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('a re-fired identical SubagentStop does not append a phantom zero-token row', () => {
+    const p = path.join(tmpDir, 'transcript.jsonl');
+    fs.writeFileSync(p, JSON.stringify({
+      type: 'assistant',
+      message: { model: 'claude-opus-4-8', usage: { input_tokens: 5100, output_tokens: 250, cache_read_input_tokens: 9000 } },
+    }) + '\n');
+    const data = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+    const file = path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE);
+
+    // First fire: a real row with the transcript slice's tokens.
+    const r1 = buildCostRecord(data, tmpDir);
+    assert.equal(r1.input_tokens, 5100);
+    assert.equal(appendRecord(tmpDir, r1), true);
+
+    // Re-fire the identical event: the cursor is already past every record, so the
+    // slice is empty. The old code appended an all-zero row here (the zeros differ
+    // from the real row, defeating the last-row dedup) — that phantom must be gone.
+    const r2 = buildCostRecord(data, tmpDir);
+    assert.equal(r2.input_tokens, 0, 'empty slice yields zeros');
+    assert.equal(r2.__emptySlice, true, 'flagged as a re-fire with no new slice');
+    assert.equal(appendRecord(tmpDir, r2), false, 'phantom re-fire row is dropped');
+
+    const rows = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
+    assert.equal(rows.length, 1, 'ledger still has exactly the one real row');
+  });
+
+  test('appendRecord drops any record flagged __emptySlice; the flag is never persisted', () => {
+    const r = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'a' });
+    Object.defineProperty(r, '__emptySlice', { value: true, enumerable: false });
+    assert.equal(appendRecord(tmpDir, r), false);
+    assert.ok(!fs.existsSync(path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE)), 'nothing written');
+    // A normal record still serializes without the transient flag.
+    const ok = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'a' });
+    appendRecord(tmpDir, ok);
+    const line = fs.readFileSync(path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE), 'utf-8').trim();
+    assert.ok(!line.includes('__emptySlice'), 'transient flag never leaks into the ledger');
+  });
+});
+
+describe('pan-cost-logger — M62 PAN-project gate', () => {
+  test('isPanProject: true for a .planning/ tree, a local install marker, else false', () => {
+    const plan = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-m62-plan-'));
+    const inst = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-m62-inst-'));
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-m62-plain-'));
+    try {
+      fs.mkdirSync(path.join(plan, '.planning'), { recursive: true });
+      assert.equal(isPanProject(plan), true, '.planning/ tree marks a PAN project');
+      fs.mkdirSync(path.join(inst, '.claude'), { recursive: true });
+      fs.writeFileSync(path.join(inst, '.claude', 'pan-file-manifest.json'), '{}');
+      assert.equal(isPanProject(inst), true, 'a local install manifest marks a PAN project');
+      assert.equal(isPanProject(plain), false, 'a plain repo is not a PAN project');
+    } finally {
+      for (const d of [plan, inst, plain]) fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  test('the stdin driver no-ops in a non-PAN repo (no .planning/ artifacts created)', () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-m62-drv-'));
+    try {
+      const payload = { hook_event_name: 'SubagentStop', cwd: plain, session_id: 'test-sess', agent_type: 'pan-executor' };
+      const res = spawnSync(process.execPath, [COST_HOOK], { input: JSON.stringify(payload), cwd: plain, encoding: 'utf8' });
+      assert.equal(res.status, 0, 'hook never blocks the agent loop');
+      assert.ok(!fs.existsSync(path.join(plain, '.planning')), 'no .planning/ pollution in a non-PAN repo');
+    } finally {
+      fs.rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
+  test('the stdin driver logs normally in a PAN project', () => {
+    const proj = createTempProject(); // creates .planning/
+    try {
+      const payload = { hook_event_name: 'SubagentStop', cwd: proj, session_id: 's', agent_type: 'pan-executor', usage: { input_tokens: 10, output_tokens: 2 } };
+      const res = spawnSync(process.execPath, [COST_HOOK], { input: JSON.stringify(payload), cwd: proj, encoding: 'utf8' });
+      assert.equal(res.status, 0);
+      assert.ok(fs.existsSync(path.join(proj, '.planning', METRICS_DIR, TOKENS_FILE)), 'metrics row written in a PAN project');
+    } finally {
+      cleanup(proj);
+    }
   });
 });
 

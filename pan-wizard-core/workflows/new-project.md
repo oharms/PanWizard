@@ -727,7 +727,7 @@ Read project.md and extract:
 - Stated constraints (budget, timeline, tech limitations)
 - Any explicit scope boundaries
 
-**If research exists:** Read research/FEATURES.md and extract feature categories.
+**If research exists:** Read research/features.md and extract feature categories.
 
 **If auto mode:**
 - Auto-include all table stakes features (users expect these)

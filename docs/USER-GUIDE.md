@@ -1191,7 +1191,7 @@ Unified installs also ship a shared `pan-wizard-core` copy at `.agents/pan-wizar
 | Commands | `commands/pan/*.md` | `commands/*.md` | `commands/pan/*.toml` | `.agents/skills/pan-*/SKILL.md`¹ | `skills/pan-*/SKILL.md` |
 | Agents | `agents/*.md` | `agents/*.md` | `agents/*.md` | `agents/*.toml` | `agents/*.agent.md` |
 | Hooks | `hooks/*.js` in settings.json | Not supported | `hooks/*.js` in settings.json | `hooks/*.js`, registered in `.codex/hooks.json`² | `hooks/*.js`, registered in `.github/hooks/pan.json`² |
-| Config | `settings.json` | `opencode.json` | `settings.json` | `config.json` | `.github/copilot/settings.json` (local) / `~/.copilot/settings.json` (global) |
+| Config | `settings.json` | `opencode.json` | `settings.json` | `config.toml` | `.github/copilot/settings.json` (local) / `~/.copilot/settings.json` (global) |
 
 Codex and Copilot CLI use a "skills" format rather than slash commands. Each command becomes a skill directory with a `SKILL.md` file. Copilot CLI agents use `.agent.md` extension. The content is equivalent — only the container format differs.
 

@@ -12,7 +12,7 @@ Manage the circular optimization loop — apply reports, check stats, control tr
 | `stats` | Show cumulative stats |
 | `trace init` | Start a new trace session |
 | `trace end` | Finalize current session |
-| `trace status` | Show active session |
+| `trace current` | Show active session |
 | `trace list` | List all sessions |
 
 ---
@@ -83,7 +83,7 @@ Show: session ID, event count, agent count, type breakdown.
 
 ---
 
-## trace status
+## trace current
 
 ```
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace current

@@ -91,7 +91,7 @@ Spec B v2 shipped a wave of new core modules (bus, cost, preview, review-deep, k
 - **`whatif.cjs` (v3.3, Y-4):** git worktree lifecycle for counterfactual phase replay. Agent explores in isolated worktree, command writes `.planning/counterfactuals/<phase>-<slug>.md` in main tree, cleans up worktree.
 - **`bridge.cjs` (v3.3, Y-5):** MCP tool discovery + per-phase recommendation. Reads `.planning/bridge/available-tools.json` (host-runtime-populated), scores tools against phase plan text by keyword frequency. Discovery-only; auto-invocation deferred.
 
-Hierarchical orchestration (v3.4): `pan-conductor` spawns executor/reviewer/verifier sub-agents for `/pan:exec-phase <N> --hierarchical`, bounded by a safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude + Opus 4.7 only; falls back to flat exec elsewhere.
+Hierarchical orchestration (v3.4): `pan-conductor` spawns executor/reviewer/verifier sub-agents for `/pan:exec-phase <N> --hierarchical`, bounded by a safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude + Opus 4.8 only; falls back to flat exec elsewhere.
 
 Automatic cost instrumentation (v3.4): `hooks/pan-cost-logger.js` fires on Claude Code's `SubagentStop` event, appends to `.planning/metrics/tokens.jsonl`, flows into `/pan:cost` without caller instrumentation.
 

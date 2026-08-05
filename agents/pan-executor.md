@@ -459,7 +459,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements mark-complete ${RE
 
 **For blockers found during execution:**
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state add-blocker "Blocker description"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state add-blocker --text "Blocker description"
 ```
 </state_updates>
 

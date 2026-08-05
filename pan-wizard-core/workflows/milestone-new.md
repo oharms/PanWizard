@@ -195,7 +195,7 @@ Display key findings from summary.md:
 
 Read project.md: core value, current milestone goals, validated requirements (what exists).
 
-**If research exists:** Read FEATURES.md, extract feature categories.
+**If research exists:** Read features.md, extract feature categories.
 
 Present features by category:
 ```

@@ -84,7 +84,7 @@ The taxonomy of agent memory has crystallized around three tiers: **working memo
 
 The AI coding quality crisis is the industry's most urgent problem and PAN's largest strategic opportunity. CodeRabbit's analysis of 470 open-source PRs found AI-authored code produces **1.7× more total issues**, **1.75× more logic errors**, and **1.57× more security findings** than human-written code. The Cortex 2026 Benchmark Report shows that while PRs per author increased 20% year-over-year, **incidents per PR increased 23.5%** and change failure rates rose 30%. The METR randomized controlled trial — the most rigorous study to date — found experienced developers took **19% longer** with AI tools, creating a 39-percentage-point gap between perceived and actual productivity.
 
-PAN's verify phase directly addresses this crisis. The industry is converging on CodeRabbit's recommendation of **"Zero Trust for AI Code"** — treating AI-generated code with the same rigor as untrusted third-party libraries. The emerging best practice is multi-agent layered validation: one agent codes, another critiques, another tests, another vets compliance. PAN's 12 specialized agents can implement this pattern natively.
+PAN's verify phase directly addresses this crisis. The industry is converging on CodeRabbit's recommendation of **"Zero Trust for AI Code"** — treating AI-generated code with the same rigor as untrusted third-party libraries. The emerging best practice is multi-agent layered validation: one agent codes, another critiques, another tests, another vets compliance. PAN's specialized agent suite can implement this pattern natively.
 
 ### Enterprise compliance requirements create a natural moat
 

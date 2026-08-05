@@ -3465,7 +3465,7 @@ Spawn the runtime adapter against the experiment via `spawnSync`, observe via `r
 
 **Incomplete-run detection:** When `exit_code: 0` but `state.md` shows `status != completed`, the runner returns `stop_reason: "incomplete"` (not `success`). Distinguishes real milestone-done from premature exits.
 
-**Billing note (Claude runtime):** since June 15, 2026, headless `claude -p` / Agent SDK usage draws from a separate monthly **Agent SDK credit pool** on Claude subscriptions — it does not count against interactive session limits, and vice versa. Experiment runs are therefore tagged `billing_pool: "agent_sdk"` in `runState.metrics` so downstream analysis (`/pan:learn`, billing reconciliation) can separate experiment spend from interactive spend. Codex/Gemini/OpenCode runs bill per their own provider's CLI policy and carry `billing_pool: null`.
+**Billing note (Claude runtime):** since June 15, 2026, headless `claude -p` / Agent SDK usage draws from a separate monthly **Agent SDK credit pool** on Claude subscriptions — it does not count against interactive session limits, and vice versa. The `billing_pool: "agent_sdk"` tag (and the rest of the `runState.metrics` envelope) is produced only by the runner module's capture-metrics API, **not** by the `experiment run` CLI path — a CLI run's `run-state.json` has no `metrics` key. Callers needing billing reconciliation must invoke the runner module directly with metrics capture enabled.
 
 ### `experiment status <slug> [--root <dir>]` (v3.7.0)
 
@@ -3473,7 +3473,7 @@ Read snapshot from `<expPath>/.planning/run-state.json`: status, started_at, end
 
 ### `experiment stop <slug> [--root <dir>]` (v3.7.0)
 
-Send SIGTERM to the running spawn (best-effort; falls back to recording manual stop in run-state.json if the pid is gone).
+Finalize/record a stopped experiment in `run-state.json`. This **cannot** terminate an already-running synchronous experiment: the runner blocks while a run is in flight and no pid is recorded to signal, so `stop` only reconciles the run-state after the run has exited. If no pid is recorded (an in-flight run), it returns an error and writes nothing.
 
 ### `experiment harvest <slug> [--root <dir>] [--source-root <dir>] [--force]` (v3.7.0)
 

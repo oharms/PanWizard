@@ -97,7 +97,7 @@ Spawn the external AI runtime against the experiment folder. **Synchronous** —
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--timeout <sec>` | `1800` (30 min) | Hard timeout in seconds; runner sends SIGTERM at deadline |
+| `--timeout <sec>` | `3600` (60 min) | Hard timeout in seconds; runner sends SIGTERM at deadline |
 | `--prompt <text>` | `/pan:new-project --auto @.planning/idea.md` | Prompt passed to the external runtime |
 | `--root <path>` | `~/pan-experiments/` | Override the experiment root |
 
@@ -105,7 +105,7 @@ Spawn the external AI runtime against the experiment folder. **Synchronous** —
 
 **Runtime support:** claude / codex / gemini / opencode (via `RUNTIME_RUNNERS` adapter map in `runner.cjs`). GitHub Copilot CLI is **unsupported** for the `run` subcommand — no documented headless prompt mode. Copilot users can still scaffold and harvest manually.
 
-**Billing note (Claude runtime):** headless `claude -p` runs bill against the **Claude Agent SDK credit pool** — a monthly allotment separate from your interactive subscription limits (Anthropic split the two effective June 15, 2026). Experiment runs do not consume interactive-session quota, but heavy experimentation can exhaust the SDK pool independently. Captured metrics are tagged `billing_pool: "agent_sdk"` so you can reconcile experiment spend separately.
+**Billing note (Claude runtime):** headless `claude -p` runs bill against the **Claude Agent SDK credit pool** — a monthly allotment separate from your interactive subscription limits (Anthropic split the two effective June 15, 2026). Experiment runs do not consume interactive-session quota, but heavy experimentation can exhaust the SDK pool independently. Note: the CLI `experiment run` does not capture a metrics envelope — the `billing_pool: "agent_sdk"` tagging is produced only via the runner module's capture-metrics API, not from the command line, so CLI run-state has no `metrics` key to reconcile against.
 
 ### `/pan:experiment status <slug>`
 
@@ -113,7 +113,7 @@ Read the current `run-state.json` snapshot. Returns the full state object (`stat
 
 ### `/pan:experiment stop <slug>`
 
-Gracefully halt a running experiment. Reads pid from `run-state.json`, sends SIGTERM, writes `status: failed, stop_reason: manual` to the run state. Returns the updated state.
+Finalize and record a stopped experiment. This **cannot** terminate an already-running synchronous experiment: while a run is in flight the runner blocks and no pid is available to signal, so `stop` only reconciles the run-state after the fact. If a completed run left the state un-finalized, it records `status: failed, stop_reason: manual` and returns the updated state. If no pid is recorded (an in-flight run), it returns an error and writes nothing.
 
 If the experiment has already finished, returns the existing run state without error.
 

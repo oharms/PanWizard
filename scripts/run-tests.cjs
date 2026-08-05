@@ -6,18 +6,24 @@
  * literal pattern "tests/*.test.cjs" matches no file and the run exits 1.
  * This script expands the pattern deterministically on every platform.
  *
- * Usage: node scripts/run-tests.cjs <dir> [<dir> ...]
+ * Usage: node scripts/run-tests.cjs [--watch] <dir> [<dir> ...]
  *   Runs every *.test.cjs DIRECTLY inside each listed directory (no recursion,
  *   so `tests` and `tests/scenarios` stay separately addressable).
+ *   --watch re-runs on change. It must go through this script too: since Node 21
+ *   a bare `node --test --watch tests/` treats `tests/` as a glob pattern, fails
+ *   to match the directory as a file, and crashes having run nothing (audit L36 /
+ *   N8) — so the same deterministic expansion has to feed --watch.
  */
 
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const dirs = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const watch = argv[0] === '--watch';
+const dirs = watch ? argv.slice(1) : argv;
 if (dirs.length === 0) {
-  console.error('Usage: node scripts/run-tests.cjs <dir> [<dir> ...]');
+  console.error('Usage: node scripts/run-tests.cjs [--watch] <dir> [<dir> ...]');
   process.exit(1);
 }
 
@@ -40,5 +46,6 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' });
+const nodeArgs = watch ? ['--test', '--watch', ...files] : ['--test', ...files];
+const result = spawnSync(process.execPath, nodeArgs, { stdio: 'inherit' });
 process.exit(result.status ?? 1);

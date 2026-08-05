@@ -718,7 +718,7 @@ Since v3.4.0, `/pan:exec-phase <N> --hierarchical` spawns `pan-conductor` as a t
 
 **Audit trail:** every spawn and completion is logged to `.planning/orchestration/trace.json` (authoritative) and published to the `orchestrator` bus channel (`.planning/bus/orchestrator.jsonl`) for observability.
 
-**Runtime gating:** Claude Code + Opus 4.7 only. Other runtimes fall back to flat exec with a warning. Details in [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md).
+**Runtime gating:** Claude Code + Opus 4.8 only. Other runtimes fall back to flat exec with a warning. Details in [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md).
 
 **When to use:**
 - Phases with ≥4 autonomous plans that genuinely parallelize

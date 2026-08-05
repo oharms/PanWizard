@@ -44,14 +44,26 @@ function buildStatuslineOutput(data, deps) {
         // Mirrors bridgeDir() in pan-context-monitor.js (the reader).
         const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
         const bridgeSubdir = pathMod.join(tmpDir, `pan-hooks-${uid}`);
-        try { fsMod.mkdirSync(bridgeSubdir, { recursive: true, mode: 0o700 }); } catch { /* best-effort */ }
-        const bridgePath = pathMod.join(bridgeSubdir, `claude-ctx-${session}.json`);
-        fsMod.writeFileSync(bridgePath, JSON.stringify({
-          session_id: session,
-          remaining_percentage: remaining,
-          used_pct: used,
-          timestamp: Math.floor(Date.now() / 1000),
-        }));
+        // Fail CLOSED if the per-user dir is pre-planted/symlinked/owned by
+        // someone else — mkdirSync{recursive} silently no-ops on an existing dir,
+        // so verify ownership+mode before writing the session bridge (M60).
+        let secure = false;
+        try {
+          fsMod.mkdirSync(bridgeSubdir, { recursive: true, mode: 0o700 });
+          const st = fsMod.lstatSync(bridgeSubdir);
+          secure = !st.isSymbolicLink()
+            && !(typeof process.getuid === 'function' && st.uid !== process.getuid())
+            && (st.mode & 0o077) === 0;
+        } catch { secure = false; }
+        if (secure) {
+          const bridgePath = pathMod.join(bridgeSubdir, `claude-ctx-${session}.json`);
+          fsMod.writeFileSync(bridgePath, JSON.stringify({
+            session_id: session,
+            remaining_percentage: remaining,
+            used_pct: used,
+            timestamp: Math.floor(Date.now() / 1000),
+          }));
+        }
       } catch { /* bridge is best-effort */ }
     }
 

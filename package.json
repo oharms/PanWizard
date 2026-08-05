@@ -68,7 +68,7 @@
     "test:all": "node scripts/run-tests.cjs tests tests/scenarios",
     "test:e2e": "node scripts/run-tests.cjs tests/scenarios",
     "test:vscode": "npx playwright test --config tests/e2e/playwright.config.mjs",
-    "test:watch": "node --test --watch tests/",
+    "test:watch": "node scripts/run-tests.cjs --watch tests tests/scenarios",
     "build:plugin": "node scripts/build-plugin.js"
   }
 }

@@ -51,6 +51,49 @@ describe('verify stubs — fake-implementation scanner (anti-fake, ADR-0036)', (
   });
 });
 
+// N5/M30: the CLI exit code (not just scanStubs) is what gates a handoff. output()
+// used to hard-exit 0 before the gate check, so `verify stubs --gate` never gated;
+// these lock the CLI-level exit contract so a future revert to output(r, raw, ...)
+// re-breaks a test instead of shipping silently.
+describe('verify stubs --gate — CLI exit code (N5/M30 regression)', () => {
+  let tmp;
+  const { execFileSync } = require('child_process');
+  const gitInit = (dir) => {
+    execFileSync('git', ['init'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(dir, 'README.md'), '# baseline\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir, stdio: 'pipe' });
+  };
+  const stage = (rel, body) => {
+    fs.mkdirSync(path.join(tmp, path.dirname(rel)), { recursive: true });
+    fs.writeFileSync(path.join(tmp, rel), body);
+    execFileSync('git', ['add', rel], { cwd: tmp, stdio: 'pipe' });
+  };
+  beforeEach(() => { tmp = createTempProject(); gitInit(tmp); });
+  afterEach(() => { cleanup(tmp); });
+
+  test('exits NON-ZERO on a blocking stub finding in the changed set', () => {
+    stage('src/pay.js', "function pay(){ throw new Error('not implemented'); }\n");
+    const r = runPanTools('verify stubs --gate --raw', tmp);
+    assert.equal(r.success, false, 'a blocking stub must gate the handoff (exit non-zero)');
+    assert.match(`${r.output || ''}${r.error || ''}`, /invalid/);
+  });
+
+  test('exits ZERO when the changed set is clean', () => {
+    stage('src/ok.js', "function add(a,b){ return a+b; }\nmodule.exports={add};\n");
+    const r = runPanTools('verify stubs --gate --raw', tmp);
+    assert.equal(r.success, true, 'a clean changed set must not gate');
+  });
+
+  test('without --gate, a blocking stub still exits ZERO (report-only)', () => {
+    stage('src/pay.js', "function pay(){ throw new Error('not implemented'); }\n");
+    const r = runPanTools('verify stubs --raw', tmp);
+    assert.equal(r.success, true, '--gate is what turns findings into a non-zero exit');
+  });
+});
+
 describe('verify reconcile — verdict vs mechanical signals (anti-rubber-stamp, ADR-0036)', () => {
   let tmp;
   beforeEach(() => { tmp = createTempProject(); });

@@ -171,7 +171,7 @@ function appendEvent(state, type, details) {
  * @param {string} [opts.root] - experiment root (default PAN_EXPERIMENTS_ROOT_DEFAULT)
  * @param {string} [opts.prompt] - prompt passed to the external runtime; default
  *   is `/pan:new-project --auto @.planning/idea.md`
- * @param {number} [opts.timeoutMs] - hard timeout (default 30 min)
+ * @param {number} [opts.timeoutMs] - hard timeout (default 60 min)
  * @param {object} [opts.runtimeOverride] - { bin, buildArgs } to bypass the manifest's
  *   runtime adapter (used by tests)
  * @param {function} [opts.onProgress] - callback invoked per line of stdout/stderr

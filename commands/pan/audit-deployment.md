@@ -150,7 +150,7 @@ Check `.planning/` directory in the target:
 Assess how well the project workflow was followed:
 
 **3.1 Planning Quality**
-For each phase with a PLAN.md:
+For each phase with plan files (`*-plan.md`, e.g. `01-01-plan.md`):
 - Does it have clear objectives?
 - Does it reference requirements?
 - Are plans sequential with dependencies noted?
@@ -226,7 +226,7 @@ Verification Coverage: <N>%
 - [P-W01] <description> — <suggestion>
 
 ### Phase Health
-| Phase | PLAN.md | Plans | Verified | Status |
+| Phase | Planned | Plans | Verified | Status |
 |-------|---------|-------|----------|--------|
 | 01    | ✓       | 3     | ✓        | Complete |
 | 02    | ✓       | 5     | ✗        | Unverified |

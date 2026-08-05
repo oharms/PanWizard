@@ -97,7 +97,7 @@ pan-tools cache prime --summary
 
 This returns `{blocks: [{path, bytes, cache}], total_bytes, sha}` for the cacheable set (project.md, requirements.md, roadmap.md, state.md, standards.md). The `sha` is stable across identical inputs, so repeated calls within the phase hit cached reads.
 
-When spawning subagents for wave execution, include the cacheable block paths in each agent's system-context so the host runtime (Claude Code with Opus 4.7) can mark them `cache_control: ephemeral`. On non-Claude runtimes or older models, this step is a no-op — nothing breaks, just no savings.
+When spawning subagents for wave execution, include the cacheable block paths in each agent's system-context so the host runtime (Claude Code with Opus 4.8) can mark them `cache_control: ephemeral`. On non-Claude runtimes or older models, this step is a no-op — nothing breaks, just no savings.
 </cache_priming>
 
 <process>

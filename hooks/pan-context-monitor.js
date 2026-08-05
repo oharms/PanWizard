@@ -32,8 +32,19 @@ const path = require('path');
 function bridgeDir() {
   const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
   const dir = path.join(os.tmpdir(), `pan-hooks-${uid}`);
-  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch { /* best-effort */ }
-  return dir;
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // mkdirSync{recursive} is a silent no-op on an EXISTING dir, so on a shared
+    // host an attacker can pre-plant pan-hooks-<uid> and read the session id /
+    // swap in a symlink. Verify WE own it, it isn't a symlink, and it isn't
+    // group/other-accessible; fail CLOSED (null) otherwise — the bridge is
+    // best-effort observability, so skipping beats a leak (M60, ADR audit 2026-08).
+    const st = fs.lstatSync(dir);
+    if (st.isSymbolicLink()) return null;
+    if (typeof process.getuid === 'function' && st.uid !== process.getuid()) return null;
+    if ((st.mode & 0o077) !== 0) return null;
+    return dir;
+  } catch { return null; }
 }
 
 const WARNING_THRESHOLD = 35;  // remaining_percentage <= 35%
@@ -125,6 +136,7 @@ function main() {
       }
 
       const tmpDir = bridgeDir();
+      if (!tmpDir) process.exit(0); // insecure/unavailable bridge dir — fail closed (M60)
       const metricsPath = path.join(tmpDir, `claude-ctx-${sessionId}.json`);
 
       // Read metrics directly; absence (subagent/fresh session) or a corrupt

@@ -16,6 +16,30 @@
 const fs = require('fs');
 const path = require('path');
 
+// Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
+const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'];
+
+// M62: only instrument actual PAN projects. A global-install hook fires in EVERY
+// repo the user opens; without this gate it silently creates .planning/ metrics
+// artifacts in non-PAN repos. A project counts as PAN if it already has a
+// .planning/ tree (a /pan command created it) OR carries a local PAN install
+// (a manifest / core payload under a runtime config dir — covers a fresh local
+// install before any .planning/ exists). Global installs in a plain repo match
+// neither, so the hook no-ops. Best-effort — never throws.
+function isPanProject(cwd) {
+  try {
+    if (!cwd) return false;
+    if (fs.existsSync(path.join(cwd, '.planning'))) return true;
+    for (const d of PAN_RUNTIME_DIRS) {
+      if (fs.existsSync(path.join(cwd, d, 'pan-file-manifest.json'))) return true;
+      if (fs.existsSync(path.join(cwd, d, 'pan-wizard-core'))) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 const METRICS_DIR = 'metrics';
 const TOKENS_FILE = 'tokens.jsonl';
 const CURSOR_FILE = '.cost-cursor.json';
@@ -123,6 +147,10 @@ function buildCostRecord(data, cwd) {
   // from a genuine zero-token run.
   let tokenSource = data.transcript_path ? 'transcript' : 'usage-fallback';
   let clamped = false;
+  // Set when a transcript-sourced event consumed no new records (a re-fire /
+  // dual-registration). Carried on the returned record as a transient flag so
+  // appendRecord can drop the phantom row; never written to the ledger (M61).
+  let emptySlice = false;
   if (data.transcript_path) {
     const cursor = readCursor(cwd);
     const since = cursor[data.transcript_path] || 0;
@@ -138,6 +166,15 @@ function buildCostRecord(data, cwd) {
     if (fromTranscript.lineCount > since) {
       cursor[data.transcript_path] = fromTranscript.lineCount;
       writeCursor(cwd, cursor);
+    } else {
+      // No transcript records past the cursor: this event consumed NO slice of
+      // its own. A re-fired SubagentStop — or a dual global+local hook
+      // registration that shares this cursor — lands here and would otherwise
+      // append a phantom all-zero row. The last-row dedup can't catch it (the
+      // zeros differ from the real row the re-fire follows), so flag the record
+      // and let appendRecord drop it (M61). Transient field — appendRecord
+      // never persists it.
+      emptySlice = true;
     }
   } else {
     // No transcript to slice — best-effort from data.usage, plausibility-guarded
@@ -179,6 +216,12 @@ function buildCostRecord(data, cwd) {
     token_source: tokenSource,
     clamped,
   };
+
+  // Non-enumerable transient flag: it must NOT be serialized into the ledger,
+  // but appendRecord needs to read it to drop a phantom re-fire row (M61).
+  if (emptySlice) {
+    Object.defineProperty(record, '__emptySlice', { value: true, enumerable: false });
+  }
 
   return record;
 }
@@ -270,6 +313,12 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
  */
 function appendRecord(cwd, record) {
   if (!record) return false;
+  // M61 re-fire guard: a transcript-sourced event that consumed no new records
+  // (buildCostRecord flags it via __emptySlice) is a re-fired / dual-registered
+  // SubagentStop with nothing of its own to attribute. Dropping it here is the
+  // real guard the last-row dedup could not be — the phantom all-zero row
+  // differs from the real row it follows, so the dedup never fired (M61).
+  if (record.__emptySlice) return false;
   try {
     const dir = path.join(cwd, '.planning', METRICS_DIR);
     fs.mkdirSync(dir, { recursive: true });
@@ -314,6 +363,9 @@ if (require.main === module) {
       // fall back to process.cwd() which is the project root when Claude Code
       // invokes the hook.
       const cwd = data.cwd || data.workspace?.current_dir || process.cwd();
+      // M62: a global-install hook fires in every repo; don't pollute non-PAN
+      // projects with .planning/ metrics artifacts.
+      if (!isPanProject(cwd)) return;
       const record = buildCostRecord(data, cwd);
       appendRecord(cwd, record);
     } catch {
@@ -322,4 +374,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildCostRecord, appendRecord, readUsageFromTranscript, readCursor, writeCursor, METRICS_DIR, TOKENS_FILE, CURSOR_FILE };
+module.exports = { buildCostRecord, appendRecord, readUsageFromTranscript, readCursor, writeCursor, isPanProject, METRICS_DIR, TOKENS_FILE, CURSOR_FILE };

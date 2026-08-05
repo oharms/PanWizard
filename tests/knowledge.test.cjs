@@ -188,8 +188,15 @@ describe('knowledge — discuss', () => {
     const r = appendTurn(tmpDir, evil, { role: 'user', content: 'x' });
     assert.ok(r.error, 'traversal phase must be rejected');
     assert.match(r.error, /Invalid phase/);
-    // Nothing written outside .planning/conversations.
-    assert.ok(!fs.existsSync(path.join(tmpDir, '..', '..', '..', 'outside')));
+    // Nothing written outside .planning/conversations. The '../../../outside'
+    // phase, joined at .planning/conversations/<phase>/session.json, collapses to
+    // <dirname(tmpDir)>/outside/session.json — exactly ONE level above tmpDir (the
+    // three '..' cancel 'conversations', '.planning', and the tmpDir basename). The
+    // assertion must check THAT location, or it passes vacuously against a dir the
+    // code could never write to and would miss a broken guard (N13).
+    const escapeDir = path.join(tmpDir, '..', 'outside');
+    assert.ok(!fs.existsSync(escapeDir), `traversal must not create ${escapeDir}`);
+    assert.ok(!fs.existsSync(path.join(escapeDir, 'session.json')), 'no escaped session.json');
     // loadSession also rejects the same value.
     assert.ok(loadSession(tmpDir, evil).error);
   });

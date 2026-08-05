@@ -12,21 +12,22 @@ Read all files referenced by the invoking prompt's execution_context before star
 Detect whether PAN is installed locally or globally by checking both locations and validating install integrity:
 
 ```bash
-# Check local first (takes priority only if valid)
-# Paths templated at install time for runtime compatibility
-LOCAL_VERSION_FILE="~/.claude/pan-wizard-core/VERSION"
-LOCAL_MARKER_FILE="~/.claude/pan-wizard-core/workflows/update.md"
-# Canonical ~/.claude/ so the installer templates these to the real install
-# location per runtime/install-type ($HOME/.claude was never rewritten — M55).
-GLOBAL_VERSION_FILE="~/.claude/pan-wizard-core/VERSION"
-GLOBAL_MARKER_FILE="~/.claude/pan-wizard-core/workflows/update.md"
+# There is ONE install location per install. The installer templates the
+# canonical ~/.claude/ prefix to this install's real path, and the SHAPE of that
+# templated prefix reveals the scope: a --local install is cwd-relative ("./…"),
+# a --global install is an absolute path. Deriving scope from the single
+# templated path avoids the collapsed dual-path detection that mis-ran every
+# global update as --local (N2 regression fix, ADR audit 2026-08).
+VERSION_FILE="~/.claude/pan-wizard-core/VERSION"
+MARKER_FILE="~/.claude/pan-wizard-core/workflows/update.md"
+case "$VERSION_FILE" in
+  ./*) SCOPE="LOCAL" ;;
+  *)   SCOPE="GLOBAL" ;;
+esac
 
-if [ -f "$LOCAL_VERSION_FILE" ] && [ -f "$LOCAL_MARKER_FILE" ] && grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$LOCAL_VERSION_FILE"; then
-  cat "$LOCAL_VERSION_FILE"
-  echo "LOCAL"
-elif [ -f "$GLOBAL_VERSION_FILE" ] && [ -f "$GLOBAL_MARKER_FILE" ] && grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$GLOBAL_VERSION_FILE"; then
-  cat "$GLOBAL_VERSION_FILE"
-  echo "GLOBAL"
+if [ -f "$VERSION_FILE" ] && [ -f "$MARKER_FILE" ] && grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$VERSION_FILE"; then
+  cat "$VERSION_FILE"
+  echo "$SCOPE"
 else
   echo "UNKNOWN"
 fi

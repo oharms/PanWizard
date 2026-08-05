@@ -81,21 +81,23 @@ For each gap, fill the debug-subagent-prompt template and spawn:
 Task(
   prompt=filled_debug_subagent_prompt + "\n\n<files_to_read>\n- {phase_dir}/{phase_num}-uat.md\n- .planning/state.md\n</files_to_read>",
   subagent_type="pan-debugger",
-  description="Debug: {truth_short}"
+  description="Debug: {issue_summary_short}"
 )
 ```
 
 **All agents spawn in single message** (parallel execution).
 
-Template placeholders:
-- `{truth}`: The expected behavior that failed
+Template placeholders (see `debug-subagent-prompt.md`):
+- `{issue_id}`: Stable id for the gap, e.g. `UAT-{test_num}`
+- `{issue_summary}`: The expected behavior that failed
 - `{expected}`: From UAT test
 - `{actual}`: Verbatim user description from reason field
 - `{errors}`: Any error messages from UAT (or "None reported")
 - `{reproduction}`: "Test {test_num} in UAT"
 - `{timeline}`: "Discovered during UAT"
+- `{true_or_false}`: `true` (symptoms are prefilled from the UAT gap)
 - `{goal}`: `find_root_cause_only` (UAT flow - plan-phase --gaps handles fixes)
-- `{slug}`: Generated from truth
+- `{slug}`: Generated from the issue summary
 </step>
 
 <step name="collect_results">
