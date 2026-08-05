@@ -4,10 +4,21 @@
 
 > Point-in-time planning doc; counts describe the audit run and are exempt from the live-counts policy.
 
-## Status
+## Status — ✅ ALL 137 FINDINGS RESOLVED (2026-08-05)
 
-- **Part 1 (9 High findings): ✅ DONE** — fixed, tested (+5 regression tests), and verified live in `d:\pantesting` (commit `90c7e9c`). H1/H4/H6 runtime-parity, H3 dead gate, H2 data loss, H5/H7/H8/H9 misleading docs.
-- **Part 2 (80 Medium + 48 Low): this roadmap.** Grouped into 7 batches, sequenced by leverage and risk. Each batch is independently shippable and testable.
+- **Part 1 (9 High): ✅ DONE** — H1/H4/H6 runtime-parity, H3 dead gate, H2 data loss, H5/H7/H8/H9 misleading docs. Tested + verified live in `d:\pantesting`.
+- **Part 2 (80 Medium + 48 Low): ✅ DONE** — all 7 batches below complete:
+  - **A** parity lint + path sweep (M37/M41/M52/M54/M55) + preventive `tests/shipped-content-prefix.test.cjs`
+  - **B** dead gates & exit codes (M5/M9/M28/M30/M31/M32)
+  - **C** core correctness/robustness/security (M3/M6/M8/M10–M29/M79)
+  - **D** shipped-content drift (M1/M2/M4/M7/M34–M56/M80)
+  - **E** docs corrections (M63–M78)
+  - **F** test-coverage holes (M57/M58/M59)
+  - **G** Low-tail hygiene (L1–L48)
+
+Full suite: **3445 tests / 733 suites / 0 failures.** ~50 regression tests added across the effort. The remainder of this document is the original planning record.
+
+---
 
 The audit's own "highest-leverage" guidance drives the ordering: close whole *classes* systemically (with a lint that prevents recurrence) before grinding individual items.
 
