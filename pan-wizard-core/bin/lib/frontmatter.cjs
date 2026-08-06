@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, output, error } = require('./core.cjs');
+const { safeReadFile, output, error, escapeRegex } = require('./core.cjs');
 const { FIELD_VALUE_RE, PRIORITY_LEVELS, EFFORT_SIZES } = require('./constants.cjs');
 
 // --- Inline array rendering thresholds -------------------------------------------
@@ -229,56 +229,84 @@ function parseMustHavesBlock(content, blockName) {
   if (!fmMatch) return [];
 
   const yaml = fmMatch[1];
+  const lines = yaml.split('\n');
+  const indentOf = (line) => line.match(/^(\s*)/)[1].length;
 
-  // Locate the block header at exactly 4-space indent (must_haves child level)
-  const blockPattern = new RegExp(`^\\s{4}${blockName}:\\s*$`, 'm');
-  const blockStart = yaml.search(blockPattern);
-  if (blockStart === -1) return [];
+  // Find `blockName:` as a child of `must_haves:` — by RELATIVE indent, never a
+  // fixed column. This function used to require exactly 4 spaces
+  // (`^\s{4}artifacts:`) with list items at exactly 6 and continuations at 8+.
+  // Nothing PAN ships is written that way: `template fill plan`,
+  // templates/phase-prompt.md, agents/pan-planner.md and agents/pan-verifier.md
+  // all put `must_haves:` at column 0 with its children at 2. So every real plan
+  // parsed as ZERO must_haves, and `verify reconcile` — the anti-rubber-stamp gate
+  // — reported "no must_haves declared … verdict trusted" and exited 0 on a stub.
+  // The 2026-08 audit chain missed it for five rounds because its fixtures were
+  // hand-written at 4-space, i.e. it verified the parser against itself.
+  const mustHavesIdx = lines.findIndex(l => /^\s*must_haves:\s*$/.test(l));
+  if (mustHavesIdx === -1) return [];
+  const mustHavesIndent = indentOf(lines[mustHavesIdx]);
 
-  const afterBlock = yaml.slice(blockStart);
-  // Skip the header line itself, then process remaining lines
-  const blockLines = afterBlock.split('\n').slice(1);
+  // The block header is the first `blockName:` deeper than must_haves and before
+  // the next line at must_haves' own level or shallower (which ends the section).
+  let blockIdx = -1;
+  for (let i = mustHavesIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    const ind = indentOf(line);
+    if (ind <= mustHavesIndent) break; // left the must_haves section
+    if (new RegExp(`^\\s*${escapeRegex(blockName)}:\\s*$`).test(line)) { blockIdx = i; break; }
+  }
+  if (blockIdx === -1) return [];
+  const blockIndent = indentOf(lines[blockIdx]);
+
+  const blockLines = lines.slice(blockIdx + 1);
 
   const items = [];
   let currentItem = null;
+  // Indent of the list-item dashes, learned from the first one we see, so that
+  // continuation lines can be told apart from items without assuming a width.
+  let itemIndent = null;
 
   for (const line of blockLines) {
     // Skip blank lines within the block
     if (line.trim() === '') continue;
 
-    // --- Indentation-based grouping ---
-    // Measure indent to detect when we've left the block (indent <= 4
-    // means we've returned to must_haves level or a sibling block)
-    const indent = line.match(/^(\s*)/)[1].length;
-    if (indent <= 4 && line.trim() !== '') break;
+    // Leaving the block: back to the block header's level or shallower (a sibling
+    // block such as key_links, or back out to must_haves).
+    const indent = indentOf(line);
+    if (indent <= blockIndent) break;
 
-    if (line.match(/^\s{6}-\s+/)) {
-      // New list item at 6-space indent (direct child of the block)
+    const dashMatch = line.match(/^(\s*)-\s+(.*)$/);
+    const isNewItem = dashMatch && (itemIndent === null || dashMatch[1].length <= itemIndent);
+
+    if (isNewItem) {
+      if (itemIndent === null) itemIndent = dashMatch[1].length;
+      // New list item (direct child of the block)
       if (currentItem) items.push(currentItem);
       currentItem = {};
 
-      // Check if it is a simple string item (no colon means not key-value)
-      const simpleMatch = line.match(/^\s{6}-\s+"?([^"]+)"?\s*$/);
-      if (simpleMatch && !line.includes(':')) {
-        currentItem = simpleMatch[1];
+      const body = dashMatch[2];
+      // A plain string item — no `key: value` shape.
+      const kvMatch = body.match(/^(\w+):\s*"?([^"]*)"?\s*$/);
+      if (kvMatch) {
+        currentItem = {};
+        currentItem[kvMatch[1]] = kvMatch[2];
       } else {
-        // Key-value on same line as dash: "- path: value"
-        const kvMatch = line.match(/^\s{6}-\s+(\w+):\s*"?([^"]*)"?\s*$/);
-        if (kvMatch) {
-          currentItem = {};
-          currentItem[kvMatch[1]] = kvMatch[2];
-        }
+        currentItem = body.replace(/^"|"$/g, '').trim();
       }
     } else if (currentItem && typeof currentItem === 'object') {
-      // Continuation key-value at 8+ space indent (properties of current list item)
-      const kvMatch = line.match(/^\s{8,}(\w+):\s*"?([^"]*)"?\s*$/);
+      // Continuation key-value: deeper than the item's dash (properties of it)
+      const kvMatch = line.match(/^\s+(\w+):\s*"?([^"]*)"?\s*$/);
       if (kvMatch) {
         const val = kvMatch[2];
         // Coerce pure-integer strings to numbers for convenience
         currentItem[kvMatch[1]] = /^\d+$/.test(val) ? parseInt(val, 10) : val;
       }
-      // Array items nested under a property at 10+ space indent
-      const arrMatch = line.match(/^\s{10,}-\s+"?([^"]+)"?\s*$/);
+      // Array items nested under a property. Any dash line reaching this branch is
+      // already deeper than the list-item dash (a shallower one would have been
+      // treated as a new item above), so relative depth alone identifies it —
+      // no fixed column.
+      const arrMatch = line.match(/^\s+-\s+"?([^"]+)"?\s*$/);
       if (arrMatch) {
         // Convert the most recently added key's scalar value into an array,
         // then append this item to that array
