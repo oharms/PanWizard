@@ -275,6 +275,17 @@ function cmdEstimateCost(cwd, raw) {
  * @returns {void}
  */
 /**
+ * List the paths currently in the index (staged), or [] if git says nothing.
+ * @param {string} cwd - Working directory
+ * @returns {string[]} Staged paths, as git reports them
+ */
+function stagedFiles(cwd) {
+  const r = execGit(cwd, ['diff', '--cached', '--name-only']);
+  if (r.exitCode !== 0 || !r.stdout) return [];
+  return r.stdout.split('\n').filter(Boolean);
+}
+
+/**
  * Run commit safety checks (deleted files, sensitive patterns).
  * @param {string} cwd - Working directory
  * @param {Object} config - Loaded config
@@ -315,7 +326,22 @@ function runCommitSafetyChecks(cwd, config, force) {
     }
   }
   if (safetyChecks.sensitive_files_blocked.length > 0) {
-    return { blocked: true, reason: 'sensitive_file_detected', safetyChecks, hint: 'Remove sensitive files from staging before committing' };
+    // The hint must not say "unstage them" — cmdCommit now unstages PAN's own
+    // additions before returning, so that advice would describe work already done.
+    // It matters that the user knows this can be a FALSE positive: the patterns
+    // match the PATH, never file content, and the bare words in
+    // DEFAULT_SENSITIVE_PATTERNS (credentials/secret/password/token) are unanchored,
+    // so an ordinary planning doc under a phase like `03-secrets-design/` trips it
+    // with no secret anywhere. Without that context the block reads as "PAN found a
+    // secret in your files", which is not what was checked.
+    return {
+      blocked: true,
+      reason: 'sensitive_file_detected',
+      safetyChecks,
+      hint: 'Matched on filename/path, not content — this can be a false positive. '
+        + 'If the file is safe, narrow commit.sensitive_patterns in .planning/config.json '
+        + 'or commit it yourself; if it is a real secret, gitignore it.',
+    };
   }
 
   return { blocked: false, safetyChecks };
@@ -361,6 +387,13 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
     return;
   }
 
+  // Snapshot the index BEFORE staging so a blocked commit can put it back exactly
+  // as the user left it. The safety check reads `git diff --cached`, so it can only
+  // see what staging produced — `--files .planning/` is a directory, and the file
+  // that trips the check is only discoverable after `git add`. So we stage, check,
+  // and undo on refusal, rather than trying to predict the expansion ourselves.
+  const preStaged = new Set(stagedFiles(cwd));
+
   // Stage files
   const filesToStage = files && files.length > 0 ? files : [PLANNING_DIR + '/'];
   for (const file of filesToStage) execGit(cwd, ['add', file]);
@@ -368,6 +401,17 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   // Safety checks
   const safety = runCommitSafetyChecks(cwd, config, force);
   if (safety.blocked) {
+    // Unstage what WE just added. Leaving it staged was the whole harm: the check
+    // that exists to keep a secret out of git was what put it INTO the index, where
+    // the next `git commit` from any source — the user, an IDE, another tool — would
+    // have included it. It also wedged every later `pan-tools commit`, since the
+    // offending file stayed staged and kept tripping the same check, so an autonomous
+    // run silently stopped persisting its plans behind a message that reads like a
+    // safety success. Restore only OUR additions; anything the user had staged before
+    // this call is theirs and stays untouched.
+    const added = stagedFiles(cwd).filter(f => !preStaged.has(f));
+    for (const f of added) execGit(cwd, ['reset', '--quiet', '--', f]);
+    safety.safetyChecks.unstaged_by_pan = added;
     // error key => exit 1. A blocked commit is a refusal that protected something
     // (a staged deletion, a secret) - the docs did NOT land, which is the same harm
     // as commit_failed for an autonomous loop. The JSON body still goes to stdout,
