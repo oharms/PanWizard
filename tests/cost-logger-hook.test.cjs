@@ -410,6 +410,368 @@ describe('pan-cost-logger — N25/N26/N27 seen-event signatures (idempotency-mar
   });
 });
 
+// A1/N26 + A2/N29. The marker layer (N25-N27, above) decides whether an event is
+// ADMITTED; this suite pins what the LEDGER ends up holding, which is where the
+// defect lived: the per-invocation discriminator was hashed into the seen-event
+// signature but never written into the row, so two admitted same-type siblings
+// produced rows that were byte-identical modulo `ts` and the pre-existing identity
+// dedup ate the second. Reproduced before the fix: a 3-sibling same-type wave
+// wrote 2 rows.
+//
+// Each case names the assertion that fails if the `event_sig` row field is
+// reverted, so a future reader can tell the six cases apart — several of them are
+// distinguished only by which layer does the suppressing.
+//
+// WHAT `agent_id` IS IN CASES (3) AND (4): a stand-in for "some per-invocation
+// field", not a field PAN has observed. Nothing in this repo establishes that a
+// real SubagentStop payload carries `agent_id` or any other per-invocation
+// identifier — `grep -rn agent_id hooks/ pan-wizard-core/ docs/` finds only PAN's
+// own agent-tracking artifacts (written by workflows, not by the host) plus these
+// tests. What the repo HAS observed, from the trace rows recorded under
+// experiments/*/.planning/optimization/traces/ (written by the sibling hook from
+// real payloads) and from docs/FIELD-REPORT-army-2026-06.md:
+//   • `agent_type`/`subagent_type` is supplied, and varies between DIFFERENT-type
+//     siblings — which is what makes case (2) real and unconditional;
+//   • `session_id` is SHARED with the parent, and so is the session transcript;
+//   • `model` and `phase` came out null (the payload carried neither), and
+//     `usage` is absent entirely in headless mode.
+// So NO payload field is confirmed to vary between two CONCURRENT SAME-TYPE
+// siblings on any host. Cases (3) and (4) therefore pin a CONDITIONAL benefit:
+// what the ledger holds when the host does supply some per-invocation field.
+// Where it supplies none, the two payloads are the same bytes and the second
+// sibling stays suppressed by design — the residual pinned by case (1) of the N17
+// suite above.
+describe('pan-cost-logger — A1/A2 ledger-row discriminator (six-case behavior matrix)', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  const file = () => path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE);
+  const rows = () => (fs.existsSync(file())
+    ? fs.readFileSync(file(), 'utf-8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    : []);
+  // One-record transcript: whichever event arrives first consumes a real slice.
+  const transcript = (name) => {
+    const p = path.join(tmpDir, name);
+    fs.writeFileSync(p, JSON.stringify({
+      type: 'assistant', message: { usage: { input_tokens: 1200, output_tokens: 34 } },
+    }) + '\n');
+    return p;
+  };
+  const fire = (data) => appendRecord(tmpDir, buildCostRecord(data, tmpDir));
+
+  test('(1) a true byte-identical re-fire yields exactly ONE row', () => {
+    const p = transcript('refire.jsonl');
+    const ev = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+    assert.equal(fire(ev), true);
+    assert.equal(fire(ev), false, 'the same event delivered twice is suppressed');
+    assert.equal(rows().length, 1);
+  });
+
+  test('(1b) a byte-identical re-fire with NO transcript_path is still caught by the row dedup', () => {
+    // No transcript → the marker layer is never consulted, so the last-row dedup
+    // is the only guard. Both rows carry the SAME event_sig because the payload is
+    // the same bytes. REVERT CHECK (in the other direction): this assertion is
+    // what fails if the discriminator is ever made per-row-unique — a counter, a
+    // nonce, a timestamp — instead of derived from the payload.
+    const ev = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', session_id: 's1', usage: { input_tokens: 9, output_tokens: 2 } };
+    assert.equal(fire(ev), true);
+    assert.equal(fire(ev), false, 'identical payload → identical discriminator → duplicate');
+    assert.equal(rows().length, 1);
+  });
+
+  test('(2) interleaved dual registration A, B, A′, B′ yields exactly TWO rows, no phantoms', () => {
+    const p = transcript('interleaved.jsonl');
+    const A = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+    const B = { hook_event_name: 'SubagentStop', agent_type: 'pan-verifier', transcript_path: p, session_id: 's1' };
+    assert.equal(fire(A), true, 'A consumes the real slice');
+    assert.equal(fire(B), true, 'sibling B is recorded with zero tokens');
+    assert.equal(fire(A), false, "A′ is A's re-fire");
+    assert.equal(fire(B), false, "B′ is B's re-fire");
+    assert.equal(rows().length, 2, 'A + B only');
+  });
+
+  test('(3) two same-type siblings with distinct per-invocation identity yield TWO rows', () => {
+    // The audit's reproduction. A verifier consumes the shared transcript FIRST,
+    // so both same-type siblings then see an empty slice and produce rows that are
+    // equal in every field except the discriminator — the exact input the last-row
+    // dedup used to collapse.
+    // REVERT CHECK: without event_sig in the row, the second `fire` returns false
+    // ("the second same-type sibling is recorded") and rows().length is 2, not 3.
+    const p = transcript('pair.jsonl');
+    assert.equal(fire({ hook_event_name: 'SubagentStop', agent_type: 'pan-verifier', transcript_path: p, session_id: 's1' }), true,
+      'the verifier consumes the shared transcript');
+    const sib = (id) => ({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1', agent_id: id });
+    assert.equal(fire(sib('exec-1')), true);
+    assert.equal(fire(sib('exec-2')), true, 'the second same-type sibling is recorded');
+    const r = rows();
+    assert.equal(r.length, 3, 'verifier + both executors');
+    // The two sibling rows are identical apart from ts and the discriminator —
+    // which is precisely why the discriminator is what saves the second one.
+    const strip = (x) => { const { ts, event_sig, ...rest } = x; return JSON.stringify(rest); };
+    assert.equal(strip(r[1]), strip(r[2]), 'the sibling rows differ in nothing else');
+    assert.notEqual(r[1].event_sig, r[2].event_sig, 'distinct per-invocation discriminators');
+  });
+
+  test('(4) a 3-sibling same-type wave yields THREE rows', () => {
+    // Reproduced as 2 rows before the fix: sibling 1 consumed the slice, sibling 2
+    // was recorded with zeros, and sibling 3's row was byte-identical to sibling
+    // 2's modulo ts, so the dedup dropped it.
+    // REVERT CHECK: the third `fire` returns false and rows().length is 2.
+    const p = transcript('wave.jsonl');
+    const sib = (id) => ({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1', agent_id: id });
+    assert.equal(fire(sib('exec-1')), true, 'sibling 1 consumes the slice');
+    assert.equal(fire(sib('exec-2')), true, 'sibling 2 (empty slice) is recorded');
+    assert.equal(fire(sib('exec-3')), true, 'sibling 3 is recorded — not eaten as a duplicate of sibling 2');
+    assert.equal(rows().length, 3, 'a three-subagent wave counts three spawns');
+    assert.equal(new Set(rows().map((r) => r.event_sig)).size, 3, 'three distinct discriminators');
+  });
+
+  test('(5) a first fire with a missing/unreadable transcript_path yields ONE row', () => {
+    const missing = path.join(tmpDir, 'never-written.jsonl');
+    const r = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-planner', transcript_path: missing, session_id: 's9' }, tmpDir);
+    assert.ok(!r.__emptySlice, 'a first fire is not a re-fire');
+    assert.equal(appendRecord(tmpDir, r), true, 'the spawn is counted');
+    assert.equal(rows().length, 1);
+    assert.equal(typeof rows()[0].event_sig, 'string', 'the row still carries a discriminator');
+  });
+
+  test('(6) the M61 phantom — a re-fire after the cursor consumed the slice — stays suppressed', () => {
+    // Same input as case (1); pinned separately because the SUPPRESSING LAYER is
+    // what matters here: the marker layer flags __emptySlice and appendRecord drops
+    // the row before the dedup ever compares it. The dedup could not catch this one
+    // (the phantom's zeros differ from the real row it follows), which is why the
+    // discriminator change must not shift this case onto the dedup.
+    const p = transcript('m61.jsonl');
+    const ev = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+    const r1 = buildCostRecord(ev, tmpDir);
+    assert.equal(r1.input_tokens, 1200);
+    assert.equal(appendRecord(tmpDir, r1), true);
+    const r2 = buildCostRecord(ev, tmpDir);
+    assert.equal(r2.input_tokens, 0, 'the re-fire sees an empty slice');
+    assert.equal(r2.__emptySlice, true, 'suppressed by the marker layer, not by the row dedup');
+    assert.equal(appendRecord(tmpDir, r2), false);
+    assert.equal(rows().length, 1);
+  });
+
+  test('the discriminator is a plain string field; the transient __emptySlice flag is still never persisted', () => {
+    const p = transcript('shape.jsonl');
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' }, tmpDir);
+    appendRecord(tmpDir, rec);
+    const line = fs.readFileSync(file(), 'utf-8').trim();
+    assert.ok(!line.includes('__emptySlice'), 'transient flag never leaks into the ledger');
+    assert.match(JSON.parse(line).event_sig, /^[0-9a-f]{40}$/, 'the persisted discriminator is the event signature');
+  });
+
+  test('a pre-discriminator ledger still parses and reports (backward compatibility)', () => {
+    const { aggregate } = require('../pan-wizard-core/bin/lib/cost.cjs');
+    // Two rows exactly as the previous hook wrote them — v2, no event_sig.
+    const legacy = (agent, input) => JSON.stringify({
+      v: 2, ts: '2026-08-01T00:00:00.000Z', agent, command: null, model: 'claude-opus-4-8', tier: 'reasoning',
+      input_tokens: input, output_tokens: 10, cache_read_tokens: 0, cache_write_tokens: 0,
+      cost_usd: null, duration_ms: null, phase: null, session: 's1', source: 'hook',
+      token_source: 'transcript', clamped: false,
+    });
+    fs.mkdirSync(path.dirname(file()), { recursive: true });
+    fs.writeFileSync(file(), legacy('pan-executor', 500) + '\n' + legacy('pan-verifier', 700) + '\n');
+    const agg = aggregate(tmpDir);
+    assert.equal(agg.totals.calls, 2, 'rows without the field still aggregate');
+    assert.equal(agg.totals.input_tokens, 1200);
+    assert.ok(agg.totals.cost_usd > 0, 'and still price');
+    // A new-shape row appends alongside them, and the guard works normally
+    // thereafter (a new row is never equal to one written in the older shape —
+    // they differ in `v` as well as in the discriminator).
+    const ev = { hook_event_name: 'SubagentStop', agent_type: 'pan-planner', session_id: 's1', usage: { input_tokens: 5, output_tokens: 1 } };
+    assert.equal(fire(ev), true);
+    assert.equal(fire(ev), false, 'the guard is live again on the following same-shape pair');
+    assert.equal(rows().length, 3);
+    assert.equal(aggregate(tmpDir).totals.calls, 3, 'mixed-shape ledgers aggregate as one');
+  });
+});
+
+// A4/N29 — how far the dedup reaches, where it stops, and the floor it must never
+// cross.
+//
+// A pass once tried to close the residual pinned below by widening the ledger
+// dedup: scan a tail of recent rows for an identical row, and additionally treat a
+// repeated `event_sig` as a re-fire whenever the candidate carried no tokens on
+// any axis and no measured duration. Both halves destroy real data, which is why
+// the guard is back to comparing against the immediately preceding row only.
+//
+// The first two cases below are the floor — they are the reproduction that killed
+// the widening, and they fail loudly if it is ever reintroduced. The rest pin the
+// residual the simple guard leaves standing, so the hooks' comments can be checked
+// against behavior instead of taken on trust.
+describe('pan-cost-logger — A4 dedup reach, the data-loss floor, and the honest residual', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  const file = () => path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE);
+  const rows = () => (fs.existsSync(file())
+    ? fs.readFileSync(file(), 'utf-8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    : []);
+  const transcript = (name) => {
+    const p = path.join(tmpDir, name);
+    fs.writeFileSync(p, JSON.stringify({
+      type: 'assistant', message: { usage: { input_tokens: 1200, output_tokens: 34 } },
+    }) + '\n');
+    return p;
+  };
+  // A same-type wave on one shared transcript, distinguished per invocation.
+  // WAVE is deliberately larger than the hook's MAX_SEEN_SIGS so sibling 1's
+  // signature is evicted from the marker FIFO by the time its re-fire arrives.
+  const WAVE = 12;
+  const sib = (p, i) => ({
+    hook_event_name: 'SubagentStop', agent_type: 'pan-executor',
+    transcript_path: p, session_id: 's1', agent_id: `exec-${i}`,
+  });
+  const fire = (data) => appendRecord(tmpDir, buildCostRecord(data, tmpDir));
+
+  // The shared transcript from docs/FIELD-REPORT-army-2026-06.md: one session
+  // transcript that every subagent appends to, so each spawn's slice is the
+  // records added since the previous spawn's. Two agent types alternate, which
+  // makes each repeat of a payload NON-ADJACENT in the ledger.
+  const SPAWNS = ['X', 'Y', 'X', 'Y', 'X'];
+  const PAYLOAD = {
+    X: (p) => ({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' }),
+    Y: (p) => ({ hook_event_name: 'SubagentStop', agent_type: 'pan-verifier', transcript_path: p, session_id: 's1' }),
+  };
+  // One record per spawn. `usage: null` → the slice yields zeros; no `timestamp`
+  // field → duration_ms stays null, so the row looks "contentless" even though the
+  // spawn was entirely real.
+  const growBy = (p, usage) => fs.appendFileSync(p, JSON.stringify(
+    usage ? { type: 'assistant', message: { usage } } : { type: 'assistant', message: {} },
+  ) + '\n');
+  const runSharedTranscript = (usageFor) => {
+    const p = path.join(tmpDir, 'shared.jsonl');
+    fs.writeFileSync(p, '');
+    for (const which of SPAWNS) {
+      growBy(p, usageFor(which));       // the subagent does its work…
+      fire(PAYLOAD[which](p));          // …then SubagentStop fires for it
+    }
+    return rows();
+  };
+
+  test('no genuine spawn is ever dropped: five spawns X,Y,X,Y,X on one shared transcript whose slices carry no usage yield FIVE rows', () => {
+    // THE DATA-LOSS FLOOR. Every one of these five events is a distinct real
+    // spawn; none is a re-fire. Because X's payload is byte-identical each time it
+    // runs (agent type, session id and transcript path are all shared — the field
+    // report's topology) all three X rows carry ONE signature, and because the
+    // slices hold no usage and no timestamps every row is all-zero with a null
+    // duration.
+    //
+    // WHICH ASSERTION FAILS IF THE WINDOW SCAN IS REINTRODUCED: this test's first
+    // assertion — `rows().length === SPAWNS.length` — reports 2 instead of 5.
+    // Spawns 3, 4 and 5 are eaten, by either half of the widening independently:
+    // the identity scan finds spawn 1's row (identical modulo `ts`) further back in
+    // the tail, and the signature prong finds spawn 1's `event_sig` on a candidate
+    // that looks contentless. The `agents` assertion then reports
+    // ['pan-executor','pan-verifier'].
+    const r = runSharedTranscript(() => null);
+    assert.equal(r.length, SPAWNS.length, 'five real spawns, five ledger rows');
+    assert.deepEqual(r.map((x) => x.agent),
+      ['pan-executor', 'pan-verifier', 'pan-executor', 'pan-verifier', 'pan-executor'],
+      'in spawn order, with no collapse of the repeated payloads');
+    assert.equal(new Set(r.map((x) => x.event_sig)).size, 2,
+      'only TWO signatures across the five rows — the signature is not an identity');
+  });
+
+  test('no genuine spawn is ever dropped, and real token counts survive with it', () => {
+    // Same five spawns, now with real usage in each slice and each agent type's
+    // slices identical to its own earlier ones — so the rows repeat exactly.
+    // WHICH ASSERTION FAILS IF THE WINDOW SCAN IS REINTRODUCED: the token-sum
+    // assertion — the identity scan drops spawns 3-5 and `inputSum` reports 2000
+    // instead of 5200, i.e. 3200 input tokens of real, billed usage deleted from
+    // the ledger. This is the case that makes the widening strictly worse than the
+    // phantom row it was chasing.
+    const r = runSharedTranscript((which) => (which === 'X'
+      ? { input_tokens: 1200, output_tokens: 340 }
+      : { input_tokens: 800, output_tokens: 120 }));
+    assert.equal(r.length, SPAWNS.length, 'five real spawns, five ledger rows');
+    assert.deepEqual(r.map((x) => x.input_tokens), [1200, 800, 1200, 800, 1200]);
+    assert.equal(r.reduce((n, x) => n + x.input_tokens, 0), 5200, 'no billed tokens lost');
+    assert.deepEqual(r.map((x) => x.output_tokens), [340, 120, 340, 120, 340]);
+  });
+
+  test('sequential subagents with byte-identical payloads on a growing transcript keep their counts', () => {
+    // The same topology reduced to its smallest form and stated in the terms of
+    // docs/FIELD-REPORT-army-2026-06.md: two subagents of the SAME type, same
+    // session id, same transcript path, no usage in the payload — so byte-identical
+    // payloads and therefore the same event_sig — each consuming a real slice as
+    // the transcript grows. Here the rows differ in their token counts, so the
+    // identity comparison cannot collapse them at any window width; it is the
+    // signature prong alone that used to.
+    const p = path.join(tmpDir, 'growing.jsonl');
+    const rec = (usage) => JSON.stringify({ type: 'assistant', message: { usage } }) + '\n';
+    fs.writeFileSync(p, rec({ input_tokens: 70, output_tokens: 64549 }));
+    const ev = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+
+    assert.equal(fire(ev), true, 'the first subagent records its slice');
+    fs.appendFileSync(p, rec({ input_tokens: 42, output_tokens: 9011 })); // next subagent appends
+    assert.equal(fire(ev), true, 'the second subagent records ITS slice, same signature and all');
+
+    const r = rows();
+    assert.equal(r.length, 2);
+    assert.equal(r[0].event_sig, r[1].event_sig, 'identical payloads → identical signature');
+    assert.deepEqual(r.map((x) => x.input_tokens), [70, 42], 'both real token counts survive');
+    assert.deepEqual(r.map((x) => x.output_tokens), [64549, 9011]);
+  });
+
+  test('the residual: a re-fire is suppressed while its signature is in the marker window, and admitted as a phantom row once evicted', () => {
+    // The hooks promise suppression only while a re-fire is still RECOGNIZABLE —
+    // its signature in the per-transcript FIFO, or the row it duplicates sitting
+    // immediately before it in the ledger. This pins BOTH sides of that line so the
+    // comments can be checked rather than trusted. If a future change suppresses
+    // the second half too, update the comments in BOTH hooks first — and re-run the
+    // two data-loss-floor cases above, because widening the guard is how the last
+    // attempt paid for it.
+    const p = transcript('wave.jsonl');
+    for (let i = 1; i <= WAVE; i++) {
+      assert.equal(fire(sib(p, i)), true, `sibling ${i} is recorded`);
+    }
+    assert.equal(rows().length, WAVE, 'every sibling spawn is counted');
+
+    // Still recognizable: the NEWEST sibling's signature has not been evicted.
+    const fresh = buildCostRecord(sib(p, WAVE), tmpDir);
+    assert.equal(fresh.__emptySlice, true, 'the marker layer recognizes a recent re-fire');
+    assert.equal(appendRecord(tmpDir, fresh), false);
+    assert.equal(rows().length, WAVE, 'no phantom row for the recent re-fire');
+
+    // Past the window: sibling 1's dual registration arrives after the wave has
+    // pushed its signature out of the FIFO, and sibling 1's row is long past
+    // adjacency. Nothing left can tell it from a fresh zero-token spawn.
+    const late = buildCostRecord(sib(p, 1), tmpDir);
+    assert.equal(late.__emptySlice, undefined,
+      'the marker layer no longer recognizes it — its signature was evicted');
+    assert.ok(late.event_sig && late.event_sig === rows()[0].event_sig,
+      'the signature it carries is still the one on sibling 1\'s row — but nothing searches by it');
+    assert.equal(appendRecord(tmpDir, late), true, 'the documented residual: it is admitted');
+    assert.equal(rows().length, WAVE + 1, 'one phantom row — the accepted price of never dropping a real spawn');
+  });
+
+  test('the wider residual on the NO-transcript path: an interleaved dual registration leaves phantom rows', () => {
+    // That path never consults the marker layer at all — there is no transcript to
+    // key it by — so the adjacent-row comparison is the only guard. A′ and B′ are
+    // not adjacent to A and B, so both are admitted. Closing this needs a lookback,
+    // and a lookback is exactly what the two floor cases above forbid: the hook
+    // cannot tell this A′ from a genuine third spawn carrying A's payload, and
+    // guessing wrong deletes real rows. Documented in the hook rather than fixed.
+    const A = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', session_id: 's1', usage: { input_tokens: 9, output_tokens: 2 } };
+    const B = { hook_event_name: 'SubagentStop', agent_type: 'pan-verifier', session_id: 's1', usage: { input_tokens: 5, output_tokens: 1 } };
+    assert.equal(fire(A), true);
+    assert.equal(fire(B), true);
+    assert.equal(fire(A), true, "A′ is out of adjacency reach — admitted");
+    assert.equal(fire(B), true, "B′ likewise");
+    assert.deepEqual(rows().map((r) => r.agent),
+      ['pan-executor', 'pan-verifier', 'pan-executor', 'pan-verifier'],
+      'two real spawns + two phantoms — the residual, not a fix');
+    // An ADJACENT re-fire on the same path is still suppressed, which is the reach
+    // the simple guard does have (matrix case 1b pins it from the other side).
+    assert.equal(fire(B), false, 'B″ arrives adjacent to B′ and is caught');
+  });
+});
+
 describe('pan-cost-logger — M62 PAN-project gate', () => {
   test('isPanProject: true for a .planning/ tree, a local install marker, else false', () => {
     const plan = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-m62-plan-'));

@@ -1,6 +1,6 @@
 # PAN Hook System
 
-PAN includes 5 built-in Claude Code hooks that enhance the development experience. Hooks are JavaScript files that execute in response to Claude Code lifecycle events.
+PAN ships a small set of built-in Claude Code hooks that enhance the development experience — the ones in the table below, which is the whole set (`ls hooks/*.js`). Hooks are JavaScript files that execute in response to Claude Code lifecycle events.
 
 ## Built-in Hooks
 
@@ -80,29 +80,44 @@ The update check runs once per session and doesn't block tool execution.
 **Event:** `SubagentStop` (runs when a Task-spawned sub-agent finishes)
 
 **What it does:**
-1. Parses the SubagentStop event payload on stdin
-2. Extracts what Claude Code exposes: `agent_type`, `session_id`, `usage.input_tokens`, `usage.output_tokens`, `usage.cache_read_input_tokens`, `usage.cache_creation_input_tokens`, `model`, `phase`
-3. Appends a structured record to `.planning/metrics/tokens.jsonl` with `source: "hook"` to distinguish hook-sourced records from caller-appended ones
-4. Silent on any error — never blocks the agent loop
+1. No-ops unless the directory is a PAN project (a `.planning/` tree, or a local install marker under a runtime config dir) — a globally-installed hook fires in every repo the user opens and must not create `.planning/` artifacts in unrelated ones
+2. Parses the SubagentStop event payload on stdin and reads whichever of these the host supplies: `agent_type` / `subagent_type`, `session_id`, `transcript_path`, `cwd`, `usage.*`, `model`, `phase`, `command`, `exit_code`. Only the first few are reliably present — real payloads observed by PAN carried no `model` or `phase`, and `usage` is absent entirely in headless mode (see the transcript fallback below); the hook backfills `command`/`phase` from the active trace session and derives `model`/`tier` from the transcript
+3. Attributes tokens from **this event's slice** of the transcript (the records past a per-transcript cursor), not the whole transcript — see the transcript fallback below
+4. Appends a structured record to `.planning/metrics/tokens.jsonl` with `source: "hook"` to distinguish hook-sourced records from caller-appended ones, unless a [duplicate guard](#duplicate-and-re-fire-guards) drops it
+5. Silent on any error — never blocks the agent loop
 
-**Record shape:**
+**Record shape** — a real row, dumped by piping a `SubagentStop` payload into the hook against a two-record transcript fixture:
 ```json
 {
-  "ts": "2026-04-19T12:34:56.789Z",
+  "v": 3,
+  "ts": "2026-08-06T10:21:22.465Z",
   "agent": "pan-executor",
   "command": null,
   "model": "claude-opus-4-7",
-  "tier": null,
-  "input_tokens": 5000,
-  "output_tokens": 200,
+  "tier": "reasoning",
+  "input_tokens": 5120,
+  "output_tokens": 240,
   "cache_read_tokens": 8000,
   "cache_write_tokens": 500,
   "cost_usd": null,
+  "duration_ms": 6789,
   "phase": "07",
   "session": "abc-123",
-  "source": "hook"
+  "source": "hook",
+  "token_source": "transcript",
+  "clamped": false,
+  "event_sig": "15235bf7d229360296873bf0fadeb5f3f79703d4"
 }
 ```
+
+Notes on the fields that are not self-evident:
+
+- **`v`** — ledger row schema version, a literal in each hook (`SCHEMA_V`). Rows written before it existed read as v1. Readers in `pan-wizard-core` take a row field by field rather than switching on the version, so added fields are additive: a mixed-shape ledger aggregates as one.
+- **`tier`** — derived from `model` (reasoning / mid / fast), `null` for a model the hook can't classify, so `/pan:cost`'s by-tier view and the HUD tier panel are not blind on the hook path.
+- **`duration_ms`** — the span of this event's transcript slice, first record timestamp to last. `null` when either bound is missing, never a fabricated `0`.
+- **`token_source`** — `"transcript"` when the counts came from the transcript slice, `"usage-fallback"` when there was no `transcript_path` and the payload's own `usage` was used instead.
+- **`clamped`** — `true` when the plausibility guard dropped a value to `0` on the fallback path, so a guarded zero is distinguishable from a genuine zero-token run.
+- **`event_sig`** — a SHA-1 of the SubagentStop payload as delivered on stdin: this spawn's identity. A dual-registration re-fire is the same bytes and so carries the same signature; a sibling whose payload differs in any field carries a different one. It is what lets the hook count two parallel siblings as two spawns while still suppressing a re-fire of one of them. `null` if the payload could not be serialized. [Duplicate and re-fire guards](#duplicate-and-re-fire-guards) below describes how it is used.
 
 **Integration:** records flow into the existing `cost.cjs` aggregator; they appear in `/pan:cost report` without additional configuration. The `source: "hook"` field lets the aggregator distinguish automatic captures from `pan-tools cost append` caller-driven records. During a `/pan:army` campaign every squad agent fires `SubagentStop`, so this same per-spawn stream is what the `/pan:hud` dashboard aggregates into its per-squad telemetry — no army-specific instrumentation exists; the dashboard just reads `tokens.jsonl`.
 
@@ -115,34 +130,65 @@ The update check runs once per session and doesn't block tool execution.
 **Event:** `SubagentStop` (runs alongside pan-cost-logger when a Task-spawned sub-agent finishes)
 
 **What it does:**
-1. Parses the SubagentStop event payload on stdin
-2. Calls `ensureSessionId()` — creates a day-scoped `sess_auto_YYYYMMDD` trace session if none active, so tracing is always-on with zero setup
-3. Builds two event types:
+1. No-ops unless the directory is a PAN project — same gate as the cost logger, for the same reason
+2. Parses the SubagentStop event payload on stdin, reading the same fields with the same caveats, and attributes tokens from this event's transcript slice (it keeps its **own** cursor — the cost logger fires on the same event and the two must not consume each other's slice)
+3. Calls `ensureSessionId()` — creates a day-scoped `sess_auto_YYYYMMDD` trace session if none active, so tracing is always-on with zero setup. A stale day-scoped auto-session is finalized and rolled over; an explicit session stays sticky
+4. Builds these event types:
    - `decision:agent_completion` — per-agent record with input/output/cache tokens, agent name, phase
    - `redundancy:uncached_heavy_run` — fired when output > 3000 tokens with zero cache hits (signals repeated research the optimizer should flag)
-4. Appends events to `.planning/optimization/traces/<session>/trace.jsonl`
-5. Silent on error — never blocks the agent loop
+5. Appends events to `.planning/optimization/traces/<session>/trace.jsonl`, unless a [duplicate guard](#duplicate-and-re-fire-guards) drops the batch
+6. Silent on error — never blocks the agent loop
 
-**Record shape:**
+**Record shape** — a real completion event, from the same fixture run as the cost row above (the two hooks fire on one event, so the `event_sig` matches):
 ```json
 {
-  "ts": "2026-04-22T07:56:14.123Z",
-  "session": "sess_20260422T075614",
+  "v": 3,
+  "ts": "2026-08-06T10:21:22.554Z",
+  "session": "sess_auto_20260806",
   "agent": "pan-executor",
-  "phase": "03",
+  "phase": "07",
   "type": "decision",
   "category": "agent_completion",
   "description": "pan-executor completed",
-  "context": { "input_tokens": 5000, "output_tokens": 200, "cache_read_tokens": 8000 },
-  "impact": "trivial"
+  "context": {
+    "model": "claude-opus-4-7",
+    "command": null,
+    "input_tokens": 5120,
+    "output_tokens": 240,
+    "cache_read_tokens": 8000,
+    "total_tokens": 5360,
+    "duration_ms": 6789,
+    "exit_code": 0,
+    "token_source": "transcript",
+    "clamped": false,
+    "event_sig": "15235bf7d229360296873bf0fadeb5f3f79703d4"
+  },
+  "impact": "trivial",
+  "correction": null,
+  "tokens_wasted": null
 }
 ```
+
+`v`, `duration_ms`, `token_source`, `clamped`, and `event_sig` mean the same as on the cost row (see the field notes there); the trace event nests them under `context` and adds `total_tokens` (input + output). The `redundancy:uncached_heavy_run` event in the same batch carries the same `v`/`ts`/`session`/`agent`/`phase` envelope with a smaller `context` (`output_tokens`, `cache_read_tokens`) and `tokens_wasted` set.
 
 **Integration:** events flow into the existing `optimize.cjs` analyzer; they're picked up by `/pan:learn` (single-session analysis) and `/pan:optimize` (cumulative reports + auto-apply memory entries). The circular optimization loop (trace → learn → optimize apply → next run smarter → repeat) makes PAN self-learning across cycles.
 
 **P-1805 transcript fallback (v3.7.8+):** Same fix as `pan-cost-logger.js` — when `data.usage` is missing/empty (Claude Code headless mode), `readUsageFromTranscript()` parses the JSONL transcript at `data.transcript_path` and sums `usage` from assistant messages whose `session_id` matches the subagent. Trace events now carry real token counts during autonomous runs instead of zeros. Wall-clock timing fallback still kicks in only when *both* `data.usage` AND the transcript are unavailable.
 
 **Runtime support:** same surface as the cost logger — Claude/Gemini via settings.json, Codex via `.codex/hooks.json`, Copilot via `.github/hooks/pan.json` (all on their SubagentStop-equivalent events; no-op on hosts that don't fire it). OpenCode has no hook system.
+
+### Duplicate and re-fire guards
+
+One `SubagentStop` can reach the hooks more than once. A project with **both** a global and a local PAN install registers two commands for the event (different paths, so the host runs both) and the two processes share one cursor file — the field's source of ~57% duplicate rows in 2026-07. At the same time PAN's own wave topology spawns **parallel siblings** that share the session transcript, so a legitimate second spawn can look a lot like a re-fire. Both hooks resolve this the same way, with two layers:
+
+1. **The per-transcript seen-event marker** (in the cursor file, bounded by `MAX_SEEN_SIGS` per transcript and `MAX_SEEN_TRANSCRIPTS` overall, FIFO on both axes). An event that consumed no new transcript records is treated as a re-fire only when its `event_sig` was already seen for that transcript; otherwise it is a sibling or a first fire and gets recorded with zero tokens.
+2. **The adjacent-row duplicate guard.** The new row / completion is compared against the **immediately preceding** ledger row (for the trace logger, the file's last `agent_completion`) across every field but `ts` — `event_sig` included. A true re-fire is the same bytes on stdin, so it produces the same row and matches; two siblings the payload can tell apart differ in their signature and both survive.
+
+**What this guarantees, and what it does not.** A re-fire is suppressed while it is still *recognizable*: its signature sits in the marker window, or the row it duplicates sits immediately before it. Nothing further. A re-fire that arrives after its signature has been evicted from the marker window, and that is no longer adjacent to the row it duplicates, **is recorded** — a phantom row. The no-`transcript_path` path is a wider residual still: it has no transcript to key the marker layer by, so an interleaved dual registration there (A, B, A′, B′) leaves both re-fires out of adjacency reach and admits both. Each hook's suite pins the residual rather than asserting it away.
+
+**Why the guard is not wider than that.** It was, briefly: the second layer scanned a tail of recent rows for an identical one and additionally treated a repeated `event_sig` as a re-fire whenever the candidate carried no tokens and no measured duration. Both halves delete real spawns. On the shared session transcript that PAN's own wave topology produces, sequential subagents of one type deliver byte-identical payloads — hence one signature — and identical rows whenever their slices happen to match; a run of five genuine spawns collapsed to two, and when those slices carried real usage the tokens went with them. The invariant the second condition rested on ("an event that consumed a real slice never looks contentless") is false as well: a slice of records carrying neither `usage` nor `timestamp` yields zeros and a `null` duration. Deleting real cost data is strictly worse than a phantom row, so the guard stays adjacent-only and the residual above is documented instead of engineered away. Each hook's suite carries the reproduction as a floor (`grep -n 'no genuine spawn' tests/cost-logger-hook.test.cjs tests/trace-logger.test.cjs`).
+
+**One conditional worth knowing.** Two *concurrent same-type* siblings are admitted as two spawns only if the host puts some per-invocation field on the payload. PAN has confirmed that `agent_type`/`subagent_type` varies between siblings of different type, and that `session_id` and the transcript path are shared with the parent — but no field is confirmed to vary between two same-type siblings on any host. Where none does, their payloads are the same bytes, a new spawn and a re-fire are indistinguishable, and the second is suppressed. See the `eventSignature` comment in either hook for the full evidence trail.
 
 ## Architecture
 

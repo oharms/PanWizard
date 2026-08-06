@@ -49,9 +49,10 @@ const TRACES_DIR = 'traces';
 const CURRENT_SESSION_FILE = 'current-session';
 const TRACE_EVENT_FILE = 'trace.jsonl';
 
-// Trace event schema version — kept in sync by hand with pan-cost-logger.js +
-// cost.cjs (standalone zero-dep hooks can't share a module). See that file.
-const SCHEMA_V = 2;
+// Trace event schema version — kept in sync by hand with pan-cost-logger.js
+// (standalone zero-dep hooks can't share a module). v3 added the per-invocation
+// `event_sig` discriminator to the completion event's context. See that file.
+const SCHEMA_V = 3;
 
 // YYYYMMDD stamp for a Date (the day-scope of an auto-session id).
 function dayStamp(d) {
@@ -155,19 +156,89 @@ function readTraceCursor(cwd) {
 const SEEN_EVENTS = '__seenEvents';
 // Pre-N25 single-slot marker — no longer read; dropped on the next write.
 const LEGACY_CONSUME_KEYS = '__consumeKeys';
+// This window is the ONLY layer that recognizes a re-fire which is no longer the
+// LATEST completion in the trace file: the dedup below compares against that one
+// completion and nothing further. A sibling wave wider than this bound on one
+// transcript therefore evicts the earliest sibling's signature, and a late
+// re-fire of THAT sibling is emitted as a phantom completion. That residual is
+// accepted deliberately, not overlooked — see eventSignature below for what
+// widening either window was measured to cost.
 const MAX_SEEN_SIGS = 8;
 const MAX_SEEN_TRANSCRIPTS = 16;
 
 // Full-payload hash: byte-identical for a dual-registration re-fire, different
-// for a sibling whose payload differs in ANY field (per-invocation agent id,
-// cumulative usage snapshot, per-subagent transcript path — N26). Byte-identical
-// sibling payloads remain indistinguishable from re-fires and stay suppressed
-// (fails toward M61 phantom suppression). Null when unserializable → fail open.
+// for a sibling whose payload differs in ANY field, with no hardcoding of which
+// field a given runtime provides (N26).
+//
+// WHICH fields actually differ on real payloads is only partly established, so
+// the sibling-admission benefit is CONDITIONAL. What this repo has observed:
+//   • `agent_type` / `subagent_type` is supplied and does vary between siblings
+//     of DIFFERENT type — the trace rows recorded under
+//     experiments/*/.planning/optimization/traces/ were written by THIS hook
+//     from real payloads and carry real agent names.
+//   • `session_id` is SHARED with the parent, and so is the session transcript
+//     (docs/FIELD-REPORT-army-2026-06.md, root cause 1).
+//   • `model` and `phase` came out null in those recorded rows — the payload
+//     carried neither; `usage` is absent entirely in headless mode
+//     (docs/HOOKS.md, P-1805).
+//   • No recorded payload in this repo carries an `agent_id` or any other
+//     per-invocation id; the hook tests inject one as a stand-in.
+// So for two CONCURRENT SAME-TYPE siblings no varying payload field is confirmed
+// on any host: where the host supplies one, both spawns are admitted; where it
+// supplies none the payloads are the same bytes, hence indistinguishable from a
+// re-fire, and the second stays suppressed.
+//
+// What the guards promise, stated as narrowly as they hold: a re-fire is
+// suppressed while it is still RECOGNIZABLE — its signature is in this
+// transcript's seen-event window (MAX_SEEN_SIGS), or it is byte-identical modulo
+// `ts` to the LATEST completion already in the trace file. Nothing further. A
+// re-fire arriving after its signature has been evicted from the marker window,
+// and no longer adjacent to the completion it duplicates, IS emitted as a phantom
+// completion. That is the residual; it is documented rather than engineered away.
+//
+// It was engineered away once, and the cure destroyed data. The dedup was widened
+// to scan a tail of recent completions, with a second prong matching on a
+// repeated signature alone for completions carrying no tokens. Both prongs delete
+// real spawns. Five genuine spawns X,Y,X,Y,X on one shared transcript — the
+// ordinary shared-session topology of docs/FIELD-REPORT-army-2026-06.md, where
+// sequential same-type subagents deliver byte-identical payloads and therefore
+// one signature — collapsed to TWO completions; when their slices carried real
+// usage the collapsed completions' token counts vanished with them. Deleting real
+// telemetry is strictly worse than the occasional phantom completion it prevents.
+// The invariant that justified the contentless prong ("an event that consumed a
+// real transcript slice never looks contentless") is also false: a slice of
+// records that carry no `usage` and no `timestamp` yields zero on every axis and
+// a null duration. So the dedup stays adjacent-only, and this comment states the
+// residual instead of an invariant the code does not hold. Pinned in
+// tests/trace-logger.test.cjs — `grep -n 'no genuine spawn' tests/trace-logger.test.cjs`.
+//
+// The NO-transcript path carries a wider residual: it never consults the marker
+// layer at all (there is no transcript to key it by), so an INTERLEAVED dual
+// registration there — A, B, A′, B′ — puts A′ and B′ out of adjacency reach and
+// both are emitted as phantom completions. Closing that needs a lookback, and a
+// lookback is the window whose failure mode is the data loss above, so it stays
+// open.
+//
+// Where the guards CAN distinguish two events (payloads differ, so signatures
+// differ) both are emitted — that is what the completion's `event_sig` is for.
+// Where they CANNOT (identical bytes), the second is suppressed. The bias falls
+// on the indistinguishable case only, deliberately: an undercount beats a
+// phantom completion (N29).
+//
+// Its cost, stated because no other comment admits it: two SEQUENTIAL genuine
+// spawns whose completions coincide in every field but `ts` collapse to one,
+// losing the second's real counts. Inherent to an adjacent whole-record dedup,
+// identical in the pre-`event_sig` code, and the alternative (no dedup)
+// reinstates the duplicate-record bug. It is the one UNDER-count residual —
+// distinct from the evicted-marker phantom (over-count) and from N29.
+//
+// Null when unserializable → fail open.
 function eventSignature(data) {
   try {
     return crypto.createHash('sha1').update(JSON.stringify(data)).digest('hex');
   } catch { return null; }
 }
+
 function getSeenSigs(cursor, transcriptPath) {
   const se = cursor && cursor[SEEN_EVENTS];
   const arr = se && typeof se === 'object' ? se[transcriptPath] : null;
@@ -367,6 +438,11 @@ function buildTraceEvents(data, sessionId, cwd) {
 
   const ts = new Date().toISOString();
   const agent = data.agent_type || data.subagent_type || 'unknown';
+  // This event's per-invocation identity, hashed once and used by BOTH layers:
+  // the seen-event marker below and the completion's `event_sig` context field.
+  // buildTraceEvents never mutates `data`, so hoisting the hash here yields the
+  // same value the marker calls used when they each computed it themselves.
+  const eventSig = eventSignature(data);
 
   // Per-call tokens come from the transcript SLICE. The SubagentStop `data.usage`,
   // when present, is a CUMULATIVE session counter — not this subagent's delta — so
@@ -394,15 +470,17 @@ function buildTraceEvents(data, sessionId, cwd) {
       // (N17/N25) so a later empty-slice event can tell its re-fire from a
       // parallel sibling — even when other siblings are recorded in between (N25).
       cursor[data.transcript_path] = fromTranscript.lineCount;
-      addSeenSig(cursor, data.transcript_path, eventSignature(data));
+      addSeenSig(cursor, data.transcript_path, eventSig);
       writeTraceCursor(cwd, cursor);
     } else if (cwd && fromTranscript.lineCount <= since) {
       // No transcript records past the cursor: this event consumed NO slice of its
       // own. Two situations land here (N17):
       //   • A re-fire / dual global+local hook registration — the SAME event
       //     delivered again (byte-identical payload). Its all-zero completion row
-      //     is a phantom the dedup can't catch (zeros differ from the real row it
-      //     follows), so emit nothing (M61).
+      //     is a phantom the dedup cannot catch (zeros differ from the real row
+      //     it follows), so emit nothing (M61). This marker is the ONLY layer
+      //     that catches that case; there is no signature-matching backstop below
+      //     it, by design (see eventSignature).
       //   • A PARALLEL SIBLING (another subagent — same or different type — whose
       //     sibling already consumed the shared transcript to EOF and advanced
       //     this shared cursor) or a FIRST FIRE with a missing/unreadable
@@ -411,13 +489,12 @@ function buildTraceEvents(data, sessionId, cwd) {
       // The full-payload signature distinguishes them (N25/N26): emit nothing
       // ONLY when this exact payload was already seen for this transcript;
       // otherwise fall through and emit the completion.
-      const sig = eventSignature(data);
-      if (sig && getSeenSigs(cursor, data.transcript_path).includes(sig)) {
+      if (eventSig && getSeenSigs(cursor, data.transcript_path).includes(eventSig)) {
         return []; // already-seen event → re-fire; emit nothing (M61)
       }
       // Sibling / first-fire: remember this event's signature so its own re-fire
       // is subsequently dropped, then fall through to emit the completion.
-      addSeenSig(cursor, data.transcript_path, sig);
+      addSeenSig(cursor, data.transcript_path, eventSig);
       writeTraceCursor(cwd, cursor);
     }
   } else {
@@ -460,6 +537,22 @@ function buildTraceEvents(data, sessionId, cwd) {
       exit_code: data.exit_code || 0,
       token_source: tokenSource,
       clamped,
+      // This spawn's per-invocation discriminator: the event signature,
+      // persisted. The signature was already hashed for the seen-event marker
+      // but never written into the event, so two parallel same-type siblings
+      // produced completions byte-identical modulo `ts` and the dedup dropped the
+      // second one even though the marker layer had correctly admitted it (N26).
+      // Persisting it gives both layers ONE notion of event identity: siblings
+      // differ here even when every other field matches, while a re-fire carries
+      // the same signature and still matches the completion it duplicates.
+      // It is a field the dedup COMPARES as part of whole-event identity — never
+      // a key the dedup searches the trace file by. Two sequential subagents on a
+      // shared growing transcript share one payload and therefore one signature
+      // while holding different real token counts, so matching on the signature
+      // alone deletes genuine completions (see eventSignature). Mirrors
+      // pan-cost-logger's ledger-row field of the same name. null when the
+      // payload could not be hashed.
+      event_sig: eventSig,
     },
     impact: 'trivial',
     correction: null,
@@ -502,10 +595,12 @@ function appendTraceEvents(cwd, events, sessionId) {
     const sessionDir = path.join(getTracesDir(cwd), sessionId);
     fs.mkdirSync(sessionDir, { recursive: true });
     const file = path.join(sessionDir, TRACE_EVENT_FILE);
-    // Idempotency guard: a re-fired SubagentStop must not double-log. If this
-    // batch's completion event duplicates the last agent_completion already in
-    // the file (every field but ts), skip the whole batch — the source of the
-    // ~57% duplicate completion rows in the field (2026-07).
+    // Idempotency guard: a re-fired SubagentStop must not double-log — the
+    // source of the ~57% duplicate completion rows in the field (2026-07). If
+    // this batch's completion event duplicates the LAST agent_completion already
+    // in the file (every field but `ts`), skip the whole batch — its redundancy
+    // event, if any, is derived from the same numbers. Adjacent-only on purpose;
+    // see isDuplicateCompletion.
     const completion = events.find(e => e && e.category === 'agent_completion');
     if (completion && isDuplicateCompletion(file, completion)) return false;
     const lines = events.map(e => JSON.stringify(e)).join('\n') + '\n';
@@ -516,14 +611,37 @@ function appendTraceEvents(cwd, events, sessionId) {
   }
 }
 
-/** True when `completion` matches the file's last agent_completion row, ignoring ts. */
+/**
+ * True when `completion` matches the file's LAST agent_completion, ignoring `ts`.
+ *
+ * Adjacent-only, and that is the design rather than an oversight. The comparison
+ * covers every field including the `event_sig` discriminator in `context`, so a
+ * true re-fire (same payload → same signature → same completion) still matches
+ * the one it follows, while two siblings the payload can distinguish both survive
+ * (N26).
+ *
+ * It deliberately does NOT scan back over a tail of recent completions, and does
+ * not match on a repeated signature. Both of those were tried and both delete
+ * real spawns: an identity scan over a window collapses genuine repeat spawns
+ * whose completions coincide, and a signature prong collapses genuine spawns that
+ * share a payload — the ordinary shared-transcript topology. eventSignature
+ * carries the measured reproduction and the residual this leaves standing;
+ * tests/trace-logger.test.cjs pins both
+ * (`grep -n 'no genuine spawn' tests/trace-logger.test.cjs`).
+ *
+ * Completions written before the discriminator existed hold no `event_sig` and an
+ * older `v`, so one written now never equals them. The bounded consequence: the
+ * first append after a schema bump can land beside a pre-bump completion without
+ * matching it, and the guard resumes on the following same-shape pair. Those
+ * older events still parse and still analyse — optimize.cjs reads a trace event
+ * field by field and requires no particular version or field to be present.
+ */
 function isDuplicateCompletion(file, completion) {
   let last;
   try {
-    const raw = fs.readFileSync(file, 'utf-8');
-    for (const line of raw.split('\n')) {
+    for (const line of fs.readFileSync(file, 'utf-8').split('\n')) {
       if (!line) continue;
-      let e; try { e = JSON.parse(line); } catch { continue; }
+      let e; try { e = JSON.parse(line); } catch { continue; } // skip malformed rows
       if (e && e.category === 'agent_completion') last = e;
     }
   } catch {
