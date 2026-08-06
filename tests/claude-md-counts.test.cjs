@@ -45,7 +45,12 @@ const COUNTS = {
   'References (`pan-wizard-core/references/*.md`)': () => lsCount('pan-wizard-core/references', /\.md$/),
   'Unit test files (`tests/*.test.cjs`)': () => lsCount('tests', /\.test\.cjs$/),
   'Scenario test files (`tests/scenarios/*.test.cjs`)': () => lsCount('tests/scenarios', /\.test\.cjs$/),
-  'Hooks (`hooks/*.js`)': () => lsCount('hooks/dist', /\.js$/),
+  // Counts the SOURCES the row label names. The earlier `hooks/dist` reading
+  // agreed on the number but only because CI runs `npm run build:hooks` before
+  // `npm test`; hooks/dist/ is gitignored, so on a fresh clone lsCount returned
+  // -1 and this test failed its own "filesystem path not found" assertion
+  // (B5.1, audit 2026-08). `dist` is a directory, so the .js filter skips it.
+  'Hooks (`hooks/*.js`)': () => lsCount('hooks', /\.js$/),
   'Specs (`docs/specs/*.md`)': () => lsCount('docs/specs', /\.md$/),
   'ADRs (`docs/decisions/ADR-*.md`)': () => lsCount('docs/decisions', /^ADR-.*\.md$/),
 };

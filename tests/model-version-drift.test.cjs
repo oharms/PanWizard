@@ -30,16 +30,49 @@
  * same shape as tests/shipped-content-prefix.test.cjs, which permanently closed
  * the path-prefix class.
  *
+ * There is a SECOND class, and it is the one that kept coming back: dropping the
+ * version out of a gate without dropping the gate. "Claude + Opus only" carries
+ * no digit, so the version patterns below cannot see it, while it makes exactly
+ * the same false claim to a reader on another model. GATE_PATTERNS covers it,
+ * narrowly — see the comment there for why a blanket bare-family rule was
+ * refused and what it deliberately does not catch.
+ *
  * NOT covered here, by design: code. `bin/install-lib.cjs`'s
  * `detectModelCapabilities()` and `cost.cjs`'s rate table legitimately enumerate
  * model IDs. Note what that function is and is not: a hand-maintained
  * model-substring table (`n.includes('opus-5')`, `'sonnet-4-6'`, …) with a
- * family-level fallback beneath it, so an unrecognized Claude ID degrades to its
- * family profile and only a name outside every family lands on the all-false
- * `tier: 'unknown'`. It is not a live capability probe, and its ONLY consumer is
- * the installer's advisory post-install warning — it gates no feature. Docs must
- * not describe it as a gate, and tests/ fixtures deliberately exercise its
- * version table.
+ * family-level fallback beneath it, and — in the wording the live docs settled on
+ * — its forward threshold per family is the last reduced-capability release it
+ * records rather than the newest release it lists: any Claude ID newer than that
+ * boundary — a new major, or a later point release inside a major it already
+ * lists — inherits that family's modern profile instead of reporting no
+ * capabilities at all.
+ *
+ * When it reports NOTHING, QUOTE THE DOCS rather than re-deriving the condition.
+ * Earlier revisions of this header coined their own "it only happens when X or Y"
+ * phrasing and were wrong each time, because every enumeration of shapes missed
+ * one. Below is the live docs' sentence, verbatim; its canonical home is
+ * `pan-wizard-core/references/model-profiles.md`, and `git grep "resolves neither
+ * way"` finds every surface that states it, so a future edit can be checked
+ * against all of them rather than against a list kept here:
+ *
+ *   "An ID resolves either by matching an explicit branch in the table or — for
+ *    Claude names — by carrying a family plus a readable release number strictly
+ *    newer than that family's last reduced-capability release; anything that
+ *    resolves neither way reads as `tier: 'unknown'` with every capability flag
+ *    false."
+ *
+ * That is a COMPLEMENT, not a list, which is why it is both exhaustive and
+ * maintainable. Spot-probed against the real function rather than against the
+ * docs: `claude-opus-4-9` and `claude-opus-6` resolve forward; `claude-opus-3`,
+ * `claude-sonnet-2`, `claude-haiku-3`, the real legacy ids `claude-2.1` and
+ * `claude-instant-1.2`, a bare `opus`, and non-Claude junk resolve neither way
+ * and read `unknown`. Note that `claude-opus-3` PARSES a family and a release and
+ * still lands there — the shape that broke the earlier enumerations.
+ *
+ * It is not a live capability probe, and its ONLY consumer is the installer's
+ * advisory post-install warning — it gates no feature. Docs must not describe it
+ * as a gate, and tests/ fixtures deliberately exercise its version table.
  */
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
@@ -71,8 +104,25 @@ const SCAN_DIRS = [
 // CONTRIBUTORS.md's version-pinned lines went unscanned. Historical root docs
 // (CHANGELOG.md) are excluded by name below, with the reason on record.
 
-// Directory names never walked, wherever they appear under a scan root.
-const SKIP_DIR_NAMES = new Set(['node_modules', '.git', 'dist']);
+// Directory names never walked, wherever they appear under a scan root. These
+// carry a `why` and are covered by the rationale test below for the same reason
+// every other exemption table is: a fourth entry here silently shrinks the scan
+// set, and "someone needed the walk to be faster" must not be indistinguishable
+// from a real justification.
+const SKIP_DIRS = [
+  { dir: 'node_modules', why: 'installed dependencies — not PAN content, never shipped from here, and their docs are not ours to reword' },
+  { dir: '.git', why: 'object store and refs — binary/packed history, not readable content, and rewriting it would falsify the record' },
+  {
+    dir: 'dist',
+    why: 'build output, regenerated from the sources this lint already scans — fix the source, rebuild. '
+      + 'Recorded risk: after a plugin build it holds generated .md copies under dist/pan-wizard-plugin/ (copies of '
+      + 'commands/pan/, agents/, learnings) that are therefore unscanned. Harmless as things stand — dist/ is gitignored, is absent from '
+      + "package.json `files`, and the only version-bearing lines in it today are verbatim copies of lines this file's "
+      + 'ALLOWLIST already exempts in their source. But if plugin build output is ever published, a stale pin could ship '
+      + 'unscanned: at that point scan the built copies (or assert they match their sources) instead of skipping them.',
+  },
+];
+const SKIP_DIR_NAMES = new Set(SKIP_DIRS.map((x) => x.dir));
 
 // Excluded DIRECTORIES — each is a historical record, not a live instruction.
 // Rewriting them would falsify the record, so they are exempt by design.
@@ -110,12 +160,14 @@ const EXCLUDED_DATED = [
   { re: /^docs\/FIELD-[\w-]*\d{4}-\d{2}\.md$/, why: 'dated field reports/harvests (FIELD-HARVEST-2026-07, FIELD-REPORT-army-2026-06) — observations recorded from real runs on a specific model' },
 ];
 
-// `pan-wizard-core/learnings/**` is out of scope on purpose: those are factual
-// run records ("rate limits not hit on Opus 4.7 at N=4") and rewriting them
-// would destroy the measurement's meaning. It is not reachable from SCAN_DIRS
-// today; the guard test asserts that stays true rather than leaving a dead
-// exclusion branch in the walk.
-const NEVER_SCANNED_SUBTREE = 'pan-wizard-core/learnings/';
+// Subtree that must never be scanned. Not reachable from SCAN_DIRS today; the
+// guard test asserts that stays true rather than leaving a dead exclusion branch
+// in the walk. Its rationale lives in a `why` field (not a comment) so the
+// rationale test covers it like every other exemption.
+const NEVER_SCANNED_SUBTREE = {
+  subtree: 'pan-wizard-core/learnings/',
+  why: 'factual run records ("rate limits not hit on Opus 4.7 at N=4") — rewriting one to drop the model version would destroy the measurement\'s meaning',
+};
 
 // ---------------------------------------------------------------------------
 // Patterns.
@@ -139,13 +191,28 @@ const NEVER_SCANNED_SUBTREE = 'pan-wizard-core/learnings/';
 // `v` marker ("Opus v5"), the parenthesised form ("Opus (5)") — always matches,
 // noun or not. Cost of the trade: count-shaped drift ("Opus 5 agents only")
 // slips; the alternative was crying wolf on ordinary prose. Extend COUNT_NOUNS
-// when a new false positive shows up — do not loosen the branch.
+// when a false positive shows up — or, as the second block of nouns below did,
+// when a word PAN routinely counts would obviously produce one — and do not
+// loosen the branch.
 // ---------------------------------------------------------------------------
+// Entries are regex fragments, not plain literals, and each gets a `(?:s|es)?`
+// plural suffix appended — so an irregular plural needs its own entry next to the
+// singular (`retry`/`retries`, `summary`/`summaries`), and a spelling that varies
+// can be written as one fragment (`sub-?agent` covers both `subagent` and the
+// hyphenated `sub-agents` PAN's own docs use — the unhyphenated spelling alone
+// left "Opus 4 sub-agents" reported as a version pin).
 const COUNT_NOUNS = [
-  'runtime', 'agent', 'subagent', 'squad', 'worker', 'bot', 'shard', 'phase',
+  'runtime', 'agent', 'sub-?agent', 'squad', 'worker', 'bot', 'shard', 'phase',
   'step', 'file', 'doc', 'test', 'model', 'call', 'pass', 'wave', 'item',
   'task', 'command', 'hook', 'tier', 'profile', 'instance', 'session', 'lane',
   'slot', 'replica', 'retry', 'retries', 'time',
+  // PAN's own vocabulary for things it counts. Every noun in THIS block was
+  // checked, singular and plural, against the pre-extension patterns and was
+  // reported as a version pin by them. That check does not extend to the block
+  // above — `sub-?agent` replaced an already-present `subagent`, so the
+  // unhyphenated spelling was never reported.
+  'reviewer', 'checker', 'round', 'iteration', 'batch', 'token', 'window',
+  'thread', 'summary', 'summaries',
 ].map((n) => `${n}(?:s|es)?`).join('|');
 const MAJOR = '\\d{1,2}';
 const MINOR = '\\d{1,2}\\.\\d+';
@@ -166,7 +233,94 @@ const MODEL_PATTERNS = [
   // Concrete IDs, both orderings: family-then-digits (`claude-opus-4-8`) and the
   // legacy digits-then-family form (`claude-3-5-sonnet-20241022`, `claude-2.1`,
   // `claude-instant-1.2`). `claude-code-2` is NOT a model ID and is not matched.
-  { re: /\bclaude-(?:(?:opus|sonnet|haiku|fable|mythos|instant)-)?\d[\w.-]*/gi, what: 'concrete model ID' },
+  // Both separators accept `-` or `_`: not a real Anthropic form, but the
+  // family-name branches above already accept `[\s\-_]`, so hyphen-only here was
+  // an asymmetry rather than a choice — `claude_opus_4_7` used to scan clean while
+  // every hyphenated spelling of the same id was reported.
+  { re: /\bclaude[-_](?:(?:opus|sonnet|haiku|fable|mythos|instant)[-_])?\d[\w.-]*/gi, what: 'concrete model ID' },
+];
+
+// ---------------------------------------------------------------------------
+// GATE_PATTERNS — the BARE-family gate, which MODEL_PATTERNS is structurally
+// unable to see.
+//
+// Every pattern above needs a digit (MAJOR and MINOR are both `\d…`, and the
+// concrete-ID branch requires one), so "Claude + Opus only" — a gate with no
+// version in it at all — scans clean. That is not hypothetical: it shipped in
+// docs/FAQ.md and docs/USER-GUIDE.md, and the class has now recurred across
+// several audit rounds in the same shape. A version-pinned gate gets swept, the
+// version is dropped, and the GATE survives with the family name still doing the
+// gating — so a reader on Sonnet is told the feature is unavailable just as
+// firmly as "Opus 4.7 only" told them.
+//
+// A blanket bare-family rule is NOT acceptable and was not shipped: it fires on
+// contributor attribution, on the tier phrasings this very sweep moved everything
+// TO ("Opus-class models", "Opus (reasoning)", "the default Opus"), and on
+// ordinary prose ("the Opus-pinned hardener"). The rule is therefore GATE-SCOPED:
+// the family name must sit in a REQUIREMENT construction, immediately adjacent to
+// only / requires / required / needs / must. Adjacency is the entire precision
+// budget: a rule that scans a WINDOW instead of requiring adjacency eventually
+// reaches lines like "Do not pile on `CRITICAL: YOU MUST` scaffolding, which can
+// reduce Fable's output quality" — a real line in
+// pan-wizard-core/references/model-profiles.md, and the closest thing in the tree
+// to a false positive, with the keyword and the family name only a few words
+// apart. Nothing about that line is a model gate. Widen the window and you buy
+// it, and every line like it, for no additional real catch.
+//
+// `Claude` is deliberately NOT one of the families here. "Claude Code only" is a
+// RUNTIME gate, which is the phrasing the sweep moved TO — name the runtime when
+// the runtime is the real constraint. Only Opus/Sonnet/Haiku/Fable/Mythos gate on
+// a model, so only they are in GATE_FAMILY.
+//
+// Deliberate misses, accepted so the rule never cries wolf. Each was checked
+// against the tree and against history, not assumed:
+//   - a qualifier between family and keyword ("Opus-class models only",
+//     "Opus (reasoning) only") — the approved tier phrasing, exempt by design
+//   - "Fable is the only current Claude model that runs input safety classifiers"
+//     — a factual per-model statement, and `only` is not adjacent to the family
+//   - markdown between the two ("**Opus** only"), and a gate split across lines:
+//     this scanner is line-scoped, as it is for every pattern in this file
+//   - code spans and fences are NOT skipped by any pattern here, so a gate inside
+//     backticks IS reported — that is the existing behavior, not an exception
+//
+// Both directions were proven before shipping and must be re-proven before this
+// is touched: run the rule over every line ever added to a live .md in this
+// history (`git log -p --unified=0 -- '*.md'`, dropping the historical-record
+// paths this file already exempts). It flags the `--hierarchical` and
+// single-shot version pins plus the bare "Claude + Opus only" survivors in
+// docs/FAQ.md and docs/USER-GUIDE.md, and nothing else. The corpus in
+// 'the gate-scoped bare-family rule is narrow' below pins both directions.
+// ---------------------------------------------------------------------------
+const GATE_FAMILY = '(?:Opus|Sonnet|Haiku|Fable|Mythos)';
+// An optional version blob, so a version-BEARING gate matches this shape too. It
+// is already a violation via MODEL_PATTERNS; matching here just means the whole
+// gate is what gets quoted back ("Opus 4.7 only" rather than "Opus 4.7"), since
+// `modelMatches` drops the contained match.
+const GATE_VER = '(?:[\\s\\-_]?v?\\.?\\s?\\d{1,2}(?:\\.\\d{1,2})?\\b|\\s?\\(v?\\.?\\s?\\d{1,2}(?:\\.\\d{1,2})?\\))?';
+// Refuse the CLASS / TIER readings outright: a family name qualified as a class,
+// tier, family or profile, or annotated with a tier in parens, is the approved
+// phrasing and must never be reported.
+const NOT_TIER = '(?![-\\s](?:class|tier|family|profile)\\b)(?!\\s*\\((?:reasoning|mid|fast|thinking|budget|default)\\b)';
+// "the default Opus" is approved phrasing on both sides of the keyword.
+const NOT_DEFAULT = '(?<!\\bdefault\\s)(?<!\\bdefault-)';
+// CLOSED set of linking words between the keyword and the family, so "must have
+// Opus" and "must run on Opus" are caught without opening a general gap that
+// ordinary prose can walk through. Replacing this with a generic word-window is
+// the crying-wolf failure mode described above.
+const GATE_LINK = '(?:\\s+(?:to|be|being|use|using|run|running|on|have|target|targets|select|pick))*';
+const GATE_PATTERNS = [
+  {
+    re: new RegExp(`${NOT_DEFAULT}\\b${GATE_FAMILY}\\b${NOT_TIER}${GATE_VER}[\\s-]only\\b`, 'gi'),
+    what: 'bare-family capability gate ("<family> only")',
+  },
+  {
+    re: new RegExp(`\\b(?:requires?|required|needs?|must)\\b${GATE_LINK}\\s+(?:(?:a|an|the)\\s+)?${NOT_DEFAULT}\\b${GATE_FAMILY}\\b${NOT_TIER}`, 'gi'),
+    what: 'bare-family capability gate ("requires <family>")',
+  },
+  {
+    re: new RegExp(`${NOT_DEFAULT}\\b${GATE_FAMILY}\\b${NOT_TIER}${GATE_VER}\\s+(?:is|are)\\s+(?:the\\s+)?(?:only\\s+)?(?:required|needed)\\b`, 'gi'),
+    what: 'bare-family capability gate ("<family> is required")',
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -206,6 +360,17 @@ const ALLOWLIST = [
     // no backticks) and into cell 2 (`[^|]*` — cannot cross the next pipe). The
     // class cell and every capability cell after cell 2 stay fully scanned, so a
     // version pin anywhere in the row is still reported.
+    //
+    // CONSTRAINT ON THE DOC, not just on this regex: cell 1 (the Class column)
+    // must stay BACKTICK-FREE. Backticking the class name — `| \`Fable\` |
+    // \`claude-fable-5\` | … |` — makes the lookbehind fail, the legitimate ID
+    // cell is then reported as a violation, and the stale-allowlist test fires
+    // too. That is fail-CLOSED (noise, never a silent hole), and it is why the
+    // exclusion cannot simply be relaxed: `[^|]*` in cell 1 would let a
+    // backticked ID sitting in cell 1 satisfy the lookbehind, which is exactly
+    // the unbounded-interior hole the header warns about. If the table's shape
+    // must change, re-anchor the lookbehind on the Class column explicitly rather
+    // than widening cell 1.
     re: /(?<=^\|[^|`]*\|[^|]*)`claude-[a-z0-9.-]+`/i,
     reason: '(a) "Choosing a Reasoning-Tier Model" table — the ID cells are EXAMPLE selectable values for each class, and the doc says so explicitly ("not an exhaustive or only-valid list"). The table is keyed by CLASS (Fable/Mythos, Opus), so it does not gate on a version.',
   },
@@ -290,13 +455,15 @@ function scanTargets() {
 const lines = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf-8').split(/\r?\n/);
 
 /**
- * Every version-pinned match on a line, as {what, text, start, end}. A match
- * fully contained in a longer one is dropped, so `claude-opus-4-8` is reported
- * once rather than also as the `opus-4` inside it.
+ * Every reportable match on a line — version-pinned (MODEL_PATTERNS) and
+ * bare-family gates (GATE_PATTERNS) — as {what, text, start, end}. A match fully
+ * contained in a longer one is dropped, so `claude-opus-4-8` is reported once
+ * rather than also as the `opus-4` inside it, and a version-bearing gate is
+ * reported once as the whole gate rather than twice.
  */
 function modelMatches(line) {
   const found = [];
-  for (const { re, what } of MODEL_PATTERNS) {
+  for (const { re, what } of [...MODEL_PATTERNS, ...GATE_PATTERNS]) {
     for (const m of line.matchAll(re)) found.push({ what, text: m[0], start: m.index, end: m.index + m[0].length });
   }
   found.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
@@ -349,7 +516,8 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
   test('shipped content and live docs gate features by capability, never by model version', () => {
     const { violations } = scanAll();
     assert.equal(violations.length, 0,
-      'Hardcoded Claude model version in shipped content / live docs:\n' +
+      'Hardcoded Claude model version — or a bare-family capability gate — in ' +
+      'shipped content / live docs:\n' +
       `${violations.join('\n')}\n\n` +
       "Use capability-based phrasing (e.g. 'a model with a 1M-context window', " +
       "'thinking-capable models', 'the default Opus') — or name the RUNTIME when the " +
@@ -358,6 +526,9 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
       'A version number is only acceptable for a selectable VALUE (config key, CLI arg, ' +
       'sample payload, a quote of the code\'s own model table) or a true historical ' +
       'statement ("shipped in v2.10.0"). Never for a requirement: state the capability. ' +
+      'Dropping the version does NOT fix a gate — "Claude + Opus only" is the same ' +
+      'claim and is reported by GATE_PATTERNS. Name the tier ("Opus-class", ' +
+      '"Opus (reasoning)") or the runtime instead. ' +
       'Do NOT point the reader at detectModelCapabilities() as a gate either — it is a ' +
       "hand-maintained substring table whose only consumer is the installer's advisory " +
       'warning, and it gates no feature.');
@@ -379,6 +550,8 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
   // through review. ALLOWLIST uses `reason`; the exclusion tables use `why`.
   test('every exemption and allowlist entry carries a non-empty rationale', () => {
     const groups = [
+      ['SKIP_DIRS', SKIP_DIRS, 'why', (e) => e.dir],
+      ['NEVER_SCANNED_SUBTREE', [NEVER_SCANNED_SUBTREE], 'why', (e) => e.subtree],
       ['EXCLUDED_DIRS', EXCLUDED_DIRS, 'why', (e) => e.dir],
       ['EXCLUDED_FILES', EXCLUDED_FILES, 'why', (e) => e.file],
       ['GENERATED_FILES', GENERATED_FILES, 'why', (e) => e.file],
@@ -429,6 +602,15 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
   // The docs margin is the tight one; NESTED_MUST_SCAN above is its real guard.
   // If a floor legitimately fails because content was archived, lower it and
   // update the comment — do not delete the assertion.
+  //
+  // `pan-zcode` deliberately has NO floor, and that is not an omission. It holds
+  // two top-level docs and no subdirectory, so a floor there could never prove
+  // recursion (flat and recursive counts are equal), and a floor of 2 against a
+  // recursive count of 2 would be an exact pin with zero headroom — retiring or
+  // renaming either doc would fail it. Both files are instead named outright in
+  // the root-level assertions below, which is the stronger check: a floor is
+  // satisfied by any two files, `targets.includes(...)` by those two only. Every
+  // row that IS here carries the churn headroom this comment claims.
   const MIN_SCANNED = [
     { dir: 'commands/pan', min: 50 },              // 59 today
     { dir: 'agents', min: 20 },                    // 24 today
@@ -436,7 +618,6 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
     { dir: 'pan-wizard-core/templates', min: 38 }, // 42 today (14 of them nested)
     { dir: 'pan-wizard-core/references', min: 13 }, // 16 today
     { dir: 'docs', min: 17 },                      // 19 today after exemptions (5 nested)
-    { dir: 'pan-zcode', min: 2 },                  // README.md + KNOWN-BETA-RISKS.md
   ];
 
   test('the lint actually scans the surfaces it claims to (guards a broken or non-recursive walk)', () => {
@@ -461,8 +642,8 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
     for (const { file } of [...EXCLUDED_FILES, ...GENERATED_FILES]) {
       assert.ok(!targets.includes(file), `${file} must be excluded`);
     }
-    assert.ok(!targets.some((rel) => rel.startsWith(NEVER_SCANNED_SUBTREE)),
-      `${NEVER_SCANNED_SUBTREE} holds factual run records and must never be scanned`);
+    assert.ok(!targets.some((rel) => rel.startsWith(NEVER_SCANNED_SUBTREE.subtree)),
+      `${NEVER_SCANNED_SUBTREE.subtree} holds factual run records and must never be scanned`);
     // The dated-family exemptions must require their date component: an
     // evergreen doc in the same namespace must NOT inherit the exemption.
     assert.ok(isExempt('docs/ECOSYSTEM-REVIEW-2026-06.md'), 'dated ecosystem reviews must be excluded');
@@ -473,8 +654,12 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
   });
 
   // -------------------------------------------------------------------------
-  // The lint's own teeth. Every string below was verified against the real
-  // pre-sweep content or is a shape the first version of these patterns missed.
+  // The lint's own teeth. The corpus mixes real pre-sweep lines (cited inline
+  // with the file and revision they came from) with constructed shapes that an
+  // earlier revision of these patterns got wrong in one direction or the other.
+  // Only the inline citations and the notes that name a verification are claims
+  // about history; treat an uncited entry as a shape someone wanted pinned, not
+  // as evidence that it ever shipped. When you add one, say which it is.
   // -------------------------------------------------------------------------
   test('the patterns bite: every known drift shape is caught', () => {
     const mustCatch = [
@@ -506,6 +691,13 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
       'legacy default was claude-3-opus-20240229',
       'legacy default was claude-instant-1.2',
       'legacy default was claude-2.1',
+      'anthropic/claude-opus-4-7 via the gateway',
+      'us.anthropic.claude-opus-4-7-v1:0 on Bedrock',
+      // Underscore-separated ids: not an Anthropic form, but the family-name
+      // branches accept `_` and this one used to accept only `-`.
+      'pin the agent to claude_opus_4_7',
+      'pin the agent to claude_opus_4.7',
+      'legacy default was claude_3_5_sonnet_20241022',
     ];
     const missed = mustCatch.filter((s) => modelMatches(s).length === 0);
     assert.deepEqual(missed, [], `these version-pinned strings slipped through MODEL_PATTERNS:\n${missed.join('\n')}`);
@@ -539,12 +731,146 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
       'Sonnet 3 shards, one pass each',
       'Haiku 8 passes over the diff',
       'Fable 2 sessions ran overnight',
+      // PAN's own counting vocabulary, added with the COUNT_NOUNS extension
+      // (B2.2). Re-verified by rebuilding the pre-extension patterns and running
+      // them over this block: every entry below was reported as a version pin
+      // then, WITH ONE EXCEPTION — `Opus 4 subagents` was already clean, because
+      // `subagent` was in COUNT_NOUNS all along. It is kept precisely because it
+      // is the clean twin of the sharp case: the hyphenated `sub-agents` spelling
+      // PAN's own docs use was the one being reported, and pinning both spellings
+      // is what stops a future edit from fixing one and losing the other. No live
+      // doc used any of this phrasing, so the lint was crying wolf at nothing
+      // rather than at a real line.
+      'Opus 4 sub-agents run the wave in parallel',
+      'Opus 4 subagents run the wave in parallel',
+      'Opus 4 reviewers cross-check the diff',
+      'Opus 4 checkers gate the phase',
+      'Opus 4 rounds of hardening',
+      'Opus 4 iterations before the verdict',
+      'Opus 4 tokens of overhead per call',
+      'Opus 4 windows of context, one per shard',
+      'Sonnet 4 batches, drained in order',
+      'Sonnet 4 threads of conversation state',
+      'Haiku 4 summaries feed the retro',
     ];
     const falsePositives = mustPass
       .map((s) => [s, modelMatches(s)])
       .filter(([, m]) => m.length > 0)
       .map(([s, m]) => `"${s}" → matched ${JSON.stringify(m.map((x) => x.text))}`);
     assert.deepEqual(falsePositives, [], `MODEL_PATTERNS false-positived on approved phrasing:\n${falsePositives.join('\n')}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // GATE_PATTERNS, proven in BOTH directions in one test so neither half can be
+  // relaxed on its own. A rule this close to ordinary English is only safe while
+  // both corpora are green; if you widen the trigger set or the linking words,
+  // this is the test that tells you whether you started crying wolf.
+  // -------------------------------------------------------------------------
+  test('the gate-scoped bare-family rule is narrow: it catches gates and stays silent on tier/descriptive prose', () => {
+    const gateHits = (s) => GATE_PATTERNS.flatMap(({ re }) => [...s.matchAll(re)].map((m) => m[0]));
+
+    // First: the structural hole this rule exists to close. Bare-family gates
+    // carry no digit, and every MODEL_PATTERNS entry needs one — so this asserts
+    // the blindness rather than leaving it as a prose claim that can rot.
+    for (const bare of ['Claude + Opus only', 'requires Opus', 'Opus is required', 'Sonnet only']) {
+      const byVersionPatterns = MODEL_PATTERNS.flatMap(({ re }) => [...bare.matchAll(re)].map((m) => m[0]));
+      assert.deepEqual(byVersionPatterns, [],
+        `MODEL_PATTERNS matched ${JSON.stringify(bare)} — if the version patterns now catch bare families, `
+        + 'GATE_PATTERNS may be redundant, but check for double-reporting before deleting it');
+      assert.ok(gateHits(bare).length > 0, `GATE_PATTERNS must catch the bare gate ${JSON.stringify(bare)}`);
+    }
+
+    // Real instances of the class, recovered from this history with `git log -p`.
+    // The bare survivors come first — the ones the version patterns could never
+    // see — then version-bearing gates of the same shape, which the gate rule must
+    // also match so the whole gate is what gets quoted back, and finally
+    // constructed shapes that are labelled as such.
+    const gates = [
+      // docs/FAQ.md — the "Opus conductor becomes Mission Control" paragraph.
+      'It runs under the same safety harness as hierarchical exec and is likewise Claude + Opus only.',
+      // docs/FAQ.md — the --hierarchical answer.
+      'Claude + Opus only; other runtimes silently fall back to flat exec.',
+      // docs/USER-GUIDE.md — the campaign-mode caps paragraph.
+      'Campaign mode is Claude + Opus only (like `/pan:exec-phase --hierarchical`); other runtimes fall back to the flat lifecycle.',
+      // Version-bearing gates, from commands/pan/exec-phase.md, docs/AGENTS.md,
+      // docs/MIGRATION-v2-to-v3.md, agents/pan-document_code.md and
+      // commands/pan/map-codebase.md respectively.
+      '- `--hierarchical` (v3.4+, Claude + Opus 4.8 only) — Spawn `pan-conductor` as a top-level orchestrator',
+      '**Runtime gating:** Claude Code + Opus 4.7 only. Other runtimes fall back to flat exec with a warning.',
+      '- `/pan:preview phases` (1M-context single-shot): Opus 4.7 only for the fast path; other models take sharded fallback.',
+      '**`single-shot` mode** (Opus 4.7 only — repo ≤700K tokens):',
+      'Opus 4.7 is required for single-shot mode (only model with a 1M context window).',
+      // Constructed shapes of the same class — the wordings a future author would
+      // reach for after dropping a version. Not history; pinned deliberately.
+      'requires Opus',
+      'hierarchical exec needs Opus',
+      'this mode must run on Opus',
+      'you must have Opus for the single-shot path',
+      'the Opus-only conductor path',
+      'Opus-only',
+      'Sonnet only',
+      'requires Haiku',
+      'Fable only',
+      'Opus is required for single-shot mode',
+    ];
+    const missedGates = gates.filter((s) => gateHits(s).length === 0);
+    assert.deepEqual(missedGates, [],
+      `these bare/family capability gates slipped through GATE_PATTERNS:\n${missedGates.join('\n')}`);
+
+    // The other direction, and the reason a blanket bare-family rule was refused.
+    // Lines marked LIVE are in the tree or its history right now and are the
+    // tight margins: each is why the rule requires adjacency, refuses tier
+    // qualifiers, and leaves `Claude` out of GATE_FAMILY.
+    const innocent = [
+      // Approved tier / class phrasing — the phrasing the sweep moved TO.
+      'Opus-class models only — no version implied',
+      'Opus (reasoning) handles planning; budget steps down to Sonnet/Haiku',
+      'requires an Opus-class model',
+      'requires the default Opus',
+      'the Opus tier is required for planning',
+      'needs a 1M-context model, not necessarily Opus-class',
+      'runs on the default Opus model regardless of your session model',
+      // LIVE (pan-wizard-core/references/model-profiles.md) — Haiku-tier.
+      'Workers (document_code, distiller) are Haiku-tier narrow jobs.',
+      // Descriptive, not gating.
+      'the Opus-pinned hardener',
+      'Mission Control runs on whatever model you launched with',
+      'Mission Control (Opus) delegates to 4 squads',
+      'Mission Control (the Opus conductor, in campaign mode) plans the goal and delegates — it never writes code.',
+      'Phase 1  PLAN     — Mission Control (Opus, extended thinking) decomposes the goal into dependency-ordered missions',
+      // Contributor attribution.
+      '- **Claude Opus 4.7** (Anthropic) — introduced the Opus 4.7 integration',
+      // A RUNTIME gate is the approved phrasing, so `Claude` is not a gate family.
+      'Claude Code only — the installer strips it for the other runtimes',
+      'This is Claude Code only; other runtimes fall back.',
+      // LIVE (commands/pan/army.md) — runtime gate next to a `model: opus` span.
+      "`grep -l '^model: opus' agents/*.md` lists them — the pin applies on Claude Code only, since the installer strips it for the other runtimes.",
+      // LIVE (pan-wizard-core/references/model-profiles.md) — the tightest margin
+      // in the tree: a two-word window after MUST reaches Fable. Adjacency does not.
+      "Do not pile on `CRITICAL: YOU MUST` scaffolding, which can reduce Fable's output quality.",
+      // LIVE (pan-wizard-core/references/model-profiles.md) — `requires` in the
+      // same table row as an Opus comparison, about data retention, not a model.
+      'planning | 1M | ~2× Opus | Runs input safety classifiers (see caveat below); requires 30-day data retention |',
+      // LIVE (model-profiles.md) — a factual per-model statement, `only` not adjacent.
+      'Fable is the only current Claude model that runs input safety classifiers',
+      // LIVE (README.md, commands/pan/army.md) — tier mapping and table cells.
+      'only `budget` steps down to a Sonnet/Haiku mix',
+      '| `fast` | Read-only extraction, budget tasks | Haiku | fast | fast |',
+      '| integration · debugger | Sonnet/Haiku (mid) | read-only, adversarial |',
+      '| **Mission Control** | `pan-conductor` (Opus) | Plans + delegates. Never writes code. | delegation-only |',
+      // Capability phrasing needs no family name at all.
+      'thinking-capable models only',
+      'a model with a 1M-context window is required',
+      'Opus, Sonnet and Haiku all support prompt caching',
+    ];
+    const cryingWolf = innocent
+      .map((s) => [s, gateHits(s)])
+      .filter(([, h]) => h.length > 0)
+      .map(([s, h]) => `"${s}" → matched ${JSON.stringify(h)}`);
+    assert.deepEqual(cryingWolf, [],
+      'GATE_PATTERNS fired on prose that is not a capability gate. Do NOT relax the '
+      + 'corpus to make the rule pass — tighten the rule, or delete it. A lint that '
+      + `reports approved phrasing gets disabled:\n${cryingWolf.join('\n')}`);
   });
 
   // -------------------------------------------------------------------------

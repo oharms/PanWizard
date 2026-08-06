@@ -37,7 +37,7 @@ console.log({
   references: ls('pan-wizard-core/references'),
   unitTests: ls('tests', /\.test\.cjs$/),
   scenarioTests: ls('tests/scenarios', /\.test\.cjs$/),
-  hooks: ls('hooks/dist', /\.js$/),
+  hooks: ls('hooks', /\.js$/),                       // sources, matching the row label — hooks/dist/ is gitignored build output and absent on a fresh clone
   specs: ls('docs/specs'),
   adrs: ls('docs/decisions', /^ADR-.*\.md$/),
 });
@@ -59,8 +59,8 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | References (`pan-wizard-core/references/*.md`) | 16 |
 | Unit test files (`tests/*.test.cjs`) | 99 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 3520 |
-| Total test suites | 756 |
+| Total tests (npm run test:all) | 3553 |
+| Total test suites | 761 |
 | Hooks (`hooks/*.js`) | 5 |
 | Specs (`docs/specs/*.md`) | 44 |
 | ADRs (`docs/decisions/ADR-*.md`) | 42 |

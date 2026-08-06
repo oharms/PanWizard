@@ -38,6 +38,18 @@ const reset = '\x1b[0m';
 // Get version from package.json
 const pkg = require('../package.json');
 
+// Concrete model ids the E-9 capability advisory (see finishInstall) names to
+// the user. Kept here so the next lineup move is an edit to this object rather
+// than a hunt through printed strings — the printed recommendation has already
+// had to be re-pointed as the lineup moved (docs/ECOSYSTEM-REVIEW-2026-06.md,
+// "Stale capability detection"; B4.1, audit 2026-08). The advisory itself is
+// phrased by capability, not by name; these are the "switch to this" examples
+// that keep the advice actionable. Nothing in PAN gates on these values.
+const RECOMMENDED_MODELS = {
+  flagship: 'claude-fable-5',
+  reasoningTier: 'claude-opus-5 / claude-opus-4-8',
+};
+
 // Source repo root — prevent installing PAN into its own source directory
 const PAN_SOURCE_ROOT = path.resolve(__dirname, '..');
 // Windows paths are case-insensitive; normalize for comparison
@@ -2596,8 +2608,11 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
     configureOpencodePermissions(isGlobal);
   }
 
-  // E-9: Opus 4.7 capability detection — warn if user's default model lacks
-  // features Spec A relies on (1M ctx, extended thinking, prompt caching).
+  // E-9 Model-capability integration (the name docs/ARCHITECTURE.md uses for
+  // this mechanism) — warn if user's default model lacks features Spec A relies
+  // on (1M ctx, extended thinking, prompt caching). Advisory only — there is no
+  // runtime capability gate, and as of this writing this notice is the whole
+  // reason detectModelCapabilities exists in the shipped path.
   if (!args.includes('--skip-warnings')) {
     try {
       // Use the `settings` param already resolved for this install. The prior
@@ -2614,8 +2629,9 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
           ].filter(Boolean).join(', ');
           console.log(`
   ${yellow}ℹ${reset} PAN's multi-agent workflows are tuned for frontier reasoning models. Default model "${modelField}" lacks: ${missing}.
-     Features degrade gracefully, but for best results select claude-fable-5 (PAN's recommended flagship — deepest
-     long-horizon reasoning for the bot army), or an Opus-tier model (claude-opus-5 / claude-opus-4-8) at lower cost.`);
+     Features degrade gracefully, but for best results set your default model to one with a 1M-token context window
+     and extended thinking — ${RECOMMENDED_MODELS.flagship} is PAN's recommended flagship (deepest long-horizon
+     reasoning for the bot army), or an Opus-tier model (${RECOMMENDED_MODELS.reasoningTier}) at lower cost.`);
         }
       }
     } catch {
