@@ -279,7 +279,7 @@ describe('whatif — CLI dispatch', () => {
 
   test('whatif cleanup errors on non-git dir without worktree', () => {
     const r = runPanTools('whatif cleanup --worktree /nope --branch foo', tmpDir);
-    assert.ok(r.success, r.error);
+    assert.equal(r.success, false, 'an error payload must exit non-zero');
     const json = JSON.parse(r.output);
     assert.ok(json.error);
   });

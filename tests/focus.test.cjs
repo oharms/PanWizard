@@ -613,7 +613,7 @@ describe('focus sync integration', () => {
 describe('focus exec integration', () => {
   test('returns error when no batch', () => {
     const { success, output: out } = runPanTools('focus exec', tmpDir);
-    assert.ok(success);
+    assert.equal(success, false, 'an error payload must exit non-zero');
     const data = JSON.parse(out);
     assert.ok(data.error);
     assert.ok(data.error.includes('No batch file'));
@@ -747,7 +747,7 @@ describe('focus exec edge cases', () => {
       JSON.stringify({ date: '2026-03-01', mode: 'full', budget: 60, allocated: 0, batch: [] }));
 
     const { success, output: out } = runPanTools('focus exec', tmpDir);
-    assert.ok(success);
+    assert.equal(success, false, 'an error payload must exit non-zero');
     const data = JSON.parse(out);
     assert.ok(data.error);
     assert.ok(data.error.includes('empty'));
@@ -812,7 +812,8 @@ describe('focus exec git cleanliness gate', () => {
     // Create uncommitted change
     fs.writeFileSync(path.join(gitDir, 'dirty.txt'), 'uncommitted');
     const { success, output: out } = runPanTools('focus exec', gitDir);
-    assert.ok(success);
+    // A refusal: the batch did NOT run, so the exit code must say so.
+    assert.equal(success, false, 'a refusal must exit non-zero');
     const data = JSON.parse(out);
     assert.strictEqual(data.error, 'dirty_working_tree');
     assert.ok(data.uncommitted_count > 0);

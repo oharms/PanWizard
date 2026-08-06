@@ -255,7 +255,8 @@ describe('skill-align — CLI (skills index|align)', () => {
 
   test('skills align with a missing draft file returns {error}', () => {
     const r = runPanTools(`skills align --source-root "${root}" --draft-file "${path.join(root, 'nope.md')}"`);
-    assert.ok(r.success, r.error); // error is reported as JSON, not an exit code
+    // The error body is JSON on stdout AND the exit code is non-zero.
+    assert.equal(r.success, false, 'an error payload must exit non-zero');
     const j = JSON.parse(r.output);
     assert.match(j.error, /not found/);
   });

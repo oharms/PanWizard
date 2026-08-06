@@ -58,16 +58,79 @@ When JSON output exceeds ~50 KB, the tool writes it to a temporary file and prin
 
 | Code | Meaning |
 |------|---------|
-| `0`  | Success |
-| `1`  | Error (message written to stderr via `error()`) |
+| `0`  | The command answered the question it was asked — including when the answer is empty or negative |
+| `1`  | Failure, refusal, or a gate that tripped: the command did not produce the result the caller wanted |
+| `2`  | `doc-lint` only — the schema file itself is malformed, so nothing could be linted (distinct from *finding* violations). Emitted on **both** the `--raw` and the JSON path; the JSON body additionally lists `schema_errors` |
+
+**The exit code is the authoritative failure signal.** Gate on it. Do not gate on the presence of an `error` key in the body — see "Error Shape" below for why that test gives the wrong answer.
+
+### Error Shape
+
+pan-tools has **two** error mechanisms. They differ in where the text lands, not in the exit code:
+
+| Mechanism | Text goes to | stdout | Exit code |
+|---|---|---|---|
+| `error(msg)` | **stderr**, as a bare `Error: <msg>` line — no JSON | empty | always `1` |
+| `output(payload, …)` with a truthy top-level **error-family** key | **stdout**, as `{ "error": "<description>" }` (or the plain message under `--raw`) | the payload | `1` unless the command opts out (below) |
+
+The **error family** is `error` and any key ending in `_error` — `worktree_error` (`whatif prepare`), `drain_error` (`bus drain`). A renamed error key is still an error key. Plural collections (`errors`, `schema_errors`) and counters (`error_count`) are *not* in the family: they are the detail of a verdict payload, and an empty array is truthy in JavaScript, so treating them as failure signals would fail every clean run. Commands whose result is a verdict set their exit code explicitly instead.
+
+`error()` is used for usage errors and unmet preconditions the caller cannot act on programmatically (a missing required argument). `output()` carries a machine-readable body: a failure the caller may want to branch on (`{"error": "state.md not found"}`, `{"error": "not_a_git_repo"}`) or a deliberate refusal that protected something (`{"error": "File already exists"}`, `{"error": "dirty_working_tree"}` — the file was not overwritten, the reset did not run).
+
+Error messages follow the pattern `"<thing> not found"` with actionable hints where appropriate.
+
+**A JSON `error` body carries a non-zero exit.** This was not always true: every `output({ error: … })` site once exited `0`, so `pan-tools state json` in a project with no `state.md` printed `{"error":"state.md not found"}` **and reported success** — invisible to any orchestrator, hook, CI step, or autonomous loop gating on the exit code. `output()` now derives the code from the payload in one place (`core.cjs`), so the two mechanisms agree.
+
+#### A valid-but-empty answer is not an error
+
+An empty result is a *result*. `focus plan` on a burned-down backlog, `verify artifacts` on a plan that declares no artifacts, `template select` falling back to the documented default — each answered correctly and **exits `0`**. Some of these still carry an `error` string, because it is the only field available to explain *why* the answer is empty (`{"error": "No work items found. Run focus scan first or add phases/todos."}` at exit `0`). Such sites opt out explicitly via `core.cjs`'s `EXIT_OK`, each with a comment giving its reason; `grep -rn "EXIT_OK" pan-wizard-core/bin` enumerates every one.
+
+That is exactly why the exit code, not the `error` key, is the failure test.
+
+#### `<verb>: false` payloads
+
+Mutating commands report the outcome as a past-tense flag: `{committed}`, `{updated}`, `{added}`, `{resolved}`, `{pushed}`, `{created}`. **The flag alone does not tell you whether something went wrong**, and the exit code does:
+
+| Payload | Exit | Why |
+|---|---|---|
+| `{committed: false, reason: "commit_failed", error: …}` | `1` | git refused; nothing landed |
+| `{committed: false, reason: "commit_blocked", error: …}` | `1` | a safety check protected you; nothing landed |
+| `{updated: false, reason: "state.md not found", error: …}` | `1` | the write had nowhere to go |
+| `{resolved: false, reason: "no matching blocker", error: …}` | `1` | the blocker is still open |
+| `{committed: false, reason: "nothing_to_commit"}` | `0` | no change was needed |
+| `{committed: false, reason: "skipped_commit_docs_false"}` | `0` | your config said not to |
+| `{advanced: false, reason: "last_plan"}` | `0` | normal end of phase |
+| `{updated: false, reason: "No plans found"}` | `0` | nothing to sync |
+| `{available: false, reason: "BRAVE_API_KEY not set"}` | `0` | capability unconfigured, not broken |
+| `{found: false, phase_number: 12}` | `0` | the answer to the question is "no" |
+| `{clean: false, …}` / `{exists: false, …}` | `0` | a description of state |
+
+The failures carry an error-family key and the answers do not — which is *why* the same shape can mean both. This split is a per-command judgement recorded in the source next to each payload, not something you can infer from the shape.
+
+`{available: false}` is worth one more line, because it appears with and without an error key on purpose: `web-search` with no `BRAVE_API_KEY` is unconfigured (exit `0`, degrade gracefully), while a configured search that gets an API 5xx is broken (exit `1`).
+
+#### How a caller tells them apart
+
+```sh
+out=$(pan-tools <command>)   # stderr passes through to the terminal
+code=$?
+if [ "$code" -ne 0 ]; then
+  # Failed, refused, or a gate tripped. The reason is in whichever stream spoke:
+  #   $out non-empty -> JSON body on stdout; read its .error
+  #   $out empty     -> a bare "Error: ..." line went to stderr
+  :
+else
+  # Answered. The answer may legitimately be empty and may carry an `error`
+  # string saying why -- branch on the data, never on the `error` key.
+  :
+fi
+```
+
+A gate whose verdict has no `error` key sets its code explicitly instead: `links validate` (`0` pass / `1` fail), `verify reconcile` (`0` reconciled / `1` contradiction), `verify stubs --gate`, `campaign due`. Those are documented per command.
 
 ### `--cwd <path>`
 
 Override the working directory. Accepts `--cwd /path` or `--cwd=/path`. Useful when subagents run outside the project root.
-
-### Error Shape
-
-All errors return JSON: `{ "error": "<description>" }`. Error messages follow the pattern `"<thing> not found"` with actionable hints where appropriate.
 
 ### Module Architecture
 
@@ -359,7 +422,7 @@ pan-tools state load [--raw]
 
 **`--raw` output:** Key=value lines: `model_profile=balanced`, `commit_docs=true`, etc.
 
-**Error:** `{ "error": "state.md not found" }` if `.planning/state.md` doesn't exist.
+**Error:** `{ "error": "state.md not found" }` on stdout, **exit 1**, if `.planning/state.md` doesn't exist.
 
 **Implementation:** `state.cjs → cmdStateLoad()` — Uses `readStateSafe()` for race-condition-safe file access.
 
@@ -1905,7 +1968,7 @@ pan-tools commit "bugfix" --type fix --force
 - `--amend` — Amend the previous commit instead of creating a new one
 - `--type TYPE` — Conventional commit type prefix. Valid: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`. Prepends `type: ` to message.
 - `--force` — Skip deleted-file safety check
-- `--fail-on-error` — Exit non-zero when git refuses the commit (e.g. missing identity) instead of returning `commit_failed` with exit 0. Lets autonomous loops detect the silent-failure case where the artifact never actually landed. (`nothing_to_commit` is still a success.)
+- `--fail-on-error` — Report a git refusal (e.g. missing identity) as a bare `error()` on **stderr** instead of a `commit_failed` JSON body on stdout. Both exit non-zero, so autonomous loops detect the silent-failure case where the artifact never actually landed either way; the flag only changes which stream carries the reason. (`nothing_to_commit` has no `error` key and is still a success at exit `0`.)
 
 **Safety checks** (enabled by default via `config.commit.safety_checks`):
 - **Deleted files:** Blocks commit if deleted files in staging (use `--force` to override)
@@ -2470,7 +2533,7 @@ Scheduled, self-resuming bot-army campaigns. PAN is not a daemon: this module ow
 
 - `campaign schedule` — arm or update the schedule. Flags: `--cadence <hourly|daily|weekly|Nh|Nd>` (default `daily`), `--daily-budget <points>` (default 300), `--goal <text>`, `--source <name>` (default `backlog`), `--pause`, `--resume`, `--disable`. Returns the written descriptor.
 - `campaign status` — full descriptor plus computed `spent_today`, `due`, and `reason`. Also the default when `campaign` is run with no subcommand.
-- `campaign due` — host-scheduler gate: returns `{due, reason, next_due}`. `reason` is one of `no_schedule`, `disabled`, `paused`, `budget_exhausted_today`, `due`, `not_yet`.
+- `campaign due` — host-scheduler gate: returns `{due, reason, next_due}`. `reason` is one of `no_schedule`, `disabled`, `paused`, `budget_exhausted_today`, `due`, `not_yet`. **Exit codes:** `0` — due; `1` — not due. The payload has no `error` key, so the code is set explicitly; a `cron`/`&&` trigger can gate on it without parsing the body. "Not due" is a negative *answer*, not a failure, so pair the exit code with `reason` if you need to distinguish it from a broken descriptor.
 - `campaign record-run` — record a completed run and advance `next_due`. Flags: `--items <N>`, `--points <N>`.
 
 ### `hud [--out <file>] [--open] [--stdout]` (v3.12, ADR-0035)
@@ -2962,7 +3025,7 @@ pan-tools retro [--write-memory] [--max N] [--raw]
 
 The `memory` field is omitted unless `--write-memory` is set.
 
-**Error:** `{"error": "roadmap.md not found"}` if no `.planning/roadmap.md` exists.
+**Error:** `{"error": "roadmap.md not found"}` on stdout, **exit 1**, if no `.planning/roadmap.md` exists.
 
 ---
 
@@ -3519,13 +3582,17 @@ Markdown frontmatter + structure linter, vendored from the whooo experiment. Val
 
 **Module:** `doc-lint.cjs` (adapter) + `pan-wizard-core/bin/lib/doc-lint/{frontmatter,schema,validate,walk,reporter}.js`.
 
+**Exit codes — all four subcommands.** `0` clean · `1` violations found · `2` (`doc-lint <dir>` only) the schema itself is malformed. The verdict is identical on the `--raw` and JSON paths; gate on the exit code in either format.
+
+> Corrected in this version: the JSON paths used to exit `0` unconditionally, because `output()` exits the process and the `process.exit(<verdict>)` line below each call was unreachable. `doc-lint --format json` therefore never failed, and `doc-lint schema-check` never failed in *either* format. Earlier revisions of this page documented the JSON path as merely "reporting `schema_errors` in the body" — that described the defect, not an intended design. If you pinned a version to that behaviour, the linter was not gating.
+
 ### `doc-lint <dir> [--schema <name>] [--format human|json]` (v3.7.1)
 
-Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command` for files under `commands/pan/`). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. JSON output suitable for CI gates; human output for terminal review.
+Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command` for files under `commands/pan/`). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. JSON output suitable for CI gates; human output for terminal review. Exits `1` when any violation has `severity: error` (warnings alone exit `0`), `2` if the schema could not be parsed.
 
 ### `doc-lint schema-check <path>` (v3.7.1)
 
-Verify the YAML schema at `<path>` is syntactically valid before it's used to lint anything. `<path>` is a required positional argument. Schemas live at `pan-wizard-core/references/schemas/*.schema.yml`.
+Verify the YAML schema at `<path>` is syntactically valid before it's used to lint anything. `<path>` is a required positional argument. Schemas live at `pan-wizard-core/references/schemas/*.schema.yml`. Exits `1` when `ok` is false.
 
 ### `doc-lint counts <dir> [--exclude <glob>]` (v3.7.1)
 
@@ -3553,7 +3620,7 @@ pan-tools skills index --raw
 
 ### `skills align (--draft "<text>" | --draft-file <path>) [--top <k>] [--min-score <n>] [--token-budget <n>] [--source-root <path>]` (v3.13, ADR-0038)
 
-Score each draft task (bullets/numbered/checkbox lines all accepted) against the skill index using `scoreRelevance`, after stripping planning glue words from the cue. Returns per-task top-k matches (names only), `coverage`, and a deduplicated `vocabulary` hint list ranked by aggregate score and greedy-packed into the token budget (default 1500) — overflow lands in `dropped`, never silently truncated. Errors as `{error}` JSON on empty drafts or more than 50 tasks.
+Score each draft task (bullets/numbered/checkbox lines all accepted) against the skill index using `scoreRelevance`, after stripping planning glue words from the cue. Returns per-task top-k matches (names only), `coverage`, and a deduplicated `vocabulary` hint list ranked by aggregate score and greedy-packed into the token budget (default 1500) — overflow lands in `dropped`, never silently truncated. A draft that yields no tasks, or one over the max-task threshold, is reported as an `{error}` JSON body on stdout at **exit 1** (per "Error Shape"); omitting both `--draft` and `--draft-file` is a usage error on stderr, also exit 1.
 
 ```
 pan-tools skills align --draft-file /tmp/draft-tasks.md --raw

@@ -186,7 +186,7 @@ function appendRecord(cwd, rec) {
     fs.appendFileSync(tokensFile(cwd), JSON.stringify(normalized) + '\n', 'utf-8');
     return { appended: true, file: tokensFile(cwd) };
   } catch (e) {
-    return { appended: false, error: e.message };
+    return { appended: false, error: e.message || 'ledger_append_failed' };
   }
 }
 
@@ -421,7 +421,7 @@ function cmdCostClear(cwd, raw) {
     fs.unlinkSync(tokensFile(cwd));
     output({ cleared: true, file: tokensFile(cwd) }, raw);
   } catch (e) {
-    output({ cleared: false, error: e.message }, raw);
+    output({ cleared: false, error: e.message || 'ledger_clear_failed' }, raw);
   }
 }
 

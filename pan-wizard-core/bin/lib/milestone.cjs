@@ -39,7 +39,9 @@ function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
   try {
     reqContent = fs.readFileSync(reqPath, 'utf-8');
   } catch {
-    output({ updated: false, reason: 'requirements.md not found', ids: reqIds }, raw, 'no requirements file');
+    // error key => exit 1: the caller asked to mark requirements complete and no
+    // requirement was marked - the milestone record does not reflect the work.
+    output({ updated: false, reason: 'requirements.md not found', error: 'requirements_not_found', ids: reqIds }, raw, 'no requirements file');
     return;
   }
   const updated = [];

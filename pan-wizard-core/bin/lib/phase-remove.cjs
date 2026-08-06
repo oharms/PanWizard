@@ -20,7 +20,7 @@ function removePhaseFromDisk(phaseDir) {
   try {
     fs.rmSync(phaseDir, { recursive: true, force: true });
   } catch (e) {
-    return { removed: false, error: e.message };
+    return { removed: false, error: e.message || 'remove_failed' };
   }
   return { removed: true };
 }

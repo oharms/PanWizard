@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex } = require('./core.cjs');
+const { output, EXIT_OK, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex } = require('./core.cjs');
 const {
   PLANNING_DIR, PHASES_DIR, ROADMAP_FILE, PATTERNS_FILE, EFFORT_POINTS, PRIORITY_LEVELS, EFFORT_SIZES,
   FOCUS_MODES, FOCUS_TIERS, FOCUS_DIR,
@@ -344,7 +344,13 @@ function cmdFocusPlan(cwd, raw, ...args) {
   // Collect items
   const { items, sources } = collectWorkItems(cwd);
   if (items.length === 0) {
-    output({ error: 'No work items found. Run focus scan first or add phases/todos.' }, raw);
+    // EXIT_OK: an empty backlog is a legitimate answer, not a failure — it is the
+    // desired end state of a burn-down loop. `focus scan` already reports zero items
+    // as a success payload ({ items: [], total: 0 }) and the shipped scenario test
+    // asserts `focus plan` succeeds on a project with no TODOs
+    // (tests/scenarios/workflow-focus.test.cjs), so exiting non-zero here would make
+    // "nothing left to do" indistinguishable from a crash for the same caller.
+    output({ error: 'No work items found. Run focus scan first or add phases/todos.' }, raw, undefined, EXIT_OK);
     return;
   }
 

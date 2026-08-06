@@ -256,6 +256,13 @@ function cmdWhatifPrepare(cwd, phaseNum, scenario, raw) {
   const ctx = buildCounterfactualContext(cwd, phaseNum, scenario);
   if (ctx.error) { output(ctx, raw); return; }
   const wt = createWorktree(cwd, phaseNum, scenario);
+  // `worktree_error` (not `error`) because the payload also carries the context that
+  // WAS resolved, and `error` would read as "the context failed". It is still an
+  // error-family key, so output() derives exit 1 from it exactly as it does for the
+  // `ctx.error` guard one line above — which is the point: the two adjacent failures
+  // of the same command must not report different exit codes just because one of
+  // them renamed the key. Callers cannot proceed either way: what-if stage 2 spawns
+  // an agent INTO worktree_path, and there is no worktree.
   if (wt.error) { output({ ...ctx, worktree_error: wt.error }, raw); return; }
   output({ ...ctx, worktree: wt }, raw);
 }

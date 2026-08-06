@@ -309,7 +309,7 @@ describe('verify phase-completeness command', () => {
 
   test('nonexistent phase returns error', () => {
     const result = runPanTools('verify phase-completeness 99', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'Phase not found', 'should report phase not found');
@@ -452,7 +452,7 @@ must_haves:
 
   test('plan file not found returns error JSON', () => {
     const result = runPanTools('verify plan-structure .planning/phases/99-missing/99-01-plan.md', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'should report file not found');

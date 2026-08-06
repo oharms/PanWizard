@@ -379,7 +379,7 @@ objective: Manual review needed
 
   test('phase not found returns error', () => {
     const result = runPanTools('phase-plan-index 99', tmpDir);
-    assert.ok(result.success, `Command should succeed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'Phase not found', 'should report phase not found');

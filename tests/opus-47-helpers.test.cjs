@@ -415,7 +415,7 @@ describe('cache prime + focus classify-stages CLI', () => {
 
   test('focus classify-stages returns error when no batch exists', () => {
     const r = runPanTools('focus classify-stages', tmpDir);
-    assert.ok(r.success, r.error);
+    assert.equal(r.success, false, 'an error payload must exit non-zero');
     const json = JSON.parse(r.output);
     assert.ok(json.error);
   });

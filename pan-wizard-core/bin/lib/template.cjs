@@ -9,7 +9,7 @@ const {
   SIMPLE_TASK_THRESHOLD, SIMPLE_FILE_THRESHOLD, COMPLEX_TASK_THRESHOLD, COMPLEX_FILE_THRESHOLD,
 } = require('./constants.cjs');
 const { planningPath, phasesPath } = require('./utils.cjs');
-const { normalizePhaseName, findPhaseInternal, generateSlugInternal, toPosix, output, error } = require('./core.cjs');
+const { normalizePhaseName, findPhaseInternal, generateSlugInternal, toPosix, output, EXIT_OK, error } = require('./core.cjs');
 const { reconstructFrontmatter } = require('./frontmatter.cjs');
 
 /**
@@ -64,8 +64,13 @@ function cmdTemplateSelect(cwd, planPath, raw) {
     const result = { template, type, taskCount, fileCount, hasDecisions };
     output(result, raw, template);
   } catch (err) {
-    // Fallback to standard template on any read/parse error
-    output({ template: 'templates/summary-standard.md', type: 'standard', error: err.message }, raw, 'templates/summary-standard.md');
+    // Fallback to standard template on any read/parse error.
+    // EXIT_OK: this is a RESULT, not a failure — the command answered the question
+    // it was asked ("which summary template?") with the documented default, and
+    // `error` here is only the reason detection fell back. Callers use it as
+    // `TEMPLATE=$(pan-tools template select … --raw)`; exiting non-zero would
+    // report a failure for a command that produced a usable answer.
+    output({ template: 'templates/summary-standard.md', type: 'standard', error: err.message }, raw, 'templates/summary-standard.md', EXIT_OK);
   }
 }
 

@@ -159,13 +159,101 @@ function resolveEffortInternal(cwd, agentType) {
 // ─── Output helpers ───────────────────────────────────────────────────────────
 
 /**
+ * Explicit opt-in to exit 0 for a payload that carries an `error` key but is NOT
+ * a failure — a legitimate empty/negative answer the caller must not treat as one.
+ * Pass it as output()'s 4th argument so the intent is visible and greppable:
+ *   `grep -rn "EXIT_OK" pan-wizard-core/bin` enumerates every documented exception.
+ */
+const EXIT_OK = 0;
+
+/**
+ * Names of the ERROR FAMILY: `error` itself, and any key ending in `_error`
+ * (`worktree_error`, `drain_error`, `commit_error`). A renamed error key is still
+ * an error key — that rename is exactly how this class escaped the first fix,
+ * which matched the literal name `error` and therefore missed
+ * `whatif prepare`'s `worktree_error` sitting three lines below a guard that
+ * handled plain `ctx.error` correctly.
+ *
+ * Deliberately NOT in the family:
+ *  - plural collections — `errors`, `schema_errors`, `error_patterns`. Those are
+ *    the *detail* of a verdict payload (`{ passed, errors, warnings }`), and an
+ *    empty array is truthy in JS, so matching them would make every clean
+ *    `verify` run exit 1. Commands that gate on a verdict pass their code
+ *    explicitly (see `links validate`, `doc-lint`).
+ *  - counters — `error_count`, `total_errors_traced`.
+ */
+const ERROR_FAMILY_KEY = /(^|_)error$/;
+
+/**
+ * True when `result` reports a FAILURE: an object carrying a truthy own key in
+ * the error family. `error: null` / `''` / `false` are "no error", so a payload
+ * may carry the key unset without being reported as a failure.
+ *
+ * This is the ONLY shape that means "failure" to output(). See the exit-code
+ * contract below for why no other shape is inferred.
+ */
+function reportsFailure(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return false;
+  // Object.keys → own enumerable keys only: an inherited `error` is not ours,
+  // and a nested `{ summary: { error } }` is data, not a top-level signal.
+  for (const key of Object.keys(result)) {
+    if (ERROR_FAMILY_KEY.test(key) && result[key]) return true;
+  }
+  return false;
+}
+
+/**
  * Write result to stdout and exit. JSON by default, or raw string if --raw flag is set.
  * Large JSON (>50KB) is written to a tmpfile with @file: prefix.
+ *
+ * ── EXIT-CODE CONTRACT (read before adding an output() call) ──
+ * A payload carrying a truthy ERROR-FAMILY key (`error` or `*_error`) exits **1**
+ * by default. That default is deliberate and must not be relaxed: PAN's own
+ * orchestrators, hooks, CI steps and autonomous loops gate on the exit code, and an
+ * error body delivered with exit 0 is a dead gate — invisible. (Historically every
+ * `output({ error: … })` site exited 0, so `pan-tools state json` in a project with
+ * no state.md printed `{"error":"state.md not found"}` and reported success. An
+ * over-eager exit code is loud and gets fixed; a missed failure is silent, so
+ * failure is the safe default.) The error body still goes to **stdout** — callers
+ * parse it as before; only the exit code changed. `error()` remains the
+ * stderr+exit-1 path for bare messages.
+ *
+ * Three ways to choose an exit code, in precedence order:
+ *  1. Pass `exitCode` explicitly — for gates and verdicts whose payload has no
+ *     error-family key (e.g. `campaign due` answering "not due",
+ *     `verify stubs --gate`, `links validate`, `doc-lint`).
+ *  2. Pass `EXIT_OK` — an error-keyed payload that is a legitimate empty/negative
+ *     RESULT, not a failure. Every such site must carry a comment saying why.
+ *  3. Pass nothing — derived: truthy error-family key ⇒ 1, otherwise 0.
+ *
+ * ── WHY THE DERIVATION STOPS AT THE ERROR FAMILY ──
+ * PAN's other failure shape is `<verb>: false` plus a `reason`/`detail`. That shape
+ * cannot be classified structurally, because the identical shape carries both
+ * meanings — sometimes inside one function:
+ *     { committed: false, reason: 'commit_failed' }            ← failure
+ *     { committed: false, reason: 'skipped_commit_docs_false' } ← the user's own config
+ *     { advanced: false, reason: 'last_plan' }                  ← normal end of phase
+ *     { updated: false, reason: 'No plans found' }              ← nothing to sync
+ *     { available: false, reason: 'BRAVE_API_KEY not set' }     ← capability absent
+ *     { found: false, phase_number: 12 }                        ← the answer is "no"
+ *     { clean: false, … } / { exists: false, … }                ← a state description
+ * A rule like "false flag + a reason ⇒ failure" would turn all but the first into
+ * failures, and a false failure is a NEW bug, as loud as the one it fixes. So the
+ * classification is made per site, by the author, and recorded in the payload: a
+ * site that reports a FAILURE gives its payload an error-family key, which routes
+ * it through this one derivation — including payloads built by pure functions in
+ * other modules and passed straight through by the dispatcher.
+ *
+ * Corollary for such sites: harden the value against emptiness
+ * (`error: r.stderr || 'unknown git error'`). A subprocess that fails silently
+ * yields `''`, and an empty string would launder the failure back into exit 0.
+ *
  * @param {Object} result - The result object to serialize as JSON
  * @param {boolean} [raw] - If true and rawValue is provided, output rawValue as plain string
  * @param {string} [rawValue] - Plain string to output when raw mode is active
+ * @param {number} [exitCode] - Explicit exit code; omit to derive it from the payload
  */
-function output(result, raw, rawValue, exitCode = 0) {
+function output(result, raw, rawValue, exitCode) {
   if (raw && rawValue !== undefined) {
     process.stdout.write(String(rawValue));
   } else {
@@ -190,7 +278,7 @@ function output(result, raw, rawValue, exitCode = 0) {
       process.stdout.write(json);
     }
   }
-  process.exit(exitCode);
+  process.exit(exitCode === undefined ? (reportsFailure(result) ? 1 : 0) : exitCode);
 }
 
 /**
@@ -977,6 +1065,8 @@ module.exports = {
   LEGACY_ALIASES,
   COST_MULTIPLIERS,
   output,
+  EXIT_OK,
+  reportsFailure,
   error,
   verbose,
   safeReadFile,

@@ -3,6 +3,25 @@
 const { output, error, isGitRepo, execGit, loadConfig } = require('./core.cjs');
 const { runCommitSafetyChecks, VALID_COMMIT_TYPES } = require('./commands.cjs');
 
+// ─── Failure reporting ────────────────────────────────────────────────────────
+//
+// Every subcommand here asks git to DO something. When git refuses, the payload
+// says `<verb>: false` — a shape output() cannot classify on its own, because the
+// same shape also carries legitimate negative answers elsewhere in PAN (see the
+// exit-code contract in core.cjs). So each failure site names itself with an
+// error-family key, which is what output() derives a non-zero exit from.
+//
+// Whatever the value is, it must never be able to come out EMPTY: git does not
+// always write to stderr, and an empty string is falsy — it would launder the
+// failure back into exit 0. Two safe forms are used here:
+//   • a stable code (`error: 'push_failed'`) — the form the query subcommands in
+//     this file already used (`error: 'status_failed', detail: r.stderr`);
+//   • stderr with a fallback (`error: r.stderr || 'unknown git error'`) — used by
+//     `commit` only, so all three of PAN's commit paths (this one, cmdCommit and
+//     cmdBatchCommit in commands.cjs) report a refused commit identically.
+// The stderr text stays in `detail` where it always was, so existing consumers
+// keep reading the same field.
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getCurrentBranch(cwd) {
@@ -52,7 +71,10 @@ function cmdGitCommit(cwd, opts, raw) {
   const config = loadConfig(cwd);
   const safety = runCommitSafetyChecks(cwd, config, force);
   if (safety.blocked) {
-    output({ committed: false, reason: safety.reason, safety_checks: safety.safetyChecks, hint: safety.hint }, raw, 'blocked');
+    // A blocked commit is a refusal that protected something (staged deletions, a
+    // secret) — the commit did NOT happen, so the caller must be able to stop. Same
+    // classification CLI-REFERENCE already documents for `dirty_working_tree`.
+    output({ committed: false, reason: safety.reason, error: 'commit_blocked', safety_checks: safety.safetyChecks, hint: safety.hint }, raw, 'blocked');
     return;
   }
 
@@ -61,10 +83,16 @@ function cmdGitCommit(cwd, opts, raw) {
   const r = execGit(cwd, commitArgs);
   if (r.exitCode !== 0) {
     if (r.stdout.includes('nothing to commit') || r.stderr.includes('nothing to commit')) {
+      // No error key, exit 0: nothing to commit means no change was NEEDED, not that
+      // a change failed. Pinned as a success in CLI-REFERENCE ("Error Shape").
       output({ committed: false, reason: 'nothing_to_commit' }, raw, 'nothing to commit');
       return;
     }
-    output({ committed: false, reason: 'commit_failed', detail: r.stderr }, raw, 'commit failed');
+    // `|| 'unknown git error'` is load-bearing: the exit code is derived from a
+    // TRUTHY error key and git does not always write to stderr, so an empty string
+    // would launder this real failure back into exit 0. Same shape as the two
+    // sibling commit paths in commands.cjs (cmdCommit, cmdBatchCommit).
+    output({ committed: false, reason: 'commit_failed', error: r.stderr || 'unknown git error', detail: r.stderr }, raw, 'commit failed');
     return;
   }
   const hash = execGit(cwd, ['rev-parse', '--short', 'HEAD']).stdout || null;
@@ -90,7 +118,7 @@ function cmdGitBranch(cwd, sub, opts, raw) {
     if (!branchName) { error('--name or --phase required for branch create'); }
     const r = execGit(cwd, ['checkout', '-b', branchName]);
     if (r.exitCode !== 0) {
-      output({ created: false, branch: branchName, detail: r.stderr }, raw, 'failed');
+      output({ created: false, branch: branchName, error: 'branch_create_failed', detail: r.stderr }, raw, 'failed');
       return;
     }
     output({ created: true, branch: branchName }, raw, branchName);
@@ -100,7 +128,7 @@ function cmdGitBranch(cwd, sub, opts, raw) {
     if (!name) { error('--name required for branch switch'); }
     const r = execGit(cwd, ['checkout', name]);
     if (r.exitCode !== 0) {
-      output({ switched: false, branch: name, detail: r.stderr }, raw, 'failed');
+      output({ switched: false, branch: name, error: 'branch_switch_failed', detail: r.stderr }, raw, 'failed');
       return;
     }
     output({ switched: true, branch: name }, raw, name);
@@ -111,7 +139,7 @@ function cmdGitBranch(cwd, sub, opts, raw) {
     const flag = force ? '-D' : '-d';
     const r = execGit(cwd, ['branch', flag, name]);
     if (r.exitCode !== 0) {
-      output({ deleted: false, branch: name, detail: r.stderr, hint: force ? null : 'Use --force to delete unmerged branches' }, raw, 'failed');
+      output({ deleted: false, branch: name, error: 'branch_delete_failed', detail: r.stderr, hint: force ? null : 'Use --force to delete unmerged branches' }, raw, 'failed');
       return;
     }
     output({ deleted: true, branch: name }, raw, name);
@@ -134,7 +162,7 @@ function cmdGitPush(cwd, opts, raw) {
 
   const r = execGit(cwd, pushArgs);
   if (r.exitCode !== 0) {
-    output({ pushed: false, remote, branch, detail: r.stderr }, raw, 'push failed');
+    output({ pushed: false, remote, branch, error: 'push_failed', detail: r.stderr }, raw, 'push failed');
     return;
   }
   output({ pushed: true, remote, branch, force: !!force }, raw, remote + '/' + branch);
@@ -182,14 +210,14 @@ function cmdGitStash(cwd, sub, opts, raw) {
   if (sub === 'save') {
     const args = name ? ['stash', 'push', '-m', name] : ['stash', 'push'];
     const r = execGit(cwd, args);
-    if (r.exitCode !== 0) { output({ stashed: false, detail: r.stderr }, raw, 'stash failed'); return; }
+    if (r.exitCode !== 0) { output({ stashed: false, error: 'stash_save_failed', detail: r.stderr }, raw, 'stash failed'); return; }
     output({ stashed: true, name: name || null }, raw, 'stashed');
     return;
   }
   if (sub === 'pop') {
     const args = index != null ? ['stash', 'pop', 'stash@{' + index + '}'] : ['stash', 'pop'];
     const r = execGit(cwd, args);
-    if (r.exitCode !== 0) { output({ popped: false, detail: r.stderr }, raw, 'pop failed'); return; }
+    if (r.exitCode !== 0) { output({ popped: false, error: 'stash_pop_failed', detail: r.stderr }, raw, 'pop failed'); return; }
     output({ popped: true }, raw, 'popped');
     return;
   }
@@ -202,7 +230,7 @@ function cmdGitStash(cwd, sub, opts, raw) {
   if (sub === 'drop') {
     const args = index != null ? ['stash', 'drop', 'stash@{' + index + '}'] : ['stash', 'drop'];
     const r = execGit(cwd, args);
-    if (r.exitCode !== 0) { output({ dropped: false, detail: r.stderr }, raw, 'drop failed'); return; }
+    if (r.exitCode !== 0) { output({ dropped: false, error: 'stash_drop_failed', detail: r.stderr }, raw, 'drop failed'); return; }
     output({ dropped: true }, raw, 'dropped');
     return;
   }
@@ -250,7 +278,7 @@ function cmdGitRollback(cwd, opts, raw) {
     }
     const r = execGit(cwd, ['reset', '--hard', targetTag]);
     if (r.exitCode !== 0) {
-      output({ rolled_back: false, tag: targetTag, detail: r.stderr }, raw, 'rollback failed');
+      output({ rolled_back: false, tag: targetTag, error: 'rollback_failed', detail: r.stderr }, raw, 'rollback failed');
       return;
     }
   }
@@ -280,7 +308,7 @@ function cmdGitTag(cwd, sub, opts, raw) {
       : ['-c', 'tag.gpgsign=false', 'tag', name];
     const r = execGit(cwd, args);
     if (r.exitCode !== 0) {
-      output({ created: false, tag: name, detail: r.stderr }, raw, 'tag create failed');
+      output({ created: false, tag: name, error: 'tag_create_failed', detail: r.stderr }, raw, 'tag create failed');
       return;
     }
     output({ created: true, tag: name }, raw, name);
@@ -290,7 +318,7 @@ function cmdGitTag(cwd, sub, opts, raw) {
     if (!name) { error('--name required for tag delete'); }
     const r = execGit(cwd, ['tag', '-d', name]);
     if (r.exitCode !== 0) {
-      output({ deleted: false, tag: name, detail: r.stderr }, raw, 'tag delete failed');
+      output({ deleted: false, tag: name, error: 'tag_delete_failed', detail: r.stderr }, raw, 'tag delete failed');
       return;
     }
     output({ deleted: true, tag: name }, raw, name);
@@ -310,14 +338,14 @@ function cmdGitSync(cwd, opts, raw) {
 
   const fetchR = execGit(cwd, ['fetch', remote]);
   if (fetchR.exitCode !== 0) {
-    output({ synced: false, detail: fetchR.stderr }, raw, 'fetch failed');
+    output({ synced: false, error: 'fetch_failed', detail: fetchR.stderr }, raw, 'fetch failed');
     return;
   }
 
   const pullArgs = rebase ? ['pull', '--rebase', remote, branch] : ['pull', remote, branch];
   const pullR = execGit(cwd, pullArgs);
   if (pullR.exitCode !== 0) {
-    output({ synced: false, detail: pullR.stderr }, raw, 'pull failed');
+    output({ synced: false, error: 'pull_failed', detail: pullR.stderr }, raw, 'pull failed');
     return;
   }
 

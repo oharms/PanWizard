@@ -21,7 +21,7 @@ describe('state-snapshot command', () => {
 
   test('missing state.md returns error', () => {
     const result = runPanTools('state-snapshot', tmpDir);
-    assert.ok(result.success, `Command should succeed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found', 'should report missing file');
@@ -270,7 +270,7 @@ describe('state json command', () => {
 
   test('missing state.md returns error', () => {
     const result = runPanTools('state json', tmpDir);
-    assert.ok(result.success, `Command should succeed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found', 'should report missing file');
@@ -684,7 +684,9 @@ describe('state add-decision command', () => {
   test('returns false when Decisions section missing', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), '# State\n**Status:** In progress\n');
     const result = runPanTools('state add-decision --phase 1 --summary test', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    // Exit 1: the decision had nowhere to go, so it was lost. The JSON body is still
+    // on stdout — only the exit code changed (see tests/exit-code-contract.test.cjs).
+    assert.equal(result.success, false, 'a write that did not happen must not report success');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.added, false);
   });

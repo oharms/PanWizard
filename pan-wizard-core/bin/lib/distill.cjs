@@ -444,7 +444,7 @@ function writePatternsMemory(cwd, findings, opts) {
     fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
     return { written: true, file: filePath, count: all.length };
   } catch (e) {
-    return { written: false, error: e.message };
+    return { written: false, error: e.message || 'write_failed' };
   }
 }
 

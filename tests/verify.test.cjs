@@ -250,7 +250,7 @@ describe('verify references command', () => {
 
   test('returns error for missing file', () => {
     const result = runPanTools('verify references nonexistent.md', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
     assert.ok(output.error.includes('not found'), 'should say not found');
@@ -278,7 +278,7 @@ describe('verify artifacts command', () => {
 
   test('returns error for missing plan file', () => {
     const result = runPanTools('verify artifacts nonexistent.md', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
     assert.ok(output.error.includes('not found') || output.error.includes('No such'), 'error should mention file missing');
@@ -305,7 +305,7 @@ describe('verify key-links command', () => {
 
   test('returns error for missing plan file', () => {
     const result = runPanTools('verify key-links nonexistent.md', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
     assert.ok(output.error.includes('not found') || output.error.includes('No such'), 'error should mention file missing');
@@ -397,7 +397,7 @@ describe('verify plan-structure command', () => {
 
   test('returns error for missing file', () => {
     const result = runPanTools('verify plan-structure nonexistent.md', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error);
   });
@@ -496,7 +496,7 @@ describe('verify phase-completeness command', () => {
 
   test('returns error for non-existent phase', () => {
     const result = runPanTools('verify phase-completeness 99', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error);
   });
@@ -719,7 +719,7 @@ describe('retro command', () => {
 
   test('returns error when no roadmap exists', () => {
     const { success, output } = runPanTools('retro', tmpDir);
-    assert.ok(success);
+    assert.equal(success, false, 'an error payload must exit non-zero');
     const json = JSON.parse(output);
     assert.equal(json.error, 'roadmap.md not found');
   });
@@ -966,7 +966,7 @@ describe('validate deployment command', () => {
 
   test('returns error when no PAN installation found', () => {
     const result = runPanTools('validate deployment', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const data = JSON.parse(result.output);
     assert.ok(data.error);
     assert.ok(data.error.includes('No PAN installations'));

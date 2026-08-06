@@ -116,7 +116,7 @@ This phase covers:
 
   test('handles missing roadmap.md gracefully', () => {
     const result = runPanTools('roadmap get-phase 1', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, false, 'should return not found');
@@ -159,7 +159,7 @@ This phase covers:
     );
 
     const result = runPanTools('roadmap get-phase 1', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, false, 'phase should not be found');
@@ -186,7 +186,7 @@ describe('roadmap analyze command', () => {
 
   test('missing roadmap.md returns error', () => {
     const result = runPanTools('roadmap analyze', tmpDir);
-    assert.ok(result.success, `Command should succeed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'roadmap.md not found');
@@ -443,14 +443,14 @@ describe('roadmap commands handle missing roadmap.md', () => {
 
   test('roadmap get-phase returns error when roadmap.md missing', () => {
     const result = runPanTools('roadmap get-phase 1', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.found, false);
   });
 
   test('roadmap analyze returns error when roadmap.md missing', () => {
     const result = runPanTools('roadmap analyze', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
     assert.deepStrictEqual(output.phases, []);
@@ -461,7 +461,9 @@ describe('roadmap commands handle missing roadmap.md', () => {
     fs.mkdirSync(phaseDir, { recursive: true });
     fs.writeFileSync(path.join(phaseDir, '01-01-plan.md'), '# Plan');
     const result = runPanTools('roadmap update-plan-progress 1', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    // Exit 1: there are plans to record and nowhere to record them. The JSON body is
+    // still on stdout, which is what "succeed with error JSON" was really checking.
+    assert.equal(result.success, false, 'plan progress was computed and then dropped');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.updated, false);
     assert.ok(output.reason.includes('roadmap.md'), 'reason should mention roadmap.md');

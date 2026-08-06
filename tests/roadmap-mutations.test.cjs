@@ -200,7 +200,9 @@ describe('roadmap update-plan-progress command', () => {
     // Explicitly do NOT create roadmap.md
 
     const result = runPanTools('roadmap update-plan-progress 01', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    // Exit 1: two plans exist and there is no roadmap to record them in, so the
+    // progress this command computed is dropped. The JSON body is still on stdout.
+    assert.equal(result.success, false, 'progress was computed and had nowhere to go');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.updated, false, 'should report not updated');

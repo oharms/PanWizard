@@ -278,7 +278,9 @@ describe('summary-extract command', () => {
 
   test('missing file returns error', () => {
     const result = runPanTools('summary-extract .planning/phases/01-test/01-01-summary.md', tmpDir);
-    assert.ok(result.success, `Command should succeed: ${result.error}`);
+    // A real failure: the error body goes to stdout AND the process exits non-zero
+    // so a caller gating on `$?` can see it (output() contract, core.cjs).
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'should report missing file');

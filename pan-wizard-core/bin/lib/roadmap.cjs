@@ -336,6 +336,8 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   const summaryCount = phaseInfo.summaries.length;
 
   if (planCount === 0) {
+    // No error key, exit 0: a phase with no plans has nothing to sync. The roadmap
+    // already says what it should say.
     output({ updated: false, reason: 'No plans found', plan_count: 0, summary_count: 0 }, raw, 'no plans');
     return;
   }
@@ -348,7 +350,8 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   try {
     roadmapContent = fs.readFileSync(roadmapPath, 'utf-8');
   } catch {
-    output({ updated: false, reason: 'roadmap.md not found', plan_count: planCount, summary_count: summaryCount }, raw, 'no roadmap');
+    // error key => exit 1: there are plans to record and nowhere to record them.
+    output({ updated: false, reason: 'roadmap.md not found', error: 'roadmap_not_found', plan_count: planCount, summary_count: summaryCount }, raw, 'no roadmap');
     return;
   }
   const phaseEscaped = escapeRegex(phaseNum);
@@ -400,7 +403,8 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   try {
     fs.writeFileSync(roadmapPath, roadmapContent, 'utf-8');
   } catch (err) {
-    output({ updated: false, reason: 'Failed to write roadmap.md: ' + err.message }, raw, 'write error');
+    // error key => exit 1: the write failed, so progress was computed and then lost.
+    output({ updated: false, reason: 'Failed to write roadmap.md: ' + err.message, error: err.message || 'roadmap_write_failed' }, raw, 'write error');
     return;
   }
 

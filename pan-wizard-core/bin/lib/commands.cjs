@@ -331,6 +331,10 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   const failOnError = opts && opts.failOnError;
 
   if (!isGitRepo(cwd)) {
+    // No error key, exit 0. Unlike `git commit` (an explicit git command, where a
+    // missing repo IS the failure), commit-docs is an auto-commit convenience and
+    // PAN fully supports non-git projects - the skip is the expected outcome of the
+    // environment the caller chose, not a malfunction.
     output({ committed: false, hash: null, reason: 'not_a_git_repo', hint: 'Run git init to initialize a repository' }, raw, 'not a git repo');
     return;
   }
@@ -345,10 +349,14 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   const config = loadConfig(cwd);
 
   if (!config.commit_docs) {
+    // No error key, exit 0: the user set commit_docs=false. Honouring configuration
+    // is a success; exiting non-zero here would break every workflow of every user
+    // who opted out of doc commits.
     output({ committed: false, hash: null, reason: 'skipped_commit_docs_false' }, raw, 'skipped');
     return;
   }
   if (isGitIgnored(cwd, PLANNING_DIR)) {
+    // No error key, exit 0: .planning/ is gitignored - also the user's choice.
     output({ committed: false, hash: null, reason: 'skipped_gitignored' }, raw, 'skipped');
     return;
   }
@@ -360,7 +368,11 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   // Safety checks
   const safety = runCommitSafetyChecks(cwd, config, force);
   if (safety.blocked) {
-    output({ committed: false, hash: null, reason: safety.reason, safety_checks: safety.safetyChecks, hint: safety.hint }, raw, 'blocked');
+    // error key => exit 1. A blocked commit is a refusal that protected something
+    // (a staged deletion, a secret) - the docs did NOT land, which is the same harm
+    // as commit_failed for an autonomous loop. The JSON body still goes to stdout,
+    // so callers that parse `reason`/`safety_checks` are unaffected.
+    output({ committed: false, hash: null, reason: safety.reason, error: 'commit_blocked', safety_checks: safety.safetyChecks, hint: safety.hint }, raw, 'blocked');
     return;
   }
 
@@ -378,7 +390,12 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
     if (failOnError) {
       error('commit_failed: ' + (commitResult.stderr || 'unknown git error').trim());
     }
-    output({ committed: false, hash: null, reason: 'commit_failed', error: commitResult.stderr }, raw, 'failed');
+    // `|| 'unknown git error'`: the exit code is derived from a TRUTHY error key, and
+    // git does not always write to stderr — an empty string would launder this real
+    // failure back into exit 0. (experiment.cjs documents the harm: an autonomous run
+    // took `committed: false, reason: commit_failed` with exit 0 and kept going,
+    // leaving 24 minutes of work uncommitted.)
+    output({ committed: false, hash: null, reason: 'commit_failed', error: commitResult.stderr || 'unknown git error' }, raw, 'failed');
     return;
   }
 
@@ -471,6 +488,10 @@ async function cmdWebsearch(query, options, raw) {
 
   if (!apiKey) {
     // No key = silent skip, agent falls back to built-in WebSearch
+    // No error key, exit 0: an unconfigured capability is an ANSWER ("web search is
+    // unavailable") and callers degrade gracefully. Contrast the sites below - a
+    // configured search that then fails (bad query, API 5xx, network) IS a failure
+    // and carries `error`. Unconfigured vs broken is the distinction.
     output({ available: false, reason: 'BRAVE_API_KEY not set' }, raw, '');
     return;
   }
@@ -525,7 +546,7 @@ async function cmdWebsearch(query, options, raw) {
     }, raw, results.map(item => `${item.title}\n${item.url}\n${item.description}`).join('\n\n'));
   } catch (err) {
     // Network error, DNS failure, or JSON parse error from Brave API
-    output({ available: false, error: err.message }, raw, '');
+    output({ available: false, error: err.message || 'web_search_failed' }, raw, '');
   }
 }
 
@@ -820,6 +841,9 @@ function cmdScaffold(cwd, type, options, raw) {
     fs.writeFileSync(filePath, content, { encoding: 'utf-8', flag: 'wx' });
   } catch (e) {
     if (e.code === 'EEXIST') {
+      // No error key, exit 0: scaffolding is idempotent - the file the caller asked
+      // for exists, which is the state it wanted. `created:false` reports only that
+      // this call was not the one that made it.
       output({ created: false, reason: 'already_exists', path: relPath }, raw, 'exists');
       return;
     }
@@ -888,6 +912,7 @@ function cmdBatchCommit(cwd, items, raw) {
     return;
   }
   if (!Array.isArray(items) || items.length === 0) {
+    // No error key, exit 0: an empty batch is a legitimate no-op.
     output({ committed: false, reason: 'no_items' }, raw, 'no items');
     return;
   }
@@ -912,7 +937,8 @@ function cmdBatchCommit(cwd, items, raw) {
   const message = 'docs: focus-exec batch — ' + items.length + ' items completed\n\n' + titles;
   const commitResult = execGit(cwd, ['commit', '-m', message]);
   if (commitResult.exitCode !== 0) {
-    output({ committed: false, reason: 'commit_failed', error: commitResult.stderr }, raw, 'failed');
+    // See cmdCommitDocs above: a truthy error key is what makes this exit non-zero.
+    output({ committed: false, reason: 'commit_failed', error: commitResult.stderr || 'unknown git error' }, raw, 'failed');
     return;
   }
 
