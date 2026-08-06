@@ -6,7 +6,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, execGit, findPhaseInternal, output } = require('./core.cjs');
+const { safeReadFile, execGit, findPhaseInternal, output, normalizePhaseName } = require('./core.cjs');
 const { readStateSafe } = require('./state.cjs');
 const {
   STATE_FILE, ROADMAP_FILE, CONFIG_FILE, PATTERNS_FILE, PHASE_DIR_RE,
@@ -162,7 +162,13 @@ function cmdDepsValidate(cwd, raw) {
     const headerRe = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
     let match;
     while ((match = headerRe.exec(roadmapContent)) !== null) {
-      roadmapPhases.set(match[1], match[2].trim());
+      // Key both maps by the NORMALIZED number. Roadmap headings are unpadded
+      // ("Phase 1") and directory names are zero-padded ("01-foundation"), so
+      // keying on the raw values made every phase mismatch in BOTH directions:
+      // `deps validate` reported "in roadmap but no directory on disk" for phases
+      // whose directory was right there, plus an "orphaned directory" warning for
+      // the same phase — inventing errors on a roadmap in PAN's own template shape.
+      roadmapPhases.set(normalizePhaseName(match[1]), match[2].trim());
     }
   } else {
     issues.push({ type: 'warning', message: 'roadmap.md not found' });
@@ -176,7 +182,7 @@ function cmdDepsValidate(cwd, raw) {
       if (entry.isDirectory()) {
         const dirMatch = entry.name.match(PHASE_DIR_RE);
         if (dirMatch) {
-          diskPhases.set(dirMatch[1], entry.name);
+          diskPhases.set(normalizePhaseName(dirMatch[1]), entry.name);
         }
       }
     }

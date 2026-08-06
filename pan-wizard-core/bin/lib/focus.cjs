@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, EXIT_OK, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex } = require('./core.cjs');
+const { output, EXIT_OK, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex, normalizePhaseName } = require('./core.cjs');
 const {
   PLANNING_DIR, PHASES_DIR, ROADMAP_FILE, PATTERNS_FILE, EFFORT_POINTS, PRIORITY_LEVELS, EFFORT_SIZES,
   FOCUS_MODES, FOCUS_TIERS, FOCUS_DIR,
@@ -46,7 +46,17 @@ function collectWorkItems(cwd) {
     try { dirs = fs.readdirSync(phasesDir); } catch { dirs = []; }
 
     for (const phase of phases) {
-      const dirName = dirs.find(d => d.startsWith(phase.number + '-') || d === phase.number);
+      // Normalize before matching. Roadmap headings are UNPADDED — the shipped
+      // templates/roadmap.md writes "### Phase 1:" and `phase add` appends the same —
+      // while phase directories are zero-padded (`01-foundation`). Matching the raw
+      // heading number meant '1-' never matched '01-foundation', so focus scan found
+      // ZERO work items on a roadmap in PAN's own format, and the whole focus family
+      // (scan/plan/classify-stages/exec/auto) was a no-op on any default-shaped
+      // project. normalizePhaseName pads and is idempotent, so a roadmap that already
+      // says "Phase 01" still matches. Same normalization core.cjs searchPhaseInDir
+      // applies, which is why `find-phase 1` always worked where this did not.
+      const normalized = normalizePhaseName(phase.number);
+      const dirName = dirs.find(d => d.startsWith(normalized + '-') || d === normalized);
       if (!dirName) continue;
 
       const phaseDir = path.join(phasesDir, dirName);

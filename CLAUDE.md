@@ -57,10 +57,10 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 16 |
-| Unit test files (`tests/*.test.cjs`) | 106 |
+| Unit test files (`tests/*.test.cjs`) | 107 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 3658 |
-| Total test suites | 784 |
+| Total tests (npm run test:all) | 3664 |
+| Total test suites | 786 |
 | Hooks (`hooks/*.js`) | 5 |
 | Specs (`docs/specs/*.md`) | 45 |
 | ADRs (`docs/decisions/ADR-*.md`) | 42 |

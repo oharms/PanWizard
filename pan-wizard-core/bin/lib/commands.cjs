@@ -706,7 +706,11 @@ function renderHealthReport(cwd, { phasesDir, phases, totalPlans, totalSummaries
   try { phaseDirEntries = fs.readdirSync(phasesDir); } catch { phaseDirEntries = []; }
 
   for (const phase of phases) {
-    const match = phaseDirEntries.find(d => d.startsWith(phase.number + '-') || d === phase.number);
+    // Normalize first — roadmap headings are unpadded ("Phase 1") while phase
+    // directories are zero-padded ("01-foundation"), so the raw number never
+    // matched. Same defect as focus.cjs collectWorkItems; see the note there.
+    const normalizedNum = normalizePhaseName(phase.number);
+    const match = phaseDirEntries.find(d => d.startsWith(normalizedNum + '-') || d === normalizedNum);
     if (!match) continue;
     const phaseDir = path.join(phasesDir, match);
     try {
