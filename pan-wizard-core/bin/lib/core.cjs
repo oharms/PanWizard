@@ -640,13 +640,19 @@ function getPhaseModelTier(cwd, phaseNum) {
 }
 
 /**
- * Adjust a resolved tier given Opus 4.7-era capability hints.
+ * Adjust a resolved tier given optional task capability hints.
  *
  * Rules, in priority order:
- *   1. context_estimate > LARGE_CONTEXT_TOKEN_THRESHOLD → force reasoning (only 1M-ctx tier).
+ *   1. context_estimate > LARGE_CONTEXT_TOKEN_THRESHOLD → force reasoning.
  *   2. needs_thinking → upgrade fast → mid; leave mid/reasoning alone.
  *   3. cache_warm + !needs_thinking + context_estimate < SMALL_CONTEXT_TOKEN_THRESHOLD →
  *      allow downgrade mid → fast (cheap, cached, simple tasks don't need mid).
+ *
+ * These are TIER hints, not capability facts. `reasoning` resolves to `inherit`
+ * on Anthropic (see PROVIDER_MODELS above), so rule 1 asks the host runtime for
+ * its own top-tier model — it neither selects a large-context model nor checks
+ * that the session model has one. PAN never probes the running model's real
+ * context window or feature set; nothing here is a gate.
  *
  * @param {string} tier - Baseline tier (reasoning|mid|fast)
  * @param {Object} [opts] - {context_estimate, needs_thinking, cache_warm}
@@ -681,7 +687,7 @@ function adjustTierForCapabilities(tier, opts) {
  * @param {string} cwd - Project root directory
  * @param {string} agentType - Agent name (e.g., "pan-planner", "pan-executor")
  * @param {Object} [taskMetadata] - Optional metadata. Supports complexity fields and
- *   Opus 4.7 capability hints: {context_estimate, needs_thinking, cache_warm}.
+ *   capability hints: {context_estimate, needs_thinking, cache_warm}.
  * @returns {string} Model identifier: "inherit", "sonnet", "haiku", "mid", "fast", etc.
  */
 function resolveModelInternal(cwd, agentType, taskMetadata) {
@@ -716,7 +722,7 @@ function resolveModelInternal(cwd, agentType, taskMetadata) {
     tier = resolveComplexityTier(tier, { ...taskMetadata, thresholds });
   }
 
-  // Opus 4.7 capability adjustment (only when hints are present)
+  // Capability-hint adjustment (only when hints are present)
   if (taskMetadata && (
     taskMetadata.context_estimate !== undefined ||
     taskMetadata.needs_thinking !== undefined ||

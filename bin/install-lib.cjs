@@ -1019,16 +1019,25 @@ function geminiTransitionNotice() {
   ].join('\n');
 }
 
-// ─── Opus 4.7 Capability Detection ──────────────────────────────────────────
+// ─── Model capability detection ─────────────────────────────────────────────
 
 /**
  * Detect model capabilities from a model name string.
- * Used by installer to warn users when their default model lacks features
- * PAN 2.10+ relies on (1M context, extended thinking, prompt caching).
  *
- * Capability data refreshed 2026-06: Fable 5 and Opus 4.8/4.7/4.6 plus
- * Sonnet 4.6 all carry a 1M context window; only the legacy Opus/Sonnet
- * 4.0–4.5 generations are 200K.
+ * Consumer: the installer's ADVISORY model-capability notice, which warns when
+ * the configured default model lacks features PAN's multi-agent workflows are
+ * tuned for (1M context, extended thinking, prompt caching). It gates no
+ * feature — every workflow runs regardless of what this returns.
+ *
+ * This is a hardcoded substring table, NOT a live capability probe. The
+ * explicit branches carry the per-generation facts (capability data refreshed
+ * 2026-06: Fable/Mythos 5, Opus 5/4.8/4.7/4.6 and Sonnet 5/4.6 all carry a 1M
+ * context window; only the legacy Opus/Sonnet 4.0–4.5 generations are 200K).
+ * Below them sits a family-level fallback so a Claude release newer than the
+ * newest LEGACY release of its family — a future major (`opus-6`) or a point
+ * release inside an already-tabled major (`opus-4-9`) alike — degrades to that
+ * family's modern profile instead of to an all-false `unknown`. Read that
+ * comment before adding another single-model branch.
  *
  * @param {string} modelName - e.g. "claude-fable-5", "claude-opus-4-8", "gpt-5"
  * @returns {{has_1m_ctx: boolean, has_thinking: boolean, has_cache: boolean, tier: string}}
@@ -1042,6 +1051,33 @@ function detectModelCapabilities(modelName) {
   if (n.includes('fable') || n.includes('mythos')) {
     return { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' };
   }
+  // ─── Claude family + generation, parsed once ───────────────────────────────
+  //
+  // Read twice below: it BOUNDS the greedy legacy branches (`n.includes('opus-4')`
+  // matches every Opus 4.x point release, including ones NEWER than anything this
+  // table knows) and it drives the family-level fallback at the end of the
+  // function. One parse feeds both on purpose — two independent parses could
+  // disagree, and a name that escaped the legacy branch with nothing left to
+  // catch it would fall out as the all-false `unknown`.
+  //
+  // Generations compare as major*1000 + point, NEVER as a float: Number('4.10')
+  // === 4.1 would sort Opus 4.10 BELOW Opus 4.8. The point group takes at most
+  // two digits and must not be followed by another digit, so the date suffix in
+  // `claude-opus-4-20250514` is not misread as point release 20 (that id is
+  // Opus 4.0 and must keep the legacy mapping).
+  const genKey = (major, point) => Number(major) * 1000 + Number(point || 0);
+  const famMatch = /\b(opus|sonnet|haiku)[-._]?(\d+)(?:[-.](\d{1,2})(?!\d))?/.exec(n);
+  const family = famMatch ? famMatch[1] : null;
+  const generation = famMatch ? genKey(famMatch[2], famMatch[3]) : -1;
+
+  // Newest generation of each family whose REAL capabilities are lower than the
+  // current flagship's: Opus/Sonnet 4.0–4.5 at 200K context, Haiku 4.x without
+  // extended thinking. A release strictly newer than this is a forward release:
+  // it must not inherit the legacy mapping, so the legacy branches below skip it
+  // and the fallback at the end gives it its family's modern profile.
+  const LEGACY_NEWEST = { opus: genKey(4, 5), sonnet: genKey(4, 5), haiku: genKey(4, 5) };
+  const isForwardRelease = family !== null && generation > LEGACY_NEWEST[family];
+
   // Claude 5 family (Opus 5, Sonnet 5) — 1M context, extended thinking, prompt caching.
   // Without this, `claude-opus-5` falls through to `unknown` and the installer prints
   // a FALSE "your model lacks 1M context / extended thinking" warning on the flagship.
@@ -1056,16 +1092,25 @@ function detectModelCapabilities(modelName) {
     || n.includes('opus-4-6') || n.includes('opus-4.6')) {
     return { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' };
   }
-  if (n.includes('opus-4')) { // legacy Opus 4.0 / 4.1 / 4.5 — 200K context
+  // Legacy Opus 4.0 / 4.1 / 4.5 — 200K context. `!isForwardRelease` is what stops
+  // this branch swallowing a point release newer than the ones tabled above:
+  // without it `claude-opus-4-9` / `claude-opus-4-10` reach here and get told
+  // they lack 1M context.
+  if (n.includes('opus-4') && !isForwardRelease) {
     return { has_1m_ctx: false, has_thinking: true, has_cache: true, tier: 'reasoning' };
   }
   if (n.includes('sonnet-4-6') || n.includes('sonnet-4.6')) {
     return { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' };
   }
-  if (n.includes('sonnet-4')) { // legacy Sonnet 4.0 / 4.5 — 200K context
+  // Legacy Sonnet 4.0 / 4.5 — 200K context (same forward-release guard).
+  if (n.includes('sonnet-4') && !isForwardRelease) {
     return { has_1m_ctx: false, has_thinking: true, has_cache: true, tier: 'mid' };
   }
-  if (n.includes('haiku-4-5') || n.includes('haiku-4.5') || n.includes('haiku-4')) {
+  // Haiku 4.x — fast tier, no extended thinking. Guarded for the same reason,
+  // though today it is behavior-neutral: the fallback's Haiku profile is
+  // identical to this one, so a forward Haiku release lands on the same answer
+  // either way. The guard is here so that stops being true only deliberately.
+  if ((n.includes('haiku-4-5') || n.includes('haiku-4.5') || n.includes('haiku-4')) && !isForwardRelease) {
     return { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' };
   }
   // Older Claude 3.x — no thinking, no 1M context.
@@ -1097,6 +1142,49 @@ function detectModelCapabilities(modelName) {
       || (n.includes('gemini-1.5-pro') && !isFlash);
     const tier = isFlashLite ? 'fast' : (isFlash ? 'mid' : 'reasoning');
     return { has_1m_ctx: has1m, has_thinking: hasThinking, has_cache: true, tier };
+  }
+
+  // ─── Claude family-level fallback (forward compatibility) ─────────────────
+  //
+  // Everything above is a hardcoded substring table, so a model released AFTER
+  // this file was last touched matches nothing and lands on the all-false
+  // `unknown` result — at which point the installer tells the user their
+  // flagship model "lacks 1M context / extended thinking", which is false and
+  // actively misleading. That is the same bug the `opus-5` branch above was
+  // added to fix, and fixing it one model id at a time guarantees it returns
+  // with the next generation.
+  //
+  // POLICY — do not re-special-case a single id down here. When the name carries
+  // a known Claude family AND a release strictly NEWER than that family's newest
+  // LEGACY release (`LEGACY_NEWEST` at the top of this function), inherit the
+  // family's modern capability profile. Rationale: a newer release of a family
+  // does not ship with fewer capabilities than the one it replaces, so
+  // inheriting is the safe default — under-claiming produces a false warning,
+  // while inheriting at worst repeats what the previous release already had.
+  //
+  // The comparison is on the FULL release number, major AND point, which is what
+  // makes it reach point releases inside an already-tabled major: a bare
+  // major-only threshold left `opus-4-9` and `opus-4-10` to the greedy
+  // `n.includes('opus-4')` branch above, and they inherited the 200K legacy
+  // mapping — the exact false warning this fallback exists to prevent, on a
+  // NEWER model than the flagship. Genuinely older releases (Opus/Sonnet
+  // 4.0–4.5, Haiku 4.x, Claude 3.x) are at or below the threshold and keep their
+  // explicit mappings untouched. Non-Claude vendors are deliberately not guessed
+  // at: their branches return above, and an unmatched vendor id still yields
+  // `unknown`.
+  //
+  // This is a safety net, not a substitute for the table: still add an explicit
+  // branch above once a new release's real capabilities are known.
+  //
+  // `fable`/`mythos` are absent by design — their branch at the top matches the
+  // family name alone, with no version in it, so it is already generation-proof.
+  if (isForwardRelease) {
+    const MODERN = {
+      opus: { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' },
+      sonnet: { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' },
+      haiku: { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' },
+    };
+    return { ...MODERN[family] };
   }
 
   return result;

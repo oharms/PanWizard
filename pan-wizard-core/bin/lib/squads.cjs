@@ -14,13 +14,18 @@ const { output, error } = require('./core.cjs');
 /**
  * Coordinator + worker/utility agents that are NOT squad members.
  * - coordinator: the top of the hierarchy (Tier 0).
- * - workers: cheap narrow-job agents (Tier 2) + standalone utility agents
+ * - workers: narrow-job agents (Tier 2) + standalone utility agents
  *   invoked directly by commands, not delegated through a squad.
+ *
+ * "Tier 2" is a hierarchy position, not a model tier. Post-COST-RESET (2026-07)
+ * every agent in MODEL_PROFILES resolves to `reasoning` under both quality and
+ * balanced (the default); only the `budget` profile down-tiers, and it is the
+ * profile — never this list — that decides which agents drop to `fast`.
  */
 const COORDINATOR = 'pan-conductor';
 const WORKERS = Object.freeze([
-  'pan-document_code',     // Haiku-tier codebase mapper
-  'pan-distiller',         // Haiku-tier code-bloat optimizer
+  'pan-document_code',     // codebase mapper
+  'pan-distiller',         // code-bloat optimizer
   'pan-optimizer',         // optimization loop
   'pan-experiment-runner', // self-improvement loop
   'pan-knowledge',         // retrieval/Q&A
