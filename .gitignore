@@ -46,6 +46,10 @@ test_output.txt
 hooks/dist/
 *.tgz
 
+# Python bytecode (scripts/generate-skills-docs.py)
+__pycache__/
+*.pyc
+
 # VSCode test downloads (E2E tests use system VSCode)
 .vscode-test/
 
@@ -83,6 +87,43 @@ tmp/
 # negate the ignore for those paths so the harvest is committable.
 !experiments/
 !experiments/**
+
+# ...but secrets and build junk stay ignored, even under experiments/. Git
+# applies the LAST matching pattern, so the two negations above undo EVERY
+# blanket rule declared earlier in this file for any experiments/ path — each
+# one that must survive has to be re-asserted here, after the negation.
+# `**/` matches zero or more directories, so `experiments/**/x` covers both
+# experiments/x and experiments/<slug>/nested/x.
+# Any future blanket ignore that must survive the carve-out belongs here too.
+
+# Secrets — never committable, carve-out or not (this repo is public)
+experiments/**/.env
+experiments/**/.env.*
+
+# Dependencies, logs, OS/editor cruft
+experiments/**/node_modules/
+experiments/**/*.log
+experiments/**/npm-debug.log*
+experiments/**/.DS_Store
+experiments/**/Thumbs.db
+experiments/**/Desktop.ini
+experiments/**/.vscode/
+experiments/**/.idea/
+experiments/**/*.sw[op]
+experiments/**/*~
+
+# Build artifacts and test downloads
+experiments/**/__pycache__/
+experiments/**/*.pyc
+experiments/**/*.tgz
+experiments/**/.vscode-test/
+
+# Runtime install dirs (the never-install-into-source rule applies here too)
+experiments/**/.codex/
+experiments/**/.gemini/
+experiments/**/.opencode/
+experiments/**/.claude/pan-wizard-core/
+experiments/**/.claude/pan-file-manifest.json
 
 
 # Plugin build output
