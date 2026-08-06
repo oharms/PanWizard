@@ -51,7 +51,7 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 
 **Output:** `.planning/architecture/dependency-graph.md`
 
-**Opus 4.7 1M-context bonus:** when the full repo fits in a single agent window, the agent cross-references plan text with actual source imports to catch coupling the frontmatter missed. On smaller-context models, the agent relies on data-layer output alone.
+**1M-context bonus:** when the full repo fits in a single agent window — which needs a model with a 1M-context window — the agent cross-references plan text with actual source imports to catch coupling the frontmatter missed. On smaller-context models, the agent relies on data-layer output alone.
 
 ### `milestone` — Completion ETA
 
@@ -103,12 +103,12 @@ The command returns the path to the generated preview document. Never paste the 
 
 | Runtime | phase | phases | milestone |
 |---------|-------|--------|-----------|
-| Claude Code | Full, thinking enabled | Full, 1M-ctx bonus on Opus 4.7 | Full |
+| Claude Code | Full, thinking enabled | Full, plus 1M-ctx bonus when the window allows | Full |
 | OpenCode | Full | Data-layer + simple report | Full |
 | Gemini CLI | Full | Data-layer + simple report | Full |
 | Codex CLI | Full | Data-layer + simple report | Full |
 | Copilot CLI | Full | Data-layer + simple report | Full |
 
-The data layer (`pan-tools preview …`) works identically on all runtimes. What varies is the quality of the agent's synthesis — Opus 4.7 with thinking catches subtler risks than smaller models.
+The data layer (`pan-tools preview …`) works identically on all runtimes. What varies is the quality of the agent's synthesis — a thinking-capable Opus-class model catches subtler risks than smaller ones.
 
 </runtime_compatibility>

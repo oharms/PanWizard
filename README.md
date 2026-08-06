@@ -56,7 +56,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 ┌─────────────────────▼───────────────────────────────────────┐
 │  AGENTS (specialized)                                       │
 │  planner · executor · verifier · researcher · debugger ...  │
-│  Each runs in fresh 200K context window                     │
+│  Each runs in a fresh context window                        │
 └─────────────────────┬───────────────────────────────────────┘
                       │ uses
 ┌─────────────────────▼───────────────────────────────────────┐
@@ -357,7 +357,7 @@ Each plan is small enough to execute in a fresh context window. No degradation, 
 The system:
 
 1. **Runs plans in waves** — Parallel where possible, sequential when dependent
-2. **Fresh context per plan** — 200k tokens purely for implementation, zero accumulated garbage
+2. **Fresh context per plan** — a whole context window purely for implementation, zero accumulated garbage
 3. **Commits per task** — Every task gets its own atomic commit
 4. **Verifies against goals** — Checks the codebase delivers what the phase promised
 
@@ -519,7 +519,7 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 |-------|------------------|-----------|
 | Research | Coordinates, presents findings | 4 parallel researchers investigate stack, features, architecture, pitfalls |
 | Planning | Validates, manages iteration | Planner creates plans, checker verifies, loop until pass |
-| Execution | Groups into waves, tracks progress | Executors implement in parallel, each with fresh 200k context |
+| Execution | Groups into waves, tracks progress | Executors implement in parallel, each with a fresh context window |
 | Verification | Presents results, routes next | Verifier checks codebase against goals, debuggers diagnose failures |
 
 The orchestrator never does heavy lifting. It spawns agents, waits, integrates results.
@@ -575,7 +575,7 @@ You're never locked in. The system adapts.
 
 | | PAN Wizard | Cursor / Windsurf | Aider / Cline | GitHub Copilot |
 |---|---|---|---|---|
-| **Context rot prevention** | Phase-scoped fresh 200K windows | No — context degrades over time | No (Cline: condensing) | No |
+| **Context rot prevention** | Phase-scoped fresh context windows | No — context degrades over time | No (Cline: condensing) | No |
 | **Multi-agent** | Specialized agents, parallel waves | Up to 8 parallel (Cursor 2.0) | Single agent | Specialized sub-agents |
 | **Plan → Verify loop** | Research → plan → verify with iteration | Agent generates plan | Plan mode (Cline) | Plan step |
 | **Post-execution verification** | Auto verifier + human UAT | Iterative error-fix | Manual test runs | Auto-fix loop |

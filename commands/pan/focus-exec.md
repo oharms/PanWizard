@@ -255,7 +255,7 @@ Display the execution batch to user, then continue automatically.
    ```
    pan-tools focus classify-stages --raw
    ```
-   The CLI reads the latest batch and returns `{waves, parallelism_hint}`. When `parallelism_hint` is `emit-micro-in-parallel` or `emit-standard-in-parallel`, all reads and greps for items in the current wave SHOULD be emitted in a single assistant turn (parallel tool calls). Opus 4.7 is markedly better at emitting parallel tool calls than earlier models; use that to collapse Stage 3 latency on MICRO-heavy batches.
+   The CLI reads the latest batch and returns `{waves, parallelism_hint}`. When `parallelism_hint` is `emit-micro-in-parallel` or `emit-standard-in-parallel`, all reads and greps for items in the current wave SHOULD be emitted in a single assistant turn (parallel tool calls). Current frontier models are markedly better at emitting parallel tool calls than earlier generations; use that to collapse Stage 3 latency on MICRO-heavy batches.
 
    Serialize on `FULL` tier items — each is its own wave.
 

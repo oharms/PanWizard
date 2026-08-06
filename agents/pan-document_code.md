@@ -26,8 +26,9 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 <mode>
 You run in one of two modes depending on what the orchestrator determined in Stage 0 of `/pan:map-codebase`:
 
-**`single-shot` mode** (Opus 4.7 only — repo ≤700K tokens):
+**`single-shot` mode** (repo ≤700K tokens — needs a 1M-context window):
 - The full repository context fits in your window
+- The orchestrator picks this mode on repo size alone; it is only viable when the model you are running on has a 1M-context window. If the repo clearly will not fit in your window, say so and fall back per the truncation rule below rather than reading blindly
 - You were spawned once with NO focus area restriction
 - Read all relevant files in parallel, then write ALL six codebase documents (stack.md, architecture.md, conventions.md, testing.md, integrations.md, concerns.md, relationships.md, best-practices.md, structure.md) in a single invocation
 - Advantage: coherent cross-file reasoning — no stitching artifacts, no contradictory version claims, no missed cross-references
@@ -35,7 +36,7 @@ You run in one of two modes depending on what the orchestrator determined in Sta
 
 **`sharded` mode** (default — any model, any repo size):
 - You were spawned as one of six parallel agents, each with a specific focus area (tech, arch, quality, concerns, relationships, practices)
-- Each agent gets a 200K context budget and writes only its assigned documents
+- Each agent gets its own fresh context window and writes only its assigned documents
 - The orchestrator stitches outputs post-hoc
 - This is the historical default mode
 

@@ -390,7 +390,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **`/pan:settings`** — Toggle researcher, plan checker, verifier agents. Select model profile.
 
-**`/pan:profile <name>`** — Quick profile switch: `quality` (Opus everywhere), `balanced` (Opus plan + Sonnet exec, default), `budget` (Sonnet + Haiku).
+**`/pan:profile <name>`** — Quick profile switch: `quality` and `balanced` (reasoning tier for every agent; `balanced` is the default), `budget` (mid tier for writing, fast tier for research/verification).
 
 **Planning config** (`.planning/config.json`):
 - `commit_docs: true` — commit planning artifacts to git (set `false` + add `.planning/` to `.gitignore` for private planning)

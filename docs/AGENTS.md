@@ -1,6 +1,6 @@
 # PAN Agent System
 
-PAN uses specialized agents, each running as a subagent in a fresh 200K context window. Agents are spawned by workflow orchestrators via the `Task` tool and communicate exclusively through `.planning/` files (and, since v3.0, `.planning/bus/<channel>.jsonl` for hierarchical coordination). They never communicate directly with each other.
+PAN uses specialized agents, each running as a subagent in a fresh context window. Agents are spawned by workflow orchestrators via the `Task` tool and communicate exclusively through `.planning/` files (and, since v3.0, `.planning/bus/<channel>.jsonl` for hierarchical coordination). They never communicate directly with each other.
 
 **Other docs:** [Architecture](ARCHITECTURE.md) · [Hooks](HOOKS.md) · [CLI Reference](CLI-REFERENCE.md) · [Development](DEVELOPMENT.md)
 
@@ -95,7 +95,7 @@ For a bot-army campaign (`/pan:army`), the agents are organized into four role-s
 | Quality | Adversarially break what Build makes | mid | read-only | reviewer, hardener, meta-reviewer, verifier, integration-checker, debugger |
 | Release | Ship safely behind a human gate | mid | always-ask | `pan-release` |
 
-Outside the squads sit the coordinator (`pan-conductor`, Tier 0) and the worker/utility agents — `pan-document_code`, `pan-distiller` (Haiku-tier narrow jobs), plus `pan-optimizer`, `pan-experiment-runner`, `pan-knowledge`, `pan-counterfactual`, `pan-previewer` (invoked directly by their own commands, not delegated through a squad). A drift test pins squad roster ⇄ agent files ⇄ `AGENT_BASE_EFFORT`, so every shipped agent is accounted for in exactly one place.
+Outside the squads sit the coordinator (`pan-conductor`, Tier 0) and the worker/utility agents — `pan-document_code`, `pan-distiller` (narrow, low-effort jobs — the `budget` profile is the only one that drops them to the fast tier), plus `pan-optimizer`, `pan-experiment-runner`, `pan-knowledge`, `pan-counterfactual`, `pan-previewer` (invoked directly by their own commands, not delegated through a squad). A drift test pins squad roster ⇄ agent files ⇄ `AGENT_BASE_EFFORT`, so every shipped agent is accounted for in exactly one place.
 
 ---
 
@@ -111,7 +111,7 @@ Orchestrator (command/workflow)
   │      - Prompt with <files_to_read> block
   │      - Model parameter (opus/sonnet/haiku/inherit)
   │
-  Agent (fresh 200K context)
+  Agent (fresh context)
   │
   ├── 4. Reads all files listed in <files_to_read>
   ├── 5. Executes its specialized task
@@ -673,11 +673,11 @@ Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the 
 
 Default budget for agents without explicit fields is 2000 (defined in `THINKING_BUDGETS.default`).
 
-### Capability-aware routing (Opus 4.7, E-7)
+### Capability-aware routing (E-7, since v2.10.0)
 
 The tier resolved by profile can be adjusted by capability hints passed to `resolveModel(agent, {context_estimate, needs_thinking, cache_warm})`:
 
-- `context_estimate > 700000` → force reasoning tier (only 1M-context model)
+- `context_estimate > 700000` (`LARGE_CONTEXT_TOKEN_THRESHOLD`) → force the reasoning tier, i.e. refuse to down-tier and let the agent run on the session model. PAN doesn't verify that model's real window — it just stops nominating a cheaper one for work this large.
 - `needs_thinking` on a fast-tier agent → upgrade fast → mid
 - `cache_warm + !needs_thinking + context_estimate < 50000` on a mid-tier agent → downgrade mid → fast (cheap, cached, simple)
 
@@ -685,7 +685,7 @@ See `/pan:profile` for the full decision tree.
 
 ---
 
-## Cross-Phase Agent Memory (Opus 4.7, E-4)
+## Cross-Phase Agent Memory (E-4, since v2.10.0)
 
 Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<agent>.md` managed by the `memory.cjs` core module. Agents can write lessons learned in one phase that become visible to all future invocations of the same agent.
 
@@ -718,7 +718,7 @@ Since v3.4.0, `/pan:exec-phase <N> --hierarchical` spawns `pan-conductor` as a t
 
 **Audit trail:** every spawn and completion is logged to `.planning/orchestration/trace.json` (authoritative) and published to the `orchestrator` bus channel (`.planning/bus/orchestrator.jsonl`) for observability.
 
-**Runtime gating:** Claude Code + Opus 4.8 only. Other runtimes fall back to flat exec with a warning. Details in [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md).
+**Runtime gating:** Claude Code only — agents-spawn-agents needs native sub-agent spawning, which the other four runtimes don't support cleanly. There they fall back to flat exec with a warning. The gate is purely the runtime: `pan-conductor` ships no `model:` frontmatter, so it inherits your session model, and no model check exists anywhere in the path. Details in [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md).
 
 **When to use:**
 - Phases with ≥4 autonomous plans that genuinely parallelize

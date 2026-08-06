@@ -66,13 +66,13 @@ The workflow handles all logic including:
 
 ---
 
-### /pan:army (176 lines)
+### /pan:army (178 lines)
 
 ```markdown
 ---
 name: army
 group: Army
-description: Bot-army campaign — Mission Control (Opus conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
+description: Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
 allowed-tools:
   - Read
   - Write
@@ -86,7 +86,7 @@ allowed-tools:
 
 # /pan:army — Bot-Army Campaign (mission control → squads → ship)
 
-Run a whole-project delivery as a coordinated bot army (ADR-0032 squads · ADR-0033 campaign). **Mission Control** — the Opus `pan-conductor`, elevated to campaign scope — plans the mission, delegates to **squads** over the Agent toolset, and never writes code itself. Each squad owns its lifecycle role; the Build squad parallelizes by giving every builder its own `army/<task>` branch in an isolated git worktree. Nothing reaches a protected branch without green CI and a human's approval. $ARGUMENTS
+Run a whole-project delivery as a coordinated bot army (ADR-0032 squads · ADR-0033 campaign). **Mission Control** — the reasoning-tier `pan-conductor`, elevated to campaign scope — plans the mission, delegates to **squads** over the Agent toolset, and never writes code itself. Each squad owns its lifecycle role; the Build squad parallelizes by giving every builder its own `army/<task>` branch in an isolated git worktree. Nothing reaches a protected branch without green CI and a human's approval. $ARGUMENTS
 
 The army is the campaign-scale sibling of `/pan:exec-phase --hierarchical` (one phase) and `/pan:focus-auto` (a category/backlog loop). It composes both: the conductor harness bounds it, the focus-auto loop drives it, the squads structure it.
 
@@ -94,16 +94,18 @@ The army is the campaign-scale sibling of `/pan:exec-phase --hierarchical` (one 
 
 ## Tiers (from `pan-tools squad list`)
 
-| Tier | Who | Model | Access |
-|------|-----|-------|--------|
-| 0 · Mission Control | `pan-conductor` | Opus 4.8 | delegation-only (Agent toolset) — never codes |
-| 1 · Architecture | roadmapper · planner · plan-checker · researchers | Sonnet (reasoning) | read-only |
-| 1 · Build | `pan-executor` | Sonnet (reasoning) | read / write / bash — one branch+worktree per agent |
-| 1 · Quality | reviewer · hardener · meta · verifier · integration · debugger | Sonnet/Haiku (mid) | read-only, adversarial |
-| 1 · Release | `pan-release` | Sonnet (mid) | always-ask — human gate |
-| 2 · Workers | document_code · distiller | Haiku (fast) | narrow, high-volume jobs |
+| Tier | Who | Model tier | Access |
+|------|-----|-----------|--------|
+| 0 · Mission Control | `pan-conductor` | `reasoning` (`mid` under `budget`) | delegation-only (Agent toolset) — never codes |
+| 1 · Architecture | roadmapper · planner · plan-checker · researchers | `reasoning` | read-only |
+| 1 · Build | `pan-executor` | `reasoning` | read / write / bash — one branch+worktree per agent |
+| 1 · Quality | reviewer · hardener · meta · verifier · integration · debugger | `mid` | read-only, adversarial |
+| 1 · Release | `pan-release` | `mid` | always-ask — human gate |
+| 2 · Workers | document_code · distiller | `reasoning` (`fast` under `budget`) | narrow, high-volume jobs |
 
 Resolve the roster at runtime — never hardcode it: `pan-tools squad list` and `pan-tools squad show <name>`.
+
+**Reading the Model-tier column.** These are PAN *tiers*, not model names. `reasoning` resolves to `inherit` — the model your session already runs (the default Opus on Claude Code) — while `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). The tier-1 values are the squad tiers reported by `pan-tools squad list`; tiers 0 and 2 are per-agent and come from the active `model_profile`, where `budget` is the only profile that steps anything below `reasoning`. The only hard model pins in the army are `pan-hardener`, `pan-reviewer`, and `pan-meta-reviewer`, which carry `model: opus` in their own frontmatter (Claude Code only — the installer strips it for the other runtimes).
 
 ---
 
@@ -818,13 +820,13 @@ pan-tools cost clear
 </subcommands>
 
 <rate_table>
-Default rates (USD per million tokens) as of 2026-04. Override per-model in `.planning/config.json`:
+PAN ships a built-in rate table (USD per million tokens) covering the current Claude, GPT and Gemini families, with a per-tier fallback for anything it doesn't recognize. Override it in `.planning/config.json` — key on a PAN tier (`reasoning` / `mid` / `fast`), on a model family (longest-prefix match, so a family key also covers the dated ids the hooks record), or on an exact model id:
 
 ```json
 {
   "cost": {
     "rates": {
-      "claude-opus-4-7": { "input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75 },
+      "reasoning": { "input": 5.0, "output": 25.0, "cache_read": 0.5, "cache_write": 6.25 },
       "my-custom-model": { "input": 1.0, "output": 2.0, "cache_read": 0.1, "cache_write": 1.25 }
     }
   }
@@ -925,7 +927,7 @@ Debug issues using scientific method with subagent isolation.
 
 **Orchestrator role:** Gather symptoms, spawn pan-debugger agent, handle checkpoints, spawn continuations.
 
-**Why subagent:** Investigation burns context fast (reading files, forming hypotheses, testing). Fresh 200k context per investigation. Main context stays lean for user interaction.
+**Why subagent:** Investigation burns context fast (reading files, forming hypotheses, testing). A fresh context window per investigation. Main context stays lean for user interaction.
 </objective>
 
 <context>
@@ -1421,7 +1423,7 @@ Phase: $ARGUMENTS
 - `--skip-review` — Skip automatic code review after execution completes.
 - `--fast` — Skip both test generation and code review (implies `--skip-tests --skip-review`).
 - `--deep-review` (v3.4+) — After the normal reviewer step, also run `/pan:review-deep <phase>` (security audit via pan-hardener + cross-check via pan-meta-reviewer). Produces `.planning/reviews/<N>/deep-review.md`. Recommended for phases touching auth, payment, PII, migrations, or public APIs. Costs roughly 3× a normal review.
-- `--hierarchical` (v3.4+, Claude + Opus 4.8 only) — Spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in sequence. Bounded by safety harness: max 2 nesting levels, 12 spawns per phase, budget ceiling, `.planning/orchestration/abort` kill-switch. On non-Claude runtimes or older models, this flag is a no-op with a warning and falls back to flat exec. Use only for large phases (≥4 autonomous plans) where wall-clock reduction justifies the ~20-30% orchestration tax.
+- `--hierarchical` (v3.4+, Claude Code only — needs native sub-agent spawning) — Spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in sequence. `pan-conductor` runs on the reasoning tier under the default profile, which inherits the model you launched with (the `budget` profile drops it to mid). Bounded by safety harness: max 2 nesting levels, 12 spawns per phase, budget ceiling, `.planning/orchestration/abort` kill-switch. On runtimes that cannot spawn nested agents, this flag is a no-op with a warning and falls back to flat exec. Use only for large phases (≥4 autonomous plans) where wall-clock reduction justifies the ~20-30% orchestration tax.
 
 Context files are resolved inside the workflow via `pan-tools init execute-phase` and per-subagent `<files_to_read>` blocks.
 </context>
@@ -1456,7 +1458,7 @@ pan-tools cache prime --summary
 
 This returns `{blocks: [{path, bytes, cache}], total_bytes, sha}` for the cacheable set (project.md, requirements.md, roadmap.md, state.md, standards.md). The `sha` is stable across identical inputs, so repeated calls within the phase hit cached reads.
 
-When spawning subagents for wave execution, include the cacheable block paths in each agent's system-context so the host runtime (Claude Code with Opus 4.8) can mark them `cache_control: ephemeral`. On non-Claude runtimes or older models, this step is a no-op — nothing breaks, just no savings.
+When spawning subagents for wave execution, include the cacheable block paths in each agent's system-context so a host runtime that supports prompt caching (Claude Code does) can mark them `cache_control: ephemeral`. Where prompt caching is unavailable, this step is a no-op — nothing breaks, just no savings.
 </cache_priming>
 
 <process>
@@ -2114,21 +2116,21 @@ Between cycles, manage context to prevent quality degradation over long campaign
 
 Display one-line cycle summary: `Cycle N/M | X/Y pts | Z items done | Tests: A -> B`
 
-#### Step 2.5a: Reflection Gate (Opus 4.7 thinking-capable models only)
+#### Step 2.5a: Reflection Gate (`reasoning` tier only)
 
-Before committing to the next cycle, call the reflection helper:
+Before committing to the next cycle, call the reflection helper, passing the tier the run actually resolved to (not a literal — `"reasoning"` below is just the enabling case):
 
 ```
-echo '{"run": <run-state>, "cycle": <just-completed-cycle>, "batch": <proposed-next-batch>, "tier": "reasoning"}' \
+echo '{"run": <run-state>, "cycle": <just-completed-cycle>, "batch": <proposed-next-batch>, "tier": "<resolved-tier>"}' \
   | pan-tools focus reflection
 ```
 
-The helper returns `{reflect: true, prompt: "..."}` when the current model tier supports extended thinking. If `reflect: true`, think through the prompt — which asks whether running another cycle is worthwhile given telemetry and remaining items — and respond with JSON: `{"continue": true|false, "rationale": "..."}`.
+The helper returns `{reflect: true, prompt: "..."}` only when the resolved tier is `reasoning` (`REFLECTION_THRESHOLD.enable_on_tiers`), or when the run state sets `reflection_enabled: true`, which overrides the tier check in both directions. Being *thinking-capable* is not enough on its own: a `mid`-tier Sonnet supports extended thinking but still gets `reflect: false` unless `reflection_enabled` is set. If `reflect: true`, think through the prompt — which asks whether running another cycle is worthwhile given telemetry and remaining items — and respond with JSON: `{"continue": true|false, "rationale": "..."}`.
 
 - If `continue: false`: stop the campaign and treat as a user-reason stop (preserve state, skip to Phase 3).
 - If `continue: true`: proceed to the next cycle.
 
-If the helper returns `reflect: false` (tier doesn't support thinking, or `reflection_enabled: false` in run state, or no next batch): skip this step silently and continue to the next cycle.
+If the helper returns `reflect: false` (resolved tier is `mid`/`fast` and `reflection_enabled` is unset, or `reflection_enabled: false` in run state, or no next batch): skip this step silently and continue to the next cycle.
 
 The reflection gate catches "zero progress" or "wrong category" drift earlier than the automatic stop rules.
 
@@ -4896,7 +4898,7 @@ Display the execution batch to user, then continue automatically.
    ```
    pan-tools focus classify-stages --raw
    ```
-   The CLI reads the latest batch and returns `{waves, parallelism_hint}`. When `parallelism_hint` is `emit-micro-in-parallel` or `emit-standard-in-parallel`, all reads and greps for items in the current wave SHOULD be emitted in a single assistant turn (parallel tool calls). Opus 4.7 is markedly better at emitting parallel tool calls than earlier models; use that to collapse Stage 3 latency on MICRO-heavy batches.
+   The CLI reads the latest batch and returns `{waves, parallelism_hint}`. When `parallelism_hint` is `emit-micro-in-parallel` or `emit-standard-in-parallel`, all reads and greps for items in the current wave SHOULD be emitted in a single assistant turn (parallel tool calls). Current frontier models are markedly better at emitting parallel tool calls than earlier generations; use that to collapse Stage 3 latency on MICRO-heavy batches.
 
    Serialize on `FULL` tier items — each is its own wave.
 
@@ -6717,12 +6719,12 @@ Run: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs codebase estimate-size --
 
 The CLI returns `{mode, total_tokens, file_count, languages}`:
 
-- **`mode: "single-shot"`** — repo is small enough (≤700K tokens) for one Opus 4.7 agent to ingest the whole thing. Spawn a single `pan-document_code` agent with the full repo in context. This avoids the 6-way stitching artifacts of sharded mode (contradictory version claims, duplicated mentions, missed cross-file references).
-- **`mode: "sharded"`** — repo exceeds 700K tokens. Fall back to the default 6-way parallel sharding (tech, arch, quality, concerns, relationships, practices). Each shard gets a 200K budget.
+- **`mode: "single-shot"`** — repo is small enough (≤700K tokens) for one agent with a 1M-context window to ingest the whole thing. Spawn a single `pan-document_code` agent with the full repo in context. This avoids the 6-way stitching artifacts of sharded mode (contradictory version claims, duplicated mentions, missed cross-file references).
+- **`mode: "sharded"`** — repo exceeds 700K tokens. Fall back to the default 6-way parallel sharding (tech, arch, quality, concerns, relationships, practices). Each shard is mapped by its own agent in its own context window, so no single agent has to hold the whole repo.
 
 Record the chosen mode + telemetry in the final `.planning/codebase/overview.md` so future runs can reason about drift.
 
-Opus 4.7 is required for single-shot mode (only model with a 1M context window). Other models always take the sharded path regardless of size.
+**The mode is decided by repo size alone** — `estimate-size` compares the token estimate to `--threshold` and applies no model check. So single-shot only pays off when the model you launched with actually has a 1M-context window (the default Opus and current Sonnet-class models do; legacy 200K-context models do not). On a 200K-context model, pass a threshold that matches your real window (e.g. `--threshold 150000`) so anything larger resolves to `sharded` instead of overflowing a single agent.
 </stage_0_ingest_mode>
 
 <tool_priority>
@@ -6746,7 +6748,7 @@ The orchestrator loads context in layers — NOT everything upfront. Mapper agen
 - Each agent discovers its own details via Glob/Grep/Read within its focus area
 - Agents do NOT receive other agents' output (parallel, independent)
 
-**Why:** Loading the entire codebase into the orchestrator before spawning agents wastes orchestrator context. Each agent has a fresh 200k window — let them explore independently. The orchestrator only needs enough context to spawn correctly and verify outputs exist.
+**Why:** Loading the entire codebase into the orchestrator before spawning agents wastes orchestrator context. Each agent has a fresh window — let them explore independently. The orchestrator only needs enough context to spawn correctly and verify outputs exist.
 </progressive_context>
 
 <process>
@@ -7932,7 +7934,7 @@ Run once per invocation:
 pan-tools cache prime --summary
 ```
 
-Returns `{blocks: [{path, bytes, cache}], total_bytes, sha}`. On Claude Code with Opus 4.7, the host runtime translates these block references into `cache_control: ephemeral`. On non-Claude runtimes or older models this is a no-op — nothing breaks.
+Returns `{blocks: [{path, bytes, cache}], total_bytes, sha}`. On a host runtime that supports prompt caching (Claude Code does), the host translates these block references into `cache_control: ephemeral`. Where prompt caching is unavailable this is a no-op — nothing breaks.
 </cache_priming>
 
 <process>
@@ -8000,7 +8002,7 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 
 **Output:** `.planning/architecture/dependency-graph.md`
 
-**Opus 4.7 1M-context bonus:** when the full repo fits in a single agent window, the agent cross-references plan text with actual source imports to catch coupling the frontmatter missed. On smaller-context models, the agent relies on data-layer output alone.
+**1M-context bonus:** when the full repo fits in a single agent window — which needs a model with a 1M-context window — the agent cross-references plan text with actual source imports to catch coupling the frontmatter missed. On smaller-context models, the agent relies on data-layer output alone.
 
 ### `milestone` — Completion ETA
 
@@ -8052,13 +8054,13 @@ The command returns the path to the generated preview document. Never paste the 
 
 | Runtime | phase | phases | milestone |
 |---------|-------|--------|-----------|
-| Claude Code | Full, thinking enabled | Full, 1M-ctx bonus on Opus 4.7 | Full |
+| Claude Code | Full, thinking enabled | Full, plus 1M-ctx bonus when the window allows | Full |
 | OpenCode | Full | Data-layer + simple report | Full |
 | Gemini CLI | Full | Data-layer + simple report | Full |
 | Codex CLI | Full | Data-layer + simple report | Full |
 | Copilot CLI | Full | Data-layer + simple report | Full |
 
-The data layer (`pan-tools preview …`) works identically on all runtimes. What varies is the quality of the agent's synthesis — Opus 4.7 with thinking catches subtler risks than smaller models.
+The data layer (`pan-tools preview …`) works identically on all runtimes. What varies is the quality of the agent's synthesis — a thinking-capable Opus-class model catches subtler risks than smaller ones.
 
 </runtime_compatibility>
 ```
@@ -8108,7 +8110,7 @@ The workflow handles all logic including:
 </process>
 
 <tier_decision_tree>
-**Opus 4.7 capability-aware routing** (since v2.10.0 — E-7). Even within a single profile, PAN picks a tier per-call based on three hints: context estimate, whether the task needs extended thinking, and whether prompt cache is warm.
+**Capability-aware routing** (shipped v2.10.0 — E-7). Even within a single profile, PAN picks a tier per-call based on three hints: context estimate, whether the task needs extended thinking, and whether prompt cache is warm.
 
 The decision order `resolveModel` applies after the baseline profile pick:
 
@@ -8117,7 +8119,7 @@ Baseline tier (from MODEL_PROFILES[agent][profile])
         │
         ▼
 ┌─────────────────────────────────────────────┐
-│ context_estimate > 700K tokens?             │── yes ──▶ force reasoning (only 1M-ctx tier)
+│ context_estimate > 700K tokens?             │── yes ──▶ force reasoning (widest ctx tier)
 └─────────────────────────────────────────────┘
         │ no
         ▼
@@ -8137,7 +8139,7 @@ Final tier → provider-native model name
 
 **Quick guide:**
 - Heavy verification (plan-checker, verifier, integration-checker, reviewer, debugger): `needs_thinking: true` — baseline upgrades fast→mid.
-- Map-codebase single-shot mode on Opus 4.7: `context_estimate > 700K` — forced to reasoning.
+- Whole-repo context estimates above the large-context threshold (`context_estimate > 700K` tokens — `LARGE_CONTEXT_TOKEN_THRESHOLD`): forced to reasoning, which inherits the model you launched with. Note the direction: `/pan:map-codebase` picks `single-shot` **at or below** 700K and `sharded` above it, so the repos that trip this rule are the ones the mapper is already sharding.
 - Routine exec tasks with project.md cached: `cache_warm + small ctx` — mid gets downgraded to fast for a cost win.
 - All rules are additive to the `quality` / `balanced` / `budget` profile you pick here — profile sets the floor, capability hints adjust upward or downward within that floor's band.
 
@@ -8393,7 +8395,7 @@ Research how to implement a phase. Spawns pan-phase-researcher agent with phase 
 
 **Orchestrator role:** Parse phase, validate against roadmap, check existing research, gather context, spawn researcher agent, present results.
 
-**Why subagent:** Research burns context fast (WebSearch, Context7 queries, source verification). Fresh 200k context for investigation. Main context stays lean for user interaction.
+**Why subagent:** Research burns context fast (WebSearch, Context7 queries, source verification). A fresh context window for investigation. Main context stays lean for user interaction.
 </objective>
 
 <context>
@@ -8840,7 +8842,7 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 | Codex | Same | Same | Full |
 | Copilot | Same | Same | Full |
 
-The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability — Opus 4.7 with extended thinking produces the richest findings.
+The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability — an Opus-class model with extended thinking produces the richest findings.
 
 </runtime_compatibility>
 

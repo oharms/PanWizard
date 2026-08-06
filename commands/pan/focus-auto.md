@@ -364,21 +364,21 @@ Between cycles, manage context to prevent quality degradation over long campaign
 
 Display one-line cycle summary: `Cycle N/M | X/Y pts | Z items done | Tests: A -> B`
 
-#### Step 2.5a: Reflection Gate (Opus 4.7 thinking-capable models only)
+#### Step 2.5a: Reflection Gate (`reasoning` tier only)
 
-Before committing to the next cycle, call the reflection helper:
+Before committing to the next cycle, call the reflection helper, passing the tier the run actually resolved to (not a literal — `"reasoning"` below is just the enabling case):
 
 ```
-echo '{"run": <run-state>, "cycle": <just-completed-cycle>, "batch": <proposed-next-batch>, "tier": "reasoning"}' \
+echo '{"run": <run-state>, "cycle": <just-completed-cycle>, "batch": <proposed-next-batch>, "tier": "<resolved-tier>"}' \
   | pan-tools focus reflection
 ```
 
-The helper returns `{reflect: true, prompt: "..."}` when the current model tier supports extended thinking. If `reflect: true`, think through the prompt — which asks whether running another cycle is worthwhile given telemetry and remaining items — and respond with JSON: `{"continue": true|false, "rationale": "..."}`.
+The helper returns `{reflect: true, prompt: "..."}` only when the resolved tier is `reasoning` (`REFLECTION_THRESHOLD.enable_on_tiers`), or when the run state sets `reflection_enabled: true`, which overrides the tier check in both directions. Being *thinking-capable* is not enough on its own: a `mid`-tier Sonnet supports extended thinking but still gets `reflect: false` unless `reflection_enabled` is set. If `reflect: true`, think through the prompt — which asks whether running another cycle is worthwhile given telemetry and remaining items — and respond with JSON: `{"continue": true|false, "rationale": "..."}`.
 
 - If `continue: false`: stop the campaign and treat as a user-reason stop (preserve state, skip to Phase 3).
 - If `continue: true`: proceed to the next cycle.
 
-If the helper returns `reflect: false` (tier doesn't support thinking, or `reflection_enabled: false` in run state, or no next batch): skip this step silently and continue to the next cycle.
+If the helper returns `reflect: false` (resolved tier is `mid`/`fast` and `reflection_enabled` is unset, or `reflection_enabled: false` in run state, or no next batch): skip this step silently and continue to the next cycle.
 
 The reflection gate catches "zero progress" or "wrong category" drift earlier than the automatic stop rules.
 

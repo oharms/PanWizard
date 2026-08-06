@@ -117,7 +117,7 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 | Codex | Same | Same | Full |
 | Copilot | Same | Same | Full |
 
-The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability — Opus 4.7 with extended thinking produces the richest findings.
+The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability — an Opus-class model with extended thinking produces the richest findings.
 
 </runtime_compatibility>
 

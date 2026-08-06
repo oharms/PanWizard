@@ -636,7 +636,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Symptom:** Claude becomes less coherent, loses track of the current task, or starts repeating itself. The context monitor (if installed) shows CRITICAL warning.
 
-**Why this happens:** The main session accumulates context from every command you run. PAN subagents (executors, verifiers) each get fresh 200K windows, but the orchestrating session does not reset automatically.
+**Why this happens:** The main session accumulates context from every command you run. PAN subagents (executors, verifiers) each get a fresh context window, but the orchestrating session does not reset automatically.
 
 **Immediate recovery:**
 
@@ -874,11 +874,10 @@ This is expected behavior — `bridge list` is designed to report cleanly when n
 ### `/pan:exec-phase --hierarchical` printed a warning and ran flat
 
 Expected when:
-- You're not on Claude Code (other runtimes don't support agents-spawn-agents)
-- Your default model isn't Opus 4.7
+- You're not on Claude Code — the flag needs native sub-agent spawning, which the other four runtimes don't support cleanly
 - Your phase has only 1 plan file (`pan-conductor` refuses to orchestrate a single-plan phase — it would be pure overhead)
 
-The flag silently degrades to flat exec in all three cases. To verify it would trigger, check `commands/pan/exec-phase.md` for the flag's runtime matrix. If you're on Claude + Opus 4.7 and still getting flat exec, look at the stderr warning — it names the specific guard that fired.
+The flag degrades to flat exec in both cases. There is **no model gate**: `pan-conductor` carries no `model:` frontmatter, so it runs on whatever model you launched the session with (the `budget` profile's advisory tiering is the only thing that would nominate a cheaper one, and it does not block the flag). So "wrong model" is never the reason — if you're on Claude Code with a multi-plan phase and still getting flat exec, read the stderr warning; it names the specific guard that fired. `commands/pan/exec-phase.md` documents the flag's conditions.
 
 ### Cost log records have `input_tokens: 0` and `cost_usd: null`
 
@@ -886,7 +885,7 @@ The SubagentStop hook captures whatever Claude Code's event payload provides. If
 
 Options:
 - **Upgrade Claude Code** if your version predates `usage` field support in SubagentStop.
-- **Append explicit records** for calls you care about: `pan-tools cost append --agent X --model claude-opus-4-7 --input-tokens N --output-tokens N`. The aggregator merges hook-sourced and caller-sourced records.
+- **Append explicit records** for calls you care about: `pan-tools cost append --agent X --model <model-id> --input-tokens N --output-tokens N`. The aggregator merges hook-sourced and caller-sourced records.
 - **Reconcile from provider billing.** The hook is directional — use the provider's API (Anthropic console, etc.) for exact monthly totals.
 
 Records with zero tokens still indicate that an agent ran — they're not useless, just incomplete.

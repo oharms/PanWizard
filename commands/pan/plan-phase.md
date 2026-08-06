@@ -134,7 +134,7 @@ Run once per invocation:
 pan-tools cache prime --summary
 ```
 
-Returns `{blocks: [{path, bytes, cache}], total_bytes, sha}`. On Claude Code with Opus 4.7, the host runtime translates these block references into `cache_control: ephemeral`. On non-Claude runtimes or older models this is a no-op — nothing breaks.
+Returns `{blocks: [{path, bytes, cache}], total_bytes, sha}`. On a host runtime that supports prompt caching (Claude Code does), the host translates these block references into `cache_control: ephemeral`. Where prompt caching is unavailable this is a no-op — nothing breaks.
 </cache_priming>
 
 <process>

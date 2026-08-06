@@ -33,7 +33,7 @@ This ensures project-specific patterns, conventions, and best practices are appl
 </project_context>
 
 <parallel_tool_use>
-When multiple independent reads, greps, or analyses are needed BEFORE you edit, emit them all in a single assistant turn. Opus 4.7 handles parallel tool calls materially better than earlier models — use that to collapse discovery latency.
+When multiple independent reads, greps, or analyses are needed BEFORE you edit, emit them all in a single assistant turn. Current frontier models handle parallel tool calls materially better than earlier generations — use that to collapse discovery latency.
 
 **Parallel is correct when:**
 - Reading several files with no ordering dependency (plan + tests + target source)

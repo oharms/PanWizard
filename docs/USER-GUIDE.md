@@ -112,19 +112,19 @@ Shows your overall project status and tells you what to do next — plan the nex
 - **Use the `balanced` profile** (default) — it balances cost and quality well
 - **Run `/clear`** between major commands to keep context fresh
 
-### Opus 4.7 features (v2.10.0+)
+### Capability-aware features (v2.10.0+)
 
-If you're running on Claude Opus 4.7, PAN uses these automatically:
+PAN emits all of these unconditionally. They pay off in full on Claude Code with a frontier reasoning model (the default Opus is one); elsewhere they degrade rather than error, as described below the list:
 
-- **Prompt caching** — project.md, requirements.md, roadmap.md, state.md, standards.md are cached across agent calls in a phase. Expect 40-60% input-token savings on multi-wave execution.
-- **Extended thinking** — `pan-plan-checker`, `pan-verifier`, `pan-reviewer`, `pan-debugger`, and `pan-integration-checker` reason internally before acting. Catches logic gaps earlier.
-- **Single-shot map-codebase** — repos ≤700K tokens map in a single agent instead of 6 parallel ones. No more contradictory version claims in the output.
+- **Prompt caching** — project.md, requirements.md, roadmap.md, state.md, standards.md are cached across agent calls in a phase. Expect 40-60% input-token savings on multi-wave execution. Requires a model/runtime that supports prompt caching.
+- **Extended thinking** — on thinking-capable models, `pan-plan-checker`, `pan-verifier`, `pan-reviewer`, `pan-debugger`, and `pan-integration-checker` reason internally before acting. Catches logic gaps earlier.
+- **Single-shot map-codebase** — repos that fit the single-shot threshold (≤700K tokens, measured by `pan-tools codebase estimate-size`) map in a single agent instead of 6 parallel ones. Mode is chosen by repo size alone; holding a repo that large in one pass needs a model with a 1M-context window, so on smaller-context models prefer the sharded path (`--threshold`).
 - **Cross-phase memory** — lessons learned in phase 3 (e.g. "prefer bulk Postgres writes") surface automatically in phase 7's planner. Inspect with `pan-tools memory list`. Trim with `pan-tools memory compact <agent> <max>`.
 - **Milestone retrospective with memory write** — `/pan:retro --write-memory` extracts recurring gap patterns as planner lessons. Run after every `/pan:milestone-done`.
 - **Capability-aware routing** — when a task needs thinking, the fast tier auto-upgrades to mid; when cache is warm and context is small, mid auto-downgrades to fast. See `/pan:profile` for the decision tree.
 - **Native skills discovery** — Claude Code sees PAN commands as first-class skills at `.claude/skills/pan-*.md` with descriptions, so it can auto-invoke them when relevant.
 
-On Sonnet 4.6 / Haiku 4.5 / non-Claude runtimes, features degrade gracefully: thinking becomes a prose "think step-by-step" preamble, single-shot falls back to sharded, caching is a no-op. Installer warns at install time if your default model lacks Opus 4.7 features.
+On lower tiers (mid/fast models) and non-Claude runtimes, features degrade gracefully: thinking becomes a prose "think step-by-step" preamble, caching is a no-op, and you pick the sharded map path with `--threshold`. None of this is gated at runtime — no feature, mode, or routing decision checks your model name before choosing a code path. (`/pan:cost` does look up the model ID recorded in the metrics log to price your token usage, but that only affects the number in a cost report, not what PAN runs.) The one model-name check you'll notice is advisory and runs once: at the end of install, the installer looks up the `model` field in your `settings.json` against a hand-maintained table of known model IDs (`detectModelCapabilities()` in `bin/install-lib.cjs`) and prints a note if that model is known to lack 1M context or extended thinking. The table recognizes the current generations by name and deliberately fails forward — the per-family threshold is the last reduced-capability release it records, not the newest release it lists, so any Claude ID newer than that boundary (a new major, or a later point release inside a major it already lists) inherits that family's modern profile rather than reading as capability-less, and upgrading to a new flagship doesn't produce a bogus warning. A model from a family it has never seen, or a Claude name with no parsable release number after the family, still reads as `unknown` and may trigger the note spuriously. Either way it's a hint, never a block. Pass `--skip-warnings` to silence it.
 
 ### Spec B v2 features (v3.0-v3.4)
 
@@ -138,14 +138,14 @@ Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purp
 - **`/pan:review-deep <phase>` (v3.2)** — security audit (OWASP + STRIDE via `pan-hardener`) + cross-check by `pan-meta-reviewer`. Merges reviewer + hardener + meta findings into one verdict ladder. Recommended for phases touching auth/payment/PII/migrations/public APIs. Also invokable as `/pan:exec-phase <N> --deep-review` or `/pan:focus-exec --deep-review`. Costs ~3× a normal review.
 - **`/pan:knowledge {ask|discuss|playbook}` (v3.2)** — three modes in one command:
   - `ask "question"` — grounded Q&A with inline citations. Example: `/pan:knowledge ask "why does phase 4 have a race condition fix?"`
-  - `discuss <phase> "topic"` — multi-turn refinement with session state persistence. Benefits from prompt caching on Claude + Opus 4.7.
+  - `discuss <phase> "topic"` — multi-turn refinement with session state persistence. Benefits from prompt caching where the runtime and model support it.
   - `playbook` — aggregate all agents' memory into `.planning/playbook.md` categorized by Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps.
 - **`/pan:what-if <phase> "scenario"` (v3.3)** — counterfactual phase replay in an isolated git worktree. Agent explores the alternative, report lands in `.planning/counterfactuals/<phase>-<slug>.md`, worktree auto-deleted. Requires git.
 - **`/pan:mcp-bridge {list|recommend <phase>|cache}` (v3.3)** — discover which MCP tools are available and recommend which apply to a phase plan. Discovery-only; auto-invocation deferred.
 
 #### Advanced features
 
-- **`--hierarchical` flag on `/pan:exec-phase` (v3.4)** — spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in waves. Bounded by a safety harness (2-level nesting, 12-spawn cap, budget ceiling, abort file). Claude + Opus 4.8 only; falls back silently to flat exec elsewhere. Use for phases with ≥4 autonomous plans where wall-clock reduction justifies the ~20-30% orchestration tax.
+- **`--hierarchical` flag on `/pan:exec-phase` (v3.4)** — spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in waves. Bounded by a safety harness (2-level nesting, 12-spawn cap, budget ceiling, abort file). Claude Code only — agents-spawn-agents needs native sub-agent spawning; on the other four runtimes the flag is a no-op that warns and falls back to flat exec. No model gate: `pan-conductor` inherits the model you launched the session with. Use for phases with ≥4 autonomous plans where wall-clock reduction justifies the ~20-30% orchestration tax.
 - **`--deep-review` flag on `/pan:exec-phase` and `/pan:focus-exec` (v3.4)** — auto-invoke `/pan:review-deep` after the normal reviewer step. Recommended for high-stakes batches.
 - **Automatic cost logging (v3.4)** — `hooks/pan-cost-logger.js` registered as a SubagentStop hook. Every sub-agent completion appends a record to `.planning/metrics/tokens.jsonl`. Visible in `/pan:cost report` without any manual `cost append` calls.
 
@@ -262,11 +262,11 @@ off by default; turn it on for phases where planning test coverage up front matt
          ├── Analyze plan dependencies
          │
          ├── Wave 1 (independent plans):
-         │     ├── Executor A (fresh 200K context) -> commit
-         │     └── Executor B (fresh 200K context) -> commit
+         │     ├── Executor A (fresh context) -> commit
+         │     └── Executor B (fresh context) -> commit
          │
          ├── Wave 2 (depends on Wave 1):
-         │     └── Executor C (fresh 200K context) -> commit
+         │     └── Executor C (fresh context) -> commit
          │
          └── Verifier
                └── Check codebase against phase goals
@@ -908,7 +908,7 @@ Inspect the roster any time with `pan-tools squad list` and `pan-tools squad sho
 /pan:army --stop                 # graceful halt, state preserved
 ```
 
-The same caps that bound hierarchical exec bound the campaign — delegation-depth cap, per-cycle spawn/budget ceiling, and the `.planning/orchestration/abort` kill-switch — so a long campaign never relaxes a single safety rail. Campaign mode is Claude + Opus only (like `/pan:exec-phase --hierarchical`); other runtimes fall back to the flat lifecycle.
+The same caps that bound hierarchical exec bound the campaign — delegation-depth cap, per-cycle spawn/budget ceiling, and the `.planning/orchestration/abort` kill-switch — so a long campaign never relaxes a single safety rail. Campaign mode is Claude Code only (like `/pan:exec-phase --hierarchical`) because the squads are spawned as native sub-agents; the other four runtimes fall back to the flat lifecycle. That's a runtime constraint, not a model one — no model gate exists, and Mission Control runs on whatever model you launched with.
 
 **Running it over days (scheduled, self-resuming).** `--schedule` arms a campaign that advances the backlog on a cadence instead of in one sitting ([ADR-0034](decisions/ADR-0034-scheduled-campaigns.md)):
 
@@ -1056,7 +1056,7 @@ You ran `/pan:new-project` but `.planning/project.md` already exists. This is a 
 
 ### Context Degradation During Long Sessions
 
-Clear your context window between major commands: `/clear` in Claude Code. PAN is designed around fresh contexts -- every subagent gets a clean 200K window. If quality is dropping in the main session, clear and use `/pan:resume` or `/pan:progress` to restore state.
+Clear your context window between major commands: `/clear` in Claude Code. PAN is designed around fresh contexts -- every subagent gets a clean context window. If quality is dropping in the main session, clear and use `/pan:resume` or `/pan:progress` to restore state.
 
 ### Plans Seem Wrong or Misaligned
 
@@ -1093,7 +1093,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Phase Execution Hangs or Takes Too Long
 
 **Cause:** Complex plans with many dependencies, or agent model too weak for the task.
-**Fix:** Check the plan complexity (number of tasks, wave count). Consider switching to `quality` profile for the executor: add `"model_overrides": {"pan-executor": "opus"}` to `.planning/config.json`. For simpler tasks, ensure you're not on `quality` profile (Opus for everything is slower).
+**Fix:** Check the plan complexity (number of tasks, wave count). If you're on the `budget` profile, the executor is running a mid-tier model — switch back to `balanced` (`/pan:profile balanced`) so it inherits your session model, or pin just that agent with `"model_overrides": {"pan-executor": "opus"}` in `.planning/config.json`. Conversely, if simple tasks feel slow, the reasoning tier is the cost: `budget`, complexity routing, or a per-phase `<!-- model_tier: fast -->` will trade depth for speed. (`quality` and `balanced` resolve identically, so switching between those two changes nothing.)
 
 ### Plan Rejected by Checker Multiple Times
 

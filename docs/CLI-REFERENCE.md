@@ -1,6 +1,6 @@
 # pan-tools.cjs CLI Reference
 
-Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Every shipped command and agent ultimately invokes pan-tools for state management, verification, scaffolding, context gathering, prompt-cache priming, cross-phase memory, Opus 4.7 capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree, MCP bridge), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`, `runner`) plus vendored markdown linter (`doc-lint`).
+Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Every shipped command and agent ultimately invokes pan-tools for state management, verification, scaffolding, context gathering, prompt-cache priming, cross-phase memory, model-capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree, MCP bridge), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`, `runner`) plus vendored markdown linter (`doc-lint`).
 
 ```
 node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
@@ -32,7 +32,7 @@ node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
 - [18. Focus Commands](#18-focus-commands)
 - [19. Standards Commands](#19-standards-commands)
 - [20. Operations Commands](#20-operations-commands)
-- [20.1 Opus 4.7 Commands](#201-opus-47-commands-v2100)
+- [20.1 Capability-Aware Commands](#201-capability-aware-commands-v2100)
 - [21. Codebase Commands](#21-codebase-commands)
 - [22. Spec B v2 Commands](#22-spec-b-v2-commands-v30-v34)
 - [23. Self-Improvement Loop Commands](#23-self-improvement-loop-commands)
@@ -79,7 +79,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `commands.cjs` | Utility commands (slug, timestamp, commit, batch-commit, estimate-cost, rollback, progress, etc.) |
 | `phase.cjs` | Phase directory and plan operations |
 | `init.cjs` | Compound workflow context gathering |
-| `verify.cjs` | Verification, validation, and retrospective (Opus 4.7: `retro --write-memory`); facade over the verify-* submodules |
+| `verify.cjs` | Verification, validation, and retrospective (v2.10.0: `retro --write-memory`); facade over the verify-* submodules |
 | `verify-drift.cjs` | Convention-drift detection (`drift-check`); extracted from verify.cjs, re-exported through it |
 | `verify-retro.cjs` | Milestone retrospective (`retro`); extracted from verify.cjs, re-exported through it |
 | `verify-deploy.cjs` | Deployment validation (`validate deployment`); extracted from verify.cjs, re-exported through it |
@@ -91,9 +91,9 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `config.cjs` | config.json management |
 | `template.cjs` | Template selection and filling |
 | `milestone.cjs` | Milestone archival and requirements |
-| `context-budget.cjs` | Context window utilization (Opus 4.7: cache metrics surfaced in health output) |
-| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto/design + Opus 4.7: `focus classify-stages`, `focus reflection` |
-| `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices + Opus 4.7: `codebase estimate-size` |
+| `context-budget.cjs` | Context window utilization (v2.10.0: cache metrics surfaced in health output) |
+| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto/design + v2.10.0: `focus classify-stages`, `focus reflection` |
+| `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices + v2.10.0: `codebase estimate-size` |
 | `memory.cjs` | **(v2.10.0, E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact` |
 | `memory-optimize.cjs` | Reconcile the always-loaded project memory: `memory optimize [--apply] [--keep N]` (dedupe / placeholder-strip / cap-with-archive state.md); also runs automatically in the focus + normal flows |
 | `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply]` (AGENTS.md PAN section, CLAUDE.md bridge, state.md frontmatter) |
@@ -236,14 +236,14 @@ Quick reference of all CLI commands grouped by category.
 | 100 | `codebase detect-languages` | Codebase | codebase.cjs |
 | 101 | `codebase analyze-imports` | Codebase | codebase.cjs |
 | 102 | `codebase best-practices` | Codebase | codebase.cjs |
-| 103 | `codebase estimate-size` | Opus 4.7 (E-2) | codebase.cjs |
-| 104 | `memory read` | Opus 4.7 (E-4) | memory.cjs |
-| 105 | `memory append` | Opus 4.7 (E-4) | memory.cjs |
-| 106 | `memory list` | Opus 4.7 (E-4) | memory.cjs |
-| 107 | `memory compact` | Opus 4.7 (E-4) | memory.cjs |
-| 108 | `cache prime` | Opus 4.7 (E-1) | core.cjs |
-| 109 | `focus classify-stages` | Opus 4.7 (E-6) | focus.cjs |
-| 110 | `focus reflection` | Opus 4.7 (E-10) | focus.cjs |
+| 103 | `codebase estimate-size` | Spec A E-2 (v2.10.0) | codebase.cjs |
+| 104 | `memory read` | Spec A E-4 (v2.10.0) | memory.cjs |
+| 105 | `memory append` | Spec A E-4 (v2.10.0) | memory.cjs |
+| 106 | `memory list` | Spec A E-4 (v2.10.0) | memory.cjs |
+| 107 | `memory compact` | Spec A E-4 (v2.10.0) | memory.cjs |
+| 108 | `cache prime` | Spec A E-1 (v2.10.0) | core.cjs |
+| 109 | `focus classify-stages` | Spec A E-6 (v2.10.0) | focus.cjs |
+| 110 | `focus reflection` | Spec A E-10 (v2.10.0) | focus.cjs |
 | 111 | `cost report` | Spec B v2 Y-6 (v3.0) | cost.cjs |
 | 112 | `cost append` | Spec B v2 Y-6 (v3.0) | cost.cjs |
 | 113 | `cost clear` | Spec B v2 Y-6 (v3.0) | cost.cjs |
@@ -1423,7 +1423,7 @@ pan-tools progress health [--raw]
 
 ### `context-budget`
 
-Estimate context window utilization for the current phase. Measures how much of the 200K token context window would be consumed by loading project files, roadmap, state, and plans for the active phase.
+Estimate context window utilization for the current phase. Measures how much of the assumed context window would be consumed by loading project files, roadmap, state, and plans for the active phase. The denominator is PAN's own fixed budget constant — 200,000 tokens (`CONTEXT_WINDOW` in `constants.cjs`) — **not a reading of your model's real window.** Nothing detects the model here; the number is a deliberately conservative planning assumption, so on a larger-context model the real headroom is greater than the report implies. It is the only place PAN commits to a window size.
 
 ```
 pan-tools context-budget [--raw]
@@ -1861,29 +1861,27 @@ Get the model name for an agent based on the current model profile in config. Th
 pan-tools resolve-model pan-executor [--raw]
 ```
 
-**Valid agent types:** `pan-planner`, `pan-roadmapper`, `pan-executor`, `pan-phase-researcher`, `pan-project-researcher`, `pan-research-synthesizer`, `pan-debugger`, `pan-document_code`, `pan-verifier`, `pan-reviewer`, `pan-plan-checker`, `pan-integration-checker`
+**Agent types:** any key in `MODEL_PROFILES` (`core.cjs`) — the shipped `pan-*` agents, listed in the matrix below. The argument is not validated against an allowlist: a name that isn't in the table resolves to the mid tier and sets `unknown_agent: true` rather than erroring.
 
 **JSON output:**
 ```json
-{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "high" }
+{ "model": "inherit", "profile": "balanced", "strategy": "static", "effort": "high" }
 ```
 
-For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "medium", "unknown_agent": true }`
+For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "medium", "unknown_agent": true }` — unknown agents get the mid tier regardless of profile.
 
-**`--raw` output:** Model name string (e.g., `sonnet`, `haiku`, `inherit`). `inherit` means "use the parent model (opus)".
+**`--raw` output:** Model name string (e.g., `inherit`, `sonnet`, `haiku`). `inherit` means "use the model the session was launched with" — PAN does not name a model here, so it never goes stale as the lineup moves.
 
 **Effort (2026-06):** alongside the tier, every agent resolves to a reasoning-effort level (`low`/`medium`/`high`/`xhigh`) — the primary within-model cost/intelligence dial on current models (it replaced fixed thinking budgets). Base levels per agent mirror the `effort:` frontmatter shipped in `agents/*.md`; the `budget` profile steps effort down one level (floor `low`); `quality`/`balanced` keep the base. Override per agent via `.planning/config.json` → `"effort_overrides": { "pan-planner": "xhigh" }`.
 
-**Model profile matrix:**
+**Model profile matrix** (cost reset, 2026-07):
 
 | Agent | Quality | Balanced | Budget |
 |-------|---------|----------|--------|
-| planner | inherit | inherit | sonnet |
-| roadmapper, executor, debugger | inherit | sonnet | sonnet |
-| researchers, synthesizer, verifier, plan-checker, integration-checker | inherit | sonnet | haiku |
-| document_code (mapper), reviewer | inherit | haiku | haiku |
+| planner, designer, roadmapper, executor, debugger, conductor, counterfactual | inherit | inherit | sonnet |
+| every other registered agent — the researchers and synthesizer, the doc writer, the verifier and checkers, and the review/support roster | inherit | inherit | haiku |
 
-Quality is `inherit` for **every** agent (all reasoning-tier). `inherit` → the host's selected top model, `sonnet` → mid tier, `haiku` → fast tier. Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
+`quality` and `balanced` are `inherit` for **every** agent — the two columns are identical, so switching between them changes nothing. `budget` is the only profile that down-tiers. `inherit` → the reasoning tier, i.e. the model the session was launched with; `sonnet` → mid tier; `haiku` → fast tier (the `sonnet`/`haiku` names are the Anthropic mapping — `PROVIDER_MODELS` in `core.cjs` substitutes the equivalent for OpenAI/Google projects, and `inherit` is the reasoning tier on every provider). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
 
 ---
 
@@ -1984,11 +1982,13 @@ pan-tools estimate-cost [--raw]
 {
   "estimates": [
     { "profile": "quality", "total": <N>, "average": 15.0, "agentCount": <N> },
-    { "profile": "balanced", "total": <N>, "average": 3.7, "agentCount": <N> },
+    { "profile": "balanced", "total": <N>, "average": 15.0, "agentCount": <N> },
     { "profile": "budget", "total": <N>, "average": 1.6, "agentCount": <N> }
   ]
 }
 ```
+
+`quality` and `balanced` report the same average by design — post cost reset both put every agent on the reasoning tier (15× baseline). `budget` is the only profile that down-tiers, so it's the only one that moves the number.
 
 **`--raw` output:** One line per profile: `quality: ~15.0x baseline (<N> agents)`.
 
@@ -2964,9 +2964,9 @@ The `memory` field is omitted unless `--write-memory` is set.
 
 ---
 
-## 20.1 Opus 4.7 Commands (v2.10.0)
+## 20.1 Capability-Aware Commands (v2.10.0)
 
-Commands added for Spec A (Opus 4.7 existing enhancements). All degrade gracefully on smaller models / non-Claude runtimes.
+Commands added for Spec A (frontier-model capability enhancements). All degrade gracefully rather than error on models and runtimes that lack the underlying capability: cache directives are ignored (a no-op), and the installer rewrites thinking directives into a prose preamble for non-Claude runtimes. Nothing here inspects the model at runtime — in particular `codebase estimate-size` picks single-shot vs sharded from repo size alone, so on a smaller-context model you get the sharded path by lowering `--threshold` yourself; there is no automatic fallback.
 
 ### `memory read <agent>`
 
@@ -3155,7 +3155,7 @@ pan-tools codebase estimate-size [--threshold 700000] [--no-docs] [--raw]
 }
 ```
 
-`mode` is `single-shot` when `total_tokens ≤ threshold`, else `sharded`.
+`mode` is `single-shot` when `total_tokens ≤ threshold`, else `sharded`. Selection is purely size-based — the module performs no model check. The default threshold assumes the consuming agent has a 1M-context window; pass a lower `--threshold` when mapping with a smaller-context model.
 
 ---
 
@@ -3189,7 +3189,7 @@ Hint values: `emit-micro-in-parallel`, `emit-standard-in-parallel`, `sequential`
 
 ### `focus reflection`
 
-Emit a reflection prompt (for thinking-capable models) between focus-auto cycles. Reads `{run, cycle, batch, tier}` from stdin.
+Emit a reflection prompt between focus-auto cycles. Reads `{run, cycle, batch, tier}` from stdin.
 
 **Module:** `focus.cjs`
 
@@ -3203,13 +3203,15 @@ echo '{"run": {...}, "cycle": {...}, "batch": [...], "tier": "reasoning"}' \
 { "reflect": true, "prompt": "Reflect before cycle 2 of 5 ...", "reason": "ok" }
 ```
 
-Returns `{reflect: false}` when the current tier doesn't support thinking, when `run.reflection_enabled: false`, or when the next batch is empty.
+**Gate:** the reflection step is **reasoning-tier-only**. `run.reflection_enabled` wins if set — `true` forces reflection on at any tier, `false` forces it off. With the key absent, reflection is enabled only when the incoming `tier` is in `REFLECTION_THRESHOLD.enable_on_tiers` (`constants.cjs`), which is `['reasoning']`; `enabled_default` is `false`. So a `mid`/`fast` tier gets `{reflect: false}` even on a thinking-capable model — the gate reads the resolved tier, never the model's capabilities.
+
+Returns `{reflect: false, reason: "reflection_disabled"}` when the gate is closed, and `{reflect: false, reason: "no_next_batch"}` when the proposed next batch is empty.
 
 ---
 
 ## 21. Codebase Commands
 
-For `codebase estimate-size`, see Section 20.1 (Opus 4.7 Commands) — it's the mode-selection entry point for `/pan:map-codebase` Stage 0.
+For `codebase estimate-size`, see Section 20.1 (Capability-Aware Commands) — it's the mode-selection entry point for `/pan:map-codebase` Stage 0.
 
 ### `codebase detect-languages`
 

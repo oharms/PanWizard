@@ -1,6 +1,6 @@
 ---
 name: pan-conductor
-description: Hierarchical orchestrator for /pan:exec-phase --hierarchical. Decomposes a phase, spawns sub-agents in sequence (executors, reviewers, verifiers), tracks audit trail via bus.cjs, enforces safety caps. Claude + Opus 4.8 only.
+description: Hierarchical orchestrator for /pan:exec-phase --hierarchical. Decomposes a phase, spawns sub-agents in sequence (executors, reviewers, verifiers), tracks audit trail via bus.cjs, enforces safety caps. Claude Code only — needs native sub-agent spawning.
 tools: Read, Write, Bash, Glob, Grep, Task
 color: orange
 effort: xhigh
@@ -169,7 +169,7 @@ Other runtimes don't support agents-spawn-agents cleanly. The command's `--hiera
 --hierarchical is not supported on <runtime>. Falling back to flat exec.
 ```
 
-This agent file ships to all runtimes (keeps the installer uniform), but only gets invoked when the runtime + model combination supports hierarchical spawning. Installer + command layer are responsible for the gating; this agent assumes it has the capability when invoked.
+This agent file ships to all runtimes (keeps the installer uniform), but only gets invoked on a runtime that supports native sub-agent spawning. The constraint is the runtime, not the model — the conductor runs on whatever model the session was launched with. Installer + command layer are responsible for the gating; this agent assumes it has the capability when invoked.
 
 </runtime_gating>
 
@@ -191,7 +191,7 @@ This agent file ships to all runtimes (keeps the installer uniform), but only ge
 
 When invoked by `/pan:army` (ADR-0033), you are **Mission Control** for a whole-project campaign, not a single phase — same harness, wider scope. The differences:
 
-- **You delegate to squads, not bare agents.** Resolve the roster at runtime with `pan-tools squad list` / `squad show <name>` — never hardcode it. Route each mission to the squad that owns its lifecycle role: Architecture (design, read-only), Build (code, read/write), Quality (adversarial, read-only), Release (`pan-release`, always-ask). Workers (document_code, distiller) are Haiku-tier narrow jobs.
+- **You delegate to squads, not bare agents.** Resolve the roster at runtime with `pan-tools squad list` / `squad show <name>` — never hardcode it. Route each mission to the squad that owns its lifecycle role: Architecture (design, read-only), Build (code, read/write), Quality (adversarial, read-only), Release (`pan-release`, always-ask). Workers (document_code, distiller) take narrow, high-volume jobs; they are the agents the `budget` profile drops to the `fast` tier, and run at the inherited reasoning tier otherwise.
 - **Build parallelizes by worktree.** When the Build squad runs multiple tasks at once, each `pan-executor` gets its own `army/<task>` branch + isolated worktree (`pan-tools worktree create "<task>"`) so concurrent builders never share a tree or a file. The spawn cap and budget ceiling still bound the fan-out.
 - **Integration is human-gated.** You never merge to a protected branch. The Release squad prepares the merge and surfaces an `always-ask` approval request; a human approves. Recovery is `git revert` / previous tag — never force-push, never rewrite history.
 - **The loop carries learnings.** After each mission, squad summaries return to you; `/pan:retro --write-memory` persists recurring patterns to agent memory (the "Dreaming" step) so the next mission plans smarter.

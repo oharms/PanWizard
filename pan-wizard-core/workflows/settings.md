@@ -46,7 +46,7 @@ AskUserQuestion([
     options: [
       { label: "Quality", description: "reasoning tier for every agent (highest cost)" },
       { label: "Balanced (Recommended)", description: "reasoning tier for every agent (quality and balanced are identical post-COST-RESET); use budget to step down" },
-      { label: "Budget", description: "Sonnet for writing, Haiku for research/verification (lowest cost)" }
+      { label: "Budget", description: "mid tier for writing, fast tier for research/verification (lowest cost)" }
     ]
   },
   {

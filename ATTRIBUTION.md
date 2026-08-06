@@ -134,7 +134,7 @@ Ideas that originated within PAN Wizard (not borrowed from external sources):
 
 | Innovation | What | Status |
 |-----------|------|--------|
-| Phase-scoped fresh context windows | 200K fresh context per phase prevents context rot | Unique to PAN — no competitor does this |
+| Phase-scoped fresh context windows | A fresh context window per phase prevents context rot | Unique to PAN — no competitor does this |
 | Research-Plan-Verify loop | Dedicated researcher agents investigate domain before planning | Unique to PAN |
 | Wave-based parallel agent execution | Multi-agent orchestration with dependency-aware parallelization | Pioneered by PAN, later adopted by Cursor 2.0, Windsurf Wave 13 |
 | 5-runtime installer | Single `npx` command installs to Claude Code, OpenCode, Gemini, Codex, Copilot CLI | Unique to PAN — no competitor supports more than 1-2 runtimes |

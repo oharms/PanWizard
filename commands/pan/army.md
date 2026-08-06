@@ -1,7 +1,7 @@
 ---
 name: army
 group: Army
-description: Bot-army campaign — Mission Control (Opus conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
+description: Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
 allowed-tools:
   - Read
   - Write
@@ -15,7 +15,7 @@ allowed-tools:
 
 # /pan:army — Bot-Army Campaign (mission control → squads → ship)
 
-Run a whole-project delivery as a coordinated bot army (ADR-0032 squads · ADR-0033 campaign). **Mission Control** — the Opus `pan-conductor`, elevated to campaign scope — plans the mission, delegates to **squads** over the Agent toolset, and never writes code itself. Each squad owns its lifecycle role; the Build squad parallelizes by giving every builder its own `army/<task>` branch in an isolated git worktree. Nothing reaches a protected branch without green CI and a human's approval. $ARGUMENTS
+Run a whole-project delivery as a coordinated bot army (ADR-0032 squads · ADR-0033 campaign). **Mission Control** — the reasoning-tier `pan-conductor`, elevated to campaign scope — plans the mission, delegates to **squads** over the Agent toolset, and never writes code itself. Each squad owns its lifecycle role; the Build squad parallelizes by giving every builder its own `army/<task>` branch in an isolated git worktree. Nothing reaches a protected branch without green CI and a human's approval. $ARGUMENTS
 
 The army is the campaign-scale sibling of `/pan:exec-phase --hierarchical` (one phase) and `/pan:focus-auto` (a category/backlog loop). It composes both: the conductor harness bounds it, the focus-auto loop drives it, the squads structure it.
 
@@ -23,16 +23,18 @@ The army is the campaign-scale sibling of `/pan:exec-phase --hierarchical` (one 
 
 ## Tiers (from `pan-tools squad list`)
 
-| Tier | Who | Model | Access |
-|------|-----|-------|--------|
-| 0 · Mission Control | `pan-conductor` | Opus 4.8 | delegation-only (Agent toolset) — never codes |
-| 1 · Architecture | roadmapper · planner · plan-checker · researchers | Sonnet (reasoning) | read-only |
-| 1 · Build | `pan-executor` | Sonnet (reasoning) | read / write / bash — one branch+worktree per agent |
-| 1 · Quality | reviewer · hardener · meta · verifier · integration · debugger | Sonnet/Haiku (mid) | read-only, adversarial |
-| 1 · Release | `pan-release` | Sonnet (mid) | always-ask — human gate |
-| 2 · Workers | document_code · distiller | Haiku (fast) | narrow, high-volume jobs |
+| Tier | Who | Model tier | Access |
+|------|-----|-----------|--------|
+| 0 · Mission Control | `pan-conductor` | `reasoning` (`mid` under `budget`) | delegation-only (Agent toolset) — never codes |
+| 1 · Architecture | roadmapper · planner · plan-checker · researchers | `reasoning` | read-only |
+| 1 · Build | `pan-executor` | `reasoning` | read / write / bash — one branch+worktree per agent |
+| 1 · Quality | reviewer · hardener · meta · verifier · integration · debugger | `mid` | read-only, adversarial |
+| 1 · Release | `pan-release` | `mid` | always-ask — human gate |
+| 2 · Workers | document_code · distiller | `reasoning` (`fast` under `budget`) | narrow, high-volume jobs |
 
 Resolve the roster at runtime — never hardcode it: `pan-tools squad list` and `pan-tools squad show <name>`.
+
+**Reading the Model-tier column.** These are PAN *tiers*, not model names. `reasoning` resolves to `inherit` — the model your session already runs (the default Opus on Claude Code) — while `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). The tier-1 values are the squad tiers reported by `pan-tools squad list`; tiers 0 and 2 are per-agent and come from the active `model_profile`, where `budget` is the only profile that steps anything below `reasoning`. The only hard model pins in the army are `pan-hardener`, `pan-reviewer`, and `pan-meta-reviewer`, which carry `model: opus` in their own frontmatter (Claude Code only — the installer strips it for the other runtimes).
 
 ---
 

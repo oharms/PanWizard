@@ -160,7 +160,7 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
 2. **Spawn executor agents:**
 
-   Pass paths only — executors read files themselves with their fresh 200k context.
+   Pass paths only — executors read files themselves in their own fresh context window.
    This keeps orchestrator context lean (~10-15%).
 
    ```
@@ -738,7 +738,7 @@ The workflow ends. The user runs `/pan:progress` or invokes the transition workf
 </process>
 
 <context_efficiency>
-Orchestrator: ~10-15% context. Subagents: fresh 200k each. No polling (Task blocks). No context bleed.
+Orchestrator: ~10-15% context. Subagents: a fresh window each. No polling (Task blocks). No context bleed.
 </context_efficiency>
 
 <failure_handling>

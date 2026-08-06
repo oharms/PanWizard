@@ -53,7 +53,7 @@ PAN Wizard is organized as a 5-layer architecture. Each layer has a single respo
 |  LAYER 3: AGENTS          |   |  LAYER 4: CORE LIBRARY        |
 |  agents/*.md              |   |  pan-wizard-core/bin/lib/*.cjs |
 |  Specialized AI roles,    |   |  Core CJS modules + CLI entry  |
-|  each in fresh 200K ctx   |   |  Zero external dependencies   |
+|  each in a fresh context  |   |  Zero external dependencies   |
 +---------------------------+   +-------------------------------+
         |                                   |
         +----------------+------------------+
@@ -67,17 +67,21 @@ PAN Wizard is organized as a 5-layer architecture. Each layer has a single respo
 
 **Key principle:** Information flows downward through layers. Commands invoke workflows. Workflows spawn agents and call the core library. Agents and the core library read/write persistent state. No layer communicates upward except by returning results.
 
-### Opus 4.7 integration (since v2.10.0)
+### Model-capability integration (since v2.10.0)
 
-PAN Wizard consumes five Opus 4.7 primitives across existing layers without changing the layer contracts:
+PAN Wizard consumes these frontier-model capabilities across existing layers without changing the layer contracts. **There is no runtime capability gate.** PAN emits the capability unconditionally; whether it takes effect is decided by two things outside PAN's control — the **host runtime** (extended thinking directives and native skill shims are Claude-only; the installer rewrites or drops them for the other four) and the **model you launched the session with** (a 1M-context model can absorb a single-shot codebase map; a smaller-context one cannot). No module gates a *feature* on the model name — every workflow, mode selection, and routing decision runs the same code path whatever model you are on. (Two places do read a model name for non-gating reasons: the installer's advisory warning, described below, and `cost.cjs`'s `resolveRate()`, which resolves a per-million-token price from the model ID recorded in the metrics log so `/pan:cost` can report spend. Neither changes what PAN does.)
 
 - **Prompt caching (Layer 4/3 boundary):** `buildCachedContext(cwd)` returns the stable set of .planning files each agent reads. Commands prime the cache once via `pan-tools cache prime` before Wave 1 so sub-agents spawned in the next 5 minutes hit cached reads. See ADR-0023.
 - **Reasoning effort (Layer 3):** agents carry `effort:` frontmatter (`low`–`xhigh`; the adaptive-thinking-era replacement for the retired `thinking_budget`, v3.9.0). Claude Code consumes it natively; the installer strips it for non-Claude runtimes and injects an effort-scaled prose preamble. Profiles modulate the base via `resolveEffortInternal()`.
-- **Whole-project ingest (Layer 1/3):** `/pan:map-codebase` Stage 0 calls `pan-tools codebase estimate-size`; on Opus 4.7 repos ≤700K tokens go single-shot, else 6-way sharded. The `pan-document_code` agent has a `<mode>` block so it knows which shape it was spawned with.
+- **Whole-project ingest (Layer 1/3):** `/pan:map-codebase` Stage 0 calls `pan-tools codebase estimate-size`; repos ≤700K tokens go single-shot, else 6-way sharded. The mode is chosen from repo size alone — there is no model check in `codebase.cjs` — so the single-shot path assumes a model with a 1M-context window; lower `--threshold` (or take the sharded path) on smaller-context models. The `pan-document_code` agent has a `<mode>` block so it knows which shape it was spawned with.
 - **Cross-phase memory (Layer 5):** `.planning/memory/<agent>.md` stores append-only per-agent lessons. `/pan:retro --write-memory` populates planner/verifier memory from observed gap patterns.
 - **Capability-aware routing (Layer 4):** `resolveModel(agent, {context_estimate, needs_thinking, cache_warm})` adjusts tier upward for large context or thinking-heavy work, downward for warm cache + small context.
 
 Memory and caching are file-based, so they work on all 5 runtimes. Extended thinking and native skill shims (`.claude/skills/pan-*.md`) are Claude-only.
+
+**The model-name read that users actually see** is the installer's, and it only prints advice. `detectModelCapabilities()` in `bin/install-lib.cjs` is a hand-maintained substring table over literal model-ID fragments (`opus-5`, `sonnet-4-6`, `gpt-5`, `gemini-3`, … — read the function for the current set rather than trusting this sample); `install.js` calls it once, post-install, against the `model` field in `settings.json`, and prints a note if that model is known to lack 1M context or extended thinking. That warning is the table's only consumer — it gates no feature and blocks nothing. `--skip-warnings` suppresses it.
+
+Because it is a name table and not a live probe, it is written to lean forward-compatible. Generations the table knows map exactly. The forward threshold per family is the **last reduced-capability release the table records** for it — not the newest release it lists: any Claude ID whose parsed release number is strictly newer than that boundary inherits its family's modern profile instead of reading as capability-less. Major and point are compared as a pair (so a two-digit point release sorts above a one-digit one), which is what makes a *later point release inside an already-tabled major* forward-compatible too, not just a new major — neither draws a false "lacks 1M context" note. Only an ID the table can match no family-and-release pair in — an unrecognized vendor, or a family name with no parsable release number after it — lands on `tier: 'unknown'` with every flag false. Note that "its family's modern profile" is not a synonym for "top capabilities": a newer Haiku inherits Haiku's profile, which has neither 1M context nor thinking. It stays a best-effort advisory heuristic — a genuinely new family can still read as unknown and trigger the note until a branch is added.
 
 ### Spec B v2 (v3.0-v3.4)
 
@@ -91,7 +95,7 @@ Spec B v2 shipped a wave of new core modules (bus, cost, preview, review-deep, k
 - **`whatif.cjs` (v3.3, Y-4):** git worktree lifecycle for counterfactual phase replay. Agent explores in isolated worktree, command writes `.planning/counterfactuals/<phase>-<slug>.md` in main tree, cleans up worktree.
 - **`bridge.cjs` (v3.3, Y-5):** MCP tool discovery + per-phase recommendation. Reads `.planning/bridge/available-tools.json` (host-runtime-populated), scores tools against phase plan text by keyword frequency. Discovery-only; auto-invocation deferred.
 
-Hierarchical orchestration (v3.4): `pan-conductor` spawns executor/reviewer/verifier sub-agents for `/pan:exec-phase <N> --hierarchical`, bounded by a safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude + Opus 4.8 only; falls back to flat exec elsewhere.
+Hierarchical orchestration (v3.4): `pan-conductor` spawns executor/reviewer/verifier sub-agents for `/pan:exec-phase <N> --hierarchical`, bounded by a safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude Code only — it needs native sub-agent spawning; on the other four runtimes the flag is a no-op that warns and falls back to flat exec.
 
 Automatic cost instrumentation (v3.4): `hooks/pan-cost-logger.js` fires on Claude Code's `SubagentStop` event, appends to `.planning/metrics/tokens.jsonl`, flows into `/pan:cost` without caller instrumentation.
 
@@ -271,7 +275,7 @@ These workflows have no corresponding user command — they are invoked internal
 
 **Location:** `agents/*.md`
 
-Agents are Markdown files that define specialized AI roles. Each agent runs as a subagent in a fresh 200K-token context window, spawned by workflows via the `Task` tool.
+Agents are Markdown files that define specialized AI roles. Each agent runs as a subagent in a fresh context window, spawned by workflows via the `Task` tool.
 
 | Agent | Role | Spawned By |
 |-------|------|-----------|
@@ -339,8 +343,8 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | **Init** | `init execute-phase`, `init plan-phase`, `init new-project`, `init quick`, `init progress` (compound commands for each major workflow) |
 | **Milestone** | `milestone complete`, `requirements mark-complete` |
 | **Focus** | `focus scan`, `focus plan`, `focus sync`, `focus exec`, `focus auto`, `focus design`, `focus classify-stages`, `focus reflection` |
-| **Memory** (Opus 4.7, E-4) | `memory read`, `memory append`, `memory list`, `memory compact` |
-| **Cache** (Opus 4.7, E-1) | `cache prime [--summary]` |
+| **Memory** (E-4, v2.10.0) | `memory read`, `memory append`, `memory list`, `memory compact` |
+| **Cache** (E-1, v2.10.0) | `cache prime [--summary]` |
 | **Codebase** (E-2 extended) | `codebase detect-languages`, `codebase analyze-imports`, `codebase best-practices`, `codebase estimate-size` |
 | **Cost** (Spec B v2 Y-6, v3.0) | `cost report`, `cost append`, `cost clear` |
 | **Bus** (Spec B v2 Y-7, v3.0) | `bus publish`, `bus drain`, `bus list` |
@@ -386,11 +390,11 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `commands-learnings.cjs` | — | Error patterns (PAT-NNN), session history, learnings (LEARN-NNN) lifecycle + shared phase-summary collector; extracted from commands.cjs |
 | `template.cjs` | — | Template loading and fill from `pan-wizard-core/templates/` |
 | `context-budget.cjs` | — | Context window utilization estimation: token counting, budget status (healthy/warning/critical), phase file scanning |
-| `focus.cjs` | — | Strategic project management: work item scanning, priority classification, capacity-budgeted batch planning, doc staleness checking, execution pipeline data layer. Opus 4.7 additions: `classifyStageDependencies()`, `determineContinuation()` (reflection gate). |
-| `codebase.cjs` | — | Codebase analysis: `detect-languages`, `analyze-imports`, `best-practices` scoring across 5 categories. Opus 4.7 addition: `estimateRepoTokenSize()` for single-shot mode decision. |
+| `focus.cjs` | — | Strategic project management: work item scanning, priority classification, capacity-budgeted batch planning, doc staleness checking, execution pipeline data layer. v2.10.0 additions: `classifyStageDependencies()`, `determineContinuation()` (reflection gate). |
+| `codebase.cjs` | — | Codebase analysis: `detect-languages`, `analyze-imports`, `best-practices` scoring across 5 categories. v2.10.0 addition: `estimateRepoTokenSize()` for single-shot mode decision. |
 | `memory.cjs` | — | Cross-phase agent memory (E-4): `readMemory`, `appendMemory`, `compactMemory`, `listMemoryAgents`. Append-only files at `.planning/memory/<agent>.md`. Agent-name validated against `^[a-zA-Z0-9_-]+$` to block path traversal. |
 | `bus.cjs` | — | (v3.0, Y-7) File-backed message channels at `.planning/bus/<channel>.jsonl`: `publish`, `readChannel`, `drain` (peek/consume/archive modes), `listChannels`. Agent audit trail for hierarchical exec and review-deep coordination. |
-| `cost.cjs` | — | (v3.0, Y-6) Per-call cost aggregation: `appendRecord`, `readRecords`, `aggregate`, `computeCost`, `renderTable`, `renderChart`. Log at `.planning/metrics/tokens.jsonl`. Default rate table for Opus 4.7 / Sonnet 4.6 / Haiku 4.5 + tier fallbacks; override via `cost.rates` config. |
+| `cost.cjs` | — | (v3.0, Y-6) Per-call cost aggregation: `appendRecord`, `readRecords`, `aggregate`, `computeCost`, `renderTable`, `renderChart`. Log at `.planning/metrics/tokens.jsonl`. Ships a default per-model rate table (kept current in `cost.cjs`, matched by exact id then family prefix) plus per-tier fallbacks; override via `cost.rates` config. |
 | `preview.cjs` | — | (v3.1, Y-1) Foresight data layer: `buildPhasePreview` (blast radius), `buildPhaseDependencyGraph` (mermaid DAG + Kahn parallel batches + hidden-dep detection), `buildMilestoneETA` (velocity + ETA + confidence + bottleneck). |
 | `review-deep.cjs` | — | (v3.2, Y-2) Merges reviewer + hardener + meta-reviewer findings: `parseReviewFindings`, `mergeReviews` (verdict ladder), `writeDeepReview`. Publishes audit to `review-handoff` bus channel. |
 | `knowledge.cjs` | — | (v3.2, Y-3) Grounded Q&A + session state + playbook: `ask` (keyword-scored retrieval over CITATION_ROOTS), `loadSession`/`appendTurn` (`.planning/conversations/<phase>/`), `buildPlaybook`/`writePlaybook` (clusters memory into categorized sections). |
