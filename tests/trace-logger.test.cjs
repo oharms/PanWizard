@@ -168,6 +168,91 @@ describe('pan-trace-logger — N17 empty-slice: re-fires dropped, siblings + fir
   });
 });
 
+describe('pan-trace-logger — N25/N26/N27 seen-event signatures (idempotency-marker rework)', () => {
+  const completions = (sessionId) => fs.readFileSync(traceFile(sessionId), 'utf-8')
+    .split('\n').filter(Boolean).map((l) => JSON.parse(l))
+    .filter((e) => e.category === 'agent_completion');
+  const traceCursorFile = () => path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, '.trace-cursor.json');
+
+  test('(N25) interleaved dual registration A, B, A′, B′ yields exactly TWO completion rows', () => {
+    // Pre-fix, the single-slot marker held only the LAST event per transcript,
+    // so both re-fires mismatched the displaced key and emitted phantom
+    // zero-token completions. The bounded seen-signature set drops both.
+    const p = path.join(tmpDir, 't.jsonl');
+    fs.writeFileSync(p, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 2001, output_tokens: 30 } } }) + '\n');
+    const A = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+    const B = { hook_event_name: 'SubagentStop', agent_type: 'pan-verifier', transcript_path: p, session_id: 's1' };
+
+    assert.equal(appendTraceEvents(tmpDir, buildTraceEvents(A, 'sess1', tmpDir), 'sess1'), true, 'A consumes the real slice');
+    assert.equal(appendTraceEvents(tmpDir, buildTraceEvents(B, 'sess1', tmpDir), 'sess1'), true, 'sibling B is recorded');
+
+    assert.deepEqual(buildTraceEvents(A, 'sess1', tmpDir), [], "A′ is recognized as A's re-fire → emits nothing");
+    assert.deepEqual(buildTraceEvents(B, 'sess1', tmpDir), [], "B′ is recognized as B's re-fire → emits nothing");
+
+    assert.equal(completions('sess1').length, 2, 'exactly A + B — zero phantom completions');
+  });
+
+  test('(N26) two parallel siblings of the SAME agent type both emit completions when any payload field differs', () => {
+    // Same-type executor wave: the full-payload signature distinguishes the
+    // siblings via ANY differing field (here a per-subagent id). Byte-identical
+    // sibling payloads remain indistinguishable from re-fires (suppressed —
+    // pinned by N17 test (1) above).
+    const p = path.join(tmpDir, 'wave.jsonl');
+    fs.writeFileSync(p, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 3003, output_tokens: 41 } } }) + '\n');
+    const s1 = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1', agent_id: 'exec-1' };
+    const s2 = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1', agent_id: 'exec-2' };
+
+    assert.equal(appendTraceEvents(tmpDir, buildTraceEvents(s1, 'sess1', tmpDir), 'sess1'), true, 'sibling 1 consumes the slice');
+
+    const ev2 = buildTraceEvents(s2, 'sess1', tmpDir);
+    const c2 = completionOf(ev2);
+    assert.ok(c2, 'a same-type sibling with a distinct payload still emits a completion');
+    assert.equal(c2.context.input_tokens, 0);
+    assert.equal(appendTraceEvents(tmpDir, ev2, 'sess1'), true);
+    assert.equal(completions('sess1').length, 2, 'the wave records both spawns');
+
+    // ...while sibling 2's own byte-identical re-fire emits nothing.
+    assert.deepEqual(buildTraceEvents(s2, 'sess1', tmpDir), [], "sibling 2's re-fire is dropped");
+    assert.equal(completions('sess1').length, 2);
+  });
+
+  test('(N27) a missing-transcript first fire\'s marker survives the dead-transcript prune; its re-fire emits nothing even after an interleaved completion', () => {
+    const missing = path.join(tmpDir, 'never-written.jsonl');
+    const F = { hook_event_name: 'SubagentStop', agent_type: 'pan-planner', transcript_path: missing, session_id: 's9' };
+
+    assert.equal(appendTraceEvents(tmpDir, buildTraceEvents(F, 'sess1', tmpDir), 'sess1'), true, 'first fire counts the spawn');
+
+    // Marker persisted despite the transcript not existing — the pre-fix
+    // writeTraceCursor existence-prune erased it inside this very call.
+    const persisted = JSON.parse(fs.readFileSync(traceCursorFile(), 'utf-8'));
+    assert.ok(persisted.__seenEvents && Array.isArray(persisted.__seenEvents[missing]) && persisted.__seenEvents[missing].length === 1,
+      'the seen-event marker for the missing transcript reached disk');
+
+    // An unrelated completion lands in between so the last-completion dedup
+    // can no longer catch the re-fire — only the persisted marker can.
+    assert.equal(appendTraceEvents(tmpDir, buildTraceEvents({ hook_event_name: 'SubagentStop', agent_type: 'pan-researcher', session_id: 's9', usage: { input_tokens: 7, output_tokens: 1 } }, 'sess1', tmpDir), 'sess1'), true);
+
+    assert.deepEqual(buildTraceEvents(F, 'sess1', tmpDir), [], 'the re-fire is recognized from the persisted marker');
+    assert.equal(completions('sess1').length, 2, 'first fire + unrelated completion only — no phantom');
+  });
+
+  test('(L40) marker storage stays bounded: signature FIFO per transcript and transcript-count cap', () => {
+    const missing = path.join(tmpDir, 'gone.jsonl');
+    for (let i = 0; i < 12; i++) {
+      buildTraceEvents({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: missing, session_id: 's1', agent_id: `a${i}` }, 'sess1', tmpDir);
+    }
+    for (let i = 0; i < 24; i++) {
+      buildTraceEvents({ hook_event_name: 'SubagentStop', agent_type: 'pan-planner', transcript_path: path.join(tmpDir, `gone-${i}.jsonl`), session_id: 's2' }, 'sess1', tmpDir);
+    }
+    const persisted = JSON.parse(fs.readFileSync(traceCursorFile(), 'utf-8'));
+    const seen = persisted.__seenEvents || {};
+    assert.ok(Object.keys(seen).length <= 16, `at most 16 transcripts tracked (got ${Object.keys(seen).length})`);
+    for (const sigs of Object.values(seen)) {
+      assert.ok(Array.isArray(sigs) && sigs.length <= 8, 'at most 8 signatures per transcript');
+    }
+  });
+});
+
 describe('pan-trace-logger — M62 PAN-project gate', () => {
   test('isPanProject: true for .planning/ or a local install marker, else false', () => {
     const plan = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-t62-plan-'));

@@ -12,7 +12,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { buildCostRecord, appendRecord, isPanProject, METRICS_DIR, TOKENS_FILE } =
+const { buildCostRecord, appendRecord, isPanProject, METRICS_DIR, TOKENS_FILE, CURSOR_FILE } =
   require('../hooks/pan-cost-logger.js');
 const { createTempProject, cleanup } = require('./helpers.cjs');
 
@@ -297,6 +297,116 @@ describe('pan-cost-logger — N17 empty-slice: re-fires dropped, siblings + firs
     assert.equal(rB2.__emptySlice, true, 'the sibling re-fire matches the stored key → dropped');
     assert.equal(appendRecord(tmpDir, rB2), false);
     assert.equal(rows().length, 2, 'A + B only — no phantom third row');
+  });
+});
+
+describe('pan-cost-logger — N25/N26/N27 seen-event signatures (idempotency-marker rework)', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  const rows = () => {
+    const f = path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE);
+    return fs.existsSync(f) ? fs.readFileSync(f, 'utf-8').split('\n').filter(Boolean) : [];
+  };
+  const cursorFile = () => path.join(tmpDir, '.planning', METRICS_DIR, CURSOR_FILE);
+
+  test('(N25) interleaved dual registration A, B, A′, B′ yields exactly TWO rows', () => {
+    // Dual global+local registration with two parallel siblings finishing
+    // near-simultaneously: the four hook firings interleave A, B, A-refire,
+    // B-refire. Under the pre-fix SINGLE-SLOT marker, B's record overwrote the
+    // key identifying A, so both re-fires slipped past the guard as phantom
+    // zero-token rows (and the last-row dedup can't catch them — adjacent rows
+    // differ by agent). The bounded seen-signature SET must drop both re-fires.
+    const p = path.join(tmpDir, 't.jsonl');
+    fs.writeFileSync(p, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 2001, output_tokens: 30 } } }) + '\n');
+    const A = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1' };
+    const B = { hook_event_name: 'SubagentStop', agent_type: 'pan-verifier', transcript_path: p, session_id: 's1' };
+
+    assert.equal(appendRecord(tmpDir, buildCostRecord(A, tmpDir)), true, 'A consumes the real slice');
+    assert.equal(appendRecord(tmpDir, buildCostRecord(B, tmpDir)), true, 'sibling B is recorded (zero tokens)');
+
+    const a2 = buildCostRecord(A, tmpDir);
+    assert.equal(a2.__emptySlice, true, "A′ is still recognized as A's re-fire after B displaced nothing");
+    assert.equal(appendRecord(tmpDir, a2), false);
+
+    const b2 = buildCostRecord(B, tmpDir);
+    assert.equal(b2.__emptySlice, true, "B′ is recognized as B's re-fire");
+    assert.equal(appendRecord(tmpDir, b2), false);
+
+    assert.equal(rows().length, 2, 'exactly A + B — zero phantom rows');
+  });
+
+  test('(N26) two parallel siblings of the SAME agent type are both recorded when any payload field differs', () => {
+    // A same-type executor wave: session, agent type, and transcript are all
+    // shared; the payloads differ only per invocation (here a per-subagent id —
+    // the signature hashes the WHOLE payload, so ANY differing field works:
+    // agent id, cumulative usage snapshot, per-subagent transcript path).
+    // Byte-identical sibling payloads are indistinguishable from re-fires and
+    // stay suppressed — that residual case is pinned by test (1) of the N17
+    // suite above.
+    const p = path.join(tmpDir, 'wave.jsonl');
+    fs.writeFileSync(p, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 3003, output_tokens: 41 } } }) + '\n');
+    const s1 = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1', agent_id: 'exec-1' };
+    const s2 = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1', agent_id: 'exec-2' };
+
+    assert.equal(appendRecord(tmpDir, buildCostRecord(s1, tmpDir)), true, 'sibling 1 consumes the slice');
+
+    const r2 = buildCostRecord(s2, tmpDir);
+    assert.ok(!r2.__emptySlice, 'a same-type sibling with a distinct payload is NOT conflated with a re-fire');
+    assert.equal(r2.input_tokens, 0, 'empty slice → zero tokens, but the spawn is counted');
+    assert.equal(appendRecord(tmpDir, r2), true, 'the wave records both spawns');
+    assert.equal(rows().length, 2);
+
+    // ...while sibling 2's own byte-identical dual-registration re-fire is dropped.
+    const r2refire = buildCostRecord(s2, tmpDir);
+    assert.equal(r2refire.__emptySlice, true, "sibling 2's re-fire is dropped");
+    assert.equal(appendRecord(tmpDir, r2refire), false);
+    assert.equal(rows().length, 2);
+  });
+
+  test('(N27) a missing-transcript first fire\'s marker survives the dead-transcript prune; its re-fire is dropped even after an interleaved row', () => {
+    const missing = path.join(tmpDir, 'never-written.jsonl');
+    const F = { hook_event_name: 'SubagentStop', agent_type: 'pan-planner', transcript_path: missing, session_id: 's9' };
+
+    assert.equal(appendRecord(tmpDir, buildCostRecord(F, tmpDir)), true, 'first fire counts the spawn');
+
+    // The marker must have been PERSISTED despite the transcript not existing —
+    // the pre-fix writeCursor existence-prune erased it inside this very call.
+    const persisted = JSON.parse(fs.readFileSync(cursorFile(), 'utf-8'));
+    assert.ok(persisted.__seenEvents && Array.isArray(persisted.__seenEvents[missing]) && persisted.__seenEvents[missing].length === 1,
+      'the seen-event marker for the missing transcript reached disk');
+
+    // An unrelated record lands in between, so the last-row dedup can no longer
+    // catch the re-fire — only the persisted marker can.
+    const other = buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-researcher', session_id: 's9', usage: { input_tokens: 7, output_tokens: 1 } }, tmpDir);
+    assert.equal(appendRecord(tmpDir, other), true);
+
+    const refire = buildCostRecord(F, tmpDir);
+    assert.equal(refire.__emptySlice, true, 'the re-fire is recognized from the persisted marker');
+    assert.equal(appendRecord(tmpDir, refire), false);
+    assert.equal(rows().length, 2, 'first fire + unrelated row only — no phantom');
+  });
+
+  test('(L40) marker storage stays bounded: per-transcript signature FIFO and transcript-count cap', () => {
+    // Per-transcript bound: one consuming event + many distinct empty-slice siblings.
+    const p = path.join(tmpDir, 'bounded.jsonl');
+    fs.writeFileSync(p, JSON.stringify({ type: 'assistant', message: { usage: { input_tokens: 5, output_tokens: 1 } } }) + '\n');
+    buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1', agent_id: 'a0' }, tmpDir);
+    for (let i = 1; i <= 12; i++) {
+      buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', transcript_path: p, session_id: 's1', agent_id: `a${i}` }, tmpDir);
+    }
+    // Transcript-count bound: markers for many DEAD transcripts (exactly the
+    // entries the existence-prune no longer removes) must stay capped too.
+    for (let i = 0; i < 24; i++) {
+      buildCostRecord({ hook_event_name: 'SubagentStop', agent_type: 'pan-planner', transcript_path: path.join(tmpDir, `gone-${i}.jsonl`), session_id: 's2' }, tmpDir);
+    }
+    const persisted = JSON.parse(fs.readFileSync(cursorFile(), 'utf-8'));
+    const seen = persisted.__seenEvents || {};
+    assert.ok(Object.keys(seen).length <= 16, `at most 16 transcripts tracked (got ${Object.keys(seen).length})`);
+    for (const sigs of Object.values(seen)) {
+      assert.ok(Array.isArray(sigs) && sigs.length <= 8, 'at most 8 signatures per transcript');
+    }
   });
 });
 

@@ -45,6 +45,22 @@ function mkTmp(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+// N16 outside-sandbox guard: the Codex --global skills tree resolves to
+// ~/.agents/skills via os.homedir() (NOT CODEX_HOME). runInstaller sandboxes
+// HOME/USERPROFILE, but if a future resolution path ignored both env vars the
+// installer would write pan-* skills into the developer's REAL home again.
+// Snapshot the real home's shared skills tree (os.homedir() of the TEST
+// process) before any home-touching install and assert the pan-* entry set is
+// unchanged after. Deliberately a before/after DELTA check, never an
+// emptiness check: pre-existing entries from pre-N16 runs are tolerated,
+// additions/deletions are not.
+const REAL_HOME_SKILLS = path.join(os.homedir(), '.agents', 'skills');
+
+function listRealHomePanSkills() {
+  if (!fs.existsSync(REAL_HOME_SKILLS)) return [];
+  return fs.readdirSync(REAL_HOME_SKILLS).filter(e => e.startsWith('pan-')).sort();
+}
+
 function rmTmp(dir) {
   if (dir && fs.existsSync(dir)) {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
@@ -133,7 +149,12 @@ describe('M57: global install into an explicit --config-dir', () => {
 
 describe('M57: Codex --global honors CODEX_HOME', () => {
   let workDir;
-  before(() => { workDir = mkTmp('pan-global-codex-'); });
+  let realHomeSkillsBefore;
+
+  before(() => {
+    workDir = mkTmp('pan-global-codex-');
+    realHomeSkillsBefore = listRealHomePanSkills();
+  });
   after(() => rmTmp(workDir));
 
   test('codex global install resolves to CODEX_HOME when no --config-dir is given', () => {
@@ -142,6 +163,29 @@ describe('M57: Codex --global honors CODEX_HOME', () => {
     assert.ok(
       fs.existsSync(path.join(codexHome, 'pan-wizard-core', 'VERSION')),
       'codex global install should resolve to CODEX_HOME'
+    );
+  });
+
+  test('codex global skills land in the sandboxed home, not the real one (N16)', () => {
+    // Positive pin: with HOME/USERPROFILE sandboxed into the temp cwd by
+    // runInstaller, the home-based skills tree resolves INSIDE the sandbox.
+    // Reverting the runInstaller env hunk sends these writes to the real
+    // ~/.agents/skills instead and leaves this dir absent.
+    const sandboxSkills = path.join(workDir, '.agents', 'skills');
+    assert.ok(
+      fs.existsSync(sandboxSkills),
+      '.agents/skills should exist inside the sandbox cwd (home redirect took effect)'
+    );
+    assert.ok(
+      fs.readdirSync(sandboxSkills).some(e => e.startsWith('pan-')),
+      'pan-* skills should land inside the sandbox, not the real home'
+    );
+
+    // Delta check: the REAL home's shared skills tree gained and lost nothing.
+    assert.deepEqual(
+      listRealHomePanSkills(),
+      realHomeSkillsBefore,
+      'a sandboxed codex --global install must not add or remove pan-* entries in the real ~/.agents/skills'
     );
   });
 });

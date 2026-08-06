@@ -17,6 +17,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
 const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'];
@@ -140,23 +141,49 @@ function readTraceCursor(cwd) {
   catch { return {}; }
 }
 
-// N17: reserved key in the cursor map recording, per transcript, the idempotency
-// key of the event that last consumed (or was recorded at) that cursor position.
-// Mirrors pan-cost-logger — an empty-slice event is a true re-fire / dual
-// registration ONLY when its key matches this; a parallel sibling (different
-// agent) or a first-fire (unreadable transcript) has a different key and must be
-// recorded, not dropped. Exempt from the file-path prune in writeTraceCursor.
-const CONSUME_KEYS = '__consumeKeys';
-function idemKey(sessionId, agent, transcriptPath, pos) {
-  return `${sessionId || ''}|${agent || ''}|${transcriptPath || ''}|${pos}`;
+// N17/N25-N27: reserved key in the cursor map recording, per transcript, the
+// SIGNATURES of recently-seen SubagentStop events. Mirrors pan-cost-logger —
+// an empty-slice event is a true re-fire / dual registration ONLY when its
+// full-payload signature was already seen for that transcript; a parallel
+// sibling (any payload difference) or a first-fire (missing/unreadable
+// transcript) carries a new signature and must be recorded, not dropped.
+// Bounded FIFO SET rather than a single slot (N25) so an interleaved sibling
+// can't evict the signature identifying an earlier event's re-fire; bounded by
+// COUNT, not transcript existence, so the L40 prune can't erase the live marker
+// of a missing-transcript first fire (N27). See pan-cost-logger.js for the full
+// design rationale (the two hooks are standalone and must stay in sync by hand).
+const SEEN_EVENTS = '__seenEvents';
+// Pre-N25 single-slot marker — no longer read; dropped on the next write.
+const LEGACY_CONSUME_KEYS = '__consumeKeys';
+const MAX_SEEN_SIGS = 8;
+const MAX_SEEN_TRANSCRIPTS = 16;
+
+// Full-payload hash: byte-identical for a dual-registration re-fire, different
+// for a sibling whose payload differs in ANY field (per-invocation agent id,
+// cumulative usage snapshot, per-subagent transcript path — N26). Byte-identical
+// sibling payloads remain indistinguishable from re-fires and stay suppressed
+// (fails toward M61 phantom suppression). Null when unserializable → fail open.
+function eventSignature(data) {
+  try {
+    return crypto.createHash('sha1').update(JSON.stringify(data)).digest('hex');
+  } catch { return null; }
 }
-function getConsumeKey(cursor, transcriptPath) {
-  const ck = cursor && cursor[CONSUME_KEYS];
-  return ck && typeof ck === 'object' ? (ck[transcriptPath] || null) : null;
+function getSeenSigs(cursor, transcriptPath) {
+  const se = cursor && cursor[SEEN_EVENTS];
+  const arr = se && typeof se === 'object' ? se[transcriptPath] : null;
+  return Array.isArray(arr) ? arr : [];
 }
-function setConsumeKey(cursor, transcriptPath, key) {
-  if (!cursor[CONSUME_KEYS] || typeof cursor[CONSUME_KEYS] !== 'object') cursor[CONSUME_KEYS] = {};
-  cursor[CONSUME_KEYS][transcriptPath] = key;
+function addSeenSig(cursor, transcriptPath, sig) {
+  if (!sig) return; // unhashable payload → never mark (fail open to recording)
+  if (!cursor[SEEN_EVENTS] || typeof cursor[SEEN_EVENTS] !== 'object') cursor[SEEN_EVENTS] = {};
+  const se = cursor[SEEN_EVENTS];
+  const arr = Array.isArray(se[transcriptPath]) ? se[transcriptPath].filter((s) => s !== sig) : [];
+  arr.push(sig);
+  while (arr.length > MAX_SEEN_SIGS) arr.shift(); // FIFO — evict the oldest signature
+  delete se[transcriptPath]; // re-insert so key order tracks recency for the transcript cap
+  se[transcriptPath] = arr;
+  const keys = Object.keys(se);
+  for (let i = 0; i < keys.length - MAX_SEEN_TRANSCRIPTS; i++) delete se[keys[i]];
 }
 
 function writeTraceCursor(cwd, cursor) {
@@ -164,16 +191,20 @@ function writeTraceCursor(cwd, cursor) {
     // Prune dead-transcript keys so the cursor map stays bounded (L40, ADR audit 2026-08).
     const pruned = {};
     for (const [tp, v] of Object.entries(cursor)) {
-      if (tp === CONSUME_KEYS) continue; // reserved marker — handled below (not a path)
+      if (tp === SEEN_EVENTS || tp === LEGACY_CONSUME_KEYS) continue; // reserved markers — not paths
       if (tp && fs.existsSync(tp)) pruned[tp] = v;
     }
-    // Preserve the reserved consume-key marker (N17), pruning its dead-transcript
-    // entries so it stays bounded like the cursor map itself.
-    const ck = cursor[CONSUME_KEYS];
-    if (ck && typeof ck === 'object') {
-      const prunedCk = {};
-      for (const [tp, key] of Object.entries(ck)) { if (tp && fs.existsSync(tp)) prunedCk[tp] = key; }
-      if (Object.keys(prunedCk).length) pruned[CONSUME_KEYS] = prunedCk;
+    // Preserve the seen-event marker (N17/N25-N27). Deliberately NOT pruned by
+    // transcript existence — a missing-transcript first fire's marker must
+    // survive this very write (N27); bounded by count instead (L40).
+    const se = cursor[SEEN_EVENTS];
+    if (se && typeof se === 'object') {
+      const bounded = {};
+      for (const tp of Object.keys(se).slice(-MAX_SEEN_TRANSCRIPTS)) {
+        const arr = se[tp];
+        if (Array.isArray(arr) && arr.length) bounded[tp] = arr.slice(-MAX_SEEN_SIGS);
+      }
+      if (Object.keys(bounded).length) pruned[SEEN_EVENTS] = bounded;
     }
     fs.mkdirSync(path.dirname(traceCursorPath(cwd)), { recursive: true });
     fs.writeFileSync(traceCursorPath(cwd), JSON.stringify(pruned), 'utf-8');
@@ -359,34 +390,34 @@ function buildTraceEvents(data, sessionId, cwd) {
     durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts);
     if (!model) model = fromTranscript.model;
     if (cwd && fromTranscript.lineCount > since) {
-      // A real slice. Advance the cursor and remember which event consumed up to
-      // here (N17) so a later empty-slice event can tell an identical re-fire from
-      // a parallel sibling.
+      // A real slice. Advance the cursor and remember this event's signature
+      // (N17/N25) so a later empty-slice event can tell its re-fire from a
+      // parallel sibling — even when other siblings are recorded in between (N25).
       cursor[data.transcript_path] = fromTranscript.lineCount;
-      setConsumeKey(cursor, data.transcript_path, idemKey(data.session_id, agent, data.transcript_path, fromTranscript.lineCount));
+      addSeenSig(cursor, data.transcript_path, eventSignature(data));
       writeTraceCursor(cwd, cursor);
     } else if (cwd && fromTranscript.lineCount <= since) {
       // No transcript records past the cursor: this event consumed NO slice of its
       // own. Two situations land here (N17):
-      //   • An identical re-fire / dual global+local hook registration — the SAME
-      //     event firing twice at the same cursor. Its all-zero completion row is a
-      //     phantom the dedup can't catch (zeros differ from the real row it
+      //   • A re-fire / dual global+local hook registration — the SAME event
+      //     delivered again (byte-identical payload). Its all-zero completion row
+      //     is a phantom the dedup can't catch (zeros differ from the real row it
       //     follows), so emit nothing (M61).
-      //   • A PARALLEL SIBLING (a different subagent whose sibling already consumed
-      //     the shared transcript to EOF and advanced this shared cursor) or a
-      //     FIRST FIRE with a missing/unreadable transcript. These are legitimate
-      //     spawns that must be RECORDED (zero tokens), not dropped.
-      // The idempotency key distinguishes them: emit nothing ONLY on an exact match
-      // with the key that last consumed this position; otherwise fall through and
-      // emit the completion.
-      const thisKey = idemKey(data.session_id, agent, data.transcript_path, since);
-      const lastKey = getConsumeKey(cursor, data.transcript_path);
-      if (lastKey && lastKey === thisKey) {
-        return []; // identical re-fire → emit nothing (M61)
+      //   • A PARALLEL SIBLING (another subagent — same or different type — whose
+      //     sibling already consumed the shared transcript to EOF and advanced
+      //     this shared cursor) or a FIRST FIRE with a missing/unreadable
+      //     transcript. These are legitimate spawns that must be RECORDED (zero
+      //     tokens), not dropped.
+      // The full-payload signature distinguishes them (N25/N26): emit nothing
+      // ONLY when this exact payload was already seen for this transcript;
+      // otherwise fall through and emit the completion.
+      const sig = eventSignature(data);
+      if (sig && getSeenSigs(cursor, data.transcript_path).includes(sig)) {
+        return []; // already-seen event → re-fire; emit nothing (M61)
       }
-      // Sibling / first-fire: remember this key so an identical re-fire of THIS
-      // event is subsequently dropped, then fall through to emit the completion.
-      setConsumeKey(cursor, data.transcript_path, thisKey);
+      // Sibling / first-fire: remember this event's signature so its own re-fire
+      // is subsequently dropped, then fall through to emit the completion.
+      addSeenSig(cursor, data.transcript_path, sig);
       writeTraceCursor(cwd, cursor);
     }
   } else {

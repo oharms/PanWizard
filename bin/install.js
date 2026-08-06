@@ -838,18 +838,21 @@ function cleanupOrphanedHooks(settings) {
   }
 
   // Fix #330: migrate PAN's OWN legacy hooks/statusline.js path to
-  // pan-statusline.js. Anchor on the FILE BASENAME (start-of-string or a path
-  // separator before `statusline.js`) so a user's custom command like
-  // `my-custom-statusline.js` is NOT rewritten — the old substring match both
-  // corrupted such names (→ my-custom-pan-statusline.js) and then made the M6/N4
-  // statusline guard misclassify them as PAN-owned and stand down (M6 residual).
-  const legacyStatusline = /(^|[\\/])statusline\.js\b/;
+  // pan-statusline.js. Anchor on the `hooks/` PREFIX plus the file basename —
+  // PAN's legacy hook was only ever registered under a hooks/ directory — so a
+  // user's custom command like `my-custom-statusline.js` or a script literally
+  // named `statusline.js` (e.g. `node ./statusline.js`) is NOT rewritten. The
+  // old looser matches corrupted such names to nonexistent pan-statusline.js
+  // paths and then made the M6/N4 statusline guard misclassify them as
+  // PAN-owned and stand down (M6 residual). Both slash directions are kept:
+  // Windows settings.json may carry escaped backslashes.
+  const legacyStatusline = /(^|[\\/])hooks([\\/])statusline\.js\b/;
   if (settings.statusLine && settings.statusLine.command &&
       legacyStatusline.test(settings.statusLine.command) &&
       !settings.statusLine.command.includes('pan-statusline.js')) {
     settings.statusLine.command = settings.statusLine.command.replace(
       legacyStatusline,
-      '$1pan-statusline.js'
+      '$1hooks$2pan-statusline.js'
     );
     console.log(`  ${green}✓${reset} Updated statusline path (statusline.js → pan-statusline.js)`);
   }

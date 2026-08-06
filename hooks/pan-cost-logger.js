@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
 const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'];
@@ -102,47 +103,84 @@ function readCursor(cwd) {
   } catch { return {}; }
 }
 
-// N17: reserved key in the cursor map recording, per transcript, the idempotency
-// key of the event that last consumed (or was recorded at) that cursor position.
-// An empty-slice event is a true re-fire / dual-registration ONLY when its key
-// equals this stored key; a PARALLEL SIBLING (different agent at the same cursor)
-// or a FIRST FIRE (unreadable transcript, since===0) carries a different key and
-// must be recorded, not dropped. This name can never collide with a transcript
-// path (an absolute file path), and writeCursor exempts it from the file-path prune.
-const CONSUME_KEYS = '__consumeKeys';
-// Distinguishes a specific SubagentStop event at a specific cursor position:
-// identical for a dual-registration re-fire (same session, agent, transcript, since),
-// different for a sibling (different agent) or a first-fire (since===0).
-function idemKey(sessionId, agent, transcriptPath, pos) {
-  return `${sessionId || ''}|${agent || ''}|${transcriptPath || ''}|${pos}`;
+// N17/N25-N27: reserved key in the cursor map recording, per transcript, the
+// SIGNATURES of recently-seen SubagentStop events. An empty-slice event is a
+// true re-fire / dual-registration ONLY when its full-payload signature was
+// already seen for that transcript; a PARALLEL SIBLING (any payload difference)
+// or a FIRST FIRE (missing/unreadable transcript, since===0) carries a new
+// signature and must be recorded, not dropped. A bounded FIFO SET rather than a
+// single slot (N25): a sibling recorded in between can no longer evict the
+// signature that identifies an earlier event's re-fire. Bounded by COUNT, not
+// by transcript existence, so the L40 dead-transcript prune can no longer erase
+// the live marker of a missing-transcript first fire in the very write meant to
+// persist it (N27). The name can never collide with a transcript path (an
+// absolute file path).
+const SEEN_EVENTS = '__seenEvents';
+// Pre-N25 single-slot marker — no longer read; dropped on the next write
+// (self-migrating, no reader of the old shape exists outside this hook).
+const LEGACY_CONSUME_KEYS = '__consumeKeys';
+// Bounds (L40): at most MAX_SEEN_TRANSCRIPTS transcripts x MAX_SEEN_SIGS
+// signatures (~40 chars each) — a few KB worst-case. FIFO eviction on both
+// axes; dual-registration re-fires arrive within the same event dispatch, so a
+// recency window of 8 events per transcript is ample.
+const MAX_SEEN_SIGS = 8;
+const MAX_SEEN_TRANSCRIPTS = 16;
+
+// Signature of a SubagentStop event: a hash of the FULL payload as delivered.
+// A dual-registration re-fire is byte-identical on stdin (the host pipes the
+// same JSON to every registration of one event), so its signature matches. A
+// same-type parallel sibling is distinguished by ANY differing payload field —
+// a per-invocation agent id, a cumulative usage snapshot, a per-subagent
+// transcript path — without hardcoding which field a given runtime provides
+// (N26). Siblings whose payloads are byte-identical in EVERY field remain
+// informationally indistinguishable from re-fires and stay suppressed (the
+// guard fails toward M61 phantom suppression). Returns null when the payload
+// cannot be serialized — callers then fail OPEN (record, never mark).
+function eventSignature(data) {
+  try {
+    return crypto.createHash('sha1').update(JSON.stringify(data)).digest('hex');
+  } catch { return null; }
 }
-function getConsumeKey(cursor, transcriptPath) {
-  const ck = cursor && cursor[CONSUME_KEYS];
-  return ck && typeof ck === 'object' ? (ck[transcriptPath] || null) : null;
+function getSeenSigs(cursor, transcriptPath) {
+  const se = cursor && cursor[SEEN_EVENTS];
+  const arr = se && typeof se === 'object' ? se[transcriptPath] : null;
+  return Array.isArray(arr) ? arr : [];
 }
-function setConsumeKey(cursor, transcriptPath, key) {
-  if (!cursor[CONSUME_KEYS] || typeof cursor[CONSUME_KEYS] !== 'object') cursor[CONSUME_KEYS] = {};
-  cursor[CONSUME_KEYS][transcriptPath] = key;
+function addSeenSig(cursor, transcriptPath, sig) {
+  if (!sig) return; // unhashable payload → never mark (fail open to recording)
+  if (!cursor[SEEN_EVENTS] || typeof cursor[SEEN_EVENTS] !== 'object') cursor[SEEN_EVENTS] = {};
+  const se = cursor[SEEN_EVENTS];
+  const arr = Array.isArray(se[transcriptPath]) ? se[transcriptPath].filter((s) => s !== sig) : [];
+  arr.push(sig);
+  while (arr.length > MAX_SEEN_SIGS) arr.shift(); // FIFO — evict the oldest signature
+  delete se[transcriptPath]; // re-insert so key order tracks recency for the transcript cap
+  se[transcriptPath] = arr;
+  const keys = Object.keys(se);
+  for (let i = 0; i < keys.length - MAX_SEEN_TRANSCRIPTS; i++) delete se[keys[i]];
 }
 
 function writeCursor(cwd, cursor) {
   try {
-    // Prune keys for transcripts that no longer exist so the map can't grow
-    // without bound over a long-lived project (L40, ADR audit 2026-08).
+    // Prune cursor keys for transcripts that no longer exist so the map can't
+    // grow without bound over a long-lived project (L40, ADR audit 2026-08).
     const pruned = {};
     for (const [tp, v] of Object.entries(cursor)) {
-      if (tp === CONSUME_KEYS) continue; // reserved marker — handled below (not a path)
+      if (tp === SEEN_EVENTS || tp === LEGACY_CONSUME_KEYS) continue; // reserved markers — not paths
       if (tp && fs.existsSync(tp)) pruned[tp] = v;
     }
-    // Preserve the reserved consume-key marker (N17), but prune its entries for
-    // transcripts that no longer exist so it stays bounded like the cursor map.
-    const ck = cursor[CONSUME_KEYS];
-    if (ck && typeof ck === 'object') {
-      const prunedCk = {};
-      for (const [tp, key] of Object.entries(ck)) {
-        if (tp && fs.existsSync(tp)) prunedCk[tp] = key;
+    // Preserve the seen-event marker (N17/N25-N27). Deliberately NOT pruned by
+    // transcript existence — a missing-transcript first fire's marker must
+    // survive this very write, or its re-fire is re-admitted as a phantom row
+    // (N27). Bounded by count instead (FIFO on both axes), which keeps the file
+    // strictly bounded per L40.
+    const se = cursor[SEEN_EVENTS];
+    if (se && typeof se === 'object') {
+      const bounded = {};
+      for (const tp of Object.keys(se).slice(-MAX_SEEN_TRANSCRIPTS)) {
+        const arr = se[tp];
+        if (Array.isArray(arr) && arr.length) bounded[tp] = arr.slice(-MAX_SEEN_SIGS);
       }
-      if (Object.keys(prunedCk).length) pruned[CONSUME_KEYS] = prunedCk;
+      if (Object.keys(bounded).length) pruned[SEEN_EVENTS] = bounded;
     }
     fs.mkdirSync(path.dirname(cursorFilePath(cwd)), { recursive: true });
     fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(pruned), 'utf-8');
@@ -201,33 +239,36 @@ function buildCostRecord(data, cwd) {
     if (fromTranscript.lineCount > since) {
       // A real slice. Advance the cursor so the next subagent's record starts
       // fresh — the slices partition the transcript, so it is never re-summed on
-      // every event. Remember which event consumed up to here (N17) so a later
-      // empty-slice event can tell an identical re-fire from a parallel sibling.
+      // every event. Remember this event's signature (N17/N25) so a later
+      // empty-slice event can tell its re-fire from a parallel sibling — even
+      // when other siblings are recorded in between (N25).
       cursor[data.transcript_path] = fromTranscript.lineCount;
-      setConsumeKey(cursor, data.transcript_path, idemKey(data.session_id, agent, data.transcript_path, fromTranscript.lineCount));
+      addSeenSig(cursor, data.transcript_path, eventSignature(data));
       writeCursor(cwd, cursor);
     } else {
       // No transcript records past the cursor: this event consumed NO slice of
       // its own. Two very different situations land here (N17):
-      //   • An identical re-fire / dual global+local hook registration — the SAME
-      //     event firing twice at the same cursor. Its all-zero row is a phantom
-      //     (the last-row dedup can't catch it — the zeros differ from the real
-      //     row the re-fire follows), so flag it and let appendRecord drop it (M61).
-      //   • A PARALLEL SIBLING (a different subagent whose sibling already consumed
-      //     the shared transcript to EOF and advanced this shared cursor) or a
-      //     FIRST FIRE whose transcript_path is missing/unreadable (lineCount=0,
-      //     since=0). These are legitimate spawns that must be RECORDED with zero
-      //     tokens, not dropped — dropping them undercounts /pan:cost.
-      // The idempotency key distinguishes them: DROP only on an exact match with
-      // the key that last consumed this position (true re-fire); otherwise record.
-      const thisKey = idemKey(data.session_id, agent, data.transcript_path, since);
-      const lastKey = getConsumeKey(cursor, data.transcript_path);
-      if (lastKey && lastKey === thisKey) {
-        emptySlice = true; // identical re-fire → appendRecord drops the phantom row (M61)
+      //   • A re-fire / dual global+local hook registration — the SAME event
+      //     delivered again (byte-identical payload). Its all-zero row is a
+      //     phantom (the last-row dedup can't catch it — the zeros differ from
+      //     the real row the re-fire follows), so flag it and let appendRecord
+      //     drop it (M61).
+      //   • A PARALLEL SIBLING (another subagent — same or different type — whose
+      //     sibling already consumed the shared transcript to EOF and advanced
+      //     this shared cursor) or a FIRST FIRE whose transcript_path is
+      //     missing/unreadable (lineCount=0, since=0). These are legitimate
+      //     spawns that must be RECORDED with zero tokens, not dropped —
+      //     dropping them undercounts /pan:cost.
+      // The full-payload signature distinguishes them (N25/N26): DROP only when
+      // this exact payload was already seen for this transcript (true re-fire);
+      // otherwise record the spawn.
+      const sig = eventSignature(data);
+      if (sig && getSeenSigs(cursor, data.transcript_path).includes(sig)) {
+        emptySlice = true; // already-seen event → re-fire; appendRecord drops the phantom row (M61)
       } else {
-        // Sibling / first-fire: record the spawn (zero tokens) and remember this
-        // key so a subsequent identical re-fire of THIS event is dropped.
-        setConsumeKey(cursor, data.transcript_path, thisKey);
+        // Sibling / first-fire: record the spawn (zero tokens) and remember its
+        // signature so a subsequent re-fire of THIS event is dropped.
+        addSeenSig(cursor, data.transcript_path, sig);
         writeCursor(cwd, cursor);
       }
     }
