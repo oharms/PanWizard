@@ -18,7 +18,7 @@ patterns:
 
 ## P-1204 — O_EXCL lockfile + retry with bounded backoff is enough for multi-process file writes in Node — no flock needed
 
-**Evidence:** whoocache lock.js + atomic-write.js: parallel-process tests with two child processes each calling set() 1000 times completed with consistent index, zero lost writes. P-1402 (whoocache 02-02 summary): 'O_EXCL lockfile + Windows rename retry' shipped Phase 2.
+**Evidence:** whoocache lock.js + atomic-write.js: parallel-process tests with two child processes each calling set() 1000 times completed with consistent index, zero lost writes. The whoocache 02-02 summary records 'O_EXCL lockfile + Windows rename retry' shipped Phase 2.
 
 **Rule:** For multi-process safe writes (parallel CLI invocations sharing one cache/index/state file), use fs.openSync(lockPath, 'wx') as a 'try-acquire' (EEXIST means held). On failure, retry with random backoff 5-50ms, capped at ~10 attempts. Always wrap acquired work in try/finally and unlink the lockfile in finally. Cross-platform safe (no flock dependency). Combine with the atomic write-tmp-then-rename pattern (P-1201) so even if the lock holder is killed mid-write, recovery is automatic.
 

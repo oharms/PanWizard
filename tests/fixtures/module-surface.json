@@ -487,7 +487,8 @@
     "collectAllPatterns:function",
     "extractFieldSection:function",
     "extractPatternBody:function",
-    "lintPatterns:function"
+    "lintPatterns:function",
+    "resolveLearningsRoot:function"
   ],
   "links.cjs": [
     "DEFAULT_DOC_ROOTS:object",

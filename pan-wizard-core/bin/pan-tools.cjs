@@ -1386,7 +1386,7 @@ async function main() {
         const sourceExperiments = sourceExpsCsv
           ? sourceExpsCsv.split(',').map(s => s.trim()).filter(Boolean)
           : [];
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
 
         const result = optimize.promotePattern(
           { id: patternId, summary, evidence, rule, applies_in: appliesIn, source_experiments: sourceExperiments },
@@ -1400,7 +1400,7 @@ async function main() {
         const patternId = getArgValue(args, '--pattern');
         const scope = getArgValue(args, '--scope');
         const topic = getArgValue(args, '--topic');
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         if (!patternId || !scope || !topic) {
           error('learn unpromote requires --pattern <id> --scope <s> --topic <t>');
         }
@@ -1410,14 +1410,14 @@ async function main() {
       }
 
       if (subcommand === 'list-promoted') {
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         const result = optimize.listPromotedPatterns({ sourceRoot });
         output(result, raw);
         break;
       }
 
       if (subcommand === 'build-index') {
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         const result = learnIndex.cmdBuildIndex(sourceRoot);
         if (raw) {
           output(result, true,
@@ -1432,7 +1432,7 @@ async function main() {
       }
 
       if (subcommand === 'topics-for') {
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         const agent = getArgValue(args, '--agent');
         if (!agent) { error('learn topics-for requires --agent <name>'); }
         const minRelevance = getArgValue(args, '--min-relevance', 'medium');
@@ -1455,7 +1455,7 @@ async function main() {
       }
 
       if (subcommand === 'lint') {
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         const scope = getArgValue(args, '--scope');
         const strict = args.includes('--strict');
         const result = learnLint.cmdLearnLint(sourceRoot, { scope, strict });
