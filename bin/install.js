@@ -252,14 +252,60 @@ if (hasHelp) {
 }
 
 /**
- * Read and parse settings.json, returning empty object if it doesn't exist
+ * Read and parse settings.json.
+ *
+ * Returns `{}` when there is nothing to preserve — the file is absent or empty.
+ * Returns `null` when the file EXISTS but cannot be used: unreadable, not valid
+ * JSON, or valid JSON of the wrong shape (an array, a string, `null`). Callers
+ * MUST treat `null` as "leave this file alone" — see settingsUnusable().
+ *
+ * Why the distinction is load-bearing: every caller merges PAN's keys into the
+ * object this returns and writes the result back. While parse failure also
+ * returned `{}`, an unparseable settings.json — a `//` comment is the common
+ * case, since people write them even though the format is strict JSON — came
+ * back as empty and was overwritten with PAN's keys alone. The user's model
+ * choice, permissions and auth settings were destroyed with no warning, no
+ * backup, and exit 0. Returning `null` makes that outcome unreachable: a caller
+ * that forgets to check throws instead of silently discarding user data.
+ *
+ * Comments are deliberately NOT tolerated via parseJsonc here. Parsing JSONC
+ * and writing strict JSON back would drop the comments — a quieter version of
+ * the same data loss. Warn and skip instead, exactly as configureOpencodePermissions
+ * already does for opencode.json.
  */
 function readSettings(settingsPath) {
+  if (!fs.existsSync(settingsPath)) return {};
+  let content;
   try {
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    content = fs.readFileSync(settingsPath, 'utf8');
   } catch {
-    return {};
+    return null; // exists but unreadable (locked, permissions) — do not touch
   }
+  if (content.trim() === '') return {}; // empty file: nothing to preserve
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  // Valid JSON of the wrong shape is still unusable: merging PAN's keys into an
+  // array or a primitive and writing it back would corrupt the file.
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  return parsed;
+}
+
+/**
+ * Report an unusable settings file and tell the user we left it alone.
+ * Returns true when the caller must skip (i.e. readSettings returned null),
+ * so call sites read: `if (settingsUnusable(settings, p, 'hook config')) return;`
+ */
+function settingsUnusable(settings, settingsPath, whatWasSkipped) {
+  if (settings !== null) return false;
+  const name = path.basename(settingsPath);
+  console.log(`  ${yellow}⚠${reset} Could not parse ${name} - skipping ${whatWasSkipped}`);
+  console.log(`    ${dim}${settingsPath}${reset}`);
+  console.log(`    ${dim}Your file was NOT modified. Fix the syntax (strict JSON — no comments or trailing commas) and re-run.${reset}`);
+  return true;
 }
 
 /**
@@ -290,11 +336,11 @@ function getCommitAttribution(runtime) {
   let result;
 
   if (runtime === 'opencode') {
-    const config = readSettings(path.join(getGlobalDir('opencode', null), 'opencode.json'));
+    const config = readSettings(path.join(getGlobalDir('opencode', null), 'opencode.json')) || {}; // unusable file = no info (read-only probe)
     result = config.disable_ai_attribution === true ? null : undefined;
   } else if (runtime === 'gemini') {
     // Gemini: check gemini settings.json for attribution config
-    const settings = readSettings(path.join(getGlobalDir('gemini', explicitConfigDir), 'settings.json'));
+    const settings = readSettings(path.join(getGlobalDir('gemini', explicitConfigDir), 'settings.json')) || {}; // unusable file = no info (read-only probe)
     if (!settings.attribution || settings.attribution.commit === undefined) {
       result = undefined;
     } else if (settings.attribution.commit === '') {
@@ -304,7 +350,7 @@ function getCommitAttribution(runtime) {
     }
   } else if (runtime === 'claude') {
     // Claude Code
-    const settings = readSettings(path.join(getGlobalDir('claude', explicitConfigDir), 'settings.json'));
+    const settings = readSettings(path.join(getGlobalDir('claude', explicitConfigDir), 'settings.json')) || {}; // unusable file = no info (read-only probe)
     if (!settings.attribution || settings.attribution.commit === undefined) {
       result = undefined;
     } else if (settings.attribution.commit === '') {
@@ -316,9 +362,9 @@ function getCommitAttribution(runtime) {
     // Copilot CLI: user-editable settings live in settings.json; config.json is
     // legacy (auto-migrated by the CLI, now internal state) — fall back for old installs
     const copilotDir = getGlobalDir('copilot', explicitConfigDir);
-    let config = readSettings(path.join(copilotDir, 'settings.json'));
+    let config = readSettings(path.join(copilotDir, 'settings.json')) || {}; // unusable file = no info (read-only probe)
     if (!config.attribution) {
-      config = readSettings(path.join(copilotDir, 'config.json'));
+      config = readSettings(path.join(copilotDir, 'config.json')) || {}; // unusable file = no info (read-only probe)
     }
     if (!config.attribution || config.attribution.commit === undefined) {
       result = undefined;
@@ -1254,8 +1300,16 @@ function uninstall(isGlobal, runtime = 'claude') {
 
   // 6b. Clean up settings.json (remove PAN hooks and statusline)
   const settingsPath = path.join(targetDir, 'settings.json');
-  if (fs.existsSync(settingsPath)) {
-    let settings = readSettings(settingsPath);
+  // Unparseable on the way OUT too: stripping PAN's keys means writing the file
+  // back, which would replace the user's content. Skip just this step — NOT the
+  // whole uninstall, which still has the opencode permission cleanup and the
+  // manifest removal to do. The raw-bytes guard further down still deletes a
+  // settings.json that is literally PAN's own empty `{}`.
+  const existingSettings = fs.existsSync(settingsPath) ? readSettings(settingsPath) : null;
+  const skipSettingsCleanup = fs.existsSync(settingsPath)
+    && settingsUnusable(existingSettings, settingsPath, 'settings.json cleanup');
+  if (fs.existsSync(settingsPath) && !skipSettingsCleanup) {
+    let settings = existingSettings;
     let settingsModified = false;
 
     // Remove PAN statusline if it references our hook
@@ -2422,6 +2476,10 @@ function install(isGlobal, runtime = 'claude') {
     // .github/copilot/ repo-level); config.json is internal CLI state.
     const configPath = path.join(targetDir, 'config.json');
     const config = readSettings(configPath);
+    // Unusable legacy config: skip the migration rather than rewrite the file.
+    // Silent here (no warn) — config.json is internal CLI state the user did not
+    // author, and settings.json is the surface that gets the warning.
+    if (config === null) return;
     let legacyModified = false;
     if (config.hooks) {
       for (const evt of ['sessionStart', 'postToolUse']) {
@@ -2450,6 +2508,9 @@ function install(isGlobal, runtime = 'claude') {
       ? path.join(targetDir, 'settings.json')
       : path.join(targetDir, 'copilot', 'settings.json');
     const copilotSettings = readSettings(copilotSettingsPath);
+    if (settingsUnusable(copilotSettings, copilotSettingsPath, 'statusline configuration')) {
+      return { settingsPath: copilotSettingsPath, settings: null, statuslineCommand, runtime };
+    }
 
     return { settingsPath: copilotSettingsPath, settings: copilotSettings, statuslineCommand, runtime };
   }
@@ -2457,7 +2518,13 @@ function install(isGlobal, runtime = 'claude') {
   // Configure statusline and hooks in settings.json
   // Claude Code, Gemini, OpenCode use settings.json
   const settingsPath = path.join(targetDir, 'settings.json');
-  const settings = cleanupOrphanedHooks(readSettings(settingsPath));
+  const rawSettings = readSettings(settingsPath);
+  if (settingsUnusable(rawSettings, settingsPath, 'statusline and hook configuration')) {
+    // Returning the path with settings:null tells finishInstall to skip every
+    // write. Overwriting would destroy whatever the user has in there.
+    return { settingsPath, settings: null, statuslineCommand, runtime };
+  }
+  const settings = cleanupOrphanedHooks(rawSettings);
 
   // Enable experimental agents for Gemini CLI (required for custom sub-agents)
   if (isGemini) {
@@ -2562,6 +2629,12 @@ function install(isGlobal, runtime = 'claude') {
  * Apply statusline config, then print completion message
  */
 function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallStatusline, runtime = 'claude', isGlobal = true, isPrimaryStatusline = true) {
+  // settings === null means the existing file could not be parsed and the caller
+  // already warned. Every branch below merges into `settings` and writes it back,
+  // so proceeding would replace the user's file with PAN's keys alone. Skip, and
+  // do NOT print the "Configured …" ticks — an install that silently reports
+  // success while configuring nothing was its own finding in the 2026-08 test.
+  if (settings === null) return;
   const isOpencode = runtime === 'opencode';
   const isCodex = runtime === 'codex';
   const isCopilot = runtime === 'copilot';
@@ -2672,6 +2745,13 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
  * Handle statusline configuration with optional prompt
  */
 function handleStatusline(settings, isInteractive, callback) {
+  // settings === null means readSettings could not use the existing file and the
+  // caller already warned. There is nothing to prompt about and nothing we may
+  // write, so decline the statusline without asking.
+  if (settings === null) {
+    callback(false);
+    return;
+  }
   const hasExisting = settings.statusLine != null;
 
   if (!hasExisting) {
