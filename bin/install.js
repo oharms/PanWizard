@@ -1432,9 +1432,12 @@ function uninstall(isGlobal, runtime = 'claude') {
   // 6. For OpenCode, clean up permissions from opencode.json
   if (isOpencode) {
     // For local uninstalls, clean up ./.opencode/opencode.json
-    // For global uninstalls, clean up ~/.config/opencode/opencode.json
+    // For global uninstalls, clean up the resolved global dir — via getGlobalDir so
+    // --config-dir is honoured here as well. Otherwise `--opencode --global
+    // --config-dir <path> --uninstall` looked in ~/.config/opencode and left the
+    // real config untouched, which is half of how this became residue.
     const opencodeConfigDir = isGlobal
-      ? getOpencodeGlobalDir()
+      ? getGlobalDir('opencode', explicitConfigDir)
       : path.join(process.cwd(), '.opencode');
     const configPath = path.join(opencodeConfigDir, 'opencode.json');
     if (fs.existsSync(configPath)) {
@@ -1448,7 +1451,13 @@ function uninstall(isGlobal, runtime = 'claude') {
             if (config.permission[permType]) {
               const keys = Object.keys(config.permission[permType]);
               for (const key of keys) {
-                if (key.includes('pan-wizard-core')) {
+                // Match `pan-wizard` rather than `pan-wizard-core` so the malformed
+                // key earlier versions wrote (`~/.config/opencode/pan-wizard/*`) is
+                // cleaned too. Without this, machines that ran any global OpenCode
+                // install before the glob was fixed keep that entry forever — the
+                // uninstaller could never match it, which is what made it residue
+                // rather than a cosmetic typo.
+                if (key.includes('pan-wizard')) {
                   delete config.permission[permType][key];
                   modified = true;
                 }
@@ -1557,9 +1566,13 @@ function uninstall(isGlobal, runtime = 'claude') {
  */
 function configureOpencodePermissions(isGlobal = true) {
   // For local installs, use ./.opencode/opencode.json
-  // For global installs, use ~/.config/opencode/opencode.json
+  // For global installs, use the resolved global dir — via getGlobalDir so that
+  // --config-dir is honoured. Calling getOpencodeGlobalDir() directly ignored the
+  // flag, so `--opencode --global --config-dir <path>` installed the core into
+  // <path> but wrote its permissions into ~/.config/opencode: the real install had
+  // no permission config at all, and an unrelated directory got a stray one.
   const opencodeConfigDir = isGlobal
-    ? getOpencodeGlobalDir()
+    ? getGlobalDir('opencode', explicitConfigDir)
     : path.join(process.cwd(), '.opencode');
   const configPath = path.join(opencodeConfigDir, 'opencode.json');
 
@@ -1588,9 +1601,17 @@ function configureOpencodePermissions(isGlobal = true) {
 
   // Build the PAN path using the actual config directory
   // Use ~ shorthand if it's in the default location, otherwise use full path
+  // The directory PAN's core actually lands in is `pan-wizard-core`. The
+  // default-location branch used to emit `~/.config/opencode/pan-wizard/*`, which
+  // matches nothing — so every default global OpenCode install granted read access
+  // to a path that does not exist while PAN's real core stayed un-allow-listed. It
+  // also became permanent residue: the uninstaller only removed keys containing
+  // `pan-wizard-core`, so the wrong key could never be matched or cleaned.
+  // Keep the ~ form for the default location (portable, and what a user expects to
+  // see in their own config) and an absolute path otherwise.
   const defaultConfigDir = path.join(os.homedir(), '.config', 'opencode');
   const panPath = opencodeConfigDir === defaultConfigDir
-    ? '~/.config/opencode/pan-wizard/*'
+    ? '~/.config/opencode/pan-wizard-core/*'
     : `${opencodeConfigDir.replace(/\\/g, '/')}/pan-wizard-core/*`;
   
   let modified = false;
