@@ -4,7 +4,7 @@
 
 # PanWizard
 
-**Command a bot army for your codebase** — an Opus *Mission Control* delegates whole-project goals to specialist squads and ships behind a human merge gate. Five AI CLIs, zero context rot.
+**Command a bot army for your codebase** — a *Mission Control* agent delegates whole-project goals to specialist squads and ships behind a human merge gate. Five AI CLIs, zero context rot.
 
 **Solves context rot** — the quality degradation that happens as the model fills its context window.
 
@@ -76,7 +76,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 ## Bot Army
 
-> **Don't run one phase — run the whole project.** `/pan:army` turns PAN's agents into a coordinated army that delivers a goal end-to-end: an Opus **Mission Control** plans the mission and delegates to specialist **squads**, parallel builders each work an isolated git worktree, and **nothing reaches your main branch without green checks and your explicit approval.**
+> **Don't run one phase — run the whole project.** `/pan:army` turns PAN's agents into a coordinated army that delivers a goal end-to-end: a **Mission Control** agent plans the mission and delegates to specialist **squads**, parallel builders each work an isolated git worktree, and **nothing reaches your main branch without green checks and your explicit approval.**
 
 <div align="center">
 <img src="https://cdn.jsdelivr.net/npm/pan-wizard@latest/assets/pan-orchestration.png" alt="PanWizard specialist agents orchestrated along a pipeline" width="340" />
@@ -84,20 +84,24 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 | Tier | Squad | Does | Access |
 |------|-------|------|--------|
-| **0 · Mission Control** | `pan-conductor` (Opus) | Plans + delegates. Never writes code. | delegation-only |
-| **1 · Architecture** | roadmapper · planner · researchers | Designs the contract before code | read-only |
-| **1 · Build** | `pan-executor` | Turns the contract into committed code | read / write · one `army/<task>` worktree per agent |
-| **1 · Quality** | reviewer · hardener · verifier · … | Adversarially tries to break it | read-only |
-| **1 · Release** | `pan-release` | Ships behind a human gate | always-ask |
-| **2 · Workers** | document_code · distiller | Narrow, high-volume jobs | scoped |
+| **0 · Mission Control** | `pan-conductor` | Plans + delegates; instructed to hand implementation to a squad | delegation-first |
+| **1 · Architecture** | roadmapper · planner · researchers · … | Designs the contract before code | `read-only` |
+| **1 · Build** | `pan-executor` | Turns the contract into committed code | `read-write-bash` · one `army/<task>` worktree per agent |
+| **1 · Quality** | reviewer · hardener · verifier · … | Adversarially tries to break it | `read-only` |
+| **1 · Release** | `pan-release` | Ships behind a human gate | `always-ask` |
+| **2 · Workers** | the utility agents `pan-tools squad list` reports under `workers` | Narrow, high-volume jobs | scoped |
+
+**Mission Control runs on your session's model** — `pan-conductor` declares no `model:`, so it inherits whatever you launched with rather than pinning a model of its own.
+
+**Reading the Access column.** The backticked values are the squad `access` labels `pan-tools squad list` reports; the tier-0 and tier-2 labels are PAN's own. Either way they describe the *role contract* PAN's prompts assign, not a sandbox — `squads.cjs` "modifies no agent and changes no execution path", so a label can differ from what an agent may actually do. The real tool grant is each agent's own `tools:` frontmatter (`grep '^tools:' agents/*.md`), and Mission Control's includes `Write` and `Bash`. The rail those grants do enforce is delegation depth: `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another (today, the coordinator), so a squad agent cannot fan out further even if asked to. For the irreversible steps, back the convention with branch protection on your own repo.
 
 **The loop:** `Muster → Plan → Delegate → Execute → Review → Integrate → Learn` ↺ — repeating until the goal ships or a stop condition fires.
 
 **Bounded by a hard safety harness:**
 
-- **A human merges. Always.** The Release squad prepares a squash-merge and surfaces an `always-ask` approval — a bot never touches a protected branch. Recovery is `git revert` or the previous tag, never a force-push.
+- **A human merges.** The Release squad prepares a squash-merge and surfaces an `always-ask` approval instead of merging; pair it with branch protection on your repo, which is what makes that unbypassable rather than merely instructed. Recovery is `git revert` or the previous tag, never a force-push.
 - **Isolated builders.** Each Build agent forks its own `army/<task>` branch + git worktree, so parallel agents never share a file.
-- **Caps that don't relax.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch — the same harness as hierarchical exec, at campaign scale.
+- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn — the same harness as hierarchical exec, at campaign scale.
 
 **Run it over days.** `--schedule` arms a self-resuming campaign with a per-day budget that burns the backlog down across sessions — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
 
@@ -625,7 +629,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:army "<goal>"` | Campaign-scale delivery: Mission Control (Opus) delegates a whole-project goal to architecture/build/quality/release squads with branch-per-agent worktrees, behind CI + a human merge gate; `--schedule`/`--continue` run it over time |
+| `/pan:army "<goal>"` | Campaign-scale delivery: Mission Control delegates a whole-project goal to architecture/build/quality/release squads with branch-per-agent worktrees, behind CI + a human merge gate; `--schedule`/`--continue` run it over time |
 
 ### Phase Management
 

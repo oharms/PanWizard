@@ -422,7 +422,7 @@ questions: [
     multiSelect: false,
     options: [
       { label: "Balanced (Recommended)", description: "reasoning tier for every agent — the default (identical to quality post-COST-RESET)" },
-      { label: "Quality", description: "reasoning tier for every agent — same as balanced, highest cost" },
+      { label: "Quality", description: "reasoning tier for every agent — identical to balanced, so switching between the two changes nothing" },
       { label: "Budget", description: "mid tier for writing, fast tier for research/verification — fastest, lowest cost" }
     ]
   }

@@ -44,7 +44,7 @@ AskUserQuestion([
     header: "Model",
     multiSelect: false,
     options: [
-      { label: "Quality", description: "reasoning tier for every agent (highest cost)" },
+      { label: "Quality", description: "reasoning tier for every agent — identical to balanced, so switching between the two changes nothing" },
       { label: "Balanced (Recommended)", description: "reasoning tier for every agent (quality and balanced are identical post-COST-RESET); use budget to step down" },
       { label: "Budget", description: "mid tier for writing, fast tier for research/verification (lowest cost)" }
     ]

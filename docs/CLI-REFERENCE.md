@@ -114,7 +114,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `runner.cjs` | External agent runner: `experiment run/status/stop`. Spawns Claude/Codex/Gemini/OpenCode via `spawnSync`. |
 | `learn-lint.cjs` | Learnings-store integrity linter: `learn lint`. Checks L-001..L-005 (duplicate IDs, dangling cross-refs, empty source_experiments, PAN-internal terms in universal-scope rules, revision marker without `superseded_by`). |
 | `learn-index.cjs` | Learnings index + queries: `learn build-index` (writes `pan-wizard-core/learnings/index.json` with topic→agent-relevance map), `learn topics-for --agent <role>` (budget-aware topic selection per agent role). Replaces "skim universal/" with targeted load. |
-| `squads.cjs` | **(v3.11, ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Four role-scoped squads (architecture/build/quality/release) with model tier + least-privilege access contract. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
+| `squads.cjs` | **(v3.11, ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Role-scoped squads (`squad list` enumerates them), each carrying a model tier + an **advisory** access contract — the module's own header says it "modifies no agent and changes no execution path", so those labels are the contract the conductor is instructed to honour and the enforced grant stays each agent's `tools:` frontmatter. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
 | `worktree.cjs` | **(v3.11, ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
 | `campaign.cjs` | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--pause`/`--resume`/`--disable`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
 | `hud.cjs` | **(v3.12, ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
@@ -1415,6 +1415,8 @@ pan-tools progress health [--raw]
 
 **Grade mapping:** A (>=80), B (>=60), C (>=40), D (<40).
 
+**The `context` denominator:** `utilization` is an estimate of `state.md` + `roadmap.md` + `project.md` + every phase's plan files, divided by PAN's own fixed budget constant — 200,000 tokens (`CONTEXT_WINDOW` in `constants.cjs`) — **not a reading of your model's real window.** Nothing detects the model here either; see [`context-budget`](#context-budget) for the same assumption stated in full.
+
 **Enhanced fields:** `patterns_count` (error patterns from `patterns.md`), `session_count` (session entries from `session-history.md`).
 
 **`--raw` output (table/bar/health):** The rendered string.
@@ -1423,7 +1425,7 @@ pan-tools progress health [--raw]
 
 ### `context-budget`
 
-Estimate context window utilization for the current phase. Measures how much of the assumed context window would be consumed by loading project files, roadmap, state, and plans for the active phase. The denominator is PAN's own fixed budget constant — 200,000 tokens (`CONTEXT_WINDOW` in `constants.cjs`) — **not a reading of your model's real window.** Nothing detects the model here; the number is a deliberately conservative planning assumption, so on a larger-context model the real headroom is greater than the report implies. It is the only place PAN commits to a window size.
+Estimate context window utilization for the current phase. Measures how much of the assumed context window would be consumed by loading project files, roadmap, state, and plans for the active phase. The denominator is PAN's own fixed budget constant — 200,000 tokens (`CONTEXT_WINDOW` in `constants.cjs`) — **not a reading of your model's real window.** Nothing detects the model here; the number is a deliberately conservative planning assumption, so on a larger-context model the real headroom is greater than the report implies. That constant is the window size PAN commits to, and `progress health`'s `context` block divides by the same one.
 
 ```
 pan-tools context-budget [--raw]

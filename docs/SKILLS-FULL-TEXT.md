@@ -66,7 +66,7 @@ The workflow handles all logic including:
 
 ---
 
-### /pan:army (178 lines)
+### /pan:army (182 lines)
 
 ```markdown
 ---
@@ -86,26 +86,30 @@ allowed-tools:
 
 # /pan:army — Bot-Army Campaign (mission control → squads → ship)
 
-Run a whole-project delivery as a coordinated bot army (ADR-0032 squads · ADR-0033 campaign). **Mission Control** — the reasoning-tier `pan-conductor`, elevated to campaign scope — plans the mission, delegates to **squads** over the Agent toolset, and never writes code itself. Each squad owns its lifecycle role; the Build squad parallelizes by giving every builder its own `army/<task>` branch in an isolated git worktree. Nothing reaches a protected branch without green CI and a human's approval. $ARGUMENTS
+Run a whole-project delivery as a coordinated bot army (ADR-0032 squads · ADR-0033 campaign). **Mission Control** — the reasoning-tier `pan-conductor`, elevated to campaign scope — plans the mission and delegates to **squads** over the Agent toolset rather than implementing anything itself. Each squad owns its lifecycle role; the Build squad parallelizes by giving every builder its own `army/<task>` branch in an isolated git worktree. Nothing reaches a protected branch without green CI and a human's approval. $ARGUMENTS
 
 The army is the campaign-scale sibling of `/pan:exec-phase --hierarchical` (one phase) and `/pan:focus-auto` (a category/backlog loop). It composes both: the conductor harness bounds it, the focus-auto loop drives it, the squads structure it.
 
 ---
 
-## Tiers (from `pan-tools squad list`)
+## Tiers — the squad rows from `pan-tools squad list`, plus PAN's own hierarchy positions
 
 | Tier | Who | Model tier | Access |
 |------|-----|-----------|--------|
-| 0 · Mission Control | `pan-conductor` | `reasoning` (`mid` under `budget`) | delegation-only (Agent toolset) — never codes |
-| 1 · Architecture | roadmapper · planner · plan-checker · researchers | `reasoning` | read-only |
-| 1 · Build | `pan-executor` | `reasoning` | read / write / bash — one branch+worktree per agent |
-| 1 · Quality | reviewer · hardener · meta · verifier · integration · debugger | `mid` | read-only, adversarial |
-| 1 · Release | `pan-release` | `mid` | always-ask — human gate |
-| 2 · Workers | document_code · distiller | `reasoning` (`fast` under `budget`) | narrow, high-volume jobs |
+| 0 · Mission Control | `pan-conductor` | `reasoning` (`mid` under `budget`) | delegation-first (Agent toolset) — instructed to route work, not write it |
+| 1 · Architecture | design + planning agents — `squad show architecture` lists them | `reasoning` | `read-only` |
+| 1 · Build | `pan-executor` | `reasoning` | `read-write-bash` — one branch+worktree per agent |
+| 1 · Quality | adversarial review + debug agents — `squad show quality` lists them | `mid` | `read-only`, adversarial |
+| 1 · Release | `pan-release` | `mid` | `always-ask` — human gate |
+| 2 · Workers | the agents `squad list` reports under `workers` | `reasoning`; `budget` down-tiers **per agent** (see below) | narrow, high-volume jobs |
 
-Resolve the roster at runtime — never hardcode it: `pan-tools squad list` and `pan-tools squad show <name>`.
+**Where each row comes from.** The tier-1 rows mirror the `squads[]` records `pan-tools squad list` prints — label, `tier`, `access` (their member names come from `squad show <name>`, since `squad list` reports only a count). The Tier 0 and Tier 2 rows are PAN's hierarchy positions: the same command names them under its `coordinator` and `workers` keys, but reports nothing else about them, so the Model-tier and Access values on those two rows are written here rather than returned by the command. Resolve the roster at runtime — never hardcode it: `pan-tools squad list` and `pan-tools squad show <name>`.
 
-**Reading the Model-tier column.** These are PAN *tiers*, not model names. `reasoning` resolves to `inherit` — the model your session already runs (the default Opus on Claude Code) — while `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). The tier-1 values are the squad tiers reported by `pan-tools squad list`; tiers 0 and 2 are per-agent and come from the active `model_profile`, where `budget` is the only profile that steps anything below `reasoning`. The only hard model pins in the army are `pan-hardener`, `pan-reviewer`, and `pan-meta-reviewer`, which carry `model: opus` in their own frontmatter (Claude Code only — the installer strips it for the other runtimes).
+**Reading the Model-tier column.** These are PAN *tiers*, not model names. `reasoning` resolves to `inherit` — the model you launched with — while `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic).
+
+**Reading the Access column.** The backticked values on the tier-1 rows are the `access` labels `squad list` reports; tier 0 and tier 2 carry PAN's own. They are role contracts the conductor's prompt assigns when it delegates, not a sandbox: `squads.cjs` says of itself that it "modifies no agent and changes no execution path", so a label can differ from what an agent may actually do — expect that, since several `read-only` squad members hold `Write` to emit planning or verification artifacts. The binding grant is each agent's own `tools:` frontmatter (`grep '^tools:' agents/*.md`), and Mission Control's includes `Write` and `Bash`: routing rather than coding is how it is instructed to behave, not something the runtime prevents. The rail those grants do enforce is delegation depth — `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another (today, `pan-conductor`), so a squad agent cannot fan out further.
+
+**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not what resolves an agent's model; that comes from the active `model_profile` (`quality` and `balanced` are `reasoning` for every agent, and `budget` is the only profile that down-tiers), plus any `model:` pin in an agent's own frontmatter. So the `mid` on the Quality and Release rows does not describe what those agents run under the default profile — under `quality` and `balanced` they resolve `reasoning` like everything else. The tier-1 values above are the squad groupings; the tier-0 and tier-2 values are per-agent profile tiers. **`budget` resolves per agent, not per row:** it sends some workers to `fast` and others to `mid`, so no single value is true of the Tier 2 row — `MODEL_PROFILES` in `pan-wizard-core/bin/lib/core.cjs` is the table, and it is the one to read rather than a tier written into a doc. For the agents that pin a model outright, `grep -l '^model: opus' agents/*.md` lists them — the pin applies on Claude Code only, since the installer strips it for the other runtimes.
 
 ---
 
@@ -170,7 +174,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 ```
 /pan:army
   Phase 0  MUSTER   — squad list + roster validate · cache prime · baseline · loop-state · abort-file clear
-  Phase 1  PLAN     — Mission Control (Opus, extended thinking) decomposes the goal into dependency-ordered missions
+  Phase 1  PLAN     — Mission Control (session model, xhigh effort) decomposes the goal into dependency-ordered missions
   Phase 2  DELEGATE — pick the next item (focus-auto --source) · route to the owning squad over the Agent toolset
   Phase 3  EXECUTE  — Build squad: one army/<task> worktree per agent (parallel); Architecture/Quality research in parallel (read-only)
   Phase 4  REVIEW   — Quality squad on the built tree: reviewer + hardener + meta → verdict ladder; a block is a hard gate
@@ -234,7 +238,7 @@ The campaign is complete when ANY holds: `--max-cycles` reached · backlog empty
 - Integrate a mission that hasn't passed Quality green.
 
 ## ALWAYS DO
-- Plan on Opus, delegate over the Agent toolset, keep each squad's return a tight summary.
+- Plan on the session model Mission Control inherits, delegate over the Agent toolset, keep each squad's return a tight summary.
 - One worktree per Build agent; parallel research/verify; serial human-gated integrate.
 - Check the abort file + spawn/budget caps before every spawn.
 - Finish with the clean-build seal; write learnings back to memory.

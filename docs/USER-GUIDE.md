@@ -124,7 +124,7 @@ PAN emits all of these unconditionally. They pay off in full on Claude Code with
 - **Capability-aware routing** — when a task needs thinking, the fast tier auto-upgrades to mid; when cache is warm and context is small, mid auto-downgrades to fast. See `/pan:profile` for the decision tree.
 - **Native skills discovery** — Claude Code sees PAN commands as first-class skills at `.claude/skills/pan-*.md` with descriptions, so it can auto-invoke them when relevant.
 
-On lower tiers (mid/fast models) and non-Claude runtimes, features degrade gracefully: thinking becomes a prose "think step-by-step" preamble, caching is a no-op, and you pick the sharded map path with `--threshold`. None of this is gated at runtime — no feature, mode, or routing decision checks your model name before choosing a code path. (`/pan:cost` does look up the model ID recorded in the metrics log to price your token usage, but that only affects the number in a cost report, not what PAN runs.) The one model-name check you'll notice is advisory and runs once: at the end of install, the installer looks up the `model` field in your `settings.json` against a hand-maintained table of known model IDs (`detectModelCapabilities()` in `bin/install-lib.cjs`) and prints a note if that model is known to lack 1M context or extended thinking. The table recognizes the current generations by name and deliberately fails forward — the per-family threshold is the last reduced-capability release it records, not the newest release it lists, so any Claude ID newer than that boundary (a new major, or a later point release inside a major it already lists) inherits that family's modern profile rather than reading as capability-less, and upgrading to a new flagship doesn't produce a bogus warning. A model from a family it has never seen, or a Claude name with no parsable release number after the family, still reads as `unknown` and may trigger the note spuriously. Either way it's a hint, never a block. Pass `--skip-warnings` to silence it.
+On lower tiers (mid/fast models) and non-Claude runtimes, features degrade gracefully: thinking becomes a prose "think step-by-step" preamble, caching is a no-op, and you pick the sharded map path with `--threshold`. None of this is gated at runtime — no feature, mode, or routing decision checks your model name before choosing a code path. (`/pan:cost` does look up the model ID recorded in the metrics log to price your token usage, but that only affects the number in a cost report, not what PAN runs.) The one model-name check you'll notice is advisory and runs once: at the end of install, the installer looks up the `model` field in your `settings.json` against a hand-maintained table of known model IDs (`detectModelCapabilities()` in `bin/install-lib.cjs`) and prints a note if that model is known to lack 1M context or extended thinking. The table recognizes the current generations by name and deliberately fails forward — the per-family threshold is the last reduced-capability release it records, not the newest release it lists, so any Claude ID newer than that boundary (a new major, or a later point release inside a major it already lists) inherits that family's modern profile rather than reading as capability-less, and upgrading to a new flagship doesn't produce a bogus warning. An ID resolves either by matching an explicit branch in the table or — for Claude names — by carrying a family plus a readable release number strictly newer than that family's last reduced-capability release; anything that resolves neither way reads as `tier: 'unknown'` with every capability flag false. That result may trigger the note spuriously. Either way it's a hint, never a block. Pass `--skip-warnings` to silence it.
 
 ### Spec B v2 features (v3.0-v3.4)
 
@@ -591,7 +591,7 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 
 ### Model Profiles (Per-Agent Breakdown)
 
-PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-specific models. On Anthropic: reasoning → Opus (inherit), mid → Sonnet, fast → Haiku. On OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents.
+PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-specific models. On Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. On OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents.
 
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
@@ -612,7 +612,7 @@ PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-s
 - **quality** and **balanced** -- Every agent runs on the `reasoning` tier, i.e. **`inherit` — the model you launched with**. PAN respects your model choice by default and does not silently demote agents to cheaper models; context isolation (each subagent in its own window), not a weaker model, is what keeps the main conversation clean.
 - **budget** -- The opt-in cheap mode: mid for code-writing agents, fast for research and verification. Choose it explicitly for high-volume or less-critical work. Cheapness is opt-in, not the default.
 
-> Model tiering is **advisory** (it powers `/pan:cost` and per-invocation hints). Native Claude Code delegation uses each agent file's static `model:` — unset means `inherit`. Three security agents deliberately pin `model: opus` in their own frontmatter.
+> Model tiering is **advisory** (it powers `/pan:cost` and per-invocation hints). Native Claude Code delegation uses each agent file's static `model:` — unset means `inherit`. A few security-review agents deliberately pin `model: opus` in their own frontmatter; `grep -l '^model: opus' agents/*.md` lists them.
 
 ### Routing Strategies
 
@@ -879,20 +879,22 @@ When `workflow.auto_advance: true` in config:
 
 ### Bot-army campaigns (`/pan:army`)
 
-**This is PAN's headline capability — ship a whole project, not just a phase.** `/pan:army` runs PAN's agents as a coordinated army: an Opus **Mission Control** plans the mission and delegates to specialist squads, parallel builders each work an isolated git worktree, and nothing reaches your main branch without green checks and your approval (ADR-0032 squads · ADR-0033 campaign). It composes the pieces you already use: the `pan-conductor` safety harness, the focus-auto work loop, git worktrees, and the retro/learnings memory.
+**This is PAN's headline capability — ship a whole project, not just a phase.** `/pan:army` runs PAN's agents as a coordinated army: **Mission Control** (the reasoning-tier conductor) plans the mission and delegates to specialist squads, parallel builders each work an isolated git worktree, and nothing reaches your main branch without green checks and your approval (ADR-0032 squads · ADR-0033 campaign). It composes the pieces you already use: the `pan-conductor` safety harness, the focus-auto work loop, git worktrees, and the retro/learnings memory.
 
 **Taking on an existing project.** The army never plans blind. On a brownfield repo, Phase 0 runs an onboarding gate: if existing code has no codebase map yet, it stops and routes you through `/pan:map-codebase` (the Architecture squad maps the system into `.planning/codebase/`) and `/pan:new-project` (builds `roadmap.md` / `requirements.md` *against the existing system*), then you re-run `/pan:army`. From there, the Architecture squad reads the existing contracts before Build touches anything, and every Build agent forks its `army/<task>` branch from your current `main` — so the existing code is never edited in place. For a greenfield repo, you go straight to the plan.
 
-**The tiers.** Mission Control (the Opus conductor, in campaign mode) plans the goal and delegates — it never writes code. Work flows to four squads, each with a least-privilege tool contract:
+**The tiers.** Mission Control — the reasoning-tier `pan-conductor`, elevated to campaign scope — plans the goal and delegates rather than implementing. Work flows to the squads, each carrying an intended access contract:
 
 | Squad | Role | Access |
 |-------|------|--------|
-| Architecture | Design the contract before code | read-only |
-| Build | Turn the contract into committed code | read / write / bash |
-| Quality | Adversarially break what Build makes | read-only |
-| Release | Ship behind a human gate | always-ask |
+| Architecture | Design the contract before code | `read-only` |
+| Build | Turn the contract into committed code | `read-write-bash` |
+| Quality | Adversarially break what Build makes | `read-only` |
+| Release | Ship behind a human gate | `always-ask` |
 
 Inspect the roster any time with `pan-tools squad list` and `pan-tools squad show <name>`.
+
+**What the Access column is.** The `access` values `pan-tools squad list` reports — a role contract PAN's prompts assign, not a sandbox. `squads.cjs` is a registry that "modifies no agent and changes no execution path", so a label can differ from what an agent may actually do: several `read-only` squad members hold `Write` because they emit planning or verification artifacts. What actually constrains an agent is its own `tools:` frontmatter (`grep '^tools:' agents/*.md`), and Mission Control's grant includes `Write` and `Bash` — "delegates rather than implements" is how it is instructed to behave, not something the runtime prevents. The rail the grant does enforce is delegation depth: `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another, so a squad agent cannot fan out further. For the irreversible step, branch protection on your own repo is what makes the human merge gate unbypassable.
 
 **Parallel builds without collisions.** When the Build squad runs several tasks at once, each builder gets its own `army/<task>` branch in an isolated git worktree (`pan-tools worktree list` shows them), so two agents never edit the same working tree. Use `--no-build-worktrees` for small or strictly-serial projects; set `concurrency.serial_build: true` in `.planning/config.json` if your build tree corrupts under concurrent builds.
 

@@ -57,13 +57,14 @@ planner ──▶ executor ──▶ verifier      each in a fresh 200K context 
 
 ## Bot army — `/pan:army`
 
-One phase is `/pan:exec-phase`. A whole goal is a **campaign**: an Opus
-**Mission Control** (`pan-conductor`) plans the mission and delegates to specialist
-**squads** — and never writes code itself.
+One phase is `/pan:exec-phase`. A whole goal is a **campaign**: a
+**Mission Control** agent (`pan-conductor`) — running on the model you launched
+with — plans the mission and delegates to specialist **squads** rather than
+implementing anything itself.
 
 | Tier | Squad | Role | Access |
 | --- | --- | --- | --- |
-| 0 | Mission Control | plan + delegate | delegation-only (never codes) |
+| 0 | Mission Control | plan + delegate | delegation-first (instructed, not tool-enforced) |
 | 1 | Architecture | roadmap · plan · research | read-only · parallel |
 | 1 | Build | `pan-executor` | write · one worktree per agent |
 | 1 | Quality | review · harden · verify | adversarial · read-only |

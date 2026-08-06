@@ -1,10 +1,31 @@
 /**
  * Squads — agent groupings for the bot-army model (ADR-0032).
  *
- * A squad is a named, tool-scoped, model-tiered grouping of existing PAN
- * agents under the pan-conductor coordinator. This module is a registry +
- * resolver only — it modifies no agent and changes no execution path. The
- * army campaign command (ADR-0033) consumes it; until then it is inert.
+ * A squad is a named grouping of existing PAN agents under the pan-conductor
+ * coordinator, labelled with an intended model tier and an intended access
+ * contract. This module is a registry + resolver only — it modifies no agent
+ * and changes no execution path. `/pan:army` (ADR-0033) and `hud.cjs` read it;
+ * `grep -rn "squads.cjs')" pan-wizard-core/` enumerates its consumers.
+ *
+ * BOTH LABELS BELOW ARE ADVISORY METADATA, NOT ENFORCEMENT. Read this before
+ * writing any doc sentence about them, because the live docs now quote this
+ * header as the authority for exactly that (`grep -rn 'changes no execution
+ * path' docs commands` finds them):
+ *
+ *  - `access` is the intended least-privilege contract the conductor's prompt is
+ *    told to honour when it delegates. Nothing here strips a tool from an agent
+ *    or narrows a grant at spawn time. The binding grant is each agent's own
+ *    `tools:` frontmatter (`grep '^tools:' agents/*.md`), and it can be wider
+ *    than the label: several members of a `read-only` squad hold `Write` so they
+ *    can emit planning or verification artifacts, and the coordinator itself
+ *    holds `Write` and `Bash`. So a squad agent doing more than its label says
+ *    is the expected case, not a bug in this file.
+ *  - `tier` is a squad grouping attribute, not the resolver of anybody's model.
+ *    The active `model_profile` plus any per-agent `model:` pin decides that.
+ *
+ * The one rail the grants do enforce is delegation depth: only an agent granted
+ * `Task` can spawn another (`grep -l '^tools:.*Task' agents/*.md`), so squad
+ * members cannot fan out further.
  */
 
 'use strict';
@@ -19,8 +40,11 @@ const { output, error } = require('./core.cjs');
  *
  * "Tier 2" is a hierarchy position, not a model tier. Post-COST-RESET (2026-07)
  * every agent in MODEL_PROFILES resolves to `reasoning` under both quality and
- * balanced (the default); only the `budget` profile down-tiers, and it is the
- * profile — never this list — that decides which agents drop to `fast`.
+ * balanced (the default); `budget` is the only profile that down-tiers, and it is
+ * the profile — never this list — that decides what an agent drops to. Note it
+ * down-tiers per agent, not per group: `budget` sends some of the workers below
+ * to `fast` and others to `mid`. MODEL_PROFILES in core.cjs is the table; read it
+ * rather than assuming one tier covers a row of a doc.
  */
 const COORDINATOR = 'pan-conductor';
 const WORKERS = Object.freeze([
@@ -34,9 +58,12 @@ const WORKERS = Object.freeze([
 ]);
 
 /**
- * The four squads, keyed by lifecycle role. `tier` is a PAN model tier
- * (resolve-model maps it to a provider model); `access` is the least-privilege
- * tool contract the conductor grants when delegating to the squad.
+ * The squads, keyed by lifecycle role — `squad list` enumerates them at runtime.
+ * `tier` is a PAN model tier label (resolve-model maps a tier to a provider
+ * model); `access` is the intended
+ * least-privilege contract the conductor is instructed to honour when delegating
+ * to the squad. Neither is applied by this module — see the advisory note in the
+ * file header before describing either one as a restriction.
  */
 const SQUADS = Object.freeze({
   architecture: Object.freeze({
