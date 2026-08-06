@@ -5,6 +5,39 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.23.0] - 2026-08-06
+
+### Fixed — model gates stated by capability, not version, so they survive model upgrades
+
+Shipped commands/agents and the live docs gated features on hardcoded model versions ("Opus 4.7 only", "requires Opus 4.8"). Those go stale on every model release and actively mislead users on newer models. Gates now name the **capability** ("a model with a 1M-context window", "thinking-capable models") or the **runtime** where the runtime is the real constraint. PAN's own release history stays as history.
+
+Several of those claims were false rather than merely stale:
+
+- **`/pan:map-codebase`** said "Opus 4.7 is required for single-shot mode (only model with a 1M context window)". `codebase.cjs` picks the mode from a token threshold with **no model check at all**, and many current models carry 1M context — wrong about the model *and* about a gate existing. It now documents size-based selection and tells 200K-model users to lower `--threshold`.
+- **`--hierarchical`** was gated on a model across ten surfaces. No model gate exists anywhere in the code; the constraint is native sub-agent spawning (Claude Code). `pan-conductor` ships no `model:` frontmatter, so it runs on whatever model the session launched with.
+- **Reflection Gate** was described as thinking-capable-only; per `constants.cjs` (`enable_on_tiers`) it is reasoning-tier-only, so a thinking-capable mid-tier model never reflects.
+- **`docs/CLI-REFERENCE.md`**'s profile matrix was still pre-COST-RESET in four places, including a `3.7×` cost multiplier where the real value is `15.0`, and `/pan:cost` documented per-version rates that `cost.cjs` has not used since the 4.5 generation.
+- **No code-backed 200K per-shard budget exists** — the only such constant is `CONTEXT_WINDOW`, PAN's own planning assumption. Prose no longer implies a per-agent window size; the `context-budget` section says explicitly that the number is PAN's and not a reading of your model's real window.
+
+### Fixed — the installer no longer tells you a new flagship model is under-powered
+
+`detectModelCapabilities` is a hand-maintained substring table feeding the installer's advisory post-install notice. Any Claude id it did not recognize fell through to an all-false `unknown`, so the installer reported "lacks 1M context / extended thinking" — false, and worst on the newest models. Forward releases now resolve by family: one parsed generation key compared against the newest *reduced-capability* release per family, with the greedy legacy branches bounded by the same flag so a newer point release can no longer be intercepted first (`claude-opus-4-9` returned `has_1m_ctx: false` before this). The key is an integer, because `Number('4.10')` sorted Opus 4.10 below 4.5. Legacy mappings, Haiku's no-thinking, Claude 3.x and non-Claude vendors are unchanged.
+
+### Added — a lint that keeps the class closed
+
+`tests/model-version-drift.test.cjs` fails if a version-pinned Claude model reference reappears in shipped content or live docs, in the same shape as `tests/shipped-content-prefix.test.cjs` — the lint that permanently closed the path-prefix class. Exemptions are match-scoped and each carries a written reason.
+
+### Fixed — audit-chain residuals and a secrets-exposure path in `.gitignore`
+
+Closes the outstanding items from the E2E audit chain (see `docs/audits/`):
+
+- **Statusline migration** matched `statusline.js` too loosely, corrupting a user's own script (`my-custom-statusline.js` → `…-pan-statusline.js`) and then misclassifying it as PAN-owned so every guard added since stood down. Now anchored to `hooks/statusline.js`, where PAN's legacy hook always lived. `tests/statusline-guard.test.cjs` pins all three regression modes of a branch that had regressed twice.
+- **Cost/trace logger idempotency**: the single-slot marker re-admitted phantom rows under interleaved dual registration and was erased by the dead-transcript prune. Replaced with a bounded per-transcript FIFO of payload signatures, exempt from the prune.
+- **`.gitignore`**: the ADR-0026 `!experiments/**` carve-out is the last matching pattern for everything under `experiments/`, so it undid every blanket rule above it — `.env`, `.env.*`, `node_modules/`, logs and editor dirs were all committable in a public repo. Every safety-critical rule is re-asserted after the negation; harvested telemetry still commits.
+- A win32 bridge test now pins the hook bridge on Windows, and the Codex `--global` scenario test asserts it writes nothing outside its sandbox.
+
+Known remaining items are documented in `docs/audits/OUTSTANDING-2026-08.md`.
+
 ## [3.22.0] - 2026-07-30
 
 ### Added — memory-injection defense: agent-authored directives can't become standing memory (ADR-0040)
