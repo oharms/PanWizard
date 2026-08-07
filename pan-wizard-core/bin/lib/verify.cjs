@@ -532,7 +532,9 @@ const STUB_CODE_EXT = /\.(js|cjs|mjs|jsx|ts|tsx|py|go|rb|java|php|rs|c|cc|cpp|h|
  * @returns {{scanned, findings: Array, blocking: number, total: number}}
  */
 function scanStubs(cwd, opts = {}) {
-  let files = Array.isArray(opts.files) ? opts.files : getChangedFiles(cwd);
+  // includeUntracked: a stub gate that cannot see new files is not a gate. See the
+  // note in verify-drift.cjs getChangedFiles for why drift does not want the same.
+  let files = Array.isArray(opts.files) ? opts.files : getChangedFiles(cwd, null, { includeUntracked: true });
   files = (files || []).filter(f => STUB_CODE_EXT.test(f));
   const findings = [];
   for (const rel of files) {

@@ -686,6 +686,51 @@ function copySharedCore(srcDir, destDir, corePrefix, runtimePathPrefix, runtime)
   } catch (err) {
     if (err.code !== 'ENOENT') pushInstallWarning('stripInternalLearnings', 'learnings/internal', err);
   }
+  stripInternalFromLearningsIndex(path.join(destDir, 'learnings', 'index.json'));
+}
+
+/**
+ * Drop internal-scoped topics from an installed learnings/index.json and recompute
+ * its totals.
+ *
+ * Deleting learnings/internal/ from disk is only half the strip: the index still
+ * listed those topics, so every install shipped file paths that do not exist —
+ * dangling references for any consumer that resolves them — along with the internal
+ * topic names, their pattern ids, and totals counting content the package
+ * deliberately withholds. Each topic entry carries its own size_bytes and
+ * size_tokens_est, so the totals are recomputed exactly rather than estimated.
+ *
+ * Best-effort by design: a malformed or absent index is not worth failing an install
+ * over, and the strip of the files themselves has already happened.
+ *
+ * @param {string} indexPath - Path to the installed learnings/index.json
+ */
+function stripInternalFromLearningsIndex(indexPath) {
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+  } catch (err) {
+    if (err.code !== 'ENOENT') pushInstallWarning('stripInternalLearnings', 'learnings/index.json', err);
+    return;
+  }
+  if (!parsed || !Array.isArray(parsed.topics)) return;
+
+  const kept = parsed.topics.filter(t => t && t.scope !== 'internal');
+  if (kept.length === parsed.topics.length) return; // nothing internal to drop
+
+  parsed.topics = kept;
+  if (parsed.totals && typeof parsed.totals === 'object') {
+    parsed.totals.topics = kept.length;
+    parsed.totals.patterns = kept.reduce((n, t) => n + (Array.isArray(t.patterns) ? t.patterns.length : 0), 0);
+    parsed.totals.size_bytes = kept.reduce((n, t) => n + (t.size_bytes || 0), 0);
+    parsed.totals.size_tokens_est = kept.reduce((n, t) => n + (t.size_tokens_est || 0), 0);
+  }
+
+  try {
+    fs.writeFileSync(indexPath, JSON.stringify(parsed, null, 2) + '\n');
+  } catch (err) {
+    pushInstallWarning('stripInternalLearnings', 'learnings/index.json', err);
+  }
 }
 
 /**
@@ -2155,6 +2200,9 @@ function install(isGlobal, runtime = 'claude') {
         if (err.code !== 'ENOENT') pushInstallWarning('stripInternalLearnings', 'learnings/internal', err);
       }
     }
+    // The index lists those topics too — strip it here as well, or the metadata
+    // ships even though the files did not.
+    stripInternalFromLearningsIndex(path.join(skillDest, 'learnings', 'index.json'));
 
     if (verifyInstalled(skillDest, 'pan-wizard-core')) {
       console.log(`  ${green}✓${reset} Installed pan-wizard-core`);

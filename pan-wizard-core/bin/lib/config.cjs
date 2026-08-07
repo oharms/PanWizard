@@ -163,6 +163,24 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
     }
   }
 
+  // Valid JSON of the wrong SHAPE is still unusable, and used to fail two different
+  // silent ways. `null` crashed with a raw TypeError stack dump ("Cannot set
+  // properties of null") because the traversal assigned straight into it. An array,
+  // string or number took the assignment without complaint and then serialized
+  // without the key, so the command reported {"updated": true} at exit 0 while
+  // persisting nothing — the user is told their setting took effect and PAN keeps
+  // using the old one forever.
+  //
+  // Refuse rather than overwrite: a config.json that is not an object is the user's
+  // data in an unexpected state, and replacing it wholesale would be the
+  // settings.json data-loss bug in another file.
+  if (config === null || typeof config !== 'object' || Array.isArray(config)) {
+    error(
+      `config.json is not a JSON object (found ${config === null ? 'null' : Array.isArray(config) ? 'an array' : typeof config})`
+      + ` — refusing to overwrite it. Fix or remove ${configPath} and re-run.`
+    );
+  }
+
   // Traverse the dot-notation key path to build nested objects.
   // For a path like "workflow.research", this loop walks through each
   // segment except the last, creating intermediate objects as needed.

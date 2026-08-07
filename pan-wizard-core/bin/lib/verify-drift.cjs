@@ -135,7 +135,7 @@ function calculateDriftScore(violations, filesChecked, rulesCount) {
  * @param {string} [sinceRef] - Git ref to diff against (default: HEAD)
  * @returns {string[]} Array of relative file paths
  */
-function getChangedFiles(cwd, sinceRef) {
+function getChangedFiles(cwd, sinceRef, opts = {}) {
   const ref = sinceRef || 'HEAD';
   // Try staged + unstaged first, then diff against ref
   const result = execGit(cwd, ['diff', '--name-only', ref]);
@@ -148,6 +148,20 @@ function getChangedFiles(cwd, sinceRef) {
   if (stagedResult.exitCode === 0) {
     for (const line of stagedResult.stdout.split(/\r?\n/)) {
       if (line.trim()) allFiles.add(line.trim());
+    }
+  }
+  // Untracked files are OPT-IN because the two consumers want different things.
+  // Drift detection asks "what changed against the baseline", where an untracked
+  // scratch file is noise. The stub gate asks "is any code in this handoff a stub",
+  // and a brand-new file is precisely the normal shape of PAN execution — a plan
+  // creates files, a later step commits them — so during that window `git diff` lists
+  // nothing and a fully stubbed new module sailed through the gate.
+  if (opts.includeUntracked) {
+    const untracked = execGit(cwd, ['ls-files', '--others', '--exclude-standard']);
+    if (untracked.exitCode === 0) {
+      for (const line of untracked.stdout.split(/\r?\n/)) {
+        if (line.trim()) allFiles.add(line.trim());
+      }
     }
   }
   // Filter out binary extensions and limit
