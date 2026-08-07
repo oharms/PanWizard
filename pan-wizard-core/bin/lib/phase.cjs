@@ -356,6 +356,32 @@ function buildPlanIndex(phaseDir, planFiles, summaryFiles) {
 }
 
 /**
+ * Add a `- [ ] **Phase N: name**` entry to the roadmap's checklist, after the last
+ * existing entry.
+ *
+ * Returns the content unchanged when the roadmap has no checklist at all — some
+ * roadmaps only carry detail sections, and inventing a list there would be a bigger
+ * surprise than omitting one entry. Format matches templates/roadmap.md exactly, so
+ * the entry is picked up by the same parsers that read the template's own output.
+ *
+ * @param {string} content - Full roadmap.md content
+ * @param {string|number} phaseNum - Phase number as it should appear
+ * @param {string} name - Phase name/description
+ * @returns {string} Updated content
+ */
+function appendPhaseChecklistEntry(content, phaseNum, name) {
+  const lines = content.split('\n');
+  const isChecklistLine = (l) => /^\s*- \[[ x]\]\s*(?:\*\*)?Phase\s+\d/i.test(l);
+  let lastIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (isChecklistLine(lines[i])) lastIdx = i;
+  }
+  if (lastIdx === -1) return content; // no checklist to extend
+  lines.splice(lastIdx + 1, 0, `- [ ] **Phase ${phaseNum}: ${name}**`);
+  return lines.join('\n');
+}
+
+/**
  * Append a new phase to the end of the roadmap and create its directory.
  * @param {string} cwd - Working directory path
  * @param {string} description - Human-readable phase description
@@ -409,6 +435,13 @@ function cmdPhaseAdd(cwd, description, raw) {
   } else {
     updatedContent = content + phaseEntry;
   }
+
+  // Also add the checklist entry. Only the detail section was written before, so a
+  // phase created by `phase add` was permanently absent from the roadmap's "## Phases"
+  // list — the surface users read, and the one preview/progress consumers parse. Worse,
+  // `phase complete` then reported roadmap_updated:true having changed nothing, because
+  // it ticks a checklist line that was never there.
+  updatedContent = appendPhaseChecklistEntry(updatedContent, newPhaseNum, description);
 
   try {
     fs.writeFileSync(roadmapPath, updatedContent, 'utf-8');
@@ -509,7 +542,10 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
     insertIdx = content.length;
   }
 
-  const updatedContent = content.slice(0, insertIdx) + phaseEntry + content.slice(insertIdx);
+  // Insert the detail section, then the matching checklist entry — same reason as
+  // cmdPhaseAdd: without it the inserted phase never appears in the "## Phases" list.
+  const withEntry = content.slice(0, insertIdx) + phaseEntry + content.slice(insertIdx);
+  const updatedContent = appendPhaseChecklistEntry(withEntry, decimalPhase, description);
   try {
     fs.writeFileSync(roadmapPath, updatedContent, 'utf-8');
   } catch (e) {
