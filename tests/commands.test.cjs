@@ -774,8 +774,17 @@ describe('commit command', () => {
       // Add an artifact so there's something to commit
       fs.writeFileSync(path.join(noIdRepo, '.planning', 'project.md'), '# Test project\n');
       // Force git to have NO identity in this repo (clear local; ensure global doesn't apply via -c overrides)
-      execSync('git config --local --unset-all user.email || true', { cwd: noIdRepo, stdio: 'pipe', shell: true });
-      execSync('git config --local --unset-all user.name || true', { cwd: noIdRepo, stdio: 'pipe', shell: true });
+      // `|| true` is a POSIX-shell idiom and is NOT portable: cmd.exe understands `||`
+      // but Windows has no `true` command, so the fallback itself fails and execSync
+      // throws — the test then errors on Windows only. git exits 5 when there is no
+      // key to unset, which is the expected case here, so swallow it explicitly.
+      for (const key of ['user.email', 'user.name']) {
+        try {
+          execSync(`git config --local --unset-all ${key}`, { cwd: noIdRepo, stdio: 'pipe' });
+        } catch {
+          // Nothing to unset (git exit 5) — already absent, which is what we want.
+        }
+      }
 
       // Without --fail-on-error: returns success-shaped output with committed:false (legacy contract preserved)
       const lenient = runPanTools('commit "test commit" -c user.email= -c user.name=', noIdRepo);
