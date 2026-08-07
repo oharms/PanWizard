@@ -144,10 +144,19 @@ function computeCost(rec, configRates) {
   const output = rec.output_tokens || 0;
   const cacheRead = rec.cache_read_tokens || 0;
   const cacheWrite = rec.cache_write_tokens || 0;
-  // Non-cache-hit input tokens = input - cache_read (cache_read already in input on some providers,
-  // separate on others; we treat cache_read as a reduction of effective new input).
-  const newInput = Math.max(0, input - cacheRead);
-  const usd = (newInput * rate.input + output * rate.output
+  // The three input axes are DISJOINT as PAN records them. hooks/pan-cost-logger.js
+  // copies Anthropic's `input_tokens`, `cache_read_input_tokens` and
+  // `cache_creation_input_tokens` into separate fields, and Anthropic's
+  // `input_tokens` already EXCLUDES both cache axes — so each token is counted once
+  // and billed at its own rate.
+  //
+  // This previously subtracted cache_read from input, hedging that "cache_read is
+  // already in input on some providers". That double-discounted: with a warm cache,
+  // cache_read is far larger than input, so Math.max(0, …) zeroed the billed input
+  // outright. On a realistic row (30k input / 5k output / 200k cache read / 12k
+  // cache write on Opus-5 rates) it reported $0.30 against a true $0.45 — a 33%
+  // understatement, always in the direction of looking cheaper.
+  const usd = (input * rate.input + output * rate.output
     + cacheRead * rate.cache_read + cacheWrite * rate.cache_write) / 1_000_000;
   return Math.round(usd * 10000) / 10000;
 }
@@ -309,9 +318,12 @@ function aggregate(cwd, opts) {
 
   totals.cost_usd = Math.round(totals.cost_usd * 10000) / 10000;
 
-  // Cache hit rate: cache_read / (cache_read + new input tokens billed at full rate)
-  const billedInput = Math.max(0, totals.input_tokens - totals.cache_read_tokens);
-  const hitDenom = totals.cache_read_tokens + billedInput;
+  // Cache hit rate: cached input / all input read. Same disjoint-axes fact as
+  // computeCost — input_tokens excludes the cache axes, so the denominator is simply
+  // their sum. Subtracting cache_read from input here made the denominator collapse
+  // to cache_read whenever the cache was warm (the normal case), pinning the metric
+  // at exactly 100% and making it carry no information at all.
+  const hitDenom = totals.cache_read_tokens + totals.input_tokens;
   const cacheHitRatePct = hitDenom > 0
     ? Math.round((totals.cache_read_tokens / hitDenom) * 1000) / 10
     : null;

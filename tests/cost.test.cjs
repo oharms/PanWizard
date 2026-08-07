@@ -227,19 +227,34 @@ describe('cost — computeCost', () => {
     assert.ok(Math.abs(cost - 0.0075) < 0.0001, `expected ~0.0075, got ${cost}`);
   });
 
-  test('cache_read reduces effective input cost', () => {
-    const noCache = computeCost({
+  test('caching the same workload is cheaper than not caching it', () => {
+    // This test previously compared 10000 input WITHOUT cache against the SAME 10000
+    // input PLUS 9000 cache_read, and asserted the second was cheaper. That only held
+    // because computeCost subtracted cache_read from input — the defect. The axes are
+    // disjoint (Anthropic's input_tokens already excludes cached tokens), so adding
+    // cache_read tokens to an unchanged input legitimately costs MORE.
+    //
+    // The real claim — caching saves money — is about the same workload served two
+    // ways: 10000 tokens all fresh, versus 1000 fresh with 9000 served from cache.
+    const uncached = computeCost({
       model: 'claude-opus-4-7',
       input_tokens: 10000,
       output_tokens: 0,
     });
-    const withCache = computeCost({
+    const cached = computeCost({
       model: 'claude-opus-4-7',
-      input_tokens: 10000,
+      input_tokens: 1000,
       output_tokens: 0,
       cache_read_tokens: 9000,
     });
-    assert.ok(withCache < noCache, `cache should reduce cost: noCache=${noCache} withCache=${withCache}`);
+    assert.ok(cached < uncached, `cache should reduce cost: uncached=${uncached} cached=${cached}`);
+  });
+
+  test('cache_read tokens are billed, not free', () => {
+    const withoutCacheRead = computeCost({ model: 'claude-opus-4-7', input_tokens: 1000, output_tokens: 0 });
+    const withCacheRead = computeCost({ model: 'claude-opus-4-7', input_tokens: 1000, output_tokens: 0, cache_read_tokens: 9000 });
+    assert.ok(withCacheRead > withoutCacheRead,
+      'reading from cache is discounted, not free — it must still add to the bill');
   });
 
   test('returns null when model+tier unknown', () => {
@@ -416,8 +431,11 @@ describe('cost — aggregate', () => {
       output_tokens: 100,
     });
     const agg = aggregate(tmpDir);
-    // cache_read=8000, billed_input=10000-8000=2000, denom=10000, rate=8000/10000=80%
-    assert.equal(agg.cache_hit_rate_pct, 80);
+    // The axes are disjoint, so the denominator is simply cache_read + input:
+    // 8000 / (8000 + 10000) = 44.4%. The old expectation of 80% came from
+    // subtracting cache_read from input first, which collapsed the denominator and
+    // pinned the metric at 100% whenever the cache was warmer than the fresh input.
+    assert.equal(agg.cache_hit_rate_pct, 44.4);
   });
 
   test('cost_unknown counts records without derivable cost', () => {
