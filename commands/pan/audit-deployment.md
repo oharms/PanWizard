@@ -77,9 +77,12 @@ For the detected runtime config directory (CONFIG_DIR), audit ALL of the followi
 - [ ] `CONFIG_DIR/pan-wizard-core/references/` — non-empty, every manifest-listed reference present
 
 **1.4 Commands**
-- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command `.md` present
-- For OpenCode: `CONFIG_DIR/command/` — every manifest-listed `pan-*.md` present
-- For Codex/Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
+- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command file present
+- For OpenCode: `CONFIG_DIR/commands/` — every manifest-listed `pan-*.md` present (flat, one file per command)
+- For Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
+- For Codex: the SHARED skills tree, not `CONFIG_DIR` — `./.agents/skills/pan-*/SKILL.md` for a local
+  install, `~/.agents/skills/pan-*/SKILL.md` for a global one. Codex has no `skills/` of its own; if you
+  look under `.codex/` you will find no commands and wrongly report a broken install.
 
 **1.5 Agents**
 - [ ] `CONFIG_DIR/agents/` — every manifest-listed agent file present

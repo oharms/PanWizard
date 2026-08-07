@@ -56,6 +56,21 @@ const PAN_SOURCE_ROOT = path.resolve(__dirname, '..');
 const normPath = p => process.platform === 'win32' ? p.toLowerCase() : p;
 
 /**
+ * Render a path for console output: relative to cwd when it is inside the project,
+ * absolute otherwise, always with forward slashes.
+ *
+ * Messages used to hardcode literals like '.codex/hooks.json'. That was only true
+ * for a local install — a --global or --config-dir install writes elsewhere, so the
+ * installer told users to inspect a file that did not exist while the real one sat
+ * somewhere they were never shown.
+ */
+const displayPath = (p) => {
+  const rel = path.relative(process.cwd(), p);
+  const use = (rel && !rel.startsWith('..')) ? rel : p;
+  return use.split(path.sep).join('/');
+};
+
+/**
  * True when `cwd` is the PAN source repo root OR any subdirectory of it — a
  * containment check, not an exact match, so `cd docs && node ../bin/install.js`
  * is also refused (a subdir install plants un-ignored .claude/AGENTS.md/etc.
@@ -1735,6 +1750,10 @@ function verifyFileInstalled(filePath, description) {
 // ──────────────────────────────────────────────────────
 
 const PATCHES_DIR_NAME = 'pan-local-patches';
+// Backups of manifest entries that live OUTSIDE the runtime's config dir (Codex's
+// skills at ../.agents/skills/) land here, with the traversal segments stripped, so
+// the patches tree stays self-contained.
+const EXTERNAL_PATCHES_SUBDIR = '_external';
 const MANIFEST_NAME = 'pan-file-manifest.json';
 
 /**
@@ -1881,21 +1900,44 @@ function saveLocalPatches(configDir) {
 
   const patchesDir = path.join(configDir, PATCHES_DIR_NAME);
   const modified = [];
+  const externalBackups = {};
 
   for (const [relPath, originalHash] of Object.entries(manifest.files || {})) {
-    // Keys reaching outside configDir (Codex skills in ../.agents/skills/)
-    // can't be backed up under patchesDir — path.join would collapse the
-    // `..` and write outside the patches tree. Skip them; they're still
-    // overwritten cleanly on reinstall.
-    if (relPath.split(/[\\/]/).includes('..')) continue; // M79: catch backslash '..' on Windows too
+    // Keys reaching outside configDir — Codex's skills live in ../.agents/skills/ —
+    // used to be SKIPPED here, because joining a `..` path under patchesDir would
+    // collapse the `..` and write outside the patches tree.
+    //
+    // Skipping was the wrong half of that trade: those keys are Codex's ONLY command
+    // surface, so a Codex user who tuned a skill silently lost the edit on the next
+    // upgrade, with no mention in the output and no backup to recover from — while
+    // docs/USER-GUIDE.md and docs/AGENTS.md both promise, unqualified, that the
+    // installer backs up locally modified files.
+    //
+    // Back them up under `_external/` with the traversal segments stripped instead.
+    // That keeps the containment the guard existed for (the final path cannot escape
+    // patchesDir — asserted below) while honouring the promise.
+    const segments = relPath.split(/[\\/]/).filter(Boolean);
+    const escapes = segments.some(s => s === '..');
+    const safeRel = escapes
+      ? path.join(EXTERNAL_PATCHES_SUBDIR, ...segments.filter(s => s !== '..' && s !== '.'))
+      : relPath;
+
     const fullPath = path.join(configDir, relPath);
     if (!fs.existsSync(fullPath)) continue;
     const currentHash = fileHash(fullPath);
     if (currentHash !== originalHash) {
-      const backupPath = path.join(patchesDir, relPath);
+      const backupPath = path.join(patchesDir, safeRel);
+      // Defence in depth: never write outside patchesDir, whatever the manifest says.
+      const resolvedPatches = path.resolve(patchesDir);
+      const resolvedBackup = path.resolve(backupPath);
+      if (resolvedBackup !== resolvedPatches && !resolvedBackup.startsWith(resolvedPatches + path.sep)) {
+        pushInstallWarning('saveLocalPatches', relPath, new Error('backup path escaped the patches directory — skipped'));
+        continue;
+      }
       fs.mkdirSync(path.dirname(backupPath), { recursive: true });
       fs.copyFileSync(fullPath, backupPath);
       modified.push(relPath);
+      if (escapes) externalBackups[relPath] = safeRel.split(path.sep).join("/");
     }
   }
 
@@ -1903,7 +1945,11 @@ function saveLocalPatches(configDir) {
     const meta = {
       backed_up_at: new Date().toISOString(),
       from_version: manifest.version,
-      files: modified
+      files: modified,
+      // Files whose manifest key points outside the config dir are stored under
+      // _external/ with the traversal stripped, so `files` alone would not locate
+      // them. Map logical key -> path within pan-local-patches/ for the restore flow.
+      ...(Object.keys(externalBackups).length > 0 ? { external_files: externalBackups } : {}),
     };
     fs.writeFileSync(path.join(patchesDir, 'backup-meta.json'), JSON.stringify(meta, null, 2));
     console.log('  ' + yellow + 'i' + reset + '  Found ' + modified.length + ' locally modified PAN file(s) — backed up to ' + PATCHES_DIR_NAME + '/');
@@ -1926,7 +1972,9 @@ function reportLocalPatches(configDir, runtime = 'claude') {
   try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return []; }
 
   if (meta.files && meta.files.length > 0) {
-    const reapplyCommand = runtime === 'opencode'
+    // Copilot uses the same flat /pan-<name> form as OpenCode; it previously fell
+    // through to Claude's '/pan:patches', a command form that does not exist there.
+    const reapplyCommand = (runtime === 'opencode' || runtime === 'copilot')
       ? '/pan-patches'
       : runtime === 'codex'
         ? '$pan-patches'
@@ -2518,7 +2566,10 @@ function install(isGlobal, runtime = 'claude') {
         updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand,
       });
       fs.writeFileSync(hooksJsonPath, JSON.stringify(merged, null, 2) + '\n');
-      console.log(`  ${green}✓${reset} Configured hooks (.codex/hooks.json: update check, context monitor, cost + trace loggers)`);
+      // Print the path we actually wrote. The hardcoded '.codex/hooks.json' was
+      // wrong for --global and for --config-dir, telling users to inspect a file
+      // that does not exist while the real one sat elsewhere.
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksJsonPath)}: update check, context monitor, cost + trace loggers)`);
     } catch (e) {
       pushInstallWarning('codexHooks', 'hooks.json', e);
     }
@@ -2534,7 +2585,8 @@ function install(isGlobal, runtime = 'claude') {
     try {
       fs.mkdirSync(path.dirname(hooksConfigPath), { recursive: true });
       fs.writeFileSync(hooksConfigPath, JSON.stringify(hooksConfig, null, 2) + '\n');
-      console.log(`  ${green}✓${reset} Configured hooks (.github/hooks/pan.json: update check, context monitor, cost + trace loggers)`);
+      // Same as the Codex case: a global Copilot install writes to ~/.copilot/, not .github/.
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, context monitor, cost + trace loggers)`);
     } catch (e) {
       console.error(`  ${yellow}✗${reset} Failed to write Copilot hooks config: ${e.message}`);
     }
