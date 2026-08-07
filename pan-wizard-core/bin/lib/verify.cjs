@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, toPosix, output, EXIT_OK, error, escapeRegex } = require('./core.cjs');
+const { safeReadFile, normalizePhaseName, comparePhaseNum, execGit, findPhaseInternal, getMilestoneInfo, toPosix, output, EXIT_OK, error, escapeRegex } = require('./core.cjs');
 const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
 const {
@@ -776,8 +776,17 @@ function checkStateFile(cwd, addIssue, repairs) {
   if (stateContent === null) {
     // skip further state checks
   } else {
-    // Extract phase references (e.g. "Phase 3" or "phase 01") from state.md
-    const phaseRefs = [...stateContent.matchAll(/[Pp]hase\s+(\d+(?:\.\d+)*)/g)].map(match => match[1]);
+    // Extract phase references (e.g. "Phase 3" or "phase 01") from state.md,
+    // deduped by normalized phase number. A real state.md mentions the same phase
+    // several times -- a total, a progress line, a decisions note -- and one missing
+    // directory must produce one warning, not one per mention. Keying on the
+    // normalized form collapses "Phase 3" and "Phase 03"; the first spelling seen
+    // is kept so the message quotes what the file actually says.
+    const phaseRefs = new Map();
+    for (const match of stateContent.matchAll(/[Pp]hase\s+(\d+(?:\.\d+)*)/g)) {
+      const key = normalizePhaseName(match[1]);
+      if (!phaseRefs.has(key)) phaseRefs.set(key, match[1]);
+    }
     // Get disk phases for cross-reference
     const diskPhases = new Set();
     try {
@@ -792,7 +801,7 @@ function checkStateFile(cwd, addIssue, repairs) {
       // phases/ directory may not exist yet
     }
     // Check for invalid references -- only warn if there are phases on disk
-    for (const ref of phaseRefs) {
+    for (const ref of phaseRefs.values()) {
       const normalizedRef = String(parseInt(ref, 10)).padStart(2, '0');
       if (!diskPhases.has(ref) && !diskPhases.has(normalizedRef) && !diskPhases.has(String(parseInt(ref, 10)))) {
         if (diskPhases.size > 0) {
@@ -885,10 +894,28 @@ function crossCheckRoadmapDisk(cwd, phasesDirPath, addIssue) {
     }
   } catch { /* phases/ may not exist yet */ }
 
+  // A roadmap phase ahead of the current position has simply not been planned yet.
+  // PAN's own workflow creates the condition: /pan:new-project writes a roadmap
+  // declaring every phase up front, and /pan:plan-phase creates directories one at a
+  // time -- so warning on those would make `degraded` the permanent state of every
+  // multi-phase project and drain the verdict of signal. Only a phase at or behind
+  // the current position is genuinely suspect. With no readable current phase we
+  // cannot tell ahead from behind, so fall back to warning on everything.
+  let currentPhase = null;
+  try {
+    const stateContent = fs.readFileSync(path.join(planningPath(cwd), STATE_FILE), 'utf-8');
+    const m = stateContent.match(/\*\*Current Phase:\*\*\s*(\d+[A-Z]?(?:\.\d+)*)/i);
+    if (m) currentPhase = m[1];
+  } catch { /* no state.md -- checkStateFile reports that; stay conservative here */ }
+
   for (const p of roadmapPhases) {
     const padded = String(parseInt(p, 10)).padStart(2, '0');
-    if (!diskPhases.has(p) && !diskPhases.has(padded))
+    if (diskPhases.has(p) || diskPhases.has(padded)) continue;
+    if (currentPhase !== null && comparePhaseNum(p, currentPhase) > 0) {
+      addIssue('info', 'I002', `Phase ${p} in ${ROADMAP_FILE} is not planned yet (current phase: ${currentPhase})`, `Run /pan:plan-phase ${p} when you reach it`);
+    } else {
       addIssue('warning', 'W006', `Phase ${p} in ${ROADMAP_FILE} but no directory on disk`, 'Create phase directory or remove from roadmap');
+    }
   }
   for (const p of diskPhases) {
     const unpadded = String(parseInt(p, 10));
@@ -1323,19 +1350,6 @@ function cmdValidateHealth(cwd, options, raw) {
     }
   }
 
-  // Determine overall status from error/warning counts
-  let status;
-  if (errors.length > 0) {
-    status = HEALTH_STATUS.BROKEN;
-  } else if (warnings.length > 0) {
-    status = HEALTH_STATUS.DEGRADED;
-  } else {
-    status = HEALTH_STATUS.HEALTHY;
-  }
-
-  const repairableCount = errors.filter(e => e.repairable).length +
-                         warnings.filter(w => w.repairable).length;
-
   // Check 11 (optional): drift analysis
   let driftResult;
   if (options.drift) {
@@ -1366,6 +1380,22 @@ function cmdValidateHealth(cwd, options, raw) {
       addIssue('warning', 'LINKS_ERR', `Link graph has ${r.summary.errors} errors (broken refs or uncovered backlink contracts)`, 'Run pan-tools links validate for details');
     }
   }
+
+  // Determine overall status from error/warning counts. This must run after every
+  // check that can call addIssue -- computing it earlier left DRIFT_HIGH and
+  // LINKS_ERR sitting in `warnings` while the verdict still read `healthy`, which
+  // contradicts the documented behaviour of --links ("errors degrade health").
+  let status;
+  if (errors.length > 0) {
+    status = HEALTH_STATUS.BROKEN;
+  } else if (warnings.length > 0) {
+    status = HEALTH_STATUS.DEGRADED;
+  } else {
+    status = HEALTH_STATUS.HEALTHY;
+  }
+
+  const repairableCount = errors.filter(e => e.repairable).length +
+                         warnings.filter(w => w.repairable).length;
 
   const result = {
     status,
