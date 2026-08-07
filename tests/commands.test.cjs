@@ -278,7 +278,9 @@ describe('summary-extract command', () => {
 
   test('missing file returns error', () => {
     const result = runPanTools('summary-extract .planning/phases/01-test/01-01-summary.md', tmpDir);
-    assert.ok(result.success, `Command should succeed: ${result.error}`);
+    // A real failure: the error body goes to stdout AND the process exits non-zero
+    // so a caller gating on `$?` can see it (output() contract, core.cjs).
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'should report missing file');
@@ -660,6 +662,16 @@ describe('scaffold command', () => {
     assert.strictEqual(output.created, false, 'should not overwrite');
     assert.strictEqual(output.reason, 'already_exists');
   });
+
+  // M10 regression: scaffold context/uat/verification without --phase used to
+  // hit path.join(null, …) and crash with a raw TypeError. It must now return a
+  // clean usage error instead.
+  test('errors (does not crash) for context scaffold with no --phase', () => {
+    const result = runPanTools('scaffold context', tmpDir);
+    assert.ok(!result.success, 'should fail without --phase');
+    assert.ok(/--phase required/.test(result.error), 'should be a usage error');
+    assert.ok(!/TypeError/.test(result.error), 'must not be a raw TypeError crash');
+  });
 });
 
 // ── websearch error cases ───────────────────────────────────────────────────
@@ -762,8 +774,17 @@ describe('commit command', () => {
       // Add an artifact so there's something to commit
       fs.writeFileSync(path.join(noIdRepo, '.planning', 'project.md'), '# Test project\n');
       // Force git to have NO identity in this repo (clear local; ensure global doesn't apply via -c overrides)
-      execSync('git config --local --unset-all user.email || true', { cwd: noIdRepo, stdio: 'pipe', shell: true });
-      execSync('git config --local --unset-all user.name || true', { cwd: noIdRepo, stdio: 'pipe', shell: true });
+      // `|| true` is a POSIX-shell idiom and is NOT portable: cmd.exe understands `||`
+      // but Windows has no `true` command, so the fallback itself fails and execSync
+      // throws — the test then errors on Windows only. git exits 5 when there is no
+      // key to unset, which is the expected case here, so swallow it explicitly.
+      for (const key of ['user.email', 'user.name']) {
+        try {
+          execSync(`git config --local --unset-all ${key}`, { cwd: noIdRepo, stdio: 'pipe' });
+        } catch {
+          // Nothing to unset (git exit 5) — already absent, which is what we want.
+        }
+      }
 
       // Without --fail-on-error: returns success-shaped output with committed:false (legacy contract preserved)
       const lenient = runPanTools('commit "test commit" -c user.email= -c user.name=', noIdRepo);
@@ -825,6 +846,29 @@ describe('router error paths', () => {
     const result = runPanTools('verify bogus');
     assert.strictEqual(result.success, false);
     assert.ok(result.error.includes('Unknown verify subcommand'), 'should mention unknown verify subcommand');
+  });
+
+  test('unknown verify subcommand error lists reconcile and stubs (L15 regression)', () => {
+    const result = runPanTools('verify bogus');
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error.includes('reconcile'), 'should list the reconcile subcommand');
+    assert.ok(result.error.includes('stubs'), 'should list the stubs subcommand');
+  });
+
+  test('no-arg usage lists routed commands beyond standards (L14 regression)', () => {
+    const result = runPanTools('');
+    assert.strictEqual(result.success, false);
+    // A representative sample of the ~29 previously-omitted routed commands.
+    for (const cmd of ['git', 'experiment', 'memory', 'optimize', 'learn', 'hygiene', 'cost', 'worktree', 'bridge']) {
+      assert.ok(result.error.includes(cmd), `usage should mention "${cmd}"`);
+    }
+  });
+
+  test('batch-commit reports a parse error for malformed JSON (L16 regression)', () => {
+    // Previously swallowed → misleading 'no_items'. Must surface the parse error.
+    const result = runPanTools('batch-commit not-valid-json');
+    assert.strictEqual(result.success, false);
+    assert.ok(/Invalid JSON for batch-commit/.test(result.error), 'should report the parse failure');
   });
 
   test('unknown validate subcommand returns error', () => {

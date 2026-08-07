@@ -1,6 +1,6 @@
 # pan-tools.cjs CLI Reference
 
-Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Every shipped command and agent ultimately invokes pan-tools for state management, verification, scaffolding, context gathering, prompt-cache priming, cross-phase memory, Opus 4.7 capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree, MCP bridge), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`, `runner`) plus vendored markdown linter (`doc-lint`).
+Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Every shipped command and agent ultimately invokes pan-tools for state management, verification, scaffolding, context gathering, prompt-cache priming, cross-phase memory, model-capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree, MCP bridge), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`, `runner`) plus vendored markdown linter (`doc-lint`).
 
 ```
 node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
@@ -32,7 +32,7 @@ node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
 - [18. Focus Commands](#18-focus-commands)
 - [19. Standards Commands](#19-standards-commands)
 - [20. Operations Commands](#20-operations-commands)
-- [20.1 Opus 4.7 Commands](#201-opus-47-commands-v2100)
+- [20.1 Capability-Aware Commands](#201-capability-aware-commands-v2100)
 - [21. Codebase Commands](#21-codebase-commands)
 - [22. Spec B v2 Commands](#22-spec-b-v2-commands-v30-v34)
 - [23. Self-Improvement Loop Commands](#23-self-improvement-loop-commands)
@@ -58,16 +58,79 @@ When JSON output exceeds ~50 KB, the tool writes it to a temporary file and prin
 
 | Code | Meaning |
 |------|---------|
-| `0`  | Success |
-| `1`  | Error (message written to stderr via `error()`) |
+| `0`  | The command answered the question it was asked — including when the answer is empty or negative |
+| `1`  | Failure, refusal, or a gate that tripped: the command did not produce the result the caller wanted |
+| `2`  | `doc-lint` only — the schema file itself is malformed, so nothing could be linted (distinct from *finding* violations). Emitted on **both** the `--raw` and the JSON path; the JSON body additionally lists `schema_errors` |
+
+**The exit code is the authoritative failure signal.** Gate on it. Do not gate on the presence of an `error` key in the body — see "Error Shape" below for why that test gives the wrong answer.
+
+### Error Shape
+
+pan-tools has **two** error mechanisms. They differ in where the text lands, not in the exit code:
+
+| Mechanism | Text goes to | stdout | Exit code |
+|---|---|---|---|
+| `error(msg)` | **stderr**, as a bare `Error: <msg>` line — no JSON | empty | always `1` |
+| `output(payload, …)` with a truthy top-level **error-family** key | **stdout**, as `{ "error": "<description>" }` (or the plain message under `--raw`) | the payload | `1` unless the command opts out (below) |
+
+The **error family** is `error` and any key ending in `_error` — `worktree_error` (`whatif prepare`), `drain_error` (`bus drain`). A renamed error key is still an error key. Plural collections (`errors`, `schema_errors`) and counters (`error_count`) are *not* in the family: they are the detail of a verdict payload, and an empty array is truthy in JavaScript, so treating them as failure signals would fail every clean run. Commands whose result is a verdict set their exit code explicitly instead.
+
+`error()` is used for usage errors and unmet preconditions the caller cannot act on programmatically (a missing required argument). `output()` carries a machine-readable body: a failure the caller may want to branch on (`{"error": "state.md not found"}`, `{"error": "not_a_git_repo"}`) or a deliberate refusal that protected something (`{"error": "File already exists"}`, `{"error": "dirty_working_tree"}` — the file was not overwritten, the reset did not run).
+
+Error messages follow the pattern `"<thing> not found"` with actionable hints where appropriate.
+
+**A JSON `error` body carries a non-zero exit.** This was not always true: every `output({ error: … })` site once exited `0`, so `pan-tools state json` in a project with no `state.md` printed `{"error":"state.md not found"}` **and reported success** — invisible to any orchestrator, hook, CI step, or autonomous loop gating on the exit code. `output()` now derives the code from the payload in one place (`core.cjs`), so the two mechanisms agree.
+
+#### A valid-but-empty answer is not an error
+
+An empty result is a *result*. `focus plan` on a burned-down backlog, `verify artifacts` on a plan that declares no artifacts, `template select` falling back to the documented default — each answered correctly and **exits `0`**. Some of these still carry an `error` string, because it is the only field available to explain *why* the answer is empty (`{"error": "No work items found. Run focus scan first or add phases/todos."}` at exit `0`). Such sites opt out explicitly via `core.cjs`'s `EXIT_OK`, each with a comment giving its reason; `grep -rn "EXIT_OK" pan-wizard-core/bin` enumerates every one.
+
+That is exactly why the exit code, not the `error` key, is the failure test.
+
+#### `<verb>: false` payloads
+
+Mutating commands report the outcome as a past-tense flag: `{committed}`, `{updated}`, `{added}`, `{resolved}`, `{pushed}`, `{created}`. **The flag alone does not tell you whether something went wrong**, and the exit code does:
+
+| Payload | Exit | Why |
+|---|---|---|
+| `{committed: false, reason: "commit_failed", error: …}` | `1` | git refused; nothing landed |
+| `{committed: false, reason: "commit_blocked", error: …}` | `1` | a safety check protected you; nothing landed |
+| `{updated: false, reason: "state.md not found", error: …}` | `1` | the write had nowhere to go |
+| `{resolved: false, reason: "no matching blocker", error: …}` | `1` | the blocker is still open |
+| `{committed: false, reason: "nothing_to_commit"}` | `0` | no change was needed |
+| `{committed: false, reason: "skipped_commit_docs_false"}` | `0` | your config said not to |
+| `{advanced: false, reason: "last_plan"}` | `0` | normal end of phase |
+| `{updated: false, reason: "No plans found"}` | `0` | nothing to sync |
+| `{available: false, reason: "BRAVE_API_KEY not set"}` | `0` | capability unconfigured, not broken |
+| `{found: false, phase_number: 12}` | `0` | the answer to the question is "no" |
+| `{clean: false, …}` / `{exists: false, …}` | `0` | a description of state |
+
+The failures carry an error-family key and the answers do not — which is *why* the same shape can mean both. This split is a per-command judgement recorded in the source next to each payload, not something you can infer from the shape.
+
+`{available: false}` is worth one more line, because it appears with and without an error key on purpose: `web-search` with no `BRAVE_API_KEY` is unconfigured (exit `0`, degrade gracefully), while a configured search that gets an API 5xx is broken (exit `1`).
+
+#### How a caller tells them apart
+
+```sh
+out=$(pan-tools <command>)   # stderr passes through to the terminal
+code=$?
+if [ "$code" -ne 0 ]; then
+  # Failed, refused, or a gate tripped. The reason is in whichever stream spoke:
+  #   $out non-empty -> JSON body on stdout; read its .error
+  #   $out empty     -> a bare "Error: ..." line went to stderr
+  :
+else
+  # Answered. The answer may legitimately be empty and may carry an `error`
+  # string saying why -- branch on the data, never on the `error` key.
+  :
+fi
+```
+
+A gate whose verdict has no `error` key sets its code explicitly instead: `links validate` (`0` pass / `1` fail), `verify reconcile` (`0` reconciled / `1` contradiction), `verify stubs --gate`, `campaign due`. Those are documented per command.
 
 ### `--cwd <path>`
 
 Override the working directory. Accepts `--cwd /path` or `--cwd=/path`. Useful when subagents run outside the project root.
-
-### Error Shape
-
-All errors return JSON: `{ "error": "<description>" }`. Error messages follow the pattern `"<thing> not found"` with actionable hints where appropriate.
 
 ### Module Architecture
 
@@ -79,7 +142,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `commands.cjs` | Utility commands (slug, timestamp, commit, batch-commit, estimate-cost, rollback, progress, etc.) |
 | `phase.cjs` | Phase directory and plan operations |
 | `init.cjs` | Compound workflow context gathering |
-| `verify.cjs` | Verification, validation, and retrospective (Opus 4.7: `retro --write-memory`); facade over the verify-* submodules |
+| `verify.cjs` | Verification, validation, and retrospective (v2.10.0: `retro --write-memory`); facade over the verify-* submodules |
 | `verify-drift.cjs` | Convention-drift detection (`drift-check`); extracted from verify.cjs, re-exported through it |
 | `verify-retro.cjs` | Milestone retrospective (`retro`); extracted from verify.cjs, re-exported through it |
 | `verify-deploy.cjs` | Deployment validation (`validate deployment`); extracted from verify.cjs, re-exported through it |
@@ -91,9 +154,9 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `config.cjs` | config.json management |
 | `template.cjs` | Template selection and filling |
 | `milestone.cjs` | Milestone archival and requirements |
-| `context-budget.cjs` | Context window utilization (Opus 4.7: cache metrics surfaced in health output) |
-| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto/design + Opus 4.7: `focus classify-stages`, `focus reflection` |
-| `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices + Opus 4.7: `codebase estimate-size` |
+| `context-budget.cjs` | Context window utilization (v2.10.0: cache metrics surfaced in health output) |
+| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto/design + v2.10.0: `focus classify-stages`, `focus reflection` |
+| `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices + v2.10.0: `codebase estimate-size` |
 | `memory.cjs` | **(v2.10.0, E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact` |
 | `memory-optimize.cjs` | Reconcile the always-loaded project memory: `memory optimize [--apply] [--keep N]` (dedupe / placeholder-strip / cap-with-archive state.md); also runs automatically in the focus + normal flows |
 | `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply]` (AGENTS.md PAN section, CLAUDE.md bridge, state.md frontmatter) |
@@ -114,13 +177,17 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `runner.cjs` | External agent runner: `experiment run/status/stop`. Spawns Claude/Codex/Gemini/OpenCode via `spawnSync`. |
 | `learn-lint.cjs` | Learnings-store integrity linter: `learn lint`. Checks L-001..L-005 (duplicate IDs, dangling cross-refs, empty source_experiments, PAN-internal terms in universal-scope rules, revision marker without `superseded_by`). |
 | `learn-index.cjs` | Learnings index + queries: `learn build-index` (writes `pan-wizard-core/learnings/index.json` with topic→agent-relevance map), `learn topics-for --agent <role>` (budget-aware topic selection per agent role). Replaces "skim universal/" with targeted load. |
-| `squads.cjs` | **(v3.11, ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Four role-scoped squads (architecture/build/quality/release) with model tier + least-privilege access contract. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
+| `squads.cjs` | **(v3.11, ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Role-scoped squads (`squad list` enumerates them), each carrying a model tier + an **advisory** access contract — the module's own header says it "modifies no agent and changes no execution path", so those labels are the contract the conductor is instructed to honour and the enforced grant stays each agent's `tools:` frontmatter. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
 | `worktree.cjs` | **(v3.11, ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
 | `campaign.cjs` | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--pause`/`--resume`/`--disable`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
 | `hud.cjs` | **(v3.12, ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
 | `skill-align.cjs` | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
 | `hygiene.cjs` | **(v3.13)** Project cleanup + version alignment: `hygiene scan` (version drift per runtime manifest, legacy uppercase filenames, .tmp orphans, memory bloat, poisoned ledgers, stale traces, fragment planning dirs), `hygiene clean [--apply]` (dry-run by default; safe fixes only — renames, compaction, quarantine-by-rename, trace pruning; installer re-runs and fragment removal stay manual). |
 | `phase-report.cjs` | **(v3.15)** Per-phase HTML report + project timeline index: `report phase <N>`, `report index` (`--bundle` for one self-contained inlined file), `report all` (`--out`/`--open`/`--stdout`). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`; bundle `.planning/report-bundle.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. Opt-in auto-generation at the verify→complete gate, focus-auto checkpoints, and army INTEGRATE via `workflow.phase_reports`. |
+| `links.cjs` | Doc-Code Link Graph engine behind `links validate` (ADR-0027): parses frontmatter link declarations, resolves doc↔code references, and reports dangling/stale links. |
+| `constants.cjs` | Shared constants used across the dispatcher — e.g. `COMMAND_RENAME_MAP` (legacy→current command names) and `FOCUS_CATEGORIES`. No CLI surface; imported by other modules. |
+| `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
+| `utils.cjs` | Cross-cutting helpers (path normalization via `toPosix()`, safe reads, small parsers) shared by the other modules. No CLI surface. |
 
 ---
 
@@ -232,14 +299,14 @@ Quick reference of all CLI commands grouped by category.
 | 100 | `codebase detect-languages` | Codebase | codebase.cjs |
 | 101 | `codebase analyze-imports` | Codebase | codebase.cjs |
 | 102 | `codebase best-practices` | Codebase | codebase.cjs |
-| 103 | `codebase estimate-size` | Opus 4.7 (E-2) | codebase.cjs |
-| 104 | `memory read` | Opus 4.7 (E-4) | memory.cjs |
-| 105 | `memory append` | Opus 4.7 (E-4) | memory.cjs |
-| 106 | `memory list` | Opus 4.7 (E-4) | memory.cjs |
-| 107 | `memory compact` | Opus 4.7 (E-4) | memory.cjs |
-| 108 | `cache prime` | Opus 4.7 (E-1) | core.cjs |
-| 109 | `focus classify-stages` | Opus 4.7 (E-6) | focus.cjs |
-| 110 | `focus reflection` | Opus 4.7 (E-10) | focus.cjs |
+| 103 | `codebase estimate-size` | Spec A E-2 (v2.10.0) | codebase.cjs |
+| 104 | `memory read` | Spec A E-4 (v2.10.0) | memory.cjs |
+| 105 | `memory append` | Spec A E-4 (v2.10.0) | memory.cjs |
+| 106 | `memory list` | Spec A E-4 (v2.10.0) | memory.cjs |
+| 107 | `memory compact` | Spec A E-4 (v2.10.0) | memory.cjs |
+| 108 | `cache prime` | Spec A E-1 (v2.10.0) | core.cjs |
+| 109 | `focus classify-stages` | Spec A E-6 (v2.10.0) | focus.cjs |
+| 110 | `focus reflection` | Spec A E-10 (v2.10.0) | focus.cjs |
 | 111 | `cost report` | Spec B v2 Y-6 (v3.0) | cost.cjs |
 | 112 | `cost append` | Spec B v2 Y-6 (v3.0) | cost.cjs |
 | 113 | `cost clear` | Spec B v2 Y-6 (v3.0) | cost.cjs |
@@ -321,6 +388,12 @@ Quick reference of all CLI commands grouped by category.
 | 189 | `memory optimize` | Memory | memory-optimize.cjs |
 | 190 | `memory rebuild` | Memory | memory-rebuild.cjs |
 | 191 | `optimize trace reconcile` | Optimization | optimize.cjs |
+| 192 | `verify reconcile` | Verification | verify.cjs |
+| 193 | `verify stubs` | Verification | verify.cjs |
+| 194 | `memory select` | Memory | memory.cjs |
+| 195 | `memory budget` | Memory | memory.cjs |
+| 196 | `doc-lint counts` | Linting | doc-lint.cjs |
+| 197 | `doc-lint flags` | Linting | doc-lint.cjs |
 
 ---
 
@@ -349,7 +422,7 @@ pan-tools state load [--raw]
 
 **`--raw` output:** Key=value lines: `model_profile=balanced`, `commit_docs=true`, etc.
 
-**Error:** `{ "error": "state.md not found" }` if `.planning/state.md` doesn't exist.
+**Error:** `{ "error": "state.md not found" }` on stdout, **exit 1**, if `.planning/state.md` doesn't exist.
 
 **Implementation:** `state.cjs → cmdStateLoad()` — Uses `readStateSafe()` for race-condition-safe file access.
 
@@ -773,18 +846,18 @@ pan-tools phase complete 5 [--raw]
 
 Commands for discovering phase directories and their contents.
 
-### `phases list [--type plan|summary] [--phase N] [--include-archived]`
+### `phases list [--type plans|summaries] [--phase N] [--include-archived]`
 
 List phase directories or files within phases.
 
 ```
 pan-tools phases list [--raw]
-pan-tools phases list --type plan --phase 5 [--raw]
+pan-tools phases list --type plans --phase 5 [--raw]
 pan-tools phases list --include-archived [--raw]
 ```
 
 **Flags:**
-- `--type plan|summary` — List files of a specific type instead of directories
+- `--type plans|summaries` — List files of a specific type instead of directories
 - `--phase N` — Filter to a specific phase
 - `--include-archived` — Include phases from archived milestones
 
@@ -1102,13 +1175,36 @@ pan-tools validate health --links
 | E004 | error | `state.md` not found | Yes |
 | E005 | error | `config.json` JSON parse error | Yes |
 | W001 | warning | `project.md` missing required section | No |
-| W002 | warning | `state.md` references non-existent phase | No |
+| W002 | warning | `state.md` references non-existent phase | Yes |
 | W003 | warning | `config.json` not found | Yes |
 | W004 | warning | `config.json` invalid `model_profile` value | No |
 | W005 | warning | Phase directory naming doesn't match `NN-name` format | No |
-| W006 | warning | Phase in ROADMAP but no directory on disk | No |
+| W006 | warning | Phase in ROADMAP at or behind the current phase, but no directory on disk | No |
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
+| I002 | info | Phase in ROADMAP ahead of the current phase, not planned yet | No |
+| STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `REQUIREMENTS.md` has unchecked boxes | Yes |
+| STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
+| VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
+
+Codes emitted only under the corresponding flag:
+
+| Code | Severity | Flag | Description | Repairable |
+|------|----------|------|-------------|------------|
+| TESTS_FAIL | error | `--full` | Test run exited non-zero | No |
+| BUILD_FAIL | error | `--full` | Build exited non-zero | No |
+| MEM_BUDGET | warning / info | `--full` | Per-agent memory injection over budget (warning at `critical`, info at `warning`) | No |
+| DRIFT_HIGH | warning | `--drift` | Convention drift verdict is `high` | No |
+| DRIFT_MEDIUM | info | `--drift` | Convention drift verdict is `medium` | No |
+| LINKS_ERR | warning | `--links` | Link graph has broken refs or uncovered backlink contracts | No |
+| STD-000 | info | `--standards` | No `standards.md` found — no standards selected | No |
+| STD-001 | info | `--standards` | `standards.md` exists but contains no recognized standards | No |
+| STD-*id* | warning / info | `--standards` | Per-standard coverage (warning at 0% verified, otherwise info) | No |
+| STD-SUMMARY | info | `--standards` | Overall coverage across selected standards | No |
+
+Both tables are exhaustive: every code `validate health` can emit is listed above, and
+`tests/verify-health-codes.test.cjs` fails if a new code is added to the implementation
+without a row here.
 
 ### `validate deployment`
 
@@ -1322,6 +1418,30 @@ pan-tools verify key-links .planning/phases/05-setup/05-01-plan.md [--raw]
 
 ---
 
+### `verify reconcile <phase>`
+
+Cross-check a phase's recorded verification against its actual state so a rubber-stamped "verified" can't slip through. Exits non-zero when a contradiction is found (so `exec-phase`'s auto-advance gate stops), zero when reconciled.
+
+```
+pan-tools verify reconcile 5 [--raw]
+```
+
+**`--raw` output:** `valid` or `invalid`.
+
+---
+
+### `verify stubs [--gate]`
+
+Scan the uncommitted/changed file set (git diff vs HEAD plus staged/index changes, so it gates a handoff) for stub / fake-return markers (`not implemented`, `NotImplemented`, `throw new Error("stub"/"todo")`, HTTP `501`, `coming soon`/`placeholder`, etc.) that indicate unfinished work. With `--gate`, exits non-zero when blocking (high-severity) findings exist; without it, always reports and exits zero.
+
+```
+pan-tools verify stubs [--gate] [--raw]
+```
+
+**`--raw` output:** `valid` or `invalid`.
+
+---
+
 ## 10. Progress & Context
 
 Commands for viewing project progress and estimating context window utilization.
@@ -1381,6 +1501,8 @@ pan-tools progress health [--raw]
 
 **Grade mapping:** A (>=80), B (>=60), C (>=40), D (<40).
 
+**The `context` denominator:** `utilization` is an estimate of `state.md` + `roadmap.md` + `project.md` + every phase's plan files, divided by PAN's own fixed budget constant — 200,000 tokens (`CONTEXT_WINDOW` in `constants.cjs`) — **not a reading of your model's real window.** Nothing detects the model here either; see [`context-budget`](#context-budget) for the same assumption stated in full.
+
 **Enhanced fields:** `patterns_count` (error patterns from `patterns.md`), `session_count` (session entries from `session-history.md`).
 
 **`--raw` output (table/bar/health):** The rendered string.
@@ -1389,7 +1511,7 @@ pan-tools progress health [--raw]
 
 ### `context-budget`
 
-Estimate context window utilization for the current phase. Measures how much of the 200K token context window would be consumed by loading project files, roadmap, state, and plans for the active phase.
+Estimate context window utilization for the current phase. Measures how much of the assumed context window would be consumed by loading project files, roadmap, state, and plans for the active phase. The denominator is PAN's own fixed budget constant — 200,000 tokens (`CONTEXT_WINDOW` in `constants.cjs`) — **not a reading of your model's real window.** Nothing detects the model here; the number is a deliberately conservative planning assumption, so on a larger-context model the real headroom is greater than the report implies. That constant is the window size PAN commits to, and `progress health`'s `context` block divides by the same one.
 
 ```
 pan-tools context-budget [--raw]
@@ -1827,33 +1949,31 @@ Get the model name for an agent based on the current model profile in config. Th
 pan-tools resolve-model pan-executor [--raw]
 ```
 
-**Valid agent types:** `pan-planner`, `pan-roadmapper`, `pan-executor`, `pan-phase-researcher`, `pan-project-researcher`, `pan-research-synthesizer`, `pan-debugger`, `pan-document_code`, `pan-verifier`, `pan-reviewer`, `pan-plan-checker`, `pan-integration-checker`
+**Agent types:** any key in `MODEL_PROFILES` (`core.cjs`) — the shipped `pan-*` agents, listed in the matrix below. The argument is not validated against an allowlist: a name that isn't in the table resolves to the mid tier and sets `unknown_agent: true` rather than erroring.
 
 **JSON output:**
 ```json
-{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "high" }
+{ "model": "inherit", "profile": "balanced", "strategy": "static", "effort": "high" }
 ```
 
-For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "medium", "unknown_agent": true }`
+For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "medium", "unknown_agent": true }` — unknown agents get the mid tier regardless of profile.
 
-**`--raw` output:** Model name string (e.g., `sonnet`, `haiku`, `inherit`). `inherit` means "use the parent model (opus)".
+**`--raw` output:** Model name string (e.g., `inherit`, `sonnet`, `haiku`). `inherit` means "use the model the session was launched with" — PAN does not name a model here, so it never goes stale as the lineup moves.
 
 **Effort (2026-06):** alongside the tier, every agent resolves to a reasoning-effort level (`low`/`medium`/`high`/`xhigh`) — the primary within-model cost/intelligence dial on current models (it replaced fixed thinking budgets). Base levels per agent mirror the `effort:` frontmatter shipped in `agents/*.md`; the `budget` profile steps effort down one level (floor `low`); `quality`/`balanced` keep the base. Override per agent via `.planning/config.json` → `"effort_overrides": { "pan-planner": "xhigh" }`.
 
-**Model profile matrix:**
+**Model profile matrix** (cost reset, 2026-07):
 
 | Agent | Quality | Balanced | Budget |
 |-------|---------|----------|--------|
-| planner | inherit | inherit | sonnet |
-| roadmapper, executor, debugger | inherit | sonnet | sonnet |
-| researchers, synthesizer, verifier, plan-checker, integration-checker | inherit | sonnet | haiku |
-| document_code (mapper), reviewer | inherit | haiku | haiku |
+| planner, designer, roadmapper, executor, debugger, conductor, counterfactual | inherit | inherit | sonnet |
+| every other registered agent — the researchers and synthesizer, the doc writer, the verifier and checkers, and the review/support roster | inherit | inherit | haiku |
 
-Quality is `inherit` for **every** agent (all reasoning-tier). `inherit` → the host's selected top model, `sonnet` → mid tier, `haiku` → fast tier. Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
+`quality` and `balanced` are `inherit` for **every** agent — the two columns are identical, so switching between them changes nothing. `budget` is the only profile that down-tiers. `inherit` → the reasoning tier, i.e. the model the session was launched with; `sonnet` → mid tier; `haiku` → fast tier (the `sonnet`/`haiku` names are the Anthropic mapping — `PROVIDER_MODELS` in `core.cjs` substitutes the equivalent for OpenAI/Google projects, and `inherit` is the reasoning tier on every provider). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
 
 ---
 
-### `commit <message> [--files f1 f2] [--amend] [--type TYPE] [--force]`
+### `commit <message> [--files f1 f2] [--amend] [--type TYPE] [--force] [--fail-on-error]`
 
 Commit planning docs to git. Respects `commit_docs` config setting and `.gitignore`. Includes safety checks for deleted and sensitive files.
 
@@ -1871,6 +1991,7 @@ pan-tools commit "bugfix" --type fix --force
 - `--amend` — Amend the previous commit instead of creating a new one
 - `--type TYPE` — Conventional commit type prefix. Valid: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`. Prepends `type: ` to message.
 - `--force` — Skip deleted-file safety check
+- `--fail-on-error` — Report a git refusal (e.g. missing identity) as a bare `error()` on **stderr** instead of a `commit_failed` JSON body on stdout. Both exit non-zero, so autonomous loops detect the silent-failure case where the artifact never actually landed either way; the flag only changes which stream carries the reason. (`nothing_to_commit` has no `error` key and is still a success at exit `0`.)
 
 **Safety checks** (enabled by default via `config.commit.safety_checks`):
 - **Deleted files:** Blocks commit if deleted files in staging (use `--force` to override)
@@ -1949,11 +2070,13 @@ pan-tools estimate-cost [--raw]
 {
   "estimates": [
     { "profile": "quality", "total": <N>, "average": 15.0, "agentCount": <N> },
-    { "profile": "balanced", "total": <N>, "average": 3.7, "agentCount": <N> },
+    { "profile": "balanced", "total": <N>, "average": 15.0, "agentCount": <N> },
     { "profile": "budget", "total": <N>, "average": 1.6, "agentCount": <N> }
   ]
 }
 ```
+
+`quality` and `balanced` report the same average by design — post cost reset both put every agent on the reasoning tier (15× baseline). `budget` is the only profile that down-tiers, so it's the only one that moves the number.
 
 **`--raw` output:** One line per profile: `quality: ~15.0x baseline (<N> agents)`.
 
@@ -2433,7 +2556,7 @@ Scheduled, self-resuming bot-army campaigns. PAN is not a daemon: this module ow
 
 - `campaign schedule` — arm or update the schedule. Flags: `--cadence <hourly|daily|weekly|Nh|Nd>` (default `daily`), `--daily-budget <points>` (default 300), `--goal <text>`, `--source <name>` (default `backlog`), `--pause`, `--resume`, `--disable`. Returns the written descriptor.
 - `campaign status` — full descriptor plus computed `spent_today`, `due`, and `reason`. Also the default when `campaign` is run with no subcommand.
-- `campaign due` — host-scheduler gate: returns `{due, reason, next_due}`. `reason` is one of `no_schedule`, `disabled`, `paused`, `budget_exhausted_today`, `due`, `not_yet`.
+- `campaign due` — host-scheduler gate: returns `{due, reason, next_due}`. `reason` is one of `no_schedule`, `disabled`, `paused`, `budget_exhausted_today`, `due`, `not_yet`. **Exit codes:** `0` — due; `1` — not due. The payload has no `error` key, so the code is set explicitly; a `cron`/`&&` trigger can gate on it without parsing the body. "Not due" is a negative *answer*, not a failure, so pair the exit code with `reason` if you need to distinguish it from a broken descriptor.
 - `campaign record-run` — record a completed run and advance `next_due`. Flags: `--items <N>`, `--points <N>`.
 
 ### `hud [--out <file>] [--open] [--stdout]` (v3.12, ADR-0035)
@@ -2458,7 +2581,7 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
                      [--status] [--stop] [--update] [--continue] [--dry-run] [--raw]
 ```
 
-**Categories:** cleanup (P3-P5), tests (P2-P5), stability (P0-P2), features (P3-P5), docs (P5-P6), optimize (P1-P4), prompts (P0-P6)
+**Categories:** cleanup (P3-P5), tests (P2-P5), stability (P0-P2), features (P3-P5), docs (P5-P6), optimize (P1-P4), prompts (P0-P6), security (P0-P2), distill (P1-P5)
 
 **Work source (ADR-0031):** `--source scan` (default) selects work by category code-scan; `--source backlog` ranks actionable `roadmap.md`/`requirements.md` items by value/effort. `--parallel-research`/`--parallel-verify` fan those stages out via the Workflow tool (implement/exec stays serial); `--clean-seal` runs one clean build + full verification after the last item. All default off.
 
@@ -2925,13 +3048,13 @@ pan-tools retro [--write-memory] [--max N] [--raw]
 
 The `memory` field is omitted unless `--write-memory` is set.
 
-**Error:** `{"error": "roadmap.md not found"}` if no `.planning/roadmap.md` exists.
+**Error:** `{"error": "roadmap.md not found"}` on stdout, **exit 1**, if no `.planning/roadmap.md` exists.
 
 ---
 
-## 20.1 Opus 4.7 Commands (v2.10.0)
+## 20.1 Capability-Aware Commands (v2.10.0)
 
-Commands added for Spec A (Opus 4.7 existing enhancements). All degrade gracefully on smaller models / non-Claude runtimes.
+Commands added for Spec A (frontier-model capability enhancements). All degrade gracefully rather than error on models and runtimes that lack the underlying capability: cache directives are ignored (a no-op), and the installer rewrites thinking directives into a prose preamble for non-Claude runtimes. Nothing here inspects the model at runtime — in particular `codebase estimate-size` picks single-shot vs sharded from repo size alone, so on a smaller-context model you get the sharded path by lowering `--threshold` yourself; there is no automatic fallback.
 
 ### `memory read <agent>`
 
@@ -2991,6 +3114,27 @@ pan-tools memory compact <agent> 50
 **JSON output:**
 ```json
 { "compacted": true, "kept": 50, "removed": 42 }
+```
+
+### `memory select <agent> [--cue <text>] [--token-budget N] [--recency-floor N]`
+
+Return a budget-bounded selection of an agent's memory entries for loading into a spawn. Always keeps the most-recent `--recency-floor` entries, then fills the remaining `--token-budget` with entries most relevant to `--cue` (both fall back to built-in defaults). Read-only.
+
+```
+pan-tools memory select pan-executor --cue "auth refactor" --token-budget 2000 --recency-floor 5 [--raw]
+```
+
+**JSON output:**
+```json
+{ "agent": "pan-executor", "cue": "auth refactor", "selected": [], "total_tokens": 0, "considered": 0, "dropped": 0, "mode": "empty" }
+```
+
+### `memory budget`
+
+Report the total token footprint of all agent memory files against the project's typical per-call input size (median from the cost log), so you can see how much of a spawn's context memory is consuming. Read-only.
+
+```
+pan-tools memory budget [--raw]
 ```
 
 ### `memory optimize [--apply] [--keep N]`
@@ -3099,7 +3243,7 @@ pan-tools codebase estimate-size [--threshold 700000] [--no-docs] [--raw]
 }
 ```
 
-`mode` is `single-shot` when `total_tokens ≤ threshold`, else `sharded`.
+`mode` is `single-shot` when `total_tokens ≤ threshold`, else `sharded`. Selection is purely size-based — the module performs no model check. The default threshold assumes the consuming agent has a 1M-context window; pass a lower `--threshold` when mapping with a smaller-context model.
 
 ---
 
@@ -3133,7 +3277,7 @@ Hint values: `emit-micro-in-parallel`, `emit-standard-in-parallel`, `sequential`
 
 ### `focus reflection`
 
-Emit a reflection prompt (for thinking-capable models) between focus-auto cycles. Reads `{run, cycle, batch, tier}` from stdin.
+Emit a reflection prompt between focus-auto cycles. Reads `{run, cycle, batch, tier}` from stdin.
 
 **Module:** `focus.cjs`
 
@@ -3147,13 +3291,15 @@ echo '{"run": {...}, "cycle": {...}, "batch": [...], "tier": "reasoning"}' \
 { "reflect": true, "prompt": "Reflect before cycle 2 of 5 ...", "reason": "ok" }
 ```
 
-Returns `{reflect: false}` when the current tier doesn't support thinking, when `run.reflection_enabled: false`, or when the next batch is empty.
+**Gate:** the reflection step is **reasoning-tier-only**. `run.reflection_enabled` wins if set — `true` forces reflection on at any tier, `false` forces it off. With the key absent, reflection is enabled only when the incoming `tier` is in `REFLECTION_THRESHOLD.enable_on_tiers` (`constants.cjs`), which is `['reasoning']`; `enabled_default` is `false`. So a `mid`/`fast` tier gets `{reflect: false}` even on a thinking-capable model — the gate reads the resolved tier, never the model's capabilities.
+
+Returns `{reflect: false, reason: "reflection_disabled"}` when the gate is closed, and `{reflect: false, reason: "no_next_batch"}` when the proposed next batch is empty.
 
 ---
 
 ## 21. Codebase Commands
 
-For `codebase estimate-size`, see Section 20.1 (Opus 4.7 Commands) — it's the mode-selection entry point for `/pan:map-codebase` Stage 0.
+For `codebase estimate-size`, see Section 20.1 (Capability-Aware Commands) — it's the mode-selection entry point for `/pan:map-codebase` Stage 0.
 
 ### `codebase detect-languages`
 
@@ -3325,7 +3471,7 @@ Publishes an audit entry to the `review-handoff` bus channel via `bus.cjs`.
 
 Same merge logic as above but returns the payload without writing a file. Useful for piping.
 
-### `knowledge ask <question> [--max-sources N]` (v3.2, Y-3)
+### `knowledge ask <question> [--max-sources N] [--recall-cue <text>]` (v3.2, Y-3)
 
 Retrieve candidate source files for a natural-language question, scored by keyword frequency across `CITATION_ROOTS` (`.planning/` + `docs/` + top-level `README/CHANGELOG/CLAUDE.md`).
 
@@ -3333,9 +3479,10 @@ Retrieve candidate source files for a natural-language question, scored by keywo
 
 ```
 pan-tools knowledge ask "why does phase 4 have a race condition fix?"
+pan-tools knowledge ask "how is auth wired?" --recall-cue "session tokens"
 ```
 
-Returns `{question, sources: [{file, score, bytes}], total_candidates, returned}`. Always includes `project.md` + `requirements.md` even when they score zero.
+Returns `{question, sources: [{file, score, bytes}], total_candidates, returned}`. Always includes `project.md` + `requirements.md` even when they score zero. `--recall-cue <text>` re-scores the same candidates against a second cue and adds a `recall_cue` + `recall_sources` view to the payload (no extra filesystem walk).
 
 ### `knowledge discuss <phase> --subcmd read|append ...` (v3.2, Y-3)
 
@@ -3394,23 +3541,21 @@ The autonomous external-build loop: scaffold an experiment folder, drive an exte
 
 Scaffold a new experiment folder at `<root>/<slug>/`. Copies `<idea>` to `<root>/<slug>/.planning/idea.md`, writes the `experiment.json` manifest, and (unless `--skip-installer`) runs the PAN installer for the chosen runtime inside the experiment dir. Default root: `~/pan-experiments/`. Default runtime: `claude`. Hard `PAN_SOURCE_ROOT` guard refuses to scaffold inside the source repo.
 
-### `experiment list [--root <dir>]` (v3.7.0)
+### `experiment list [--root <dir>] [--include-archived]` (v3.7.0)
 
-Enumerate experiments under root with `{slug, runtime, status, created_at, path}` per entry.
+Enumerate experiments under root with `{slug, runtime, status, created_at, path}` per entry. By default archived experiments are omitted; pass `--include-archived` to list them too.
 
 ### `experiment manifest <slug> [--root <dir>]` (v3.7.0)
 
 Print the experiment's `experiment.json` manifest.
 
-### `experiment run <slug> [--root <dir>] [--prompt <text>] [--timeout-ms N] [--capture-metrics]` (v3.7.0+)
+### `experiment run <slug> [--root <dir>] [--prompt <text>] [--timeout <seconds>]` (v3.7.0+)
 
-Spawn the runtime adapter against the experiment via `spawnSync`, observe via `run-state.json`, return final status. Adapters live in `runner.cjs#RUNTIME_RUNNERS` — claude/codex/gemini/opencode supported, copilot is null. Default prompt: `/pan:new-project --auto @.planning/idea.md`. Default timeout: 30 min.
+Spawn the runtime adapter against the experiment via `spawnSync`, observe via `run-state.json`, return final status. Adapters live in `runner.cjs#RUNTIME_RUNNERS` — claude/codex/gemini/opencode supported, copilot is null. Default prompt: `/pan:new-project --auto @.planning/idea.md`. `--timeout` is in seconds; default 3600 (60 min).
 
 **Incomplete-run detection:** When `exit_code: 0` but `state.md` shows `status != completed`, the runner returns `stop_reason: "incomplete"` (not `success`). Distinguishes real milestone-done from premature exits.
 
-**`--capture-metrics`:** Switches the claude adapter to `claude --output-format json`, parses the trailing usage envelope from stdout, and persists `{total_cost_usd, num_turns, session_id, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, billing_pool}` under `runState.metrics`. Other runtimes ignore the flag.
-
-**Billing note (Claude runtime):** since June 15, 2026, headless `claude -p` / Agent SDK usage draws from a separate monthly **Agent SDK credit pool** on Claude subscriptions — it does not count against interactive session limits, and vice versa. Experiment runs are therefore tagged `billing_pool: "agent_sdk"` in `runState.metrics` so downstream analysis (`/pan:learn`, billing reconciliation) can separate experiment spend from interactive spend. Codex/Gemini/OpenCode runs bill per their own provider's CLI policy and carry `billing_pool: null`.
+**Billing note (Claude runtime):** since June 15, 2026, headless `claude -p` / Agent SDK usage draws from a separate monthly **Agent SDK credit pool** on Claude subscriptions — it does not count against interactive session limits, and vice versa. The `billing_pool: "agent_sdk"` tag (and the rest of the `runState.metrics` envelope) is produced only by the runner module's capture-metrics API, **not** by the `experiment run` CLI path — a CLI run's `run-state.json` has no `metrics` key. Callers needing billing reconciliation must invoke the runner module directly with metrics capture enabled.
 
 ### `experiment status <slug> [--root <dir>]` (v3.7.0)
 
@@ -3418,15 +3563,15 @@ Read snapshot from `<expPath>/.planning/run-state.json`: status, started_at, end
 
 ### `experiment stop <slug> [--root <dir>]` (v3.7.0)
 
-Send SIGTERM to the running spawn (best-effort; falls back to recording manual stop in run-state.json if the pid is gone).
+Finalize/record a stopped experiment in `run-state.json`. This **cannot** terminate an already-running synchronous experiment: the runner blocks while a run is in flight and no pid is recorded to signal, so `stop` only reconciles the run-state after the run has exited. If no pid is recorded (an in-flight run), it returns an error and writes nothing.
 
-### `experiment harvest <slug> [--root <dir>] [--out <dir>]` (v3.7.0)
+### `experiment harvest <slug> [--root <dir>] [--source-root <dir>] [--force]` (v3.7.0)
 
-Copy `learnings/`, `traces/`, `run-state.json`, `agent-history.json`, `experiment.json`, and the rendered `commands/pan/`, `agents/`, references back into the harvest output dir. Non-destructive — leaves the experiment folder intact for re-runs.
+Copy `learnings/`, `traces/`, `run-state.json`, `agent-history.json`, `experiment.json`, and the rendered `commands/pan/`, `agents/`, references back into a fixed destination at `<source-root>/experiments/<slug>/`. `--source-root` selects the PAN source root (destination base); `--force` overwrites an existing harvest at that path. Non-destructive — leaves the experiment folder intact for re-runs.
 
-### `experiment prune <slug> [--root <dir>] [--keep-harvest]` (v3.7.0)
+### `experiment prune <slug> [--root <dir>] [--hard]` (v3.7.0)
 
-Delete the experiment folder. With `--keep-harvest`, leave any harvested artifacts in place at the harvest output path.
+Remove the experiment. Default is a soft prune — the experiment folder is archive-renamed (preserved, not deleted). With `--hard`, the folder is permanently deleted.
 
 ### `learn promote --pattern <id> --scope <s> --topic <t> [--summary] [--evidence] [--rule] [--applies-in] [--source-experiments csv]`
 
@@ -3460,13 +3605,25 @@ Markdown frontmatter + structure linter, vendored from the whooo experiment. Val
 
 **Module:** `doc-lint.cjs` (adapter) + `pan-wizard-core/bin/lib/doc-lint/{frontmatter,schema,validate,walk,reporter}.js`.
 
+**Exit codes — all four subcommands.** `0` clean · `1` violations found · `2` (`doc-lint <dir>` only) the schema itself is malformed. The verdict is identical on the `--raw` and JSON paths; gate on the exit code in either format.
+
+> Corrected in this version: the JSON paths used to exit `0` unconditionally, because `output()` exits the process and the `process.exit(<verdict>)` line below each call was unreachable. `doc-lint --format json` therefore never failed, and `doc-lint schema-check` never failed in *either* format. Earlier revisions of this page documented the JSON path as merely "reporting `schema_errors` in the body" — that described the defect, not an intended design. If you pinned a version to that behaviour, the linter was not gating.
+
 ### `doc-lint <dir> [--schema <name>] [--format human|json]` (v3.7.1)
 
-Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command` for files under `commands/pan/`). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. JSON output suitable for CI gates; human output for terminal review.
+Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command` for files under `commands/pan/`). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. JSON output suitable for CI gates; human output for terminal review. Exits `1` when any violation has `severity: error` (warnings alone exit `0`), `2` if the schema could not be parsed.
 
-### `doc-lint schema-check [--schemas-dir <path>]` (v3.7.1)
+### `doc-lint schema-check <path>` (v3.7.1)
 
-Verify the YAML schemas themselves are syntactically valid before they're used to lint anything. Schemas live at `pan-wizard-core/references/schemas/*.schema.yml`.
+Verify the YAML schema at `<path>` is syntactically valid before it's used to lint anything. `<path>` is a required positional argument. Schemas live at `pan-wizard-core/references/schemas/*.schema.yml`. Exits `1` when `ok` is false.
+
+### `doc-lint counts <dir> [--exclude <glob>]` (v3.7.1)
+
+Scan `<dir>` for embedded numeric counts that violate the single-source-of-truth policy (counts belong only in `CLAUDE.md`). Repeat `--exclude` to skip paths. Reports each offending count with its file and line.
+
+### `doc-lint flags [--doc-dir <dir>]` (v3.7.1)
+
+Detect aspirational or stale `--flags` documented for the PAN CLI that never appear as literals in the source (`pan-wizard-core/bin`, `bin`). Repeat `--doc-dir` to scan directories other than the default `docs`. Reports each doc-only flag with its file and line.
 
 ---
 
@@ -3486,7 +3643,7 @@ pan-tools skills index --raw
 
 ### `skills align (--draft "<text>" | --draft-file <path>) [--top <k>] [--min-score <n>] [--token-budget <n>] [--source-root <path>]` (v3.13, ADR-0038)
 
-Score each draft task (bullets/numbered/checkbox lines all accepted) against the skill index using `scoreRelevance`, after stripping planning glue words from the cue. Returns per-task top-k matches (names only), `coverage`, and a deduplicated `vocabulary` hint list ranked by aggregate score and greedy-packed into the token budget (default 1500) — overflow lands in `dropped`, never silently truncated. Errors as `{error}` JSON on empty drafts or more than 50 tasks.
+Score each draft task (bullets/numbered/checkbox lines all accepted) against the skill index using `scoreRelevance`, after stripping planning glue words from the cue. Returns per-task top-k matches (names only), `coverage`, and a deduplicated `vocabulary` hint list ranked by aggregate score and greedy-packed into the token budget (default 1500) — overflow lands in `dropped`, never silently truncated. A draft that yields no tasks, or one over the max-task threshold, is reported as an `{error}` JSON body on stdout at **exit 1** (per "Error Shape"); omitting both `--draft` and `--draft-file` is a usage error on stderr, also exit 1.
 
 ```
 pan-tools skills align --draft-file /tmp/draft-tasks.md --raw

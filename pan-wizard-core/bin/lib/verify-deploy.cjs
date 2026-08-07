@@ -90,8 +90,20 @@ function validateRuntimeInstall(cwd, configDir, runtime) {
     if (hooks && typeof hooks === 'object') {
       for (const hookArr of Object.values(hooks)) {
         if (!Array.isArray(hookArr)) continue;
-        for (const hook of hookArr) {
-          if (hook.command) hookCommands.push(hook.command);
+        // M29: PAN installs hooks in the nested Claude shape — each event maps to
+        // an array of GROUPS, and each group holds the real commands under
+        // group.hooks[]: { matcher, hooks: [{ type, command }] }. The old code
+        // only read group.command (undefined in that shape), so it validated
+        // nothing for PAN's own hooks. Collect both the flat group.command (other
+        // runtimes) AND every command nested in group.hooks[].
+        for (const group of hookArr) {
+          if (!group || typeof group !== 'object') continue;
+          if (group.command) hookCommands.push(group.command);
+          if (Array.isArray(group.hooks)) {
+            for (const h of group.hooks) {
+              if (h && h.command) hookCommands.push(h.command);
+            }
+          }
         }
       }
     }

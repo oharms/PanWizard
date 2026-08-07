@@ -195,11 +195,16 @@ function cmdStateUpdate(cwd, field, value) {
       writeStateMd(statePath, content, cwd);
       output({ updated: true });
     } else {
-      output({ updated: false, reason: `Field "${field}" not found in state.md` });
+      // error key ⇒ exit 1: the caller asked for a field update that did not
+      // happen, so state.md does not say what the caller now believes it says.
+      output({ updated: false, reason: `Field "${field}" not found in state.md`, error: 'field_not_found' });
     }
   } catch {
     // state.md does not exist or is unreadable -- report gracefully
-    output({ updated: false, reason: 'state.md not found' });
+    // Same condition `state json` reports as {error:'state.md not found'} at exit 1.
+    // Reporting it as a bare `updated: false` was the identical defect wearing a
+    // different key — one file, one missing file, two exit codes.
+    output({ updated: false, reason: 'state.md not found', error: 'state_not_found' });
   }
 }
 
@@ -256,6 +261,9 @@ function cmdStateAdvancePlan(cwd, raw) {
     content = stateReplaceField(content, 'Status', 'Phase complete — ready for verification') || content;
     content = stateReplaceField(content, 'Last Activity', today) || content;
     writeStateMd(statePath, content, cwd);
+    // No error key, exit 0: `last_plan` is the NORMAL end-of-phase signal — the
+    // phase advanced to "ready for verification" and state.md was written. Gating on
+    // it would make every completed phase look like a failure.
     output({ advanced: false, reason: 'last_plan', current_plan: currentPlan, total_plans: totalPlans, status: 'ready_for_verification' }, raw, 'false');
   } else {
     const newPlan = currentPlan + 1;
@@ -303,7 +311,7 @@ function cmdStateRecordMetric(cwd, options, raw) {
     writeStateMd(statePath, content, cwd);
     output({ recorded: true, phase, plan, duration }, raw, 'true');
   } else {
-    output({ recorded: false, reason: 'Performance Metrics section not found in state.md' }, raw, 'false');
+    output({ recorded: false, reason: 'Performance Metrics section not found in state.md', error: 'metrics_section_missing' }, raw, 'false');
   }
 }
 
@@ -345,7 +353,7 @@ function cmdStateUpdateProgress(cwd, raw) {
     writeStateMd(statePath, content, cwd);
     output({ updated: true, percent, completed: totalSummaries, total: totalPlans, bar: progressStr }, raw, progressStr);
   } else {
-    output({ updated: false, reason: 'Progress field not found in state.md' }, raw, 'false');
+    output({ updated: false, reason: 'Progress field not found in state.md', error: 'progress_field_missing' }, raw, 'false');
   }
 }
 
@@ -369,7 +377,7 @@ function cmdStateAddDecision(cwd, options, raw) {
     summaryText = readTextArgOrFile(cwd, summary, summary_file, 'summary');
     rationaleText = readTextArgOrFile(cwd, rationale || '', rationale_file, 'rationale');
   } catch (err) {
-    output({ added: false, reason: err.message }, raw, 'false');
+    output({ added: false, reason: err.message, error: err.message || 'decision_read_failed' }, raw, 'false');
     return;
   }
 
@@ -389,7 +397,7 @@ function cmdStateAddDecision(cwd, options, raw) {
     writeStateMd(statePath, content, cwd);
     output({ added: true, decision: entry }, raw, 'true');
   } else {
-    output({ added: false, reason: 'Decisions section not found in state.md' }, raw, 'false');
+    output({ added: false, reason: 'Decisions section not found in state.md', error: 'decisions_section_missing' }, raw, 'false');
   }
 }
 
@@ -410,7 +418,7 @@ function cmdStateAddBlocker(cwd, text, raw) {
   try {
     blockerText = readTextArgOrFile(cwd, blockerOptions.text, blockerOptions.text_file, 'blocker');
   } catch (err) {
-    output({ added: false, reason: err.message }, raw, 'false');
+    output({ added: false, reason: err.message, error: err.message || 'blocker_read_failed' }, raw, 'false');
     return;
   }
 
@@ -428,7 +436,7 @@ function cmdStateAddBlocker(cwd, text, raw) {
     writeStateMd(statePath, content, cwd);
     output({ added: true, blocker: blockerText }, raw, 'true');
   } else {
-    output({ added: false, reason: 'Blockers section not found in state.md' }, raw, 'false');
+    output({ added: false, reason: 'Blockers section not found in state.md', error: 'blockers_section_missing' }, raw, 'false');
   }
 }
 
@@ -456,6 +464,17 @@ function cmdStateResolveBlocker(cwd, text, raw) {
       return !line.toLowerCase().includes(text.toLowerCase());
     });
 
+    // M27: if nothing was removed, no blocker matched the given text. Report
+    // resolved:false rather than falsely claiming a resolution (and skip the
+    // write entirely — the file is unchanged).
+    if (filtered.length === lines.length) {
+      // error key ⇒ exit 1. M27 stopped this from falsely claiming a resolution;
+      // the exit code finishes the job. The blocker is STILL OPEN and the caller
+      // that asked to clear it would otherwise carry on believing it is gone.
+      output({ resolved: false, reason: 'no matching blocker', blocker: text, error: 'blocker_not_matched' }, raw, 'false');
+      return;
+    }
+
     let newBody = filtered.join('\n');
     // If section is now empty, add placeholder
     if (!newBody.trim() || !newBody.includes('- ')) {
@@ -466,7 +485,7 @@ function cmdStateResolveBlocker(cwd, text, raw) {
     writeStateMd(statePath, content, cwd);
     output({ resolved: true, blocker: text }, raw, 'true');
   } else {
-    output({ resolved: false, reason: 'Blockers section not found in state.md' }, raw, 'false');
+    output({ resolved: false, reason: 'Blockers section not found in state.md', error: 'blockers_section_missing' }, raw, 'false');
   }
 }
 
@@ -510,7 +529,7 @@ function cmdStateRecordSession(cwd, options, raw) {
     try { require('./memory-optimize.cjs').maybeAutoOptimizeMemory(cwd); } catch { /* best-effort */ }
     output({ recorded: true, updated }, raw, 'true');
   } else {
-    output({ recorded: false, reason: 'No session fields found in state.md' }, raw, 'false');
+    output({ recorded: false, reason: 'No session fields found in state.md', error: 'session_fields_missing' }, raw, 'false');
   }
 }
 
@@ -1012,7 +1031,9 @@ function cmdDashboard(cwd, raw) {
     lines.push(`Blockers: ${blockerCount}`);
     if (lastActivity) lines.push(`Last Activity: ${lastActivity}${lastActivityDesc ? ' — ' + lastActivityDesc : ''}`);
     if (nextPhase) lines.push(`Next Phase: ${nextPhase.number} — ${nextPhase.name}`);
-    output(result, false, lines.join('\n'));
+    // raw=true so output() emits the human summary; passing false discarded it
+    // and printed JSON, making the whole lines[] block dead (M28, ADR audit 2026-08).
+    output(result, true, lines.join('\n'));
     return;
   }
 

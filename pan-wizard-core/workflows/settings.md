@@ -1,5 +1,5 @@
 <purpose>
-Interactive configuration of PAN workflow agents (research, plan_check, verifier) and model profile selection via multi-question prompt. Updates .planning/config.json with user preferences. Optionally saves settings as global defaults (~/.pan-wizard-core/defaults.json) for future projects.
+Interactive configuration of PAN workflow agents (research, plan_check, verifier) and model profile selection via multi-question prompt. Updates .planning/config.json with user preferences. Optionally saves settings as global defaults (~/.pan-wizard/defaults.json) for future projects.
 </purpose>
 
 <required_reading>
@@ -44,9 +44,9 @@ AskUserQuestion([
     header: "Model",
     multiSelect: false,
     options: [
-      { label: "Quality", description: "Opus everywhere except verification (highest cost)" },
-      { label: "Balanced (Recommended)", description: "Opus for planning, Sonnet for execution/verification" },
-      { label: "Budget", description: "Sonnet for writing, Haiku for research/verification (lowest cost)" }
+      { label: "Quality", description: "reasoning tier for every agent — identical to balanced, so switching between the two changes nothing" },
+      { label: "Balanced (Recommended)", description: "reasoning tier for every agent (quality and balanced are identical post-COST-RESET); use budget to step down" },
+      { label: "Budget", description: "mid tier for writing, fast tier for research/verification (lowest cost)" }
     ]
   },
   {
@@ -153,20 +153,20 @@ AskUserQuestion([
     header: "Defaults",
     multiSelect: false,
     options: [
-      { label: "Yes", description: "New projects start with these settings (saved to ~/.pan-wizard-core/defaults.json)" },
+      { label: "Yes", description: "New projects start with these settings (saved to ~/.pan-wizard/defaults.json)" },
       { label: "No", description: "Only apply to this project" }
     ]
   }
 ])
 ```
 
-If "Yes": write the same config object (minus project-specific fields like `brave_search`) to `~/.pan-wizard-core/defaults.json`:
+If "Yes": write the same config object (minus project-specific fields like `brave_search`) to `~/.pan-wizard/defaults.json`:
 
 ```bash
-mkdir -p ~/.gsd
+mkdir -p ~/.pan-wizard
 ```
 
-Write `~/.pan-wizard-core/defaults.json` with:
+Write `~/.pan-wizard/defaults.json` with:
 ```json
 {
   "mode": <current>,
@@ -222,6 +222,6 @@ Quick commands:
 - [ ] Current config read
 - [ ] User presented with 7 settings (profile + 5 workflow toggles + git branching)
 - [ ] Config updated with model_profile, workflow, and git sections
-- [ ] User offered to save as global defaults (~/.pan-wizard-core/defaults.json)
+- [ ] User offered to save as global defaults (~/.pan-wizard/defaults.json)
 - [ ] Changes confirmed to user
 </success_criteria>

@@ -88,10 +88,12 @@ npm run build:hooks  # Copy hooks from hooks/ to hooks/dist/ (no bundling — pu
 
 ### Local Testing
 
+Never install into the clone itself — `bin/install.js` has a hard `PAN_SOURCE_ROOT` guard that refuses to run from the source repo. Install into a separate scratch directory instead:
+
 ```bash
-# Install locally to test changes
-node bin/install.js --claude --local    # → ./.claude/
-node bin/install.js --claude --global   # → ~/.claude/
+# From a scratch dir alongside the clone, install to test changes
+cd ../pan-test && node ../PanWizard/bin/install.js --claude --local    # → ./.claude/
+cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.claude/
 ```
 
 ## How to Add a New Command
@@ -279,7 +281,7 @@ Quick summary: Commands -> Workflows -> Agents -> Core Library -> .planning/ sta
 
 ### Bot Army subsystem (v3.11+)
 
-The army turns PAN's agents into a coordinated, role-scoped army. The substrate lives in four core modules — `squads.cjs` (the role registry: architecture / build / quality / release), `worktree.cjs` (branch-per-agent git-worktree isolation so parallel builders never collide), `campaign.cjs` (scheduled, self-resuming "dreaming" campaigns), and `hud.cjs` (the single-file HTML dashboard) — driven by the `/pan:army` command, the `pan-conductor` agent (Mission Control, delegation-only), and the `pan-release` agent (the human merge gate). The design rationale is recorded in [ADR-0032 (squad model)](decisions/ADR-0032-squad-model.md), [ADR-0033 (army campaign)](decisions/ADR-0033-army-campaign.md), [ADR-0034 (scheduled campaigns)](decisions/ADR-0034-scheduled-campaigns.md), and [ADR-0035 (army HUD dashboard)](decisions/ADR-0035-army-hud-dashboard.md).
+The army turns PAN's agents into a coordinated, role-scoped army. The substrate lives in four core modules — `squads.cjs` (the role registry: architecture / build / quality / release), `worktree.cjs` (branch-per-agent git-worktree isolation so parallel builders never collide), `campaign.cjs` (scheduled, self-resuming "dreaming" campaigns), and `hud.cjs` (the single-file HTML dashboard) — driven by the `/pan:army` command, the `pan-conductor` agent (Mission Control — instructed to delegate rather than implement; its `tools:` grant is not narrowed to enforce that), and the `pan-release` agent (the human merge gate). The design rationale is recorded in [ADR-0032 (squad model)](decisions/ADR-0032-squad-model.md), [ADR-0033 (army campaign)](decisions/ADR-0033-army-campaign.md), [ADR-0034 (scheduled campaigns)](decisions/ADR-0034-scheduled-campaigns.md), and [ADR-0035 (army HUD dashboard)](decisions/ADR-0035-army-hud-dashboard.md).
 
 ## Release Process
 

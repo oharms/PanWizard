@@ -1,6 +1,6 @@
 # ADR-0015: Focus Auto-Runner — Continuous Categorized Execution
 
-**Status:** Proposed
+**Status:** Accepted (shipped in v2.3.0 — 2026-03-03)
 **Date:** 2026-03-03
 **Context:** Strategic Feature Spec — `docs/specs/focus_auto_runner_featureai.md`
 **Competitive Research:** `docs/specs/continuous_autonomous_execution_featureai.md`

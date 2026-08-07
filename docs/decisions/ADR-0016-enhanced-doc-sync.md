@@ -1,7 +1,7 @@
 # ADR-0016: Enhanced Documentation Sync (focus-sync v2)
 
 ## Status
-Proposed
+Accepted (shipped in v2.5.0 — 2026-03-07)
 
 ## Context
 The current `focus sync` command checks only README.md for 3 count patterns (commands, agents, modules). An end-to-end documentation audit on 2026-03-04 revealed 20+ staleness issues across 8 files:

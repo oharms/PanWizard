@@ -1010,6 +1010,20 @@ describe('getRoadmapPhaseInternal', () => {
     const result = getRoadmapPhaseInternal(tmpDir, '99');
     assert.strictEqual(result, null);
   });
+
+  // M12 regression: a zero-padded id ('01') must still match an unpadded
+  // 'Phase 1:' heading, matching findPhaseInternal which accepts both forms.
+  test('finds an unpadded heading when given a zero-padded phase number', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'roadmap.md'),
+      '# Roadmap\n\n### Phase 1: Foundation\n**Goal:** Build the base\n'
+    );
+
+    const result = getRoadmapPhaseInternal(tmpDir, '01');
+    assert.ok(result, 'padded id should resolve the unpadded heading');
+    assert.strictEqual(result.found, true);
+    assert.strictEqual(result.phase_name, 'Foundation');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

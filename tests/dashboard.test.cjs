@@ -33,6 +33,14 @@ describe('dashboard command', () => {
     assert.strictEqual(output.version, '1.2.3');
   });
 
+  test('--raw emits the human summary, not JSON (M28)', () => {
+    fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'demo', version: '9.9.9' }));
+    const result = runPanTools('dashboard --raw', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.ok(!result.output.trim().startsWith('{'), 'raw mode must not print the JSON object');
+    assert.match(result.output, /Blockers:/, 'raw mode prints the human summary the code builds');
+  });
+
   test('returns current phase and status from state.md', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'state.md'),

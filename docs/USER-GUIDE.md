@@ -112,19 +112,19 @@ Shows your overall project status and tells you what to do next — plan the nex
 - **Use the `balanced` profile** (default) — it balances cost and quality well
 - **Run `/clear`** between major commands to keep context fresh
 
-### Opus 4.7 features (v2.10.0+)
+### Capability-aware features (v2.10.0+)
 
-If you're running on Claude Opus 4.7, PAN uses these automatically:
+PAN emits all of these unconditionally. They pay off in full on Claude Code with a frontier reasoning model (the default Opus is one); elsewhere they degrade rather than error, as described below the list:
 
-- **Prompt caching** — project.md, requirements.md, roadmap.md, state.md, standards.md are cached across agent calls in a phase. Expect 40-60% input-token savings on multi-wave execution.
-- **Extended thinking** — `pan-plan-checker`, `pan-verifier`, `pan-reviewer`, `pan-debugger`, and `pan-integration-checker` reason internally before acting. Catches logic gaps earlier.
-- **Single-shot map-codebase** — repos ≤700K tokens map in a single agent instead of 6 parallel ones. No more contradictory version claims in the output.
+- **Prompt caching** — project.md, requirements.md, roadmap.md, state.md, standards.md are cached across agent calls in a phase. Expect 40-60% input-token savings on multi-wave execution. Requires a model/runtime that supports prompt caching.
+- **Extended thinking** — on thinking-capable models, `pan-plan-checker`, `pan-verifier`, `pan-reviewer`, `pan-debugger`, and `pan-integration-checker` reason internally before acting. Catches logic gaps earlier.
+- **Single-shot map-codebase** — repos that fit the single-shot threshold (≤700K tokens, measured by `pan-tools codebase estimate-size`) map in a single agent instead of 6 parallel ones. Mode is chosen by repo size alone; holding a repo that large in one pass needs a model with a 1M-context window, so on smaller-context models prefer the sharded path (`--threshold`).
 - **Cross-phase memory** — lessons learned in phase 3 (e.g. "prefer bulk Postgres writes") surface automatically in phase 7's planner. Inspect with `pan-tools memory list`. Trim with `pan-tools memory compact <agent> <max>`.
 - **Milestone retrospective with memory write** — `/pan:retro --write-memory` extracts recurring gap patterns as planner lessons. Run after every `/pan:milestone-done`.
 - **Capability-aware routing** — when a task needs thinking, the fast tier auto-upgrades to mid; when cache is warm and context is small, mid auto-downgrades to fast. See `/pan:profile` for the decision tree.
 - **Native skills discovery** — Claude Code sees PAN commands as first-class skills at `.claude/skills/pan-*.md` with descriptions, so it can auto-invoke them when relevant.
 
-On Sonnet 4.6 / Haiku 4.5 / non-Claude runtimes, features degrade gracefully: thinking becomes a prose "think step-by-step" preamble, single-shot falls back to sharded, caching is a no-op. Installer warns at install time if your default model lacks Opus 4.7 features.
+On lower tiers (mid/fast models) and non-Claude runtimes, features degrade gracefully: thinking becomes a prose "think step-by-step" preamble, caching is a no-op, and you pick the sharded map path with `--threshold`. None of this is gated at runtime — no feature, mode, or routing decision checks your model name before choosing a code path. (`/pan:cost` does look up the model ID recorded in the metrics log to price your token usage, but that only affects the number in a cost report, not what PAN runs.) The one model-name check you'll notice is advisory and runs once: at the end of install, the installer looks up the `model` field in your `settings.json` against a hand-maintained table of known model IDs (`detectModelCapabilities()` in `bin/install-lib.cjs`) and prints a note if that model is known to lack 1M context or extended thinking. The table recognizes the current generations by name and deliberately fails forward — the per-family threshold is the last reduced-capability release it records, not the newest release it lists, so any Claude ID newer than that boundary (a new major, or a later point release inside a major it already lists) inherits that family's modern profile rather than reading as capability-less, and upgrading to a new flagship doesn't produce a bogus warning. An ID resolves either by matching an explicit branch in the table or — for Claude names — by carrying a family plus a readable release number strictly newer than that family's last reduced-capability release; anything that resolves neither way reads as `tier: 'unknown'` with every capability flag false. That result may trigger the note spuriously. Either way it's a hint, never a block. Pass `--skip-warnings` to silence it.
 
 ### Spec B v2 features (v3.0-v3.4)
 
@@ -138,14 +138,14 @@ Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purp
 - **`/pan:review-deep <phase>` (v3.2)** — security audit (OWASP + STRIDE via `pan-hardener`) + cross-check by `pan-meta-reviewer`. Merges reviewer + hardener + meta findings into one verdict ladder. Recommended for phases touching auth/payment/PII/migrations/public APIs. Also invokable as `/pan:exec-phase <N> --deep-review` or `/pan:focus-exec --deep-review`. Costs ~3× a normal review.
 - **`/pan:knowledge {ask|discuss|playbook}` (v3.2)** — three modes in one command:
   - `ask "question"` — grounded Q&A with inline citations. Example: `/pan:knowledge ask "why does phase 4 have a race condition fix?"`
-  - `discuss <phase> "topic"` — multi-turn refinement with session state persistence. Benefits from prompt caching on Claude + Opus 4.7.
+  - `discuss <phase> "topic"` — multi-turn refinement with session state persistence. Benefits from prompt caching where the runtime and model support it.
   - `playbook` — aggregate all agents' memory into `.planning/playbook.md` categorized by Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps.
 - **`/pan:what-if <phase> "scenario"` (v3.3)** — counterfactual phase replay in an isolated git worktree. Agent explores the alternative, report lands in `.planning/counterfactuals/<phase>-<slug>.md`, worktree auto-deleted. Requires git.
 - **`/pan:mcp-bridge {list|recommend <phase>|cache}` (v3.3)** — discover which MCP tools are available and recommend which apply to a phase plan. Discovery-only; auto-invocation deferred.
 
 #### Advanced features
 
-- **`--hierarchical` flag on `/pan:exec-phase` (v3.4)** — spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in waves. Bounded by a safety harness (2-level nesting, 12-spawn cap, budget ceiling, abort file). Claude + Opus 4.7 only; falls back silently to flat exec elsewhere. Use for phases with ≥4 autonomous plans where wall-clock reduction justifies the ~20-30% orchestration tax.
+- **`--hierarchical` flag on `/pan:exec-phase` (v3.4)** — spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in waves. Bounded by a safety harness (2-level nesting, 12-spawn cap, budget ceiling, abort file). Claude Code only — agents-spawn-agents needs native sub-agent spawning; on the other four runtimes the flag is a no-op that warns and falls back to flat exec. No model gate: `pan-conductor` inherits the model you launched the session with. Use for phases with ≥4 autonomous plans where wall-clock reduction justifies the ~20-30% orchestration tax.
 - **`--deep-review` flag on `/pan:exec-phase` and `/pan:focus-exec` (v3.4)** — auto-invoke `/pan:review-deep` after the normal reviewer step. Recommended for high-stakes batches.
 - **Automatic cost logging (v3.4)** — `hooks/pan-cost-logger.js` registered as a SubagentStop hook. Every sub-agent completion appends a record to `.planning/metrics/tokens.jsonl`. Visible in `/pan:cost report` without any manual `cost append` calls.
 
@@ -262,11 +262,11 @@ off by default; turn it on for phases where planning test coverage up front matt
          ├── Analyze plan dependencies
          │
          ├── Wave 1 (independent plans):
-         │     ├── Executor A (fresh 200K context) -> commit
-         │     └── Executor B (fresh 200K context) -> commit
+         │     ├── Executor A (fresh context) -> commit
+         │     └── Executor B (fresh context) -> commit
          │
          ├── Wave 2 (depends on Wave 1):
-         │     └── Executor C (fresh 200K context) -> commit
+         │     └── Executor C (fresh context) -> commit
          │
          └── Verifier
                └── Check codebase against phase goals
@@ -280,10 +280,18 @@ off by default; turn it on for phases where planning test coverage up front matt
 ```
   /pan:map-codebase
          │
-         ├── Stack Mapper     -> codebase/STACK.md
-         ├── Arch Mapper      -> codebase/ARCHITECTURE.md
-         ├── Convention Mapper -> codebase/CONVENTIONS.md
-         └── Concern Mapper   -> codebase/CONCERNS.md
+         ▼
+  parallel mapper agents
+         │
+         ├── codebase/stack.md
+         ├── codebase/integrations.md
+         ├── codebase/architecture.md
+         ├── codebase/structure.md
+         ├── codebase/conventions.md
+         ├── codebase/testing.md
+         ├── codebase/concerns.md
+         ├── codebase/relationships.md
+         └── codebase/best-practices.md
                 │
         ┌───────▼──────────┐
         │ /pan:new-project │  <- Questions focus on what you're ADDING
@@ -425,7 +433,7 @@ pan-tools standards tools              # What external tools can help verify?
 pan-tools standards tools owasp-top10  # Tools for a specific standard
 ```
 
-**How it works:** Selected standards are stored in `.planning/standards.md` as Markdown checklists. Agents naturally read this file as context. The verifier (Step 7b) runs per-phase standards tracking, auto-ticks checklist items it can confirm, and recommends external tools when coverage is low. The plan-checker (Dimension 9) references selected standards when standards.md exists. The focus-design Phase 7 (Security) automatically cross-references selected standards.
+**How it works:** Selected standards are stored in `.planning/standards.md` as Markdown checklists. Agents naturally read this file as context. The verifier (Step 7b) runs per-phase standards tracking, auto-ticks checklist items it can confirm, and recommends external tools when coverage is low. The plan-checker's Standards Awareness dimension references selected standards when standards.md exists. The focus-design Phase 7 (Security) automatically cross-references selected standards.
 
 **Available standards:** OWASP Top 10, OWASP ASVS L1, OWASP LLM Top 10, OWASP Agentic Top 10, WCAG 2.2, NIST SSDF, ISO 25010, STRIDE, CWE Top 25, SOC 2 Dev Controls, TOGAF ADM, Conventional Commits.
 
@@ -533,7 +541,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 | `workflow.research` | `true`, `false` | `true` | Domain investigation before planning |
 | `workflow.plan_check` | `true`, `false` | `true` | Plan verification loop (up to 3 iterations) |
 | `workflow.verifier` | `true`, `false` | `true` | Post-execution verification against phase goals |
-| `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; 8th plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
+| `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; across phase boundaries the chain follows `transition.md`'s YOLO branch — in-context continuation, no `/clear` required. Equivalent to passing `--auto` on every `/pan:` command. |
 | `workflow.phase_record_compact` | `true`, `false` | `false` | When combined with the lightweight-phase bypass (1-plan trivial phases), collapses per-phase context.md + research.md + summary.md into a single `${N}-record.md`. Cuts ~4 commits per trivial phase. Substantive phases (>1 plan, non-trivial change_class) ignore this flag. |
 
@@ -583,7 +591,7 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 
 ### Model Profiles (Per-Agent Breakdown)
 
-PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-specific models. On Anthropic: reasoning → Opus (inherit), mid → Sonnet, fast → Haiku. On OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents.
+PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-specific models. On Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. On OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents.
 
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
@@ -604,7 +612,7 @@ PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-s
 - **quality** and **balanced** -- Every agent runs on the `reasoning` tier, i.e. **`inherit` — the model you launched with**. PAN respects your model choice by default and does not silently demote agents to cheaper models; context isolation (each subagent in its own window), not a weaker model, is what keeps the main conversation clean.
 - **budget** -- The opt-in cheap mode: mid for code-writing agents, fast for research and verification. Choose it explicitly for high-volume or less-critical work. Cheapness is opt-in, not the default.
 
-> Model tiering is **advisory** (it powers `/pan:cost` and per-invocation hints). Native Claude Code delegation uses each agent file's static `model:` — unset means `inherit`. Three security agents deliberately pin `model: opus` in their own frontmatter.
+> Model tiering is **advisory** (it powers `/pan:cost` and per-invocation hints). Native Claude Code delegation uses each agent file's static `model:` — unset means `inherit`. A few security-review agents deliberately pin `model: opus` in their own frontmatter; `grep -l '^model: opus' agents/*.md` lists them.
 
 ### Routing Strategies
 
@@ -871,20 +879,22 @@ When `workflow.auto_advance: true` in config:
 
 ### Bot-army campaigns (`/pan:army`)
 
-**This is PAN's headline capability — ship a whole project, not just a phase.** `/pan:army` runs PAN's agents as a coordinated army: an Opus **Mission Control** plans the mission and delegates to specialist squads, parallel builders each work an isolated git worktree, and nothing reaches your main branch without green checks and your approval (ADR-0032 squads · ADR-0033 campaign). It composes the pieces you already use: the `pan-conductor` safety harness, the focus-auto work loop, git worktrees, and the retro/learnings memory.
+**This is PAN's headline capability — ship a whole project, not just a phase.** `/pan:army` runs PAN's agents as a coordinated army: **Mission Control** (the reasoning-tier conductor) plans the mission and delegates to specialist squads, parallel builders each work an isolated git worktree, and nothing reaches your main branch without green checks and your approval (ADR-0032 squads · ADR-0033 campaign). It composes the pieces you already use: the `pan-conductor` safety harness, the focus-auto work loop, git worktrees, and the retro/learnings memory.
 
 **Taking on an existing project.** The army never plans blind. On a brownfield repo, Phase 0 runs an onboarding gate: if existing code has no codebase map yet, it stops and routes you through `/pan:map-codebase` (the Architecture squad maps the system into `.planning/codebase/`) and `/pan:new-project` (builds `roadmap.md` / `requirements.md` *against the existing system*), then you re-run `/pan:army`. From there, the Architecture squad reads the existing contracts before Build touches anything, and every Build agent forks its `army/<task>` branch from your current `main` — so the existing code is never edited in place. For a greenfield repo, you go straight to the plan.
 
-**The tiers.** Mission Control (the Opus conductor, in campaign mode) plans the goal and delegates — it never writes code. Work flows to four squads, each with a least-privilege tool contract:
+**The tiers.** Mission Control — the reasoning-tier `pan-conductor`, elevated to campaign scope — plans the goal and delegates rather than implementing. Work flows to the squads, each carrying an intended access contract:
 
 | Squad | Role | Access |
 |-------|------|--------|
-| Architecture | Design the contract before code | read-only |
-| Build | Turn the contract into committed code | read / write / bash |
-| Quality | Adversarially break what Build makes | read-only |
-| Release | Ship behind a human gate | always-ask |
+| Architecture | Design the contract before code | `read-only` |
+| Build | Turn the contract into committed code | `read-write-bash` |
+| Quality | Adversarially break what Build makes | `read-only` |
+| Release | Ship behind a human gate | `always-ask` |
 
 Inspect the roster any time with `pan-tools squad list` and `pan-tools squad show <name>`.
+
+**What the Access column is.** The `access` values `pan-tools squad list` reports — a role contract PAN's prompts assign, not a sandbox. `squads.cjs` is a registry that "modifies no agent and changes no execution path", so a label can differ from what an agent may actually do: several `read-only` squad members hold `Write` because they emit planning or verification artifacts. What actually constrains an agent is its own `tools:` frontmatter (`grep '^tools:' agents/*.md`), and Mission Control's grant includes `Write` and `Bash` — "delegates rather than implements" is how it is instructed to behave, not something the runtime prevents. The rail the grant does enforce is delegation depth: `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another, so a squad agent cannot fan out further. For the irreversible step, branch protection on your own repo is what makes the human merge gate unbypassable.
 
 **Parallel builds without collisions.** When the Build squad runs several tasks at once, each builder gets its own `army/<task>` branch in an isolated git worktree (`pan-tools worktree list` shows them), so two agents never edit the same working tree. Use `--no-build-worktrees` for small or strictly-serial projects; set `concurrency.serial_build: true` in `.planning/config.json` if your build tree corrupts under concurrent builds.
 
@@ -900,7 +910,7 @@ Inspect the roster any time with `pan-tools squad list` and `pan-tools squad sho
 /pan:army --stop                 # graceful halt, state preserved
 ```
 
-The same caps that bound hierarchical exec bound the campaign — delegation-depth cap, per-cycle spawn/budget ceiling, and the `.planning/orchestration/abort` kill-switch — so a long campaign never relaxes a single safety rail. Campaign mode is Claude + Opus only (like `/pan:exec-phase --hierarchical`); other runtimes fall back to the flat lifecycle.
+The same caps that bound hierarchical exec bound the campaign — delegation-depth cap, per-cycle spawn/budget ceiling, and the `.planning/orchestration/abort` kill-switch — so a long campaign never relaxes a single safety rail. Campaign mode is Claude Code only (like `/pan:exec-phase --hierarchical`) because the squads are spawned as native sub-agents; the other four runtimes fall back to the flat lifecycle. That's a runtime constraint, not a model one — no model gate exists, and Mission Control runs on whatever model you launched with.
 
 **Running it over days (scheduled, self-resuming).** `--schedule` arms a campaign that advances the backlog on a cadence instead of in one sitting ([ADR-0034](decisions/ADR-0034-scheduled-campaigns.md)):
 
@@ -1048,7 +1058,7 @@ You ran `/pan:new-project` but `.planning/project.md` already exists. This is a 
 
 ### Context Degradation During Long Sessions
 
-Clear your context window between major commands: `/clear` in Claude Code. PAN is designed around fresh contexts -- every subagent gets a clean 200K window. If quality is dropping in the main session, clear and use `/pan:resume` or `/pan:progress` to restore state.
+Clear your context window between major commands: `/clear` in Claude Code. PAN is designed around fresh contexts -- every subagent gets a clean context window. If quality is dropping in the main session, clear and use `/pan:resume` or `/pan:progress` to restore state.
 
 ### Plans Seem Wrong or Misaligned
 
@@ -1085,7 +1095,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Phase Execution Hangs or Takes Too Long
 
 **Cause:** Complex plans with many dependencies, or agent model too weak for the task.
-**Fix:** Check the plan complexity (number of tasks, wave count). Consider switching to `quality` profile for the executor: add `"model_overrides": {"pan-executor": "opus"}` to `.planning/config.json`. For simpler tasks, ensure you're not on `quality` profile (Opus for everything is slower).
+**Fix:** Check the plan complexity (number of tasks, wave count). If you're on the `budget` profile, the executor is running a mid-tier model — switch back to `balanced` (`/pan:profile balanced`) so it inherits your session model, or pin just that agent with `"model_overrides": {"pan-executor": "opus"}` in `.planning/config.json`. Conversely, if simple tasks feel slow, the reasoning tier is the cost: `budget`, complexity routing, or a per-phase `<!-- model_tier: fast -->` will trade depth for speed. (`quality` and `balanced` resolve identically, so switching between those two changes nothing.)
 
 ### Plan Rejected by Checker Multiple Times
 
@@ -1183,7 +1193,7 @@ Unified installs also ship a shared `pan-wizard-core` copy at `.agents/pan-wizar
 | Commands | `commands/pan/*.md` | `commands/*.md` | `commands/pan/*.toml` | `.agents/skills/pan-*/SKILL.md`¹ | `skills/pan-*/SKILL.md` |
 | Agents | `agents/*.md` | `agents/*.md` | `agents/*.md` | `agents/*.toml` | `agents/*.agent.md` |
 | Hooks | `hooks/*.js` in settings.json | Not supported | `hooks/*.js` in settings.json | `hooks/*.js`, registered in `.codex/hooks.json`² | `hooks/*.js`, registered in `.github/hooks/pan.json`² |
-| Config | `settings.json` | `opencode.json` | `settings.json` | `config.json` | `.github/copilot/settings.json` (local) / `~/.copilot/settings.json` (global) |
+| Config | `settings.json` | `opencode.json` | `settings.json` | `config.toml` | `.github/copilot/settings.json` (local) / `~/.copilot/settings.json` (global) |
 
 Codex and Copilot CLI use a "skills" format rather than slash commands. Each command becomes a skill directory with a `SKILL.md` file. Copilot CLI agents use `.agent.md` extension. The content is equivalent — only the container format differs.
 
@@ -1255,7 +1265,7 @@ For reference, here is what PAN creates in your project:
 | `patterns.md` | `appendErrorPattern()` | Error patterns (PAT-NNN) for cross-session learning. | Append-only, auto-increment |
 | `session-history.md` | `appendSessionSummary()` | Session summaries with phase, test counts, decisions. | Keeps last 20 entries |
 | `research/` | `/pan:new-project` | Parallel research outputs (stack, features, architecture, pitfalls) plus synthesis. | Read-only after creation |
-| `codebase/` | `/pan:map-codebase` | Brownfield analysis: STACK.md, ARCHITECTURE.md, CONVENTIONS.md, CONCERNS.md. | Read-only after creation |
+| `codebase/` | `/pan:map-codebase` | Brownfield analysis — the codebase-map documents (`stack.md`, `integrations.md`, `architecture.md`, `structure.md`, `conventions.md`, `testing.md`, `concerns.md`, `relationships.md`, `best-practices.md`). | Read-only after creation |
 | `context.md` | `/pan:discuss-phase` | Your implementation preferences for a phase. Feeds into research and planning. | Keep under 300 lines |
 | `research.md` | `/pan:plan-phase` | Ecosystem research for a phase (libraries, patterns, pitfalls). | Read-only after creation |
 | `plan.md` | `/pan:plan-phase` | Atomic execution plan with XML-structured tasks, verification steps. | 2-3 tasks per plan |

@@ -118,11 +118,25 @@ describe('campaign — recordRun', () => {
 });
 
 describe('campaign — isDreamDue', () => {
-  test('false until first run; true after activity', () => {
+  test('false until first run', () => {
     c.writeSchedule(cwd, { cadence: 'daily' }, T0);
     assert.equal(c.isDreamDue(c.readSchedule(cwd), T0), false);
+  });
+
+  // M8 regression: the predicate is "once per calendar day that had activity".
+  // Same-day-as-last-run must stay false (the old `||` made it permanently true
+  // after the first run, so a dream fired after every cycle).
+  test('false on the same calendar day as the last run', () => {
+    c.writeSchedule(cwd, { cadence: 'daily' }, T0);
     c.recordRun(cwd, { points_used: 10 }, T0);
-    assert.equal(c.isDreamDue(c.readSchedule(cwd), T0), true);
+    assert.equal(c.isDreamDue(c.readSchedule(cwd), T0), false);
+  });
+
+  test('true on a later calendar day once there is recorded activity', () => {
+    c.writeSchedule(cwd, { cadence: 'daily' }, T0);
+    c.recordRun(cwd, { points_used: 10 }, T0);
+    const nextDay = new Date('2026-06-13T09:00:00Z');
+    assert.equal(c.isDreamDue(c.readSchedule(cwd), nextDay), true);
   });
 });
 
@@ -133,5 +147,17 @@ describe('telemetry P1/P2 — campaign verify-reserve indicators (status only)',
     const s = JSON.parse(runPanTools('campaign status', cwd).output);
     assert.equal(s.verify_reserve, 15, 'ceil(100 * 0.15)');
     assert.equal(typeof s.into_verify_reserve, 'boolean');
+  });
+
+  test('campaign due is exit-coded per its contract: not-due exits non-zero (M9)', () => {
+    const { createTempProject, cleanup } = require('./helpers.cjs');
+    const tmp = createTempProject();
+    try {
+      // No schedule configured → not due → exit 1 so `campaign due && run` gates.
+      const r = runPanTools('campaign due', tmp);
+      assert.equal(r.success, false, 'not-due must exit non-zero');
+      const j = JSON.parse(r.output);
+      assert.equal(j.due, false);
+    } finally { cleanup(tmp); }
   });
 });

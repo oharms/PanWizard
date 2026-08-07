@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { safeReadFile, normalizePhaseName, execGit, findPhaseInternal, getMilestoneInfo, toPosix, output, error, escapeRegex } = require('./core.cjs');
+const { safeReadFile, normalizePhaseName, comparePhaseNum, execGit, findPhaseInternal, getMilestoneInfo, toPosix, output, EXIT_OK, error, escapeRegex } = require('./core.cjs');
 const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
 const {
@@ -362,7 +362,17 @@ function cmdVerifyArtifacts(cwd, planFilePath, raw) {
   if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
   const r = checkArtifacts(cwd, content);
   if (r.total === 0) {
-    output({ error: 'No must_haves.artifacts found in frontmatter', path: planFilePath }, raw);
+    // EXIT_OK: "nothing declared to check" is a RESULT, not a failure. Two pieces of
+    // shipped evidence: (1) the plan template ships `must_haves: { truths: [],
+    // artifacts: [], key_links: [] }` (pan-wizard-core/templates/phase-prompt.md,
+    // template.cjs generatePlanTemplate), so an empty block is the documented default
+    // state of a scaffolded plan; presence of the block is enforced by
+    // `verify plan-structure`, not here. (2) parseMustHavesBlock currently matches the
+    // block header at 4-space indent while every shipped template and agent emits it at
+    // 2 — so this branch is reached for *every* plan authored in PAN's own format, and
+    // exiting non-zero would fail every real `verify artifacts` call. Reclassifying
+    // this as a failure requires fixing that indentation mismatch first.
+    output({ error: 'No must_haves.artifacts found in frontmatter', path: planFilePath }, raw, undefined, EXIT_OK);
     return;
   }
   output(r, raw, r.all_passed ? 'valid' : 'invalid');
@@ -425,7 +435,10 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
   if (!content) { output({ error: 'File not found', path: planFilePath }, raw); return; }
   const r = checkKeyLinks(cwd, content);
   if (r.total === 0) {
-    output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath }, raw);
+    // EXIT_OK: same reasoning as cmdVerifyArtifacts above — an empty key_links block is
+    // the shipped template default, and the parseMustHavesBlock indent mismatch means
+    // this branch fires for every plan written in PAN's own format.
+    output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath }, raw, undefined, EXIT_OK);
     return;
   }
   output(r, raw, r.all_verified ? 'valid' : 'invalid');
@@ -490,8 +503,11 @@ function reconcilePhase(cwd, phaseNum) {
 function cmdVerifyReconcile(cwd, phaseNum, raw) {
   if (!phaseNum) { error('Usage: verify reconcile <phase>'); }
   const r = reconcilePhase(cwd, phaseNum);
-  output(r, raw, r.reconciled ? 'valid' : 'invalid');
-  process.exit(r.reconciled ? 0 : 1);
+  // Exit non-zero on contradiction so exec-phase's auto-advance gate actually
+  // stops on a rubber-stamped verification. output() previously hard-coded
+  // exit 0, making the old trailing process.exit dead code (H3, ADR audit
+  // 2026-08); the exitCode arg restores the gate.
+  output(r, raw, r.reconciled ? 'valid' : 'invalid', r.reconciled ? 0 : 1);
 }
 
 // ─── Stub / fake-return scanner (ADR-0036 review — closes the hardcoded
@@ -516,7 +532,9 @@ const STUB_CODE_EXT = /\.(js|cjs|mjs|jsx|ts|tsx|py|go|rb|java|php|rs|c|cc|cpp|h|
  * @returns {{scanned, findings: Array, blocking: number, total: number}}
  */
 function scanStubs(cwd, opts = {}) {
-  let files = Array.isArray(opts.files) ? opts.files : getChangedFiles(cwd);
+  // includeUntracked: a stub gate that cannot see new files is not a gate. See the
+  // note in verify-drift.cjs getChangedFiles for why drift does not want the same.
+  let files = Array.isArray(opts.files) ? opts.files : getChangedFiles(cwd, null, { includeUntracked: true });
   files = (files || []).filter(f => STUB_CODE_EXT.test(f));
   const findings = [];
   for (const rel of files) {
@@ -538,8 +556,9 @@ function scanStubs(cwd, opts = {}) {
 
 function cmdVerifyStubs(cwd, opts = {}, raw) {
   const r = scanStubs(cwd, opts);
-  output(r, raw, r.blocking === 0 ? 'valid' : 'invalid');
-  if (opts.gate) process.exit(r.blocking > 0 ? 1 : 0);
+  // --gate must exit non-zero on blocking findings; output() used to hard-exit 0
+  // before the gate check, so the gate was dead (M30, ADR audit 2026-08).
+  output(r, raw, r.blocking === 0 ? 'valid' : 'invalid', opts.gate ? (r.blocking > 0 ? 1 : 0) : 0);
 }
 
 /**
@@ -757,8 +776,17 @@ function checkStateFile(cwd, addIssue, repairs) {
   if (stateContent === null) {
     // skip further state checks
   } else {
-    // Extract phase references (e.g. "Phase 3" or "phase 01") from state.md
-    const phaseRefs = [...stateContent.matchAll(/[Pp]hase\s+(\d+(?:\.\d+)*)/g)].map(match => match[1]);
+    // Extract phase references (e.g. "Phase 3" or "phase 01") from state.md,
+    // deduped by normalized phase number. A real state.md mentions the same phase
+    // several times -- a total, a progress line, a decisions note -- and one missing
+    // directory must produce one warning, not one per mention. Keying on the
+    // normalized form collapses "Phase 3" and "Phase 03"; the first spelling seen
+    // is kept so the message quotes what the file actually says.
+    const phaseRefs = new Map();
+    for (const match of stateContent.matchAll(/[Pp]hase\s+(\d+(?:\.\d+)*)/g)) {
+      const key = normalizePhaseName(match[1]);
+      if (!phaseRefs.has(key)) phaseRefs.set(key, match[1]);
+    }
     // Get disk phases for cross-reference
     const diskPhases = new Set();
     try {
@@ -773,7 +801,7 @@ function checkStateFile(cwd, addIssue, repairs) {
       // phases/ directory may not exist yet
     }
     // Check for invalid references -- only warn if there are phases on disk
-    for (const ref of phaseRefs) {
+    for (const ref of phaseRefs.values()) {
       const normalizedRef = String(parseInt(ref, 10)).padStart(2, '0');
       if (!diskPhases.has(ref) && !diskPhases.has(normalizedRef) && !diskPhases.has(String(parseInt(ref, 10)))) {
         if (diskPhases.size > 0) {
@@ -866,10 +894,28 @@ function crossCheckRoadmapDisk(cwd, phasesDirPath, addIssue) {
     }
   } catch { /* phases/ may not exist yet */ }
 
+  // A roadmap phase ahead of the current position has simply not been planned yet.
+  // PAN's own workflow creates the condition: /pan:new-project writes a roadmap
+  // declaring every phase up front, and /pan:plan-phase creates directories one at a
+  // time -- so warning on those would make `degraded` the permanent state of every
+  // multi-phase project and drain the verdict of signal. Only a phase at or behind
+  // the current position is genuinely suspect. With no readable current phase we
+  // cannot tell ahead from behind, so fall back to warning on everything.
+  let currentPhase = null;
+  try {
+    const stateContent = fs.readFileSync(path.join(planningPath(cwd), STATE_FILE), 'utf-8');
+    const m = stateContent.match(/\*\*Current Phase:\*\*\s*(\d+[A-Z]?(?:\.\d+)*)/i);
+    if (m) currentPhase = m[1];
+  } catch { /* no state.md -- checkStateFile reports that; stay conservative here */ }
+
   for (const p of roadmapPhases) {
     const padded = String(parseInt(p, 10)).padStart(2, '0');
-    if (!diskPhases.has(p) && !diskPhases.has(padded))
+    if (diskPhases.has(p) || diskPhases.has(padded)) continue;
+    if (currentPhase !== null && comparePhaseNum(p, currentPhase) > 0) {
+      addIssue('info', 'I002', `Phase ${p} in ${ROADMAP_FILE} is not planned yet (current phase: ${currentPhase})`, `Run /pan:plan-phase ${p} when you reach it`);
+    } else {
       addIssue('warning', 'W006', `Phase ${p} in ${ROADMAP_FILE} but no directory on disk`, 'Create phase directory or remove from roadmap');
+    }
   }
   for (const p of diskPhases) {
     const unpadded = String(parseInt(p, 10));
@@ -919,17 +965,13 @@ function repairIssues(cwd, repairs) {
       switch (repair) {
         case 'createConfig':
         case 'resetConfig': {
-          // Write a fresh config.json with sensible defaults
-          const defaults = {
-            model_profile: 'balanced',
-            commit_docs: true,
-            search_gitignored: false,
-            branching_strategy: 'none',
-            research: true,
-            plan_checker: true,
-            verifier: true,
-            parallelization: true,
-          };
+          // Write the canonical NESTED config via buildConfigDefaults. The old
+          // flat literal (research/plan_checker/verifier at top level) did NOT
+          // match the schema the gate reads (config.workflow.verifier), so
+          // --repair silently disabled the verification gate (M31, ADR audit
+          // 2026-08; note the flat form also drifted plan_checker vs plan_check).
+          const { buildConfigDefaults } = require('./config.cjs');
+          const defaults = buildConfigDefaults(false, {});
           fs.writeFileSync(configFullPath, JSON.stringify(defaults, null, 2), 'utf-8');
           repairActions.push({ action: repair, success: true, path: CONFIG_FILE });
           break;
@@ -970,7 +1012,7 @@ function repairIssues(cwd, repairs) {
       }
     } catch (err) {
       // Repair action failed -- record the error so callers can report it
-      repairActions.push({ action: repair, success: false, error: err.message });
+      repairActions.push({ action: repair, success: false, error: err.message || 'repair_failed' });
     }
   }
 
@@ -1111,7 +1153,7 @@ function syncRequirementCheckboxes(cwd) {
   }
 
   if (fixed > 0) {
-    try { fs.writeFileSync(reqPath, reqContent, 'utf-8'); } catch (e) { return { fixed: 0, error: e.message }; }
+    try { fs.writeFileSync(reqPath, reqContent, 'utf-8'); } catch (e) { return { fixed: 0, error: e.message || 'requirements_write_failed' }; }
   }
   return { fixed };
 }
@@ -1161,7 +1203,7 @@ function syncRoadmapPlanCheckboxes(cwd) {
   }
 
   if (fixed > 0) {
-    try { fs.writeFileSync(roadmapPath, roadmapContent, 'utf-8'); } catch (e) { return { fixed: 0, error: e.message }; }
+    try { fs.writeFileSync(roadmapPath, roadmapContent, 'utf-8'); } catch (e) { return { fixed: 0, error: e.message || 'roadmap_write_failed' }; }
   }
   return { fixed };
 }
@@ -1308,19 +1350,6 @@ function cmdValidateHealth(cwd, options, raw) {
     }
   }
 
-  // Determine overall status from error/warning counts
-  let status;
-  if (errors.length > 0) {
-    status = HEALTH_STATUS.BROKEN;
-  } else if (warnings.length > 0) {
-    status = HEALTH_STATUS.DEGRADED;
-  } else {
-    status = HEALTH_STATUS.HEALTHY;
-  }
-
-  const repairableCount = errors.filter(e => e.repairable).length +
-                         warnings.filter(w => w.repairable).length;
-
   // Check 11 (optional): drift analysis
   let driftResult;
   if (options.drift) {
@@ -1351,6 +1380,22 @@ function cmdValidateHealth(cwd, options, raw) {
       addIssue('warning', 'LINKS_ERR', `Link graph has ${r.summary.errors} errors (broken refs or uncovered backlink contracts)`, 'Run pan-tools links validate for details');
     }
   }
+
+  // Determine overall status from error/warning counts. This must run after every
+  // check that can call addIssue -- computing it earlier left DRIFT_HIGH and
+  // LINKS_ERR sitting in `warnings` while the verdict still read `healthy`, which
+  // contradicts the documented behaviour of --links ("errors degrade health").
+  let status;
+  if (errors.length > 0) {
+    status = HEALTH_STATUS.BROKEN;
+  } else if (warnings.length > 0) {
+    status = HEALTH_STATUS.DEGRADED;
+  } else {
+    status = HEALTH_STATUS.HEALTHY;
+  }
+
+  const repairableCount = errors.filter(e => e.repairable).length +
+                         warnings.filter(w => w.repairable).length;
 
   const result = {
     status,

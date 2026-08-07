@@ -105,7 +105,7 @@ status: complete
 
   test('returns error when file is not found', () => {
     const result = runPanTools('frontmatter get nonexistent.md', tmpDir);
-    assert.ok(result.success, `Command should output JSON error: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'error message present');
@@ -123,7 +123,7 @@ phase: 01
     );
 
     const result = runPanTools('frontmatter get test.md --field missing_key', tmpDir);
-    assert.ok(result.success, `Command should output JSON error: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'Field not found', 'field not found error');
@@ -253,7 +253,7 @@ Just some content.
 
   test('returns error when file is not found', () => {
     const result = runPanTools('frontmatter set nonexistent.md --field phase --value 01', tmpDir);
-    assert.ok(result.success, `Command should output JSON error: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'file not found error');
@@ -354,7 +354,7 @@ type: feature
       ['frontmatter', 'merge', 'nonexistent.md', '--data', '{"a":"b"}'],
       tmpDir
     );
-    assert.ok(result.success, `Command should output JSON error: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'file not found error');
@@ -472,7 +472,7 @@ phase: 01
 
   test('returns error when file is not found', () => {
     const result = runPanTools('frontmatter validate missing.md --schema plan', tmpDir);
-    assert.ok(result.success, `Command should output JSON error: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'file not found error');
@@ -597,6 +597,16 @@ describe('reconstructFrontmatter', () => {
   test('serializes short arrays inline', () => {
     const result = reconstructFrontmatter({ tags: ['api', 'auth'] });
     assert.ok(result.includes('tags: [api, auth]'), 'short array rendered inline');
+  });
+
+  // M19: an item that itself contains ', ' must NOT render inline, or it would
+  // re-split into multiple items on parse. Force multi-line so it survives whole.
+  test('array item containing a comma survives serialize -> parse as one item', () => {
+    const original = { deps: ['a, b', 'c'] };
+    const yaml = reconstructFrontmatter(original);
+    assert.ok(!yaml.includes('[a, b, c]'), 'must not render the comma item inline');
+    const reExtracted = extractFrontmatter(`---\n${yaml}\n---\n`);
+    assert.deepStrictEqual(reExtracted.deps, ['a, b', 'c'], 'comma item preserved intact');
   });
 
   test('serializes long arrays as multi-line', () => {
@@ -755,14 +765,14 @@ describe('frontmatter commands handle missing files', () => {
 
   test('frontmatter set returns error for nonexistent file', () => {
     const result = runPanTools('frontmatter set nonexistent.md --field title --value test', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
   });
 
   test('frontmatter merge returns error for nonexistent file', () => {
     const result = runPanTools('frontmatter merge nonexistent.md --data {"title":"test"}', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
   });

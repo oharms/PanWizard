@@ -13,7 +13,8 @@
  * Exports:
  *   - runExperiment(slug, opts)           — spawn + observe + return result
  *   - tailExperimentState(slug, opts)     — read run-state.json snapshot
- *   - stopExperiment(slug, opts)          — graceful halt of a running experiment
+ *   - stopExperiment(slug, opts)          — reconcile the run-state of an experiment
+ *                                           (see its doc for the spawnSync limitation)
  *   - RUNTIME_RUNNERS                     — adapter map (per-runtime headless invocation)
  */
 
@@ -170,7 +171,7 @@ function appendEvent(state, type, details) {
  * @param {string} [opts.root] - experiment root (default PAN_EXPERIMENTS_ROOT_DEFAULT)
  * @param {string} [opts.prompt] - prompt passed to the external runtime; default
  *   is `/pan:new-project --auto @.planning/idea.md`
- * @param {number} [opts.timeoutMs] - hard timeout (default 30 min)
+ * @param {number} [opts.timeoutMs] - hard timeout (default 60 min)
  * @param {object} [opts.runtimeOverride] - { bin, buildArgs } to bypass the manifest's
  *   runtime adapter (used by tests)
  * @param {function} [opts.onProgress] - callback invoked per line of stdout/stderr
@@ -415,13 +416,22 @@ function tailExperimentState(slug, opts = {}) {
 // ── stopExperiment ──────────────────────────────────────────────────────────
 
 /**
- * Stop a running experiment.
+ * Reconcile the run-state of an experiment.
  *
- * If the experiment is currently running (run-state.json shows status=running
- * and pid is alive), send SIGTERM. If still alive after a short grace period,
- * SIGKILL.
+ * IMPORTANT (M26): this CANNOT terminate a live, in-flight run. runExperiment()
+ * uses a synchronous spawnSync (see its comments — a real-time/async runner is
+ * deferred to W3), which blocks until the child exits and only learns the child
+ * pid FROM the return value. So while a run is in flight run-state.json still has
+ * pid=null, and by the time a pid is recorded the process has already exited.
+ * There is therefore no live child for this function to signal.
  *
- * If the experiment has already finished, return its current state (no error).
+ * Behavior:
+ *   - status != 'running'  → return the current state (already finished; no error).
+ *   - status == 'running' but no pid recorded → return an error explaining that
+ *     the synchronous runner does not expose a live pid to signal.
+ *   - status == 'running' with a (stale) pid → best-effort SIGTERM and mark the
+ *     run failed/manual. Note the pid is almost certainly already dead under the
+ *     spawnSync model; live termination lands with the W3 async runner.
  */
 function stopExperiment(slug, opts = {}) {
   const root = opts.root || PAN_EXPERIMENTS_ROOT_DEFAULT;

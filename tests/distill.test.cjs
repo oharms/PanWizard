@@ -31,12 +31,26 @@ const {
 // ─── Pass 1: Deterministic ────────────────────────────────────────────────────
 
 describe('Pass 1 — findPhantomTryCatch', () => {
-  test('detects try/catch around JSON.parse', () => {
-    const code = 'try { return JSON.parse(input); } catch (e) { return null; }';
+  test('detects try/catch around a non-throwing coercion (parseInt)', () => {
+    const code = 'try { return parseInt(input); } catch (e) { return null; }';
     const findings = findPhantomTryCatch(code, 'test.js');
     assert.equal(findings.length, 1);
     assert.equal(findings[0].pattern, 'phantom_try_catch');
     assert.equal(findings[0].file, 'test.js');
+  });
+
+  // M14: JSON.parse genuinely throws (SyntaxError) so its try/catch is
+  // load-bearing — it must NOT be flagged as a removable phantom.
+  test('does NOT flag try/catch around JSON.parse (it can throw)', () => {
+    const code = 'try { JSON.parse(x); } catch {}';
+    const findings = findPhantomTryCatch(code, 'test.js');
+    assert.equal(findings.length, 0);
+  });
+
+  test('does NOT flag try/catch around JSON.stringify (circular/BigInt throw)', () => {
+    const code = 'try { return JSON.stringify(b); } catch {}';
+    const findings = findPhantomTryCatch(code, 'test.js');
+    assert.equal(findings.length, 0);
   });
 
   test('does not flag try/catch around real I/O', () => {
@@ -45,10 +59,10 @@ describe('Pass 1 — findPhantomTryCatch', () => {
     assert.equal(findings.length, 0);
   });
 
-  test('catches multiple instances in one file', () => {
+  test('catches multiple non-throwing coercions in one file', () => {
     const code = `
-      try { return JSON.parse(a); } catch {}
-      try { return JSON.stringify(b); } catch {}
+      try { return Number(a); } catch {}
+      try { return String(b); } catch {}
       try { return parseInt(c); } catch {}
     `;
     const findings = findPhantomTryCatch(code, 'multi.js');
@@ -254,6 +268,12 @@ describe('Pass 5 — pattern memory', () => {
     const regressed = detectRegressedPatterns(currentFindings, memory);
     assert.equal(regressed.length, 1);
     assert.equal(regressed[0].regressed, true);
+    // M15: memory records detections, not resolutions — the label must be the
+    // honest "RECURRING / previously detected", never the false "last resolved".
+    assert.ok(regressed[0].previously_detected, 'carries previously_detected date');
+    assert.equal(regressed[0].previously_resolved, undefined);
+    assert.match(regressed[0].message, /RECURRING — previously detected/);
+    assert.doesNotMatch(regressed[0].message, /resolved/i);
   });
 
   test('detectRegressedPatterns returns empty for new patterns', () => {

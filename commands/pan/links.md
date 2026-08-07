@@ -12,6 +12,8 @@ allowed-tools:
 
 Validate the doc-code link graph. Walks `docs/`, `pan-wizard-core/`, `commands/`, and `agents/` for inline `[[<id>]]` references and `// @pan: <id>` source-comment anchors. Reports broken refs, stale anchors, and uncovered backlink contracts.
 
+> **User projects:** the default roots (`docs/`, `pan-wizard-core/`, `commands/`, `agents/`) are the **PAN source-repo** layout. A typical user project has none of these, so a bare `/pan:links` scans almost nothing and reports a hollow `pass`. In a user project you **must** point it at your own layout with `--doc-root` / `--source-root` (both repeatable), e.g. `/pan:links --doc-root docs --source-root src`. Treat any run where `doc_files_scanned` (or `source_files_scanned`) is `0` as a **warning that the roots are misconfigured**, not a clean pass.
+
 **Usage:**
 ```
 /pan:links
@@ -99,4 +101,4 @@ Anchors cluster at the top of a file under a single banner; comment leader must 
 - ADR-0027 — Doc–Code Link Graph
 - `docs/specs/doc_code_link_graph_featureai.md` — wire-level spec
 - `pan-tools doc-lint` — frontmatter schema validator (orthogonal concern)
-- `pan-tools verify-key-links` — legacy frontmatter-only link verifier (subsumed; both still ship)
+- `pan-tools verify key-links` — legacy frontmatter-only link verifier (subsumed; both still ship)

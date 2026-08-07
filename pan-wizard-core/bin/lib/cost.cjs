@@ -96,20 +96,35 @@ function tokensFile(cwd) {
   return path.join(metricsDir(cwd), TOKENS_FILE);
 }
 
+// Longest-prefix family match against a rates table. Transcript/hook-captured
+// ids are versioned ("claude-opus-4-8-20260301", "claude-fable-5[1m]") while
+// rate tables use family keys — match the longest key the model starts with so
+// the most specific family wins.
+function familyPrefixRate(rates, model) {
+  const families = Object.keys(rates)
+    .filter(k => model.startsWith(k))
+    .sort((a, b) => b.length - a.length);
+  return families.length > 0 ? rates[families[0]] : null;
+}
+
 function resolveRate(model, tier, configRates) {
+  // Config overrides win over the built-in table — including for versioned ids.
+  // Without the family-prefix pass here, a cost.rates override keyed on a family
+  // ("claude-opus-5") was silently ignored for the versioned id the hooks
+  // actually record ("claude-opus-5-20260101"), which fell through to
+  // DEFAULT_RATES instead.
   if (configRates) {
     if (model && configRates[model]) return configRates[model];
+    if (model) {
+      const fam = familyPrefixRate(configRates, model);
+      if (fam) return fam;
+    }
     if (tier && configRates[tier]) return configRates[tier];
   }
   if (model && DEFAULT_RATES[model]) return DEFAULT_RATES[model];
-  // Transcript/hook-captured ids are versioned ("claude-opus-4-8-20260301",
-  // "claude-fable-5[1m]") while the table uses family keys — prefix-match,
-  // longest key first so the most specific family wins.
   if (model) {
-    const families = Object.keys(DEFAULT_RATES)
-      .filter(k => model.startsWith(k))
-      .sort((a, b) => b.length - a.length);
-    if (families.length > 0) return DEFAULT_RATES[families[0]];
+    const fam = familyPrefixRate(DEFAULT_RATES, model);
+    if (fam) return fam;
   }
   if (tier && DEFAULT_RATES[tier]) return DEFAULT_RATES[tier];
   return null;
@@ -129,10 +144,19 @@ function computeCost(rec, configRates) {
   const output = rec.output_tokens || 0;
   const cacheRead = rec.cache_read_tokens || 0;
   const cacheWrite = rec.cache_write_tokens || 0;
-  // Non-cache-hit input tokens = input - cache_read (cache_read already in input on some providers,
-  // separate on others; we treat cache_read as a reduction of effective new input).
-  const newInput = Math.max(0, input - cacheRead);
-  const usd = (newInput * rate.input + output * rate.output
+  // The three input axes are DISJOINT as PAN records them. hooks/pan-cost-logger.js
+  // copies Anthropic's `input_tokens`, `cache_read_input_tokens` and
+  // `cache_creation_input_tokens` into separate fields, and Anthropic's
+  // `input_tokens` already EXCLUDES both cache axes — so each token is counted once
+  // and billed at its own rate.
+  //
+  // This previously subtracted cache_read from input, hedging that "cache_read is
+  // already in input on some providers". That double-discounted: with a warm cache,
+  // cache_read is far larger than input, so Math.max(0, …) zeroed the billed input
+  // outright. On a realistic row (30k input / 5k output / 200k cache read / 12k
+  // cache write on Opus-5 rates) it reported $0.30 against a true $0.45 — a 33%
+  // understatement, always in the direction of looking cheaper.
+  const usd = (input * rate.input + output * rate.output
     + cacheRead * rate.cache_read + cacheWrite * rate.cache_write) / 1_000_000;
   return Math.round(usd * 10000) / 10000;
 }
@@ -171,7 +195,7 @@ function appendRecord(cwd, rec) {
     fs.appendFileSync(tokensFile(cwd), JSON.stringify(normalized) + '\n', 'utf-8');
     return { appended: true, file: tokensFile(cwd) };
   } catch (e) {
-    return { appended: false, error: e.message };
+    return { appended: false, error: e.message || 'ledger_append_failed' };
   }
 }
 
@@ -294,9 +318,12 @@ function aggregate(cwd, opts) {
 
   totals.cost_usd = Math.round(totals.cost_usd * 10000) / 10000;
 
-  // Cache hit rate: cache_read / (cache_read + new input tokens billed at full rate)
-  const billedInput = Math.max(0, totals.input_tokens - totals.cache_read_tokens);
-  const hitDenom = totals.cache_read_tokens + billedInput;
+  // Cache hit rate: cached input / all input read. Same disjoint-axes fact as
+  // computeCost — input_tokens excludes the cache axes, so the denominator is simply
+  // their sum. Subtracting cache_read from input here made the denominator collapse
+  // to cache_read whenever the cache was warm (the normal case), pinning the metric
+  // at exactly 100% and making it carry no information at all.
+  const hitDenom = totals.cache_read_tokens + totals.input_tokens;
   const cacheHitRatePct = hitDenom > 0
     ? Math.round((totals.cache_read_tokens / hitDenom) * 1000) / 10
     : null;
@@ -406,7 +433,7 @@ function cmdCostClear(cwd, raw) {
     fs.unlinkSync(tokensFile(cwd));
     output({ cleared: true, file: tokensFile(cwd) }, raw);
   } catch (e) {
-    output({ cleared: false, error: e.message }, raw);
+    output({ cleared: false, error: e.message || 'ledger_clear_failed' }, raw);
   }
 }
 

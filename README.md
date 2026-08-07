@@ -4,7 +4,7 @@
 
 # PanWizard
 
-**Command a bot army for your codebase** — an Opus *Mission Control* delegates whole-project goals to specialist squads and ships behind a human merge gate. Five AI CLIs, zero context rot.
+**Command a bot army for your codebase** — a *Mission Control* agent delegates whole-project goals to specialist squads and ships behind a human merge gate. Five AI CLIs, zero context rot.
 
 **Solves context rot** — the quality degradation that happens as the model fills its context window.
 
@@ -56,7 +56,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 ┌─────────────────────▼───────────────────────────────────────┐
 │  AGENTS (specialized)                                       │
 │  planner · executor · verifier · researcher · debugger ...  │
-│  Each runs in fresh 200K context window                     │
+│  Each runs in a fresh context window                        │
 └─────────────────────┬───────────────────────────────────────┘
                       │ uses
 ┌─────────────────────▼───────────────────────────────────────┐
@@ -76,7 +76,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 ## Bot Army
 
-> **Don't run one phase — run the whole project.** `/pan:army` turns PAN's agents into a coordinated army that delivers a goal end-to-end: an Opus **Mission Control** plans the mission and delegates to specialist **squads**, parallel builders each work an isolated git worktree, and **nothing reaches your main branch without green checks and your explicit approval.**
+> **Don't run one phase — run the whole project.** `/pan:army` turns PAN's agents into a coordinated army that delivers a goal end-to-end: a **Mission Control** agent plans the mission and delegates to specialist **squads**, parallel builders each work an isolated git worktree, and **nothing reaches your main branch without green checks and your explicit approval.**
 
 <div align="center">
 <img src="https://cdn.jsdelivr.net/npm/pan-wizard@latest/assets/pan-orchestration.png" alt="PanWizard specialist agents orchestrated along a pipeline" width="340" />
@@ -84,20 +84,24 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 | Tier | Squad | Does | Access |
 |------|-------|------|--------|
-| **0 · Mission Control** | `pan-conductor` (Opus) | Plans + delegates. Never writes code. | delegation-only |
-| **1 · Architecture** | roadmapper · planner · researchers | Designs the contract before code | read-only |
-| **1 · Build** | `pan-executor` | Turns the contract into committed code | read / write · one `army/<task>` worktree per agent |
-| **1 · Quality** | reviewer · hardener · verifier · … | Adversarially tries to break it | read-only |
-| **1 · Release** | `pan-release` | Ships behind a human gate | always-ask |
-| **2 · Workers** | document_code · distiller | Narrow, high-volume jobs | scoped |
+| **0 · Mission Control** | `pan-conductor` | Plans + delegates; instructed to hand implementation to a squad | delegation-first |
+| **1 · Architecture** | roadmapper · planner · researchers · … | Designs the contract before code | `read-only` |
+| **1 · Build** | `pan-executor` | Turns the contract into committed code | `read-write-bash` · one `army/<task>` worktree per agent |
+| **1 · Quality** | reviewer · hardener · verifier · … | Adversarially tries to break it | `read-only` |
+| **1 · Release** | `pan-release` | Ships behind a human gate | `always-ask` |
+| **2 · Workers** | the utility agents `pan-tools squad list` reports under `workers` | Narrow, high-volume jobs | scoped |
+
+**Mission Control runs on your session's model** — `pan-conductor` declares no `model:`, so it inherits whatever you launched with rather than pinning a model of its own.
+
+**Reading the Access column.** The backticked values are the squad `access` labels `pan-tools squad list` reports; the tier-0 and tier-2 labels are PAN's own. Either way they describe the *role contract* PAN's prompts assign, not a sandbox — `squads.cjs` "modifies no agent and changes no execution path", so a label can differ from what an agent may actually do. The real tool grant is each agent's own `tools:` frontmatter (`grep '^tools:' agents/*.md`), and Mission Control's includes `Write` and `Bash`. The rail those grants do enforce is delegation depth: `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another (today, the coordinator), so a squad agent cannot fan out further even if asked to. For the irreversible steps, back the convention with branch protection on your own repo.
 
 **The loop:** `Muster → Plan → Delegate → Execute → Review → Integrate → Learn` ↺ — repeating until the goal ships or a stop condition fires.
 
 **Bounded by a hard safety harness:**
 
-- **A human merges. Always.** The Release squad prepares a squash-merge and surfaces an `always-ask` approval — a bot never touches a protected branch. Recovery is `git revert` or the previous tag, never a force-push.
+- **A human merges.** The Release squad prepares a squash-merge and surfaces an `always-ask` approval instead of merging; pair it with branch protection on your repo, which is what makes that unbypassable rather than merely instructed. Recovery is `git revert` or the previous tag, never a force-push.
 - **Isolated builders.** Each Build agent forks its own `army/<task>` branch + git worktree, so parallel agents never share a file.
-- **Caps that don't relax.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch — the same harness as hierarchical exec, at campaign scale.
+- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn — the same harness as hierarchical exec, at campaign scale.
 
 **Run it over days.** `--schedule` arms a self-resuming campaign with a per-day budget that burns the backlog down across sessions — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
 
@@ -136,7 +140,7 @@ Verify with:
 - Codex: `$pan-help`
 
 > [!NOTE]
-> Codex and Copilot CLI installations use skills (`skills/pan-*/SKILL.md`) rather than custom prompts.
+> Codex and Copilot CLI installations use skills rather than custom prompts. Codex uses the shared `.agents/skills/pan-*/SKILL.md` tree; Copilot CLI uses `skills/pan-*/SKILL.md` under `.github` (local) or `~/.copilot` (global).
 
 ### Staying Updated
 
@@ -183,17 +187,26 @@ Add `--unified-skills` to install commands as one shared `.agents/skills/` tree 
 <details>
 <summary><strong>Development Installation</strong></summary>
 
-Clone the repository and run the installer locally:
+Clone the repository, then run the installer from a **separate** project
+directory. The installer hard-refuses to install into its own source repo (a
+`PAN_SOURCE_ROOT` guard exits with an error), so point it at a different target:
 
 ```bash
+# 1. Get the source
 git clone https://github.com/oharms/PanWizard.git
-cd PanWizard
-node bin/install.js --claude --local
+
+# 2. Install into a DIFFERENT project directory (never the PanWizard source dir)
+cd /path/to/some-test-project
+node /path/to/PanWizard/bin/install.js --claude --local
 ```
 
-Installs to `./.claude/` for testing modifications before contributing.
+Installs to the test project's `./.claude/` so you can try local modifications
+before contributing.
+
+Run the test suite from inside the cloned source repo:
 
 ```bash
+cd /path/to/PanWizard
 npm test                # Unit tests
 npm run test:scenarios  # Scenario tests
 npm run test:all        # All tests (unit + scenario)
@@ -348,7 +361,7 @@ Each plan is small enough to execute in a fresh context window. No degradation, 
 The system:
 
 1. **Runs plans in waves** — Parallel where possible, sequential when dependent
-2. **Fresh context per plan** — 200k tokens purely for implementation, zero accumulated garbage
+2. **Fresh context per plan** — a whole context window purely for implementation, zero accumulated garbage
 3. **Commits per task** — Every task gets its own atomic commit
 4. **Verifies against goals** — Checks the codebase delivers what the phase promised
 
@@ -510,7 +523,7 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 |-------|------------------|-----------|
 | Research | Coordinates, presents findings | 4 parallel researchers investigate stack, features, architecture, pitfalls |
 | Planning | Validates, manages iteration | Planner creates plans, checker verifies, loop until pass |
-| Execution | Groups into waves, tracks progress | Executors implement in parallel, each with fresh 200k context |
+| Execution | Groups into waves, tracks progress | Executors implement in parallel, each with a fresh context window |
 | Verification | Presents results, routes next | Verifier checks codebase against goals, debuggers diagnose failures |
 
 The orchestrator never does heavy lifting. It spawns agents, waits, integrates results.
@@ -566,7 +579,7 @@ You're never locked in. The system adapts.
 
 | | PAN Wizard | Cursor / Windsurf | Aider / Cline | GitHub Copilot |
 |---|---|---|---|---|
-| **Context rot prevention** | Phase-scoped fresh 200K windows | No — context degrades over time | No (Cline: condensing) | No |
+| **Context rot prevention** | Phase-scoped fresh context windows | No — context degrades over time | No (Cline: condensing) | No |
 | **Multi-agent** | Specialized agents, parallel waves | Up to 8 parallel (Cursor 2.0) | Single agent | Specialized sub-agents |
 | **Plan → Verify loop** | Research → plan → verify with iteration | Agent generates plan | Plan mode (Cline) | Plan step |
 | **Post-execution verification** | Auto verifier + human UAT | Iterative error-fix | Manual test runs | Auto-fix loop |
@@ -616,7 +629,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:army "<goal>"` | Campaign-scale delivery: Mission Control (Opus) delegates a whole-project goal to architecture/build/quality/release squads with branch-per-agent worktrees, behind CI + a human merge gate; `--schedule`/`--continue` run it over time |
+| `/pan:army "<goal>"` | Campaign-scale delivery: Mission Control delegates a whole-project goal to architecture/build/quality/release squads with branch-per-agent worktrees, behind CI + a human merge gate; `--schedule`/`--continue` run it over time |
 
 ### Phase Management
 
@@ -720,11 +733,11 @@ Control which Claude model each agent uses. Balance quality vs token spend.
 
 | Profile | Planning | Execution | Verification |
 |---------|----------|-----------|--------------|
-| `quality` | Opus | Opus | Opus |
-| `balanced` (default) | Opus | Sonnet | Sonnet |
+| `quality` | reasoning | reasoning | reasoning |
+| `balanced` (default) | reasoning | reasoning | reasoning |
 | `budget` | Sonnet | Sonnet | Haiku |
 
-> Simplified view — actual model assignment varies by agent role. See [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
+> `reasoning` = the session model (inherit) — every agent runs on the model you launched the session with. Both `quality` and `balanced` resolve this way; only `budget` steps down to a Sonnet/Haiku mix. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
 
 Switch profiles:
 ```
@@ -811,7 +824,7 @@ This prevents Claude from reading these files entirely, regardless of what comma
 **Commands not found after install?**
 - Restart your runtime to reload commands/skills
 - Verify files exist in `~/.claude/commands/pan/` (global) or `./.claude/commands/pan/` (local)
-- For Codex, verify skills exist in `~/.codex/skills/pan-*/SKILL.md` (global) or `./.codex/skills/pan-*/SKILL.md` (local)
+- For Codex, verify skills exist in `~/.agents/skills/pan-*/SKILL.md` (global) or `./.agents/skills/pan-*/SKILL.md` (local)
 - For Copilot CLI, verify skills exist in `~/.copilot/skills/pan-*/SKILL.md` (global) or `./.github/skills/pan-*/SKILL.md` (local)
 
 **Commands not working as expected?**

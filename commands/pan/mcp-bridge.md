@@ -98,7 +98,7 @@ Normally the host runtime writes this file. The CLI path exists for test fixture
 
 <workflow>
 
-**New to a project with MCP tools?** Run `/pan:mcp-bridge list` to see what's available. If empty, check the host runtime's MCP config — `.claude/settings.json` for Claude Code, or the runtime's equivalent.
+**New to a project with MCP tools?** Run `/pan:mcp-bridge list` to see what's available. If empty, check the host runtime's MCP config — each runtime keeps it somewhere different: Claude Code in `settings.json` under its config dir, OpenCode in `opencode.json`, Copilot in `.github/mcp.json`, Codex in its own config, Gemini in its settings file.
 
 **Planning a phase that might touch external systems?** Run `/pan:mcp-bridge recommend <phase>` to get a ranked shortlist. Copy relevant tool names into the phase plan's "External tools" section so the executor knows to invoke them.
 

@@ -1,7 +1,7 @@
 # ADR-0017: Enhanced focus-design with Autonomous Investigation
 
 ## Status
-Proposed
+Accepted (shipped in v2.3.0 — 2026-03-03)
 
 ## Context
 PAN's `/pan:focus-design` is the most comprehensive AI feature specification workflow in the ecosystem (10 phases, 4 modes, strategic analysis, security modeling, ADR generation). However, competitive analysis reveals three critical gaps:

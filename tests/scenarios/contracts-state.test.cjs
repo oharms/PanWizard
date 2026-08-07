@@ -14,24 +14,46 @@ describe('E2E State Command Contracts', () => {
     runner = createScenarioRunner('claude');
     const pd = path.join(runner.tmpDir, '.planning');
     fs.mkdirSync(path.join(pd, 'phases', '01-setup'), { recursive: true });
-    // Create a realistic state.md with proper sections
-    fs.writeFileSync(path.join(pd, 'state.md'), [
-      '---',
-      'pan_state_version: "1.0"',
-      'Status: In progress',
-      'Current Phase: 01',
-      'Milestone: v1.0',
-      'Progress: 20%',
-      '---',
+    // state.md in the shape PAN itself ships (pan-wizard-core/templates/state.md):
+    // bold fields, `### Decisions`, `### Blockers/Concerns`, Session Continuity.
+    // The previous fixture used YAML frontmatter keys and `## Key Decisions`, which
+    // NONE of the state writers match — so every mutation below returned
+    // `<verb>: false` and these contract tests passed on the failure branch,
+    // asserting only that the flag was a boolean. They now exercise the real path.
+  fs.writeFileSync(path.join(pd, 'state.md'), [
+      '# Project State',
       '',
-      '## Key Decisions',
-      '- Initial architecture chosen',
+      '## Current Position',
       '',
-      '## Active Blockers',
-      '(none)',
+      '**Current Phase:** 1',
+      '**Current Phase Name:** setup',
+      '**Current Plan:** 1',
+      '**Total Plans in Phase:** 3',
+      '**Status:** In progress',
+      '**Last Activity:** 2026-01-01',
+      '**Progress:** [##________] 20%',
       '',
-      '## Session History',
-      '(none)',
+      '## Performance Metrics',
+      '',
+      '| Phase | Plans | Total | Avg/Plan |',
+      '|-------|-------|-------|----------|',
+      '| - | - | - | - |',
+      '',
+      '## Accumulated Context',
+      '',
+      '### Decisions',
+      '',
+      'None yet.',
+      '',
+      '### Blockers/Concerns',
+      '',
+      'None yet.',
+      '',
+      '## Session Continuity',
+      '',
+      '**Last session:** 2026-01-01 09:00',
+      '**Stopped At:** initial setup',
+      '**Resume File:** None',
       '',
     ].join('\n'));
     fs.writeFileSync(path.join(pd, 'roadmap.md'),
@@ -58,24 +80,23 @@ describe('E2E State Command Contracts', () => {
   });
 
   test('state update modifies field', () => {
-    const result = runner.run('state update status Active');
+    const result = runner.run('state update Status Active');
     assert.ok(result.success, `should succeed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    assert.equal(typeof parsed.updated, 'boolean', 'updated should be boolean');
+    assert.equal(JSON.parse(result.output).updated, true, 'the field must actually be updated');
+    assert.match(fs.readFileSync(path.join(runner.tmpDir, '.planning', 'state.md'), 'utf-8'),
+      /\*\*Status:\*\* Active/, 'and the write must be visible on disk');
   });
 
   test('state add-decision returns added field', () => {
     const result = runner.run('state add-decision --summary ContractTestDecision');
     assert.ok(result.success, `should succeed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    assert.equal(typeof parsed.added, 'boolean', 'added should be boolean');
+    assert.equal(JSON.parse(result.output).added, true, 'the decision must actually be added');
   });
 
   test('state add-blocker returns added field', () => {
     const result = runner.run('state add-blocker --text ContractTestBlocker');
     assert.ok(result.success, `should succeed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    assert.equal(typeof parsed.added, 'boolean', 'added should be boolean');
+    assert.equal(JSON.parse(result.output).added, true, 'the blocker must actually be added');
   });
 
   test('state resolve-blocker returns resolved field', () => {
@@ -83,8 +104,7 @@ describe('E2E State Command Contracts', () => {
     runner.run('state add-blocker --text ResolveMe');
     const result = runner.run('state resolve-blocker --text ResolveMe');
     assert.ok(result.success, `should succeed: ${result.error}`);
-    const parsed = JSON.parse(result.output);
-    assert.equal(typeof parsed.resolved, 'boolean', 'resolved should be boolean');
+    assert.equal(JSON.parse(result.output).resolved, true, 'the blocker must actually be resolved');
   });
 
   test('state-snapshot returns summary fields', () => {

@@ -41,7 +41,7 @@ All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/p
 
 ### Two new flags on existing commands
 
-- `/pan:exec-phase <N> --hierarchical` (v3.4) — spawn `pan-conductor` as top-level orchestrator. Claude + Opus 4.7 only; silently falls back to flat exec elsewhere.
+- `/pan:exec-phase <N> --hierarchical` (v3.4) — spawn `pan-conductor` as top-level orchestrator. Claude Code only, because it needs native sub-agent spawning; that is a runtime constraint, not a model one — the conductor runs on whatever model you launched the session with. On the other four runtimes the flag is a no-op that warns and falls back to flat exec.
 - `/pan:exec-phase <N> --deep-review` (v3.4) — auto-invoke `/pan:review-deep` after the normal reviewer step.
 - `/pan:focus-exec --deep-review` (v3.4) — same integration for focus campaigns.
 
@@ -168,8 +168,8 @@ cat .claude/pan-wizard-core/VERSION
 # Smoke-test a new command
 node .claude/pan-wizard-core/bin/pan-tools.cjs cost report --format table
 
-# Smoke-test focus system still works
-node .claude/pan-wizard-core/bin/pan-tools.cjs focus scan --help
+# Smoke-test focus system still works (prints the command list — no side effects)
+node .claude/pan-wizard-core/bin/pan-tools.cjs
 ```
 
 ### 4. Optional: enable the auto cost logger
@@ -186,18 +186,16 @@ If missing, re-run the installer — the idempotent flow adds the entry.
 
 Every v3.x feature is additive. Rollback options:
 
-### Full rollback to v2.10.0
+### Full rollback (uninstall)
+
+Rolling back means uninstalling PAN — there is no public v2.x to reinstall. The public release history begins at v3.13.1; v2.x was never published, so its artifacts are not publicly available.
 
 ```bash
 # Uninstall PAN entirely
 node <PanWizard-repo>/bin/install.js --uninstall --claude --local
-
-# Check out v2.10.0 tag or commit, then re-install
-git checkout v2.10.0
-node bin/install.js --claude --local
 ```
 
-Your `.planning/` data survives. New directories (`metrics/`, `bus/`, etc.) remain on disk but are ignored by v2.x.
+Your `.planning/` data survives the uninstall. New directories (`metrics/`, `bus/`, etc.) remain on disk but are inert once PAN is removed.
 
 ### Partial rollback (keep v3.5 but disable specific features)
 
@@ -234,9 +232,9 @@ No — the log is append-only from the moment you upgrade. Historical cost data 
 
 Partially:
 - `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:what-if`, `/pan:review-deep`: **yes** on all 5 runtimes. Agent quality varies with model capability.
-- `/pan:preview phases` (1M-context single-shot): Opus 4.7 only for the fast path; other models take sharded fallback.
+- `/pan:preview phases` (single-shot whole-repo pass): the fast path needs a model with a 1M-context window; smaller-context models take the sharded fallback.
 - `/pan:mcp-bridge`: Claude Code only (MCP is a Claude-first protocol).
-- `/pan:exec-phase --hierarchical`: Claude + Opus 4.7 only; falls back to flat exec silently elsewhere.
+- `/pan:exec-phase --hierarchical`: Claude Code only — it needs native sub-agent spawning, which is a runtime limit rather than a model one. Elsewhere the flag is a no-op that warns and falls back to flat exec.
 
 ### What if I want to skip v3.0-v3.4 and go straight to v3.5?
 

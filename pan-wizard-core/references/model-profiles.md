@@ -10,7 +10,7 @@ PAN uses three abstract tiers instead of hardcoded model names:
 
 | Tier | Purpose | Anthropic | OpenAI | Google |
 |------|---------|-----------|--------|--------|
-| `reasoning` | Architecture, planning, complex decisions | inherit (Fable/Opus) | inherit | inherit |
+| `reasoning` | Architecture, planning, complex decisions | inherit (your session's top-tier model) | inherit | inherit |
 | `mid` | Execution, research, verification | Sonnet | mid | mid |
 | `fast` | Read-only extraction, budget tasks | Haiku | fast | fast |
 
@@ -28,55 +28,63 @@ For backward compatibility, legacy Anthropic model names still work:
 
 ---
 
-## Recommended Models (Claude)
+## Choosing a Reasoning-Tier Model (Claude)
 
-PAN never selects your host model — it recommends one. Because the `reasoning` tier is `inherit`, whichever top-tier model you configure in your runtime (Claude Code, etc.) runs every reasoning-tier agent (planner, conductor, executor, hardener…). `mid` and `fast` agents stay on Sonnet/Haiku regardless, so the whole fleet is never on one expensive model.
+PAN never selects your host model — it recommends a *class*. Because the `reasoning` tier is `inherit`, whichever top-tier model you configure in your runtime (Claude Code, etc.) runs the reasoning-tier agents (planner, conductor, executor…). Since the 2026-07 COST RESET that means *every* agent under `quality` and `balanced` (the default), except the ones that pin a model in their own frontmatter — `grep -l '^model: opus' agents/*.md` lists those, and the pin wins on Claude Code. Only the opt-in `budget` profile drops agents to `mid`/`fast`, which on Anthropic map to Sonnet/Haiku.
 
-| Model | Role in PAN | Context | Relative cost | Notes |
-|-------|-------------|---------|---------------|-------|
-| `claude-fable-5` | **Recommended flagship** — deepest long-horizon reasoning; best for the bot army's Mission Control + planning | 1M | ~2× Opus | Runs input safety classifiers (see caveat below); requires 30-day data retention |
-| `claude-opus-4-8` | **Cost-conscious default** — same 1M context + thinking, half the cost, no cyber classifier | 1M | 1× | The safe pick when you want Opus behavior without Fable's refusal surface |
+The IDs below are *examples* of what you can configure in each class — not an exhaustive or only-valid list. A newer release in the same class behaves the same way here.
 
-**Why Fable is the recommended flagship.** It is Anthropic's most capable widely released model for demanding, long-horizon agentic work — exactly what PAN's hierarchical bot army (Mission Control → squads → workers) asks of its reasoning tier. Select it in your host runtime and `inherit` routes the reasoning-tier agents to it automatically.
+At install time PAN also runs a **best-effort, advisory** capability check on the model ID you have configured (`detectModelCapabilities` in `bin/install-lib.cjs`). It recognizes the current Claude generations by name, and its forward threshold per family is the last reduced-capability release it records rather than the newest release it lists: any Claude ID newer than that boundary — a new major, or a later point release inside a major it already lists — inherits that family's modern profile instead of reporting no capabilities at all. "That family's profile" is the point: a newer Haiku inherits Haiku's, which is not a 1M-context/thinking profile. An ID resolves either by matching an explicit branch in the table or — for Claude names — by carrying a family plus a readable release number strictly newer than that family's last reduced-capability release; anything that resolves neither way reads as `tier: 'unknown'` with every capability flag false. It is a name-matching heuristic, not a live probe of the model, so it can still be imprecise about something released after this table — read it as a hint, not a contract. Either way it decides one thing only: whether the installer prints a capability *warning*. No routing, mode-selection, or feature gate in PAN reads it, so a wrong guess costs you a misleading install-time line and nothing else.
 
-**Fable caveat — the cyber-classifier refusal, and how PAN handles it.** Fable is the only current Claude model that runs input safety classifiers targeting cybersecurity and biology content, and benign *defensive* security tooling can trigger false positives — a successful response with `stop_reason: "refusal"` and `stop_details.category: "cyber"`. In PAN this hits every security path: `/pan:review-deep`, `exec-phase --deep-review`, **and the `focus-auto`/army `security` category** (which was observed refusing in a real project). Two mitigations, in order of reliability:
+| Class | Example model IDs | Role in PAN | Context | Relative cost | Notes |
+|-------|-------------------|-------------|---------|---------------|-------|
+| Fable / Mythos | `claude-fable-5` | **Recommended flagship** — deepest long-horizon reasoning; best for the bot army's Mission Control + planning | 1M | ~2× Opus | Runs input safety classifiers (see caveat below); requires 30-day data retention |
+| Opus | `claude-opus-5`, `claude-opus-4-8` | **Cost-conscious pick** — same 1M context + thinking, about half the cost, no cyber classifier | 1M | 1× | The safe pick when you want Opus behavior without Fable's refusal surface |
 
-1. **Opus pin (the durable fix).** `pan-hardener`, `pan-reviewer`, and `pan-meta-reviewer` carry `model: opus` in their frontmatter, so on **Claude Code** they run on Opus 4.8 regardless of your session model and never reach Fable's classifier. The `focus-auto` security category routes its vulnerability *assessment* through the Opus-pinned `pan-hardener` for the same reason. This pin is **Claude-Code-only** — it is stripped from the Gemini/OpenCode/Codex/Copilot outputs by the installer, so on the other runtimes run security campaigns on a non-Fable model.
+**Why the Fable class is the recommended flagship.** It is Anthropic's deepest class for demanding, long-horizon agentic work — exactly what PAN's hierarchical bot army (Mission Control → squads → workers) asks of its reasoning tier. Select the current release in that class in your host runtime and `inherit` routes the reasoning-tier agents to it automatically.
+
+**Fable caveat — the cyber-classifier refusal, and how PAN handles it.** Fable-class models run input safety classifiers targeting cybersecurity and biology content, and benign *defensive* security tooling can trigger false positives — a successful response with `stop_reason: "refusal"` and `stop_details.category: "cyber"`. In PAN this hits every security path: `/pan:review-deep`, `exec-phase --deep-review`, **and the `focus-auto`/army `security` category** (which was observed refusing in a real project). Two mitigations, in order of reliability:
+
+1. **Opus pin (the durable fix).** PAN's security-review agents carry `model: opus` in their frontmatter — `grep -l '^model: opus' agents/*.md` lists the current set — so on **Claude Code** they run on the default Opus model regardless of your session model and never reach Fable's classifier. The `focus-auto` security category routes its vulnerability *assessment* through the Opus-pinned `pan-hardener` for the same reason. This pin is **Claude-Code-only** — it is stripped from the Gemini/OpenCode/Codex/Copilot outputs by the installer, so on the other runtimes run security campaigns on a non-Fable model.
 2. **Defensive framing.** Those agents and the `focus-auto` security prose are written as *authorized, defensive review* (no exploit-path narration), which lowers the trigger rate but cannot eliminate it — a security scanner must name injection, auth bypass, and RCE by definition. Framing is the backstop; the Opus pin is the fix.
 
 **Fable data-retention requirement.** Fable is not available under zero data retention; an org whose retention is below 30 days gets a hard `400` on every request. If Fable 400s on every call with an otherwise-valid request, check the org's retention setting before debugging anything else.
 
-**Prompting note for Fable.** Fable prefers *less-prescriptive* prompts than earlier models and runs longer per turn. PAN's autonomous-loop guidance (anti-overplanning, grounded progress claims, act-when-you-have-enough) already aligns with this; avoid piling on `CRITICAL: YOU MUST` scaffolding, which can reduce Fable's output quality.
+**Prompting note for Fable.** Fable-class models prefer *less-prescriptive* prompts than earlier generations and run longer per turn. PAN's autonomous-loop guidance (anti-overplanning, grounded progress claims, act-when-you-have-enough) already aligns with this; avoid piling on `CRITICAL: YOU MUST` scaffolding, which can reduce Fable's output quality.
 
 ---
 
 ## Profile Definitions
 
+Since the 2026-07 **COST RESET**, `quality` and `balanced` are identical — both route every agent to the `reasoning` tier. Only the opt-in `budget` profile steps agents below reasoning (to `mid`/`fast` per the last column). The table below is illustrative; `core.cjs` `MODEL_PROFILES` is the source of truth and covers the full agent roster.
+
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
 | pan-planner | reasoning | reasoning | mid |
-| pan-roadmapper | reasoning | mid | mid |
-| pan-executor | reasoning | mid | mid |
-| pan-phase-researcher | reasoning | mid | fast |
-| pan-project-researcher | reasoning | mid | fast |
-| pan-research-synthesizer | reasoning | mid | fast |
-| pan-debugger | reasoning | mid | mid |
-| pan-document_code | reasoning | fast | fast |
-| pan-verifier | reasoning | mid | fast |
-| pan-plan-checker | reasoning | mid | fast |
-| pan-integration-checker | reasoning | mid | fast |
-| pan-reviewer | reasoning | fast | fast |
+| pan-roadmapper | reasoning | reasoning | mid |
+| pan-executor | reasoning | reasoning | mid |
+| pan-phase-researcher | reasoning | reasoning | fast |
+| pan-project-researcher | reasoning | reasoning | fast |
+| pan-research-synthesizer | reasoning | reasoning | fast |
+| pan-debugger | reasoning | reasoning | mid |
+| pan-document_code | reasoning | reasoning | fast |
+| pan-verifier | reasoning | reasoning | fast |
+| pan-plan-checker | reasoning | reasoning | fast |
+| pan-integration-checker | reasoning | reasoning | fast |
+| pan-reviewer | reasoning | reasoning | fast |
 
 ### Profile Philosophy
+
+Post-COST-RESET, `quality` and `balanced` are the same profile in practice — both give every agent the `reasoning` tier. Cost savings come only from opting into `budget`.
 
 **quality** — Maximum reasoning power
 - Reasoning tier for ALL agents. Use when quota is available, critical architecture work, or maximum quality is desired.
 
-**balanced** (default) — Smart allocation
-- Reasoning only for planning (where architecture decisions happen). Mid for execution. Fast for read-only tasks. Good balance of quality and cost.
+**balanced** (default) — Reasoning everywhere
+- Identical to `quality` since the COST RESET: reasoning tier for every agent. It remains the default so new projects get full reasoning power out of the box. Switch to `budget` when you need to cut token spend.
 
 **budget** — Minimal token spend
-- Mid for anything that writes code. Fast for research and verification. Use for high-volume work or less critical phases.
+- The only profile that steps agents below reasoning: mid for anything that writes code, fast for research and verification (see the `budget` column). Use for high-volume work or less critical phases.
 
 ### Cost Multipliers
 
@@ -246,17 +254,19 @@ Runtime: `/pan:profile <profile>`
 
 ## Design Rationale
 
-**Why reasoning for pan-planner?**
-Planning involves architecture decisions, goal decomposition, and task design. This is where model quality has the highest impact.
+Since the 2026-07 COST RESET, `quality` and `balanced` put every agent on the `reasoning` tier — so the notes below explain the tier each agent *steps down to* under `budget`, the only profile that now drops below reasoning.
 
-**Why mid for pan-executor?**
-Executors follow explicit PLAN.md instructions. The plan already contains the reasoning; execution is implementation.
+**Why reasoning for pan-planner (and every agent under quality/balanced)?**
+Planning involves architecture decisions, goal decomposition, and task design — where model quality has the highest impact. Post-COST-RESET the reasoning tier is inexpensive enough that every agent stays on it unless you opt into budget.
 
-**Why mid (not fast) for verifiers in balanced?**
-Verification requires goal-backward reasoning — checking if code *delivers* what the phase promised, not just pattern matching.
+**Why mid for pan-executor under budget?**
+Executors follow explicit PLAN.md instructions. The plan already contains the reasoning; execution is implementation, so `budget` can safely step them to mid.
 
-**Why fast for pan-document_code?**
+**Why fast for verifiers under budget?**
+Verification ideally uses goal-backward reasoning, but under `budget` the check degrades gracefully to fast pattern-matching to save tokens.
+
+**Why fast for pan-document_code under budget?**
 Read-only exploration and pattern extraction. No reasoning required, just structured output from file contents.
 
-**Why fast for pan-reviewer in balanced?**
-Code review is pattern-matching against known conventions and security rules. Fast handles checklist-style verification efficiently.
+**Why fast for pan-reviewer under budget?**
+Code review is pattern-matching against known conventions and security rules. Fast handles checklist-style verification efficiently when budget is engaged.

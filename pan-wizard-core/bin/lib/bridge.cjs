@@ -216,7 +216,7 @@ function recommendForPhase(cwd, phaseNum, opts) {
 
   return {
     phase: String(phaseNum),
-    phase_name: phaseInfo.name || null,
+    phase_name: phaseInfo.phase_name || null,
     runtime: cache.runtime,
     total_candidates: tools.length,
     recommendations: scored.map(t => ({

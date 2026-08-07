@@ -242,7 +242,7 @@ describe('template fill summary command', () => {
 
   test('returns error when phase directory does not exist', () => {
     const result = runPanTools('template fill summary --phase 99', tmpDir);
-    assert.ok(result.success, `Command should return JSON error: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'Phase not found', 'should report phase not found');
@@ -255,7 +255,8 @@ describe('template fill summary command', () => {
     fs.writeFileSync(path.join(phaseDir, '01-01-summary.md'), '# Existing summary');
 
     const result = runPanTools('template fill summary --phase 1', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    // A refusal: the file was NOT written, so the exit code must say so.
+    assert.equal(result.success, false, 'a refusal must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File already exists', 'should report file already exists');
@@ -327,7 +328,8 @@ describe('template fill plan command', () => {
     fs.writeFileSync(path.join(phaseDir, '01-01-plan.md'), '# Existing plan');
 
     const result = runPanTools('template fill plan --phase 1', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    // A refusal: the file was NOT written, so the exit code must say so.
+    assert.equal(result.success, false, 'a refusal must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File already exists', 'should report file already exists');
@@ -377,7 +379,7 @@ describe('template fill verification command', () => {
 
   test('returns error when phase does not exist', () => {
     const result = runPanTools('template fill verification --phase 77', tmpDir);
-    assert.ok(result.success, `Command should return JSON error: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'Phase not found', 'should report phase not found');
@@ -389,7 +391,8 @@ describe('template fill verification command', () => {
     fs.writeFileSync(path.join(phaseDir, '01-verification.md'), '# Existing verification');
 
     const result = runPanTools('template fill verification --phase 1', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    // A refusal: the file was NOT written, so the exit code must say so.
+    assert.equal(result.success, false, 'a refusal must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File already exists', 'should report file already exists');

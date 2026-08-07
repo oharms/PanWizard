@@ -78,14 +78,14 @@ describe('E2E Validation/Verify Contracts', () => {
 
   test('verify plan-structure returns error for missing file', () => {
     const result = runner.run('verify plan-structure 01');
-    assert.ok(result.success, 'should succeed (returns error JSON, not crash)');
+    assert.equal(result.success, false, 'an error payload must exit non-zero (the body is still JSON on stdout)');
     const parsed = JSON.parse(result.output);
     assertErrorSchema(parsed);
   });
 
   test('verify references returns error for missing file', () => {
     const result = runner.run('verify references 01');
-    assert.ok(result.success, 'should succeed (returns error JSON, not crash)');
+    assert.equal(result.success, false, 'an error payload must exit non-zero (the body is still JSON on stdout)');
     const parsed = JSON.parse(result.output);
     assertErrorSchema(parsed);
   });

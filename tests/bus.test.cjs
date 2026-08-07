@@ -190,6 +190,29 @@ describe('bus — drain', () => {
     assert.equal(fs.statSync(channelPath(tmpDir, 'ch')).size, 0);
   });
 
+  test('consume with a limit preserves un-drained messages (H2 — no data loss)', () => {
+    publish(tmpDir, 'ch', 'a');
+    publish(tmpDir, 'ch', 'b');
+    publish(tmpDir, 'ch', 'c');
+    const r = drain(tmpDir, 'ch', { mode: 'consume', limit: 1 });
+    assert.equal(r.entries.length, 1);
+    assert.equal(r.more, true);
+    const after = drain(tmpDir, 'ch', { mode: 'peek' });
+    assert.equal(after.entries.length, 2, 'the two unread messages must survive');
+    assert.deepEqual(after.entries.map((e) => e.payload), ['b', 'c']);
+  });
+
+  test('consume with an offset preserves messages before the offset (H2)', () => {
+    publish(tmpDir, 'ch', 'a');
+    publish(tmpDir, 'ch', 'b');
+    publish(tmpDir, 'ch', 'c');
+    const r = drain(tmpDir, 'ch', { mode: 'consume', offset: 1, limit: 1 });
+    assert.equal(r.entries.length, 1);
+    const after = drain(tmpDir, 'ch', { mode: 'peek' });
+    assert.deepEqual(after.entries.map((e) => e.payload), ['a', 'c'],
+      'only the drained window is removed; before-offset and after-window survive');
+  });
+
   test('archive mode renames file with timestamp', () => {
     publish(tmpDir, 'ch', 'x');
     const r = drain(tmpDir, 'ch', { mode: 'archive' });

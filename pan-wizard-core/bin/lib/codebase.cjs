@@ -98,8 +98,20 @@ function detectLanguages(cwd) {
     } catch { /* manifest not found */ }
   }
 
-  // TypeScript subsumes javascript if tsconfig.json exists
-  if (files_by_language.typescript && files_by_language.javascript) {
+  // TypeScript subsumes javascript only in a genuine TS project: there must be
+  // actual .ts source files AND a tsconfig.json. A bare tsconfig.json (common for
+  // editor type-checking of plain JS) or a manifest-promoted empty typescript array
+  // must NOT relabel a JS codebase as TypeScript.
+  let hasTsconfig = false;
+  try {
+    fs.accessSync(path.join(cwd, 'tsconfig.json'));
+    hasTsconfig = true;
+  } catch { /* no tsconfig */ }
+  if (
+    hasTsconfig &&
+    files_by_language.typescript && files_by_language.typescript.length > 0 &&
+    files_by_language.javascript && files_by_language.javascript.length > 0
+  ) {
     // Merge JS files under TypeScript project
     files_by_language.typescript = files_by_language.typescript.concat(files_by_language.javascript);
     delete files_by_language.javascript;
@@ -546,7 +558,6 @@ function detectErrorHandling(samples) {
 }
 
 function detectTestingPractices(cwd, sourceFileCount) {
-  const patterns = ['*.test.*', '*.spec.*', '__tests__/**'];
   let testFileCount = 0;
 
   try {
@@ -690,9 +701,8 @@ function cmdDetectLanguages(cwd, raw) {
  * CLI: Analyze imports and build dependency graph.
  * @param {string} cwd - Project root
  * @param {boolean} raw - Raw output flag
- * @param {string[]} args - Additional arguments (--files f1,f2)
  */
-function cmdAnalyzeImports(cwd, raw, args) {
+function cmdAnalyzeImports(cwd, raw) {
   const graph = buildDependencyGraph(cwd);
   const circularDeps = findCircularDeps(graph);
   const entryPoints = findEntryPoints(graph);

@@ -20,11 +20,11 @@
 
 PAN itself is free and open source. Token costs depend on your Claude/model usage:
 
-| Profile | Typical per-phase cost | Best for |
+| Profile | Model resolution | Best for |
 |---------|----------------------|----------|
-| `quality` | Higher (Opus for most agents) | Critical architecture work |
-| `balanced` | Moderate (Opus for planning, Sonnet for execution) | Normal development |
-| `budget` | Lower (Sonnet + Haiku) | High-volume work, prototyping |
+| `quality` | Every agent at the session model (reasoning tier) | Critical architecture work |
+| `balanced` (default) | Every agent at the session model (reasoning tier) — identical to `quality` | Normal development |
+| `budget` | The only profile that down-tiers: mid for code-writing agents, fast for research/verification | High-volume work, prototyping |
 
 Reduce costs further by disabling optional agents:
 ```
@@ -44,7 +44,7 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 | Execution | 1 executor per plan (fresh context each) | 20-80K per plan | No |
 | Verification | 1 verifier | 10-20K | Yes (`verifier: false`) |
 
-**Profile multiplier:** `quality` uses Opus for most agents (~2x cost of Sonnet). `budget` uses Haiku for research/verification (~0.3x cost of Sonnet).
+**Profile multiplier:** the numbers above assume the default `balanced` profile, where every agent runs on the model you launched with (`quality` is identical — same reasoning tier for every agent, so switching between the two changes nothing). `budget` is the only profile that down-tiers: mid for the code-writing agents, fast for research and verification. On PAN's relative cost scale (`pan-tools estimate-cost`, reasoning = 15×, mid = 3×, fast = 1×) that puts `quality` and `balanced` at ~15× baseline and `budget` at ~1.6×.
 
 **Optimization tips:**
 - Skip research for familiar domains: `/pan:plan-phase N --skip-research`
@@ -153,11 +153,11 @@ Run `/pan:cost report`. Since v3.4, a SubagentStop hook auto-captures every sub-
 
 ### When should I use `/pan:exec-phase --hierarchical`?
 
-Only when the phase has ≥4 autonomous plans that genuinely parallelize and the total work is large enough to amortize the ~20-30% orchestration overhead. `pan-conductor` spawns sub-agents in waves with a strict safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude + Opus only; other runtimes silently fall back to flat exec. For single-plan or checkpoint-heavy phases, skip the flag — flat exec is cheaper and more predictable.
+Only when the phase has ≥4 autonomous plans that genuinely parallelize and the total work is large enough to amortize the ~20-30% orchestration overhead. `pan-conductor` spawns sub-agents in waves with a strict safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude Code only — it needs native sub-agent spawning; the other four runtimes silently fall back to flat exec. There's no model gate, so switching models won't turn it on or off. For single-plan or checkpoint-heavy phases, skip the flag — flat exec is cheaper and more predictable.
 
 ### What is `/pan:army` and how is it different from a normal phase?
 
-**It's the difference between building a feature and shipping a project.** `/pan:army` (v3.11) runs a whole-project goal as a coordinated bot army, where `/pan:exec-phase` runs one phase. The Opus conductor becomes Mission Control — it plans and delegates, never codes — handing work to four role-scoped squads: Architecture (read-only design), Build (read/write code, one `army/<task>` git worktree per agent so parallel builders never collide), Quality (read-only adversarial), and Release (`pan-release`, always-ask). Each cycle is plan → delegate → execute → review → integrate → learn, looping until the goal ships or a stop condition fires. Nothing reaches a protected branch without green checks and a human's approval; recovery is `git revert` / previous tag. It runs under the same safety harness as hierarchical exec and is likewise Claude + Opus only. Inspect the roster with `pan-tools squad list`; start with `/pan:army "<goal>" --dry-run` to preview the plan and delegation before anything runs.
+**It's the difference between building a feature and shipping a project.** `/pan:army` (v3.11) runs a whole-project goal as a coordinated bot army, where `/pan:exec-phase` runs one phase. `pan-conductor` becomes Mission Control — it plans and delegates rather than implementing — handing work to role-scoped squads: Architecture (design), Build (code, one `army/<task>` git worktree per agent so parallel builders never collide), Quality (adversarial review), and Release (`pan-release`, always-ask). Each cycle is plan → delegate → execute → review → integrate → learn, looping until the goal ships or a stop condition fires. Nothing reaches a protected branch without green checks and a human's approval; recovery is `git revert` / previous tag. It runs under the same safety harness as hierarchical exec and carries the same single constraint: Claude Code only, because the squads are spawned as native sub-agents. That's a runtime limit, not a model one — Mission Control runs on whatever model you launched the session with. Inspect the roster with `pan-tools squad list`; start with `/pan:army "<goal>" --dry-run` to preview the plan and delegation before anything runs.
 
 ### Can the army run on a schedule / unattended?
 
@@ -165,7 +165,7 @@ Within a run, yes — it self-drives the loop. Across days, `/pan:army --schedul
 
 ### Is `/pan:army` safe to let loose on my repo?
 
-It's bounded by design, but treat it like hierarchical exec with a longer leash. The enforced rails: Mission Control can't write code (delegation-only tools), squad agents can't spawn further agents (depth cap), per-cycle spawn and budget ceilings stop runaway fan-out, the `.planning/orchestration/abort` file is an instant kill-switch, and **a human — not a bot — merges to a protected branch** (the Release agent only ever surfaces an `always-ask` request). Parallel builders are isolated in separate git worktrees, and recovery is always revert / previous tag — never a force-push or history rewrite. Set protected-branch rules on your repo and configure `build` / `verification` in `.planning/config.json` so the release gate runs your real checks. Live multi-agent battle-testing on a real project is still recommended before relying on it unattended.
+It's bounded by design, but treat it like hierarchical exec with a longer leash. Be precise about which rails are which. **Tool-enforced:** squad agents cannot spawn further agents, because the Agent/`Task` tool is granted to the coordinator alone — `grep -l '^tools:.*Task' agents/*.md` shows who has it. **Instructed, not enforced:** Mission Control is told to delegate rather than implement, but its frontmatter grants `Write` and `Bash`, so nothing at the tool level stops it editing a file; the same goes for the per-squad `access` labels, which `squads.cjs` publishes as advisory metadata ("modifies no agent and changes no execution path"). **Harness rails the conductor re-checks before every spawn:** per-cycle spawn and budget ceilings, and the `.planning/orchestration/abort` kill-switch. **Human-gated:** the Release agent surfaces an `always-ask` request rather than merging — and branch protection on your repo is what turns that convention into something a bot cannot bypass. Parallel builders are isolated in separate git worktrees, and recovery is always revert / previous tag — never a force-push or history rewrite. Set protected-branch rules on your repo and configure `build` / `verification` in `.planning/config.json` so the release gate runs your real checks. Live multi-agent battle-testing on a real project is still recommended before relying on it unattended.
 
 ### How do I watch what the army is doing?
 
@@ -233,12 +233,12 @@ Or override specific agents in `.planning/config.json`:
 
 1. Restart your runtime to reload commands
 2. Verify files exist in `~/.claude/commands/pan/` (global) or `.claude/commands/pan/` (local)
-3. For Codex, check `~/.codex/skills/pan-*/SKILL.md`
+3. For Codex, check `~/.agents/skills/pan-*/SKILL.md` (global) or `./.agents/skills/pan-*/SKILL.md` (local)
 4. Re-run `npx pan-wizard` to reinstall
 
 ### Context degradation during long sessions
 
-Clear context between major commands: `/clear` in Claude Code. PAN is designed around fresh contexts — every subagent gets a clean 200K window. Use `/pan:resume` or `/pan:progress` to restore state after clearing.
+Clear context between major commands: `/clear` in Claude Code. PAN is designed around fresh contexts — every subagent gets a clean context window. Use `/pan:resume` or `/pan:progress` to restore state after clearing.
 
 ### Docker or containerized environments
 

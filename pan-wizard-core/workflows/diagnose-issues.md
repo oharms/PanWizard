@@ -64,7 +64,7 @@ Spawning parallel debug agents to investigate root causes:
 | Delete removes comment | blocker |
 
 Each agent will:
-1. Create DEBUG-{slug}.md with symptoms pre-filled
+1. Create ${DEBUG_DIR}/{slug}.md with symptoms pre-filled
 2. Investigate autonomously (read code, form hypotheses, test)
 3. Return root cause
 
@@ -80,22 +80,24 @@ For each gap, fill the debug-subagent-prompt template and spawn:
 ```
 Task(
   prompt=filled_debug_subagent_prompt + "\n\n<files_to_read>\n- {phase_dir}/{phase_num}-uat.md\n- .planning/state.md\n</files_to_read>",
-  subagent_type="general-purpose",
-  description="Debug: {truth_short}"
+  subagent_type="pan-debugger",
+  description="Debug: {issue_summary_short}"
 )
 ```
 
 **All agents spawn in single message** (parallel execution).
 
-Template placeholders:
-- `{truth}`: The expected behavior that failed
+Template placeholders (see `debug-subagent-prompt.md`):
+- `{issue_id}`: Stable id for the gap, e.g. `UAT-{test_num}`
+- `{issue_summary}`: The expected behavior that failed
 - `{expected}`: From UAT test
 - `{actual}`: Verbatim user description from reason field
 - `{errors}`: Any error messages from UAT (or "None reported")
 - `{reproduction}`: "Test {test_num} in UAT"
 - `{timeline}`: "Discovered during UAT"
+- `{true_or_false}`: `true` (symptoms are prefilled from the UAT gap)
 - `{goal}`: `find_root_cause_only` (UAT flow - plan-phase --gaps handles fixes)
-- `{slug}`: Generated from truth
+- `{slug}`: Generated from the issue summary
 </step>
 
 <step name="collect_results">
@@ -200,7 +202,7 @@ Agents only diagnose—plan-phase --gaps handles fixes (no fix application).
 - Report incomplete diagnosis
 
 **Agent times out:**
-- Check DEBUG-{slug}.md for partial progress
+- Check ${DEBUG_DIR}/{slug}.md for partial progress
 - Can resume with /pan:debug
 
 **All agents fail:**

@@ -38,10 +38,53 @@ const reset = '\x1b[0m';
 // Get version from package.json
 const pkg = require('../package.json');
 
+// Concrete model ids the E-9 capability advisory (see finishInstall) names to
+// the user. Kept here so the next lineup move is an edit to this object rather
+// than a hunt through printed strings — the printed recommendation has already
+// had to be re-pointed as the lineup moved (docs/ECOSYSTEM-REVIEW-2026-06.md,
+// "Stale capability detection"; B4.1, audit 2026-08). The advisory itself is
+// phrased by capability, not by name; these are the "switch to this" examples
+// that keep the advice actionable. Nothing in PAN gates on these values.
+const RECOMMENDED_MODELS = {
+  flagship: 'claude-fable-5',
+  reasoningTier: 'claude-opus-5 / claude-opus-4-8',
+};
+
 // Source repo root — prevent installing PAN into its own source directory
 const PAN_SOURCE_ROOT = path.resolve(__dirname, '..');
 // Windows paths are case-insensitive; normalize for comparison
 const normPath = p => process.platform === 'win32' ? p.toLowerCase() : p;
+
+/**
+ * Render a path for console output: relative to cwd when it is inside the project,
+ * absolute otherwise, always with forward slashes.
+ *
+ * Messages used to hardcode literals like '.codex/hooks.json'. That was only true
+ * for a local install — a --global or --config-dir install writes elsewhere, so the
+ * installer told users to inspect a file that did not exist while the real one sat
+ * somewhere they were never shown.
+ */
+const displayPath = (p) => {
+  const rel = path.relative(process.cwd(), p);
+  const use = (rel && !rel.startsWith('..')) ? rel : p;
+  return use.split(path.sep).join('/');
+};
+
+/**
+ * True when `cwd` is the PAN source repo root OR any subdirectory of it — a
+ * containment check, not an exact match, so `cd docs && node ../bin/install.js`
+ * is also refused (a subdir install plants un-ignored .claude/AGENTS.md/etc.
+ * because .gitignore's self-install patterns are root-anchored). Uses
+ * fs.realpathSync on both sides so a symlink/junction into the repo can't bypass
+ * the guard (path.resolve alone does not canonicalize). Mirrors the
+ * memory-rebuild module's isInsideSourceRepo() helper.
+ */
+function isInsideSourceRepo(cwd) {
+  const realOr = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+  const abs = normPath(realOr(cwd));
+  const src = normPath(realOr(PAN_SOURCE_ROOT));
+  return abs === src || abs.startsWith(src + path.sep) || abs.startsWith(src + '/');
+}
 
 // IMPROVEMENT-TODO P0 (v3.7.10): warning collector for non-fatal install
 // failures. Replaces silent `catch {}` blocks in copy paths. Surfaced at end
@@ -219,19 +262,65 @@ console.log(banner);
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx pan-wizard [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-l, --local${reset}               Install locally to current directory (default)\n    ${cyan}-g, --global${reset}              Install globally to config directory\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall PAN (remove all PAN files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--unified-skills${reset}          Install commands as one shared .agents/skills/ tree (ADR-0028 alpha)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime; installs project-level)${reset}\n    npx pan-wizard\n\n    ${dim}# Install for Claude Code in current project (default, --local implied)${reset}\n    npx pan-wizard --claude\n\n    ${dim}# Install for all runtimes in current project${reset}\n    npx pan-wizard --all --local\n\n    ${dim}# Install globally (available in all projects)${reset}\n    npx pan-wizard --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx pan-wizard --gemini --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx pan-wizard --codex --global --config-dir ~/.codex-work\n\n    ${dim}# Uninstall PAN from Codex globally${reset}\n    npx pan-wizard --codex --global --uninstall\n\n  ${yellow}Notes:${reset}\n    By default, PAN installs into the current project directory only.\n    Use --global to install system-wide (writes to ~/.claude, ~/.gemini, etc.).\n    The --config-dir option takes priority over CLAUDE_CONFIG_DIR / GEMINI_CONFIG_DIR / CODEX_HOME.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx pan-wizard [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-l, --local${reset}               Install locally to current directory (default)\n    ${cyan}-g, --global${reset}              Install globally to config directory\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for GitHub Copilot CLI only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall PAN (remove all PAN files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--unified-skills${reset}          Install commands as one shared .agents/skills/ tree (ADR-0028 alpha)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime; installs project-level)${reset}\n    npx pan-wizard\n\n    ${dim}# Install for Claude Code in current project (default, --local implied)${reset}\n    npx pan-wizard --claude\n\n    ${dim}# Install for all runtimes in current project${reset}\n    npx pan-wizard --all --local\n\n    ${dim}# Install globally (available in all projects)${reset}\n    npx pan-wizard --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx pan-wizard --gemini --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx pan-wizard --codex --global --config-dir ~/.codex-work\n\n    ${dim}# Uninstall PAN from Codex globally${reset}\n    npx pan-wizard --codex --global --uninstall\n\n  ${yellow}Notes:${reset}\n    By default, PAN installs into the current project directory only.\n    Use --global to install system-wide (writes to ~/.claude, ~/.gemini, etc.).\n    The --config-dir option takes priority over CLAUDE_CONFIG_DIR / GEMINI_CONFIG_DIR / CODEX_HOME.\n`);
   process.exit(0);
 }
 
 /**
- * Read and parse settings.json, returning empty object if it doesn't exist
+ * Read and parse settings.json.
+ *
+ * Returns `{}` when there is nothing to preserve — the file is absent or empty.
+ * Returns `null` when the file EXISTS but cannot be used: unreadable, not valid
+ * JSON, or valid JSON of the wrong shape (an array, a string, `null`). Callers
+ * MUST treat `null` as "leave this file alone" — see settingsUnusable().
+ *
+ * Why the distinction is load-bearing: every caller merges PAN's keys into the
+ * object this returns and writes the result back. While parse failure also
+ * returned `{}`, an unparseable settings.json — a `//` comment is the common
+ * case, since people write them even though the format is strict JSON — came
+ * back as empty and was overwritten with PAN's keys alone. The user's model
+ * choice, permissions and auth settings were destroyed with no warning, no
+ * backup, and exit 0. Returning `null` makes that outcome unreachable: a caller
+ * that forgets to check throws instead of silently discarding user data.
+ *
+ * Comments are deliberately NOT tolerated via parseJsonc here. Parsing JSONC
+ * and writing strict JSON back would drop the comments — a quieter version of
+ * the same data loss. Warn and skip instead, exactly as configureOpencodePermissions
+ * already does for opencode.json.
  */
 function readSettings(settingsPath) {
+  if (!fs.existsSync(settingsPath)) return {};
+  let content;
   try {
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    content = fs.readFileSync(settingsPath, 'utf8');
   } catch {
-    return {};
+    return null; // exists but unreadable (locked, permissions) — do not touch
   }
+  if (content.trim() === '') return {}; // empty file: nothing to preserve
+  let parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  // Valid JSON of the wrong shape is still unusable: merging PAN's keys into an
+  // array or a primitive and writing it back would corrupt the file.
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  return parsed;
+}
+
+/**
+ * Report an unusable settings file and tell the user we left it alone.
+ * Returns true when the caller must skip (i.e. readSettings returned null),
+ * so call sites read: `if (settingsUnusable(settings, p, 'hook config')) return;`
+ */
+function settingsUnusable(settings, settingsPath, whatWasSkipped) {
+  if (settings !== null) return false;
+  const name = path.basename(settingsPath);
+  console.log(`  ${yellow}⚠${reset} Could not parse ${name} - skipping ${whatWasSkipped}`);
+  console.log(`    ${dim}${settingsPath}${reset}`);
+  console.log(`    ${dim}Your file was NOT modified. Fix the syntax (strict JSON — no comments or trailing commas) and re-run.${reset}`);
+  return true;
 }
 
 /**
@@ -262,11 +351,11 @@ function getCommitAttribution(runtime) {
   let result;
 
   if (runtime === 'opencode') {
-    const config = readSettings(path.join(getGlobalDir('opencode', null), 'opencode.json'));
+    const config = readSettings(path.join(getGlobalDir('opencode', null), 'opencode.json')) || {}; // unusable file = no info (read-only probe)
     result = config.disable_ai_attribution === true ? null : undefined;
   } else if (runtime === 'gemini') {
     // Gemini: check gemini settings.json for attribution config
-    const settings = readSettings(path.join(getGlobalDir('gemini', explicitConfigDir), 'settings.json'));
+    const settings = readSettings(path.join(getGlobalDir('gemini', explicitConfigDir), 'settings.json')) || {}; // unusable file = no info (read-only probe)
     if (!settings.attribution || settings.attribution.commit === undefined) {
       result = undefined;
     } else if (settings.attribution.commit === '') {
@@ -276,7 +365,7 @@ function getCommitAttribution(runtime) {
     }
   } else if (runtime === 'claude') {
     // Claude Code
-    const settings = readSettings(path.join(getGlobalDir('claude', explicitConfigDir), 'settings.json'));
+    const settings = readSettings(path.join(getGlobalDir('claude', explicitConfigDir), 'settings.json')) || {}; // unusable file = no info (read-only probe)
     if (!settings.attribution || settings.attribution.commit === undefined) {
       result = undefined;
     } else if (settings.attribution.commit === '') {
@@ -288,9 +377,9 @@ function getCommitAttribution(runtime) {
     // Copilot CLI: user-editable settings live in settings.json; config.json is
     // legacy (auto-migrated by the CLI, now internal state) — fall back for old installs
     const copilotDir = getGlobalDir('copilot', explicitConfigDir);
-    let config = readSettings(path.join(copilotDir, 'settings.json'));
+    let config = readSettings(path.join(copilotDir, 'settings.json')) || {}; // unusable file = no info (read-only probe)
     if (!config.attribution) {
-      config = readSettings(path.join(copilotDir, 'config.json'));
+      config = readSettings(path.join(copilotDir, 'config.json')) || {}; // unusable file = no info (read-only probe)
     }
     if (!config.attribution || config.attribution.commit === undefined) {
       result = undefined;
@@ -612,6 +701,51 @@ function copySharedCore(srcDir, destDir, corePrefix, runtimePathPrefix, runtime)
   } catch (err) {
     if (err.code !== 'ENOENT') pushInstallWarning('stripInternalLearnings', 'learnings/internal', err);
   }
+  stripInternalFromLearningsIndex(path.join(destDir, 'learnings', 'index.json'));
+}
+
+/**
+ * Drop internal-scoped topics from an installed learnings/index.json and recompute
+ * its totals.
+ *
+ * Deleting learnings/internal/ from disk is only half the strip: the index still
+ * listed those topics, so every install shipped file paths that do not exist —
+ * dangling references for any consumer that resolves them — along with the internal
+ * topic names, their pattern ids, and totals counting content the package
+ * deliberately withholds. Each topic entry carries its own size_bytes and
+ * size_tokens_est, so the totals are recomputed exactly rather than estimated.
+ *
+ * Best-effort by design: a malformed or absent index is not worth failing an install
+ * over, and the strip of the files themselves has already happened.
+ *
+ * @param {string} indexPath - Path to the installed learnings/index.json
+ */
+function stripInternalFromLearningsIndex(indexPath) {
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+  } catch (err) {
+    if (err.code !== 'ENOENT') pushInstallWarning('stripInternalLearnings', 'learnings/index.json', err);
+    return;
+  }
+  if (!parsed || !Array.isArray(parsed.topics)) return;
+
+  const kept = parsed.topics.filter(t => t && t.scope !== 'internal');
+  if (kept.length === parsed.topics.length) return; // nothing internal to drop
+
+  parsed.topics = kept;
+  if (parsed.totals && typeof parsed.totals === 'object') {
+    parsed.totals.topics = kept.length;
+    parsed.totals.patterns = kept.reduce((n, t) => n + (Array.isArray(t.patterns) ? t.patterns.length : 0), 0);
+    parsed.totals.size_bytes = kept.reduce((n, t) => n + (t.size_bytes || 0), 0);
+    parsed.totals.size_tokens_est = kept.reduce((n, t) => n + (t.size_tokens_est || 0), 0);
+  }
+
+  try {
+    fs.writeFileSync(indexPath, JSON.stringify(parsed, null, 2) + '\n');
+  } catch (err) {
+    pushInstallWarning('stripInternalLearnings', 'learnings/index.json', err);
+  }
 }
 
 /**
@@ -767,8 +901,14 @@ function cleanupOrphanedFiles(configDir) {
   for (const relPath of orphanedFiles) {
     const fullPath = path.join(configDir, relPath);
     if (fs.existsSync(fullPath)) {
-      fs.unlinkSync(fullPath);
-      console.log(`  ${green}✓${reset} Removed orphaned ${relPath}`);
+      // A locked/permission-denied legacy file must not abort the whole install
+      // with an unhandled exception — surface it as a warning (M3, ADR audit 2026-08).
+      try {
+        fs.unlinkSync(fullPath);
+        console.log(`  ${green}✓${reset} Removed orphaned ${relPath}`);
+      } catch (err) {
+        pushInstallWarning('staleCleanup', relPath, err);
+      }
     }
   }
 }
@@ -815,14 +955,22 @@ function cleanupOrphanedHooks(settings) {
     console.log(`  ${green}✓${reset} Removed orphaned hook registrations`);
   }
 
-  // Fix #330: Update statusLine if it points to old statusline.js path
+  // Fix #330: migrate PAN's OWN legacy hooks/statusline.js path to
+  // pan-statusline.js. Anchor on the `hooks/` PREFIX plus the file basename —
+  // PAN's legacy hook was only ever registered under a hooks/ directory — so a
+  // user's custom command like `my-custom-statusline.js` or a script literally
+  // named `statusline.js` (e.g. `node ./statusline.js`) is NOT rewritten. The
+  // old looser matches corrupted such names to nonexistent pan-statusline.js
+  // paths and then made the M6/N4 statusline guard misclassify them as
+  // PAN-owned and stand down (M6 residual). Both slash directions are kept:
+  // Windows settings.json may carry escaped backslashes.
+  const legacyStatusline = /(^|[\\/])hooks([\\/])statusline\.js\b/;
   if (settings.statusLine && settings.statusLine.command &&
-      settings.statusLine.command.includes('statusline.js') &&
+      legacyStatusline.test(settings.statusLine.command) &&
       !settings.statusLine.command.includes('pan-statusline.js')) {
-    // Replace old path with new path
     settings.statusLine.command = settings.statusLine.command.replace(
-      /statusline\.js/,
-      'pan-statusline.js'
+      legacyStatusline,
+      '$1hooks$2pan-statusline.js'
     );
     console.log(`  ${green}✓${reset} Updated statusline path (statusline.js → pan-statusline.js)`);
   }
@@ -857,8 +1005,8 @@ function uninstall(isGlobal, runtime = 'claude') {
   if (runtime === 'codex') runtimeLabel = 'Codex';
   if (runtime === 'copilot') runtimeLabel = 'GitHub Copilot CLI';
 
-  // Guard: never uninstall from the PAN source repository itself
-  if (normPath(path.resolve(process.cwd())) === normPath(PAN_SOURCE_ROOT)) {
+  // Guard: never uninstall from the PAN source repository itself (or any subdir)
+  if (isInsideSourceRepo(process.cwd())) {
     console.error(`\n  ${red}✗${reset} Refusing to uninstall from PAN's own source repository.`);
     console.error(`  Run from your target project directory instead.\n`);
     process.exit(1);
@@ -1212,8 +1360,16 @@ function uninstall(isGlobal, runtime = 'claude') {
 
   // 6b. Clean up settings.json (remove PAN hooks and statusline)
   const settingsPath = path.join(targetDir, 'settings.json');
-  if (fs.existsSync(settingsPath)) {
-    let settings = readSettings(settingsPath);
+  // Unparseable on the way OUT too: stripping PAN's keys means writing the file
+  // back, which would replace the user's content. Skip just this step — NOT the
+  // whole uninstall, which still has the opencode permission cleanup and the
+  // manifest removal to do. The raw-bytes guard further down still deletes a
+  // settings.json that is literally PAN's own empty `{}`.
+  const existingSettings = fs.existsSync(settingsPath) ? readSettings(settingsPath) : null;
+  const skipSettingsCleanup = fs.existsSync(settingsPath)
+    && settingsUnusable(existingSettings, settingsPath, 'settings.json cleanup');
+  if (fs.existsSync(settingsPath) && !skipSettingsCleanup) {
+    let settings = existingSettings;
     let settingsModified = false;
 
     // Remove PAN statusline if it references our hook
@@ -1313,18 +1469,41 @@ function uninstall(isGlobal, runtime = 'claude') {
         writeSettings(settingsPath, settings);
       }
       removedCount++;
+    } else if (Object.keys(settings).length === 0) {
+      // No PAN entries and the parsed object is empty — but readSettings()
+      // returns {} on ANY parse failure (BOM, comments, trailing comma), so an
+      // empty object does NOT prove the file holds no user data. Only remove it
+      // when the RAW bytes are literally an empty object; otherwise leave the
+      // user's (unparseable) file untouched (N1 regression fix, ADR audit 2026-08).
+      let rawIsEmptyObject = false;
+      try {
+        rawIsEmptyObject = fs.readFileSync(settingsPath, 'utf8').replace(/^﻿/, '').trim() === '{}';
+      } catch { /* unreadable — never delete */ }
+      if (rawIsEmptyObject) {
+        try {
+          fs.unlinkSync(settingsPath);
+          console.log(`  ${green}✓${reset} Removed empty settings.json`);
+          removedCount++;
+        } catch (err) { pushInstallWarning('staleCleanup', settingsPath, err); }
+      }
     }
   }
 
   // 6. For OpenCode, clean up permissions from opencode.json
   if (isOpencode) {
     // For local uninstalls, clean up ./.opencode/opencode.json
-    // For global uninstalls, clean up ~/.config/opencode/opencode.json
+    // For global uninstalls, clean up the resolved global dir — via getGlobalDir so
+    // --config-dir is honoured here as well. Otherwise `--opencode --global
+    // --config-dir <path> --uninstall` looked in ~/.config/opencode and left the
+    // real config untouched, which is half of how this became residue.
     const opencodeConfigDir = isGlobal
-      ? getOpencodeGlobalDir()
+      ? getGlobalDir('opencode', explicitConfigDir)
       : path.join(process.cwd(), '.opencode');
     const configPath = path.join(opencodeConfigDir, 'opencode.json');
-    if (fs.existsSync(configPath)) {
+    {
+      // Read straight through instead of existsSync-then-read: absence and a corrupt
+      // file both mean "nothing of ours to strip", and the check-then-use gap was a
+      // CodeQL js/file-system-race. Same idiom as the hooks' metrics read.
       try {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         let modified = false;
@@ -1335,7 +1514,13 @@ function uninstall(isGlobal, runtime = 'claude') {
             if (config.permission[permType]) {
               const keys = Object.keys(config.permission[permType]);
               for (const key of keys) {
-                if (key.includes('pan-wizard-core')) {
+                // Match `pan-wizard` rather than `pan-wizard-core` so the malformed
+                // key earlier versions wrote (`~/.config/opencode/pan-wizard/*`) is
+                // cleaned too. Without this, machines that ran any global OpenCode
+                // install before the glob was fixed keep that entry forever — the
+                // uninstaller could never match it, which is what made it residue
+                // rather than a cosmetic typo.
+                if (key.includes('pan-wizard')) {
                   delete config.permission[permType][key];
                   modified = true;
                 }
@@ -1352,12 +1537,20 @@ function uninstall(isGlobal, runtime = 'claude') {
         }
 
         if (modified) {
-          fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+          // If stripping PAN permissions emptied the config, remove the file
+          // rather than leaving a spurious {} behind — PAN created it via
+          // configureOpencodePermissions, so an empty result is not a user file.
+          if (Object.keys(config).length === 0) {
+            fs.unlinkSync(configPath);
+            console.log(`  ${green}✓${reset} Removed empty opencode.json`);
+          } else {
+            fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+            console.log(`  ${green}✓${reset} Removed PAN permissions from opencode.json`);
+          }
           removedCount++;
-          console.log(`  ${green}✓${reset} Removed PAN permissions from opencode.json`);
         }
       } catch (e) {
-        // Ignore JSON parse errors
+        // Missing file (ENOENT) or unparseable JSON — nothing for us to remove.
       }
     }
   }
@@ -1436,9 +1629,13 @@ function uninstall(isGlobal, runtime = 'claude') {
  */
 function configureOpencodePermissions(isGlobal = true) {
   // For local installs, use ./.opencode/opencode.json
-  // For global installs, use ~/.config/opencode/opencode.json
+  // For global installs, use the resolved global dir — via getGlobalDir so that
+  // --config-dir is honoured. Calling getOpencodeGlobalDir() directly ignored the
+  // flag, so `--opencode --global --config-dir <path>` installed the core into
+  // <path> but wrote its permissions into ~/.config/opencode: the real install had
+  // no permission config at all, and an unrelated directory got a stray one.
   const opencodeConfigDir = isGlobal
-    ? getOpencodeGlobalDir()
+    ? getGlobalDir('opencode', explicitConfigDir)
     : path.join(process.cwd(), '.opencode');
   const configPath = path.join(opencodeConfigDir, 'opencode.json');
 
@@ -1467,9 +1664,17 @@ function configureOpencodePermissions(isGlobal = true) {
 
   // Build the PAN path using the actual config directory
   // Use ~ shorthand if it's in the default location, otherwise use full path
+  // The directory PAN's core actually lands in is `pan-wizard-core`. The
+  // default-location branch used to emit `~/.config/opencode/pan-wizard/*`, which
+  // matches nothing — so every default global OpenCode install granted read access
+  // to a path that does not exist while PAN's real core stayed un-allow-listed. It
+  // also became permanent residue: the uninstaller only removed keys containing
+  // `pan-wizard-core`, so the wrong key could never be matched or cleaned.
+  // Keep the ~ form for the default location (portable, and what a user expects to
+  // see in their own config) and an absolute path otherwise.
   const defaultConfigDir = path.join(os.homedir(), '.config', 'opencode');
   const panPath = opencodeConfigDir === defaultConfigDir
-    ? '~/.config/opencode/pan-wizard/*'
+    ? '~/.config/opencode/pan-wizard-core/*'
     : `${opencodeConfigDir.replace(/\\/g, '/')}/pan-wizard-core/*`;
   
   let modified = false;
@@ -1548,6 +1753,10 @@ function verifyFileInstalled(filePath, description) {
 // ──────────────────────────────────────────────────────
 
 const PATCHES_DIR_NAME = 'pan-local-patches';
+// Backups of manifest entries that live OUTSIDE the runtime's config dir (Codex's
+// skills at ../.agents/skills/) land here, with the traversal segments stripped, so
+// the patches tree stays self-contained.
+const EXTERNAL_PATCHES_SUBDIR = '_external';
 const MANIFEST_NAME = 'pan-file-manifest.json';
 
 /**
@@ -1631,6 +1840,22 @@ function writeManifest(configDir, runtime = 'claude', isGlobal = false) {
       }
     }
   }
+  // Claude native skill shims: flat skills/pan-*.md files (E-5). Only the Claude
+  // runtime's nested-commands install writes these; under --unified-skills the
+  // shared .agents/skills tree above already covers skills. Tracking them lets
+  // verifyInstall catch silent shim-write failures and saveLocalPatches back up
+  // user edits — the codex/copilot SKILL.md branch above matches directories, not
+  // these flat files.
+  if (runtime === 'claude' && !unifiedSkills) {
+    const claudeSkillsDir = path.join(configDir, 'skills');
+    if (fs.existsSync(claudeSkillsDir)) {
+      for (const file of fs.readdirSync(claudeSkillsDir)) {
+        if (file.startsWith('pan-') && file.endsWith('.md')) {
+          manifest.files['skills/' + file] = fileHash(path.join(claudeSkillsDir, file));
+        }
+      }
+    }
+  }
   if (fs.existsSync(agentsDir)) {
     for (const file of fs.readdirSync(agentsDir)) {
       if (file.startsWith('pan-') && (file.endsWith('.md') || file.endsWith('.toml'))) {
@@ -1678,21 +1903,44 @@ function saveLocalPatches(configDir) {
 
   const patchesDir = path.join(configDir, PATCHES_DIR_NAME);
   const modified = [];
+  const externalBackups = {};
 
   for (const [relPath, originalHash] of Object.entries(manifest.files || {})) {
-    // Keys reaching outside configDir (Codex skills in ../.agents/skills/)
-    // can't be backed up under patchesDir — path.join would collapse the
-    // `..` and write outside the patches tree. Skip them; they're still
-    // overwritten cleanly on reinstall.
-    if (relPath.split('/').includes('..')) continue;
+    // Keys reaching outside configDir — Codex's skills live in ../.agents/skills/ —
+    // used to be SKIPPED here, because joining a `..` path under patchesDir would
+    // collapse the `..` and write outside the patches tree.
+    //
+    // Skipping was the wrong half of that trade: those keys are Codex's ONLY command
+    // surface, so a Codex user who tuned a skill silently lost the edit on the next
+    // upgrade, with no mention in the output and no backup to recover from — while
+    // docs/USER-GUIDE.md and docs/AGENTS.md both promise, unqualified, that the
+    // installer backs up locally modified files.
+    //
+    // Back them up under `_external/` with the traversal segments stripped instead.
+    // That keeps the containment the guard existed for (the final path cannot escape
+    // patchesDir — asserted below) while honouring the promise.
+    const segments = relPath.split(/[\\/]/).filter(Boolean);
+    const escapes = segments.some(s => s === '..');
+    const safeRel = escapes
+      ? path.join(EXTERNAL_PATCHES_SUBDIR, ...segments.filter(s => s !== '..' && s !== '.'))
+      : relPath;
+
     const fullPath = path.join(configDir, relPath);
     if (!fs.existsSync(fullPath)) continue;
     const currentHash = fileHash(fullPath);
     if (currentHash !== originalHash) {
-      const backupPath = path.join(patchesDir, relPath);
+      const backupPath = path.join(patchesDir, safeRel);
+      // Defence in depth: never write outside patchesDir, whatever the manifest says.
+      const resolvedPatches = path.resolve(patchesDir);
+      const resolvedBackup = path.resolve(backupPath);
+      if (resolvedBackup !== resolvedPatches && !resolvedBackup.startsWith(resolvedPatches + path.sep)) {
+        pushInstallWarning('saveLocalPatches', relPath, new Error('backup path escaped the patches directory — skipped'));
+        continue;
+      }
       fs.mkdirSync(path.dirname(backupPath), { recursive: true });
       fs.copyFileSync(fullPath, backupPath);
       modified.push(relPath);
+      if (escapes) externalBackups[relPath] = safeRel.split(path.sep).join("/");
     }
   }
 
@@ -1700,7 +1948,11 @@ function saveLocalPatches(configDir) {
     const meta = {
       backed_up_at: new Date().toISOString(),
       from_version: manifest.version,
-      files: modified
+      files: modified,
+      // Files whose manifest key points outside the config dir are stored under
+      // _external/ with the traversal stripped, so `files` alone would not locate
+      // them. Map logical key -> path within pan-local-patches/ for the restore flow.
+      ...(Object.keys(externalBackups).length > 0 ? { external_files: externalBackups } : {}),
     };
     fs.writeFileSync(path.join(patchesDir, 'backup-meta.json'), JSON.stringify(meta, null, 2));
     console.log('  ' + yellow + 'i' + reset + '  Found ' + modified.length + ' locally modified PAN file(s) — backed up to ' + PATCHES_DIR_NAME + '/');
@@ -1723,7 +1975,9 @@ function reportLocalPatches(configDir, runtime = 'claude') {
   try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch { return []; }
 
   if (meta.files && meta.files.length > 0) {
-    const reapplyCommand = runtime === 'opencode'
+    // Copilot uses the same flat /pan-<name> form as OpenCode; it previously fell
+    // through to Claude's '/pan:patches', a command form that does not exist there.
+    const reapplyCommand = (runtime === 'opencode' || runtime === 'copilot')
       ? '/pan-patches'
       : runtime === 'codex'
         ? '$pan-patches'
@@ -1772,8 +2026,8 @@ function install(isGlobal, runtime = 'claude') {
   if (isCodex) runtimeLabel = 'Codex';
   if (isCopilot) runtimeLabel = 'GitHub Copilot CLI';
 
-  // Guard: never install into the PAN source repository itself
-  if (normPath(path.resolve(process.cwd())) === normPath(PAN_SOURCE_ROOT)) {
+  // Guard: never install into the PAN source repository itself (or any subdir)
+  if (isInsideSourceRepo(process.cwd())) {
     console.error(`\n  ${red}✗${reset} Refusing to install PAN into its own source repository.`);
     console.error(`  Run the installer from your target project directory instead.\n`);
     console.error(`  Example: cd /path/to/my-project && node ${path.resolve(__dirname, 'install.js')} --claude --local\n`);
@@ -1938,6 +2192,22 @@ function install(isGlobal, runtime = 'claude') {
         try {
           const skillsDir = path.join(targetDir, 'skills');
           fs.mkdirSync(skillsDir, { recursive: true });
+          // Upgrade path: sweep stale pan-* shims before regenerating, mirroring
+          // the stale-cleanup copyFlattenedCommands does for command trees.
+          // A rename/removal in commands/pan would otherwise leave orphan shims.
+          for (const file of fs.readdirSync(skillsDir)) {
+            if (file.startsWith('pan-') && file.endsWith('.md')) {
+              try { fs.unlinkSync(path.join(skillsDir, file)); } catch (err) { pushInstallWarning('staleCleanup', file, err); }
+            }
+          }
+          const workflowsDir = path.join(targetDir, 'workflows');
+          if (fs.existsSync(workflowsDir)) {
+            for (const file of fs.readdirSync(workflowsDir)) {
+              if (file.startsWith('pan-') && file.endsWith('.js')) {
+                try { fs.unlinkSync(path.join(workflowsDir, file)); } catch (err) { pushInstallWarning('staleCleanup', file, err); }
+              }
+            }
+          }
           let shimCount = 0;
           for (const file of fs.readdirSync(panDest)) {
             if (!file.endsWith('.md')) continue;
@@ -1981,6 +2251,9 @@ function install(isGlobal, runtime = 'claude') {
         if (err.code !== 'ENOENT') pushInstallWarning('stripInternalLearnings', 'learnings/internal', err);
       }
     }
+    // The index lists those topics too — strip it here as well, or the metadata
+    // ships even though the files did not.
+    stripInternalFromLearningsIndex(path.join(skillDest, 'learnings', 'index.json'));
 
     if (verifyInstalled(skillDest, 'pan-wizard-core')) {
       console.log(`  ${green}✓${reset} Installed pan-wizard-core`);
@@ -2022,7 +2295,13 @@ function install(isGlobal, runtime = 'claude') {
           // stripThinkingFrontmatter so `effort:` survives to be mapped to
           // Codex's native model_reasoning_effort field.
           if (isCodex) {
-            const toml = convertClaudeAgentToCodexToml(stripSubTags(content));
+            // Rewrite /pan:command mentions to Codex's $pan-command syntax before
+            // TOML conversion — the command/skill path already does this, but the
+            // agent path previously shipped invalid /pan: invocations in
+            // developer_instructions (audit L3).
+            const toml = convertClaudeAgentToCodexToml(
+              convertSlashCommandsToCodexSkillMentions(stripSubTags(content))
+            );
             if (toml) {
               const tomlName = entry.name.replace(/\.md$/, '.toml');
               fs.writeFileSync(path.join(agentsDest, tomlName), toml);
@@ -2098,10 +2377,13 @@ function install(isGlobal, runtime = 'claude') {
     failures.push('VERSION');
   }
 
-  if (!isCodex) {
-    // Write package.json to force CommonJS mode for PAN scripts
-    // Prevents "require is not defined" errors when project has "type": "module"
-    // Node.js walks up looking for package.json - this stops inheritance from project
+  {
+    // Write package.json to force CommonJS mode for PAN scripts — for ALL
+    // runtimes, INCLUDING Codex. The shipped hooks use require(); without this
+    // marker Node walks up to the project's package.json and, in a
+    // "type":"module" project, crashes every hook with "require is not defined"
+    // (H1, ADR audit 2026-08). The uninstall step (see "Remove PAN package.json")
+    // removes this marker for any runtime, so writing it for Codex is symmetric.
     try {
       const pkgJsonDest = path.join(targetDir, 'package.json');
       fs.writeFileSync(pkgJsonDest, '{"type":"commonjs"}\n');
@@ -2126,16 +2408,36 @@ function install(isGlobal, runtime = 'claude') {
         const configDirReplacement = getConfigDirFromHome(runtime, isGlobal);
         for (const entry of hookEntries) {
           const srcFile = path.join(hooksSrc, entry);
-          if (fs.statSync(srcFile).isFile()) {
-            const destFile = path.join(hooksDest, entry);
-            // Template .js files to replace '.claude' with runtime-specific config dir
+          const destFile = path.join(hooksDest, entry);
+          // Read straight through rather than statSync-then-read. hooks/dist is flat,
+          // so "not a regular file" is a skip, and letting the read itself report that
+          // closes the check-then-use gap CodeQL flagged (js/file-system-race).
+          try {
+            // Template .js files to replace '.claude' with runtime-specific config dir.
+            // '.claude' plays two roles in the hooks: home-anchored (cache dir,
+            // global VERSION → machine-global config dir) and project-anchored
+            // (project VERSION → per-project config dir). Templating both with a
+            // single token planted a stray ~/.github (Copilot --local) and a dead
+            // project VERSION check (Copilot --global), since Copilot's global dir
+            // is .copilot but its project dir is .github (audit L37). Resolve each
+            // role independently and context-anchored so it's correct in both modes.
             if (entry.endsWith('.js')) {
               let content = fs.readFileSync(srcFile, 'utf8');
+              const homeDirToken = getConfigDirFromHome(runtime, true); // machine-global config dir
+              const projectDirToken = `'${getDirName(runtime)}'`;        // per-project config dir
+              content = content.replace(/(join\(\s*homeDir\s*,\s*)'\.claude'/g, `$1${homeDirToken}`);
+              content = content.replace(/(join\(\s*cwd\s*,\s*)'\.claude'/g, `$1${projectDirToken}`);
+              // Fallback for any unanchored '.claude' occurrences.
               content = content.replace(/'\.claude'/g, configDirReplacement);
               fs.writeFileSync(destFile, content);
             } else {
               fs.copyFileSync(srcFile, destFile);
             }
+          } catch (e) {
+            // A directory (EISDIR, or EPERM for a copy on Windows) or an entry that
+            // vanished between readdir and read (ENOENT) is simply not a hook — skip
+            // it. Anything else is a real failure and belongs to the outer handler.
+            if (e.code !== 'EISDIR' && e.code !== 'ENOENT' && e.code !== 'EPERM') throw e;
           }
         }
         if (verifyInstalled(hooksDest, 'hooks')) {
@@ -2275,7 +2577,10 @@ function install(isGlobal, runtime = 'claude') {
         updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand,
       });
       fs.writeFileSync(hooksJsonPath, JSON.stringify(merged, null, 2) + '\n');
-      console.log(`  ${green}✓${reset} Configured hooks (.codex/hooks.json: update check, context monitor, cost + trace loggers)`);
+      // Print the path we actually wrote. The hardcoded '.codex/hooks.json' was
+      // wrong for --global and for --config-dir, telling users to inspect a file
+      // that does not exist while the real one sat elsewhere.
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksJsonPath)}: update check, context monitor, cost + trace loggers)`);
     } catch (e) {
       pushInstallWarning('codexHooks', 'hooks.json', e);
     }
@@ -2291,7 +2596,8 @@ function install(isGlobal, runtime = 'claude') {
     try {
       fs.mkdirSync(path.dirname(hooksConfigPath), { recursive: true });
       fs.writeFileSync(hooksConfigPath, JSON.stringify(hooksConfig, null, 2) + '\n');
-      console.log(`  ${green}✓${reset} Configured hooks (.github/hooks/pan.json: update check, context monitor, cost + trace loggers)`);
+      // Same as the Codex case: a global Copilot install writes to ~/.copilot/, not .github/.
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, context monitor, cost + trace loggers)`);
     } catch (e) {
       console.error(`  ${yellow}✗${reset} Failed to write Copilot hooks config: ${e.message}`);
     }
@@ -2302,6 +2608,10 @@ function install(isGlobal, runtime = 'claude') {
     // .github/copilot/ repo-level); config.json is internal CLI state.
     const configPath = path.join(targetDir, 'config.json');
     const config = readSettings(configPath);
+    // Unusable legacy config: skip the migration rather than rewrite the file.
+    // Silent here (no warn) — config.json is internal CLI state the user did not
+    // author, and settings.json is the surface that gets the warning.
+    if (config === null) return;
     let legacyModified = false;
     if (config.hooks) {
       for (const evt of ['sessionStart', 'postToolUse']) {
@@ -2330,6 +2640,9 @@ function install(isGlobal, runtime = 'claude') {
       ? path.join(targetDir, 'settings.json')
       : path.join(targetDir, 'copilot', 'settings.json');
     const copilotSettings = readSettings(copilotSettingsPath);
+    if (settingsUnusable(copilotSettings, copilotSettingsPath, 'statusline configuration')) {
+      return { settingsPath: copilotSettingsPath, settings: null, statuslineCommand, runtime };
+    }
 
     return { settingsPath: copilotSettingsPath, settings: copilotSettings, statuslineCommand, runtime };
   }
@@ -2337,7 +2650,13 @@ function install(isGlobal, runtime = 'claude') {
   // Configure statusline and hooks in settings.json
   // Claude Code, Gemini, OpenCode use settings.json
   const settingsPath = path.join(targetDir, 'settings.json');
-  const settings = cleanupOrphanedHooks(readSettings(settingsPath));
+  const rawSettings = readSettings(settingsPath);
+  if (settingsUnusable(rawSettings, settingsPath, 'statusline and hook configuration')) {
+    // Returning the path with settings:null tells finishInstall to skip every
+    // write. Overwriting would destroy whatever the user has in there.
+    return { settingsPath, settings: null, statuslineCommand, runtime };
+  }
+  const settings = cleanupOrphanedHooks(rawSettings);
 
   // Enable experimental agents for Gemini CLI (required for custom sub-agents)
   if (isGemini) {
@@ -2441,28 +2760,48 @@ function install(isGlobal, runtime = 'claude') {
 /**
  * Apply statusline config, then print completion message
  */
-function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallStatusline, runtime = 'claude', isGlobal = true) {
+function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallStatusline, runtime = 'claude', isGlobal = true, isPrimaryStatusline = true) {
+  // settings === null means the existing file could not be parsed and the caller
+  // already warned. Every branch below merges into `settings` and writes it back,
+  // so proceeding would replace the user's file with PAN's keys alone. Skip, and
+  // do NOT print the "Configured …" ticks — an install that silently reports
+  // success while configuring nothing was its own finding in the 2026-08 test.
+  if (settings === null) return;
   const isOpencode = runtime === 'opencode';
   const isCodex = runtime === 'codex';
   const isCopilot = runtime === 'copilot';
 
   if (shouldInstallStatusline && !isOpencode && !isCodex) {
-    // Same schema everywhere — Copilot CLI also uses {type: "command", command}
-    // in settings.json (statusline is experimental there as of 2026-05).
-    settings.statusLine = {
-      type: 'command',
-      command: statuslineCommand
-    };
-    console.log(`  ${green}✓${reset} Configured statusline`);
-    if (isCopilot) {
-      console.log(`  ${dim}ℹ Copilot CLI statusline is experimental — if it doesn't render, start with 'copilot --experimental'${reset}`);
+    // Preserve a user's EXISTING custom statusline in THIS runtime's settings.
+    // finishInstall runs per runtime, so this is the per-runtime check the old
+    // primary-only guard skipped — it clobbered custom Gemini/Copilot
+    // statuslines (M6, ADR audit 2026-08). PAN's own statusline is replaceable.
+    const existingCmd = settings.statusLine && settings.statusLine.command;
+    const isPanStatusline = typeof existingCmd === 'string' && /pan-statusline/.test(existingCmd);
+    // Preserve an existing custom statusline only for SECONDARY runtimes (not
+    // prompted). The primary runtime's shouldInstallStatusline already carries
+    // the user's interactive answer, so don't second-guess it (N4 fix).
+    if (settings.statusLine && !isPanStatusline && !isPrimaryStatusline && !args.includes('--force-statusline')) {
+      console.log(`  ${dim}ℹ Kept your existing statusline (pass --force-statusline to replace it)${reset}`);
+    } else {
+      // Same schema everywhere — Copilot CLI also uses {type: "command", command}
+      // in settings.json (statusline is experimental there as of 2026-05).
+      settings.statusLine = {
+        type: 'command',
+        command: statuslineCommand
+      };
+      console.log(`  ${green}✓${reset} Configured statusline`);
+      if (isCopilot) {
+        console.log(`  ${dim}ℹ Copilot CLI statusline is experimental — if it doesn't render, start with 'copilot --experimental'${reset}`);
+      }
     }
   }
 
-  // Write settings/config when runtime supports it. For Copilot, skip the
-  // write when there is nothing to persist (avoids creating an empty
-  // .github/copilot/settings.json).
-  if (!isCodex && !(isCopilot && Object.keys(settings).length === 0)) {
+  // Write settings/config when runtime supports it. Skip the write entirely when
+  // there is nothing to persist — avoids creating a spurious empty settings.json
+  // (Copilot's .github/copilot/settings.json and, notably, OpenCode's .opencode/
+  // settings.json, which OpenCode doesn't even use — its config is opencode.json).
+  if (!isCodex && Object.keys(settings).length > 0) {
     if (isCopilot) {
       try { fs.mkdirSync(path.dirname(settingsPath), { recursive: true }); } catch { /* surfaced by writeSettings */ }
     }
@@ -2474,13 +2813,17 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
     configureOpencodePermissions(isGlobal);
   }
 
-  // E-9: Opus 4.7 capability detection — warn if user's default model lacks
-  // features Spec A relies on (1M ctx, extended thinking, prompt caching).
+  // E-9 Model-capability integration (the name docs/ARCHITECTURE.md uses for
+  // this mechanism) — warn if user's default model lacks features Spec A relies
+  // on (1M ctx, extended thinking, prompt caching). Advisory only — there is no
+  // runtime capability gate, and as of this writing this notice is the whole
+  // reason detectModelCapabilities exists in the shipped path.
   if (!args.includes('--skip-warnings')) {
     try {
-      const settingsPath = path.join(targetDir, 'settings.json');
-      const settingsRaw = fs.readFileSync(settingsPath, 'utf-8');
-      const settings = JSON.parse(settingsRaw);
+      // Use the `settings` param already resolved for this install. The prior
+      // re-derivation read a nonexistent `targetDir`, throwing a ReferenceError
+      // that the bare catch swallowed — so this warning could never fire (M5,
+      // ADR audit 2026-08).
       const modelField = settings && settings.model;
       if (typeof modelField === 'string' && modelField.trim()) {
         const caps = detectModelCapabilities(modelField);
@@ -2491,8 +2834,9 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
           ].filter(Boolean).join(', ');
           console.log(`
   ${yellow}ℹ${reset} PAN's multi-agent workflows are tuned for frontier reasoning models. Default model "${modelField}" lacks: ${missing}.
-     Features degrade gracefully, but for best results select claude-fable-5 (PAN's recommended flagship — deepest
-     long-horizon reasoning for the bot army), or an Opus-tier model (claude-opus-5 / claude-opus-4-8) at lower cost.`);
+     Features degrade gracefully, but for best results set your default model to one with a 1M-token context window
+     and extended thinking — ${RECOMMENDED_MODELS.flagship} is PAN's recommended flagship (deepest long-horizon
+     reasoning for the bot army), or an Opus-tier model (${RECOMMENDED_MODELS.reasoningTier}) at lower cost.`);
         }
       }
     } catch {
@@ -2533,6 +2877,13 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
  * Handle statusline configuration with optional prompt
  */
 function handleStatusline(settings, isInteractive, callback) {
+  // settings === null means readSettings could not use the existing file and the
+  // caller already warned. There is nothing to prompt about and nothing we may
+  // write, so decline the statusline without asking.
+  if (settings === null) {
+    callback(false);
+    return;
+  }
   const hasExisting = settings.statusLine != null;
 
   if (!hasExisting) {
@@ -2644,13 +2995,20 @@ function installAllRuntimes(runtimes, isGlobal, isInteractive) {
   const finalize = (shouldInstallStatusline) => {
     for (const result of results) {
       const useStatusline = statuslineRuntimes.includes(result.runtime) && shouldInstallStatusline;
+      // The primary runtime is the one handleStatusline actually prompted about,
+      // so its shouldInstallStatusline reflects explicit user consent — honor it
+      // even over an existing custom statusline. Secondary runtimes were NOT
+      // prompted, so their existing custom statuslines are preserved (N4 fix keeps
+      // the interactive "replace" working; M6 still protects the others).
+      const isPrimaryStatusline = !!primaryStatuslineResult && result.runtime === primaryStatuslineResult.runtime;
       finishInstall(
         result.settingsPath,
         result.settings,
         result.statuslineCommand,
         useStatusline,
         result.runtime,
-        isGlobal
+        isGlobal,
+        isPrimaryStatusline
       );
     }
   };

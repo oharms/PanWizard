@@ -20,7 +20,7 @@ function removePhaseFromDisk(phaseDir) {
   try {
     fs.rmSync(phaseDir, { recursive: true, force: true });
   } catch (e) {
-    return { removed: false, error: e.message };
+    return { removed: false, error: e.message || 'remove_failed' };
   }
   return { removed: true };
 }
@@ -214,7 +214,12 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
 
     // Reasonable upper bound for phase numbers
     const maxPhase = 99;
-    for (let oldNum = maxPhase; oldNum > removedInt; oldNum--) {
+    // Floor the loop independently of removedInt. cmdPhaseRemove rejects a phase
+    // below 1 before we get here, but this function is also reachable directly,
+    // and an unbounded lower end is how `phase remove -1234567890` turned into
+    // ~1.2 billion regex passes. The loop can now never exceed maxPhase steps.
+    const stopAt = Math.max(removedInt, 0);
+    for (let oldNum = maxPhase; oldNum > stopAt; oldNum--) {
       const newNum = oldNum - 1;
       const oldStr = String(oldNum);
       const newStr = String(newNum);
@@ -269,6 +274,23 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     error('phase number required for phase remove');
   }
 
+  // Validate the identifier BEFORE touching the roadmap or any directory.
+  // normalizePhaseName does not validate — it returns its input unchanged when
+  // PHASE_NUM_RE does not match — so a bad argument used to reach the renumber
+  // logic and do real damage, in both cases reporting success and exiting 0:
+  //   `phase remove 0`      renumbered EVERY roadmap heading down to "Phase 0"
+  //                         (the descending renumber loop runs 99..1 and re-hits
+  //                         its own output, collapsing 3->2->1->0) and renamed
+  //                         every phase directory one lower.
+  //   `phase remove -1e9`   spun that same loop ~1.2 billion times, each pass
+  //                         running several regex replaces over the roadmap —
+  //                         hours of CPU, no output, no way to tell it was stuck.
+  // Phases are numbered from 1, so anything below that is a typo, never a target.
+  const phaseIdent = String(targetPhase).trim();
+  if (!/^\d+[A-Za-z]?(?:\.\d+)*$/.test(phaseIdent) || parseInt(phaseIdent, 10) < 1) {
+    error(`invalid phase number: ${targetPhase} (expected a phase numbered from 1, e.g. 3, 3A or 3.1)`);
+  }
+
   const roadmapPath = path.join(planningPath(cwd), ROADMAP_FILE);
   const phasesDir = phasesPath(cwd);
   const force = options.force || false;
@@ -289,6 +311,23 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     targetDir = dirs.find(dir => dir.startsWith(normalized + '-') || dir === normalized);
   } catch {
     // Phases directory does not exist; targetDir remains null
+  }
+
+  // Refuse a phase that exists nowhere. A phase CAN legitimately have a roadmap
+  // entry and no directory yet (planned, not scaffolded), so only refuse when it
+  // is in neither place. Previously this reported {removed: <n>} with exit 0 for
+  // a phase that was never there, and claimed roadmap.md and state.md had been
+  // rewritten — an orchestrator reads that as "it is gone" and moves on.
+  if (!targetDir) {
+    let roadmapText = '';
+    try {
+      roadmapText = fs.readFileSync(roadmapPath, 'utf8');
+    } catch { /* unreadable roadmap is reported below as not-found */ }
+    const displayNum = escapeRegex(String(parseInt(phaseIdent, 10)) + (phaseIdent.includes('.') ? '.' + phaseIdent.split('.').slice(1).join('.') : ''));
+    const inRoadmap = new RegExp(`^#{2,4}\\s*Phase\\s+0*${displayNum}(\\D|$)`, 'im').test(roadmapText);
+    if (!inRoadmap) {
+      error(`Phase ${targetPhase} not found — no phase directory and no roadmap entry`);
+    }
   }
 
   // Check for executed work (summary.md files)

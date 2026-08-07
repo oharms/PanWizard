@@ -1,6 +1,6 @@
 # Milestone Archive Template
 
-This template is used by the complete-milestone workflow to create archive files in `.planning/milestones/`.
+This template is used by the milestone-done workflow to create archive files in `.planning/milestones/`.
 
 ---
 
@@ -98,7 +98,7 @@ _For current project status, see .planning/roadmap.md_
 <guidelines>
 **When to create milestone archives:**
 - After completing all phases in a milestone (v1.0, v1.1, v2.0, etc.)
-- Triggered by complete-milestone workflow
+- Triggered by milestone-done workflow
 - Before planning next milestone work
 
 **How to fill template:**

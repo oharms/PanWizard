@@ -106,7 +106,7 @@ skipped: [N]
 
 **After testing complete (status: complete), if gaps exist:**
 
-1. User runs diagnosis (from verify-work offer or manually)
+1. User runs diagnosis (from verify-phase offer or manually)
 2. diagnose-issues workflow spawns parallel debug agents
 3. Each agent investigates one gap, returns root cause
 4. uat.md Gaps section updated with diagnosis:

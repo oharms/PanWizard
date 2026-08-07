@@ -1,7 +1,7 @@
 # ADR-0022: Lifecycle Completeness — Test Generation, Code Review, Test Gate, Retrospective
 
 ## Status
-Proposed
+Accepted (shipped in v2.8.0 — 2026-03-08)
 
 ## Context
 PAN Wizard's lifecycle has structural gaps when compared against industry SDLC frameworks (V-Model, Agile, DevOps, SAFe). Specifically:

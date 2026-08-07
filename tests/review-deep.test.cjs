@@ -298,4 +298,20 @@ describe('review-deep — CLI dispatch', () => {
     const r = runPanTools('review-deep explode', tmpDir);
     assert.equal(r.success, false);
   });
+
+  // M25: a RELATIVE --reviewer-file must resolve against --cwd, not the process
+  // working directory. Spawn from a different dir and confirm the file is found.
+  test('resolves relative --reviewer-file against --cwd, not process.cwd()', () => {
+    fs.writeFileSync(path.join(tmpDir, 'reviewer.md'), `## Findings\n\n- **[LOW] style** — fix. File: \`a.js:1\`.\n`);
+    const elsewhere = createTempProject();
+    try {
+      // Spawn cwd = elsewhere; relative reviewer.md only exists under tmpDir.
+      const r = runPanTools(`review-deep analyze 07 --reviewer-file reviewer.md --cwd "${tmpDir}"`, elsewhere);
+      assert.ok(r.success, r.error);
+      const json = JSON.parse(r.output);
+      assert.equal(json.coverage.by_source.reviewer, 1, 'reviewer file resolved via --cwd and parsed');
+    } finally {
+      cleanup(elsewhere);
+    }
+  });
 });

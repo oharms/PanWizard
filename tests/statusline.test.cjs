@@ -1,13 +1,16 @@
 /**
  * Tests for hooks/pan-statusline.js — E-8 Opus 4.7 indicators plus baseline
- * context rendering.
+ * context rendering, and the statusline → context-monitor bridge (N24).
  */
 
 const { describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const os = require('os');
+const fsReal = require('fs');
+const pathReal = require('path');
 
 const { buildStatuslineOutput } = require('../hooks/pan-statusline.js');
+const { bridgeDir, buildContextWarning } = require('../hooks/pan-context-monitor.js');
 
 // Fake fs with no todos / no update cache / no bridge writes.
 function mockDeps(overrides = {}) {
@@ -173,5 +176,67 @@ describe('pan-statusline (E-8)', () => {
       model: { display_name: 'x' }, workspace: { current_dir: '/x' },
     }, deps);
     assert.ok(out.includes('/pan:update'));
+  });
+});
+
+describe('pan-statusline ↔ pan-context-monitor bridge (N24: pins the N15 win32 fix)', () => {
+  // Platform-aware regression pin for the statusline → context-monitor IPC
+  // channel. At b1fa91f an UNCONDITIONAL POSIX uid/mode gate in both hooks
+  // returned null / secure=false on Windows (mode bits lstat as 0o666 there),
+  // killing the bridge — and the whole suite stayed green because every
+  // statusline test mocked fs with skipBridge:true (N15/N24). This test runs
+  // the REAL write path and the REAL reader dir-derivation against a fresh
+  // temp dir on the CURRENT platform:
+  //   - win32: fails if the POSIX mode/uid gate is ever re-applied
+  //     unconditionally (bridgeDir() → null, statusline write skipped);
+  //   - POSIX: stays green — the fresh dir is self-owned with mode 0o700, so
+  //     the retained uid/mode checks pass (and still guard shared hosts, M60).
+  test('bridgeDir() returns a usable dir on this platform and the bridge file round-trips', () => {
+    // os.tmpdir() reads the env on every call, so pointing TMPDIR/TEMP/TMP at
+    // a scratch dir makes BOTH hooks derive a bridge dir that is created fresh
+    // by this very test — no dependency on the real temp dir's state.
+    const scratch = fsReal.mkdtempSync(pathReal.join(os.tmpdir(), 'pan-n24-'));
+    const saved = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP };
+    try {
+      process.env.TMPDIR = scratch;
+      process.env.TEMP = scratch;
+      process.env.TMP = scratch;
+
+      // (a) The reader's dir derivation yields a usable (non-null) dir.
+      const dir = bridgeDir();
+      assert.ok(dir, 'bridgeDir() must return a usable bridge dir for a freshly created per-user dir on this platform');
+      assert.ok(fsReal.existsSync(dir), 'the per-user bridge dir was created');
+      assert.equal(pathReal.dirname(dir), scratch, 'bridge dir lives in the (redirected) tmpdir');
+
+      // (b) Round-trip: the statusline WRITER (real fs, bridge enabled — no
+      // skipBridge) and the context-monitor READER agree on the same file.
+      const session = `n24-${process.pid}-${Date.now()}`;
+      const out = buildStatuslineOutput({
+        model: { display_name: 'x' },
+        workspace: { current_dir: scratch },
+        session_id: session,
+        context_window: { remaining_percentage: 30 },
+      }, { fs: fsReal, path: pathReal, homeDir: scratch, tmpDir: scratch });
+      assert.ok(out.includes('%'), 'statusline still renders the context bar');
+
+      const bridgeFile = pathReal.join(dir, `claude-ctx-${session}.json`);
+      assert.ok(fsReal.existsSync(bridgeFile),
+        'the statusline wrote the bridge file into the exact dir the context-monitor reads');
+      const metrics = JSON.parse(fsReal.readFileSync(bridgeFile, 'utf8'));
+      assert.equal(metrics.session_id, session);
+      assert.equal(metrics.remaining_percentage, 30);
+
+      // (c) The bridged metrics drive the monitor's decision logic end-to-end:
+      // 30% remaining is inside the WARNING band.
+      const decision = buildContextWarning(metrics, null, Math.floor(Date.now() / 1000));
+      assert.equal(decision.action, 'emit', 'the monitor warns from the bridged metrics');
+      assert.equal(decision.level, 'warning');
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      fsReal.rmSync(scratch, { recursive: true, force: true });
+    }
   });
 });

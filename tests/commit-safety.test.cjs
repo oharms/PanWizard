@@ -121,7 +121,10 @@ describe('commit safety checks', () => {
     // Also stage a planning file to trigger commit
     fs.writeFileSync(path.join(tmpDir, '.planning', 'sens.md'), '# sensitive test');
     const result = runPanTools('commit with-env --files .planning/ .env', tmpDir);
-    assert.ok(result.success, `Command should output JSON even when blocked: ${result.error}`);
+    // Exit 1: a blocked commit is a refusal that protected something — nothing landed,
+    // which is the same harm as commit_failed for an autonomous loop. The JSON body is
+    // still on stdout (that is what this test's original wording was checking).
+    assert.equal(result.success, false, 'a blocked commit must not report success');
     const out = JSON.parse(result.output);
     assert.strictEqual(out.committed, false);
     assert.strictEqual(out.reason, 'sensitive_file_detected');
@@ -134,7 +137,7 @@ describe('commit safety checks', () => {
     execSync('git add credentials.json', { cwd: tmpDir, stdio: 'pipe' });
     fs.writeFileSync(path.join(tmpDir, '.planning', 'cred.md'), '# cred test');
     const result = runPanTools('commit with-creds --files .planning/ credentials.json', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'a blocked commit must not report success');
     const out = JSON.parse(result.output);
     assert.strictEqual(out.committed, false);
     assert.strictEqual(out.reason, 'sensitive_file_detected');

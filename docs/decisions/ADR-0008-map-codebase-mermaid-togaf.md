@@ -1,7 +1,7 @@
 # ADR-0008: Enhance map-codebase with Mermaid Diagrams and TOGAF Structure
 
 ## Status
-Proposed
+Superseded by [ADR-0021](ADR-0021-codebase-mapper-v2.md) — the mapper-v2 redesign folded in and replaced this proposal.
 
 ## Context
 `/pan:map-codebase` produces 7 text-only markdown files describing a codebase.

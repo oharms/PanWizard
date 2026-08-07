@@ -3,11 +3,10 @@
  */
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, normalizePhaseName, toPosix, output, error, scanPendingTodos, isGitRepo, execGit } = require('./core.cjs');
 const { PLANNING_DIR, PHASES_DIR, CODEBASE_DIR, QUICK_DIR, MILESTONES_DIR, STATE_FILE, ROADMAP_FILE, CONFIG_FILE, PROJECT_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isResearchFile, isContextFile, isVerificationFile, PLAN_SUFFIX, SUMMARY_SUFFIX, CONTEXT_SUFFIX, RESEARCH_SUFFIX, VERIFICATION_SUFFIX, UAT_SUFFIX, MAX_SLUG_LENGTH } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, hasBraveSearchKey } = require('./utils.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, hasBraveSearchKey, parsePhaseDir } = require('./utils.cjs');
 const { classifyPlanTier } = require('./phase.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { detectLanguages } = require('./codebase.cjs');
@@ -768,9 +767,7 @@ function scanAllPhases(cwd) {
     const dirNames = entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
 
     for (const dirName of dirNames) {
-      const dirMatch = dirName.match(/^(\d+(?:\.\d+)*)-?(.*)/);
-      const phaseNumber = dirMatch ? dirMatch[1] : dirName;
-      const phaseName = dirMatch && dirMatch[2] ? dirMatch[2] : null;
+      const { number: phaseNumber, name: phaseName } = parsePhaseDir(dirName);
 
       const phaseFullPath = path.join(phasesDirPath, dirName);
       let phaseFiles;

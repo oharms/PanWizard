@@ -444,7 +444,7 @@ Milestone retrospective — analyze estimation accuracy, verification patterns, 
 
 **Tools:** Read, Bash, Glob, Grep  
 **Group:** Milestone Lifecycle  
-**Lines:** 33
+**Lines:** 36
 
 ---
 
@@ -545,7 +545,7 @@ Audit a PAN Wizard deployment — verify installation integrity, project health,
 
 **Tools:** Read, Bash, Write, Glob, Grep, AskUserQuestion  
 **Group:** System  
-**Lines:** 384
+**Lines:** 387
 
 #### /pan:debug
 
@@ -681,11 +681,11 @@ Join the PAN Discord community
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
-| `/pan:army` | Read, Write, Edit, Bash, Grep, Glob, Agent, Task | Bot-army campaign — Mission Control (Opus conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires. |
+| `/pan:army` | Read, Write, Edit, Bash, Grep, Glob, Agent, Task | Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires. |
 
 #### /pan:army
 
-Bot-army campaign — Mission Control (Opus conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
+Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
 
 ```
 /pan:army
@@ -693,7 +693,7 @@ Bot-army campaign — Mission Control (Opus conductor) delegates a whole-project
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, Task  
 **Group:** Army  
-**Lines:** 176
+**Lines:** 182
 
 ---
 
@@ -774,7 +774,7 @@ Manage external experiments — scaffold, run, harvest, promote findings back to
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Self-Improvement  
-**Lines:** 221
+**Lines:** 225
 
 #### /pan:learn
 
@@ -858,7 +858,7 @@ Validate the doc-code link graph — inline wiki-style refs, source-comment anch
 
 **Tools:** Bash, Read, Grep  
 **Group:** Validation  
-**Lines:** 102
+**Lines:** 104
 
 ---
 

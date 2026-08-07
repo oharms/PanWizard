@@ -509,8 +509,13 @@ function validateAll(cwd, opts = {}) {
 
 function cmdLinksValidate(cwd, opts = {}) {
   const result = validateAll(cwd, opts);
-  // Bypass core.output() because it unconditionally exits 0; we need exit 1
-  // when status is "fail" so CI / hooks can detect violations.
+  // This used to hand-roll process.stdout.write + process.exit to get exit 1 on a
+  // failing status, because output() exited 0 unconditionally. It no longer does
+  // (see its contract comment in core.cjs), so the gate goes through output() like
+  // every other command — which also picks up the >50KB @file: overflow protocol
+  // this bypass was silently missing. The payload has no `error` key, so the code
+  // is passed explicitly: "fail" is a verdict, not a malfunction.
+  let human;
   if (opts.raw) {
     const lines = [
       `Links: ${result.summary.status.toUpperCase()}`,
@@ -529,11 +534,9 @@ function cmdLinksValidate(cwd, opts = {}) {
       const where = f.source_line ? `${f.source}:${f.source_line}` : f.source;
       lines.push(`[${f.severity.toUpperCase()}] ${f.code} ${where}: ${f.detail}`);
     }
-    process.stdout.write(lines.join('\n'));
-  } else {
-    process.stdout.write(JSON.stringify(result, null, 2));
+    human = lines.join('\n');
   }
-  process.exit(result.summary.status === 'fail' ? 1 : 0);
+  output(result, opts.raw, human, result.summary.status === 'fail' ? 1 : 0);
 }
 
 module.exports = {

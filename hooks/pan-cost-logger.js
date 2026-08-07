@@ -15,16 +15,44 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+
+// Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
+const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'];
+
+// M62: only instrument actual PAN projects. A global-install hook fires in EVERY
+// repo the user opens; without this gate it silently creates .planning/ metrics
+// artifacts in non-PAN repos. A project counts as PAN if it already has a
+// .planning/ tree (a /pan command created it) OR carries a local PAN install
+// (a manifest / core payload under a runtime config dir — covers a fresh local
+// install before any .planning/ exists). Global installs in a plain repo match
+// neither, so the hook no-ops. Best-effort — never throws.
+function isPanProject(cwd) {
+  try {
+    if (!cwd) return false;
+    if (fs.existsSync(path.join(cwd, '.planning'))) return true;
+    for (const d of PAN_RUNTIME_DIRS) {
+      if (fs.existsSync(path.join(cwd, d, 'pan-file-manifest.json'))) return true;
+      if (fs.existsSync(path.join(cwd, d, 'pan-wizard-core'))) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 const METRICS_DIR = 'metrics';
 const TOKENS_FILE = 'tokens.jsonl';
 const CURSOR_FILE = '.cost-cursor.json';
 
 // Ledger row schema version. Bump when the record shape changes so readers can
-// tell which shape a row was written in (pre-versioned rows read as v1). Kept as
-// a literal in both hooks + cost.cjs — the hooks are standalone zero-dep scripts
-// that can't import from pan-wizard-core, so this MUST stay in sync by hand.
-const SCHEMA_V = 2;
+// tell which shape a row was written in (pre-versioned rows read as v1); v3 added
+// the per-invocation `event_sig` discriminator. Kept as a literal in each hook —
+// they are standalone zero-dep scripts that can't import from pan-wizard-core, so
+// the two hooks must stay in sync by hand. No constant in pan-wizard-core mirrors
+// it: the readers there take a row field by field rather than switching on its
+// version, so an added field is additive for them.
+const SCHEMA_V = 3;
 
 // Reverse-map a resolved model id to its cost tier so the "By tier" dashboard
 // section isn't blind on the hook path. Anthropic families only (the tiers PAN
@@ -77,10 +105,161 @@ function readCursor(cwd) {
     return c && typeof c === 'object' ? c : {};
   } catch { return {}; }
 }
+
+// N17/N25-N27: reserved key in the cursor map recording, per transcript, the
+// SIGNATURES of recently-seen SubagentStop events. An empty-slice event is a
+// true re-fire / dual-registration ONLY when its full-payload signature was
+// already seen for that transcript; a PARALLEL SIBLING (any payload difference)
+// or a FIRST FIRE (missing/unreadable transcript, since===0) carries a new
+// signature and must be recorded, not dropped. A bounded FIFO SET rather than a
+// single slot (N25): a sibling recorded in between can no longer evict the
+// signature that identifies an earlier event's re-fire. Bounded by COUNT, not
+// by transcript existence, so the L40 dead-transcript prune can no longer erase
+// the live marker of a missing-transcript first fire in the very write meant to
+// persist it (N27). The name can never collide with a transcript path (an
+// absolute file path).
+const SEEN_EVENTS = '__seenEvents';
+// Pre-N25 single-slot marker — no longer read; dropped on the next write
+// (self-migrating, no reader of the old shape exists outside this hook).
+const LEGACY_CONSUME_KEYS = '__consumeKeys';
+// Bounds (L40): at most MAX_SEEN_TRANSCRIPTS transcripts x MAX_SEEN_SIGS
+// signatures (~40 chars each) — a few KB worst-case. FIFO eviction on both axes.
+// This window is the ONLY layer that recognizes a re-fire which is no longer
+// ADJACENT to the row it duplicates: the ledger dedup below compares against the
+// immediately preceding row and nothing further. A sibling wave wider than
+// MAX_SEEN_SIGS on one transcript therefore evicts the earliest sibling's
+// signature, and a late re-fire of THAT sibling is admitted as a phantom row.
+// That residual is accepted deliberately, not overlooked — see eventSignature
+// below for what widening either window was measured to cost.
+const MAX_SEEN_SIGS = 8;
+const MAX_SEEN_TRANSCRIPTS = 16;
+
+// Signature of a SubagentStop event: a hash of the FULL payload as delivered.
+// A dual-registration re-fire is byte-identical on stdin (the host pipes the
+// same JSON to every registration of one event), so its signature matches. A
+// parallel sibling is distinguished by ANY differing payload field, without
+// hardcoding which field a given runtime provides (N26).
+//
+// WHICH fields actually differ on real payloads is only partly established, so
+// the sibling-admission benefit is CONDITIONAL. What this repo has observed:
+//   • `agent_type` / `subagent_type` is supplied and does vary between siblings
+//     of DIFFERENT type — the trace rows recorded under
+//     experiments/*/.planning/optimization/traces/ were written by the sibling
+//     hook from real payloads and carry real agent names. Different-type
+//     siblings are therefore always separable.
+//   • `session_id` is SHARED with the parent, and so is the session transcript
+//     (docs/FIELD-REPORT-army-2026-06.md, root cause 1) — neither is
+//     per-invocation.
+//   • `model` and `phase` came out null in those recorded rows: the payload
+//     carried neither.
+//   • `usage` is absent entirely in headless mode (docs/HOOKS.md, P-1805).
+//   • No recorded payload in this repo carries an `agent_id` or any other
+//     per-invocation id. `grep -rn agent_id hooks/ pan-wizard-core/ tests/`
+//     finds only PAN's own agent-tracking artifacts (written by workflows) and
+//     the hook tests, which inject one as a stand-in.
+// So for two CONCURRENT SAME-TYPE siblings no varying payload field is
+// confirmed on any host. Where the host supplies one, both spawns are admitted;
+// where it supplies none the two payloads are the same bytes, hence
+// informationally indistinguishable from a re-fire, and the second stays
+// suppressed.
+//
+// What the guards promise, stated as narrowly as they hold: a re-fire is
+// suppressed while it is still RECOGNIZABLE — its signature is in this
+// transcript's seen-event window (MAX_SEEN_SIGS), or it is byte-identical modulo
+// `ts` to the row IMMEDIATELY PRECEDING it in the ledger. Nothing further. A
+// re-fire arriving after its signature has been evicted from the marker window,
+// and not adjacent to the row it duplicates, IS admitted as a phantom row. That
+// is the residual; it is documented rather than engineered away.
+//
+// It was engineered away once, and the cure destroyed data. The ledger dedup was
+// widened to scan a tail of recent rows, with a second prong matching on a
+// repeated signature alone for rows carrying no tokens. Both prongs delete real
+// spawns. Five genuine spawns X,Y,X,Y,X on one shared transcript — the ordinary
+// shared-session topology of docs/FIELD-REPORT-army-2026-06.md, where sequential
+// same-type subagents deliver byte-identical payloads and therefore one
+// signature — collapsed to TWO rows; when their slices carried real usage the
+// collapsed rows' token counts vanished with them. Deleting real cost data is
+// strictly worse than the occasional phantom row it prevents. The invariant that
+// justified the contentless prong ("an event that consumed a real transcript
+// slice never looks contentless") is also false: a slice of records that carry
+// no `usage` and no `timestamp` yields zero on every axis and a null duration.
+// So the dedup stays adjacent-only, and this comment states the residual instead
+// of an invariant the code does not hold. Pinned in
+// tests/cost-logger-hook.test.cjs — `grep -n 'no genuine spawn' tests/cost-logger-hook.test.cjs`.
+//
+// The NO-transcript path carries a wider residual: it never consults the marker
+// layer at all (there is no transcript to key it by), so an INTERLEAVED dual
+// registration there — A, B, A′, B′ — puts A′ and B′ out of adjacency reach and
+// both are admitted as phantom rows. Closing that needs a lookback, and a
+// lookback is the window whose failure mode is the data loss above, so it stays
+// open.
+//
+// Where the guards CAN distinguish two events (their payloads differ, so their
+// signatures differ) both are recorded — that is what the row's `event_sig`
+// exists for. Where they CANNOT (identical bytes), the second is suppressed.
+// So the bias falls on the indistinguishable case only, and it is deliberate:
+// an undercounted spawn beats a phantom row for cost reporting (N29).
+//
+// The cost of that bias, stated plainly because no other comment admits it:
+// two SEQUENTIAL genuine spawns whose rows coincide in every field but `ts` —
+// same agent, same tokens, same span — collapse to one row, and the second
+// spawn's real tokens are lost. This is inherent to an adjacent whole-row
+// dedup, predates `event_sig`, and is identical in the pre-`event_sig` code;
+// removing the dedup instead reinstates the duplicate-row field bug it was
+// added for. It is the one UNDER-count residual, distinct from the evicted-
+// marker phantom (an over-count) and from N29 (concurrent same-type siblings).
+//
+// Returns null when the payload cannot be serialized — callers then fail OPEN
+// (record, never mark).
+function eventSignature(data) {
+  try {
+    return crypto.createHash('sha1').update(JSON.stringify(data)).digest('hex');
+  } catch { return null; }
+}
+
+function getSeenSigs(cursor, transcriptPath) {
+  const se = cursor && cursor[SEEN_EVENTS];
+  const arr = se && typeof se === 'object' ? se[transcriptPath] : null;
+  return Array.isArray(arr) ? arr : [];
+}
+function addSeenSig(cursor, transcriptPath, sig) {
+  if (!sig) return; // unhashable payload → never mark (fail open to recording)
+  if (!cursor[SEEN_EVENTS] || typeof cursor[SEEN_EVENTS] !== 'object') cursor[SEEN_EVENTS] = {};
+  const se = cursor[SEEN_EVENTS];
+  const arr = Array.isArray(se[transcriptPath]) ? se[transcriptPath].filter((s) => s !== sig) : [];
+  arr.push(sig);
+  while (arr.length > MAX_SEEN_SIGS) arr.shift(); // FIFO — evict the oldest signature
+  delete se[transcriptPath]; // re-insert so key order tracks recency for the transcript cap
+  se[transcriptPath] = arr;
+  const keys = Object.keys(se);
+  for (let i = 0; i < keys.length - MAX_SEEN_TRANSCRIPTS; i++) delete se[keys[i]];
+}
+
 function writeCursor(cwd, cursor) {
   try {
+    // Prune cursor keys for transcripts that no longer exist so the map can't
+    // grow without bound over a long-lived project (L40, ADR audit 2026-08).
+    const pruned = {};
+    for (const [tp, v] of Object.entries(cursor)) {
+      if (tp === SEEN_EVENTS || tp === LEGACY_CONSUME_KEYS) continue; // reserved markers — not paths
+      if (tp && fs.existsSync(tp)) pruned[tp] = v;
+    }
+    // Preserve the seen-event marker (N17/N25-N27). Deliberately NOT pruned by
+    // transcript existence — a missing-transcript first fire's marker must
+    // survive this very write, or its re-fire is re-admitted as a phantom row
+    // (N27). Bounded by count instead (FIFO on both axes), which keeps the file
+    // strictly bounded per L40.
+    const se = cursor[SEEN_EVENTS];
+    if (se && typeof se === 'object') {
+      const bounded = {};
+      for (const tp of Object.keys(se).slice(-MAX_SEEN_TRANSCRIPTS)) {
+        const arr = se[tp];
+        if (Array.isArray(arr) && arr.length) bounded[tp] = arr.slice(-MAX_SEEN_SIGS);
+      }
+      if (Object.keys(bounded).length) pruned[SEEN_EVENTS] = bounded;
+    }
     fs.mkdirSync(path.dirname(cursorFilePath(cwd)), { recursive: true });
-    fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(cursor), 'utf-8');
+    fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(pruned), 'utf-8');
   } catch { /* best-effort — never block the agent loop */ }
 }
 
@@ -117,6 +296,17 @@ function buildCostRecord(data, cwd) {
   // from a genuine zero-token run.
   let tokenSource = data.transcript_path ? 'transcript' : 'usage-fallback';
   let clamped = false;
+  // Set when a transcript-sourced event consumed no new records AND is an
+  // identical re-fire / dual-registration. Carried on the returned record as a
+  // transient flag so appendRecord can drop the phantom row; never written to
+  // the ledger (M61).
+  let emptySlice = false;
+  const agent = data.agent_type || data.subagent_type || null;
+  // This event's per-invocation identity, hashed once and used by BOTH layers:
+  // the seen-event marker below and the `event_sig` row field further down.
+  // buildCostRecord never mutates `data`, so hoisting the hash here yields the
+  // same value the marker calls used when they each computed it themselves.
+  const eventSig = eventSignature(data);
   if (data.transcript_path) {
     const cursor = readCursor(cwd);
     const since = cursor[data.transcript_path] || 0;
@@ -127,11 +317,42 @@ function buildCostRecord(data, cwd) {
     cacheWrite = fromTranscript.cache_creation_input_tokens;
     durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts);
     if (!model) model = fromTranscript.model;
-    // Advance the cursor so the next subagent's record starts fresh — the slices
-    // partition the transcript, so it is never re-summed on every event.
     if (fromTranscript.lineCount > since) {
+      // A real slice. Advance the cursor so the next subagent's record starts
+      // fresh — the slices partition the transcript, so it is never re-summed on
+      // every event. Remember this event's signature (N17/N25) so a later
+      // empty-slice event can tell its re-fire from a parallel sibling — even
+      // when other siblings are recorded in between (N25).
       cursor[data.transcript_path] = fromTranscript.lineCount;
+      addSeenSig(cursor, data.transcript_path, eventSig);
       writeCursor(cwd, cursor);
+    } else {
+      // No transcript records past the cursor: this event consumed NO slice of
+      // its own. Two very different situations land here (N17):
+      //   • A re-fire / dual global+local hook registration — the SAME event
+      //     delivered again (byte-identical payload). Its all-zero row is a
+      //     phantom the ledger dedup cannot catch — the zeros differ from the
+      //     real row the re-fire follows — so flag it and let appendRecord drop
+      //     it (M61). This marker is the ONLY layer that catches that case; there
+      //     is no signature-matching backstop below it, by design (see
+      //     eventSignature).
+      //   • A PARALLEL SIBLING (another subagent — same or different type — whose
+      //     sibling already consumed the shared transcript to EOF and advanced
+      //     this shared cursor) or a FIRST FIRE whose transcript_path is
+      //     missing/unreadable (lineCount=0, since=0). These are legitimate
+      //     spawns that must be RECORDED with zero tokens, not dropped —
+      //     dropping them undercounts /pan:cost.
+      // The full-payload signature distinguishes them (N25/N26): DROP only when
+      // this exact payload was already seen for this transcript (true re-fire);
+      // otherwise record the spawn.
+      if (eventSig && getSeenSigs(cursor, data.transcript_path).includes(eventSig)) {
+        emptySlice = true; // already-seen event → re-fire; appendRecord drops the phantom row (M61)
+      } else {
+        // Sibling / first-fire: record the spawn (zero tokens) and remember its
+        // signature so a subsequent re-fire of THIS event is dropped.
+        addSeenSig(cursor, data.transcript_path, eventSig);
+        writeCursor(cwd, cursor);
+      }
     }
   } else {
     // No transcript to slice — best-effort from data.usage, plausibility-guarded
@@ -157,7 +378,7 @@ function buildCostRecord(data, cwd) {
   const record = {
     v: SCHEMA_V,
     ts: new Date().toISOString(),
-    agent: data.agent_type || data.subagent_type || null,
+    agent,
     command,
     model,
     tier: tierForModel(model),
@@ -172,7 +393,28 @@ function buildCostRecord(data, cwd) {
     source: 'hook',
     token_source: tokenSource,
     clamped,
+    // This spawn's per-invocation discriminator: the event signature, persisted.
+    // The signature was already hashed for the seen-event marker but never
+    // written into the row, so two parallel same-type siblings produced rows
+    // that were byte-identical modulo `ts` and the dedup ate the second one even
+    // though the marker layer had correctly admitted it (N26). Persisting it
+    // gives both layers ONE notion of event identity: siblings differ here even
+    // when every other field matches, while a re-fire carries the same signature
+    // and still matches the row it duplicates.
+    // It is a field the dedup COMPARES as part of whole-row identity — never a
+    // key the dedup searches the ledger by. Two sequential subagents on a shared
+    // growing transcript share one payload and therefore one signature while
+    // holding different real token counts, so matching on the signature alone
+    // deletes genuine rows (see eventSignature). null when the payload could not
+    // be hashed.
+    event_sig: eventSig,
   };
+
+  // Non-enumerable transient flag: it must NOT be serialized into the ledger,
+  // but appendRecord needs to read it to drop a phantom re-fire row (M61).
+  if (emptySlice) {
+    Object.defineProperty(record, '__emptySlice', { value: true, enumerable: false });
+  }
 
   return record;
 }
@@ -264,6 +506,12 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
  */
 function appendRecord(cwd, record) {
   if (!record) return false;
+  // M61 re-fire guard: a transcript-sourced event that consumed no new records
+  // (buildCostRecord flags it via __emptySlice) is a re-fired / dual-registered
+  // SubagentStop with nothing of its own to attribute. Dropping it here is the
+  // real guard the last-row dedup could not be — the phantom all-zero row
+  // differs from the real row it follows, so the dedup never fired (M61).
+  if (record.__emptySlice) return false;
   try {
     const dir = path.join(cwd, '.planning', METRICS_DIR);
     fs.mkdirSync(dir, { recursive: true });
@@ -271,7 +519,8 @@ function appendRecord(cwd, record) {
     // Idempotency guard: a re-fired SubagentStop must not double-log. Skip the
     // append when this record is identical (every field but the timestamp) to
     // the immediately-preceding row — the source of ~57% duplicate rows in the
-    // field (2026-07). Best-effort: any read error just proceeds with the append.
+    // field (2026-07). Adjacent-only on purpose; see isDuplicateOfLastRecord.
+    // Best-effort: any read error just proceeds with the append.
     if (isDuplicateOfLastRecord(file, record)) return false;
     fs.appendFileSync(file, JSON.stringify(record) + '\n', 'utf-8');
     return true;
@@ -280,12 +529,35 @@ function appendRecord(cwd, record) {
   }
 }
 
-/** True when `record` equals the last JSONL row of `file`, ignoring `ts`. */
+/**
+ * True when `record` equals the LAST JSONL row of `file`, ignoring `ts`.
+ *
+ * Adjacent-only, and that is the design rather than an oversight. The comparison
+ * covers every field including the `event_sig` discriminator, so a true re-fire
+ * (same payload → same signature → same row) still matches the row it follows,
+ * while two siblings the payload can distinguish both survive (N26).
+ *
+ * It deliberately does NOT scan back over a tail of recent rows, and does not
+ * match on a repeated signature. Both of those were tried and both delete real
+ * spawns: an identity scan over a window collapses genuine repeat spawns whose
+ * rows coincide, and a signature prong collapses genuine spawns that share a
+ * payload — the ordinary shared-transcript topology. eventSignature carries the
+ * measured reproduction and the residual this leaves standing;
+ * tests/cost-logger-hook.test.cjs pins both
+ * (`grep -n 'no genuine spawn' tests/cost-logger-hook.test.cjs`).
+ *
+ * Rows written before the discriminator existed carry no `event_sig` and an
+ * older `v`, so a row written now never equals one of them. The bounded
+ * consequence: the first append after a schema bump can land beside a pre-bump
+ * row without matching it, and the guard resumes on the following same-shape
+ * pair. Those older rows still parse and still report — the readers in
+ * pan-wizard-core take a row field by field and require no particular version
+ * or field to be present.
+ */
 function isDuplicateOfLastRecord(file, record) {
   let prev;
   try {
-    const raw = fs.readFileSync(file, 'utf-8');
-    const lines = raw.split('\n').filter(Boolean);
+    const lines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean);
     if (!lines.length) return false;
     prev = JSON.parse(lines[lines.length - 1]);
   } catch {
@@ -308,6 +580,9 @@ if (require.main === module) {
       // fall back to process.cwd() which is the project root when Claude Code
       // invokes the hook.
       const cwd = data.cwd || data.workspace?.current_dir || process.cwd();
+      // M62: a global-install hook fires in every repo; don't pollute non-PAN
+      // projects with .planning/ metrics artifacts.
+      if (!isPanProject(cwd)) return;
       const record = buildCostRecord(data, cwd);
       appendRecord(cwd, record);
     } catch {
@@ -316,4 +591,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildCostRecord, appendRecord, readUsageFromTranscript, readCursor, writeCursor, METRICS_DIR, TOKENS_FILE, CURSOR_FILE };
+module.exports = { buildCostRecord, appendRecord, readUsageFromTranscript, readCursor, writeCursor, isPanProject, METRICS_DIR, TOKENS_FILE, CURSOR_FILE };

@@ -17,8 +17,8 @@ allowed-tools:
 > **Self-protection:** This command **scaffolds external project folders OUTSIDE the PAN source repo** to drive autonomous AI coding sessions against fresh ideas, then harvests the resulting telemetry back into `pan-wizard-core/learnings/`. It is a **PAN-development tool**, not a feature for end-users of PAN to invoke on their own projects.
 
 **Spec:** `docs/specs/self_improvement_loop_featureai.md`
-**ADR:** ADR-0026 (pending W4)
-**Status:** v3.7.0 W1+W2+W3 — scaffolding (`new`/`list`/`manifest`) + external runner (`run`/`status`/`stop`) + harvest (`harvest`/`prune`); W4 adds promote integration with `/pan:learn`.
+**ADR:** ADR-0026 (Accepted — shipped W1-W4 in v3.7.0)
+**Status:** v3.7.0 — scaffolding (`new`/`list`/`manifest`) + external runner (`run`/`status`/`stop`) + harvest (`harvest`/`prune`) + promote integration with `/pan:learn` (`learn promote`/`unpromote`/`list-promoted`).
 
 ---
 
@@ -31,7 +31,7 @@ allowed-tools:
 ## When NOT to use this
 
 - Building production user features. Use `/pan:new-project` and `/pan:exec-phase` directly.
-- Validating a single-file change. The experiment loop is heavy — use `npm test` and `/pan:check`.
+- Validating a single-file change. The experiment loop is heavy — use `npm test` and `/pan:quick`.
 - Inside the PAN source repo. The command **refuses** to scaffold experiments inside `d:\PanWizard\` (or wherever the source is cloned). The experiment root defaults to `~/pan-experiments/`.
 
 ---
@@ -97,7 +97,7 @@ Spawn the external AI runtime against the experiment folder. **Synchronous** —
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--timeout <sec>` | `1800` (30 min) | Hard timeout in seconds; runner sends SIGTERM at deadline |
+| `--timeout <sec>` | `3600` (60 min) | Hard timeout in seconds; runner sends SIGTERM at deadline |
 | `--prompt <text>` | `/pan:new-project --auto @.planning/idea.md` | Prompt passed to the external runtime |
 | `--root <path>` | `~/pan-experiments/` | Override the experiment root |
 
@@ -105,7 +105,7 @@ Spawn the external AI runtime against the experiment folder. **Synchronous** —
 
 **Runtime support:** claude / codex / gemini / opencode (via `RUNTIME_RUNNERS` adapter map in `runner.cjs`). GitHub Copilot CLI is **unsupported** for the `run` subcommand — no documented headless prompt mode. Copilot users can still scaffold and harvest manually.
 
-**Billing note (Claude runtime):** headless `claude -p` runs bill against the **Claude Agent SDK credit pool** — a monthly allotment separate from your interactive subscription limits (Anthropic split the two effective June 15, 2026). Experiment runs do not consume interactive-session quota, but heavy experimentation can exhaust the SDK pool independently. Captured metrics are tagged `billing_pool: "agent_sdk"` so you can reconcile experiment spend separately.
+**Billing note (Claude runtime):** headless `claude -p` runs bill against the **Claude Agent SDK credit pool** — a monthly allotment separate from your interactive subscription limits (Anthropic split the two effective June 15, 2026). Experiment runs do not consume interactive-session quota, but heavy experimentation can exhaust the SDK pool independently. Note: the CLI `experiment run` does not capture a metrics envelope — the `billing_pool: "agent_sdk"` tagging is produced only via the runner module's capture-metrics API, not from the command line, so CLI run-state has no `metrics` key to reconcile against.
 
 ### `/pan:experiment status <slug>`
 
@@ -113,7 +113,7 @@ Read the current `run-state.json` snapshot. Returns the full state object (`stat
 
 ### `/pan:experiment stop <slug>`
 
-Gracefully halt a running experiment. Reads pid from `run-state.json`, sends SIGTERM, writes `status: failed, stop_reason: manual` to the run state. Returns the updated state.
+Finalize and record a stopped experiment. This **cannot** terminate an already-running synchronous experiment: while a run is in flight the runner blocks and no pid is available to signal, so `stop` only reconciles the run-state after the fact. If a completed run left the state un-finalized, it records `status: failed, stop_reason: manual` and returns the updated state. If no pid is recorded (an in-flight run), it returns an error and writes nothing.
 
 If the experiment has already finished, returns the existing run state without error.
 
@@ -163,17 +163,21 @@ Remove the experiment folder after harvest.
 
 **Returns:** `{ pruned: <slug>, mode: "soft"|"hard", archive_path? }`.
 
-## Subcommands (W4 — coming soon)
+## Promote integration (shipped, W4)
 
-| Subcommand | Wave | Purpose |
-|------------|------|---------|
-| `archive <slug>` | W4 | Alias for `prune` (kept for clarity in scripts) |
-| `delete <slug> --confirm` | W4 | Alias for `prune --hard` with confirmation prompt |
-
-W4 also adds:
+The self-improvement loop closes via `/pan:learn` and the `learn` CLI:
 - `/pan:learn --experiment <slug>` — runs pan-optimizer over harvested data
 - `pan-tools learn promote --pattern <id> --scope universal --topic <name>` — extracts a finding into `pan-wizard-core/learnings/{universal,internal}/<topic>.md`
-- `pan-tools learn unpromote/list-promoted` — rollback and inventory
+- `pan-tools learn unpromote` / `learn list-promoted` — rollback and inventory
+
+## Not yet shipped
+
+| Subcommand | Purpose |
+|------------|---------|
+| `archive <slug>` | Alias for `prune` (kept for clarity in scripts) |
+| `delete <slug> --confirm` | Alias for `prune --hard` with confirmation prompt |
+
+Until these land, use `prune` / `prune --hard` directly.
 
 ---
 

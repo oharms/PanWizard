@@ -171,7 +171,7 @@ describe('state get command', () => {
 
   test('returns JSON error when state.md is missing', () => {
     const result = runPanTools('state get "Current Phase"', tmpDir);
-    assert.ok(result.success, `Command failed unexpectedly: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error.includes('state.md not found'), 'error should mention state.md not found');
   });
@@ -183,7 +183,7 @@ describe('state get command', () => {
     );
 
     const result = runPanTools('state get "Nonexistent Field"', tmpDir);
-    assert.ok(result.success, `Command should succeed with error payload: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have an error field');
@@ -255,7 +255,7 @@ describe('state advance-plan command', () => {
 
   test('returns error when state.md is missing', () => {
     const result = runPanTools('state advance-plan', tmpDir);
-    assert.ok(result.success, `Command should succeed with error payload: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found', 'should report state.md not found');
@@ -272,7 +272,7 @@ describe('state advance-plan command', () => {
     );
 
     const result = runPanTools('state advance-plan', tmpDir);
-    assert.ok(result.success, `Command should succeed with error payload: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have an error field');
@@ -403,7 +403,9 @@ describe('state resolve-blocker command', () => {
     assert.ok(state.includes('Waiting for design review'), 'other blockers should remain');
   });
 
-  test('returns resolved true even when no blocker matches (case-insensitive search)', () => {
+  // M27: when no blocker matches the given text, resolve-blocker must report
+  // resolved:false (with a reason), not falsely claim a resolution.
+  test('returns resolved false when no blocker matches (case-insensitive search)', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'state.md'),
       `# Project State
@@ -416,11 +418,13 @@ describe('state resolve-blocker command', () => {
     );
 
     const result = runPanTools('state resolve-blocker --text "nonexistent blocker"', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    // Exit 1: the named blocker is still open, and a caller that asked to clear it
+    // would otherwise carry on believing it is gone.
+    assert.equal(result.success, false, 'an unresolved blocker must not report success');
 
     const output = JSON.parse(result.output);
-    // The implementation always returns resolved: true when Blockers section exists
-    assert.strictEqual(output.resolved, true, 'should report resolved even when no match');
+    assert.strictEqual(output.resolved, false, 'should report NOT resolved when no match');
+    assert.strictEqual(output.reason, 'no matching blocker', 'should explain why');
 
     // Verify existing blockers were NOT removed
     const state = fs.readFileSync(path.join(tmpDir, '.planning', 'state.md'), 'utf-8');
@@ -614,7 +618,7 @@ describe('state record-metric command', () => {
       'state record-metric --phase 01',
       tmpDir
     );
-    assert.ok(result.success, `Command should succeed with error payload: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have an error field');
@@ -742,70 +746,70 @@ describe('state commands handle missing state.md gracefully', () => {
 
   test('state get returns error when state.md missing', () => {
     const result = runPanTools('state get Status', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state advance-plan returns error when state.md missing', () => {
     const result = runPanTools('state advance-plan', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state record-metric returns error when state.md missing', () => {
     const result = runPanTools('state record-metric --phase 1 --plan 1 --duration 30m', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state update-progress returns error when state.md missing', () => {
     const result = runPanTools('state update-progress', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state add-decision returns error when state.md missing', () => {
     const result = runPanTools('state add-decision --summary test-decision', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state add-blocker returns error when state.md missing', () => {
     const result = runPanTools('state add-blocker --text test-blocker', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state resolve-blocker returns error when state.md missing', () => {
     const result = runPanTools('state resolve-blocker --text test-blocker', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state record-session returns error when state.md missing', () => {
     const result = runPanTools('state record-session', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state-snapshot returns error when state.md missing', () => {
     const result = runPanTools('state-snapshot', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });
 
   test('state json returns error when state.md missing', () => {
     const result = runPanTools('state json', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
   });

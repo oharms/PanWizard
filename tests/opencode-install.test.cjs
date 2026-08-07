@@ -50,6 +50,16 @@ describe('OpenCode: install structure', () => {
     assert.ok(mdFiles.length >= 30, `should have 30+ command files, got ${mdFiles.length}`);
   });
 
+  test('no spurious empty settings.json is created (L4 regression)', () => {
+    // OpenCode uses opencode.json, not settings.json. A clean install must not
+    // leave an empty .opencode/settings.json = {} behind.
+    const settingsPath = path.join(tempDir, '.opencode', 'settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const content = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      assert.notDeepEqual(content, {}, 'settings.json must not be a spurious empty object');
+    }
+  });
+
   test('command files use pan- prefix (not pan:)', () => {
     const commandDir = path.join(tempDir, '.opencode', 'commands');
     const mdFiles = fs.readdirSync(commandDir).filter(f => f.endsWith('.md') && f.startsWith('pan-'));
@@ -198,5 +208,21 @@ describe('OpenCode: uninstall', () => {
   test('manifest removed after uninstall', () => {
     const manifestPath = path.join(uninstallDir, '.opencode', 'pan-file-manifest.json');
     assert.ok(!fs.existsSync(manifestPath), 'manifest should be removed');
+  });
+
+  test('no empty settings.json left behind after uninstall (L4 regression)', () => {
+    const settingsPath = path.join(uninstallDir, '.opencode', 'settings.json');
+    if (fs.existsSync(settingsPath)) {
+      const content = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      assert.notDeepEqual(content, {}, 'empty {} settings.json must be removed on uninstall');
+    }
+  });
+
+  test('no empty opencode.json left behind after uninstall (L4 regression)', () => {
+    const configPath = path.join(uninstallDir, '.opencode', 'opencode.json');
+    if (fs.existsSync(configPath)) {
+      const content = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      assert.notDeepEqual(content, {}, 'emptied opencode.json must be removed on uninstall');
+    }
   });
 });

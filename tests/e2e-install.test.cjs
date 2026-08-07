@@ -470,6 +470,147 @@ describe('E2E: Install and run from installed location', () => {
         assert.ok(stderr.includes('Refusing'), `stderr should mention refusal, got: ${stderr}`);
       }
     });
+
+    test('installer refuses to run from a SUBDIRECTORY of the source repo (L2 regression)', () => {
+      // The guard used to exact-match the repo root only, so `cd sub && install`
+      // planted un-ignored artifacts inside the repo. It must now refuse from any
+      // subdir. N14: the throwaway subdir MUST live on a gitignored path — nest it
+      // under node_modules/ (always .gitignore'd, and present after `npm ci`) so a
+      // regression that plants .claude/ artifacts, or an abnormal exit (Ctrl+C, CI
+      // timeout) between mkdir and cleanup, can never leave untracked files in the
+      // repo. It is still a real subdirectory of the source repo, so the guard fires.
+      const subDir = path.join(PROJECT_ROOT, 'node_modules', '.pan-guard-subdir-test');
+      fs.mkdirSync(subDir, { recursive: true });
+      // N14: hoist the caught error OUT of the try block. Calling assert.fail()
+      // inside the try lets the catch swallow its AssertionError (which has no
+      // .status), so a regression was mis-diagnosed as a stderr-content failure
+      // instead of "installer did not refuse". Assert only after cleanup.
+      let err;
+      try {
+        execSync(`node "${INSTALLER}" --claude --local`, {
+          cwd: subDir,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+      } catch (e) {
+        err = e;
+      } finally {
+        fs.rmSync(subDir, { recursive: true, force: true });
+      }
+      assert.ok(err, 'installer should have refused (non-zero exit) from a source-repo subdir');
+      assert.ok(err.status !== 0, 'should exit with non-zero status');
+      const stderr = err.stderr?.toString() || '';
+      assert.ok(stderr.includes('Refusing to install'), `stderr should mention refusal, got: ${stderr}`);
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E-9 model-capability advisory — the notice a user actually sees
+//
+// detectModelCapabilities() is pinned as a pure function by its own describe
+// block in tests/installer-functions.test.cjs (`grep -n "describe('detectModel"
+// tests/installer-functions.test.cjs` finds it). The case total is deliberately
+// not written here: a count in a comment is a maintenance debt nothing enforces,
+// and the one that used to sit in this sentence had already drifted badly enough
+// to mislead. M5 (audit 2026-08) was never a table
+// bug: finishInstall() re-derived an out-of-scope `targetDir`, the resulting
+// ReferenceError was swallowed by the block's bare `catch {}`, and the notice
+// became permanently unreachable while every table case stayed green. Every
+// other installer test passes --skip-warnings, so the branch that prints was
+// exercised by nothing at all. The cases below close that hole by asserting on
+// the installer's stdout: it must print for a capability-poor model, stay
+// silent under --skip-warnings, and stay silent for a capability-rich one.
+//
+// If the M5 shape is reintroduced — anything that throws inside the advisory's
+// try, or any change that makes the notice unreachable — the assertion that
+// fails is `assert.ok(out.includes(NOTICE_LEAD), ...)` in
+// "capability-poor default model prints the advisory". The suppression and
+// capability-rich cases assert ABSENCE and would still pass, which is exactly
+// why absence-only coverage never caught M5.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('E-9 model-capability advisory (installer stdout)', () => {
+  // Stable lead sentence of the notice. Deliberately excludes the recommended
+  // model ids: those live in one constant in bin/install.js and move with the
+  // lineup (B4.1), so pinning them here would re-create the drift the constant
+  // exists to prevent. The "still names a concrete model" guard below matches a
+  // shape, not an id.
+  const NOTICE_LEAD = "PAN's multi-agent workflows are tuned for frontier reasoning models";
+
+  /**
+   * Install into a throwaway sandbox whose .claude/settings.json already
+   * declares `model`, with HOME/USERPROFILE pointed at a fake home inside the
+   * sandbox so nothing can touch the real one. Returns stdout plus the model
+   * field as it survived the install (the advisory reads the resolved settings
+   * object, so a lost model field would silence the notice for the wrong
+   * reason and must be asserted separately).
+   */
+  function installWithDefaultModel(model, extraFlags = '') {
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-e9-notice-'));
+    const fakeHome = path.join(sandbox, 'fake-home');
+    fs.mkdirSync(path.join(sandbox, '.claude'), { recursive: true });
+    fs.mkdirSync(fakeHome, { recursive: true });
+    fs.writeFileSync(
+      path.join(sandbox, '.claude', 'settings.json'),
+      JSON.stringify({ model }, null, 2) + '\n'
+    );
+
+    const env = { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome };
+    delete env.CLAUDE_CONFIG_DIR; // --local ignores it; drop it so the run is env-independent
+
+    try {
+      const out = execSync(`node "${INSTALLER}" --claude --local ${extraFlags}`.trim(), {
+        cwd: sandbox,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env,
+      });
+      const written = JSON.parse(
+        fs.readFileSync(path.join(sandbox, '.claude', 'settings.json'), 'utf-8')
+      );
+      const homeEntries = fs.readdirSync(fakeHome);
+      return { out, writtenModel: written.model, homeEntries };
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  }
+
+  test('capability-poor default model prints the advisory', () => {
+    const { out, writtenModel } = installWithDefaultModel('claude-3-haiku-20240307');
+    assert.strictEqual(writtenModel, 'claude-3-haiku-20240307',
+      'installer must preserve the model field — otherwise the advisory has nothing to read');
+    assert.ok(out.includes(NOTICE_LEAD),
+      `advisory did not print for a capability-poor model. This is the assertion that fails if the M5 shape returns (a throw inside the advisory swallowed by its bare catch). stdout was:\n${out}`);
+    assert.ok(out.includes('claude-3-haiku-20240307'),
+      'advisory should quote the offending model name back to the user');
+    assert.ok(out.includes('1M context') && out.includes('extended thinking'),
+      'advisory should list both missing capabilities for a Claude 3 Haiku default');
+    assert.ok(/claude-[a-z]+-\d/.test(out.slice(out.indexOf(NOTICE_LEAD))),
+      'advice must still name at least one concrete model to switch to — tier-only wording stops telling the user what to do (B4.1)');
+  });
+
+  test('--skip-warnings suppresses the advisory for the same model', () => {
+    const { out, writtenModel } = installWithDefaultModel('claude-3-haiku-20240307', '--skip-warnings');
+    assert.strictEqual(writtenModel, 'claude-3-haiku-20240307', 'model field should still be preserved');
+    assert.ok(!out.includes(NOTICE_LEAD),
+      `--skip-warnings must suppress the advisory. stdout was:\n${out}`);
+  });
+
+  test('capability-rich default model prints no advisory', () => {
+    // The false-positive direction: forward releases resolve by family through
+    // detectModelCapabilities' fallback, so a current flagship must not be told
+    // it lacks 1M context or extended thinking.
+    const { out, writtenModel } = installWithDefaultModel('claude-opus-5');
+    assert.strictEqual(writtenModel, 'claude-opus-5', 'model field should be preserved');
+    assert.ok(!out.includes(NOTICE_LEAD),
+      `advisory must not fire for a capability-rich model. stdout was:\n${out}`);
+  });
+
+  test('sandbox install leaves the redirected home untouched', () => {
+    const { homeEntries } = installWithDefaultModel('claude-opus-5', '--skip-warnings');
+    assert.deepStrictEqual(homeEntries, [],
+      `a --local install must not write into HOME/USERPROFILE, but the fake home gained: ${homeEntries.join(', ')}`);
   });
 });
 

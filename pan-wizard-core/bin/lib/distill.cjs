@@ -21,9 +21,21 @@ const SCANNABLE_EXTS = ['.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx', '.py'];
 
 // ─── Pass 1: Deterministic static analysis ───────────────────────────────────
 
+// Calls that genuinely CANNOT throw when given any single argument, so a
+// try/catch wrapping only such a call is truly phantom (dead catch clause).
+// Deliberately EXCLUDES throwing calls — JSON.parse (SyntaxError on bad input),
+// JSON.stringify (TypeError on circular refs / BigInt), new RegExp, fs.*Sync,
+// etc. — because their try/catch is load-bearing and must not be flagged for
+// removal. (M14: earlier the pattern listed JSON.parse/JSON.stringify and
+// wrongly flagged their guards as phantom.)
+const NON_THROWING_CALLS = ['Number', 'String', 'Boolean', 'parseInt', 'parseFloat'];
+
 function findPhantomTryCatch(content, filePath) {
   const findings = [];
-  const re = /try\s*\{\s*(?:return\s+)?(JSON\.parse|JSON\.stringify|Number|String|Boolean|parseInt|parseFloat)\([^)]*\)\s*;?\s*\}\s*catch/g;
+  const re = new RegExp(
+    'try\\s*\\{\\s*(?:return\\s+)?(' + NON_THROWING_CALLS.join('|') + ')\\([^)]*\\)\\s*;?\\s*\\}\\s*catch',
+    'g'
+  );
   let match;
   while ((match = re.exec(content)) !== null) {
     const line = content.slice(0, match.index).split('\n').length;
@@ -372,6 +384,12 @@ function readPatternsMemory(cwd) {
   return { patterns, file: filePath };
 }
 
+// M15: the patterns-memory file (distill-patterns.md) records DETECTIONS, not
+// resolutions — there is no resolution/fix marker in the entry schema
+// ({ date, pattern, file, note }). So a prior entry only proves the pattern was
+// SEEN before, not that it was ever fixed. Labeling a re-detection "REGRESSED —
+// last resolved <date>" was a false claim. We now report the honest signal:
+// the pattern is RECURRING (still present across sessions / previously detected).
 function detectRegressedPatterns(currentFindings, memory) {
   const regressed = [];
   for (const f of currentFindings) {
@@ -380,8 +398,8 @@ function detectRegressedPatterns(currentFindings, memory) {
       regressed.push({
         ...f,
         regressed: true,
-        previously_resolved: prior.date,
-        message: f.message + ` (REGRESSED — last resolved ${prior.date})`,
+        previously_detected: prior.date,
+        message: f.message + ` (RECURRING — previously detected ${prior.date})`,
       });
     }
   }
@@ -426,7 +444,7 @@ function writePatternsMemory(cwd, findings, opts) {
     fs.writeFileSync(filePath, lines.join('\n'), 'utf-8');
     return { written: true, file: filePath, count: all.length };
   } catch (e) {
-    return { written: false, error: e.message };
+    return { written: false, error: e.message || 'write_failed' };
   }
 }
 

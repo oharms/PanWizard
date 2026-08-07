@@ -236,7 +236,9 @@ describe('requirements mark-complete command', () => {
   test('returns error when requirements.md missing', () => {
     // Do not create requirements.md — only .planning/ exists from createTempProject
     const result = runPanTools('requirements mark-complete REQ-01', tmpDir);
-    assert.ok(result.success, `Command should succeed with missing file: ${result.error}`);
+    // Exit 1: REQ-01 was not marked complete anywhere. The test name already called
+    // this an error; the exit code now agrees with it.
+    assert.equal(result.success, false, 'no requirement was marked complete');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.updated, false);

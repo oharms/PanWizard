@@ -37,7 +37,7 @@ The workflow handles all logic including:
 </process>
 
 <tier_decision_tree>
-**Opus 4.7 capability-aware routing** (since v2.10.0 — E-7). Even within a single profile, PAN picks a tier per-call based on three hints: context estimate, whether the task needs extended thinking, and whether prompt cache is warm.
+**Capability-aware routing** (shipped v2.10.0 — E-7). Even within a single profile, PAN picks a tier per-call based on three hints: context estimate, whether the task needs extended thinking, and whether prompt cache is warm.
 
 The decision order `resolveModel` applies after the baseline profile pick:
 
@@ -46,7 +46,7 @@ Baseline tier (from MODEL_PROFILES[agent][profile])
         │
         ▼
 ┌─────────────────────────────────────────────┐
-│ context_estimate > 700K tokens?             │── yes ──▶ force reasoning (only 1M-ctx tier)
+│ context_estimate > 700K tokens?             │── yes ──▶ force reasoning (widest ctx tier)
 └─────────────────────────────────────────────┘
         │ no
         ▼
@@ -66,7 +66,7 @@ Final tier → provider-native model name
 
 **Quick guide:**
 - Heavy verification (plan-checker, verifier, integration-checker, reviewer, debugger): `needs_thinking: true` — baseline upgrades fast→mid.
-- Map-codebase single-shot mode on Opus 4.7: `context_estimate > 700K` — forced to reasoning.
+- Whole-repo context estimates above the large-context threshold (`context_estimate > 700K` tokens — `LARGE_CONTEXT_TOKEN_THRESHOLD`): forced to reasoning, which inherits the model you launched with. Note the direction: `/pan:map-codebase` picks `single-shot` **at or below** 700K and `sharded` above it, so the repos that trip this rule are the ones the mapper is already sharding.
 - Routine exec tasks with project.md cached: `cache_warm + small ctx` — mid gets downgraded to fast for a cost win.
 - All rules are additive to the `quality` / `balanced` / `budget` profile you pick here — profile sets the floor, capability hints adjust upward or downward within that floor's band.
 

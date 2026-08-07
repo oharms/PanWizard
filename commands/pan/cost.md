@@ -81,13 +81,13 @@ pan-tools cost clear
 </subcommands>
 
 <rate_table>
-Default rates (USD per million tokens) as of 2026-04. Override per-model in `.planning/config.json`:
+PAN ships a built-in rate table (USD per million tokens) covering the current Claude, GPT and Gemini families, with a per-tier fallback for anything it doesn't recognize. Override it in `.planning/config.json` — key on a PAN tier (`reasoning` / `mid` / `fast`), on a model family (longest-prefix match, so a family key also covers the dated ids the hooks record), or on an exact model id:
 
 ```json
 {
   "cost": {
     "rates": {
-      "claude-opus-4-7": { "input": 15.0, "output": 75.0, "cache_read": 1.5, "cache_write": 18.75 },
+      "reasoning": { "input": 5.0, "output": 25.0, "cache_read": 0.5, "cache_write": 6.25 },
       "my-custom-model": { "input": 1.0, "output": 2.0, "cache_read": 0.1, "cache_write": 1.25 }
     }
   }

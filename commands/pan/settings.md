@@ -21,11 +21,11 @@ Routes to the settings workflow which handles:
 </objective>
 
 <execution_context>
-@./.claude/pan-wizard-core/workflows/settings.md
+@~/.claude/pan-wizard-core/workflows/settings.md
 </execution_context>
 
 <process>
-**Follow the settings workflow** from `@./.claude/pan-wizard-core/workflows/settings.md`.
+**Follow the settings workflow** from `@~/.claude/pan-wizard-core/workflows/settings.md`.
 
 The workflow handles all logic including:
 1. Config file creation with defaults if missing

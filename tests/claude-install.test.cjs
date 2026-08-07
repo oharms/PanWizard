@@ -89,6 +89,23 @@ describe('Claude: install structure', () => {
     assert.ok(wfKeys.length >= 2, `manifest should track the native workflows, got ${wfKeys.length}`);
   });
 
+  test('skill shims are tracked in the manifest (L1 regression)', () => {
+    // Every skills/pan-*.md shim on disk must have a manifest entry so
+    // verifyInstall catches silent write failures and saveLocalPatches backs up
+    // user edits.
+    const skillsDir = path.join(tempDir, '.claude', 'skills');
+    const shimFiles = fs.existsSync(skillsDir)
+      ? fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-') && f.endsWith('.md'))
+      : [];
+    assert.ok(shimFiles.length >= 30, `should have written 30+ skill shims, got ${shimFiles.length}`);
+    const manifest = JSON.parse(fs.readFileSync(
+      path.join(tempDir, '.claude', 'pan-file-manifest.json'), 'utf8'));
+    for (const f of shimFiles) {
+      assert.ok(manifest.files['skills/' + f],
+        `manifest should track skills/${f}`);
+    }
+  });
+
   test('agents are installed', () => {
     const agentsDir = path.join(tempDir, '.claude', 'agents');
     assert.ok(fs.existsSync(agentsDir));

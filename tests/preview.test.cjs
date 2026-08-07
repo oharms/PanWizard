@@ -222,6 +222,14 @@ goal: Refactor API layer
     assert.ok(r.risk_score >= 5);
   });
 
+  test('phase_name resolves from the phase directory slug (L13 regression)', () => {
+    // Regression: read phaseInfo.name (nonexistent); it degraded to the roadmap
+    // fallback. With no roadmap entry, the dir slug must still populate it.
+    scaffoldPhase('08', 'search-index', 'plan body');
+    const r = buildPhasePreview(tmpDir, '08');
+    assert.equal(r.phase_name, 'search-index');
+  });
+
   test('low-risk phase returns low risk_score', () => {
     scaffoldPhase('01', 'docs', '---\nphase: 01\n---\n\nUpdate `docs/README.md` typos.');
     fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'),

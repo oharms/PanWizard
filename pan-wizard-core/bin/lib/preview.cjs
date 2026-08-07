@@ -139,7 +139,7 @@ function buildPhasePreview(cwd, phaseNum) {
 
   return {
     phase: String(phaseNum),
-    phase_name: phaseInfo.name || (roadmapPhase && roadmapPhase.phase_name) || null,
+    phase_name: phaseInfo.phase_name || (roadmapPhase && roadmapPhase.phase_name) || null,
     directory: toPosix(phaseInfo.directory),
     status,
     plan_count: planFiles.length,
@@ -269,11 +269,30 @@ function buildPhaseDependencyGraph(cwd) {
   };
 }
 
+// Checklist entries come in two shapes. templates/roadmap.md prescribes the bold
+// one WITH a trailing description:
+//   - [ ] **Phase 1: Foundation** - Core scaffolding
+// and hand-written roadmaps often use the plain one:
+//   - [ ] Phase 1: Foundation
+//
+// A single regex handled these badly. The previous pattern
+// (`([^\n*]+?)(?:\*\*)?\s*$`) required the line to END at the closing `**`, so
+// every template-shaped line — the format PAN itself writes — failed to match and
+// `preview phases` reported a phase_count with an EMPTY phases array, contradicting
+// itself. Widening the name group to allow a trailing description then broke names
+// containing a hyphen, because the lazy match stopped at the first one.
+//
+// Matching bold-first is what resolves it: `[^*\n]+` cannot cross `*`, so it runs
+// to the closing `**` regardless of hyphens inside the name, and anything after it
+// is description we discard.
+const CHECKLIST_BOLD_RE = /^\s*- \[([ x])\]\s*\*\*Phase\s+(\d+(?:\.\d+)?)\s*[:\-—]?\s*([^*\n]+?)\s*\*\*/i;
+const CHECKLIST_PLAIN_RE = /^\s*- \[([ x])\]\s*Phase\s+(\d+(?:\.\d+)?)\s*[:\-—]?\s*([^\n]+?)\s*$/i;
+
 function extractPhaseListFromRoadmap(content) {
   const phases = [];
-  const re = /- \[([ x])\]\s*(?:\*\*)?Phase\s+(\d+(?:\.\d+)?)\s*[:\-—]?\s*([^\n*]+?)(?:\*\*)?\s*$/gim;
-  let m;
-  while ((m = re.exec(content)) !== null) {
+  for (const line of String(content).split('\n')) {
+    const m = line.match(CHECKLIST_BOLD_RE) || line.match(CHECKLIST_PLAIN_RE);
+    if (!m) continue;
     phases.push({
       num: m[2],
       name: m[3].trim(),

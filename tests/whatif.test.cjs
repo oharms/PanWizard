@@ -97,6 +97,13 @@ describe('whatif — buildCounterfactualContext', () => {
     assert.equal(r.has_executed, false);
   });
 
+  test('phase_name resolves from the phase directory (L13 regression)', () => {
+    // Regression: read phaseInfo.name (nonexistent) → phase_name always null.
+    scaffoldPhase('07', 'storage', '# Plan\nUse Postgres.');
+    const r = buildCounterfactualContext(tmpDir, '07', 'use SQLite instead');
+    assert.equal(r.phase_name, 'storage');
+  });
+
   test('has_executed=true when summary exists', () => {
     scaffoldPhase('04', 'exec', 'plan', 'summary');
     const r = buildCounterfactualContext(tmpDir, '04', 'alternative');
@@ -272,7 +279,7 @@ describe('whatif — CLI dispatch', () => {
 
   test('whatif cleanup errors on non-git dir without worktree', () => {
     const r = runPanTools('whatif cleanup --worktree /nope --branch foo', tmpDir);
-    assert.ok(r.success, r.error);
+    assert.equal(r.success, false, 'an error payload must exit non-zero');
     const json = JSON.parse(r.output);
     assert.ok(json.error);
   });

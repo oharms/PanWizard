@@ -62,6 +62,16 @@ describe('validate health command', () => {
     assert.strictEqual(output.repairable_count, 0, 'nothing to repair');
   });
 
+  test('--repair writes the canonical NESTED config so the verifier gate stays enabled (M31)', () => {
+    createHealthyProject(tmpDir);
+    fs.unlinkSync(path.join(tmpDir, '.planning', 'config.json')); // force createConfig repair
+    const result = runPanTools('validate health --repair', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'));
+    assert.equal(cfg.workflow && cfg.workflow.verifier, true, 'gate reads config.workflow.verifier — must be nested & true');
+    assert.equal(cfg.verifier, undefined, 'must NOT write the legacy flat "verifier" key that silently disabled the gate');
+  });
+
   test('missing .planning directory reports status broken with E001', () => {
     // Remove the .planning directory entirely
     fs.rmSync(path.join(tmpDir, '.planning'), { recursive: true, force: true });
@@ -299,7 +309,7 @@ describe('verify phase-completeness command', () => {
 
   test('nonexistent phase returns error', () => {
     const result = runPanTools('verify phase-completeness 99', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'Phase not found', 'should report phase not found');
@@ -442,7 +452,7 @@ must_haves:
 
   test('plan file not found returns error JSON', () => {
     const result = runPanTools('verify plan-structure .planning/phases/99-missing/99-01-plan.md', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'should report file not found');

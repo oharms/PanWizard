@@ -16,12 +16,12 @@ Analyze the most recent trace session and generate a circular optimization repor
 
 Run:
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize trace current
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace current
 ```
 
 If no active session, run:
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize trace list
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace list
 ```
 Use the most recent session unless `--session <id>` was specified.
 
@@ -31,7 +31,7 @@ If `--session <id>` was specified, use that session ID.
 
 Run:
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize learn [--session <id>]
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn [--session <id>]
 ```
 
 This produces `.planning/optimization/reports/{session}-analysis.json`.
@@ -67,7 +67,7 @@ Present to the user:
 
 If the `--apply` flag was passed, immediately run:
 ```
-node .claude/pan-wizard-core/bin/pan-tools.cjs optimize apply
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize apply
 ```
 
 Show what was applied and what still needs review.
@@ -82,7 +82,7 @@ After applying, tell the user what to watch in the next run:
 ## Edge cases
 
 **No events in trace:**
-- Tell the user the trace session is empty. They may need to ensure the `pan-trace-logger` hook is registered in `.claude/settings.json`.
+- Tell the user the trace session is empty. They may need to ensure the `pan-trace-logger` hook is registered in `~/.claude/settings.json`.
 
 **Too few events (< 5):**
 - The optimizer can still run but note the small sample size.

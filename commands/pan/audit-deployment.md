@@ -77,9 +77,12 @@ For the detected runtime config directory (CONFIG_DIR), audit ALL of the followi
 - [ ] `CONFIG_DIR/pan-wizard-core/references/` — non-empty, every manifest-listed reference present
 
 **1.4 Commands**
-- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command `.md` present
-- For OpenCode: `CONFIG_DIR/command/` — every manifest-listed `pan-*.md` present
-- For Codex/Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
+- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command file present
+- For OpenCode: `CONFIG_DIR/commands/` — every manifest-listed `pan-*.md` present (flat, one file per command)
+- For Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
+- For Codex: the SHARED skills tree, not `CONFIG_DIR` — `./.agents/skills/pan-*/SKILL.md` for a local
+  install, `~/.agents/skills/pan-*/SKILL.md` for a global one. Codex has no `skills/` of its own; if you
+  look under `.codex/` you will find no commands and wrongly report a broken install.
 
 **1.5 Agents**
 - [ ] `CONFIG_DIR/agents/` — every manifest-listed agent file present
@@ -111,18 +114,18 @@ Record all findings with severity: CRITICAL (missing core), WARNING (missing opt
 Check `.planning/` directory in the target:
 
 **2.1 Core Planning Files**
-- [ ] `.planning/config.json` — exists, valid JSON, has required keys (mode, depth, model_profile, workflow)
+- [ ] `.planning/config.json` — exists, valid JSON, has expected keys (`model_profile`, `commit_docs`, `workflow`, `budget`)
 - [ ] `.planning/project.md` — exists, has "What This Is", "Core Value", "Requirements" sections
 - [ ] `.planning/state.md` — exists, has "Current Position", "Performance Metrics" sections
 - [ ] `.planning/roadmap.md` — exists, has phase table
 - [ ] `.planning/requirements.md` — exists if project used requirements tracking
 
 **2.2 Phase Directories**
-- Scan for `phase_*` or `*-*` numbered directories
+- Scan `.planning/phases/` for numbered phase directories
 - For each phase directory:
-  - [ ] PLAN.md exists (phase summary)
-  - [ ] At least one plan_*.md file exists
-  - [ ] verification.md exists (phase was verified)
+  - [ ] At least one `*-plan.md` file exists (phase was planned)
+  - [ ] A matching `*-summary.md` file exists (phase was executed)
+  - [ ] A `*-verification.md` file exists (phase was verified)
 - Count: total phases, phases with plans, phases verified, phases with gaps
 
 **2.3 Research Artifacts** (if brownfield/research was enabled)
@@ -138,10 +141,10 @@ Check `.planning/` directory in the target:
 
 **2.5 Config Sanity**
 - Validate config.json values are within expected ranges
-- mode: "yolo" | "interactive"
-- depth: "quick" | "standard" | "comprehensive"
-- model_profile: "quality" | "balanced" | "budget"
-- workflow agents: all boolean
+- `model_profile`: "quality" | "balanced" | "budget"
+- `commit_docs`: boolean
+- `workflow.*` toggles (research, plan_check, verifier, ...): all boolean
+- `budget`: `default_points` numeric, `enforce` boolean
 </step>
 
 <step name="workflow_quality_audit">
@@ -150,7 +153,7 @@ Check `.planning/` directory in the target:
 Assess how well the project workflow was followed:
 
 **3.1 Planning Quality**
-For each phase with a PLAN.md:
+For each phase with plan files (`*-plan.md`, e.g. `01-01-plan.md`):
 - Does it have clear objectives?
 - Does it reference requirements?
 - Are plans sequential with dependencies noted?
@@ -226,7 +229,7 @@ Verification Coverage: <N>%
 - [P-W01] <description> — <suggestion>
 
 ### Phase Health
-| Phase | PLAN.md | Plans | Verified | Status |
+| Phase | Planned | Plans | Verified | Status |
 |-------|---------|-------|----------|--------|
 | 01    | ✓       | 3     | ✓        | Complete |
 | 02    | ✓       | 5     | ✗        | Unverified |

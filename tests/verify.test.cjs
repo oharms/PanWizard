@@ -51,6 +51,49 @@ describe('verify stubs — fake-implementation scanner (anti-fake, ADR-0036)', (
   });
 });
 
+// N5/M30: the CLI exit code (not just scanStubs) is what gates a handoff. output()
+// used to hard-exit 0 before the gate check, so `verify stubs --gate` never gated;
+// these lock the CLI-level exit contract so a future revert to output(r, raw, ...)
+// re-breaks a test instead of shipping silently.
+describe('verify stubs --gate — CLI exit code (N5/M30 regression)', () => {
+  let tmp;
+  const { execFileSync } = require('child_process');
+  const gitInit = (dir) => {
+    execFileSync('git', ['init'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir, stdio: 'pipe' });
+    fs.writeFileSync(path.join(dir, 'README.md'), '# baseline\n');
+    execFileSync('git', ['add', 'README.md'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir, stdio: 'pipe' });
+  };
+  const stage = (rel, body) => {
+    fs.mkdirSync(path.join(tmp, path.dirname(rel)), { recursive: true });
+    fs.writeFileSync(path.join(tmp, rel), body);
+    execFileSync('git', ['add', rel], { cwd: tmp, stdio: 'pipe' });
+  };
+  beforeEach(() => { tmp = createTempProject(); gitInit(tmp); });
+  afterEach(() => { cleanup(tmp); });
+
+  test('exits NON-ZERO on a blocking stub finding in the changed set', () => {
+    stage('src/pay.js', "function pay(){ throw new Error('not implemented'); }\n");
+    const r = runPanTools('verify stubs --gate --raw', tmp);
+    assert.equal(r.success, false, 'a blocking stub must gate the handoff (exit non-zero)');
+    assert.match(`${r.output || ''}${r.error || ''}`, /invalid/);
+  });
+
+  test('exits ZERO when the changed set is clean', () => {
+    stage('src/ok.js', "function add(a,b){ return a+b; }\nmodule.exports={add};\n");
+    const r = runPanTools('verify stubs --gate --raw', tmp);
+    assert.equal(r.success, true, 'a clean changed set must not gate');
+  });
+
+  test('without --gate, a blocking stub still exits ZERO (report-only)', () => {
+    stage('src/pay.js', "function pay(){ throw new Error('not implemented'); }\n");
+    const r = runPanTools('verify stubs --raw', tmp);
+    assert.equal(r.success, true, '--gate is what turns findings into a non-zero exit');
+  });
+});
+
 describe('verify reconcile — verdict vs mechanical signals (anti-rubber-stamp, ADR-0036)', () => {
   let tmp;
   beforeEach(() => { tmp = createTempProject(); });
@@ -88,6 +131,22 @@ describe('verify reconcile — verdict vs mechanical signals (anti-rubber-stamp,
     const r = reconcilePhase(tmp, '01');
     assert.equal(r.reconciled, true);
     assert.equal(r.contradictions.length, 0);
+  });
+
+  // H3: the CLI exit code (not just the pure function) gates exec-phase's
+  // auto-advance. output() used to hard-code exit 0, so a rubber stamp advanced.
+  test('CLI: reconcile exits NON-ZERO on a rubber-stamped pass (H3 — un-deadens the gate)', () => {
+    scaffold('01-pay', planWith(30), 'passed', "function chargeCard(){ return {ok:true} }\nmodule.exports={chargeCard};\n");
+    const r = runPanTools('verify reconcile 01 --raw', tmp);
+    assert.equal(r.success, false, 'contradiction must exit non-zero so auto-advance stops');
+    assert.match(`${r.output || ''}${r.error || ''}`, /invalid/);
+  });
+
+  test('CLI: reconcile exits ZERO on an honest pass (H3)', () => {
+    const body = Array.from({ length: 40 }, (_, i) => `// line ${i}`).join('\n') + '\nfunction chargeCard(){}\nmodule.exports={chargeCard};\n';
+    scaffold('01-pay', planWith(30), 'passed', body);
+    const r = runPanTools('verify reconcile 01 --raw', tmp);
+    assert.equal(r.success, true, 'honest pass must exit zero');
   });
 
   test('not a pass claim: status "gaps_found" with a failing artifact is NOT a contradiction', () => {
@@ -191,7 +250,7 @@ describe('verify references command', () => {
 
   test('returns error for missing file', () => {
     const result = runPanTools('verify references nonexistent.md', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
     assert.ok(output.error.includes('not found'), 'should say not found');
@@ -219,7 +278,7 @@ describe('verify artifacts command', () => {
 
   test('returns error for missing plan file', () => {
     const result = runPanTools('verify artifacts nonexistent.md', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
     assert.ok(output.error.includes('not found') || output.error.includes('No such'), 'error should mention file missing');
@@ -246,7 +305,7 @@ describe('verify key-links command', () => {
 
   test('returns error for missing plan file', () => {
     const result = runPanTools('verify key-links nonexistent.md', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error, 'should have error field');
     assert.ok(output.error.includes('not found') || output.error.includes('No such'), 'error should mention file missing');
@@ -338,7 +397,7 @@ describe('verify plan-structure command', () => {
 
   test('returns error for missing file', () => {
     const result = runPanTools('verify plan-structure nonexistent.md', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error);
   });
@@ -437,7 +496,7 @@ describe('verify phase-completeness command', () => {
 
   test('returns error for non-existent phase', () => {
     const result = runPanTools('verify phase-completeness 99', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.ok(output.error);
   });
@@ -660,7 +719,7 @@ describe('retro command', () => {
 
   test('returns error when no roadmap exists', () => {
     const { success, output } = runPanTools('retro', tmpDir);
-    assert.ok(success);
+    assert.equal(success, false, 'an error payload must exit non-zero');
     const json = JSON.parse(output);
     assert.equal(json.error, 'roadmap.md not found');
   });
@@ -907,7 +966,7 @@ describe('validate deployment command', () => {
 
   test('returns error when no PAN installation found', () => {
     const result = runPanTools('validate deployment', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const data = JSON.parse(result.output);
     assert.ok(data.error);
     assert.ok(data.error.includes('No PAN installations'));
@@ -969,6 +1028,36 @@ describe('validate deployment command', () => {
     const data = JSON.parse(result.output);
     assert.strictEqual(data.runtimes.claude.status, 'modified');
     assert.strictEqual(data.runtimes.claude.modified.length, 1);
+  });
+
+  // M29: the hook-path integrity check must descend into the NESTED Claude hook
+  // shape ({ matcher, hooks: [{ command }] }). Previously it only read the outer
+  // group.command (undefined there) so it validated nothing — a broken hook path
+  // was reported as clean.
+  test('validates hook paths nested under group.hooks[] (settings integrity)', () => {
+    const claudeDir = path.join(tmpDir, '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(path.join(claudeDir, 'pan-file-manifest.json'), JSON.stringify({
+      version: '3.0.0',
+      files: {},
+    }));
+    // Nested shape with a command pointing at a hook .js file that does NOT exist.
+    fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify({
+      hooks: {
+        PostToolUse: [
+          { matcher: 'Write', hooks: [{ type: 'command', command: 'node .claude/hooks/dist/missing.js' }] },
+        ],
+      },
+    }));
+
+    const result = runPanTools('validate deployment', tmpDir);
+    assert.ok(result.success, result.error);
+    const data = JSON.parse(result.output);
+    assert.strictEqual(data.runtimes.claude.settings_ok, false, 'nested broken hook path must be caught');
+    assert.ok(
+      data.runtimes.claude.settings_issues.some(s => s.includes('missing.js')),
+      `expected a hook-path issue for missing.js, got ${JSON.stringify(data.runtimes.claude.settings_issues)}`
+    );
   });
 
   test('detects multiple runtimes', () => {

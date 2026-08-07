@@ -140,6 +140,12 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
     error('Usage: config-set <key.path> <value>');
   }
 
+  // A missing value would be assigned as `undefined`, which JSON.stringify drops
+  // — so the command reported updated:true while writing nothing. Reject it.
+  if (value === undefined) {
+    error('Usage: config-set <key.path> <value>');
+  }
+
   // Parse value (handle booleans and numbers)
   let parsedValue = value;
   if (value === 'true') parsedValue = true;
@@ -155,6 +161,24 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
     if (err.code !== 'ENOENT') {
       error('Failed to read config.json: ' + err.message);
     }
+  }
+
+  // Valid JSON of the wrong SHAPE is still unusable, and used to fail two different
+  // silent ways. `null` crashed with a raw TypeError stack dump ("Cannot set
+  // properties of null") because the traversal assigned straight into it. An array,
+  // string or number took the assignment without complaint and then serialized
+  // without the key, so the command reported {"updated": true} at exit 0 while
+  // persisting nothing — the user is told their setting took effect and PAN keeps
+  // using the old one forever.
+  //
+  // Refuse rather than overwrite: a config.json that is not an object is the user's
+  // data in an unexpected state, and replacing it wholesale would be the
+  // settings.json data-loss bug in another file.
+  if (config === null || typeof config !== 'object' || Array.isArray(config)) {
+    error(
+      `config.json is not a JSON object (found ${config === null ? 'null' : Array.isArray(config) ? 'an array' : typeof config})`
+      + ` — refusing to overwrite it. Fix or remove ${configPath} and re-run.`
+    );
   }
 
   // Traverse the dot-notation key path to build nested objects.
@@ -558,7 +582,7 @@ function cmdStandardsPhaseTrack(cwd, phaseNum, raw) {
   if (!combinedContent) {
     output({
       phase: phaseNum,
-      phase_name: phase.name,
+      phase_name: phase.phase_name,
       relevant_standards: [],
       compliance: [],
       message: 'No plan files found in phase',
@@ -578,7 +602,7 @@ function cmdStandardsPhaseTrack(cwd, phaseNum, raw) {
 
   output({
     phase: phaseNum,
-    phase_name: phase.name,
+    phase_name: phase.phase_name,
     relevant_standards: detectedIds,
     compliance,
   }, raw, compliance.map(c => `${c.standard_id}: ${c.selected ? c.coverage || 'N/A' : 'not selected'}`).join('\n'));
@@ -637,6 +661,7 @@ function cmdStandardsTools(cwd, standardId, raw) {
 }
 
 module.exports = {
+  buildConfigDefaults,
   cmdConfigEnsureSection,
   cmdConfigSet,
   cmdConfigGet,

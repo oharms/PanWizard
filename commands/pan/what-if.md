@@ -113,7 +113,7 @@ git branch -D <branch_name>
 - `<parent>/pan-whatif-<phase>-<slug>-<ts>/` — the worktree (temporary, deleted after report)
 - branch `pan-whatif/<phase>-<slug>-<ts>` — the worktree's branch (deleted after report)
 
-Filename + branch include a timestamp so running what-if multiple times on the same phase+scenario produces distinct reports without overwriting.
+The worktree dir and branch include a timestamp, so concurrent/repeat runs never collide there. The **report** is keyed on phase+slug only (no timestamp), so re-running what-if on the same phase+scenario **overwrites** the previous report at `.planning/counterfactuals/<phase>-<slug>.md`. Rename or copy a report you want to keep before re-running the same scenario.
 
 </output_paths>
 

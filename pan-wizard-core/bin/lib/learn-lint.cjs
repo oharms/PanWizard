@@ -10,6 +10,7 @@
  *  - L-004: Universal-scope rule prose mentions PAN-internal terms
  *           (candidate for internal/ scope rather than universal/)
  *  - L-005: Revision marker (rN) appended in body but no supersession field
+ *  - L-006: Universal-scope pattern cites an internal pattern id (dangles after install)
  *
  * These are not patterns themselves — they're integrity checks for the
  * pattern store. Wired to `pan-tools learn lint`.
@@ -19,6 +20,25 @@ const fs = require('fs');
 const path = require('path');
 
 const VALID_SCOPES = ['universal', 'internal'];
+
+/**
+ * Default root for the learnings store: three levels up from lib/ — the install
+ * root (`<runtime-dir>/`) or the source repo root. Both layouts keep
+ * pan-wizard-core/ at that level, so this resolves correctly in either.
+ *
+ * Why this exists rather than defaulting to cwd: the dispatcher used
+ * `--source-root || cwd`, which is only right when cwd IS the PAN source repo. In
+ * a real install cwd is the user's project, where pan-wizard-core/learnings/ does
+ * not exist — so `learn topics-for` returned zero topics from a store holding
+ * dozens, `learn lint` reported PASS on a store it never opened, and
+ * `build-index` crashed. Twenty-five shipped instruction sites across the
+ * exec/plan/verify workflows tell agents to run these commands from the project
+ * root, and none passes --source-root, so every one of them silently got nothing.
+ * Mirrors skill-align.cjs resolveSkillRoot() and experiment.cjs PAN_SOURCE_ROOT.
+ */
+function resolveLearningsRoot() {
+  return path.resolve(__dirname, '..', '..', '..');
+}
 
 function getLearningsDir(sourceRoot, scope) {
   return path.join(sourceRoot, 'pan-wizard-core', 'learnings', scope);
@@ -248,6 +268,35 @@ function lintPatterns(patterns) {
     }
   }
 
+  // L-006: a universal-scope pattern citing an INTERNAL pattern id.
+  //
+  // This is the only rule that must run in the source repo to catch a defect that
+  // only manifests after install. `internal/` is stripped when PAN is installed, so
+  // a universal topic citing an internal id resolves fine here — where both scopes
+  // are present — and becomes a dangling L-002 reference on every user's machine.
+  // That is exactly what shipped: universal/concurrency.md cited P-1402 from
+  // internal/pan-dev-bugs.md, so `learn lint` FAILED in every install while passing
+  // in the repo, making the integrity gate un-greenable for users and invisible to us.
+  // Checking scope-crossing directly, rather than waiting for the reference to
+  // dangle, is what makes it catchable before release.
+  const internalIds = new Set(patterns.filter(p => p.scope === 'internal').map(p => p.id));
+  if (internalIds.size > 0) {
+    for (const p of patterns) {
+      if (p.scope !== 'universal') continue;
+      const refs = [...new Set(p.body.match(PATTERN_REF_RE) || [])].filter(r => r !== p.id);
+      for (const ref of refs.filter(r => internalIds.has(r))) {
+        violations.push({
+          code: 'L-006',
+          severity: 'error',
+          pattern_id: p.id,
+          file: p.file,
+          message: `Universal pattern "${p.id}" cites internal pattern "${ref}" — internal/ is stripped at install time, so this becomes a dangling reference in every install`,
+          internal_ref: ref,
+        });
+      }
+    }
+  }
+
   return {
     violations,
     pattern_count: patterns.length,
@@ -284,6 +333,7 @@ function cmdLearnLint(sourceRoot, opts = {}) {
 
 module.exports = {
   cmdLearnLint,
+  resolveLearningsRoot,
   collectAllPatterns,
   lintPatterns,
   extractPatternBody,

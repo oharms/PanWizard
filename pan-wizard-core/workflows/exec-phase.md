@@ -160,7 +160,7 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
 2. **Spawn executor agents:**
 
-   Pass paths only — executors read files themselves with their fresh 200k context.
+   Pass paths only — executors read files themselves in their own fresh context window.
    This keeps orchestrator context lean (~10-15%).
 
    ```
@@ -286,11 +286,23 @@ When executor returns a checkpoint AND `AUTO_CFG` is `"true"`:
    [Awaiting section from agent return]
    ```
 5. User responds: "approved"/"done" | issue description | decision selection
-6. **Spawn continuation agent (NOT resume)** using continuation-prompt.md template:
-   - `{completed_tasks_table}`: From checkpoint return
-   - `{resume_task_number}` + `{resume_task_name}`: Current task
-   - `{user_response}`: What user provided
-   - `{resume_instructions}`: Based on checkpoint type
+6. **Spawn continuation agent (NOT resume)** with a prompt built inline from this structure:
+   ```
+   Continue executing plan {plan_id}. A previous agent paused at a checkpoint.
+
+   ## Already completed
+   {completed_tasks_table}    ← the completed-tasks table from the checkpoint return
+
+   ## Resume point
+   Task {resume_task_number}: {resume_task_name}    ← the current (paused) task
+   User response to checkpoint: {user_response}      ← "approved"/"done", the chosen decision option, or the issue description the user typed
+
+   ## Instructions
+   {resume_instructions}      ← derived from the checkpoint type: human-verify → "resume the paused task";
+                                decision → "apply the selected option, then continue"; issue → "address the
+                                described issue first, then continue". Verify the previous commits before proceeding.
+   ```
+   All five placeholders are defined here — there is no separate template file to load.
 7. Continuation agent verifies previous commits, continues from resume point
 8. Repeat until plan completes or user stops
 
@@ -602,7 +614,7 @@ The CLI handles:
 
 Extract from result: `next_phase`, `next_phase_name`, `is_last_phase`.
 
-**Phase reports (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the self-contained per-phase HTML report — and, when `workflow.phase_reports.index` is `true`, the project timeline index — at this verify→complete gate so they ship with the phase and ride the commit below. Disabled by default; phase-less projects are skipped automatically by `report`. Never opens a browser here (that's reserved for a manual `pan-tools report --open`).
+**Phase reports (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the self-contained per-phase HTML report — and, when `workflow.phase_reports.index` is `true`, the project timeline index — at this verify→complete gate so they ship with the phase and ride the commit below. Disabled by default; phase-less projects are skipped automatically by `report`. Never opens a browser here (that's reserved for a manual `pan-tools report index --open`).
 
 ```bash
 REPORT_FILES=""
@@ -726,7 +738,7 @@ The workflow ends. The user runs `/pan:progress` or invokes the transition workf
 </process>
 
 <context_efficiency>
-Orchestrator: ~10-15% context. Subagents: fresh 200k each. No polling (Task blocks). No context bleed.
+Orchestrator: ~10-15% context. Subagents: a fresh window each. No polling (Task blocks). No context bleed.
 </context_efficiency>
 
 <failure_handling>

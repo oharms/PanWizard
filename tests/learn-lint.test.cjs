@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { lintPatterns, extractPatternBody, collectAllPatterns, KNOWN_EXPERIMENT_TOKENS } = require('../pan-wizard-core/bin/lib/learn-lint.cjs');
+const { runPanTools } = require('./helpers.cjs');
 
 function makeTmp() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-learn-lint-'));
@@ -201,4 +202,31 @@ test('KNOWN_EXPERIMENT_TOKENS includes notepadrs and whoo* family', () => {
   assert.ok(KNOWN_EXPERIMENT_TOKENS.includes('notepadrs'));
   assert.ok(KNOWN_EXPERIMENT_TOKENS.includes('whoolog'));
   assert.ok(KNOWN_EXPERIMENT_TOKENS.includes('whoocache'));
+});
+
+// N5/M32: the CLI exit code (not just lintPatterns) is what gates CI. output()
+// used to hard-exit 0 before the exit-code arg, so `learn lint` never gated on an
+// L-001 duplicate-ID error; these lock the CLI-level exit contract against a revert.
+test('learn lint CLI: exits NON-ZERO on a lint failure (duplicate pattern IDs)', () => {
+  const tmp = makeTmp();
+  try {
+    writeTopic(tmp, 'universal', 'a', [{ id: 'P-1201', summary: 'one' }], '\n## P-1201 — one\n\n**Rule:** A.\n');
+    writeTopic(tmp, 'universal', 'b', [{ id: 'P-1201', summary: 'two' }], '\n## P-1201 — two\n\n**Rule:** B.\n');
+    const r = runPanTools(`learn lint --source-root "${tmp}" --raw`, tmp);
+    assert.equal(r.success, false, 'an L-001 error must gate (exit non-zero)');
+    assert.match(`${r.output || ''}${r.error || ''}`, /FAIL/i);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('learn lint CLI: exits ZERO on a clean learnings tree', () => {
+  const tmp = makeTmp();
+  try {
+    writeTopic(tmp, 'universal', 'a', [{ id: 'P-100', summary: 'x' }], '\n## P-100 — x\n\n**Rule:** Foo.\n');
+    const r = runPanTools(`learn lint --source-root "${tmp}" --raw`, tmp);
+    assert.equal(r.success, true, 'a clean learnings tree must not gate');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

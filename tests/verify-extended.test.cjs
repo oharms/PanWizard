@@ -81,7 +81,7 @@ describe('verify references command', () => {
 
   test('file not found returns error', () => {
     const result = runPanTools('verify references .planning/nonexistent-file.md', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'should report file not found');
@@ -289,7 +289,7 @@ describe('verify artifacts command', () => {
 
   test('plan file not found returns error', () => {
     const result = runPanTools('verify artifacts .planning/phases/99-missing/99-01-plan.md', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'should report file not found');
@@ -481,7 +481,7 @@ describe('verify key-links command', () => {
 
   test('plan file not found returns error', () => {
     const result = runPanTools('verify key-links .planning/phases/99-missing/99-01-plan.md', tmpDir);
-    assert.ok(result.success, `Command should succeed with error JSON: ${result.error}`);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'File not found', 'should report file not found');

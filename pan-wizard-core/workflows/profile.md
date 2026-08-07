@@ -1,5 +1,5 @@
 <purpose>
-Switch the model profile used by PAN agents. Controls which Claude model each agent uses, balancing quality vs token spend.
+Switch the model profile used by PAN agents. Controls which model tier each agent uses, balancing quality vs token spend.
 </purpose>
 
 <required_reading>
@@ -88,20 +88,23 @@ Agents will now use:
 
 [Show table from MODEL_PROFILES in pan-tools.cjs for selected profile]
 
-Example:
-| Agent | Model |
-|-------|-------|
-| pan-planner | opus |
-| pan-executor | sonnet |
-| pan-verifier | haiku |
+Example (`budget` — the only profile that steps agents below the reasoning
+tier; `quality` and `balanced` put every agent on `reasoning`):
+| Agent | Tier |
+|-------|------|
+| pan-planner | mid |
+| pan-executor | mid |
+| pan-verifier | fast |
 | ... | ... |
 
 Cost estimate:
 [Run: node ~/.claude/pan-wizard-core/bin/pan-tools.cjs estimate-cost]
 Show the average cost multiplier for each profile (quality/balanced/budget)
-and highlight the selected profile. Example:
-  quality: 15.0× avg | balanced: 4.3× avg | budget: 2.2× avg
-                                              ^^^^^^^^^^^^^^^^ selected
+and highlight the selected profile — read the numbers from the command output,
+don't hardcode them (`quality` and `balanced` report the same multiplier).
+Example shape:
+  quality: <n>× avg | balanced: <n>× avg | budget: <n>× avg
+                                           ^^^^^^^^^^^^^^^^ selected
 
 Next spawned agents will use the new profile.
 ```

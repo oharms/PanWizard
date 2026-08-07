@@ -625,24 +625,39 @@ function renderCommandStack(d) {
       ? s.agents.map(ag => `<div class="ag"><span class="amono">↳ ${esc(ag.name)}</span>`
         + `<span class="amono ${ag.active ? 'okc' : 'dim'}">${ag.active ? `${ag.calls} calls · ${fmtTokens(ag.tokens)} tok` : 'idle'}</span></div>`).join('')
       : '<div class="ag"><span class="amono dim">git-tool driven · no agents</span></div>';
+    // `tier` and `access` are reproduced verbatim from squads.cjs, and both are
+    // advisory there: `tier` is a squad grouping attribute (the active
+    // `model_profile` is what resolves a model), and `access` is the intended
+    // contract the conductor's prompt is told to honour, not a sandbox. The
+    // tooltip says so, because a bare `read-only` badge in a dashboard reads as
+    // enforcement to anyone who has not read the module.
     return `
     <div class="squad" style="border-left:3px solid ${color}">
       <div class="squad-head">
         <span class="squad-name"><span class="dot" style="background:${color}"></span>${esc(s.label)}
-          <span class="amono dim">· ${esc(s.tier)} · ${esc(s.access)}</span></span>
+          <span class="amono dim" title="Advisory labels from squads.cjs: tier is a squad grouping (the active model_profile resolves the model), and access is the contract the conductor is instructed to honour — the binding tool grant is each agent's own frontmatter.">· ${esc(s.tier)} · ${esc(s.access)}</span></span>
         ${pillEl}
       </div>
       <div class="squad-sum">${esc(s.summary)}</div>
       ${drill}
     </div>`;
   }).join('');
+  // The coordinator strap is deliberately narrow, because both halves of what it
+  // used to say were wrong. It does NOT name a model family: the agent file
+  // (`agents/pan-conductor.md`) carries no `model:` field, so it resolves to
+  // `inherit` and runs on whatever model launched the session — PAN selects
+  // nothing. And it says delegation-*first*, not delegation-only: that agent's
+  // `tools:` grant includes `Write` and `Bash`, and nothing strips them (squads.cjs
+  // is a registry + resolver). Routing rather than coding is how the conductor is
+  // instructed to behave, not something the runtime prevents. Do not re-add a
+  // family name or an enforcement word here without changing the agent file first.
   return `
   <section class="panel">
     <div class="ph">command stack — live</div>
     <div class="coord">
       <span class="dot" style="background:var(--coral)"></span>
       <span class="cname">Mission Control</span>
-      <span class="amono dim">· ${esc(a.coordinator)} · opus · reasoning · delegation-only</span>
+      <span class="amono dim">· ${esc(a.coordinator)} · session model · delegation-first</span>
       <span class="mc-state">${anyActive ? 'delegating' : 'idle'}</span>
     </div>
     <div class="squads">${squadCards}</div>

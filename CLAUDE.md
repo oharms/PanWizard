@@ -37,7 +37,7 @@ console.log({
   references: ls('pan-wizard-core/references'),
   unitTests: ls('tests', /\.test\.cjs$/),
   scenarioTests: ls('tests/scenarios', /\.test\.cjs$/),
-  hooks: ls('hooks/dist', /\.js$/),
+  hooks: ls('hooks', /\.js$/),                       // sources, matching the row label — hooks/dist/ is gitignored build output and absent on a fresh clone
   specs: ls('docs/specs'),
   adrs: ls('docs/decisions', /^ADR-.*\.md$/),
 });
@@ -57,15 +57,15 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 16 |
-| Unit test files (`tests/*.test.cjs`) | 94 |
-| Scenario test files (`tests/scenarios/*.test.cjs`) | 35 |
-| Total tests (npm run test:all) | 3348 |
-| Total test suites | 717 |
+| Unit test files (`tests/*.test.cjs`) | 113 |
+| Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
+| Total tests (npm run test:all) | 3708 |
+| Total test suites | 799 |
 | Hooks (`hooks/*.js`) | 5 |
 | Specs (`docs/specs/*.md`) | 44 |
 | ADRs (`docs/decisions/ADR-*.md`) | 42 |
 
-These are reflective of `main` at v3.22.0. They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
+These are a snapshot of the **current working tree**, not of any released tag — a branch mid-audit carries files `main` does not (test files especially). They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
 
 ---
 

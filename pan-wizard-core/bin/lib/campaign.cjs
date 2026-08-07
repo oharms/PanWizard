@@ -152,7 +152,11 @@ function isDreamDue(schedule, now) {
   if (!schedule.last_run) return false;
   const last = new Date(schedule.last_run);
   if (isNaN(last)) return false;
-  return !sameUtcDay(last, at) || (schedule.history || []).length > 0;
+  // Due only once the last run rolled over into a NEW calendar day AND there is
+  // recorded activity to reflect on. The old `||` made this permanently true
+  // after the first run (history is never empty once a run is recorded), which
+  // contradicted the "once per calendar day that had activity" contract.
+  return !sameUtcDay(last, at) && (schedule.history || []).length > 0;
 }
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
@@ -190,8 +194,9 @@ function cmdCampaignStatus(cwd, raw) {
 function cmdCampaignDue(cwd, raw) {
   const schedule = readSchedule(cwd);
   const d = isRunDue(schedule, new Date());
-  // exit-coded so a host scheduler can gate: 0 = due, 1 = not due
-  output({ due: d.due, reason: d.reason, next_due: d.next_due }, raw, d.due ? 'due' : `not due (${d.reason})`);
+  // exit-coded so a host scheduler can gate: 0 = due, 1 = not due (M9 — output()
+  // used to hard-exit 0, so the documented gate always fired the run).
+  output({ due: d.due, reason: d.reason, next_due: d.next_due }, raw, d.due ? 'due' : `not due (${d.reason})`, d.due ? 0 : 1);
 }
 
 module.exports = {

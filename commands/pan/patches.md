@@ -27,7 +27,7 @@ Check for local patches directory:
 PATCHES_DIR=~/.claude/pan-local-patches
 # Local install fallback
 if [ ! -d "$PATCHES_DIR" ]; then
-  PATCHES_DIR=./.claude/pan-local-patches
+  PATCHES_DIR=~/.claude/pan-local-patches
 fi
 ```
 

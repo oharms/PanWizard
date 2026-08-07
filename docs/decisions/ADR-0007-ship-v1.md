@@ -1,7 +1,7 @@
 # ADR-0007: Ship v1.0.0 to npm
 
 ## Status
-Proposed
+Accepted (shipped in v1.0.0 — 2026-03-01)
 
 ## Context
 PAN Wizard has been in active development through 29 sessions, reaching 1483 tests,

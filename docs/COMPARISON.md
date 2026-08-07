@@ -13,7 +13,7 @@ PAN Wizard occupies a unique position in the AI coding tool landscape: it's an *
 | **Form Factor** | CLI overlay | CLI | IDE (VS Code fork) | IDE extension | VS Code extension | IDE (VS Code fork) | Extension + CLI | Cloud IDE |
 | **Architecture** | Orchestration layer | Single agent | Single + background | Single + CI agents | Single agent | Single agent (Cascade) | Extension + agents | Cloud sandbox |
 | **Multi-Agent** | Specialized agents (planner, executor, verifier, researchers, etc.) | None | Up to 8 parallel | CI/CD agents | None (single) | Wave 13 multi-agent | Specialized sub-agents | Parallel Devins |
-| **Context Management** | Phase-scoped fresh 200K windows | Repo map (auto) | Embeddings-based index | Embeddings + re-ranking | On-demand + condensing | RAG + AST indexing | Repository-level | Sandboxed env |
+| **Context Management** | Phase-scoped fresh context windows | Repo map (auto) | Embeddings-based index | Embeddings + re-ranking | On-demand + condensing | RAG + AST indexing | Repository-level | Sandboxed env |
 | **Context Rot Prevention** | Yes (core feature) | No | No | No | Partial (condensing) | No | No | No |
 | **Planning** | Research → Plan → Verify loop | Architect mode | Agent generates plan | Plan mode (read-only) | Plan mode | Implicit planning | Plan step with markdown | Interactive planning |
 | **Plan Verification** | Dedicated plan-checker agent | None | None | None | None | None | None | None |
@@ -37,7 +37,7 @@ PAN Wizard occupies a unique position in the AI coding tool landscape: it's an *
 
 These are capabilities no other tool matches:
 
-1. **Context Rot Prevention** — Every plan executes in a fresh 200K context window. No accumulated garbage, no quality degradation. No competitor solves this
+1. **Context Rot Prevention** — Every plan executes in a fresh context window. No accumulated garbage, no quality degradation. No competitor solves this
 2. **Research-Before-Planning** — Dedicated researcher agents investigate the domain before the planner starts. Cursor, Cline, and Copilot all plan without research
 3. **Plan Verification Loop** — A dedicated plan-checker agent verifies plans achieve phase goals before execution begins. Nobody else does this
 4. **Human UAT Workflow** — Structured acceptance testing with auto-diagnosis of failures and generated fix plans. No competitor offers structured UAT

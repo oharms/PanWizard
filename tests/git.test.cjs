@@ -162,6 +162,24 @@ describe('git commit', () => {
     assert.equal(result.type, 'feat');
     assert.ok(result.hash);
   });
+
+  // M20: the subcommand token 'commit' must not leak into the positional files
+  // list — a repo path literally named 'commit' was being staged/committed.
+  test('does not stage a path literally named "commit"', () => {
+    cwd = createTempProject();
+    makeGitRepo(cwd);
+    seedCommit(cwd, 'init');
+    // An untracked file whose name collides with the subcommand token.
+    fs.writeFileSync(path.join(cwd, 'commit'), 'should stay untracked');
+    const r = runPanTools('git commit --message x', cwd);
+    const result = parseOut(r);
+    // Nothing was staged (the 'commit' subcommand token no longer leaks into the
+    // files list), so no commit is produced and the untracked 'commit' file is
+    // left alone — never staged/committed.
+    assert.equal(result.committed, false);
+    const tracked = execFileSync('git', ['ls-files'], { cwd, encoding: 'utf-8' });
+    assert.ok(!tracked.split('\n').includes('commit'), 'the "commit" path must not be tracked');
+  });
 });
 
 // ─── git branch (CLI) ────────────────────────────────────────────────────────

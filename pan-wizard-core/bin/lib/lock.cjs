@@ -48,8 +48,18 @@ function acquireLock(filePath, opts = {}) {
       try {
         const age = Date.now() - fs.statSync(lockPath).mtimeMs;
         if (age > staleMs) {
-          // Holder likely crashed — steal and retry immediately.
-          try { fs.unlinkSync(lockPath); } catch { /* racing steal — loop retries */ }
+          // Holder likely crashed — steal via an atomic rename to a unique name.
+          // rename() moves the specific inode: exactly ONE concurrent stealer can
+          // rename a given lock file; every other contender's rename fails with
+          // ENOENT (the source is gone) instead of blindly unlinking a lock that a
+          // winner may already have re-created. This closes the double-holder race
+          // where two processes both stat the same stale lock and both unlink it.
+          const stealPath = `${lockPath}.steal.${process.pid}.${Date.now()}`;
+          try {
+            fs.renameSync(lockPath, stealPath);
+            // We won the steal — discard the stolen lock and retry wx-create.
+            try { fs.unlinkSync(stealPath); } catch { /* best-effort */ }
+          } catch { /* another contender stole/cleared it first — loop retries */ }
           continue;
         }
       } catch { /* lock vanished between EEXIST and stat — loop retries */ }
@@ -59,9 +69,18 @@ function acquireLock(filePath, opts = {}) {
   return { acquired: false, lockPath };
 }
 
-/** Release a lock acquired by acquireLock. Best-effort. */
+/**
+ * Release a lock acquired by acquireLock. Best-effort, but ownership-verified:
+ * only unlink when the lock file still contains THIS process's pid, so a lock
+ * that was stolen (stale) and re-created by a successor is never deleted out
+ * from under that successor.
+ */
 function releaseLock(lockPath) {
-  try { fs.unlinkSync(lockPath); } catch { /* already gone */ }
+  try {
+    const owner = fs.readFileSync(lockPath, 'utf-8').trim();
+    if (owner !== String(process.pid)) return; // not ours anymore — leave it
+    fs.unlinkSync(lockPath);
+  } catch { /* already gone / unreadable — nothing to release */ }
 }
 
 /**

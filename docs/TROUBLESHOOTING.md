@@ -552,24 +552,26 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Token usage by stage (approximate):**
 
-| Stage | Budget Profile | Balanced Profile | Quality Profile |
-|-------|---------------|-----------------|----------------|
-| Research | 10-20K | 30-50K | 50-80K |
-| Planning | 10-20K | 20-40K | 40-70K |
-| Execution (per plan) | 10-40K | 20-80K | 40-120K |
-| Verification | 5-10K | 10-20K | 15-30K |
+| Stage | `budget` | `balanced` / `quality` |
+|-------|---------------|-----------------|
+| Research | 10-20K | 30-50K |
+| Planning | 10-20K | 20-40K |
+| Execution (per plan) | 10-40K | 20-80K |
+| Verification | 5-10K | 10-20K |
+
+`quality` and `balanced` are `inherit` for **every** agent — the two columns are identical, so switching between them changes nothing. `budget` is the only profile that down-tiers. Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
 
 **Common causes of higher-than-expected usage:**
 
 - Plan checker rejection loop (up to 3 iterations = 3x planning cost)
 - Executor auto-fix loops (each Rule 1-3 attempt costs additional tokens)
 - Plans with too many tasks (4+ tasks per plan increases per-plan cost)
-- Using `quality` profile when `balanced` would suffice
+- Staying on the default profile for high-volume work `budget` would have absorbed
 - Research enabled for a domain you already know well
 
 **Cost reduction strategies (ordered by impact):**
 
-1. **Switch profile:** `/pan:profile budget` for prototyping, `balanced` for production work
+1. **Switch profile:** `/pan:profile budget` for prototyping or high-volume work — it is the only profile that lowers spend, since `balanced` and `quality` resolve identically
 2. **Skip research:** `/pan:plan-phase N --skip-research` for familiar domains
 3. **Disable plan checker:** `workflow.plan_check: false` in `/pan:settings` (saves 20-40K per phase)
 4. **Disable verifier:** `workflow.verifier: false` for early prototyping (saves 10-30K per phase)
@@ -578,17 +580,21 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 ### Wrong model being used for an agent
 
-**Symptom:** An agent uses Sonnet when you expected Opus, or vice versa. Execution quality does not match expectations for the configured profile.
+**Symptom:** An agent runs on a cheaper model than you expected, or execution quality does not match expectations for the configured profile.
 
 **How model selection works:**
 
-| Agent type | Budget | Balanced | Quality |
-|-----------|--------|----------|---------|
-| Research | Haiku | Sonnet | Opus |
-| Planning | Sonnet | Opus | Opus |
-| Execution | Sonnet | Sonnet | Opus |
-| Verification | Haiku | Sonnet | Opus |
-| Plan checker | Haiku | Sonnet | Opus |
+| Agent type | `budget` | `balanced` / `quality` |
+|-----------|--------|----------|
+| Research | fast | reasoning |
+| Planning | mid | reasoning |
+| Execution | mid | reasoning |
+| Verification | fast | reasoning |
+| Plan checker | fast | reasoning |
+
+`quality` and `balanced` are `inherit` for **every** agent — the two columns are identical, so switching between them changes nothing. `budget` is the only profile that down-tiers. `inherit` → the reasoning tier, i.e. the model the session was launched with; `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth, and `pan-tools estimate-cost` prints the relative multiplier per profile.
+
+So if the symptom is "an agent ran on a weaker model", the profile to look at is `budget`; moving between `balanced` and `quality` will not change it.
 
 **Override precedence:** Per-agent override > profile default > hardcoded default
 
@@ -625,7 +631,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 1. Review the lower-quality plans -- are their tasks specific enough?
 2. Consider re-planning with smaller, more detailed tasks
-3. For complex tasks, use `model_overrides` to assign Opus to the executor
+3. If you are on `budget`, complex tasks are the case for leaving it — or pin just the executor back up with `model_overrides: { "pan-executor": "reasoning" }`
 4. Add more detail to the phase's context.md to provide implementation guidance
 
 ---
@@ -636,7 +642,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Symptom:** Claude becomes less coherent, loses track of the current task, or starts repeating itself. The context monitor (if installed) shows CRITICAL warning.
 
-**Why this happens:** The main session accumulates context from every command you run. PAN subagents (executors, verifiers) each get fresh 200K windows, but the orchestrating session does not reset automatically.
+**Why this happens:** The main session accumulates context from every command you run. PAN subagents (executors, verifiers) each get a fresh context window, but the orchestrating session does not reset automatically.
 
 **Immediate recovery:**
 
@@ -648,7 +654,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 - Run `/clear` between major commands (e.g., after plan-phase completes, before exec-phase)
 - Avoid reading large files in the main session -- let subagents handle file reading
-- Use `balanced` or `budget` profile (Opus generates more verbose output, consuming more context)
+- Use the `budget` profile (its mid/fast agents produce shorter output, consuming less context); `balanced` and `quality` are identical, so switching between those two will not help here
 - Keep plans to 2-3 tasks each to reduce executor output size
 
 ### resume restores incomplete context
@@ -683,7 +689,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Symptom:** Two Claude Code sessions running PAN on the same project produce conflicting commits, corrupted state.md, or duplicated work.
 
-**Root cause:** PAN's state management is file-based and does not implement locking. Concurrent sessions writing to the same state.md or committing to the same branch will conflict.
+**Root cause:** `state.md` writes are serialized via advisory file locking plus atomic writes (ADR-0030), but PAN does not coordinate whole-session concurrency. Two sessions can still commit to the same branch, race on other artifacts, or duplicate work — keep to one session per project.
 
 **Prevention:** Do not run multiple PAN sessions on the same project simultaneously. PAN is designed for single-session operation.
 
@@ -874,11 +880,10 @@ This is expected behavior — `bridge list` is designed to report cleanly when n
 ### `/pan:exec-phase --hierarchical` printed a warning and ran flat
 
 Expected when:
-- You're not on Claude Code (other runtimes don't support agents-spawn-agents)
-- Your default model isn't Opus 4.7
+- You're not on Claude Code — the flag needs native sub-agent spawning, which the other four runtimes don't support cleanly
 - Your phase has only 1 plan file (`pan-conductor` refuses to orchestrate a single-plan phase — it would be pure overhead)
 
-The flag silently degrades to flat exec in all three cases. To verify it would trigger, check `commands/pan/exec-phase.md` for the flag's runtime matrix. If you're on Claude + Opus 4.7 and still getting flat exec, look at the stderr warning — it names the specific guard that fired.
+The flag degrades to flat exec in both cases. There is **no model gate**: `pan-conductor` carries no `model:` frontmatter, so it runs on whatever model you launched the session with (the `budget` profile's advisory tiering is the only thing that would nominate a cheaper one, and it does not block the flag). So "wrong model" is never the reason — if you're on Claude Code with a multi-plan phase and still getting flat exec, read the stderr warning; it names the specific guard that fired. `commands/pan/exec-phase.md` documents the flag's conditions.
 
 ### Cost log records have `input_tokens: 0` and `cost_usd: null`
 
@@ -886,7 +891,7 @@ The SubagentStop hook captures whatever Claude Code's event payload provides. If
 
 Options:
 - **Upgrade Claude Code** if your version predates `usage` field support in SubagentStop.
-- **Append explicit records** for calls you care about: `pan-tools cost append --agent X --model claude-opus-4-7 --input-tokens N --output-tokens N`. The aggregator merges hook-sourced and caller-sourced records.
+- **Append explicit records** for calls you care about: `pan-tools cost append --agent X --model <model-id> --input-tokens N --output-tokens N`. The aggregator merges hook-sourced and caller-sourced records.
 - **Reconcile from provider billing.** The hook is directional — use the provider's API (Anthropic console, etc.) for exact monthly totals.
 
 Records with zero tokens still indicate that an agent ran — they're not useless, just incomplete.

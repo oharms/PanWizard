@@ -129,7 +129,7 @@ For each REQ-ID, determine status using all three sources:
 
 ## 6. Aggregate into v{version}-milestone-audit.md
 
-Create `.planning/v{version}-v{version}-milestone-audit.md` with:
+Create `.planning/v{version}-milestone-audit.md` with:
 
 ```yaml
 ---

@@ -1,5 +1,5 @@
 <purpose>
-Display the complete PAN command reference. Output ONLY the reference content. Do NOT add project-specific analysis, git status, next-step suggestions, or any commentary beyond the reference.
+Display the PAN command reference. Output ONLY the reference content. Do NOT add project-specific analysis, git status, next-step suggestions, or any commentary beyond the reference.
 </purpose>
 
 <reference>
@@ -148,7 +148,6 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 **Flags:**
 - `--mode <mode>` — select execution mode (default: balanced)
 - `--budget N` — override point budget (5-100)
-- `--dry-run` — show what would be selected without writing
 - `--lean` — exclude items with RS < 1.5
 
 ### Step 3: `/pan:focus-exec`
@@ -208,7 +207,9 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 ---
 
-## All Commands (42)
+## All Commands
+
+> This table is a **curated subset** of the most-used commands, not an exhaustive list. For the full, always-current command set, browse the `commands/pan/*.md` files in your install (each `.md` is one `/pan:<name>` command).
 
 ### Getting Started
 | Command | Description |
@@ -389,7 +390,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **`/pan:settings`** — Toggle researcher, plan checker, verifier agents. Select model profile.
 
-**`/pan:profile <name>`** — Quick profile switch: `quality` (Opus everywhere), `balanced` (Opus plan + Sonnet exec, default), `budget` (Sonnet + Haiku).
+**`/pan:profile <name>`** — Quick profile switch: `quality` and `balanced` (reasoning tier for every agent; `balanced` is the default), `budget` (mid tier for writing, fast tier for research/verification).
 
 **Planning config** (`.planning/config.json`):
 - `commit_docs: true` — commit planning artifacts to git (set `false` + add `.planning/` to `.gitignore` for private planning)

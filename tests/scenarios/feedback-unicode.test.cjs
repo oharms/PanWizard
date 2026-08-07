@@ -13,9 +13,16 @@ describe('E2E Feedback: Unicode & Special Characters', () => {
     runner = createScenarioRunner('claude');
     const pd = path.join(runner.tmpDir, '.planning');
     fs.mkdirSync(path.join(pd, 'phases'), { recursive: true });
+    // Section headings state.cjs actually matches (`### Decisions` /
+    // `### Blockers/Concerns`). With `## Key Decisions` the add-decision write below
+    // could never land, so the test asserted a boolean type and verified nothing
+    // about the special characters it is named for.
     fs.writeFileSync(path.join(pd, 'state.md'), [
-      '---', 'Status: In progress', 'Current Phase: 01', '---', '',
-      '## Key Decisions', '', '## Active Blockers', '', '## Session History', '',
+      '# Project State', '',
+      '**Status:** In progress', '**Current Phase:** 1', '',
+      '## Accumulated Context', '',
+      '### Decisions', '', 'None yet.', '',
+      '### Blockers/Concerns', '', 'None yet.', '',
     ].join('\n'));
     fs.writeFileSync(path.join(pd, 'roadmap.md'), '## Roadmap\n\n| Phase | Name | Status |\n|---|---|---|\n');
     fs.writeFileSync(path.join(pd, 'config.json'), '{}');
@@ -41,8 +48,9 @@ describe('E2E Feedback: Unicode & Special Characters', () => {
   test('state add-decision with special chars preserved', () => {
     const r = runner.run('state add-decision --summary Use-UTF-8-encoding');
     assert.ok(r.success, `should succeed: ${r.error}`);
-    const p = JSON.parse(r.output);
-    assert.equal(typeof p.added, 'boolean');
+    assert.equal(JSON.parse(r.output).added, true, 'the decision must actually be added');
+    assert.match(fs.readFileSync(path.join(runner.tmpDir, '.planning', 'state.md'), 'utf-8'),
+      /Use-UTF-8-encoding/, 'and the characters must survive the round trip');
   });
 
   test('phase add with very long name truncates gracefully', () => {

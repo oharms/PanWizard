@@ -11,7 +11,8 @@
  *   Each line: {ts, source, payload}
  *
  * Channels are created on first publish. Readers use cursor-based drain
- * (read N lines from an offset) or consume-all drain (read + truncate).
+ * (read N lines from an offset) or partial-consume drain (read the drained
+ * window, splice just those lines out, and write the remainder back).
  *
  * Concurrent-write safety: each publish opens the file with append flag
  * (`a`) which the OS treats atomically for writes <PIPE_BUF on POSIX and
@@ -135,11 +136,15 @@ function readChannel(cwd, channel, opts) {
 }
 
 /**
- * Drain (read + optionally truncate) messages from a channel.
+ * Drain (read + optionally mutate) messages from a channel.
  *
  * Three drain modes:
  *  - `peek` (default): read entries, leave file untouched
- *  - `consume`: read entries, truncate file to zero bytes
+ *  - `consume`: read entries, then splice out ONLY the drained window
+ *    (offset .. offset+consumed) and write the remainder back — messages
+ *    outside that window (before the offset, or beyond the read limit / the
+ *    1000-message default on large channels) survive. The file is emptied only
+ *    when the drained window covers every line.
  *  - `archive`: read entries, rename file to `<channel>-<ts>.archive.jsonl` so
  *    historical data is preserved while the channel restarts empty
  *
@@ -158,7 +163,17 @@ function drain(cwd, channel, opts) {
   const file = channelFile(cwd, channel);
   if (mode === 'consume') {
     try {
-      fs.writeFileSync(file, '', 'utf-8');
+      // Consume ONLY the drained window (offset .. offset+limit). Truncating the
+      // whole file to empty silently destroyed every message outside that window
+      // — anything before the offset, or beyond the read limit / the 1000-message
+      // default on large channels (H2, ADR audit 2026-08). Splice out the consumed
+      // lines and write the remainder back.
+      let allLines = [];
+      try { allLines = fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean); } catch { allLines = []; }
+      const offset = Math.max(0, Number(opts?.offset) || 0);
+      const consumed = read.entries.length; // raw lines actually returned by readChannel
+      const remaining = allLines.slice(0, offset).concat(allLines.slice(offset + consumed));
+      fs.writeFileSync(file, remaining.length ? remaining.join('\n') + '\n' : '', 'utf-8');
     } catch (e) {
       return { ...read, mode, drain_error: e.message };
     }

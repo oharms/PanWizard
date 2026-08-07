@@ -766,6 +766,168 @@ describe('detectModelCapabilities', () => {
     assert.equal(lib.detectModelCapabilities(null).tier, 'unknown');
     assert.equal(lib.detectModelCapabilities(undefined).tier, 'unknown');
   });
+
+  // ── Claude family-level fallback (forward compatibility) ───────────────────
+  //
+  // detectModelCapabilities() is a hardcoded substring table, so a model
+  // released after install-lib.cjs was last touched used to fall through to the
+  // all-false `unknown` result — and the installer then told the user their
+  // brand-new flagship "lacks 1M context / extended thinking". The fallback
+  // makes a newer generation of a known family inherit that family's newest
+  // known profile instead.
+  //
+  // Read the two halves of this block as one contract:
+  //
+  //   FORWARD half — each "future ..." / "newer point release" case FAILS if the
+  //   forward-compat path is reverted. The future-major cases would return the
+  //   all-false `unknown`; the point-release cases (opus-4-9, opus-4-10,
+  //   sonnet-4-7) would be swallowed by the greedy `n.includes('opus-4')` /
+  //   `n.includes('sonnet-4')` legacy branches and report has_1m_ctx: false —
+  //   a "your model lacks 1M context" warning aimed at a model NEWER than the
+  //   flagship. All three were live-probed in exactly that state.
+  //
+  //   LEGACY half — the cases after it PASS both before and after the fix by
+  //   design: they are the over-reach guard. They fail if the forward path ever
+  //   widens far enough to relabel a release that really is 200K (Opus/Sonnet
+  //   4.0–4.5), a date-suffixed id (`-20250514` is not point release 20), a
+  //   Claude 3.x id, or another vendor's id.
+
+  const MODERN_REASONING = { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' };
+  const UNKNOWN = { has_1m_ctx: false, has_thinking: false, has_cache: false, tier: 'unknown' };
+
+  test('a future Opus generation inherits the modern reasoning profile', () => {
+    // Probed pre-fix: this returned the all-false `unknown`.
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-6'), MODERN_REASONING);
+  });
+
+  test('a future Opus point release and a provider-prefixed id both resolve', () => {
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-6-1'), MODERN_REASONING);
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-6.2'), MODERN_REASONING);
+    assert.deepEqual(lib.detectModelCapabilities('us.anthropic.claude-opus-7-v1:0'), MODERN_REASONING);
+  });
+
+  test('a future Sonnet generation is mid tier with modern capabilities', () => {
+    // Probed pre-fix: this returned the all-false `unknown`.
+    assert.deepEqual(lib.detectModelCapabilities('claude-sonnet-6'),
+      { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' });
+  });
+
+  test('a future Haiku generation is fast tier, no thinking (inherits Haiku 4.5)', () => {
+    // deepEqual (not just has_thinking) — `unknown` is also thinking-less, so
+    // only tier + has_cache distinguish the fallback from the pre-fix result.
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-5'),
+      { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' });
+  });
+
+  test('a future Fable/Mythos generation resolves via its version-free branch', () => {
+    assert.deepEqual(lib.detectModelCapabilities('claude-fable-6'), MODERN_REASONING);
+    assert.deepEqual(lib.detectModelCapabilities('claude-mythos-7'), MODERN_REASONING);
+  });
+
+  // ── Point releases INSIDE an already-tabled major ─────────────────────────
+  //
+  // The forward path originally compared major generations only, so every
+  // Opus/Sonnet 4.x point release hit the greedy legacy branch first and never
+  // reached it. Live-probed pre-fix: claude-opus-4-9 → has_1m_ctx false,
+  // claude-opus-4-10 → false, claude-sonnet-4-7 → false. Each assertion below
+  // FAILS if that guard is reverted.
+
+  test('an Opus point release newer than the table inherits modern caps', () => {
+    // Pre-fix: { has_1m_ctx: false, ... } via the `opus-4` legacy branch.
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4-9'), MODERN_REASONING);
+  });
+
+  test('a two-digit point release sorts ABOVE a one-digit one, not below', () => {
+    // Double duty. Fails on revert (legacy branch swallows it), AND fails if the
+    // comparison is ever written as a float: Number('4.10') === 4.1, which sorts
+    // Opus 4.10 below Opus 4.5 and hands it the 200K mapping.
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4-10'), MODERN_REASONING);
+  });
+
+  test('a Sonnet point release newer than the table stays mid tier with 1M', () => {
+    // Pre-fix: { has_1m_ctx: false, ..., tier: 'mid' }.
+    assert.deepEqual(lib.detectModelCapabilities('claude-sonnet-4-7'),
+      { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' });
+  });
+
+  test('a dated id for a newer point release resolves too', () => {
+    // Real Anthropic ids carry a release date. Fails on revert.
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4-9-20260901'), MODERN_REASONING);
+  });
+
+  // ── Over-reach guard: releases that really are legacy ─────────────────────
+  //
+  // These pass before AND after the fix. They fail only if the forward path
+  // widens too far — e.g. if the threshold drops below Opus/Sonnet 4.5, or if
+  // the guard is written so the legacy branches stop firing at all.
+
+  const LEGACY_REASONING = { has_1m_ctx: false, has_thinking: true, has_cache: true, tier: 'reasoning' };
+  const LEGACY_MID = { has_1m_ctx: false, has_thinking: true, has_cache: true, tier: 'mid' };
+
+  test('the fallback only looks forward: legacy opus-4-1 keeps its 200K mapping', () => {
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4-1'), LEGACY_REASONING);
+  });
+
+  test('legacy opus-4-5 / opus-4.5 / bare opus-4 all keep the 200K mapping', () => {
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4-5'), LEGACY_REASONING);
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4.5'), LEGACY_REASONING);
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4'), LEGACY_REASONING);
+  });
+
+  test('legacy sonnet-4-5 and bare sonnet-4 keep the 200K mapping', () => {
+    assert.deepEqual(lib.detectModelCapabilities('claude-sonnet-4-5'), LEGACY_MID);
+    assert.deepEqual(lib.detectModelCapabilities('claude-sonnet-4'), LEGACY_MID);
+  });
+
+  test('a date suffix is not read as a point release', () => {
+    // `-20250514` must not parse as point release 20 (or 2), which would push
+    // Opus 4.0 past the threshold and wrongly promote it to 1M.
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4-20250514'), LEGACY_REASONING);
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus-4-5-20251101'), LEGACY_REASONING);
+    assert.deepEqual(lib.detectModelCapabilities('claude-sonnet-4-5-20250929'), LEGACY_MID);
+  });
+
+  test('tabled 1M releases still come from their explicit branches', () => {
+    // The boundary either side of the legacy ceiling: 4.6/4.7/4.8 are tabled
+    // facts, not fallback guesses, and must not regress to 200K.
+    for (const id of ['claude-opus-4-6', 'claude-opus-4-7', 'claude-opus-4-8', 'claude-opus-4.8']) {
+      assert.deepEqual(lib.detectModelCapabilities(id), MODERN_REASONING, id);
+    }
+    assert.deepEqual(lib.detectModelCapabilities('claude-sonnet-4-6'),
+      { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' });
+  });
+
+  test('a Haiku point release stays fast tier without thinking', () => {
+    // Haiku's legacy and modern profiles are identical, so this asserts the
+    // guard did not accidentally change the answer for the one family where
+    // forward and legacy agree.
+    const HAIKU = { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' };
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4-5'), HAIKU);
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4-9'), HAIKU);
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4'), HAIKU);
+  });
+
+  test('the fallback does not touch Claude 3.x', () => {
+    assert.deepEqual(lib.detectModelCapabilities('claude-3-5-sonnet-20241022'),
+      { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'mid' });
+  });
+
+  test('non-Claude ids keep their existing behavior — no capability guessing', () => {
+    assert.deepEqual(lib.detectModelCapabilities('gpt-5'),
+      { has_1m_ctx: false, has_thinking: true, has_cache: true, tier: 'reasoning' });
+    assert.deepEqual(lib.detectModelCapabilities('gemini-3-pro'),
+      { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' });
+    assert.deepEqual(lib.detectModelCapabilities('llama-4-405b'), UNKNOWN);
+  });
+
+  test('garbage and unparseable ids still report unknown', () => {
+    assert.deepEqual(lib.detectModelCapabilities('totally-made-up-9'), UNKNOWN);
+    assert.deepEqual(lib.detectModelCapabilities('!!!'), UNKNOWN);
+    assert.deepEqual(lib.detectModelCapabilities(''), UNKNOWN);
+    // Boundary: the fallback needs a parseable generation. A bare family alias
+    // has none, so it is intentionally left as `unknown` rather than guessed.
+    assert.deepEqual(lib.detectModelCapabilities('claude-opus'), UNKNOWN);
+  });
 });
 
 // ─── stripThinkingFrontmatter ───────────────────────────────────────────────

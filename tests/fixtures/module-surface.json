@@ -103,6 +103,7 @@
     "shouldSkipTests:function"
   ],
   "config.cjs": [
+    "buildConfigDefaults:function",
     "cmdConfigEnsureSection:function",
     "cmdConfigGet:function",
     "cmdConfigSet:function",
@@ -240,6 +241,7 @@
     "AGENT_BASE_EFFORT:object",
     "COST_MULTIPLIERS:object",
     "EFFORT_ORDER:object",
+    "EXIT_OK:number",
     "LEGACY_ALIASES:object",
     "MODEL_PROFILES:object",
     "PROVIDER_MODELS:object",
@@ -263,6 +265,7 @@
     "normalizePhaseName:function",
     "output:function",
     "pathExistsInternal:function",
+    "reportsFailure:function",
     "resolveComplexityTier:function",
     "resolveEffortInternal:function",
     "resolveModelInternal:function",
@@ -484,7 +487,8 @@
     "collectAllPatterns:function",
     "extractFieldSection:function",
     "extractPatternBody:function",
-    "lintPatterns:function"
+    "lintPatterns:function",
+    "resolveLearningsRoot:function"
   ],
   "links.cjs": [
     "DEFAULT_DOC_ROOTS:object",

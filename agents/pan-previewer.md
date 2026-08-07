@@ -55,7 +55,7 @@ Before writing the report, think through:
 
 <output_contract>
 
-Write exactly one file at the path provided in your prompt. Use the template at `pan-wizard-core/templates/preview-report.md` as the skeleton.
+Write exactly one file at the path provided in your prompt. Use the template at `~/.claude/pan-wizard-core/templates/preview-report.md` as the skeleton.
 
 **For `phase` mode**, output path is `.planning/phases/<N>/preview.md`. Required sections:
 - `# Phase Preview: Phase N — <name>`

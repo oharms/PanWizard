@@ -93,8 +93,8 @@ Proceed to Step 1.
 ```bash
 ls "$PHASE_DIR"/*-plan.md 2>/dev/null
 ls "$PHASE_DIR"/*-summary.md 2>/dev/null
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM"
-grep -E "^| $PHASE_NUM" .planning/requirements.md 2>/dev/null
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM"
+grep -E "^\|[^|]*\| *Phase +$PHASE_NUM " .planning/requirements.md 2>/dev/null
 ```
 
 Extract phase goal from roadmap.md — this is the outcome to verify, not the tasks.
@@ -171,7 +171,7 @@ must_haves:
 If no must_haves in frontmatter, check for Success Criteria:
 
 ```bash
-PHASE_DATA=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM" --raw)
+PHASE_DATA=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM" --raw)
 ```
 
 Parse the `success_criteria` array from the JSON output. If non-empty:
@@ -214,7 +214,7 @@ For each truth:
 Use pan-tools for artifact verification against must_haves in PLAN frontmatter:
 
 ```bash
-ARTIFACT_RESULT=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs verify artifacts "$PLAN_PATH")
+ARTIFACT_RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify artifacts "$PLAN_PATH")
 ```
 
 Parse JSON result: `{ all_passed, passed, total, artifacts: [{path, exists, issues, passed}] }`
@@ -263,7 +263,7 @@ Key links are critical connections. If broken, the goal fails even with all arti
 Use pan-tools for key link verification against must_haves in PLAN frontmatter:
 
 ```bash
-LINKS_RESULT=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs verify key-links "$PLAN_PATH")
+LINKS_RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify key-links "$PLAN_PATH")
 ```
 
 Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, verified, detail}] }`
@@ -373,12 +373,12 @@ Identify files modified in this phase from summary.md key-files section, or extr
 
 ```bash
 # Option 1: Extract from SUMMARY frontmatter
-SUMMARY_FILES=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$PHASE_DIR"/*-summary.md --fields key-files)
+SUMMARY_FILES=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$PHASE_DIR"/*-summary.md --fields key-files)
 
 # Option 2: Verify commits exist (if commit hashes documented)
 COMMIT_HASHES=$(grep -oE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-summary.md | head -10)
 if [ -n "$COMMIT_HASHES" ]; then
-  COMMITS_VALID=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs verify commits $COMMIT_HASHES)
+  COMMITS_VALID=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify commits $COMMIT_HASHES)
 fi
 
 # Fallback: grep for files
@@ -404,7 +404,7 @@ Categorize: 🛑 Blocker (prevents goal) | ⚠️ Warning (incomplete) | ℹ️ 
 ### 7b.1: Per-Phase Standards Tracking
 
 ```bash
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs standards phase-track <phase-number>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs standards phase-track <phase-number>
 ```
 
 This returns which standards are relevant to THIS phase based on its plan content keywords, plus compliance state. Parse:
@@ -417,7 +417,7 @@ For selected standards with 0% coverage: add as **warning** — "Standard {name}
 ### 7b.2: Project-Wide Standards Status
 
 ```bash
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs standards status
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs standards status
 ```
 
 If `overall_status` is not `none`, check phase artifacts against selected standards:
@@ -445,7 +445,7 @@ Include in verification report under a "### Standards Compliance" section:
 - Items auto-ticked during this verification (list specifically)
 - Recommended external tools if coverage is low:
   ```bash
-  node ./.claude/pan-wizard-core/bin/pan-tools.cjs standards tools
+  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs standards tools
   ```
 
 This is advisory only — standards gaps do NOT block verification status. They appear as warnings/info in the report.

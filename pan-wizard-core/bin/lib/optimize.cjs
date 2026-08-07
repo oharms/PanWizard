@@ -121,7 +121,7 @@ function initTraceSession(cwd, opts = {}) {
 
     return { session_id: sessionId, started_at: meta.started_at, directory: sessionDir, reused: false };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'trace_init_failed' };
   }
 }
 
@@ -278,7 +278,7 @@ function endTraceSession(cwd, sessionId) {
       ended_at: meta.ended_at,
     };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'trace_read_failed' };
   }
 }
 
@@ -303,7 +303,7 @@ function reconcileTraceSession(cwd, sessionId) {
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
     return { session_id: sid, reconciled: true, event_count: counts.event_count, malformed_count: counts.malformed_count };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'trace_write_failed' };
   }
 }
 
@@ -349,7 +349,7 @@ function readTraceSession(cwd, sessionId) {
 
     return { session_id: sessionId, metadata, events, event_count: events.length, malformed_count: malformed };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'trace_end_failed' };
   }
 }
 
@@ -380,7 +380,7 @@ function listTraceSessions(cwd) {
 
     return { sessions, count: sessions.length };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'trace_reconcile_failed' };
   }
 }
 
@@ -585,7 +585,7 @@ function listOptimizationReports(cwd) {
 
     return { reports, count: reports.length };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'report_write_failed' };
   }
 }
 
@@ -626,8 +626,19 @@ function applyReportRecommendations(cwd, reportPath) {
   const applied = [];
   const skipped = [];
 
+  const resolvedCwd = path.resolve(cwd);
   for (const action of actions) {
     try {
+      // Containment: action.path on memory writes is report/agent-authored and
+      // must stay inside the project. A `../` (or absolute) path otherwise
+      // escapes and writes anywhere the process can (M23, ADR audit 2026-08).
+      if (action.type === 'memory' || action.type === 'memory_append') {
+        const abs = path.resolve(cwd, action.path || '');
+        if (abs !== resolvedCwd && !abs.startsWith(resolvedCwd + path.sep)) {
+          skipped.push({ action, reason: 'path escapes project root — skipped' });
+          continue;
+        }
+      }
       if (action.type === 'memory') {
         // Write new memory entry (skip if file exists to avoid overwriting manual edits)
         const memPath = path.join(cwd, action.path);
@@ -751,7 +762,7 @@ function getOptimizeStats(cwd) {
       current_session: getCurrentSessionId(cwd),
     };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message || 'apply_failed' };
   }
 }
 

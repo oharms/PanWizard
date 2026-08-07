@@ -1,7 +1,7 @@
 # ADR-0019: End-to-End User Acceptance Testing
 
 ## Status
-Proposed
+Accepted (shipped in v2.3.0 — 2026-03-03)
 
 ## Context
 ADR-0018 introduced the "User Reality Testing" system: a scenario runner (`createScenarioRunner`), installer function extraction (`install-lib.cjs`), 47 scenario tests, and a CI pipeline. These tests validate that `pan-tools.cjs` commands work when run from an installed location across all 5 runtimes.

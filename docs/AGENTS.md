@@ -1,6 +1,6 @@
 # PAN Agent System
 
-PAN uses specialized agents, each running as a subagent in a fresh 200K context window. Agents are spawned by workflow orchestrators via the `Task` tool and communicate exclusively through `.planning/` files (and, since v3.0, `.planning/bus/<channel>.jsonl` for hierarchical coordination). They never communicate directly with each other.
+PAN uses specialized agents, each running as a subagent in a fresh context window. Agents are spawned by workflow orchestrators via the `Task` tool and communicate exclusively through `.planning/` files (and, since v3.0, `.planning/bus/<channel>.jsonl` for hierarchical coordination). They never communicate directly with each other.
 
 **Other docs:** [Architecture](ARCHITECTURE.md) · [Hooks](HOOKS.md) · [CLI Reference](CLI-REFERENCE.md) · [Development](DEVELOPMENT.md)
 
@@ -80,22 +80,26 @@ PAN uses specialized agents, each running as a subagent in a fresh 200K context 
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
-| `pan-release` | Release squad. Ships approved, green work behind a human gate — prepares the squash-merge, runs the configured verification, surfaces an `always-ask` approval request, tags the release, and rolls back via `git revert` / previous tag. Never codes; never merges to a protected branch itself. | `/pan:army` (release phase) | Read, Grep, Glob, Bash | amber |
+| `pan-release` | Release squad. Ships approved, green work behind a human gate — prepares the squash-merge, runs the configured verification, surfaces an `always-ask` approval request, tags the release, and rolls back via `git revert` / previous tag. Instructed not to write code and not to merge to a protected branch itself — with `Bash` in the grant beside this cell, that is prompt discipline rather than a runtime block, so read it as the behaviour PAN asks for and branch protection as the rail that holds. | `/pan:army` (release phase) | Read, Grep, Glob, Bash | amber |
 
 ---
 
 ## Squad model (v3.11, ADR-0032)
 
-For a bot-army campaign (`/pan:army`), the agents are organized into four role-scoped **squads** under the `pan-conductor` coordinator. A squad is a named grouping with a least-privilege tool contract and a model tier; resolve it at runtime with `pan-tools squad list` / `squad show <name>` rather than hardcoding rosters.
+For a bot-army campaign (`/pan:army`), the agents are organized into role-scoped **squads** under the `pan-conductor` coordinator. A squad is a named grouping with an `access` label and a model tier; resolve it at runtime with `pan-tools squad list` / `squad show <name>` rather than hardcoding rosters.
 
-| Squad | Role | Tier | Access | Agents |
+| Squad | Role | Tier | `access` | Agents |
 |-------|------|------|--------|--------|
-| Architecture | Design before code, contract-first | reasoning | read-only | roadmapper, planner, plan-checker, project/phase researchers, research-synthesizer |
-| Build | Turn design into committed code | reasoning | read / write / bash | executor (one `army/<task>` branch + worktree per agent) |
-| Quality | Adversarially break what Build makes | mid | read-only | reviewer, hardener, meta-reviewer, verifier, integration-checker, debugger |
-| Release | Ship safely behind a human gate | mid | always-ask | `pan-release` |
+| Architecture | Design before code, contract-first | reasoning | `read-only` | roadmapper, planner, designer, plan-checker, design-checker, project/phase researchers, research-synthesizer |
+| Build | Turn design into committed code | reasoning | `read-write-bash` | executor (one `army/<task>` branch + worktree per agent) |
+| Quality | Adversarially break what Build makes | mid | `read-only` | reviewer, hardener, meta-reviewer, verifier, integration-checker, debugger |
+| Release | Ship safely behind a human gate | mid | `always-ask` | `pan-release` |
 
-Outside the squads sit the coordinator (`pan-conductor`, Tier 0) and the worker/utility agents — `pan-document_code`, `pan-distiller` (Haiku-tier narrow jobs), plus `pan-optimizer`, `pan-experiment-runner`, `pan-knowledge`, `pan-counterfactual`, `pan-previewer` (invoked directly by their own commands, not delegated through a squad). A drift test pins squad roster ⇄ agent files ⇄ `AGENT_BASE_EFFORT`, so every shipped agent is accounted for in exactly one place.
+**The `access` column is advisory, and does not always match the tool grant.** `squads.cjs` describes itself as "a registry + resolver only — it modifies no agent and changes no execution path", so these values are the contract the conductor's prompt is written around, not a sandbox the runtime imposes. Compare them against the real grants with `grep '^tools:' agents/*.md` and expect divergence: several agents in a `read-only` squad hold `Write` because they emit planning or verification artifacts. What the grants *do* enforce is delegation depth — `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another, so squad members cannot fan out further.
+
+**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not what resolves an agent's model; that comes from the active `model_profile` (`quality` and `balanced` are `reasoning` for every agent, and `budget` is the only profile that down-tiers), plus any `model:` pin in an agent's own frontmatter. So the `mid` on the Quality and Release rows does not describe what those agents run under the default profile — under `quality` and `balanced` they resolve `reasoning` like everything else. See [Model Profiles](#model-profiles) for the per-agent matrix.
+
+Outside the squads sit the coordinator (`pan-conductor`, Tier 0) and the worker/utility agents — `pan-document_code`, `pan-distiller` (narrow, low-effort jobs — the `budget` profile is the only one that drops them to the fast tier), plus `pan-optimizer`, `pan-experiment-runner`, `pan-knowledge`, `pan-counterfactual`, `pan-previewer` (invoked directly by their own commands, not delegated through a squad). A drift test pins squad roster ⇄ agent files ⇄ `AGENT_BASE_EFFORT`, so every shipped agent is accounted for in exactly one place.
 
 ---
 
@@ -111,7 +115,7 @@ Orchestrator (command/workflow)
   │      - Prompt with <files_to_read> block
   │      - Model parameter (opus/sonnet/haiku/inherit)
   │
-  Agent (fresh 200K context)
+  Agent (fresh context)
   │
   ├── 4. Reads all files listed in <files_to_read>
   ├── 5. Executes its specialized task
@@ -643,7 +647,7 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 | pan-experiment-runner | reasoning | reasoning | fast |
 | pan-release (v3.11+) | reasoning | reasoning | fast |
 
-**Tier mapping by provider:** Anthropic: reasoning → inherit (Opus), mid → Sonnet, fast → Haiku. OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents. Legacy names (`opus`, `sonnet`, `haiku`) still work as aliases.
+**Tier mapping by provider:** Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents. Legacy names (`opus`, `sonnet`, `haiku`) still work as aliases.
 
 **Design rationale (cost reset, 2026-07):**
 - **quality + balanced both inherit** — every agent runs on the model you launched with; PAN no longer demotes agents to cheaper models by default. Context isolation, not a weaker model, keeps the main conversation clean.
@@ -673,11 +677,11 @@ Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the 
 
 Default budget for agents without explicit fields is 2000 (defined in `THINKING_BUDGETS.default`).
 
-### Capability-aware routing (Opus 4.7, E-7)
+### Capability-aware routing (E-7, since v2.10.0)
 
 The tier resolved by profile can be adjusted by capability hints passed to `resolveModel(agent, {context_estimate, needs_thinking, cache_warm})`:
 
-- `context_estimate > 700000` → force reasoning tier (only 1M-context model)
+- `context_estimate > 700000` (`LARGE_CONTEXT_TOKEN_THRESHOLD`) → force the reasoning tier, i.e. refuse to down-tier and let the agent run on the session model. PAN doesn't verify that model's real window — it just stops nominating a cheaper one for work this large.
 - `needs_thinking` on a fast-tier agent → upgrade fast → mid
 - `cache_warm + !needs_thinking + context_estimate < 50000` on a mid-tier agent → downgrade mid → fast (cheap, cached, simple)
 
@@ -685,7 +689,7 @@ See `/pan:profile` for the full decision tree.
 
 ---
 
-## Cross-Phase Agent Memory (Opus 4.7, E-4)
+## Cross-Phase Agent Memory (E-4, since v2.10.0)
 
 Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<agent>.md` managed by the `memory.cjs` core module. Agents can write lessons learned in one phase that become visible to all future invocations of the same agent.
 
@@ -718,7 +722,7 @@ Since v3.4.0, `/pan:exec-phase <N> --hierarchical` spawns `pan-conductor` as a t
 
 **Audit trail:** every spawn and completion is logged to `.planning/orchestration/trace.json` (authoritative) and published to the `orchestrator` bus channel (`.planning/bus/orchestrator.jsonl`) for observability.
 
-**Runtime gating:** Claude Code + Opus 4.7 only. Other runtimes fall back to flat exec with a warning. Details in [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md).
+**Runtime gating:** Claude Code only — agents-spawn-agents needs native sub-agent spawning, which the other four runtimes don't support cleanly. There they fall back to flat exec with a warning. The gate is purely the runtime: `pan-conductor` ships no `model:` frontmatter, so it inherits your session model, and no model check exists anywhere in the path. Details in [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md).
 
 **When to use:**
 - Phases with ≥4 autonomous plans that genuinely parallelize
@@ -734,10 +738,10 @@ See [commands/pan/exec-phase.md](../commands/pan/exec-phase.md) for the flag doc
 
 ### Campaign mode (the army coordinator, v3.11, ADR-0033)
 
-When invoked by `/pan:army`, `pan-conductor` runs as **Mission Control** for a whole-project campaign rather than a single phase — same safety harness, wider scope. In this mode it delegates to **squads, not bare agents**, resolving the roster at runtime via `pan-tools squad list` / `squad show <name>`. Each mission is routed to the squad that owns its lifecycle role: Architecture (design, read-only), Build (code, read/write/bash), Quality (adversarial, read-only), Release (`pan-release`, always-ask).
+When invoked by `/pan:army`, `pan-conductor` runs as **Mission Control** for a whole-project campaign rather than a single phase — same safety harness, wider scope. In this mode it delegates to **squads, not bare agents**, resolving the roster at runtime via `pan-tools squad list` / `squad show <name>`. Each mission is routed to the squad that owns its lifecycle role: Architecture (design), Build (code, read/write/bash), Quality (adversarial review), Release (`pan-release`, always-ask). Those role labels are the contract the conductor's prompt assigns — `squads.cjs` publishes them as advisory metadata and "changes no execution path", so the binding grant stays each agent's own `tools:` frontmatter.
 
 - **Build parallelizes by worktree** — each concurrent `pan-executor` gets its own `army/<task>` branch and isolated worktree (`pan-tools worktree create "<task>"`) so builders never share a tree or file.
-- **Integration is human-gated** — the conductor never merges to a protected branch; the Release squad prepares the merge and surfaces an `always-ask` approval. Recovery is `git revert` / previous tag, never force-push.
+- **Integration is human-gated** — the conductor is instructed never to merge to a protected branch; the Release squad prepares the merge and surfaces an `always-ask` approval. Branch protection on the repo is what makes that unbypassable rather than merely instructed. Recovery is `git revert` / previous tag, never force-push.
 - **The loop carries learnings** — after each mission, squad summaries return to the conductor and `/pan:retro --write-memory` persists recurring patterns to agent memory (the "Dreaming" step).
 
 Every Tier-0 safety cap (nesting depth 2, spawn/budget ceiling, `.planning/orchestration/abort` kill-switch) still applies, unchanged. See [agents/pan-conductor.md](../agents/pan-conductor.md) `<campaign_mode>` and [ADR-0033](decisions/ADR-0033-army-campaign.md).

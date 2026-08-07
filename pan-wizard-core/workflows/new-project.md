@@ -63,7 +63,7 @@ The document should describe what you want to build.
 **MANDATORY FIRST STEP — Execute these checks before ANY user interaction:**
 
 ```bash
-INIT=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs init new-project)
+INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init new-project)
 ```
 
 Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `project_exists`, `has_codebase_map`, `planning_exists`, `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map`, `has_git`, `project_path`.
@@ -154,13 +154,13 @@ Create `.planning/config.json` with mode set to "yolo":
 
 ```bash
 mkdir -p .planning
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "chore: add project config" --files .planning/config.json
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "chore: add project config" --files .planning/config.json
 ```
 
 **Persist auto-advance to config (survives context compaction):**
 
 ```bash
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advance true
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advance true
 ```
 
 Proceed to Step 4 (skip Steps 3 and 5).
@@ -304,19 +304,19 @@ Do not compress. Capture everything gathered.
 
 ```bash
 mkdir -p .planning
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: initialize project" --files .planning/project.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: initialize project" --files .planning/project.md
 ```
 
 ## 5. Workflow Preferences
 
 **If auto mode:** Skip — config was collected in Step 2a. Proceed to Step 5.5.
 
-**Check for global defaults** at `~/.pan-wizard-core/defaults.json`. If the file exists, offer to use saved defaults:
+**Check for global defaults** at `~/.pan-wizard/defaults.json`. If the file exists, offer to use saved defaults:
 
 ```
 AskUserQuestion([
   {
-    question: "Use your saved default settings? (from ~/.pan-wizard-core/defaults.json)",
+    question: "Use your saved default settings? (from ~/.pan-wizard/defaults.json)",
     header: "Defaults",
     multiSelect: false,
     options: [
@@ -327,9 +327,9 @@ AskUserQuestion([
 ])
 ```
 
-If "Yes": read `~/.pan-wizard-core/defaults.json`, use those values for config.json, and skip directly to **Commit config.json** below.
+If "Yes": read `~/.pan-wizard/defaults.json`, use those values for config.json, and skip directly to **Commit config.json** below.
 
-If "No" or `~/.pan-wizard-core/defaults.json` doesn't exist: proceed with the questions below.
+If "No" or `~/.pan-wizard/defaults.json` doesn't exist: proceed with the questions below.
 
 **Round 1 — Core workflow settings (4 questions):**
 
@@ -421,9 +421,9 @@ questions: [
     question: "Which AI models for planning agents?",
     multiSelect: false,
     options: [
-      { label: "Balanced (Recommended)", description: "Sonnet for most agents — good quality/cost ratio" },
-      { label: "Quality", description: "Opus for research/roadmap — higher cost, deeper analysis" },
-      { label: "Budget", description: "Haiku where possible — fastest, lowest cost" }
+      { label: "Balanced (Recommended)", description: "reasoning tier for every agent — the default (identical to quality post-COST-RESET)" },
+      { label: "Quality", description: "reasoning tier for every agent — identical to balanced, so switching between the two changes nothing" },
+      { label: "Budget", description: "mid tier for writing, fast tier for research/verification — fastest, lowest cost" }
     ]
   }
 ]
@@ -456,7 +456,7 @@ Create `.planning/config.json` with all settings:
 **Commit config.json:**
 
 ```bash
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "chore: add project config" --files .planning/config.json
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "chore: add project config" --files .planning/config.json
 ```
 
 **Note:** Run `/pan:settings` anytime to update these preferences.
@@ -510,7 +510,7 @@ Display spawning indicator:
 Spawn 4 parallel pan-project-researcher agents with path references:
 
 ```
-Task(prompt="First, read ./.claude/agents/pan-project-researcher.md for your role and instructions.
+Task(prompt="First, read ~/.claude/agents/pan-project-researcher.md for your role and instructions.
 
 <research_type>
 Project Research — Stack dimension for [domain].
@@ -546,11 +546,11 @@ Your stack.md feeds into roadmap creation. Be prescriptive:
 
 <output>
 Write to: .planning/research/stack.md
-Use template: ./.claude/pan-wizard-core/templates/research-project/stack.md
+Use template: ~/.claude/pan-wizard-core/templates/research-project/stack.md
 </output>
 ", subagent_type="general-purpose", model="{researcher_model}", description="Stack research")
 
-Task(prompt="First, read ./.claude/agents/pan-project-researcher.md for your role and instructions.
+Task(prompt="First, read ~/.claude/agents/pan-project-researcher.md for your role and instructions.
 
 <research_type>
 Project Research — Features dimension for [domain].
@@ -586,11 +586,11 @@ Your features.md feeds into requirements definition. Categorize clearly:
 
 <output>
 Write to: .planning/research/features.md
-Use template: ./.claude/pan-wizard-core/templates/research-project/features.md
+Use template: ~/.claude/pan-wizard-core/templates/research-project/features.md
 </output>
 ", subagent_type="general-purpose", model="{researcher_model}", description="Features research")
 
-Task(prompt="First, read ./.claude/agents/pan-project-researcher.md for your role and instructions.
+Task(prompt="First, read ~/.claude/agents/pan-project-researcher.md for your role and instructions.
 
 <research_type>
 Project Research — Architecture dimension for [domain].
@@ -626,11 +626,11 @@ Your architecture.md informs phase structure in roadmap. Include:
 
 <output>
 Write to: .planning/research/architecture.md
-Use template: ./.claude/pan-wizard-core/templates/research-project/architecture.md
+Use template: ~/.claude/pan-wizard-core/templates/research-project/architecture.md
 </output>
 ", subagent_type="general-purpose", model="{researcher_model}", description="Architecture research")
 
-Task(prompt="First, read ./.claude/agents/pan-project-researcher.md for your role and instructions.
+Task(prompt="First, read ~/.claude/agents/pan-project-researcher.md for your role and instructions.
 
 <research_type>
 Project Research — Pitfalls dimension for [domain].
@@ -666,7 +666,7 @@ Your pitfalls.md prevents mistakes in roadmap/planning. For each pitfall:
 
 <output>
 Write to: .planning/research/pitfalls.md
-Use template: ./.claude/pan-wizard-core/templates/research-project/pitfalls.md
+Use template: ~/.claude/pan-wizard-core/templates/research-project/pitfalls.md
 </output>
 ", subagent_type="general-purpose", model="{researcher_model}", description="Pitfalls research")
 ```
@@ -688,7 +688,7 @@ Synthesize research outputs into summary.md.
 
 <output>
 Write to: .planning/research/summary.md
-Use template: ./.claude/pan-wizard-core/templates/research-project/summary.md
+Use template: ~/.claude/pan-wizard-core/templates/research-project/summary.md
 Commit after writing.
 </output>
 ", subagent_type="pan-research-synthesizer", model="{synthesizer_model}", description="Synthesize research")
@@ -727,7 +727,7 @@ Read project.md and extract:
 - Stated constraints (budget, timeline, tech limitations)
 - Any explicit scope boundaries
 
-**If research exists:** Read research/FEATURES.md and extract feature categories.
+**If research exists:** Read research/features.md and extract feature categories.
 
 **If auto mode:**
 - Auto-include all table stakes features (users expect these)
@@ -853,7 +853,7 @@ If "adjust": Return to scoping.
 **Commit requirements:**
 
 ```bash
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: define v1 requirements" --files .planning/requirements.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: define v1 requirements" --files .planning/requirements.md
 ```
 
 ## 8. Create Roadmap
@@ -983,7 +983,7 @@ Use AskUserQuestion:
 **Commit roadmap (after approval or auto mode):**
 
 ```bash
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: create roadmap ([N] phases)" --files .planning/roadmap.md .planning/state.md .planning/requirements.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: create roadmap ([N] phases)" --files .planning/roadmap.md .planning/state.md .planning/requirements.md
 ```
 
 ## 8.5. Standards Recommendation
@@ -991,7 +991,7 @@ node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: create roadmap ([
 **After roadmap is committed, offer standards selection based on project type.**
 
 ```bash
-RECOMMEND=$(node ./.claude/pan-wizard-core/bin/pan-tools.cjs standards recommend)
+RECOMMEND=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs standards recommend)
 ```
 
 If the command succeeds (project.md exists and project types detected):
@@ -1004,9 +1004,9 @@ Parse JSON for `project_types` and `recommendations` arrays.
 HIGH_IDS=$(echo "$RECOMMEND" | jq -r '.recommendations[] | select(.priority=="high") | .id')
 if [ -n "$HIGH_IDS" ]; then
   for id in $HIGH_IDS; do
-    node ./.claude/pan-wizard-core/bin/pan-tools.cjs standards select "$id"
+    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs standards select "$id"
   done
-  node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: add recommended standards" --files .planning/standards.md
+  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: add recommended standards" --files .planning/standards.md
 fi
 ```
 
@@ -1036,12 +1036,12 @@ Use AskUserQuestion:
 
 For each selected standard:
 ```bash
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs standards select [id]
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs standards select [id]
 ```
 
 If any selected, commit:
 ```bash
-node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: add project standards" --files .planning/standards.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: add project standards" --files .planning/standards.md
 ```
 
 Display:
@@ -1058,7 +1058,7 @@ Run /pan:health --standards to check compliance anytime.
 
 ```bash
 if [ "$(git status --porcelain .planning/ 2>/dev/null)" ]; then
-  node ./.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: bundle remaining .planning artifacts (safety-net)" --files .planning/
+  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: bundle remaining .planning artifacts (safety-net)" --files .planning/
 fi
 ```
 

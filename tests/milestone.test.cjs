@@ -229,7 +229,9 @@ describe('requirements mark-complete command', () => {
 
   test('returns gracefully when requirements.md is missing', () => {
     const result = runPanTools('requirements mark-complete REQ-01', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    // Exit 1: no requirement was marked, so the milestone record does not reflect the
+    // work. "Gracefully" means a parseable JSON body on stdout, not a success code.
+    assert.equal(result.success, false, 'nothing was marked complete');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.updated, false);

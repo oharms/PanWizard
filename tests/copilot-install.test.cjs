@@ -131,6 +131,22 @@ describe('Copilot CLI: install structure', () => {
     assert.ok(jsFiles.length >= 3, `should have 3+ hook files, got ${jsFiles.length}`);
   });
 
+  test('pan-check-update templating: home dir is .copilot, project dir is .github (L37 regression)', () => {
+    // '.claude' plays two roles: home-anchored (cacheDir, globalVersionFile) and
+    // project-anchored (projectVersionFile). Templating both with one token
+    // produced a stray ~/.github (home) for --local Copilot. Home paths must use
+    // Copilot's global config dir (.copilot); the project VERSION path uses .github.
+    const hook = fs.readFileSync(
+      path.join(tempDir, '.github', 'hooks', 'pan-check-update.js'), 'utf8');
+    assert.match(hook, /join\(\s*homeDir\s*,\s*'\.copilot'\s*,\s*'cache'\)/,
+      "home-anchored cacheDir should resolve to '.copilot', not '.github'");
+    assert.match(hook, /join\(\s*cwd\s*,\s*'\.github'\s*,\s*'pan-wizard-core'/,
+      "project-anchored VERSION path should resolve to '.github'");
+    // The home cache dir must NOT be templated to '.github'.
+    assert.doesNotMatch(hook, /join\(\s*homeDir\s*,\s*'\.github'/,
+      'home paths must not use the project dir name (stray ~/.github)');
+  });
+
   // Copilot CLI reads hook config from .github/hooks/*.json (version:1), NOT
   // config.json — migrated 2026-06.
   test('.github/hooks/pan.json exists with version:1 schema', () => {

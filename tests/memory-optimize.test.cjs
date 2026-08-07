@@ -124,6 +124,28 @@ describe('memory optimize — command (dispatcher)', () => {
     assert.ok(r.success, r.error);
     assert.equal(JSON.parse(r.output).state.reason, 'no_state_md');
   });
+
+  // M21: the per-agent log consolidation used to iterate the return OBJECT of
+  // listMemoryAgents() (a TypeError, silently swallowed), so it never ran. With
+  // the fix, an over-cap agent log is detected and consolidated.
+  test('consolidates an over-cap agent log (result.agents non-empty)', () => {
+    writeState(bloated); // any state.md so the command proceeds
+    const memDir = path.join(cwd, '.planning', 'memory');
+    fs.mkdirSync(memDir, { recursive: true });
+    const entries = [];
+    for (let i = 0; i < 520; i++) entries.push(`- 2026-08-05 lesson ${i}`); // > DEFAULT_MAX_ENTRIES (500)
+    fs.writeFileSync(path.join(memDir, 'pan-tester.md'), S('# pan-tester memory', '', '## Entries', ...entries, ''), 'utf-8');
+
+    const r = runPanTools('memory optimize --apply --keep 50', cwd);
+    assert.ok(r.success, r.error);
+    const out = JSON.parse(r.output);
+    assert.ok(Array.isArray(out.agents) && out.agents.length >= 1, 'over-cap agent detected');
+    const rec = out.agents.find(a => a.agent === 'pan-tester');
+    assert.ok(rec, 'pan-tester surfaced');
+    assert.equal(rec.over_cap, true);
+    assert.equal(rec.entries, 520);
+    assert.ok(rec.removed > 0, 'entries were compacted with --apply');
+  });
 });
 
 describe('maybeAutoOptimizeMemory — auto-wiring (A3)', () => {

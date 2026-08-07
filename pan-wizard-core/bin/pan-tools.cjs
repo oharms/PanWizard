@@ -33,7 +33,7 @@
  *     [--limit N] [--freshness day|week|month]
  *
  * Phase Listing:
- *   phases list [--type plan|summary]  List phases with optional type filter
+ *   phases list [--type plans|summaries]  List phases with optional type filter
  *     [--phase N] [--include-archived]
  *
  * Phase Operations:
@@ -283,7 +283,7 @@ async function main() {
   const command = args[0];
 
   if (!command) {
-    error('Usage: pan-tools <command> [args] [--raw] [--cwd <path>]\nCommands: state, state-snapshot, resolve-model, find-phase, commit, verify-summary, verify, frontmatter, template, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, summary-extract, rollback-snapshot, websearch, focus, preflight, dashboard, learnings, deps, standards');
+    error('Usage: pan-tools <command> [args] [--raw] [--cwd <path>]\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links');
   }
 
   switch (command) {
@@ -530,7 +530,7 @@ async function main() {
       } else if (subcommand === 'stubs') {
         verify.cmdVerifyStubs(cwd, { gate: args.includes('--gate') }, raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs');
       }
       break;
     }
@@ -786,8 +786,12 @@ async function main() {
 
     case 'batch-commit': {
       const itemsJson = args[1];
-      let items = [];
-      try { items = JSON.parse(itemsJson); } catch { /* empty */ }
+      // Report a malformed payload rather than silently reporting 'no_items':
+      // a caller whose JSON was garbled (e.g. shell-stripped quotes) must not be
+      // told there was nothing to commit. Absent arg → genuine empty batch.
+      const items = itemsJson === undefined || itemsJson === ''
+        ? []
+        : parseJsonOrError(itemsJson, 'batch-commit');
       commands.cmdBatchCommit(cwd, items, raw);
       break;
     }
@@ -1295,6 +1299,7 @@ async function main() {
       const subcommand = args[1];
       if (subcommand === 'trace') {
         const traceSub = args[2];
+        const tokensWasted = getArgValue(args, '--tokens-wasted');
         optimize.cmdOptimizeTrace(cwd, traceSub, {
           sessionId: getArgValue(args, '--session'),
           all: args.includes('--all'),
@@ -1306,9 +1311,8 @@ async function main() {
           type: getArgValue(args, '--type'),
           category: getArgValue(args, '--category'),
           impact: getArgValue(args, '--impact'),
-          description: getArgValue(args, '--description'),
           correction: getArgValue(args, '--correction'),
-          tokens_wasted: getArgValue(args, '--tokens-wasted') ? Number(getArgValue(args, '--tokens-wasted')) : null,
+          tokens_wasted: tokensWasted ? Number(tokensWasted) : null,
           context: (() => { const v = getArgValue(args, '--context'); if (!v) return null; try { return JSON.parse(v); } catch { return null; } })(),
         }, raw);
       } else if (subcommand === 'learn') {
@@ -1382,7 +1386,7 @@ async function main() {
         const sourceExperiments = sourceExpsCsv
           ? sourceExpsCsv.split(',').map(s => s.trim()).filter(Boolean)
           : [];
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
 
         const result = optimize.promotePattern(
           { id: patternId, summary, evidence, rule, applies_in: appliesIn, source_experiments: sourceExperiments },
@@ -1396,7 +1400,7 @@ async function main() {
         const patternId = getArgValue(args, '--pattern');
         const scope = getArgValue(args, '--scope');
         const topic = getArgValue(args, '--topic');
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         if (!patternId || !scope || !topic) {
           error('learn unpromote requires --pattern <id> --scope <s> --topic <t>');
         }
@@ -1406,14 +1410,14 @@ async function main() {
       }
 
       if (subcommand === 'list-promoted') {
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         const result = optimize.listPromotedPatterns({ sourceRoot });
         output(result, raw);
         break;
       }
 
       if (subcommand === 'build-index') {
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         const result = learnIndex.cmdBuildIndex(sourceRoot);
         if (raw) {
           output(result, true,
@@ -1428,7 +1432,7 @@ async function main() {
       }
 
       if (subcommand === 'topics-for') {
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         const agent = getArgValue(args, '--agent');
         if (!agent) { error('learn topics-for requires --agent <name>'); }
         const minRelevance = getArgValue(args, '--min-relevance', 'medium');
@@ -1451,7 +1455,7 @@ async function main() {
       }
 
       if (subcommand === 'lint') {
-        const sourceRoot = getArgValue(args, '--source-root') || cwd;
+        const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
         const scope = getArgValue(args, '--scope');
         const strict = args.includes('--strict');
         const result = learnLint.cmdLearnLint(sourceRoot, { scope, strict });
@@ -1466,11 +1470,12 @@ async function main() {
           for (const v of result.violations) {
             lines.push(`[${v.severity.toUpperCase()}] ${v.code} ${v.pattern_id}: ${v.message}`);
           }
-          output(result, true, lines.join('\n'));
+          output(result, true, lines.join('\n'), result.summary.status === 'fail' ? 1 : 0);
         } else {
-          output(result, false);
+          output(result, false, undefined, result.summary.status === 'fail' ? 1 : 0);
         }
-        if (result.summary.status === 'fail') process.exit(1);
+        // exit code carried through output() above (it used to hard-exit 0
+        // before this check, so `learn lint` never gated — M32, ADR audit 2026-08).
         break;
       }
 

@@ -1,6 +1,6 @@
 # Feature Spec: `optimize` Category for focus-auto
 
-**featureAI output** · Status: DESIGN · Date: 2025-07-25
+**featureAI output** · Status: DESIGN · Date: 2026-03-18
 
 ---
 

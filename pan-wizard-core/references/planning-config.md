@@ -101,7 +101,7 @@ To use uncommitted mode:
    git commit -m "chore: stop tracking planning docs"
    ```
 
-4. **Branch merges:** When using `branching_strategy: phase` or `milestone`, the `complete-milestone` workflow automatically strips `.planning/` files from staging before merge commits when `commit_docs: false`.
+4. **Branch merges:** When using `branching_strategy: phase` or `milestone`, the `milestone-done` workflow automatically strips `.planning/` files from staging before merge commits when `commit_docs: false`.
 
 </setup_uncommitted_mode>
 
@@ -113,7 +113,7 @@ To use uncommitted mode:
 |----------|---------------------|--------------|-------------|
 | `none` | Never | N/A | N/A |
 | `phase` | At `execute-phase` start | Single phase | User merges after phase |
-| `milestone` | At first `execute-phase` of milestone | Entire milestone | At `complete-milestone` |
+| `milestone` | At first `execute-phase` of milestone | Entire milestone | At `milestone-done` |
 
 **When `git.branching_strategy: "none"` (default):**
 - All work commits to current branch
@@ -124,13 +124,13 @@ To use uncommitted mode:
 - Branch name from `phase_branch_template` (e.g., `pan/phase-03-authentication`)
 - All plan commits go to that branch
 - User merges branches manually after phase completion
-- `complete-milestone` offers to merge all phase branches
+- `milestone-done` offers to merge all phase branches
 
 **When `git.branching_strategy: "milestone"`:**
 - First `execute-phase` of milestone creates the milestone branch
 - Branch name from `milestone_branch_template` (e.g., `pan/v1.0-mvp`)
 - All phases in milestone commit to same branch
-- `complete-milestone` offers to merge milestone branch to main
+- `milestone-done` offers to merge milestone branch to main
 
 **Template variables:**
 
@@ -172,7 +172,7 @@ if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
 fi
 ```
 
-**Merge options at complete-milestone:**
+**Merge options at milestone-done:**
 
 | Option | Git command | Result |
 |--------|-------------|--------|

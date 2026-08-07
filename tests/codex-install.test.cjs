@@ -43,6 +43,13 @@ describe('Codex: install structure', () => {
     assert.ok(fs.existsSync(path.join(tempDir, '.codex')), '.codex dir should exist');
   });
 
+  test('.codex has the {"type":"commonjs"} marker so CJS hooks survive ESM projects (H1)', () => {
+    const pkg = path.join(tempDir, '.codex', 'package.json');
+    assert.ok(fs.existsSync(pkg), '.codex/package.json marker should exist');
+    assert.equal(JSON.parse(fs.readFileSync(pkg, 'utf-8')).type, 'commonjs',
+      'marker prevents "require is not defined" when the host project is type:module');
+  });
+
   test('skills directory has pan-* skill directories', () => {
     const skillsDir = path.join(tempDir, '.agents', 'skills');
     assert.ok(fs.existsSync(skillsDir), 'skills dir should exist');
@@ -102,6 +109,17 @@ describe('Codex: install structure', () => {
     assert.match(planner, /^developer_instructions = """$/m);
     // pan-planner declares effort: xhigh → model_reasoning_effort
     assert.match(planner, /^model_reasoning_effort = "xhigh"$/m);
+  });
+
+  test('agent TOML files use $pan- syntax, not /pan: (L3 regression)', () => {
+    const agentsDir = path.join(tempDir, '.codex', 'agents');
+    const tomlFiles = fs.readdirSync(agentsDir).filter(f => f.endsWith('.toml'));
+    for (const f of tomlFiles) {
+      const content = fs.readFileSync(path.join(agentsDir, f), 'utf8');
+      const claudeRefs = content.match(/\/pan:[a-z0-9-]+/gi) || [];
+      assert.equal(claudeRefs.length, 0,
+        `${f} should not contain /pan: invocations, found: ${claudeRefs.join(', ')}`);
+    }
   });
 
   test('pan-wizard-core is installed', () => {

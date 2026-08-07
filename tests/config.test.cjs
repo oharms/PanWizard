@@ -256,6 +256,20 @@ describe('config-set command', () => {
     assert.ok(result.error.includes('Usage:'), 'error should include usage message');
   });
 
+  // M11 regression: a key with no value used to report updated:true while
+  // JSON.stringify silently dropped the `undefined` assignment (wrote nothing).
+  test('errors on missing value (does not report a phantom update)', () => {
+    runPanTools('config-ensure-section', tmpDir);
+
+    const result = runPanTools('config-set model_profile', tmpDir);
+    assert.ok(!result.success, 'should fail when value is missing');
+    assert.ok(result.error.includes('Usage:'), 'error should include usage message');
+
+    // The existing value must be untouched (no phantom write of undefined).
+    const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'));
+    assert.strictEqual(config.model_profile, 'balanced', 'value should be unchanged');
+  });
+
   test('creates deeply nested keys with multiple dot segments', () => {
     runPanTools('config-ensure-section', tmpDir);
 
@@ -700,6 +714,36 @@ describe('standards-status command', () => {
     assert.strictEqual(output.checks[0].standard_id, 'owasp-top10', 'check should reference the standard');
     assert.strictEqual(output.checks[0].status, 'configured', 'individual status should be configured');
     assert.strictEqual(output.checks[0].verified_items, 0, 'no items should be verified yet');
+  });
+});
+
+describe('standards-phase-track command', () => {
+  let tmpDir;
+
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('includes phase_name from the phase directory (L8 regression)', () => {
+    // Regression: output read phase.name (nonexistent), so phase_name vanished
+    // from the JSON. It must resolve from the phase dir slug.
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-setup-auth');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-plan.md'), '# Plan\nImplement authentication and login flow.');
+
+    const result = runPanTools('standards phase-track 1', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_name, 'setup-auth');
+  });
+
+  test('includes phase_name in the no-plan-files branch (L8 regression)', () => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '02-billing');
+    fs.mkdirSync(phaseDir, { recursive: true });
+
+    const result = runPanTools('standards phase-track 2', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.phase_name, 'billing');
   });
 });
 

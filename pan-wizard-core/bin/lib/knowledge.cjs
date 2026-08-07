@@ -151,6 +151,22 @@ function conversationsDir(cwd) {
   return path.join(planningPath(cwd), CONVERSATIONS_DIR);
 }
 
+// Phase ids are shaped like "1", "2.1", "06A" — never a path fragment. Validate
+// before using phaseNum as a directory segment so a malformed/traversal value
+// (e.g. "../../../outside") cannot write session.json outside .planning/conversations.
+// Mirrors memory.cjs's validateAgentName hardening convention (2026-07).
+const PHASE_NUM_RE = /^[0-9]+(\.[0-9]+)*[A-Z]?$/i;
+
+function validatePhaseNum(phaseNum) {
+  if (phaseNum === undefined || phaseNum === null || String(phaseNum).trim() === '') {
+    return 'phaseNum required';
+  }
+  if (!PHASE_NUM_RE.test(String(phaseNum))) {
+    return `Invalid phase: ${phaseNum}. Must match ${PHASE_NUM_RE}`;
+  }
+  return null;
+}
+
 function sessionFile(cwd, phaseNum) {
   return path.join(conversationsDir(cwd), String(phaseNum), 'session.json');
 }
@@ -159,6 +175,8 @@ function sessionFile(cwd, phaseNum) {
  * Read or initialize a discussion session for a phase.
  */
 function loadSession(cwd, phaseNum) {
+  const err = validatePhaseNum(phaseNum);
+  if (err) return { error: err };
   const file = sessionFile(cwd, phaseNum);
   try {
     return JSON.parse(fs.readFileSync(file, 'utf-8'));
@@ -176,7 +194,8 @@ function loadSession(cwd, phaseNum) {
  * @returns {{appended: true, turn_count: number, file: string}|{error: string}}
  */
 function appendTurn(cwd, phaseNum, turn) {
-  if (!phaseNum) return { error: 'phaseNum required' };
+  const phaseErr = validatePhaseNum(phaseNum);
+  if (phaseErr) return { error: phaseErr };
   if (!turn || !turn.role || !turn.content) return { error: 'turn requires role + content' };
   if (turn.role !== 'user' && turn.role !== 'agent') {
     return { error: 'turn.role must be "user" or "agent"' };

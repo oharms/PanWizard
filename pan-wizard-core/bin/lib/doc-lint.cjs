@@ -39,7 +39,10 @@ const DEFAULT_SCHEMA_PATH = path.join(
  * @param {string} cwd - working directory (used to resolve relative paths)
  * @param {string} dir - directory to scan (relative to cwd or absolute)
  * @param {object} opts - { schema: string, format: 'json'|'human', strict: bool, exclude: string[], raw: bool }
- * @returns {void} — writes to stdout via output(); exit code via process.exit
+ * @returns {void} — writes to stdout, then exits. Exit code: 0 clean, 1 violations
+ *   found, 2 the schema itself is malformed. output() exits, so every branch that
+ *   calls it must pass its verdict as output()'s 4th argument; a bare
+ *   process.exit() after an output() call is unreachable.
  */
 function cmdDocLint(cwd, dir, opts = {}) {
   const targetDir = path.isAbsolute(dir) ? dir : path.join(cwd, dir);
@@ -63,8 +66,16 @@ function cmdDocLint(cwd, dir, opts = {}) {
         process.stderr.write(`  ${schemaPath}:${e.line} — ${e.message}\n`);
       }
     } else {
-      output({ schema_errors: schemaErrors, schema: schemaPath }, false);
+      // Exit 2 is passed to output() because output() EXITS. The `process.exit(2)`
+      // below it was dead code on this branch, so `doc-lint --format json` against a
+      // malformed schema printed the errors and reported SUCCESS -- nothing was
+      // linted, and the caller was told everything was fine. The exit code is not
+      // derived here: `schema_errors` is a plural collection, deliberately outside
+      // output()'s error family (an empty array is truthy), so gates state their
+      // verdict explicitly.
+      output({ schema_errors: schemaErrors, schema: schemaPath }, false, undefined, 2);
     }
+    // Reached only on the --raw branch above, which does not call output().
     process.exit(2);
   }
 
@@ -102,6 +113,9 @@ function cmdDocLint(cwd, dir, opts = {}) {
       process.stdout.write(summaryLine(violations, fileCount) + '\n');
     }
   } else {
+    // Same verdict the --raw branch reports via the process.exit() below; passed
+    // explicitly because output() exits and would otherwise discard it, making
+    // `doc-lint --format json` a linter that never fails.
     output({
       directory: dir,
       schema: schemaPath,
@@ -109,7 +123,7 @@ function cmdDocLint(cwd, dir, opts = {}) {
       error_count: errorCount,
       warning_count: warningCount,
       violations,
-    }, false);
+    }, false, undefined, errorCount > 0 ? 1 : 0);
   }
 
   process.exit(errorCount > 0 ? 1 : 0);
@@ -131,8 +145,9 @@ function cmdDocLintSchemaCheck(cwd, schemaPath, opts = {}) {
     error_count: errors.length,
     errors,
   };
-  output(result, opts.raw);
-  process.exit(result.ok ? 0 : 1);
+  // output() is called on both branches here, so the process.exit() below it was
+  // unconditionally dead: schema-check reported a malformed schema and exited 0.
+  output(result, opts.raw, undefined, result.ok ? 0 : 1);
 }
 
 // ─── Count-drift lint (IMPROVEMENT-TODO P1, v3.7.10) ────────────────────────
@@ -178,6 +193,7 @@ const COUNT_ALLOWED_RE = /(^|[\\/])(CLAUDE\.md|CHANGELOG\.md|MEMORY\.md|SKILLS-F
 const COUNT_ALLOWED_DIR_SEGMENTS = [
   'decisions',  // ADRs — frozen
   'specs',      // feature specs — frozen
+  'audits',     // audit reports — point-in-time snapshots, exempt by their own preamble
   'experiments', // harvested experiment artifacts
   'learnings',  // AI-derived patterns; evidence quotes reference numbers
   'archive',    // archived old docs
@@ -278,8 +294,9 @@ function cmdDocLintCounts(cwd, dir, opts = {}) {
       process.stdout.write(`\n${violations.length} violation(s) across ${fileCount} files\n`);
     }
   } else {
-    output(result, false);
+    output(result, false, undefined, violations.length > 0 ? 1 : 0);
   }
+  // Reached only on the --raw branch (release-check gate 4 relies on this code).
   process.exit(violations.length > 0 ? 1 : 0);
 }
 
@@ -355,8 +372,9 @@ function cmdDocLintFlags(cwd, opts = {}, raw) {
       process.stdout.write(`\n${r.violation_count} aspirational flag(s)\n`);
     }
   } else {
-    output(r, false);
+    output(r, false, undefined, r.violation_count > 0 ? 1 : 0);
   }
+  // Reached only on the --raw branch.
   process.exit(r.violation_count > 0 ? 1 : 0);
 }
 

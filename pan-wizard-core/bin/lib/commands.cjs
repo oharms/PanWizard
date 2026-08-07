@@ -275,6 +275,17 @@ function cmdEstimateCost(cwd, raw) {
  * @returns {void}
  */
 /**
+ * List the paths currently in the index (staged), or [] if git says nothing.
+ * @param {string} cwd - Working directory
+ * @returns {string[]} Staged paths, as git reports them
+ */
+function stagedFiles(cwd) {
+  const r = execGit(cwd, ['diff', '--cached', '--name-only']);
+  if (r.exitCode !== 0 || !r.stdout) return [];
+  return r.stdout.split('\n').filter(Boolean);
+}
+
+/**
  * Run commit safety checks (deleted files, sensitive patterns).
  * @param {string} cwd - Working directory
  * @param {Object} config - Loaded config
@@ -315,7 +326,22 @@ function runCommitSafetyChecks(cwd, config, force) {
     }
   }
   if (safetyChecks.sensitive_files_blocked.length > 0) {
-    return { blocked: true, reason: 'sensitive_file_detected', safetyChecks, hint: 'Remove sensitive files from staging before committing' };
+    // The hint must not say "unstage them" — cmdCommit now unstages PAN's own
+    // additions before returning, so that advice would describe work already done.
+    // It matters that the user knows this can be a FALSE positive: the patterns
+    // match the PATH, never file content, and the bare words in
+    // DEFAULT_SENSITIVE_PATTERNS (credentials/secret/password/token) are unanchored,
+    // so an ordinary planning doc under a phase like `03-secrets-design/` trips it
+    // with no secret anywhere. Without that context the block reads as "PAN found a
+    // secret in your files", which is not what was checked.
+    return {
+      blocked: true,
+      reason: 'sensitive_file_detected',
+      safetyChecks,
+      hint: 'Matched on filename/path, not content — this can be a false positive. '
+        + 'If the file is safe, narrow commit.sensitive_patterns in .planning/config.json '
+        + 'or commit it yourself; if it is a real secret, gitignore it.',
+    };
   }
 
   return { blocked: false, safetyChecks };
@@ -331,6 +357,10 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   const failOnError = opts && opts.failOnError;
 
   if (!isGitRepo(cwd)) {
+    // No error key, exit 0. Unlike `git commit` (an explicit git command, where a
+    // missing repo IS the failure), commit-docs is an auto-commit convenience and
+    // PAN fully supports non-git projects - the skip is the expected outcome of the
+    // environment the caller chose, not a malfunction.
     output({ committed: false, hash: null, reason: 'not_a_git_repo', hint: 'Run git init to initialize a repository' }, raw, 'not a git repo');
     return;
   }
@@ -345,13 +375,24 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   const config = loadConfig(cwd);
 
   if (!config.commit_docs) {
+    // No error key, exit 0: the user set commit_docs=false. Honouring configuration
+    // is a success; exiting non-zero here would break every workflow of every user
+    // who opted out of doc commits.
     output({ committed: false, hash: null, reason: 'skipped_commit_docs_false' }, raw, 'skipped');
     return;
   }
   if (isGitIgnored(cwd, PLANNING_DIR)) {
+    // No error key, exit 0: .planning/ is gitignored - also the user's choice.
     output({ committed: false, hash: null, reason: 'skipped_gitignored' }, raw, 'skipped');
     return;
   }
+
+  // Snapshot the index BEFORE staging so a blocked commit can put it back exactly
+  // as the user left it. The safety check reads `git diff --cached`, so it can only
+  // see what staging produced — `--files .planning/` is a directory, and the file
+  // that trips the check is only discoverable after `git add`. So we stage, check,
+  // and undo on refusal, rather than trying to predict the expansion ourselves.
+  const preStaged = new Set(stagedFiles(cwd));
 
   // Stage files
   const filesToStage = files && files.length > 0 ? files : [PLANNING_DIR + '/'];
@@ -360,7 +401,22 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   // Safety checks
   const safety = runCommitSafetyChecks(cwd, config, force);
   if (safety.blocked) {
-    output({ committed: false, hash: null, reason: safety.reason, safety_checks: safety.safetyChecks, hint: safety.hint }, raw, 'blocked');
+    // Unstage what WE just added. Leaving it staged was the whole harm: the check
+    // that exists to keep a secret out of git was what put it INTO the index, where
+    // the next `git commit` from any source — the user, an IDE, another tool — would
+    // have included it. It also wedged every later `pan-tools commit`, since the
+    // offending file stayed staged and kept tripping the same check, so an autonomous
+    // run silently stopped persisting its plans behind a message that reads like a
+    // safety success. Restore only OUR additions; anything the user had staged before
+    // this call is theirs and stays untouched.
+    const added = stagedFiles(cwd).filter(f => !preStaged.has(f));
+    for (const f of added) execGit(cwd, ['reset', '--quiet', '--', f]);
+    safety.safetyChecks.unstaged_by_pan = added;
+    // error key => exit 1. A blocked commit is a refusal that protected something
+    // (a staged deletion, a secret) - the docs did NOT land, which is the same harm
+    // as commit_failed for an autonomous loop. The JSON body still goes to stdout,
+    // so callers that parse `reason`/`safety_checks` are unaffected.
+    output({ committed: false, hash: null, reason: safety.reason, error: 'commit_blocked', safety_checks: safety.safetyChecks, hint: safety.hint }, raw, 'blocked');
     return;
   }
 
@@ -378,7 +434,12 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
     if (failOnError) {
       error('commit_failed: ' + (commitResult.stderr || 'unknown git error').trim());
     }
-    output({ committed: false, hash: null, reason: 'commit_failed', error: commitResult.stderr }, raw, 'failed');
+    // `|| 'unknown git error'`: the exit code is derived from a TRUTHY error key, and
+    // git does not always write to stderr — an empty string would launder this real
+    // failure back into exit 0. (experiment.cjs documents the harm: an autonomous run
+    // took `committed: false, reason: commit_failed` with exit 0 and kept going,
+    // leaving 24 minutes of work uncommitted.)
+    output({ committed: false, hash: null, reason: 'commit_failed', error: commitResult.stderr || 'unknown git error' }, raw, 'failed');
     return;
   }
 
@@ -471,6 +532,10 @@ async function cmdWebsearch(query, options, raw) {
 
   if (!apiKey) {
     // No key = silent skip, agent falls back to built-in WebSearch
+    // No error key, exit 0: an unconfigured capability is an ANSWER ("web search is
+    // unavailable") and callers degrade gracefully. Contrast the sites below - a
+    // configured search that then fails (bad query, API 5xx, network) IS a failure
+    // and carries `error`. Unconfigured vs broken is the distinction.
     output({ available: false, reason: 'BRAVE_API_KEY not set' }, raw, '');
     return;
   }
@@ -525,7 +590,7 @@ async function cmdWebsearch(query, options, raw) {
     }, raw, results.map(item => `${item.title}\n${item.url}\n${item.description}`).join('\n\n'));
   } catch (err) {
     // Network error, DNS failure, or JSON parse error from Brave API
-    output({ available: false, error: err.message }, raw, '');
+    output({ available: false, error: err.message || 'web_search_failed' }, raw, '');
   }
 }
 
@@ -641,7 +706,11 @@ function renderHealthReport(cwd, { phasesDir, phases, totalPlans, totalSummaries
   try { phaseDirEntries = fs.readdirSync(phasesDir); } catch { phaseDirEntries = []; }
 
   for (const phase of phases) {
-    const match = phaseDirEntries.find(d => d.startsWith(phase.number + '-') || d === phase.number);
+    // Normalize first — roadmap headings are unpadded ("Phase 1") while phase
+    // directories are zero-padded ("01-foundation"), so the raw number never
+    // matched. Same defect as focus.cjs collectWorkItems; see the note there.
+    const normalizedNum = normalizePhaseName(phase.number);
+    const match = phaseDirEntries.find(d => d.startsWith(normalizedNum + '-') || d === normalizedNum);
     if (!match) continue;
     const phaseDir = path.join(phasesDir, match);
     try {
@@ -769,6 +838,14 @@ function cmdScaffold(cwd, type, options, raw) {
     error(`Phase ${phase} directory not found`);
   }
 
+  // Every artifact type except phase-dir writes into a resolved phase directory.
+  // Without --phase there is no directory to write to, so guard before the
+  // switch — otherwise path.join(phaseDir, …) below crashes with a raw
+  // TypeError instead of a usage error.
+  if (!phaseDir && type !== 'phase-dir') {
+    error(`--phase required for ${type} scaffold`);
+  }
+
   let filePath, content;
 
   switch (type) {
@@ -812,6 +889,9 @@ function cmdScaffold(cwd, type, options, raw) {
     fs.writeFileSync(filePath, content, { encoding: 'utf-8', flag: 'wx' });
   } catch (e) {
     if (e.code === 'EEXIST') {
+      // No error key, exit 0: scaffolding is idempotent - the file the caller asked
+      // for exists, which is the state it wanted. `created:false` reports only that
+      // this call was not the one that made it.
       output({ created: false, reason: 'already_exists', path: relPath }, raw, 'exists');
       return;
     }
@@ -880,6 +960,7 @@ function cmdBatchCommit(cwd, items, raw) {
     return;
   }
   if (!Array.isArray(items) || items.length === 0) {
+    // No error key, exit 0: an empty batch is a legitimate no-op.
     output({ committed: false, reason: 'no_items' }, raw, 'no items');
     return;
   }
@@ -904,7 +985,8 @@ function cmdBatchCommit(cwd, items, raw) {
   const message = 'docs: focus-exec batch — ' + items.length + ' items completed\n\n' + titles;
   const commitResult = execGit(cwd, ['commit', '-m', message]);
   if (commitResult.exitCode !== 0) {
-    output({ committed: false, reason: 'commit_failed', error: commitResult.stderr }, raw, 'failed');
+    // See cmdCommitDocs above: a truthy error key is what makes this exit non-zero.
+    output({ committed: false, reason: 'commit_failed', error: commitResult.stderr || 'unknown git error' }, raw, 'failed');
     return;
   }
 

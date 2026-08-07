@@ -66,6 +66,21 @@ describe('init commands', () => {
     assert.strictEqual(output.config_path, '.planning/config.json');
   });
 
+  test('init progress parses letter phase dirs via PHASE_DIR_RE (L10 regression)', () => {
+    // A letter phase like 06A-hotfix must parse to number '06A' + name 'hotfix',
+    // not number '06' + name 'A-hotfix' (the old local regex dropped [A-Z]?).
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '06A-hotfix');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '06A-01-plan.md'), '# Plan');
+
+    const result = runPanTools('init progress', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const output = JSON.parse(result.output);
+    const entry = output.phases.find(p => p.number === '06A');
+    assert.ok(entry, 'letter phase 06A should be parsed with its letter suffix');
+    assert.strictEqual(entry.name, 'hotfix');
+  });
+
   test('init phase-op returns core and optional phase file paths', () => {
     const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
     fs.mkdirSync(phaseDir, { recursive: true });

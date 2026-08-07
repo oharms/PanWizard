@@ -252,7 +252,7 @@ describe('cmdContextBudget via CLI', () => {
     const empty = path.join(tmpDir, 'empty-project');
     fs.mkdirSync(empty, { recursive: true });
     const result = runPanTools(`context-budget --cwd "${empty}"`);
-    assert.ok(result.success);
+    assert.equal(result.success, false, 'an error payload must exit non-zero');
     const json = JSON.parse(result.output);
     assert.ok(json.error);
     assert.ok(json.error.includes('.planning'));

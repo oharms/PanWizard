@@ -96,25 +96,32 @@ try ("run `doto add 'Buy milk' --priority high` and confirm it appears in
 `doto list`") and asks you to confirm or flag issues. Fixes are applied
 immediately. When you approve, `.planning/phases/01-{name}/verification.md` is written.
 
-### Step 6 -- Complete the milestone
-
-```
-/pan:milestone-done
-```
-
-PAN archives Phase 1 artifacts, tags the release (`v0.1.0`), and updates
-`.planning/roadmap.md` to mark Phase 1 as complete.
-
-### Step 7 -- Continue to Phase 2
+### Step 6 -- Continue through the remaining phases
 
 ```
 /pan:discuss-phase 2
 /pan:plan-phase 2
 /pan:exec-phase 2
 /pan:verify-phase 2
+
+/pan:discuss-phase 3
+/pan:plan-phase 3
+/pan:exec-phase 3
+/pan:verify-phase 3
 ```
 
-Repeat the cycle. Each phase builds on the verified output of the previous one.
+Repeat the cycle for Phase 2 (Filtering & Tags) and Phase 3 (Packaging & Docs).
+Each phase builds on the verified output of the previous one.
+
+### Step 7 -- Complete the milestone
+
+```
+/pan:milestone-done
+```
+
+Once all three phases are verified, `/pan:milestone-done` archives the
+milestone's phase artifacts, tags the release (`v0.1.0`), and updates
+`.planning/roadmap.md` to mark the milestone complete.
 
 ---
 
@@ -351,19 +358,21 @@ The team needs a webhook integration before the next demo. Insert it as a
 new phase:
 
 ```
-/pan:insert-phase 4 "Webhook Integration"
+/pan:insert-phase 3 "Webhook Integration"
 ```
 
-PAN inserts the new phase at position 4, shifting Notifications to 5 and
-Admin Panel to 6. The roadmap updates:
+The first argument is the phase to insert *after*. PAN uses decimal numbering
+and never renumbers existing phases: it inserts `Phase 3.1: Webhook Integration`
+right after Phase 3. Notifications stays at 4, Admin Panel stays at 5 — every
+existing phase number is preserved. The roadmap updates:
 
 ```
 Phase 1: User authentication     [complete]
 Phase 2: Dashboard               [complete]
 Phase 3: Reporting               [in progress]
-Phase 4: Webhook Integration     [pending]      <-- new
-Phase 5: Notifications           [pending]
-Phase 6: Admin panel             [pending]
+Phase 3.1: Webhook Integration   [pending]      <-- inserted (URGENT)
+Phase 4: Notifications           [pending]
+Phase 5: Admin panel             [pending]
 ```
 
 ### Descoping work that is no longer needed
@@ -371,15 +380,15 @@ Phase 6: Admin panel             [pending]
 The admin panel has been deprioritized indefinitely:
 
 ```
-/pan:remove-phase 6
+/pan:remove-phase 5
 ```
 
 ```
 Phase 1: User authentication     [complete]
 Phase 2: Dashboard               [complete]
 Phase 3: Reporting               [in progress]
-Phase 4: Webhook Integration     [pending]
-Phase 5: Notifications           [pending]
+Phase 3.1: Webhook Integration   [pending]
+Phase 4: Notifications           [pending]
 ```
 
 The roadmap stays clean, phase numbers stay sequential, and all state
@@ -390,9 +399,9 @@ references update automatically.
 ```
 /pan:exec-phase 3     # finish current work
 /pan:verify-phase 3
-/pan:discuss-phase 4     # move to the inserted phase
-/pan:plan-phase 4
-/pan:exec-phase 4
+/pan:discuss-phase 3.1     # move to the inserted phase
+/pan:plan-phase 3.1
+/pan:exec-phase 3.1
 ```
 
 ---
