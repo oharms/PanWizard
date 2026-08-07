@@ -556,6 +556,73 @@ Run these checks against each must-have artifact. Aggregate results into VERIFIC
 
 </automated_verification_script>
 
+<criteria_independent_baseline>
+
+## Baseline Checks That Ignore the Success Criteria
+
+Criterion-driven verification only sees what someone wrote down. A defect that sits
+outside a phase's stated success criteria is invisible to a verifier that walks the
+criteria list — the phase passes, and the bug ships. Run the checks below on every
+phase regardless of what the criteria say.
+
+### Module system is declared, not inferred
+
+Node 20.19+ and 22+ auto-detect ESM syntax in `.js` files with no `package.json`.
+Code that only runs because of that detection breaks under an explicit
+`"type": "commonjs"`, on older Node, and in any bundler that trusts the manifest:
+
+```
+SyntaxError: Cannot use import statement outside a module
+```
+
+Tests do not catch it — they run on the same forgiving Node that hid it.
+
+```bash
+# If any shipped source uses ESM syntax...
+grep -rlE '^\s*(import|export)\s' src/ --include='*.js'
+
+# ...then a package.json must exist and declare the module type.
+test -f package.json && grep -q '"type"' package.json || echo "FAIL: ESM emitted with no declared module type"
+```
+
+Verify the declaration matches the syntax in use: `"type": "module"` for
+`import`/`export`, `"type": "commonjs"` for `require`/`module.exports`, or the
+`.mjs`/`.cjs` extensions to opt individual files out. A project claiming
+cross-platform or multi-Node support has not met that claim until this is explicit.
+
+### Input validation checks shape, not just parseability
+
+"Rejects malformed input" is routinely implemented as a `try`/`catch` around a
+parser. That catches unparseable bytes and nothing else — valid JSON of the wrong
+shape passes straight through, and the caller gets `undefined` two frames later:
+
+```js
+// Passes a parseability test; returns [] for a file containing "[]",
+// leaving .todos undefined for every downstream caller.
+function load(file) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf-8')); }
+  catch { return { todos: [] }; }
+}
+```
+
+For every function that reads external input (file, network, env, CLI argument),
+confirm both halves:
+
+| Check | Weak version | What to require |
+|---|---|---|
+| Unparseable input | `try`/`catch` around the parser | Same — this half is usually right |
+| Wrong-shape input | *(absent)* | Assert the expected type/keys after parsing, then fall back or throw |
+
+```bash
+# Parsers that return their result unchecked are the pattern to look for
+grep -rnE 'JSON\.parse\([^)]*\)' src/ | grep -v -E 'typeof|Array\.isArray|schema|validate'
+```
+
+Fixture the wrong-shape case explicitly: feed the loader `[]`, `null`, `{}`, and
+`{"todos": "not-an-array"}`, and assert the caller still gets a usable value.
+
+</criteria_independent_baseline>
+
 <human_verification_triggers>
 
 ## Verifiable Signals Beat Prose Judgment (P-RES-006)

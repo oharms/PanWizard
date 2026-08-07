@@ -14,6 +14,8 @@ phase — context compaction may have dropped earlier sections.
 | "I'll skip /pan:focus-scan and pick the next item myself" | Manual selection ignores priority/budget logic in `focus.cjs`. You'll bias toward easy items and miss higher-priority work. | Use `/pan:focus-scan` → `/pan:focus-plan` → `/pan:focus-exec`. |
 | "I'll bump the model / add a flag / refactor while I'm here" | Scope creep. The user asked for one change; surrounding cleanup belongs in a separate item. | Do only the requested change. Note unrelated cleanup as a TODO for a future focus-scan. |
 | "I'll mark this phase complete; the docs can lag behind" | Doc/state drift compounds. By the next session, the agent reads stale docs and proceeds on false assumptions. | Run the doc-sync step (update CHANGELOG/state and commit via `pan-tools commit`) before phase completion. CHANGELOG and version bumps are part of the phase, not after it. |
+| "The tests pass, so the code is portable" | Tests run on one Node version on one OS. Modern Node auto-detects ESM syntax, so `import`/`export` in a project with no `package.json` passes locally and fails under `"type": "commonjs"` or older Node. | Declare the module type explicitly whenever you emit `import`/`export` or `require` — `"type"` in `package.json`, or `.mjs`/`.cjs` extensions. Never rely on syntax detection. |
+| "It rejects bad input — I wrapped the parser in try/catch" | That only rejects *unparseable* input. Valid JSON of the wrong shape passes through and surfaces as `undefined` in an unrelated caller. | Validate shape after parsing, not just parseability. Assert the expected type/keys and fall back or throw. See `references/verification-patterns.md` → Baseline Checks. |
 
 ## Code Preservation Principle
 
