@@ -34,13 +34,31 @@ let fakeHome;
 let proj;
 
 function install(flags) {
+  // os.homedir() follows USERPROFILE on Windows and HOME on POSIX — set both, or
+  // a global install writes into the developer's real home.
+  //
+  // Faking the home is NOT enough on its own. getOpencodeGlobalDir (bin/install.js)
+  // resolves OPENCODE_CONFIG_DIR > dirname(OPENCODE_CONFIG) > XDG_CONFIG_HOME/opencode
+  // > ~/.config/opencode, so any of the first three leaking in from the ambient
+  // environment outranks the fake home: the installer writes its global config
+  // somewhere else, still exits 0, and every assertion here reads ENOENT. That is
+  // exactly what happened on the Linux CI runners, which set XDG_CONFIG_HOME —
+  // green on Windows and macOS, red on ubuntu for all three node versions. Pin the
+  // whole chain so the resolved dir is fakeHome/.config/opencode on every platform.
+  const env = {
+    ...process.env,
+    HOME: fakeHome,
+    USERPROFILE: fakeHome,
+    XDG_CONFIG_HOME: path.join(fakeHome, '.config'),
+  };
+  delete env.OPENCODE_CONFIG_DIR;
+  delete env.OPENCODE_CONFIG;
+
   const r = spawnSync('node', [INSTALLER, ...flags], {
     cwd: proj,
     encoding: 'utf-8',
     timeout: 120000,
-    // os.homedir() follows USERPROFILE on Windows and HOME on POSIX — set both, or
-    // a global install writes into the developer's real home.
-    env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome },
+    env,
   });
   return { code: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
