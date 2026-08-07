@@ -129,8 +129,3 @@ experiments/**/.claude/pan-file-manifest.json
 # Plugin build output
 dist/
 
-# PanLoop (dev-only harness) generated output.
-# ledger.jsonl IS committed — it is the finding history the promotion rule depends on.
-tools/panloop/proposed/
-tools/panloop/dashboard/status.json
-tools/panloop/dashboard/status.json.tmp
