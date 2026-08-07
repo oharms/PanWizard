@@ -1500,7 +1500,10 @@ function uninstall(isGlobal, runtime = 'claude') {
       ? getGlobalDir('opencode', explicitConfigDir)
       : path.join(process.cwd(), '.opencode');
     const configPath = path.join(opencodeConfigDir, 'opencode.json');
-    if (fs.existsSync(configPath)) {
+    {
+      // Read straight through instead of existsSync-then-read: absence and a corrupt
+      // file both mean "nothing of ours to strip", and the check-then-use gap was a
+      // CodeQL js/file-system-race. Same idiom as the hooks' metrics read.
       try {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         let modified = false;
@@ -1547,7 +1550,7 @@ function uninstall(isGlobal, runtime = 'claude') {
           removedCount++;
         }
       } catch (e) {
-        // Ignore JSON parse errors
+        // Missing file (ENOENT) or unparseable JSON — nothing for us to remove.
       }
     }
   }
@@ -2405,8 +2408,11 @@ function install(isGlobal, runtime = 'claude') {
         const configDirReplacement = getConfigDirFromHome(runtime, isGlobal);
         for (const entry of hookEntries) {
           const srcFile = path.join(hooksSrc, entry);
-          if (fs.statSync(srcFile).isFile()) {
-            const destFile = path.join(hooksDest, entry);
+          const destFile = path.join(hooksDest, entry);
+          // Read straight through rather than statSync-then-read. hooks/dist is flat,
+          // so "not a regular file" is a skip, and letting the read itself report that
+          // closes the check-then-use gap CodeQL flagged (js/file-system-race).
+          try {
             // Template .js files to replace '.claude' with runtime-specific config dir.
             // '.claude' plays two roles in the hooks: home-anchored (cache dir,
             // global VERSION → machine-global config dir) and project-anchored
@@ -2427,6 +2433,11 @@ function install(isGlobal, runtime = 'claude') {
             } else {
               fs.copyFileSync(srcFile, destFile);
             }
+          } catch (e) {
+            // A directory (EISDIR, or EPERM for a copy on Windows) or an entry that
+            // vanished between readdir and read (ENOENT) is simply not a hook — skip
+            // it. Anything else is a real failure and belongs to the outer handler.
+            if (e.code !== 'EISDIR' && e.code !== 'ENOENT' && e.code !== 'EPERM') throw e;
           }
         }
         if (verifyInstalled(hooksDest, 'hooks')) {
