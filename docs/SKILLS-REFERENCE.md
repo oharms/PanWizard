@@ -545,7 +545,7 @@ Audit a PAN Wizard deployment — verify installation integrity, project health,
 
 **Tools:** Read, Bash, Write, Glob, Grep, AskUserQuestion  
 **Group:** System  
-**Lines:** 384
+**Lines:** 387
 
 #### /pan:debug
 

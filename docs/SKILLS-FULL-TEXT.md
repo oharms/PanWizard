@@ -346,7 +346,7 @@ GOOD: "Assumption: The project uses Express for routing — Evidence: require('e
 
 ---
 
-### /pan:audit-deployment (384 lines)
+### /pan:audit-deployment (387 lines)
 
 ```markdown
 ---
@@ -428,9 +428,12 @@ For the detected runtime config directory (CONFIG_DIR), audit ALL of the followi
 - [ ] `CONFIG_DIR/pan-wizard-core/references/` — non-empty, every manifest-listed reference present
 
 **1.4 Commands**
-- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command `.md` present
-- For OpenCode: `CONFIG_DIR/command/` — every manifest-listed `pan-*.md` present
-- For Codex/Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
+- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command file present
+- For OpenCode: `CONFIG_DIR/commands/` — every manifest-listed `pan-*.md` present (flat, one file per command)
+- For Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
+- For Codex: the SHARED skills tree, not `CONFIG_DIR` — `./.agents/skills/pan-*/SKILL.md` for a local
+  install, `~/.agents/skills/pan-*/SKILL.md` for a global one. Codex has no `skills/` of its own; if you
+  look under `.codex/` you will find no commands and wrongly report a broken install.
 
 **1.5 Agents**
 - [ ] `CONFIG_DIR/agents/` — every manifest-listed agent file present
@@ -6886,7 +6889,7 @@ Normally the host runtime writes this file. The CLI path exists for test fixture
 
 <workflow>
 
-**New to a project with MCP tools?** Run `/pan:mcp-bridge list` to see what's available. If empty, check the host runtime's MCP config — `.claude/settings.json` for Claude Code, or the runtime's equivalent.
+**New to a project with MCP tools?** Run `/pan:mcp-bridge list` to see what's available. If empty, check the host runtime's MCP config — each runtime keeps it somewhere different: Claude Code in `settings.json` under its config dir, OpenCode in `opencode.json`, Copilot in `.github/mcp.json`, Codex in its own config, Gemini in its settings file.
 
 **Planning a phase that might touch external systems?** Run `/pan:mcp-bridge recommend <phase>` to get a ranked shortlist. Copy relevant tool names into the phase plan's "External tools" section so the executor knows to invoke them.
 
