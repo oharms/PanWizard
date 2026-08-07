@@ -1175,13 +1175,36 @@ pan-tools validate health --links
 | E004 | error | `state.md` not found | Yes |
 | E005 | error | `config.json` JSON parse error | Yes |
 | W001 | warning | `project.md` missing required section | No |
-| W002 | warning | `state.md` references non-existent phase | No |
+| W002 | warning | `state.md` references non-existent phase | Yes |
 | W003 | warning | `config.json` not found | Yes |
 | W004 | warning | `config.json` invalid `model_profile` value | No |
 | W005 | warning | Phase directory naming doesn't match `NN-name` format | No |
-| W006 | warning | Phase in ROADMAP but no directory on disk | No |
+| W006 | warning | Phase in ROADMAP at or behind the current phase, but no directory on disk | No |
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
+| I002 | info | Phase in ROADMAP ahead of the current phase, not planned yet | No |
+| STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `REQUIREMENTS.md` has unchecked boxes | Yes |
+| STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
+| VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
+
+Codes emitted only under the corresponding flag:
+
+| Code | Severity | Flag | Description | Repairable |
+|------|----------|------|-------------|------------|
+| TESTS_FAIL | error | `--full` | Test run exited non-zero | No |
+| BUILD_FAIL | error | `--full` | Build exited non-zero | No |
+| MEM_BUDGET | warning / info | `--full` | Per-agent memory injection over budget (warning at `critical`, info at `warning`) | No |
+| DRIFT_HIGH | warning | `--drift` | Convention drift verdict is `high` | No |
+| DRIFT_MEDIUM | info | `--drift` | Convention drift verdict is `medium` | No |
+| LINKS_ERR | warning | `--links` | Link graph has broken refs or uncovered backlink contracts | No |
+| STD-000 | info | `--standards` | No `standards.md` found — no standards selected | No |
+| STD-001 | info | `--standards` | `standards.md` exists but contains no recognized standards | No |
+| STD-*id* | warning / info | `--standards` | Per-standard coverage (warning at 0% verified, otherwise info) | No |
+| STD-SUMMARY | info | `--standards` | Overall coverage across selected standards | No |
+
+Both tables are exhaustive: every code `validate health` can emit is listed above, and
+`tests/verify-health-codes.test.cjs` fails if a new code is added to the implementation
+without a row here.
 
 ### `validate deployment`
 

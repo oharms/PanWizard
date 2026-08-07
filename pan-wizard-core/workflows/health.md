@@ -157,9 +157,32 @@ Report final status.
 | W003 | warning | config.json not found | Yes |
 | W004 | warning | config.json invalid field value | No |
 | W005 | warning | Phase directory naming mismatch | No |
-| W006 | warning | Phase in ROADMAP but no directory | No |
+| W006 | warning | Phase in ROADMAP at or behind current phase, but no directory | No |
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
+| I002 | info | Phase in ROADMAP ahead of current phase, not planned yet | No |
+| STATE_REQ_DRIFT | warning | state.md complete but REQUIREMENTS.md has unchecked boxes | Yes |
+| STATE_ROADMAP_DRIFT | warning | state.md complete but roadmap.md has unchecked plan boxes | Yes |
+| VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record | No |
+
+Flag-gated codes:
+
+| Code | Severity | Flag | Description | Repairable |
+|------|----------|------|-------------|------------|
+| TESTS_FAIL | error | --full | Test run exited non-zero | No |
+| BUILD_FAIL | error | --full | Build exited non-zero | No |
+| MEM_BUDGET | warning / info | --full | Memory injection over budget | No |
+| DRIFT_HIGH | warning | --drift | Drift verdict is high | No |
+| DRIFT_MEDIUM | info | --drift | Drift verdict is medium | No |
+| LINKS_ERR | warning | --links | Link graph has errors | No |
+| STD-000 | info | --standards | No standards.md found | No |
+| STD-001 | info | --standards | standards.md has no recognized standards | No |
+| STD-*id* | warning / info | --standards | Per-standard coverage (warning at 0%) | No |
+| STD-SUMMARY | info | --standards | Overall coverage across standards | No |
+
+**I002 vs W006:** a roadmap phase the project has not reached yet is normal progress,
+not a defect — it reports as info and does not degrade health. Only a missing phase at
+or behind the current position warns.
 
 </error_codes>
 
