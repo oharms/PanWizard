@@ -33,9 +33,11 @@ const os = require('os');
 
 const PROJECT_ROOT = path.join(__dirname, '..');
 const PAN_TOOLS = path.join(PROJECT_ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+const SOURCE_INDEX = path.join(PROJECT_ROOT, 'pan-wizard-core', 'learnings', 'index.json');
 const learnLint = require(path.join(PROJECT_ROOT, 'pan-wizard-core', 'bin', 'lib', 'learn-lint.cjs'));
 
 let foreignCwd;
+let storeCopy;
 
 /** Run pan-tools from a directory that is NOT the source repo — the install case. */
 function run(args, cwd) {
@@ -43,12 +45,37 @@ function run(args, cwd) {
   return { code: r.status, out: ((r.stdout || '') + (r.stderr || '')).trim() };
 }
 
+/**
+ * Run a *copy* of pan-tools whose module-relative root is a temp directory.
+ *
+ * Module-relative resolution is the thing under test, so a command that WRITES the
+ * store (build-index) would rewrite the source tree's tracked index.json — a dirty
+ * `git status` after every `npm run test:all`, twice swept into unrelated commits.
+ * Copying bin/ + learnings/ into an os.tmpdir() root reproduces the install layout
+ * resolveLearningsRoot() walks to (three levels up from bin/lib/), so the write lands
+ * in the copy while the resolution path exercised is identical.
+ */
+function runAgainstCopy(args) {
+  const tools = path.join(storeCopy, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+  const r = spawnSync('node', [tools, ...args], { cwd: foreignCwd, encoding: 'utf-8', timeout: 60000 });
+  return { code: r.status, out: ((r.stdout || '') + (r.stderr || '')).trim() };
+}
+
 before(() => {
   foreignCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-learn-cwd-'));
+
+  storeCopy = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-learn-store-'));
+  const core = path.join(storeCopy, 'pan-wizard-core');
+  fs.mkdirSync(core, { recursive: true });
+  for (const sub of ['bin', 'learnings']) {
+    fs.cpSync(path.join(PROJECT_ROOT, 'pan-wizard-core', sub), path.join(core, sub), { recursive: true });
+  }
 });
 
 after(() => {
-  try { fs.rmSync(foreignCwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* best effort */ }
+  for (const dir of [foreignCwd, storeCopy]) {
+    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* best effort */ }
+  }
 });
 
 describe('the store resolves from the module, not the working directory', () => {
@@ -80,8 +107,23 @@ describe('the store resolves from the module, not the working directory', () => 
   });
 
   test('learn build-index succeeds from a foreign cwd', () => {
-    const { code } = run(['learn', 'build-index', '--raw']);
-    assert.equal(code, 0, 'build-index crashed when it could not find the store');
+    const copyIndex = path.join(storeCopy, 'pan-wizard-core', 'learnings', 'index.json');
+    const before = fs.readFileSync(copyIndex, 'utf-8');
+    const sourceBefore = fs.readFileSync(SOURCE_INDEX, 'utf-8');
+
+    const { code, out } = runAgainstCopy(['learn', 'build-index', '--raw']);
+
+    assert.equal(code, 0, `build-index crashed when it could not find the store: ${out}`);
+    // REVERT CHECK: with `|| cwd` the store is the empty foreign cwd — the write
+    // lands there (or the command exits non-zero), never in the resolved root.
+    const written = JSON.parse(fs.readFileSync(copyIndex, 'utf-8'));
+    assert.ok(written.totals.topics > 0, 'the rebuilt index must hold the copied store\'s topics');
+    assert.notEqual(fs.readFileSync(copyIndex, 'utf-8'), before,
+      'build-index must rewrite the index it resolved to');
+    // The suite must not dirty the working tree: build-index rewrites generated_at
+    // on every run, so it may only ever touch a temp copy.
+    assert.equal(fs.readFileSync(SOURCE_INDEX, 'utf-8'), sourceBefore,
+      'build-index must not rewrite the source tree\'s tracked index.json');
   });
 
   test('--source-root still overrides the default', () => {
