@@ -586,20 +586,33 @@ function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summar
   try {
     roadmapContent = fs.readFileSync(roadmapPath, 'utf-8');
   } catch {
-    return;
+    return { roadmap_warning: `${ROADMAP_FILE} unreadable — phase completion was not recorded in the roadmap` };
   }
+
+  // Match the phase number the way the roadmap spells it, not the way the
+  // caller spelled it. Callers pass "01" (the dir/state spelling) as often as
+  // "1", while the template checklist says "Phase 1:" — matching on the raw
+  // argument made the tick a silent no-op for padded calls: state advanced,
+  // checkbox stayed unticked (PanLoop finding 8). `0*` on the unpadded form
+  // accepts both spellings; decimals ("1.1") survive the strip.
+  const unpadded = String(phaseNum).replace(/^0+(?=\d)/, '');
+  const numPat = `0*${escapeRegex(unpadded)}`;
+
+  // A tick that silently misses is indistinguishable from one that landed, so
+  // detect up front whether ANY checklist entry (ticked or not) names this
+  // phase — if none does, say so instead of best-effort-ing past it.
+  const hasChecklistEntry = new RegExp(`-\\s*\\[[ xX]\\]\\s*.*Phase\\s+${numPat}[:\\s]`, 'i').test(roadmapContent);
 
   // Checkbox: - [ ] Phase N: -> - [x] Phase N: (...completed DATE)
   const checkboxPattern = new RegExp(
-    `(-\\s*\\[)[ ](\\]\\s*.*Phase\\s+${escapeRegex(phaseNum)}[:\\s][^\\n]*)`,
+    `(-\\s*\\[)[ ](\\]\\s*.*Phase\\s+${numPat}[:\\s][^\\n]*)`,
     'i'
   );
   roadmapContent = roadmapContent.replace(checkboxPattern, `$1x$2 (completed ${today})`);
 
   // Progress table: update Plans Complete, Status, and Date columns
-  const phaseEscaped = escapeRegex(phaseNum);
   const tablePattern = new RegExp(
-    `(\\|\\s*${phaseEscaped}\\.?\\s[^|]*\\|)\\s*[^|]*(\\|)\\s*[^|]*(\\|)\\s*[^|]*(\\|)`,
+    `(\\|\\s*${numPat}\\.?\\s[^|]*\\|)\\s*[^|]*(\\|)\\s*[^|]*(\\|)\\s*[^|]*(\\|)`,
     'i'
   );
   roadmapContent = roadmapContent.replace(
@@ -609,7 +622,7 @@ function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summar
 
   // Update plan count in phase section
   const planCountPattern = new RegExp(
-    `(#{2,4}\\s*Phase\\s+${phaseEscaped}[\\s\\S]*?(?:\\*\\*Plans:\\*\\*|\\*\\*Plans\\*\\*:)\\s*)[^\\n]+`,
+    `(#{2,4}\\s*Phase\\s+${numPat}[\\s\\S]*?(?:\\*\\*Plans:\\*\\*|\\*\\*Plans\\*\\*:)\\s*)[^\\n]+`,
     'i'
   );
   roadmapContent = roadmapContent.replace(
@@ -617,14 +630,21 @@ function markPhaseCompleteInRoadmap(cwd, phaseNum, _phaseName, planCount, summar
     `$1${summaryCount}/${planCount} plans complete`
   );
 
+  let roadmapWarning = hasChecklistEntry
+    ? null
+    : `no roadmap checklist entry found for Phase ${phaseNum} — checkbox not ticked; check the "- [ ] **Phase N:" line in ${ROADMAP_FILE}`;
+
   try {
     fs.writeFileSync(roadmapPath, roadmapContent, 'utf-8');
   } catch {
-    // Roadmap write is best-effort during phase completion
+    roadmapWarning = `${ROADMAP_FILE} could not be written — phase completion was not recorded in the roadmap`;
   }
 
   const reqResult = markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent);
-  return { requirements_warning: reqResult && reqResult.error ? reqResult.error : null };
+  return {
+    requirements_warning: reqResult && reqResult.error ? reqResult.error : null,
+    roadmap_warning: roadmapWarning,
+  };
 }
 
 /**
@@ -822,6 +842,13 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
   };
   if (roadmapResult && roadmapResult.requirements_warning) {
     result.requirements_warning = roadmapResult.requirements_warning;
+  }
+  if (roadmapResult && roadmapResult.roadmap_warning) {
+    // roadmap_updated previously meant "roadmap.md exists", which reads as
+    // "the tick landed" and masked a silently missed checkbox (finding 8).
+    // When the tick did not land, say so on both fields.
+    result.roadmap_warning = roadmapResult.roadmap_warning;
+    result.roadmap_updated = false;
   }
 
   // Auto-commit .planning/ metadata unless --no-commit or not a git repo
