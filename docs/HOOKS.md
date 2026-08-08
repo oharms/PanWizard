@@ -11,6 +11,7 @@ PAN ships a small set of built-in Claude Code hooks that enhance the development
 | `pan-check-update.js` | `SessionStart` | Checks for PAN updates in the background, caches result |
 | `pan-cost-logger.js` (v3.4+) | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
 | `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
+| `pan-stop-guard.js` (v3.23+) | `Stop` | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), `state.md` "Ready to plan", roadmap phases unbuilt — and tells the agent to spawn the next phase (P-1809/P-1810). |
 
 ### pan-statusline.js
 
@@ -189,6 +190,22 @@ One `SubagentStop` can reach the hooks more than once. A project with **both** a
 **Why the guard is not wider than that.** It was, briefly: the second layer scanned a tail of recent rows for an identical one and additionally treated a repeated `event_sig` as a re-fire whenever the candidate carried no tokens and no measured duration. Both halves delete real spawns. On the shared session transcript that PAN's own wave topology produces, sequential subagents of one type deliver byte-identical payloads — hence one signature — and identical rows whenever their slices happen to match; a run of five genuine spawns collapsed to two, and when those slices carried real usage the tokens went with them. The invariant the second condition rested on ("an event that consumed a real slice never looks contentless") is false as well: a slice of records carrying neither `usage` nor `timestamp` yields zeros and a `null` duration. Deleting real cost data is strictly worse than a phantom row, so the guard stays adjacent-only and the residual above is documented instead of engineered away. Each hook's suite carries the reproduction as a floor (`grep -n 'no genuine spawn' tests/cost-logger-hook.test.cjs tests/trace-logger.test.cjs`).
 
 **One conditional worth knowing.** Two *concurrent same-type* siblings are admitted as two spawns only if the host puts some per-invocation field on the payload. PAN has confirmed that `agent_type`/`subagent_type` varies between siblings of different type, and that `session_id` and the transcript path are shared with the parent — but no field is confirmed to vary between two same-type siblings on any host. Where none does, their payloads are the same bytes, a new spawn and a re-fire are indistinguishable, and the second is suppressed. See the `eventSignature` comment in either hook for the full evidence trail.
+
+### pan-stop-guard.js (v3.23+, P-1809)
+
+**Event:** `Stop` (runs when the main session tries to end its turn)
+
+**What it does:** catches the auto-advance boundary drop mechanically. Field runs showed autonomous chains ending between transition.md's state update and the next-phase Task spawn at a low, nondeterministic rate — a failure prose instructions can reduce but not eliminate. When the session stops, this hook blocks **once**, with a reason instructing the agent to spawn the next phase, if and only if the disk shows the exact drop fingerprint:
+
+1. `.planning/config.json` shows an autonomy signal: `workflow.auto_advance: true` **or** `mode: "yolo"` (P-1810). The guard is **inert** in every other project. The chain's trigger is flag OR config OR yolo; a Stop hook cannot see the `--auto` flag, so every entry hop (discuss/plan/exec-phase) persists the flag into config — arming on config alone left the guard dark on a real flag-driven drop (PanLoop finding 7). transition.md's Route B clears `auto_advance` at the milestone boundary, which disarms that half at the true end of a chain.
+2. `.planning/state.md` carries the post-transition status ("Ready to plan" / "ready to plan Phase N"). A stop after failed verification or gaps does **not** carry it — those stops are legitimate and pass through.
+3. `.planning/roadmap.md` still has unticked `- [ ] **Phase N:` checklist lines.
+
+**Loop safety:** the host sets `stop_hook_active` on stop attempts that follow a stop-hook block, and the guard always allows those. It fires at most once per stop chain — a user who genuinely wants to stop is delayed by exactly one continuation, never trapped. To stop an armed chain deliberately, run `pan-tools config-set workflow.auto_advance false` first (the block reason says exactly this).
+
+**Escape hatch:** `workflow.stop_guard: false` in `.planning/config.json` disables the guard without disarming auto-advance.
+
+**Failure posture:** fail-open everywhere — missing `.planning/`, unparseable config/state/roadmap, or malformed stdin all allow the stop silently. A missed catch costs a re-run; a wrong block traps a session, so the guard never blocks on uncertainty.
 
 ## Architecture
 

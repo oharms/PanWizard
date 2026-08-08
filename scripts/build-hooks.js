@@ -21,7 +21,8 @@ const HOOKS_TO_COPY = [
   'pan-context-monitor.js',
   'pan-statusline.js',
   'pan-cost-logger.js',
-  'pan-trace-logger.js'
+  'pan-trace-logger.js',
+  'pan-stop-guard.js'
 ];
 
 function build() {

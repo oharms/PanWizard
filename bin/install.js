@@ -1194,7 +1194,7 @@ function uninstall(isGlobal, runtime = 'claude') {
   // 4. Remove PAN hooks (scripts + Copilot CLI hooks config file)
   const hooksDir = path.join(targetDir, 'hooks');
   if (fs.existsSync(hooksDir)) {
-    const panHooks = ['pan-statusline.js', 'pan-check-update.js', 'pan-check-update.sh', 'pan-context-monitor.js', 'pan-cost-logger.js', 'pan-trace-logger.js', 'pan.json'];
+    const panHooks = ['pan-statusline.js', 'pan-check-update.js', 'pan-check-update.sh', 'pan-context-monitor.js', 'pan-cost-logger.js', 'pan-trace-logger.js', 'pan-stop-guard.js', 'pan.json'];
     let hookCount = 0;
     for (const hook of panHooks) {
       const hookPath = path.join(hooksDir, hook);
@@ -1442,6 +1442,27 @@ function uninstall(isGlobal, runtime = 'claude') {
       }
       if (settings.hooks.SubagentStop.length === 0) {
         delete settings.hooks.SubagentStop;
+      }
+    }
+
+    // Remove PAN stop guard from Stop (P-1809, v3.23+)
+    if (settings.hooks && settings.hooks.Stop) {
+      const before = settings.hooks.Stop.length;
+      settings.hooks.Stop = settings.hooks.Stop.filter(entry => {
+        if (entry.hooks && Array.isArray(entry.hooks)) {
+          const hasPanHook = entry.hooks.some(h =>
+            h.command && h.command.includes('pan-stop-guard')
+          );
+          return !hasPanHook;
+        }
+        return true;
+      });
+      if (settings.hooks.Stop.length < before) {
+        settingsModified = true;
+        console.log(`  ${green}✓${reset} Removed auto-advance stop guard hook from settings`);
+      }
+      if (settings.hooks.Stop.length === 0) {
+        delete settings.hooks.Stop;
       }
     }
 
@@ -2563,6 +2584,9 @@ function install(isGlobal, runtime = 'claude') {
   const traceLoggerCommand = isGlobal
     ? buildHookCommand(targetDir, 'pan-trace-logger.js')
     : 'node ' + dirName + '/hooks/pan-trace-logger.js';
+  const stopGuardCommand = isGlobal
+    ? buildHookCommand(targetDir, 'pan-stop-guard.js')
+    : 'node ' + dirName + '/hooks/pan-stop-guard.js';
 
   if (isCodex) {
     // Codex hooks (2026-06): Claude-compatible PascalCase events in the shared
@@ -2751,6 +2775,30 @@ function install(isGlobal, runtime = 'claude') {
         ]
       });
       console.log(`  ${green}✓${reset} Configured trace logger hook`);
+    }
+
+    // v3.23+ (P-1809): Stop hook guarding the auto-advance phase boundary.
+    // Blocks a session stop ONCE when workflow.auto_advance is armed, state.md
+    // says "ready to plan", and the roadmap has unbuilt phases — the exact
+    // boundary-drop fingerprint from the 2026-08 field runs. Fail-open and
+    // inert outside PAN projects; hosts that never fire Stop never trigger it
+    // (same convention as the SubagentStop registrations above).
+    if (!settings.hooks.Stop) {
+      settings.hooks.Stop = [];
+    }
+    const hasStopGuardHook = settings.hooks.Stop.some(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('pan-stop-guard'))
+    );
+    if (!hasStopGuardHook) {
+      settings.hooks.Stop.push({
+        hooks: [
+          {
+            type: 'command',
+            command: stopGuardCommand
+          }
+        ]
+      });
+      console.log(`  ${green}✓${reset} Configured auto-advance stop guard hook`);
     }
   }
 

@@ -140,6 +140,26 @@ describe('Claude hook registration integrity', () => {
     assert.equal(commands.length, unique.size,
       `PostToolUse has duplicate hook entries: ${commands.join(', ')}`);
   });
+
+  test('the auto-advance stop guard is registered on the Stop event (P-1809)', () => {
+    // REVERT CHECK: the stop guard is the mechanical fix for the P-1801/P-1807
+    // boundary drop. Losing its registration silently re-opens PanLoop
+    // finding 0 — the hook file shipping is not enough, it has to be wired.
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(runner.tmpDir, '.claude', 'settings.json'), 'utf8'));
+    const stopCommands = [];
+    for (const entry of (settings.hooks.Stop || [])) {
+      if (entry.hooks) {
+        for (const hook of entry.hooks) {
+          stopCommands.push(hook.command);
+        }
+      }
+    }
+    assert.ok(
+      stopCommands.some(c => c && c.includes('pan-stop-guard')),
+      `Stop event must carry pan-stop-guard; found: ${stopCommands.join(', ') || '(none)'}`
+    );
+  });
 });
 
 describe('Copilot hook registration integrity', () => {
