@@ -8,6 +8,21 @@ Read all files referenced by the invoking prompt's execution_context before star
 @~/.claude/pan-wizard-core/references/guardrails.md
 </required_reading>
 
+<planning_write_policy>
+
+**P-1808 — compose once, write once.** Every planning document this workflow produces (`project.md`, `requirements.md`, `roadmap.md`, `state.md`) is composed **in full, in memory, then written exactly once**. Field transcripts (PanLoop, 2026-08-08) counted `state.md` rewritten up to **12 times inside a single step**, `roadmap.md` and `project.md` 3× each, the same files re-read up to 6× — an agent failing to converge on a document it authored moments earlier. Every in-flight version of `state.md` is a chance for a later step to read a partial write, and the rewrite churn is why this workflow's duration varied 7× on similar briefs.
+
+Rules, for this orchestrator and every subagent it spawns:
+
+1. **Gather everything, then emit.** Do not write a skeleton and refine it in place. Not ready to write the final document = still in the gathering step.
+2. **One Write per file per step.** Preparing a second Write to the same file in the same step means the first was premature — stop, finish composing, write once.
+3. **Do not re-read a file you wrote this step.** You know what it says; re-reading your own output to "check" it is the non-convergence loop starting.
+4. **Post-write corrections are targeted Edits for a verified defect** (wrong value, broken parse) — never a rewrite for restructuring you should have composed the first time.
+
+"Write files first, then return" — the persistence rule — is unchanged: it orders writes **before the return**; it does not license early drafts.
+
+</planning_write_policy>
+
 ## Phase 0 — Clarify (MANDATORY, do not skip)
 
 Before scaffolding or coding anything, confirm with the user:
@@ -888,10 +903,10 @@ Create roadmap:
 2. Map every v1 requirement to exactly one phase
 3. Derive 2-5 success criteria per phase (observable user behaviors)
 4. Validate 100% coverage
-5. Write files immediately (roadmap.md, state.md, update requirements.md traceability)
+5. Compose each file in full, then write each exactly once — one Write per file, no draft-then-refine (P-1808): roadmap.md, state.md, update requirements.md traceability
 6. Return ROADMAP CREATED with summary
 
-Write files first, then return. This ensures artifacts persist even if context is lost.
+Write files first, then return — before the return, not early and often. One complete Write per file persists the artifacts without the rewrite churn (P-1808).
 </instructions>
 ", subagent_type="pan-roadmapper", model="{roadmapper_model}", description="Create roadmap")
 ```

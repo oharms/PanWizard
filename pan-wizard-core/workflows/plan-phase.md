@@ -542,6 +542,10 @@ Check for auto-advance trigger:
    ```bash
    AUTO_CFG=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.auto_advance 2>/dev/null || echo "false")
    ```
+3. **If `--auto` flag present AND `AUTO_CFG` is not true — persist it** (same as discuss-phase's auto_advance step), so the rest of the chain and the P-1809 stop guard see the run as autonomous on disk (P-1810):
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advance true
+   ```
 
 **If `--auto` flag present OR `AUTO_CFG` is true:**
 
