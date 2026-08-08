@@ -1690,10 +1690,14 @@ describe('markPhaseCompleteInRoadmap', () => {
     assert.ok(content.includes('2/2 plans complete'), 'plan count should be updated');
   });
 
-  test('returns null gracefully when roadmap missing', () => {
-    // No roadmap.md exists
+  test('reports a loud warning when roadmap is missing (P-1811)', () => {
+    // No roadmap.md exists. The old contract here was `undefined` — silence —
+    // and that silence is exactly how a missed tick hid behind
+    // roadmap_updated:true in the field (PanLoop finding 8). Unreadable
+    // roadmap now returns a warning the caller surfaces.
     const result = markPhaseCompleteInRoadmap(tmpDir, '1', 'setup', 2, 2);
-    assert.strictEqual(result, undefined);
+    assert.ok(result && result.roadmap_warning, 'missing roadmap must produce roadmap_warning');
+    assert.match(result.roadmap_warning, /unreadable/i);
   });
 });
 

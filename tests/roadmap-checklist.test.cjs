@@ -140,3 +140,43 @@ describe('phase add and insert write the checklist entry', () => {
     assert.match(roadmap(), /### Phase 2: Another/, 'the detail section is still added');
   });
 });
+
+describe('phase complete ticks regardless of number spelling (P-1811, PanLoop finding 8)', () => {
+  test('a padded "02" call ticks the unpadded "Phase 2:" checklist line', () => {
+    // REVERT CHECK: the tick regex previously interpolated the caller's RAW
+    // argument — "phase complete 02" built /Phase\s+02[:\s]/ against the
+    // template's "Phase 2:" line, a silent no-op. State advanced, the checkbox
+    // stayed unticked: the exact split PanLoop saw between two runs whose only
+    // relevant difference was how the orchestrator spelled the number
+    // (dirs and state.md say "01"; the roadmap checklist says "Phase 1").
+    fs.mkdirSync(path.join(proj, '.planning', 'phases', '02-core-widget'), { recursive: true });
+
+    const r = pan(['phase', 'complete', '02']);
+    assert.equal(r.code, 0, r.out);
+
+    assert.ok(
+      checklistLines().some(l => /^\s*- \[x\].*Phase 2/.test(l)),
+      `padded call must tick the unpadded checklist line, got:\n${checklistLines().join('\n')}`
+    );
+    assert.ok(!r.out.includes('roadmap_warning'), `no warning expected on a landed tick: ${r.out}`);
+  });
+
+  test('a missing checklist entry is reported loudly, not best-efforted past', () => {
+    // The other half of finding 8: when the tick cannot land, the JSON result
+    // previously still said roadmap_updated:true (the field only checked the
+    // file existed). The caller — and the next audit — must be able to see
+    // that the roadmap does not reflect the completion.
+    fs.writeFileSync(path.join(proj, '.planning', 'roadmap.md'),
+      '# Roadmap\n\n### Phase 2: Only details, no checklist\n**Status:** In Progress\n');
+    fs.mkdirSync(path.join(proj, '.planning', 'phases', '02-core-widget'), { recursive: true });
+
+    const r = pan(['phase', 'complete', '2']);
+    assert.equal(r.code, 0, r.out);
+
+    const payload = JSON.parse(r.out);
+    assert.match(payload.roadmap_warning || '', /no roadmap checklist entry/i,
+      'a missed tick must surface as roadmap_warning');
+    assert.equal(payload.roadmap_updated, false,
+      'roadmap_updated must not claim success when the tick did not land');
+  });
+});

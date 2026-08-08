@@ -716,6 +716,10 @@ STOP — do not auto-advance. Return to user.
    ```bash
    AUTO_CFG=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.auto_advance 2>/dev/null || echo "false")
    ```
+3. **If `--auto` flag present AND `AUTO_CFG` is not true — persist it** (same as discuss-phase's auto_advance step). The flag lives only in this invocation's arguments; the rest of the chain, and the P-1809 stop guard, can only see the run as autonomous if the disk says so (P-1810 — the guard missed a real boundary drop because a flag-driven run left config unarmed):
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advance true
+   ```
 
 **If `--auto` flag present OR `AUTO_CFG` is true (AND verification passed with no gaps):**
 
@@ -729,6 +733,10 @@ STOP — do not auto-advance. Return to user.
 Execute the transition workflow inline (do NOT use Task — orchestrator context is ~10-15%, transition needs phase completion data already in context):
 
 Read and follow `~/.claude/pan-wizard-core/workflows/transition.md`, passing through the `--auto` flag so it propagates to the next phase invocation.
+
+**Contract (P-1807):** transition.md's continuation gates key on the same trigger you just evaluated (`--auto` flag, `workflow.auto_advance`, or `mode: yolo`) — NOT on `mode` alone. Having announced AUTO-ADVANCING, the transition must end in a `Task(...)` spawn of the next phase (Route A) or reach the milestone boundary (Route B). If you find yourself printing a "Next Up" menu and stopping after the banner above, that is the P-1801/P-1807 regression, not a valid outcome.
+
+**Post-transition self-check (MANDATORY final action in auto mode):** after transition.md finishes, confirm one of its two valid terminal states actually happened: (a) a `Task(...)` spawn for the next phase was issued (Route A), or (b) the milestone boundary was reached (Route B). If neither — state was updated but no spawn went out — you are inside the P-1801/P-1807 failure right now: return to transition.md `offer_next_phase` Route A and issue the Task spawn before ending your turn.
 
 **If neither `--auto` nor `AUTO_CFG` is true:**
 

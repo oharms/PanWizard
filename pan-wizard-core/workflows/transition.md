@@ -76,9 +76,20 @@ cat .planning/config.json 2>/dev/null
 
 </config-check>
 
+**Detect AUTO mode (P-1807 — gate parity with the rest of the chain):**
+
+```bash
+HAS_AUTO_FLAG=$(echo "$ARGUMENTS" | grep -c -- '--auto' || true)
+AUTO_CFG=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.auto_advance 2>/dev/null || echo "false")
+```
+
+**AUTO is active** when `HAS_AUTO_FLAG` > 0 (the `--auto` flag exec-phase passes through), OR `AUTO_CFG` is `true`, OR config `mode` is `yolo`. Every `<if auto>` gate in this workflow keys on this condition — the same trigger `exec-phase.md` (offer_next), `plan-phase.md` (step 14) and `discuss-phase.md` (auto_advance) use.
+
+**P-1807 (2026-08, PanLoop finding 0):** these gates were previously `mode: yolo` alone. This file never read `--auto` or `workflow.auto_advance`, so on the template-default `mode: interactive`, exec-phase would announce "AUTO-ADVANCING → TRANSITION", this workflow would update state to the next phase, then route to the interactive "Next Up" menu and exit cleanly — the P-1801 Task spawn below was unreachable, and every autonomous run built exactly one phase while reporting success. Do not narrow these gates back to `mode` alone.
+
 **If all plans complete:**
 
-<if mode="yolo">
+<if auto (HAS_AUTO_FLAG > 0, or AUTO_CFG true, or mode yolo)>
 
 ```
 ⚡ Auto-approved: Transition Phase [X] → Phase [X+1]
@@ -91,7 +102,7 @@ Proceed directly to cleanup_handoff step.
 
 </if>
 
-<if mode="interactive" OR="custom with gates.confirm_transition true">
+<if NOT auto — mode="interactive" OR="custom with gates.confirm_transition true">
 
 Ask: "Phase [X] complete — all [Y] plans finished. Ready to mark done and move to Phase [X+1]?"
 
@@ -362,6 +373,8 @@ Resume file: None
 
 <step name="offer_next_phase">
 
+**AUTO-mode terminal contract (P-1807):** when AUTO is active (the condition from `verify_completion`), this step has exactly two valid endings — **Route A ends with a `Task(...)` call actually issued** (not described, not deferred: issued), or **Route B reaches the milestone boundary**. Updating state.md and presenting a "Next Up" menu is NOT a valid AUTO ending — field runs (PanLoop, 2026-08-08) show that exact exit four times in five even with the gates fixed. If you notice you are composing a menu while AUTO is active, stop and execute the Route A spawn. Do not end your turn between the state update and the spawn.
+
 **MANDATORY: Verify milestone status before presenting next steps.**
 
 **Use the transition result from `pan-tools phase complete`:**
@@ -393,9 +406,11 @@ ls .planning/phases/*[X+1]*/*-context.md 2>/dev/null
 
 **If next phase exists:**
 
-<if mode="yolo">
+<if auto (HAS_AUTO_FLAG > 0, or AUTO_CFG true, or mode yolo — the P-1807 condition from verify_completion)>
 
 **P-1801 fix (v3.7.6):** In auto mode, **spawn the next phase as a Task subagent** — same pattern as `plan-phase.md`'s auto-advance to exec-phase. Prose-based "DO NOT exit. Read X" instructions (the v3.7.4 P-1701 attempt) were not behaviorally binding: the orchestrator returned from sub-agent calls and exited cleanly at the phase boundary. A `Task(...)` invocation is a tool call the orchestrator cannot ignore — control flow is forced into the next phase's workflow.
+
+**P-1807 (2026-08):** this gate was `mode: yolo` alone, which made the P-1801 spawn unreachable for `--auto` / `workflow.auto_advance` runs on interactive-mode projects — the exact symptom P-1801 fixed, reintroduced one gate higher. If exec-phase announced AUTO-ADVANCING, this branch MUST run and MUST end in the `Task(...)` call below; exiting after the state update is the regression.
 
 Cost trade-off: each Task spawn restarts context (loses the cumulative cache reads from the previous phase). Acceptable because: (1) cross-phase cache value is low — phase N's plan/research is mostly irrelevant to phase N+1's executor — and (2) reliability beats marginal cost optimization for autonomous runs.
 
@@ -490,7 +505,7 @@ Task(
 
 </if>
 
-<if mode="interactive" OR="custom with gates.confirm_transition true">
+<if NOT auto — mode="interactive" OR="custom with gates.confirm_transition true">
 
 **If context.md does NOT exist:**
 
@@ -552,7 +567,7 @@ Task(
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advance false
 ```
 
-<if mode="yolo">
+<if auto (HAS_AUTO_FLAG > 0, or AUTO_CFG true, or mode yolo — the P-1807 condition from verify_completion)>
 
 ```
 Phase {X} marked complete.
@@ -566,7 +581,7 @@ Exit skill and invoke SlashCommand("/pan:milestone-done {version}")
 
 </if>
 
-<if mode="interactive" OR="custom with gates.confirm_transition true">
+<if NOT auto — mode="interactive" OR="custom with gates.confirm_transition true">
 
 ```
 ## ✓ Phase {X}: {Phase Name} Complete

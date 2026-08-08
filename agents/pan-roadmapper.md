@@ -448,9 +448,11 @@ Verify 100% requirement mapping:
 
 If gaps found, include in draft for user decision.
 
-## Step 7: Write Files Immediately
+## Step 7: Write Files — Once Each, Complete
 
 **Write files first, then return.** This ensures artifacts persist even if context is lost.
+
+**P-1808 — one Write per file.** Steps 1-6 are the composition; the output formats above are the shape. When you reach this step, each document exists in full in your working context — issue exactly one Write per file. Do not write a skeleton and refine it in place, and do not re-read a file you just wrote: field transcripts counted this step rewriting state.md up to 12 times, which is a convergence failure, not diligence. Preparing a second Write to the same file means the first was premature — stop, finish composing, write once.
 
 1. **Write roadmap.md** using output format
 
