@@ -530,6 +530,7 @@ The shipped hooks (copied to `hooks/dist/` by `npm run build:hooks` — pure Nod
 | `pan-check-update.js` | SessionStart | Background check for PAN updates with caching |
 | `pan-cost-logger.js` (v3.4+) | SubagentStop | Appends subagent cost record to `.planning/metrics/tokens.jsonl` (consumed by `/pan:cost`) |
 | `pan-trace-logger.js` (v3.5+) | SubagentStop | Appends decision/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` (consumed by `/pan:learn`, `/pan:optimize`); auto-creates day-scoped trace session |
+| `pan-stop-guard.js` (v3.23+) | Stop | Blocks a session stop once when the auto-advance chain dropped at a phase boundary (autonomy armed in config, no failure/gaps/blocker in state, roadmap phases unbuilt) and instructs the agent to continue the chain; fail-open, one-shot, escape hatch `workflow.stop_guard: false` — see `docs/HOOKS.md` |
 
 The statusline hook produces metrics; the context monitor consumes them. They communicate through a bridge file (`<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`, a per-user 0700 dir) to avoid coupling. The two SubagentStop hooks (cost-logger and trace-logger) fire in parallel after every sub-agent completion and write to independent log files.
 

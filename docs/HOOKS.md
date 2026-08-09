@@ -11,7 +11,7 @@ PAN ships a small set of built-in Claude Code hooks that enhance the development
 | `pan-check-update.js` | `SessionStart` | Checks for PAN updates in the background, caches result |
 | `pan-cost-logger.js` (v3.4+) | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
 | `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
-| `pan-stop-guard.js` (v3.23+) | `Stop` | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), `state.md` "Ready to plan", roadmap phases unbuilt — and tells the agent to spawn the next phase (P-1809/P-1810). |
+| `pan-stop-guard.js` (v3.23+) | `Stop` | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), no failure/gaps/blocker recorded in `state.md`, roadmap phases unbuilt — and tells the agent to continue the chain (P-1809/P-1810/P-1812). |
 
 ### pan-statusline.js
 
@@ -198,7 +198,7 @@ One `SubagentStop` can reach the hooks more than once. A project with **both** a
 **What it does:** catches the auto-advance boundary drop mechanically. Field runs showed autonomous chains ending between transition.md's state update and the next-phase Task spawn at a low, nondeterministic rate — a failure prose instructions can reduce but not eliminate. When the session stops, this hook blocks **once**, with a reason instructing the agent to spawn the next phase, if and only if the disk shows the exact drop fingerprint:
 
 1. `.planning/config.json` shows an autonomy signal: `workflow.auto_advance: true` **or** `mode: "yolo"` (P-1810). The guard is **inert** in every other project. The chain's trigger is flag OR config OR yolo; a Stop hook cannot see the `--auto` flag, so every entry hop (discuss/plan/exec-phase) persists the flag into config — arming on config alone left the guard dark on a real flag-driven drop (PanLoop finding 7). transition.md's Route B clears `auto_advance` at the milestone boundary, which disarms that half at the true end of a chain.
-2. `.planning/state.md` carries the post-transition status ("Ready to plan" / "ready to plan Phase N"). A stop after failed verification or gaps does **not** carry it — those stops are legitimate and pass through.
+2. `.planning/state.md` shows **no legitimate-stop marker** (gaps found, failed verification, a recorded blocker). This condition is deliberately inverted (P-1812): the guard originally required the status to read "Ready to plan", and one field batch produced four different phrasings for the same boundary — the only run with unbuilt phases was disarmed by wording alone. An unrecognised phrasing now **arms** the guard (fail-safe: at worst one extra continuation, bounded by the one-shot design) instead of disarming it (fail-open: silent truncation). Genuine gaps/verification/blocker stops still pass through.
 3. `.planning/roadmap.md` still has unticked `- [ ] **Phase N:` checklist lines.
 
 **Loop safety:** the host sets `stop_hook_active` on stop attempts that follow a stop-hook block, and the guard always allows those. It fires at most once per stop chain — a user who genuinely wants to stop is delayed by exactly one continuation, never trapped. To stop an armed chain deliberately, run `pan-tools config-set workflow.auto_advance false` first (the block reason says exactly this).
@@ -307,12 +307,14 @@ hooks/
   pan-check-update.js       # Source
   pan-cost-logger.js        # Source (v3.4+)
   pan-trace-logger.js       # Source (v3.5+)
+  pan-stop-guard.js         # Source (v3.23+)
   dist/                     # Copied output (installed to user's machine)
     pan-statusline.js
     pan-context-monitor.js
     pan-check-update.js
     pan-cost-logger.js
     pan-trace-logger.js
+    pan-stop-guard.js
 ```
 
 Build command:

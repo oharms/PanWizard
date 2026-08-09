@@ -44,7 +44,7 @@ CHANGELOG.md     ← historical record (frozen-in-time, never update past entrie
 
 **Stable identities are still allowed** in any doc:
 - "5 target runtimes" (claude/codex/gemini/opencode/copilot — fundamental design, doesn't drift)
-- "5 hooks" (named individually: check-update / context-monitor / statusline / cost-logger / trace-logger)
+- "6 hooks" (named individually: check-update / context-monitor / statusline / cost-logger / trace-logger / stop-guard)
 - Specific file paths (e.g., `bin/install.js`, `agents/pan-planner.md`)
 - Architecture layer numbers ("Layer 1", "Layer 2") — these are labels, not counts
 

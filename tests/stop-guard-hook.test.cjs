@@ -124,11 +124,50 @@ describe('buildStopDecision — the boundary-drop fingerprint blocks, everything
     assert.match(d.reason, /Phase 2/, 'state.md names the target, not the stale first-unticked line');
   });
 
-  test('state without the ready-to-plan fingerprint → allow (gaps/verification stops are legitimate)', () => {
-    const failedState = READY_STATE
-      .replace('**Status:** Ready to plan', '**Status:** In progress')
-      .replace('ready to plan Phase 2', 'Phase 2 verification found gaps');
-    assert.equal(decide({ stateContent: failedState }), null);
+  test('a legitimate-stop marker in state → allow (gaps, failed verification, blockers)', () => {
+    // P-1812 inverted condition 2: the guard lets a stop through only when
+    // state records a real reason to stop. High-precision list, behavioral.
+    for (const marker of [
+      'Phase 2 verification found gaps',
+      'Verification failed on STOR-03',
+      'BLOCKED: waiting on user decision about the schema',
+      'Gaps found — see 02-verification.md',
+    ]) {
+      const stopped = READY_STATE
+        .replace('**Status:** Ready to plan', '**Status:** In progress')
+        .replace('ready to plan Phase 2', marker);
+      assert.equal(decide({ stateContent: stopped }), null, `"${marker}" must allow the stop`);
+    }
+  });
+
+  test('the four REAL field status phrasings decide by substance, not wording (P-1812, finding 9)', () => {
+    // REVERT CHECK — PanLoop finding 9: condition 2 required the status line
+    // to begin "Ready to plan"; one batch wrote four different phrasings and
+    // the only run with unbuilt phases was disarmed BY WORDING ALONE
+    // (semver-compare: both arming conditions satisfied, stopped at 1 of 4).
+    // These are the four values verbatim from that batch, each paired with
+    // the roadmap state its run actually had.
+    const statusLine = (s) => READY_STATE.replace('**Status:** Ready to plan', `**Status:** ${s}`)
+      .replace('Stopped at: Phase 1 complete, ready to plan Phase 2', 'Stopped at: see status');
+
+    // Three runs completed — their roadmaps were fully ticked, so condition 3
+    // excludes them regardless of phrasing.
+    for (const done of ['Ready to execute', 'ALL PHASES COMPLETE', 'Milestone complete — all 27 v1 requirements delivered']) {
+      assert.equal(
+        decide({ stateContent: statusLine(done), roadmapContent: COMPLETE_ROADMAP }),
+        null,
+        `"${done}" with a ticked roadmap must allow`
+      );
+    }
+
+    // semver-compare: unrecognised phrasing + three unbuilt phases. This is
+    // the exact disk state that was wrongly allowed before P-1812.
+    const d = decide({
+      stateContent: statusLine('Phase 1 complete and verified; Phase 2 planning pending'),
+    });
+    assert.ok(d, 'an unrecognised status with unbuilt phases must ARM the guard (fail-safe)');
+    assert.equal(d.decision, 'block');
+    assert.match(d.reason, /Phase 2/, 'first unticked phase names the target when state has no ready-to-plan capture');
   });
 
   test('every phase ticked → allow (the chain finished; Route B also clears auto_advance)', () => {

@@ -64,6 +64,7 @@ pan-wizard/
       pan-check-update.js     # Periodic update check
       pan-cost-logger.js      # SubagentStop hook — appends cost record to tokens.jsonl (v3.4)
       pan-trace-logger.js     # SubagentStop hook — circular optimization tracing (v3.5)
+      pan-stop-guard.js       # Stop hook — blocks the auto-advance boundary drop once (v3.23)
   scripts/
     build-hooks.js            # Copy hooks from hooks/ to hooks/dist/ (no bundling)
   tests/                      # Test suite (node:test + node:assert)
