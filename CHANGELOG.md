@@ -5,6 +5,30 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.24.0] - 2026-08-09
+
+The PanLoop hardening release: every finding from an external harness that installs PAN into throwaway workspaces and drives it end to end with a real model (P-1807…P-1813). Field trajectory for a multi-phase autonomous build across the fix rounds: no run had ever completed more than one phase; the final round's probe scenario finished every phase with a clean acceptance sweep.
+
+### Fixed — the autonomous chain survives its phase boundaries
+
+`/pan:exec-phase N --auto` built one phase, advanced state, and exited — on every multi-phase project. Root cause was gate parity, not model behavior: every chain hop triggered on `--auto` OR `workflow.auto_advance`, while transition.md's continuation spawn was gated on `mode: yolo` alone, unreachable on the template-default interactive mode (**P-1807**). transition.md now detects the composite AUTO condition and keys all of its gates on it, states a terminal contract at the decision step (the only valid AUTO endings are a Task spawn or the milestone boundary), and exec-phase self-checks that one of them actually happened. `--auto` is persisted into config at every entry hop, so a flag-driven run is autonomous on disk for later hops (**P-1810**).
+
+### Added — a Stop hook guards the boundary mechanically
+
+Prose reduced the boundary drop; it could not eliminate it. `hooks/pan-stop-guard.js` (the sixth hook, `Stop` event) blocks a session stop **once** — with instructions to continue the chain — when autonomy is armed on disk (`workflow.auto_advance` or `mode: yolo`), state.md records no failure/gaps/blocker, and the roadmap still has unticked phases. One-shot via `stop_hook_active` (a deliberate stop is delayed by exactly one continuation, never trapped), fail-open on anything unparseable, inert outside armed chains, escape hatch `workflow.stop_guard: false`. Two field findings hardened it after landing: arming widened from config-only to config-or-yolo after a flag-driven run slipped past (**P-1810**), and the state condition inverted from "status must read *Ready to plan*" to "arm unless a legitimate-stop marker is present" after one batch produced four different status phrasings for the same boundary — unrecognised wording now fails safe, not open (**P-1812**).
+
+### Fixed — the roadmap tick lands regardless of phase-number spelling
+
+`phase complete 01` (the spelling dirs and state.md use) built a tick regex the template's "Phase 1:" checklist line never matched — a silent no-op while state advanced, leaving finished work unticked. Both spellings now tick the same line, and a tick that cannot land returns a `roadmap_warning` with `roadmap_updated: false` instead of silence (**P-1811**).
+
+### Added — `state snapshot` as an alias, and a lint that keeps docs honest about the CLI
+
+A field agent invoked `pan-tools state snapshot`, which did not exist — the real command was the top-level `state-snapshot`, which reads exactly like a `state` subcommand. The guess was semantically right, so it is now real: `state snapshot` dispatches to the same handler (**P-1813**). A new lint asserts that every `pan-tools <group> <sub>` invocation in shipped content resolves to an implemented subcommand, with the command surface parsed from the dispatcher's own error enumerations.
+
+### Changed — planning documents are composed once and written once
+
+Field transcripts counted planning files rewritten up to 19 times inside a single step. A write-discipline policy (gather-then-emit, one Write per file per step, no re-reading your own output) now ships in new-project.md, the roadmapper agent, and `references/guardrails.md` (**P-1808**). Honestly recorded: prose alone has not moved the measured behaviour; a mechanical write-guard is designed and deferred pending per-event field data.
+
 ## [3.23.0] - 2026-08-06
 
 ### Fixed — model gates stated by capability, not version, so they survive model upgrades
