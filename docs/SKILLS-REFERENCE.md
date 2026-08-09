@@ -1068,7 +1068,7 @@ These exist only in the PAN source repository (`.claude/commands/`) and are NOT 
 
 /build - Build PAN Wizard Hooks
 
-**Lines:** 46
+**Lines:** 47
 
 #### /commit
 

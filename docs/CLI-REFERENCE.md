@@ -838,7 +838,9 @@ pan-tools phase complete 5 [--raw]
 }
 ```
 
-**Side effects:** Checks off the phase checkbox in roadmap.md, updates the progress table row, advances `Current Phase` in state.md, and marks completed requirements in requirements.md.
+**Side effects:** Checks off the phase checkbox in roadmap.md, updates the progress table row, advances `Current Phase` in state.md, and marks completed requirements in requirements.md. Both padded and unpadded phase spellings tick the same checklist line (`phase complete 01` and `phase complete 1` are equivalent).
+
+**When the tick cannot land** (roadmap unreadable, no checklist entry names the phase, or the write fails), the result carries a `roadmap_warning` string describing why and `roadmap_updated` is `false` — the completion is never silently unrecorded.
 
 ---
 
