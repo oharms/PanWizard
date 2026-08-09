@@ -27,7 +27,7 @@
  *   config-get <key>                   Get a config.json value
  *   history-digest                     Aggregate all summary.md data
  *   summary-extract <path> [--fields]  Extract structured data from summary.md
- *   state-snapshot                     Structured parse of state.md
+ *   state-snapshot                     Structured parse of state.md (alias: state snapshot)
  *   phase-plan-index <phase>           Index plans with waves and status
  *   websearch <query>                  Search web via Brave API (if configured)
  *     [--limit N] [--freshness day|week|month]
@@ -337,10 +337,16 @@ async function main() {
           stopped_at: getArgValue(args, '--stopped-at'),
           resume_file: getArgValue(args, '--resume-file', 'None'),
         }, raw);
+      } else if (subcommand === 'snapshot') {
+        // Alias for the top-level `state-snapshot` (P-1813). The hyphenated
+        // command reads exactly like a `state` subcommand, and a field agent
+        // guessed the spaced form by analogy (PanLoop finding 10). The guess
+        // is semantically right, so it lands on the real handler.
+        state.cmdStateSnapshot(cwd, raw);
       } else if (subcommand === 'load' || !subcommand) {
         state.cmdStateLoad(cwd, raw);
       } else {
-        error(`Unknown state subcommand: ${subcommand}. Available: json, update, get, patch, advance-plan, record-metric, update-progress, add-decision, add-blocker, resolve-blocker, record-session, load`);
+        error(`Unknown state subcommand: ${subcommand}. Available: json, update, get, patch, advance-plan, record-metric, update-progress, add-decision, add-blocker, resolve-blocker, record-session, load, snapshot`);
       }
       break;
     }

@@ -528,6 +528,7 @@ Structured parse of state.md into a comprehensive JSON object. Unlike `state jso
 
 ```
 pan-tools state-snapshot [--raw]
+pan-tools state snapshot [--raw]    # equivalent alias — the spaced form dispatches to the same handler
 ```
 
 **JSON output:**
