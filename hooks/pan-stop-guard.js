@@ -20,9 +20,16 @@
 //      (discuss/plan/exec-phase) persist the flag into config, and yolo is
 //      accepted directly. transition.md Route B clears auto_advance at the
 //      milestone boundary, which disarms the config half at the true end.
-//   2. .planning/state.md says the project is ready to plan the next phase
-//      (the post-transition status; a verification-failure or gaps stop does
-//      NOT carry it, and those stops are legitimate)
+//   2. .planning/state.md does NOT show a legitimate-stop marker (gaps found,
+//      verification failed, blocked). P-1812 (PanLoop finding 9): this
+//      condition was originally "status begins 'Ready to plan'" — one batch
+//      produced four different status phrasings for the same situation, and a
+//      run with BOTH arming conditions satisfied was disarmed by wording
+//      alone. The condition is now inverted: an unrecognised phrasing ARMS
+//      the guard (fail-safe — at worst one extra continuation, bounded by the
+//      one-shot design) instead of disarming it (fail-open — the build
+//      silently stops). Never re-introduce a required phrasing here; the
+//      model does not reliably write canonical wording and nothing forces it.
 //   3. .planning/roadmap.md still has unticked `- [ ] **Phase N:` lines
 //      (the shipped template/roadmapper checklist shape — same detector the
 //      PanLoop harness uses to call a build incomplete)
@@ -51,12 +58,19 @@ const path = require('path');
 // by the tests — never widen it from imagination, re-derive it from the files.
 const UNTICKED_PHASE_RE = /^- \[ \] \*\*Phase (\d+(?:\.\d+)?):/m;
 
-// Post-transition fingerprint in state.md. The template's canonical Status
-// value is "Ready to plan" (**Status:** line); transition.md's Session
-// Continuity writes "ready to plan Phase N" into the stopped_at line. Either
-// marks the boundary this guard exists for.
-const READY_STATUS_RE = /^\s*\*\*Status:\*\*\s*Ready to plan/im;
-const READY_STOPPED_AT_RE = /ready to plan phase\s*\d/i;
+// Legitimate-stop markers in state.md (P-1812). Condition 2 exists only to
+// let a REAL stop through — a verification failure, gaps, or a recorded
+// blocker. Matching those (a short, high-precision list) is robust; matching
+// the "chain should continue" wording was not: PAN wrote "Ready to plan",
+// "Ready to execute", "Phase 2 planning pending" and two milestone phrasings
+// for the same boundary within one field batch. Anything NOT matching this
+// list arms the guard.
+const LEGIT_STOP_RE = /gaps?\s+found|verification\s+(?:failed|found\s+gaps)|failed\s+verification|\bblocked\b|\bblocker\b/i;
+
+// The stopped_at "ready to plan Phase N" phrasing, when present, names the
+// next phase more precisely than the first-unticked roadmap line (a
+// completed-but-unticked earlier phase would misdirect it — finding 8).
+const READY_STOPPED_AT_RE = /ready to plan phase\s*(\d+(?:\.\d+)?)/i;
 
 /**
  * Pure decision: should this stop be blocked?
@@ -78,8 +92,9 @@ function buildStopDecision({ stopHookActive, config, stateContent, roadmapConten
   if (!armed) return null;
   if (typeof stateContent !== 'string' || typeof roadmapContent !== 'string') return null;
 
-  const ready = READY_STATUS_RE.test(stateContent) || READY_STOPPED_AT_RE.test(stateContent);
-  if (!ready) return null; // gaps/verification stops don't carry the fingerprint
+  // P-1812: inverted condition — allow the stop only when state records a
+  // legitimate reason to stop. Unrecognised status phrasings arm the guard.
+  if (LEGIT_STOP_RE.test(stateContent)) return null;
 
   const unticked = roadmapContent.match(UNTICKED_PHASE_RE);
   if (!unticked) return null; // every phase built — nothing to continue
@@ -88,18 +103,20 @@ function buildStopDecision({ stopHookActive, config, stateContent, roadmapConten
   // (finding 8) would otherwise make the first-unticked line name a phase that
   // is already built. The roadmap match still gates arming; state names the
   // target when it can.
-  const stateNext = stateContent.match(/ready to plan phase\s*(\d+(?:\.\d+)?)/i);
+  const stateNext = stateContent.match(READY_STOPPED_AT_RE);
   const nextPhase = (stateNext && stateNext[1]) || unticked[1];
   return {
     decision: 'block',
     reason:
-      `PAN auto-advance chain incomplete: workflow.auto_advance is true, state.md says ` +
-      `the project is ready to plan Phase ${nextPhase}, and roadmap.md still has unbuilt ` +
-      `phases. Ending the turn here is the P-1801/P-1807 boundary drop. Follow ` +
-      `transition.md's offer_next_phase Route A now: spawn Phase ${nextPhase} as a Task ` +
-      `subagent (plan-phase orchestrator, ARGUMENTS='${nextPhase} --auto'). If the user ` +
-      `explicitly asked to stop, first run: pan-tools config-set workflow.auto_advance false ` +
-      `— then stop. (Disable this guard permanently with workflow.stop_guard: false.)`
+      `PAN auto-advance chain incomplete: autonomy is armed in .planning/config.json, ` +
+      `state.md records no failure/gaps/blocker, and roadmap.md still has unbuilt phases ` +
+      `(next: Phase ${nextPhase}). Ending the turn here is the P-1801/P-1807 boundary drop. ` +
+      `Continue the chain now: if the current phase is finished, follow transition.md's ` +
+      `offer_next_phase Route A and spawn Phase ${nextPhase} as a Task subagent ` +
+      `(plan-phase orchestrator, ARGUMENTS='${nextPhase} --auto'); if the current phase is ` +
+      `mid-flight, resume it instead. If the user explicitly asked to stop, first run: ` +
+      `pan-tools config-set workflow.auto_advance false — then stop. ` +
+      `(Disable this guard permanently with workflow.stop_guard: false.)`
   };
 }
 
