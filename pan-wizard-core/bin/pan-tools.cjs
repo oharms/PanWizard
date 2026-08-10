@@ -1191,8 +1191,10 @@ async function main() {
         worktree.cmdWorktreeCreate(cwd, args[2], raw, { base: getArgValue(args, '--base') });
       } else if (subcommand === 'remove') {
         worktree.cmdWorktreeRemove(cwd, args[2], getArgValue(args, '--branch'), raw, { force: args.includes('--force') });
+      } else if (subcommand === 'cleanup') {
+        worktree.cmdWorktreeCleanup(cwd, raw, { force: args.includes('--force') });
       } else {
-        error('Unknown worktree subcommand. Available: list, create, remove');
+        error('Unknown worktree subcommand. Available: list, create, remove, cleanup');
       }
       break;
     }

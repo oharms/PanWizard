@@ -66,7 +66,7 @@ The workflow handles all logic including:
 
 ---
 
-### /pan:army (182 lines)
+### /pan:army (196 lines)
 
 ```markdown
 ---
@@ -204,12 +204,26 @@ Spawn the Quality squad on the built tree (parallel, read-only). Merge findings 
 ### Phase 5 — Integrate (Release, human-gated)
 Spawn `pan-release`. It prepares the squash-merge, runs the configured `verification`, and surfaces an **always-ask** approval request. A human approves the merge to the protected branch; release then tags and records the rollback target. `--push` pushes the approved result.
 
+**Teardown after the merge lands (P-1815):** worktrees are scaffolding, not deliverables — the squash-merge is the permanent artifact. Once the approval lands, remove each integrated task's worktree **and** its branch in one call: `pan-tools worktree remove ../pan-army-<slug> --branch army/<slug>`. The `--branch` half is not optional: a squash-merged branch never looks merged to git, so nothing else will ever clean it. At campaign end — and on **any** abort path — sweep whatever remains: `pan-tools worktree cleanup` (`--force` also discards dirty worktrees and unintegrated branches; without it the sweep keeps anything that might hold the only copy of work, and says exactly why and how to delete it). A campaign that ends with `pan-tools worktree list` non-empty has skipped this step.
+
 **Phase report (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the mission's self-contained per-phase HTML report **in the built tree, before staging the squash-merge** — `pan-tools report phase <N>` — so the report rides along in the merge as a phase deliverable. **Never run `report index` inside a squad worktree:** the timeline index is a single shared file that aggregates *all* phases, so a worktree would see only its own phase and concurrent squads would race on it. The index is a single-writer, post-merge concern (Phase 6). Never opens a browser.
 
 ### Phase 6 — Learn (Dreaming)
 Squad summaries return to Mission Control. Run `/pan:retro --write-memory` (and `/pan:learn` if traces exist) so recurring patterns persist into agent memory for the next mission. Strike the landed item; update loop-state. For a scheduled campaign, also `pan-tools campaign record-run --items <n> --points <p>` so the next-due time and the day's spend advance.
 
 **Rebuild the timeline index (single writer).** When `workflow.phase_reports.enabled` and `workflow.phase_reports.index` are `true`, Mission Control — and *only* Mission Control, on the integration branch after the merge has landed — rebuilds the project index once against the now-merged set of phases: `pan-tools report index`, then commit it (the commit honors `commit_docs`). Doing this post-merge from the single conductor is what keeps `report-index.html` consistent while builds run in parallel worktrees.
+
+---
+
+<output_paths>
+
+- the project tree + `.planning/orchestration/` — mission state, reports, loop-state (permanent)
+- `<parent-of-project>/pan-army-<task-slug>/` — one worktree per Build task, a **sibling of the project directory** (temporary — removed per task by the Phase 5 teardown; strays swept by `pan-tools worktree cleanup`)
+- branches `army/<task-slug>` — the worktrees' branches (temporary — deleted with their worktree once the squash-merge lands; squash-merged branches never look merged to git and must be deleted explicitly)
+
+Nothing under `pan-army-*` or on an `army/*` branch is a deliverable: the squash-merge into the protected branch is the permanent artifact, same doctrine as what-if's disposable worktrees.
+
+</output_paths>
 
 ---
 

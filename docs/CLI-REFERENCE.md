@@ -180,7 +180,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `learn-lint.cjs` | Learnings-store integrity linter: `learn lint`. Checks L-001..L-005 (duplicate IDs, dangling cross-refs, empty source_experiments, PAN-internal terms in universal-scope rules, revision marker without `superseded_by`). |
 | `learn-index.cjs` | Learnings index + queries: `learn build-index` (writes `pan-wizard-core/learnings/index.json` with topic→agent-relevance map), `learn topics-for --agent <role>` (budget-aware topic selection per agent role). Replaces "skim universal/" with targeted load. |
 | `squads.cjs` | **(v3.11, ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Role-scoped squads (`squad list` enumerates them), each carrying a model tier + an **advisory** access contract — the module's own header says it "modifies no agent and changes no execution path", so those labels are the contract the conductor is instructed to honour and the enforced grant stays each agent's `tools:` frontmatter. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
-| `worktree.cjs` | **(v3.11, ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
+| `worktree.cjs` | **(v3.11, ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`), `worktree cleanup` (`--force`; campaign teardown sweep, v3.24+). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
 | `campaign.cjs` | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--pause`/`--resume`/`--disable`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
 | `hud.cjs` | **(v3.12, ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
 | `skill-align.cjs` | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
@@ -374,28 +374,29 @@ Quick reference of all CLI commands grouped by category.
 | 173 | `worktree list` | Bot Army | worktree.cjs |
 | 174 | `worktree create` | Bot Army | worktree.cjs |
 | 175 | `worktree remove` | Bot Army | worktree.cjs |
-| 176 | `campaign schedule` | Bot Army | campaign.cjs |
-| 177 | `campaign status` | Bot Army | campaign.cjs |
-| 178 | `campaign due` | Bot Army | campaign.cjs |
-| 179 | `campaign record-run` | Bot Army | campaign.cjs |
-| 180 | `hud` | Observability | hud.cjs |
-| 181 | `models check` | Cost | cost.cjs |
-| 182 | `skills index` | Planning (SAD) | skill-align.cjs |
-| 183 | `skills align` | Planning (SAD) | skill-align.cjs |
-| 184 | `hygiene scan` | System | hygiene.cjs |
-| 185 | `hygiene clean` | System | hygiene.cjs |
-| 186 | `report phase <N>` | Observability | phase-report.cjs |
-| 187 | `report index` | Observability | phase-report.cjs |
-| 188 | `report all` | Observability | phase-report.cjs |
-| 189 | `memory optimize` | Memory | memory-optimize.cjs |
-| 190 | `memory rebuild` | Memory | memory-rebuild.cjs |
-| 191 | `optimize trace reconcile` | Optimization | optimize.cjs |
-| 192 | `verify reconcile` | Verification | verify.cjs |
-| 193 | `verify stubs` | Verification | verify.cjs |
-| 194 | `memory select` | Memory | memory.cjs |
-| 195 | `memory budget` | Memory | memory.cjs |
-| 196 | `doc-lint counts` | Linting | doc-lint.cjs |
-| 197 | `doc-lint flags` | Linting | doc-lint.cjs |
+| 176 | `worktree cleanup` | Bot Army | worktree.cjs |
+| 177 | `campaign schedule` | Bot Army | campaign.cjs |
+| 178 | `campaign status` | Bot Army | campaign.cjs |
+| 179 | `campaign due` | Bot Army | campaign.cjs |
+| 180 | `campaign record-run` | Bot Army | campaign.cjs |
+| 181 | `hud` | Observability | hud.cjs |
+| 182 | `models check` | Cost | cost.cjs |
+| 183 | `skills index` | Planning (SAD) | skill-align.cjs |
+| 184 | `skills align` | Planning (SAD) | skill-align.cjs |
+| 185 | `hygiene scan` | System | hygiene.cjs |
+| 186 | `hygiene clean` | System | hygiene.cjs |
+| 187 | `report phase <N>` | Observability | phase-report.cjs |
+| 188 | `report index` | Observability | phase-report.cjs |
+| 189 | `report all` | Observability | phase-report.cjs |
+| 190 | `memory optimize` | Memory | memory-optimize.cjs |
+| 191 | `memory rebuild` | Memory | memory-rebuild.cjs |
+| 192 | `optimize trace reconcile` | Optimization | optimize.cjs |
+| 193 | `verify reconcile` | Verification | verify.cjs |
+| 194 | `verify stubs` | Verification | verify.cjs |
+| 195 | `memory select` | Memory | memory.cjs |
+| 196 | `memory budget` | Memory | memory.cjs |
+| 197 | `doc-lint counts` | Linting | doc-lint.cjs |
+| 198 | `doc-lint flags` | Linting | doc-lint.cjs |
 
 ---
 
@@ -2547,9 +2548,11 @@ Bot-army squad registry. `squad list` shows the four squads (architecture / buil
 
 **Module:** `squads.cjs`
 
-### `worktree list | create <task> | remove <path>` (v3.11, ADR-0033)
+### `worktree list | create <task> | remove <path> | cleanup` (v3.11, ADR-0033; `cleanup` v3.24+)
 
-Branch-per-agent git worktrees for the Build squad — each builder gets its own `army/<task>` branch + isolated tree so concurrent agents never collide. `create` accepts `--base <ref>`; `remove` accepts `--branch <name>` `--force` and refuses to delete non-`army/` branches.
+Branch-per-agent git worktrees for the Build squad — each builder gets its own `army/<task>` branch + isolated tree so concurrent agents never collide. Worktrees are created as **siblings of the project directory** (`../pan-army-<slug>/`). `create` accepts `--base <ref>`; `remove` accepts `--branch <name>` `--force` and refuses to delete non-`army/` branches.
+
+`worktree cleanup [--force]` is the campaign teardown sweep: removes every registered army worktree, prunes stale registrations, and deletes `army/*` branches — but a branch whose tip is **not reachable from HEAD** (squash-merged, or aborted work that exists nowhere else) is *kept* by default and listed with the exact command to delete it; a dirty worktree is likewise kept. `--force` sweeps both. The result reports `removed_worktrees`, `deleted_branches`, `kept` (each with a reason), and `clean`. Run it at campaign end and on any abort path; the per-task `worktree remove <path> --branch <name>` right after a squash-merge lands is the always-correct deletion, since at that moment the merge is the permanent artifact.
 
 **Module:** `worktree.cjs`
 

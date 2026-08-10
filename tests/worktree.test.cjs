@@ -90,3 +90,107 @@ describe('worktree — create/list/remove lifecycle', () => {
     }
   });
 });
+
+describe('worktree cleanup — the campaign teardown sweep (P-1815, PanLoop finding 13)', () => {
+  // REVERT CHECK: /pan:army created sibling pan-army-* worktrees and army/*
+  // branches that NOTHING removed — `worktree remove` existed but was invoked
+  // from nowhere in the army path. The sweeper is the abort/orphan half of the
+  // fix; the Phase 5 per-task teardown is prose in army.md.
+
+  function commitIn(dir, name) {
+    fs.writeFileSync(path.join(dir, name), name);
+    git(['add', '.'], dir);
+    git(['commit', '-m', `add ${name}`], dir);
+  }
+
+  test('fresh worktrees (tip == HEAD) are fully swept by default', () => {
+    wt.createTaskWorktree(tmpDir, 'task one');
+    wt.createTaskWorktree(tmpDir, 'task two');
+
+    const r = wt.cleanupArmyWorktrees(tmpDir);
+
+    assert.equal(r.removed_worktrees.length, 2, JSON.stringify(r));
+    assert.deepEqual(r.deleted_branches.sort(), ['army/task-one', 'army/task-two']);
+    assert.equal(r.clean, true);
+    assert.equal(wt.listArmyWorktrees(tmpDir).length, 0);
+  });
+
+  test('an integrated branch is deleted; an aborted branch is KEPT with the delete command', () => {
+    const merged = wt.createTaskWorktree(tmpDir, 'merged task');
+    commitIn(merged.worktree_path, 'merged.txt');
+    git(['merge', '--no-ff', merged.branch, '-m', 'integrate'], tmpDir);
+
+    const aborted = wt.createTaskWorktree(tmpDir, 'aborted task');
+    commitIn(aborted.worktree_path, 'orphan-work.txt');
+
+    const r = wt.cleanupArmyWorktrees(tmpDir);
+
+    // Both worktrees were clean → both removed.
+    assert.equal(r.removed_worktrees.length, 2, JSON.stringify(r));
+    // Only the integrated branch dies; the aborted one holds the only copy of
+    // its commit — the L3 lesson: never trade clutter for silent data loss.
+    assert.deepEqual(r.deleted_branches, ['army/merged-task']);
+    assert.equal(r.kept.length, 1);
+    assert.equal(r.kept[0].branch, 'army/aborted-task');
+    assert.match(r.kept[0].reason, /not reachable from HEAD/);
+    assert.match(r.kept[0].reason, /git branch -D army\/aborted-task/, 'the reason must carry the exact recovery command');
+    assert.equal(r.clean, false);
+
+    // --force sweeps the kept branch too.
+    const forced = wt.cleanupArmyWorktrees(tmpDir, { force: true });
+    assert.deepEqual(forced.deleted_branches, ['army/aborted-task']);
+    assert.equal(forced.clean, true);
+  });
+
+  test('a dirty worktree is kept by default and removed with --force', () => {
+    const t = wt.createTaskWorktree(tmpDir, 'dirty task');
+    fs.writeFileSync(path.join(t.worktree_path, 'uncommitted.txt'), 'wip');
+
+    const r = wt.cleanupArmyWorktrees(tmpDir);
+    assert.equal(r.removed_worktrees.length, 0);
+    assert.equal(r.kept.length, 1);
+    assert.match(r.kept[0].reason, /--force/, 'the refusal must say how to override');
+    assert.ok(fs.existsSync(t.worktree_path), 'dirty tree must survive a default sweep');
+
+    const forced = wt.cleanupArmyWorktrees(tmpDir, { force: true });
+    assert.equal(forced.removed_worktrees.length, 1);
+    assert.ok(!fs.existsSync(t.worktree_path));
+    assert.equal(forced.clean, true);
+  });
+
+  test('an orphaned army/ branch (worktree removed by hand) is swept', () => {
+    const t = wt.createTaskWorktree(tmpDir, 'orphan task');
+    git(['worktree', 'remove', t.worktree_path], tmpDir); // leaves the branch
+
+    const r = wt.cleanupArmyWorktrees(tmpDir);
+    assert.deepEqual(r.deleted_branches, ['army/orphan-task']);
+    assert.equal(r.clean, true);
+  });
+
+  test('non-army worktrees and branches are never touched', () => {
+    const otherDir = path.join(path.dirname(tmpDir), `pan-wt-other-${path.basename(tmpDir)}`);
+    git(['worktree', 'add', '-b', 'feature/keep-me', otherDir, 'HEAD'], tmpDir);
+    try {
+      wt.createTaskWorktree(tmpDir, 'army task');
+
+      const r = wt.cleanupArmyWorktrees(tmpDir, { force: true });
+
+      assert.deepEqual(r.deleted_branches, ['army/army-task']);
+      assert.ok(fs.existsSync(otherDir), 'foreign worktree must survive');
+      const branches = execFileSync('git', ['branch', '--list', 'feature/keep-me'], { cwd: tmpDir, encoding: 'utf8' });
+      assert.match(branches, /feature\/keep-me/, 'foreign branch must survive');
+    } finally {
+      try { git(['worktree', 'remove', '--force', otherDir], tmpDir); } catch { /* */ }
+      try { fs.rmSync(otherDir, { recursive: true, force: true }); } catch { /* */ }
+    }
+  });
+
+  test('a non-git directory reports an error instead of pretending to clean', () => {
+    const nonGit = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-nogit-'));
+    try {
+      assert.match(wt.cleanupArmyWorktrees(nonGit).error, /git/i);
+    } finally {
+      fs.rmSync(nonGit, { recursive: true, force: true });
+    }
+  });
+});
