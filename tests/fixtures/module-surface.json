@@ -818,6 +818,8 @@
   ],
   "worktree.cjs": [
     "ARMY_BRANCH_PREFIX:string",
+    "cleanupArmyWorktrees:function",
+    "cmdWorktreeCleanup:function",
     "cmdWorktreeCreate:function",
     "cmdWorktreeList:function",
     "cmdWorktreeRemove:function",

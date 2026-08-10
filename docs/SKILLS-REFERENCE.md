@@ -693,7 +693,7 @@ Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, Task  
 **Group:** Army  
-**Lines:** 182
+**Lines:** 196
 
 ---
 
