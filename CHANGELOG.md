@@ -5,6 +5,24 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.25.0] - 2026-08-10
+
+The army learns to clean up after itself. PanLoop's post-release audit of the ARMY route (finding 13, model-free) found the campaign's one structural hygiene gap: worktrees were created and never removed. This release closes it end to end — teardown where the merge lands, a sweeper for everything else, and documentation that treats leftover scaffolding as a defect.
+
+### Fixed — `/pan:army` tears down the worktrees it creates (P-1815)
+
+Army worktrees are created as **siblings of the project directory** (`../pan-army-<task>/`, one per parallel Build task, each on an `army/<task>` branch) — deliberately outside the tree so builders can never dirty it. The gap: `pan-tools worktree remove` existed and worked, but was invoked from **nowhere** in the army path. `army.md` and `pan-conductor.md` instructed `worktree create` and never the inverse; Phase 5 INTEGRATE ended at "merge → tag → hand-off" with no teardown; aborted campaigns had no sweep at all. Every campaign accumulated sibling directories and branches indefinitely — while the what-if subsystem, built on the same primitive, shipped forced cleanup, an orphan sweeper, and a temp-paths declaration from day one. An inconsistency inside PAN, not a missing capability. Three changes:
+
+- **Phase 5 teardown, where the merge lands.** After each task's squash-merge is approved, the conductor removes that task's worktree *and* its branch in one call: `pan-tools worktree remove <path> --branch army/<task>`. The `--branch` half is documented as mandatory — a squash-merged branch never looks merged to git (`branch -d` refuses, nothing garbage-collects it), so explicit deletion is the only way it ever goes away.
+- **An `<output_paths>` contract in `army.md`**, mirroring what-if's: the worktrees and `army/*` branches are declared temporary, the squash-merge into the protected branch is the only permanent artifact, and a campaign that ends with `pan-tools worktree list` non-empty has skipped its teardown.
+- **`pan-tools worktree cleanup [--force]`** — the sweep for campaign end and every abort path. It removes registered army worktrees, prunes stale registrations, and deletes attached and orphaned `army/*` branches, with one deliberate safety asymmetry: a **dirty** worktree, or a branch whose tip is **not reachable from HEAD** (squash-merged — or the only copy of aborted work), is *kept by default* and listed with the exact command to remove it; `--force` sweeps those too. Clutter is recoverable; a deleted aborted branch is not. The sweep never touches worktrees or branches outside the `army/` namespace, and the result reports `removed_worktrees`, `deleted_branches`, `kept` (each with a reason), and `clean`.
+
+Pinned by a revert-proven behavior matrix in the worktree suite — fresh sweep, integrated-deleted vs aborted-kept, dirty kept unless forced, hand-removed orphan branches swept, foreign worktrees and branches untouched. The matrix caught a real defect in the sweeper's first draft (kept branches were double-reported by the orphan scan) before it ever shipped.
+
+### Docs — the teardown story, everywhere the army is described
+
+`docs/USER-GUIDE.md` explains where army worktrees live and how they leave (per-task teardown vs the sweep, and what the cautious defaults keep). `docs/TROUBLESHOOTING.md` gains a "left `pan-army-*` behind" section beside the existing what-if one, including the squash-merge "not reachable" explanation and manual recovery. `docs/AGENTS.md` and `agents/pan-conductor.md` state the conductor's teardown duty outright. `docs/CLI-REFERENCE.md` documents the new subcommand, the sibling placement, and when each removal path is the right one.
+
 ## [3.24.0] - 2026-08-09
 
 The PanLoop hardening release: every finding from an external harness that installs PAN into throwaway workspaces and drives it end to end with a real model (P-1807…P-1813). Field trajectory for a multi-phase autonomous build across the fix rounds: no run had ever completed more than one phase; the final round's probe scenario finished every phase with a clean acceptance sweep.

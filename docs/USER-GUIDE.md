@@ -898,6 +898,13 @@ Inspect the roster any time with `pan-tools squad list` and `pan-tools squad sho
 
 **Parallel builds without collisions.** When the Build squad runs several tasks at once, each builder gets its own `army/<task>` branch in an isolated git worktree (`pan-tools worktree list` shows them), so two agents never edit the same working tree. Use `--no-build-worktrees` for small or strictly-serial projects; set `concurrency.serial_build: true` in `.planning/config.json` if your build tree corrupts under concurrent builds.
 
+**Where those worktrees live, and how they leave.** Army worktrees are created as **siblings of your project directory** — a project at `~/code/myapp` gets `~/code/pan-army-<task>/` — deliberately outside your tree so builders can never dirty it. They are scaffolding, not deliverables: the squash-merge into your protected branch is the permanent artifact. The campaign tears them down in two ways:
+
+- **Per task, after its merge lands** (Phase 5): `pan-tools worktree remove <path> --branch army/<task>`. The `--branch` half matters — a squash-merged branch never looks merged to git, so deleting it explicitly is the only way it ever goes away.
+- **At campaign end, and after any abort:** `pan-tools worktree cleanup`. The sweep removes every registered army worktree and its branch, prunes stale registrations, and deletes orphaned `army/*` branches — but it is deliberately cautious by default: a worktree with uncommitted changes, or a branch whose commits aren't reachable from your current branch (which may be the only copy of aborted work), is **kept and listed with the exact command to remove it**. `--force` sweeps those too. It never touches worktrees or branches outside the `army/` namespace.
+
+A finished campaign should leave `pan-tools worktree list` empty. If it doesn't, run the sweep — leftover `pan-army-*` directories are a defect, not a souvenir.
+
 **The loop.** Each cycle runs plan → delegate → execute → review → integrate → learn. Quality must return green before integration; the Release agent (`pan-release`) then prepares the squash-merge, runs your configured `verification` command, and surfaces an `always-ask` approval — a human merges to the protected branch, not a bot. Recovery is always `git revert` or redeploying the previous tag. Between missions, `/pan:retro --write-memory` persists recurring patterns into agent memory so the next mission plans smarter.
 
 **Running it:**
