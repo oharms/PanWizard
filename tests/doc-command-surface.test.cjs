@@ -120,6 +120,39 @@ describe('shipped content invokes only implemented pan-tools commands', () => {
   });
 });
 
+describe('pan-tools --help works (P-1814, PanLoop finding 11)', () => {
+  // REVERT CHECK: `--help` was the single most frequent failed probe in field
+  // transcripts — 26 sightings across 10 command docs. The obvious guess must
+  // work; teaching ten documents not to make it does not scale.
+  const { spawnSync } = require('child_process');
+  const PAN_TOOLS = path.join(REPO_ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+
+  function invoke(...args) {
+    return spawnSync(process.execPath, [PAN_TOOLS, ...args], { encoding: 'utf8', timeout: 15000 });
+  }
+
+  for (const flag of ['--help', '-h', 'help']) {
+    test(`"${flag}" prints the command list and exits 0`, () => {
+      const r = invoke(flag);
+      assert.equal(r.status, 0, `an explicit help request is a success, got exit ${r.status}: ${r.stderr}`);
+      assert.match(r.stdout, /Commands: state,/, 'help must print the usage command list');
+    });
+  }
+
+  test('a missing command is still an error (the documented exit contract)', () => {
+    // The very first defect this harness ever confirmed was an exit-code
+    // disagreement — pin the boundary: help-on-request is 0, no-command is 1.
+    const r = invoke();
+    assert.equal(r.status, 1, 'bare invocation must stay exit 1');
+  });
+
+  test('an unknown command points at --help', () => {
+    const r = invoke('definitely-not-a-command');
+    assert.equal(r.status, 1);
+    assert.match(r.stderr + r.stdout, /--help/, 'the refusal should name the probe that now works');
+  });
+});
+
 describe('state snapshot alias behaves identically to state-snapshot (P-1813)', () => {
   test('both spellings produce the same snapshot', () => {
     const tmpDir = createTempProject();

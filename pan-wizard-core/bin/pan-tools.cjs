@@ -282,8 +282,20 @@ async function main() {
 
   const command = args[0];
 
+  const USAGE = 'Usage: pan-tools <command> [args] [--raw] [--cwd <path>]\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links';
+
   if (!command) {
-    error('Usage: pan-tools <command> [args] [--raw] [--cwd <path>]\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links');
+    error(USAGE);
+  }
+
+  // P-1814 (PanLoop finding 11): `--help` was the single most frequent failed
+  // probe in field transcripts — 26 sightings across 10 command docs. It is
+  // the most predictable thing any agent or human tries, so it works: print
+  // the usage and exit 0. A missing command stays exit 1 (the error contract);
+  // an explicit request for help is a success.
+  if (command === '--help' || command === '-h' || command === 'help') {
+    console.log(USAGE);
+    process.exit(0);
   }
 
   switch (command) {
@@ -1515,7 +1527,7 @@ async function main() {
     }
 
     default:
-      error(`Unknown command: ${command}. Run pan-tools without arguments to see available commands.`);
+      error(`Unknown command: ${command}. Run pan-tools --help to see available commands.`);
   }
 }
 
