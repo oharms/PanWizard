@@ -25,6 +25,14 @@ Prose reduced the boundary drop; it could not eliminate it. `hooks/pan-stop-guar
 
 A field agent invoked `pan-tools state snapshot`, which did not exist — the real command was the top-level `state-snapshot`, which reads exactly like a `state` subcommand. The guess was semantically right, so it is now real: `state snapshot` dispatches to the same handler (**P-1813**). A new lint asserts that every `pan-tools <group> <sub>` invocation in shipped content resolves to an implemented subcommand, with the command surface parsed from the dispatcher's own error enumerations.
 
+### Added — `--help` works, and asking for help is not an error
+
+`pan-tools --help` was the most frequent failed probe in the field suite — it is the most predictable thing any agent or human tries. `--help`, `-h` and `help` now print the usage command list and exit 0; a *missing* command keeps the documented error contract (usage as an error, exit 1); the unknown-command refusal points at `--help` (**P-1814**).
+
+### Verified — the external harness's full-suite verdict against this release
+
+All 28 scenarios passed against this tree: every model-driven build completed its full phase chain unattended (several crossing three phase boundaries), every blind acceptance check written from published specs passed, and the model-free steps produced zero findings. The boundary-drop class that opened this release's audit chain went from failing every multi-phase run to failing none.
+
 ### Changed — planning documents are composed once and written once
 
 Field transcripts counted planning files rewritten up to 19 times inside a single step. A write-discipline policy (gather-then-emit, one Write per file per step, no re-reading your own output) now ships in new-project.md, the roadmapper agent, and `references/guardrails.md` (**P-1808**). Honestly recorded: prose alone has not moved the measured behaviour; a mechanical write-guard is designed and deferred pending per-event field data.

@@ -128,6 +128,8 @@ fi
 
 A gate whose verdict has no `error` key sets its code explicitly instead: `links validate` (`0` pass / `1` fail), `verify reconcile` (`0` reconciled / `1` contradiction), `verify stubs --gate`, `campaign due`. Those are documented per command.
 
+**Help:** `pan-tools --help` (also `-h` or `help`) prints the command list and exits `0` — an explicit help request is a success. A *missing* command prints the same usage as an error and exits `1`.
+
 ### `--cwd <path>`
 
 Override the working directory. Accepts `--cwd /path` or `--cwd=/path`. Useful when subagents run outside the project root.
