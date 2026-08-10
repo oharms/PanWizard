@@ -867,6 +867,28 @@ Common causes:
 - Uncommitted changes in the worktree (use `--force` to discard them)
 - Filesystem lock on Windows (close any terminal session with that cwd)
 
+### `/pan:army` left `pan-army-*` directories or `army/*` branches behind
+
+Army worktrees are created as **siblings of the project directory** (`../pan-army-<task>/`), each on an `army/<task>` branch. A completed or aborted campaign should leave none — Phase 5 removes each task's worktree and branch after its squash-merge lands. If any remain (a campaign aborted mid-flight, or predates the teardown), sweep them:
+
+```bash
+pan-tools worktree cleanup            # safe sweep — see what it keeps and why
+pan-tools worktree cleanup --force    # also discard dirty worktrees + unintegrated branches
+```
+
+The default sweep is deliberately cautious: it **keeps** any worktree with uncommitted changes and any branch whose commits are not reachable from your current branch — that branch may be the only copy of aborted work — and prints the exact command to remove each kept item. Read the `kept` list before reaching for `--force`. Two things to know:
+
+- A **squash-merged** branch never looks merged to git, so it shows up as "not reachable" even though its work landed — if the merge is in, deleting it is correct (`git branch -D army/<task>`, or `--force`).
+- The sweep only ever touches the `army/` namespace and `pan-army-*` worktrees; your own worktrees and branches are never candidates.
+
+Manual recovery, if the sweep itself is blocked (same causes as the what-if section above):
+
+```bash
+git worktree remove --force ../pan-army-<task>
+git branch -D army/<task>
+git worktree prune
+```
+
 ### `/pan:mcp-bridge list` returns `source: "empty"`
 
 The MCP tool cache at `.planning/bridge/available-tools.json` isn't populated. Causes:
