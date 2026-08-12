@@ -469,6 +469,13 @@ User interaction (runtimes without a native question tool):
 }
 
 /** Claude command → runtime-neutral SKILL.md (ADR-0028 Phase 1) */
+/**
+ * `compatibility` value for emitted unified skills — the spec's optional field
+ * for environment requirements (max 500 chars). Kept short and factual: these
+ * are the two things a host cannot infer and that every PAN skill depends on.
+ */
+const SKILL_COMPATIBILITY = 'Requires Node.js (skills invoke the bundled pan-tools CLI) and a project with a .planning/ directory, created by /pan-new-project or /pan-map-codebase.';
+
 function convertClaudeCommandToUnifiedSkill(content, skillName) {
   // Normalize command mentions to the readable /pan-<name> form; the adapter
   // header tells each runtime to map that onto its own invocation syntax.
@@ -483,7 +490,14 @@ function convertClaudeCommandToUnifiedSkill(content, skillName) {
   description = toSingleLine(description);
   const shortDescription = description.length > 180 ? `${description.slice(0, 177)}...` : description;
   const adapter = getUnifiedSkillAdapterHeader(skillName);
-  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+  // `compatibility` is the spec's optional field for stating environment
+  // requirements, and PAN has real ones: the skill bodies shell out to
+  // `pan-tools` (Node) and every workflow reads/writes `.planning/`. Declaring
+  // them beats the alternative, which is a host discovering it mid-run.
+  // Deliberately NOT emitting `allowed-tools`: it is marked experimental in the
+  // spec, and ADR-0028's frontmatter rule is that anything unverified stays out
+  // until a live per-runtime check confirms no parser rejects it.
+  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\ncompatibility: ${yamlQuote(SKILL_COMPATIBILITY)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
 }
 
 /** Generate Copilot CLI skill adapter header */

@@ -50,15 +50,27 @@ Three moves, ordered by leverage per unit of effort. Each states its finding as 
 
 ### 3.1 — Finish the skills packaging (Move C in priority, listed first because it is prerequisite plumbing)
 
-**Finding.** The unified compiler (`convertClaudeCommandToUnifiedSkill` in `bin/install-lib.cjs`) emits a valid skill: `name`, `description`, `metadata.short-description`, adapter header, body. Two gaps against the current spec:
+> **CORRECTED 2026-08-12, after checking the emitted tree instead of reasoning from the compiler source. Most of this section's premise did not survive.** What the plan called gaps are largely conformant already:
+>
+> - **Tier 3 works.** Skill bodies import the shared core with `@` references — root-relative (`@./.agents/pan-wizard-core/…`) for a local install, **absolute** for a global one, where a root-relative path would dangle. Both resolve; verified in both scopes. It is not *bundle-local*, which is a portability limitation, not a broken tier.
+> - **Every hard spec rule already passes** across the whole emitted tree: `name` equals its parent directory (the requirement that actually gates discovery), the charset/hyphen and 64-char rules hold, and every `description` is present, single-line and inside 1024 chars.
+> - **So P1 as written was the wrong call.** Copying the workflow and reference corpus into each of the emitted skill directories would duplicate it many times over to satisfy a shape, while PAN always ships the core alongside the skills. The single-source-of-truth arrangement is *better* here; the honest cost is only that a PAN skill is not a standalone bundle. Revisit only if standalone bundles become a real requirement (a marketplace listing being the obvious trigger).
+>
+> **What was actually missing, and is now done:** the optional `compatibility` field (PAN needs Node and a `.planning/` directory — neither inferable from a body), plus a **spec-conformance suite**, which is the durable part. Nothing validated the emitted tree before: the pre-existing checks assert `name:` and `description:` are *present*, while the spec constrains their *values*. The new suite pins the value rules, asserts every `@` reference resolves on disk in both scopes, and leads with a non-vacuity guard — which immediately earned itself by catching that its own fixture was empty, a state in which four of the five assertions would have passed on nothing. `allowed-tools` stays unemitted by design (experimental; ADR-0028's rule is that unverified frontmatter waits for a live per-runtime check) and a test now guards against adding it prematurely.
+>
+> **Still genuinely open:** the body-budget item below (unchanged, and see its own note), and P4.
 
-1. **No tier 3.** The emitted skill directory holds `SKILL.md` and nothing else — no in-bundle `references/` or `scripts/`. PAN *does* practise progressive disclosure, but through path references into `pan-wizard-core/`, i.e. from outside the bundle. Correct behavior, non-portable shape: nothing that consumes a skill bundle can see PAN's second tier.
+**Original finding (retained for the record).** The unified compiler (`convertClaudeCommandToUnifiedSkill` in `bin/install-lib.cjs`) emits a valid skill: `name`, `description`, `metadata.short-description`, adapter header, body. Two gaps were claimed against the spec:
+
+1. ~~**No tier 3.**~~ **Refuted above.** The emitted skill directory holds only `SKILL.md`, and PAN's progressive disclosure runs through path references into `pan-wizard-core/` from outside the bundle. That was read as a defect; it is a deliberate trade that avoids duplicating the corpus.
 2. **Body budget exceeded by a known class.** The spec recommends a SKILL.md body under ~5000 tokens. Enumerate the offenders rather than trusting a number here:
 
    ```bash
    for f in commands/pan/*.md; do t=$(( $(wc -c < "$f") / 4 )); \
      [ $t -gt 5000 ] && printf "%6d  %s\n" "$t" "$f"; done | sort -rn
    ```
+
+   > **Note added 2026-08-12.** Measure the **emitted skill**, not the source command — the adapter header adds to every body, which pushes at least one command over the line that passes when measured at source. Substitute `.agents/skills/*/SKILL.md` in the loop after a `--unified-skills` install. Also weigh this before acting: the budget is a **recommendation**, the cost it describes is context consumed at activation, and the members are behavioural pipeline prompts. Splitting a multi-phase prompt changes what the agent reads and when, which is not verifiable by a size check — so this one wants live testing, not a mechanical split. It is the reason this item stayed open rather than being executed with the rest of §3.1.
 
    As of this writing the loop returns the `focus-*` family only, and the largest member is multiples over budget. (`army.md` sits just under the line — near enough that any edit can push it over, so treat it as in the class for planning purposes even though the check passes today.) Every member is a command ARCHITECTURE.md documents as "self-contained … no workflow" — one that inlined its procedure instead of delegating it. **The design decision that made them self-contained is what put them over budget**, which is why the fix is a file-boundary move rather than a rewrite.
 

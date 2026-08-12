@@ -166,6 +166,147 @@ for (const rt of RUNTIMES) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Agent Skills SPEC CONFORMANCE for the emitted tree.
+//
+// Nothing validated this before. The existing checks assert that `name:` and
+// `description:` are *present*; the spec constrains their VALUES, and one of
+// those constraints is load-bearing for discovery: `name` MUST equal the parent
+// directory name. A skill that violates it is written, verified, and then not
+// found — the same silent-dead-surface shape as a wrong config path.
+//
+// Rules pinned here come from the published spec (agentskills.io / the SKILL.md
+// reference, read 2026-08-12): name 1-64 chars, lowercase alphanumeric and
+// hyphens with no leading, trailing or consecutive hyphens, matching its
+// directory; description 1-1024 chars. Re-verify before relaxing any of them.
+describe('unified skills: Agent Skills spec conformance of the emitted tree', () => {
+  let tmpDir;
+
+  before(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-uskill-spec-'));
+    runInstaller(tmpDir, '--claude --local --unified-skills --skip-warnings');
+  });
+
+  after(() => {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* temp dir */ }
+  });
+
+  const frontmatterOf = (content) => {
+    const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+    return m ? m[1] : null;
+  };
+  const field = (fm, key) => {
+    const m = new RegExp(`^${key}:\\s*(.*)$`, 'm').exec(fm);
+    if (!m) return null;
+    return m[1].trim().replace(/^["'](.*)["']$/, '$1');
+  };
+
+  test('the tree is non-empty (otherwise every assertion below passes vacuously)', () => {
+    assert.ok(listSkillDirs(tmpDir).length > 0, 'no skills emitted — the rest of this suite would be vacuous');
+  });
+
+  test('every skill: name matches its directory, and satisfies the spec charset/length', () => {
+    // A trailing/leading/doubled hyphen or an uppercase char is invalid per spec.
+    const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    const bad = [];
+    for (const dir of listSkillDirs(tmpDir)) {
+      const fm = frontmatterOf(readSkill(tmpDir, dir));
+      if (!fm) { bad.push(`${dir}: no frontmatter`); continue; }
+      const name = field(fm, 'name');
+      if (name !== dir) bad.push(`${dir}: name "${name}" !== directory (breaks discovery)`);
+      if (!name || !NAME_RE.test(name)) bad.push(`${dir}: name "${name}" fails spec charset/hyphen rules`);
+      if (name && name.length > 64) bad.push(`${dir}: name is ${name.length} chars (max 64)`);
+    }
+    assert.deepEqual(bad, [], `spec violations in emitted skill names:\n${bad.join('\n')}`);
+  });
+
+  test('every skill: description is present and within the spec length bound', () => {
+    const bad = [];
+    for (const dir of listSkillDirs(tmpDir)) {
+      const fm = frontmatterOf(readSkill(tmpDir, dir));
+      const desc = fm && field(fm, 'description');
+      if (!desc) bad.push(`${dir}: missing/empty description (it is the tier-1 discovery signal)`);
+      else if (desc.length > 1024) bad.push(`${dir}: description is ${desc.length} chars (max 1024)`);
+      else if (/\r?\n/.test(desc)) bad.push(`${dir}: description spans lines — must be single-line`);
+    }
+    assert.deepEqual(bad, [], `spec violations in emitted descriptions:\n${bad.join('\n')}`);
+  });
+
+  test('every skill declares `compatibility`, within the spec length bound', () => {
+    // PAN's requirements are not inferable from a skill body: it shells out to a
+    // Node CLI and assumes a .planning/ directory. Spec caps the field at 500.
+    const bad = [];
+    for (const dir of listSkillDirs(tmpDir)) {
+      const fm = frontmatterOf(readSkill(tmpDir, dir));
+      const compat = fm && field(fm, 'compatibility');
+      if (!compat) bad.push(`${dir}: missing compatibility`);
+      else if (compat.length > 500) bad.push(`${dir}: compatibility is ${compat.length} chars (max 500)`);
+    }
+    assert.deepEqual(bad, [], `compatibility problems:\n${bad.join('\n')}`);
+  });
+
+  test('no skill emits the experimental `allowed-tools` (unverified per ADR-0028)', () => {
+    // Guard against a well-meaning future addition: the field is experimental,
+    // and ADR-0028's rule is that frontmatter which could break a runtime parser
+    // waits for a live per-runtime check. Flip this test when that check exists.
+    const offenders = listSkillDirs(tmpDir).filter((dir) => {
+      const fm = frontmatterOf(readSkill(tmpDir, dir));
+      return fm && /^allowed-tools:/m.test(fm);
+    });
+    assert.deepEqual(offenders, [], 'allowed-tools is experimental — gate it on a live runtime check first');
+  });
+
+  test('every `@` reference in a skill body RESOLVES on disk', () => {
+    // This is PAN's tier 3. It is NOT in-bundle `references/` — bodies import the
+    // shared core by path (root-relative for a local install, absolute for a
+    // global one), which works and avoids duplicating the workflow corpus into
+    // every skill dir. What that trades away is a self-contained bundle, so the
+    // ONLY thing keeping tier 3 alive is that these paths resolve. Assert it.
+    const bad = [];
+    for (const dir of listSkillDirs(tmpDir)) {
+      const body = readSkill(tmpDir, dir);
+      const refs = body.match(/@\.?\/?[^\s`"')\]]*pan-wizard-core\/[^\s`"')\]]+\.md/g) || [];
+      for (const ref of refs) {
+        const raw = ref.slice(1); // drop the leading @
+        const abs = path.isAbsolute(raw) || /^[A-Za-z]:/.test(raw)
+          ? raw
+          : path.join(tmpDir, raw);
+        if (!fs.existsSync(abs)) bad.push(`${dir}: dangling ref ${ref}`);
+      }
+    }
+    assert.deepEqual(bad, [], `skill bodies reference files that do not exist:\n${bad.join('\n')}`);
+  });
+
+  test('a global install emits refs that resolve too (absolute, not ./-relative)', () => {
+    // The local form is `@./.agents/…`, which is root-relative to the CWD. A
+    // GLOBAL install puts the core under the user's home, where a project-root
+    // relative path would dangle — so the emitted form must differ. Pinned
+    // because getting this wrong yields skills that load and then import nothing.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-uskill-home-'));
+    const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-uskill-proj-'));
+    try {
+      execFileSync(process.execPath, [INSTALLER, '--claude', '--global', '--unified-skills'], {
+        cwd: proj, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+      });
+      const skillPath = path.join(home, '.agents', 'skills', 'pan-exec-phase', 'SKILL.md');
+      assert.ok(fs.existsSync(skillPath), 'global unified install should emit skills under ~/.agents/skills');
+      const refs = fs.readFileSync(skillPath, 'utf8')
+        .match(/@[^\s`"')\]]*pan-wizard-core\/[^\s`"')\]]+\.md/g) || [];
+      assert.ok(refs.length > 0, 'the exec-phase skill should import at least one core file');
+      for (const ref of refs) {
+        const raw = ref.slice(1);
+        assert.ok(!raw.startsWith('./'), `global ref must not be project-root relative: ${ref}`);
+        assert.ok(fs.existsSync(raw), `global ref does not resolve: ${ref}`);
+      }
+    } finally {
+      for (const d of [home, proj]) {
+        try { fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* temp */ }
+      }
+    }
+  });
+});
+
 describe('unified skills: ref-counted uninstall across runtimes (ADR-0028 Phase 2)', () => {
   let tmpDir;
   let afterFirstUninstall;
