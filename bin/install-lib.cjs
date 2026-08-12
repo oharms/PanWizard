@@ -869,6 +869,146 @@ const HOOK_EVENT_MAP = Object.freeze({
   opencode: null,
 });
 
+// ─── MCP server registration (2026-08) ──────────────────────────────────────
+
+/**
+ * Cross-runtime MCP registration map. Every path and shape below was verified
+ * against primary docs on 2026-08-12 — do NOT edit from memory, and re-verify
+ * before trusting: this table's ancestor (`HOOK_EVENT_MAP`) exists because PAN
+ * shipped two DEAD config paths that had been written from secondary sources.
+ *
+ * `register: false` means PAN deliberately does not write the file and prints a
+ * copy-pasteable snippet instead. That is a risk decision, not an omission:
+ *   - **codex** — MCP lives in `config.toml`, which PAN does not touch anywhere
+ *     else and cannot merge non-destructively without a TOML parser (PAN is
+ *     zero-dep and only ever *generates* TOML). Hand-merging a user's config
+ *     risks their settings for no gain over a printed snippet.
+ *   - **claude global** — user scope is `~/.claude.json`, a large file keyed by
+ *     every project path the user has opened. PAN writes the project-scoped
+ *     `.mcp.json` instead, which is the documented shareable surface.
+ *
+ * Shape notes that differ per runtime and are easy to get wrong:
+ *   - claude/copilot/gemini use `mcpServers`; **opencode uses `mcp`**.
+ *   - claude/copilot/gemini take `command` + `args[]`; **opencode takes a single
+ *     `command` ARRAY** ([cmd, ...args]) and names its env block `environment`.
+ *   - copilot/opencode want `type: "local"`; claude/gemini infer stdio from
+ *     `command` and are not given a `type` here.
+ */
+const MCP_REGISTRATION = Object.freeze({
+  claude: Object.freeze({
+    register: true, key: 'mcpServers', localPath: '.mcp.json', globalPath: null,
+    why: 'Project-scoped .mcp.json at the repo root (code.claude.com/docs/en/mcp). Needs one interactive approval; workspace trust gates it.',
+  }),
+  copilot: Object.freeze({
+    // PATHS HERE ARE RELATIVE TO THE RUNTIME'S CONFIG DIR, not the repo root.
+    // Copilot's config dir already *is* `.github/`, so this is `mcp.json` — it
+    // resolves to `.github/mcp.json` on disk. Writing `.github/mcp.json` here
+    // produced `.github/.github/mcp.json`, a file Copilot never reads; the
+    // doubling is pinned by a test because it installs and verifies "cleanly".
+    register: true, key: 'mcpServers', localPath: 'mcp.json', globalPath: 'mcp-config.json',
+    why: 'docs.github.com add-mcp-servers: project-level .github/mcp.json (also .mcp.json up-tree), user-level ~/.copilot/mcp-config.json.',
+  }),
+  gemini: Object.freeze({
+    register: true, key: 'mcpServers', localPath: 'settings.json', globalPath: 'settings.json',
+    why: 'Gemini reads mcpServers from .gemini/settings.json (workspace) or ~/.gemini/settings.json (user) — the same file PAN already writes hooks into.',
+  }),
+  opencode: Object.freeze({
+    register: true, key: 'mcp', localPath: 'opencode.json', globalPath: 'opencode.json',
+    why: 'opencode.ai/docs: opencode.json `mcp` block, type "local", command as one array, env block named `environment`. PAN already writes this file.',
+  }),
+  codex: Object.freeze({
+    // Config-dir-relative like the others (resolves to `.codex/config.toml`).
+    // These are documentation-only while register is false — but they follow the
+    // convention anyway, so that flipping register:true later cannot inherit the
+    // path-doubling bug Copilot's row shipped with.
+    register: false, key: 'mcp_servers', localPath: 'config.toml', globalPath: 'config.toml',
+    why: 'TOML-only surface ([mcp_servers.NAME] in config.toml, verified learn.chatgpt.com). PAN has no TOML merge and is zero-dep; a printed snippet is safer than hand-editing a user config.',
+  }),
+});
+
+/**
+ * Build one PAN MCP server entry in the shape a given runtime expects.
+ *
+ * @param {string} runtime - claude | copilot | gemini | opencode | codex
+ * @param {string} serverPath - absolute path to pan-wizard-core/mcp/server.cjs
+ * @param {string} panToolsPath - absolute path to pan-wizard-core/bin/pan-tools.cjs
+ * @param {string} [projectRoot] - value for PAN_PROJECT_ROOT; omitted when falsy
+ * @returns {object} the entry (NOT wrapped in its container key)
+ */
+function buildMcpServerEntry(runtime, serverPath, panToolsPath, projectRoot) {
+  const env = { PAN_TOOLS_PATH: panToolsPath };
+  if (projectRoot) env.PAN_PROJECT_ROOT = projectRoot;
+
+  if (runtime === 'opencode') {
+    // Single command ARRAY + `environment` — opencode's shape is the outlier.
+    return { type: 'local', command: ['node', serverPath], enabled: true, environment: env };
+  }
+  const entry = { command: 'node', args: [serverPath], env };
+  // Copilot's documented example carries an explicit local type; Claude and
+  // Gemini infer stdio from `command`, and Claude's `type` vocabulary does not
+  // include "local", so it must NOT be added there.
+  if (runtime === 'copilot') entry.type = 'local';
+  return entry;
+}
+
+/**
+ * Merge PAN's MCP server into an existing config object, non-destructively.
+ * Foreign servers are preserved; the PAN entry is replaced wholesale so a
+ * reinstall is idempotent and a path change takes effect.
+ *
+ * @param {object|null} existing - parsed config, or null when absent/unusable
+ * @param {string} runtime
+ * @param {object} entry - from buildMcpServerEntry
+ * @param {string} [serverName='pan'] - registration key
+ * @returns {object} merged config to serialize
+ */
+function mergeMcpRegistration(existing, runtime, entry, serverName = 'pan') {
+  const spec = MCP_REGISTRATION[runtime];
+  if (!spec) throw new Error(`mergeMcpRegistration: unknown runtime "${runtime}"`);
+  const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
+  const key = spec.key;
+  if (!config[key] || typeof config[key] !== 'object' || Array.isArray(config[key])) config[key] = {};
+  config[key][serverName] = entry;
+  return config;
+}
+
+/**
+ * Remove PAN's MCP server from a config object, preserving foreign entries.
+ * Empties the container key when PAN was its only member, so uninstall does not
+ * leave `{"mcpServers":{}}` behind.
+ *
+ * @returns {{config: object, removed: boolean}}
+ */
+function stripMcpRegistration(existing, runtime, serverName = 'pan') {
+  const spec = MCP_REGISTRATION[runtime];
+  if (!spec) throw new Error(`stripMcpRegistration: unknown runtime "${runtime}"`);
+  const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
+  const bag = config[spec.key];
+  if (!bag || typeof bag !== 'object' || !(serverName in bag)) return { config, removed: false };
+  delete bag[serverName];
+  if (Object.keys(bag).length === 0) delete config[spec.key];
+  return { config, removed: true };
+}
+
+/**
+ * The copy-pasteable TOML a user adds by hand for Codex (register: false).
+ * Emitting a snippet rather than merging is the deliberate choice recorded in
+ * MCP_REGISTRATION — keep this in the shape verified at learn.chatgpt.com
+ * (`[mcp_servers.NAME]` with a nested `[mcp_servers.NAME.env]` table).
+ */
+function buildCodexMcpSnippet(serverPath, panToolsPath, projectRoot, serverName = 'pan') {
+  const lines = [
+    `[mcp_servers.${serverName}]`,
+    'command = "node"',
+    `args = [${JSON.stringify(serverPath)}]`,
+    '',
+    `[mcp_servers.${serverName}.env]`,
+    `PAN_TOOLS_PATH = ${JSON.stringify(panToolsPath)}`,
+  ];
+  if (projectRoot) lines.push(`PAN_PROJECT_ROOT = ${JSON.stringify(projectRoot)}`);
+  return lines.join('\n');
+}
+
 /**
  * Merge PAN hook registrations into a `.codex/hooks.json` config.
  *
@@ -1301,6 +1441,33 @@ function buildPluginHooksConfig() {
   };
 }
 
+/**
+ * Build the plugin's MCP registration (`.mcp.json` at the plugin root).
+ *
+ * Plugins may declare MCP servers in a plugin-root `.mcp.json`, and unlike
+ * command markdown — where `${CLAUDE_PLUGIN_ROOT}` expansion is unverified and
+ * is why marketplace publishing is still gated — hook and MCP *configs* are the
+ * documented place the variable is substituted. So the same form
+ * `buildPluginHooksConfig()` relies on is correct here.
+ *
+ * No `env` block: a plugin serves whatever project the session is in, so pinning
+ * PAN_PROJECT_ROOT would be wrong, and the server resolves its engine from its
+ * own location (see `defaultPanToolsPath`) with `cwd` falling back to the
+ * process cwd. Nothing to configure per install.
+ *
+ * @returns {Object} a `.mcp.json` object for the plugin root
+ */
+function buildPluginMcpConfig() {
+  return {
+    mcpServers: {
+      pan: {
+        command: 'node',
+        args: ['${CLAUDE_PLUGIN_ROOT}/pan-wizard-core/mcp/server.cjs'],
+      },
+    },
+  };
+}
+
 // ─── Native Claude Code workflows (2026-06) ─────────────────────────────────
 //
 // Claude Code discovers deterministic orchestration scripts in
@@ -1510,10 +1677,16 @@ module.exports = {
   buildCopilotHooksConfig,
   HOOK_EVENT_MAP,
   mergeCodexHooksConfig,
+  MCP_REGISTRATION,
+  buildMcpServerEntry,
+  mergeMcpRegistration,
+  stripMcpRegistration,
+  buildCodexMcpSnippet,
   removeCodexPanHooks,
   buildNativeWorkflowScripts,
   buildPluginManifest,
   buildPluginHooksConfig,
+  buildPluginMcpConfig,
   // Install verification (v3.7.10)
   verifyInstall,
   // AGENTS.md universal rules layer (ADR-0028 Phase 3)

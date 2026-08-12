@@ -1611,6 +1611,39 @@ function uninstall(isGlobal, runtime = 'claude') {
     }
   }
 
+  // 7b. Strip the MCP registration. Foreign servers and every other key in the
+  // file are preserved; a file PAN created and that holds nothing else is
+  // removed rather than left as `{}`. An unparseable config is left ALONE —
+  // never rewrite JSON we could not read (the readSettings null-vs-{} contract).
+  {
+    const mcpPath = mcpConfigPathFor(runtime, isGlobal, targetDir);
+    if (mcpPath) {
+      const existing = readSettings(mcpPath);
+      if (existing === null) {
+        try {
+          if (fs.existsSync(mcpPath)) {
+            console.log(`  ${yellow}✗${reset} ${displayPath(mcpPath)} is not valid JSON — left untouched (remove the "pan" server by hand)`);
+          }
+        } catch { /* stat failed — nothing to report */ }
+      } else {
+        try {
+          const { config, removed } = lib.stripMcpRegistration(existing, runtime);
+          if (removed) {
+            if (Object.keys(config).length === 0) {
+              fs.unlinkSync(mcpPath);
+              console.log(`  ${green}✓${reset} Removed ${displayPath(mcpPath)} (only the PAN server remained)`);
+            } else {
+              fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2) + '\n');
+              console.log(`  ${green}✓${reset} Removed PAN MCP server from ${displayPath(mcpPath)}`);
+            }
+          }
+        } catch (e) {
+          console.error(`  ${yellow}✗${reset} Failed to strip MCP registration from ${displayPath(mcpPath)}: ${e.message}`);
+        }
+      }
+    }
+  }
+
   // 8. Clean up empty PAN directories
   const dirsToClean = [
     path.join(targetDir, 'agents'),
@@ -2017,6 +2050,96 @@ function reportLocalPatches(configDir, runtime = 'claude') {
   return meta.files || [];
 }
 
+/**
+ * Resolve where a runtime's MCP registration file lives, per MCP_REGISTRATION.
+ *
+ * Returns null when this runtime/scope combination is deliberately not written
+ * (see the table's `register` flag and the claude-global note). `targetDir` is
+ * the runtime's config dir (.claude/, .github/, .gemini/, .opencode/ …).
+ *
+ * The important asymmetry: Claude's project surface is `.mcp.json` at the REPO
+ * ROOT, not inside `.claude/`. Every other runtime keeps its MCP config inside
+ * its own config dir, so only Claude escapes targetDir.
+ */
+function mcpConfigPathFor(runtime, isGlobal, targetDir) {
+  const spec = lib.MCP_REGISTRATION[runtime];
+  if (!spec || !spec.register) return null;
+  if (runtime === 'claude') {
+    // No global path by design — ~/.claude.json is a per-project-keyed user file.
+    return isGlobal ? null : path.join(process.cwd(), spec.localPath);
+  }
+  const rel = isGlobal ? spec.globalPath : spec.localPath;
+  if (!rel) return null;
+  return path.join(targetDir, rel);
+}
+
+/**
+ * Register PAN's MCP bridge for one runtime, non-destructively.
+ *
+ * Reuses readSettings() so an existing-but-unusable config is distinguished from
+ * an absent one (null vs {}) — the distinction that exists because an earlier
+ * installer destroyed unparseable settings files. An unusable file is left
+ * ALONE and reported; PAN never rewrites JSON it could not parse.
+ *
+ * Codex gets a printed TOML snippet rather than a write (MCP_REGISTRATION.codex
+ * records why). Gemini/OpenCode share a settings file PAN already writes, so the
+ * merge preserves everything else in it.
+ */
+function registerMcpServer(runtime, isGlobal, targetDir) {
+  const spec = lib.MCP_REGISTRATION[runtime];
+  if (!spec) return;
+
+  // Absolute paths into the core copy this install just wrote.
+  const coreDir = path.join(targetDir, 'pan-wizard-core');
+  const serverPath = path.join(coreDir, 'mcp', 'server.cjs');
+  const enginePath = path.join(coreDir, 'bin', 'pan-tools.cjs');
+  // A global install serves many projects, so it must NOT pin PAN_PROJECT_ROOT;
+  // the server falls back to process.cwd() per project. Local installs pin it.
+  const projectRoot = isGlobal ? null : process.cwd();
+
+  if (!fs.existsSync(serverPath)) {
+    pushInstallWarning('mcpRegister', serverPath, new Error('MCP server missing; skipped registration'));
+    return;
+  }
+
+  if (!spec.register) {
+    const snippet = lib.buildCodexMcpSnippet(serverPath, enginePath, projectRoot);
+    const where = isGlobal ? '~/.codex/config.toml' : '.codex/config.toml';
+    console.log(`  ${cyan}i${reset} MCP: add PAN to ${where} by hand (TOML is not safely mergeable):`);
+    console.log(snippet.split('\n').map((l) => `      ${dim}${l}${reset}`).join('\n'));
+    return;
+  }
+
+  const configPath = mcpConfigPathFor(runtime, isGlobal, targetDir);
+  if (!configPath) {
+    if (runtime === 'claude' && isGlobal) {
+      console.log(`  ${cyan}i${reset} MCP: run ${cyan}claude mcp add pan --scope user -- node "${serverPath}"${reset} to register globally`);
+    }
+    return;
+  }
+
+  const existing = readSettings(configPath);
+  if (existing === null) {
+    // Exists but unparseable — do not touch it.
+    pushInstallWarning('mcpRegister', configPath, new Error('config exists but is not valid JSON; left untouched'));
+    console.log(`  ${yellow}✗${reset} MCP: ${displayPath(configPath)} is not valid JSON — left untouched, register PAN by hand`);
+    return;
+  }
+
+  try {
+    const entry = lib.buildMcpServerEntry(runtime, serverPath, enginePath, projectRoot);
+    const merged = lib.mergeMcpRegistration(existing, runtime, entry);
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify(merged, null, 2) + '\n');
+    console.log(`  ${green}✓${reset} Registered MCP server (${displayPath(configPath)})`);
+    if (runtime === 'claude') {
+      console.log(`      ${dim}Claude prompts once to approve a project-scoped server.${reset}`);
+    }
+  } catch (e) {
+    pushInstallWarning('mcpRegister', configPath, e);
+  }
+}
+
 function install(isGlobal, runtime = 'claude') {
   const isOpencode = runtime === 'opencode';
   const isGemini = runtime === 'gemini';
@@ -2285,6 +2408,10 @@ function install(isGlobal, runtime = 'claude') {
     console.error(`  ${yellow}✗${reset} pan-wizard-core install failed: ${e.message}`);
     failures.push('pan-wizard-core');
   }
+
+  // Register the MCP bridge now that pan-wizard-core (which contains mcp/) has
+  // landed — the registration points at files inside it, so it must come after.
+  registerMcpServer(runtime, isGlobal, targetDir);
 
   // Copy agents to agents directory
   try {
