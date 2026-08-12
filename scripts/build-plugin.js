@@ -88,6 +88,14 @@ function main() {
     }
   }
 
+  // 4b. MCP registration. The server itself rides along inside pan-wizard-core
+  // (step 5 copies it wholesale), but shipping it is not the same as declaring
+  // it — without this file the plugin carried the bridge and never registered it.
+  fs.writeFileSync(
+    path.join(OUT, '.mcp.json'),
+    JSON.stringify(lib.buildPluginMcpConfig(), null, 2) + '\n'
+  );
+
   // 5. Core (strip source-only internal learnings, same policy as the installer)
   copyTree(path.join(ROOT, 'pan-wizard-core'), path.join(OUT, 'pan-wizard-core'), rewriteContent);
   fs.rmSync(path.join(OUT, 'pan-wizard-core', 'learnings', 'internal'), { recursive: true, force: true });

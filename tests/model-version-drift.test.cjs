@@ -874,6 +874,49 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
   });
 
   // -------------------------------------------------------------------------
+  // package.json — a NON-MARKDOWN surface this lint structurally cannot reach.
+  //
+  // scanTargets() collects only .md files (SCAN_DIRS + root .md), so package.json
+  // has never been scanned. It shipped `"an Opus Mission Control"` in its
+  // description through the entire e2e audit chain that removed exactly that
+  // claim everywhere else, for three compounding reasons: it is not .md; the
+  // version patterns all require a digit and bare `Opus` has none; and L1's
+  // published greps pass --include='*.md'. It then PROPAGATES — build-plugin.js
+  // copies pkg.description into the plugin manifest, so the claim reaches the npm
+  // listing and any marketplace blurb.
+  //
+  // Ground truth it contradicts: agents/pan-conductor.md declares no `model:`, so
+  // Mission Control resolves reasoning → inherit and runs on the session's model.
+  // PAN selects no family for it. Scoped to the role-claim shape on purpose — a
+  // family name illustrating a tier mapping or model class stays legitimate.
+  test('package.json carries no bare-family ROLE claim (the non-markdown blind spot)', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
+    const prose = [pkg.description, pkg.keywords && pkg.keywords.join(' ')]
+      .filter(Boolean).join('\n');
+    // A family name adjacent to a PAN role noun — the shape that asserts a
+    // selection PAN does not make.
+    const roleClaim = new RegExp(
+      `\\b${GATE_FAMILY}\\b${NOT_TIER}\\s+(?:\\w+\\s+){0,2}?(?:Mission\\s+Control|conductor|orchestrator|planner|agent)`
+      + `|(?:Mission\\s+Control|conductor|orchestrator|planner)\\s+(?:\\w+\\s+){0,2}?\\b${GATE_FAMILY}\\b${NOT_TIER}`,
+      'gi');
+    const hits = prose.match(roleClaim) || [];
+    assert.deepEqual(hits, [],
+      'package.json names a model family as the model a PAN role runs on. PAN pins no '
+      + 'family for Mission Control (pan-conductor has no `model:` → inherit). Say '
+      + '"reasoning-tier" instead. This surface is NOT covered by scanTargets() — it '
+      + `only walks .md files — so this test is the only guard:\n${hits.join('\n')}`);
+  });
+
+  test('the plugin manifest inherits package.json prose, so it inherits the guard', () => {
+    // Documents WHY the test above is load-bearing beyond npm: the same string is
+    // copied into the plugin manifest, which is what a marketplace would display.
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
+    const lib = require('../bin/install-lib.cjs');
+    assert.equal(lib.buildPluginManifest(pkg).description, pkg.description,
+      'if the manifest stops mirroring pkg.description, give it its own guard');
+  });
+
+  // -------------------------------------------------------------------------
   // Backstop for the GENERATED exemption. SKILLS-FULL-TEXT.md / -REFERENCE.md
   // are exempt because the fix belongs in the source doc — but nothing forced a
   // regeneration, so a swept source could sit next to a stale copy that still
