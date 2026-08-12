@@ -7,9 +7,9 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { nextAction } = require('../pan-zcode/mcp/orchestrator.cjs');
-const gate = require('../pan-zcode/mcp/merge-gate.cjs');
-const { createServer } = require('../pan-zcode/mcp/server.cjs');
+const { nextAction } = require('../pan-wizard-core/mcp/orchestrator.cjs');
+const gate = require('../pan-wizard-core/mcp/merge-gate.cjs');
+const { createServer } = require('../pan-wizard-core/mcp/server.cjs');
 const { createTempProject, cleanup } = require('./helpers.cjs');
 
 // ─── orchestrator ───────────────────────────────────────────────────────────

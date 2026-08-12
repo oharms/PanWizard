@@ -16,27 +16,35 @@ ZCode through the one interface it speaks: **MCP**.
 ```
 ZCode harness (GLM-5.2)          primary Agent drives everything; ported subagents fan out
         │  MCP · local stdio
-pan-zcode/mcp  (this subsystem)  a thin, zero-dep bridge — verbs → MCP tools/resources
-        │  spawn: node pan-tools.cjs <verb> --raw --cwd <root>
+pan-wizard-core/mcp  (SHARED)    a thin, zero-dep bridge — verbs → MCP tools/resources
+        │  spawn: node pan-tools.cjs <verb> --cwd <root>
 pan-wizard-core  (reused as-is)  the deterministic engine; .planning/ stays the state store
 ```
+
+**The bridge is no longer part of this subsystem.** It was written here, but it lives at
+`pan-wizard-core/mcp/` so it ships with the engine to every install and every runtime — PAN-Z
+is now a **consumer** of it, alongside the main installer. `install-zcode.js` emits an MCP
+registration pointing at that shared path. **Never fork a copy back under `pan-zcode/`**: one
+protocol layer, many consumers, or the two drift the way the per-runtime command trees did
+before ADR-0028.
 
 **Scope boundary (by design):** the bridge exposes `pan-tools` verbs as MCP tools/resources and nothing more. It intentionally does **not** carry rich agent *session state* — diffs, streaming, live thread lifecycle — because MCP can't faithfully represent it (the reason OpenAI built the Codex harness as a native Rust core rather than over MCP). Keep the bridge to tool/resource exposure; the CLI's JSON contract is the tool contract. See `KNOWN-BETA-RISKS.md`.
 
 ## Status — M1–M5 built (M0 is the human verify spike)
 
-- **M1 — bridge core.** `mcp/tool-registry.cjs` (pure verb→tool/resource map, with a hard
-  guardrail against exposing a force/reset/rebase/push verb) + `mcp/server.cjs` (a
+- **M1 — bridge core.** `pan-wizard-core/mcp/tool-registry.cjs` (pure verb→tool/resource map, with a hard
+  guardrail against exposing a force/reset/rebase/push verb) + `pan-wizard-core/mcp/server.cjs` (a
   **zero-dependency** JSON-RPC 2.0 stdio MCP server; reads → resources, actions → tools with
   accurate hints; shell-less `execFile` spawn; `@file:` overflow protocol; strict per-arg
   validation). **Dual-era** per the MCP 2026-07-28 stateless spec (ADR-0041): legacy clients
   use the `initialize` handshake; modern clients declare their protocol version in each
   request's `_meta`, probe `server/discover`, and get `UnsupportedProtocolVersionError`
   (`-32022`) on a version mismatch.
-- **M2 — determinism grafts.** `mcp/merge-gate.cjs` (two-step, model-proof merge: a human-origin
-  env token that ignores agent-supplied approval; never force/reset/push) + `mcp/orchestrator.cjs`
-  (the deterministic `next-action` state machine with safety caps + regression circuit-breaker),
-  exposed as native MCP tools via `mcp/native-tools.cjs`.
+- **M2 — determinism grafts.** `pan-wizard-core/mcp/merge-gate.cjs` (two-step, model-proof merge: a
+  human-origin env token that ignores agent-supplied approval; never force/reset/push) +
+  `pan-wizard-core/mcp/orchestrator.cjs` (the deterministic `next-action` state machine with safety
+  caps + regression circuit-breaker), exposed as native MCP tools via
+  `pan-wizard-core/mcp/native-tools.cjs`.
 - **M3 — content port.** `lib/convert-agent.cjs` — Claude agents → ZCode subagents (reusing the
   installer's frontmatter helpers): drops `Task` (no nesting), maps PAN tiers → `inherit`,
   preserves the body; plus a command → skill wrapper.
@@ -59,7 +67,7 @@ A third M0 checkpoint (added 2026-08): **which protocol era does the real ZCode 
 The bridge is now dual-era (ADR-0041), so it answers both a legacy `initialize` handshake and a
 modern `server/discover` probe. Confirm on a real install which path ZCode takes and that the
 version it declares is in our supported list; if ZCode ever declares a revision newer than
-`2026-07-28`, add it to `SUPPORTED_VERSIONS_LIST` in `mcp/server.cjs` once its method shapes are
+`2026-07-28`, add it to `SUPPORTED_VERSIONS_LIST` in `pan-wizard-core/mcp/server.cjs` once its method shapes are
 implemented.
 
 ## Zero dependencies

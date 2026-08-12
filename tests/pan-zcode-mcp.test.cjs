@@ -12,15 +12,66 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
-  createServer, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST,
-} = require('../pan-zcode/mcp/server.cjs');
-const reg = require('../pan-zcode/mcp/tool-registry.cjs');
+  createServer, defaultPanToolsPath, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST,
+} = require('../pan-wizard-core/mcp/server.cjs');
+const reg = require('../pan-wizard-core/mcp/tool-registry.cjs');
 const { createTempProject, cleanup, TOOLS_PATH } = require('./helpers.cjs');
 
 // A fake spawn that records the argv it was handed and returns canned stdout.
 function fakeSpawn(recorder, out = '{"ok":true}') {
   return (args) => { recorder.push(args); return { ok: true, stdout: out, stderr: '' }; };
 }
+
+describe('engine path resolution (default, i.e. no explicit panToolsPath)', () => {
+  // WHY THIS SUITE EXISTS: every other test here either injects a spawn (so the
+  // engine path is never used) or passes `panToolsPath` explicitly — including
+  // the "real round-trip" one. So when the module moved from pan-zcode/mcp/ to
+  // pan-wizard-core/mcp/, the whole suite stayed green WITHOUT covering the one
+  // function whose meaning depends on the module's own location. A default that
+  // silently pointed at nothing would have shipped: the server only spawns the
+  // engine at tools/call time, so the failure surfaces per-call in a deployed
+  // install, never at startup and never here.
+  test('resolves to a pan-tools that EXISTS on disk', () => {
+    const resolved = defaultPanToolsPath();
+    assert.ok(fs.existsSync(resolved), `default engine path does not exist: ${resolved}`);
+    assert.equal(path.basename(resolved), 'pan-tools.cjs');
+  });
+
+  test('resolves to the SAME file the suite reaches by an independent route', () => {
+    // TOOLS_PATH is derived in helpers.cjs from tests/ upward; defaultPanToolsPath()
+    // is derived from the mcp/ module downward. Two different anchors landing on one
+    // file is what makes this more than a tautology — a wrong-but-existing path fails.
+    assert.equal(path.resolve(defaultPanToolsPath()), path.resolve(TOOLS_PATH));
+  });
+
+  test('is anchored on the bin/ sibling relationship, not on an ancestor name', () => {
+    // REVERT CHECK: the pre-move form was
+    //   join(__dirname, '..', '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs')
+    // which resolves IDENTICALLY from this directory (so it is not a bug), but
+    // requires the grandparent to contain a dir *named* pan-wizard-core. This
+    // asserts the surviving dependency is only the sibling layout, which is what
+    // keeps a vendored or renamed core working.
+    const resolved = path.resolve(defaultPanToolsPath());
+    const mcpDir = path.resolve(__dirname, '..', 'pan-wizard-core', 'mcp');
+    assert.equal(resolved, path.resolve(mcpDir, '..', 'bin', 'pan-tools.cjs'));
+  });
+
+  test('a real tools/call works with NO panToolsPath supplied', () => {
+    // The end-to-end proof: default resolution + real spawn + real engine.
+    const proj = createTempProject();
+    try {
+      const s = createServer({ cwd: proj });
+      const r = s.handle({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name: 'pan_resolve_model', arguments: { agent: 'pan-planner' } },
+      });
+      assert.equal(r.result.isError, false, r.result.content[0].text);
+      assert.ok(JSON.parse(r.result.content[0].text).model, 'engine answered via the default path');
+    } finally {
+      cleanup(proj);
+    }
+  });
+});
 
 describe('pan-zcode registry', () => {
   test('every tool has a verb OR a handler, plus description/inputSchema and boolean hints', () => {
@@ -33,7 +84,24 @@ describe('pan-zcode registry', () => {
     for (const r of reg.RESOURCES) {
       assert.match(r.uri, /^pan:\/\//);
       assert.ok(r.verb && r.name && r.description);
+      // A resource's argv tail must be a STATIC array of strings — never a
+      // function. A function would mean client input can reach the spawn, which
+      // is exactly the property that makes a parameterless resource safe.
+      if (r.args !== undefined) {
+        assert.ok(Array.isArray(r.args), `${r.uri} args must be an array, not ${typeof r.args}`);
+        assert.ok(r.args.every((a) => typeof a === 'string'), `${r.uri} args must be all strings`);
+      }
     }
+  });
+
+  test('resource URIs are unique (a duplicate would silently shadow in byResourceUri)', () => {
+    const uris = reg.RESOURCES.map((r) => r.uri);
+    assert.equal(new Set(uris).size, uris.length, `duplicate resource uri in ${uris.join(', ')}`);
+  });
+
+  test('tool names are unique (a duplicate would silently shadow in byToolName)', () => {
+    const names = reg.TOOLS.map((t) => t.name);
+    assert.equal(new Set(names).size, names.length, `duplicate tool name in ${names.join(', ')}`);
   });
 
   test('no spawn-backed verb exposes a history-rewriting / force git op', () => {
@@ -246,6 +314,46 @@ describe('pan-zcode overflow (@file:) protocol', () => {
     const s2 = createServer({ spawnImpl: () => ({ ok: true, stdout: '@file:' + oddPath, stderr: '' }) });
     const r2 = s2.handle({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: { agent: 'pan-x' } } });
     assert.equal(r2.result.content[0].text, '@file:' + oddPath, 'non-out.json basename is not read');
+  });
+});
+
+describe('every resource is readable on a bare project (the resource/tool rule)', () => {
+  // THE INVARIANT: a client may list resources and read them all. On a young or
+  // empty project that must yield DATA, not a pile of errors. A verb whose "no
+  // data yet" is an error belongs in TOOLS instead (see the rule comment on
+  // RESOURCES). This runs the REAL engine — an injected spawn would assert
+  // nothing about actual exit codes, which is the whole subject here.
+  test('resources/read returns parseable JSON for every registered resource', () => {
+    const proj = createTempProject();
+    try {
+      const s = createServer({ cwd: proj });
+      for (const r of reg.RESOURCES) {
+        const res = s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: r.uri } });
+        assert.ok(!res.error, `${r.uri} failed to read: ${res.error && res.error.message}`);
+        const text = res.result.contents[0].text;
+        assert.doesNotThrow(() => JSON.parse(text), `${r.uri} did not return JSON: ${String(text).slice(0, 120)}`);
+      }
+    } finally {
+      cleanup(proj);
+    }
+  });
+
+  test('a multi-word resource verb routes its static subcommand, not a joined string', () => {
+    // pan://health is `validate health` — regression guard for the bug shape where
+    // a two-word verb is passed as ONE argv element and the engine rejects it.
+    const rec = [];
+    const s = createServer({ spawnImpl: fakeSpawn(rec, '{"status":"healthy"}'), panToolsPath: '/x/pt.cjs', cwd: '/proj' });
+    const res = s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'pan://health' } });
+    assert.ok(!res.error);
+    assert.deepEqual(rec[0], ['/x/pt.cjs', 'validate', 'health', '--cwd', '/proj']);
+  });
+
+  test('a resource with no args still spawns a bare verb (no undefined in argv)', () => {
+    const rec = [];
+    const s = createServer({ spawnImpl: fakeSpawn(rec), panToolsPath: '/x/pt.cjs', cwd: '/proj' });
+    s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'pan://state' } });
+    assert.deepEqual(rec[0], ['/x/pt.cjs', 'state', '--cwd', '/proj']);
+    assert.ok(rec[0].every((a) => typeof a === 'string'), 'no undefined leaked into argv');
   });
 });
 

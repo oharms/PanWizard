@@ -28,12 +28,45 @@ const AGENT_RE = /^[a-z][a-z0-9_-]{1,60}$/;   // agent type, e.g. pan-planner
 const PHASE_RE = /^[0-9]{1,3}$/;              // phase number, e.g. 03
 const QUERY_RE = /^[\w .,:/&()-]{1,120}$/;    // find-phase query fragment
 
-/** Read-only aggregators → MCP resources (no side effects). */
+/**
+ * Read-only aggregators → MCP resources (no side effects).
+ *
+ * Optional `args` is a STATIC argv tail for verbs whose read lives in a
+ * subcommand (`validate health`, `links validate`, `cost report`). It is
+ * deliberately a fixed array and never a function of client input — a resource
+ * takes no parameters, and that is precisely what makes the surface safe: there
+ * is no path from an LLM tool-call to these argv elements.
+ *
+ * THE RULE FOR ADDING ONE — a resource must be readable on ANY project, including
+ * a bare directory with no `.planning/`. If "no data yet" is reported as an error
+ * (non-zero exit / an error-family key), it is a TOOL, not a resource: a client
+ * that lists resources and reads them should not collect failures for a young
+ * project. `preview` is the worked example — `preview phases` exits non-zero
+ * without a roadmap, so it is exposed as a tool below rather than as a resource.
+ * Check before adding: run the verb in an empty dir and read `$?`.
+ */
 const RESOURCES = [
   { uri: 'pan://state',    name: 'Project state', verb: 'state',    description: 'Current PAN project state snapshot derived from .planning/.' },
-  { uri: 'pan://roadmap',  name: 'Roadmap',       verb: 'roadmap',  description: 'The project roadmap: phases, goals, success criteria.' },
-  { uri: 'pan://phases',   name: 'Phases',        verb: 'phases',   description: 'Phase inventory with per-phase status.' },
+  // NOTE: there is deliberately no `pan://roadmap`. One existed and was DEAD from
+  // M1 until 2026-08 — its descriptor named the bare verb `roadmap`, which requires
+  // a subcommand, so every read returned "Unknown roadmap subcommand". Nothing
+  // caught it because the protocol tests inject a fake spawn, so no test had ever
+  // run a resource against the real engine. It is now `pan_roadmap_analyze` in
+  // TOOLS: `roadmap analyze` exits non-zero on a project with no roadmap.md, which
+  // fails the resource rule above. Removing the URI breaks no consumer — no
+  // consumer can have depended on a read that always errored.
+  // `phases` alone is not a verb — the subcommand is `list`. This descriptor named
+  // the bare verb and was DEAD from M1 alongside pan://roadmap, for the same reason
+  // and found by the same test. Returns {directories, count}.
+  { uri: 'pan://phases',   name: 'Phases',        verb: 'phases',   args: ['list'],
+    description: 'Phase inventory: the phase directories present, with a count.' },
   { uri: 'pan://progress', name: 'Progress',      verb: 'progress', description: 'Requirement and plan completion progress.' },
+  { uri: 'pan://health',   name: 'Project health', verb: 'validate', args: ['health'],
+    description: 'Health check over .planning/: issue codes with severities. Reports an unhealthy project as DATA (exit 0), so it is readable even on a broken or empty one.' },
+  { uri: 'pan://links',    name: 'Doc-code links', verb: 'links',   args: ['validate'],
+    description: 'Doc↔code link graph verdict: forward links, backlink contracts, and anchor targets, with finding codes.' },
+  { uri: 'pan://cost',     name: 'Token cost',     verb: 'cost',    args: ['report'],
+    description: 'Aggregated token spend from the .planning/metrics ledger. Reads as zeros on a project with no recorded calls.' },
 ];
 
 /** Actionable pan-tools verbs → MCP tools (each spawns `node pan-tools.cjs <verb>`). */
@@ -57,6 +90,30 @@ const SPAWN_TOOLS = [
       properties: { query: { type: 'string', description: 'Phase number or slug fragment' } },
     },
     args: (i) => [str('query', i && i.query, QUERY_RE, 120)],
+  },
+  {
+    name: 'pan_roadmap_analyze', title: 'Analyze the roadmap', verb: 'roadmap',
+    description: 'The roadmap read: milestones, phases, goals and success criteria with completion analysis. A tool rather than a resource because it reports a project with no roadmap.md as an error.',
+    readOnly: true, destructive: false,
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    args: () => ['analyze'],
+  },
+  {
+    name: 'pan_preview_phases', title: 'Preview all phases (dependency graph)', verb: 'preview',
+    description: 'Phase dependency graph: a mermaid DAG, the parallel-executable batches, and any hidden dependencies. Errors on a project with no roadmap, which is why this is a tool rather than a resource.',
+    readOnly: true, destructive: false,
+    inputSchema: { type: 'object', additionalProperties: false, properties: {} },
+    args: () => ['phases'],
+  },
+  {
+    name: 'pan_preview_phase', title: 'Preview one phase (blast radius)', verb: 'preview',
+    description: 'Blast radius for a single phase: what it touches and what depends on it, before any work starts.',
+    readOnly: true, destructive: false,
+    inputSchema: {
+      type: 'object', additionalProperties: false, required: ['phase'],
+      properties: { phase: { type: 'string', description: 'Phase number, e.g. 03' } },
+    },
+    args: (i) => ['phase', str('phase', i && i.phase, PHASE_RE, 3)],
   },
   {
     name: 'pan_report_phase', title: 'Generate a phase HTML report', verb: 'report',
