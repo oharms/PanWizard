@@ -12,8 +12,15 @@ Everything else about the plugin is already tested — this is the gap.
 
 - **Claude Code v2.1.229 or later.** Command sources were added there. On
   v2.1.120–v2.1.228 the install fails with *"This plugin uses a source type your
-  Claude Code version does not support"*; on older versions the whole marketplace
-  fails to load. Check with `claude --version`.
+  Claude Code version does not support. Update Claude Code and try again."*; on
+  older versions the whole marketplace fails to load.
+
+  > ⚠️ **Checked 2026-08-14: `claude --version` reported `2.1.170` on this machine,
+  > which is inside the failing range.** The marketplace will load (that needs only
+  > v2.1.120) and `/plugin install` will refuse with the message above. **Update
+  > Claude Code before running the test**, then re-check with `claude --version`.
+  > Nothing else in this directory is blocked by the version — the automated tests
+  > cover the contract independently of the running CLI.
 - Not blocked by org policy. An administrator can disable command sources with
   `disableCommandPluginSources`, and setting `allowManagedHooksOnly` blocks them
   by default.
