@@ -229,7 +229,16 @@ A spot-check two days after §1 was written. Nothing here invalidates the plan; 
 
 **Acted on immediately:** two spec rules PAN satisfied by construction but not by test — no angle brackets in frontmatter (a prompt-injection vector the spec warns about, and PAN inherits `description` from each command, so a future bracket would open it silently) and the closed set of allowed top-level keys. Both now guarded and revert-proven.
 
-**Not acted on:** the `command`-source plugin distribution, which is the one worth doing next and wants its own change rather than a footnote here.
+**The `command`-source distribution is now built as a test bed** (`marketplace/`, `scripts/plugin-path.js`, and a plugin-only `/pan-plugin-selftest`). See `marketplace/README.md` for the two commands that run it.
+
+**It is not finished, and the unfinished part is the point.** The gated question — does the plugin-root placeholder expand inside command *markdown*? — **cannot be answered from a non-interactive session**. It needs a real Claude Code session to install the plugin and run the probe. Everything answerable without one is automated and green; the verdict is a human step, and until it is recorded the answer is *unknown*, not *yes*.
+
+Two constraints found while building it, both from primary docs and both of which a changelog-level reading would have gotten wrong:
+
+- **`mode: "link"` is unsupported on Windows** — Claude Code refuses a link-mode plugin there. The changelog line advertises link mode as the interesting part; on this project's own development platform it is unusable. The entry declares `"copy"`, and a test pins it.
+- Command sources need **v2.1.229+**. On v2.1.120–v2.1.228 the install fails with a specific message, and on older versions **the whole marketplace fails to load** — so a user on an older build sees the marketplace break, not just this plugin.
+
+Also worth recording about the probe's design: it separates *textual substitution in markdown* from *the environment variable being set*. A probe that merely ran a shell command through the placeholder would pass whenever `CLAUDE_PLUGIN_ROOT` is exported into the tool environment and prove nothing about markdown — a false positive that would have "unblocked" publishing on no evidence. The three outcomes are labelled `case A` / `case B` / `case C`, and case B is the genuinely awkward one: shell invocations in content keep working while `@` file imports do not.
 
 ---
 

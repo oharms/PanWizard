@@ -1456,6 +1456,96 @@ function buildPluginHooksConfig() {
 }
 
 /**
+ * Build the plugin-only self-test command that answers PAN's one gated question:
+ * does `${CLAUDE_PLUGIN_ROOT}` expand inside plugin COMMAND MARKDOWN? It is
+ * documented as substituted in hook and MCP configs; content is unverified, and
+ * that is what has kept `dist/pan-wizard-plugin/` from being published.
+ *
+ * Emitted ONLY into the plugin build, never into `commands/pan/`, so the shipped
+ * command set is unchanged and no install gains a diagnostic.
+ *
+ * THE PROBE MUST SEPARATE TWO THINGS that a naive test conflates. If the body
+ * simply ran `node "${CLAUDE_PLUGIN_ROOT}/…"` and it worked, that proves nothing
+ * about markdown: the shell would expand `${CLAUDE_PLUGIN_ROOT}` on its own if the
+ * variable happens to be exported into the tool environment. So probe 1 asks for
+ * the RAW CHARACTERS with no shell involved, probe 2 checks the environment
+ * separately, and the verdict table maps the pair onto what PAN may rely on.
+ *
+ * @param {string} placeholder - the literal PAN rewrites content to, injected
+ *   rather than hardcoded so this file stays the single source of that string.
+ * @returns {string} markdown for `commands/pan-plugin-selftest.md` in the plugin
+ */
+function buildPluginSelfTestCommand(placeholder = '${CLAUDE_PLUGIN_ROOT}') {
+  // Sentinels the agent quotes between. Deliberately ugly so they cannot occur
+  // naturally in surrounding prose or be mistaken for instructions.
+  const OPEN = 'PAN_PROBE_BEGIN>>>';
+  const CLOSE = '<<<PAN_PROBE_END';
+  return `---
+description: Diagnose whether the plugin-root placeholder expands in plugin command markdown
+---
+
+# PAN plugin self-test
+
+Answer three questions and print the verdict table. **Do not fix anything.** This
+command is a measurement; a "fail" here is the result, not a problem to repair.
+
+## Probe 1 — textual substitution in markdown (the question that matters)
+
+Between the sentinels below sits one token. Report **the exact characters you see
+there, verbatim**. Do not run a shell. Do not resolve, expand, guess at, or tidy
+the value — if it looks like a placeholder, say so and quote it literally; if it
+looks like an absolute path, quote that path.
+
+${OPEN}${placeholder}${CLOSE}
+
+Record it as \`probe1\`.
+
+## Probe 2 — the environment variable, measured separately
+
+Run exactly this and record stdout as \`probe2\` (empty output is a valid, expected result):
+
+\`\`\`bash
+node -e "process.stdout.write(process.env.CLAUDE_PLUGIN_ROOT || '')"
+\`\`\`
+
+## Probe 3 — does the engine actually resolve through the placeholder path
+
+Run this and record whether it prints JSON or errors, as \`probe3\`:
+
+\`\`\`bash
+node "${placeholder}/pan-wizard-core/bin/pan-tools.cjs" --help
+\`\`\`
+
+## Verdict
+
+Print this table, filled in:
+
+| probe | result |
+|---|---|
+| 1 — markdown substitution | \`probe1\` verbatim |
+| 2 — env var | \`probe2\` or "(empty)" |
+| 3 — engine through placeholder | ok / failed, with the error's first line |
+
+Then state which case holds:
+
+- **case A — markdown IS substituted** (probe 1 returned an absolute path). Plugin
+  content may reference the plugin root directly, and PAN's existing content
+  rewrite is correct as it stands. This unblocks marketplace publishing.
+- **case B — markdown is NOT substituted, but the env var is set** (probe 1
+  returned the literal token, probe 2 non-empty). Content must not rely on textual
+  substitution; a *shell* command inside content still works, because the shell
+  expands the variable. Anything read as a path by something other than a shell —
+  an \`@\` file import, for instance — would break.
+- **case C — neither** (probe 1 literal, probe 2 empty). Plugin content cannot
+  address the plugin root at all. PAN would need content that resolves paths at
+  runtime instead, and marketplace publishing stays gated.
+
+Finish with the case letter on its own line, exactly like \`VERDICT: case A\`,
+so the result is greppable out of the transcript.
+`;
+}
+
+/**
  * Build the plugin's MCP registration (`.mcp.json` at the plugin root).
  *
  * Plugins may declare MCP servers in a plugin-root `.mcp.json`, and unlike
@@ -1701,6 +1791,7 @@ module.exports = {
   buildPluginManifest,
   buildPluginHooksConfig,
   buildPluginMcpConfig,
+  buildPluginSelfTestCommand,
   // Install verification (v3.7.10)
   verifyInstall,
   // AGENTS.md universal rules layer (ADR-0028 Phase 3)

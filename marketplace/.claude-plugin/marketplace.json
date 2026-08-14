@@ -1,0 +1,19 @@
+{
+  "name": "pan-wizard-local",
+  "owner": {
+    "name": "PAN Wizard contributors",
+    "url": "https://github.com/oharms/PanWizard"
+  },
+  "plugins": [
+    {
+      "name": "pan-wizard",
+      "description": "PAN Wizard as a Claude Code plugin, built from this checkout on demand. Installs commands, agents, hooks and the MCP bridge as one versioned unit.",
+      "source": {
+        "source": "command",
+        "command": "node D:/PanWizard/scripts/plugin-path.js",
+        "mode": "copy",
+        "timeout": 120
+      }
+    }
+  ]
+}

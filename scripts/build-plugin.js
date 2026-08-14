@@ -88,6 +88,17 @@ function main() {
     }
   }
 
+  // 2b. Plugin-only self-test command. NOT copied from commands/pan/ — it is
+  // generated here so the shipped command set stays unchanged and no ordinary
+  // install gains a diagnostic. It answers the one question gating publication:
+  // whether CONTENT_PREFIX expands inside command markdown. The placeholder must
+  // reach the plugin UNEXPANDED or the probe measures nothing, so this write
+  // deliberately bypasses rewriteContent().
+  fs.writeFileSync(
+    path.join(OUT, 'commands', 'pan-plugin-selftest.md'),
+    lib.buildPluginSelfTestCommand(CONTENT_PREFIX.replace(/\/$/, ''))
+  );
+
   // 4b. MCP registration. The server itself rides along inside pan-wizard-core
   // (step 5 copies it wholesale), but shipping it is not the same as declaring
   // it — without this file the plugin carried the bridge and never registered it.
