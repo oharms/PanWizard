@@ -245,6 +245,45 @@ describe('unified skills: Agent Skills spec conformance of the emitted tree', ()
     assert.deepEqual(bad, [], `compatibility problems:\n${bad.join('\n')}`);
   });
 
+  test('frontmatter carries NO angle brackets (a prompt-injection vector per spec)', () => {
+    // The spec warns that `<` or `>` anywhere in frontmatter can inject unintended
+    // instructions into the system prompt. PAN passes today by construction, not by
+    // design: `description` is inherited from each command's own frontmatter, so a
+    // future command whose description contains a bracket would open the vector
+    // silently. The BODY legitimately uses <pan_skill_adapter> tags — frontmatter
+    // only. (Spec safety note, re-read 2026-08-14.)
+    const bad = [];
+    for (const dir of listSkillDirs(tmpDir)) {
+      const fm = frontmatterOf(readSkill(tmpDir, dir));
+      if (fm && /[<>]/.test(fm)) {
+        const line = fm.split(/\r?\n/).find((l) => /[<>]/.test(l));
+        bad.push(`${dir}: ${line.trim().slice(0, 90)}`);
+      }
+    }
+    assert.deepEqual(bad, [], `angle brackets in emitted frontmatter:\n${bad.join('\n')}`);
+  });
+
+  test('frontmatter uses ONLY spec-allowed top-level keys', () => {
+    // The spec's key set is closed: name, description, license, allowed-tools,
+    // metadata, compatibility. Conforming runtimes ignore unknown keys, but a
+    // validating one rejects them — so an invented key is a silent-drop risk on
+    // some hosts and a hard failure on others. Put anything custom under
+    // `metadata`, which is the designed escape hatch (PAN already does, for
+    // short-description).
+    const ALLOWED = new Set(['name', 'description', 'license', 'allowed-tools', 'metadata', 'compatibility']);
+    const bad = [];
+    for (const dir of listSkillDirs(tmpDir)) {
+      const fm = frontmatterOf(readSkill(tmpDir, dir));
+      if (!fm) continue;
+      for (const line of fm.split(/\r?\n/)) {
+        // Top level only: nested keys under `metadata` are indented.
+        const m = /^([a-zA-Z][a-zA-Z0-9-]*):/.exec(line);
+        if (m && !ALLOWED.has(m[1])) bad.push(`${dir}: unexpected key "${m[1]}"`);
+      }
+    }
+    assert.deepEqual(bad, [], `non-spec frontmatter keys (put custom data under metadata):\n${bad.join('\n')}`);
+  });
+
   test('no skill emits the experimental `allowed-tools` (unverified per ADR-0028)', () => {
     // Guard against a well-meaning future addition: the field is experimental,
     // and ADR-0028's rule is that frontmatter which could break a runtime parser
