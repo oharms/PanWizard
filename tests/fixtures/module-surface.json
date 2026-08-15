@@ -726,6 +726,12 @@
     "syncStateFrontmatter:function",
     "writeStateMd:function"
   ],
+  "suggest.cjs": [
+    "buildSubcommandIndex:function",
+    "editDistance:function",
+    "formatSuggestions:function",
+    "suggestCommand:function"
+  ],
   "template.cjs": [
     "cmdTemplateFill:function",
     "cmdTemplateSelect:function",

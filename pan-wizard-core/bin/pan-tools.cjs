@@ -1499,7 +1499,24 @@ async function main() {
         break;
       }
 
-      // Default: convenience alias for optimize learn (existing behavior)
+      // BARE `learn` is the documented convenience alias for `optimize learn`
+      // (docs/CLI-REFERENCE.md lists it as `learn (alias)`), so it is kept.
+      //
+      // An UNKNOWN subcommand, however, used to fall through to that same alias
+      // and silently run trace analysis. A ledger flagged `learn` as colliding
+      // with `optimize learn`; the collision turned out to be a superset rather
+      // than two meanings, but this fallthrough was the real defect underneath —
+      // `pan-tools learn promotee` (a typo) ran the analyser and returned a
+      // trace-session error, so the caller concluded `promote` was broken.
+      //
+      // `learn` was also the ONLY group of the ~33 that never published an
+      // "Available:" list, which made its subcommands invisible both to a user
+      // and to the suggestion index that is now parsed from those strings.
+      // Publishing it fixes the error AND feeds the suggester, with no second
+      // list to maintain.
+      if (subcommand) {
+        error('Unknown learn subcommand. Available: promote, unpromote, list-promoted, build-index, topics-for, lint');
+      }
       optimize.cmdOptimizeLearn(cwd, {
         sessionId: getArgValue(args, '--session'),
       }, raw);
@@ -1528,8 +1545,27 @@ async function main() {
       error(`Unknown links subcommand: ${subcommand}. Available: validate`);
     }
 
-    default:
-      error(`Unknown command: ${command}. Run pan-tools --help to see available commands.`);
+    default: {
+      // A ledger recorded `pan-tools trace` 18 times — the most-repeated agent
+      // behaviour it had seen — and every one got "unknown, go read the list".
+      // But `trace` is a REAL subcommand one namespace away (`optimize trace`),
+      // so naming the right form turns a dead end into a self-correction. The
+      // docs were cleared as the cause, which is exactly why the fix belongs
+      // here: it works whatever led the caller to type it.
+      //
+      // Parsed from this file's own "Available:" strings on the error path only,
+      // so nothing is paid on a healthy call and no second list can drift. Fails
+      // open to the original message.
+      let hint = '';
+      try {
+        const suggest = require('./lib/suggest.cjs');
+        const src = require('fs').readFileSync(__filename, 'utf8');
+        const topLevel = (USAGE.split('Commands: ')[1] || '').split(',').map((s) => s.trim()).filter(Boolean);
+        hint = suggest.formatSuggestions(
+          suggest.suggestCommand(command, suggest.buildSubcommandIndex(src), topLevel));
+      } catch { /* suggestions are a courtesy — never let them mask the error */ }
+      error(`Unknown command: ${command}.${hint} Run pan-tools --help to see available commands.`);
+    }
   }
 }
 
