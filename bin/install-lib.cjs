@@ -1533,9 +1533,13 @@ Then state which case holds:
   rewrite is correct as it stands. This unblocks marketplace publishing.
 - **case B — markdown is NOT substituted, but the env var is set** (probe 1
   returned the literal token, probe 2 non-empty). Content must not rely on textual
-  substitution; a *shell* command inside content still works, because the shell
-  expands the variable. Anything read as a path by something other than a shell —
-  an \`@\` file import, for instance — would break.
+  substitution; a *shell* command inside content would still work, because the
+  shell expands the variable. Anything read as a path by something other than a
+  shell — an \`@\` file import, for instance — would break.
+  **Note:** on the one environment measured so far (Claude Code 2.1.233, Windows)
+  probe 2 came back EMPTY, so this case did not occur and its shell-expansion
+  premise is unverified. If you land here, confirm the variable really is visible
+  to the Bash tool before relying on it — otherwise you are actually in case C.
 - **case C — neither** (probe 1 literal, probe 2 empty). Plugin content cannot
   address the plugin root at all. PAN would need content that resolves paths at
   runtime instead, and marketplace publishing stays gated.

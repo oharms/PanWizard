@@ -231,7 +231,13 @@ A spot-check two days after §1 was written. Nothing here invalidates the plan; 
 
 **The `command`-source distribution is now built as a test bed** (`marketplace/`, `scripts/plugin-path.js`, and a plugin-only `/pan-plugin-selftest`). See `marketplace/README.md` for the two commands that run it.
 
-**It is not finished, and the unfinished part is the point.** The gated question — does the plugin-root placeholder expand inside command *markdown*? — **cannot be answered from a non-interactive session**. It needs a real Claude Code session to install the plugin and run the probe. Everything answerable without one is automated and green; the verdict is a human step, and until it is recorded the answer is *unknown*, not *yes*.
+**ANSWERED 2026-08-14 — `VERDICT: case A`.** Run on Claude Code **2.1.233**, Windows, by installing the plugin from the `command`-source marketplace and running `/pan-plugin-selftest`. Probe 1 returned a real absolute path into the plugin cache with **no placeholder text surviving**; probe 3 confirmed pan-tools runs through that path. **The plugin-root placeholder does expand inside command markdown, PAN's existing content rewrite is correct as it stands, and marketplace publishing is unblocked.**
+
+**Probe 2 is the finding worth carrying, and it corrects the probe's own case-B description.** `CLAUDE_PLUGIN_ROOT` is **not** exported into the Bash tool's environment — it read empty. So textual substitution and shell expansion are **not interchangeable**: content must keep using the substituted form, because a shell evaluating `$CLAUDE_PLUGIN_ROOT` at runtime gets an empty string. Case B was written assuming a shell would rescue that path; on this environment it would not, and case B would have behaved as case C. The probe text now carries that caveat so a future run does not inherit the wrong premise.
+
+Treat this as one measurement on one version and one platform. Re-run after a Claude Code upgrade rather than assuming it holds.
+
+**A second result came free from the same install: the plugin's `.mcp.json` works.** The bridge registered as `pan` and answered a real `tools/call` returning engine JSON — confirming §3.3's P4 end to end, not merely that the file ships in the bundle. Shipped *and* declared *and* reachable.
 
 Two constraints found while building it, both from primary docs and both of which a changelog-level reading would have gotten wrong:
 

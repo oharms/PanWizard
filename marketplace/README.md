@@ -46,6 +46,36 @@ Then:
 
 It reports three probes and ends with a line like `VERDICT: case A`.
 
+## Result — measured 2026-08-14
+
+**`VERDICT: case A`** on Claude Code **2.1.233**, Windows.
+
+| probe | result |
+|---|---|
+| 1 — markdown substitution | a real absolute path into the plugin cache; **no placeholder text survived** |
+| 2 — env var | **(empty)** |
+| 3 — engine through the placeholder | ok — pan-tools ran and printed its usage banner, exit 0 |
+
+So plugin content **may** reference the plugin root directly, PAN's existing
+content rewrite is correct as it stands, and **marketplace publishing is
+unblocked**.
+
+> **The sharpest finding is probe 2, and it corrects this document's own case-B
+> description below.** That text claimed a *shell* command inside content would
+> still work under case B "because the shell expands the variable". It would not:
+> `CLAUDE_PLUGIN_ROOT` is **not** exported into the Bash tool's environment, so a
+> shell evaluating `$CLAUDE_PLUGIN_ROOT` at runtime gets an empty string. The two
+> mechanisms are **not interchangeable**. Generated content must keep using the
+> textually-substituted form. Had the verdict been case B, it would in practice
+> have behaved like case C.
+>
+> This is one measurement, on one version, on one platform. Re-run the probe
+> before relying on it after a Claude Code upgrade.
+
+**Bonus result from the same install:** the plugin's `.mcp.json` works. The bridge
+registered as `pan` and answered a real `tools/call` through the plugin path —
+confirming the MCP declaration end to end, not just its presence in the bundle.
+
 ## Reading the verdict
 
 The probe deliberately separates **textual substitution in markdown** from **the

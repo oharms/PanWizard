@@ -11,10 +11,23 @@
  *   pan-wizard-core/              dispatcher + modules + workflows + templates
  *
  * Distribution status: built ALONGSIDE the loose-file installer. Marketplace
- * publishing is gated on one live verification — whether ${CLAUDE_PLUGIN_ROOT}
+ * publishing WAS gated on one live verification — whether ${CLAUDE_PLUGIN_ROOT}
  * expands inside command markdown content (documented for hook/MCP configs
- * only). Until then, content references core paths relative to the plugin
- * root, which matches the documented plugin working layout.
+ * only).
+ *
+ * ANSWERED 2026-08-14, Claude Code 2.1.233 on Windows, by installing this plugin
+ * from the `command`-source marketplace in `marketplace/` and running
+ * `/pan-plugin-selftest`: **it does expand.** The command body reached the model
+ * with a real absolute path — no placeholder text survived — and invoking
+ * pan-tools through that path worked. So the CONTENT_PREFIX rewrite below is
+ * correct as it stands, and the gate is lifted.
+ *
+ * One measurement from the same run that constrains how far to take this: the
+ * `CLAUDE_PLUGIN_ROOT` environment variable is NOT exported into the Bash tool's
+ * environment (it read as empty). Textual substitution and shell expansion are
+ * therefore NOT interchangeable — generated content must keep using the
+ * substituted form, because `$CLAUDE_PLUGIN_ROOT` evaluated by a shell at runtime
+ * expands to nothing. Re-measure before relying on the shell form anywhere.
  *
  * Usage: node scripts/build-plugin.js  (or npm run build:plugin)
  */
