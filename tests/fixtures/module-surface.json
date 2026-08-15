@@ -748,8 +748,10 @@
     "removeQuotes:function"
   ],
   "verify-deploy.cjs": [
+    "MCP_EXPECTED:object",
     "cmdValidateDeployment:function",
     "detectInstalledRuntimes:function",
+    "validateMcpRegistration:function",
     "validateRuntimeInstall:function"
   ],
   "verify-drift.cjs": [

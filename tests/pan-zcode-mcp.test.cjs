@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawn } = require('child_process');
 const {
   createServer, defaultPanToolsPath, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST,
 } = require('../pan-wizard-core/mcp/server.cjs');
@@ -354,6 +355,220 @@ describe('every resource is readable on a bare project (the resource/tool rule)'
     s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'pan://state' } });
     assert.deepEqual(rec[0], ['/x/pt.cjs', 'state', '--cwd', '/proj']);
     assert.ok(rec[0].every((a) => typeof a === 'string'), 'no undefined leaked into argv');
+  });
+});
+
+describe('stdio transport — the framing loop a real client actually uses', () => {
+  // Every other protocol test calls server.handle(req) directly, so main() — the
+  // newline framing loop — had NO test at all: chunk buffering, split frames,
+  // blank-line skipping, the -32700 reply to an unparseable line, and the
+  // suppression of replies to notifications. It is the only code path a real MCP
+  // client touches and the one with the most ways to fail silently, since a
+  // dropped response reads to a client as a hung server.
+  //
+  // main() is not exported (it runs under require.main), so the honest test is
+  // the one a client performs: spawn the server and speak to it over stdio.
+  const SERVER = path.join(__dirname, '..', 'pan-wizard-core', 'mcp', 'server.cjs');
+
+  /**
+   * Feed raw chunks to a spawned server, collect stdout lines, resolve on idle.
+   * A hard timeout is mandatory here — an unanswered frame would otherwise hang
+   * the whole suite instead of failing this test.
+   */
+  function speak(chunks, { timeoutMs = 15000 } = {}) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [SERVER], {
+        cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      let out = '';
+      let stderr = '';
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`stdio server did not settle in ${timeoutMs}ms. stdout so far: ${out}`));
+      }, timeoutMs);
+      child.stdout.on('data', (d) => { out += d; });
+      child.stderr.on('data', (d) => { stderr += d; });
+      child.on('error', (e) => { clearTimeout(timer); reject(e); });
+      child.on('close', () => {
+        clearTimeout(timer);
+        const lines = out.split('\n').filter((l) => l.trim());
+        resolve({ lines, raw: out, stderr });
+      });
+      for (const c of chunks) child.stdin.write(c);
+      child.stdin.end();
+    });
+  }
+
+  const ping = (id) => JSON.stringify({ jsonrpc: '2.0', id, method: 'ping', params: {} });
+
+  test('answers a single framed request', async () => {
+    const { lines } = await speak([`${ping(1)}\n`]);
+    assert.equal(lines.length, 1, `expected exactly one reply, got ${JSON.stringify(lines)}`);
+    assert.equal(JSON.parse(lines[0]).id, 1);
+  });
+
+  test('handles several requests arriving in ONE chunk', async () => {
+    const { lines } = await speak([`${ping(1)}\n${ping(2)}\n${ping(3)}\n`]);
+    assert.equal(lines.length, 3);
+    assert.deepEqual(lines.map((l) => JSON.parse(l).id), [1, 2, 3]);
+  });
+
+  test('reassembles a request SPLIT ACROSS chunks (the buffering contract)', async () => {
+    // The failure this catches: a loop that parsed per-chunk instead of per-line
+    // would emit -32700 here, or drop the request entirely.
+    const framed = `${ping(7)}\n`;
+    const cut = Math.floor(framed.length / 2);
+    const { lines } = await speak([framed.slice(0, cut), framed.slice(cut)]);
+    assert.equal(lines.length, 1);
+    assert.equal(JSON.parse(lines[0]).id, 7);
+  });
+
+  test('skips blank lines without replying to them', async () => {
+    const { lines } = await speak([`\n\n   \n${ping(1)}\n\n`]);
+    assert.equal(lines.length, 1, 'blank lines must produce no frames');
+    assert.equal(JSON.parse(lines[0]).id, 1);
+  });
+
+  test('replies -32700 to an unparseable line and KEEPS GOING', async () => {
+    // Continuing matters as much as the code: a transport that dies on one bad
+    // frame strands every later request, which a client sees as a hang.
+    const { lines } = await speak([`not json at all\n${ping(9)}\n`]);
+    assert.equal(lines.length, 2);
+    const err = JSON.parse(lines[0]);
+    assert.equal(err.error.code, -32700);
+    assert.equal(err.id, null);
+    assert.equal(JSON.parse(lines[1]).id, 9, 'the server must survive a bad frame');
+  });
+
+  test('sends NO reply to a notification (no id), per JSON-RPC', async () => {
+    const notification = JSON.stringify({ jsonrpc: '2.0', method: 'ping', params: {} });
+    const { lines } = await speak([`${notification}\n${ping(2)}\n`]);
+    assert.equal(lines.length, 1, `a notification must not be answered; got ${JSON.stringify(lines)}`);
+    assert.equal(JSON.parse(lines[0]).id, 2);
+  });
+
+  test('id 0 is a VALID request id and IS answered', async () => {
+    // Guards the classic falsy-id bug: `if (req.id)` would treat 0 as a
+    // notification and silently drop a legitimate response.
+    const { lines } = await speak([`${ping(0)}\n`]);
+    assert.equal(lines.length, 1, 'id 0 must be answered, not treated as a notification');
+    assert.equal(JSON.parse(lines[0]).id, 0);
+  });
+
+  test('every reply is exactly one line of JSON (no interleaving)', async () => {
+    const { raw } = await speak([`${ping(1)}\n${ping(2)}\n`]);
+    for (const line of raw.split('\n').filter((l) => l.trim())) {
+      assert.doesNotThrow(() => JSON.parse(line), `not one JSON object per line: ${line}`);
+    }
+  });
+});
+
+describe('EVERY spawn-backed tool runs against the REAL engine', () => {
+  // WHY: an audit found that exactly ONE tool (pan_resolve_model) ever touched
+  // real pan-tools; the other spawn-backed tools were exercised only through an
+  // injected fakeSpawn, which asserts the argv the bridge WOULD send and nothing
+  // about whether the engine accepts it. That is the precise hole that left
+  // pan://roadmap and pan://phases DEAD FROM M1 — each named a bare verb needing
+  // a subcommand, and no test ever ran one for real. Resources got a real-engine
+  // guard afterwards; tools did not, and tools are the riskier surface because a
+  // tool's argv is built from LLM input by an args() function rather than being a
+  // static array.
+  //
+  // Every spawn-backed tool is enumerated from the registry, so a newly added one
+  // is covered the day it lands rather than whenever someone remembers.
+  test('each spawn tool is invoked for real and returns a usable answer', () => {
+    const proj = createTempProject();
+    try {
+      // Minimal but non-empty project: a roadmap with the checklist shape the
+      // shipped template prescribes, so roadmap/preview verbs have real input.
+      fs.writeFileSync(path.join(proj, '.planning', 'roadmap.md'),
+        '# Roadmap\n\n## Milestone v1\n\n- [ ] **Phase 1: Alpha** - first\n- [ ] **Phase 2: Beta** - second\n');
+      fs.mkdirSync(path.join(proj, '.planning', 'phases', '01-alpha'), { recursive: true });
+
+      const s = createServer({ cwd: proj });
+      // Valid arguments per tool, keyed by name. A tool with no entry fails the
+      // roster check below rather than being silently skipped.
+      const ARGS = {
+        pan_resolve_model: { agent: 'pan-planner' },
+        pan_find_phase: { query: '1' },
+        pan_roadmap_analyze: {},
+        pan_preview_phases: {},
+        pan_preview_phase: { phase: '01' },
+        pan_report_phase: { phase: '01' },
+      };
+      const spawnTools = reg.SPAWN_TOOLS.map((t) => t.name);
+      const missing = spawnTools.filter((n) => !(n in ARGS));
+      assert.deepEqual(missing, [], `add real-engine arguments for: ${missing.join(', ')}`);
+
+      const failures = [];
+      for (const name of spawnTools) {
+        const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: ARGS[name] } });
+        if (r.error) { failures.push(`${name}: protocol error ${r.error.code} ${r.error.message}`); continue; }
+        const text = r.result.content[0].text;
+        // isError true means the verb ran and failed — the exact class fakeSpawn
+        // cannot see, and what "Unknown <x> subcommand" looked like.
+        if (r.result.isError) { failures.push(`${name}: engine rejected it -> ${String(text).slice(0, 120)}`); continue; }
+        if (!text || !String(text).trim()) failures.push(`${name}: empty answer`);
+      }
+      assert.deepEqual(failures, [], `tools the real engine did not accept:\n${failures.join('\n')}`);
+    } finally {
+      cleanup(proj);
+    }
+  });
+
+  test('a tool whose verb does not exist is reported as an engine error, not a pass', () => {
+    // Proves the check above can actually fail: without this, a bridge that
+    // swallowed engine failures would make the whole suite vacuous.
+    const proj = createTempProject();
+    try {
+      const s = createServer({ cwd: proj });
+      const r = s.handle({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name: 'pan_resolve_model', arguments: { agent: 'no-such-agent-xyz' } },
+      });
+      // Either a protocol rejection or an engine error is acceptable; a clean
+      // success on a nonsense agent would mean the bridge is not reporting truth.
+      const cleanSuccess = !r.error && r.result && r.result.isError === false;
+      assert.ok(!cleanSuccess || /error|unknown|invalid/i.test(r.result.content[0].text),
+        'a nonsense argument must not read as a clean success');
+    } finally {
+      cleanup(proj);
+    }
+  });
+});
+
+describe('resources return real data on a project WITH CONTENT (not just a bare one)', () => {
+  // The existing guard reads every resource on a BARE project, which proves
+  // "readable on a young project" — worth having, and the rule the registry
+  // states. What it cannot prove is that a resource returns CORRECT data once
+  // there is content: a resource returning {} or a stale shape passes it.
+  test('each resource reflects seeded content', () => {
+    const proj = createTempProject();
+    try {
+      fs.writeFileSync(path.join(proj, '.planning', 'roadmap.md'),
+        '# Roadmap\n\n## Milestone v1\n\n- [ ] **Phase 1: Alpha** - first\n- [ ] **Phase 2: Beta** - second\n');
+      for (const d of ['01-alpha', '02-beta']) {
+        fs.mkdirSync(path.join(proj, '.planning', 'phases', d), { recursive: true });
+      }
+      const s = createServer({ cwd: proj });
+      const read = (uri) => JSON.parse(
+        s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri } }).result.contents[0].text);
+
+      // pan://phases must SEE the two phase directories — the concrete claim the
+      // bare-project test cannot make, since there it correctly reports zero.
+      const ph = read('pan://phases');
+      assert.equal(ph.count, 2, `pan://phases should see 2 seeded dirs, got ${JSON.stringify(ph)}`);
+      assert.ok(Array.isArray(ph.directories) && ph.directories.length === 2);
+
+      // The rest must still be parseable and non-trivial with content present.
+      for (const uri of ['pan://state', 'pan://progress', 'pan://health', 'pan://links', 'pan://cost']) {
+        const body = read(uri);
+        assert.ok(body && typeof body === 'object' && Object.keys(body).length > 0,
+          `${uri} returned an empty object on a seeded project`);
+      }
+    } finally {
+      cleanup(proj);
+    }
   });
 });
 

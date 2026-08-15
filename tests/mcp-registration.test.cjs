@@ -17,6 +17,9 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const lib = require('../bin/install-lib.cjs');
 
 const SERVER = '/proj/.claude/pan-wizard-core/mcp/server.cjs';
@@ -225,6 +228,134 @@ describe('stripMcpRegistration — uninstall', () => {
       lib.buildMcpServerEntry('claude', SERVER, ENGINE, ROOT));
     const { config } = lib.stripMcpRegistration(merged, 'claude');
     assert.deepEqual(config, original, 'install→uninstall is lossless');
+  });
+});
+
+describe('validate deployment sees the MCP registration (audit finding 7)', () => {
+  // Until 2026-08 `validate deployment` had no idea MCP existed, so a fresh
+  // install reported `clean` whether registration succeeded, was skipped for a
+  // missing server file, or was refused because the runtime's config was
+  // unparseable JSON. The installer recorded those as warnings; nothing surfaced
+  // them in the verdict, which is the only thing most callers check.
+  const deploy = require('../pan-wizard-core/bin/lib/verify-deploy.cjs');
+
+  test('the reader table agrees with the installer table (they must not drift)', () => {
+    // verify-deploy.cjs deliberately DUPLICATES MCP_REGISTRATION rather than
+    // importing it: install-lib.cjs is installer-side and is not shipped into an
+    // install, while verify-deploy runs from inside one. That is a legitimate
+    // copy — and every legitimate copy needs a guard, or the writer and the
+    // reader silently disagree about where a file lives.
+    for (const [runtime, expected] of Object.entries(deploy.MCP_EXPECTED)) {
+      const spec = lib.MCP_REGISTRATION[runtime];
+      assert.ok(spec, `${runtime} is read by verify-deploy but absent from MCP_REGISTRATION`);
+      assert.equal(spec.register, true, `${runtime} is verified but the installer does not register it`);
+      assert.equal(expected.key, spec.key, `${runtime}: container key disagrees`);
+      const installerRel = spec.localPath;
+      assert.equal(expected.rel, installerRel, `${runtime}: path disagrees (installer writes ${installerRel})`);
+    }
+    // Every register:true runtime must be verified; a new one must not be
+    // silently unchecked.
+    for (const [runtime, spec] of Object.entries(lib.MCP_REGISTRATION)) {
+      if (spec.register) {
+        assert.ok(deploy.MCP_EXPECTED[runtime], `${runtime} is registered but verify-deploy never checks it`);
+      } else {
+        assert.ok(!deploy.MCP_EXPECTED[runtime], `${runtime} is register:false — nothing to verify`);
+      }
+    }
+  });
+
+  test('a register:false runtime is skipped, not reported as broken', () => {
+    const r = deploy.validateMcpRegistration(os.tmpdir(), '.codex', 'codex');
+    assert.equal(r.ok, true);
+    assert.equal(r.registered, false);
+    assert.equal(r.skipped, 'no-registration-by-design');
+  });
+
+  test('an install that predates the bridge is skipped, not flagged', () => {
+    // The false-alarm guard. A deployment made before the MCP bridge existed has
+    // no .mcp.json and never should have; the first version of this check marked
+    // every such install `modified`, which turned four unrelated green fixtures
+    // red. The installed tree decides: no bridge shipped, nothing to verify.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-nobridge-'));
+    try {
+      fs.mkdirSync(path.join(dir, '.claude', 'pan-wizard-core'), { recursive: true });
+      const r = deploy.validateMcpRegistration(dir, '.claude', 'claude');
+      assert.equal(r.ok, true, 'a pre-MCP install must not be flagged');
+      assert.equal(r.skipped, 'bridge-not-in-this-install');
+      assert.deepEqual(r.issues, []);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  test('the three failure modes are distinguished, and a healthy one passes', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcpdeploy-'));
+    try {
+      const cfg = path.join(dir, '.mcp.json');
+      const realServer = path.join(dir, 'server.cjs');
+      fs.writeFileSync(realServer, '// stand-in for the bridge\n');
+      // The check only expects a registration when the install SHIPS the bridge,
+      // so an install predating MCP is not flagged for lacking a file it never
+      // had. That gate means this fixture must carry the bridge to be checked
+      // at all — its absence is what the skip case below covers.
+      fs.mkdirSync(path.join(dir, '.claude', 'pan-wizard-core', 'mcp'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.claude', 'pan-wizard-core', 'mcp', 'server.cjs'), '//\n');
+      const write = (obj) => fs.writeFileSync(cfg, JSON.stringify(obj, null, 2));
+
+      // healthy
+      write({ mcpServers: { pan: { command: 'node', args: [realServer] } } });
+      const ok = deploy.validateMcpRegistration(dir, '.claude', 'claude');
+      assert.equal(ok.ok, true, `healthy config should pass: ${ok.issues.join('; ')}`);
+      assert.equal(ok.registered, true);
+
+      // 1. absent — registration never happened
+      fs.unlinkSync(cfg);
+      const absent = deploy.validateMcpRegistration(dir, '.claude', 'claude');
+      assert.equal(absent.ok, false);
+      assert.match(absent.issues[0], /missing/i);
+
+      // 2. unparseable — PAN deliberately left a file it could not rewrite
+      fs.writeFileSync(cfg, '{ not json');
+      const bad = deploy.validateMcpRegistration(dir, '.claude', 'claude');
+      assert.equal(bad.ok, false);
+      assert.match(bad.issues[0], /unreadable/i);
+      // Absent and unparseable must NOT read the same — they are different faults.
+      assert.notEqual(absent.issues[0], bad.issues[0]);
+
+      // 3. present but pointing at nothing — the silent-dead case
+      write({ mcpServers: { pan: { command: 'node', args: [path.join(dir, 'gone.cjs')] } } });
+      const dangling = deploy.validateMcpRegistration(dir, '.claude', 'claude');
+      assert.equal(dangling.ok, false);
+      assert.equal(dangling.registered, true, 'it IS registered — the path is what is wrong');
+      assert.match(dangling.issues[0], /does not exist/i);
+
+      // 4. no pan entry among foreign servers
+      write({ mcpServers: { other: { command: 'node', args: [realServer] } } });
+      const noPan = deploy.validateMcpRegistration(dir, '.claude', 'claude');
+      assert.equal(noPan.ok, false);
+      assert.match(noPan.issues[0], /no "pan" entry/i);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  test("opencode's single-array command shape is read correctly", () => {
+    // The shape difference that has already caused one bug in this feature: the
+    // server path is command[1], not args[0].
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcpoc-'));
+    try {
+      const server = path.join(dir, 'server.cjs');
+      fs.writeFileSync(server, '//\n');
+      fs.mkdirSync(path.join(dir, '.opencode', 'pan-wizard-core', 'mcp'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.opencode', 'pan-wizard-core', 'mcp', 'server.cjs'), '//\n');
+      fs.writeFileSync(path.join(dir, '.opencode', 'opencode.json'),
+        JSON.stringify({ mcp: { pan: { type: 'local', command: ['node', server] } } }, null, 2));
+      const r = deploy.validateMcpRegistration(dir, '.opencode', 'opencode');
+      assert.equal(r.ok, true, `opencode shape should read: ${r.issues.join('; ')}`);
+      assert.equal(r.server, server);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   });
 });
 
