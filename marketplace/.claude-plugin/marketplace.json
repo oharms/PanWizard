@@ -1,5 +1,6 @@
 {
   "name": "pan-wizard-local",
+  "description": "Local marketplace that builds PAN Wizard from this checkout on demand and installs it as a Claude Code plugin. Used to exercise the plugin build without publishing it.",
   "owner": {
     "name": "PAN Wizard contributors",
     "url": "https://github.com/oharms/PanWizard"

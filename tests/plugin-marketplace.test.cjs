@@ -145,6 +145,52 @@ describe('plugin-path.js: the stdout contract', () => {
   });
 });
 
+describe('official validator (claude plugin validate)', () => {
+  // Claude Code ships its own manifest validator. It is the authority on these
+  // schemas, so running it beats any assertion written from prose docs — it
+  // caught a missing marketplace `description` that every hand-written check
+  // here passed. SKIPPED when the CLI is absent or too old, because CI and
+  // contributors must not be blocked by a local tool; the hand-written
+  // assertions above stay as the always-on floor.
+  const runValidate = (target) => {
+    try {
+      // `claude` is a .cmd shim on Windows, which execFile cannot launch directly
+      // (ENOENT for `claude`, EINVAL for `claude.cmd`). runner.cjs already carries
+      // this scar as its `shell: 'win32'` opt-in, so mirror it: shell ONLY on
+      // win32, and only ever with literal arguments — never interpolate here, as
+      // shell:true concatenates rather than escapes.
+      const out = execFileSync('claude', ['plugin', 'validate', target], {
+        cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000,
+        shell: process.platform === 'win32',
+      });
+      return { ok: true, out };
+    } catch (err) {
+      // ENOENT (no CLI) or a shell's 127/1 for "command not found" both mean the
+      // tool is unavailable rather than the manifest being wrong.
+      const text = `${err.stdout || ''}${err.stderr || ''}`;
+      if (err.code === 'ENOENT' || /not recognized|command not found/i.test(text)) return { skip: true };
+      return { ok: false, out: text || err.message };
+    }
+  };
+
+  test('the marketplace manifest validates', (t) => {
+    const r = runValidate('./marketplace');
+    if (r.skip) return t.skip('claude CLI not available');
+    assert.ok(r.ok, `validator rejected the marketplace:\n${r.out}`);
+    assert.ok(!/warning/i.test(r.out), `validator warned on the marketplace:\n${r.out}`);
+  });
+
+  test('the built plugin manifest validates', (t) => {
+    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-plugin.js')], {
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const r = runValidate('./dist/pan-wizard-plugin');
+    if (r.skip) return t.skip('claude CLI not available');
+    assert.ok(r.ok, `validator rejected the plugin:\n${r.out}`);
+    assert.ok(!/warning/i.test(r.out), `validator warned on the plugin:\n${r.out}`);
+  });
+});
+
 describe('the self-test probe (the instrument for the gated question)', () => {
   const PLUGIN = path.join(ROOT, 'dist', 'pan-wizard-plugin');
   const probePath = path.join(PLUGIN, 'commands', 'pan-plugin-selftest.md');
