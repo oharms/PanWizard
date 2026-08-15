@@ -5,6 +5,53 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.26.0-rc.1] - 2026-08-15
+
+**A prerelease, cut for harness testing — not published.** The version carries `-rc.1`
+so an external harness can tell this build apart from the released 3.25.0; the two were
+previously indistinguishable by version, which made a harness run ambiguous about what
+it had actually exercised.
+
+### Added — MCP is a first-class surface, not a preview
+
+The bridge moved from `pan-zcode/mcp/` to **`pan-wizard-core/mcp/`**, so it ships with
+the engine to every install and every runtime; `pan-zcode/` is now a consumer of it
+rather than its owner. The registry gained the side-effect-free reads (`pan://health`,
+`pan://links`, `pan://cost`) plus roadmap and preview tools, and the installer registers
+the server per runtime from a table verified against each runtime's primary docs.
+Codex and Claude-global are deliberately not written — the reasons are recorded in the
+table rather than left as gaps. The plugin now declares the bridge as well as shipping
+it, verified end to end through a real install.
+
+### Fixed — the human merge gate was unreachable
+
+An external audit found the deterministic orchestrator keyed on phase statuses that
+**nothing in PAN emits**, so `verify` and `request_merge` could never be reached: a phase
+went planned → execute → complete and the machine advanced past the gate. `partial` had
+no entry and re-planned a half-executed phase forever, and a misshapen snapshot collapsed
+to "everything is complete", failing toward success. All three are closed, along with the
+title-case mismatch that stalled the documented assembly path.
+
+The suite had been green throughout because its fixture spoke a vocabulary reality does
+not — the fixture was *more* capable than the product and produced false confidence.
+
+### Fixed — the CLI names the right invocation instead of refusing
+
+A ledger recorded `pan-tools trace` 18 times, the most-repeated agent behaviour in it.
+The docs were investigated and cleared, so no prose change could explain or prevent it;
+the recovery is what was wrong. Unknown commands now resolve to the correct namespaced
+form (`pan-tools optimize trace`) or the nearest top-level command, from an index parsed
+from the dispatcher's own error strings so no second list can drift. `learn` — the one
+group that never published its subcommands — now does, and stops silently treating an
+unknown subcommand as its bare alias.
+
+### Also
+
+`validate deployment` verifies the MCP registration it writes, distinguishing "absent",
+"unparseable" and "points at nothing" instead of reporting `clean` for all three. Skill
+emission is validated against the Agent Skills spec, and `${CLAUDE_PLUGIN_ROOT}` was
+measured to expand inside plugin command markdown — unblocking marketplace publishing.
+
 ## [3.25.0] - 2026-08-10
 
 The army learns to clean up after itself. PanLoop's post-release audit of the ARMY route (finding 13, model-free) found the campaign's one structural hygiene gap: worktrees were created and never removed. This release closes it end to end — teardown where the merge lands, a sweeper for everything else, and documentation that treats leftover scaffolding as a defect.
