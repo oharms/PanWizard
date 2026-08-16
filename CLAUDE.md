@@ -154,6 +154,9 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `.claude/workflows/*.md` — Workflow protocols
 - `.claude/settings.json` — Claude Code permissions
 - `scripts/build-hooks.js` — hook copy script (`hooks/*.js` → `hooks/dist/`; copy-only, no bundler)
+- `scripts/build-plugin.js` — emits the Claude Code plugin to `dist/pan-wizard-plugin/` (manifest, commands, agents, hooks, `.mcp.json`, core)
+- `scripts/plugin-path.js` — rebuilds the plugin and prints its absolute path as **exactly one stdout line**, the contract a plugin-marketplace `command` source requires. Claude Code runs it from the user's HOME, so nothing may depend on cwd, and the builder's output is relayed to stderr
+- `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
 
 ### Key design patterns
 

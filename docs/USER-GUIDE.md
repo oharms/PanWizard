@@ -1183,6 +1183,35 @@ PAN supports five runtimes. The core workflow is identical across all — the di
 
 > **Gemini CLI audience change:** from June 18, 2026, Google's Gemini CLI serves Gemini Code Assist (Standard/Enterprise) customers; individual free / AI Pro / Ultra accounts are directed to Antigravity CLI instead. PAN's `--gemini` install targets Gemini CLI and continues to work for those customers. Antigravity CLI is not yet a PAN install target, but it reads the shared `.agents/skills/` tree natively — install with `--unified-skills` (below) and PAN's command set is usable from Antigravity in the same project.
 
+### MCP server registration
+
+Every install also registers PAN's **MCP bridge**, which exposes the `pan-tools` engine
+to any MCP client as tools and resources. This happens automatically — there is no flag —
+and it writes **one file outside the runtime's own directory** for Claude Code, so it is
+worth knowing about:
+
+| Runtime | File written | Key |
+|---|---|---|
+| Claude Code | **`.mcp.json` at your project root** | `mcpServers` |
+| Copilot CLI | `.github/mcp.json` | `mcpServers` |
+| Gemini CLI | `.gemini/settings.json` (merged alongside hooks) | `mcpServers` |
+| OpenCode | `.opencode/opencode.json` (merged alongside permissions) | `mcp` |
+| Codex | *nothing* — a copy-pasteable TOML snippet is printed instead | — |
+
+The merge is non-destructive: any MCP servers you already had are preserved, and a config
+file PAN cannot parse is **left untouched** and reported rather than rewritten. Uninstall
+removes only PAN's `pan` entry, deleting the file only if PAN was its sole occupant.
+
+Two deliberate exceptions. **Codex** keeps MCP config in `config.toml`, and PAN is
+zero-dependency with no TOML merger — hand-editing your config is riskier than printing a
+snippet, so it prints one. **A global Claude install writes nothing**, because user-scope
+MCP config lives in `~/.claude.json`, a file keyed by every project you have ever opened;
+the installer prints the `claude mcp add` command instead.
+
+Claude Code prompts once to approve a project-scoped server. Verify a registration with
+`pan-tools validate deployment` — its `mcp` block tells you whether the entry is present,
+parseable, and pointing at a server that exists.
+
 ### Unified skills tree (`--unified-skills`, ADR-0028 Phase 1 — alpha)
 
 Adding `--unified-skills` to any install compiles PAN's commands **once** into the runtime-neutral `.agents/skills/` tree (project root for local installs, `~/.agents/skills/` for global) instead of the per-runtime command formats below. The tree follows the Agent Skills standard (`SKILL.md` per skill directory), is read natively by every PAN runtime plus Antigravity CLI, and the proprietary command surface is swept so commands don't resolve twice. Agents, hooks, and settings still install per-runtime.

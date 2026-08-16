@@ -149,6 +149,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `verify-retro.cjs` | Milestone retrospective (`retro`); extracted from verify.cjs, re-exported through it |
 | `verify-deploy.cjs` | Deployment validation (`validate deployment`); extracted from verify.cjs, re-exported through it |
 | `verify-preflight.cjs` | Pre-execution gates (`preflight`, `deps validate`); extracted from verify.cjs, re-exported through it |
+| `suggest.cjs` | "Did you mean" corrections for an unknown command. Pure; the group→subcommand index is parsed from the dispatcher's own `Unknown <group> subcommand. Available:` strings on the error path only, so no second list can drift and a healthy call pays nothing |
 | `commands-learnings.cjs` | Error patterns, session history, learnings lifecycle; extracted from commands.cjs, re-exported through it |
 | `phase-remove.cjs` | Phase removal + renumbering cascade (`phase remove`); extracted from phase.cjs, re-exported through it |
 | `roadmap.cjs` | roadmap.md parsing and updates |
@@ -1214,32 +1215,54 @@ without a row here.
 
 ### `validate deployment`
 
-Validates PAN installations in the current directory. Detects all installed runtimes (by checking for `pan-file-manifest.json`), then for each runtime validates: manifest file hashes match on-disk files, settings integrity, and hook path resolution.
+Validates PAN installations in the current directory. Detects all installed runtimes (by checking for `pan-file-manifest.json`), then for each runtime validates: manifest file hashes match on-disk files, settings integrity, hook path resolution, and the **MCP server registration** the installer wrote.
 
 ```
 pan-tools validate deployment [--raw]
 ```
 
-**JSON output:**
+**JSON output** — transcribed from a real run, not hand-written:
 ```json
 {
   "status": "clean",
-  "runtimes": [
-    {
-      "runtime": "claude",
+  "runtimes_found": 1,
+  "runtimes": {
+    "claude": {
       "status": "clean",
-      "version": "2.9.0",
-      "total_files": 142,
+      "version": "3.26.0-rc.2",
+      "total_files": 322,
       "missing": [],
       "modified": [],
+      "orphaned": [],
       "settings_ok": true,
-      "settings_issues": []
+      "settings_issues": [],
+      "mcp": {
+        "ok": true,
+        "registered": true,
+        "path": ".mcp.json",
+        "server": "…/pan-wizard-core/mcp/server.cjs",
+        "issues": []
+      }
     }
-  ]
+  }
 }
 ```
 
-**Status values:** `clean` (all files match), `modified` (hash mismatch), `broken` (files missing).
+> **`runtimes` is an OBJECT keyed by runtime name, not an array.** This block previously
+> showed an array with a `runtime` field inside each entry — a shape the code has never
+> emitted. Read it with `result.runtimes.claude`, not `result.runtimes[0]`.
+
+**Status values:** `clean` (all files match), `modified` (hash mismatch, or an MCP registration problem), `broken` (files missing).
+
+**The `mcp` block** reports the registration for runtimes PAN registers (`claude`, `copilot`, `gemini`, `opencode`). It distinguishes three failures that used to be indistinguishable — all three previously reported `clean`:
+
+| `mcp.issues[0]` names | Meaning |
+|---|---|
+| *missing* | the config file was never written — registration did not happen |
+| *unreadable* | the file exists but is not valid JSON, so PAN deliberately left it untouched |
+| *does not exist* | a `pan` entry is registered but its server path resolves to nothing |
+
+`mcp.skipped` appears instead of an error in two legitimate cases: `no-registration-by-design` (Codex — its MCP config is TOML, which PAN prints rather than merges) and `bridge-not-in-this-install` (a deployment made before the bridge shipped, which correctly has nothing to verify).
 
 ---
 
