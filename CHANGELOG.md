@@ -5,6 +5,33 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.26.0-rc.2] - 2026-08-16
+
+**Prerelease, not published.** Supersedes `rc.1`, which is the build the external
+harness tested; this one carries the fix that testing produced.
+
+### Fixed — `verify-phase` scored a suite that could not run as a PASS
+
+The harness reported a delivered project whose test suite did not run, while
+`/pan:verify-phase` passed it. Those particular findings turned out to be artifacts
+of a budget cap that cut the measurement mid-build — the finished project has correct
+comparison, correct ordering and a green suite. **The concern underneath them was
+real anyway**, and independent of that run.
+
+Three defects in the gate, all in one step: the exit code was captured and never
+read; the detected test command was computed and never used; and the decision table
+had no branch for a suite that *crashes*. An unrunnable suite emits no failure line,
+so the failure count comes back **empty rather than zero**, and the nearest matching
+branch was "all tests pass". A broken project scored green — the worst direction a
+gate can fail in, and the third instance of this class after `verify reconcile`'s
+swallowed non-zero exit and the must_haves indent that left that gate dead on every
+real plan for months.
+
+The gate now reads the exit code first, states that empty is not zero, and scores an
+unrunnable suite as `failed` — never `skipped`, never `passed`. Detection moved ahead
+of execution so "no test script" (a known gap, still `skipped`) stays distinct from
+"a test command that will not run" (a broken project, now `failed`).
+
 ## [3.26.0-rc.1] - 2026-08-15
 
 **A prerelease, cut for harness testing — not published.** The version carries `-rc.1`
