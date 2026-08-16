@@ -9,6 +9,7 @@
     "bin",
     "commands",
     "pan-wizard-core",
+    "!pan-wizard-core/learnings/internal",
     "agents",
     "hooks/dist",
     "scripts",
