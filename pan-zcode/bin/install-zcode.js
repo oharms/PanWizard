@@ -98,7 +98,10 @@ function buildBundle(o) {
   assertNotInSourceRepo(destDir, repoRoot);
 
   const agentsSrc = path.join(repoRoot, 'agents');
-  const serverPath = path.join(repoRoot, 'pan-zcode', 'mcp', 'server.cjs');
+  // The MCP protocol layer lives in pan-wizard-core/mcp/ (it ships with the
+  // engine to every install and every runtime). PAN-Z is a CONSUMER of it, not
+  // its owner — never fork a copy back under pan-zcode/, or the two drift.
+  const serverPath = path.join(repoRoot, 'pan-wizard-core', 'mcp', 'server.cjs');
   const panToolsPath = path.join(repoRoot, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
 
   fs.mkdirSync(destDir, { recursive: true });

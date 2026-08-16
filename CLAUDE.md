@@ -53,14 +53,14 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Version | (see `package.json`) |
 | Commands (`commands/pan/*.md`) | 59 |
 | Agents (`agents/*.md`) | 24 |
-| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 50 |
+| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 51 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 16 |
-| Unit test files (`tests/*.test.cjs`) | 116 |
+| Unit test files (`tests/*.test.cjs`) | 121 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 3752 |
-| Total test suites | 808 |
+| Total tests (npm run test:all) | 3890 |
+| Total test suites | 840 |
 | Hooks (`hooks/*.js`) | 6 |
 | Specs (`docs/specs/*.md`) | 44 |
 | ADRs (`docs/decisions/ADR-*.md`) | 42 |
@@ -130,10 +130,11 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `pan-wizard-core/workflows/*.md` — Multi-step workflow definitions
 - `pan-wizard-core/templates/*.md` — Scaffolding templates
 - `pan-wizard-core/references/*.md` — Agent-loaded reference docs
+- `pan-wizard-core/mcp/*.cjs` — **MCP bridge (canonical home).** Zero-dep dual-era JSON-RPC stdio server exposing `pan-tools` verbs as MCP tools/resources, plus the registry, the `next-action` state machine, and the human merge gate. Lives under the core so it ships to every install and every runtime. `pan-zcode/` is a **consumer**, not the owner — never fork a copy back under it.
 - `commands/pan/*.md` — Command definitions (copied by installer)
 - `agents/*.md` — Agent definitions (copied by installer)
 - `hooks/*.js` — Hooks (source, built → `hooks/dist/`)
-- `pan-zcode/*` — **Experimental (preview):** ZCode-native subsystem. A zero-dep MCP bridge (`pan-zcode/mcp/`) wraps `pan-tools` for z.ai's ZCode harness (beta); its own installer (`pan-zcode/bin/install-zcode.js`) is separate from `bin/install.js` and is NOT a 6th runtime of the main installer. See `pan-zcode/README.md`.
+- `pan-zcode/*` — **Experimental (preview):** ZCode-native subsystem. Ports PAN's agents to ZCode subagents and emits an MCP registration pointing at the shared server in `pan-wizard-core/mcp/`; its own installer (`pan-zcode/bin/install-zcode.js`) is separate from `bin/install.js` and is NOT a 6th runtime of the main installer. See `pan-zcode/README.md`.
 
 ### Tests
 
@@ -153,6 +154,10 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `.claude/workflows/*.md` — Workflow protocols
 - `.claude/settings.json` — Claude Code permissions
 - `scripts/build-hooks.js` — hook copy script (`hooks/*.js` → `hooks/dist/`; copy-only, no bundler)
+- `scripts/build-plugin.js` — emits the Claude Code plugin to `dist/pan-wizard-plugin/` (manifest, commands, agents, hooks, `.mcp.json`, core)
+- `scripts/plugin-path.js` — rebuilds the plugin and prints its absolute path as **exactly one stdout line**, the contract a plugin-marketplace `command` source requires. Claude Code runs it from the user's HOME, so nothing may depend on cwd, and the builder's output is relayed to stderr
+- `scripts/deprecate-old-versions.js` — release housekeeping: after a successful publish, deprecates every stable release outside the newest-3 window plus any superseded prerelease. Dry-run by default; **never unpublishes** (a test asserts the script has no unpublish path)
+- `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
 
 ### Key design patterns
 

@@ -11,10 +11,23 @@
  *   pan-wizard-core/              dispatcher + modules + workflows + templates
  *
  * Distribution status: built ALONGSIDE the loose-file installer. Marketplace
- * publishing is gated on one live verification — whether ${CLAUDE_PLUGIN_ROOT}
+ * publishing WAS gated on one live verification — whether ${CLAUDE_PLUGIN_ROOT}
  * expands inside command markdown content (documented for hook/MCP configs
- * only). Until then, content references core paths relative to the plugin
- * root, which matches the documented plugin working layout.
+ * only).
+ *
+ * ANSWERED 2026-08-14, Claude Code 2.1.233 on Windows, by installing this plugin
+ * from the `command`-source marketplace in `marketplace/` and running
+ * `/pan-plugin-selftest`: **it does expand.** The command body reached the model
+ * with a real absolute path — no placeholder text survived — and invoking
+ * pan-tools through that path worked. So the CONTENT_PREFIX rewrite below is
+ * correct as it stands, and the gate is lifted.
+ *
+ * One measurement from the same run that constrains how far to take this: the
+ * `CLAUDE_PLUGIN_ROOT` environment variable is NOT exported into the Bash tool's
+ * environment (it read as empty). Textual substitution and shell expansion are
+ * therefore NOT interchangeable — generated content must keep using the
+ * substituted form, because `$CLAUDE_PLUGIN_ROOT` evaluated by a shell at runtime
+ * expands to nothing. Re-measure before relying on the shell form anywhere.
  *
  * Usage: node scripts/build-plugin.js  (or npm run build:plugin)
  */
@@ -87,6 +100,25 @@ function main() {
       fs.copyFileSync(path.join(hooksDist, f), path.join(OUT, 'hooks', f));
     }
   }
+
+  // 2b. Plugin-only self-test command. NOT copied from commands/pan/ — it is
+  // generated here so the shipped command set stays unchanged and no ordinary
+  // install gains a diagnostic. It answers the one question gating publication:
+  // whether CONTENT_PREFIX expands inside command markdown. The placeholder must
+  // reach the plugin UNEXPANDED or the probe measures nothing, so this write
+  // deliberately bypasses rewriteContent().
+  fs.writeFileSync(
+    path.join(OUT, 'commands', 'pan-plugin-selftest.md'),
+    lib.buildPluginSelfTestCommand(CONTENT_PREFIX.replace(/\/$/, ''))
+  );
+
+  // 4b. MCP registration. The server itself rides along inside pan-wizard-core
+  // (step 5 copies it wholesale), but shipping it is not the same as declaring
+  // it — without this file the plugin carried the bridge and never registered it.
+  fs.writeFileSync(
+    path.join(OUT, '.mcp.json'),
+    JSON.stringify(lib.buildPluginMcpConfig(), null, 2) + '\n'
+  );
 
   // 5. Core (strip source-only internal learnings, same policy as the installer)
   copyTree(path.join(ROOT, 'pan-wizard-core'), path.join(OUT, 'pan-wizard-core'), rewriteContent);

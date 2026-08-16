@@ -1,10 +1,15 @@
 'use strict';
 
 /**
- * PAN-Z MCP bridge server (M1).
+ * PAN MCP bridge server.
  *
- * A dependency-free JSON-RPC 2.0 server over stdio implementing the small MCP
- * surface ZCode needs: server/discover / initialize / tools/list / tools/call /
+ * Canonical home: `pan-wizard-core/mcp/`, so it ships with the engine to every
+ * install and every runtime. It was originally written for the PAN-Z/ZCode
+ * preview (`pan-zcode/`), which remains a CONSUMER rather than the owner — the
+ * protocol layer is harness-neutral and must not be forked per consumer.
+ *
+ * A dependency-free JSON-RPC 2.0 server over stdio implementing a small MCP
+ * surface: server/discover / initialize / tools/list / tools/call /
  * resources/list / resources/read / ping. It is a DUAL-ERA server (see the MCP
  * 2026-07-28 versioning spec): legacy clients open with the `initialize`
  * handshake; modern clients (2026-07-28+) declare their protocol version in each
@@ -47,9 +52,27 @@ const SUPPORTED_VERSIONS_LIST = [MODERN_PROTOCOL_VERSION, '2025-06-18', '2025-03
 const SUPPORTED_PROTOCOL_VERSIONS = new Set(SUPPORTED_VERSIONS_LIST);
 const SERVER_INFO = { name: 'pan-mcp', version: '0.1.0' };
 
-/** Default engine location: pan-wizard-core is a sibling of pan-zcode/. */
+/**
+ * Default engine location: `bin/` is a sibling of this `mcp/` directory inside
+ * pan-wizard-core. That holds in the source repo AND in every install, because
+ * the installer copies pan-wizard-core wholesale, so the two stay siblings
+ * wherever the tree lands. Callers can still override via `opts.panToolsPath`
+ * (an out-of-tree engine, a test fixture, a pinned version) or PAN_TOOLS_PATH.
+ *
+ * This replaced `join(__dirname, '..', '..', 'pan-wizard-core', 'bin', …)`,
+ * carried over from when the module lived in `pan-zcode/mcp/`. Do NOT record
+ * that as a bug the relocation fixed — from this directory the two forms
+ * resolve to the identical path (the grandparent of `mcp/` contains
+ * `pan-wizard-core/` in both the source tree and an install). The old form is
+ * merely over-specified: it requires the grandparent to hold a directory
+ * *named* `pan-wizard-core`, so it breaks if the core is vendored or renamed,
+ * while the sibling form only requires the layout it actually depends on.
+ * Covered by the "engine path resolution" suite in tests/pan-zcode-mcp.test.cjs,
+ * which exists because every other test injects a spawn or passes an explicit
+ * path — so this function had zero coverage when the module moved.
+ */
 function defaultPanToolsPath() {
-  return path.join(__dirname, '..', '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+  return path.join(__dirname, '..', 'bin', 'pan-tools.cjs');
 }
 
 /** Real spawn: shell-less execFile of `node <argv...>`. */
@@ -176,7 +199,13 @@ function createServer(opts = {}) {
   function readResource(uri) {
     const res = reg.byResourceUri[uri];
     if (!res) return { unknown: true };
-    const r = runVerb(res.verb, []);
+    // A resource's argv tail is a STATIC array on its descriptor (for verbs whose
+    // read is a subcommand, e.g. `validate health`). It never derives from the
+    // request: resources take no client parameters, so there is no input path into
+    // this argv. Guard the type anyway — a descriptor typo must not spread a
+    // non-array into the spawn.
+    const tail = Array.isArray(res.args) ? res.args : [];
+    const r = runVerb(res.verb, tail);
     if (!r.ok) return { error: { code: -32603, message: r.stderr || 'resource read failed' } };
     return { result: { contents: [{ uri, mimeType: 'application/json', text: r.stdout }] } };
   }

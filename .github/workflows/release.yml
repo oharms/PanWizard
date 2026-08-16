@@ -98,6 +98,27 @@ jobs:
         # fails the publish aborts and nothing is uploaded.
         run: npm publish --provenance --access public
 
+      # Housekeeping AFTER a successful publish. Keeps the newest 3 stable
+      # releases installable-without-warning and deprecates everything older, plus
+      # any prerelease the new release supersedes.
+      #
+      # `continue-on-error` is deliberate and load-bearing: the package is already
+      # published by this point. A failure here means an old version stayed
+      # undeprecated — a cosmetic omission. Letting that mark the release red would
+      # claim the publish failed, which is false and strictly worse.
+      #
+      # NOTE ON AUTH: this job publishes via OIDC trusted publishing, whose token is
+      # scoped to publishing. `npm deprecate` is a different operation and may be
+      # refused with E401/E403. If it is, the step logs the refusal and the release
+      # still passes — see the script's own failure handling. To make it work,
+      # supply a granular automation token with write access as NPM_TOKEN; the
+      # script needs no change.
+      - name: Deprecate superseded versions
+        continue-on-error: true
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: node scripts/deprecate-old-versions.js --apply
+
       - name: Summary
         run: |
           VERSION=$(node -p "require('./package.json').version")

@@ -135,7 +135,13 @@ function validateRuntimeInstall(cwd, configDir, runtime) {
     }
   }
 
-  const status = missing.length > 0 ? 'broken' : modified.length > 0 ? 'modified' : 'clean';
+  const mcp = validateMcpRegistration(cwd, configDir, runtime);
+  if (!mcp.ok) settingsIssues.push(...mcp.issues);
+
+  const status = missing.length > 0 ? 'broken'
+    : modified.length > 0 ? 'modified'
+      : !mcp.ok ? 'modified'
+        : 'clean';
 
   return {
     status,
@@ -144,9 +150,112 @@ function validateRuntimeInstall(cwd, configDir, runtime) {
     missing,
     modified,
     orphaned: [],
-    settings_ok: settingsOk,
+    settings_ok: settingsOk && mcp.ok,
     settings_issues: settingsIssues,
+    mcp,
   };
+}
+
+/**
+ * Where each runtime's MCP registration lives, relative to the project (claude)
+ * or to the runtime's config dir (everything else), and under which container
+ * key. This MIRRORS `MCP_REGISTRATION` in bin/install-lib.cjs — the installer
+ * writes, this reads, and the two must agree.
+ *
+ * Duplicated rather than imported on purpose: install-lib.cjs is installer-side
+ * and is NOT shipped into an install, while this module runs from inside one. A
+ * scenario test pins the two tables against each other so the copy cannot drift
+ * silently.
+ *
+ * `codex` is absent because registration there is `register: false` — PAN prints
+ * a TOML snippet rather than writing config, so there is nothing to verify.
+ */
+const MCP_EXPECTED = {
+  claude: { rel: '.mcp.json', fromProjectRoot: true, key: 'mcpServers' },
+  copilot: { rel: 'mcp.json', fromProjectRoot: false, key: 'mcpServers' },
+  gemini: { rel: 'settings.json', fromProjectRoot: false, key: 'mcpServers' },
+  opencode: { rel: 'opencode.json', fromProjectRoot: false, key: 'mcp' },
+};
+
+/**
+ * Verify the MCP registration this install wrote.
+ *
+ * WHY: `registerMcpServer()` writes up to four config files per install, and this
+ * verdict is the only thing most callers check afterwards. Until 2026-08 it had no
+ * idea MCP existed, so a fresh install reported `clean` whether registration
+ * succeeded, was skipped because the server file was missing, or was refused
+ * because the runtime's config was unparseable JSON. The installer recorded those
+ * cases as warnings; nothing surfaced them where anyone looks.
+ *
+ * Every part of this is checkable without launching the bridge: the config is
+ * present, it parses, it carries a `pan` entry, and the server path in that entry
+ * exists on disk. Whether a RUNTIME then loads it is a separate claim this cannot
+ * make, and does not.
+ *
+ * @returns {{ok:boolean, registered:boolean, path:string|null, issues:string[]}}
+ */
+function validateMcpRegistration(cwd, configDir, runtime) {
+  const spec = MCP_EXPECTED[runtime];
+  // codex (and any future register:false runtime) has nothing to verify.
+  if (!spec) return { ok: true, registered: false, path: null, issues: [], skipped: 'no-registration-by-design' };
+
+  // ONLY expect a registration when this install actually SHIPS the bridge.
+  //
+  // An install made before the MCP bridge existed has no `.mcp.json` and never
+  // should have — flagging it would be a false alarm on every older deployment,
+  // and the first version of this check did exactly that, turning four green
+  // fixtures red for lacking a file they were never supposed to have. The
+  // installed tree is the authority: if `pan-wizard-core/mcp/server.cjs` is
+  // present, registration is expected; if it is not, there is nothing to verify.
+  const bridge = path.join(cwd, configDir, 'pan-wizard-core', 'mcp', 'server.cjs');
+  try {
+    fs.accessSync(bridge);
+  } catch (_) {
+    return { ok: true, registered: false, path: null, issues: [], skipped: 'bridge-not-in-this-install' };
+  }
+
+  const configPath = spec.fromProjectRoot
+    ? path.join(cwd, spec.rel)
+    : path.join(cwd, configDir, spec.rel);
+  const shown = path.relative(cwd, configPath) || spec.rel;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (e) {
+    // Absent and unparseable are different failures and must read differently:
+    // one means registration never happened, the other means PAN deliberately
+    // left a file it could not safely rewrite.
+    const missingFile = e && e.code === 'ENOENT';
+    return {
+      ok: false,
+      registered: false,
+      path: shown,
+      issues: [missingFile
+        ? `MCP not registered: ${shown} is missing`
+        : `MCP config unreadable (left untouched by design): ${shown} — ${e.message}`],
+    };
+  }
+
+  const bag = parsed && parsed[spec.key];
+  const entry = bag && typeof bag === 'object' ? bag.pan : undefined;
+  if (!entry) {
+    return { ok: false, registered: false, path: shown, issues: [`MCP not registered: no "pan" entry under "${spec.key}" in ${shown}`] };
+  }
+
+  // The server path is `args[0]` everywhere except opencode, whose `command` is a
+  // single array of [cmd, ...args] — the shape difference that has already caused
+  // one bug in this feature.
+  const serverPath = Array.isArray(entry.command) ? entry.command[1] : (entry.args && entry.args[0]);
+  const issues = [];
+  if (!serverPath) {
+    issues.push(`MCP entry in ${shown} names no server path`);
+  } else {
+    try { fs.accessSync(serverPath); } catch (_) {
+      issues.push(`MCP server path does not exist: ${serverPath} (from ${shown})`);
+    }
+  }
+  return { ok: issues.length === 0, registered: true, path: shown, server: serverPath || null, issues };
 }
 
 /**
@@ -190,4 +299,6 @@ module.exports = {
   detectInstalledRuntimes,
   validateRuntimeInstall,
   cmdValidateDeployment,
+  validateMcpRegistration,
+  MCP_EXPECTED,
 };

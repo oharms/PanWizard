@@ -726,6 +726,12 @@
     "syncStateFrontmatter:function",
     "writeStateMd:function"
   ],
+  "suggest.cjs": [
+    "buildSubcommandIndex:function",
+    "editDistance:function",
+    "formatSuggestions:function",
+    "suggestCommand:function"
+  ],
   "template.cjs": [
     "cmdTemplateFill:function",
     "cmdTemplateSelect:function",
@@ -748,8 +754,10 @@
     "removeQuotes:function"
   ],
   "verify-deploy.cjs": [
+    "MCP_EXPECTED:object",
     "cmdValidateDeployment:function",
     "detectInstalledRuntimes:function",
+    "validateMcpRegistration:function",
     "validateRuntimeInstall:function"
   ],
   "verify-drift.cjs": [

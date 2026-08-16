@@ -1456,6 +1456,38 @@ describe('plugin packaging builders', () => {
       'hook commands must use the documented plugin-root variable');
   });
 
+  test('buildPluginMcpConfig declares the bridge at CLAUDE_PLUGIN_ROOT, with no env', () => {
+    const config = lib.buildPluginMcpConfig();
+    assert.equal(config.mcpServers.pan.command, 'node');
+    assert.deepEqual(config.mcpServers.pan.args,
+      ['${CLAUDE_PLUGIN_ROOT}/pan-wizard-core/mcp/server.cjs']);
+    // A plugin serves whatever project the session is in, so pinning
+    // PAN_PROJECT_ROOT (as a per-project install legitimately does) would be
+    // wrong here — the server falls back to the process cwd.
+    assert.ok(!('env' in config.mcpServers.pan), 'plugin registration must not pin a project root');
+    // Claude's `type` vocabulary has no "local"; the installer's copilot-only
+    // branch must not leak into the plugin shape.
+    assert.ok(!('type' in config.mcpServers.pan));
+  });
+
+  test('the built plugin DECLARES the mcp server, not just ships it', () => {
+    // REGRESSION: pan-wizard-core is copied wholesale, so mcp/ landed in the
+    // bundle from the moment it moved there — while nothing registered it. A
+    // shipped-but-undeclared server is invisible; assert both halves together,
+    // and assert the declared path actually resolves inside the bundle.
+    const fs = require('fs');
+    const { execFileSync } = require('child_process');
+    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
+      encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const out = path.join(__dirname, '..', 'dist', 'pan-wizard-plugin');
+    const mcpPath = path.join(out, '.mcp.json');
+    assert.ok(fs.existsSync(mcpPath), 'plugin root must carry .mcp.json');
+    const declared = JSON.parse(fs.readFileSync(mcpPath, 'utf8')).mcpServers.pan.args[0];
+    const resolved = declared.replace('${CLAUDE_PLUGIN_ROOT}', out);
+    assert.ok(fs.existsSync(resolved), `declared server path missing in bundle: ${declared}`);
+  });
+
   test('build-plugin script emits the verified plugin layout', () => {
     const fs = require('fs');
     const { execFileSync } = require('child_process');

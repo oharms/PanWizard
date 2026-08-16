@@ -416,6 +416,10 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `skill-align.cjs` | — | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass. `buildSkillIndex(root)` walks commands/templates/references + learnings topics on the fly (nothing persisted); `alignTasks(root, tasks, opts)` scores draft planner tasks via `scoreRelevance` (glue-word stop-list, capped scoring head) and returns per-task top-k matches plus a deduped, token-budgeted `vocabulary` hint list with explicit `dropped` overflow. Advisory + fail-open: missing roots are skipped and reported. Used by `pan-planner`'s `skill_alignment` step. `cmdSkillsIndex` / `cmdSkillsAlign`. |
 | `hygiene.cjs` | — | **(v3.13)** Project cleanup + version alignment. `scanHygiene` runs seven checks: per-runtime manifest version vs latest, untracked installs, legacy uppercase planning filenames, `.tmp` orphans, memory-log bloat, poisoned cost ledgers (via `cost.cjs isSuspectRecord`), stale trace sessions, fragment `.planning/` dirs. `cleanHygiene` applies only the safe subset (case-hop renames, orphan deletion, `compactMemory`, ledger quarantine-by-rename, trace pruning) — dry-run by default, `--apply` to execute; installer re-runs and fragment removal always stay manual. `cmdHygieneScan` / `cmdHygieneClean`. |
 | `phase-report.cjs` | — | **(v3.15)** Per-phase graphical HTML report + project-level timeline index (`pan-tools report phase <N>` \| `index` \| `all`). Three layers mirroring hud.cjs: `collectPhaseData`/`collectIndexData` (pure `.planning/` reads), `renderPhaseHtml`/`renderIndexHtml` (pure self-contained docs), `cmdReport` (only side-effecting layer). Reuses hud.cjs's rendering foundation verbatim so both surfaces render identically. |
+| `agents-md.cjs` | — | AGENTS.md universal rules layer (ADR-0028 Phase 3). Single source of truth for the marker-fenced PAN section and the CLAUDE.md `@AGENTS.md` bridge; lives under the core so the installer AND an installed `memory rebuild` regenerate byte-identical content. User content outside the markers is never touched. |
+| `memory-rebuild.cjs` | — | Rebuilds agent memory from `.planning/` state, scanning for injected directives and surfacing them as warnings (ADR-0040). |
+| `memory-optimize.cjs` | — | Memory compaction and the quarantine path for entries carrying injected directives (ADR-0040). |
+| `suggest.cjs` | — | **(2026-08)** "Did you mean" corrections for an unknown command. PURE. `buildSubcommandIndex()` parses the dispatcher's own `Unknown <group> subcommand. Available:` strings — load-bearing text a user sees, so it cannot rot quietly — and `suggestCommand()` resolves a namespace miss (`trace` → `pan-tools optimize trace`) or a near-miss typo. Runs on the ERROR PATH ONLY, so a healthy invocation pays nothing, and fails open to the plain message. |
 
 ---
 
@@ -819,18 +823,52 @@ Copilot CLI uses different tool names than Claude Code. The installer maps them 
 | TodoWrite | todo |
 | Task (Agent) | agent |
 
-### Experimental: ZCode via the PAN-Z MCP bridge (preview)
+### The MCP bridge — a second doorway into the same engine
 
-The five runtimes above are reached by install-time **format conversion** — the same
-command/agent content, rewritten per runtime. [ZCode](https://zcode.z.ai) (z.ai's GLM
-harness, **beta**) can't host that: it has no custom slash-commands, hooks, or project
-config. So **PAN-Z** (`pan-zcode/`) takes the inverse approach — instead of converting
-content *into* ZCode, it exposes PAN's engine *to* ZCode over **MCP**. A zero-dependency
-JSON-RPC stdio server spawns `pan-tools` verbs as MCP tools/resources; PAN's agents are
-ported to ZCode subagents; and the human merge gate + orchestrator move into deterministic
-MCP tools. It is a **separate, opt-in subsystem with its own installer**
-(`pan-zcode/bin/install-zcode.js`) — deliberately **not** a sixth target of `bin/install.js`.
-As a preview against a fast-moving Beta, its ZCode-runtime behaviors are gated behind an
+The five runtimes above are reached by install-time **format conversion**: the same
+command/agent content, rewritten per runtime. The MCP bridge is the **inverse** approach —
+rather than converting content *into* a host, it exposes PAN's engine *to* any MCP client.
+
+It works because `pan-tools` was already stateless: every invocation reads `.planning/`,
+writes `.planning/`, and exits. That is the shape the MCP `2026-07-28` stateless core wants,
+so the bridge reimplements nothing — it spawns a verb and returns its JSON. As the server's
+own header puts it, the CLI's JSON contract **is** the tool contract.
+
+- **Location:** `pan-wizard-core/mcp/` — under the core, so it ships with the engine to every
+  install and every runtime. Zero-dependency (the protocol is hand-rolled, not an SDK) and
+  **dual-era**: it answers both the legacy `initialize` handshake and modern per-request
+  `_meta` version negotiation with a `server/discover` probe (ADR-0041).
+- **Two surfaces, one rule.** Read-only aggregators are MCP **resources** (cheaper,
+  side-effect-free); anything actionable is a **tool** with accurate `readOnlyHint` /
+  `destructiveHint`. The dividing rule: *a resource must be readable on any project,
+  including a bare directory* — if "no data yet" is an error, it is a tool. Enumerate the
+  live surface rather than trusting a list here:
+  ```bash
+  grep -oE "uri: 'pan://[a-z]+'" pan-wizard-core/mcp/tool-registry.cjs
+  grep -oE "name: 'pan_[a-z_]+'" pan-wizard-core/mcp/tool-registry.cjs pan-wizard-core/mcp/native-tools.cjs
+  ```
+- **Safety is structural, not advisory:** shell-less `execFile` with an argv array, the verb
+  always chosen from the registry allowlist, every argument validated against a whitelist
+  regex with a length bound, a `FORBIDDEN_VERB` guard that refuses to expose any
+  history-rewriting or force git op (recovery is revert-only), and a merge gate that requires
+  an out-of-band human token an agent-supplied value cannot satisfy.
+- **Registration** is per-runtime and non-destructive; the verified path/shape table is
+  `MCP_REGISTRATION` in `bin/install-lib.cjs`, deliberately sitting beside `HOOK_EVENT_MAP`
+  because it is the same class of problem. Paths there are **config-dir-relative**. Codex and
+  Claude-global are intentionally *not* written — the table records why for each.
+
+Note this is distinct from `bridge.cjs`, which is the **client** side (discovering MCP tools
+*available to* a phase). The bridge here is the **server** side: PAN as a tool provider.
+
+#### Experimental: ZCode via PAN-Z (preview)
+
+[ZCode](https://zcode.z.ai) (z.ai's GLM harness, **beta**) has no custom slash-commands,
+hooks, or project config, so it cannot host the converted content at all — MCP is the only
+interface it speaks. **PAN-Z** (`pan-zcode/`) is therefore a **consumer of the shared bridge
+above**, not the owner of it: it ports PAN's agents to ZCode subagents and emits an MCP
+registration pointing at `pan-wizard-core/mcp/server.cjs`. It remains a **separate, opt-in
+subsystem with its own installer** (`pan-zcode/bin/install-zcode.js`) — deliberately **not** a
+sixth target of `bin/install.js` — and its ZCode-runtime behaviors are still gated behind an
 empirical verify spike (see `pan-zcode/KNOWN-BETA-RISKS.md`).
 
 ---

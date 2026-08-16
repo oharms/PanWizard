@@ -5,6 +5,81 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.26.0] - 2026-08-16
+
+MCP becomes a first-class surface, the CLI stops dead-ending on a near-miss, and two
+quality gates that could pass broken work now refuse it.
+
+*(Released after two unpublished prereleases, `3.26.0-rc.1` and `-rc.2`, cut so an
+external harness could tell the branch build apart from 3.25.0 while testing it.)*
+
+### Added — the MCP bridge ships with the engine
+
+The bridge moved from the experimental `pan-zcode/` preview to **`pan-wizard-core/mcp/`**,
+so it installs with every runtime instead of being reachable only by a beta harness;
+`pan-zcode/` is now a consumer of it. It is zero-dependency and dual-era, answering both
+the legacy `initialize` handshake and the stateless `2026-07-28` revision.
+
+The installer registers it per runtime from a table verified against each runtime's own
+documentation, writing `.mcp.json` (Claude, at the project root), `.github/mcp.json`
+(Copilot), and merged entries in `.gemini/settings.json` and `.opencode/opencode.json`.
+Codex gets a printed TOML snippet instead — PAN is zero-dep and cannot safely merge TOML —
+and a global Claude install prints a `claude mcp add` command rather than editing
+`~/.claude.json`, which is keyed by every project you have opened. Merges are
+non-destructive, an unparseable config is left untouched rather than rewritten, and
+uninstall removes only PAN's entry.
+
+The registry gained side-effect-free reads (`pan://health`, `pan://links`, `pan://cost`)
+alongside roadmap and preview tools. Two resources that had been **dead since M1** were
+found and fixed: each named a bare verb that requires a subcommand, so every read returned
+`Unknown <x> subcommand`. Nothing caught it because every protocol test injected a fake
+spawn — no test had ever read a resource through the real engine.
+
+### Fixed — the human merge gate was unreachable
+
+The deterministic orchestrator keyed on phase statuses **nothing in PAN emits**, so
+`verify` and `request_merge` could never be reached: a phase ran planned → execute →
+complete and the machine advanced straight past the gate. `partial` re-planned a
+half-executed phase forever, and a misshapen snapshot collapsed to "everything is
+complete" — failing toward success. All closed, with verification now derived from disk so
+the new `verify` step terminates instead of looping.
+
+### Fixed — `verify-phase` passed a suite that could not run
+
+The gate captured the test runner's exit code and never read it, and its decision table
+had no branch for a crashed suite. An unrunnable suite reports no failure count, so the
+nearest matching branch was "all tests pass" — a broken project scored green. It now reads
+the exit code first, and an unrunnable suite is `failed`, never `skipped`.
+
+### Fixed — unknown commands suggest the right one
+
+`pan-tools trace` was the most-repeated agent mistake an external ledger had recorded. The
+docs were investigated and cleared, so the fix is at the point of error: unknown commands
+now resolve to the correct namespaced form (`pan-tools optimize trace`) or the nearest
+top-level command, from an index parsed from the dispatcher's own error strings so no
+second list can drift. `learn` now publishes its subcommands and stops treating an unknown
+one as its bare alias.
+
+### Fixed — packaging no longer ships internal learnings
+
+`pan-wizard-core/learnings/internal/` was reaching the npm tarball, carrying a client
+codename in a metadata field. Both the installer and the plugin build already deleted it
+after copying, so shipping it was pure surface; it is now excluded from the package.
+
+### Added — release housekeeping
+
+After a successful publish, versions outside the newest-three window are deprecated
+automatically, along with any superseded prerelease. Deprecation only — the script has no
+unpublish path, and a test enforces that.
+
+### Also
+
+`validate deployment` verifies the MCP registration it writes, distinguishing "absent",
+"unparseable" and "points at nothing" instead of reporting `clean` for all three. Emitted
+skills are validated against the Agent Skills spec and declare `compatibility`. The plugin
+declares the bridge as well as shipping it, and a local `command`-source marketplace
+(`marketplace/`) installs it from a checkout without publishing.
+
 ## [3.25.0] - 2026-08-10
 
 The army learns to clean up after itself. PanLoop's post-release audit of the ARMY route (finding 13, model-free) found the campaign's one structural hygiene gap: worktrees were created and never removed. This release closes it end to end — teardown where the merge lands, a sweeper for everything else, and documentation that treats leftover scaffolding as a defect.

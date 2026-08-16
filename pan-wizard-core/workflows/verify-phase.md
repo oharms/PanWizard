@@ -88,10 +88,17 @@ This step provides awareness; the hard gate is enforced by exec-phase.
 
 This step catches test regressions that goal-backward analysis cannot detect.
 
-1. Detect test command:
+1. Detect whether a test script exists. **This decides `skipped` vs `failed` later**, so
+   it must be answered BEFORE running anything — `npm test` on a project with no `test`
+   script exits non-zero with "Missing script", which is indistinguishable from a crash
+   once you are only looking at the exit code.
+
 ```bash
-TEST_CMD=$(node -e "const p=require('./package.json'); console.log(p.scripts && p.scripts.test || 'echo no test')")
+HAS_TEST=$(node -e "try{const p=require('./package.json');process.stdout.write(p.scripts&&p.scripts.test?'yes':'no')}catch(e){process.stdout.write('no')}")
 ```
+
+   **If `HAS_TEST` is `no`:** record `test_gate_status: skipped` and go to step 4. Do not
+   run the suite, and do not report a crash — there is nothing to run.
 
 2. Run test suite and capture results:
 ```bash
@@ -102,13 +109,25 @@ TEST_PASS=$(echo "$TEST_OUTPUT" | grep -E "^ℹ pass" | awk '{print $NF}')
 TEST_FAIL=$(echo "$TEST_OUTPUT" | grep -E "^ℹ fail" | awk '{print $NF}')
 ```
 
-3. Evaluate results:
+3. Evaluate results.
+
+**Check `TEST_EXIT` FIRST, before any count.** A suite that did not run emits no
+`ℹ fail` line at all, so `TEST_FAIL` comes back EMPTY — not `0`. Reading an empty
+value as "no failures" scores a crashed suite as a pass, which is the worst
+direction this gate can fail in: a phase ships green on a project whose tests never
+executed. Empty is not zero. Judge the exit code, then the counts.
 
 | Condition | Action |
 |-----------|--------|
-| All tests pass (`TEST_FAIL` = 0) | Record counts, continue to must-haves |
-| Tests regress (failures exist) | Set `test_gate_status: failed`, include failure details in verification report |
-| No test command found | Record as `test_gate_status: skipped`, continue |
+| `TEST_EXIT` = 0 **and** `TEST_FAIL` = 0 (a real number) | Record counts, continue to must-haves |
+| `TEST_EXIT` ≠ 0 **and** failures were reported | Set `test_gate_status: failed`, include failure details |
+| `TEST_EXIT` ≠ 0 **and** `TEST_FAIL` is empty/absent — the suite CRASHED or could not run (syntax error, missing module, bad import, no runner) | Set `test_gate_status: failed`, and record the reason as `suite did not run`. **Never `skipped`, never `passed`.** A suite that cannot execute is stronger evidence of a broken phase than one that runs and fails |
+| `HAS_TEST` = `no` (handled in step 1) | Record as `test_gate_status: skipped`, continue. This is the ONLY legitimate route to `skipped` |
+
+**The distinction that matters:** *no test command exists* is a project that never had
+tests — a known, acceptable gap. *A test command exists and did not run* is a broken
+project. They must never share a verdict; the first is `skipped`, the second is
+`failed`.
 
 4. Store test gate results for inclusion in verification.md:
 ```

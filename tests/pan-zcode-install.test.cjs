@@ -80,8 +80,15 @@ describe('install-zcode buildBundle (M4)', () => {
       const mcp = JSON.parse(fs.readFileSync(path.join(dest, 'pan-mcp.json'), 'utf8'));
       const srv = mcp.mcpServers['pan-mcp'];
       assert.equal(srv.command, 'node');
-      assert.match(srv.args[0], /pan-zcode[\\/]mcp[\\/]server\.cjs$/);
+      // The bridge is SHARED: it lives under pan-wizard-core/ and ships with the
+      // engine. PAN-Z is a consumer. This assertion is the guard against a
+      // fork-back — a copy re-created under pan-zcode/mcp/ fails here.
+      assert.match(srv.args[0], /pan-wizard-core[\\/]mcp[\\/]server\.cjs$/);
+      assert.doesNotMatch(srv.args[0], /pan-zcode[\\/]mcp[\\/]/);
+      // ...and the path must actually resolve, so a rename can't pass by regex alone.
+      assert.ok(fs.existsSync(srv.args[0]), `registered server path missing: ${srv.args[0]}`);
       assert.match(srv.env.PAN_TOOLS_PATH, /pan-tools\.cjs$/);
+      assert.ok(fs.existsSync(srv.env.PAN_TOOLS_PATH), 'registered engine path missing');
       assert.equal(srv.env.PAN_PROJECT_ROOT, '/my/project');
       // manifest + instructions
       const manifest = JSON.parse(fs.readFileSync(path.join(dest, 'pan-zcode-manifest.json'), 'utf8'));

@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted — 2026-08-03. Implemented in `pan-zcode/mcp/server.cjs` (experimental preview subsystem; see `pan-zcode/README.md`). Prompted by the MCP `2026-07-28` specification, the first revision to make the protocol stateless.
+Accepted — 2026-08-03. Prompted by the MCP `2026-07-28` specification, the first revision to make the protocol stateless.
+
+> **Relocated 2026-08-12 — the decision stands, the path changed.** This ADR was written when the bridge was `pan-zcode/mcp/server.cjs`, an experimental-preview component. It now lives at **`pan-wizard-core/mcp/server.cjs`**, shipped with the engine to every install and every runtime, with `pan-zcode/` as one consumer rather than its owner. Nothing in the Decision or Consequences below is altered by the move — the dual-era design, `SUPPORTED_VERSIONS_LIST`, the `_meta` gating, and the "never claim a version you don't speak" rule all carry over verbatim. Read every `pan-zcode/mcp/…` path below as `pan-wizard-core/mcp/…`. Rationale for promoting it, and the plan it belongs to, are in [ECOSYSTEM-REVIEW-2026-08.md](../ECOSYSTEM-REVIEW-2026-08.md) §3.3.
+>
+> One correction worth carrying, since the review that drove the move first got it wrong: the pre-move engine-path resolution (`join(__dirname,'..','..','pan-wizard-core','bin',…)`) was **not** a bug the relocation fixed — from the new directory it resolves identically. It was merely over-specified. See the comment on `defaultPanToolsPath()`.
 
 ## Context
 

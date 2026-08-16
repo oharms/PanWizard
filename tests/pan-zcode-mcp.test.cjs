@@ -11,16 +11,68 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawn } = require('child_process');
 const {
-  createServer, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST,
-} = require('../pan-zcode/mcp/server.cjs');
-const reg = require('../pan-zcode/mcp/tool-registry.cjs');
+  createServer, defaultPanToolsPath, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST,
+} = require('../pan-wizard-core/mcp/server.cjs');
+const reg = require('../pan-wizard-core/mcp/tool-registry.cjs');
 const { createTempProject, cleanup, TOOLS_PATH } = require('./helpers.cjs');
 
 // A fake spawn that records the argv it was handed and returns canned stdout.
 function fakeSpawn(recorder, out = '{"ok":true}') {
   return (args) => { recorder.push(args); return { ok: true, stdout: out, stderr: '' }; };
 }
+
+describe('engine path resolution (default, i.e. no explicit panToolsPath)', () => {
+  // WHY THIS SUITE EXISTS: every other test here either injects a spawn (so the
+  // engine path is never used) or passes `panToolsPath` explicitly — including
+  // the "real round-trip" one. So when the module moved from pan-zcode/mcp/ to
+  // pan-wizard-core/mcp/, the whole suite stayed green WITHOUT covering the one
+  // function whose meaning depends on the module's own location. A default that
+  // silently pointed at nothing would have shipped: the server only spawns the
+  // engine at tools/call time, so the failure surfaces per-call in a deployed
+  // install, never at startup and never here.
+  test('resolves to a pan-tools that EXISTS on disk', () => {
+    const resolved = defaultPanToolsPath();
+    assert.ok(fs.existsSync(resolved), `default engine path does not exist: ${resolved}`);
+    assert.equal(path.basename(resolved), 'pan-tools.cjs');
+  });
+
+  test('resolves to the SAME file the suite reaches by an independent route', () => {
+    // TOOLS_PATH is derived in helpers.cjs from tests/ upward; defaultPanToolsPath()
+    // is derived from the mcp/ module downward. Two different anchors landing on one
+    // file is what makes this more than a tautology — a wrong-but-existing path fails.
+    assert.equal(path.resolve(defaultPanToolsPath()), path.resolve(TOOLS_PATH));
+  });
+
+  test('is anchored on the bin/ sibling relationship, not on an ancestor name', () => {
+    // REVERT CHECK: the pre-move form was
+    //   join(__dirname, '..', '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs')
+    // which resolves IDENTICALLY from this directory (so it is not a bug), but
+    // requires the grandparent to contain a dir *named* pan-wizard-core. This
+    // asserts the surviving dependency is only the sibling layout, which is what
+    // keeps a vendored or renamed core working.
+    const resolved = path.resolve(defaultPanToolsPath());
+    const mcpDir = path.resolve(__dirname, '..', 'pan-wizard-core', 'mcp');
+    assert.equal(resolved, path.resolve(mcpDir, '..', 'bin', 'pan-tools.cjs'));
+  });
+
+  test('a real tools/call works with NO panToolsPath supplied', () => {
+    // The end-to-end proof: default resolution + real spawn + real engine.
+    const proj = createTempProject();
+    try {
+      const s = createServer({ cwd: proj });
+      const r = s.handle({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name: 'pan_resolve_model', arguments: { agent: 'pan-planner' } },
+      });
+      assert.equal(r.result.isError, false, r.result.content[0].text);
+      assert.ok(JSON.parse(r.result.content[0].text).model, 'engine answered via the default path');
+    } finally {
+      cleanup(proj);
+    }
+  });
+});
 
 describe('pan-zcode registry', () => {
   test('every tool has a verb OR a handler, plus description/inputSchema and boolean hints', () => {
@@ -33,7 +85,24 @@ describe('pan-zcode registry', () => {
     for (const r of reg.RESOURCES) {
       assert.match(r.uri, /^pan:\/\//);
       assert.ok(r.verb && r.name && r.description);
+      // A resource's argv tail must be a STATIC array of strings — never a
+      // function. A function would mean client input can reach the spawn, which
+      // is exactly the property that makes a parameterless resource safe.
+      if (r.args !== undefined) {
+        assert.ok(Array.isArray(r.args), `${r.uri} args must be an array, not ${typeof r.args}`);
+        assert.ok(r.args.every((a) => typeof a === 'string'), `${r.uri} args must be all strings`);
+      }
     }
+  });
+
+  test('resource URIs are unique (a duplicate would silently shadow in byResourceUri)', () => {
+    const uris = reg.RESOURCES.map((r) => r.uri);
+    assert.equal(new Set(uris).size, uris.length, `duplicate resource uri in ${uris.join(', ')}`);
+  });
+
+  test('tool names are unique (a duplicate would silently shadow in byToolName)', () => {
+    const names = reg.TOOLS.map((t) => t.name);
+    assert.equal(new Set(names).size, names.length, `duplicate tool name in ${names.join(', ')}`);
   });
 
   test('no spawn-backed verb exposes a history-rewriting / force git op', () => {
@@ -246,6 +315,260 @@ describe('pan-zcode overflow (@file:) protocol', () => {
     const s2 = createServer({ spawnImpl: () => ({ ok: true, stdout: '@file:' + oddPath, stderr: '' }) });
     const r2 = s2.handle({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: { agent: 'pan-x' } } });
     assert.equal(r2.result.content[0].text, '@file:' + oddPath, 'non-out.json basename is not read');
+  });
+});
+
+describe('every resource is readable on a bare project (the resource/tool rule)', () => {
+  // THE INVARIANT: a client may list resources and read them all. On a young or
+  // empty project that must yield DATA, not a pile of errors. A verb whose "no
+  // data yet" is an error belongs in TOOLS instead (see the rule comment on
+  // RESOURCES). This runs the REAL engine — an injected spawn would assert
+  // nothing about actual exit codes, which is the whole subject here.
+  test('resources/read returns parseable JSON for every registered resource', () => {
+    const proj = createTempProject();
+    try {
+      const s = createServer({ cwd: proj });
+      for (const r of reg.RESOURCES) {
+        const res = s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: r.uri } });
+        assert.ok(!res.error, `${r.uri} failed to read: ${res.error && res.error.message}`);
+        const text = res.result.contents[0].text;
+        assert.doesNotThrow(() => JSON.parse(text), `${r.uri} did not return JSON: ${String(text).slice(0, 120)}`);
+      }
+    } finally {
+      cleanup(proj);
+    }
+  });
+
+  test('a multi-word resource verb routes its static subcommand, not a joined string', () => {
+    // pan://health is `validate health` — regression guard for the bug shape where
+    // a two-word verb is passed as ONE argv element and the engine rejects it.
+    const rec = [];
+    const s = createServer({ spawnImpl: fakeSpawn(rec, '{"status":"healthy"}'), panToolsPath: '/x/pt.cjs', cwd: '/proj' });
+    const res = s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'pan://health' } });
+    assert.ok(!res.error);
+    assert.deepEqual(rec[0], ['/x/pt.cjs', 'validate', 'health', '--cwd', '/proj']);
+  });
+
+  test('a resource with no args still spawns a bare verb (no undefined in argv)', () => {
+    const rec = [];
+    const s = createServer({ spawnImpl: fakeSpawn(rec), panToolsPath: '/x/pt.cjs', cwd: '/proj' });
+    s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'pan://state' } });
+    assert.deepEqual(rec[0], ['/x/pt.cjs', 'state', '--cwd', '/proj']);
+    assert.ok(rec[0].every((a) => typeof a === 'string'), 'no undefined leaked into argv');
+  });
+});
+
+describe('stdio transport — the framing loop a real client actually uses', () => {
+  // Every other protocol test calls server.handle(req) directly, so main() — the
+  // newline framing loop — had NO test at all: chunk buffering, split frames,
+  // blank-line skipping, the -32700 reply to an unparseable line, and the
+  // suppression of replies to notifications. It is the only code path a real MCP
+  // client touches and the one with the most ways to fail silently, since a
+  // dropped response reads to a client as a hung server.
+  //
+  // main() is not exported (it runs under require.main), so the honest test is
+  // the one a client performs: spawn the server and speak to it over stdio.
+  const SERVER = path.join(__dirname, '..', 'pan-wizard-core', 'mcp', 'server.cjs');
+
+  /**
+   * Feed raw chunks to a spawned server, collect stdout lines, resolve on idle.
+   * A hard timeout is mandatory here — an unanswered frame would otherwise hang
+   * the whole suite instead of failing this test.
+   */
+  function speak(chunks, { timeoutMs = 15000 } = {}) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [SERVER], {
+        cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      let out = '';
+      let stderr = '';
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`stdio server did not settle in ${timeoutMs}ms. stdout so far: ${out}`));
+      }, timeoutMs);
+      child.stdout.on('data', (d) => { out += d; });
+      child.stderr.on('data', (d) => { stderr += d; });
+      child.on('error', (e) => { clearTimeout(timer); reject(e); });
+      child.on('close', () => {
+        clearTimeout(timer);
+        const lines = out.split('\n').filter((l) => l.trim());
+        resolve({ lines, raw: out, stderr });
+      });
+      for (const c of chunks) child.stdin.write(c);
+      child.stdin.end();
+    });
+  }
+
+  const ping = (id) => JSON.stringify({ jsonrpc: '2.0', id, method: 'ping', params: {} });
+
+  test('answers a single framed request', async () => {
+    const { lines } = await speak([`${ping(1)}\n`]);
+    assert.equal(lines.length, 1, `expected exactly one reply, got ${JSON.stringify(lines)}`);
+    assert.equal(JSON.parse(lines[0]).id, 1);
+  });
+
+  test('handles several requests arriving in ONE chunk', async () => {
+    const { lines } = await speak([`${ping(1)}\n${ping(2)}\n${ping(3)}\n`]);
+    assert.equal(lines.length, 3);
+    assert.deepEqual(lines.map((l) => JSON.parse(l).id), [1, 2, 3]);
+  });
+
+  test('reassembles a request SPLIT ACROSS chunks (the buffering contract)', async () => {
+    // The failure this catches: a loop that parsed per-chunk instead of per-line
+    // would emit -32700 here, or drop the request entirely.
+    const framed = `${ping(7)}\n`;
+    const cut = Math.floor(framed.length / 2);
+    const { lines } = await speak([framed.slice(0, cut), framed.slice(cut)]);
+    assert.equal(lines.length, 1);
+    assert.equal(JSON.parse(lines[0]).id, 7);
+  });
+
+  test('skips blank lines without replying to them', async () => {
+    const { lines } = await speak([`\n\n   \n${ping(1)}\n\n`]);
+    assert.equal(lines.length, 1, 'blank lines must produce no frames');
+    assert.equal(JSON.parse(lines[0]).id, 1);
+  });
+
+  test('replies -32700 to an unparseable line and KEEPS GOING', async () => {
+    // Continuing matters as much as the code: a transport that dies on one bad
+    // frame strands every later request, which a client sees as a hang.
+    const { lines } = await speak([`not json at all\n${ping(9)}\n`]);
+    assert.equal(lines.length, 2);
+    const err = JSON.parse(lines[0]);
+    assert.equal(err.error.code, -32700);
+    assert.equal(err.id, null);
+    assert.equal(JSON.parse(lines[1]).id, 9, 'the server must survive a bad frame');
+  });
+
+  test('sends NO reply to a notification (no id), per JSON-RPC', async () => {
+    const notification = JSON.stringify({ jsonrpc: '2.0', method: 'ping', params: {} });
+    const { lines } = await speak([`${notification}\n${ping(2)}\n`]);
+    assert.equal(lines.length, 1, `a notification must not be answered; got ${JSON.stringify(lines)}`);
+    assert.equal(JSON.parse(lines[0]).id, 2);
+  });
+
+  test('id 0 is a VALID request id and IS answered', async () => {
+    // Guards the classic falsy-id bug: `if (req.id)` would treat 0 as a
+    // notification and silently drop a legitimate response.
+    const { lines } = await speak([`${ping(0)}\n`]);
+    assert.equal(lines.length, 1, 'id 0 must be answered, not treated as a notification');
+    assert.equal(JSON.parse(lines[0]).id, 0);
+  });
+
+  test('every reply is exactly one line of JSON (no interleaving)', async () => {
+    const { raw } = await speak([`${ping(1)}\n${ping(2)}\n`]);
+    for (const line of raw.split('\n').filter((l) => l.trim())) {
+      assert.doesNotThrow(() => JSON.parse(line), `not one JSON object per line: ${line}`);
+    }
+  });
+});
+
+describe('EVERY spawn-backed tool runs against the REAL engine', () => {
+  // WHY: an audit found that exactly ONE tool (pan_resolve_model) ever touched
+  // real pan-tools; the other spawn-backed tools were exercised only through an
+  // injected fakeSpawn, which asserts the argv the bridge WOULD send and nothing
+  // about whether the engine accepts it. That is the precise hole that left
+  // pan://roadmap and pan://phases DEAD FROM M1 — each named a bare verb needing
+  // a subcommand, and no test ever ran one for real. Resources got a real-engine
+  // guard afterwards; tools did not, and tools are the riskier surface because a
+  // tool's argv is built from LLM input by an args() function rather than being a
+  // static array.
+  //
+  // Every spawn-backed tool is enumerated from the registry, so a newly added one
+  // is covered the day it lands rather than whenever someone remembers.
+  test('each spawn tool is invoked for real and returns a usable answer', () => {
+    const proj = createTempProject();
+    try {
+      // Minimal but non-empty project: a roadmap with the checklist shape the
+      // shipped template prescribes, so roadmap/preview verbs have real input.
+      fs.writeFileSync(path.join(proj, '.planning', 'roadmap.md'),
+        '# Roadmap\n\n## Milestone v1\n\n- [ ] **Phase 1: Alpha** - first\n- [ ] **Phase 2: Beta** - second\n');
+      fs.mkdirSync(path.join(proj, '.planning', 'phases', '01-alpha'), { recursive: true });
+
+      const s = createServer({ cwd: proj });
+      // Valid arguments per tool, keyed by name. A tool with no entry fails the
+      // roster check below rather than being silently skipped.
+      const ARGS = {
+        pan_resolve_model: { agent: 'pan-planner' },
+        pan_find_phase: { query: '1' },
+        pan_roadmap_analyze: {},
+        pan_preview_phases: {},
+        pan_preview_phase: { phase: '01' },
+        pan_report_phase: { phase: '01' },
+      };
+      const spawnTools = reg.SPAWN_TOOLS.map((t) => t.name);
+      const missing = spawnTools.filter((n) => !(n in ARGS));
+      assert.deepEqual(missing, [], `add real-engine arguments for: ${missing.join(', ')}`);
+
+      const failures = [];
+      for (const name of spawnTools) {
+        const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: ARGS[name] } });
+        if (r.error) { failures.push(`${name}: protocol error ${r.error.code} ${r.error.message}`); continue; }
+        const text = r.result.content[0].text;
+        // isError true means the verb ran and failed — the exact class fakeSpawn
+        // cannot see, and what "Unknown <x> subcommand" looked like.
+        if (r.result.isError) { failures.push(`${name}: engine rejected it -> ${String(text).slice(0, 120)}`); continue; }
+        if (!text || !String(text).trim()) failures.push(`${name}: empty answer`);
+      }
+      assert.deepEqual(failures, [], `tools the real engine did not accept:\n${failures.join('\n')}`);
+    } finally {
+      cleanup(proj);
+    }
+  });
+
+  test('a tool whose verb does not exist is reported as an engine error, not a pass', () => {
+    // Proves the check above can actually fail: without this, a bridge that
+    // swallowed engine failures would make the whole suite vacuous.
+    const proj = createTempProject();
+    try {
+      const s = createServer({ cwd: proj });
+      const r = s.handle({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name: 'pan_resolve_model', arguments: { agent: 'no-such-agent-xyz' } },
+      });
+      // Either a protocol rejection or an engine error is acceptable; a clean
+      // success on a nonsense agent would mean the bridge is not reporting truth.
+      const cleanSuccess = !r.error && r.result && r.result.isError === false;
+      assert.ok(!cleanSuccess || /error|unknown|invalid/i.test(r.result.content[0].text),
+        'a nonsense argument must not read as a clean success');
+    } finally {
+      cleanup(proj);
+    }
+  });
+});
+
+describe('resources return real data on a project WITH CONTENT (not just a bare one)', () => {
+  // The existing guard reads every resource on a BARE project, which proves
+  // "readable on a young project" — worth having, and the rule the registry
+  // states. What it cannot prove is that a resource returns CORRECT data once
+  // there is content: a resource returning {} or a stale shape passes it.
+  test('each resource reflects seeded content', () => {
+    const proj = createTempProject();
+    try {
+      fs.writeFileSync(path.join(proj, '.planning', 'roadmap.md'),
+        '# Roadmap\n\n## Milestone v1\n\n- [ ] **Phase 1: Alpha** - first\n- [ ] **Phase 2: Beta** - second\n');
+      for (const d of ['01-alpha', '02-beta']) {
+        fs.mkdirSync(path.join(proj, '.planning', 'phases', d), { recursive: true });
+      }
+      const s = createServer({ cwd: proj });
+      const read = (uri) => JSON.parse(
+        s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri } }).result.contents[0].text);
+
+      // pan://phases must SEE the two phase directories — the concrete claim the
+      // bare-project test cannot make, since there it correctly reports zero.
+      const ph = read('pan://phases');
+      assert.equal(ph.count, 2, `pan://phases should see 2 seeded dirs, got ${JSON.stringify(ph)}`);
+      assert.ok(Array.isArray(ph.directories) && ph.directories.length === 2);
+
+      // The rest must still be parseable and non-trivial with content present.
+      for (const uri of ['pan://state', 'pan://progress', 'pan://health', 'pan://links', 'pan://cost']) {
+        const body = read(uri);
+        assert.ok(body && typeof body === 'object' && Object.keys(body).length > 0,
+          `${uri} returned an empty object on a seeded project`);
+      }
+    } finally {
+      cleanup(proj);
+    }
   });
 });
 
