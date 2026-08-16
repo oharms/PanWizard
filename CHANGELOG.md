@@ -5,79 +5,80 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.26.0-rc.2] - 2026-08-16
+## [3.26.0] - 2026-08-16
 
-**Prerelease, not published.** Supersedes `rc.1`, which is the build the external
-harness tested; this one carries the fix that testing produced.
+MCP becomes a first-class surface, the CLI stops dead-ending on a near-miss, and two
+quality gates that could pass broken work now refuse it.
 
-### Fixed — `verify-phase` scored a suite that could not run as a PASS
+*(Released after two unpublished prereleases, `3.26.0-rc.1` and `-rc.2`, cut so an
+external harness could tell the branch build apart from 3.25.0 while testing it.)*
 
-The harness reported a delivered project whose test suite did not run, while
-`/pan:verify-phase` passed it. Those particular findings turned out to be artifacts
-of a budget cap that cut the measurement mid-build — the finished project has correct
-comparison, correct ordering and a green suite. **The concern underneath them was
-real anyway**, and independent of that run.
+### Added — the MCP bridge ships with the engine
 
-Three defects in the gate, all in one step: the exit code was captured and never
-read; the detected test command was computed and never used; and the decision table
-had no branch for a suite that *crashes*. An unrunnable suite emits no failure line,
-so the failure count comes back **empty rather than zero**, and the nearest matching
-branch was "all tests pass". A broken project scored green — the worst direction a
-gate can fail in, and the third instance of this class after `verify reconcile`'s
-swallowed non-zero exit and the must_haves indent that left that gate dead on every
-real plan for months.
+The bridge moved from the experimental `pan-zcode/` preview to **`pan-wizard-core/mcp/`**,
+so it installs with every runtime instead of being reachable only by a beta harness;
+`pan-zcode/` is now a consumer of it. It is zero-dependency and dual-era, answering both
+the legacy `initialize` handshake and the stateless `2026-07-28` revision.
 
-The gate now reads the exit code first, states that empty is not zero, and scores an
-unrunnable suite as `failed` — never `skipped`, never `passed`. Detection moved ahead
-of execution so "no test script" (a known gap, still `skipped`) stays distinct from
-"a test command that will not run" (a broken project, now `failed`).
+The installer registers it per runtime from a table verified against each runtime's own
+documentation, writing `.mcp.json` (Claude, at the project root), `.github/mcp.json`
+(Copilot), and merged entries in `.gemini/settings.json` and `.opencode/opencode.json`.
+Codex gets a printed TOML snippet instead — PAN is zero-dep and cannot safely merge TOML —
+and a global Claude install prints a `claude mcp add` command rather than editing
+`~/.claude.json`, which is keyed by every project you have opened. Merges are
+non-destructive, an unparseable config is left untouched rather than rewritten, and
+uninstall removes only PAN's entry.
 
-## [3.26.0-rc.1] - 2026-08-15
-
-**A prerelease, cut for harness testing — not published.** The version carries `-rc.1`
-so an external harness can tell this build apart from the released 3.25.0; the two were
-previously indistinguishable by version, which made a harness run ambiguous about what
-it had actually exercised.
-
-### Added — MCP is a first-class surface, not a preview
-
-The bridge moved from `pan-zcode/mcp/` to **`pan-wizard-core/mcp/`**, so it ships with
-the engine to every install and every runtime; `pan-zcode/` is now a consumer of it
-rather than its owner. The registry gained the side-effect-free reads (`pan://health`,
-`pan://links`, `pan://cost`) plus roadmap and preview tools, and the installer registers
-the server per runtime from a table verified against each runtime's primary docs.
-Codex and Claude-global are deliberately not written — the reasons are recorded in the
-table rather than left as gaps. The plugin now declares the bridge as well as shipping
-it, verified end to end through a real install.
+The registry gained side-effect-free reads (`pan://health`, `pan://links`, `pan://cost`)
+alongside roadmap and preview tools. Two resources that had been **dead since M1** were
+found and fixed: each named a bare verb that requires a subcommand, so every read returned
+`Unknown <x> subcommand`. Nothing caught it because every protocol test injected a fake
+spawn — no test had ever read a resource through the real engine.
 
 ### Fixed — the human merge gate was unreachable
 
-An external audit found the deterministic orchestrator keyed on phase statuses that
-**nothing in PAN emits**, so `verify` and `request_merge` could never be reached: a phase
-went planned → execute → complete and the machine advanced past the gate. `partial` had
-no entry and re-planned a half-executed phase forever, and a misshapen snapshot collapsed
-to "everything is complete", failing toward success. All three are closed, along with the
-title-case mismatch that stalled the documented assembly path.
+The deterministic orchestrator keyed on phase statuses **nothing in PAN emits**, so
+`verify` and `request_merge` could never be reached: a phase ran planned → execute →
+complete and the machine advanced straight past the gate. `partial` re-planned a
+half-executed phase forever, and a misshapen snapshot collapsed to "everything is
+complete" — failing toward success. All closed, with verification now derived from disk so
+the new `verify` step terminates instead of looping.
 
-The suite had been green throughout because its fixture spoke a vocabulary reality does
-not — the fixture was *more* capable than the product and produced false confidence.
+### Fixed — `verify-phase` passed a suite that could not run
 
-### Fixed — the CLI names the right invocation instead of refusing
+The gate captured the test runner's exit code and never read it, and its decision table
+had no branch for a crashed suite. An unrunnable suite reports no failure count, so the
+nearest matching branch was "all tests pass" — a broken project scored green. It now reads
+the exit code first, and an unrunnable suite is `failed`, never `skipped`.
 
-A ledger recorded `pan-tools trace` 18 times, the most-repeated agent behaviour in it.
-The docs were investigated and cleared, so no prose change could explain or prevent it;
-the recovery is what was wrong. Unknown commands now resolve to the correct namespaced
-form (`pan-tools optimize trace`) or the nearest top-level command, from an index parsed
-from the dispatcher's own error strings so no second list can drift. `learn` — the one
-group that never published its subcommands — now does, and stops silently treating an
-unknown subcommand as its bare alias.
+### Fixed — unknown commands suggest the right one
+
+`pan-tools trace` was the most-repeated agent mistake an external ledger had recorded. The
+docs were investigated and cleared, so the fix is at the point of error: unknown commands
+now resolve to the correct namespaced form (`pan-tools optimize trace`) or the nearest
+top-level command, from an index parsed from the dispatcher's own error strings so no
+second list can drift. `learn` now publishes its subcommands and stops treating an unknown
+one as its bare alias.
+
+### Fixed — packaging no longer ships internal learnings
+
+`pan-wizard-core/learnings/internal/` was reaching the npm tarball, carrying a client
+codename in a metadata field. Both the installer and the plugin build already deleted it
+after copying, so shipping it was pure surface; it is now excluded from the package.
+
+### Added — release housekeeping
+
+After a successful publish, versions outside the newest-three window are deprecated
+automatically, along with any superseded prerelease. Deprecation only — the script has no
+unpublish path, and a test enforces that.
 
 ### Also
 
 `validate deployment` verifies the MCP registration it writes, distinguishing "absent",
-"unparseable" and "points at nothing" instead of reporting `clean` for all three. Skill
-emission is validated against the Agent Skills spec, and `${CLAUDE_PLUGIN_ROOT}` was
-measured to expand inside plugin command markdown — unblocking marketplace publishing.
+"unparseable" and "points at nothing" instead of reporting `clean` for all three. Emitted
+skills are validated against the Agent Skills spec and declare `compatibility`. The plugin
+declares the bridge as well as shipping it, and a local `command`-source marketplace
+(`marketplace/`) installs it from a checkout without publishing.
 
 ## [3.25.0] - 2026-08-10
 

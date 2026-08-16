@@ -103,6 +103,38 @@ describe('the message', () => {
   });
 });
 
+describe('platform + registry edge cases (both were real bugs)', () => {
+  test('the message is shell-quotable — no double quotes', () => {
+    // On Windows npm can only be launched through a shell, and node CONCATENATES
+    // rather than escapes args there, so a message containing a double quote would
+    // emit a broken command line. The guard refuses rather than mangling.
+    assert.doesNotThrow(() => dep.assertQuotable(dep.buildMessage('3.26.0')));
+    assert.throws(() => dep.assertQuotable('say "hi"'), /double quote/);
+  });
+
+  test('the message contains spaces — so quoting is REQUIRED, not incidental', () => {
+    // If someone shortens the message to one word, the quoting path stops being
+    // exercised and the next multi-word message breaks silently on Windows.
+    assert.ok(/\s/.test(dep.buildMessage('3.26.0')),
+      'the message must contain a space, which is what makes quoting load-bearing');
+  });
+
+  test('the script shells npm ONLY on win32', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deprecate-old-versions.js'), 'utf8');
+    assert.match(src, /shell: win/, 'npm must be shelled on win32 — the .cmd shim cannot be execFile\'d');
+    assert.match(src, /process\.platform === 'win32'/, 'and only there');
+  });
+
+  test('empty npm output is treated as ABSENT, not as a failure', () => {
+    // `npm view <pkg> deprecated --json` prints NOTHING when nothing is deprecated
+    // — the healthy starting state. JSON.parse('') threw, and the fail-open handler
+    // then reported "could not read the registry", making the normal case look broken.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deprecate-old-versions.js'), 'utf8');
+    assert.match(src, /if \(!out \|\| !out\.trim\(\)\) return fallback/,
+      'npmJson must return the fallback on empty output rather than parsing it');
+  });
+});
+
 describe('the script itself', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deprecate-old-versions.js'), 'utf8');
 

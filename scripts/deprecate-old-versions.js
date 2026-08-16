@@ -110,8 +110,49 @@ function buildMessage(current) {
 
 // ─── IO layer ───────────────────────────────────────────────────────────────
 
-function npmJson(args) {
-  const out = execFileSync('npm', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+/**
+ * Run npm.
+ *
+ * WINDOWS: `npm` is a `.cmd` shim, so `execFileSync('npm', …)` fails ENOENT and
+ * `'npm.cmd'` fails EINVAL — the shim can only be launched through a shell. This
+ * is the same scar `runner.cjs` carries as its `shell: 'win32'` opt-in, and the
+ * first version of this script reproduced the bug: a local dry run reported
+ * "could not read the registry" and returned, so the fail-open path made a real
+ * platform bug look like a benign skip.
+ *
+ * QUOTING: with `shell: true` node CONCATENATES arguments rather than escaping
+ * them, so anything containing a space must be quoted or it arrives as several
+ * arguments — which matters here because the deprecation message is a sentence.
+ * Every argument is program-controlled (package name, versions read from the
+ * registry, our own message), so this is a correctness problem rather than an
+ * injection one, but it still has to be right. `assertQuotable` refuses a value
+ * carrying a double quote instead of emitting a broken command line.
+ */
+function assertQuotable(a) {
+  if (String(a).includes('"')) {
+    throw new Error(`refusing to shell-quote an argument containing a double quote: ${a}`);
+  }
+  return a;
+}
+
+function runNpm(args, opts = {}) {
+  const win = process.platform === 'win32';
+  const argv = win ? args.map((a) => (/\s/.test(a) ? `"${assertQuotable(a)}"` : a)) : args;
+  return execFileSync('npm', argv, {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: win, ...opts,
+  });
+}
+
+/**
+ * `npm view <pkg> <field> --json` prints NOTHING when the field is unset across
+ * every version — which is exactly the healthy starting state for `deprecated`
+ * (nothing deprecated yet). `JSON.parse('')` throws, and the fail-open handler
+ * then reported "could not read the registry", turning the normal case into an
+ * apparent failure. Empty means absent, not broken.
+ */
+function npmJson(args, fallback = null) {
+  const out = runNpm(args);
+  if (!out || !out.trim()) return fallback;
   return JSON.parse(out);
 }
 
@@ -138,9 +179,9 @@ function main() {
   let published = [];
   let deprecatedAlready = [];
   try {
-    published = npmJson(['view', PKG, 'versions', '--json']);
+    published = npmJson(['view', PKG, 'versions', '--json'], []);
     if (!Array.isArray(published)) published = [published];
-    const map = npmJson(['view', PKG, 'deprecated', '--json']);
+    const map = npmJson(['view', PKG, 'deprecated', '--json'], {});
     // npm returns a bare string for a single version, or {version: message}.
     deprecatedAlready = (map && typeof map === 'object') ? Object.keys(map) : [];
   } catch (e) {
@@ -165,7 +206,7 @@ function main() {
   let failed = 0;
   for (const v of deprecate) {
     try {
-      execFileSync('npm', ['deprecate', `${PKG}@${v}`, message], { stdio: ['ignore', 'pipe', 'pipe'] });
+      runNpm(['deprecate', `${PKG}@${v}`, message]);
       console.log(`  ✓ ${v}`);
     } catch (e) {
       failed++;
@@ -181,4 +222,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { selectVersionsToDeprecate, buildMessage, parse, compare };
+module.exports = { selectVersionsToDeprecate, buildMessage, parse, compare, assertQuotable };
