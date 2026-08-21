@@ -7,7 +7,6 @@ const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 const {
-  PLANNING_DIR,
   PHASES_DIR,
   MILESTONES_DIR,
   ROADMAP_FILE,
@@ -22,8 +21,8 @@ const {
   isVerificationFile,
   getPlanId,
   getSummaryId,
-  MILESTONE_VERSION_RE,
 } = require('./constants.cjs');
+const { planningPath, planningRel } = require('./utils.cjs');
 
 // ─── Multi-Model Routing ─────────────────────────────────────────────────────
 
@@ -331,7 +330,7 @@ function safeReadFile(filePath) {
  *   plan_checker, verifier, parallelization, brave_search
  */
 function loadConfig(cwd) {
-  const configPath = path.join(cwd, PLANNING_DIR, 'config.json');
+  const configPath = planningPath(cwd, 'config.json');
   const defaults = {
     model_profile: 'balanced',
     commit_docs: true,
@@ -391,6 +390,11 @@ function loadConfig(cwd) {
       // Cost dashboard config: `cost.rates` per-model overrides (surfaced so the
       // documented override actually reaches cost.cjs — it was dropped before).
       cost: parsed.cost || {},
+      // Prompt-cache config: `cache.extra_files` lets a project add its own
+      // stable documents to the cached context block. Needed because the
+      // built-in list is the phase-model spine, so a focus-model project had
+      // an empty block and therefore no prompt caching at all.
+      cache: parsed.cache || {},
       // ADR-0031: project build/verification commands. null = not configured
       // (focus-auto --clean-seal then asks or skips rather than guessing).
       build: parsed.build || null,
@@ -408,6 +412,7 @@ function loadConfig(cwd) {
       effort_overrides: {},
       routing: { strategy: 'static', provider: 'auto' },
       cost: {},
+      cache: {},
       build: null,
       verification: null,
       concurrency: { serial_build: false },
@@ -595,18 +600,18 @@ function searchPhaseInDir(baseDir, relBase, normalized) {
 function findPhaseInternal(cwd, phase) {
   if (!phase) return null;
 
-  const phasesDir = path.join(cwd, PLANNING_DIR, PHASES_DIR);
+  const phasesDir = planningPath(cwd, PHASES_DIR);
   const normalized = normalizePhaseName(phase);
 
   // Two-phase search strategy:
   // 1. Search the active phases directory (.planning/phases/) first.
   // 2. If not found, search archived milestone directories (.planning/milestones/v*-phases/)
   //    in reverse order (newest archive first) so the most recent match wins.
-  const current = searchPhaseInDir(phasesDir, path.join(PLANNING_DIR, PHASES_DIR), normalized);
+  const current = searchPhaseInDir(phasesDir, planningRel(PHASES_DIR), normalized);
   if (current) return current;
 
   // Search archived milestone phases (newest first)
-  const milestonesDir = path.join(cwd, PLANNING_DIR, MILESTONES_DIR);
+  const milestonesDir = planningPath(cwd, MILESTONES_DIR);
   try {
     const milestoneEntries = fs.readdirSync(milestonesDir, { withFileTypes: true });
     const archiveDirs = milestoneEntries
@@ -620,7 +625,7 @@ function findPhaseInternal(cwd, phase) {
       if (!vm) continue;
       const version = vm[1];
       const archivePath = path.join(milestonesDir, archiveName);
-      const relBase = path.join(PLANNING_DIR, MILESTONES_DIR, archiveName);
+      const relBase = planningRel(MILESTONES_DIR, archiveName);
       const result = searchPhaseInDir(archivePath, relBase, normalized);
       if (result) {
         result.archived = version;
@@ -633,7 +638,7 @@ function findPhaseInternal(cwd, phase) {
 }
 
 function getArchivedPhaseDirs(cwd) {
-  const milestonesDir = path.join(cwd, PLANNING_DIR, MILESTONES_DIR);
+  const milestonesDir = planningPath(cwd, MILESTONES_DIR);
   const results = [];
 
   try {
@@ -657,7 +662,7 @@ function getArchivedPhaseDirs(cwd) {
         results.push({
           name: dir,
           milestone: version,
-          basePath: path.join(PLANNING_DIR, MILESTONES_DIR, archiveName),
+          basePath: planningRel(MILESTONES_DIR, archiveName),
           fullPath: path.join(archivePath, dir),
         });
       }
@@ -677,7 +682,7 @@ function getArchivedPhaseDirs(cwd) {
  */
 function getRoadmapPhaseInternal(cwd, phaseNum) {
   if (!phaseNum) return null;
-  const roadmapPath = path.join(cwd, PLANNING_DIR, ROADMAP_FILE);
+  const roadmapPath = planningPath(cwd, ROADMAP_FILE);
 
   try {
     const content = fs.readFileSync(roadmapPath, 'utf-8');
@@ -927,22 +932,150 @@ function generateSlugInternal(text) {
 }
 
 /**
- * Extract current milestone version and name from roadmap.md.
+ * Match a milestone HEADING — a markdown heading line that carries a version.
+ *
+ * Anchored to line start and allowing `#{1,6}`, because the previous pattern
+ * (`/## .*v\d+\.\d+.../`, unanchored) matched inside `### ` headings AND inside
+ * body prose, which is how a version could be read out of a sentence.
+ */
+const MILESTONE_HEADING_RE = /^[ \t]{0,3}#{1,6}[ \t]+(.*\bv\d+(?:\.\d+)+\b.*?)[ \t]*$/;
+
+/** Collapsed shipped milestones live in `<summary>` lines, not headings. */
+const MILESTONE_SUMMARY_RE = /^[ \t]*<summary>(.*\bv\d+(?:\.\d+)+\b.*?)<\/summary>[ \t]*$/;
+
+/** Status markers PAN's own roadmap template emits, plus their prose forms. */
+const MILESTONE_STATUS_MARKERS = [
+  { status: 'shipped', re: /✅|\bshipped\b|\bcomplete[d]?\b|\bdone\b/i },
+  // `current` is matched as a word anywhere in the heading, not as the whole
+  // parenthetical: real roadmaps write "(current, phases 1–10)", and requiring
+  // an exact "(current)" silently missed the marker and fell through to
+  // positional guessing — the failure mode this resolver exists to remove.
+  { status: 'current', re: /🚧|\bcurrent\b|\bin[-\s]progress\b|\bactive\b/i },
+  { status: 'planned', re: /📋|\bplanned\b|\bupcoming\b|\bfuture\b/i },
+];
+
+/**
+ * Parse every milestone heading in a roadmap into {version, name, status}.
+ *
+ * Version and name are taken from THE SAME heading — the whole point. Reading
+ * them with two independent whole-document regexes let a version from one
+ * milestone pair with a name from another and produce a milestone that does not
+ * exist, with nothing in the output to suggest anything had gone wrong.
+ *
+ * @param {string} roadmap - full roadmap.md text
+ * @returns {Array<{version: string, name: string, status: string, line: number, heading: string}>}
+ */
+function parseMilestoneHeadings(roadmap) {
+  const out = [];
+  const lines = String(roadmap || '').split(/\r?\n/);
+
+  lines.forEach((line, i) => {
+    const m = line.match(MILESTONE_HEADING_RE) || line.match(MILESTONE_SUMMARY_RE);
+    if (!m) return;
+    const heading = m[1];
+
+    const versionMatch = heading.match(/\bv(\d+(?:\.\d+)+)\b/);
+    if (!versionMatch) return;
+
+    let status = 'unknown';
+    for (const marker of MILESTONE_STATUS_MARKERS) {
+      if (marker.re.test(heading)) { status = marker.status; break; }
+    }
+    // A <summary> heading is a collapsed, already-shipped milestone even when
+    // it carries no explicit marker.
+    if (status === 'unknown' && MILESTONE_SUMMARY_RE.test(line)) status = 'shipped';
+
+    out.push({
+      version: `v${versionMatch[1]}`,
+      name: extractMilestoneName(heading, versionMatch[0]),
+      status,
+      line: i + 1,
+      heading: heading.trim(),
+    });
+  });
+
+  return out;
+}
+
+/**
+ * Reduce a milestone heading to its bare name.
+ * "### 🚧 Milestone v4.1 — Full Platform (phases 1–12)" → "Full Platform"
+ *
+ * @param {string} heading - heading text with the leading #'s already stripped
+ * @param {string} versionToken - the matched version, e.g. "v4.1"
+ * @returns {string} the name, or '' when the heading carries none
+ */
+function extractMilestoneName(heading, versionToken) {
+  let name = heading;
+  name = name.split(versionToken).slice(1).join(versionToken); // everything after the version
+  name = name.replace(/\([^)]*\)/g, ' ');                      // "(current)", "(phases 1–12)"
+  name = name.replace(/<\/?[^>]+>/g, ' ');                     // stray inline tags
+  name = name.replace(/[*_`]+/g, '');                          // markdown emphasis
+  name = name.replace(/\p{Extended_Pictographic}️?/gu, ' ');  // ✅ 🚧 📋 status glyphs
+  name = name.replace(/^[\s:—–\-–]+/, '').replace(/[\s:—–\-–]+$/, '');
+  // "Shipped: 2025-11-25" style trailers add nothing to the name.
+  name = name.replace(/\b(shipped|completed?|done)\b[:\s]*\d{4}-\d{2}-\d{2}\s*$/i, '').trim();
+  return name.trim();
+}
+
+/**
+ * Pick the CURRENT milestone from parsed headings.
+ *
+ * Order of preference:
+ *   1. a heading explicitly marked in-progress (🚧 / "(current)" / "in progress")
+ *   2. the first heading that is not shipped — work not yet done
+ *   3. the last shipped heading — everything is done, so the newest is current
+ *
+ * @param {Array} headings - from parseMilestoneHeadings()
+ * @returns {{milestone: Object|null, ambiguous: boolean, basis: string}}
+ */
+function selectCurrentMilestone(headings) {
+  if (!headings.length) return { milestone: null, ambiguous: false, basis: 'none' };
+
+  const current = headings.filter(h => h.status === 'current');
+  if (current.length) {
+    // More than one milestone marked current is a planning-state error, not
+    // something to resolve silently — report it alongside the pick.
+    return { milestone: current[0], ambiguous: current.length > 1, basis: 'marked-current' };
+  }
+
+  const unshipped = headings.find(h => h.status !== 'shipped');
+  if (unshipped) return { milestone: unshipped, ambiguous: false, basis: 'first-unshipped' };
+
+  return { milestone: headings[headings.length - 1], ambiguous: false, basis: 'last-shipped' };
+}
+
+/**
+ * Extract the current milestone's version and name from roadmap.md.
+ *
+ * Both values come from a single heading — see parseMilestoneHeadings() for why
+ * that constraint is the whole fix.
+ *
  * @param {string} cwd - Project root directory
- * @returns {{version: string, name: string}} Milestone info (defaults: v1.0, "milestone")
+ * @returns {{version: string, name: string, status: string, basis: string, ambiguous: boolean, candidates: number}}
+ *   Milestone info (defaults: v1.0, "milestone")
  */
 function getMilestoneInfo(cwd) {
+  const fallback = { version: 'v1.0', name: 'milestone', status: 'unknown', basis: 'default', ambiguous: false, candidates: 0 };
+  let roadmap;
   try {
-    const roadmap = fs.readFileSync(path.join(cwd, PLANNING_DIR, ROADMAP_FILE), 'utf-8');
-    const versionMatch = roadmap.match(MILESTONE_VERSION_RE);
-    const nameMatch = roadmap.match(/## .*v\d+\.\d+[:\s]+([^\n(]+)/);
-    return {
-      version: versionMatch ? versionMatch[0] : 'v1.0',
-      name: nameMatch ? nameMatch[1].trim() : 'milestone',
-    };
+    roadmap = fs.readFileSync(planningPath(cwd, ROADMAP_FILE), 'utf-8');
   } catch {
-    return { version: 'v1.0', name: 'milestone' };
+    return fallback;
   }
+
+  const headings = parseMilestoneHeadings(roadmap);
+  const { milestone, ambiguous, basis } = selectCurrentMilestone(headings);
+  if (!milestone) return { ...fallback, basis: 'no-milestone-heading' };
+
+  return {
+    version: milestone.version,
+    name: milestone.name || 'milestone',
+    status: milestone.status,
+    basis,
+    ambiguous,
+    candidates: headings.length,
+  };
 }
 
 /**
@@ -952,7 +1085,7 @@ function getMilestoneInfo(cwd) {
  * @returns {{ count: number, todos: Array<{file: string, created: string, title: string, area: string, path: string}> }}
  */
 function scanPendingTodos(cwd, area) {
-  const pendingDir = path.join(cwd, PLANNING_DIR, 'todos', 'pending');
+  const pendingDir = planningPath(cwd, 'todos', 'pending');
   let count = 0;
   const todos = [];
 
@@ -974,7 +1107,7 @@ function scanPendingTodos(cwd, area) {
           created: createdMatch ? createdMatch[1].trim() : 'unknown',
           title: titleMatch ? titleMatch[1].trim() : 'Untitled',
           area: todoArea,
-          path: path.join(PLANNING_DIR, 'todos', 'pending', file),
+          path: planningRel('todos', 'pending', file),
         });
       } catch { /* skip unreadable file */ }
     }
@@ -1004,17 +1137,44 @@ function scanPendingTodos(cwd, area) {
  * @returns {{blocks: Array<{path: string, content: string, cache: true}>, total_bytes: number, sha: string}}
  */
 function buildCachedContext(cwd) {
-  const { PLANNING_DIR, CACHEABLE_CONTEXT_FILES } = require('./constants.cjs');
+  const { CACHEABLE_CONTEXT_FILES } = require('./constants.cjs');
   const crypto = require('crypto');
   const blocks = [];
   let totalBytes = 0;
   const hasher = crypto.createHash('sha256');
 
-  for (const file of CACHEABLE_CONTEXT_FILES) {
-    const abs = path.join(cwd, PLANNING_DIR, file);
+  // The built-in list is the PHASE-model spine. A focus-model project has none
+  // of those files, so its cached block came out empty and it silently received
+  // no prompt caching at all. `cache.extra_files` lets such a project name its
+  // own stable documents rather than PAN inventing a convention it doesn't
+  // otherwise define.
+  //
+  // Entries are planning-root-relative, must stay inside it, and are appended
+  // after the built-ins so the prefix stays byte-stable for projects that set
+  // nothing — changing the prefix would invalidate every existing cache key.
+  const extra = [];
+  try {
+    const configured = loadConfig(cwd)?.cache?.extra_files;
+    if (Array.isArray(configured)) {
+      for (const entry of configured) {
+        if (typeof entry !== 'string' || !entry.trim()) continue;
+        const rel = entry.trim().replace(/\\/g, '/');
+        // Inline literal guard: a cache entry must not escape the planning root
+        // or reach an absolute path. Checked here rather than via a helper
+        // because static analysis does not follow guards across functions.
+        if (rel.startsWith('/') || rel.startsWith('\\') || /^[A-Za-z]:/.test(rel)) continue;
+        if (rel.split('/').includes('..')) continue;
+        if (CACHEABLE_CONTEXT_FILES.includes(rel) || extra.includes(rel)) continue;
+        extra.push(rel);
+      }
+    }
+  } catch { /* unreadable config — built-ins only */ }
+
+  for (const file of [...CACHEABLE_CONTEXT_FILES, ...extra]) {
+    const abs = planningPath(cwd, file);
     try {
       const content = fs.readFileSync(abs, 'utf-8');
-      blocks.push({ path: toPosix(path.join(PLANNING_DIR, file)), content, cache: true });
+      blocks.push({ path: planningRel(file), content, cache: true });
       totalBytes += Buffer.byteLength(content, 'utf-8');
       hasher.update(file + '\0' + content + '\0');
     } catch {
@@ -1091,6 +1251,10 @@ module.exports = {
   pathExistsInternal,
   generateSlugInternal,
   getMilestoneInfo,
+  parseMilestoneHeadings,
+  selectCurrentMilestone,
+  extractMilestoneName,
+  MILESTONE_HEADING_RE,
   toPosix,
   buildCachedContext,
   scanPendingTodos,

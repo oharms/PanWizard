@@ -30,7 +30,6 @@
 const fs = require('fs');
 const path = require('path');
 const { output, error, safeReadFile, toPosix, findPhaseInternal } = require('./core.cjs');
-const { PLANNING_DIR } = require('./constants.cjs');
 const { planningPath } = require('./utils.cjs');
 
 const BRIDGE_DIR = 'bridge';

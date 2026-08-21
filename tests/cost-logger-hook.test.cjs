@@ -847,3 +847,96 @@ describe('pan-cost-logger — integration with cost.cjs aggregator', () => {
     assert.equal(agg.totals.cost_unknown, 1);
   });
 });
+
+// ─── Phase attribution and planning root ────────────────────────────────────
+
+/**
+ * Phase attribution used to come ONLY from the active optimizer trace session,
+ * and tracing is off by default — so in ordinary use every ledger row carried
+ * `phase: null`. A field ledger had 121 rows, 100% unattributed, which makes
+ * "which phase got expensive" unanswerable from PAN's own telemetry.
+ */
+describe('pan-cost-logger — phase attribution', () => {
+  let tmp;
+  const EVENT = { hook_event_name: 'SubagentStop', subagent_type: 'pan-executor', session_id: 's1' };
+
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => {
+    cleanup(tmp);
+    delete process.env.PAN_TRACK;
+    delete process.env.PAN_PLANNING_DIR;
+  });
+
+  const writeState = (body) => fs.writeFileSync(path.join(tmp, '.planning', 'state.md'), body);
+
+  test('falls back to state.md frontmatter when no trace session is running', () => {
+    writeState('---\npan_state_version: 1.0\ncurrent_phase: "05"\n---\n\n## Phase Progress\n');
+    assert.equal(buildCostRecord(EVENT, tmp).phase, '05');
+  });
+
+  test('falls back to the **Current Phase:** body field', () => {
+    writeState('---\nv: 1\n---\n\n## Phase Progress\n\n**Current Phase:** 07\n');
+    assert.equal(buildCostRecord(EVENT, tmp).phase, '07');
+  });
+
+  test('an explicit payload phase still wins over the fallback', () => {
+    writeState('---\ncurrent_phase: "05"\n---\n');
+    assert.equal(buildCostRecord({ ...EVENT, phase: '99' }, tmp).phase, '99');
+  });
+
+  test('no state.md leaves phase null rather than inventing one', () => {
+    assert.equal(buildCostRecord(EVENT, tmp).phase, null);
+  });
+
+  test('a null-valued frontmatter phase is not treated as a phase', () => {
+    writeState('---\ncurrent_phase: null\n---\n');
+    assert.equal(buildCostRecord(EVENT, tmp).phase, null);
+  });
+});
+
+describe('pan-cost-logger — planning root', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => {
+    cleanup(tmp);
+    delete process.env.PAN_TRACK;
+    delete process.env.PAN_PLANNING_DIR;
+  });
+
+  test('PAN_TRACK moves the hook onto the track\'s tree', () => {
+    const track = path.join(tmp, '.planning', 'tracks', 'verify');
+    fs.mkdirSync(track, { recursive: true });
+    fs.writeFileSync(path.join(track, 'state.md'), '---\ncurrent_phase: "12"\n---\n');
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'), '---\ncurrent_phase: "01"\n---\n');
+
+    process.env.PAN_TRACK = 'verify';
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', subagent_type: 'x', session_id: 's' }, tmp);
+    assert.equal(rec.phase, '12', 'read the track tree, not the root tree');
+  });
+
+  test('a PAN_TRACK that escapes the project root is ignored, not honoured', () => {
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'), '---\ncurrent_phase: "01"\n---\n');
+    process.env.PAN_TRACK = '../../evil';
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', subagent_type: 'x', session_id: 's' }, tmp);
+    assert.equal(rec.phase, '01', 'degrades to the default tree');
+  });
+
+  test('a PAN_PLANNING_DIR with .. is ignored, not honoured', () => {
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'), '---\ncurrent_phase: "01"\n---\n');
+    process.env.PAN_PLANNING_DIR = '../outside';
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', subagent_type: 'x', session_id: 's' }, tmp);
+    assert.equal(rec.phase, '01');
+  });
+
+  test('isPanProject follows the configured root', () => {
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-bare-'));
+    try {
+      assert.equal(isPanProject(bare), false);
+      fs.mkdirSync(path.join(bare, '.planning', 'tracks', 'core'), { recursive: true });
+      process.env.PAN_TRACK = 'core';
+      assert.equal(isPanProject(bare), true);
+    } finally {
+      cleanup(bare);
+    }
+  });
+});

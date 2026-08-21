@@ -26,7 +26,6 @@
 const fs = require('fs');
 const path = require('path');
 const { output, error } = require('./core.cjs');
-const { PLANNING_DIR } = require('./constants.cjs');
 const { planningPath } = require('./utils.cjs');
 
 const BUS_DIR = 'bus';

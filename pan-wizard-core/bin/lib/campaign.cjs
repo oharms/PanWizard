@@ -13,7 +13,8 @@
 const fs = require('fs');
 const path = require('path');
 const { output, error } = require('./core.cjs');
-const { PLANNING_DIR, VERIFY_RESERVE_FRACTION } = require('./constants.cjs');
+const { VERIFY_RESERVE_FRACTION } = require('./constants.cjs');
+const { planningPath } = require('./utils.cjs');
 
 const ORCH_DIR = 'orchestration';
 const SCHEDULE_FILE = 'schedule.json';
@@ -21,7 +22,7 @@ const HISTORY_CAP = 50;
 const DAY_MS = 86400000;
 
 function schedulePath(cwd) {
-  return path.join(cwd, PLANNING_DIR, ORCH_DIR, SCHEDULE_FILE);
+  return planningPath(cwd, ORCH_DIR, SCHEDULE_FILE);
 }
 
 /**

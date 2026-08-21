@@ -128,7 +128,7 @@
  *   init verify-work <phase>           All context for verify-work workflow
  *   init phase-op <phase>              Generic phase operation context
  *   init todos [area]                  All context for todo workflows
- *   init milestone-op                  All context for milestone operations
+ *   init milestone-op [--all-tracks]   All context for milestone operations
  *   init map-codebase                  All context for map-codebase workflow
  *   init progress                      All context for progress workflow
  *
@@ -219,6 +219,8 @@ const docLint = require('./lib/doc-lint.cjs');
 const learnLint = require('./lib/learn-lint.cjs');
 const learnIndex = require('./lib/learn-index.cjs');
 const links = require('./lib/links.cjs');
+const { setPlanningRoot, describePlanningRoot } = require('./lib/planning-root.cjs');
+const stateCompact = require('./lib/state-compact.cjs');
 
 /**
  * Get the value following a flag in the args array.
@@ -231,6 +233,30 @@ function getArgValue(args, flag, defaultVal = null) {
   const idx = args.indexOf(flag);
   if (idx === -1 || idx + 1 >= args.length) return defaultVal;
   return args[idx + 1];
+}
+
+/**
+ * Read a global `--flag value` / `--flag=value` pair and REMOVE it from args,
+ * so per-command parsers never see it. Returns null when the flag is absent.
+ *
+ * @param {string[]} args - CLI arguments (mutated)
+ * @param {string} flag - Flag name (e.g. '--track')
+ * @returns {string|null} The flag's value, or null
+ */
+function takeFlagValue(args, flag) {
+  const eqArg = args.find(a => a.startsWith(`${flag}=`));
+  if (eqArg) {
+    const value = eqArg.slice(flag.length + 1).trim();
+    if (!value) error(`Missing value for ${flag}`);
+    args.splice(args.indexOf(eqArg), 1);
+    return value;
+  }
+  const idx = args.indexOf(flag);
+  if (idx === -1) return null;
+  const value = args[idx + 1];
+  if (!value || value.startsWith('--')) error(`Missing value for ${flag}`);
+  args.splice(idx, 2);
+  return value;
 }
 
 /**
@@ -270,6 +296,22 @@ async function main() {
     error(`Invalid --cwd: ${cwd}`);
   }
 
+  // Which planning tree do we act on? `--cwd` moves the PROJECT root; these
+  // move the PLANNING root inside it, so a repo holding several planning trees
+  // can address any of them. Parsed here, before dispatch, because the answer
+  // has to be settled once for every path the command will build.
+  const planningDirFlag = takeFlagValue(args, '--planning-dir');
+  const trackFlag = takeFlagValue(args, '--track');
+  const allTracksIndex = args.indexOf('--all-tracks');
+  const allTracks = allTracksIndex !== -1;
+  if (allTracks) args.splice(allTracksIndex, 1);
+
+  try {
+    setPlanningRoot({ planningDir: planningDirFlag, track: trackFlag });
+  } catch (e) {
+    error(e.message);
+  }
+
   const rawIndex = args.indexOf('--raw');
   const raw = rawIndex !== -1;
   if (rawIndex !== -1) args.splice(rawIndex, 1);
@@ -282,7 +324,13 @@ async function main() {
 
   const command = args[0];
 
-  const USAGE = 'Usage: pan-tools <command> [args] [--raw] [--cwd <path>]\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links';
+  const USAGE = 'Usage: pan-tools <command> [args] [--raw] [--cwd <path>] [--track <name> | --planning-dir <path>] [--all-tracks]\n'
+    + '\nPlanning root (which .planning tree to act on):\n'
+    + '  --track <name>         act on .planning/tracks/<name>/ instead of .planning/\n'
+    + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
+    + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
+    + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links';
 
   if (!command) {
     error(USAGE);
@@ -317,6 +365,11 @@ async function main() {
           }
         }
         state.cmdStatePatch(cwd, patches, raw);
+      } else if (subcommand === 'compact') {
+        stateCompact.cmdStateCompact(cwd, {
+          apply: args.includes('--apply'),
+          keepDays: getArgValue(args, '--keep-days'),
+        }, raw);
       } else if (subcommand === 'advance-plan') {
         state.cmdStateAdvancePlan(cwd, raw);
       } else if (subcommand === 'record-metric') {
@@ -765,7 +818,7 @@ async function main() {
           init.cmdInitTodos(cwd, args[2], raw);
           break;
         case 'milestone-op':
-          init.cmdInitMilestoneOp(cwd, raw);
+          init.cmdInitMilestoneOp(cwd, raw, { allTracks });
           break;
         case 'map-codebase':
           init.cmdInitMapCodebase(cwd, raw);
@@ -1087,13 +1140,14 @@ async function main() {
       const hygieneOpts = {
         traceAgeDays: getArgValue(args, '--trace-age-days'),
         apply: args.includes('--apply'),
+        allTracks,
       };
       if (subcommand === 'scan') {
         hygiene.cmdHygieneScan(cwd, hygieneOpts, raw);
       } else if (subcommand === 'clean') {
         hygiene.cmdHygieneClean(cwd, hygieneOpts, raw);
       } else {
-        error('Unknown hygiene subcommand. Available: scan, clean [--apply] [--trace-age-days N]');
+        error('Unknown hygiene subcommand. Available: scan, clean [--apply] [--trace-age-days N] [--all-tracks] [--track <name>]');
       }
       break;
     }

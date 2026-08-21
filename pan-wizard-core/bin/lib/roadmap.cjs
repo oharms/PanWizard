@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { PLANNING_DIR, PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isContextFile, isResearchFile, PHASE_HEADER_RE, getPlanId, getSummaryId } = require('./constants.cjs');
+const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isContextFile, isResearchFile, PHASE_HEADER_RE, getPlanId, getSummaryId } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus } = require('./utils.cjs');
 const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal } = require('./core.cjs');
 

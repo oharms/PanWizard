@@ -22,7 +22,6 @@ const {
   toPosix,
 } = require('./core.cjs');
 const {
-  PLANNING_DIR,
   ROADMAP_FILE,
   STATE_FILE,
   PHASES_DIR,

@@ -4,8 +4,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { PLANNING_DIR, PHASES_DIR, MILESTONES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible } = require('./utils.cjs');
+const { PHASES_DIR, MILESTONES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile } = require('./constants.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, planningRel } = require('./utils.cjs');
 const { output, error, isGitRepo, execGit, escapeRegex } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd } = require('./state.cjs');
@@ -260,7 +260,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
 
   // Auto-commit + tag unless --no-commit or not a git repo
   if (!options.noCommit && isGitRepo(cwd)) {
-    execGit(cwd, ['add', PLANNING_DIR + '/']);
+    execGit(cwd, ['add', planningRel() + '/']);
     const commitMsg = `docs: milestone ${version} complete`;
     const commitResult = execGit(cwd, ['commit', '-m', commitMsg]);
     if (commitResult.exitCode === 0) {

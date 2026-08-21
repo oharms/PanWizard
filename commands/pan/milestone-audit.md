@@ -2,7 +2,7 @@
 name: pan:milestone-audit
 group: Milestone
 description: Audit milestone completion against original intent before archiving
-argument-hint: "[version]"
+argument-hint: "[version] [--track <name>] [--all-tracks]"
 allowed-tools:
   - Read
   - Glob
@@ -26,9 +26,11 @@ Version: $ARGUMENTS (optional — defaults to current milestone)
 
 Core planning files are resolved in-workflow (`init milestone-op`) and loaded only as needed.
 
-**Completed Work:**
-Glob: .planning/phases/*/*-summary.md
-Glob: .planning/phases/*/*-verification.md
+**Planning tree:** the project may hold several. `init milestone-op` reports the `planning_root` it resolved; use that root for every glob below rather than assuming `.planning/`. Pass `--track <name>` to audit a specific tree, or run `init milestone-op --all-tracks` first to see every tree's milestone state.
+
+**Completed Work:** (relative to the resolved `planning_root`)
+Glob: {planning_root}/phases/*/*-summary.md
+Glob: {planning_root}/phases/*/*-verification.md
 </context>
 
 <citation_requirement>
@@ -57,4 +59,8 @@ Do not trust summary files at face value. If a verification.md says "all tests p
 <process>
 Execute the audit-milestone workflow from @~/.claude/pan-wizard-core/workflows/milestone-audit.md end-to-end.
 Preserve all workflow gates (scope determination, verification reading, integration check, requirements coverage, routing).
+
+Two gates are non-negotiable because they guard against auditing the wrong thing:
+- **State the resolved `planning_root` in the report.** An audit that does not name the tree it read cannot be checked.
+- **Stop if `milestone_ambiguous` is true.** More than one milestone marked current is a roadmap defect for the owner to fix; auditing one of them silently is how a report ends up describing a milestone that does not exist.
 </process>

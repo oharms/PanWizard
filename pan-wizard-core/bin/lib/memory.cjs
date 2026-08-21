@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { output, error } = require('./core.cjs');
-const { PLANNING_DIR, CHARS_PER_TOKEN, MEMORY_SELECT_BUDGET_TOKENS, MEMORY_RECENCY_FLOOR, MEMORY_SOFT_CAP_MULT, MEMORY_LOAD_WARN_TOKENS, MEMORY_LOAD_CRIT_TOKENS, MEMORY_LOAD_MAX_FRACTION } = require('./constants.cjs');
+const { CHARS_PER_TOKEN, MEMORY_SELECT_BUDGET_TOKENS, MEMORY_RECENCY_FLOOR, MEMORY_SOFT_CAP_MULT, MEMORY_LOAD_WARN_TOKENS, MEMORY_LOAD_CRIT_TOKENS, MEMORY_LOAD_MAX_FRACTION } = require('./constants.cjs');
 const { planningPath } = require('./utils.cjs');
 
 const MEMORY_DIR = 'memory';

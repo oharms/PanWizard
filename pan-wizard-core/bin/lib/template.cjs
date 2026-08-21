@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  PLANNING_DIR, PHASES_DIR, PLAN_SUFFIX, SUMMARY_SUFFIX, VERIFICATION_SUFFIX,
+  PHASES_DIR, PLAN_SUFFIX, SUMMARY_SUFFIX, VERIFICATION_SUFFIX,
   SIMPLE_TASK_THRESHOLD, SIMPLE_FILE_THRESHOLD, COMPLEX_TASK_THRESHOLD, COMPLEX_FILE_THRESHOLD,
 } = require('./constants.cjs');
 const { planningPath, phasesPath } = require('./utils.cjs');

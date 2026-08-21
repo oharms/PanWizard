@@ -52,6 +52,37 @@
 
 const fs = require('fs');
 const path = require('path');
+/**
+ * Which planning tree this hook acts on.
+ *
+ * Mirrors pan-wizard-core/bin/lib/planning-root.cjs, which hooks cannot require
+ * (they are standalone and run inside the host runtime). All PAN hooks carry an
+ * identical copy — if the CLI is pointed at a track while a hook still writes to
+ * `.planning/`, that tree's telemetry lands in the wrong place.
+ *
+ * Env only — a hook gets no argv. A value that escapes the project root is
+ * ignored rather than honoured: a bad value degrades to the default, never
+ * writes outside the project.
+ */
+function planningDirName() {
+  const raw = process.env.PAN_PLANNING_DIR || '';
+  if (raw.trim()) {
+    const rel = raw.trim().replace(/\\/g, '/');
+    const bad = rel.startsWith('/') || rel.startsWith('\\') || /^[A-Za-z]:/.test(rel)
+      || rel.split('/').includes('..');
+    if (!bad) return rel;
+  }
+  const track = (process.env.PAN_TRACK || '').trim();
+  if (track && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(track)) {
+    return `.planning/tracks/${track}`;
+  }
+  return '.planning';
+}
+
+/** Absolute path inside the active planning tree. */
+function planningPath(cwd, ...segments) {
+  return path.join(cwd, ...planningDirName().split('/'), ...segments);
+}
 
 // Unticked phase line, exactly as templates/roadmap.md and pan-roadmapper.md
 // emit it. Fixture doctrine: this shape is pinned against the shipped template
@@ -135,7 +166,7 @@ function main() {
       if (!payload || typeof payload !== 'object') payload = {};
 
       const projectDir = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd();
-      const planningDir = path.join(projectDir, '.planning');
+      const planningDir = planningPath(projectDir);
 
       let config = null;
       try { config = JSON.parse(fs.readFileSync(path.join(planningDir, 'config.json'), 'utf8')); } catch { /* no project / bad config -> allow */ }

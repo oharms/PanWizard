@@ -16,6 +16,35 @@ INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init milestone-op)
 
 Extract from init JSON: `milestone_version`, `milestone_name`, `phase_count`, `completed_phases`, `commit_docs`.
 
+**Also extract `planning_root` and `track`, and use `$PLANNING_ROOT` for every planning path in this workflow** — the project may hold several planning trees, and auditing the wrong one produces a confident, plausible, wrong report:
+
+```bash
+PLANNING_ROOT=$(printf '%s' "$INIT" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).planning_root))")
+```
+
+### 0a. Which tree am I auditing?
+
+**Always state the resolved `planning_root` at the top of the audit report.** If `planning_root_exists` is `false`, STOP — that is a mistyped `--track`, not an empty milestone.
+
+To audit a specific tree, pass `--track <name>`. To see every tree's milestone state before choosing:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init milestone-op --all-tracks
+```
+
+That returns `{track_count, ambiguous_tracks, tracks[]}`, one entry per planning tree, each with its own `planning_root`, `milestone_version`, `milestone_name`, and `milestone_basis`.
+
+### 0b. Refuse to audit an unresolvable milestone
+
+The init payload carries how the milestone was decided:
+
+- `milestone_basis` — `marked-current` (a `(current)` / 🚧 marker), `first-unshipped`, `last-shipped`, or `default`
+- `milestone_ambiguous` — **`true` means the roadmap marks more than one milestone current**
+
+**If `milestone_ambiguous` is `true`, STOP and report the planning-state error.** Do not audit. Two milestones marked current is a roadmap defect the owner must resolve; picking one silently is how an audit ends up describing a milestone that does not exist.
+
+If `milestone_basis` is `default`, there is no milestone heading in the roadmap at all — say so rather than auditing `v1.0 milestone`.
+
 Resolve integration checker model:
 ```bash
 CHECKER_MODEL=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-integration-checker --raw)
@@ -103,7 +132,7 @@ For each phase's verification.md, extract the expanded requirements table:
 
 For each phase's summary.md, extract `requirements-completed` from YAML frontmatter:
 ```bash
-for summary in .planning/phases/*-*/*-summary.md; do
+for summary in "$PLANNING_ROOT"/phases/*-*/*-summary.md; do
   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$summary" --fields requirements_completed | jq -r '.requirements_completed'
 done
 ```
@@ -129,7 +158,7 @@ For each REQ-ID, determine status using all three sources:
 
 ## 6. Aggregate into v{version}-milestone-audit.md
 
-Create `.planning/v{version}-milestone-audit.md` with:
+Create `{planning_root}/v{version}-milestone-audit.md` with:
 
 ```yaml
 ---
@@ -186,7 +215,7 @@ Output this markdown directly (not as a code block). Route based on status:
 ## ✓ Milestone {version} — Audit Passed
 
 **Score:** {N}/{M} requirements satisfied
-**Report:** .planning/v{version}-milestone-audit.md
+**Report:** {planning_root}/v{version}-milestone-audit.md
 
 All requirements covered. Cross-phase integration verified. E2E flows complete.
 
@@ -209,7 +238,7 @@ All requirements covered. Cross-phase integration verified. E2E flows complete.
 ## ⚠ Milestone {version} — Gaps Found
 
 **Score:** {N}/{M} requirements satisfied
-**Report:** .planning/v{version}-milestone-audit.md
+**Report:** {planning_root}/v{version}-milestone-audit.md
 
 ### Unsatisfied Requirements
 
@@ -240,7 +269,7 @@ All requirements covered. Cross-phase integration verified. E2E flows complete.
 ───────────────────────────────────────────────────────────────
 
 **Also available:**
-- cat .planning/v{version}-milestone-audit.md — see full report
+- cat {planning_root}/v{version}-milestone-audit.md — see full report
 - /pan:milestone-done {version} — proceed anyway (accept tech debt)
 
 ───────────────────────────────────────────────────────────────
@@ -252,7 +281,7 @@ All requirements covered. Cross-phase integration verified. E2E flows complete.
 ## ⚡ Milestone {version} — Tech Debt Review
 
 **Score:** {N}/{M} requirements satisfied
-**Report:** .planning/v{version}-milestone-audit.md
+**Report:** {planning_root}/v{version}-milestone-audit.md
 
 All requirements met. No critical blockers. Accumulated tech debt needs review.
 

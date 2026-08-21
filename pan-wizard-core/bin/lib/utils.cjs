@@ -9,13 +9,13 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
-  PLANNING_DIR,
   PHASES_DIR,
   MILESTONES_DIR,
   isPlanFile,
   isSummaryFile,
   PHASE_DIR_RE,
 } = require('./constants.cjs');
+const { planningRootRel, planningRootAbs } = require('./planning-root.cjs');
 
 // ─── File utilities ──────────────────────────────────────────────────────────
 
@@ -44,30 +44,57 @@ function removeQuotes(str) {
 // ─── Phase directory utilities ───────────────────────────────────────────────
 
 /**
- * Build the absolute path to the .planning directory.
+ * Build an absolute path inside the ACTIVE planning root.
+ *
+ * The root is `.planning/` by default but may be a track (`--track verify`) or
+ * any project-relative tree (`--planning-dir`). Every absolute planning path in
+ * the codebase goes through here, which is what makes a non-default root
+ * reachable at all — see planning-root.cjs.
+ *
  * @param {string} cwd - Project root directory
- * @returns {string} Absolute path to .planning/
+ * @param {...string} segments - Path segments below the planning root
+ * @returns {string} Absolute path
  */
-function planningPath(cwd) {
-  return path.join(cwd, PLANNING_DIR);
+function planningPath(cwd, ...segments) {
+  return path.join(planningRootAbs(cwd), ...segments.filter(s => s != null && s !== ''));
 }
 
 /**
- * Build the absolute path to the phases directory.
+ * Build a project-relative, POSIX-separated path inside the active planning
+ * root — the display form used in command output, findings, and `git add`
+ * arguments. Kept in lockstep with planningPath() so what a command reports is
+ * the tree it actually touched.
+ *
+ * @param {...string} segments - Path segments below the planning root
+ * @returns {string} e.g. `.planning/tracks/verify/state.md`
+ */
+function planningRel(...segments) {
+  const parts = [planningRootRel()];
+  for (const s of segments) {
+    if (s == null || s === '') continue;
+    for (const seg of String(s).split(/[\\/]+/)) {
+      if (seg && seg !== '.') parts.push(seg);
+    }
+  }
+  return parts.join('/');
+}
+
+/**
+ * Build the absolute path to the phases directory of the active planning root.
  * @param {string} cwd - Project root directory
- * @returns {string} Absolute path to .planning/phases/
+ * @returns {string} Absolute path to <planning-root>/phases/
  */
 function phasesPath(cwd) {
-  return path.join(cwd, PLANNING_DIR, PHASES_DIR);
+  return planningPath(cwd, PHASES_DIR);
 }
 
 /**
- * Build the absolute path to the milestones directory.
+ * Build the absolute path to the milestones directory of the active planning root.
  * @param {string} cwd - Project root directory
- * @returns {string} Absolute path to .planning/milestones/
+ * @returns {string} Absolute path to <planning-root>/milestones/
  */
 function milestonesPath(cwd) {
-  return path.join(cwd, PLANNING_DIR, MILESTONES_DIR);
+  return planningPath(cwd, MILESTONES_DIR);
 }
 
 /**
@@ -159,6 +186,7 @@ module.exports = {
   readJsonFile,
   removeQuotes,
   planningPath,
+  planningRel,
   phasesPath,
   milestonesPath,
   listPhaseDirs,

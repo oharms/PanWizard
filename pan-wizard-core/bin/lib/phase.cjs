@@ -8,8 +8,8 @@ const { escapeRegex, normalizePhaseName, comparePhaseNum, findPhaseInternal, get
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
 const { enumerateRoadmapPhases } = require('./roadmap.cjs');
-const { PLANNING_DIR, PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile, isSummaryFile, getPlanId, PHASE_DIR_RE, ARCHIVE_DIR_RE } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, parsePhaseDir, fileAccessible } = require('./utils.cjs');
+const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile, isSummaryFile, getPlanId, PHASE_DIR_RE, ARCHIVE_DIR_RE } = require('./constants.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, parsePhaseDir, fileAccessible, planningRel } = require('./utils.cjs');
 // Phase removal lives in phase-remove.cjs; re-exported below so consumers of
 // phase.cjs are unaffected by the decomposition.
 const { removePhaseFromDisk, renumberDecimalPhases, renumberIntegerPhases, updateRoadmapAfterRemoval, cmdPhaseRemove } = require('./phase-remove.cjs');
@@ -218,7 +218,7 @@ function cmdFindPhase(cwd, phase, raw) {
 
     const result = {
       found: true,
-      directory: toPosix(path.join(PLANNING_DIR, PHASES_DIR, match)),
+      directory: planningRel(PHASES_DIR, match),
       phase_number: phaseNumber,
       phase_name: phaseName,
       plans,
@@ -855,7 +855,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
   const noCommit = opts && opts.noCommit;
   if (!noCommit && isGitRepo(cwd)) {
     const commitMsg = `docs(${normalized}): complete phase — ${phaseInfo.phase_name}`;
-    execGit(cwd, ['add', PLANNING_DIR + '/']);
+    execGit(cwd, ['add', planningRel() + '/']);
     const commitResult = execGit(cwd, ['commit', '-m', commitMsg]);
     if (commitResult.exitCode === 0) {
       const hashResult = execGit(cwd, ['rev-parse', '--short', 'HEAD']);
