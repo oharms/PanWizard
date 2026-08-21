@@ -268,13 +268,22 @@ function compactState(cwd, opts = {}) {
   const toArchive = new Set(plan.archivable.map(v => v.title));
   const archivedText = sections.filter(s => toArchive.has(s.title)).map(s => s.text.trimEnd()).join('\n\n');
 
-  // 1. Append to history first.
-  let header = `\n\n<!-- compacted from ${STATE_FILE} on ${stamp} -->\n`;
-  if (!fs.existsSync(historyPath)) {
-    header = `# State history\n\nSections compacted out of ${STATE_FILE} by \`pan-tools state compact\`.\n`
-      + `They are kept verbatim and are no longer re-read into agent context.\n${header}`;
+  // 1. Append to history FIRST, so an interruption can only ever duplicate.
+  //
+  //    The preamble is created with an exclusive open rather than an
+  //    existsSync check. Check-then-write is a time-of-check/time-of-use race
+  //    (CWE-367): two compactions running together would each see "absent" and
+  //    each prepend a preamble. `wx` makes creation atomic — EEXIST simply
+  //    means someone else won, which is the outcome we wanted anyway.
+  const preamble = `# State history\n\nSections compacted out of ${STATE_FILE} by \`pan-tools state compact\`.\n`
+    + 'They are kept verbatim and are no longer re-read into agent context.\n';
+  try {
+    fs.writeFileSync(historyPath, preamble, { flag: 'wx', encoding: 'utf-8' });
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
   }
-  fs.appendFileSync(historyPath, `${header}${archivedText}\n`, 'utf-8');
+  fs.appendFileSync(historyPath,
+    `\n\n<!-- compacted from ${STATE_FILE} on ${stamp} -->\n${archivedText}\n`, 'utf-8');
 
   // 2. Only now rewrite state.md, replacing each archived section with a pointer.
   const next = rebuildState(content, toArchive, stamp);
