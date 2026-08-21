@@ -18,6 +18,37 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+/**
+ * Which planning tree this hook acts on.
+ *
+ * Mirrors pan-wizard-core/bin/lib/planning-root.cjs, which hooks cannot require
+ * (they are standalone and run inside the host runtime). All PAN hooks carry an
+ * identical copy — if the CLI is pointed at a track while a hook still writes to
+ * `.planning/`, that tree's telemetry lands in the wrong place.
+ *
+ * Env only — a hook gets no argv. A value that escapes the project root is
+ * ignored rather than honoured: a bad value degrades to the default, never
+ * writes outside the project.
+ */
+function planningDirName() {
+  const raw = process.env.PAN_PLANNING_DIR || '';
+  if (raw.trim()) {
+    const rel = raw.trim().replace(/\\/g, '/');
+    const bad = rel.startsWith('/') || rel.startsWith('\\') || /^[A-Za-z]:/.test(rel)
+      || rel.split('/').includes('..');
+    if (!bad) return rel;
+  }
+  const track = (process.env.PAN_TRACK || '').trim();
+  if (track && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(track)) {
+    return `.planning/tracks/${track}`;
+  }
+  return '.planning';
+}
+
+/** Absolute path inside the active planning tree. */
+function planningPath(cwd, ...segments) {
+  return path.join(cwd, ...planningDirName().split('/'), ...segments);
+}
 
 // Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
 const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'];
@@ -32,7 +63,7 @@ const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'
 function isPanProject(cwd) {
   try {
     if (!cwd) return false;
-    if (fs.existsSync(path.join(cwd, '.planning'))) return true;
+    if (fs.existsSync(planningPath(cwd))) return true;
     for (const d of PAN_RUNTIME_DIRS) {
       if (fs.existsSync(path.join(cwd, d, 'pan-file-manifest.json'))) return true;
       if (fs.existsSync(path.join(cwd, d, 'pan-wizard-core'))) return true;
@@ -43,7 +74,9 @@ function isPanProject(cwd) {
   }
 }
 
-const PLANNING_DIR = '.planning';
+// Resolved per call via planningDirName() so a track-scoped run traces into
+// its own tree; kept as a name for the code paths that only need the label.
+const PLANNING_DIR = planningDirName();
 const OPTIMIZE_DIR = 'optimization';
 const TRACES_DIR = 'traces';
 const CURRENT_SESSION_FILE = 'current-session';

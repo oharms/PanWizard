@@ -20,6 +20,38 @@ const crypto = require('crypto');
 // Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
 const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'];
 
+/**
+ * Which planning tree this hook writes to.
+ *
+ * Mirrors pan-wizard-core/bin/lib/planning-root.cjs, which the hook cannot
+ * require (hooks are standalone and run inside the host runtime). Without this
+ * the CLI could be pointed at `--track verify` while the cost hook kept writing
+ * to `.planning/`, so a track's telemetry landed in the wrong tree.
+ *
+ * Env only — a hook gets no argv. Values that escape the project root are
+ * ignored rather than honoured; a bad value must degrade to the default, never
+ * write outside the project.
+ */
+function planningDirName() {
+  const raw = process.env.PAN_PLANNING_DIR || '';
+  if (raw.trim()) {
+    const rel = raw.trim().replace(/\\/g, '/');
+    const bad = rel.startsWith('/') || rel.startsWith('\\') || /^[A-Za-z]:/.test(rel)
+      || rel.split('/').includes('..');
+    if (!bad) return rel;
+  }
+  const track = (process.env.PAN_TRACK || '').trim();
+  if (track && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(track)) {
+    return `.planning/tracks/${track}`;
+  }
+  return '.planning';
+}
+
+/** Absolute path inside the active planning tree. */
+function planningPath(cwd, ...segments) {
+  return path.join(cwd, ...planningDirName().split('/'), ...segments);
+}
+
 // M62: only instrument actual PAN projects. A global-install hook fires in EVERY
 // repo the user opens; without this gate it silently creates .planning/ metrics
 // artifacts in non-PAN repos. A project counts as PAN if it already has a
@@ -30,7 +62,7 @@ const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'
 function isPanProject(cwd) {
   try {
     if (!cwd) return false;
-    if (fs.existsSync(path.join(cwd, '.planning'))) return true;
+    if (fs.existsSync(planningPath(cwd))) return true;
     for (const d of PAN_RUNTIME_DIRS) {
       if (fs.existsSync(path.join(cwd, d, 'pan-file-manifest.json'))) return true;
       if (fs.existsSync(path.join(cwd, d, 'pan-wizard-core'))) return true;
@@ -71,13 +103,42 @@ function tierForModel(model) {
 // Never throws — returns {} on any miss.
 function readActiveSessionMeta(cwd) {
   try {
-    const optDir = path.join(cwd, '.planning', 'optimization');
+    const optDir = planningPath(cwd, 'optimization');
     const sid = fs.readFileSync(path.join(optDir, 'current-session'), 'utf-8').trim();
     if (!sid) return {};
     const meta = JSON.parse(fs.readFileSync(path.join(optDir, 'traces', sid, 'session.json'), 'utf-8'));
     return meta && typeof meta === 'object' ? meta : {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * Current phase from state.md — the fallback when no optimizer trace is running.
+ *
+ * Phase attribution used to come ONLY from the active trace session, and
+ * tracing is off by default, so in normal use every ledger row carried
+ * `phase: null`. A field ledger had 121 rows and 100% of them were unattributed,
+ * which makes "which phase got expensive" unanswerable from PAN's own telemetry
+ * — exactly the question a slowdown raises.
+ *
+ * state.md is authoritative for the current phase and is present whenever the
+ * phase model is in use. Frontmatter first (cheap, canonical), then the
+ * `**Current Phase:**` body field that `extractFieldsFromState` reads.
+ */
+function readCurrentPhase(cwd) {
+  try {
+    const content = fs.readFileSync(planningPath(cwd, 'state.md'), 'utf-8');
+    const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (fm) {
+      const m = fm[1].match(/^\s*current_phase\s*:\s*["']?([^"'\r\n]+)["']?\s*$/mi);
+      if (m && m[1].trim() && m[1].trim() !== 'null') return m[1].trim();
+    }
+    const body = content.match(/\*\*Current Phase:\*\*\s*(.+)/i);
+    if (body && body[1].trim()) return body[1].trim();
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -97,7 +158,7 @@ function durationFromSpan(firstTs, lastTs) {
 // cache-read into the billions/trillions and stamps it onto every subagent record
 // (field report 2026-06). Stored next to tokens.jsonl; best-effort, never blocks.
 function cursorFilePath(cwd) {
-  return path.join(cwd, '.planning', METRICS_DIR, CURSOR_FILE);
+  return planningPath(cwd, METRICS_DIR, CURSOR_FILE);
 }
 function readCursor(cwd) {
   try {
@@ -373,7 +434,10 @@ function buildCostRecord(data, cwd) {
   // them (real SubagentStop payloads carry neither); tier is derived from the model.
   const sessionMeta = readActiveSessionMeta(cwd);
   const command = data.command || sessionMeta.command || null;
-  const phase = data.phase || sessionMeta.phase || null;
+  // The trace session is only present while the optimizer is running (off by
+  // default), so state.md is the fallback that makes phase attribution work in
+  // ordinary use instead of only under tracing.
+  const phase = data.phase || sessionMeta.phase || readCurrentPhase(cwd) || null;
 
   const record = {
     v: SCHEMA_V,
@@ -513,7 +577,7 @@ function appendRecord(cwd, record) {
   // differs from the real row it follows, so the dedup never fired (M61).
   if (record.__emptySlice) return false;
   try {
-    const dir = path.join(cwd, '.planning', METRICS_DIR);
+    const dir = planningPath(cwd, METRICS_DIR);
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, TOKENS_FILE);
     // Idempotency guard: a re-fired SubagentStop must not double-log. Skip the

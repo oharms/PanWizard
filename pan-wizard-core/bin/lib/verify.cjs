@@ -9,7 +9,7 @@ const { safeReadFile, normalizePhaseName, comparePhaseNum, execGit, findPhaseInt
 const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
 const {
-  PLANNING_DIR, PHASES_DIR, STATE_FILE, ROADMAP_FILE, REQUIREMENTS_FILE, CONFIG_FILE, PROJECT_FILE, PATTERNS_FILE,
+  PHASES_DIR, STATE_FILE, ROADMAP_FILE, REQUIREMENTS_FILE, CONFIG_FILE, PROJECT_FILE, PATTERNS_FILE,
   isPlanFile, isSummaryFile, isVerificationFile, PHASE_HEADER_RE, PHASE_DIR_RE, ARCHIVE_DIR_RE, FIELD_VALUE_RE,
   PLAN_SUFFIX, SUMMARY_SUFFIX, STANDARDS_FILE, STANDARDS_CATALOG, HEALTH_STATUS,
   BUILTIN_DRIFT_RULES, DRIFT_VERDICTS, BINARY_EXTENSIONS, DRIFT_MAX_FILES, DRIFT_MAX_FILE_SIZE, DRIFT_SEVERITY_WEIGHTS,
@@ -21,6 +21,7 @@ const { runDriftCheck, parseConventionRules, checkFileConventions, calculateDrif
 const { collectVerificationStats, countRoadmapPhases, groupGapPatterns, cmdRetro } = require('./verify-retro.cjs');
 const { detectInstalledRuntimes, validateRuntimeInstall, cmdValidateDeployment } = require('./verify-deploy.cjs');
 const { cmdPreflight, cmdDepsValidate } = require('./verify-preflight.cjs');
+const { planningRootRel } = require('./planning-root.cjs');
 
 /**
  * Spot-check files mentioned in summary content.
@@ -715,7 +716,7 @@ function cmdValidateConsistency(cwd, raw) {
  */
 function checkPlanningDirExists(cwd, addIssue) {
   if (!fileAccessible(planningPath(cwd))) {
-    addIssue('error', 'E001', PLANNING_DIR + '/ directory not found', 'Run /pan:new-project to initialize');
+    addIssue('error', 'E001', planningRootRel() + '/ directory not found', 'Run /pan:new-project to initialize');
     return false;
   }
   return true;
@@ -998,7 +999,7 @@ function repairIssues(cwd, repairs) {
           const milestone = getMilestoneInfo(cwd);
           let stateContent = '# Session State\n\n';
           stateContent += '## Project Reference\n\n';
-          stateContent += `See: ${PLANNING_DIR}/${PROJECT_FILE}\n\n`;
+          stateContent += `See: ${planningRootRel()}/${PROJECT_FILE}\n\n`;
           stateContent += '## Position\n\n';
           stateContent += `**Milestone:** ${milestone.version} ${milestone.name}\n`;
           stateContent += '**Current phase:** (determining...)\n';

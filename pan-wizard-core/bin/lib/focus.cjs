@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const { output, EXIT_OK, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex, normalizePhaseName } = require('./core.cjs');
 const {
-  PLANNING_DIR, PHASES_DIR, ROADMAP_FILE, PATTERNS_FILE, EFFORT_POINTS, PRIORITY_LEVELS, EFFORT_SIZES,
+  PHASES_DIR, ROADMAP_FILE, PATTERNS_FILE, EFFORT_POINTS, PRIORITY_LEVELS, EFFORT_SIZES,
   FOCUS_MODES, FOCUS_TIERS, FOCUS_DIR,
   BUDGET_LIMIT_BUGFIX, BUDGET_LIMIT_FULL, STABILITY_RATIO, FEATURE_RATIO,
   DIMINISHING_RETURNS_THRESHOLD,
@@ -22,7 +22,7 @@ const {
 const { extractFrontmatter, extractPriorityEffort } = require('./frontmatter.cjs');
 const { enumerateRoadmapPhases } = require('./roadmap.cjs');
 const { readErrorPatterns } = require('./commands.cjs');
-const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles } = require('./utils.cjs');
+const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel } = require('./utils.cjs');
 
 // ─── Scan helpers ───────────────────────────────────────────────────────────
 
@@ -37,11 +37,11 @@ function collectWorkItems(cwd) {
   const sources = { phases: 0, todos: 0, patterns: 0 };
 
   // 1. Phase-based items from ROADMAP + plan.md frontmatter
-  const roadmapPath = path.join(cwd, PLANNING_DIR, ROADMAP_FILE);
+  const roadmapPath = planningPath(cwd, ROADMAP_FILE);
   const roadmapContent = safeReadFile(roadmapPath);
   if (roadmapContent) {
     const phases = enumerateRoadmapPhases(roadmapContent);
-    const phasesDir = path.join(cwd, PLANNING_DIR, PHASES_DIR);
+    const phasesDir = planningPath(cwd, PHASES_DIR);
     let dirs;
     try { dirs = fs.readdirSync(phasesDir); } catch { dirs = []; }
 
@@ -89,7 +89,7 @@ function collectWorkItems(cwd) {
         effort,
         points: EFFORT_POINTS[effort] || 4,
         status,
-        file: toPosix(path.join(PLANNING_DIR, PHASES_DIR, dirName)),
+        file: planningRel(PHASES_DIR, dirName),
       });
       sources.phases++;
     }
@@ -107,7 +107,7 @@ function collectWorkItems(cwd) {
         effort: 'S',
         points: EFFORT_POINTS.S,
         status: 'pending',
-        file: toPosix(path.join(PLANNING_DIR, 'todos', 'pending', todo.file)),
+        file: planningRel('todos', 'pending', todo.file),
       });
       sources.todos++;
     }
@@ -124,7 +124,7 @@ function collectWorkItems(cwd) {
       effort: 'S',
       points: EFFORT_POINTS.S,
       status: 'active',
-      file: toPosix(path.join(PLANNING_DIR, PATTERNS_FILE)),
+      file: planningRel(PATTERNS_FILE),
     });
     sources.patterns++;
   }
@@ -384,7 +384,7 @@ function cmdFocusPlan(cwd, raw, ...args) {
   const { batch, allocated, remaining } = allocateBudget(sorted, budget, mode);
 
   // Write batch file
-  const focusDir = path.join(cwd, PLANNING_DIR, FOCUS_DIR);
+  const focusDir = planningPath(cwd, FOCUS_DIR);
   try { fs.mkdirSync(focusDir, { recursive: true }); } catch { /* exists */ }
 
   const date = new Date().toISOString().split('T')[0];
@@ -574,7 +574,7 @@ function cmdFocusSync(cwd, raw, ...args) {
  * @returns {Object|null} Parsed batch data or null
  */
 function readLatestBatch(cwd) {
-  const focusDir = path.join(cwd, PLANNING_DIR, FOCUS_DIR);
+  const focusDir = planningPath(cwd, FOCUS_DIR);
   let files;
   try {
     files = fs.readdirSync(focusDir).filter(f => f.startsWith('batch-') && f.endsWith('.json'));
@@ -642,7 +642,7 @@ function cmdFocusExec(cwd, raw, ...args) {
       full: full.length,
     },
     items: batch.batch,
-    batch_file: toPosix(path.join(PLANNING_DIR, FOCUS_DIR, `batch-${batch.date}.json`)),
+    batch_file: planningRel(FOCUS_DIR, `batch-${batch.date}.json`),
   };
 
   output(result, raw);
@@ -672,7 +672,7 @@ function categoryFilter(items, category) {
  * @returns {object|null} Parsed auto-run state or null
  */
 function readAutoRun(cwd) {
-  const filePath = path.join(cwd, PLANNING_DIR, FOCUS_DIR, AUTO_RUN_FILE);
+  const filePath = planningPath(cwd, FOCUS_DIR, AUTO_RUN_FILE);
   const content = safeReadFile(filePath);
   if (!content) return null;
   try {
@@ -689,7 +689,7 @@ function readAutoRun(cwd) {
  * @returns {boolean} true on success
  */
 function writeAutoRun(cwd, data) {
-  const dirPath = path.join(cwd, PLANNING_DIR, FOCUS_DIR);
+  const dirPath = planningPath(cwd, FOCUS_DIR);
   try {
     fs.mkdirSync(dirPath, { recursive: true });
     fs.writeFileSync(path.join(dirPath, AUTO_RUN_FILE), JSON.stringify(data, null, 2));
@@ -929,9 +929,9 @@ function focusAutoCheckpointCommit(cwd, cycle, run) {
   // Enabled projects: refresh the HTML reports before staging so the committed
   // .planning/ snapshot reflects this cycle.
   maybeRenderPhaseReports(cwd);
-  const status = execGit(cwd, ['status', '--porcelain', PLANNING_DIR + '/']);
+  const status = execGit(cwd, ['status', '--porcelain', planningRel() + '/']);
   if (status.exitCode !== 0 || !status.stdout) return null;
-  execGit(cwd, ['add', PLANNING_DIR + '/']);
+  execGit(cwd, ['add', planningRel() + '/']);
   const msg = `docs: focus-auto cycle ${cycle.cycle} — ${cycle.items_completed} items completed`;
   const commitResult = execGit(cwd, ['commit', '-m', msg]);
   if (commitResult.exitCode !== 0) return null;
@@ -1057,11 +1057,11 @@ function focusAutoInit(cwd, raw, getVal, hasFlag) {
   };
 
   if (hasFlag('--dry-run')) {
-    return output({ dry_run: true, ...runData, run_file: toPosix(path.join(PLANNING_DIR, FOCUS_DIR, AUTO_RUN_FILE)) }, raw);
+    return output({ dry_run: true, ...runData, run_file: planningRel(FOCUS_DIR, AUTO_RUN_FILE) }, raw);
   }
 
   writeAutoRun(cwd, runData);
-  output({ ...runData, run_file: toPosix(path.join(PLANNING_DIR, FOCUS_DIR, AUTO_RUN_FILE)) }, raw);
+  output({ ...runData, run_file: planningRel(FOCUS_DIR, AUTO_RUN_FILE) }, raw);
 }
 
 function cmdFocusAuto(cwd, raw, ...args) {

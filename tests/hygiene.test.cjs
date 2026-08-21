@@ -17,6 +17,8 @@ const {
   checkCostLedger,
   checkStaleTraces,
   checkPlanningFragment,
+  checkCachedContext,
+  checkStaleReports,
   compareVersions,
 } = require('../pan-wizard-core/bin/lib/hygiene.cjs');
 const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
@@ -206,11 +208,31 @@ describe('hygiene — checkCostLedger', () => {
     assert.equal(r.findings[0].fix.action, 'quarantine-ledger');
   });
 
-  test('small or mostly-clean ledgers are not flagged', () => {
+  test('small or genuinely clean ledgers are not flagged', () => {
     writeLedger(Array.from({ length: 10 }, poisoned)); // below min-records
     assert.equal(checkCostLedger(tmp).findings.length, 0);
-    writeLedger([...Array.from({ length: 5 }, poisoned), ...Array.from({ length: 20 }, good)]); // below ratio
-    assert.equal(checkCostLedger(tmp).findings.length, 0);
+
+    // Clean on BOTH axes: few suspect rows AND those rows hold a minority of
+    // the token mass. `lowMassSuspect` trips the output-oversum rule rather
+    // than the cache-read rule, so a suspect row can exist without dominating.
+    const lowMassSuspect = () => ({ ts: '2026-07-01T00:00:00Z', agent: 'x', input_tokens: 0, output_tokens: 1.1e7, cache_read_tokens: 0 });
+    const heavyGood = () => ({ ts: '2026-07-01T00:00:00Z', agent: 'x', input_tokens: 1000, output_tokens: 500, cache_read_tokens: 5e6 });
+    writeLedger([...Array.from({ length: 5 }, lowMassSuspect), ...Array.from({ length: 20 }, heavyGood)]);
+    assert.equal(checkCostLedger(tmp).findings.length, 0,
+      'below the ratio on count AND on mass — nothing to report');
+  });
+
+  test('a ledger that passes on count but is dominated by suspect MASS is flagged', () => {
+    // The field case this gate exists for: 5 of 25 rows (20%, under the 50%
+    // count gate) carrying essentially all of the token mass. A count-only gate
+    // called this healthy while every aggregate read off it was wrong by orders
+    // of magnitude.
+    writeLedger([...Array.from({ length: 5 }, poisoned), ...Array.from({ length: 20 }, good)]);
+    const r = checkCostLedger(tmp);
+    assert.equal(r.findings.length, 1);
+    assert.equal(r.findings[0].severity, 'critical');
+    assert.match(r.findings[0].detail, /tripped on token mass/);
+    assert.match(r.findings[0].detail, /5\/25 records suspect \(20% of rows/);
   });
 
   test('clean --apply quarantines by rename, never deletes', () => {
@@ -339,5 +361,312 @@ describe('hygiene — CLI (hygiene scan|clean)', () => {
     const r = runPanTools('hygiene bogus', tmp);
     assert.equal(r.success, false);
     assert.match(r.error, /Unknown hygiene subcommand/);
+  });
+});
+
+// ─── Multi-track scanning ───────────────────────────────────────────────────
+
+/**
+ * Regression cover for the "false clean" defect: `hygiene scan` resolved
+ * `.planning/` relative to the cwd with no way to target another tree, so a
+ * repo whose real work lived in `.planning/tracks/*` got a clean bill of health
+ * while a sibling track sat far over its trace retention. The command did not
+ * fail — it succeeded against the wrong directory.
+ */
+describe('hygiene — multi-track', () => {
+  let tmp;
+
+  /** Give a directory a planning spine so it registers as a track. */
+  function makeTrack(name) {
+    const abs = path.join(tmp, '.planning', 'tracks', name);
+    fs.mkdirSync(path.join(abs, 'phases'), { recursive: true });
+    fs.writeFileSync(path.join(abs, 'state.md'), '# State\n');
+    return abs;
+  }
+
+  /** Age `count` trace sessions past retention inside a planning tree. */
+  function addStaleTraces(treeAbs, count) {
+    const traces = path.join(treeAbs, 'optimization', 'traces');
+    fs.mkdirSync(traces, { recursive: true });
+    const old = new Date(Date.now() - 200 * 24 * 3600 * 1000);
+    for (let i = 0; i < count; i++) {
+      const dir = path.join(traces, `session-${String(i).padStart(2, '0')}`);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'trace.json'), '{}');
+      fs.utimesSync(dir, old, old);
+    }
+    return traces;
+  }
+
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+
+  test('the default scan reports which tree it read', () => {
+    const r = runPanTools('hygiene scan', tmp);
+    assert.ok(r.success, r.error);
+    const j = JSON.parse(r.output);
+    assert.equal(j.planning_root, '.planning');
+    assert.equal(j.planning_root_source, 'default');
+    assert.equal(j.all_tracks, false);
+    assert.deepEqual(j.roots_scanned.map(x => x.planning_root), ['.planning'],
+      'a clean verdict must always name the tree it was reached from');
+  });
+
+  test('--track targets a sibling tree the default scan cannot see', () => {
+    addStaleTraces(makeTrack('verify'), 18);
+
+    const rootScan = JSON.parse(runPanTools('hygiene scan', tmp).output);
+    assert.equal(rootScan.summary.total, 0, 'root tree is genuinely clean');
+
+    const trackScan = JSON.parse(runPanTools('hygiene scan --track verify', tmp).output);
+    assert.equal(trackScan.planning_root, '.planning/tracks/verify');
+    assert.equal(trackScan.planning_root_source, 'flag:--track');
+    assert.ok(trackScan.summary.by_check['stale-traces'] > 0,
+      'the track over its trace retention must be reachable');
+    assert.ok(trackScan.findings.every(f => f.track === 'verify'),
+      'findings must be attributed to the track they came from');
+  });
+
+  test('--all-tracks sweeps the root tree and every track', () => {
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'), '# State\n');
+    makeTrack('core');
+    addStaleTraces(makeTrack('verify'), 18);
+
+    const j = JSON.parse(runPanTools('hygiene scan --all-tracks', tmp).output);
+    assert.equal(j.all_tracks, true);
+    assert.deepEqual(j.roots_scanned.map(x => x.track), [null, 'core', 'verify']);
+    assert.ok(j.summary.by_track.verify > 0);
+    assert.equal(j.summary.by_track.core, undefined, 'a clean track contributes no findings');
+  });
+
+  test('version drift is counted once, not once per track', () => {
+    writeManifest(tmp, '.claude', '0.0.1');
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'), '# State\n');
+    makeTrack('core');
+    makeTrack('verify');
+
+    const j = JSON.parse(runPanTools('hygiene scan --all-tracks', tmp).output);
+    const drift = j.findings.filter(f => f.check === 'version-alignment');
+    assert.equal(drift.length, 1,
+      'version alignment is a project property — sweeping N trees must not report it N times');
+  });
+
+  test('--all-tracks --apply prunes the offending track and leaves the others alone', () => {
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'), '# State\n');
+    const coreAbs = makeTrack('core');
+    const verifyAbs = makeTrack('verify');
+    const verifyTraces = addStaleTraces(verifyAbs, 18);
+
+    const r = runPanTools('hygiene clean --all-tracks --apply', tmp);
+    assert.ok(r.success, r.error);
+
+    assert.equal(fs.readdirSync(verifyTraces).length, 5, 'keeps the newest sessions only');
+    assert.ok(fs.existsSync(path.join(coreAbs, 'state.md')), 'untouched track still intact');
+    assert.ok(fs.existsSync(path.join(tmp, '.planning', 'state.md')), 'root tree still intact');
+  });
+
+  test('a track name that escapes the project root is rejected', () => {
+    const r = runPanTools('hygiene scan --track ../../etc', tmp);
+    assert.equal(r.success, false);
+    assert.match(r.error, /not a valid track name/);
+  });
+
+  test('a targeted track that does not exist is reported as missing', () => {
+    const j = JSON.parse(runPanTools('hygiene scan --track ghost', tmp).output);
+    assert.equal(j.planning_root_exists, false,
+      'a typo in --track must be visible, not read as a clean project');
+    assert.equal(j.summary.total, 0);
+  });
+});
+
+// ─── Cached context + optimization reports ──────────────────────────────────
+
+/**
+ * The cached context block is re-read into EVERY agent call, so it is the
+ * dominant recurring cost of a PAN project. Nothing watched it before: the size
+ * was measured and reported with no threshold, so a block that had grown to
+ * ~28k tokens of mostly closed history looked exactly like a healthy one.
+ */
+describe('hygiene — cached context', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+
+  const write = (name, kb) => fs.writeFileSync(
+    path.join(tmp, '.planning', name), 'x'.repeat(Math.round(kb * 1024)) + '\n');
+
+  test('a small cached block is not flagged', () => {
+    write('project.md', 1);
+    assert.deepEqual(checkCachedContext(tmp).findings, []);
+  });
+
+  test('a block past the warn threshold is a warning', () => {
+    write('state.md', 62); // ~15.9k tokens — over warn (15k), under critical (25k)
+    const block = checkCachedContext(tmp).findings.find(x => x.path === '.planning');
+    assert.equal(block.severity, 'warn');
+  });
+
+  test('an oversized block is critical and names the largest file', () => {
+    // Real sections, not filler: the compaction remedy is only offered when
+    // there is genuinely something to archive.
+    const bulk = Array.from({ length: 2000 }, (_, i) => `settled narrative line ${i} recording work that is finished and no longer actionable.`).join('\n');
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'),
+      `---\nv: 1\n---\n\n## Phase 1 closure\n\n${bulk}\n\n## Next Action\n\ngo\n`);
+
+    const f = checkCachedContext(tmp).findings;
+    const block = f.find(x => x.path === '.planning');
+    assert.equal(block.severity, 'critical');
+    assert.match(block.detail, /re-read on every agent call/);
+
+    const file = f.find(x => x.path.endsWith('state.md'));
+    assert.equal(file.severity, 'warn');
+    assert.equal(file.fix.action, 'compact-state', 'state.md gets the compaction remedy');
+  });
+
+  test('token counts are formatted without a locale-dependent separator', () => {
+    write('state.md', 110);
+    const block = checkCachedContext(tmp).findings.find(x => x.path === '.planning');
+    assert.match(block.detail, /~[\d,]+ tokens/, 'commas only — never a locale space');
+    assert.ok(!/\u00a0|\u202f/.test(block.detail), 'no non-breaking space in the finding');
+  });
+
+  test('planning docs with nothing cacheable is reported as no caching at all', () => {
+    fs.mkdirSync(path.join(tmp, '.planning', 'research'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, '.planning', 'research', 'spec.md'), '# spec\n');
+    const f = checkCachedContext(tmp).findings;
+    assert.equal(f.length, 1);
+    assert.equal(f[0].severity, 'info');
+    assert.match(f[0].detail, /none are cacheable/);
+  });
+
+  test('a bare scaffold with no docs yet is silent', () => {
+    // A freshly created .planning/phases/ has nothing to cache — saying so on
+    // every new project would be noise, not signal.
+    assert.deepEqual(checkCachedContext(tmp).findings, []);
+  });
+
+  test('config cache.extra_files brings a focus-model project back into cache', () => {
+    fs.mkdirSync(path.join(tmp, '.planning', 'research'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, '.planning', 'research', 'spec.md'), '# spec\n');
+    fs.writeFileSync(path.join(tmp, '.planning', 'config.json'),
+      JSON.stringify({ cache: { extra_files: ['research/spec.md'] } }));
+    assert.deepEqual(checkCachedContext(tmp).findings, [], 'now cached — nothing to report');
+  });
+});
+
+describe('hygiene — stale optimization reports', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+
+  function writeReports(count, ageDays) {
+    const dir = path.join(tmp, '.planning', 'optimization', 'reports');
+    fs.mkdirSync(dir, { recursive: true });
+    const when = new Date(Date.now() - ageDays * 24 * 3600 * 1000);
+    for (let i = 0; i < count; i++) {
+      const p = path.join(dir, `sess-${String(i).padStart(2, '0')}-report.md`);
+      fs.writeFileSync(p, '# report\n');
+      fs.utimesSync(p, when, when);
+    }
+  }
+
+  test('reports past retention beyond the keep-min are prunable', () => {
+    writeReports(9, 200);
+    const f = checkStaleReports(tmp, {}).findings;
+    assert.equal(f.length, 4, 'keeps the newest 5');
+    assert.equal(f[0].fix.action, 'delete');
+  });
+
+  test('recent reports are never flagged', () => {
+    writeReports(9, 1);
+    assert.deepEqual(checkStaleReports(tmp, {}).findings, []);
+  });
+
+  test('no reports directory is not an error', () => {
+    assert.deepEqual(checkStaleReports(tmp, {}).findings, []);
+  });
+});
+
+// ─── Convergence: clean must actually finish the job ────────────────────────
+
+/**
+ * A project must reach a settled state. Three defects broke that:
+ *   - `cache-context` advertised `compact-state` even after everything
+ *     archivable was gone, so `clean --apply` reported a permanent `failed: 1`
+ *   - each quarantine left a dated ledger behind and nothing ever removed them
+ *   - the cost cursor survived quarantine, pointing into a ledger that had moved
+ */
+describe('hygiene — clean converges', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+
+  const metrics = () => path.join(tmp, '.planning', 'metrics');
+
+  function writePoisonedLedger() {
+    fs.mkdirSync(metrics(), { recursive: true });
+    const rows = Array.from({ length: 25 }, () => JSON.stringify({
+      ts: '2026-07-01T00:00:00Z', agent: 'x', input_tokens: 1, output_tokens: 1, cache_read_tokens: 9e8,
+    }));
+    fs.writeFileSync(path.join(metrics(), 'tokens.jsonl'), rows.join('\n') + '\n');
+  }
+
+  function writeCompactableState() {
+    const bulk = Array.from({ length: 400 }, (_, i) => `settled narrative line ${i} that no longer drives a decision.`).join('\n');
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'),
+      `---\nv: 1\n---\n\n## Phase 1 closure\n\n${bulk}\n\n## Next Action\n\ngo\n`);
+  }
+
+  test('state.md keeps its compact-state fix only while there is something to archive', () => {
+    writeCompactableState();
+    const before = checkCachedContext(tmp).findings.find(f => f.path.endsWith('state.md'));
+    assert.equal(before.fix.action, 'compact-state', 'archivable history — offer the fix');
+
+    cleanHygiene(tmp, { apply: true });
+
+    const after = checkCachedContext(tmp).findings.find(f => f.path.endsWith('state.md'));
+    if (after) {
+      assert.equal(after.fixable, false,
+        'nothing left to archive — must not advertise a fix that would no-op');
+      assert.match(after.detail, /already compacted/);
+    }
+  });
+
+  test('a second clean --apply is a clean no-op, never a failure', () => {
+    writePoisonedLedger();
+    writeCompactableState();
+
+    const first = cleanHygiene(tmp, { apply: true });
+    assert.equal(first.summary.failed, 0);
+    assert.ok(first.summary.executed > 0);
+
+    const second = cleanHygiene(tmp, { apply: true });
+    assert.equal(second.summary.executed, 0, 'nothing left to do');
+    assert.equal(second.summary.failed, 0,
+      'a settled project must not report failures forever');
+    assert.equal(second.summary.fixable, 0);
+  });
+
+  test('quarantining prunes superseded quarantines and resets the cursor', () => {
+    writePoisonedLedger();
+    fs.writeFileSync(path.join(metrics(), 'tokens.jsonl.quarantined-2026-01-01'), 'old\n');
+    fs.writeFileSync(path.join(metrics(), 'tokens.jsonl.quarantined-2026-02-01'), 'older\n');
+    fs.writeFileSync(path.join(metrics(), '.cost-cursor.json'), '{"/t":5}');
+
+    cleanHygiene(tmp, { apply: true });
+
+    const left = fs.readdirSync(metrics()).filter(f => f.includes('quarantined'));
+    assert.equal(left.length, 1, 'only the newest quarantine survives');
+    assert.ok(!fs.existsSync(path.join(metrics(), '.cost-cursor.json')),
+      'a fresh ledger must not inherit the old read position');
+  });
+
+  test('the poisoned ledger itself is renamed, never deleted', () => {
+    writePoisonedLedger();
+    const original = fs.readFileSync(path.join(metrics(), 'tokens.jsonl'), 'utf8');
+    cleanHygiene(tmp, { apply: true });
+    const quarantined = fs.readdirSync(metrics()).find(f => f.includes('quarantined'));
+    assert.ok(quarantined, 'evidence preserved');
+    assert.equal(fs.readFileSync(path.join(metrics(), quarantined), 'utf8'), original);
   });
 });

@@ -9,8 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const { getArchivedPhaseDirs, output, error } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
-const { PLANNING_DIR, PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, isSummaryFile } = require('./constants.cjs');
-const { phasesPath } = require('./utils.cjs');
+const { PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, isSummaryFile } = require('./constants.cjs');
+const { phasesPath, planningPath } = require('./utils.cjs');
 
 /**
  * Scan all phase directories (archived + current) and read summary frontmatter.
@@ -78,7 +78,7 @@ function collectPhaseSummaries(cwd) {
  * @returns {Array<{id: string, title: string, wrong: string, right: string, context: string|null, date: string|null}>}
  */
 function readErrorPatterns(cwd) {
-  const filePath = path.join(cwd, PLANNING_DIR, PATTERNS_FILE);
+  const filePath = planningPath(cwd, PATTERNS_FILE);
   let content;
   try {
     content = fs.readFileSync(filePath, 'utf-8');
@@ -141,7 +141,7 @@ function appendErrorPattern(cwd, pattern) {
     return { error: "Pattern requires 'wrong' and 'right' fields" };
   }
 
-  const filePath = path.join(cwd, PLANNING_DIR, PATTERNS_FILE);
+  const filePath = planningPath(cwd, PATTERNS_FILE);
   const existing = readErrorPatterns(cwd);
 
   // Determine next ID
@@ -198,7 +198,7 @@ function appendSessionSummary(cwd, summary) {
     return { error: "Summary requires 'phase' field" };
   }
 
-  const filePath = path.join(cwd, PLANNING_DIR, SESSION_HISTORY_FILE);
+  const filePath = planningPath(cwd, SESSION_HISTORY_FILE);
   const date = summary.date || new Date().toISOString().split('T')[0];
 
   const entry = [
@@ -308,7 +308,7 @@ function formatLearningEntry(learning) {
  * @returns {void}
  */
 function cmdLearningsExtract(cwd, raw) {
-  const learningsPath = path.join(cwd, PLANNING_DIR, LEARNINGS_FILE);
+  const learningsPath = planningPath(cwd, LEARNINGS_FILE);
   const newLearnings = [];
   const today = new Date().toISOString().split('T')[0];
 
@@ -445,7 +445,7 @@ function cmdLearningsExtract(cwd, raw) {
  * @returns {void}
  */
 function cmdLearningsList(cwd, raw) {
-  const learningsPath = path.join(cwd, PLANNING_DIR, LEARNINGS_FILE);
+  const learningsPath = planningPath(cwd, LEARNINGS_FILE);
 
   let content;
   try {
@@ -484,7 +484,7 @@ function cmdLearningsList(cwd, raw) {
  * @returns {void}
  */
 function cmdLearningsPrune(cwd, opts, raw) {
-  const learningsPath = path.join(cwd, PLANNING_DIR, LEARNINGS_FILE);
+  const learningsPath = planningPath(cwd, LEARNINGS_FILE);
 
   if (!opts || (opts.days == null && opts.id == null)) {
     error('Prune requires --days N or --id LEARN-NNN');

@@ -134,6 +134,28 @@ A gate whose verdict has no `error` key sets its code explicitly instead: `links
 
 Override the working directory. Accepts `--cwd /path` or `--cwd=/path`. Useful when subagents run outside the project root.
 
+### Planning root: `--track` / `--planning-dir` / `--all-tracks` (v3.27)
+
+`--cwd` moves the *project* root. These move the *planning* root inside it, so a repo holding several planning trees (several independently-planned products in one repo, a monorepo, a spike kept beside the mainline) can address any of them. See [ADR-0043](decisions/ADR-0043-addressable-planning-roots.md).
+
+| Flag | Effect |
+|---|---|
+| `--track <name>` | Act on `.planning/tracks/<name>/`. Name must be a slug (`[A-Za-z0-9][A-Za-z0-9._-]*`) — it becomes a single path segment. |
+| `--planning-dir <path>` | Act on an arbitrary project-relative planning tree. Absolute, drive-relative, and `..`-containing paths are rejected. |
+| `--all-tracks` | Act on the root tree **and** every discovered track. Implemented for `hygiene`; other commands ignore it. |
+
+Both value flags accept `--flag value` and `--flag=value`, and are mutually exclusive. Environment equivalents `PAN_TRACK` and `PAN_PLANNING_DIR` apply when no flag is given; flags win, and `PAN_PLANNING_DIR` outranks `PAN_TRACK`.
+
+**Tracks are discovered, not declared.** Any directory under `.planning/tracks/` carrying a planning spine (`state.md`, `roadmap.md`, `phases/`, `focus/`, `orchestration/`, …) is a track; an incidental folder is not.
+
+**Commands report the root they resolved.** Payloads that read a planning tree carry `planning_root`, `track`, `planning_root_source` (`default` / `env:PAN_TRACK` / `flag:--track` / …), and `planning_root_exists`. A mistyped `--track` therefore shows `planning_root_exists: false` next to its zero findings, instead of reading as a healthy project.
+
+```
+pan-tools hygiene scan --track verify --raw
+pan-tools hygiene scan --all-tracks --raw
+PAN_TRACK=verify pan-tools init milestone-op
+```
+
 ### Module Architecture
 
 The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
@@ -141,6 +163,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | Module | Purpose |
 |--------|---------|
 | `state.cjs` | state.md read/write/parse |
+| `state-compact.cjs` | **(v3.27)** `state compact` — moves settled history out of state.md into state-history.md so it stops being re-read into every agent call. Archive-first, dry-run by default. |
 | `commands.cjs` | Utility commands (slug, timestamp, commit, batch-commit, estimate-cost, rollback, progress, etc.) |
 | `phase.cjs` | Phase directory and plan operations |
 | `init.cjs` | Compound workflow context gathering |
@@ -157,7 +180,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `config.cjs` | config.json management |
 | `template.cjs` | Template selection and filling |
 | `milestone.cjs` | Milestone archival and requirements |
-| `context-budget.cjs` | Context window utilization (v2.10.0: cache metrics surfaced in health output) |
+| `context-budget.cjs` | Context window utilization (v2.10.0: cache metrics surfaced in health output; v3.27: cache block classified `ok`/`warn`/`critical`/`absent` with remediation advice) |
 | `focus.cjs` | Focus workflow scan/plan/sync/exec/auto/design + v2.10.0: `focus classify-stages`, `focus reflection` |
 | `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices + v2.10.0: `codebase estimate-size` |
 | `memory.cjs` | **(v2.10.0, E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact` |
@@ -191,6 +214,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `constants.cjs` | Shared constants used across the dispatcher — e.g. `COMMAND_RENAME_MAP` (legacy→current command names) and `FOCUS_CATEGORIES`. No CLI surface; imported by other modules. |
 | `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
 | `utils.cjs` | Cross-cutting helpers (path normalization via `toPosix()`, safe reads, small parsers) shared by the other modules. No CLI surface. |
+| `planning-root.cjs` | **(v3.27)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 
 ---
 
@@ -565,6 +589,30 @@ pan-tools state snapshot [--raw]    # equivalent alias — the spaced form dispa
 ## 2. State Progression
 
 Commands for advancing workflow state — plan counters, metrics, decisions, blockers, and session continuity.
+
+### `state compact [--apply] [--keep-days N]` (v3.27)
+
+Move settled history out of `state.md` into `state-history.md`. See [ADR-0044](decisions/ADR-0044-bound-the-cached-context.md).
+
+`state.md` is in the cached context block, so **every byte is re-read into every agent call** — and its section writers only append, so the file can only grow. In the field this reached 54 KB, of which 30 KB was a ten-week-old session log, a resolved milestone audit, and three phase closures: ~7k tokens of finished work re-read on every call.
+
+```
+pan-tools state compact                   # dry-run: what would move, and what it saves
+pan-tools state compact --apply
+pan-tools state compact --keep-days 90
+```
+
+**What moves:** a section whose heading is dated past the retention window (default 30 days), or whose heading says "closure"/"closed".
+
+**What never moves:**
+- headings PAN reads or writes (Decisions, Blockers, Next Action, Phase Progress, Project Reference, Source Authority, Toolchain, Session, Status, Metrics) — `state get <section>` can read any heading by name
+- any section carrying a field the frontmatter is rebuilt from (`**Status:**`, `**Current Phase:**`, `**Progress:**`, …), because `syncStateFrontmatter` regenerates frontmatter from the **first** such match in the body
+- anything unrecognised — the classifier declines rather than guesses
+- everything, when archiving would not actually shrink the file (on a small `state.md` the pointer costs more than the section)
+
+**Safety:** nothing is deleted. History is appended to `state-history.md` **first**, then `state.md` is rewritten with a pointer where each archived section stood — an interruption can only duplicate, never lose. The dry-run's byte count comes from the same rebuild `--apply` uses.
+
+**Key output fields:** `sections[]` (each with `title`, `bytes`, `archive`, `reason`), `archivable[]`, `bytes_before` / `bytes_after`, `tokens_before` / `tokens_after`, `tokens_saved_per_call`.
 
 ### `state advance-plan`
 
@@ -1928,6 +1976,7 @@ pan-tools config-ensure-section [--raw]
 | `budget.enforce` | `false` | Make the spawn/point budget a hard stop. Advisory by default (tracked + surfaced, never stops a run). |
 | `budget.verify_reserve` | `0.15` | Fraction of the spawn budget (0–0.5) held back for re-verification so it can't be starved. Surfaced as `new_work_budget_remaining` / `into_verify_reserve` always; a hard early stop (`budget_reserve_reached`) only under `budget.enforce` / `--enforce-budget`. Override per-run with `--verify-reserve`. |
 | `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25 } }`. Applied to both `cost append` and aggregate reporting. |
+| `cache.extra_files` | `[]` | **(v3.27)** Extra planning-root-relative docs to include in the cached context block, e.g. `["research/api-contract.md"]`. The built-in list is the *phase-model* spine (project/requirements/roadmap/state/standards), so a focus-model project has an empty block and gets **no prompt caching at all**. Entries are appended after the built-ins (the cache prefix stays byte-stable for projects that set nothing); absolute paths, drive paths, and `..` segments are ignored. |
 | `brave_search` | auto-detected | Brave Search API availability |
 
 ---
@@ -2435,18 +2484,28 @@ pan-tools init todos refactoring [--raw]
 
 ---
 
-### `init milestone-op`
+### `init milestone-op [--track <name>] [--all-tracks]`
 
-All context for milestone operations.
+All context for milestone operations. Backs `/pan:milestone-audit`, `/pan:milestone-done`, and `/pan:milestone-new`.
 
 ```
 pan-tools init milestone-op [--raw]
+pan-tools init milestone-op --track core
+pan-tools init milestone-op --all-tracks
 ```
 
 **Key output fields:**
+- `planning_root`, `track`, `planning_root_source`, `planning_root_exists` — which tree this came from
 - `milestone_version`, `milestone_name`, `milestone_slug` — Current milestone
+- `milestone_status`, `milestone_basis`, `milestone_ambiguous`, `milestone_candidates` — **how** the milestone was decided (v3.27)
 - `phase_count`, `completed_phases`, `all_phases_complete` — Phase progress
 - `archived_milestones[]`, `archive_count` — Archive info
+
+**`milestone_basis`** is one of `marked-current` (an explicit `(current)` / 🚧 marker), `first-unshipped`, `last-shipped`, `default` (no roadmap), or `no-milestone-heading` (a roadmap with no milestone heading at all). It exists so a caller can tell a real `v1.0` from a fallback.
+
+**`milestone_ambiguous: true`** means the roadmap marks more than one milestone current — a planning-state error. The audit workflow stops rather than picking one, because auditing a silently-chosen milestone is how a report ends up describing a milestone that does not exist.
+
+**`--all-tracks`** returns `{all_tracks, track_count, ambiguous_tracks[], tracks[]}` — one full payload per planning tree, each labelled with its own `track` and `planning_root`. Use it to see every tree's milestone state before choosing which to audit.
 
 ---
 
@@ -3690,17 +3749,19 @@ Project cleanup + version alignment (see `docs/FIELD-HARVEST-2026-07.md` follow-
 
 **Module:** `hygiene.cjs`
 
-### `hygiene scan [--trace-age-days N]` (v3.13)
+Both subcommands accept the planning-root flags (`--track`, `--planning-dir`, `--all-tracks`) documented under [Global Flags](#planning-root---track----planning-dir----all-tracks-v327). Without them, only `.planning/` is scanned — and the scan says so, since a "clean" verdict is only meaningful alongside a statement of what was looked at.
 
-Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; cost ledgers ≥50% suspect records (v3.12.4 `isSuspectRecord`, min 20 records); trace sessions older than retention (default 30d, newest 5 always kept); fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines). Returns `{findings, installs, latest_version, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fixable`.
+### `hygiene scan [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
+
+Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the block re-read into every agent call, warned at 15k tokens and critical at 25k, with any single file over 6k called out and `state.md` carrying the `compact-state` remedy; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines). Returns `{findings, installs, latest_version, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
 
 ```
 pan-tools hygiene scan --raw
 ```
 
-### `hygiene clean [--apply] [--trace-age-days N]` (v3.13)
+### `hygiene clean [--apply] [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
 
-Dry-run by default (lists what would change); `--apply` executes the safe subset: two-step case-hop renames of legacy filenames, `.tmp` orphan deletion, memory-log compaction (`compactMemory`), poisoned-ledger **quarantine-by-rename** (`tokens.jsonl.quarantined-<date>` — content never deleted), and stale-trace pruning. Version drift (remediation = re-run the installer) and fragment dirs (manual review) are never auto-fixed. Returns `{dry_run, applied, skipped, summary}`.
+Dry-run by default (lists what would change); `--apply` executes the safe subset: two-step case-hop renames of legacy filenames, `.tmp` orphan deletion, memory-log compaction (`compactMemory`), poisoned-ledger **quarantine-by-rename** (`tokens.jsonl.quarantined-<date>` — content never deleted), and stale-trace pruning. Version drift (remediation = re-run the installer) and fragment dirs (manual review) are never auto-fixed. Returns `{dry_run, applied, skipped, planning_root, track, all_tracks, roots_scanned, summary}`. Under `--all-tracks` each fix is applied within its own tree's scope, so a track's bloated memory log is compacted in that track rather than in the root tree.
 
 ```
 pan-tools hygiene clean --apply --raw

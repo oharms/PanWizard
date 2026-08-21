@@ -36,7 +36,8 @@
       "Bash(gh auth status)",
       "Bash(cmd.exe /c \"where gh\")",
       "Bash(cmd.exe /c \"gh --version\")",
-      "Bash(powershell.exe -Command \"winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements\")"
+      "Bash(powershell.exe -Command \"winget install --id GitHub.cli --accept-source-agreements --accept-package-agreements\")",
+      "Bash(node -p \"require\\('./package.json'\\).version\")"
     ],
     "deny": [
       "Bash(rm -rf /)",

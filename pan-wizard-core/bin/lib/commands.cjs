@@ -5,10 +5,11 @@ const fs = require('fs');
 const path = require('path');
 const { safeReadFile, loadConfig, isGitIgnored, isGitRepo, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, resolveEffortInternal, detectProvider, resolveTierToModel, estimateCostMultiplier, MODEL_PROFILES, output, error, findPhaseInternal, scanPendingTodos, toPosix } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
-const { PLANNING_DIR, PHASES_DIR, MILESTONES_DIR, QUICK_DIR, STATE_FILE, ROADMAP_FILE, PROJECT_FILE, PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, CONTEXT_SUFFIX, UAT_SUFFIX, VERIFICATION_SUFFIX, isPlanFile, isSummaryFile, ARCHIVE_DIR_RE, PHASE_DIR_RE, CONTEXT_WINDOW, WARNING_THRESHOLD, CRITICAL_THRESHOLD, VALID_COMMIT_TYPES, DEFAULT_SENSITIVE_PATTERNS } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles } = require('./utils.cjs');
+const { PHASES_DIR, MILESTONES_DIR, QUICK_DIR, STATE_FILE, ROADMAP_FILE, PROJECT_FILE, PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, CONTEXT_SUFFIX, UAT_SUFFIX, VERIFICATION_SUFFIX, isPlanFile, isSummaryFile, ARCHIVE_DIR_RE, PHASE_DIR_RE, CONTEXT_WINDOW, WARNING_THRESHOLD, CRITICAL_THRESHOLD, VALID_COMMIT_TYPES, DEFAULT_SENSITIVE_PATTERNS } = require('./constants.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, planningRel } = require('./utils.cjs');
 const { estimateTokens } = require('./context-budget.cjs');
 const { collectPhaseSummaries, readErrorPatterns, appendErrorPattern, appendSessionSummary, parseLearnings, formatLearningEntry, cmdLearningsExtract, cmdLearningsList, cmdLearningsPrune } = require('./commands-learnings.cjs');
+const { planningRootRel } = require('./planning-root.cjs');
 
 /**
  * Generate a URL-safe slug from text by lowercasing and replacing non-alphanumeric chars.
@@ -381,7 +382,7 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
     output({ committed: false, hash: null, reason: 'skipped_commit_docs_false' }, raw, 'skipped');
     return;
   }
-  if (isGitIgnored(cwd, PLANNING_DIR)) {
+  if (isGitIgnored(cwd, planningRootRel())) {
     // No error key, exit 0: .planning/ is gitignored - also the user's choice.
     output({ committed: false, hash: null, reason: 'skipped_gitignored' }, raw, 'skipped');
     return;
@@ -395,7 +396,7 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   const preStaged = new Set(stagedFiles(cwd));
 
   // Stage files
-  const filesToStage = files && files.length > 0 ? files : [PLANNING_DIR + '/'];
+  const filesToStage = files && files.length > 0 ? files : [planningRel() + '/'];
   for (const file of filesToStage) execGit(cwd, ['add', file]);
 
   // Safety checks
@@ -614,7 +615,7 @@ function renderProgressBar(percent, width) {
  */
 function cmdProgressRender(cwd, format, raw) {
   const phasesDir = phasesPath(cwd);
-  const roadmapPath = path.join(cwd, PLANNING_DIR, ROADMAP_FILE);
+  const roadmapPath = planningPath(cwd, ROADMAP_FILE);
   const milestone = getMilestoneInfo(cwd);
 
   const phases = [];
@@ -693,9 +694,9 @@ function cmdProgressRender(cwd, format, raw) {
  * Compute and output a composite health score from progress, context budget, and staleness.
  */
 function renderHealthReport(cwd, { phasesDir, phases, totalPlans, totalSummaries, percent }, raw) {
-  const stateContent = safeReadFile(path.join(cwd, PLANNING_DIR, STATE_FILE));
-  const roadmapContent = safeReadFile(path.join(cwd, PLANNING_DIR, ROADMAP_FILE));
-  const projectContent = safeReadFile(path.join(cwd, PLANNING_DIR, PROJECT_FILE));
+  const stateContent = safeReadFile(planningPath(cwd, STATE_FILE));
+  const roadmapContent = safeReadFile(planningPath(cwd, ROADMAP_FILE));
+  const projectContent = safeReadFile(planningPath(cwd, PROJECT_FILE));
 
   const stateTokens = estimateTokens(stateContent);
   const roadmapTokens = estimateTokens(roadmapContent);
@@ -742,7 +743,7 @@ function renderHealthReport(cwd, { phasesDir, phases, totalPlans, totalSummaries
   // Read session history count
   let sessionCount = 0;
   try {
-    const sessionContent = fs.readFileSync(path.join(cwd, PLANNING_DIR, SESSION_HISTORY_FILE), 'utf-8');
+    const sessionContent = fs.readFileSync(planningPath(cwd, SESSION_HISTORY_FILE), 'utf-8');
     sessionCount = (sessionContent.match(/^### Session — /gm) || []).length;
   } catch { /* file doesn't exist */ }
 
@@ -782,8 +783,8 @@ function cmdTodoComplete(cwd, filename, raw) {
     error('filename required for todo complete');
   }
 
-  const pendingDir = path.join(cwd, PLANNING_DIR, 'todos', 'pending');
-  const completedDir = path.join(cwd, PLANNING_DIR, 'todos', 'completed');
+  const pendingDir = planningPath(cwd, 'todos', 'pending');
+  const completedDir = planningPath(cwd, 'todos', 'completed');
   const sourcePath = path.join(pendingDir, filename);
 
   let content;
@@ -870,14 +871,14 @@ function cmdScaffold(cwd, type, options, raw) {
       }
       const slug = generateSlugInternal(name);
       const dirName = `${padded}-${slug}`;
-      const phasesParent = path.join(cwd, PLANNING_DIR, PHASES_DIR);
+      const phasesParent = planningPath(cwd, PHASES_DIR);
       try {
         fs.mkdirSync(phasesParent, { recursive: true });
         fs.mkdirSync(path.join(phasesParent, dirName), { recursive: true });
       } catch (e) {
         error(`Failed to create phase directory: ${e.message}`);
       }
-      output({ created: true, directory: `${PLANNING_DIR}/${PHASES_DIR}/${dirName}` }, raw, `${PLANNING_DIR}/${PHASES_DIR}/${dirName}`);
+      output({ created: true, directory: planningRel(PHASES_DIR, dirName) }, raw, planningRel(PHASES_DIR, dirName));
       return;
     }
     default:
@@ -972,7 +973,7 @@ function cmdBatchCommit(cwd, items, raw) {
   }
 
   // Stage .planning/ only
-  execGit(cwd, ['add', PLANNING_DIR + '/']);
+  execGit(cwd, ['add', planningRel() + '/']);
 
   // Check if there's anything to commit
   const statusResult = execGit(cwd, ['diff', '--cached', '--name-only']);

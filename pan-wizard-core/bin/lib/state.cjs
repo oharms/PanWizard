@@ -8,7 +8,6 @@ const { loadConfig, getMilestoneInfo, escapeRegex, safeReadFile, output, error }
 const { extractFrontmatter, reconstructFrontmatter } = require('./frontmatter.cjs');
 const { withFileLock, writeFileAtomic } = require('./lock.cjs');
 const {
-  PLANNING_DIR,
   STATE_FILE,
   ROADMAP_FILE,
   CONFIG_FILE,

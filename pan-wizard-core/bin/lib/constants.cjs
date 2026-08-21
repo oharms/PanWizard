@@ -572,11 +572,31 @@ const MEMORY_LOAD_WARN_TOKENS = 4000;     // memory-budget telemetry: warn thres
 const MEMORY_LOAD_CRIT_TOKENS = 8000;     // memory-budget telemetry: critical threshold (absolute tokens)
 const MEMORY_LOAD_MAX_FRACTION = 0.15;    // memory-budget telemetry: max fraction of median agent input
 
+// Cached prompt context (ADR-0044). The files in CACHEABLE_CONTEXT_FILES are
+// re-read into EVERY agent call, so their combined size is the single largest
+// recurring cost in a PAN project — cache reads dominate token traffic by roughly
+// two orders of magnitude over generation. These thresholds mirror the
+// MEMORY_LOAD_* pattern above: measured, classified, and surfaced.
+const CACHE_BLOCK_WARN_TOKENS = 15000;    // cached context block: warn threshold (absolute tokens)
+const CACHE_BLOCK_CRIT_TOKENS = 25000;    // cached context block: critical threshold
+const CACHE_FILE_WARN_TOKENS = 6000;      // any SINGLE cacheable file past this is the one to fix
+
+// state.md compaction (ADR-0044). state.md is the largest cacheable file in
+// practice because its section writers only ever append; closed history keeps
+// being re-read months after it stopped being actionable.
+const STATE_HISTORY_FILE = 'state-history.md';
+const STATE_COMPACT_KEEP_DAYS = 30;       // dated sections newer than this stay in state.md
+
 // Hygiene — project cleanup + version alignment (docs/FIELD-HARVEST-2026-07.md follow-ups).
 const HYGIENE_TRACE_RETENTION_DAYS = 30;  // trace sessions older than this are prunable…
 const HYGIENE_TRACE_KEEP_MIN = 5;         // …but always keep this many newest sessions
+const HYGIENE_REPORT_KEEP_MIN = 5;        // …same shape for optimization/reports/
 const HYGIENE_LEDGER_SUSPECT_RATIO = 0.5; // ledger "poisoned" when suspect fraction ≥ this…
 const HYGIENE_LEDGER_MIN_RECORDS = 20;    // …and it has at least this many records
+// …OR when the suspect rows, however few, carry this share of the token MASS.
+// A count-only gate passes a ledger whose 24% bad rows hold 90% of the tokens —
+// statistically fine, arithmetically useless. Mass is what aggregates read.
+const HYGIENE_LEDGER_SUSPECT_MASS_RATIO = 0.5;
 const HYGIENE_TMP_AGE_MS = 60 * 60 * 1000; // .tmp orphans older than 1h are deletable
 
 // Skill-Aligned Decomposition pass (ADR-0038): planner draft ↔ skill-surface alignment.
@@ -772,8 +792,15 @@ module.exports = {
   MEMORY_LOAD_CRIT_TOKENS,
   MEMORY_LOAD_MAX_FRACTION,
   // Hygiene
+  CACHE_BLOCK_WARN_TOKENS,
+  CACHE_BLOCK_CRIT_TOKENS,
+  CACHE_FILE_WARN_TOKENS,
+  STATE_HISTORY_FILE,
+  STATE_COMPACT_KEEP_DAYS,
   HYGIENE_TRACE_RETENTION_DAYS,
   HYGIENE_TRACE_KEEP_MIN,
+  HYGIENE_REPORT_KEEP_MIN,
+  HYGIENE_LEDGER_SUSPECT_MASS_RATIO,
   HYGIENE_LEDGER_SUSPECT_RATIO,
   HYGIENE_LEDGER_MIN_RECORDS,
   HYGIENE_TMP_AGE_MS,

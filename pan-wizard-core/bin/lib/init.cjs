@@ -5,11 +5,12 @@
 const fs = require('fs');
 const path = require('path');
 const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, normalizePhaseName, toPosix, output, error, scanPendingTodos, isGitRepo, execGit } = require('./core.cjs');
-const { PLANNING_DIR, PHASES_DIR, CODEBASE_DIR, QUICK_DIR, MILESTONES_DIR, STATE_FILE, ROADMAP_FILE, CONFIG_FILE, PROJECT_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isResearchFile, isContextFile, isVerificationFile, PLAN_SUFFIX, SUMMARY_SUFFIX, CONTEXT_SUFFIX, RESEARCH_SUFFIX, VERIFICATION_SUFFIX, UAT_SUFFIX, MAX_SLUG_LENGTH } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, hasBraveSearchKey, parsePhaseDir } = require('./utils.cjs');
+const { PHASES_DIR, CODEBASE_DIR, QUICK_DIR, MILESTONES_DIR, STATE_FILE, ROADMAP_FILE, CONFIG_FILE, PROJECT_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isResearchFile, isContextFile, isVerificationFile, PLAN_SUFFIX, SUMMARY_SUFFIX, CONTEXT_SUFFIX, RESEARCH_SUFFIX, VERIFICATION_SUFFIX, UAT_SUFFIX, MAX_SLUG_LENGTH } = require('./constants.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, hasBraveSearchKey, parsePhaseDir, planningRel } = require('./utils.cjs');
 const { classifyPlanTier } = require('./phase.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { detectLanguages } = require('./codebase.cjs');
+const { planningRootRel, describePlanningRoot, planningRoots, withPlanningRoot } = require('./planning-root.cjs');
 
 // ---- Git helpers ----
 
@@ -23,7 +24,7 @@ function ensureGitRepo(cwd) {
 
 /** Build a forward-slash relative path under .planning for JSON output */
 function planningRelPath(...segments) {
-  return [PLANNING_DIR, ...segments].join('/');
+  return planningRel(...segments);
 }
 
 /**
@@ -178,6 +179,9 @@ function cmdInitExecutePhase(cwd, phase, raw, opts) {
         : null,
 
     // Milestone info
+    // Which tree this milestone came from — a spliced or wrong-track milestone
+    // must never look like a confident answer.
+    ...describePlanningRoot(cwd),
     milestone_version: milestone.version,
     milestone_name: milestone.name,
     milestone_slug: generateSlugInternal(milestone.name),
@@ -251,7 +255,10 @@ function cmdInitPlanPhase(cwd, phase, raw) {
     plan_count: phaseInfo?.plans?.length || 0,
 
     // Environment
-    planning_exists: pathExistsInternal(cwd, PLANNING_DIR),
+    planning_exists: pathExistsInternal(cwd, planningRootRel()),
+    // Which tree this ran against — so a wrong --track/--planning-dir is visible
+    // in the output rather than silently producing plausible results.
+    ...describePlanningRoot(cwd),
     roadmap_exists: pathExistsInternal(cwd, planningRelPath(ROADMAP_FILE)),
 
     // File paths
@@ -322,7 +329,10 @@ function cmdInitNewProject(cwd, raw) {
     // Existing state
     project_exists: pathExistsInternal(cwd, planningRelPath(PROJECT_FILE)),
     has_codebase_map: pathExistsInternal(cwd, planningRelPath(CODEBASE_DIR)),
-    planning_exists: pathExistsInternal(cwd, PLANNING_DIR),
+    planning_exists: pathExistsInternal(cwd, planningRootRel()),
+    // Which tree this ran against — so a wrong --track/--planning-dir is visible
+    // in the output rather than silently producing plausible results.
+    ...describePlanningRoot(cwd),
 
     // Brownfield detection
     has_existing_code: hasCode,
@@ -435,7 +445,10 @@ function cmdInitQuick(cwd, description, raw) {
 
     // File existence
     roadmap_exists: pathExistsInternal(cwd, planningRelPath(ROADMAP_FILE)),
-    planning_exists: pathExistsInternal(cwd, PLANNING_DIR),
+    planning_exists: pathExistsInternal(cwd, planningRootRel()),
+    // Which tree this ran against — so a wrong --track/--planning-dir is visible
+    // in the output rather than silently producing plausible results.
+    ...describePlanningRoot(cwd),
 
   };
 
@@ -464,7 +477,10 @@ function cmdInitResume(cwd, raw) {
     state_exists: pathExistsInternal(cwd, planningRelPath(STATE_FILE)),
     roadmap_exists: pathExistsInternal(cwd, planningRelPath(ROADMAP_FILE)),
     project_exists: pathExistsInternal(cwd, planningRelPath(PROJECT_FILE)),
-    planning_exists: pathExistsInternal(cwd, PLANNING_DIR),
+    planning_exists: pathExistsInternal(cwd, planningRootRel()),
+    // Which tree this ran against — so a wrong --track/--planning-dir is visible
+    // in the output rather than silently producing plausible results.
+    ...describePlanningRoot(cwd),
 
     // File paths
     state_path: planningRelPath(STATE_FILE),
@@ -572,7 +588,10 @@ function cmdInitPhaseOp(cwd, phase, raw) {
 
     // File existence
     roadmap_exists: pathExistsInternal(cwd, planningRelPath(ROADMAP_FILE)),
-    planning_exists: pathExistsInternal(cwd, PLANNING_DIR),
+    planning_exists: pathExistsInternal(cwd, planningRootRel()),
+    // Which tree this ran against — so a wrong --track/--planning-dir is visible
+    // in the output rather than silently producing plausible results.
+    ...describePlanningRoot(cwd),
 
     // File paths
     state_path: planningRelPath(STATE_FILE),
@@ -610,7 +629,10 @@ function cmdInitTodos(cwd, area, raw) {
     area_filter: area || null,
     pending_dir: planningRelPath('todos/pending'),
     completed_dir: planningRelPath('todos/completed'),
-    planning_exists: pathExistsInternal(cwd, PLANNING_DIR),
+    planning_exists: pathExistsInternal(cwd, planningRootRel()),
+    // Which tree this ran against — so a wrong --track/--planning-dir is visible
+    // in the output rather than silently producing plausible results.
+    ...describePlanningRoot(cwd),
     todos_dir_exists: pathExistsInternal(cwd, planningRelPath('todos')),
     pending_dir_exists: pathExistsInternal(cwd, planningRelPath('todos/pending')),
   };
@@ -624,7 +646,7 @@ function cmdInitTodos(cwd, area, raw) {
  * @param {boolean} raw - If true, output raw value instead of JSON
  * @returns {void}
  */
-function cmdInitMilestoneOp(cwd, raw) {
+function buildMilestoneOpPayload(cwd) {
   const config = loadConfig(cwd);
   const milestone = getMilestoneInfo(cwd);
 
@@ -667,9 +689,20 @@ function cmdInitMilestoneOp(cwd, raw) {
     commit_docs: config.commit_docs,
 
     // Current milestone
+    // Which tree this milestone came from — a spliced or wrong-track milestone
+    // must never look like a confident answer.
+    ...describePlanningRoot(cwd),
     milestone_version: milestone.version,
     milestone_name: milestone.name,
     milestone_slug: generateSlugInternal(milestone.name),
+
+    // How the milestone was decided. `milestone_ambiguous` means the roadmap
+    // marks more than one milestone current — a planning-state error the audit
+    // must surface rather than silently resolve to whichever came first.
+    milestone_status: milestone.status,
+    milestone_basis: milestone.basis,
+    milestone_ambiguous: milestone.ambiguous,
+    milestone_candidates: milestone.candidates,
 
     // Phase counts
     phase_count: phaseCount,
@@ -688,7 +721,44 @@ function cmdInitMilestoneOp(cwd, raw) {
     phases_dir_exists: pathExistsInternal(cwd, planningRelPath(PHASES_DIR)),
   };
 
-  output(result, raw);
+  return result;
+}
+
+/**
+ * Milestone bootstrap context for one planning tree, or for every tree at once.
+ *
+ * `--all-tracks` exists because a milestone audit run against the wrong tree
+ * produces a confident, plausible, wrong report. Sweeping every tree and
+ * labelling each result makes the scope of the audit explicit instead of
+ * implicit in whichever directory the command happened to resolve.
+ *
+ * @param {string} cwd - Project root directory
+ * @param {boolean} raw - If true, output raw value instead of JSON
+ * @param {Object} [opts] - {allTracks}
+ * @returns {void}
+ */
+function cmdInitMilestoneOp(cwd, raw, opts = {}) {
+  if (!opts.allTracks) {
+    output(buildMilestoneOpPayload(cwd), raw);
+    return;
+  }
+
+  const roots = planningRoots(cwd, { allTracks: true });
+  const tracks = roots.map(root => withPlanningRoot(root.rel, () => ({
+    ...buildMilestoneOpPayload(cwd),
+    // Authoritative: `track` comes from the root we are sweeping, and must win
+    // over anything the spread payload carries.
+    track: root.name,
+  }), root.name));
+
+  output({
+    all_tracks: true,
+    track_count: tracks.length,
+    // A milestone the tooling could not resolve unambiguously in ANY tree is
+    // worth surfacing at the top level — the audit should stop, not guess.
+    ambiguous_tracks: tracks.filter(t => t.milestone_ambiguous).map(t => t.track),
+    tracks,
+  }, raw);
 }
 
 /**
@@ -726,7 +796,10 @@ function cmdInitMapCodebase(cwd, raw) {
     has_maps: existingMaps.length > 0,
 
     // File existence
-    planning_exists: pathExistsInternal(cwd, PLANNING_DIR),
+    planning_exists: pathExistsInternal(cwd, planningRootRel()),
+    // Which tree this ran against — so a wrong --track/--planning-dir is visible
+    // in the output rather than silently producing plausible results.
+    ...describePlanningRoot(cwd),
     codebase_dir_exists: pathExistsInternal(cwd, planningRelPath(CODEBASE_DIR)),
 
     // Language detection
@@ -785,7 +858,7 @@ function scanAllPhases(cwd) {
       const phaseInfo = {
         number: phaseNumber,
         name: phaseName,
-        directory: toPosix(path.join(PLANNING_DIR, PHASES_DIR, dirName)),
+        directory: planningRel(PHASES_DIR, dirName),
         status,
         plan_count: plans.length,
         summary_count: summaries.length,
@@ -833,6 +906,9 @@ function cmdInitProgress(cwd, raw) {
     commit_docs: config.commit_docs,
 
     // Milestone
+    // Which tree this milestone came from — a spliced or wrong-track milestone
+    // must never look like a confident answer.
+    ...describePlanningRoot(cwd),
     milestone_version: milestone.version,
     milestone_name: milestone.name,
 
@@ -873,6 +949,7 @@ module.exports = {
   cmdInitPhaseOp,
   cmdInitTodos,
   cmdInitMilestoneOp,
+  buildMilestoneOpPayload,
   cmdInitMapCodebase,
   cmdInitProgress,
 };

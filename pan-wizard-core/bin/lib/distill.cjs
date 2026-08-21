@@ -3,9 +3,9 @@
 const fs = require('fs');
 const path = require('path');
 const { output, error, safeReadFile } = require('./core.cjs');
+const { planningRel } = require('./utils.cjs');
 
-const PLANNING_DIR = '.planning';
-const MEMORY_DIR = path.join(PLANNING_DIR, 'memory');
+const MEMORY_DIR = planningRel('memory');
 const PATTERNS_FILE = 'distill-patterns.md';
 
 const SAFETY_TIERS = { SAFE: 'safe', REVIEW: 'review_required', RISKY: 'risky' };
@@ -307,7 +307,7 @@ function loadFiles(filePaths, cwd) {
   const out = {};
   for (const f of filePaths) {
     const content = safeReadFile(f);
-    if (content) out[path.relative(cwd, f).replace(/\\/g, '/')] = content;
+    if (content) out[path.relative(cwd, f)] = content;
   }
   return out;
 }

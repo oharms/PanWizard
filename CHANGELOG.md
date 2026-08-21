@@ -5,6 +5,106 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.27.0] - 2026-08-21
+
+Two field defects closed, and the reason PAN got slow: **98% of its token traffic is
+cached context being re-read**, and nothing bounded what went into it.
+
+### Added — planning trees are addressable
+
+Every planning path was `path.join(cwd, '.planning', …)`, so a repo holding several
+planning trees could address exactly one of them. `--cwd` was no escape hatch: it moves
+the *project* root, and the planning tree is always `<project>/.planning`. Sibling trees
+were unreachable — and the commands did not fail, they succeeded against the wrong tree.
+`hygiene scan` reported `total: 0` — "clean" — while a track sat at 18 trace sessions
+against a retention of 5, with 13 prunable.
+
+New `--track <name>` / `--planning-dir <path>` (plus `PAN_TRACK` / `PAN_PLANNING_DIR`)
+target any tree; `hygiene --all-tracks` and `init milestone-op --all-tracks` sweep the
+root tree and every discovered track, attributing each finding to the track it came from.
+Tracks are discovered, never declared, so a registry cannot drift from the filesystem.
+
+The half that matters most: **every resolution reports its provenance.** Commands surface
+`planning_root`, `track`, `planning_root_source`, and `planning_root_exists`, so a
+mistyped `--track` shows a missing directory beside its zero findings instead of passing
+for a healthy project. See [ADR-0043](docs/decisions/ADR-0043-addressable-planning-roots.md).
+
+### Fixed — the milestone resolver spliced two different milestones
+
+`getMilestoneInfo` matched version and name with two **independent, unanchored** regexes
+over the whole roadmap. The version pattern took the first `vN.N` anywhere — body prose
+included — the name pattern matched separately, and `## ` matched inside `### `. So the
+two halves could come from different milestones and produce one that does not exist,
+silently: a field project resolved `v4.2` (Ledger Rebrand) spliced with the name of `v4.1`.
+
+It fires on PAN's **own** documented roadmap template too, where it returned `v1.0` — a
+*shipped* milestone read out of the summary bullet list — paired with the name of `v1.1`.
+
+Version and name now come from a single anchored heading at any level, an explicit
+`(current)` / 🚧 marker outranks document position, and two milestones marked current is
+reported as `milestone_ambiguous` rather than resolved by picking the first.
+`/pan:milestone-audit` stops on ambiguity instead of auditing a silently-chosen milestone.
+
+### Added — `state compact`, and a bound on the cached context
+
+The cached context block is re-read into **every** agent call. On a field project it was
+109 KB ≈ 28k tokens, of which `state.md` alone was half — and 56% of that was settled
+history, because its section writers only ever append. Ten weeks of finished work,
+re-read on every call. Measured against the clean rows of that project's ledger: 550M
+cache-read tokens against 8.7M of output.
+
+`pan-tools state compact [--apply] [--keep-days N]` archives settled sections to
+`state-history.md`. Nothing is deleted — history is written to the archive *first*, then
+`state.md` is rewritten with a pointer. Only unambiguous history moves; headings PAN reads
+or writes are protected, as is any section carrying a field the frontmatter is rebuilt
+from, and a compaction that would not shrink the file is declined.
+
+The block is now classified rather than merely measured — `context-budget` gained
+`cache.status` with advice naming the largest file, and hygiene gained a `cache-context`
+check. `config.json → cache.extra_files` lets a focus-model project cache its own stable
+docs; the built-in list is the phase-model spine, so such projects had an empty block and
+**no prompt caching at all**. See [ADR-0044](docs/decisions/ADR-0044-bound-the-cached-context.md).
+
+### Fixed — the ledger poison gate counted rows, not tokens
+
+`checkCostLedger` fired at ≥50% suspect *records*. A field ledger sat at 24% by count —
+passing — while those rows carried **89% of the token mass**, making every aggregate read
+off it wrong by an order of magnitude. The gate now also fires on mass, and names which
+threshold tripped.
+
+### Fixed — hygiene now actually finishes the job
+
+Reported from the field as "hygiene doesn't properly fix a project". Running
+`clean --apply` twice showed why: `fixable: 1, executed: 0, failed: 1` — forever.
+
+- A finding advertised a fix that could no longer do anything. `fixable` came from the
+  mere presence of a fix object, so `compact-state` stayed attached to a `state.md` whose
+  remaining bulk is live content. **`auto-fixable` now means "running clean will change
+  this"**, which is the only reading that makes a repeat run meaningful.
+- Quarantined ledgers accumulated with nothing ever removing them — the cure becoming the
+  disease. Superseded quarantines are now pruned, newest kept as evidence.
+- The cost cursor outlived the ledger it indexed, so a "fresh" ledger inherited the old
+  read position and undercounted its next slice. It is cleared with the rename.
+
+`optimization/reports/` is now pruned on the same retention as `optimization/traces/`,
+which previously aged out while the analysis JSON beside it never did.
+
+### Fixed — phase attribution without tracing
+
+The cost hook read the phase from the active optimizer trace session, which exists only
+while tracing runs — off by default. In ordinary use every ledger row carried
+`phase: null`, so "which phase got expensive" was unanswerable from PAN's own telemetry.
+It now falls back to `state.md`. All three planning-aware hooks (`pan-cost-logger`,
+`pan-trace-logger`, `pan-stop-guard`) also honour `PAN_PLANNING_DIR` / `PAN_TRACK`, so a
+track-scoped run no longer strands its telemetry in the wrong tree.
+
+### Also
+
+- `walkPlanning` no longer descends into `tracks/`, which had let a root scan absorb every
+  track's files and `--all-tracks` double-count `.tmp` orphans.
+- Finding text uses a locale-independent thousands separator; `toLocaleString()` emits a
+  narrow no-break space in some locales, which made output vary by machine.
+
 ## [3.26.0] - 2026-08-16
 
 MCP becomes a first-class surface, the CLI stops dead-ending on a near-miss, and two

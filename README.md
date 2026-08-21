@@ -659,7 +659,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:debug [desc]` | Systematic debugging with persistent state |
 | `/pan:quick [--full]` | Execute ad-hoc task with PAN guarantees (`--full` adds plan-checking and verification) |
 | `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` auto-fixes detected issues |
-| `/pan:hygiene [--apply] [--trace-age-days N]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat, poisoned cost ledgers, trace debris, fragment planning dirs); `--apply` executes the safe fixes — ledgers are quarantined by rename, never deleted |
+| `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs); `--apply` executes the safe fixes — ledgers are quarantined by rename, never deleted, and settled `state.md` history is archived rather than dropped |
 | `/pan:links [--strict]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027, v3.8.0+) |
 | `/pan:phase-tests [N]` | Generate tests for a completed phase based on UAT criteria |
 | `/pan:milestone-cleanup` | Archive accumulated phase directories from completed milestones |

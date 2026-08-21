@@ -7,11 +7,11 @@ const os = require('os');
 const path = require('path');
 const { output, error, safeReadFile, toPosix, findPhaseInternal } = require('./core.cjs');
 const {
-  PLANNING_DIR, CONFIG_FILE, PROJECT_FILE, STANDARDS_FILE,
+  CONFIG_FILE, PROJECT_FILE, STANDARDS_FILE,
   STANDARDS_CATALOG, STANDARDS_CATEGORIES, STANDARDS_RECOMMENDATIONS,
   PHASE_KEYWORDS_TO_STANDARDS, STANDARDS_EXTERNAL_TOOLS,
 } = require('./constants.cjs');
-const { readJsonFile, planningPath, fileAccessible, hasBraveSearchKey } = require('./utils.cjs');
+const { readJsonFile, planningPath, fileAccessible, hasBraveSearchKey, planningRel } = require('./utils.cjs');
 
 /**
  * Count checked checklist items in a standards section.
@@ -119,7 +119,7 @@ function cmdConfigEnsureSection(cwd, raw) {
 
   try {
     fs.writeFileSync(configPath, JSON.stringify(defaults, null, 2), 'utf-8');
-    output({ created: true, path: PLANNING_DIR + '/' + CONFIG_FILE }, raw, 'created');
+    output({ created: true, path: planningRel(CONFIG_FILE) }, raw, 'created');
   } catch (err) {
     error('Failed to create config.json: ' + err.message);
   }
@@ -354,7 +354,7 @@ function cmdStandardsSelect(cwd, standardId, raw) {
   output({
     added: standardId,
     project_standards: currentIds,
-    standards_file: toPosix(PLANNING_DIR + '/' + STANDARDS_FILE),
+    standards_file: toPosix(planningRel(STANDARDS_FILE)),
   }, raw, 'Added ' + STANDARDS_CATALOG[standardId].name);
 }
 
@@ -398,7 +398,7 @@ function cmdStandardsRemove(cwd, standardId, raw) {
   output({
     removed: standardId,
     project_standards: newIds,
-    standards_file: toPosix(PLANNING_DIR + '/' + STANDARDS_FILE),
+    standards_file: toPosix(planningRel(STANDARDS_FILE)),
   }, raw, 'Removed ' + standardId);
 }
 

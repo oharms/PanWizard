@@ -182,12 +182,40 @@ function cmdContextBudget(cwd, raw) {
     const eligiblePct = totalTokens > 0
       ? Math.round((cacheTokens / totalTokens) * 1000) / 10
       : 0;
+    // The cached block is re-read into EVERY agent call, so its size is the
+    // project's largest recurring cost. This used to be measured and reported
+    // with no threshold attached, which meant a block that had grown to ~28k
+    // tokens of mostly closed history looked exactly like a healthy one.
+    // Classifying it is what turns the measurement into a signal.
+    const { CACHE_BLOCK_WARN_TOKENS, CACHE_BLOCK_CRIT_TOKENS, CACHE_FILE_WARN_TOKENS } = require('./constants.cjs');
+    const largest = cached.blocks
+      .map(b => ({ path: b.path, tokens: Math.ceil((b.content || '').length / 4) }))
+      .sort((a, b) => b.tokens - a.tokens);
+
+    let cacheStatus = 'ok';
+    if (cached.blocks.length === 0) cacheStatus = 'absent';
+    else if (cacheTokens >= CACHE_BLOCK_CRIT_TOKENS) cacheStatus = 'critical';
+    else if (cacheTokens >= CACHE_BLOCK_WARN_TOKENS) cacheStatus = 'warn';
+
+    const advice = cacheStatus === 'absent'
+      ? 'no cacheable context files — every agent call re-sends its context uncached'
+      : cacheStatus === 'ok'
+        ? null
+        : `cached context is re-read on every agent call; largest file ${largest[0].path} (~${largest[0].tokens} tokens)`
+          + (largest[0].path.endsWith('state.md') ? ' — run `pan-tools state compact`' : '');
+
     cache = {
       block_count: cached.blocks.length,
       block_paths: cached.blocks.map(b => b.path),
+      block_tokens: largest,
       total_bytes: cached.total_bytes,
       total_tokens: cacheTokens,
       eligible_pct: eligiblePct,
+      status: cacheStatus,
+      warn_tokens: CACHE_BLOCK_WARN_TOKENS,
+      crit_tokens: CACHE_BLOCK_CRIT_TOKENS,
+      file_warn_tokens: CACHE_FILE_WARN_TOKENS,
+      advice,
       sha: cached.sha,
     };
   } catch {

@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { output, escapeRegex, execGit } = require('./core.cjs');
-const { PLANNING_DIR } = require('./constants.cjs');
+const { planningPath, planningRel } = require('./utils.cjs');
 
 // ─── Storage layout ──────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ const IMPACT_LEVELS = ['critical', 'major', 'minor', 'trivial'];
 // ─── Path helpers ─────────────────────────────────────────────────────────────
 
 function getOptimizeDir(cwd) {
-  return path.join(cwd, PLANNING_DIR, OPTIMIZE_DIR);
+  return planningPath(cwd, OPTIMIZE_DIR);
 }
 
 function getTracesDir(cwd) {
@@ -817,7 +817,7 @@ function cmdOptimizeLearn(cwd, opts, raw) {
 
   output({
     session_id: sessionId,
-    analysis_path: path.join(PLANNING_DIR, OPTIMIZE_DIR, OPT_REPORTS_DIR, reportName).replace(/\\/g, '/'),
+    analysis_path: planningRel(OPTIMIZE_DIR, OPT_REPORTS_DIR, reportName),
     summary: report.summary,
     top_error_patterns: report.error_patterns.slice(0, 5),
     top_gap_patterns: report.gap_patterns.slice(0, 5),

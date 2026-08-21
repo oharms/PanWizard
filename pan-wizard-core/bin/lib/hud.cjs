@@ -30,7 +30,7 @@ const {
   execGit, isGitRepo, escapeRegex, toPosix,
 } = require('./core.cjs');
 const {
-  PLANNING_DIR, STATE_FILE, PROJECT_FILE, REQUIREMENTS_FILE, PAUSE_FILE,
+  STATE_FILE, PROJECT_FILE, REQUIREMENTS_FILE, PAUSE_FILE,
 } = require('./constants.cjs');
 const {
   planningPath, phasesPath, listPhaseDirs, parsePhaseDir,
