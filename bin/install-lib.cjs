@@ -1854,6 +1854,7 @@ function buildNativeWorkflowScripts() {
     { title: 'Merge', detail: 'meta-reviewer dedupes, disputes, and issues the verdict' },
   ],
 }
+// twin: commands/pan/review-deep.md
 
 const target = (typeof args === 'string' && args.trim())
   ? args.trim()
@@ -1919,6 +1920,7 @@ return merged
     { title: 'Synthesize', detail: 'merge area maps into one codebase overview' },
   ],
 }
+// twin: pan-wizard-core/workflows/map-codebase.md
 
 phase('Scan')
 const AREAS = {
@@ -1957,9 +1959,236 @@ const synthesis = await agent(
 return { areas_mapped: maps.filter(Boolean).length, synthesis }
 `;
 
+  // ── §3.2 ports (2026-09, plan item 5a). Selection rule: a protocol becomes a
+  // script when its control flow is knowable BEFORE the run — a fan-out whose
+  // width the engine reports, waves that are genuinely barriers. It stays
+  // markdown when the next step depends on reading the last result. exec-phase's
+  // wave dispatch and diagnose-issues' per-gap fan-out qualify; verify-phase and
+  // milestone-gaps (single-agent judgment) do not, whatever the plan first guessed.
+  // A script also cannot pause for a human (only agent permission prompts pause a
+  // run), so the wave script REFUSES phases with checkpoint plans instead of
+  // pretending. Each script names its markdown twin; the drift test pins the pair.
+  //
+  // Paths: the engine is invoked by AGENTS (scripts have no shell), so prompts
+  // describe where pan-tools lives rather than hard-coding one install layout.
+  const execWaves = `export const meta = {
+  name: 'pan-exec-waves',
+  description: 'PAN phase execution: wave-grouped executor fan-out for a checkpoint-free phase, then verification',
+  whenToUse: 'Deterministic version of the /pan-exec-phase wave dispatch. Pass the phase number as args. Refuses a phase that contains checkpoint plans (a workflow cannot pause for a human) — run /pan-exec-phase for those.',
+  phases: [
+    { title: 'Index', detail: 'plan inventory with wave grouping, from the PAN engine' },
+    { title: 'Execute', detail: 'one executor per plan; waves in order, plans within a wave in parallel' },
+    { title: 'Verify', detail: 'the phase verifier over the completed plans' },
+  ],
+}
+// twin: pan-wizard-core/workflows/exec-phase.md
+
+const PAN_TOOLS = 'PAN engine (pan-tools): node <PAN core>/bin/pan-tools.cjs — the PAN core is .claude/pan-wizard-core in a project install, ~/.claude/pan-wizard-core in a global install, or pan-wizard-core under the plugin root when PAN runs as a plugin.'
+const CORE_DOCS = 'PAN core documents (same core directory): workflows/execute-plan.md, templates/summary.md, references/checkpoints.md, references/tdd.md.'
+
+const phaseArg = (typeof args === 'string' && args.trim())
+  ? args.trim()
+  : (args && typeof args === 'object' && args.phase != null ? String(args.phase) : '')
+if (!phaseArg) return { error: 'pass the phase number as args, e.g. /pan-exec-waves 3' }
+
+phase('Index')
+const INDEX = {
+  type: 'object',
+  properties: {
+    phase_found: { type: 'boolean' },
+    phase_number: { type: 'string' },
+    phase_name: { type: 'string' },
+    phase_dir: { type: 'string' },
+    parallelization: { type: 'boolean' },
+    has_checkpoints: { type: 'boolean' },
+    plans: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          file: { type: 'string' },
+          wave: { type: 'integer' },
+          autonomous: { type: 'boolean' },
+          has_summary: { type: 'boolean' },
+          objective: { type: 'string' },
+        },
+        required: ['id', 'wave', 'autonomous', 'has_summary'],
+      },
+    },
+  },
+  required: ['phase_found', 'has_checkpoints', 'plans'],
+}
+const index = await agent(
+  'Index phase ' + phaseArg + ' for execution using the ' + PAN_TOOLS + ' Run two verbs and merge their JSON: (1) init execute-phase ' + phaseArg + ' — take phase_found, phase_number, phase_name, phase_dir, parallelization; (2) phase-plan-index ' + phaseArg + ' — take has_checkpoints and plans[] (id, wave, autonomous, has_summary, objective; include each plan file path as file). Do not execute anything; return only the merged index.',
+  { label: 'index', phase: 'Index', schema: INDEX })
+if (!index || !index.phase_found) return { error: 'phase ' + phaseArg + ' not found' }
+if (index.has_checkpoints) {
+  return { error: 'phase ' + phaseArg + ' contains checkpoint plans (autonomous: false). A workflow cannot pause for a human — run /pan-exec-phase ' + phaseArg + ' instead.', plans: index.plans.map(p => p.id) }
+}
+const pending = index.plans.filter(p => !p.has_summary)
+if (pending.length === 0) return { phase: phaseArg, done: true, message: 'every plan already has a summary — nothing to execute' }
+const waveNumbers = [...new Set(pending.map(p => p.wave))].sort((a, b) => a - b)
+const parallelWithinWave = index.parallelization !== false
+log(pending.length + ' plans across ' + waveNumbers.length + ' wave(s)' + (parallelWithinWave ? '' : ', sequential within waves'))
+
+phase('Execute')
+const EXEC_RESULT = {
+  type: 'object',
+  properties: {
+    plan_id: { type: 'string' },
+    status: { type: 'string', enum: ['complete', 'failed', 'checkpoint'] },
+    summary_path: { type: 'string' },
+    commits: { type: 'integer' },
+    self_check: { type: 'string', enum: ['passed', 'failed', 'unknown'] },
+    notes: { type: 'string' },
+  },
+  required: ['plan_id', 'status', 'self_check'],
+}
+const executorPrompt = (p) =>
+  'Execute plan ' + p.id + ' of phase ' + (index.phase_number || phaseArg) + (index.phase_name ? '-' + index.phase_name : '') + '. Commit each task atomically. Create summary.md. Update state.md and roadmap.md (via roadmap update-plan-progress).\\n\\n'
+  + 'Read first, in this order: ' + CORE_DOCS + '\\n\\n'
+  + 'Then read: ' + (p.file || (index.phase_dir + '/' + p.id)) + ' (the plan), .planning/state.md, .planning/config.json (if present), ./CLAUDE.md (if present — follow its conventions), .agents/skills/ (if present — follow relevant skills), and every .planning/memory/*.md (apply every rule without exception).\\n\\n'
+  + 'Report plan_id, status (complete | failed | checkpoint), summary_path, the number of commits you made, and self_check (passed if your summary carries no "Self-Check: FAILED" marker).'
+const executed = []
+let halted = null
+for (const w of waveNumbers) {
+  const wavePlans = pending.filter(p => p.wave === w)
+  log('wave ' + w + ': ' + wavePlans.map(p => p.id).join(', '))
+  let results
+  if (parallelWithinWave) {
+    results = await parallel(wavePlans.map(p => () =>
+      agent(executorPrompt(p), { agentType: 'pan-executor', label: 'exec:' + p.id, phase: 'Execute', schema: EXEC_RESULT })))
+  } else {
+    results = []
+    for (const p of wavePlans) {
+      results.push(await agent(executorPrompt(p), { agentType: 'pan-executor', label: 'exec:' + p.id, phase: 'Execute', schema: EXEC_RESULT }))
+    }
+  }
+  const settled = results.filter(Boolean)
+  executed.push(...settled)
+  const bad = settled.filter(r => r.status !== 'complete' || r.self_check === 'failed')
+  const dropped = wavePlans.length - settled.length
+  if (bad.length > 0 || dropped > 0) {
+    // Mirror exec-phase's failure handler without the question it asks: stop
+    // before the next wave and return what happened, so a human decides.
+    halted = { wave: w, failed: bad.map(r => r.plan_id), unanswered: dropped }
+    break
+  }
+}
+if (halted) {
+  return { phase: phaseArg, halted, executed, next: 'Inspect the failed plan(s), then re-run /pan-exec-waves ' + phaseArg + ' (completed plans are skipped) or fall back to /pan-exec-phase ' + phaseArg }
+}
+
+phase('Verify')
+const VERIFY = {
+  type: 'object',
+  properties: {
+    status: { type: 'string', enum: ['passed', 'gaps_found', 'human_needed', 'failed'] },
+    verification_path: { type: 'string' },
+    gaps: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['status', 'summary'],
+}
+const verdict = await agent(
+  'Verify phase ' + phaseArg + ' following the PAN verify-phase protocol (PAN core: workflows/verify-phase.md — ' + PAN_TOOLS + '). Check the phase goals against what the plans delivered, write the verification file the protocol prescribes, and report status (passed | gaps_found | human_needed | failed), the verification file path, any gaps, and a summary. Do not mark the phase complete or advance state — that decision stays with the user.',
+  { agentType: 'pan-verifier', label: 'verify', phase: 'Verify', schema: VERIFY })
+
+return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, next: 'Review the verification, then continue with /pan-exec-phase ' + phaseArg + ' (transition) or /pan-plan-phase for the next phase' }
+`;
+
+  const diagnoseIssues = `export const meta = {
+  name: 'pan-diagnose-issues',
+  description: 'PAN UAT diagnosis: one debugger per failed UAT truth, in parallel, then root causes written back',
+  whenToUse: 'Deterministic version of /pan-diagnose-issues. Pass the phase number as args. Investigates only — fixes come from /pan-plan-phase --gaps.',
+  phases: [
+    { title: 'Gaps', detail: 'read the phase UAT file and list the failed truths' },
+    { title: 'Diagnose', detail: 'one pan-debugger per gap, in parallel, root cause only' },
+    { title: 'Record', detail: 'write root causes and artifacts back into the UAT gaps' },
+  ],
+}
+// twin: pan-wizard-core/workflows/diagnose-issues.md
+
+const PAN_TOOLS = 'PAN engine (pan-tools): node <PAN core>/bin/pan-tools.cjs — the PAN core is .claude/pan-wizard-core in a project install, ~/.claude/pan-wizard-core in a global install, or pan-wizard-core under the plugin root when PAN runs as a plugin.'
+
+const phaseArg = (typeof args === 'string' && args.trim())
+  ? args.trim()
+  : (args && typeof args === 'object' && args.phase != null ? String(args.phase) : '')
+if (!phaseArg) return { error: 'pass the phase number as args, e.g. /pan-diagnose-issues 3' }
+
+phase('Gaps')
+const GAPS = {
+  type: 'object',
+  properties: {
+    phase_dir: { type: 'string' },
+    uat_path: { type: 'string' },
+    gaps: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          test_num: { type: 'integer' },
+          truth: { type: 'string' },
+          severity: { type: 'string' },
+          reason: { type: 'string' },
+          expected: { type: 'string' },
+        },
+        required: ['test_num', 'truth', 'severity'],
+      },
+    },
+  },
+  required: ['uat_path', 'gaps'],
+}
+const found = await agent(
+  'Locate phase ' + phaseArg + ' with the ' + PAN_TOOLS + ' (find-phase ' + phaseArg + ' gives the phase directory) and read its UAT file ({phase_dir}/{phase}-uat.md). List every gap in the Gaps section whose status is failed: test number, the truth that failed, severity, the reason the user reported, and the expected behaviour from the matching test. Do not investigate anything; return the list.',
+  { label: 'gaps', phase: 'Gaps', schema: GAPS })
+if (!found || !found.uat_path) return { error: 'no UAT file found for phase ' + phaseArg }
+const gaps = (found.gaps || []).filter(Boolean)
+if (gaps.length === 0) return { phase: phaseArg, uat_path: found.uat_path, gaps: 0, message: 'no failed truths to diagnose' }
+log(gaps.length + ' gap(s) to diagnose')
+
+phase('Diagnose')
+const DIAGNOSIS = {
+  type: 'object',
+  properties: {
+    issue_id: { type: 'string' },
+    status: { type: 'string', enum: ['root_cause_found', 'inconclusive'] },
+    root_cause: { type: 'string' },
+    evidence: { type: 'array', items: { type: 'string' } },
+    files: { type: 'array', items: { type: 'string' } },
+    suggested_fix: { type: 'string' },
+    debug_path: { type: 'string' },
+    remaining_possibilities: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['issue_id', 'status'],
+}
+const diagnoses = await parallel(gaps.map(g => () => agent(
+  'Debug issue UAT-' + g.test_num + ' for phase ' + phaseArg + ' — root cause ONLY, do not fix (fixes come from /pan-plan-phase --gaps).\\n\\n'
+  + 'Symptoms (pre-filled from UAT, treat as given): expected: ' + (g.expected || g.truth) + '. actual: ' + (g.reason || 'not recorded') + '. reproduction: test ' + g.test_num + ' in ' + found.uat_path + '. severity: ' + g.severity + '.\\n\\n'
+  + 'Follow the PAN debugger protocol: create the debug session file under .planning/debug/ named from the issue, investigate autonomously (read code, form hypotheses, test them), and report issue_id, status (root_cause_found | inconclusive), root_cause with evidence, files involved, a suggested fix direction, and the debug session path. If inconclusive, list the remaining possibilities. Also read ' + found.uat_path + ' and .planning/state.md for context.',
+  { agentType: 'pan-debugger', label: 'debug:UAT-' + g.test_num, phase: 'Diagnose', schema: DIAGNOSIS })))
+const results = diagnoses.filter(Boolean)
+log(results.filter(r => r.status === 'root_cause_found').length + ' root cause(s) found, ' + results.filter(r => r.status === 'inconclusive').length + ' inconclusive')
+
+phase('Record')
+const RECORDED = {
+  type: 'object',
+  properties: { uat_path: { type: 'string' }, gaps_updated: { type: 'integer' } },
+  required: ['uat_path', 'gaps_updated'],
+}
+const recorded = await agent(
+  'Update the Gaps section of ' + found.uat_path + ' with these diagnoses, following the PAN diagnose-issues protocol: for each gap add root_cause, artifacts (the debug session path), the files involved, and the suggested fix direction; mark inconclusive ones as needing manual review with their remaining possibilities. Edit in place — do not rewrite unrelated content. Report the path and how many gaps you updated.\\n\\nDiagnoses:\\n' + JSON.stringify(results, null, 2),
+  { label: 'record', phase: 'Record', schema: RECORDED })
+
+return { phase: phaseArg, uat_path: found.uat_path, gaps: gaps.length, root_causes_found: results.filter(r => r.status === 'root_cause_found').length, inconclusive: results.filter(r => r.status === 'inconclusive').length, recorded, next: 'Run /pan-plan-phase ' + phaseArg + ' --gaps to plan the fixes' }
+`;
+
   return [
     { name: 'pan-review-pipeline.js', content: reviewPipeline },
     { name: 'pan-map-codebase.js', content: mapCodebase },
+    { name: 'pan-exec-waves.js', content: execWaves },
+    { name: 'pan-diagnose-issues.js', content: diagnoseIssues },
   ];
 }
 

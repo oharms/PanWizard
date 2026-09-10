@@ -80,6 +80,29 @@ Antigravity) and the live installs are the next plan items; the spec's default
 stdio working directory is the plugin root, so the bridge must learn the project
 root per call before those gates run (ADR-0045 D6).
 
+### Added — two more native Claude Code workflows (§3.2 of the August review)
+
+The August review's remaining move: promote the protocols whose control flow is
+knowable before the run to native workflow scripts, keeping the markdown as the
+portable path for the other four runtimes. Two qualify under that rule and are
+now emitted alongside the review pipeline and the codebase mapper:
+
+- `/pan-exec-waves <phase>` — exec-phase's wave dispatch: the engine's plan index
+  fixes the waves, one `pan-executor` per plan runs within a wave (in parallel, or
+  sequentially when `parallelization` is off), a failed or unanswered plan halts
+  before the next wave and returns what happened, and `pan-verifier` closes the
+  run. It **refuses** a phase that contains checkpoint plans — a workflow cannot
+  pause for a human — and says to run `/pan-exec-phase` instead.
+- `/pan-diagnose-issues <phase>` — one `pan-debugger` per failed UAT truth, in
+  parallel, root cause only; the diagnoses are written back into the UAT gaps.
+
+`verify-phase` and `milestone-gaps`, which the plan first named, turned out to be
+single-agent judgment protocols and stay markdown. Every script now names its
+markdown twin in a `// twin:` line, and `tests/native-workflows-drift.test.cjs`
+pins the pair (roster parity, phases agree, no forbidden or resume-breaking
+construct, null-filtered fan-outs) — the static half of the gate. The behavioural
+half, chain completion against a deployed install, needs a harness.
+
 ### Added — the MCP bridge takes the project root per call
 
 Every bridge **tool** now accepts an optional `cwd`: the absolute path of the
