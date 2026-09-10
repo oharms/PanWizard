@@ -221,7 +221,7 @@ Write by capability where a model is involved; runtime version numbers are fine.
 2. Add a Copilot row to `PROVIDER_MODELS` in `pan-wizard-core/bin/lib/core.cjs` if absent (tier → Copilot id), so the converter maps a pinned tier to `[primary, fallback]` and emits `model:` as a YAML list plus `model-policy: prefer` (degrade gracefully; `required` would refuse to run when the model is unavailable).
 3. Emit only when a flag or config enables it (ADR-0028: unverified frontmatter waits for a live check); default off until the live gate below passes, then flip.
 
-**Tests.** `tests/copilot-install.test.cjs`: list emitted when enabled, absent when disabled; non-pinned agents get no `model:`. **Gate.** Extend `live-gate-copilot.json` with a step that installs an agent carrying the list and checks Copilot accepts it (`copilot agent list` or the CLI's own validation output). **Revert-proof.** Disable the emission path → the enabled-case test fails. **Status.** Open (gated on Copilot CLI).
+**Tests.** `tests/copilot-install.test.cjs`: list emitted when enabled, absent when disabled; non-pinned agents get no `model:`. **Gate.** Extend `live-gate-copilot.json` with a step that installs an agent carrying the list and checks Copilot accepts it (`copilot agent list` or the CLI's own validation output). **Revert-proof.** Disable the emission path → the enabled-case test fails. **Status.** Built `2026-09-10` (commit 194565c): the converter takes `modelLists` and emits the list plus `model-policy: prefer`; default output byte-identical. Not wired into the installer — the live probe in `live-gate-copilot.json` (writes a probe agent, asks `copilot agent list`) must pass first. Needs a machine with Copilot CLI.
 
 ### R14 · P4 · M (4) — Antigravity: measure first, then variant if needed
 
@@ -233,7 +233,7 @@ Write by capability where a model is involved; runtime version numbers are fine.
 3. Outcome "both rejected": add step 8 to `scripts/build-agent-plugin.js` behind `--antigravity` (or a sibling `build-antigravity-plugin.js`), emitting `dist/pan-antigravity-plugin/` with `plugin.json` (three fields only), `mcp_config.json` (shape verified from `antigravity.google/docs/cli/plugins`, read on the day), `hooks.json`, `skills/` (unchanged), `agents/` and `rules/` as documented; reuse the existing converters (one compiler, two call sites). Conformance test mirroring `tests/agent-plugin-build.test.cjs` with the closed three-key schema pinned as a fixture.
 4. Add the emitted variant to Gate 8 and to the `.agents/plugins/` discovery path.
 
-**Gate.** `live-gate-antigravity` passes with either the bundle or the variant. **Status.** Open (needs `agy`).
+**Gate.** `live-gate-antigravity` passes with either the bundle or the variant. **Status.** Probe added `2026-09-10` (commit 194565c): `live-gate-antigravity.json` now also builds the Claude plugin and tries `agy plugin install` on it. Both outcomes are information; the variant is built only if both bundles are rejected. Needs a machine with `agy`.
 
 ### R15 · P2 · M (4) — Recognise a foreign `.planning/` and refuse to touch it
 
@@ -269,7 +269,7 @@ Only if ADR-0048 accepts (B). Steps live in the ADR; sequence: converters and pa
 2. Scenarios (tier 1 or 2, each with a mutation fixture that proves it can fail, per ADR-0047): `plan-phase-checker-loop` (expects research and plan files plus a checker verdict), `uat-diagnose` (expects debugger findings and a fix plan), `quick-mode` (expects `.planning/quick/` artefacts and a commit), `pause-resume` (expects `.continue-here.md` then a resumed state), `map-codebase-single-shot` (expects `.planning/codebase/` documents from one agent), `unified-skills-discovery` (per runtime, `requires.cli`; ADR-0028 P4's live discovery gate).
 3. Size the caps from the README's measurement (a chain rep costs several dollars); run each new scenario five times.
 
-**Gate.** Each scenario's mutation fixture is red before the real seed is green; the ledger records the run ids. **Status.** Blocked (needs `--max-usd`).
+**Gate.** Each scenario's mutation fixture is red before the real seed is green; the ledger records the run ids. **Status.** Built `2026-09-10` (commit fc0e16c): seeds `phase-needs-plan`, `uat-with-failure`, `small-repo`; scenarios `plan-phase-checker-loop`, `uat-diagnose-native`, `quick-mode`, `pause-resume`, `map-codebase-single-shot`, `unified-skills-discovery`. All validate; none has run — each needs `--max-usd`. The UAT path uses the native `/pan-diagnose-issues` because the markdown walkthrough is interactive.
 
 ### R19 · P2 · M (4) — Run item 5c properly · blocked on spend
 
@@ -281,7 +281,7 @@ Only if ADR-0048 accepts (B). Steps live in the ADR; sequence: converters and pa
 3. Compare completion rates. Decision rule (from the August review): recommend the native path on Claude Code only if it completes at least as often as the markdown path.
 4. Record the result as a dated note in §9's successor and update the ledger; if the markdown path stays below five of five, open a P2 item against the drop point with the transcript as evidence.
 
-**Gate.** Five reps each, one run, one build. **Status.** Blocked (spend).
+**Gate.** Five reps each, one run, one build. **Status.** In progress `2026-09-10` (run `run-20260910-214704-wgJSxr`, $50 cap). Finding on the way: every native-chain rep so far (this run and the other session's `run-…195835`) died at ~605 s with `Workflow aborted` — Claude Code's headless ten-minute background-wait ceiling (`code.claude.com/docs/en/headless`), not the script. Fixed in the runner (commit 2c5bc94: `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for every model step; step outputs persisted). The markdown arm is the oracle measurement; the native arm must be re-run under the lifted ceiling before any comparison is drawn.
 
 ### R20 · P3 · S (2) — A model step that never ran cannot file a finding
 
@@ -304,7 +304,7 @@ Only if ADR-0048 accepts (B). Steps live in the ADR; sequence: converters and pa
 3. A/B at tier 1: the same `/pan:focus-design` prompt on the same seed, two reps each with the original and the split; compare the artefacts produced and the `cost` ledger tokens.
 4. Parity or better → apply the pattern to the other four and add a test that the emitted `SKILL.md` bodies stay under the recommendation; worse → record why in the item and re-park with the evidence.
 
-**Gate.** Artefact parity and lower activation tokens, measured. **Status.** Blocked (live session and spend).
+**Gate.** Artefact parity and lower activation tokens, measured. **Status.** Measured `2026-09-10` (commit 0cfd82f, run `run-20260910-215459-NRyNkG`): control $1.61 and $1.79 (3.8 and 5.4 min), split $1.83 and $1.81 (6.2 and 6.7 min); same section structure, the split arm's specs ~30% longer. **Verdict: the split does not reduce the cost of using the command** (the body loads on invocation either way and the extra Read adds a turn) — it raises cost ~7% and time ~40%. The shipped layout stays; the variant remains in `harness/variants/` as the record. Item 11 closes: the Agent Skills body recommendation protects activation cost, and a PAN command's activation is its invocation. The `/skill-doctor` reading needs Claude Code 2.1.261 (this machine runs 2.1.233); the scenario is gated by `requires.minVersion` (commit bb52a4f).
 
 ### R18 · P6 · XS (1) — Roster · **Done 2026-09-10**
 
