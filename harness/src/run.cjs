@@ -182,6 +182,27 @@ function modelStepNeverRan(outcome) {
   return `model step ran no turns and spent nothing — a probe or harness fault, not a PAN result: ${why || '(no output)'}`;
 }
 
+/**
+ * Write a model step's complete stdout/stderr (the `claude -p` JSON and whatever it
+ * printed) to <runDir>/steps/<scenario>-<rep>-<step>.json. The report keeps counts and
+ * 4 KB excerpts; when a run dies mid-agent (2026-09-10: two native-workflow reps
+ * aborted at ~605 s with nothing on disk to say why) the full output is the evidence.
+ * Best effort — never fails the run.
+ */
+function persistStepOutput(runDir, scenarioId, rep, index, outcome) {
+  try {
+    const dir = path.join(runDir, 'steps');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${scenarioId}-${rep}-${index}.json`);
+    fs.writeFileSync(file, JSON.stringify({
+      scenario: scenarioId, rep, step: index, code: outcome.code, costUsd: outcome.costUsd || 0,
+      turns: outcome.turns ?? null, durationMs: outcome.durationMs ?? null,
+      budgetStopped: !!outcome.budgetStopped, refused: !!outcome.refused,
+      stdout: String(outcome.stdout || ''), stderr: String(outcome.stderr || ''),
+    }, null, 2));
+  } catch { /* evidence is best effort */ }
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -279,6 +300,7 @@ function main() {
             log(`${label}: ERROR — ${rec.note}`); break;
           }
         }
+        if (step.kind === 'model') persistStepOutput(runDir, s.id, rep, i, outcome);
         const fails = check(step.expect, outcome, ws);
         const sr = { index: i, kind: step.kind, code: outcome.code, failures: fails, costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) };
         rec.steps.push(sr);

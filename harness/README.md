@@ -50,6 +50,12 @@ one chain scenario want about `--max-usd 25`, and both chain scenarios together 
 and, when the workspace carries `.mcp.json`, with `--strict-mcp-config` so the agent sees
 exactly one `pan` server — the workspace's.
 
+## Headless background-wait ceiling
+
+Native PAN workflows run as background Workflows inside `claude -p`. Claude Code waits for them, but by default **the wait ends after ten minutes and the workflow is stopped with its partial result dropped** (`code.claude.com/docs/en/headless`, "Background tasks at exit"). The runner therefore sets `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for every model step (`modelEnv()` in `src/model.cjs`); the scenario's `budget.maxStepMinutes` remains the bound. The two native-chain reps measured on 2026-09-10 before this fix both died at ~605 s with `Workflow aborted` — that was the ceiling, not the chain, and the ledger entries they filed were withdrawn for that reason.
+
+Every model step's full `claude -p` output is written to `<run>/steps/<scenario>-<rep>-<step>.json` so a run that dies mid-agent leaves its evidence on disk.
+
 ## Scenario files
 
 `harness/scenarios/<id>.json`:

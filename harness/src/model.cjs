@@ -20,6 +20,23 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * Environment for a headless `claude -p` model step. Pure over the base env.
+ *
+ * CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS — `claude -p` stays open while a background
+ * subagent or Workflow it started is still running, but by default that wait ends
+ * after ten minutes and Claude Code "stops whatever is still running and drops its
+ * partial result" (code.claude.com/docs/en/headless, "Background tasks at exit", read
+ * 2026-09-10). Both native-workflow reps measured that day died at ~605 s with
+ * `Workflow aborted` — the ceiling, not PAN's script. `0` removes it; the harness's
+ * own per-step timeout still bounds the run. A caller's explicit value wins.
+ */
+function modelEnv(base = process.env) {
+  const env = { ...base };
+  if (env.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS === undefined) env.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS = '0';
+  return env;
+}
+
 function runModelStep(ws, prompt, opts) {
   const { maxUsd, timeoutMs = 20 * 60000, pluginDir, strictMcp = true } = opts;
   if (!(typeof maxUsd === 'number' && maxUsd > 0)) {
@@ -30,7 +47,7 @@ function runModelStep(ws, prompt, opts) {
   if (strictMcp && fs.existsSync(mcpConfig)) args.push('--mcp-config', mcpConfig, '--strict-mcp-config');
   if (pluginDir) args.push('--plugin-dir', pluginDir);
   const r = spawnSync('claude', args, {
-    cwd: ws, input: prompt, encoding: 'utf8', timeout: timeoutMs,
+    cwd: ws, input: prompt, encoding: 'utf8', timeout: timeoutMs, env: modelEnv(),
     stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024,
   });
   const raw = String(r.stdout || '');
@@ -49,4 +66,4 @@ function runModelStep(ws, prompt, opts) {
   };
 }
 
-module.exports = { runModelStep };
+module.exports = { runModelStep , modelEnv };

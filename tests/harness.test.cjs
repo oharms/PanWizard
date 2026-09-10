@@ -264,3 +264,24 @@ describe('harness requires.minVersion — skip with a reason on an older CLI', (
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+// 2026-09-10: both native-workflow reps died at ~605 s with `Workflow aborted`. Cause,
+// from code.claude.com/docs/en/headless: `claude -p` waits at most ten minutes for a
+// background Workflow, then stops it and drops the partial result. The harness lifts the
+// ceiling for every model step; a caller's explicit value is respected. Revert-proof:
+// drop the default in modelEnv and the first assertion fails.
+describe('harness model steps lift the headless background-wait ceiling', () => {
+  const { modelEnv } = require('../harness/src/model.cjs');
+  test('the ceiling is set to 0 (no limit) when the caller has not set it', () => {
+    const env = modelEnv({ PATH: 'x' });
+    assert.equal(env.CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS, '0');
+    assert.equal(env.PATH, 'x', 'the rest of the environment passes through');
+  });
+  test('an explicit value from the caller wins', () => {
+    assert.equal(modelEnv({ CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '1800000' }).CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS, '1800000');
+  });
+  test('the runner passes modelEnv() to the claude spawn', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'harness', 'src', 'model.cjs'), 'utf8');
+    assert.match(src, /spawnSync\('claude'[\s\S]*env: modelEnv\(\)/, 'the spawn must carry the env');
+  });
+});
