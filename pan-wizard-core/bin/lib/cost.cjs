@@ -57,16 +57,29 @@ const DEFAULT_RATES = {
   // cached re-reads are the bulk of PAN's traffic (ADR-0044).
   'claude-fable-5-1':   { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
   'claude-fable-5':     { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
+  // Mythos 5.1 / Mythos 5 (limited availability) — platform.claude.com/docs/en/about-claude/pricing,
+  // read 2026-09-10: $10/$50; the page's cache footnote names Fable 5.1 AND Mythos 5.1 as
+  // the two models whose cache reads bill at 0.025× input; Mythos 5 follows the 0.1× rule.
+  // Added for reality check R7: resolveRate returned null for both ids.
+  'claude-mythos-5-1':  { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
+  'claude-mythos-5':    { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
   'claude-opus-5':      { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-8':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-7':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-6':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
+  // Opus 4.5 (dated id claude-opus-4-5-20251101) — same pricing page, read 2026-09-10:
+  // $5/$25/$0.50/$6.25. Without this row the dated id had no family prefix to land on
+  // and priced as null (R7).
+  'claude-opus-4-5':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   // Sonnet 5 is $2/$10: the launch price announced as introductory through
   // 2026-08-31 was made permanent and the scheduled rise to $3/$15 cancelled
   // (pricing page, read 2026-09-10). Lesson: never write down a pre-announced
   // price — this row carried the future rate for a month and over-billed by half.
   'claude-sonnet-5':    { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50 },
   'claude-sonnet-4-6':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
+  // Sonnet 4.5 (dated id claude-sonnet-4-5-20250929) — pricing page, read 2026-09-10:
+  // $3/$15/$0.30/$3.75 (the pre-Sonnet-5 rate; Sonnet 5 is $2/$10). R7.
+  'claude-sonnet-4-5':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
   'claude-haiku-4-5':   { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25 },
 
   // OpenAI — verified against published pricing 2026-08. Prompt caching is a 90%

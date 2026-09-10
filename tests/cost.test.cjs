@@ -743,3 +743,42 @@ describe('cost — v3.21.0 (config rates on append + malformed row counting)', (
     assert.equal(agg.totals.malformed_skipped, 1, 'the torn row is counted, not silently dropped');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reality check R7 (2026-09-10): four ids priced on platform.claude.com resolved to
+// null — both Mythos models and the DATED Opus 4.5 / Sonnet 4.5 ids, which had no
+// family row to prefix-match onto. A null rate is a ledger row that silently costs
+// nothing. Revert-proof: delete any one of the four rows and its test below fails.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('R7: rows for the four models the pricing page prices but the table lacked', () => {
+  test('claude-mythos-5-1 has its own row with the 0.025× cache-read rate', () => {
+    const r = resolveRate('claude-mythos-5-1', null, null);
+    assert.ok(r, 'claude-mythos-5-1 must resolve');
+    assert.equal(r.input, 10.0); assert.equal(r.output, 50.0);
+    assert.equal(r.cache_read, 0.25, 'Mythos 5.1 bills cache reads at 0.025x input, the same convention as Fable 5.1');
+    assert.equal(r.cache_write, 12.5);
+  });
+
+  test('claude-mythos-5 is a distinct row (0.1× cache read), not a prefix match onto 5.1', () => {
+    const r = resolveRate('claude-mythos-5', null, null);
+    assert.ok(r); assert.equal(r.cache_read, 1.0);
+    assert.notDeepEqual(r, resolveRate('claude-mythos-5-1', null, null));
+    // longest-prefix: the 5.1 id must NOT fall back to the 5 row
+    assert.equal(resolveRate('claude-mythos-5-1', null, null).cache_read, 0.25);
+  });
+
+  test('the dated Opus 4.5 id resolves to the Opus 4.5 row via family prefix', () => {
+    const r = resolveRate('claude-opus-4-5-20251101', null, null);
+    assert.ok(r, 'dated Opus 4.5 id must resolve');
+    assert.deepEqual(r, resolveRate('claude-opus-4-5', null, null));
+    assert.equal(r.input, 5.0); assert.equal(r.output, 25.0); assert.equal(r.cache_read, 0.5); assert.equal(r.cache_write, 6.25);
+  });
+
+  test('the dated Sonnet 4.5 id resolves to the Sonnet 4.5 row (pre-Sonnet-5 pricing)', () => {
+    const r = resolveRate('claude-sonnet-4-5-20250929', null, null);
+    assert.ok(r, 'dated Sonnet 4.5 id must resolve');
+    assert.deepEqual(r, resolveRate('claude-sonnet-4-5', null, null));
+    assert.equal(r.input, 3.0); assert.equal(r.output, 15.0);
+    assert.notDeepEqual(r, resolveRate('claude-sonnet-5', null, null), 'Sonnet 5 is the cheaper $2/$10 row');
+  });
+});
