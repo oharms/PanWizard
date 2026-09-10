@@ -132,9 +132,14 @@ process.stderr.write('\n[release-check] Gate 6/8: npm pack (size sanity)\n');
   const tgz = r.status === 0 ? fs.readdirSync(tmp6).find(f => f.endsWith('.tgz')) : null;
   const size = tgz ? fs.statSync(path.join(tmp6, tgz)).size : 0;
   const sizeMB = (size / 1024 / 1024).toFixed(2);
+  // R8: "zero runtime dependencies" is a headline claim (README, COMPARISON.md); a
+  // dependency added by accident must turn the release red before it ships. The unit
+  // pin is tests/package-contract.test.cjs; this is the publish-time backstop.
+  const deps = Object.keys(require(path.join(REPO_ROOT, 'package.json')).dependencies || {});
+  const zeroDeps = deps.length === 0;
   // Sane = a non-empty tarball under 50MB (large for a zero-runtime-dep tool)
-  const ok = r.status === 0 && !!tgz && size > 0 && size < 50 * 1024 * 1024;
-  logGate('npm pack', ok, tgz ? `${sizeMB}MB tarball` : `no tarball (exit ${r.status})`);
+  const ok = r.status === 0 && !!tgz && size > 0 && size < 50 * 1024 * 1024 && zeroDeps;
+  logGate('npm pack', ok, (tgz ? `${sizeMB}MB tarball` : `no tarball (exit ${r.status})`) + (zeroDeps ? '' : `; runtime dependencies present: ${deps.join(', ')}`));
   fs.rmSync(tmp6, { recursive: true, force: true });
   if (!ok) {
     process.stderr.write((r.stderr || '') + '\n');
