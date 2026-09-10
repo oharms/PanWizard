@@ -10,6 +10,7 @@ const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyP
 const { classifyPlanTier } = require('./phase.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { detectLanguages } = require('./codebase.cjs');
+const { detectForeignPlanningTreeAt } = require('./foreign-planning.cjs');
 const { planningRootRel, describePlanningRoot, planningRoots, withPlanningRoot } = require('./planning-root.cjs');
 
 // ---- Git helpers ----
@@ -282,6 +283,13 @@ function cmdInitPlanPhase(cwd, phase, raw) {
  * @returns {void}
  */
 function cmdInitNewProject(cwd, raw) {
+  // Never scaffold PAN's files into a .planning/ another tool owns (R15). The error
+  // key carries the exit code; the fix is a separate tree via --planning-dir.
+  const foreign = detectForeignPlanningTreeAt(cwd);
+  if (foreign) {
+    output({ error: `planning tree belongs to ${foreign.tool}`, evidence: foreign.evidence, fix: 'Run PAN with --planning-dir <dir> to use a separate tree (ADR-0043)' }, raw);
+    return;
+  }
   const config = loadConfig(cwd);
 
   // Detect Brave Search API key availability

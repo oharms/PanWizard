@@ -40,6 +40,7 @@ const {
   STATE_FILE,
 } = require('./constants.cjs');
 const { planningPath, planningRel } = require('./utils.cjs');
+const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
 const { listMemoryAgents, readMemory, compactMemory } = require('./memory.cjs');
 const { readRecords, isSuspectRecord, METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
 const { assessCacheTtl } = require('./context-budget.cjs');
@@ -529,6 +530,18 @@ function checkPlanningFragment(cwd) {
  */
 function scanOneRoot(cwd, root, opts) {
   return withPlanningRoot(root.rel, () => {
+    // A .planning/ written by ANOTHER tool (gsd-core shares the directory name and
+    // PAN's pre-v2.2 uppercase file names) must never be "repaired": the legacy
+    // rename would rename its state files. One warn finding, nothing fixable, and
+    // none of the per-tree checks run on it. Reality check R15.
+    const foreign = detectForeignPlanningTree(planningPath(cwd));
+    if (foreign) {
+      const f = mkFinding('foreign-planning-tree', 'warn', planningRel(),
+        `planning tree belongs to ${foreign.tool} (${foreign.evidence.join(', ')}) — PAN will not rename or repair its files; run PAN with --planning-dir to give it a tree of its own (ADR-0043)`,
+        null);
+      f.track = root.name;
+      return { findings: [f], planning_exists: true };
+    }
     const fragment = checkPlanningFragment(cwd);
     const findings = [
       ...fragment.findings,
@@ -606,6 +619,12 @@ function applyFix(cwd, finding) {
   try {
     switch (fix.action) {
       case 'rename-lowercase': {
+        // Defence in depth for R15: the scan never emits this fix for a foreign tree,
+        // but a stale findings list or a hand-built one must not rename another
+        // tool's files either.
+        if (detectForeignPlanningTree(path.dirname(abs))) {
+          return { applied: false, detail: 'refused: this planning tree belongs to another tool (see the foreign-planning-tree finding)' };
+        }
         // Two-step rename: Windows treats case-only renames inconsistently
         // across fs layers, so hop through a temp name.
         const dir = path.dirname(abs);

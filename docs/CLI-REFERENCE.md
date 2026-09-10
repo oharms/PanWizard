@@ -1231,6 +1231,7 @@ pan-tools validate health --links
 | E003 | error | `roadmap.md` not found | No |
 | E004 | error | `state.md` not found | Yes |
 | E005 | error | `config.json` JSON parse error | Yes |
+| E006 | error | `.planning/` belongs to another tool (gsd-core markers found); PAN stops before E002–E005 and `--repair` writes nothing | No |
 | W001 | warning | `project.md` missing required section | No |
 | W002 | warning | `state.md` references non-existent phase | Yes |
 | W003 | warning | `config.json` not found | Yes |

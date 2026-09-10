@@ -163,6 +163,7 @@
     "FOCUS_MODES:object",
     "FOCUS_SOURCES:object",
     "FOCUS_TIERS:object",
+    "FOREIGN_PLANNING_MARKERS:object",
     "HEALTH_STATUS:object",
     "HYGIENE_LEDGER_MIN_RECORDS:number",
     "HYGIENE_LEDGER_SUSPECT_MASS_RATIO:number",
@@ -386,6 +387,10 @@
     "summarizePriorities:function",
     "verifyTestCount:function",
     "writeAutoRun:function"
+  ],
+  "foreign-planning.cjs": [
+    "detectForeignPlanningTree:function",
+    "detectForeignPlanningTreeAt:function"
   ],
   "frontmatter.cjs": [
     "FRONTMATTER_SCHEMAS:object",

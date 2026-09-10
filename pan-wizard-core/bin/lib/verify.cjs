@@ -15,6 +15,7 @@ const {
   BUILTIN_DRIFT_RULES, DRIFT_VERDICTS, BINARY_EXTENSIONS, DRIFT_MAX_FILES, DRIFT_MAX_FILE_SIZE, DRIFT_SEVERITY_WEIGHTS,
 } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible } = require('./utils.cjs');
+const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
 // Drift detection lives in verify-drift.cjs; re-exported below so consumers of
 // verify.cjs are unaffected by the decomposition.
 const { runDriftCheck, parseConventionRules, checkFileConventions, calculateDriftScore, getChangedFiles, cmdDriftCheck } = require('./verify-drift.cjs');
@@ -1305,6 +1306,17 @@ function cmdValidateHealth(cwd, options, raw) {
       info,
       repairable_count: 0,
     }, raw, undefined, 1);
+    return;
+  }
+
+  // Check 1b: the tree exists but belongs to another tool (gsd-core shares the
+  // directory name and PAN's legacy uppercase file names). Report that as its own
+  // error and stop: E002-E005 would describe a foreign layout as a broken PAN one,
+  // and --repair must never write into it. Reality check R15.
+  const foreign = detectForeignPlanningTree(planningPath(cwd));
+  if (foreign) {
+    addIssue('error', 'E006', `planning tree belongs to ${foreign.tool}: ${foreign.evidence.join(', ')}`, 'Run PAN with --planning-dir <dir> to use a separate tree (ADR-0043)');
+    output({ status: HEALTH_STATUS.BROKEN, errors, warnings, info, repairable_count: 0 }, raw, undefined, 1);
     return;
   }
 
