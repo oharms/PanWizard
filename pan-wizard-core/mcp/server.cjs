@@ -50,7 +50,30 @@ const META_SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo';
 // claim to speak a version we don't. Newest first (the `server/discover` order).
 const SUPPORTED_VERSIONS_LIST = [MODERN_PROTOCOL_VERSION, '2025-06-18', '2025-03-26', '2024-11-05'];
 const SUPPORTED_PROTOCOL_VERSIONS = new Set(SUPPORTED_VERSIONS_LIST);
-const SERVER_INFO = { name: 'pan-mcp', version: '0.1.0' };
+/**
+ * The version the server reports in `initialize` / `server/discover`. Read from the
+ * package.json two levels up: the repository root in the source tree, the runtime
+ * directory in an install (the installer writes package.json beside pan-wizard-core/).
+ * The plugin bundles carry no package.json there, so fall back to the plugin manifest
+ * and finally to a marker that is visibly not a release. Never throws: a missing
+ * file must not stop the server from answering. Reality check R9: this was a literal
+ * '0.1.0' while the package shipped 3.x.
+ */
+function readPackageVersion() {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'package.json'),
+    path.join(__dirname, '..', '..', '.claude-plugin', 'plugin.json'),
+    path.join(__dirname, '..', '..', 'plugin.json'),
+  ];
+  for (const file of candidates) {
+    try {
+      const v = JSON.parse(fs.readFileSync(file, 'utf8')).version;
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    } catch { /* try the next candidate */ }
+  }
+  return '0.0.0-unknown';
+}
+const SERVER_INFO = { name: 'pan-mcp', version: readPackageVersion() };
 
 /**
  * Default engine location: `bin/` is a sibling of this `mcp/` directory inside
@@ -370,6 +393,6 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  createServer, defaultPanToolsPath, defaultSpawn, parseVerdict, SERVER_INFO, toMcpTool, toMcpResource,
+  createServer, defaultPanToolsPath, defaultSpawn, parseVerdict, readPackageVersion, SERVER_INFO, toMcpTool, toMcpResource,
   PROTOCOL_VERSION, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST, META_PROTOCOL_VERSION_KEY,
 };

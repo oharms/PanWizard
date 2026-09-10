@@ -743,3 +743,24 @@ describe('resources/read: a JSON verdict on a non-zero exit is data, not a faile
     assert.equal(parseVerdict('nope'), null);
   });
 });
+
+// Reality check R9: serverInfo.version was a hardcoded '0.1.0' while the package
+// shipped 3.x. It now comes from the package.json two levels above mcp/ (repo root
+// here; the runtime dir in an install), with the plugin manifest as the fallback.
+describe('serverInfo.version is the package version (R9)', () => {
+  const { readPackageVersion } = require('../pan-wizard-core/mcp/server.cjs');
+  const pkgVersion = require('../package.json').version;
+
+  test('initialize reports the repository package version in the source tree', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+    assert.equal(r.result.serverInfo.version, pkgVersion);
+    assert.notEqual(r.result.serverInfo.version, '0.1.0', 'the old literal must be gone');
+  });
+
+  test('readPackageVersion never throws and never returns an empty string', () => {
+    const v = readPackageVersion();
+    assert.equal(typeof v, 'string');
+    assert.ok(v.trim().length > 0);
+  });
+});
