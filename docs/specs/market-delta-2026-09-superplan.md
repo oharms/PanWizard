@@ -110,3 +110,100 @@ Ordering rationale. S1 fixes what is **wrong today** (a ledger error on the defa
 ## Sources read for this plan
 
 Claude Code: `code.claude.com/docs/en/changelog`, `/sub-agents`, `/prompt-caching`, `/workflows`, `/settings-reference`. Anthropic pricing: `platform.claude.com/docs/en/about-claude/pricing`. Agent Plugins: `github.blog/changelog/2026-08-12-agent-plugins-1-0-in-vs-code-copilot-cli-and-the-copilot-app/`, `agent-plugins.org`, `github.com/agentplugins/agent-plugins-spec`, `docs.github.com/en/copilot/concepts/agents/about-plugins`, `antigravity.google/docs/cli/plugins/`. Codex: `learn.chatgpt.com/docs/changelog`, `codex.danielvaughan.com` (v0.148 hooks, v0.149.1 deprecation). Gemini: `geminicli.com/docs/changelogs/`. OpenCode: `opencode.ai/docs/mcp-servers/`, `/agents/`, `/skills/`. Agent Skills: `agentskills.io/specification`. Competitors: `github.com/github/spec-kit/releases`, `github.com/bmad-code-org/BMAD-METHOD/releases`, `github.com/glittercowboy/get-shit-done/releases`. MCP: `blog.modelcontextprotocol.io/posts/2026-07-28/`.
+
+
+---
+
+## Addendum — reality check, `2026-09-10` (evening)
+
+First run of the `/reality-check` dev skill (`.claude/commands/reality-check.md`), against `feat/market-delta-2026-09-s1` @ `5684d38` (PR #29 open, all checks green, mergeable). The delta window was zero days, so Phases 2 and 3 re-verified the morning's claims against primary sources instead of scanning anew; Phases 1 and 4 are fresh measurement against a packed install in `d:\pantesting`. The narrative is §9 of [ECOSYSTEM-REVIEW-2026-08.md](../ECOSYSTEM-REVIEW-2026-08.md). Items below carry `R` ids so they do not collide with the plan's own numbering, and the session queue continues at S6. **The step-by-step execution plan for every item is [reality-check-2026-09-superplan.md](reality-check-2026-09-superplan.md)** (generated with `/superplan`; consume with `/execplan`).
+
+### Corrections to this plan
+
+- **F2 and item 1b** claimed Fable 5.1 is "Claude Code's default since 2.1.257". The model-config page states: "Neither Fable model is the account-type default on any plan or provider." `default` resolves to Opus 5 (Max, Team Premium, Enterprise, API, Bedrock and Google Cloud) or Sonnet 5 (Pro, Team Standard); the `fable` and `best` aliases resolve to Fable 5.1. The rate row and the flagship bump remain correct — Fable 5.1 is the most capable generally available model and the alias target — but the stated reason was wrong, and it propagated to CHANGELOG `[Unreleased]` and a `cost.cjs` comment (item R1). Source: `code.claude.com/docs/en/model-config`, read `2026-09-10`.
+- **F13** claimed BMAD and GSD had no release since May 2026. BMAD shipped `v6.11.0` (`2026-08-10`) and `v6.12.0` (`2026-09-04`). GSD's original repository (`gsd-build/get-shit-done`) was archived on `2026-06-26`; the project continues as `open-gsd/gsd-core` (`v1.11.0` `2026-08-19`, `v1.12.0` `2026-08-30`, `v1.13.0` `2026-09-06`). Taskmaster is the dormant one (last release `2026-03-31`). Sources: the GitHub releases API for each repository, read `2026-09-10`.
+
+### Baseline (measured this run — reproduce with the commands, never copy the numbers)
+
+| Check | Result | Reproduce |
+|---|---|---|
+| Suite | green, no skips | `npm run test:all` |
+| Release gates | all passed | `node scripts/release-check.js` |
+| Harness, model-free tier | every runnable scenario passed; the Codex, Copilot and Antigravity live gates skipped (no CLI on this machine). A concurrent tier-2 run the same evening is RC22 | `npm run harness` |
+| Packed install, five runtimes | clean; every registration file present; OpenCode config at `.opencode/opencode.json` | skill Phase 1.3 |
+| Installed bridge | `initialize` negotiates; every advertised resource reads through the real engine on a bare project; argument validation rejects a malformed `tools/call` | skill Phase 1.3 probe |
+| CI | PR #29: every check green, mergeable | `gh pr view 29 --json statusCheckRollup` |
+| Rate table | every row matches the pricing page; `RATES_VERIFIED_AT` is today | `pan-tools models check` |
+| Context footprint | command and agent descriptions together stay far under the subagent-description warning; the emitted body-budget offenders are the four source offenders plus `pan-army` | skill Phase 4.1 |
+
+### Findings
+
+| # | Finding (verified `2026-09-10`) | Phase | Class |
+|---|---|---|---|
+| RC1 | "Fable 5.1 is Claude Code's default" — false per model-config; appears in CHANGELOG `[Unreleased]` (three phrasings), a `cost.cjs` comment, and F2/1b above | 2.3 | P1 WRONG |
+| RC2 | `validate health` exits 0 with `status: broken` (E001 on an uninitialised project); `cmdValidateHealth` passes no exit code and `errors[]` is outside the error family; CLI-REFERENCE says verdict commands set it explicitly; no test | 1.3 | P1 WRONG |
+| RC3 | F13 false for BMAD and GSD (above) | 3.1 | P1 WRONG |
+| RC4 | README describes a "Location — global or local" prompt; the installer prompts for runtime only and defaults to local silently | 1.2 | P6 |
+| RC5 | README's Hook System row embeds a hook count, and it is wrong (six ship) — delete the number | 1.2 | P6 |
+| RC6 | COMPARISON.md ("Last verified: March 2026"): MCP row false; "nobody else" and "no competitor" claims false against gsd-core and Spec Kit; Continue.dev read-only since June 2026; Windsurf is Devin Desktop, Cascade removed `2026-09-08`; Aider dormant; PAN's own rows understated (multi-agent, git, cost, cross-runtime, session, context, plan verification, codebase awareness, the leads list) | 1.2, 3 | P6 |
+| RC7 | README claims weakened by source: bot army framed as five-CLI (Claude Code only); fresh-context spawning code-verified on Claude and prose-adapted elsewhere; plan-checker loop capped at three passes; per-task commits coalesce trivial tasks (P-1605); reviewer-class agents pin a model despite "every agent inherits"; `mode` and `depth` are prompt defaults, not config defaults; abort kill-switch is prompt-enforced; campaign budget advisory unless `budget.enforce` | 1.2 | P6 |
+| RC8 | OpenCode local config path `.opencode/opencode.json` is read by OpenCode's loader (source: `packages/opencode/src/config/config.ts`, the `.opencode` directory branch) but not listed on `opencode.ai/docs/config`; `MCP_REGISTRATION.opencode.why` cites the docs page. No `live-gate-opencode` or `live-gate-gemini` harness scenario exists | 1.3, 2.1 | P4, P3 |
+| RC9 | `resolveRate` returns `null` for `claude-mythos-5-1`, `claude-mythos-5`, `claude-opus-4-5-20251101`, `claude-sonnet-4-5-20250929`; all four are priced on the pricing page today | 2.3, 4.3 | P2 |
+| RC10 | "Zero runtime dependencies" is unpinned — no test or gate asserts `package.json` has no `dependencies` | 1.2 | P3 |
+| RC11 | MCP `SERVER_INFO.version` is a hardcoded `0.1.0`; the package is `3.27.0` | 1.3 | P7 |
+| RC12 | Codex and Copilot marketplaces resolve to `./dist/pan-agent-plugin` with no rebuild-on-resolve (the Claude `command` source has one). `dist/` was stale today (built before the S3 vendor-directory commit); a fresh build carries `com.github.copilot/` and `hooks/` | 2.4 | P4 |
+| RC13 | Stray `nul/` npm-cache directory in the source root (created `2026-08-21`); git prints a warning on every command | 1.4 | P7 |
+| RC14 | TROUBLESHOOTING precision: Gemini's trusted-folders doc says the whole project `.gemini/settings.json` is skipped in untrusted folders (hooks too, not only MCP); Claude Code `2.1.267` adds `maxEffortLevel`, which can clamp PAN's `effort:` frontmatter; Codex `0.154.0` refreshes plugin skills and hooks in live sessions | 2.1 | P6 |
+| RC15 | Copilot CLI `1.0.83`: custom agents accept a `model:` list tried in order plus `model-policy: required` — a fallback-list surface for PAN's model-pinned agents (ADR-0028's live-check gate applies) | 2.1 | P5 |
+| RC16 | Antigravity variant still deferred (ADR-0045): own `$schema`, `mcp_config.json`, also scans `_agents/plugins/`; the live-gate scenario exists and skips. Superpowers documents `agy plugin install <github-url>` of a `.claude-plugin` repository — if Antigravity loads Claude-format plugins, the variant collapses to a marketplace entry (unverified) | 2.1, 3.2 | P4 |
+| RC17 | gsd-core uses `.planning/` with `ROADMAP.md`, `STATE.md`, `PROJECT.md`, `config.json`, `phases/`, `quick/` — the same names PAN uses. A project with both installed has two writers; `validate health` and `hygiene scan` cannot tell a foreign layout from a broken one | 3.2 | P5 |
+| RC18 | Every runtime directory carries its own full `pan-wizard-core` copy (one per selected runtime, plus one more with `--unified-skills`); ADR-0028 Phase 2 already introduced a shared core for unified skills, the per-runtime copies remain. Measure with the skill's Phase 4.2 command | 4.2 | P7 |
+| RC19 | Body budget: the emitted skills over the recommendation are the four source offenders plus `pan-army` (the adapter header pushes it over) — item 11, unchanged, parked | 4.1 | P7 |
+| RC20 | Behavioural claims with no harness scenario: research → plan → checker loop, UAT diagnosis, quick mode, pause and resume, bot army, unified-skills discovery, map-codebase modes. 5c and 3b still await a spend cap | 1.2 | P3 |
+| RC21 | Peer roster: OpenSpec (Fission-AI) is the largest spec-driven project by stars, released steadily in the window, and is absent; Taskmaster is dormant | 3.1 | P6 |
+| RC22 | **Markdown exec-phase chain completed three of five reps** on a deployed `3.27.0` @ `8e776bf` build (concurrent session's tier-2 run `run-20260910-190841-i1aw`, twenty-dollar cap reached): rep 4 exited non-zero with `passed=false`; rep 5 produced no summaries and no source files. The native `pan-exec-waves` chain was budget-starved before step 1 in every rep (pre-`87e53c9` equal split) and is unmeasured. The chain-drop class PanLoop closed at 16/16 is back to a measured three of five here | 1.3 | P2 STABILITY |
+| RC23 | `plugin-agent-scope` (tier 1): two runs, zero spend, seconds each, neither greppable line printed — the model step did not really run, yet the ledger now holds two findings that the two-run rule will promote. A probe that never invoked the model should record `error`, not a finding | 1.3 | P3 |
+
+### Items
+
+| ID | Pri | Size | Pts | Title | Files | Gate / verify | Status |
+|---|---|---|---|---|---|---|---|
+| R1 | P1 | XS | 1 | Reword the Fable default claim to "the model the `fable` and `best` aliases resolve to" — CHANGELOG `[Unreleased]` (three sites), `cost.cjs` comment | `CHANGELOG.md`, `pan-wizard-core/bin/lib/cost.cjs` | `grep -n "Claude Code.*default" CHANGELOG.md pan-wizard-core/bin/lib/cost.cjs` finds nothing near Fable | Open |
+| R2 | P1 | S | 2 | `validate health` sets its exit code explicitly (non-zero on `broken`, as `reconcile` does); consider a distinct `uninitialized` status for E001; a test pins both | `pan-wizard-core/bin/lib/verify.cjs`, `tests/`, `pan-wizard-core/workflows/health.md` (parses JSON, unaffected) | on a bare directory: exit non-zero, JSON unchanged | Open |
+| R3 | P1 | XS | 1 | F13 correction — done above; §8 of the August review points here via §9 | this file, `docs/ECOSYSTEM-REVIEW-2026-08.md` | — | Done `2026-09-10` |
+| R4 | P6 | S | 2 | README accuracy pass: remove the location-prompt step; delete the hook count; qualify the Claude-only and capped claims (RC7) | `README.md` | doc-lint clean; a re-run of the skill's Phase 1.2 shows no FALSE row | Open |
+| R5 | P6 | M | 4 | COMPARISON.md refresh: peer columns (Continue.dev read-only, Windsurf to Devin Desktop, Aider dormant, Cline 4.x, Cursor 3.0), the understated PAN rows, a direct-peer table (Spec Kit, BMAD, gsd-core, Superpowers, OpenSpec), rewrite "Leads" against gsd-core and Spec Kit | `docs/COMPARISON.md` | every "no competitor" claim carries a dated peer check | Partially done `2026-09-10` — the false statements corrected, date moved, verification note added |
+| R6 | P3 | S | 2 | Harness `live-gate-opencode.json` and `live-gate-gemini.json` (`requires.cli`); cite the loader source in `MCP_REGISTRATION.opencode.why` | `harness/scenarios/`, `bin/install-lib.cjs` | scenarios skip with reason here; pass on a machine with the CLIs | Open |
+| R7 | P2 | S | 2 | Rate rows for `claude-mythos-5-1`, `claude-mythos-5`, `claude-opus-4-5`, `claude-sonnet-4-5` with the pricing-page citation in the commit; a test that the dated ids resolve | `pan-wizard-core/bin/lib/cost.cjs`, `tests/cost.test.cjs` | `resolveRate` non-null for all four | Open |
+| R8 | P3 | XS | 1 | Test: `package.json` has no `dependencies` key (also a release-gate line) | `tests/`, `scripts/release-check.js` | revert-prove by adding a dependency | Open |
+| R9 | P7 | XS | 1 | `SERVER_INFO.version` read from the install's `package.json` (fallback to the current literal) | `pan-wizard-core/mcp/server.cjs`, `tests/pan-zcode-mcp.test.cjs` | `initialize` returns the package version on an install | Open |
+| R10 | P4 | S | 2 | Bundle freshness: release gate 8 fails if `dist/pan-agent-plugin/` exists and differs from the fresh build; `marketplace/README.md` says to build before a local Codex or Copilot install | `scripts/release-check.js`, `marketplace/README.md` | a stale `dist/` turns the gate red | Open |
+| R11 | P7 | XS | 1 | Remove the stray `nul/` directory. Windows reserved name, so use the extended-path form from cmd: `rd /s /q \\?\D:\PanWizard\nul` | repository root | `git status` prints no warning | Open (user action) |
+| R12 | P6 | XS | 1 | TROUBLESHOOTING precision (RC14), written by capability | `docs/TROUBLESHOOTING.md` | model-version-drift lint clean | Open |
+| R13 | P5 | S | 2 | Copilot agent `model:` fallback lists for the model-pinned agents | `bin/install-lib.cjs` (`convertClaudeToCopilotAgent`), tests | live check on Copilot CLI at or above `1.0.83` before default-on | Open (gated) |
+| R14 | P4 | M | 4 | Antigravity: first test whether `agy plugin install` accepts the Claude plugin (Superpowers precedent); if yes, a marketplace entry; if no, the thin variant ADR-0045 deferred | `scripts/build-agent-plugin.js`, `harness/scenarios/live-gate-antigravity.json` | live gate passes | Open (needs `agy`) |
+| R15 | P5 | S | 2 | Foreign-layout detection: `hygiene scan` and `validate health` recognise a gsd-core `.planning/` by its marker files and report a foreign planning tree instead of "broken" | `pan-wizard-core/bin/lib/hygiene.cjs`, `verify.cjs`, tests | fixture with a gsd-shaped tree | Open |
+| R16 | P7 | L | 10 | One core per project: decision and ADR on collapsing the per-runtime `pan-wizard-core` copies onto the shared `.agents/pan-wizard-core/` for local installs (global installs cannot share) — uninstall ref-counting and path rewriting are the cost | ADR, `bin/install.js`, `bin/install-lib.cjs` | decision first | Parked (decision) |
+| R17 | P3 | M | 4 | Harness scenarios for RC20's uncovered behaviours (tiers 1 and 2), plus the pending 5c and 3b runs | `harness/scenarios/` | `--max-usd` provided | Blocked (spend) |
+| R18 | P6 | XS | 1 | Roster: add OpenSpec, mark Taskmaster dormant, point GSD at `open-gsd/gsd-core` — done in the skill's Appendix B and in §9 | `.claude/commands/reality-check.md` | — | Done `2026-09-10` |
+| R19 | P2 | M | 4 | **Run 5c for real:** `node harness/src/run.cjs --scenario markdown-exec-phase-chain --scenario native-exec-waves-chain --tier 2 --repeat 5 --max-usd 50` (the README's sizing for both chains); read the two failed markdown reps' workspaces under `ws/` for the drop point; compare completion. Recommend the native path only if it completes at least as often | `harness/`, `d:/pantesting/harness-runs/` | native completion at or above markdown, five reps each | Blocked (spend) |
+| R20 | P3 | S | 2 | Probe integrity: a `model` step that spent nothing and returned in seconds records `error` with the runner's stderr, never a finding; find why `plugin-agent-scope` produced no output (plugin not installed into the workspace? `claude -p` refused?) | `harness/src/`, `harness/scenarios/plugin-agent-scope.json` | a zero-spend model step cannot create a finding; revert-prove | Open |
+
+### Session queue (continues from S5)
+
+| Session | Items | Pts | Theme | Exit criterion |
+|---|---|---|---|---|
+| **S6** | R1, R2, R4, R7, R8, R9, R12 | 10 | Truth pass before the next release | CHANGELOG states the right reason; `validate health` exit pinned; README has no false statement; four rate rows cited; zero-dep pinned |
+| **S7** | R5, R6, R10, R15 | 10 | Comparison and gates | COMPARISON refreshed with dated peer checks; OpenCode and Gemini gates exist; a stale bundle cannot pass gate 8; a foreign `.planning/` is recognised |
+| **S8** | R20, then R19, R13, R14, R17 | 16 | Gated on CLIs and spend | R20 first so the next model run cannot file phantom findings; then run where `copilot`, `agy` and a spend cap exist |
+| Decision | R16 | — | Footprint | an ADR either way |
+
+Ordering rationale: S6 fixes what is wrong in the tree that PR #29 is about to merge, and costs a session. S7 makes the outward-facing claims true and closes the two harness gaps. S8 waits for machines this one is not.
+
+### What not to do — re-affirmed, with two additions
+
+All eight inherited entries hold. Added: **do not describe `.planning/` as unthreatened or unique** (gsd-core shares the layout; the differentiator is depth); **do not write "no competitor" or "nobody else" in an evergreen doc without a dated peer check** (such claims were false today where checked).
+
+### Sources read for this addendum (all `2026-09-10`)
+
+Claude Code: `code.claude.com/docs/en/model-config`, `/changelog`, `/sub-agents`, `/workflows`, `/plugins`, `/plugin-marketplaces`, `/hooks`, `/skills`; `raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md`. Anthropic pricing: `platform.claude.com/docs/en/about-claude/pricing`, `/models/overview`, `/about-claude/model-deprecations`. Codex: `github.com/openai/codex/releases`, `learn.chatgpt.com/docs/build-skills`, `/docs/hooks`, `/docs/extend/mcp`, `/docs/config-file/config-reference`, `developers.openai.com/plugins/build/plugins`. Gemini and Antigravity: `github.com/google-gemini/gemini-cli/releases` and PR `#29099`, `geminicli.com/docs/cli/trusted-folders/`, `/docs/hooks/`, `/docs/extensions/reference/`, `antigravity.google/docs/plugins/`, `/docs/cli/plugins/`, `/docs/models/`. OpenCode: `opencode.ai/docs/config/`, `/docs/mcp-servers/`, `/docs/agents/`, `/docs/skills/`, `raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/config/config.ts`, issue `anomalyco/opencode#3407`. Copilot: `github.com/github/copilot-cli/releases`, `docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-creating`, `/plugins-marketplace`, `/create-custom-agents-for-cli`, `/use-hooks`, `docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference`. Standards: `agent-plugins.org/specification`, `github.com/agentplugins/agent-plugins-spec` (`spec/1.0.0.md`, `schemas/1.0.0/*.json`, `MAINTAINERS.md`), `agentskills.io/specification`, `modelcontextprotocol.io/specification/latest` and `/2026-07-28/changelog`, `blog.modelcontextprotocol.io/posts/mcp-roadmap/`. Peers: GitHub releases API and READMEs for `github/spec-kit`, `bmad-code-org/BMAD-METHOD`, `open-gsd/gsd-core` (and the archived `gsd-build/get-shit-done`), `eyaltoledano/claude-task-master`, `obra/superpowers`, `Fission-AI/OpenSpec`, `ComposioHQ/agent-orchestrator`; `cursor.com/changelog`; `docs.devin.ai/desktop/changelog` and `/release-notes/overview`; Cline `CHANGELOG.md` and releases; `aider.chat/HISTORY.html`; `github.com/continuedev/continue`; `github.blog/changelog` (August and September 2026). Secondary-only material was excluded from every verdict; the peer agent's list of such claims is in the run transcript, not here.

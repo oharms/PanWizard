@@ -1,6 +1,8 @@
 # PAN Wizard vs The Competition
 
-**Last verified:** March 2026
+**Last verified:** March 2026 for the matrix columns; `2026-09-10` for the rows and bullets that carry that date.
+
+> **Verification note (`2026-09-10`).** Three statements below were false against the sources read that day and are corrected in place: the MCP row, and "Where PAN Wizard Leads" items 3 and 4 (item 1 was not re-verified). The matrix columns for Continue.dev (repository read-only since June 2026), Windsurf (now Devin Desktop; Cascade removed in September 2026) and Aider (no release in over a year) are stale, and PAN's own rows understate what ships. The refresh is queued as item R5 in [specs/market-delta-2026-09-superplan.md](specs/market-delta-2026-09-superplan.md). The direct spec-driven peers PAN is measured against there are GitHub Spec Kit, BMAD, gsd-core, Superpowers and OpenSpec; this matrix compares against IDE and agent products, which is a different question.
 
 PAN Wizard occupies a unique position in the AI coding tool landscape: it's an **orchestration layer** that works WITH your AI coding tool (Claude Code, OpenCode, Gemini CLI, Codex, and Copilot CLI), not a replacement for it. While most tools try to be the smartest single agent, PAN makes any agent reliable through structured workflows, context management, and verification.
 
@@ -29,7 +31,7 @@ PAN Wizard occupies a unique position in the AI coding tool landscape: it's an *
 | **Browser Testing** | No (not PAN's job) | No | No | No | Yes (Puppeteer) | No | No | Yes |
 | **Autocomplete** | Via host tool | No | Best-in-class (Tab) | Good | No | Good | Good | No |
 | **IDE Integration** | Via host tool | Terminal only | Native (is the IDE) | Plugin | Plugin | Native (is the IDE) | Plugin + web | Cloud IDE |
-| **MCP Support** | Via host tool | No | Limited | No | Deep (native) | Limited | No | No |
+| **MCP Support** | Own MCP server (engine exposed as tools and resources, registered per runtime, checked `2026-09-10`) plus the host tool's | No | Limited | No | Deep (native) | Limited | No | No |
 
 ---
 
@@ -39,9 +41,9 @@ These are capabilities no other tool matches:
 
 1. **Context Rot Prevention** — Every plan executes in a fresh context window. No accumulated garbage, no quality degradation. No competitor solves this
 2. **Research-Before-Planning** — Dedicated researcher agents investigate the domain before the planner starts. Cursor, Cline, and Copilot all plan without research
-3. **Plan Verification Loop** — A dedicated plan-checker agent verifies plans achieve phase goals before execution begins. Nobody else does this
-4. **Human UAT Workflow** — Structured acceptance testing with auto-diagnosis of failures and generated fix plans. No competitor offers structured UAT
-5. **5-Runtime Support** — Works across Claude Code, OpenCode, Gemini CLI, Codex, and Copilot CLI. Every competitor is locked to one IDE or tool
+3. **Plan Verification Loop** — A dedicated plan-checker agent verifies plans achieve phase goals before execution begins. Checked `2026-09-10`: gsd-core ships a plan-checker gate and Spec Kit ships cross-artifact analysis, so this is now a shared strength rather than a unique one; PAN's checker covers more dimensions (spec sufficiency and decision trace among them)
+4. **Human UAT Workflow** — Structured acceptance testing with auto-diagnosis of failures and generated fix plans. Checked `2026-09-10`: gsd-core offers a manual UAT walkthrough; PAN's auto-diagnosis into generated fix plans remains the differentiator
+5. **5-Runtime Support** — Works across Claude Code, OpenCode, Gemini CLI, Codex, and Copilot CLI. Checked `2026-09-10`: the IDE products in this matrix are each tied to one surface, but the spec-driven peers (gsd-core, Spec Kit, Superpowers) also install into many runtimes; see the queued refresh
 6. **Zero Runtime Dependencies** — Only uses Node.js builtins (`fs`, `path`, `child_process`, `os`, `crypto`). No Python, no Electron, no npm install
 7. **Atomic Git Commits** — Every task gets its own commit with a descriptive message. Only Aider does this (per edit, not per task)
 

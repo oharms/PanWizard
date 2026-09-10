@@ -371,12 +371,12 @@ Synchronize documentation after changes — check staleness and update counts
 Audit milestone completion against original intent before archiving
 
 ```
-/pan:milestone-audit [version]
+/pan:milestone-audit [version] [--track <name>] [--all-tracks]
 ```
 
 **Tools:** Read, Glob, Grep, Bash, Task, Write  
 **Group:** Milestone  
-**Lines:** 60
+**Lines:** 66
 
 #### /pan:milestone-cleanup
 
@@ -588,12 +588,12 @@ Show available PAN commands and usage guide
 Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat, poisoned ledgers, trace debris) and apply safe cleanups
 
 ```
-/pan:hygiene [--apply] [--trace-age-days N]
+/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks] [--track <name>]
 ```
 
 **Tools:** Read, Bash, AskUserQuestion  
 **Group:** System  
-**Lines:** 69
+**Lines:** 75
 
 #### /pan:patches
 
@@ -946,6 +946,7 @@ These exist only in the PAN source repository (`.claude/commands/`) and are NOT 
 | `/execplan` | /execplan — Execute Work Plan Items |
 | `/featureAI` | /featureAI - Feature Investigation, Design & Specification |
 | `/pandev` | /pandev - Structured PAN Wizard Development Workflow |
+| `/reality-check` | Full reality check of PAN Wizard — claims vs code vs deployed installs, market and runtime delta, peer comparison, optimisation review, and a sized what's-next queue |
 | `/review` | review |
 | `/superplan` | /superplan — Strategic Work Plan Generator |
 
@@ -966,6 +967,12 @@ These exist only in the PAN source repository (`.claude/commands/`) and are NOT 
 /pandev - Structured PAN Wizard Development Workflow
 
 **Lines:** 128
+
+#### /reality-check
+
+Full reality check of PAN Wizard — claims vs code vs deployed installs, market and runtime delta, peer comparison, optimisation review, and a sized what's-next queue
+
+**Lines:** 444
 
 #### /review
 

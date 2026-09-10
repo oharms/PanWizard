@@ -6,6 +6,8 @@ This document turns the April 2026 project review into an actionable improvement
 
 > **September 2026 update:** an interim market-delta scan (checked on `2026-09-10`, four weeks after the August ecosystem review) found one standard the August review missed — Agent Plugins, a vendor-neutral plugin bundle that Copilot CLI, Codex and Antigravity now load natively — plus a stale rate row for the current default Claude model and a plugin build that omits the native workflows. The prioritised queue lives in [specs/market-delta-2026-09-superplan.md](specs/market-delta-2026-09-superplan.md); items there are proposals until executed.
 
+> **September 2026 reality check (`2026-09-10`):** the first run of the `/reality-check` dev skill re-verified the same-day scan against primary sources and a packed install into all five runtimes. It found the scan's "no release since May" claim wrong for BMAD and for GSD (which continues as gsd-core and is PAN's closest peer), a wrong rationale for the flagship bump (the newest Fable-tier model is what the `fable` and `best` aliases resolve to, not any plan's default), a `validate health` verdict that exits 0 when broken, and a comparison matrix whose "no competitor" claims no longer hold. Findings and the sized queue live in the addendum of [specs/market-delta-2026-09-superplan.md](specs/market-delta-2026-09-superplan.md); the narrative is section 9 of [ECOSYSTEM-REVIEW-2026-08.md](ECOSYSTEM-REVIEW-2026-08.md), and the detailed execution plan is [specs/reality-check-2026-09-superplan.md](specs/reality-check-2026-09-superplan.md).
+
 Do not duplicate filesystem-derived counts here. `CLAUDE.md` remains the single source of truth for command, agent, module, workflow, test, hook, spec, and ADR counts.
 
 ## Goals
