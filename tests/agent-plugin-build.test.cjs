@@ -22,6 +22,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const lib = require('../bin/install-lib.cjs');
 const { buildAgentPluginInto, buildPluginInto, cleanup } = require('./helpers.cjs');
+const { escapeRegex } = require('../pan-wizard-core/bin/lib/core.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const FIXTURES = path.join(__dirname, 'fixtures', 'agent-plugins');
@@ -195,7 +196,7 @@ describe('Agent Plugins bundle (ADR-0045): emitted tree conforms to the pinned s
   });
 
   test('every {{PAN_PLUGIN_ROOT}} reference in skills and core markdown resolves inside the bundle', () => {
-    const token = lib.AGENT_PLUGIN_ROOT_TOKEN.replace(/[{}]/g, '\\$&');
+    const token = escapeRegex(lib.AGENT_PLUGIN_ROOT_TOKEN);
     const re = new RegExp(`${token}/([A-Za-z0-9_./-]*[A-Za-z0-9_/-])`, 'g');
     const dangling = new Map();
     let total = 0;

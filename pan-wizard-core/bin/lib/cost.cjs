@@ -151,7 +151,10 @@ function ratesFromModelPricing(modelPricing) {
 // hosts that relocate the directory).
 function managedSettingsDir(platform = process.platform, env = process.env) {
   if (env.PAN_MANAGED_SETTINGS_DIR) return env.PAN_MANAGED_SETTINGS_DIR;
-  if (platform === 'win32') return path.join(env.ProgramFiles || 'C:\\Program Files', 'ClaudeCode');
+  // `path.win32.join`, not `path.join`: the platform is an argument, so a POSIX
+  // host asked for the win32 directory must still get backslashes. On Windows the
+  // two are the same function.
+  if (platform === 'win32') return path.win32.join(env.ProgramFiles || 'C:\\Program Files', 'ClaudeCode');
   if (platform === 'darwin') return '/Library/Application Support/ClaudeCode';
   return '/etc/claude-code';
 }

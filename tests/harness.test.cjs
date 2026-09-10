@@ -85,6 +85,14 @@ describe('harness ledger — signatures, merge, promotion', () => {
     assert.notEqual(a, signature('s', 1, 'exit:0', 'exit code 1, expected 0'), 'a different step is a different finding');
     assert.notEqual(a, signature('s', 0, 'file:x', 'missing: x'), 'a different assertion is a different finding');
     assert.equal(normaliseDetail('run-20260910-120000-abcd 12 /x/y'), '<run> <n> <path>');
+    // The suffix is mkdtempSync's, whose alphabet is [A-Za-z0-9]. A lowercase-only
+    // rule leaves the uppercase tail behind, and one finding splits per run.
+    assert.equal(normaliseDetail('run-20260910-120000-Ab3Xy9 failed'), '<run> failed');
+    assert.equal(
+      signature('s', 0, 'exit:0', 'boom at run-20260910-120000-Ab3Xy9'),
+      signature('s', 0, 'exit:0', 'boom at run-20260911-090000-zzzzzz'),
+      'a mixed-case run id must normalise like a lowercase one',
+    );
   });
 
   test('mergeRun accumulates runs on one finding and resolves it when the step later passes', () => {

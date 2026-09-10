@@ -25,6 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const lib = require('../bin/install-lib.cjs');
 const { buildAgentPluginInto, cleanup } = require('./helpers.cjs');
+const { escapeRegex } = require('../pan-wizard-core/bin/lib/core.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -93,7 +94,7 @@ describe('Agent Plugins bundle: hooks and vendor directories', () => {
     const src = fs.readdirSync(path.join(ROOT, 'agents')).filter(f => f.endsWith('.md')).sort();
     const out = fs.readdirSync(path.join(OUT, NS, 'agents')).sort();
     assert.deepEqual(out, src.map(f => f.replace(/\.md$/, '.agent.md')));
-    const token = lib.AGENT_PLUGIN_ROOT_TOKEN.replace(/[{}]/g, '\\$&');
+    const token = escapeRegex(lib.AGENT_PLUGIN_ROOT_TOKEN);
     const refRe = new RegExp(`${token}/([A-Za-z0-9_./-]*[A-Za-z0-9_/-])`, 'g');
     const problems = [];
     for (const f of out) {

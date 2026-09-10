@@ -56,10 +56,16 @@ function defaultStateDir() {
   return process.platform === 'win32' && fs.existsSync('D:\\pantesting') ? 'D:\\pantesting\\harness-runs' : path.join(os.tmpdir(), 'pan-harness-runs');
 }
 
-function runId() {
+/**
+ * The run-id PREFIX. The unique suffix is not ours to invent: `mkdtempSync` appends
+ * it while creating the directory, so the name cannot be guessed and pre-created by
+ * another user of a shared temp directory. Keep the shape in step with the `<run>`
+ * rule in ledger.cjs `normaliseDetail`.
+ */
+function runIdPrefix() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
-  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${Math.random().toString(36).slice(2, 6)}`;
+  return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-`;
 }
 
 function fill(value, vars) {
@@ -165,10 +171,14 @@ function main() {
     process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep]\n');
     return 0;
   }
-  const id = runId();
   const stateDir = args.stateDir || defaultStateDir();
-  const runDir = path.join(stateDir, id);
-  fs.mkdirSync(runDir, { recursive: true });
+  fs.mkdirSync(stateDir, { recursive: true });
+  // mkdtempSync, not mkdirSync on a name we chose: off Windows the default state
+  // directory lives under the shared OS temp directory, where a predictable run name
+  // is another user's to pre-create or point a symlink at before we write the report.
+  // mkdtemp creates the directory atomically, 0700, with a suffix only this process knows.
+  const runDir = fs.mkdtempSync(path.join(stateDir, runIdPrefix()));
+  const id = path.basename(runDir);
   const log = (m) => process.stderr.write(`[harness] ${m}\n`);
 
   log(`run ${id} — repo ${args.repo}`);
