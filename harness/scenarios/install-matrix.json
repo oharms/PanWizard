@@ -1,0 +1,32 @@
+{
+  "id": "install-matrix",
+  "tier": 0,
+  "description": "Install the packed artifact for all five runtimes into one workspace and assert the shipped surfaces the market-delta plan touched: manifests, Codex async hooks, native workflow scripts, MCP registrations, a working engine, a non-stale rate table.",
+  "why": "Every unit test runs from the source tree. This is the first place a build that packs wrong, installs wrong, or ships a dead config path would show — the class of defect June's review caught twice (Copilot hooks, Codex skills) and August's once (a doubled .github path).",
+  "seed": "empty",
+  "install": ["--claude", "--codex", "--gemini", "--opencode", "--copilot"],
+  "budget": { "maxUsd": 0, "maxMinutes": 10, "maxStepMinutes": 3 },
+  "steps": [
+    { "kind": "fs", "expect": ["file:.claude/pan-file-manifest.json", "file:.codex/pan-file-manifest.json", "file:.gemini/pan-file-manifest.json", "file:.opencode/pan-file-manifest.json", "file:.github/pan-file-manifest.json"],
+      "why": "Five manifests = five tracked installs. A runtime without a manifest cannot be verified or uninstalled." },
+    { "kind": "fs", "read": ".codex/hooks.json",
+      "expect": ["json:hooks.SessionStart.0.hooks.0.async=true", "json:hooks.SubagentStop.0.hooks.0.async=true", "json:hooks.SubagentStop.1.hooks.0.async=true", "json!:hooks.PostToolUse.0.hooks.0.async", "json:hooks.PostToolUse.0.hooks.0.type=command"],
+      "why": "Plan item 2: observers run async on Codex (0.148+), the context monitor stays synchronous because it injects additionalContext the model must read this turn. Both directions asserted — an async monitor would silently defer its warnings." },
+    { "kind": "fs", "expect": ["count:.claude/workflows/pan-*.js=4", "file:.claude/workflows/pan-exec-waves.js", "file:.claude/workflows/pan-diagnose-issues.js"],
+      "why": "Plan §3.2 (S4): the two new native workflows ship alongside the two June ones. An install that carries fewer is a build that dropped a script." },
+    { "kind": "fs", "read": ".mcp.json", "expect": ["json:mcpServers.pan.command=node"],
+      "why": "Claude registration at the repo root (special-cased off the target dir). The bridge is only reachable if this file exists where Claude Code looks." },
+    { "kind": "fs", "read": ".gemini/settings.json", "expect": ["json:mcpServers.pan.command=node"],
+      "why": "Gemini shares settings.json between hooks and MCP; a hooks write that clobbered mcpServers would pass every other check." },
+    { "kind": "fs", "read": ".opencode/opencode.json", "expect": ["json:mcp.pan.type=local", "json:mcp.pan.enabled=true", "json:mcp.pan.command.0=node"],
+      "why": "OpenCode's shape differs from everyone else's (top-level mcp, command ARRAY, environment not env) — verified against its docs 2026-09-10; community sources had it wrong." },
+    { "kind": "fs", "expect": ["absent:.codex/mcp.json", "absent:.github/.github"],
+      "why": "Two negatives that each guard a past defect: Codex MCP is TOML-only so PAN prints a snippet and writes nothing; and the doubled `.github/.github` path once installed cleanly while being dead." },
+    { "kind": "pan", "argv": ["--help"], "expect": ["exit:0", "stdout~pan-tools"],
+      "why": "The installed engine runs at all — from the artifact, not the source tree." },
+    { "kind": "pan", "argv": ["models", "check"], "expect": ["exit:0", "json:stale=false", "json:models"],
+      "why": "Plan item 1: the rate table's verification date is current. A stale table is not a failure of this build's code, but it is a release that ships wrong costs." },
+    { "kind": "pan", "argv": ["validate", "health"], "expect": ["exit:0", "json:status", "json:errors"],
+      "why": "A bare directory with PAN installed must read as DATA (a status and an errors list, exit 0), not as an error — the resource rule from ADR-0041, checked on the deployed engine. `status` here is legitimately `broken`; the contract under test is the shape and the exit code." }
+  ]
+}

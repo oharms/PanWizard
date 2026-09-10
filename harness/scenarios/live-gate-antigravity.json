@@ -1,0 +1,15 @@
+{
+  "id": "live-gate-antigravity",
+  "tier": 0,
+  "description": "Attempt to install the Agent Plugins bundle into Antigravity CLI from a local path.",
+  "why": "ADR-0045 recorded Antigravity's manifest schema as closed and DIFFERENT from the Agent Plugins one, and its file shapes as unspecified. This scenario exists to turn that into a measurement: if `agy plugin install` accepts the bundle, the deferred variant is unnecessary; if it rejects it, the rejection message is the spec. SKIPPED with reason when the CLI is absent.",
+  "seed": "empty",
+  "install": null,
+  "requires": { "cli": "agy" },
+  "budget": { "maxUsd": 0, "maxMinutes": 8, "maxStepMinutes": 4 },
+  "steps": [
+    { "kind": "build", "script": "build-agent-plugin.js", "out": "bundle", "expect": ["exit:0"], "why": "Fresh bundle to install." },
+    { "kind": "cli", "bin": "agy", "args": ["plugin", "install", "<ws>/bundle"], "expect": ["exit:0"],
+      "why": "antigravity.google/docs/cli/plugins: `agy plugin install /path/to/local/plugin`. Either outcome is information; the stderr is captured in the report." }
+  ]
+}

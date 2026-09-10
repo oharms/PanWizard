@@ -1,0 +1,27 @@
+{
+  "id": "agent-plugin-bundle",
+  "tier": 0,
+  "description": "Build the Agent Plugins bundle from the checkout into the workspace and assert the portable core and both vendor surfaces are present and shaped as the schemas and vendor docs require.",
+  "why": "ADR-0045. The unit suite validates the bundle against the pinned schemas; this proves the builder works outside the test process, into an arbitrary directory, and that the vendor directories the live gates depend on exist before anyone tries to install them.",
+  "seed": "empty",
+  "install": null,
+  "budget": { "maxUsd": 0, "maxMinutes": 5, "maxStepMinutes": 3 },
+  "steps": [
+    { "kind": "build", "script": "build-agent-plugin.js", "out": "bundle", "expect": ["exit:0", "stdout~skills:"],
+      "why": "The builder must run from a clean checkout with only an output override." },
+    { "kind": "fs", "read": "bundle/plugin.json",
+      "expect": ["json:$schema=https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "json:name=pan-wizard", "json!:extensions"],
+      "why": "The manifest schema is CLOSED: `$schema` is a const and any unlisted key is a fatal rejection. No `extensions` — Codex discovers hooks/hooks.json by default and Copilot is file-based." },
+    { "kind": "fs", "read": "bundle/mcp.json",
+      "expect": ["json:$schema=https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", "json:mcpServers.pan.type=stdio", "json:mcpServers.pan.command=node", "json:mcpServers.pan.args.0=${PLUGIN_ROOT}/pan-wizard-core/mcp/server.cjs", "json!:mcpServers.pan.env"],
+      "why": "`command` may not carry a placeholder; `${PLUGIN_ROOT}` expands only in args. No env: a plugin serves whatever project the session is in." },
+    { "kind": "fs", "expect": ["file:bundle/pan-wizard-core/mcp/server.cjs", "glob:bundle/skills/pan-*/SKILL.md", "count:bundle/skills/pan-help/SKILL.md=1", "file:bundle/hooks/hooks.json", "glob:bundle/hooks/pan-*.js", "file:bundle/com.github.copilot/hooks/hooks.json", "glob:bundle/com.github.copilot/agents/pan-*.agent.md"],
+      "why": "The declared server path resolves inside the bundle; skills, hook scripts, the Codex hooks file and the Copilot namespace are all present." },
+    { "kind": "fs", "read": "bundle/hooks/hooks.json",
+      "expect": ["json:hooks.SessionStart.0.hooks.0.async=true", "json:hooks.SessionStart.0.hooks.0.command=node ${PLUGIN_ROOT}/hooks/pan-check-update.js"],
+      "why": "Codex plugin hooks: matcher-group shape, ${PLUGIN_ROOT} in the command, observers async (Codex plugin reference, read 2026-09-10)." },
+    { "kind": "fs", "read": "bundle/com.github.copilot/hooks/hooks.json",
+      "expect": ["json:hooks.SessionStart.0.type=command", "json:hooks.SessionStart.0.command=node ${CLAUDE_PLUGIN_ROOT}/hooks/pan-check-update.js", "json!:hooks.SessionStart.0.hooks"],
+      "why": "Copilot plugin hooks: FLAT PascalCase entries with ${CLAUDE_PLUGIN_ROOT} (the shape VS Code documents). No nested matcher groups." }
+  ]
+}

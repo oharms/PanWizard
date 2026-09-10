@@ -80,6 +80,27 @@ Antigravity) and the live installs are the next plan items; the spec's default
 stdio working directory is the plugin root, so the bridge must learn the project
 root per call before those gates run (ADR-0045 D6).
 
+### Added — the PAN Harness (ADR-0047)
+
+The PanLoop behavioural harness — the thing that measured the auto-advance chain
+drop and found two dead MCP resources — no longer existed on disk. Its successor
+lives in this repository under `harness/`, so it cannot be lost separately from
+the contracts it asserts, with run state outside the checkout. A run packs the
+repository, extracts the tarball (never `npx`), installs **from the package** into
+seeded workspaces, and runs JSON scenarios whose steps carry a `why` and an `expect`
+list; every assertion kind is proven able to fail in `tests/harness.test.cjs`, and a
+findings ledger (`harness/ledger.jsonl`, tracked) dedupes by signature with the old
+promotion rule. Tier 0 is model-free and free (`npm run harness`); model tiers are
+refused without `--max-usd`, with spend read from Claude Code's own JSON output.
+
+Shipped scenarios cover the install matrix (five runtimes, async Codex hooks, native
+workflows, MCP registrations, a current rate table), the installed bridge answering
+for another project through the per-call `cwd`, the deployed native workflow
+scripts, the Agent Plugins bundle, live installs on Copilot / Codex / Antigravity
+(skipped with the reason where the CLI is absent — never green), the plugin
+agent-scope probe (tier 1) and the native-vs-markdown execution chain on a seeded
+two-plan phase (tier 2). The first tier-0 run passed against the packed artifact.
+
 ### Added — a measured prompt-cache lifetime recommendation (`cache.ttl`)
 
 Claude Code gives subagents — every PAN agent — a five-minute prompt-cache

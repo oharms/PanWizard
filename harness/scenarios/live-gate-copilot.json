@@ -1,0 +1,18 @@
+{
+  "id": "live-gate-copilot",
+  "tier": 0,
+  "description": "Install the Agent Plugins bundle into GitHub Copilot CLI from a local path and confirm it lists as installed.",
+  "why": "Plan item 4c's gate. Everything about the Copilot namespace is documentation-verified (VS Code's plugin doc) and CLI-unverified; only this install can settle it. On a machine without the CLI the scenario is SKIPPED with that reason — never green.",
+  "seed": "empty",
+  "install": null,
+  "requires": { "cli": "copilot" },
+  "budget": { "maxUsd": 0, "maxMinutes": 8, "maxStepMinutes": 4 },
+  "steps": [
+    { "kind": "build", "script": "build-agent-plugin.js", "out": "bundle", "expect": ["exit:0"],
+      "why": "Fresh bundle to install." },
+    { "kind": "cli", "bin": "copilot", "args": ["plugin", "install", "<ws>/bundle"], "expect": ["exit:0"],
+      "why": "docs.github.com (plugins-creating): `copilot plugin install ./my-plugin` installs from a local path. A non-zero exit is the finding — record its stderr." },
+    { "kind": "cli", "bin": "copilot", "args": ["plugin", "list"], "expect": ["exit:0", "stdout~pan-wizard"],
+      "why": "The installed plugin must appear under the manifest name; if the CLI names installed plugins differently, this step's stdout is the evidence to update the scenario from." }
+  ]
+}

@@ -57,13 +57,13 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 16 |
-| Unit test files (`tests/*.test.cjs`) | 127 |
+| Unit test files (`tests/*.test.cjs`) | 128 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 4073 |
-| Total test suites | 878 |
+| Total tests (npm run test:all) | 4098 |
+| Total test suites | 882 |
 | Hooks (`hooks/*.js`) | 6 |
 | Specs (`docs/specs/*.md`) | 46 |
-| ADRs (`docs/decisions/ADR-*.md`) | 46 |
+| ADRs (`docs/decisions/ADR-*.md`) | 47 |
 
 These are a snapshot of the **current working tree**, not of any released tag — a branch mid-audit carries files `main` does not (test files especially). They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
 
@@ -158,6 +158,8 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `scripts/plugin-path.js` — rebuilds the plugin and prints its absolute path as **exactly one stdout line**, the contract a plugin-marketplace `command` source requires. Claude Code runs it from the user's HOME, so nothing may depend on cwd, and the builder's output is relayed to stderr
 - `scripts/deprecate-old-versions.js` — release housekeeping: after a successful publish, deprecates every stable release outside the newest-3 window plus any superseded prerelease. Dry-run by default; **never unpublishes** (a test asserts the script has no unpublish path)
 - `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
+- `scripts/build-agent-plugin.js` — emits the vendor-neutral **Agent Plugins** bundle to `dist/pan-agent-plugin/` (ADR-0045) for Copilot CLI, Codex, Cursor, Kiro. `.agents/plugins/marketplace.json` (Codex) and `.github/plugin/marketplace.json` (Copilot) point at it
+- `harness/` — the **PAN Harness** (ADR-0047): behavioural scenarios run against deployed installs built from a packed artifact. `npm run harness` is tier 0 (model-free, free); model tiers need `--max-usd`. Run state goes to `d:\pantesting\harness-runs\`; `harness/ledger.jsonl` is the tracked finding history. Not shipped. See `harness/README.md`
 
 ### Key design patterns
 

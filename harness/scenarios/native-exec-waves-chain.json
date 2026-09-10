@@ -1,0 +1,19 @@
+{
+  "id": "native-exec-waves-chain",
+  "tier": 2,
+  "description": "Run the native `/pan-exec-waves 1` workflow on the seeded two-plan phase and check the chain produced what the protocol promises: a summary per plan, a verification for the phase, and the seed's functions actually built.",
+  "why": "Plan item 5c — the behavioural gate §3.2 asked for. The static gate proves the script parses and names the right agents; only a run shows whether the wave dispatch completes without dropping a step, which is the exact defect class PanLoop finding 0 measured in the markdown path (0/3 → 16/16). Compare against markdown-exec-phase-chain on the same seed; run both --repeat 5 before believing either number.",
+  "seed": "two-plan-phase",
+  "install": ["--claude"],
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 8, "maxMinutes": 45, "maxStepMinutes": 40 },
+  "steps": [
+    { "kind": "pan", "argv": ["phase-plan-index", "1"], "expect": ["exit:0", "json:has_checkpoints=false", "json:waves.1.0=01-01", "json:waves.2.0=01-02"],
+      "why": "The seed must index as two waves with no checkpoints — otherwise the script refuses by design and the run measures the seed, not the workflow." },
+    { "kind": "model", "prompt": "/pan-exec-waves 1",
+      "expect": ["exit:0", "file:.planning/phases/01-greetings/01-01-summary.md", "file:.planning/phases/01-greetings/01-02-summary.md", "file:src/greet.js", "file:src/farewell.js", "file:src/index.js", "glob:.planning/phases/01-greetings/*verification*"],
+      "why": "The four observable outcomes of a complete chain: both summaries (the executors finished), the code (the plans were really executed, not summarised), and a verification file (the Verify phase ran). A missing 01-02 summary with 01-01 present is the boundary-drop signature." },
+    { "kind": "sh", "script": "seed-tests.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:passed=true"],
+      "why": "The seed's own `npm test` passes in the workspace — the executors built working code, not files that look right." }
+  ]
+}
