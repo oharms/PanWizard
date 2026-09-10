@@ -44,7 +44,7 @@ These are capabilities no other tool matches:
 3. **Plan Verification Loop** — A dedicated plan-checker agent verifies plans achieve phase goals before execution begins. Checked `2026-09-10`: gsd-core ships a plan-checker gate and Spec Kit ships cross-artifact analysis, so this is now a shared strength rather than a unique one; PAN's checker covers more dimensions (spec sufficiency and decision trace among them)
 4. **Human UAT Workflow** — Structured acceptance testing with auto-diagnosis of failures and generated fix plans. Checked `2026-09-10`: gsd-core offers a manual UAT walkthrough; PAN's auto-diagnosis into generated fix plans remains the differentiator
 5. **5-Runtime Support** — Works across Claude Code, OpenCode, Gemini CLI, Codex, and Copilot CLI. Checked `2026-09-10`: the IDE products in this matrix are each tied to one surface, but the spec-driven peers (gsd-core, Spec Kit, Superpowers) also install into many runtimes; see the queued refresh
-6. **Zero Runtime Dependencies** — Only uses Node.js builtins (`fs`, `path`, `child_process`, `os`, `crypto`). No Python, no Electron, no npm install
+6. **Zero Runtime Dependencies** — Only uses Node.js builtins (`fs`, `path`, `child_process`, `os`, `crypto`, `readline`). No Python, no Electron, no npm install
 7. **Atomic Git Commits** — Every task gets its own commit with a descriptive message. Only Aider does this (per edit, not per task)
 
 ---
