@@ -165,6 +165,23 @@ function runStep(step, ctx) {
   }
 }
 
+/**
+ * A model step that spent nothing and produced no turns never reached the model —
+ * a missing plugin dir, a refused launch, a CLI that exited at once. That is a fault
+ * of the probe or the harness, not evidence about PAN, so it must record `error`,
+ * evaluate no assertions and file no findings. Two tier-1 runs on 2026-09-10 did the
+ * opposite and filed two promotable phantom findings (reality check RC23 / R20).
+ * Returns the note to record, or null when the outcome is a real result. Pure.
+ */
+function modelStepNeverRan(outcome) {
+  if (!outcome || outcome.refused || outcome.budgetExhausted || outcome.budgetStopped) return null;
+  const spent = outcome.costUsd || 0;
+  const turns = typeof outcome.turns === 'number' ? outcome.turns : 0;
+  if (spent > 0 || turns > 0) return null;
+  const why = String(outcome.stderr || outcome.stdout || '').replace(/\s+/g, ' ').slice(0, 300);
+  return `model step ran no turns and spent nothing — a probe or harness fault, not a PAN result: ${why || '(no output)'}`;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -253,6 +270,14 @@ function main() {
           rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
           log(`${label}: BUDGET — ${rec.note}`); break;
         }
+        if (step.kind === 'model') {
+          const never = modelStepNeverRan(outcome);
+          if (never) {
+            rec.status = 'error'; rec.note = never;
+            rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
+            log(`${label}: ERROR — ${rec.note}`); break;
+          }
+        }
         const fails = check(step.expect, outcome, ws);
         const sr = { index: i, kind: step.kind, code: outcome.code, failures: fails, costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) };
         rec.steps.push(sr);
@@ -278,7 +303,7 @@ function main() {
   // Per-scenario completion rate across reps — the number a chain comparison is about.
   const byScenario = {};
   for (const r of results) {
-    const b = byScenario[r.scenario] || (byScenario[r.scenario] = { scenario: r.scenario, tier: r.tier, reps: 0, passed: 0, failed: 0, skipped: 0, budget: 0, spentUsd: 0 });
+    const b = byScenario[r.scenario] || (byScenario[r.scenario] = { scenario: r.scenario, tier: r.tier, reps: 0, passed: 0, failed: 0, skipped: 0, budget: 0, error: 0, spentUsd: 0 });
     b.reps++; b[r.status] = (b[r.status] || 0) + 1; b.spentUsd += r.steps.reduce((n, st) => n + (st.costUsd || 0), 0);
   }
   const summary = {
@@ -297,8 +322,8 @@ function main() {
     ...summary.scenarios.map(r => `| ${r.scenario}${r.rep > 1 ? ` #${r.rep}` : ''} | ${r.tier} | ${r.status} | ${r.steps} | ${r.failures} | ${r.costUsd ? `$${r.costUsd.toFixed(2)}` : ''} | ${r.skipped || r.note || ''} |`),
     '',
     '## Completion per scenario', '',
-    '| Scenario | Tier | Reps | Passed | Failed | Budget-stopped | Skipped | Spent |', '|---|---|---|---|---|---|---|---|',
-    ...summary.completion.map(c => `| ${c.scenario} | ${c.tier} | ${c.reps} | ${c.passed} | ${c.failed} | ${c.budget} | ${c.skipped} | ${c.spentUsd ? `$${c.spentUsd.toFixed(2)}` : ''} |`),
+    '| Scenario | Tier | Reps | Passed | Failed | Budget-stopped | Skipped | Error | Spent |', '|---|---|---|---|---|---|---|---|---|',
+    ...summary.completion.map(c => `| ${c.scenario} | ${c.tier} | ${c.reps} | ${c.passed} | ${c.failed} | ${c.budget} | ${c.skipped} | ${c.error || 0} | ${c.spentUsd ? `$${c.spentUsd.toFixed(2)}` : ''} |`),
     '',
   ];
   if (failures.length) {
@@ -318,9 +343,11 @@ function main() {
   const skipped = summary.scenarios.filter(r => r.status === 'skipped').length;
   const budget = summary.scenarios.filter(r => r.status === 'budget').length;
   const passed = summary.scenarios.filter(r => r.status === 'passed').length;
-  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped — report ${path.join(runDir, 'report.md')}`);
-  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
-  return failed ? 1 : 0;
+  const errors = summary.scenarios.filter(r => r.status === 'error').length;
+  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped, ${errors} harness errors — report ${path.join(runDir, 'report.md')}`);
+  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, errors, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
+  // An error is not green: the run could not measure what it set out to.
+  return (failed || errors) ? 1 : 0;
 }
 
 if (require.main === module) {
@@ -328,4 +355,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, runStep, allocateBudget, interleave, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, runStep, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };

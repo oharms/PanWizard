@@ -203,3 +203,28 @@ describe('harness runner helpers', () => {
     } finally { cleanup(dir); }
   });
 });
+
+// Reality check R20 (2026-09-10): two tier-1 runs of plugin-agent-scope spent $0, took
+// seconds, printed nothing — and filed two promotable findings. A model step that
+// never reached the model is a harness fault, recorded as `error`, never a finding.
+describe('harness runner — a model step that never ran is an error, not a finding (R20)', () => {
+  const { modelStepNeverRan } = require('../harness/src/run.cjs');
+  test('zero spend and no turns → error note carrying the stderr', () => {
+    const note = modelStepNeverRan({ code: 1, costUsd: 0, turns: null, stdout: '', stderr: 'plugin dir not found' });
+    assert.ok(note && /plugin dir not found/.test(note));
+    assert.match(note, /not a PAN result/);
+  });
+  test('zero spend, zero turns, no output → error note with a placeholder', () => {
+    assert.match(modelStepNeverRan({ code: 0, costUsd: 0, turns: 0, stdout: '', stderr: '' }), /\(no output\)/);
+  });
+  test('any spend, or any turn, is a real result → null', () => {
+    assert.equal(modelStepNeverRan({ code: 1, costUsd: 0.42, turns: null, stdout: 'x' }), null);
+    assert.equal(modelStepNeverRan({ code: 0, costUsd: 0, turns: 3, stdout: 'VERDICT: case A' }), null);
+  });
+  test('refused and budget outcomes keep their own status → null', () => {
+    assert.equal(modelStepNeverRan({ refused: true, costUsd: 0 }), null);
+    assert.equal(modelStepNeverRan({ budgetExhausted: true, costUsd: 0 }), null);
+    assert.equal(modelStepNeverRan({ budgetStopped: true, costUsd: 0 }), null);
+    assert.equal(modelStepNeverRan(null), null);
+  });
+});
