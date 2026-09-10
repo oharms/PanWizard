@@ -9,20 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Session S1 of the September 2026 market-delta plan
 (`docs/specs/market-delta-2026-09-superplan.md`): the ledger was wrong on the
-model Claude Code now defaults to, and the plugin shipped less than a loose install.
+model the `fable` and `best` aliases resolve to, and the plugin shipped less than a loose install.
 
-### Fixed — the rate table on the current default model
+### Fixed — the rate table on the model the `fable` and `best` aliases resolve to
 
 `cost.cjs` had no row for `claude-fable-5-1`, so the family-prefix fallback priced
 its cache reads at the Fable 5 rate. Fable 5.1 bills cache reads at 0.025× input
-(the only Claude model that departs from the 0.1× convention), so on the model
-Claude Code defaults to since 2.1.257 the dominant line of PAN's ledger — cached
+(the only Claude model that departs from the 0.1× convention), so on the model the
+`fable` and `best` aliases resolve to (Claude Code's model-config page, read 2026-09-10:
+neither Fable model is any plan's default) the dominant line of PAN's ledger — cached
 re-reads, per ADR-0044 — was high by roughly four times. Sonnet 5 carried the
 pre-announced `$3/$15` rate; the launch price of `$2/$10` was made permanent and the
 September rise cancelled, so that row over-billed by half. Both rows corrected,
 `RATES_VERIFIED_AT` bumped to `2026-09-10`, and a test pins that versioned and
 `[1m]`-suffixed Fable 5.1 ids land on the 5.1 row rather than prefix-matching back
-to Fable 5. The installer's recommended flagship follows Claude Code's default.
+to Fable 5. The installer's recommended flagship follows the `fable` alias target, the most
+capable generally available model.
 
 ### Added — Claude Code's managed `modelPricing` as a rate source
 

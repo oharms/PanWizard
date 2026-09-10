@@ -52,7 +52,8 @@ const DEFAULT_RATES = {
   // rates follow Anthropic's convention: read ≈ 0.1× input, write ≈ 1.25× input —
   // EXCEPT Fable 5.1, whose cache reads bill at 0.025× input ($0.25). Fable 5.1
   // needs its own row: without it the family-prefix fallback priced its reads at
-  // the Fable 5 rate, 4× too high on the model Claude Code now defaults to, and
+  // the Fable 5 rate, 4× too high on the model the `fable`/`best` aliases resolve to
+  // (model-config, read 2026-09-10: neither Fable model is any plan's default), and
   // cached re-reads are the bulk of PAN's traffic (ADR-0044).
   'claude-fable-5-1':   { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
   'claude-fable-5':     { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
