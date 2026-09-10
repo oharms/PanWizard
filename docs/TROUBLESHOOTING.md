@@ -642,6 +642,8 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Fix:** Update Claude Code (`claude --version` to check) — nothing changes on PAN's side. On the other runtimes PAN never relied on the field: their agent files carry an effort-scaled prose preamble instead, which is unaffected.
 
+**Also check `maxEffortLevel`.** Claude Code `2.1.267` added a `maxEffortLevel` setting (top-level, or per model under `modelSettings`). A managed or user value there clamps every `effort:` PAN emits, so an agent that seems to ignore its frontmatter on a current build may be capped rather than ignored. `claude config get maxEffortLevel` (or the settings file) shows whether one is set.
+
 ### Cost report disagrees with Claude Code's `/usage` or with the invoice
 
 **Symptom:** `pan-tools cost report` totals differ from what Claude Code shows or what the provider bills.
@@ -938,9 +940,13 @@ This is expected behavior — `bridge list` is designed to report cleanly when n
 
 **Symptom:** PAN installed for Gemini and wrote its `pan` server into `.gemini/settings.json`, but Gemini CLI lists no such server.
 
-**Root cause:** Gemini CLI `0.59.0` (released `2026-09-08`) enforces workspace trust fail-closed and **filters `mcpServers` out of project settings while a workspace is untrusted**. The registration is present and correct; the runtime declines to load it until you trust the folder.
+**Root cause:** Gemini CLI `0.59.0` (released `2026-09-08`) enforces workspace trust fail-closed. Its trusted-folders documentation states that in an untrusted folder the **whole project `.gemini/settings.json` is not loaded** — so PAN's hooks are absent too, not only the MCP server — and the release note names `mcpServers`, `tools`, `policyPaths` and telemetry among the keys filtered in restricted mode. The registration is present and correct; the runtime declines to load it until you trust the folder.
 
 **Fix:** Accept Gemini CLI's trust prompt for the workspace (or mark it trusted through its workspace-trust setting), then restart the session. PAN's own install checks still pass in the meantime — they verify the file on disk, not the runtime's trust state — so a clean install check plus a missing server is the signature of this case.
+
+### A Codex plugin upgrade seems to need a restart
+
+Since Codex CLI `0.154.0` (released `2026-09-09`), a live session picks up newly installed plugin tools and refreshes skills and hooks after an external plugin upgrade — no restart. If a PAN skill still reads stale after `pan-check-update` reported a newer version, the cause is the install, not Codex caching: re-run the installer and compare the `version` in `pan-file-manifest.json` with `pan-tools models check`'s package version.
 
 ### `/pan:exec-phase --hierarchical` printed a warning and ran flat
 
