@@ -80,6 +80,26 @@ Antigravity) and the live installs are the next plan items; the spec's default
 stdio working directory is the plugin root, so the bridge must learn the project
 root per call before those gates run (ADR-0045 D6).
 
+### Added — a measured prompt-cache lifetime recommendation (`cache.ttl`)
+
+Claude Code gives subagents — every PAN agent — a five-minute prompt-cache
+lifetime by default, even on a subscription; `subagentPromptCacheTtl: "1h"`
+buys an hour at 2× the write price. Whether that pays depends on how a project's
+agents are spaced, which the cost ledger records. `context-budget` now reports
+`cache.ttl`: the cache writes that followed an idle gap of five to sixty minutes
+(the misses a one-hour lifetime would have avoided), and recommends the setting
+only when the pattern recurs. Hygiene raises a matching `info` finding.
+
+### Decided — newer subagent frontmatter (ADR-0046)
+
+`maxTurns`, `memory`, `isolation: worktree`, `skills:` preload, `experimental.cacheTtl`
+and the `fork` spawn mode are each declined for the shipped agents, with the reason
+recorded per field: they trade PAN's fresh-context guarantee or duplicate a
+mechanism PAN already has (`.planning/memory/`, `worktree.cjs`). `maxTurns` names
+its revisit trigger — a native workflow that owns the orchestration, where a
+partial result is re-issued mechanically. The cache lifetime arrives as the
+`cache.ttl` recommendation above rather than as emitted frontmatter.
+
 ### Added — two more native Claude Code workflows (§3.2 of the August review)
 
 The August review's remaining move: promote the protocols whose control flow is

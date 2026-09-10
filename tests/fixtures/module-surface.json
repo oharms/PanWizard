@@ -240,6 +240,7 @@
     "isVerificationFile:function"
   ],
   "context-budget.cjs": [
+    "assessCacheTtl:function",
     "cmdContextBudget:function",
     "estimateRelevanceRatio:function",
     "estimateTokens:function"

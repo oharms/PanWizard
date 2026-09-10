@@ -1594,6 +1594,8 @@ Estimate context window utilization for the current phase. Measures how much of 
 pan-tools context-budget [--raw]
 ```
 
+The `cache` block classifies the cached context (`status` of `ok` / `warn` / `critical` / `absent`, with advice naming the largest file) and, under `cache.ttl`, reads the cost ledger for the prompt-cache **lifetime** signal: how many cache writes followed an idle gap of five to sixty minutes — the misses a one-hour subagent cache lifetime would have avoided. `cache.ttl.recommend` turns true only when that recurs, and `cache.ttl.advice` then names the Claude Code setting (`subagentPromptCacheTtl`) with its cost trade-off. Suspect ledger rows are excluded from the count.
+
 **JSON output:**
 ```json
 {

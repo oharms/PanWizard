@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
-const { estimateTokens, estimateRelevanceRatio } = require('../pan-wizard-core/bin/lib/context-budget.cjs');
+const { estimateTokens, estimateRelevanceRatio, assessCacheTtl } = require('../pan-wizard-core/bin/lib/context-budget.cjs');
 const { CONTEXT_WINDOW, WARNING_THRESHOLD, CRITICAL_THRESHOLD } = require('../pan-wizard-core/bin/lib/constants.cjs');
 
 // ─── Unit tests: estimateTokens ─────────────────────────────────────────────
@@ -386,5 +386,69 @@ describe('estimateRelevanceRatio', () => {
     // 8 non-blank lines, 2 are content (the TODO line is skipped, real-concrete passes; "actual content" line passes)
     // Actually let's not pin the exact value — just assert it's between 0 and 1
     assert.ok(ratio > 0 && ratio < 1, `ratio should be in (0, 1), got ${ratio}`);
+  });
+});
+
+// ─── assessCacheTtl — prompt-cache lifetime signal (ADR-0046 D5, 2026-09) ────
+//
+// Subagents get a five-minute prompt-cache lifetime by default. A cache WRITE
+// that follows an idle gap of 5–60 minutes is a miss the one-hour lifetime
+// (`subagentPromptCacheTtl: "1h"`) would have avoided. The assessor counts those.
+
+describe('assessCacheTtl', () => {
+  // A ledger row `min` minutes after midnight, with a real-sized cache write.
+  const at = (min, extra = {}) => ({
+    ts: new Date(Date.UTC(2026, 8, 10, 0, min, 0)).toISOString(),
+    cache_write_tokens: 5000,
+    ...extra,
+  });
+
+  it('counts writes after a 5–60 min idle gap; ignores bursts, exactly-five-minute gaps and long idles', () => {
+    // gaps: 2 (burst), 18 (short idle ✓), 5 (not > 5 → burst), 25 (short idle ✓), 150 (long idle)
+    const r = assessCacheTtl([at(0), at(2), at(20), at(25), at(50), at(200)]);
+    assert.equal(r.records_considered, 6);
+    assert.equal(r.writes_after_short_idle, 2);
+    assert.equal(r.tokens_after_short_idle, 10000);
+    assert.equal(r.writes_after_long_idle, 1);
+    assert.equal(r.recommend, true);
+    assert.equal(r.setting, 'subagentPromptCacheTtl');
+    assert.match(r.advice, /subagentPromptCacheTtl: "1h"/);
+    assert.match(r.advice, /2× base input/);
+  });
+
+  it('does not recommend on a single event, on trivial writes, or with nothing to read', () => {
+    assert.equal(assessCacheTtl([at(0), at(20)]).recommend, false, 'one event is not a pattern');
+    const trivial = assessCacheTtl([at(0), at(20, { cache_write_tokens: 10 }), at(40, { cache_write_tokens: 10 })]);
+    assert.equal(trivial.writes_after_short_idle, 0, 'writes below the floor are noise');
+    assert.equal(assessCacheTtl(null).recommend, false);
+    assert.equal(assessCacheTtl([]).advice, null);
+  });
+
+  it('skips rows without a parseable timestamp and sorts the rest before measuring gaps', () => {
+    const r = assessCacheTtl([{ ts: 'garbage', cache_write_tokens: 9000 }, at(30), null, at(0), at(59)]);
+    assert.equal(r.records_considered, 3);
+    assert.equal(r.writes_after_short_idle, 2, 'gaps 30 and 29 both qualify once sorted');
+    const ordered = assessCacheTtl([at(0), at(2), at(20), at(25), at(50)]);
+    const shuffled = assessCacheTtl([at(50), at(0), at(25), at(20), at(2)]);
+    assert.deepEqual(shuffled, ordered, 'order-independent');
+  });
+
+  it('is surfaced by context-budget as cache.ttl from the project ledger, suspect rows excluded', () => {
+    const tmp = createTempProject();
+    try {
+      const planDir = path.join(tmp, '.planning');
+      fs.writeFileSync(path.join(planDir, 'state.md'), '# State\n');
+      fs.mkdirSync(path.join(planDir, 'metrics'), { recursive: true });
+      const poisoned = { ...at(10), cache_read_tokens: 9e8 }; // pre-v3.12.4 oversum poison — must not count
+      fs.writeFileSync(path.join(planDir, 'metrics', 'tokens.jsonl'),
+        [at(0), at(20), poisoned, at(45)].map(r => JSON.stringify(r)).join('\n') + '\n');
+      const json = JSON.parse(runPanTools(`context-budget --cwd "${tmp}"`).output);
+      assert.ok(json.cache && json.cache.ttl, 'cache.ttl present');
+      assert.equal(json.cache.ttl.records_considered, 3, 'the poisoned row is excluded');
+      assert.equal(json.cache.ttl.recommend, true);
+      assert.match(json.cache.ttl.advice, /subagentPromptCacheTtl/);
+    } finally {
+      cleanup(tmp);
+    }
   });
 });
