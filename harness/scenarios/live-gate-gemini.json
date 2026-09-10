@@ -1,0 +1,53 @@
+{
+  "id": "live-gate-gemini",
+  "tier": 0,
+  "description": "Install PAN for Gemini CLI locally and confirm Gemini lists the `pan` MCP server from .gemini/settings.json once the workspace is trusted.",
+  "why": "Reality check RC8/RC14 (2026-09-10): Gemini CLI 0.59.0 enforces workspace trust fail-closed and skips the whole project .gemini/settings.json in an untrusted folder — hooks and mcpServers alike. PAN's install check verifies the file on disk, not the runtime's trust state, so a clean install plus a missing server is exactly the case this scenario measures. The workspace must be trusted first (Gemini's trust prompt or its workspace-trust setting); record how it was trusted in the run. SKIPPED with reason when the CLI is absent.",
+  "seed": "empty",
+  "install": [
+    "--gemini",
+    "--local"
+  ],
+  "requires": {
+    "cli": "gemini"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 8,
+    "maxStepMinutes": 4
+  },
+  "steps": [
+    {
+      "kind": "fs",
+      "read": ".gemini/settings.json",
+      "expect": [
+        "json:mcpServers.pan.command=node"
+      ],
+      "why": "The installer's contract: the registration is on disk in the mcpServers shape Gemini documents."
+    },
+    {
+      "kind": "cli",
+      "bin": "gemini",
+      "args": [
+        "--version"
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Pins the Gemini CLI build; trust behaviour changed at 0.59.0."
+    },
+    {
+      "kind": "cli",
+      "bin": "gemini",
+      "args": [
+        "mcp",
+        "list"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~pan"
+      ],
+      "why": "The measurement: Gemini enumerates the MCP servers it loaded. An empty list on a build at or above 0.59.0 means the workspace is untrusted, not that the registration is wrong — trust it and rerun."
+    }
+  ]
+}
