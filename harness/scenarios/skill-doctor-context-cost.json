@@ -1,0 +1,29 @@
+{
+  "id": "skill-doctor-context-cost",
+  "tier": 1,
+  "description": "Ask Claude Code's /skill-doctor, headlessly, what PAN's installed skills cost in context; the report is the static half of the body-budget measurement.",
+  "why": "Reality check R21 step 1: /skill-doctor (Claude Code >= 2.1.261) reports loaded skills and their context cost. On the shipped install it shows what every session pays to have focus-design and its siblings loaded; the A/B arms show whether the split changes outcomes. Recorded, not asserted beyond the command running and naming the command under test.",
+  "seed": "small-repo",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 1,
+    "maxMinutes": 10,
+    "maxStepMinutes": 5
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/skill-doctor",
+      "expect": [
+        "exit:0",
+        "stdout~focus-design"
+      ],
+      "why": "The report must mention the command under test; its numbers are the measurement and are read from the run's report, not asserted."
+    }
+  ]
+}

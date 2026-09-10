@@ -1,0 +1,43 @@
+{
+  "id": "focus-design-ab-split",
+  "tier": 1,
+  "description": "A/B treatment: swap in the SPLIT command body (contract in the command, Phases 0–9 in a reference the agent must Read) and run the same /pan:focus-design --spike; assert the same artefact and record cost.",
+  "why": "Reality check RC19 / plan item R21: five emitted command bodies exceed the Agent Skills recommendation; the August note said a split changes what the agent reads and when, so it must be measured, not assumed. Same seed, same prompt, same mode (--spike: the cheapest full pass); the comparison is artefact presence plus the per-step cost the runner records from claude -p. Run --repeat 2 with both scenarios in one invocation so reps interleave. This is the treatment arm; the swap step happens before the model runs and reports the body size before and after.",
+  "seed": "small-repo",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 4,
+    "maxMinutes": 25,
+    "maxStepMinutes": 20
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "swap-focus-design-split.cjs",
+      "args": [
+        "<ws>",
+        "<repo>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:swapped=true",
+        "file:.claude/pan-wizard-core/references/focus-design-procedure.md"
+      ],
+      "why": "The variant lives in harness/variants/ until the A/B decides; the swap rewrites ~/.claude/ to ./.claude/ exactly as the local installer does."
+    },
+    {
+      "kind": "model",
+      "prompt": "/pan:focus-design \"add a --json flag to bin/cli.js so that `tiny add` and `tiny greet` print a JSON object ({\\\"result\\\": ...}) instead of plain text, with tests\" --spike",
+      "expect": [
+        "exit:0",
+        "glob:docs/specs/*_featureai.md"
+      ],
+      "why": "Identical assertion to the control arm. A missing spec here and not there is the finding: the agent did not read the procedure, or read it and lost the thread."
+    }
+  ]
+}
