@@ -38,9 +38,15 @@ Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on this machine
 | 1 | + one `model` turn per step (`claude -p`) | your Claude usage | needs `--max-usd` |
 | 2 | + chain runs (a whole `/pan-exec-waves`) | more | needs `--max-usd`, run `--repeat 5` |
 
-A model step is **refused** without `--max-usd`; the cap is enforced from the measured
-`total_cost_usd` in Claude Code's JSON output, and reaching it ends the run with a note on
-the run, not a finding against PAN. Model steps run with `--dangerously-skip-permissions`
+A model step is **refused** without `--max-usd`. The cap is **split equally across the
+model-tier scenarios in the run** and enforced per scenario from the measured
+`total_cost_usd` in Claude Code's JSON output, so an oracle cannot starve the scenario it is
+compared with; reps are interleaved (every scenario's rep 1 before any rep 2) so an
+interrupted run still yields comparable counts. A model step is not started with less than
+one dollar of its scenario's share left, and a step Claude Code stops at the cap is recorded
+as `budget`, not `failed` — both are facts about the run, never findings against PAN. Size
+the cap per scenario: a chain rep on the two-plan seed measured **$3–6**, so five reps of
+one chain scenario want about `--max-usd 25`, and both chain scenarios together `--max-usd 50`. Model steps run with `--dangerously-skip-permissions`
 and, when the workspace carries `.mcp.json`, with `--strict-mcp-config` so the agent sees
 exactly one `pan` server — the workspace's.
 

@@ -17,7 +17,7 @@ const { check, checkOne, globToRegExp, getPath } = require('../harness/src/asser
 const { signature, normaliseDetail, mergeRun, isPromotable } = require('../harness/src/ledger.cjs');
 const { validateScenario, loadScenarios } = require('../harness/src/scenario.cjs');
 const { findCli } = require('../harness/src/cli-detect.cjs');
-const { fill, parseArgs } = require('../harness/src/run.cjs');
+const { fill, parseArgs, allocateBudget, interleave, MIN_MODEL_STEP_USD } = require('../harness/src/run.cjs');
 const { cleanup } = require('./helpers.cjs');
 
 const ROOT = path.join(__dirname, '..');
@@ -101,6 +101,16 @@ describe('harness ledger — signatures, merge, promotion', () => {
     assert.equal(isPromotable(entries[0]), false, 'resolved findings do not promote');
   });
 
+  test('a pass in the SAME run never resolves a failure from that run — a 4/5 flake stays visible', () => {
+    // The first tier-2 run (2026-09-10): reps 1–4 passed, rep 5 failed on budget;
+    // same-run resolution closed the rep-5 findings the instant they were written.
+    const f = { scenario: 'chain', tier: 2, step: 0, expect: 'exit:0', failure: 'exit code 1, expected 0', why: 'w' };
+    const entries = mergeRun([], { runId: 'r1', build: 'b', now: 't1', failures: [f], passedSteps: [{ scenario: 'chain', step: 0 }] });
+    assert.equal(entries[0].resolved_at, null, 'same-run pass must not resolve');
+    const later = mergeRun(entries, { runId: 'r2', build: 'b', now: 't2', failures: [], passedSteps: [{ scenario: 'chain', step: 0 }] });
+    assert.equal(later[0].resolved_at, 't2', 'a LATER run passing does resolve');
+  });
+
   test('model-tier findings need two runs before they promote', () => {
     const f = { scenario: 'm', tier: 2, step: 0, expect: 'exit:0', failure: 'x', why: 'w' };
     let entries = mergeRun([], { runId: 'r1', build: 'b', now: 't1', failures: [f], passedSteps: [] });
@@ -150,6 +160,29 @@ describe('harness runner helpers', () => {
     const b = parseArgs(['--tier', '2', '--max-usd', '3', '--repeat', '5', '--scenario', 'x', '--scenario', 'y']);
     assert.equal(b.tier, 2); assert.equal(b.maxUsd, 3); assert.equal(b.repeat, 5); assert.deepEqual(b.scenarios, ['x', 'y']);
     assert.throws(() => parseArgs(['--bogus']), /unknown argument/);
+  });
+
+  test('allocateBudget splits --max-usd equally across model-tier scenarios only', () => {
+    // The 2026-09-10 run: the alphabetically earlier oracle spent the whole cap and
+    // the scenario it was meant to be compared with never ran a model step.
+    const s = [{ id: 'a-oracle', tier: 2 }, { id: 'b-native', tier: 2 }, { id: 'c-free', tier: 0 }];
+    const shares = allocateBudget(20, s);
+    assert.equal(shares.get('a-oracle'), 10);
+    assert.equal(shares.get('b-native'), 10);
+    assert.equal(shares.get('c-free'), 0);
+    assert.equal(allocateBudget(null, s).get('a-oracle'), 0, 'no cap → no model share');
+    assert.equal(allocateBudget(20, [{ id: 'x', tier: 0 }]).get('x'), 0);
+  });
+
+  test('interleave gives every scenario its rep 1 before any gets its rep 2; tier 0 runs once', () => {
+    const s = [{ id: 'a', tier: 2 }, { id: 'b', tier: 2 }, { id: 'c', tier: 0 }];
+    const order = interleave(s, 3).map(q => `${q.scenario.id}${q.rep}`);
+    assert.deepEqual(order, ['a1', 'b1', 'c1', 'a2', 'b2', 'a3', 'b3']);
+    assert.equal(interleave(s, 1).length, 3);
+  });
+
+  test('a model step is not started below the budget floor', () => {
+    assert.ok(MIN_MODEL_STEP_USD >= 0.5, 'a floor under fifty cents cannot buy a chain step');
   });
 
   test('findCli finds a binary on a fake PATH and not otherwise', () => {

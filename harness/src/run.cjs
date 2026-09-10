@@ -68,6 +68,41 @@ function fill(value, vars) {
   return value;
 }
 
+// A model step is not started with less than this much cap left: a run cut off by
+// the budget records nothing about PAN, only about the budget. Your first tier-2
+// run started its last rep with ~$0.50 and logged eight false failures.
+const MIN_MODEL_STEP_USD = 1;
+
+/**
+ * Pure. Split --max-usd equally across the model-tier scenarios in a run so an
+ * alphabetically earlier oracle cannot starve the scenario it was meant to be
+ * compared with (which is exactly what happened on 2026-09-10: the markdown
+ * chain spent all $20 and the native chain never ran a model step).
+ * @returns {Map<string, number>} scenario id → its share in USD (tier-0 scenarios get 0)
+ */
+function allocateBudget(maxUsd, scenarios) {
+  const model = scenarios.filter(s => s.tier >= 1);
+  const share = model.length && maxUsd !== null ? maxUsd / model.length : 0;
+  return new Map(scenarios.map(s => [s.id, s.tier >= 1 ? share : 0]));
+}
+
+/**
+ * Pure. Order (scenario, rep) pairs so every scenario gets its rep 1 before any
+ * gets its rep 2 — a run interrupted by budget or time still yields a comparable
+ * number of reps per scenario. Tier-0 scenarios run once.
+ */
+function interleave(scenarios, repeat) {
+  const maxRep = Math.max(1, repeat);
+  const queue = [];
+  for (let rep = 1; rep <= maxRep; rep++) {
+    for (const s of scenarios) {
+      const reps = s.tier >= 1 ? maxRep : 1;
+      if (rep <= reps) queue.push({ scenario: s, rep, reps });
+    }
+  }
+  return queue;
+}
+
 function runStep(step, ctx) {
   const { ws, other, repo, pkg, runtime, budget } = ctx;
   const vars = { ws, other, repo, pkg };
@@ -106,10 +141,17 @@ function runStep(step, ctx) {
       return rpcBatch(ws, materialise(step.requests, { ws, other }), { runtime: step.runtime || runtime, cwd, timeoutMs: stepTimeout });
     }
     case 'model': {
-      const remaining = ctx.maxUsd === null ? null : ctx.maxUsd - ctx.spentUsd();
+      // Cap = what is left of THIS scenario's share, bounded by its own budget.maxUsd.
+      const remaining = ctx.shareUsd === null ? null : ctx.shareUsd - ctx.spentUsd();
       const cap = remaining === null ? null : Math.min(remaining, budget.maxUsd || remaining);
+      if (cap !== null && cap < MIN_MODEL_STEP_USD) {
+        return { code: 2, stdout: '', stderr: `budget exhausted: $${cap.toFixed(2)} of this scenario's $${ctx.shareUsd.toFixed(2)} share left (floor $${MIN_MODEL_STEP_USD})`, costUsd: 0, budgetExhausted: true };
+      }
       const r = runModelStep(ws, fill(step.prompt, vars), { maxUsd: cap, timeoutMs: stepTimeout, pluginDir: step.pluginDir ? fill(step.pluginDir, vars) : undefined, strictMcp: step.strictMcp !== false });
       ctx.addCost(r.costUsd || 0);
+      // Claude Code stops a run at --max-budget-usd with is_error and a tool_use
+      // stop reason. Spend within ~15% of the cap is that stop, not a PAN result.
+      if (r.code !== 0 && cap !== null && (r.costUsd || 0) >= cap * 0.85) r.budgetStopped = true;
       return r;
     }
     default:
@@ -139,14 +181,19 @@ function main() {
   if (scenarios.length === 0) { log('no scenarios selected'); return 2; }
 
   let spent = 0;
+  const spentBy = new Map();
+  const shares = allocateBudget(args.maxUsd, scenarios);
   const results = [];
   const failures = [];
   const passedSteps = [];
   const startedAt = Date.now();
+  if (args.maxUsd !== null) {
+    for (const [id, share] of shares) if (share > 0) log(`budget share ${id}: $${share.toFixed(2)}`);
+  }
 
-  for (const s of scenarios) {
-    for (let rep = 1; rep <= (s.tier >= 1 ? args.repeat : 1); rep++) {
-      const label = args.repeat > 1 && s.tier >= 1 ? `${s.id}#${rep}` : s.id;
+  for (const { scenario: s, rep, reps } of interleave(scenarios, args.repeat)) {
+    {
+      const label = reps > 1 ? `${s.id}#${rep}` : s.id;
       const rec = { scenario: s.id, tier: s.tier, rep, status: 'passed', steps: [], skipped: null, durationMs: 0 };
       results.push(rec);
       const t0 = Date.now();
@@ -176,14 +223,26 @@ function main() {
           continue;
         }
       }
-      const ctx = { ws, other, repo: args.repo, pkg: art.packageDir, runtime, budget: s.budget || {}, maxUsd: args.maxUsd, spentUsd: () => spent, addCost: (c) => { spent += c; } };
+      const shareUsd = args.maxUsd === null ? null : shares.get(s.id);
+      const ctx = {
+        ws, other, repo: args.repo, pkg: art.packageDir, runtime, budget: s.budget || {},
+        shareUsd,
+        spentUsd: () => spentBy.get(s.id) || 0,
+        addCost: (c) => { spent += c; spentBy.set(s.id, (spentBy.get(s.id) || 0) + c); },
+      };
       const scenarioDeadline = t0 + ((s.budget && s.budget.maxMinutes) || 30) * 60000;
       for (let i = 0; i < s.steps.length; i++) {
         const step = s.steps[i];
         if (Date.now() > scenarioDeadline) { rec.status = 'failed'; failures.push({ scenario: s.id, tier: s.tier, step: i, expect: 'budget', failure: 'scenario exceeded budget.maxMinutes', why: step.why }); break; }
-        if (step.kind === 'model' && args.maxUsd !== null && spent >= args.maxUsd) { rec.status = 'failed'; rec.note = `--max-usd ${args.maxUsd} reached before step ${i}`; log(`${label}: ${rec.note}`); break; }
         const outcome = runStep(step, ctx);
         if (outcome.refused) { rec.status = 'skipped'; rec.skipped = outcome.stderr; break; }
+        // Budget outcomes are facts about the run, never findings against PAN.
+        if (outcome.budgetExhausted) { rec.status = 'budget'; rec.note = outcome.stderr; log(`${label}: BUDGET — ${rec.note}`); break; }
+        if (outcome.budgetStopped) {
+          rec.status = 'budget'; rec.note = `model step stopped by the cap after $${(outcome.costUsd || 0).toFixed(2)} (${outcome.turns ?? '?'} turns) — no assertion evaluated`;
+          rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
+          log(`${label}: BUDGET — ${rec.note}`); break;
+        }
         const fails = check(step.expect, outcome, ws);
         const sr = { index: i, kind: step.kind, code: outcome.code, failures: fails, costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) };
         rec.steps.push(sr);
@@ -206,9 +265,17 @@ function main() {
   const entries = mergeRun(readLedger(LEDGER), { runId: id, build: `${art.build.version}@${(art.build.head || 'nogit').slice(0, 9)}`, now, failures, passedSteps });
   writeLedger(LEDGER, entries);
   const promotable = entries.filter(isPromotable);
+  // Per-scenario completion rate across reps — the number a chain comparison is about.
+  const byScenario = {};
+  for (const r of results) {
+    const b = byScenario[r.scenario] || (byScenario[r.scenario] = { scenario: r.scenario, tier: r.tier, reps: 0, passed: 0, failed: 0, skipped: 0, budget: 0, spentUsd: 0 });
+    b.reps++; b[r.status] = (b[r.status] || 0) + 1; b.spentUsd += r.steps.reduce((n, st) => n + (st.costUsd || 0), 0);
+  }
   const summary = {
     run: id, build: art.build, tier: args.tier, maxUsd: args.maxUsd, spentUsd: spent, durationMs: Date.now() - startedAt,
-    scenarios: results.map(r => ({ scenario: r.scenario, tier: r.tier, rep: r.rep, status: r.status, skipped: r.skipped, note: r.note || null, steps: r.steps.length, failures: r.steps.reduce((n, st) => n + st.failures.length, 0), durationMs: r.durationMs })),
+    shares: Object.fromEntries([...shares].filter(([, v]) => v > 0)),
+    scenarios: results.map(r => ({ scenario: r.scenario, tier: r.tier, rep: r.rep, status: r.status, skipped: r.skipped, note: r.note || null, steps: r.steps.length, failures: r.steps.reduce((n, st) => n + st.failures.length, 0), costUsd: r.steps.reduce((n, st) => n + (st.costUsd || 0), 0), durationMs: r.durationMs })),
+    completion: Object.values(byScenario),
     failures, promotable: promotable.map(e => ({ signature: e.signature, scenario: e.scenario, step: e.step, expect: e.expect, detail: e.detail, runs: e.runs.length })),
   };
   fs.writeFileSync(path.join(runDir, 'report.json'), JSON.stringify({ ...summary, steps: results }, null, 2));
@@ -216,8 +283,12 @@ function main() {
     `# PAN Harness run ${id}`, '',
     `Build: ${art.build.version} @ ${art.build.head || 'no-git'} · tarball sha256 ${art.build.sha256}`,
     `Tier ≤ ${args.tier} · spent $${spent.toFixed(3)}${args.maxUsd !== null ? ` of $${args.maxUsd}` : ''} · ${((Date.now() - startedAt) / 1000).toFixed(0)}s`, '',
-    '| Scenario | Tier | Status | Steps | Failures | Note |', '|---|---|---|---|---|---|',
-    ...summary.scenarios.map(r => `| ${r.scenario}${r.rep > 1 ? ` #${r.rep}` : ''} | ${r.tier} | ${r.status} | ${r.steps} | ${r.failures} | ${r.skipped || r.note || ''} |`),
+    '| Scenario | Tier | Status | Steps | Failures | Cost | Note |', '|---|---|---|---|---|---|---|',
+    ...summary.scenarios.map(r => `| ${r.scenario}${r.rep > 1 ? ` #${r.rep}` : ''} | ${r.tier} | ${r.status} | ${r.steps} | ${r.failures} | ${r.costUsd ? `$${r.costUsd.toFixed(2)}` : ''} | ${r.skipped || r.note || ''} |`),
+    '',
+    '## Completion per scenario', '',
+    '| Scenario | Tier | Reps | Passed | Failed | Budget-stopped | Skipped | Spent |', '|---|---|---|---|---|---|---|---|',
+    ...summary.completion.map(c => `| ${c.scenario} | ${c.tier} | ${c.reps} | ${c.passed} | ${c.failed} | ${c.budget} | ${c.skipped} | ${c.spentUsd ? `$${c.spentUsd.toFixed(2)}` : ''} |`),
     '',
   ];
   if (failures.length) {
@@ -235,9 +306,10 @@ function main() {
 
   const failed = summary.scenarios.filter(r => r.status === 'failed').length;
   const skipped = summary.scenarios.filter(r => r.status === 'skipped').length;
+  const budget = summary.scenarios.filter(r => r.status === 'budget').length;
   const passed = summary.scenarios.filter(r => r.status === 'passed').length;
-  log(`done: ${passed} passed, ${failed} failed, ${skipped} skipped — report ${path.join(runDir, 'report.md')}`);
-  process.stdout.write(JSON.stringify({ run: id, passed, failed, skipped, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
+  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped — report ${path.join(runDir, 'report.md')}`);
+  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
   return failed ? 1 : 0;
 }
 
@@ -246,4 +318,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, runStep };
+module.exports = { parseArgs, fill, runStep, allocateBudget, interleave, MIN_MODEL_STEP_USD };
