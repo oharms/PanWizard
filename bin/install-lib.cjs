@@ -739,7 +739,18 @@ function convertClaudeCommandToCopilotSkill(content, skillName) {
 }
 
 /** Claude agent → Copilot .agent.md */
-function convertClaudeToCopilotAgent(content) {
+/**
+ * @param {string} content - Claude agent markdown
+ * @param {object} [opts]
+ * @param {Record<string,string[]>} [opts.modelLists] - Copilot CLI (>= 1.0.83) accepts a
+ *   `model:` LIST tried in order plus `model-policy`. When a PAN agent pins `model:
+ *   <alias>` and this map has an entry for the alias, the Copilot agent gets that list
+ *   and `model-policy: prefer` (degrade gracefully; `required` would refuse to run).
+ *   NOT wired into the installer yet: the Copilot model ids must be verified on a live
+ *   CLI first (ADR-0028's rule; harness/scenarios/live-gate-copilot.json carries the
+ *   probe). Reality check RC15 / plan item R13, 2026-09-10.
+ */
+function convertClaudeToCopilotAgent(content, opts = {}) {
   const converted = convertClaudeToCopilotMarkdown(content);
   const { frontmatter, body } = extractFrontmatterAndBody(converted);
   let name = '';
@@ -788,7 +799,17 @@ function convertClaudeToCopilotAgent(content) {
   const toolsYaml = copilotTools.length > 0
     ? `\ntools:\n${copilotTools.map(t => `  - ${yamlQuote(t)}`).join('\n')}`
     : '';
-  return `---\nname: ${yamlQuote(name)}\ndescription: ${yamlQuote(description)}${toolsYaml}\n---\n${body}`;
+  // R13: optional model fallback list for agents that pin a model alias.
+  let modelYaml = '';
+  const lists = opts && opts.modelLists;
+  if (lists && frontmatter) {
+    const pinned = extractFrontmatterField(frontmatter, 'model');
+    const list = pinned && Array.isArray(lists[pinned]) ? lists[pinned].filter(Boolean) : null;
+    if (list && list.length) {
+      modelYaml = `\nmodel:\n${list.map(m => `  - ${yamlQuote(m)}`).join('\n')}\nmodel-policy: prefer`;
+    }
+  }
+  return `---\nname: ${yamlQuote(name)}\ndescription: ${yamlQuote(description)}${toolsYaml}${modelYaml}\n---\n${body}`;
 }
 
 // ─── Attribution Processing ─────────────────────────────────────────────────

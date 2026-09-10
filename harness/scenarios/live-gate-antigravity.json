@@ -2,14 +2,62 @@
   "id": "live-gate-antigravity",
   "tier": 0,
   "description": "Attempt to install the Agent Plugins bundle into Antigravity CLI from a local path.",
-  "why": "ADR-0045 recorded Antigravity's manifest schema as closed and DIFFERENT from the Agent Plugins one, and its file shapes as unspecified. This scenario exists to turn that into a measurement: if `agy plugin install` accepts the bundle, the deferred variant is unnecessary; if it rejects it, the rejection message is the spec. SKIPPED with reason when the CLI is absent.",
+  "why": "ADR-0045 recorded Antigravity's manifest schema as closed and DIFFERENT from the Agent Plugins one, and its file shapes as unspecified. This scenario exists to turn that into a measurement: if `agy plugin install` accepts the bundle, the deferred variant is unnecessary; if it rejects it, the rejection message is the spec. SKIPPED with reason when the CLI is absent. Extended 2026-09-10 with the R14 Claude-format probe.",
   "seed": "empty",
   "install": null,
-  "requires": { "cli": "agy" },
-  "budget": { "maxUsd": 0, "maxMinutes": 8, "maxStepMinutes": 4 },
+  "requires": {
+    "cli": "agy"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 8,
+    "maxStepMinutes": 4
+  },
   "steps": [
-    { "kind": "build", "script": "build-agent-plugin.js", "out": "bundle", "expect": ["exit:0"], "why": "Fresh bundle to install." },
-    { "kind": "cli", "bin": "agy", "args": ["plugin", "install", "<ws>/bundle"], "expect": ["exit:0"],
-      "why": "antigravity.google/docs/cli/plugins: `agy plugin install /path/to/local/plugin`. Either outcome is information; the stderr is captured in the report." }
+    {
+      "kind": "build",
+      "script": "build-agent-plugin.js",
+      "out": "bundle",
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Fresh bundle to install."
+    },
+    {
+      "kind": "cli",
+      "bin": "agy",
+      "args": [
+        "plugin",
+        "install",
+        "<ws>/bundle"
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "antigravity.google/docs/cli/plugins: `agy plugin install /path/to/local/plugin`. Either outcome is information; the stderr is captured in the report."
+    },
+    {
+      "kind": "build",
+      "script": "build-plugin.js",
+      "out": "claude-bundle",
+      "expect": [
+        "exit:0",
+        "file:claude-bundle/.claude-plugin/plugin.json"
+      ],
+      "why": "R14 probe, part 1: the Claude-format plugin, built fresh. Superpowers' README documents `agy plugin install <github url>` of a .claude-plugin repository, which suggests Antigravity loads Claude-format plugins - unverified against Antigravity's own docs (read 2026-09-10, which mention no such compatibility)."
+    },
+    {
+      "kind": "cli",
+      "bin": "agy",
+      "args": [
+        "plugin",
+        "install",
+        "<ws>/claude-bundle"
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "R14 probe, part 2: if Antigravity accepts the Claude plugin, the deferred variant (ADR-0045) collapses to a marketplace entry; if it rejects both bundles, the rejection messages are the spec for the variant. Either outcome is information."
+    }
   ]
 }
