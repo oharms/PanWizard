@@ -1,0 +1,43 @@
+{
+  "id": "quick-mode",
+  "tier": 2,
+  "description": "Run /pan:quick on a codebase with no phases: planner (quick mode) + executor produce a plan under .planning/quick/ and the requested source file, committed.",
+  "why": "Reality check RC20/R17: quick mode (planner + executor, no research, checker or verifier) had no scenario. The observable outcome is a plan file in .planning/quick/<n>-<slug>/ and the artefact it asked for.",
+  "seed": "two-plan-phase",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 5,
+    "maxMinutes": 30,
+    "maxStepMinutes": 25
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:quick \"add src/shout.js exporting shout(name) that returns the upper-cased greeting HELLO, <NAME>! with a node --test test in tests/shout.test.js\"",
+      "expect": [
+        "exit:0",
+        "glob:.planning/quick/*/*-plan.md",
+        "file:src/shout.js",
+        "file:tests/shout.test.js"
+      ],
+      "why": "quick.md: QUICK_DIR=.planning/quick/${next_num}-${slug}, plan at ${QUICK_DIR}/${next_num}-plan.md; the executor's artefacts are the requested files."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Working code, not files that look right."
+    }
+  ]
+}

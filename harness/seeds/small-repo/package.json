@@ -1,0 +1,11 @@
+{
+  "name": "tiny-cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "tiny": "bin/cli.js"
+  },
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}
