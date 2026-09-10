@@ -8,6 +8,7 @@ const path = require('path');
 const os = require('os');
 
 const lib = require('../bin/install-lib.cjs');
+const { buildPluginInto, cleanup } = require('./helpers.cjs');
 
 // ─── getDirName ─────────────────────────────────────────────────────────────
 
@@ -1478,17 +1479,40 @@ describe('plugin packaging builders', () => {
     assert.ok(!('type' in config.mcpServers.pan));
   });
 
-  test('the built plugin DECLARES the mcp server, not just ships it', () => {
+  test('the builder refuses to wipe a directory that is not a previous plugin build', (t) => {
+    // PAN_PLUGIN_OUT is a user-supplied path and the builder rmSync's it. A
+    // non-empty directory without our manifest must be refused, untouched.
+    const fs = require('fs');
+    const { execFileSync } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-notaplugin-'));
+    t.after(() => cleanup(dir));
+    fs.writeFileSync(path.join(dir, 'precious.txt'), 'do not delete');
+    assert.throws(() => execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PAN_PLUGIN_OUT: dir },
+    }), /refusing to replace/);
+    assert.ok(fs.existsSync(path.join(dir, 'precious.txt')), 'the refused directory must be left intact');
+    // An EMPTY override directory, and one holding a previous build, are accepted.
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-empty-'));
+    t.after(() => cleanup(empty));
+    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PAN_PLUGIN_OUT: empty },
+    });
+    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PAN_PLUGIN_OUT: empty },
+    });
+    assert.ok(fs.existsSync(path.join(empty, '.claude-plugin', 'plugin.json')), 'rebuild over a previous build succeeds');
+  });
+
+  test('the built plugin DECLARES the mcp server, not just ships it', (t) => {
     // REGRESSION: pan-wizard-core is copied wholesale, so mcp/ landed in the
     // bundle from the moment it moved there — while nothing registered it. A
     // shipped-but-undeclared server is invisible; assert both halves together,
     // and assert the declared path actually resolves inside the bundle.
     const fs = require('fs');
     const { execFileSync } = require('child_process');
-    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
-      encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const out = path.join(__dirname, '..', 'dist', 'pan-wizard-plugin');
+    // Built into a private temp dir (see helpers.buildPluginInto) — never dist/.
+    const out = buildPluginInto();
+    t.after(() => cleanup(out));
     const mcpPath = path.join(out, '.mcp.json');
     assert.ok(fs.existsSync(mcpPath), 'plugin root must carry .mcp.json');
     const declared = JSON.parse(fs.readFileSync(mcpPath, 'utf8')).mcpServers.pan.args[0];
@@ -1496,13 +1520,12 @@ describe('plugin packaging builders', () => {
     assert.ok(fs.existsSync(resolved), `declared server path missing in bundle: ${declared}`);
   });
 
-  test('build-plugin script emits the verified plugin layout', () => {
+  test('build-plugin script emits the verified plugin layout', (t) => {
     const fs = require('fs');
     const { execFileSync } = require('child_process');
-    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
-      encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const out = path.join(__dirname, '..', 'dist', 'pan-wizard-plugin');
+    // Built into a private temp dir (see helpers.buildPluginInto) — never dist/.
+    const out = buildPluginInto();
+    t.after(() => cleanup(out));
     assert.ok(fs.existsSync(path.join(out, '.claude-plugin', 'plugin.json')), 'manifest should exist');
     assert.ok(fs.existsSync(path.join(out, 'commands', 'pan', 'help.md')), 'commands should ship');
     assert.ok(fs.existsSync(path.join(out, 'agents', 'pan-planner.md')), 'agents should ship');

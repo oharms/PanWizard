@@ -284,6 +284,19 @@ Quick summary: Commands -> Workflows -> Agents -> Core Library -> .planning/ sta
 
 The army turns PAN's agents into a coordinated, role-scoped army. The substrate lives in four core modules — `squads.cjs` (the role registry: architecture / build / quality / release), `worktree.cjs` (branch-per-agent git-worktree isolation so parallel builders never collide), `campaign.cjs` (scheduled, self-resuming "dreaming" campaigns), and `hud.cjs` (the single-file HTML dashboard) — driven by the `/pan:army` command, the `pan-conductor` agent (Mission Control — instructed to delegate rather than implement; its `tools:` grant is not narrowed to enforce that), and the `pan-release` agent (the human merge gate). The design rationale is recorded in [ADR-0032 (squad model)](decisions/ADR-0032-squad-model.md), [ADR-0033 (army campaign)](decisions/ADR-0033-army-campaign.md), [ADR-0034 (scheduled campaigns)](decisions/ADR-0034-scheduled-campaigns.md), and [ADR-0035 (army HUD dashboard)](decisions/ADR-0035-army-hud-dashboard.md).
 
+## Distribution Bundles
+
+Besides the loose-file installer, two builders package PAN as a plugin. Neither output is committed (`dist/` is ignored) and neither is published yet; both are built and validated by the test suite.
+
+| Command | Output | Consumed by | Layout |
+|---|---|---|---|
+| `npm run build:plugin` | `dist/pan-wizard-plugin/` | Claude Code (plugin marketplaces; the local `command`-source test bed in `marketplace/`) | `.claude-plugin/plugin.json`, `commands/`, `agents/`, `hooks/`, `workflows/`, `.mcp.json`, `pan-wizard-core/` |
+| `npm run build:agent-plugin` | `dist/pan-agent-plugin/` | Copilot CLI / VS Code, Codex, Cursor, Kiro — the vendor-neutral **Agent Plugins 1.0** format (ADR-0045) | `plugin.json`, `skills/`, `mcp.json`, `pan-wizard-core/` |
+
+Both builders take an output override (`PAN_PLUGIN_OUT`, `PAN_AGENT_PLUGIN_OUT`) and refuse to wipe a directory that is not a previous build of theirs. Tests never build into `dist/`: they go through `buildPluginInto()` / `buildAgentPluginInto()` in `tests/helpers.cjs`, which build into private temp directories, because `node --test` runs files in parallel and two files rebuilding one directory raced.
+
+The skills in the Agent Plugins bundle come from the same unified-skills compiler the installer's `--unified-skills` path uses (`rewriteUnifiedSkillCommandContent`, `convertClaudeCommandToUnifiedSkill` in `bin/install-lib.cjs`). Do not add a second converter: `tests/unified-skills-install.test.cjs` pins the installer's output and `tests/agent-plugin-build.test.cjs` pins the bundle's, including that the Claude plugin stays byte-identical.
+
 ## Release Process
 
 1. Run all tests: `npm run test:all` (all must pass)

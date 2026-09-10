@@ -449,7 +449,7 @@ function convertClaudeCommandToCodexSkill(content, skillName) {
  * tree is read by every runtime, so invocation, delegation, and interaction
  * guidance are phrased in terms of "your runtime's native mechanism".
  */
-function getUnifiedSkillAdapterHeader(skillName) {
+function getUnifiedSkillAdapterHeader(skillName, note) {
   return `<pan_skill_adapter>
 PAN unified skill (Agent Skills standard, shared .agents/skills/ tree):
 - This skill is invoked through your runtime's skill mechanism — slash command (\`/${skillName}\`), mention (\`$${skillName}\`), or skill picker.
@@ -465,7 +465,7 @@ User interaction (runtimes without a native question tool):
 - Ask one question at a time; show numbered options; mark the recommended option with **(recommended)**.
 - Accept numbers ("1"), labels, or free-text descriptions as valid answers.
 - Native interaction tools (e.g. AskUserQuestion blocks), where supported by your runtime, take precedence over this fallback.
-</pan_skill_adapter>`;
+${note ? `\n${note}\n` : ''}</pan_skill_adapter>`;
 }
 
 /** Claude command → runtime-neutral SKILL.md (ADR-0028 Phase 1) */
@@ -476,7 +476,7 @@ User interaction (runtimes without a native question tool):
  */
 const SKILL_COMPATIBILITY = 'Requires Node.js (skills invoke the bundled pan-tools CLI) and a project with a .planning/ directory, created by /pan-new-project or /pan-map-codebase.';
 
-function convertClaudeCommandToUnifiedSkill(content, skillName) {
+function convertClaudeCommandToUnifiedSkill(content, skillName, opts = {}) {
   // Normalize command mentions to the readable /pan-<name> form; the adapter
   // header tells each runtime to map that onto its own invocation syntax.
   let converted = convertSlashCommandsToCopilotSkillMentions(content);
@@ -489,7 +489,10 @@ function convertClaudeCommandToUnifiedSkill(content, skillName) {
   }
   description = toSingleLine(description);
   const shortDescription = description.length > 180 ? `${description.slice(0, 177)}...` : description;
-  const adapter = getUnifiedSkillAdapterHeader(skillName);
+  // `opts.adapterNote` (Agent Plugins bundle, ADR-0045) appends a consumer-
+  // specific paragraph inside the adapter block; absent, the header is
+  // byte-identical to what every install has shipped since ADR-0028.
+  const adapter = getUnifiedSkillAdapterHeader(skillName, opts.adapterNote);
   // `compatibility` is the spec's optional field for stating environment
   // requirements, and PAN has real ones: the skill bodies shell out to
   // `pan-tools` (Node) and every workflow reads/writes `.planning/`. Declaring
@@ -498,6 +501,171 @@ function convertClaudeCommandToUnifiedSkill(content, skillName) {
   // spec, and ADR-0028's frontmatter rule is that anything unverified stays out
   // until a live per-runtime check confirms no parser rejects it.
   return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\ncompatibility: ${yamlQuote(SKILL_COMPATIBILITY)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+}
+
+// ─── Unified-skill content rewrites (extracted from bin/install.js, 2026-09) ──
+//
+// The installer's --unified-skills path and the Agent Plugins bundle builder
+// (ADR-0045) need the SAME rewrite of a Claude-flavoured PAN document — the
+// rule from ADR-0028 is one converter, several call sites, never a second copy.
+// Each function below reproduces its installer sequence exactly, in order; the
+// installer now calls these, and `tests/unified-skills-install.test.cjs` pins
+// the output it has always produced.
+//
+// Options (all strings):
+//   corePrefix        where `pan-wizard-core/` lives for the consumer, with a
+//                     trailing slash — `./.agents/` (local unified install),
+//                     `<abs>/.agents/` (global), `{{PAN_PLUGIN_ROOT}}/` (bundle)
+//   pathPrefix        replacement for a residual `~/.claude/` reference
+//   projectDirPrefix  replacement for a residual `./.claude/` reference —
+//                     `./<runtime dir>/` on an install, the root token in a bundle
+//   attribution       processAttribution() setting: null remove, undefined keep,
+//                     string replace
+
+/**
+ * Rewrite a PAN command document's paths for a unified-skills consumer. Does
+ * NOT convert it to SKILL.md form — call convertClaudeCommandToUnifiedSkill()
+ * on the result, exactly as the installer does.
+ */
+function rewriteUnifiedSkillCommandContent(content, { corePrefix, pathPrefix, projectDirPrefix, attribution }) {
+  // Core + agent-definition references → the shared copies (specific, before
+  // the generic rewrites); everything else .claude-scoped → the consumer. Agent
+  // refs point at the canonical reference copies shipped with the shared core —
+  // a runtime's own agents dir may carry a different format (Codex TOML,
+  // Copilot .agent.md).
+  content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  content = content.replace(/~\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
+  content = content.replace(/\.\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
+  content = content.replace(/~\/\.claude\//g, pathPrefix);
+  content = content.replace(/\.\/\.claude\//g, projectDirPrefix);
+  // Not every runtime puts a `pan-tools` bin on PATH — invoke via node.
+  const panToolsPath = `${corePrefix}pan-wizard-core/bin/pan-tools.cjs`;
+  content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${panToolsPath}`);
+  return processAttribution(content, attribution);
+}
+
+/**
+ * Rewrite a markdown file inside a shared copy of pan-wizard-core (workflows,
+ * templates, references, learnings) for a unified-skills consumer.
+ */
+function rewriteSharedCoreMarkdown(content, { corePrefix, pathPrefix, projectDirPrefix, attribution }) {
+  content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  // Agent-definition refs → the canonical reference copies in the shared core
+  // (runtime agents dirs carry runtime-specific formats).
+  content = content.replace(/~\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
+  content = content.replace(/\.\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
+  content = content.replace(/~\/\.claude\//g, pathPrefix);
+  content = content.replace(/\.\/\.claude\//g, projectDirPrefix);
+  content = processAttribution(content, attribution);
+  return convertSlashCommandsToCopilotSkillMentions(content);
+}
+
+/**
+ * Rewrite an agent definition for the canonical reference copy that ships
+ * under `<shared core>/agents/` — reading material for agents, not a runtime
+ * registration (ADR-0028 agent-ref canonicalization).
+ */
+function rewriteAgentReferenceCopy(content, corePrefix) {
+  content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  return convertSlashCommandsToCopilotSkillMentions(content);
+}
+
+/**
+ * Drop internal-scoped topics from a parsed learnings/index.json and recompute
+ * its totals exactly (each topic carries its own size fields). Pure: returns
+ * the rewritten object, or null when there was nothing internal to drop or
+ * the input is not an index. The installer and the bundle builders share it so
+ * a shipped index never lists files the package deliberately withholds.
+ */
+function stripInternalLearningsTopics(parsed) {
+  if (!parsed || !Array.isArray(parsed.topics)) return null;
+  const kept = parsed.topics.filter(t => t && t.scope !== 'internal');
+  if (kept.length === parsed.topics.length) return null;
+  const out = { ...parsed, topics: kept };
+  if (parsed.totals && typeof parsed.totals === 'object') {
+    out.totals = {
+      ...parsed.totals,
+      topics: kept.length,
+      patterns: kept.reduce((n, t) => n + (Array.isArray(t.patterns) ? t.patterns.length : 0), 0),
+      size_bytes: kept.reduce((n, t) => n + (t.size_bytes || 0), 0),
+      size_tokens_est: kept.reduce((n, t) => n + (t.size_tokens_est || 0), 0),
+    };
+  }
+  return out;
+}
+
+// ─── Agent Plugins bundle (ADR-0045, 2026-09) ────────────────────────────────
+//
+// A vendor-neutral package: `plugin.json` + `skills/` + `mcp.json` at the root,
+// loaded natively by Copilot CLI / VS Code, Codex, Cursor and Kiro. Every
+// constant here is quoted from the pinned schemas in tests/fixtures/agent-plugins/
+// (read from agent-plugins.org on 2026-09-10) — the manifest schema is CLOSED,
+// so an unlisted key is a fatal plugin rejection, not a warning.
+
+const AGENT_PLUGINS_VERSION = '1.0.0';
+const AGENT_PLUGIN_MANIFEST_SCHEMA = `https://agent-plugins.org/schemas/${AGENT_PLUGINS_VERSION}/plugin.schema.json`;
+const AGENT_PLUGIN_MCP_SCHEMA = `https://agent-plugins.org/schemas/${AGENT_PLUGINS_VERSION}/mcp.schema.json`;
+
+// Path token inside bundled skill and core markdown. Agent Plugins expands
+// `${PLUGIN_ROOT}` ONLY in mcp.json fields, and Claude's `${CLAUDE_PLUGIN_ROOT}`
+// substitution in content is Claude-specific — so bundle content carries PAN's
+// own token, in the style of `{{PAN_ARGS}}`, and the adapter note defines it.
+const AGENT_PLUGIN_ROOT_TOKEN = '{{PAN_PLUGIN_ROOT}}';
+// A few PAN documents refer to the RUNTIME's own configuration directories —
+// its `settings.json`, its `commands/`, PAN's update-check cache, the local
+// patches dir. The installer maps those to the installing runtime (`~/.codex/`,
+// `./.gemini/`, …); a bundle is built for no runtime in particular, so it
+// carries two more tokens the adapter note defines: the user-level and the
+// project-level runtime directory.
+const AGENT_PLUGIN_RUNTIME_HOME_TOKEN = '{{PAN_RUNTIME_HOME}}';
+const AGENT_PLUGIN_RUNTIME_DIR_TOKEN = '{{PAN_RUNTIME_DIR}}';
+
+/** Agent Plugins `plugin.json` — closed schema; mirrors package.json like the Claude manifest. */
+function buildAgentPluginManifest(pkg) {
+  return {
+    $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+    name: 'pan-wizard',
+    version: pkg.version,
+    description: pkg.description || 'Structured, phase-based planning and execution for AI coding agents.',
+    author: { name: 'PAN Wizard contributors', url: 'https://github.com/oharms/PanWizard' },
+    homepage: 'https://github.com/oharms/PanWizard',
+    repository: 'https://github.com/oharms/PanWizard',
+    license: pkg.license || 'MIT',
+    keywords: ['planning', 'workflow', 'agents', 'phases'],
+  };
+}
+
+/**
+ * Agent Plugins `mcp.json` declaring the bundled bridge. `command` must be a
+ * single executable token with NO placeholder (spec), so the server is launched
+ * as `node` with the `${PLUGIN_ROOT}`-anchored script in `args`, where expansion
+ * is defined. No `env`: a plugin serves whatever project the session is in, and
+ * `env` may not name PLUGIN_ROOT/PLUGIN_DATA anyway. The default working
+ * directory for a stdio server is the PLUGIN ROOT (spec) — which is why the
+ * bridge must take the project root per call (ADR-0045 D6, plan item 4g).
+ */
+function buildAgentPluginMcpConfig() {
+  return {
+    $schema: AGENT_PLUGIN_MCP_SCHEMA,
+    mcpServers: {
+      pan: {
+        type: 'stdio',
+        command: 'node',
+        args: ['${PLUGIN_ROOT}/pan-wizard-core/mcp/server.cjs'],
+      },
+    },
+  };
+}
+
+/** The adapter paragraph appended to every bundled skill (ADR-0045 D3). */
+function agentPluginSkillAdapterNote() {
+  return `Plugin bundle (Agent Plugins format):
+- \`${AGENT_PLUGIN_ROOT_TOKEN}\` in this skill is the directory that holds this plugin's \`plugin.json\` — two levels above this SKILL.md. Your runtime reports this skill's file location when it loads it; derive the root from that path and substitute it wherever \`${AGENT_PLUGIN_ROOT_TOKEN}\` appears before running a command.
+- Prefer the \`pan\` MCP server's tools when your runtime has connected this plugin's \`mcp.json\`. Otherwise run \`node ${AGENT_PLUGIN_ROOT_TOKEN}/pan-wizard-core/bin/pan-tools.cjs <verb>\` from the project root — the plugin's own directory is never the project.
+- \`${AGENT_PLUGIN_RUNTIME_HOME_TOKEN}\` is your runtime's user-level configuration directory (for example \`~/.claude\`, \`~/.codex\`, \`~/.gemini\`, \`~/.config/opencode\`, \`~/.copilot\`) and \`${AGENT_PLUGIN_RUNTIME_DIR_TOKEN}\` its project-level directory (\`.claude\`, \`.codex\`, \`.gemini\`, \`.opencode\`, \`.github\`). Substitute the one that applies to the runtime you are.`;
 }
 
 /** Generate Copilot CLI skill adapter header */
@@ -1849,6 +2017,19 @@ module.exports = {
   removeCodexPanHooks,
   buildNativeWorkflowScripts,
   namespaceWorkflowAgentTypes,
+  rewriteUnifiedSkillCommandContent,
+  rewriteSharedCoreMarkdown,
+  rewriteAgentReferenceCopy,
+  stripInternalLearningsTopics,
+  AGENT_PLUGINS_VERSION,
+  AGENT_PLUGIN_MANIFEST_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
+  AGENT_PLUGIN_ROOT_TOKEN,
+  AGENT_PLUGIN_RUNTIME_HOME_TOKEN,
+  AGENT_PLUGIN_RUNTIME_DIR_TOKEN,
+  buildAgentPluginManifest,
+  buildAgentPluginMcpConfig,
+  agentPluginSkillAdapterNote,
   buildPluginManifest,
   buildPluginHooksConfig,
   buildPluginMcpConfig,

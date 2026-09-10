@@ -48,6 +48,37 @@ probe that reports whether the running Claude Code exposes the plugin's agents
 scoped or bare (`AGENT_SCOPE: scoped|bare`), since that premise is documented but
 was not live-measured.
 
+### Added — an Agent Plugins bundle (ADR-0045)
+
+Agent Plugins 1.0 (published `2026-08-06`; Vercel, Amazon, Cursor, GitHub,
+Microsoft, OpenAI, Google) is the vendor-neutral package that Copilot CLI, VS
+Code, Codex, Cursor and Kiro load natively — one directory of `plugin.json` +
+`skills/` + `mcp.json`. `npm run build:agent-plugin` now emits PAN as one
+(`dist/pan-agent-plugin/`): every command as an Agent Skill from the same
+unified-skills compiler the installer uses (extracted into `install-lib` so the
+two cannot drift), the core with canonical agent copies, and an `mcp.json` that
+launches the bundled bridge as `node ${PLUGIN_ROOT}/…` — the one field the spec
+expands. Skill bodies address the bundle through PAN's own `{{PAN_PLUGIN_ROOT}}`
+token, plus `{{PAN_RUNTIME_HOME}}` / `{{PAN_RUNTIME_DIR}}` for the few references
+to a runtime's own configuration directory; the adapter note defines all three.
+
+A zero-dependency conformance suite validates the emitted manifest and `mcp.json`
+against the two normative schemas (pinned under `tests/fixtures/agent-plugins/`),
+checks every skill against the Agent Skills discovery rules, resolves every
+root-token reference inside the bundle, and proves the Claude plugin is
+byte-identical to its pre-extraction build. Vendor directories (Copilot, Codex,
+Antigravity) and the live installs are the next plan items; the spec's default
+stdio working directory is the plugin root, so the bridge must learn the project
+root per call before those gates run (ADR-0045 D6).
+
+### Fixed — test files no longer race on the plugin build
+
+Two test files and `plugin-path.js` rebuilt `dist/pan-wizard-plugin/` in place,
+and `node --test` runs files in parallel: one file's clean-up landed inside the
+other's copy. Both builders honour an output override (`PAN_PLUGIN_OUT`,
+`PAN_AGENT_PLUGIN_OUT`), refuse to wipe a directory that is not a previous build,
+and every test builds into a private temp directory through a shared helper.
+
 ### Changed — Codex observer hooks run off the critical path
 
 Codex CLI 0.148 added `async` command handlers. PAN's cost logger, trace logger and

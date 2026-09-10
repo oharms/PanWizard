@@ -565,21 +565,15 @@ function copyCommandsAsUnifiedSkills(srcDir, skillsDir, prefix, pathPrefix, core
       fs.mkdirSync(skillDir, { recursive: true });
 
       let content = fs.readFileSync(srcPath, 'utf8');
-      // Core + agent-definition references → shared .agents/ copies (specific,
-      // before the generic rewrites); everything else .claude-scoped → the
-      // installing runtime. Agent refs point at the canonical reference copies
-      // shipped with the shared core — the runtime's own agents dir may carry
-      // a different format (Codex TOML, Copilot .agent.md).
-      content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
-      content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
-      content = content.replace(/~\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
-      content = content.replace(/\.\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
-      content = content.replace(/~\/\.claude\//g, pathPrefix);
-      content = content.replace(/\.\/\.claude\//g, `./${getDirName(runtime)}/`);
-      // Not every runtime puts a `pan-tools` bin on PATH — invoke via node.
-      const panToolsPath = `${corePrefix}pan-wizard-core/bin/pan-tools.cjs`;
-      content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${panToolsPath}`);
-      content = processAttribution(content, getCommitAttribution(runtime));
+      // The path rewrite lives in install-lib (rewriteUnifiedSkillCommandContent)
+      // because the Agent Plugins bundle builder runs the SAME function — one
+      // converter, several call sites, never a second copy (ADR-0028, ADR-0045).
+      content = lib.rewriteUnifiedSkillCommandContent(content, {
+        corePrefix,
+        pathPrefix,
+        projectDirPrefix: `./${getDirName(runtime)}/`,
+        attribution: getCommitAttribution(runtime),
+      });
       content = convertClaudeCommandToUnifiedSkill(content, skillName);
 
       fs.writeFileSync(path.join(skillDir, 'SKILL.md'), content);
@@ -670,17 +664,14 @@ function copySharedCore(srcDir, destDir, corePrefix, runtimePathPrefix, runtime)
         recurse(srcPath, destPath);
       } else if (entry.name.endsWith('.md')) {
         try {
-          let content = fs.readFileSync(srcPath, 'utf8');
-          content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
-          content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
-          // Agent-definition refs → the canonical reference copies in the
-          // shared core (runtime agents dirs carry runtime-specific formats).
-          content = content.replace(/~\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
-          content = content.replace(/\.\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
-          content = content.replace(/~\/\.claude\//g, runtimePathPrefix);
-          content = content.replace(/\.\/\.claude\//g, `./${dirName}/`);
-          content = processAttribution(content, getCommitAttribution(runtime));
-          content = convertSlashCommandsToCopilotSkillMentions(content);
+          // Shared with the Agent Plugins bundle builder (install-lib) — see
+          // rewriteSharedCoreMarkdown for the rewrite order and rationale.
+          const content = lib.rewriteSharedCoreMarkdown(fs.readFileSync(srcPath, 'utf8'), {
+            corePrefix,
+            pathPrefix: runtimePathPrefix,
+            projectDirPrefix: `./${dirName}/`,
+            attribution: getCommitAttribution(runtime),
+          });
           fs.writeFileSync(destPath, content);
         } catch (err) {
           pushInstallWarning('copySharedCore(md)', destPath, err);
@@ -728,21 +719,13 @@ function stripInternalFromLearningsIndex(indexPath) {
     if (err.code !== 'ENOENT') pushInstallWarning('stripInternalLearnings', 'learnings/index.json', err);
     return;
   }
-  if (!parsed || !Array.isArray(parsed.topics)) return;
-
-  const kept = parsed.topics.filter(t => t && t.scope !== 'internal');
-  if (kept.length === parsed.topics.length) return; // nothing internal to drop
-
-  parsed.topics = kept;
-  if (parsed.totals && typeof parsed.totals === 'object') {
-    parsed.totals.topics = kept.length;
-    parsed.totals.patterns = kept.reduce((n, t) => n + (Array.isArray(t.patterns) ? t.patterns.length : 0), 0);
-    parsed.totals.size_bytes = kept.reduce((n, t) => n + (t.size_bytes || 0), 0);
-    parsed.totals.size_tokens_est = kept.reduce((n, t) => n + (t.size_tokens_est || 0), 0);
-  }
+  // The transform is pure and shared with the bundle builders (install-lib):
+  // null means "not an index" or "nothing internal to drop" — both no-ops here.
+  const stripped = lib.stripInternalLearningsTopics(parsed);
+  if (!stripped) return;
 
   try {
-    fs.writeFileSync(indexPath, JSON.stringify(parsed, null, 2) + '\n');
+    fs.writeFileSync(indexPath, JSON.stringify(stripped, null, 2) + '\n');
   } catch (err) {
     pushInstallWarning('stripInternalLearnings', 'learnings/index.json', err);
   }
@@ -2230,10 +2213,8 @@ function install(isGlobal, runtime = 'claude') {
         fs.mkdirSync(agentsRefDir, { recursive: true });
         const agentsSrc = path.join(src, 'agents');
         for (const f of fs.readdirSync(agentsSrc).filter(n => n.endsWith('.md'))) {
-          let content = fs.readFileSync(path.join(agentsSrc, f), 'utf8');
-          content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
-          content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
-          content = convertSlashCommandsToCopilotSkillMentions(content);
+          // Shared with the Agent Plugins bundle builder (install-lib).
+          const content = lib.rewriteAgentReferenceCopy(fs.readFileSync(path.join(agentsSrc, f), 'utf8'), corePrefix);
           fs.writeFileSync(path.join(agentsRefDir, f), content);
         }
       } catch (e) {

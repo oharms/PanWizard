@@ -41,7 +41,28 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const OUT = path.join(ROOT, 'dist', 'pan-wizard-plugin');
+// Output directory. `PAN_PLUGIN_OUT` overrides the default so that callers which
+// may run CONCURRENTLY — test files under `node --test`, which runs files in
+// parallel — each build into their own directory instead of racing on one:
+// one process's `rmSync` below landed in the middle of another's copy
+// (ENOENT mid-tree, and an empty stdout for plugin-path.js) on 2026-09-10.
+const OUT = process.env.PAN_PLUGIN_OUT
+  ? path.resolve(process.env.PAN_PLUGIN_OUT)
+  : path.join(ROOT, 'dist', 'pan-wizard-plugin');
+
+/**
+ * Refuse to wipe a directory that is not a previous plugin build. The default
+ * path is ours by construction; an override is a user-supplied path, and
+ * `rmSync(recursive)` on the wrong one is unrecoverable. A directory that does
+ * not exist yet, is empty, or carries our own manifest is fair game.
+ */
+function assertSafeToReplace(dir) {
+  if (!fs.existsSync(dir)) return;
+  const entries = fs.readdirSync(dir);
+  if (entries.length === 0) return;
+  if (fs.existsSync(path.join(dir, '.claude-plugin', 'plugin.json'))) return;
+  throw new Error(`build-plugin: refusing to replace ${dir} — it is non-empty and does not look like a previous plugin build (no .claude-plugin/plugin.json)`);
+}
 const pkg = require(path.join(ROOT, 'package.json'));
 const lib = require(path.join(ROOT, 'bin', 'install-lib.cjs'));
 
@@ -76,6 +97,7 @@ function copyTree(srcDir, destDir, transformMd) {
 
 function main() {
   // Clean output
+  assertSafeToReplace(OUT);
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(path.join(OUT, '.claude-plugin'), { recursive: true });
 
