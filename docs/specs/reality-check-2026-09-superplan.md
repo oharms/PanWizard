@@ -67,7 +67,7 @@ Counts (tests, suites, commands, agents, modules, specs, ADRs) live only in `CLA
 
 **Tests / gate.** `grep -nE "Claude Code.*default" CHANGELOG.md pan-wizard-core/bin/lib/cost.cjs` returns nothing near Fable. CHANGELOG is lint-exempt, so the gate is the grep plus a read.
 
-**Revert-proof.** Not applicable (prose). **Status.** Open.
+**Revert-proof.** Not applicable (prose). **Status.** Done `2026-09-10` (commit c35c41d).
 
 ### R2 · P1 · S (2) — `validate health` sets its exit code
 
@@ -83,7 +83,7 @@ Counts (tests, suites, commands, agents, modules, specs, ADRs) live only in `CLA
 
 **Tests.** In `tests/exit-code-contract.test.cjs`, a block "validate health is a verdict": spawn the real CLI in a temp dir with no `.planning/` → exit 1 and `status: broken`; in a scaffolded healthy tree (`pan-tools init` in the temp dir, or the fixture `tests/verify-health.test.cjs` already uses) → exit 0. **Revert-proof.** Remove the fourth argument at one site → the corresponding assertion fails.
 
-**Status.** Open.
+**Status.** Done `2026-09-10` (commit f34423b).
 
 ### R3 · P1 · XS (1) — F13 correction · **Done 2026-09-10**
 
@@ -109,7 +109,7 @@ Recorded in the Addendum ("Corrections to this plan") and §9. **Verify:** `grep
 11. Scheduled campaign (near 106): "the daily budget is advisory unless `budget.enforce` is set, and an external scheduler triggers `--continue`" (`config.cjs` 64–69; `campaign.cjs` 2–6).
 12. COMPARISON builtins list (line 45): add `readline`.
 
-**Tests / gate.** `node --test tests/doc-lint.test.cjs tests/model-version-drift.test.cjs` green; re-run the skill's Phase 1.2 claims audit → no FALSE row, and every WEAKENED row now carries its qualifier in the README. **Status.** Open.
+**Tests / gate.** `node --test tests/doc-lint.test.cjs tests/model-version-drift.test.cjs` green; re-run the skill's Phase 1.2 claims audit → no FALSE row, and every WEAKENED row now carries its qualifier in the README. **Status.** Done `2026-09-10` (commit a9df350).
 
 ### R5 · P6 · M (4) — COMPARISON.md refresh (remainder)
 
@@ -124,7 +124,7 @@ Recorded in the Addendum ("Corrections to this plan") and §9. **Verify:** `grep
 4. "Leads" item 1 (context-rot prevention): read gsd-core's executor workflow before keeping "no competitor solves this"; if it spawns per-plan executors, rewrite the item as a shared strength with PAN's differentiator (learnings-scoped context, stop-guard).
 5. Collapse the two-date "Last verified" line to one date once every row has been touched.
 
-**Gate.** No "no competitor" or "nobody else" phrase remains without a dated check (`grep -nE "no competitor|nobody else|every competitor" docs/COMPARISON.md`); doc-lint and model-drift green. **Status.** Partially done.
+**Gate.** No "no competitor" or "nobody else" phrase remains without a dated check (`grep -nE "no competitor|nobody else|every competitor" docs/COMPARISON.md`); doc-lint and model-drift green. **Status.** Done `2026-09-10` (commit b9ca497).
 
 ### R6 · P3 · S (2) — OpenCode and Gemini live gates; cite the loader
 
@@ -138,7 +138,7 @@ Recorded in the Addendum ("Corrections to this plan") and §9. **Verify:** `grep
 3. `live-gate-gemini.json` (tier 0, `requires.cli: gemini`, `install: ["--gemini","--local"]`): `cli gemini --version` → `exit:0`; `cli gemini mcp list` → `stdout~pan`; the `why` must say the workspace has to be trusted first (RC14) and name the flag or prompt that trusts it.
 4. Pin the `why` in `tests/mcp-registration.test.cjs`: the opencode row's rationale names `config.ts`.
 
-**Gate.** `npm run harness` shows both scenarios SKIPPED with reason on this machine; they pass on a machine with the CLIs (record the run id in the ledger). **Revert-proof.** Remove `config.ts` from the `why` → the pin fails. **Status.** Open.
+**Gate.** `npm run harness` shows both scenarios SKIPPED with reason on this machine; they pass on a machine with the CLIs (record the run id in the ledger). **Revert-proof.** Remove `config.ts` from the `why` → the pin fails. **Status.** Done `2026-09-10` (commit 5320552).
 
 ### R7 · P2 · S (2) — Rate rows for four priced models
 
@@ -150,7 +150,7 @@ Recorded in the Addendum ("Corrections to this plan") and §9. **Verify:** `grep
 1. Add rows `claude-mythos-5-1`, `claude-mythos-5`, `claude-opus-4-5`, `claude-sonnet-4-5` with the numbers above and a comment citing the pricing page and the date. Mythos 5.1 shares Fable 5.1's 0.025× cache-read convention — say so in the comment (the pricing footnote names both).
 2. Leave `RATES_VERIFIED_AT` at `2026-09-10`. Put the pricing-page URL in the commit message (the rule from the September plan).
 
-**Tests.** Dated ids resolve via `familyPrefixRate` (line 108) to the new rows: `claude-opus-4-5-20251101` → the 4.5 row, not a 4.x neighbour; `claude-sonnet-4-5-20250929` → the 4.5 row; `claude-mythos-5-1` differs from `claude-mythos-5` (copy the `claude-fable-5-1` longest-prefix test at lines 53–70). **Revert-proof.** Delete one row → its test fails. **Status.** Open.
+**Tests.** Dated ids resolve via `familyPrefixRate` (line 108) to the new rows: `claude-opus-4-5-20251101` → the 4.5 row, not a 4.x neighbour; `claude-sonnet-4-5-20250929` → the 4.5 row; `claude-mythos-5-1` differs from `claude-mythos-5` (copy the `claude-fable-5-1` longest-prefix test at lines 53–70). **Revert-proof.** Delete one row → its test fails. **Status.** Done `2026-09-10` (commit 1d42428).
 
 ### R8 · P3 · XS (1) — Pin "zero runtime dependencies"
 
@@ -163,7 +163,7 @@ Recorded in the Addendum ("Corrections to this plan") and §9. **Verify:** `grep
 2. Gate 6 (npm pack size sanity, line 128): add one line failing the gate when `dependencies` is non-empty, with the reason "PAN ships zero runtime dependencies (README, COMPARISON)".
 3. Refresh the CLAUDE.md counts table (unit test files row) via the snippet.
 
-**Revert-proof.** In a temp copy of `package.json` with `"dependencies": {"x":"1"}`, the test fails. **Status.** Open.
+**Revert-proof.** In a temp copy of `package.json` with `"dependencies": {"x":"1"}`, the test fails. **Status.** Done `2026-09-10` (commit 79582dc).
 
 ### R9 · P7 · XS (1) — MCP server reports the package version
 
@@ -173,7 +173,7 @@ Recorded in the Addendum ("Corrections to this plan") and §9. **Verify:** `grep
 1. `readPackageVersion()`: try `path.join(__dirname, '..', '..', 'package.json')` — the repo root in the source tree, the runtime directory in an install (the installer writes `package.json` beside `pan-wizard-core/`), absent in the plugin bundle; fall back to the plugin manifest at `../../.claude-plugin/plugin.json` if present, else the literal `0.0.0-unknown`. Read once at module load, never throw.
 2. `SERVER_INFO.version = readPackageVersion()`; keep the export.
 
-**Tests.** In `pan-zcode-mcp.test.cjs`, `initialize` returns `serverInfo.version === require('../package.json').version`; a test with a fake `__dirname` layout lacking both files gets the fallback. Optionally extend `harness/scenarios/mcp-bridge-cwd.json` with `rpc:<id>.result.serverInfo.version=<pkg>` if the runner exposes the package version to `expect` templates (check `fill()` vars first). **Revert-proof.** Restore the literal → the equality fails. **Status.** Open.
+**Tests.** In `pan-zcode-mcp.test.cjs`, `initialize` returns `serverInfo.version === require('../package.json').version`; a test with a fake `__dirname` layout lacking both files gets the fallback. Optionally extend `harness/scenarios/mcp-bridge-cwd.json` with `rpc:<id>.result.serverInfo.version=<pkg>` if the runner exposes the package version to `expect` templates (check `fill()` vars first). **Revert-proof.** Restore the literal → the equality fails. **Status.** Done `2026-09-10` (commits ab50f06, 27945f2).
 
 ### R10 · P4 · S (2) — Stale Agent Plugins bundle cannot ship
 
@@ -186,7 +186,7 @@ Recorded in the Addendum ("Corrections to this plan") and §9. **Verify:** `grep
 2. Apply the same comparison to `dist/pan-wizard-plugin/` as a warning only (the Claude marketplace rebuilds on resolve).
 3. `marketplace/README.md`: one paragraph — build the bundle before any local Codex or Copilot install, and the release gate now refuses a stale one.
 
-**Tests.** Unit test for `dirDigest` (order-independent, content-sensitive); a release-check test that seeds a stale `dist/` copy in a temp checkout and sees the gate go red (the plugin-marketplace test's harness pattern). **Revert-proof.** Touch one byte in `dist/pan-agent-plugin/plugin.json` → Gate 8 fails. **Status.** Open.
+**Tests.** Unit test for `dirDigest` (order-independent, content-sensitive); a release-check test that seeds a stale `dist/` copy in a temp checkout and sees the gate go red (the plugin-marketplace test's harness pattern). **Revert-proof.** Touch one byte in `dist/pan-agent-plugin/plugin.json` → Gate 8 fails. **Status.** Done `2026-09-10` (commit fecb9d2).
 
 ### R11 · P7 · XS (1) — Remove the stray `nul/` directory · user action
 
@@ -210,7 +210,7 @@ Recorded in the Addendum ("Corrections to this plan") and §9. **Verify:** `grep
 2. Effort: a `maxEffortLevel` setting (top-level or per model under `modelSettings`, Claude Code `2.1.267`) can clamp PAN's `effort:` frontmatter; check it before assuming the frontmatter is ignored.
 3. Codex: since `0.154.0`, live sessions pick up plugin skill and hook changes after an upgrade without a restart; a stale skill after `pan-check-update` is therefore not a Codex caching issue.
 
-Write by capability where a model is involved; runtime version numbers are fine. **Gate.** `node --test tests/model-version-drift.test.cjs tests/doc-lint.test.cjs` green. **Status.** Open.
+Write by capability where a model is involved; runtime version numbers are fine. **Gate.** `node --test tests/model-version-drift.test.cjs tests/doc-lint.test.cjs` green. **Status.** Done `2026-09-10` (commit 2f36176).
 
 ### R13 · P5 · S (2) — Copilot agent `model:` fallback lists · gated
 
@@ -248,13 +248,13 @@ Write by capability where a model is involved; runtime version numbers are fine.
 4. `init.cjs` / new-project preflight: refuse to scaffold into a foreign tree; suggest `--planning-dir .planning-pan`.
 5. Docs: TROUBLESHOOTING "Another tool already owns `.planning/`"; USER-GUIDE planning-roots section gains the coexistence paragraph.
 
-**Tests.** Fixture `tests/fixtures/foreign-planning/gsd/` (uppercase files, `HANDOFF.json`, dotted `config.json`): `hygiene scan` reports `foreign-planning-tree` and **no** `legacy-filenames`; `hygiene clean --apply` performs zero renames (assert the file names afterwards); `validate health` reports the new code and exits 1 (after R2). A PAN legacy tree (uppercase files, nested PAN config, no gsd markers) still gets `legacy-filenames` — both directions pinned. **Revert-proof.** Drop the marker check → the zero-rename assertion fails. **Status.** Open.
+**Tests.** Fixture `tests/fixtures/foreign-planning/gsd/` (uppercase files, `HANDOFF.json`, dotted `config.json`): `hygiene scan` reports `foreign-planning-tree` and **no** `legacy-filenames`; `hygiene clean --apply` performs zero renames (assert the file names afterwards); `validate health` reports the new code and exits 1 (after R2). A PAN legacy tree (uppercase files, nested PAN config, no gsd markers) still gets `legacy-filenames` — both directions pinned. **Revert-proof.** Drop the marker check → the zero-rename assertion fails. **Status.** Done `2026-09-10` (commit a3c4f28).
 
 ### R16a · P7 · S (2) — Decision: one core per project (ADR)
 
 **Finding.** RC18. Every selected runtime directory carries its own full `pan-wizard-core` copy; `--unified-skills` adds a sixth at `.agents/pan-wizard-core/`. Measure with the skill's Phase 4.2 command on a packed install in `d:\pantesting`. ADR-0028 Phase 2 already made the shared core the runtime-neutral home for unified skills; the per-runtime copies remain for the proprietary command trees.
 
-**Steps.** Write ADR-0048 with: context and the measurement command; options — (A) status quo, (B) local installs point every runtime's commands, hooks and MCP registration at `.agents/pan-wizard-core/` and drop the per-runtime copies, (C) links (rejected: Windows symlink privileges); costs of (B) — manifest ownership and ref-counted uninstall (exists for the shared tree), path rewriting in the converters (`rewriteSharedCoreMarkdown` exists), `--config-dir` custom dirs, hooks resolving the core relative to the runtime dir, `MCP_REGISTRATION` paths, and the fact that **global installs cannot share** (different runtime homes); the gate for (B) — `install-matrix` and `runtime-roundtrip` green, footprint measured before and after. **Status.** Open (decision).
+**Steps.** Write ADR-0048 with: context and the measurement command; options — (A) status quo, (B) local installs point every runtime's commands, hooks and MCP registration at `.agents/pan-wizard-core/` and drop the per-runtime copies, (C) links (rejected: Windows symlink privileges); costs of (B) — manifest ownership and ref-counted uninstall (exists for the shared tree), path rewriting in the converters (`rewriteSharedCoreMarkdown` exists), `--config-dir` custom dirs, hooks resolving the core relative to the runtime dir, `MCP_REGISTRATION` paths, and the fact that **global installs cannot share** (different runtime homes); the gate for (B) — `install-matrix` and `runtime-roundtrip` green, footprint measured before and after. **Status.** Done `2026-09-10` (commit 2444f61).
 
 ### R16b · P7 · L (10) — Implement the shared core for local installs · conditional
 
@@ -292,7 +292,7 @@ Only if ADR-0048 accepts (B). Steps live in the ADR; sequence: converters and pa
 2. Reproduce the probe: `node harness/src/run.cjs --scenario plugin-agent-scope --tier 1 --max-usd 1 --keep`, read `ws/` and the `claude -p` stderr (a missing `--plugin-dir`, a permissions refusal, or a plugin that never installed are the candidates); fix the scenario or the runner accordingly.
 3. Ledger: after the fix, a passing run resolves the two phantom findings. If the probe cannot be made to run here, withdraw them in a commit whose message states why (the PanLoop practice), rather than leaving promotable phantoms.
 
-**Tests.** A unit test in the harness test file feeding a zero-turn, zero-cost result → status `error`, no findings, exit non-zero. **Revert-proof.** Remove the guard → the test fails. **Status.** Open.
+**Tests.** A unit test in the harness test file feeding a zero-turn, zero-cost result → status `error`, no findings, exit non-zero. **Revert-proof.** Remove the guard → the test fails. **Status.** Done `2026-09-10` (commit 5eb7ae7).
 
 ### R21 · P7 · M (4) — Body-budget split, measured not guessed · blocked on a live session
 
@@ -318,11 +318,13 @@ Items are small, so sessions are bounded by their blockers rather than by the fo
 
 | Session | Items | Pts | Theme | Exit criterion |
 |---|---|---|---|---|
-| **S6** | R1, R2, R7, R8, R9, R12, R4 | 12 | Truth pass before the next release | CHANGELOG states the alias reason; `validate health` exit pinned by a real-CLI test; four rate rows cited and tested; zero-dep pinned; server reports the package version; README has no FALSE row on a claims re-audit; full suite and all gates green |
-| **S7** | R15, R20, R10, R6, R5, R16a | 16 | Foreign trees, probe integrity, comparison, gates | `hygiene clean` performs zero renames on the gsd fixture; a zero-spend model step records `error`; a stale `dist/` turns Gate 8 red; OpenCode and Gemini gates exist and skip with reason here; COMPARISON has no undated "no competitor"; ADR-0048 written either way |
+| **S6** | R1, R2, R7, R8, R9, R12, R4 | 12 | Truth pass before the next release — **Done `2026-09-10`** | CHANGELOG states the alias reason; `validate health` exit pinned by a real-CLI test; four rate rows cited and tested; zero-dep pinned; server reports the package version; README has no FALSE row on a claims re-audit; full suite and all gates green |
+| **S7** | R15, R20, R10, R6, R5, R16a | 16 | Foreign trees, probe integrity, comparison, gates — **Done `2026-09-10`** (ADR-0048 written, Proposed) | `hygiene clean` performs zero renames on the gsd fixture; a zero-spend model step records `error`; a stale `dist/` turns Gate 8 red; OpenCode and Gemini gates exist and skip with reason here; COMPARISON has no undated "no competitor"; ADR-0048 written either way |
 | **S8** | R19, R17, R21, R13, R14 | 18 | Model tier and live gates | run where `claude` has a spend cap and where `copilot` and `agy` exist; five reps per chain; each new scenario proven able to fail |
 | **S9** | R16b | 10 | Shared core | only if ADR-0048 accepts option B |
 | Any time | R11 | 1 | User action | `git status` prints no warning |
+
+**Executed `2026-09-10` (evening), S6 and S7, on the current branch by the user's instruction rather than on a fresh one.** Every item's suite, release gates (including the new stale-bundle check) and the model-free harness were green at the close; a fresh five-runtime install in `d:\pantesting\execplan-check` confirmed the verdict exit code, the foreign-tree refusal and the bridge's reported version. Found while executing: `validate health`'s exit code reached the `pan://health` resource and eleven scenario tests that had encoded exit 0 (all updated); the runtime directory's `package.json` carries no version, so the bridge reads the install manifest; the stale-bundle gate fired on its first real run, on a `dist/` left behind by earlier commits in the same session.
 
 **Ordering rationale.** S6 fixes what is wrong in the tree PR #29 is about to merge and costs one sitting. S7 leads with R15 because it is the only item where PAN could damage another tool's files, and with R20 because the next model-tier run must not file phantom findings. S8 needs machines and money this one does not have; R19 goes first there because it is the one measurement the whole native-workflows move rests on.
 
