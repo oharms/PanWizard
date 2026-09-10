@@ -46,7 +46,7 @@ const pkg = require('../package.json');
 // phrased by capability, not by name; these are the "switch to this" examples
 // that keep the advice actionable. Nothing in PAN gates on these values.
 const RECOMMENDED_MODELS = {
-  flagship: 'claude-fable-5',
+  flagship: 'claude-fable-5-1',
   reasoningTier: 'claude-opus-5 / claude-opus-4-8',
 };
 

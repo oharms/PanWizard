@@ -1975,7 +1975,7 @@ pan-tools config-ensure-section [--raw]
 | `memory.auto_optimize` | `true` | Reconcile the always-loaded project memory automatically at the focus-auto checkpoint and the normal-flow session record. No-op when state.md is already lean. Set `false` to opt out and reconcile only via `memory optimize`. |
 | `budget.enforce` | `false` | Make the spawn/point budget a hard stop. Advisory by default (tracked + surfaced, never stops a run). |
 | `budget.verify_reserve` | `0.15` | Fraction of the spawn budget (0–0.5) held back for re-verification so it can't be starved. Surfaced as `new_work_budget_remaining` / `into_verify_reserve` always; a hard early stop (`budget_reserve_reached`) only under `budget.enforce` / `--enforce-budget`. Override per-run with `--verify-reserve`. |
-| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25 } }`. Applied to both `cost append` and aggregate reporting. |
+| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25 } }`. Applied to both `cost append` and aggregate reporting. Precedence: this key, then a Claude Code managed `modelPricing` block (contracted input/output rates; cache rates derived from the family's multipliers), then the built-in table. |
 | `cache.extra_files` | `[]` | **(v3.27)** Extra planning-root-relative docs to include in the cached context block, e.g. `["research/api-contract.md"]`. The built-in list is the *phase-model* spine (project/requirements/roadmap/state/standards), so a focus-model project has an empty block and gets **no prompt caching at all**. Entries are appended after the built-ins (the cache prefix stays byte-stable for projects that set nothing); absolute paths, drive paths, and `..` segments are ignored. |
 | `brave_search` | auto-detected | Brave Search API availability |
 
@@ -3507,7 +3507,9 @@ Report whether the built-in model rate table is stale.
 pan-tools models check [--raw]
 ```
 
-Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers}`. The rate table carries the date it was last verified against published provider pricing; `stale` flips to `true` once that date is older than the threshold (roughly half a year). When stale, re-verify provider pricing, update `DEFAULT_RATES`, and bump `RATES_VERIFIED_AT` in `cost.cjs`. `--raw` prints a one-line human summary instead of JSON.
+Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers, managed_model_pricing}`. The rate table carries the date it was last verified against published provider pricing; `stale` flips to `true` once that date is older than the threshold (roughly half a year). When stale, re-verify provider pricing, update `DEFAULT_RATES`, and bump `RATES_VERIFIED_AT` in `cost.cjs`. `--raw` prints a one-line human summary instead of JSON.
+
+`managed_model_pricing` lists the model ids found in a Claude Code managed `modelPricing` block (contracted per-model rates an organisation deploys through managed settings). PAN prices with those rates when present — see the `cost.rates` config key for the precedence — and reads them from the directory Claude Code documents for each OS; `PAN_MANAGED_SETTINGS_DIR` redirects the lookup. An empty list means no block was found, not that the setting is unsupported.
 
 ### `bus publish <channel> <payload> [--source <name>]` (v3.0, Y-7)
 

@@ -641,6 +641,14 @@ describe('detectModelCapabilities', () => {
     assert.deepEqual(r, { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' });
   });
 
+  test('claude-fable-5-1 (Claude Code default, and the installer\'s recommended flagship) has all capabilities including 1M', () => {
+    const r = lib.detectModelCapabilities('claude-fable-5-1');
+    assert.equal(r.has_1m_ctx, true);
+    assert.equal(r.has_thinking, true);
+    assert.equal(r.has_cache, true);
+    assert.equal(r.tier, 'reasoning');
+  });
+
   test('claude-fable-5 has all capabilities including 1M', () => {
     const r = lib.detectModelCapabilities('claude-fable-5');
     assert.deepEqual(r, { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' });
@@ -1506,6 +1514,56 @@ describe('plugin packaging builders', () => {
     assert.ok(gitMd.includes('${CLAUDE_PLUGIN_ROOT}/pan-wizard-core/'),
       'content paths should be plugin-root-relative');
     assert.ok(!gitMd.includes('.claude/pan-wizard-core'), 'no install-dir paths should remain');
+
+    // Native workflows (plan item 3, 2026-09): the plugin used to ship LESS than
+    // a loose install because the builder never wrote `workflows/`. Assert the
+    // directory, and assert the one thing that differs from the installer's copy:
+    // every agentType is scoped to the plugin (plugin agents load as
+    // `<plugin>:<agent>`), and every scoped agent actually exists in the bundle —
+    // a dead agent reference looks exactly like a live one on disk.
+    const manifest = JSON.parse(fs.readFileSync(path.join(out, '.claude-plugin', 'plugin.json'), 'utf8'));
+    const scripts = lib.buildNativeWorkflowScripts();
+    assert.ok(scripts.length > 0, 'non-vacuity: the builder must emit at least one script');
+    for (const s of scripts) {
+      const shipped = path.join(out, 'workflows', s.name);
+      assert.ok(fs.existsSync(shipped), `plugin must ship workflows/${s.name}`);
+      const src = fs.readFileSync(shipped, 'utf8');
+      assert.ok(src.startsWith('export const meta = {'), `${s.name} must keep the meta export first`);
+      const types = [...src.matchAll(/agentType:\s*'([^']+)'/g)].map(m => m[1]);
+      assert.ok(types.length > 0, `${s.name} spawns no agents — the rewrite has nothing to act on`);
+      for (const t of types) {
+        assert.ok(t.startsWith(manifest.name + ':'), `${s.name}: agentType '${t}' is not scoped to ${manifest.name}`);
+        const agentFile = path.join(out, 'agents', t.slice(manifest.name.length + 1) + '.md');
+        assert.ok(fs.existsSync(agentFile), `${s.name}: scoped agent '${t}' has no ${path.basename(agentFile)} in the bundle`);
+      }
+    }
+  });
+});
+
+describe('namespaceWorkflowAgentTypes (plugin copy of the native scripts)', () => {
+  test('scopes bare agentType values to the plugin and leaves everything else byte-identical', () => {
+    const src = "agent('x', { agentType: 'pan-reviewer', label: 'review' })\nagent('y', {agentType:'pan-hardener'})\n";
+    const out = lib.namespaceWorkflowAgentTypes(src, 'pan-wizard');
+    assert.ok(out.includes("agentType: 'pan-wizard:pan-reviewer'"));
+    assert.ok(out.includes("agentType:'pan-wizard:pan-hardener'"), 'whitespace after the colon is preserved');
+    assert.equal(out.replace(/pan-wizard:/g, ''), src, 'nothing but the scope prefix may change');
+  });
+
+  test('is idempotent and never double-scopes an already scoped name', () => {
+    const once = lib.namespaceWorkflowAgentTypes("{ agentType: 'pan-reviewer' }", 'pan-wizard');
+    assert.equal(lib.namespaceWorkflowAgentTypes(once, 'pan-wizard'), once);
+    assert.equal(lib.namespaceWorkflowAgentTypes("{ agentType: 'other:agent' }", 'pan-wizard'), "{ agentType: 'other:agent' }");
+  });
+
+  test('every emitted script is changed by the rewrite (proves the regex matches how the scripts are actually written)', () => {
+    for (const s of lib.buildNativeWorkflowScripts()) {
+      assert.notEqual(lib.namespaceWorkflowAgentTypes(s.content, 'pan-wizard'), s.content,
+        `${s.name}: the rewrite matched nothing — the emitted agentType shape drifted from the regex`);
+    }
+  });
+
+  test('passes content through untouched when given no plugin name', () => {
+    assert.equal(lib.namespaceWorkflowAgentTypes("agentType: 'pan-x'", ''), "agentType: 'pan-x'");
   });
 });
 

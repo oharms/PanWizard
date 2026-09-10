@@ -634,6 +634,25 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 3. If you are on `budget`, complex tasks are the case for leaving it — or pin just the executor back up with `model_overrides: { "pan-executor": "reasoning" }`
 4. Add more detail to the phase's context.md to provide implementation guidance
 
+### Per-agent `effort:` appears to have no effect
+
+**Symptom:** PAN's agents carry an `effort:` level in their frontmatter (from `AGENT_BASE_EFFORT`, `effort_overrides`, or the `budget` profile's step-down), but every agent runs at the session's effort regardless.
+
+**Root cause:** Claude Code before `2.1.267` ignored `effort:` frontmatter on custom commands, skills and subagents whenever the model had a pinned default effort. PAN emitted the field correctly the whole time; the runtime did not read it.
+
+**Fix:** Update Claude Code (`claude --version` to check) — nothing changes on PAN's side. On the other runtimes PAN never relied on the field: their agent files carry an effort-scaled prose preamble instead, which is unaffected.
+
+### Cost report disagrees with Claude Code's `/usage` or with the invoice
+
+**Symptom:** `pan-tools cost report` totals differ from what Claude Code shows or what the provider bills.
+
+**Causes, in the order to check them:**
+
+1. **Stale rate table.** `pan-tools models check` prints when the built-in rates were last verified and flags the table once it is old. Provider prices move faster than PAN releases; if it says STALE, the fix is a rate refresh, not a config change.
+2. **Cache-read pricing on the newest Fable-tier model.** Its cache reads bill at a quarter of the multiplier every other Claude model uses. PAN carries a dedicated rate row for it (see `DEFAULT_RATES` in `cost.cjs`); releases before that row existed priced its reads at the previous Fable model's rate, high by roughly four times on the line that dominates PAN's traffic.
+3. **Contracted rates.** If your organisation pins `modelPricing` in Claude Code's managed settings, PAN reads the same block and prices with it; `pan-tools models check --raw` lists the model ids it found under `managed_model_pricing`. Precedence is `.planning/config.json → cost.rates`, then managed `modelPricing`, then the built-in table. If the list is empty on a machine where the policy should apply, check that the file sits where Claude Code reads it (its managed-settings documentation gives the per-OS directory; the legacy Windows `ProgramData` path is read by neither tool), or point PAN at a relocated directory with `PAN_MANAGED_SETTINGS_DIR`.
+4. **Hook rows are priced at read time.** Records the SubagentStop hook writes carry `cost_usd: null` and are priced when the report runs, so a rate change re-prices history. That is deliberate: it is what lets a rate fix correct old totals.
+
 ---
 
 ## Context and Sessions
@@ -699,6 +718,22 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 2. Run `/pan:health --repair` to fix any state inconsistencies
 3. Check `git log` for duplicate or conflicting commits
 4. Manually resolve any git conflicts
+
+### Agents re-read the cached context at full price after a short pause
+
+**Symptom:** `/usage` shows a low prompt-cache hit ratio for PAN's agents, or the ledger shows repeated cache *writes* of the same context block within an hour.
+
+**Root cause:** Claude Code decides the prompt-cache lifetime per request bucket. The main conversation can get the one-hour lifetime on a subscription; **everything else — subagents, workflows, forks — gets five minutes** unless you say otherwise. Every PAN agent is a subagent, so a phase whose agents are spaced more than five minutes apart re-caches the same planning context each time. ADR-0044 measured that block as the bulk of PAN's token traffic.
+
+**Fix:** Set `subagentPromptCacheTtl` to `"1h"` in a Claude Code settings file (Claude Code `2.1.242` or later). Weigh it first: one-hour cache writes bill at twice the base input rate against 1.25× for five-minute writes, so the longer lifetime pays off once a block is read at least twice inside the hour — true for a phase run, false for a single quick agent. To see which lifetime a session is using, `/usage` shows a `Prompt cache (main)` line with the hit ratio and, on recent builds, the likely cause of the last miss. On PAN's side, `pan-tools context-budget` reports the block's size under `cache.status` and `pan-tools hygiene scan` carries a `cache-context` check.
+
+### `/skill-doctor` lists most PAN skills as unused
+
+**Symptom:** Claude Code's `/skill-doctor` reports many `pan-*` skills loaded but never invoked, with a context cost beside each.
+
+**Why this is expected:** A unified-skills install ships the whole command set as skills, and only a few are used in any one session. Until a skill is invoked it costs its `description` line and nothing else — PAN's descriptions are short by design, and the tool's per-skill figure is that line, not the body.
+
+**Fix, if you want a shorter list:** use Claude Code's `skillOverrides` setting to mark individual skills `hidden` or `collapsed` rather than deleting their files — PAN's manifest tracks every installed file, and a deleted skill comes back on the next upgrade and fails verification until then.
 
 ---
 
@@ -898,6 +933,14 @@ The MCP tool cache at `.planning/bridge/available-tools.json` isn't populated. C
 - **Testing without MCP setup.** Seed the cache manually with `pan-tools bridge cache --runtime claude --servers '[{"name":"test","tools":[{"name":"test.x","description":"test"}]}]'`.
 
 This is expected behavior — `bridge list` is designed to report cleanly when no tools are available.
+
+### The `pan` MCP server is missing on Gemini CLI in a fresh checkout
+
+**Symptom:** PAN installed for Gemini and wrote its `pan` server into `.gemini/settings.json`, but Gemini CLI lists no such server.
+
+**Root cause:** Gemini CLI `0.59.0` (released `2026-09-08`) enforces workspace trust fail-closed and **filters `mcpServers` out of project settings while a workspace is untrusted**. The registration is present and correct; the runtime declines to load it until you trust the folder.
+
+**Fix:** Accept Gemini CLI's trust prompt for the workspace (or mark it trusted through its workspace-trust setting), then restart the session. PAN's own install checks still pass in the meantime — they verify the file on disk, not the runtime's trust state — so a clean install check plus a missing server is the signature of this case.
 
 ### `/pan:exec-phase --hierarchical` printed a warning and ran flat
 

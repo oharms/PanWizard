@@ -15,11 +15,16 @@ const {
   renderTable,
   renderChart,
   resolveRate,
+  ratesFromModelPricing,
+  managedSettingsDir,
+  loadManagedModelPricing,
+  effectiveRates,
   METRICS_DIR,
   TOKENS_FILE,
   DEFAULT_RATES,
 } = require('../pan-wizard-core/bin/lib/cost.cjs');
 const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
+const os = require('os');
 
 describe('cost — resolveRate', () => {
   test('known model returns its rate', () => {
@@ -40,6 +45,31 @@ describe('cost — resolveRate', () => {
     assert.ok(r, 'claude-fable-5 should resolve to a rate');
     assert.equal(r.input, 10.0);
     assert.equal(r.output, 50.0);
+  });
+
+  // Fable 5.1 is the one Anthropic model whose cache reads are NOT 0.1× input
+  // (0.025×, pricing page 2026-09-10). Before it had its own row, the
+  // family-prefix fallback silently billed its reads at the Fable 5 rate.
+  test('claude-fable-5-1 has its own row with the 0.025× cache-read rate (verified 2026-09-10)', () => {
+    const r = resolveRate('claude-fable-5-1', null, null);
+    assert.ok(r, 'claude-fable-5-1 should resolve to a rate');
+    assert.equal(r.input, 10.0);
+    assert.equal(r.output, 50.0);
+    assert.equal(r.cache_read, 0.25);
+    assert.equal(r.cache_write, 12.5);
+    assert.notDeepEqual(r, resolveRate('claude-fable-5', null, null),
+      'the 5.1 row must differ from Fable 5 — otherwise the row is not doing its job');
+  });
+
+  test('versioned and 1M-suffixed Fable 5.1 ids resolve to the 5.1 row, not to Fable 5', () => {
+    // `claude-fable-5` is a prefix of `claude-fable-5-1`, so longest-prefix
+    // matching is what keeps these on the right row. Pin it: a shorter-first
+    // sort would send every 5.1 id back to the 4×-too-high read rate.
+    const fable51 = resolveRate('claude-fable-5-1', null, null);
+    assert.deepEqual(resolveRate('claude-fable-5-1-20260901', null, null), fable51);
+    assert.deepEqual(resolveRate('claude-fable-5-1[1m]', null, null), fable51);
+    // And the plain Fable 5 ids still land on Fable 5.
+    assert.deepEqual(resolveRate('claude-fable-5[1m]', null, null), resolveRate('claude-fable-5', null, null));
   });
 
   test('reasoning tier fallback tracks current Opus pricing', () => {
@@ -139,11 +169,13 @@ describe('cost — resolveRate', () => {
     assert.deepEqual(resolveRate('claude-opus-5-20260724', null, null), r);
   });
 
-  test('claude-sonnet-5 has explicit rate ($3/$15 post-promo, verified 2026-08)', () => {
+  test('claude-sonnet-5 has explicit rate ($2/$10 — launch price made permanent, verified 2026-09-10)', () => {
     const r = resolveRate('claude-sonnet-5', null, null);
     assert.ok(r, 'claude-sonnet-5 should resolve to a rate');
-    assert.equal(r.input, 3.0);
-    assert.equal(r.output, 15.0);
+    assert.equal(r.input, 2.0);
+    assert.equal(r.output, 10.0);
+    assert.equal(r.cache_read, 0.20);
+    assert.equal(r.cache_write, 2.50);
   });
 
   test('gpt-5.6 tiers: bare id prices as Sol; Terra/Luna win by longest-prefix (verified 2026-08)', () => {
@@ -195,6 +227,7 @@ describe('cost — rate-table staleness (models check)', () => {
       assert.ok(!result.models.includes(tier), `${tier} is a tier, not a model`);
     }
     assert.ok(result.models.includes('claude-fable-5'));
+    assert.ok(result.models.includes('claude-fable-5-1'));
     assert.ok(result.models.includes('gpt-5.5'));
     assert.ok(result.models.includes('gemini-3.1-pro'));
   });
@@ -208,6 +241,150 @@ describe('cost — rate-table staleness (models check)', () => {
       assert.equal(parsed.rates_verified_at, RATES_VERIFIED_AT);
       assert.equal(typeof parsed.stale, 'boolean');
       assert.ok(Array.isArray(parsed.models));
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+});
+
+// Claude Code ≥2.1.243 pins contracted rates in MANAGED settings as
+// `modelPricing: { id: { inputCostPer1MTokens, outputCostPer1MTokens } }`.
+// PAN honours the same block so its ledger and Claude Code's /usage agree.
+describe('cost — Claude Code modelPricing as a rate source (2026-09)', () => {
+  const writeJson = (file, obj) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(obj), 'utf-8');
+  };
+  let managedDir;
+  beforeEach(() => { managedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-managed-')); });
+  afterEach(() => { cleanup(managedDir); delete process.env.PAN_MANAGED_SETTINGS_DIR; });
+
+  test('ratesFromModelPricing converts input/output and derives cache rates from the family multipliers', () => {
+    const rates = ratesFromModelPricing({
+      'claude-fable-5-1': { inputCostPer1MTokens: 8, outputCostPer1MTokens: 40 },   // contracted 20% off
+      'claude-opus-5-20260901': { inputCostPer1MTokens: 4, outputCostPer1MTokens: 20 }, // versioned id → family
+      'vendor-x-model': { inputCostPer1MTokens: 2, outputCostPer1MTokens: 6 },         // unknown family
+    });
+    assert.deepEqual(rates['claude-fable-5-1'], { input: 8, output: 40, cache_read: 0.2, cache_write: 10 },
+      'Fable 5.1 keeps its own 0.025× read multiplier, not the 0.1× convention');
+    assert.deepEqual(rates['claude-opus-5-20260901'], { input: 4, output: 20, cache_read: 0.4, cache_write: 5 },
+      'a versioned id inherits the multipliers of the family it prefix-matches');
+    assert.deepEqual(rates['vendor-x-model'], { input: 2, output: 6, cache_read: 0.2, cache_write: 2.5 },
+      'an unknown family falls back to the 0.1× / 1.25× convention');
+  });
+
+  test('ratesFromModelPricing ignores malformed entries instead of producing NaN rates', () => {
+    const rates = ratesFromModelPricing({
+      good: { inputCostPer1MTokens: 1, outputCostPer1MTokens: 2 },
+      negative: { inputCostPer1MTokens: -1, outputCostPer1MTokens: 2 },
+      missing: { inputCostPer1MTokens: 1 },
+      text: { inputCostPer1MTokens: 'cheap', outputCostPer1MTokens: 2 },
+      nothing: null,
+    });
+    assert.deepEqual(Object.keys(rates), ['good']);
+    assert.deepEqual(ratesFromModelPricing(null), {});
+    assert.deepEqual(ratesFromModelPricing(['not', 'a', 'map']), {});
+  });
+
+  test('effectiveRates precedence: cost.rates > managed modelPricing > (undefined → built-in table)', () => {
+    const managed = {
+      'shared-model': { inputCostPer1MTokens: 1, outputCostPer1MTokens: 2 },
+      'managed-only': { inputCostPer1MTokens: 3, outputCostPer1MTokens: 4 },
+    };
+    const config = { cost: { rates: { 'shared-model': { input: 9, output: 9, cache_read: 9, cache_write: 9 } } } };
+    const rates = effectiveRates(config, managed);
+    assert.equal(rates['shared-model'].input, 9, 'the project override wins over the managed block');
+    assert.equal(rates['managed-only'].input, 3, 'managed ids the project does not name still apply');
+    assert.equal(effectiveRates({}, null), undefined,
+      'no override anywhere → undefined, so resolveRate keeps its pre-existing built-in fallback path');
+    assert.equal(effectiveRates(null, null), undefined);
+  });
+
+  test('loadManagedModelPricing merges managed-settings.json with alphabetical drop-ins, later winning', () => {
+    writeJson(path.join(managedDir, 'managed-settings.json'), {
+      permissions: {}, modelPricing: { a: { inputCostPer1MTokens: 1, outputCostPer1MTokens: 1 }, b: { inputCostPer1MTokens: 1, outputCostPer1MTokens: 1 } },
+    });
+    writeJson(path.join(managedDir, 'managed-settings.d', '20-finance.json'), {
+      modelPricing: { b: { inputCostPer1MTokens: 20, outputCostPer1MTokens: 20 } },
+    });
+    writeJson(path.join(managedDir, 'managed-settings.d', '10-team.json'), {
+      modelPricing: { b: { inputCostPer1MTokens: 10, outputCostPer1MTokens: 10 }, c: { inputCostPer1MTokens: 3, outputCostPer1MTokens: 3 } },
+    });
+    fs.writeFileSync(path.join(managedDir, 'managed-settings.d', '.hidden.json'), JSON.stringify({ modelPricing: { z: { inputCostPer1MTokens: 99, outputCostPer1MTokens: 99 } } }));
+    fs.writeFileSync(path.join(managedDir, 'managed-settings.d', 'notes.txt'), '{"modelPricing":{"y":{}}}');
+    fs.writeFileSync(path.join(managedDir, 'managed-settings.d', '30-broken.json'), '{ not json');
+    const mp = loadManagedModelPricing(managedDir);
+    assert.deepEqual(Object.keys(mp).sort(), ['a', 'b', 'c'], 'hidden, non-json and unparseable files are skipped');
+    assert.equal(mp.b.inputCostPer1MTokens, 20, 'alphabetically later drop-in wins over earlier and over the base file');
+  });
+
+  test('loadManagedModelPricing returns null when there is no managed directory or no modelPricing key', () => {
+    assert.equal(loadManagedModelPricing(path.join(managedDir, 'does-not-exist')), null);
+    writeJson(path.join(managedDir, 'managed-settings.json'), { permissions: { deny: ['Bash'] } });
+    assert.equal(loadManagedModelPricing(managedDir), null);
+  });
+
+  test('managedSettingsDir follows the documented per-OS directories and honours PAN_MANAGED_SETTINGS_DIR', () => {
+    // code.claude.com/docs/en/managed-settings, read 2026-09-10. The legacy
+    // Windows ProgramData path is NOT read by Claude Code, so it must not be here.
+    assert.equal(managedSettingsDir('darwin', {}), '/Library/Application Support/ClaudeCode');
+    assert.equal(managedSettingsDir('linux', {}), '/etc/claude-code');
+    assert.equal(managedSettingsDir('win32', { ProgramFiles: 'C:\\Program Files' }), 'C:\\Program Files\\ClaudeCode');
+    assert.ok(!managedSettingsDir('win32', {}).includes('ProgramData'));
+    assert.equal(managedSettingsDir('linux', { PAN_MANAGED_SETTINGS_DIR: '/opt/cc' }), '/opt/cc');
+  });
+
+  test('end to end: a managed modelPricing block prices the ledger, and cost.rates still overrides it', () => {
+    const tmpDir = createTempProject();
+    try {
+      writeJson(path.join(managedDir, 'managed-settings.json'), {
+        modelPricing: { 'contract-model': { inputCostPer1MTokens: 1, outputCostPer1MTokens: 2 } },
+      });
+      process.env.PAN_MANAGED_SETTINGS_DIR = managedDir;
+
+      // Hook-shaped row. The SubagentStop hook appends its own JSONL line with
+      // `cost_usd: null`, so the row is priced at READ time — write that shape
+      // directly (appendRecord would price it at append time instead).
+      const ledger = path.join(tmpDir, '.planning', METRICS_DIR, TOKENS_FILE);
+      fs.mkdirSync(path.dirname(ledger), { recursive: true });
+      fs.appendFileSync(ledger, JSON.stringify({
+        ts: new Date().toISOString(), agent: 'pan-planner', model: 'contract-model',
+        input_tokens: 1_000_000, output_tokens: 1_000_000, cost_usd: null,
+      }) + '\n', 'utf-8');
+      let agg = aggregate(tmpDir);
+      assert.equal(agg.totals.calls, 1);
+      assert.ok(Math.abs(agg.totals.cost_usd - 3) < 1e-9, `expected $3 from the managed rates, got ${agg.totals.cost_usd}`);
+
+      // CLI-shaped row: appendRecord prices at append time — from the managed block too.
+      appendRecord(tmpDir, { agent: 'pan-verifier', model: 'contract-model', input_tokens: 1_000_000, output_tokens: 0 });
+      const appended = readRecords(tmpDir).at(-1);
+      assert.equal(appended.cost_usd, 1, 'append-time pricing must also see the managed rates');
+
+      // A project override for the same id beats the managed block. Only the
+      // read-time (hook) row re-prices; the append-time row is frozen by design.
+      writeJson(path.join(tmpDir, '.planning', 'config.json'), {
+        cost: { rates: { 'contract-model': { input: 10, output: 20, cache_read: 1, cache_write: 12.5 } } },
+      });
+      agg = aggregate(tmpDir);
+      assert.ok(Math.abs(agg.totals.cost_usd - 31) < 1e-9,
+        `expected $30 (re-priced hook row) + $1 (frozen CLI row) = $31, got ${agg.totals.cost_usd}`);
+    } finally {
+      cleanup(tmpDir);
+    }
+  });
+
+  test('models check reports the managed model ids it found', () => {
+    writeJson(path.join(managedDir, 'managed-settings.json'), {
+      modelPricing: { 'contract-model': { inputCostPer1MTokens: 1, outputCostPer1MTokens: 2 } },
+    });
+    const tmpDir = createTempProject();
+    try {
+      // runPanTools inherits process.env; afterEach removes the variable again.
+      process.env.PAN_MANAGED_SETTINGS_DIR = managedDir;
+      const r = runPanTools('models check', tmpDir);
+      assert.ok(r.success, `models check failed: ${r.error}`);
+      const parsed = JSON.parse(r.output);
+      assert.deepEqual(parsed.managed_model_pricing, ['contract-model']);
     } finally {
       cleanup(tmpDir);
     }

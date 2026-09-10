@@ -253,3 +253,12 @@ Also worth recording about the probe's design: it separates *textual substitutio
 3.3 first, then 3.1, then 3.2.
 
 3.3 is the cheapest by a wide margin — the hard part is written and tested, the work is a registry and a registration table — and it opens a distribution channel PAN currently has no presence in. 3.1 is prerequisite plumbing for the plugin that 3.2 and 3.3 both want to ship inside, and its P4 unparks work already done. 3.2 is last not because it matters least — it addresses a measured product defect class — but because it is the only one with genuine behavioral risk, and it is worth doing after the packaging that distributes it exists.
+
+
+---
+
+## 8. Four-week delta (checked `2026-09-10`)
+
+An interim scan run ahead of the October re-run. Nothing here invalidates the plan; §3.2 is still the only open move. One finding the August pass missed outright: **Agent Plugins**, a vendor-neutral plugin bundle published on `2026-08-06` that Copilot CLI, Codex and Antigravity now load natively (Antigravity from the workspace `.agents/plugins/` tree) — it collapses the remaining per-runtime packaging work into one emitted bundle, with Claude Code keeping its own format. Also found: a stale rate row for the current default Claude model, a Claude plugin build that omits the native workflows, per-bucket prompt-cache TTL controls that leave every subagent on the short lifetime, and async observer hooks on Codex.
+
+The findings table and the prioritised, sized queue live in [specs/market-delta-2026-09-superplan.md](specs/market-delta-2026-09-superplan.md). That file also records what remained unverified at scan time (the Agent Plugins field-level schema and vendor-directory names) and gates each item on a primary-source check before building.

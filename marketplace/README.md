@@ -44,7 +44,11 @@ Then:
 /pan-plugin-selftest
 ```
 
-It reports three probes and ends with a line like `VERDICT: case A`.
+It reports four probes and ends with a line like `VERDICT: case A`. Probe 4 was
+added in 2026-09 and answers a separate question: whether the plugin's agents
+load under the scoped `pan-wizard:pan-…` name that its bundled `workflows/`
+scripts spawn — reported on its own line as `AGENT_SCOPE: scoped` or
+`AGENT_SCOPE: bare`.
 
 ## Result — measured 2026-08-14
 
@@ -105,3 +109,24 @@ Record the answer in `docs/ECOSYSTEM-REVIEW-2026-08.md` §7 and in
   the builder's chatty output to stderr for that reason; a stray `console.log`
   there breaks the install.
 - This directory is not shipped: it is absent from `package.json` `files`.
+
+## Dev loop without a marketplace
+
+For iterating on the plugin itself you do not need this marketplace at all.
+Claude Code loads a plugin directory straight from the command line:
+
+```
+npm run build:plugin
+claude --plugin-dir D:/PanWizard/dist/pan-wizard-plugin
+```
+
+Since Claude Code v2.1.265 the flag also accepts a **folder of plugins**, where
+each child directory loads as its own plugin — handy for testing PAN next to
+another plugin that shares an agent or hook event. Adding or removing a child
+while the session runs applies immediately unless the change would force a full
+prompt-cache re-read, in which case Claude Code holds it and asks for
+`/reload-plugins`.
+
+The marketplace above remains the path that exercises the `command` source, the
+placeholder-expansion probe, and install/uninstall — `--plugin-dir` skips all
+three, so it is a faster loop, not a substitute for the test.

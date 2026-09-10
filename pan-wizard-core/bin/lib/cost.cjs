@@ -47,18 +47,24 @@ const TOKENS_FILE = 'tokens.jsonl';
  * Override per-model in config.json → cost.rates.
  */
 const DEFAULT_RATES = {
-  // Anthropic — verified against platform pricing 2026-08. Opus 4.6+/Opus 5 are
+  // Anthropic — verified against platform pricing 2026-09-10. Opus 4.6+/Opus 5 are
   // $5/$25 (the old $15/$75 Opus pricing ended with the 4.5 generation). Cache
-  // rates follow Anthropic's convention: read ≈ 0.1× input, write ≈ 1.25× input.
+  // rates follow Anthropic's convention: read ≈ 0.1× input, write ≈ 1.25× input —
+  // EXCEPT Fable 5.1, whose cache reads bill at 0.025× input ($0.25). Fable 5.1
+  // needs its own row: without it the family-prefix fallback priced its reads at
+  // the Fable 5 rate, 4× too high on the model Claude Code now defaults to, and
+  // cached re-reads are the bulk of PAN's traffic (ADR-0044).
+  'claude-fable-5-1':   { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
   'claude-fable-5':     { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
   'claude-opus-5':      { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-8':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-7':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-6':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
-  // Sonnet 5 standard is $3/$15; a launch promo runs $2/$10 through 2026-08-31.
-  // We track the stable post-promo rate (the table is indicative; the staleness
-  // checker flags it for re-verification).
-  'claude-sonnet-5':    { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
+  // Sonnet 5 is $2/$10: the launch price announced as introductory through
+  // 2026-08-31 was made permanent and the scheduled rise to $3/$15 cancelled
+  // (pricing page, read 2026-09-10). Lesson: never write down a pre-announced
+  // price — this row carried the future rate for a month and over-billed by half.
+  'claude-sonnet-5':    { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50 },
   'claude-sonnet-4-6':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
   'claude-haiku-4-5':   { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25 },
 
@@ -104,6 +110,80 @@ function familyPrefixRate(rates, model) {
     .filter(k => model.startsWith(k))
     .sort((a, b) => b.length - a.length);
   return families.length > 0 ? rates[families[0]] : null;
+}
+
+// ─── Claude Code `modelPricing` as a rate source (2026-09) ──────────────────
+//
+// Claude Code ≥2.1.243 lets an organisation pin contracted per-model rates in
+// MANAGED settings — `modelPricing: { "<modelId>": { inputCostPer1MTokens,
+// outputCostPer1MTokens } }` (settings-reference, read 2026-09-10) — and prices
+// its own /usage with them. Honouring the same block keeps PAN's ledger on the
+// numbers the organisation actually pays. The shape carries no cache fields, so
+// cache rates are DERIVED: the family's own multipliers when DEFAULT_RATES knows
+// the family (Fable 5.1 reads bill at 0.025× input, not 0.1×), otherwise the
+// Anthropic convention (read 0.1×, write 1.25×).
+
+const round6 = (n) => Number(n.toFixed(6));
+
+function ratesFromModelPricing(modelPricing) {
+  const out = {};
+  if (!modelPricing || typeof modelPricing !== 'object' || Array.isArray(modelPricing)) return out;
+  for (const [id, p] of Object.entries(modelPricing)) {
+    if (!p || typeof p !== 'object') continue;
+    const input = Number(p.inputCostPer1MTokens);
+    const output = Number(p.outputCostPer1MTokens);
+    if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) continue;
+    const fam = DEFAULT_RATES[id] || familyPrefixRate(DEFAULT_RATES, id);
+    const readMult = fam && fam.input > 0 ? fam.cache_read / fam.input : 0.1;
+    const writeMult = fam && fam.input > 0 ? fam.cache_write / fam.input : 1.25;
+    out[id] = { input, output, cache_read: round6(input * readMult), cache_write: round6(input * writeMult) };
+  }
+  return out;
+}
+
+// Where Claude Code reads managed settings (code.claude.com/docs/en/managed-settings,
+// read 2026-09-10): macOS `/Library/Application Support/ClaudeCode`, Linux and WSL
+// `/etc/claude-code`, Windows `C:\Program Files\ClaudeCode`. Claude Code does NOT
+// read the legacy Windows path `C:\ProgramData\ClaudeCode` — so neither does PAN.
+// `managed-settings.json` is merged first, then every `*.json` in
+// `managed-settings.d/` in alphabetical order (hidden files skipped), later
+// files winning. `PAN_MANAGED_SETTINGS_DIR` redirects the lookup (tests, and
+// hosts that relocate the directory).
+function managedSettingsDir(platform = process.platform, env = process.env) {
+  if (env.PAN_MANAGED_SETTINGS_DIR) return env.PAN_MANAGED_SETTINGS_DIR;
+  if (platform === 'win32') return path.join(env.ProgramFiles || 'C:\\Program Files', 'ClaudeCode');
+  if (platform === 'darwin') return '/Library/Application Support/ClaudeCode';
+  return '/etc/claude-code';
+}
+
+function loadManagedModelPricing(dir = managedSettingsDir()) {
+  const files = [path.join(dir, 'managed-settings.json')];
+  try {
+    const dropIns = path.join(dir, 'managed-settings.d');
+    files.push(...fs.readdirSync(dropIns)
+      .filter(f => !f.startsWith('.') && f.endsWith('.json'))
+      .sort()
+      .map(f => path.join(dropIns, f)));
+  } catch { /* no drop-in directory */ }
+  let merged = null;
+  for (const f of files) {
+    let parsed;
+    try { parsed = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { continue; }
+    const mp = parsed && typeof parsed === 'object' ? parsed.modelPricing : null;
+    if (mp && typeof mp === 'object' && !Array.isArray(mp)) merged = { ...(merged || {}), ...mp };
+  }
+  return merged;
+}
+
+// The rate table a cost computation actually sees. Precedence, highest first:
+//   1. `.planning/config.json → cost.rates` — PAN's explicit per-project override
+//   2. managed `modelPricing` — the organisation's contracted rates
+//   3. DEFAULT_RATES — resolveRate's own fallback when neither names the model
+// Returns undefined (not {}) when nothing overrides, so callers keep the exact
+// pre-2026-09 behaviour of passing no config rates.
+function effectiveRates(config, managedPricing = loadManagedModelPricing()) {
+  const rates = { ...ratesFromModelPricing(managedPricing), ...(config?.cost?.rates || {}) };
+  return Object.keys(rates).length > 0 ? rates : undefined;
 }
 
 function resolveRate(model, tier, configRates) {
@@ -187,7 +267,7 @@ function appendRecord(cwd, rec) {
   // time, so the two producers priced identical tokens differently.
   normalized.cost_usd = typeof rec.cost_usd === 'number'
     ? rec.cost_usd
-    : computeCost(normalized, loadConfig(cwd)?.cost?.rates);
+    : computeCost(normalized, effectiveRates(loadConfig(cwd)));
 
   try {
     fs.mkdirSync(metricsDir(cwd), { recursive: true });
@@ -256,7 +336,7 @@ function aggregate(cwd, opts) {
   const since = opts?.since ? new Date(opts.since).getTime() : null;
   const until = opts?.until ? new Date(opts.until).getTime() : null;
   const config = loadConfig(cwd);
-  const configRates = config?.cost?.rates;
+  const configRates = effectiveRates(config);
 
   const filtered = records.filter(r => {
     if (!r.ts) return true;
@@ -442,7 +522,7 @@ function cmdCostClear(cwd, raw) {
 // Bump this whenever the table is re-verified; `models check` flags the table
 // once it is older than RATES_STALE_AFTER_DAYS (provider prices move faster
 // than PAN releases do).
-const RATES_VERIFIED_AT = '2026-08-03';
+const RATES_VERIFIED_AT = '2026-09-10';
 const RATES_STALE_AFTER_DAYS = 180;
 const RATE_TIERS = ['reasoning', 'mid', 'fast'];
 
@@ -460,7 +540,9 @@ function checkRatesStaleness(now = new Date()) {
 }
 
 function cmdModelsCheck(raw) {
-  const result = checkRatesStaleness();
+  // Surface the managed rates too: an organisation that pins `modelPricing`
+  // should be able to see that PAN found the block, not infer it from totals.
+  const result = { ...checkRatesStaleness(), managed_model_pricing: Object.keys(loadManagedModelPricing() || {}) };
   const human = result.stale
     ? `Rate table verified ${result.rates_verified_at} (${result.age_days} days ago) — STALE: re-verify provider pricing and bump RATES_VERIFIED_AT in cost.cjs`
     : `Rate table verified ${result.rates_verified_at} (${result.age_days} days ago) — OK`;
@@ -476,6 +558,10 @@ module.exports = {
   renderTable,
   renderChart,
   resolveRate,
+  ratesFromModelPricing,
+  managedSettingsDir,
+  loadManagedModelPricing,
+  effectiveRates,
   checkRatesStaleness,
   cmdCostReport,
   cmdCostAppend,

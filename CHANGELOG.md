@@ -5,6 +5,66 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Session S1 of the September 2026 market-delta plan
+(`docs/specs/market-delta-2026-09-superplan.md`): the ledger was wrong on the
+model Claude Code now defaults to, and the plugin shipped less than a loose install.
+
+### Fixed — the rate table on the current default model
+
+`cost.cjs` had no row for `claude-fable-5-1`, so the family-prefix fallback priced
+its cache reads at the Fable 5 rate. Fable 5.1 bills cache reads at 0.025× input
+(the only Claude model that departs from the 0.1× convention), so on the model
+Claude Code defaults to since 2.1.257 the dominant line of PAN's ledger — cached
+re-reads, per ADR-0044 — was high by roughly four times. Sonnet 5 carried the
+pre-announced `$3/$15` rate; the launch price of `$2/$10` was made permanent and the
+September rise cancelled, so that row over-billed by half. Both rows corrected,
+`RATES_VERIFIED_AT` bumped to `2026-09-10`, and a test pins that versioned and
+`[1m]`-suffixed Fable 5.1 ids land on the 5.1 row rather than prefix-matching back
+to Fable 5. The installer's recommended flagship follows Claude Code's default.
+
+### Added — Claude Code's managed `modelPricing` as a rate source
+
+Organisations that pin contracted per-model rates in Claude Code's managed settings
+(`modelPricing`, Claude Code ≥2.1.243) now get the same numbers from PAN's ledger.
+`effectiveRates()` layers them beneath `config.json → cost.rates` and above the
+built-in table; cache rates, which the Claude Code shape lacks, are derived from
+the matched family's own multipliers. Managed settings are read from the directory
+Claude Code documents per OS (`managed-settings.json` plus alphabetical
+`managed-settings.d/` drop-ins; the legacy Windows `ProgramData` path is read by
+neither tool), redirectable with `PAN_MANAGED_SETTINGS_DIR`. `models check` lists
+the ids it found under `managed_model_pricing`.
+
+### Fixed — the Claude plugin now ships the native workflows
+
+`scripts/build-plugin.js` never wrote `workflows/`, so the plugin lacked the
+deterministic orchestration scripts every loose-file install has carried since
+2026-06. It now bundles them — with one rewrite the loose install does not need:
+plugin agents load under a scoped name (`pan-wizard:pan-reviewer`), so each
+script's `agentType` is namespaced for the plugin copy only. The build test asserts
+every scoped agent exists in the bundle, and `/pan-plugin-selftest` gained a fourth
+probe that reports whether the running Claude Code exposes the plugin's agents
+scoped or bare (`AGENT_SCOPE: scoped|bare`), since that premise is documented but
+was not live-measured.
+
+### Changed — Codex observer hooks run off the critical path
+
+Codex CLI 0.148 added `async` command handlers. PAN's cost logger, trace logger and
+update check are pure observers and are now registered `async: true`; the context
+monitor stays synchronous because it returns `additionalContext` the model must
+read in the same turn. Codex only — the Claude Code and Copilot hook schemas were
+not checked for an equivalent flag.
+
+### Docs
+
+Troubleshooting entries for: per-agent `effort:` having no effect on Claude Code
+before 2.1.267; cost reports disagreeing with `/usage` or the invoice; subagents
+re-caching the planning context after short pauses (the five-minute subagent cache
+bucket and `subagentPromptCacheTtl`); `/skill-doctor` listing PAN skills as unused;
+and the `pan` MCP server missing on Gemini CLI ≥0.59 until the workspace is trusted.
+The marketplace README documents the `--plugin-dir` dev loop.
+
 ## [3.27.0] - 2026-08-21
 
 Two field defects closed, and the reason PAN got slow: **98% of its token traffic is

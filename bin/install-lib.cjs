@@ -1041,20 +1041,34 @@ function mergeCodexHooksConfig(existing, commands) {
   const config = (existing && typeof existing === 'object') ? existing : {};
   if (!config.hooks || typeof config.hooks !== 'object') config.hooks = {};
 
+  // The fourth column is Codex's `async` flag (command handlers, Codex CLI
+  // 0.148+, changelog 2026-08-17): an async handler runs off the agent's critical
+  // path and CANNOT block, approve, deny, or inject — its output is deferred to
+  // the next turn. So it is right for pure observers and wrong for anything the
+  // model must read now:
+  //   - cost-logger / trace-logger append ledger rows and print nothing → async.
+  //   - check-update spawns a detached child and prints nothing → async.
+  //   - context-monitor returns `additionalContext` the model must see THIS
+  //     turn → stays synchronous.
+  // Codex-only: Claude Code and Copilot hook schemas were not checked for an
+  // equivalent flag (plan item 2 gate) — do not copy this column into their
+  // builders without reading their docs first.
   const wanted = [
-    ['SessionStart', updateCheckCommand, 'pan-check-update'],
-    ['PostToolUse', contextMonitorCommand, 'pan-context-monitor'],
-    ['SubagentStop', costLoggerCommand, 'pan-cost-logger'],
-    ['SubagentStop', traceLoggerCommand, 'pan-trace-logger'],
+    ['SessionStart', updateCheckCommand, 'pan-check-update', true],
+    ['PostToolUse', contextMonitorCommand, 'pan-context-monitor', false],
+    ['SubagentStop', costLoggerCommand, 'pan-cost-logger', true],
+    ['SubagentStop', traceLoggerCommand, 'pan-trace-logger', true],
   ];
 
-  for (const [event, command, marker] of wanted) {
+  for (const [event, command, marker, async] of wanted) {
     if (!command) continue;
     if (!Array.isArray(config.hooks[event])) config.hooks[event] = [];
     const present = config.hooks[event].some(group =>
       Array.isArray(group.hooks) && group.hooks.some(h => h.command && h.command.includes(marker)));
     if (!present) {
-      config.hooks[event].push({ hooks: [{ type: 'command', command }] });
+      const handler = { type: 'command', command };
+      if (async) handler.async = true;
+      config.hooks[event].push({ hooks: [handler] });
     }
   }
   return config;
@@ -1475,7 +1489,7 @@ function buildPluginHooksConfig() {
  *   rather than hardcoded so this file stays the single source of that string.
  * @returns {string} markdown for `commands/pan-plugin-selftest.md` in the plugin
  */
-function buildPluginSelfTestCommand(placeholder = '${CLAUDE_PLUGIN_ROOT}') {
+function buildPluginSelfTestCommand(placeholder = '${CLAUDE_PLUGIN_ROOT}', pluginName = 'pan-wizard') {
   // Sentinels the agent quotes between. Deliberately ugly so they cannot occur
   // naturally in surrounding prose or be mistaken for instructions.
   const OPEN = 'PAN_PROBE_BEGIN>>>';
@@ -1486,7 +1500,7 @@ description: Diagnose whether the plugin-root placeholder expands in plugin comm
 
 # PAN plugin self-test
 
-Answer three questions and print the verdict table. **Do not fix anything.** This
+Answer four questions and print the verdict table. **Do not fix anything.** This
 command is a measurement; a "fail" here is the result, not a problem to repair.
 
 ## Probe 1 — textual substitution in markdown (the question that matters)
@@ -1516,6 +1530,18 @@ Run this and record whether it prints JSON or errors, as \`probe3\`:
 node "${placeholder}/pan-wizard-core/bin/pan-tools.cjs" --help
 \`\`\`
 
+## Probe 4 — do this plugin's agents and workflows load under the scoped name
+
+The plugin ships its agents under \`${pluginName}:<agent>\` and its native workflow
+scripts spawn them by that scoped name. Measure, do not assume:
+
+- From the list of agent types available to you in this session (the Agent tool's
+  own list — do not run a shell), record as \`probe4a\` how many names begin with
+  \`${pluginName}:pan-\`, followed by the first three such names verbatim. If none,
+  record any names that begin with \`pan-\` instead and say so.
+- Record as \`probe4b\` whether a slash command named \`/${pluginName}:pan-review-pipeline\`
+  is available to you. If you cannot tell, write "unknown" — that is a valid answer.
+
 ## Verdict
 
 Print this table, filled in:
@@ -1525,6 +1551,8 @@ Print this table, filled in:
 | 1 — markdown substitution | \`probe1\` verbatim |
 | 2 — env var | \`probe2\` or "(empty)" |
 | 3 — engine through placeholder | ok / failed, with the error's first line |
+| 4a — scoped agent names | count and first three names, or the bare names seen |
+| 4b — scoped workflow command | available / not available / unknown |
 
 Then state which case holds:
 
@@ -1543,6 +1571,13 @@ Then state which case holds:
 - **case C — neither** (probe 1 literal, probe 2 empty). Plugin content cannot
   address the plugin root at all. PAN would need content that resolves paths at
   runtime instead, and marketplace publishing stays gated.
+
+Probe 4 does not change the case letter — it measures a separate premise: the
+plugin's \`workflows/\` scripts were written to spawn \`${pluginName}:pan-…\` because
+plugin agents are documented to load under the scoped name. If \`probe4a\` reports
+bare \`pan-…\` names and none scoped, that premise is false on this build and the
+workflow scripts inside the plugin would not resolve their agents. Report it as a
+separate line, exactly like \`AGENT_SCOPE: scoped\` or \`AGENT_SCOPE: bare\`.
 
 Finish with the case letter on its own line, exactly like \`VERDICT: case A\`,
 so the result is greppable out of the transcript.
@@ -1574,6 +1609,27 @@ function buildPluginMcpConfig() {
       },
     },
   };
+}
+
+/**
+ * Rewrite the `agentType` values in a native workflow script for a PLUGIN copy.
+ *
+ * Plugin agents load under a scoped name: `agents/pan-reviewer.md` inside a
+ * plugin named `pan-wizard` is `pan-wizard:pan-reviewer`
+ * (code.claude.com/docs/en/plugins-reference, read 2026-09-10). The scripts
+ * `buildNativeWorkflowScripts()` emits are written for a loose-file install,
+ * where the bare name resolves, so the plugin builder runs them through this
+ * before writing `workflows/`. Idempotent: an already-scoped name (contains
+ * ':') is left alone, and nothing outside `agentType: '…'` is touched.
+ *
+ * @param {string} content - emitted script source
+ * @param {string} pluginName - the manifest `name`
+ * @returns {string}
+ */
+function namespaceWorkflowAgentTypes(content, pluginName) {
+  if (typeof content !== 'string' || !pluginName) return content;
+  return content.replace(/agentType:(\s*)'([^':]+)'/g,
+    (_m, ws, name) => `agentType:${ws}'${pluginName}:${name}'`);
 }
 
 // ─── Native Claude Code workflows (2026-06) ─────────────────────────────────
@@ -1792,6 +1848,7 @@ module.exports = {
   buildCodexMcpSnippet,
   removeCodexPanHooks,
   buildNativeWorkflowScripts,
+  namespaceWorkflowAgentTypes,
   buildPluginManifest,
   buildPluginHooksConfig,
   buildPluginMcpConfig,

@@ -4,6 +4,8 @@ This document turns the April 2026 project review into an actionable improvement
 
 > **June 2026 update:** a follow-up ecosystem review with time-critical items (Gemini→Antigravity transition, model-table staleness, runtime format migrations, skills-standard convergence) lives in [ECOSYSTEM-REVIEW-2026-06.md](ECOSYSTEM-REVIEW-2026-06.md). Items there are proposals until promoted into this backlog or an ADR.
 
+> **September 2026 update:** an interim market-delta scan (checked on `2026-09-10`, four weeks after the August ecosystem review) found one standard the August review missed — Agent Plugins, a vendor-neutral plugin bundle that Copilot CLI, Codex and Antigravity now load natively — plus a stale rate row for the current default Claude model and a plugin build that omits the native workflows. The prioritised queue lives in [specs/market-delta-2026-09-superplan.md](specs/market-delta-2026-09-superplan.md); items there are proposals until executed.
+
 Do not duplicate filesystem-derived counts here. `CLAUDE.md` remains the single source of truth for command, agent, module, workflow, test, hook, spec, and ADR counts.
 
 ## Goals
