@@ -154,7 +154,7 @@ function createServer(opts = {}) {
   const gitImpl = opts.gitImpl || makeDefaultGit(cwd);
   const env = opts.env || process.env;
 
-  function runVerb(verb, extraArgs) {
+  function runVerb(verb, extraArgs, verbCwd = cwd) {
     // Defense in depth: the verb always comes from the registry, but re-check the
     // forbidden pattern here so no future caller can smuggle a force/reset op past it.
     if (reg.FORBIDDEN_VERB.test(verb)) {
@@ -163,9 +163,29 @@ function createServer(opts = {}) {
     // No --raw: pan-tools' default output is structured JSON (which is what the MCP
     // client wants); --raw would instead emit a bare human scalar. Large results
     // arrive via the @file: overflow protocol, resolved here.
-    const r = spawn([panToolsPath, verb, ...extraArgs, '--cwd', cwd]);
+    const r = spawn([panToolsPath, verb, ...extraArgs, '--cwd', verbCwd]);
     if (r && r.ok) r.stdout = resolveOverflow(r.stdout);
     return r;
+  }
+
+  /**
+   * Per-call project root (ADR-0045 D6). Every TOOL accepts an optional `cwd`;
+   * it must be an absolute path to an existing directory. Returns
+   * { cwd, input } with the field removed from the input handed to the tool, or
+   * { error } shaped for a -32602 — a bad root is a bad REQUEST, and nothing is
+   * spawned. Resources never come through here: their argv is static.
+   */
+  function resolveCallCwd(input) {
+    const src = input || {};
+    if (src.cwd === undefined) return { cwd, input: src };
+    let candidate;
+    try { candidate = reg.validateProjectCwd(src.cwd); }
+    catch (e) { return { error: { code: -32602, message: String((e && e.message) || e) } }; }
+    let isDir = false;
+    try { isDir = fs.statSync(candidate).isDirectory(); } catch { /* absent → not a directory */ }
+    if (!isDir) return { error: { code: -32602, message: `Invalid "cwd": not an existing directory: ${candidate}` } };
+    const { cwd: _omit, ...rest } = src;
+    return { cwd: path.resolve(candidate), input: rest };
   }
 
   // Returns { error:{code,message} } for JSON-RPC protocol errors (unknown tool /
@@ -174,11 +194,15 @@ function createServer(opts = {}) {
   function callTool(name, input) {
     const tool = reg.byToolName[name];
     if (!tool) return { error: { code: -32602, message: `Unknown tool: ${name}` } };
+    const call = resolveCallCwd(input);
+    if (call.error) return { error: call.error };
     // Native, in-process tools (orchestrator / merge gate) run a handler; a thrown
     // Error means bad params (-32602), matching the spawn-tool validation path.
+    // The git executor follows the per-call root unless a test injected one.
     if (typeof tool.handler === 'function') {
       try {
-        const out = tool.handler({ cwd, input: input || {}, env, gitImpl });
+        const gitForCall = opts.gitImpl ? gitImpl : (call.cwd === cwd ? gitImpl : makeDefaultGit(call.cwd));
+        const out = tool.handler({ cwd: call.cwd, input: call.input, env, gitImpl: gitForCall });
         const text = (out && out.text != null) ? out.text : JSON.stringify(out && out.json);
         return { result: { content: [{ type: 'text', text }], isError: !!(out && out.isError) } };
       } catch (e) {
@@ -186,9 +210,9 @@ function createServer(opts = {}) {
       }
     }
     let extra;
-    try { extra = tool.args ? tool.args(input || {}) : []; }
+    try { extra = tool.args ? tool.args(call.input) : []; }
     catch (e) { return { error: { code: -32602, message: String((e && e.message) || e) } }; }
-    const r = runVerb(tool.verb, extra);
+    const r = runVerb(tool.verb, extra, call.cwd);
     return { result: { content: [{ type: 'text', text: r.ok ? r.stdout : (r.stderr || 'error') }], isError: !r.ok } };
   }
 

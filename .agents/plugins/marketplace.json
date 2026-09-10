@@ -1,0 +1,19 @@
+{
+  "name": "pan-wizard-local",
+  "interface": {
+    "displayName": "PAN Wizard (built from this checkout)"
+  },
+  "plugins": [
+    {
+      "name": "pan-wizard",
+      "source": {
+        "source": "local",
+        "path": "./dist/pan-agent-plugin"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -660,11 +660,42 @@ function buildAgentPluginMcpConfig() {
   };
 }
 
+/**
+ * Copilot vendor-directory hooks for an Agent Plugins bundle —
+ * `com.github.copilot/hooks/hooks.json` (ADR-0045 D5).
+ *
+ * Shape from code.visualstudio.com/docs/agent-customization/agent-plugins (read
+ * 2026-09-10): the FLAT plugin format — PascalCase lifecycle events, each an
+ * array of `{ type: 'command', command }` — with `${CLAUDE_PLUGIN_ROOT}` expanded
+ * to the plugin root at runtime and also exported to the hook process. That is
+ * VS-Code-verified. Copilot CLI's own hooks how-to describes WORKSPACE hooks
+ * (camelCase events, `bash`/`powershell` keys) and does not cover plugins, so a
+ * live `copilot plugin install` is the gate before relying on this shape there.
+ * The observers-vs-monitor split mirrors the Codex builder: no async flag exists
+ * in this format, so nothing is marked.
+ *
+ * @param {{updateCheckCommand?:string, contextMonitorCommand?:string, costLoggerCommand?:string, traceLoggerCommand?:string}} commands
+ */
+function buildCopilotPluginHooksConfig(commands) {
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand } = commands || {};
+  const hooks = {};
+  if (updateCheckCommand) hooks.SessionStart = [{ type: 'command', command: updateCheckCommand }];
+  if (contextMonitorCommand) hooks.PostToolUse = [{ type: 'command', command: contextMonitorCommand }];
+  const subagentStop = [];
+  if (costLoggerCommand) subagentStop.push({ type: 'command', command: costLoggerCommand });
+  if (traceLoggerCommand) subagentStop.push({ type: 'command', command: traceLoggerCommand });
+  if (subagentStop.length > 0) hooks.SubagentStop = subagentStop;
+  return { hooks };
+}
+
+/** Copilot's reverse-domain extension namespace — the top-level directory its plugin components live in. */
+const COPILOT_PLUGIN_NAMESPACE = 'com.github.copilot';
+
 /** The adapter paragraph appended to every bundled skill (ADR-0045 D3). */
 function agentPluginSkillAdapterNote() {
   return `Plugin bundle (Agent Plugins format):
 - \`${AGENT_PLUGIN_ROOT_TOKEN}\` in this skill is the directory that holds this plugin's \`plugin.json\` — two levels above this SKILL.md. Your runtime reports this skill's file location when it loads it; derive the root from that path and substitute it wherever \`${AGENT_PLUGIN_ROOT_TOKEN}\` appears before running a command.
-- Prefer the \`pan\` MCP server's tools when your runtime has connected this plugin's \`mcp.json\`. Otherwise run \`node ${AGENT_PLUGIN_ROOT_TOKEN}/pan-wizard-core/bin/pan-tools.cjs <verb>\` from the project root — the plugin's own directory is never the project.
+- Prefer the \`pan\` MCP server's tools when your runtime has connected this plugin's \`mcp.json\`, and pass the project's absolute path as each tool's \`cwd\` argument — the server is started in the plugin's directory, which is never the project. Otherwise run \`node ${AGENT_PLUGIN_ROOT_TOKEN}/pan-wizard-core/bin/pan-tools.cjs <verb>\` from the project root.
 - \`${AGENT_PLUGIN_RUNTIME_HOME_TOKEN}\` is your runtime's user-level configuration directory (for example \`~/.claude\`, \`~/.codex\`, \`~/.gemini\`, \`~/.config/opencode\`, \`~/.copilot\`) and \`${AGENT_PLUGIN_RUNTIME_DIR_TOKEN}\` its project-level directory (\`.claude\`, \`.codex\`, \`.gemini\`, \`.opencode\`, \`.github\`). Substitute the one that applies to the runtime you are.`;
 }
 
@@ -2030,6 +2061,8 @@ module.exports = {
   buildAgentPluginManifest,
   buildAgentPluginMcpConfig,
   agentPluginSkillAdapterNote,
+  buildCopilotPluginHooksConfig,
+  COPILOT_PLUGIN_NAMESPACE,
   buildPluginManifest,
   buildPluginHooksConfig,
   buildPluginMcpConfig,

@@ -62,6 +62,15 @@ expands. Skill bodies address the bundle through PAN's own `{{PAN_PLUGIN_ROOT}}`
 token, plus `{{PAN_RUNTIME_HOME}}` / `{{PAN_RUNTIME_DIR}}` for the few references
 to a runtime's own configuration directory; the adapter note defines all three.
 
+The bundle also carries PAN's hook scripts with a Codex `hooks/hooks.json` (the
+documented default location, `${PLUGIN_ROOT}` expanded in commands, observers
+async) and a `com.github.copilot/` namespace with the agents in Copilot's format
+and a flat PascalCase `hooks/hooks.json` (the shape VS Code documents for plugin
+hooks — a live Copilot CLI install is the remaining gate). Two marketplace files
+let a checkout install the build without publishing: `.agents/plugins/marketplace.json`
+(Codex) and `.github/plugin/marketplace.json` (Copilot). The release gate now
+builds both bundles.
+
 A zero-dependency conformance suite validates the emitted manifest and `mcp.json`
 against the two normative schemas (pinned under `tests/fixtures/agent-plugins/`),
 checks every skill against the Agent Skills discovery rules, resolves every
@@ -70,6 +79,17 @@ byte-identical to its pre-extraction build. Vendor directories (Copilot, Codex,
 Antigravity) and the live installs are the next plan items; the spec's default
 stdio working directory is the plugin root, so the bridge must learn the project
 root per call before those gates run (ADR-0045 D6).
+
+### Added — the MCP bridge takes the project root per call
+
+Every bridge **tool** now accepts an optional `cwd`: the absolute path of the
+project to operate on, validated as an existing directory and honoured for that
+call only; resources keep their static argv (ADR-0041). Without it the server
+resolves the project as it always has. The reason is the Agent Plugins spec: a
+stdio server's default working directory is the **plugin root**, so under any
+such client every verb would read `.planning/` from inside the plugin cache and
+report an empty project — cleanly. The bundle's skill adapter tells the model to
+pass the project path.
 
 ### Fixed — test files no longer race on the plugin build
 

@@ -130,3 +130,26 @@ prompt-cache re-read, in which case Claude Code holds it and asks for
 The marketplace above remains the path that exercises the `command` source, the
 placeholder-expansion probe, and install/uninstall — `--plugin-dir` skips all
 three, so it is a faster loop, not a substitute for the test.
+
+## The other four runtimes: the Agent Plugins bundle
+
+Claude Code is the only runtime that reads this directory's `command`-source
+marketplace. For Copilot CLI, Codex, Cursor and Kiro the equivalent is the
+**Agent Plugins 1.0** bundle (ADR-0045):
+
+```
+npm run build:agent-plugin        # → dist/pan-agent-plugin/
+```
+
+Two marketplace files in the repository root point at that build:
+
+- `.agents/plugins/marketplace.json` — Codex reads it automatically inside this
+  repository (repo-scoped marketplace). Open Codex here, run `/plugins`, install
+  `pan-wizard`, start a new session.
+- `.github/plugin/marketplace.json` — Copilot: `copilot plugin marketplace add`
+  with this repository, then install `pan-wizard` from the plugin browser.
+
+Both reference the build output, so build first. Neither has been exercised
+live yet — no Copilot, Codex or Antigravity CLI was present on the machine that
+built them — so treat the vendor directories as conformance-tested, not
+field-verified, until the plan's live gates run.

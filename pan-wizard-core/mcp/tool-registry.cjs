@@ -138,7 +138,51 @@ const FORBIDDEN_VERB = /(^|-)(push|reset|rebase|force)($|-)/;
 // tools into one advertised list. Required after SPAWN_TOOLS/FORBIDDEN_VERB so the
 // native module (which imports nothing back from here) composes cleanly — no cycle.
 const { NATIVE_TOOLS } = require('./native-tools.cjs');
-const TOOLS = [...SPAWN_TOOLS, ...NATIVE_TOOLS];
+
+// ─── Per-call project root (ADR-0045 D6, 2026-09) ───────────────────────────
+//
+// The server resolves its project as `opts.cwd || PAN_PROJECT_ROOT || process.cwd()`.
+// Under Claude Code the process cwd IS the project. Under an Agent Plugins client
+// the spec makes the PLUGIN ROOT the default working directory of a stdio server,
+// so every verb would read `.planning/` from inside the plugin cache and report an
+// empty project — cleanly, which is the worst kind of failure. So every TOOL takes
+// an optional `cwd`: the absolute path of the project to operate on, honoured for
+// that call only. Applied here, centrally, so a tool added later cannot miss it.
+//
+// Resources deliberately do NOT get it: their argv is a static array and the
+// safety argument of ADR-0041 is that no client input reaches it.
+const PROJECT_CWD_PROPERTY = Object.freeze({
+  type: 'string',
+  description: 'Absolute path of the PAN project to operate on. Optional: defaults to the directory the server was started in. Pass it when the server was launched from a plugin directory (Agent Plugins clients do this by default), or to address another project.',
+});
+
+const PROJECT_CWD_MAX = 1024;
+
+/**
+ * Shape-validate a per-call project root: a non-empty absolute path with no NUL,
+ * within a sane length. Existence is the SERVER's check (it has fs); this module
+ * stays pure. Throws a message fit for a -32602 on failure.
+ */
+function validateProjectCwd(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > PROJECT_CWD_MAX) {
+    throw new Error(`Invalid "cwd": must be a non-empty string of at most ${PROJECT_CWD_MAX} chars`);
+  }
+  if (value.includes('\0')) throw new Error('Invalid "cwd": contains a NUL byte');
+  // Absolute on either platform family: `/…`, `C:\…`, `C:/…`, or a UNC `\\host\share`.
+  if (!/^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)) throw new Error('Invalid "cwd": must be an absolute path');
+  return value;
+}
+
+/** Return a copy of a tool descriptor whose inputSchema also accepts `cwd`. Never mutates the source. */
+function withProjectCwd(tool) {
+  const schema = tool.inputSchema || { type: 'object', additionalProperties: false, properties: {} };
+  return {
+    ...tool,
+    inputSchema: { ...schema, properties: { ...(schema.properties || {}), cwd: PROJECT_CWD_PROPERTY } },
+  };
+}
+
+const TOOLS = [...SPAWN_TOOLS, ...NATIVE_TOOLS].map(withProjectCwd);
 
 const byToolName = Object.create(null);
 for (const t of TOOLS) byToolName[t.name] = t;
@@ -148,4 +192,5 @@ for (const r of RESOURCES) byResourceUri[r.uri] = r;
 module.exports = {
   TOOLS, SPAWN_TOOLS, NATIVE_TOOLS, RESOURCES, byToolName, byResourceUri, FORBIDDEN_VERB,
   AGENT_RE, PHASE_RE, QUERY_RE, str,
+  PROJECT_CWD_PROPERTY, validateProjectCwd, withProjectCwd,
 };

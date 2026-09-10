@@ -586,3 +586,100 @@ describe('pan-zcode real round-trip (spawns actual pan-tools)', () => {
     }
   });
 });
+
+describe('per-call project root — `cwd` on every tool (ADR-0045 D6)', () => {
+  // Agent Plugins clients launch a stdio server in the PLUGIN root (spec default),
+  // so the process cwd is never the project there. Every TOOL therefore accepts an
+  // optional absolute `cwd`, honoured for that call only. Resources stay static.
+
+  test('tools/list advertises `cwd` on every tool, never as required; resources are untouched', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    assert.ok(r.result.tools.length > 0, 'non-vacuity');
+    for (const t of r.result.tools) {
+      assert.equal(t.inputSchema.properties.cwd.type, 'string', `${t.name} must accept cwd`);
+      assert.ok(!(t.inputSchema.required || []).includes('cwd'), `${t.name}: cwd must stay optional`);
+      assert.equal(t.inputSchema.additionalProperties, false, `${t.name}: schema stays closed`);
+    }
+    // The decoration is applied to COPIES — the source descriptors keep their shape.
+    for (const t of [...reg.SPAWN_TOOLS, ...reg.NATIVE_TOOLS]) {
+      assert.equal((t.inputSchema.properties || {}).cwd, undefined, `${t.name}: source descriptor must not be mutated`);
+    }
+    for (const res of reg.RESOURCES) assert.ok(!('inputSchema' in res), `${res.uri}: resources take no input`);
+  });
+
+  test('a call with cwd spawns the verb against THAT root, with cwd stripped from the tool input', () => {
+    const rec = [];
+    const given = os.tmpdir(); // exists; is not the server's cwd
+    const s = createServer({ spawnImpl: fakeSpawn(rec, '{"model":"x"}'), panToolsPath: '/x/pan-tools.cjs', cwd: '/proj' });
+    const r = s.handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: { agent: 'pan-planner', cwd: given } } });
+    assert.equal(r.result.isError, false);
+    assert.deepEqual(rec[0], ['/x/pan-tools.cjs', 'resolve-model', 'pan-planner', '--cwd', path.resolve(given)]);
+    // And without cwd the server's own root is used, exactly as before.
+    s.handle({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: { agent: 'pan-planner' } } });
+    assert.deepEqual(rec[1].slice(-2), ['--cwd', '/proj']);
+  });
+
+  test('a bad cwd is a bad REQUEST (-32602) and nothing is spawned', () => {
+    const rec = [];
+    const s = createServer({ spawnImpl: fakeSpawn(rec), cwd: '/proj' });
+    const nope = path.join(os.tmpdir(), `pan-cwd-does-not-exist-${process.pid}-${Date.now()}`);
+    for (const bad of ['relative/dir', './here', '', 5, nope, 'C:\\x\0y']) {
+      const r = s.handle({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: { agent: 'pan-planner', cwd: bad } } });
+      assert.equal(r.error && r.error.code, -32602, `cwd=${JSON.stringify(bad)} should be rejected`);
+      assert.match(r.error.message, /cwd/);
+    }
+    assert.equal(rec.length, 0, 'no spawn may happen for a rejected root');
+  });
+
+  test('validateProjectCwd accepts absolute paths of both platform families and rejects the rest', () => {
+    for (const ok of ['/srv/proj', 'C:\\Users\\me\\proj', 'D:/PanTesting/x', '\\\\server\\share\\proj']) {
+      assert.equal(reg.validateProjectCwd(ok), ok);
+    }
+    for (const bad of ['proj', './proj', '../proj', '', 'C:relative', 'a'.repeat(1025), '/x\0']) {
+      assert.throws(() => reg.validateProjectCwd(bad), /Invalid "cwd"/, `should reject ${JSON.stringify(bad)}`);
+    }
+  });
+
+  test('native tools receive the per-call root too', () => {
+    const tool = reg.byToolName.pan_next_action;
+    const original = tool.handler;
+    const seen = [];
+    tool.handler = (ctx) => { seen.push(ctx); return { json: { ok: true } }; };
+    try {
+      const s = createServer({ spawnImpl: fakeSpawn([]), cwd: '/proj' });
+      const given = os.tmpdir();
+      const r = s.handle({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'pan_next_action', arguments: { state: {}, cwd: given } } });
+      assert.equal(r.result.isError, false);
+      assert.equal(seen[0].cwd, path.resolve(given));
+      assert.equal(seen[0].input.cwd, undefined, 'cwd is the server\'s concern, not the handler\'s input');
+      assert.deepEqual(seen[0].input, { state: {} });
+      assert.equal(typeof seen[0].gitImpl, 'function', 'a git executor bound to the per-call root is supplied');
+    } finally {
+      tool.handler = original;
+    }
+  });
+
+  test('real engine: a server started in one project answers for ANOTHER project when cwd says so', () => {
+    // The Agent Plugins scenario in miniature: the server's own cwd is a project
+    // with the default profile; the call names a project on the budget profile.
+    const home = createTempProject();
+    const other = createTempProject();
+    try {
+      fs.mkdirSync(path.join(other, '.planning'), { recursive: true });
+      fs.writeFileSync(path.join(other, '.planning', 'config.json'), JSON.stringify({ model_profile: 'budget' }));
+      const s = createServer({ cwd: home });
+      const call = (args) => s.handle({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: args } });
+      const viaHome = call({ agent: 'pan-verifier' });
+      const viaOther = call({ agent: 'pan-verifier', cwd: other });
+      assert.equal(viaHome.result.isError, false, viaHome.result.content[0].text);
+      assert.equal(viaOther.result.isError, false, viaOther.result.content[0].text);
+      const a = JSON.parse(viaHome.result.content[0].text);
+      const b = JSON.parse(viaOther.result.content[0].text);
+      assert.ok(a.model && b.model, 'both calls resolve a model');
+      assert.notEqual(b.model, a.model, `the budget project must resolve differently (home=${a.model}, other=${b.model})`);
+    } finally {
+      cleanup(home); cleanup(other);
+    }
+  });
+});
