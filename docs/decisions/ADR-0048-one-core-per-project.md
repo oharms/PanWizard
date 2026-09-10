@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — 2026-09-10. Decision item R16a of `docs/specs/reality-check-2026-09-superplan.md`. This record frames the choice and its costs; it does not yet accept an option. Implementation (R16b) starts only when the Decision section below reads Accepted.
+Accepted — option A (status quo) — 2026-09-10, by the maintainer, after the reality check framed the choice (plan item R16a). The per-runtime duplication is recorded here as an accepted cost; R16b is closed without implementation. Revisit trigger: a second runtime-neutral consumer that needs the shared core, or a measured version-drift incident that `hygiene scan` did not catch.
 
 ## Context
 
@@ -32,7 +32,7 @@ What the duplication costs: disk and file count per project; five drift surfaces
 
 ## Decision
 
-Open. The recommendation of the reality check is **B, scoped to local installs**, taken as its own session (R16b, size L) only after S6–S8 of the plan are closed, because it is the one item that changes install layout and therefore every install-shaped test.
+**A — status quo — accepted 2026-09-10.** The reality check recommended B scoped to local installs; the maintainer chose A: `hygiene scan`'s version-alignment check already catches the drift class, the footprint cost is disk only, and B would carry two install layouts indefinitely because global installs cannot share. If the revisit trigger in Status fires, B re-opens under the gates below.
 
 Gates for accepting B: the `install-matrix` and `runtime-roundtrip` scenarios green on the new layout; the packed-install footprint measured before and after with the Phase 4.2 command; an upgrade from a five-copy install verified in `d:\pantesting`; `hygiene scan` recognising and offering to remove the orphaned per-runtime copies.
 
