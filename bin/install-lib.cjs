@@ -1127,7 +1127,7 @@ const MCP_REGISTRATION = Object.freeze({
   }),
   opencode: Object.freeze({
     register: true, key: 'mcp', localPath: 'opencode.json', globalPath: 'opencode.json',
-    why: 'opencode.ai/docs: opencode.json `mcp` block, type "local", command as one array, env block named `environment`. PAN already writes this file.',
+    why: 'opencode.ai/docs/mcp-servers: opencode.json `mcp` block, type "local", command as one array, env block named `environment`. PAN already writes this file. LOCATION: the docs page (opencode.ai/docs/config) lists only a repo-root opencode.json; the .opencode/opencode.json PAN writes for local installs is read by the loader SOURCE — packages/opencode/src/config/config.ts, the branch for directories ending in .opencode reads opencode.json and opencode.jsonc (read 2026-09-10). Live but undocumented: re-check the loader on OpenCode upgrades (harness/scenarios/live-gate-opencode.json asks the CLI).',
   }),
   codex: Object.freeze({
     // Config-dir-relative like the others (resolves to `.codex/config.toml`).
@@ -2307,3 +2307,33 @@ module.exports = {
   PAN_AGENTS_BEGIN,
   PAN_AGENTS_END,
 };
+
+/**
+ * Content digest of a directory tree: sha256 over the sorted list of
+ * `<relative posix path>:<sha256 of bytes>` lines. Order-independent, content-
+ * sensitive, ignores mtimes. Used by release-check Gate 8 to refuse a stale
+ * dist/pan-agent-plugin — the Codex and Copilot marketplaces install from that path
+ * with no rebuild-on-resolve, so a stale bundle would ship silently (reality check
+ * RC12 / plan item R10, 2026-09-10; two fresh builds were measured byte-identical).
+ * Pure apart from reading the tree; throws if `dir` is not a directory.
+ */
+function dirDigest(dir) {
+  // Local requires: install-lib keeps no module-level filesystem imports (its top
+  // level is pure); this helper is the one export that reads a tree.
+  const fs = require('fs');
+  const path = require('path');
+  const crypto = require('crypto');
+  const lines = [];
+  const walk = (abs, rel) => {
+    const entries = fs.readdirSync(abs, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    for (const e of entries) {
+      const childAbs = path.join(abs, e.name);
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(childAbs, childRel);
+      else lines.push(`${childRel}:${crypto.createHash('sha256').update(fs.readFileSync(childAbs)).digest('hex')}`);
+    }
+  };
+  walk(dir, '');
+  return crypto.createHash('sha256').update(lines.join('\n')).digest('hex');
+}
+module.exports.dirDigest = dirDigest;

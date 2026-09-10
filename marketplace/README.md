@@ -137,6 +137,8 @@ Claude Code is the only runtime that reads this directory's `command`-source
 marketplace. For Copilot CLI, Codex, Cursor and Kiro the equivalent is the
 **Agent Plugins 1.0** bundle (ADR-0045):
 
+> **Build before you install from the Codex or Copilot marketplaces.** Both `.agents/plugins/marketplace.json` and `.github/plugin/marketplace.json` resolve to `./dist/pan-agent-plugin`, and unlike the Claude `command` source nothing rebuilds it on resolve — a stale bundle installs silently. Run `npm run build:agent-plugin` first; the release gate (`node scripts/release-check.js`, Gate 8) refuses to pass while `dist/pan-agent-plugin` differs from a fresh build.
+
 ```
 npm run build:agent-plugin        # → dist/pan-agent-plugin/
 ```

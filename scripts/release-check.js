@@ -211,11 +211,25 @@ process.stderr.write('\n[release-check] Gate 8/8: distribution bundles (build:pl
     const b = run('node', [path.join(REPO_ROOT, 'scripts', 'build-agent-plugin.js')], { capture: true, env: { ...process.env, PAN_AGENT_PLUGIN_OUT: agentOut } });
     const okA = a.status === 0 && fs.existsSync(path.join(claudeOut, '.claude-plugin', 'plugin.json'));
     const okB = b.status === 0 && fs.existsSync(path.join(agentOut, 'plugin.json')) && fs.existsSync(path.join(agentOut, 'mcp.json'));
-    const detail = okA && okB
-      ? 'Claude plugin + Agent Plugins bundle built'
-      : `claude:${okA ? 'ok' : 'FAIL exit ' + a.status} agent-plugins:${okB ? 'ok' : 'FAIL exit ' + b.status}`;
-    logGate('distribution bundles', okA && okB, detail);
-    if (!(okA && okB)) {
+    // R10: .agents/plugins/marketplace.json (Codex) and .github/plugin/marketplace.json
+    // (Copilot) resolve to ./dist/pan-agent-plugin with no rebuild-on-resolve — unlike
+    // the Claude `command` source. A stale dist/ shipped silently on 2026-09-10 (built
+    // before the vendor-directory commit). Compare it with the fresh build when it
+    // exists; the gate stays read-only and never writes dist/.
+    let staleDetail = '';
+    const distAgent = path.join(REPO_ROOT, 'dist', 'pan-agent-plugin');
+    if (okB && fs.existsSync(distAgent)) {
+      const { dirDigest } = require(path.join(REPO_ROOT, 'bin', 'install-lib.cjs'));
+      if (dirDigest(distAgent) !== dirDigest(agentOut)) {
+        staleDetail = 'dist/pan-agent-plugin is STALE — run `npm run build:agent-plugin` (the Codex and Copilot marketplaces install from it)';
+      }
+    }
+    const ok8 = okA && okB && !staleDetail;
+    const detail = ok8
+      ? 'Claude plugin + Agent Plugins bundle built' + (fs.existsSync(distAgent) ? '; dist/pan-agent-plugin matches the fresh build' : '')
+      : staleDetail || `claude:${okA ? 'ok' : 'FAIL exit ' + a.status} agent-plugins:${okB ? 'ok' : 'FAIL exit ' + b.status}`;
+    logGate('distribution bundles', ok8, detail);
+    if (!ok8) {
       process.stderr.write((a.stderr || '') + (b.stderr || '') + '\n');
       process.exit(1);
     }
