@@ -28,7 +28,7 @@ const { rpcBatch, materialise } = require('./mcp.cjs');
 const { runModelStep } = require('./model.cjs');
 const { check } = require('./assert.cjs');
 const { readLedger, writeLedger, mergeRun, isPromotable } = require('./ledger.cjs');
-const { findCli } = require('./cli-detect.cjs');
+const { findCli, unmetRequirement } = require('./cli-detect.cjs');
 
 const HARNESS_ROOT = path.join(__dirname, '..');
 const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
@@ -224,8 +224,9 @@ function main() {
       const rec = { scenario: s.id, tier: s.tier, rep, status: 'passed', steps: [], skipped: null, durationMs: 0 };
       results.push(rec);
       const t0 = Date.now();
-      if (s.requires && s.requires.cli && !findCli(s.requires.cli)) {
-        rec.status = 'skipped'; rec.skipped = `${s.requires.cli} not installed on this machine`;
+      const unmet = unmetRequirement(s.requires);
+      if (unmet) {
+        rec.status = 'skipped'; rec.skipped = unmet;
         log(`${label}: SKIPPED — ${rec.skipped}`);
         continue;
       }

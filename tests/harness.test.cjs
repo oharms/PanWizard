@@ -228,3 +228,39 @@ describe('harness runner — a model step that never ran is an error, not a find
     assert.equal(modelStepNeverRan(null), null);
   });
 });
+
+// R21 follow-up (2026-09-10): a scenario can require a minimum CLI version. /skill-doctor
+// exists from Claude Code 2.1.261; on 2.1.233 the probe recorded harness errors (correct
+// under R20, but not a measurement). requires.minVersion turns that into a SKIP with the
+// reason. Revert-proof: drop the minVersion branch in unmetRequirement and the third
+// test fails.
+describe('harness requires.minVersion — skip with a reason on an older CLI', () => {
+  const { compareVersions, unmetRequirement, cliVersion } = require('../harness/src/cli-detect.cjs');
+  test('compareVersions orders dotted versions, missing segments read as zero', () => {
+    assert.equal(compareVersions('2.1.233', '2.1.261'), -1);
+    assert.equal(compareVersions('2.1.261', '2.1.261'), 0);
+    assert.equal(compareVersions('2.2', '2.1.999'), 1);
+    assert.equal(compareVersions('2.1', '2.1.0'), 0);
+  });
+  test('validateScenario accepts a well-formed minVersion and refuses a malformed or cli-less one', () => {
+    const base = { id: 'x', tier: 1, description: 'd', why: 'w', seed: 'empty', install: null, budget: {}, steps: [{ kind: 'model', prompt: 'p', expect: ['exit:0'], why: 'w' }] };
+    assert.deepEqual(validateScenario({ ...base, requires: { cli: 'claude', minVersion: '2.1.261' } }), []);
+    assert.ok(validateScenario({ ...base, requires: { cli: 'claude', minVersion: 'latest' } }).length > 0);
+    assert.ok(validateScenario({ ...base, requires: { minVersion: '2.1.261' } }).length > 0);
+  });
+  test('unmetRequirement names the older version, and is null when the requirement is met or absent', () => {
+    // A fake CLI on a temp PATH that prints a version.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-fakecli-'));
+    const isWin = process.platform === 'win32';
+    const name = 'fakecli';
+    fs.writeFileSync(path.join(dir, isWin ? `${name}.cmd` : name), isWin ? '@echo 1.2.3 (Fake CLI)\r\n' : '#!/bin/sh\necho "1.2.3 (Fake CLI)"\n', { mode: 0o755 });
+    const env = { ...process.env, PATH: dir, Path: dir };
+    try {
+      assert.equal(cliVersion(name, env), '1.2.3');
+      assert.equal(unmetRequirement({ cli: name, minVersion: '1.2.3' }, env), null);
+      assert.match(unmetRequirement({ cli: name, minVersion: '1.3.0' }, env), /1\.2\.3 is older than the required 1\.3\.0/);
+      assert.match(unmetRequirement({ cli: 'no-such-cli-here', minVersion: '1.0' }, env), /not installed/);
+      assert.equal(unmetRequirement(null, env), null);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});

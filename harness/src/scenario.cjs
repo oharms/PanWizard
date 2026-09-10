@@ -28,6 +28,10 @@ function validateScenario(s, fileName = '<inline>') {
   }
   if (s.requires !== undefined && s.requires !== null) {
     if (typeof s.requires !== 'object' || (s.requires.cli !== undefined && !/^[a-z][a-z0-9-]*$/.test(s.requires.cli))) err('requires.cli must be a bare command name');
+    if (s.requires && s.requires.minVersion !== undefined) {
+      if (!/^\d+(\.\d+)*$/.test(String(s.requires.minVersion))) err('requires.minVersion must be a dotted version like 2.1.261');
+      if (!s.requires.cli) err('requires.minVersion needs requires.cli');
+    }
   }
   const b = s.budget || {};
   for (const k of ['maxUsd', 'maxMinutes', 'maxStepMinutes']) {
