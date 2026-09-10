@@ -59,7 +59,7 @@ describe('E2E Cross-Runtime Parity', () => {
   test('validate health returns same status enum across runtimes', () => {
     for (const rt of runtimes) {
       const r = runners[rt].run('validate health');
-      assert.ok(r.success, `${rt}: should succeed`);
+      assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict for the runtime: broken exits non-zero (reality check R2)');
       const p = JSON.parse(r.output);
       assert.ok(['healthy', 'degraded', 'broken'].includes(p.status),
         `${rt}: status should be valid enum, got "${p.status}"`);

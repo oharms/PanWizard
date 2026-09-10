@@ -75,6 +75,25 @@ function defaultPanToolsPath() {
   return path.join(__dirname, '..', 'bin', 'pan-tools.cjs');
 }
 
+/**
+ * A verdict payload: a JSON object with no error-family key. The family is `error`
+ * and any key ending in `_error` — the same definition core.cjs's reportsFailure()
+ * uses for the CLI exit code, mirrored here because the server stays engine-agnostic
+ * (it never requires the engine's modules; it spawns them). Plural collections such
+ * as `errors[]` are verdict DETAIL, not a failure signal. Returns the parsed object,
+ * or null when the text is not such a payload.
+ */
+function parseVerdict(text) {
+  if (typeof text !== 'string' || !text.trim()) return null;
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  for (const k of Object.keys(parsed)) {
+    if (k === 'error' || k.endsWith('_error')) { if (parsed[k]) return null; }
+  }
+  return parsed;
+}
+
 /** Real spawn: shell-less execFile of `node <argv...>`. */
 function defaultSpawn(nodeArgs) {
   try {
@@ -230,7 +249,19 @@ function createServer(opts = {}) {
     // non-array into the spawn.
     const tail = Array.isArray(res.args) ? res.args : [];
     const r = runVerb(res.verb, tail);
-    if (!r.ok) return { error: { code: -32603, message: r.stderr || 'resource read failed' } };
+    if (!r.ok) {
+      // A VERDICT is data, not a failed read. `validate health` (pan://health) exits
+      // non-zero when its verdict is `broken` — CLI-REFERENCE: verdict commands set
+      // their exit code explicitly, for shell gating — while still printing the full
+      // JSON report. Over MCP the report IS the resource, so accept stdout when it is
+      // a JSON object carrying no error-family key. Anything else (no JSON, or an
+      // `error`/`*_error` key) is a genuine read failure → JSON-RPC error.
+      const text = resolveOverflow(r.stdout);
+      if (parseVerdict(text) !== null) {
+        return { result: { contents: [{ uri, mimeType: 'application/json', text }] } };
+      }
+      return { error: { code: -32603, message: r.stderr || 'resource read failed' } };
+    }
     return { result: { contents: [{ uri, mimeType: 'application/json', text: r.stdout }] } };
   }
 
@@ -339,6 +370,6 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  createServer, defaultPanToolsPath, defaultSpawn, SERVER_INFO, toMcpTool, toMcpResource,
+  createServer, defaultPanToolsPath, defaultSpawn, parseVerdict, SERVER_INFO, toMcpTool, toMcpResource,
   PROTOCOL_VERSION, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST, META_PROTOCOL_VERSION_KEY,
 };

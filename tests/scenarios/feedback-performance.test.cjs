@@ -65,7 +65,7 @@ describe('E2E Feedback: Performance Sanity', () => {
     const start = Date.now();
     const r = runner.run('validate health');
     const elapsed = Date.now() - start;
-    assert.ok(r.success, `should succeed: ${r.error}`);
+    assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     assert.ok(elapsed < 3000, `validate health took ${elapsed}ms, should be < 3000ms`);
   });
 });

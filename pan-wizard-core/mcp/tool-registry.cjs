@@ -39,7 +39,9 @@ const QUERY_RE = /^[\w .,:/&()-]{1,120}$/;    // find-phase query fragment
  *
  * THE RULE FOR ADDING ONE — a resource must be readable on ANY project, including
  * a bare directory with no `.planning/`. If "no data yet" is reported as an error
- * (non-zero exit / an error-family key), it is a TOOL, not a resource: a client
+ * (an error-family key in the JSON it prints, or no JSON at all — a non-zero exit BY
+ * ITSELF is a verdict signal for shell gating, and the reader accepts the JSON as data;
+ * see server.cjs readResource), it is a TOOL, not a resource: a client
  * that lists resources and reads them should not collect failures for a young
  * project. `preview` is the worked example — `preview phases` exits non-zero
  * without a roadmap, so it is exposed as a tool below rather than as a resource.
@@ -62,7 +64,7 @@ const RESOURCES = [
     description: 'Phase inventory: the phase directories present, with a count.' },
   { uri: 'pan://progress', name: 'Progress',      verb: 'progress', description: 'Requirement and plan completion progress.' },
   { uri: 'pan://health',   name: 'Project health', verb: 'validate', args: ['health'],
-    description: 'Health check over .planning/: issue codes with severities. Reports an unhealthy project as DATA (exit 0), so it is readable even on a broken or empty one.' },
+    description: 'Health check over .planning/: issue codes with severities. Reports an unhealthy project as DATA: the JSON verdict is the resource even when the CLI exits non-zero for shell gating, so it is readable on a broken or empty project.' },
   { uri: 'pan://links',    name: 'Doc-code links', verb: 'links',   args: ['validate'],
     description: 'Doc↔code link graph verdict: forward links, backlink contracts, and anchor targets, with finding codes.' },
   { uri: 'pan://cost',     name: 'Token cost',     verb: 'cost',    args: ['report'],

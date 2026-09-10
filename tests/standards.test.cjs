@@ -364,7 +364,7 @@ describe('CLI: validate health --standards', () => {
 
   it('reports no standards when none selected', () => {
     const r = runPanTools('validate health --standards', tmpDir);
-    assert.ok(r.success);
+    assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict (reality check R2)');
     const json = JSON.parse(r.output);
     const stdInfo = json.info.filter(i => i.code.startsWith('STD-'));
     assert.ok(stdInfo.length >= 1);
@@ -374,7 +374,7 @@ describe('CLI: validate health --standards', () => {
   it('reports standards coverage when standards selected', () => {
     runPanTools('standards select stride', tmpDir);
     const r = runPanTools('validate health --standards', tmpDir);
-    assert.ok(r.success);
+    assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict (reality check R2)');
     const json = JSON.parse(r.output);
     const stdInfo = json.info.filter(i => i.code.startsWith('STD-'));
     assert.ok(stdInfo.length >= 1);
@@ -393,7 +393,7 @@ describe('CLI: validate health --standards', () => {
     content = content.replace('- [ ] Tampering', '- [x] Tampering');
     fs.writeFileSync(stdPath, content, 'utf-8');
     const r = runPanTools('validate health --standards', tmpDir);
-    assert.ok(r.success);
+    assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict (reality check R2)');
     const json = JSON.parse(r.output);
     // Should be info (partial) not warning
     const strideInfo = json.info.filter(i => i.code === 'STD-stride');
@@ -404,7 +404,7 @@ describe('CLI: validate health --standards', () => {
   it('does not include standards info without --standards flag', () => {
     runPanTools('standards select stride', tmpDir);
     const r = runPanTools('validate health', tmpDir);
-    assert.ok(r.success);
+    assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict (reality check R2)');
     const json = JSON.parse(r.output);
     const stdInfo = (json.info || []).filter(i => i.code && i.code.startsWith('STD-'));
     assert.equal(stdInfo.length, 0);

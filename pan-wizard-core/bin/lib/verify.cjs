@@ -1293,13 +1293,18 @@ function cmdValidateHealth(cwd, options, raw) {
 
   // Check 1: .planning/ exists (fatal if missing -- skip remaining checks)
   if (!checkPlanningDirExists(cwd, addIssue)) {
+    // A verdict payload carries `errors[]`, which is OUTSIDE output()'s error family
+    // (plural collections are detail, not a failure signal — see CLI-REFERENCE "Error
+    // Shape"), so the exit code must be set explicitly here, as `reconcile` does.
+    // `broken` → 1. Reality check RC2 (2026-09-10): this site exited 0 for a missing
+    // .planning/, so an orchestrator gating on the exit code read it as healthy.
     output({
       status: HEALTH_STATUS.BROKEN,
       errors,
       warnings,
       info,
       repairable_count: 0,
-    }, raw);
+    }, raw, undefined, 1);
     return;
   }
 
@@ -1418,7 +1423,10 @@ function cmdValidateHealth(cwd, options, raw) {
     result.link_graph = linkGraphResult;
   }
 
-  output(result, raw);
+  // Explicit verdict exit: `broken` → 1; `degraded` and `healthy` → 0 (warnings are
+  // not failures). Computed AFTER --repair ran, so the code reflects the post-repair
+  // state the JSON reports. See the note at the early-return site above.
+  output(result, raw, undefined, status === HEALTH_STATUS.BROKEN ? 1 : 0);
 }
 
 /**

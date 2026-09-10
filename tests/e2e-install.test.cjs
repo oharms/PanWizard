@@ -220,8 +220,10 @@ describe('E2E: Install and run from installed location', () => {
 
     test('validate health returns report', () => {
       const result = runInstalled('validate health');
-      assert.ok(result.success, `Command failed: ${result.error}`);
       const output = JSON.parse(result.output);
+      // A fresh install dir has no .planning/ → the verdict is `broken` and the CLI
+      // exits non-zero (reality check R2); the report is still on stdout.
+      assert.equal(result.success, output.status !== 'broken', 'exit code mirrors the verdict');
       assert.ok(typeof output === 'object', 'should return health report object');
       assert.ok(!output.error, 'should not have error on success');
     });

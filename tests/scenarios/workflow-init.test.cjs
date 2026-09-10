@@ -97,7 +97,7 @@ describe('Workflow: phase operations from installed path', () => {
 
   test('validate health returns validation result', () => {
     const result = runner.run('validate health');
-    assert.ok(result.success, `validate health failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const parsed = JSON.parse(result.output);
     assert.ok(parsed.status, 'should have status field');
   });

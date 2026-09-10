@@ -683,3 +683,63 @@ describe('per-call project root — `cwd` on every tool (ADR-0045 D6)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reality check RC2 / plan item R2 (2026-09-10). `validate health` now exits
+// non-zero on a `broken` verdict (CLI-REFERENCE: verdict commands set their exit
+// code explicitly, for shell gating) while still printing the full JSON report.
+// pan://health wraps that verb as a RESOURCE, and the resource rule says a resource
+// must be readable on a bare project — so the reader must treat a JSON verdict on a
+// non-zero exit as DATA, and only a payload with an error-family key (or no JSON at
+// all) as a failed read. The real-engine test above ("readable on a bare project")
+// went red the moment the exit code changed; these pin the reader's rule directly.
+// Revert-proof: drop the parseVerdict branch in readResource and the first test
+// fails with a -32603 error.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resources/read: a JSON verdict on a non-zero exit is data, not a failed read (R2)', () => {
+  const { parseVerdict } = require('../pan-wizard-core/mcp/server.cjs');
+  const brokenVerdict = '{"status":"broken","errors":[{"code":"E001","message":".planning/ directory not found","fix":"Run /pan:new-project to initialize","repairable":false}],"warnings":[],"info":[],"repairable_count":0}';
+  const failing = (stdout, stderr = 'Command failed: node pan-tools.cjs validate health') => () => ({ ok: false, stdout, stderr });
+
+  test('pan://health with verdict `broken` and exit≠0 returns the report as contents', () => {
+    const s = createServer({ spawnImpl: failing(brokenVerdict) });
+    const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'pan://health' } });
+    assert.ok(!r.error, `expected contents, got error: ${r.error && r.error.message}`);
+    const body = JSON.parse(r.result.contents[0].text);
+    assert.equal(body.status, 'broken');
+    assert.ok(body.errors.some(e => e.code === 'E001'));
+    assert.equal(r.result.contents[0].mimeType, 'application/json');
+  });
+
+  test('an error-family payload on exit≠0 is still a failed read (JSON-RPC -32603)', () => {
+    const s = createServer({ spawnImpl: failing('{"error":"state.md not found"}', 'boom') });
+    const r = s.handle({ jsonrpc: '2.0', id: 2, method: 'resources/read', params: { uri: 'pan://state' } });
+    assert.ok(r.error, 'an error-family payload must not be served as a resource');
+    assert.equal(r.error.code, -32603);
+  });
+
+  test('a renamed error key (`*_error`) on exit≠0 is also a failed read', () => {
+    const s = createServer({ spawnImpl: failing('{"worktree_error":"dirty"}') });
+    const r = s.handle({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'pan://state' } });
+    assert.ok(r.error && r.error.code === -32603);
+  });
+
+  test('non-JSON stdout on exit≠0 is a failed read carrying stderr', () => {
+    const s = createServer({ spawnImpl: failing('not json at all', 'engine exploded') });
+    const r = s.handle({ jsonrpc: '2.0', id: 4, method: 'resources/read', params: { uri: 'pan://progress' } });
+    assert.ok(r.error);
+    assert.match(r.error.message, /engine exploded/);
+  });
+
+  test('parseVerdict: the error family is `error` and `*_error`; plural `errors[]` is detail', () => {
+    assert.ok(parseVerdict('{"status":"broken","errors":[1]}'));
+    assert.equal(parseVerdict('{"error":"x"}'), null);
+    assert.equal(parseVerdict('{"drain_error":"x"}'), null);
+    assert.ok(parseVerdict('{"error":null,"ok":true}'), 'a falsy error key is not a failure (the exit-code contract says the same)');
+    assert.equal(parseVerdict('[1,2]'), null);
+    assert.equal(parseVerdict('null'), null);
+    assert.equal(parseVerdict(''), null);
+    assert.equal(parseVerdict('nope'), null);
+  });
+});

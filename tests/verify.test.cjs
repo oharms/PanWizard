@@ -579,7 +579,7 @@ describe('validate health command', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), '{"model_profile":"balanced"}');
 
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.status, 'healthy');
     assert.strictEqual(output.errors.length, 0);
@@ -590,7 +590,7 @@ describe('validate health command', () => {
     fs.rmSync(path.join(tmpDir, '.planning'), { recursive: true, force: true });
 
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.status, 'broken');
     assert.ok(output.errors.length > 0);
@@ -599,7 +599,7 @@ describe('validate health command', () => {
   test('reports degraded when optional files missing', () => {
     // Only .planning/ exists (from createTempProject) but no project.md etc.
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const output = JSON.parse(result.output);
     assert.ok(output.status === 'degraded' || output.status === 'broken', 'should not be healthy');
     assert.strictEqual(typeof output.repairable_count, 'number');
@@ -618,7 +618,7 @@ describe('validate health --full', () => {
 
   test('default (no --full) omits test_status and build_status', () => {
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.test_status, undefined);
     assert.strictEqual(output.build_status, undefined);
@@ -628,7 +628,7 @@ describe('validate health --full', () => {
     // Create a minimal package.json so it's a valid project
     fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'test', scripts: {} }));
     const result = runPanTools('validate health --full', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const output = JSON.parse(result.output);
     assert.ok('test_status' in output, 'should have test_status');
     assert.ok('build_status' in output, 'should have build_status');
@@ -640,7 +640,7 @@ describe('validate health --full', () => {
   test('--full reports test failure for non-test project', () => {
     fs.writeFileSync(path.join(tmpDir, 'package.json'), JSON.stringify({ name: 'test' }));
     const result = runPanTools('validate health --full', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const output = JSON.parse(result.output);
     // node --test in a dir with no test files will either pass with 0 tests or fail
     assert.ok(output.test_status !== undefined);
@@ -672,14 +672,14 @@ describe('validate health --drift', () => {
 
   test('default (no --drift) omits drift_status', () => {
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success, result.error);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const data = JSON.parse(result.output);
     assert.equal(data.drift_status, undefined);
   });
 
   test('--drift includes drift_status with score and verdict', () => {
     const result = runPanTools('validate health --drift', tmpDir);
-    assert.ok(result.success, result.error);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const data = JSON.parse(result.output);
     assert.ok(data.drift_status, 'should include drift_status');
     assert.ok('drift_score' in data.drift_status);
@@ -695,7 +695,7 @@ describe('validate health --drift', () => {
     execFileSync('git', ['add', 'bad.cjs'], { cwd: tmpDir, stdio: 'pipe' });
 
     const result = runPanTools('validate health --drift', tmpDir);
-    assert.ok(result.success, result.error);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const data = JSON.parse(result.output);
     assert.ok(data.drift_status);
     assert.ok(data.drift_status.violation_count > 0);

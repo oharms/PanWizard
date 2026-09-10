@@ -1198,6 +1198,8 @@ pan-tools validate health --links
 - `--drift` — Run convention drift analysis (includes drift_status with score and violations)
 - `--links` *(v3.8.0+)* — Attach `link_graph` summary (ADR-0027). Errors degrade health to a `LINKS_ERR` warning (advisory, non-blocking). Run `pan-tools links validate` standalone for the full finding list.
 
+**Exit code:** `1` when `status` is `broken` (a missing `.planning/` included), `0` for `healthy` and `degraded` — warnings are not failures. This is a verdict command: it sets the code explicitly instead of deriving it from an `error` key (see "Error Shape" above), so gate on the exit code, not on `errors.length`.
+
 **JSON output:**
 ```json
 {
