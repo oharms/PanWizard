@@ -763,4 +763,27 @@ describe('serverInfo.version is the package version (R9)', () => {
     assert.equal(typeof v, 'string');
     assert.ok(v.trim().length > 0);
   });
+
+  // Measured on a fresh five-runtime install (2026-09-10): the runtime directory's
+  // package.json is a bare {"type":"commonjs"} marker without a version, so the first
+  // version of this reader answered 0.0.0-unknown from every install. The install
+  // manifest is the version source every runtime writes.
+  test('an install layout with a version-less package.json falls through to the manifest', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcp-version-'));
+    try {
+      fs.writeFileSync(path.join(base, 'package.json'), JSON.stringify({ type: 'commonjs' }));
+      fs.writeFileSync(path.join(base, 'pan-file-manifest.json'), JSON.stringify({ version: '9.8.7', files: [] }));
+      assert.equal(readPackageVersion(base), '9.8.7');
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
+
+  test('a versioned package.json wins over the manifest; nothing readable yields the unknown marker', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcp-version-'));
+    try {
+      fs.writeFileSync(path.join(base, 'pan-file-manifest.json'), JSON.stringify({ version: '1.1.1' }));
+      fs.writeFileSync(path.join(base, 'package.json'), JSON.stringify({ version: '2.2.2' }));
+      assert.equal(readPackageVersion(base), '2.2.2');
+      assert.equal(readPackageVersion(path.join(base, 'nowhere')), '0.0.0-unknown');
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
 });

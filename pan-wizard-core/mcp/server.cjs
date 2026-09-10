@@ -59,11 +59,17 @@ const SUPPORTED_PROTOCOL_VERSIONS = new Set(SUPPORTED_VERSIONS_LIST);
  * file must not stop the server from answering. Reality check R9: this was a literal
  * '0.1.0' while the package shipped 3.x.
  */
-function readPackageVersion() {
+function readPackageVersion(baseDir = path.join(__dirname, '..', '..')) {
+  // Order: the repo/runtime package.json when it carries a version; the install
+  // manifest every runtime writes (the runtime directory's package.json is a bare
+  // `{"type":"commonjs"}` marker with no version — measured on a fresh install,
+  // 2026-09-10, where the first version of this reader answered 0.0.0-unknown); the
+  // Claude plugin manifest; an Agent Plugins manifest.
   const candidates = [
-    path.join(__dirname, '..', '..', 'package.json'),
-    path.join(__dirname, '..', '..', '.claude-plugin', 'plugin.json'),
-    path.join(__dirname, '..', '..', 'plugin.json'),
+    path.join(baseDir, 'package.json'),
+    path.join(baseDir, 'pan-file-manifest.json'),
+    path.join(baseDir, '.claude-plugin', 'plugin.json'),
+    path.join(baseDir, 'plugin.json'),
   ];
   for (const file of candidates) {
     try {
