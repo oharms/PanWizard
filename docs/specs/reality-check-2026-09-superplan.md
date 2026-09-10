@@ -281,7 +281,7 @@ Only if ADR-0048 accepts (B). Steps live in the ADR; sequence: converters and pa
 3. Compare completion rates. Decision rule (from the August review): recommend the native path on Claude Code only if it completes at least as often as the markdown path.
 4. Record the result as a dated note in §9's successor and update the ledger; if the markdown path stays below five of five, open a P2 item against the drop point with the transcript as evidence.
 
-**Gate.** Five reps each, one run, one build. **Status.** Markdown arm measured `2026-09-10` (run `run-20260910-214704-wgJSxr`, build `7d8696a`): **five of five reps completed**, seed tests green each time; per rep $5.30, $4.29, $6.95, $5.34, $2.97 and 15.3, 8.3, 24.6, 15.0, 8.7 minutes (mean $4.97, 14.4 min). This resolves the other session's morning failures in the ledger. Native arm: all five reps died at the headless ten-minute ceiling (RC24) — measured the ceiling, not the chain; those findings were withdrawn. The corrected native run is R23 (`run-20260910-235141-ITzx9T`, five reps, $25 cap, lifted ceiling); the comparison is drawn there.
+**Gate.** Five reps each, one run, one build. **Status.** Done `2026-09-11`. Markdown `/pan:exec-phase`: five of five (mean $4.97, 14.4 min per rep; `run-20260910-214704-wgJSxr`). Native `/pan-exec-waves` under the lifted ceiling (R23, `run-20260910-235141-ITzx9T`): five of five, verification file in every rep (mean $4.71, 12.3 min). By the August rule the native path is the recommended one on Claude Code; USER-GUIDE says so with the numbers' provenance. Every native rep before the ceiling fix measured the ceiling (RC24), not the chain.
 
 ### R20 · P3 · S (2) — A model step that never ran cannot file a finding
 

@@ -732,6 +732,8 @@ Claude Code can run orchestration as a **script** rather than as prose the model
 
 Two rules govern them. **They are additive**: the markdown commands remain the portable path and the only path on the other four runtimes, and the scripts never replace them. **They only port protocols whose control flow is known before the run** — a fixed fan-out, a wave that is genuinely a barrier. A step that depends on reading the last result stays in markdown, and a script never pretends to pause for you: `/pan-exec-waves` refuses a phase that contains checkpoint plans and tells you to run `/pan:exec-phase` instead.
 
+**Measured, not assumed.** PAN's behavioural harness ran both paths on the same two-plan seed, five reps each (September 2026, Claude Code `2.1.233`): the markdown `/pan:exec-phase` completed every rep, and so did `/pan-exec-waves`, with the phase verifier's file written every time, about 15% faster and a few percent cheaper per rep. On Claude Code the native workflow is the recommended way to run a checkpoint-free phase; the markdown command stays the portable path and the fallback for phases with checkpoints. One caveat for headless or CI use: `claude -p` waits at most ten minutes for a background workflow before stopping it and dropping its result — set `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` (or a higher ceiling) when driving these workflows from a script. Interactive sessions are unaffected.
+
 Each script names the markdown protocol it ports, and a test pins the pair so they cannot drift apart silently. Run them like any other slash command; `/workflows` shows progress per phase and per agent.
 
 ### Self-Improvement Loop
