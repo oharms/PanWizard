@@ -449,7 +449,7 @@ function convertClaudeCommandToCodexSkill(content, skillName) {
  * tree is read by every runtime, so invocation, delegation, and interaction
  * guidance are phrased in terms of "your runtime's native mechanism".
  */
-function getUnifiedSkillAdapterHeader(skillName) {
+function getUnifiedSkillAdapterHeader(skillName, note) {
   return `<pan_skill_adapter>
 PAN unified skill (Agent Skills standard, shared .agents/skills/ tree):
 - This skill is invoked through your runtime's skill mechanism — slash command (\`/${skillName}\`), mention (\`$${skillName}\`), or skill picker.
@@ -465,7 +465,7 @@ User interaction (runtimes without a native question tool):
 - Ask one question at a time; show numbered options; mark the recommended option with **(recommended)**.
 - Accept numbers ("1"), labels, or free-text descriptions as valid answers.
 - Native interaction tools (e.g. AskUserQuestion blocks), where supported by your runtime, take precedence over this fallback.
-</pan_skill_adapter>`;
+${note ? `\n${note}\n` : ''}</pan_skill_adapter>`;
 }
 
 /** Claude command → runtime-neutral SKILL.md (ADR-0028 Phase 1) */
@@ -476,7 +476,7 @@ User interaction (runtimes without a native question tool):
  */
 const SKILL_COMPATIBILITY = 'Requires Node.js (skills invoke the bundled pan-tools CLI) and a project with a .planning/ directory, created by /pan-new-project or /pan-map-codebase.';
 
-function convertClaudeCommandToUnifiedSkill(content, skillName) {
+function convertClaudeCommandToUnifiedSkill(content, skillName, opts = {}) {
   // Normalize command mentions to the readable /pan-<name> form; the adapter
   // header tells each runtime to map that onto its own invocation syntax.
   let converted = convertSlashCommandsToCopilotSkillMentions(content);
@@ -489,7 +489,10 @@ function convertClaudeCommandToUnifiedSkill(content, skillName) {
   }
   description = toSingleLine(description);
   const shortDescription = description.length > 180 ? `${description.slice(0, 177)}...` : description;
-  const adapter = getUnifiedSkillAdapterHeader(skillName);
+  // `opts.adapterNote` (Agent Plugins bundle, ADR-0045) appends a consumer-
+  // specific paragraph inside the adapter block; absent, the header is
+  // byte-identical to what every install has shipped since ADR-0028.
+  const adapter = getUnifiedSkillAdapterHeader(skillName, opts.adapterNote);
   // `compatibility` is the spec's optional field for stating environment
   // requirements, and PAN has real ones: the skill bodies shell out to
   // `pan-tools` (Node) and every workflow reads/writes `.planning/`. Declaring
@@ -498,6 +501,202 @@ function convertClaudeCommandToUnifiedSkill(content, skillName) {
   // spec, and ADR-0028's frontmatter rule is that anything unverified stays out
   // until a live per-runtime check confirms no parser rejects it.
   return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\ncompatibility: ${yamlQuote(SKILL_COMPATIBILITY)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+}
+
+// ─── Unified-skill content rewrites (extracted from bin/install.js, 2026-09) ──
+//
+// The installer's --unified-skills path and the Agent Plugins bundle builder
+// (ADR-0045) need the SAME rewrite of a Claude-flavoured PAN document — the
+// rule from ADR-0028 is one converter, several call sites, never a second copy.
+// Each function below reproduces its installer sequence exactly, in order; the
+// installer now calls these, and `tests/unified-skills-install.test.cjs` pins
+// the output it has always produced.
+//
+// Options (all strings):
+//   corePrefix        where `pan-wizard-core/` lives for the consumer, with a
+//                     trailing slash — `./.agents/` (local unified install),
+//                     `<abs>/.agents/` (global), `{{PAN_PLUGIN_ROOT}}/` (bundle)
+//   pathPrefix        replacement for a residual `~/.claude/` reference
+//   projectDirPrefix  replacement for a residual `./.claude/` reference —
+//                     `./<runtime dir>/` on an install, the root token in a bundle
+//   attribution       processAttribution() setting: null remove, undefined keep,
+//                     string replace
+
+/**
+ * Rewrite a PAN command document's paths for a unified-skills consumer. Does
+ * NOT convert it to SKILL.md form — call convertClaudeCommandToUnifiedSkill()
+ * on the result, exactly as the installer does.
+ */
+function rewriteUnifiedSkillCommandContent(content, { corePrefix, pathPrefix, projectDirPrefix, attribution }) {
+  // Core + agent-definition references → the shared copies (specific, before
+  // the generic rewrites); everything else .claude-scoped → the consumer. Agent
+  // refs point at the canonical reference copies shipped with the shared core —
+  // a runtime's own agents dir may carry a different format (Codex TOML,
+  // Copilot .agent.md).
+  content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  content = content.replace(/~\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
+  content = content.replace(/\.\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
+  content = content.replace(/~\/\.claude\//g, pathPrefix);
+  content = content.replace(/\.\/\.claude\//g, projectDirPrefix);
+  // Not every runtime puts a `pan-tools` bin on PATH — invoke via node.
+  const panToolsPath = `${corePrefix}pan-wizard-core/bin/pan-tools.cjs`;
+  content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${panToolsPath}`);
+  return processAttribution(content, attribution);
+}
+
+/**
+ * Rewrite a markdown file inside a shared copy of pan-wizard-core (workflows,
+ * templates, references, learnings) for a unified-skills consumer.
+ */
+function rewriteSharedCoreMarkdown(content, { corePrefix, pathPrefix, projectDirPrefix, attribution }) {
+  content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  // Agent-definition refs → the canonical reference copies in the shared core
+  // (runtime agents dirs carry runtime-specific formats).
+  content = content.replace(/~\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
+  content = content.replace(/\.\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
+  content = content.replace(/~\/\.claude\//g, pathPrefix);
+  content = content.replace(/\.\/\.claude\//g, projectDirPrefix);
+  content = processAttribution(content, attribution);
+  return convertSlashCommandsToCopilotSkillMentions(content);
+}
+
+/**
+ * Rewrite an agent definition for the canonical reference copy that ships
+ * under `<shared core>/agents/` — reading material for agents, not a runtime
+ * registration (ADR-0028 agent-ref canonicalization).
+ */
+function rewriteAgentReferenceCopy(content, corePrefix) {
+  content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  return convertSlashCommandsToCopilotSkillMentions(content);
+}
+
+/**
+ * Drop internal-scoped topics from a parsed learnings/index.json and recompute
+ * its totals exactly (each topic carries its own size fields). Pure: returns
+ * the rewritten object, or null when there was nothing internal to drop or
+ * the input is not an index. The installer and the bundle builders share it so
+ * a shipped index never lists files the package deliberately withholds.
+ */
+function stripInternalLearningsTopics(parsed) {
+  if (!parsed || !Array.isArray(parsed.topics)) return null;
+  const kept = parsed.topics.filter(t => t && t.scope !== 'internal');
+  if (kept.length === parsed.topics.length) return null;
+  const out = { ...parsed, topics: kept };
+  if (parsed.totals && typeof parsed.totals === 'object') {
+    out.totals = {
+      ...parsed.totals,
+      topics: kept.length,
+      patterns: kept.reduce((n, t) => n + (Array.isArray(t.patterns) ? t.patterns.length : 0), 0),
+      size_bytes: kept.reduce((n, t) => n + (t.size_bytes || 0), 0),
+      size_tokens_est: kept.reduce((n, t) => n + (t.size_tokens_est || 0), 0),
+    };
+  }
+  return out;
+}
+
+// ─── Agent Plugins bundle (ADR-0045, 2026-09) ────────────────────────────────
+//
+// A vendor-neutral package: `plugin.json` + `skills/` + `mcp.json` at the root,
+// loaded natively by Copilot CLI / VS Code, Codex, Cursor and Kiro. Every
+// constant here is quoted from the pinned schemas in tests/fixtures/agent-plugins/
+// (read from agent-plugins.org on 2026-09-10) — the manifest schema is CLOSED,
+// so an unlisted key is a fatal plugin rejection, not a warning.
+
+const AGENT_PLUGINS_VERSION = '1.0.0';
+const AGENT_PLUGIN_MANIFEST_SCHEMA = `https://agent-plugins.org/schemas/${AGENT_PLUGINS_VERSION}/plugin.schema.json`;
+const AGENT_PLUGIN_MCP_SCHEMA = `https://agent-plugins.org/schemas/${AGENT_PLUGINS_VERSION}/mcp.schema.json`;
+
+// Path token inside bundled skill and core markdown. Agent Plugins expands
+// `${PLUGIN_ROOT}` ONLY in mcp.json fields, and Claude's `${CLAUDE_PLUGIN_ROOT}`
+// substitution in content is Claude-specific — so bundle content carries PAN's
+// own token, in the style of `{{PAN_ARGS}}`, and the adapter note defines it.
+const AGENT_PLUGIN_ROOT_TOKEN = '{{PAN_PLUGIN_ROOT}}';
+// A few PAN documents refer to the RUNTIME's own configuration directories —
+// its `settings.json`, its `commands/`, PAN's update-check cache, the local
+// patches dir. The installer maps those to the installing runtime (`~/.codex/`,
+// `./.gemini/`, …); a bundle is built for no runtime in particular, so it
+// carries two more tokens the adapter note defines: the user-level and the
+// project-level runtime directory.
+const AGENT_PLUGIN_RUNTIME_HOME_TOKEN = '{{PAN_RUNTIME_HOME}}';
+const AGENT_PLUGIN_RUNTIME_DIR_TOKEN = '{{PAN_RUNTIME_DIR}}';
+
+/** Agent Plugins `plugin.json` — closed schema; mirrors package.json like the Claude manifest. */
+function buildAgentPluginManifest(pkg) {
+  return {
+    $schema: AGENT_PLUGIN_MANIFEST_SCHEMA,
+    name: 'pan-wizard',
+    version: pkg.version,
+    description: pkg.description || 'Structured, phase-based planning and execution for AI coding agents.',
+    author: { name: 'PAN Wizard contributors', url: 'https://github.com/oharms/PanWizard' },
+    homepage: 'https://github.com/oharms/PanWizard',
+    repository: 'https://github.com/oharms/PanWizard',
+    license: pkg.license || 'MIT',
+    keywords: ['planning', 'workflow', 'agents', 'phases'],
+  };
+}
+
+/**
+ * Agent Plugins `mcp.json` declaring the bundled bridge. `command` must be a
+ * single executable token with NO placeholder (spec), so the server is launched
+ * as `node` with the `${PLUGIN_ROOT}`-anchored script in `args`, where expansion
+ * is defined. No `env`: a plugin serves whatever project the session is in, and
+ * `env` may not name PLUGIN_ROOT/PLUGIN_DATA anyway. The default working
+ * directory for a stdio server is the PLUGIN ROOT (spec) — which is why the
+ * bridge must take the project root per call (ADR-0045 D6, plan item 4g).
+ */
+function buildAgentPluginMcpConfig() {
+  return {
+    $schema: AGENT_PLUGIN_MCP_SCHEMA,
+    mcpServers: {
+      pan: {
+        type: 'stdio',
+        command: 'node',
+        args: ['${PLUGIN_ROOT}/pan-wizard-core/mcp/server.cjs'],
+      },
+    },
+  };
+}
+
+/**
+ * Copilot vendor-directory hooks for an Agent Plugins bundle —
+ * `com.github.copilot/hooks/hooks.json` (ADR-0045 D5).
+ *
+ * Shape from code.visualstudio.com/docs/agent-customization/agent-plugins (read
+ * 2026-09-10): the FLAT plugin format — PascalCase lifecycle events, each an
+ * array of `{ type: 'command', command }` — with `${CLAUDE_PLUGIN_ROOT}` expanded
+ * to the plugin root at runtime and also exported to the hook process. That is
+ * VS-Code-verified. Copilot CLI's own hooks how-to describes WORKSPACE hooks
+ * (camelCase events, `bash`/`powershell` keys) and does not cover plugins, so a
+ * live `copilot plugin install` is the gate before relying on this shape there.
+ * The observers-vs-monitor split mirrors the Codex builder: no async flag exists
+ * in this format, so nothing is marked.
+ *
+ * @param {{updateCheckCommand?:string, contextMonitorCommand?:string, costLoggerCommand?:string, traceLoggerCommand?:string}} commands
+ */
+function buildCopilotPluginHooksConfig(commands) {
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand } = commands || {};
+  const hooks = {};
+  if (updateCheckCommand) hooks.SessionStart = [{ type: 'command', command: updateCheckCommand }];
+  if (contextMonitorCommand) hooks.PostToolUse = [{ type: 'command', command: contextMonitorCommand }];
+  const subagentStop = [];
+  if (costLoggerCommand) subagentStop.push({ type: 'command', command: costLoggerCommand });
+  if (traceLoggerCommand) subagentStop.push({ type: 'command', command: traceLoggerCommand });
+  if (subagentStop.length > 0) hooks.SubagentStop = subagentStop;
+  return { hooks };
+}
+
+/** Copilot's reverse-domain extension namespace — the top-level directory its plugin components live in. */
+const COPILOT_PLUGIN_NAMESPACE = 'com.github.copilot';
+
+/** The adapter paragraph appended to every bundled skill (ADR-0045 D3). */
+function agentPluginSkillAdapterNote() {
+  return `Plugin bundle (Agent Plugins format):
+- \`${AGENT_PLUGIN_ROOT_TOKEN}\` in this skill is the directory that holds this plugin's \`plugin.json\` — two levels above this SKILL.md. Your runtime reports this skill's file location when it loads it; derive the root from that path and substitute it wherever \`${AGENT_PLUGIN_ROOT_TOKEN}\` appears before running a command.
+- Prefer the \`pan\` MCP server's tools when your runtime has connected this plugin's \`mcp.json\`, and pass the project's absolute path as each tool's \`cwd\` argument — the server is started in the plugin's directory, which is never the project. Otherwise run \`node ${AGENT_PLUGIN_ROOT_TOKEN}/pan-wizard-core/bin/pan-tools.cjs <verb>\` from the project root.
+- \`${AGENT_PLUGIN_RUNTIME_HOME_TOKEN}\` is your runtime's user-level configuration directory (for example \`~/.claude\`, \`~/.codex\`, \`~/.gemini\`, \`~/.config/opencode\`, \`~/.copilot\`) and \`${AGENT_PLUGIN_RUNTIME_DIR_TOKEN}\` its project-level directory (\`.claude\`, \`.codex\`, \`.gemini\`, \`.opencode\`, \`.github\`). Substitute the one that applies to the runtime you are.`;
 }
 
 /** Generate Copilot CLI skill adapter header */
@@ -540,7 +739,18 @@ function convertClaudeCommandToCopilotSkill(content, skillName) {
 }
 
 /** Claude agent → Copilot .agent.md */
-function convertClaudeToCopilotAgent(content) {
+/**
+ * @param {string} content - Claude agent markdown
+ * @param {object} [opts]
+ * @param {Record<string,string[]>} [opts.modelLists] - Copilot CLI (>= 1.0.83) accepts a
+ *   `model:` LIST tried in order plus `model-policy`. When a PAN agent pins `model:
+ *   <alias>` and this map has an entry for the alias, the Copilot agent gets that list
+ *   and `model-policy: prefer` (degrade gracefully; `required` would refuse to run).
+ *   NOT wired into the installer yet: the Copilot model ids must be verified on a live
+ *   CLI first (ADR-0028's rule; harness/scenarios/live-gate-copilot.json carries the
+ *   probe). Reality check RC15 / plan item R13, 2026-09-10.
+ */
+function convertClaudeToCopilotAgent(content, opts = {}) {
   const converted = convertClaudeToCopilotMarkdown(content);
   const { frontmatter, body } = extractFrontmatterAndBody(converted);
   let name = '';
@@ -589,7 +799,17 @@ function convertClaudeToCopilotAgent(content) {
   const toolsYaml = copilotTools.length > 0
     ? `\ntools:\n${copilotTools.map(t => `  - ${yamlQuote(t)}`).join('\n')}`
     : '';
-  return `---\nname: ${yamlQuote(name)}\ndescription: ${yamlQuote(description)}${toolsYaml}\n---\n${body}`;
+  // R13: optional model fallback list for agents that pin a model alias.
+  let modelYaml = '';
+  const lists = opts && opts.modelLists;
+  if (lists && frontmatter) {
+    const pinned = extractFrontmatterField(frontmatter, 'model');
+    const list = pinned && Array.isArray(lists[pinned]) ? lists[pinned].filter(Boolean) : null;
+    if (list && list.length) {
+      modelYaml = `\nmodel:\n${list.map(m => `  - ${yamlQuote(m)}`).join('\n')}\nmodel-policy: prefer`;
+    }
+  }
+  return `---\nname: ${yamlQuote(name)}\ndescription: ${yamlQuote(description)}${toolsYaml}${modelYaml}\n---\n${body}`;
 }
 
 // ─── Attribution Processing ─────────────────────────────────────────────────
@@ -928,7 +1148,7 @@ const MCP_REGISTRATION = Object.freeze({
   }),
   opencode: Object.freeze({
     register: true, key: 'mcp', localPath: 'opencode.json', globalPath: 'opencode.json',
-    why: 'opencode.ai/docs: opencode.json `mcp` block, type "local", command as one array, env block named `environment`. PAN already writes this file.',
+    why: 'opencode.ai/docs/mcp-servers: opencode.json `mcp` block, type "local", command as one array, env block named `environment`. PAN already writes this file. LOCATION: the docs page (opencode.ai/docs/config) lists only a repo-root opencode.json; the .opencode/opencode.json PAN writes for local installs is read by the loader SOURCE — packages/opencode/src/config/config.ts, the branch for directories ending in .opencode reads opencode.json and opencode.jsonc (read 2026-09-10). Live but undocumented: re-check the loader on OpenCode upgrades (harness/scenarios/live-gate-opencode.json asks the CLI).',
   }),
   codex: Object.freeze({
     // Config-dir-relative like the others (resolves to `.codex/config.toml`).
@@ -1041,20 +1261,34 @@ function mergeCodexHooksConfig(existing, commands) {
   const config = (existing && typeof existing === 'object') ? existing : {};
   if (!config.hooks || typeof config.hooks !== 'object') config.hooks = {};
 
+  // The fourth column is Codex's `async` flag (command handlers, Codex CLI
+  // 0.148+, changelog 2026-08-17): an async handler runs off the agent's critical
+  // path and CANNOT block, approve, deny, or inject — its output is deferred to
+  // the next turn. So it is right for pure observers and wrong for anything the
+  // model must read now:
+  //   - cost-logger / trace-logger append ledger rows and print nothing → async.
+  //   - check-update spawns a detached child and prints nothing → async.
+  //   - context-monitor returns `additionalContext` the model must see THIS
+  //     turn → stays synchronous.
+  // Codex-only: Claude Code and Copilot hook schemas were not checked for an
+  // equivalent flag (plan item 2 gate) — do not copy this column into their
+  // builders without reading their docs first.
   const wanted = [
-    ['SessionStart', updateCheckCommand, 'pan-check-update'],
-    ['PostToolUse', contextMonitorCommand, 'pan-context-monitor'],
-    ['SubagentStop', costLoggerCommand, 'pan-cost-logger'],
-    ['SubagentStop', traceLoggerCommand, 'pan-trace-logger'],
+    ['SessionStart', updateCheckCommand, 'pan-check-update', true],
+    ['PostToolUse', contextMonitorCommand, 'pan-context-monitor', false],
+    ['SubagentStop', costLoggerCommand, 'pan-cost-logger', true],
+    ['SubagentStop', traceLoggerCommand, 'pan-trace-logger', true],
   ];
 
-  for (const [event, command, marker] of wanted) {
+  for (const [event, command, marker, async] of wanted) {
     if (!command) continue;
     if (!Array.isArray(config.hooks[event])) config.hooks[event] = [];
     const present = config.hooks[event].some(group =>
       Array.isArray(group.hooks) && group.hooks.some(h => h.command && h.command.includes(marker)));
     if (!present) {
-      config.hooks[event].push({ hooks: [{ type: 'command', command }] });
+      const handler = { type: 'command', command };
+      if (async) handler.async = true;
+      config.hooks[event].push({ hooks: [handler] });
     }
   }
   return config;
@@ -1475,7 +1709,7 @@ function buildPluginHooksConfig() {
  *   rather than hardcoded so this file stays the single source of that string.
  * @returns {string} markdown for `commands/pan-plugin-selftest.md` in the plugin
  */
-function buildPluginSelfTestCommand(placeholder = '${CLAUDE_PLUGIN_ROOT}') {
+function buildPluginSelfTestCommand(placeholder = '${CLAUDE_PLUGIN_ROOT}', pluginName = 'pan-wizard') {
   // Sentinels the agent quotes between. Deliberately ugly so they cannot occur
   // naturally in surrounding prose or be mistaken for instructions.
   const OPEN = 'PAN_PROBE_BEGIN>>>';
@@ -1486,7 +1720,7 @@ description: Diagnose whether the plugin-root placeholder expands in plugin comm
 
 # PAN plugin self-test
 
-Answer three questions and print the verdict table. **Do not fix anything.** This
+Answer four questions and print the verdict table. **Do not fix anything.** This
 command is a measurement; a "fail" here is the result, not a problem to repair.
 
 ## Probe 1 — textual substitution in markdown (the question that matters)
@@ -1516,6 +1750,18 @@ Run this and record whether it prints JSON or errors, as \`probe3\`:
 node "${placeholder}/pan-wizard-core/bin/pan-tools.cjs" --help
 \`\`\`
 
+## Probe 4 — do this plugin's agents and workflows load under the scoped name
+
+The plugin ships its agents under \`${pluginName}:<agent>\` and its native workflow
+scripts spawn them by that scoped name. Measure, do not assume:
+
+- From the list of agent types available to you in this session (the Agent tool's
+  own list — do not run a shell), record as \`probe4a\` how many names begin with
+  \`${pluginName}:pan-\`, followed by the first three such names verbatim. If none,
+  record any names that begin with \`pan-\` instead and say so.
+- Record as \`probe4b\` whether a slash command named \`/${pluginName}:pan-review-pipeline\`
+  is available to you. If you cannot tell, write "unknown" — that is a valid answer.
+
 ## Verdict
 
 Print this table, filled in:
@@ -1525,6 +1771,8 @@ Print this table, filled in:
 | 1 — markdown substitution | \`probe1\` verbatim |
 | 2 — env var | \`probe2\` or "(empty)" |
 | 3 — engine through placeholder | ok / failed, with the error's first line |
+| 4a — scoped agent names | count and first three names, or the bare names seen |
+| 4b — scoped workflow command | available / not available / unknown |
 
 Then state which case holds:
 
@@ -1543,6 +1791,13 @@ Then state which case holds:
 - **case C — neither** (probe 1 literal, probe 2 empty). Plugin content cannot
   address the plugin root at all. PAN would need content that resolves paths at
   runtime instead, and marketplace publishing stays gated.
+
+Probe 4 does not change the case letter — it measures a separate premise: the
+plugin's \`workflows/\` scripts were written to spawn \`${pluginName}:pan-…\` because
+plugin agents are documented to load under the scoped name. If \`probe4a\` reports
+bare \`pan-…\` names and none scoped, that premise is false on this build and the
+workflow scripts inside the plugin would not resolve their agents. Report it as a
+separate line, exactly like \`AGENT_SCOPE: scoped\` or \`AGENT_SCOPE: bare\`.
 
 Finish with the case letter on its own line, exactly like \`VERDICT: case A\`,
 so the result is greppable out of the transcript.
@@ -1576,6 +1831,27 @@ function buildPluginMcpConfig() {
   };
 }
 
+/**
+ * Rewrite the `agentType` values in a native workflow script for a PLUGIN copy.
+ *
+ * Plugin agents load under a scoped name: `agents/pan-reviewer.md` inside a
+ * plugin named `pan-wizard` is `pan-wizard:pan-reviewer`
+ * (code.claude.com/docs/en/plugins-reference, read 2026-09-10). The scripts
+ * `buildNativeWorkflowScripts()` emits are written for a loose-file install,
+ * where the bare name resolves, so the plugin builder runs them through this
+ * before writing `workflows/`. Idempotent: an already-scoped name (contains
+ * ':') is left alone, and nothing outside `agentType: '…'` is touched.
+ *
+ * @param {string} content - emitted script source
+ * @param {string} pluginName - the manifest `name`
+ * @returns {string}
+ */
+function namespaceWorkflowAgentTypes(content, pluginName) {
+  if (typeof content !== 'string' || !pluginName) return content;
+  return content.replace(/agentType:(\s*)'([^':]+)'/g,
+    (_m, ws, name) => `agentType:${ws}'${pluginName}:${name}'`);
+}
+
 // ─── Native Claude Code workflows (2026-06) ─────────────────────────────────
 //
 // Claude Code discovers deterministic orchestration scripts in
@@ -1599,6 +1875,7 @@ function buildNativeWorkflowScripts() {
     { title: 'Merge', detail: 'meta-reviewer dedupes, disputes, and issues the verdict' },
   ],
 }
+// twin: commands/pan/review-deep.md
 
 const target = (typeof args === 'string' && args.trim())
   ? args.trim()
@@ -1664,6 +1941,7 @@ return merged
     { title: 'Synthesize', detail: 'merge area maps into one codebase overview' },
   ],
 }
+// twin: pan-wizard-core/workflows/map-codebase.md
 
 phase('Scan')
 const AREAS = {
@@ -1702,9 +1980,236 @@ const synthesis = await agent(
 return { areas_mapped: maps.filter(Boolean).length, synthesis }
 `;
 
+  // ── §3.2 ports (2026-09, plan item 5a). Selection rule: a protocol becomes a
+  // script when its control flow is knowable BEFORE the run — a fan-out whose
+  // width the engine reports, waves that are genuinely barriers. It stays
+  // markdown when the next step depends on reading the last result. exec-phase's
+  // wave dispatch and diagnose-issues' per-gap fan-out qualify; verify-phase and
+  // milestone-gaps (single-agent judgment) do not, whatever the plan first guessed.
+  // A script also cannot pause for a human (only agent permission prompts pause a
+  // run), so the wave script REFUSES phases with checkpoint plans instead of
+  // pretending. Each script names its markdown twin; the drift test pins the pair.
+  //
+  // Paths: the engine is invoked by AGENTS (scripts have no shell), so prompts
+  // describe where pan-tools lives rather than hard-coding one install layout.
+  const execWaves = `export const meta = {
+  name: 'pan-exec-waves',
+  description: 'PAN phase execution: wave-grouped executor fan-out for a checkpoint-free phase, then verification',
+  whenToUse: 'Deterministic version of the /pan-exec-phase wave dispatch. Pass the phase number as args. Refuses a phase that contains checkpoint plans (a workflow cannot pause for a human) — run /pan-exec-phase for those.',
+  phases: [
+    { title: 'Index', detail: 'plan inventory with wave grouping, from the PAN engine' },
+    { title: 'Execute', detail: 'one executor per plan; waves in order, plans within a wave in parallel' },
+    { title: 'Verify', detail: 'the phase verifier over the completed plans' },
+  ],
+}
+// twin: pan-wizard-core/workflows/exec-phase.md
+
+const PAN_TOOLS = 'PAN engine (pan-tools): node <PAN core>/bin/pan-tools.cjs — the PAN core is .claude/pan-wizard-core in a project install, ~/.claude/pan-wizard-core in a global install, or pan-wizard-core under the plugin root when PAN runs as a plugin.'
+const CORE_DOCS = 'PAN core documents (same core directory): workflows/execute-plan.md, templates/summary.md, references/checkpoints.md, references/tdd.md.'
+
+const phaseArg = (typeof args === 'string' && args.trim())
+  ? args.trim()
+  : (args && typeof args === 'object' && args.phase != null ? String(args.phase) : '')
+if (!phaseArg) return { error: 'pass the phase number as args, e.g. /pan-exec-waves 3' }
+
+phase('Index')
+const INDEX = {
+  type: 'object',
+  properties: {
+    phase_found: { type: 'boolean' },
+    phase_number: { type: 'string' },
+    phase_name: { type: 'string' },
+    phase_dir: { type: 'string' },
+    parallelization: { type: 'boolean' },
+    has_checkpoints: { type: 'boolean' },
+    plans: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          file: { type: 'string' },
+          wave: { type: 'integer' },
+          autonomous: { type: 'boolean' },
+          has_summary: { type: 'boolean' },
+          objective: { type: 'string' },
+        },
+        required: ['id', 'wave', 'autonomous', 'has_summary'],
+      },
+    },
+  },
+  required: ['phase_found', 'has_checkpoints', 'plans'],
+}
+const index = await agent(
+  'Index phase ' + phaseArg + ' for execution using the ' + PAN_TOOLS + ' Run two verbs and merge their JSON: (1) init execute-phase ' + phaseArg + ' — take phase_found, phase_number, phase_name, phase_dir, parallelization; (2) phase-plan-index ' + phaseArg + ' — take has_checkpoints and plans[] (id, wave, autonomous, has_summary, objective; include each plan file path as file). Do not execute anything; return only the merged index.',
+  { label: 'index', phase: 'Index', schema: INDEX })
+if (!index || !index.phase_found) return { error: 'phase ' + phaseArg + ' not found' }
+if (index.has_checkpoints) {
+  return { error: 'phase ' + phaseArg + ' contains checkpoint plans (autonomous: false). A workflow cannot pause for a human — run /pan-exec-phase ' + phaseArg + ' instead.', plans: index.plans.map(p => p.id) }
+}
+const pending = index.plans.filter(p => !p.has_summary)
+if (pending.length === 0) return { phase: phaseArg, done: true, message: 'every plan already has a summary — nothing to execute' }
+const waveNumbers = [...new Set(pending.map(p => p.wave))].sort((a, b) => a - b)
+const parallelWithinWave = index.parallelization !== false
+log(pending.length + ' plans across ' + waveNumbers.length + ' wave(s)' + (parallelWithinWave ? '' : ', sequential within waves'))
+
+phase('Execute')
+const EXEC_RESULT = {
+  type: 'object',
+  properties: {
+    plan_id: { type: 'string' },
+    status: { type: 'string', enum: ['complete', 'failed', 'checkpoint'] },
+    summary_path: { type: 'string' },
+    commits: { type: 'integer' },
+    self_check: { type: 'string', enum: ['passed', 'failed', 'unknown'] },
+    notes: { type: 'string' },
+  },
+  required: ['plan_id', 'status', 'self_check'],
+}
+const executorPrompt = (p) =>
+  'Execute plan ' + p.id + ' of phase ' + (index.phase_number || phaseArg) + (index.phase_name ? '-' + index.phase_name : '') + '. Commit each task atomically. Create summary.md. Update state.md and roadmap.md (via roadmap update-plan-progress).\\n\\n'
+  + 'Read first, in this order: ' + CORE_DOCS + '\\n\\n'
+  + 'Then read: ' + (p.file || (index.phase_dir + '/' + p.id)) + ' (the plan), .planning/state.md, .planning/config.json (if present), ./CLAUDE.md (if present — follow its conventions), .agents/skills/ (if present — follow relevant skills), and every .planning/memory/*.md (apply every rule without exception).\\n\\n'
+  + 'Report plan_id, status (complete | failed | checkpoint), summary_path, the number of commits you made, and self_check (passed if your summary carries no "Self-Check: FAILED" marker).'
+const executed = []
+let halted = null
+for (const w of waveNumbers) {
+  const wavePlans = pending.filter(p => p.wave === w)
+  log('wave ' + w + ': ' + wavePlans.map(p => p.id).join(', '))
+  let results
+  if (parallelWithinWave) {
+    results = await parallel(wavePlans.map(p => () =>
+      agent(executorPrompt(p), { agentType: 'pan-executor', label: 'exec:' + p.id, phase: 'Execute', schema: EXEC_RESULT })))
+  } else {
+    results = []
+    for (const p of wavePlans) {
+      results.push(await agent(executorPrompt(p), { agentType: 'pan-executor', label: 'exec:' + p.id, phase: 'Execute', schema: EXEC_RESULT }))
+    }
+  }
+  const settled = results.filter(Boolean)
+  executed.push(...settled)
+  const bad = settled.filter(r => r.status !== 'complete' || r.self_check === 'failed')
+  const dropped = wavePlans.length - settled.length
+  if (bad.length > 0 || dropped > 0) {
+    // Mirror exec-phase's failure handler without the question it asks: stop
+    // before the next wave and return what happened, so a human decides.
+    halted = { wave: w, failed: bad.map(r => r.plan_id), unanswered: dropped }
+    break
+  }
+}
+if (halted) {
+  return { phase: phaseArg, halted, executed, next: 'Inspect the failed plan(s), then re-run /pan-exec-waves ' + phaseArg + ' (completed plans are skipped) or fall back to /pan-exec-phase ' + phaseArg }
+}
+
+phase('Verify')
+const VERIFY = {
+  type: 'object',
+  properties: {
+    status: { type: 'string', enum: ['passed', 'gaps_found', 'human_needed', 'failed'] },
+    verification_path: { type: 'string' },
+    gaps: { type: 'array', items: { type: 'string' } },
+    summary: { type: 'string' },
+  },
+  required: ['status', 'summary'],
+}
+const verdict = await agent(
+  'Verify phase ' + phaseArg + ' following the PAN verify-phase protocol (PAN core: workflows/verify-phase.md — ' + PAN_TOOLS + '). Check the phase goals against what the plans delivered, write the verification file the protocol prescribes, and report status (passed | gaps_found | human_needed | failed), the verification file path, any gaps, and a summary. Do not mark the phase complete or advance state — that decision stays with the user.',
+  { agentType: 'pan-verifier', label: 'verify', phase: 'Verify', schema: VERIFY })
+
+return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, next: 'Review the verification, then continue with /pan-exec-phase ' + phaseArg + ' (transition) or /pan-plan-phase for the next phase' }
+`;
+
+  const diagnoseIssues = `export const meta = {
+  name: 'pan-diagnose-issues',
+  description: 'PAN UAT diagnosis: one debugger per failed UAT truth, in parallel, then root causes written back',
+  whenToUse: 'Deterministic version of /pan-diagnose-issues. Pass the phase number as args. Investigates only — fixes come from /pan-plan-phase --gaps.',
+  phases: [
+    { title: 'Gaps', detail: 'read the phase UAT file and list the failed truths' },
+    { title: 'Diagnose', detail: 'one pan-debugger per gap, in parallel, root cause only' },
+    { title: 'Record', detail: 'write root causes and artifacts back into the UAT gaps' },
+  ],
+}
+// twin: pan-wizard-core/workflows/diagnose-issues.md
+
+const PAN_TOOLS = 'PAN engine (pan-tools): node <PAN core>/bin/pan-tools.cjs — the PAN core is .claude/pan-wizard-core in a project install, ~/.claude/pan-wizard-core in a global install, or pan-wizard-core under the plugin root when PAN runs as a plugin.'
+
+const phaseArg = (typeof args === 'string' && args.trim())
+  ? args.trim()
+  : (args && typeof args === 'object' && args.phase != null ? String(args.phase) : '')
+if (!phaseArg) return { error: 'pass the phase number as args, e.g. /pan-diagnose-issues 3' }
+
+phase('Gaps')
+const GAPS = {
+  type: 'object',
+  properties: {
+    phase_dir: { type: 'string' },
+    uat_path: { type: 'string' },
+    gaps: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          test_num: { type: 'integer' },
+          truth: { type: 'string' },
+          severity: { type: 'string' },
+          reason: { type: 'string' },
+          expected: { type: 'string' },
+        },
+        required: ['test_num', 'truth', 'severity'],
+      },
+    },
+  },
+  required: ['uat_path', 'gaps'],
+}
+const found = await agent(
+  'Locate phase ' + phaseArg + ' with the ' + PAN_TOOLS + ' (find-phase ' + phaseArg + ' gives the phase directory) and read its UAT file ({phase_dir}/{phase}-uat.md). List every gap in the Gaps section whose status is failed: test number, the truth that failed, severity, the reason the user reported, and the expected behaviour from the matching test. Do not investigate anything; return the list.',
+  { label: 'gaps', phase: 'Gaps', schema: GAPS })
+if (!found || !found.uat_path) return { error: 'no UAT file found for phase ' + phaseArg }
+const gaps = (found.gaps || []).filter(Boolean)
+if (gaps.length === 0) return { phase: phaseArg, uat_path: found.uat_path, gaps: 0, message: 'no failed truths to diagnose' }
+log(gaps.length + ' gap(s) to diagnose')
+
+phase('Diagnose')
+const DIAGNOSIS = {
+  type: 'object',
+  properties: {
+    issue_id: { type: 'string' },
+    status: { type: 'string', enum: ['root_cause_found', 'inconclusive'] },
+    root_cause: { type: 'string' },
+    evidence: { type: 'array', items: { type: 'string' } },
+    files: { type: 'array', items: { type: 'string' } },
+    suggested_fix: { type: 'string' },
+    debug_path: { type: 'string' },
+    remaining_possibilities: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['issue_id', 'status'],
+}
+const diagnoses = await parallel(gaps.map(g => () => agent(
+  'Debug issue UAT-' + g.test_num + ' for phase ' + phaseArg + ' — root cause ONLY, do not fix (fixes come from /pan-plan-phase --gaps).\\n\\n'
+  + 'Symptoms (pre-filled from UAT, treat as given): expected: ' + (g.expected || g.truth) + '. actual: ' + (g.reason || 'not recorded') + '. reproduction: test ' + g.test_num + ' in ' + found.uat_path + '. severity: ' + g.severity + '.\\n\\n'
+  + 'Follow the PAN debugger protocol: create the debug session file under .planning/debug/ named from the issue, investigate autonomously (read code, form hypotheses, test them), and report issue_id, status (root_cause_found | inconclusive), root_cause with evidence, files involved, a suggested fix direction, and the debug session path. If inconclusive, list the remaining possibilities. Also read ' + found.uat_path + ' and .planning/state.md for context.',
+  { agentType: 'pan-debugger', label: 'debug:UAT-' + g.test_num, phase: 'Diagnose', schema: DIAGNOSIS })))
+const results = diagnoses.filter(Boolean)
+log(results.filter(r => r.status === 'root_cause_found').length + ' root cause(s) found, ' + results.filter(r => r.status === 'inconclusive').length + ' inconclusive')
+
+phase('Record')
+const RECORDED = {
+  type: 'object',
+  properties: { uat_path: { type: 'string' }, gaps_updated: { type: 'integer' } },
+  required: ['uat_path', 'gaps_updated'],
+}
+const recorded = await agent(
+  'Update the Gaps section of ' + found.uat_path + ' with these diagnoses, following the PAN diagnose-issues protocol: for each gap add root_cause, artifacts (the debug session path), the files involved, and the suggested fix direction; mark inconclusive ones as needing manual review with their remaining possibilities. Edit in place — do not rewrite unrelated content. Report the path and how many gaps you updated.\\n\\nDiagnoses:\\n' + JSON.stringify(results, null, 2),
+  { label: 'record', phase: 'Record', schema: RECORDED })
+
+return { phase: phaseArg, uat_path: found.uat_path, gaps: gaps.length, root_causes_found: results.filter(r => r.status === 'root_cause_found').length, inconclusive: results.filter(r => r.status === 'inconclusive').length, recorded, next: 'Run /pan-plan-phase ' + phaseArg + ' --gaps to plan the fixes' }
+`;
+
   return [
     { name: 'pan-review-pipeline.js', content: reviewPipeline },
     { name: 'pan-map-codebase.js', content: mapCodebase },
+    { name: 'pan-exec-waves.js', content: execWaves },
+    { name: 'pan-diagnose-issues.js', content: diagnoseIssues },
   ];
 }
 
@@ -1792,6 +2297,22 @@ module.exports = {
   buildCodexMcpSnippet,
   removeCodexPanHooks,
   buildNativeWorkflowScripts,
+  namespaceWorkflowAgentTypes,
+  rewriteUnifiedSkillCommandContent,
+  rewriteSharedCoreMarkdown,
+  rewriteAgentReferenceCopy,
+  stripInternalLearningsTopics,
+  AGENT_PLUGINS_VERSION,
+  AGENT_PLUGIN_MANIFEST_SCHEMA,
+  AGENT_PLUGIN_MCP_SCHEMA,
+  AGENT_PLUGIN_ROOT_TOKEN,
+  AGENT_PLUGIN_RUNTIME_HOME_TOKEN,
+  AGENT_PLUGIN_RUNTIME_DIR_TOKEN,
+  buildAgentPluginManifest,
+  buildAgentPluginMcpConfig,
+  agentPluginSkillAdapterNote,
+  buildCopilotPluginHooksConfig,
+  COPILOT_PLUGIN_NAMESPACE,
   buildPluginManifest,
   buildPluginHooksConfig,
   buildPluginMcpConfig,
@@ -1807,3 +2328,33 @@ module.exports = {
   PAN_AGENTS_BEGIN,
   PAN_AGENTS_END,
 };
+
+/**
+ * Content digest of a directory tree: sha256 over the sorted list of
+ * `<relative posix path>:<sha256 of bytes>` lines. Order-independent, content-
+ * sensitive, ignores mtimes. Used by release-check Gate 8 to refuse a stale
+ * dist/pan-agent-plugin — the Codex and Copilot marketplaces install from that path
+ * with no rebuild-on-resolve, so a stale bundle would ship silently (reality check
+ * RC12 / plan item R10, 2026-09-10; two fresh builds were measured byte-identical).
+ * Pure apart from reading the tree; throws if `dir` is not a directory.
+ */
+function dirDigest(dir) {
+  // Local requires: install-lib keeps no module-level filesystem imports (its top
+  // level is pure); this helper is the one export that reads a tree.
+  const fs = require('fs');
+  const path = require('path');
+  const crypto = require('crypto');
+  const lines = [];
+  const walk = (abs, rel) => {
+    const entries = fs.readdirSync(abs, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    for (const e of entries) {
+      const childAbs = path.join(abs, e.name);
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(childAbs, childRel);
+      else lines.push(`${childRel}:${crypto.createHash('sha256').update(fs.readFileSync(childAbs)).digest('hex')}`);
+    }
+  };
+  walk(dir, '');
+  return crypto.createHash('sha256').update(lines.join('\n')).digest('hex');
+}
+module.exports.dirDigest = dirDigest;

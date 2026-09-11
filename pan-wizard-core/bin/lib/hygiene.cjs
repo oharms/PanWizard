@@ -40,8 +40,10 @@ const {
   STATE_FILE,
 } = require('./constants.cjs');
 const { planningPath, planningRel } = require('./utils.cjs');
+const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
 const { listMemoryAgents, readMemory, compactMemory } = require('./memory.cjs');
 const { readRecords, isSuspectRecord, METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
+const { assessCacheTtl } = require('./context-budget.cjs');
 const { planningRootRel, planningRoots, withPlanningRoot, describePlanningRoot, TRACKS_DIR } = require('./planning-root.cjs');
 
 /** Runtime config dirs a PAN install can live in, relative to project root. */
@@ -456,6 +458,17 @@ function checkCachedContext(cwd) {
       `~${fmtTokens(tokens)} tokens re-read on every agent call (warn ${fmtTokens(CACHE_FILE_WARN_TOKENS)})${suffix}`,
       fix));
   }
+
+  // Lifetime signal (ADR-0046 D5): the ledger shows cache WRITES that followed
+  // an idle gap of five to sixty minutes — misses a one-hour subagent cache
+  // lifetime would have turned into hits. Informational and never fixable: the
+  // remedy is a Claude Code setting the user weighs against the 2× write price.
+  try {
+    const ttl = assessCacheTtl(readRecords(cwd).filter(r => !isSuspectRecord(r)));
+    if (ttl.recommend) {
+      findings.push(mkFinding('cache-context', 'info', planningRel(path.join(METRICS_DIR, TOKENS_FILE)), ttl.advice, null));
+    }
+  } catch { /* no ledger, or unreadable — nothing to say */ }
   return { findings };
 }
 
@@ -517,6 +530,18 @@ function checkPlanningFragment(cwd) {
  */
 function scanOneRoot(cwd, root, opts) {
   return withPlanningRoot(root.rel, () => {
+    // A .planning/ written by ANOTHER tool (gsd-core shares the directory name and
+    // PAN's pre-v2.2 uppercase file names) must never be "repaired": the legacy
+    // rename would rename its state files. One warn finding, nothing fixable, and
+    // none of the per-tree checks run on it. Reality check R15.
+    const foreign = detectForeignPlanningTree(planningPath(cwd));
+    if (foreign) {
+      const f = mkFinding('foreign-planning-tree', 'warn', planningRel(),
+        `planning tree belongs to ${foreign.tool} (${foreign.evidence.join(', ')}) — PAN will not rename or repair its files; run PAN with --planning-dir to give it a tree of its own (ADR-0043)`,
+        null);
+      f.track = root.name;
+      return { findings: [f], planning_exists: true };
+    }
     const fragment = checkPlanningFragment(cwd);
     const findings = [
       ...fragment.findings,
@@ -594,6 +619,12 @@ function applyFix(cwd, finding) {
   try {
     switch (fix.action) {
       case 'rename-lowercase': {
+        // Defence in depth for R15: the scan never emits this fix for a foreign tree,
+        // but a stale findings list or a hand-built one must not rename another
+        // tool's files either.
+        if (detectForeignPlanningTree(path.dirname(abs))) {
+          return { applied: false, detail: 'refused: this planning tree belongs to another tool (see the foreign-planning-tree finding)' };
+        }
         // Two-step rename: Windows treats case-only renames inconsistently
         // across fs layers, so hop through a temp name.
         const dir = path.dirname(abs);

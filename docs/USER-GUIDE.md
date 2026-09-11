@@ -719,6 +719,23 @@ claude --dangerously-skip-permissions
 
 ## Advanced Features
 
+### Native Workflows (Claude Code only)
+
+Claude Code can run orchestration as a **script** rather than as prose the model follows: the script holds the loop, the fan-out and the intermediate results, so the model's context holds only the final answer, and a step cannot be skimmed past. PAN ships a small set of these to `.claude/workflows/` on every Claude install (and inside the Claude plugin), each a deterministic port of one PAN protocol:
+
+| Command | Ports | What it does |
+|---|---|---|
+| `/pan-review-pipeline [phase or change set]` | `/pan:review-deep` | Reviewer and security hardener in parallel, then the meta-reviewer merges and issues one verdict |
+| `/pan-map-codebase` | `/pan:map-codebase` | Discovers the top-level areas, documents each in parallel, synthesises one overview |
+| `/pan-exec-waves <phase>` | `/pan:exec-phase` wave dispatch | Reads the plan index, runs one executor per plan wave by wave (parallel within a wave unless `parallelization` is off), halts before the next wave on a failed plan, then runs the phase verifier |
+| `/pan-diagnose-issues <phase>` | `/pan:diagnose-issues` | One debugger per failed UAT truth, in parallel, root cause only; writes the diagnoses back into the UAT gaps |
+
+Two rules govern them. **They are additive**: the markdown commands remain the portable path and the only path on the other four runtimes, and the scripts never replace them. **They only port protocols whose control flow is known before the run** — a fixed fan-out, a wave that is genuinely a barrier. A step that depends on reading the last result stays in markdown, and a script never pretends to pause for you: `/pan-exec-waves` refuses a phase that contains checkpoint plans and tells you to run `/pan:exec-phase` instead.
+
+**Measured, not assumed.** PAN's behavioural harness ran both paths on the same two-plan seed, five reps each (September 2026, Claude Code `2.1.233`): the markdown `/pan:exec-phase` completed every rep, and so did `/pan-exec-waves`, with the phase verifier's file written every time, about 15% faster and a few percent cheaper per rep. On Claude Code the native workflow is the recommended way to run a checkpoint-free phase; the markdown command stays the portable path and the fallback for phases with checkpoints. One caveat for headless or CI use: `claude -p` waits at most ten minutes for a background workflow before stopping it and dropping its result — set `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` (or a higher ceiling) when driving these workflows from a script. Interactive sessions are unaffected.
+
+Each script names the markdown protocol it ports, and a test pins the pair so they cannot drift apart silently. Run them like any other slash command; `/workflows` shows progress per phase and per agent.
+
 ### Self-Improvement Loop
 
 PAN Wizard ships a **cross-project meta-learning loop** that lets PAN itself get smarter every release. Run experiments against fresh ideas in isolated folders, harvest the resulting telemetry back to the source repo, promote generalizable findings into shipped artifacts that future installs read automatically.

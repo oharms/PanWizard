@@ -1,0 +1,78 @@
+{
+  "id": "live-gate-copilot",
+  "tier": 0,
+  "description": "Install the Agent Plugins bundle into GitHub Copilot CLI from a local path and confirm it lists as installed.",
+  "why": "Plan item 4c's gate. Everything about the Copilot namespace is documentation-verified (VS Code's plugin doc) and CLI-unverified; only this install can settle it. On a machine without the CLI the scenario is SKIPPED with that reason — never green. Extended 2026-09-10 with the R13 model-list probe.",
+  "seed": "empty",
+  "install": null,
+  "requires": {
+    "cli": "copilot"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 8,
+    "maxStepMinutes": 4
+  },
+  "steps": [
+    {
+      "kind": "build",
+      "script": "build-agent-plugin.js",
+      "out": "bundle",
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Fresh bundle to install."
+    },
+    {
+      "kind": "cli",
+      "bin": "copilot",
+      "args": [
+        "plugin",
+        "install",
+        "<ws>/bundle"
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "docs.github.com (plugins-creating): `copilot plugin install ./my-plugin` installs from a local path. A non-zero exit is the finding — record its stderr."
+    },
+    {
+      "kind": "cli",
+      "bin": "copilot",
+      "args": [
+        "plugin",
+        "list"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~pan-wizard"
+      ],
+      "why": "The installed plugin must appear under the manifest name; if the CLI names installed plugins differently, this step's stdout is the evidence to update the scenario from."
+    },
+    {
+      "kind": "sh",
+      "script": "copilot-agent-model-list.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "file:.github/agents/pan-model-probe.agent.md"
+      ],
+      "why": "R13 probe, part 1: write a Copilot custom agent whose frontmatter carries a `model:` LIST and `model-policy: prefer` (docs.github.com create-custom-agents-for-cli, read 2026-09-10, CLI 1.0.83). The ids in the file are the ones PAN would emit for its model-pinned agents; whether Copilot accepts them is the measurement."
+    },
+    {
+      "kind": "cli",
+      "bin": "copilot",
+      "args": [
+        "agent",
+        "list"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~pan-model-probe"
+      ],
+      "why": "R13 probe, part 2: Copilot enumerates its custom agents; the probe agent listed without a validation error means the list frontmatter is accepted and the installer can be wired (convertClaudeToCopilotAgent already takes modelLists). If the subcommand differs on this build, its stderr is the evidence to adjust from."
+    }
+  ]
+}

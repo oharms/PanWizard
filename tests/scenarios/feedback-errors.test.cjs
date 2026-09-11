@@ -57,7 +57,7 @@ describe('E2E Feedback: Error Recovery', () => {
     // Only create state.md, missing everything else
     fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), '---\nStatus: Active\n---\n');
     const r = runner.run('validate health', tmpDir);
-    assert.ok(r.success, `should succeed: ${r.error}`);
+    assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const p = JSON.parse(r.output);
     assert.ok(['broken', 'degraded'].includes(p.status),
       `corrupted project should be broken/degraded, got "${p.status}"`);
@@ -71,7 +71,7 @@ describe('E2E Feedback: Error Recovery', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), '---\nStatus: Active\n---\n');
     fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), '{}');
     const r = runner.run('validate health --repair', tmpDir);
-    assert.ok(r.success, `should succeed: ${r.error}`);
+    assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const p = JSON.parse(r.output);
     assert.ok('status' in p, 'should have status');
     // Repair should attempt to fix issues

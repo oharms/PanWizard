@@ -5,6 +5,183 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Session S1 of the September 2026 market-delta plan
+(`docs/specs/market-delta-2026-09-superplan.md`): the ledger was wrong on the
+model the `fable` and `best` aliases resolve to, and the plugin shipped less than a loose install.
+
+### Fixed — the rate table on the model the `fable` and `best` aliases resolve to
+
+`cost.cjs` had no row for `claude-fable-5-1`, so the family-prefix fallback priced
+its cache reads at the Fable 5 rate. Fable 5.1 bills cache reads at 0.025× input
+(the only Claude model that departs from the 0.1× convention), so on the model the
+`fable` and `best` aliases resolve to (Claude Code's model-config page, read 2026-09-10:
+neither Fable model is any plan's default) the dominant line of PAN's ledger — cached
+re-reads, per ADR-0044 — was high by roughly four times. Sonnet 5 carried the
+pre-announced `$3/$15` rate; the launch price of `$2/$10` was made permanent and the
+September rise cancelled, so that row over-billed by half. Both rows corrected,
+`RATES_VERIFIED_AT` bumped to `2026-09-10`, and a test pins that versioned and
+`[1m]`-suffixed Fable 5.1 ids land on the 5.1 row rather than prefix-matching back
+to Fable 5. The installer's recommended flagship follows the `fable` alias target, the most
+capable generally available model.
+
+### Added — Claude Code's managed `modelPricing` as a rate source
+
+Organisations that pin contracted per-model rates in Claude Code's managed settings
+(`modelPricing`, Claude Code ≥2.1.243) now get the same numbers from PAN's ledger.
+`effectiveRates()` layers them beneath `config.json → cost.rates` and above the
+built-in table; cache rates, which the Claude Code shape lacks, are derived from
+the matched family's own multipliers. Managed settings are read from the directory
+Claude Code documents per OS (`managed-settings.json` plus alphabetical
+`managed-settings.d/` drop-ins; the legacy Windows `ProgramData` path is read by
+neither tool), redirectable with `PAN_MANAGED_SETTINGS_DIR`. `models check` lists
+the ids it found under `managed_model_pricing`.
+
+### Fixed — the Claude plugin now ships the native workflows
+
+`scripts/build-plugin.js` never wrote `workflows/`, so the plugin lacked the
+deterministic orchestration scripts every loose-file install has carried since
+2026-06. It now bundles them — with one rewrite the loose install does not need:
+plugin agents load under a scoped name (`pan-wizard:pan-reviewer`), so each
+script's `agentType` is namespaced for the plugin copy only. The build test asserts
+every scoped agent exists in the bundle, and `/pan-plugin-selftest` gained a fourth
+probe that reports whether the running Claude Code exposes the plugin's agents
+scoped or bare (`AGENT_SCOPE: scoped|bare`), since that premise is documented but
+was not live-measured.
+
+### Added — an Agent Plugins bundle (ADR-0045)
+
+Agent Plugins 1.0 (published `2026-08-06`; Vercel, Amazon, Cursor, GitHub,
+Microsoft, OpenAI, Google) is the vendor-neutral package that Copilot CLI, VS
+Code, Codex, Cursor and Kiro load natively — one directory of `plugin.json` +
+`skills/` + `mcp.json`. `npm run build:agent-plugin` now emits PAN as one
+(`dist/pan-agent-plugin/`): every command as an Agent Skill from the same
+unified-skills compiler the installer uses (extracted into `install-lib` so the
+two cannot drift), the core with canonical agent copies, and an `mcp.json` that
+launches the bundled bridge as `node ${PLUGIN_ROOT}/…` — the one field the spec
+expands. Skill bodies address the bundle through PAN's own `{{PAN_PLUGIN_ROOT}}`
+token, plus `{{PAN_RUNTIME_HOME}}` / `{{PAN_RUNTIME_DIR}}` for the few references
+to a runtime's own configuration directory; the adapter note defines all three.
+
+The bundle also carries PAN's hook scripts with a Codex `hooks/hooks.json` (the
+documented default location, `${PLUGIN_ROOT}` expanded in commands, observers
+async) and a `com.github.copilot/` namespace with the agents in Copilot's format
+and a flat PascalCase `hooks/hooks.json` (the shape VS Code documents for plugin
+hooks — a live Copilot CLI install is the remaining gate). Two marketplace files
+let a checkout install the build without publishing: `.agents/plugins/marketplace.json`
+(Codex) and `.github/plugin/marketplace.json` (Copilot). The release gate now
+builds both bundles.
+
+A zero-dependency conformance suite validates the emitted manifest and `mcp.json`
+against the two normative schemas (pinned under `tests/fixtures/agent-plugins/`),
+checks every skill against the Agent Skills discovery rules, resolves every
+root-token reference inside the bundle, and proves the Claude plugin is
+byte-identical to its pre-extraction build. Vendor directories (Copilot, Codex,
+Antigravity) and the live installs are the next plan items; the spec's default
+stdio working directory is the plugin root, so the bridge must learn the project
+root per call before those gates run (ADR-0045 D6).
+
+### Added — the PAN Harness (ADR-0047)
+
+The PanLoop behavioural harness — the thing that measured the auto-advance chain
+drop and found two dead MCP resources — no longer existed on disk. Its successor
+lives in this repository under `harness/`, so it cannot be lost separately from
+the contracts it asserts, with run state outside the checkout. A run packs the
+repository, extracts the tarball (never `npx`), installs **from the package** into
+seeded workspaces, and runs JSON scenarios whose steps carry a `why` and an `expect`
+list; every assertion kind is proven able to fail in `tests/harness.test.cjs`, and a
+findings ledger (`harness/ledger.jsonl`, tracked) dedupes by signature with the old
+promotion rule. Tier 0 is model-free and free (`npm run harness`); model tiers are
+refused without `--max-usd`, with spend read from Claude Code's own JSON output.
+
+Shipped scenarios cover the install matrix (five runtimes, async Codex hooks, native
+workflows, MCP registrations, a current rate table), the installed bridge answering
+for another project through the per-call `cwd`, the deployed native workflow
+scripts, the Agent Plugins bundle, live installs on Copilot / Codex / Antigravity
+(skipped with the reason where the CLI is absent — never green), the plugin
+agent-scope probe (tier 1) and the native-vs-markdown execution chain on a seeded
+two-plan phase (tier 2). The first tier-0 run passed against the packed artifact.
+
+### Added — a measured prompt-cache lifetime recommendation (`cache.ttl`)
+
+Claude Code gives subagents — every PAN agent — a five-minute prompt-cache
+lifetime by default, even on a subscription; `subagentPromptCacheTtl: "1h"`
+buys an hour at 2× the write price. Whether that pays depends on how a project's
+agents are spaced, which the cost ledger records. `context-budget` now reports
+`cache.ttl`: the cache writes that followed an idle gap of five to sixty minutes
+(the misses a one-hour lifetime would have avoided), and recommends the setting
+only when the pattern recurs. Hygiene raises a matching `info` finding.
+
+### Decided — newer subagent frontmatter (ADR-0046)
+
+`maxTurns`, `memory`, `isolation: worktree`, `skills:` preload, `experimental.cacheTtl`
+and the `fork` spawn mode are each declined for the shipped agents, with the reason
+recorded per field: they trade PAN's fresh-context guarantee or duplicate a
+mechanism PAN already has (`.planning/memory/`, `worktree.cjs`). `maxTurns` names
+its revisit trigger — a native workflow that owns the orchestration, where a
+partial result is re-issued mechanically. The cache lifetime arrives as the
+`cache.ttl` recommendation above rather than as emitted frontmatter.
+
+### Added — two more native Claude Code workflows (§3.2 of the August review)
+
+The August review's remaining move: promote the protocols whose control flow is
+knowable before the run to native workflow scripts, keeping the markdown as the
+portable path for the other four runtimes. Two qualify under that rule and are
+now emitted alongside the review pipeline and the codebase mapper:
+
+- `/pan-exec-waves <phase>` — exec-phase's wave dispatch: the engine's plan index
+  fixes the waves, one `pan-executor` per plan runs within a wave (in parallel, or
+  sequentially when `parallelization` is off), a failed or unanswered plan halts
+  before the next wave and returns what happened, and `pan-verifier` closes the
+  run. It **refuses** a phase that contains checkpoint plans — a workflow cannot
+  pause for a human — and says to run `/pan-exec-phase` instead.
+- `/pan-diagnose-issues <phase>` — one `pan-debugger` per failed UAT truth, in
+  parallel, root cause only; the diagnoses are written back into the UAT gaps.
+
+`verify-phase` and `milestone-gaps`, which the plan first named, turned out to be
+single-agent judgment protocols and stay markdown. Every script now names its
+markdown twin in a `// twin:` line, and `tests/native-workflows-drift.test.cjs`
+pins the pair (roster parity, phases agree, no forbidden or resume-breaking
+construct, null-filtered fan-outs) — the static half of the gate. The behavioural
+half, chain completion against a deployed install, needs a harness.
+
+### Added — the MCP bridge takes the project root per call
+
+Every bridge **tool** now accepts an optional `cwd`: the absolute path of the
+project to operate on, validated as an existing directory and honoured for that
+call only; resources keep their static argv (ADR-0041). Without it the server
+resolves the project as it always has. The reason is the Agent Plugins spec: a
+stdio server's default working directory is the **plugin root**, so under any
+such client every verb would read `.planning/` from inside the plugin cache and
+report an empty project — cleanly. The bundle's skill adapter tells the model to
+pass the project path.
+
+### Fixed — test files no longer race on the plugin build
+
+Two test files and `plugin-path.js` rebuilt `dist/pan-wizard-plugin/` in place,
+and `node --test` runs files in parallel: one file's clean-up landed inside the
+other's copy. Both builders honour an output override (`PAN_PLUGIN_OUT`,
+`PAN_AGENT_PLUGIN_OUT`), refuse to wipe a directory that is not a previous build,
+and every test builds into a private temp directory through a shared helper.
+
+### Changed — Codex observer hooks run off the critical path
+
+Codex CLI 0.148 added `async` command handlers. PAN's cost logger, trace logger and
+update check are pure observers and are now registered `async: true`; the context
+monitor stays synchronous because it returns `additionalContext` the model must
+read in the same turn. Codex only — the Claude Code and Copilot hook schemas were
+not checked for an equivalent flag.
+
+### Docs
+
+Troubleshooting entries for: per-agent `effort:` having no effect on Claude Code
+before 2.1.267; cost reports disagreeing with `/usage` or the invoice; subagents
+re-caching the planning context after short pauses (the five-minute subagent cache
+bucket and `subagentPromptCacheTtl`); `/skill-doctor` listing PAN skills as unused;
+and the `pan` MCP server missing on Gemini CLI ≥0.59 until the workspace is trusted.
+The marketplace README documents the `--plugin-dir` dev loop.
+
 ## [3.27.0] - 2026-08-21
 
 Two field defects closed, and the reason PAN got slow: **98% of its token traffic is

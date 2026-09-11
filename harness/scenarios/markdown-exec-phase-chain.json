@@ -1,0 +1,17 @@
+{
+  "id": "markdown-exec-phase-chain",
+  "tier": 2,
+  "description": "The oracle: run the markdown `/pan:exec-phase 1 --skip-tests` on the same two-plan seed and assert the same outcomes as the native run.",
+  "why": "Oracle diffing (stability doctrine). A native workflow is only worth shipping if its chain completes at least as often as the prose path it ports. Same seed, same assertions, different orchestration — the comparison is the finding, not either run alone. Run --repeat 5 alongside native-exec-waves-chain.",
+  "seed": "two-plan-phase",
+  "install": ["--claude"],
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 8, "maxMinutes": 45, "maxStepMinutes": 40 },
+  "steps": [
+    { "kind": "model", "prompt": "/pan:exec-phase 1 --skip-tests",
+      "expect": ["exit:0", "file:.planning/phases/01-greetings/01-01-summary.md", "file:.planning/phases/01-greetings/01-02-summary.md", "file:src/greet.js", "file:src/farewell.js", "file:src/index.js"],
+      "why": "Identical outcome assertions to the native run, minus the verification file (the markdown path hands verification to the transition step, which this seed disarms with auto_advance:false)." },
+    { "kind": "sh", "script": "seed-tests.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:passed=true"],
+      "why": "Working code, not files that look right." }
+  ]
+}

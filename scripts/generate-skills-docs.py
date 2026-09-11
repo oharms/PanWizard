@@ -48,7 +48,7 @@ GROUP_ORDER = [
 # Dev skill categorization (filename -> category)
 DEV_CATEGORIES = {
     "Development Workflow": [
-        "pandev", "execplan", "superplan", "featureAI", "review",
+        "pandev", "execplan", "superplan", "featureAI", "review", "reality-check",
     ],
     "Testing & Verification": [
         "test", "quick", "pantest", "check", "check-platform", "auditai",

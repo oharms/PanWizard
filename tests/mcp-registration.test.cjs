@@ -382,3 +382,15 @@ describe('buildCodexMcpSnippet', () => {
     assert.ok(!lib.buildCodexMcpSnippet(SERVER, ENGINE, null).includes('PAN_PROJECT_ROOT'));
   });
 });
+
+// Reality check R6 (2026-09-10): OpenCode's docs page never lists .opencode/opencode.json;
+// the path is live only because the loader source reads it. The rationale must cite the
+// loader, not the docs page, or the next reader will call the path dead (or trust it blind).
+describe('R6: the OpenCode registration cites the loader source for its undocumented location', () => {
+  test('why names config.ts and the .opencode directory branch', () => {
+    const why = lib.MCP_REGISTRATION.opencode.why;
+    assert.match(why, /config\.ts/, 'cite packages/opencode/src/config/config.ts');
+    assert.match(why, /\.opencode/, 'name the directory whose opencode.json the loader reads');
+    assert.match(why, /live-gate-opencode/, 'point at the harness scenario that asks the CLI');
+  });
+});

@@ -852,6 +852,14 @@ own header puts it, the CLI's JSON contract **is** the tool contract.
   regex with a length bound, a `FORBIDDEN_VERB` guard that refuses to expose any
   history-rewriting or force git op (recovery is revert-only), and a merge gate that requires
   an out-of-band human token an agent-supplied value cannot satisfy.
+- **The project root travels with the call.** Every tool accepts an optional `cwd` — the
+  absolute path of the project to operate on, validated as an existing directory and used for
+  that call only; without it the server falls back to the directory it was started in.
+  Resources never take it: their argv is static, which is the whole of their safety argument.
+  The reason is the Agent Plugins format (ADR-0045): its clients launch a stdio server in the
+  **plugin root** by default, so a server that trusted its own cwd would read `.planning/`
+  from inside the plugin cache and report an empty project — cleanly. The decoration is applied
+  centrally in the registry, so a tool added later cannot miss it.
 - **Registration** is per-runtime and non-destructive; the verified path/shape table is
   `MCP_REGISTRATION` in `bin/install-lib.cjs`, deliberately sitting beside `HOOK_EVENT_MAP`
   because it is the same class of problem. Paths there are **config-dir-relative**. Codex and

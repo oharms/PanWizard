@@ -4,7 +4,7 @@
 
 # PanWizard
 
-**Command a bot army for your codebase** — a *Mission Control* agent delegates whole-project goals to specialist squads and ships behind a human merge gate. Five AI CLIs, zero context rot.
+**Command a bot army for your codebase** — a *Mission Control* agent delegates whole-project goals to specialist squads and ships behind a human merge gate (the army runs on Claude Code; the planning pipeline runs on all five CLIs). Five AI CLIs, zero context rot.
 
 **Solves context rot** — the quality degradation that happens as the model fills its context window.
 
@@ -76,7 +76,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 ## Bot Army
 
-> **Don't run one phase — run the whole project.** `/pan:army` turns PAN's agents into a coordinated army that delivers a goal end-to-end: a **Mission Control** agent plans the mission and delegates to specialist **squads**, parallel builders each work an isolated git worktree, and **nothing reaches your main branch without green checks and your explicit approval.**
+> **Don't run one phase — run the whole project.** `/pan:army` (Claude Code only — it needs native sub-agent spawning; the other runtimes run the flat pipeline) turns PAN's agents into a coordinated army that delivers a goal end-to-end: a **Mission Control** agent plans the mission and delegates to specialist **squads**, parallel builders each work an isolated git worktree, and **nothing reaches your main branch without green checks and your explicit approval.**
 
 <div align="center">
 <img src="https://cdn.jsdelivr.net/npm/pan-wizard@latest/assets/pan-orchestration.png" alt="PanWizard specialist agents orchestrated along a pipeline" width="340" />
@@ -101,9 +101,9 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 - **A human merges.** The Release squad prepares a squash-merge and surfaces an `always-ask` approval instead of merging; pair it with branch protection on your repo, which is what makes that unbypassable rather than merely instructed. Recovery is `git revert` or the previous tag, never a force-push.
 - **Isolated builders.** Each Build agent forks its own `army/<task>` branch + git worktree, so parallel agents never share a file.
-- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn — the same harness as hierarchical exec, at campaign scale.
+- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn by Mission Control's protocol (prompt-enforced; the MCP `pan_next_action` path enforces the caps in code) — the same harness as hierarchical exec, at campaign scale.
 
-**Run it over days.** `--schedule` arms a self-resuming campaign with a per-day budget that burns the backlog down across sessions — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
+**Run it over days.** `--schedule` arms a resumable campaign with a per-day budget that burns the backlog down across sessions (the budget is advisory unless `budget.enforce` is set, and an external scheduler triggers each `--continue`) — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
 
 **Watch it live.** `/pan:hud` renders a single self-contained HTML dashboard — Mission Control over the squads, in-flight worktrees, campaign budget, telemetry, and the safety harness — in one page.
 
@@ -130,9 +130,7 @@ People who want to describe what they want and have it built correctly — witho
 npx pan-wizard@latest
 ```
 
-The installer prompts you to choose:
-1. **Runtime** — Claude Code, OpenCode, Gemini, Codex, Copilot CLI, or all
-2. **Location** — Global (all projects) or local (current project only)
+The installer prompts you to choose the **runtime** — Claude Code, OpenCode, Gemini, Codex, Copilot CLI, or all. Location is not prompted: it defaults to the current project (`--local`); pass `--global` to install into your home config directory instead.
 
 Verify with:
 - Claude Code / Gemini: `/pan:help`
@@ -285,7 +283,7 @@ If you prefer not to use that flag, add this to your project's `.claude/settings
 
 ## How It Works
 
-> **Already have code?** Run `/pan:map-codebase` first. It spawns parallel agents to analyze your stack, architecture, conventions, and concerns. Then `/pan:new-project` knows your codebase — questions focus on what you're adding, and planning automatically loads your patterns.
+> **Already have code?** Run `/pan:map-codebase` first. It analyzes your stack, architecture, conventions, and concerns — single-shot with one agent for repositories under the sharding threshold, six-way sharded above it. Then `/pan:new-project` knows your codebase — questions focus on what you're adding, and planning automatically loads your patterns.
 
 ### 1. Initialize Project
 
@@ -344,7 +342,7 @@ The system:
 
 1. **Researches** — Investigates how to implement this phase, guided by your context.md decisions
 2. **Plans** — Creates 2-3 atomic task plans with XML structure
-3. **Verifies** — Checks plans against requirements, loops until they pass
+3. **Verifies** — Checks plans against requirements; up to three revision passes, then the remaining issues come to you
 
 Each plan is small enough to execute in a fresh context window. No degradation, no "I'll be more concise now."
 
@@ -361,8 +359,8 @@ Each plan is small enough to execute in a fresh context window. No degradation, 
 The system:
 
 1. **Runs plans in waves** — Parallel where possible, sequential when dependent
-2. **Fresh context per plan** — a whole context window purely for implementation, zero accumulated garbage
-3. **Commits per task** — Every task gets its own atomic commit
+2. **Fresh context per plan** — a whole context window purely for implementation, zero accumulated garbage (native sub-agent spawning on Claude Code; the other runtimes delegate through their own agent mechanism)
+3. **Commits per task** — Every task gets its own atomic commit (consecutive trivial chore or docs tasks may be coalesced into one)
 4. **Verifies against goals** — Checks the codebase delivers what the phase promised
 
 Walk away, come back to completed work with clean git history.
@@ -522,7 +520,7 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 | Stage | Orchestrator does | Agents do |
 |-------|------------------|-----------|
 | Research | Coordinates, presents findings | 4 parallel researchers investigate stack, features, architecture, pitfalls |
-| Planning | Validates, manages iteration | Planner creates plans, checker verifies, loop until pass |
+| Planning | Validates, manages iteration | Planner creates plans, checker verifies, up to three revision passes |
 | Execution | Groups into waves, tracks progress | Executors implement in parallel, each with a fresh context window |
 | Verification | Presents results, routes next | Verifier checks codebase against goals, debuggers diagnose failures |
 
@@ -550,7 +548,7 @@ PAN runs autonomous experiments in isolated folders, harvests the resulting tele
 
 ### Atomic Git Commits
 
-Each task gets its own commit immediately after completion:
+Each task gets its own commit immediately after completion (consecutive trivial chore or docs tasks are coalesced):
 
 ```bash
 abc123f docs(08-02): complete user registration plan
@@ -724,8 +722,8 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 
 | Setting | Options | Default | What it controls |
 |---------|---------|---------|------------------|
-| `mode` | `yolo`, `interactive` | `interactive` | Auto-approve vs confirm at each step |
-| `depth` | `quick`, `standard`, `comprehensive` | `standard` | Planning thoroughness (phases × plans) |
+| `mode` | `yolo`, `interactive` | chosen at `/pan:new-project` (usually `interactive`) | Auto-approve vs confirm at each step |
+| `depth` | `quick`, `standard`, `comprehensive` | chosen at `/pan:new-project` (usually `standard`) | Planning thoroughness (phases × plans) |
 
 ### Model Profiles
 
@@ -737,7 +735,7 @@ Control which Claude model each agent uses. Balance quality vs token spend.
 | `balanced` (default) | reasoning | reasoning | reasoning |
 | `budget` | Sonnet | Sonnet | Haiku |
 
-> `reasoning` = the session model (inherit) — every agent runs on the model you launched the session with. Both `quality` and `balanced` resolve this way; only `budget` steps down to a Sonnet/Haiku mix. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
+> `reasoning` = the session model (inherit) — every agent runs on the model you launched the session with, except the reviewer-class agents (reviewer, hardener, meta-reviewer), which pin a reasoning-tier model. Both `quality` and `balanced` resolve this way; only `budget` steps down to a Sonnet/Haiku mix. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
 
 Switch profiles:
 ```
@@ -883,7 +881,7 @@ This removes all PAN commands, agents, hooks, and settings while preserving your
 | [Development Guide](docs/DEVELOPMENT.md) | Contributors | Setup, how to add commands/agents/tests, cross-platform pitfalls |
 | [CLI Reference](docs/CLI-REFERENCE.md) | Contributors | Every pan-tools.cjs subcommand with args, flags, and JSON output |
 | [Agent System](docs/AGENTS.md) | Contributors | Agent inventory, lifecycle, model profiles, collaboration patterns |
-| [Hook System](docs/HOOKS.md) | Contributors | 5 built-in hooks, bridge file architecture, custom hook development |
+| [Hook System](docs/HOOKS.md) | Contributors | The built-in hooks, bridge file architecture, custom hook development |
 | [Internals](docs/INTERNALS.md) | Power Users | Checkpoint system, TDD, verification patterns, model profiles |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Users | Deep-dive diagnostics for execution, state, git, and verification issues |
 | [Contributing](CONTRIBUTING.md) | Contributors | Project structure, code style, PR process |

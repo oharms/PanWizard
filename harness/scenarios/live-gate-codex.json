@@ -1,0 +1,18 @@
+{
+  "id": "live-gate-codex",
+  "tier": 0,
+  "description": "Register this checkout's repo-scoped marketplace with Codex CLI and confirm it is listed.",
+  "why": "Plan item 4d/4f's gate for Codex. The marketplace shape and CLI commands come from the Codex plugin reference (read 2026-09-10), unexercised live. SKIPPED with reason when the CLI is absent.",
+  "seed": "empty",
+  "install": null,
+  "requires": { "cli": "codex" },
+  "budget": { "maxUsd": 0, "maxMinutes": 8, "maxStepMinutes": 4 },
+  "steps": [
+    { "kind": "build", "script": "build-agent-plugin.js", "out": "<repo>/dist/pan-agent-plugin", "expect": ["exit:0"],
+      "why": "The repo's .agents/plugins/marketplace.json points at ./dist/pan-agent-plugin, so the bundle must exist there before Codex can resolve the entry." },
+    { "kind": "cli", "bin": "codex", "args": ["plugin", "marketplace", "add", "<repo>"], "expect": ["exit:0"],
+      "why": "Codex reference: `codex plugin marketplace add <source>`; a local repo path is an accepted source. Its stderr on failure is the evidence to adjust from." },
+    { "kind": "cli", "bin": "codex", "args": ["plugin", "marketplace", "list"], "expect": ["exit:0", "stdout~pan-wizard-local"],
+      "why": "The marketplace registered under the name in .agents/plugins/marketplace.json." }
+  ]
+}

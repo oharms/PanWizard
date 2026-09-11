@@ -1,0 +1,14 @@
+{
+  "id": "native-workflows-deployed",
+  "tier": 0,
+  "description": "Run the §3.2 static gate against the INSTALLED native workflow scripts: meta first, name equals file stem, phases agree, no forbidden or resume-breaking construct, parses as a module body.",
+  "why": "tests/native-workflows-drift.test.cjs pins the source. This checks the copies Claude Code actually loads, after the installer wrote them — the only way to catch a write that truncated or altered a script.",
+  "seed": "empty",
+  "install": ["--claude"],
+  "budget": { "maxUsd": 0, "maxMinutes": 5, "maxStepMinutes": 2 },
+  "steps": [
+    { "kind": "sh", "script": "check-workflows.cjs", "args": ["<ws>/.claude/workflows"],
+      "expect": ["exit:0", "json:checked=4", "json:problems"],
+      "why": "The checker prints {checked, problems}. Four scripts checked, zero problems — and `problems` must be PRESENT so an empty output cannot pass." }
+  ]
+}

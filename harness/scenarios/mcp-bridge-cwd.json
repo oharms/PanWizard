@@ -1,0 +1,30 @@
+{
+  "id": "mcp-bridge-cwd",
+  "tier": 0,
+  "description": "Speak JSON-RPC to the INSTALLED bridge from a directory that is not the project, and prove that the per-call `cwd` tool input is what makes it answer for the project.",
+  "why": "Plan item 4g / ADR-0045 D6. Under an Agent Plugins client the server's cwd is the plugin root. Without `cwd`, a tool reads no project and reports that cleanly — the worst failure. The contrast pair here (same tool with and without cwd, from a foreign directory) is the only shape that proves the input is load-bearing rather than decorative. Spawned, not required: the framing loop and the deployed copy are what is measured.",
+  "seed": "two-plan-phase",
+  "install": ["--claude"],
+  "budget": { "maxUsd": 0, "maxMinutes": 6, "maxStepMinutes": 2 },
+  "steps": [
+    { "kind": "pan", "argv": ["find-phase", "1"], "expect": ["exit:0", "json:found=true"],
+      "why": "The seed is a real PAN project to the installed engine — otherwise every later assertion would be measuring the seed, not the bridge." },
+    { "kind": "mcp", "cwd": "other",
+      "requests": [
+        { "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": { "_meta": { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } } },
+        { "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "pan_roadmap_analyze", "arguments": { "cwd": "<ws>" } } },
+        { "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "pan_roadmap_analyze", "arguments": {} } },
+        { "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "pan_find_phase", "arguments": { "query": "1", "cwd": "<ws>" } } },
+        { "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "pan_resolve_model", "arguments": { "agent": "pan-planner", "cwd": "relative/not/absolute" } } }
+      ],
+      "expect": [
+        "exit:0",
+        "rpc:1.result.tools.0.inputSchema.properties.cwd.type=string",
+        "rpc:2.result.isError=false",
+        "rpc:3.result.isError=true",
+        "rpc:4.result.isError=false",
+        "rpc:5.error.code=-32602"
+      ],
+      "why": "id 1: every tool advertises cwd. id 2 vs 3: the SAME tool from the SAME foreign directory succeeds only when cwd names the project — the load-bearing contrast (roadmap analyze errors on a directory with no roadmap, by design). id 4: a second tool for good measure. id 5: a relative cwd is a bad REQUEST (-32602), not a spawn with a bad root." }
+  ]
+}

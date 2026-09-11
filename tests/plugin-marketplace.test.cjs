@@ -15,7 +15,7 @@
  * and silently never read.
  */
 
-const { test, describe } = require('node:test');
+const { test, describe, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
@@ -25,6 +25,7 @@ const ROOT = path.join(__dirname, '..');
 const MARKETPLACE = path.join(ROOT, 'marketplace', '.claude-plugin', 'marketplace.json');
 const PATH_SCRIPT = path.join(ROOT, 'scripts', 'plugin-path.js');
 const lib = require('../bin/install-lib.cjs');
+const { buildPluginInto, cleanup } = require('./helpers.cjs');
 
 const readMarketplace = () => JSON.parse(fs.readFileSync(MARKETPLACE, 'utf8'));
 
@@ -181,10 +182,11 @@ describe('official validator (claude plugin validate)', () => {
   });
 
   test('the built plugin manifest validates', (t) => {
-    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-plugin.js')], {
-      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    const r = runValidate('./dist/pan-wizard-plugin');
+    // Built into a private temp dir so this file never races another test file
+    // that rebuilds dist/ (see helpers.buildPluginInto).
+    const built = buildPluginInto();
+    t.after(() => cleanup(built));
+    const r = runValidate(built);
     if (r.skip) return t.skip('claude CLI not available');
     assert.ok(r.ok, `validator rejected the plugin:\n${r.out}`);
     assert.ok(!/warning/i.test(r.out), `validator warned on the plugin:\n${r.out}`);
@@ -192,13 +194,12 @@ describe('official validator (claude plugin validate)', () => {
 });
 
 describe('the self-test probe (the instrument for the gated question)', () => {
-  const PLUGIN = path.join(ROOT, 'dist', 'pan-wizard-plugin');
+  // One private build for the whole block (never dist/ — see helpers.buildPluginInto).
+  const PLUGIN = buildPluginInto();
   const probePath = path.join(PLUGIN, 'commands', 'pan-plugin-selftest.md');
+  after(() => cleanup(PLUGIN));
 
   test('is emitted into the plugin build', () => {
-    execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-plugin.js')], {
-      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    });
     assert.ok(fs.existsSync(probePath), 'plugin build should emit the self-test command');
   });
 

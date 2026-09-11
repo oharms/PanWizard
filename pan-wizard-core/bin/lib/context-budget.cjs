@@ -71,6 +71,66 @@ function estimateRelevanceRatio(text) {
  * @param {string} cwd - Project root directory
  * @param {boolean} raw - If true, output human-readable string
  */
+// ─── Prompt-cache lifetime signal (2026-09, ADR-0044 follow-up) ─────────────
+//
+// Claude Code decides the prompt-cache lifetime per request bucket: the main
+// conversation can get one hour on a subscription, but EVERYTHING ELSE —
+// subagents, workflows, forks — gets five minutes unless `subagentPromptCacheTtl`
+// (≥2.1.242) says otherwise. Every PAN agent is a subagent. So a phase whose
+// agents are spaced more than five minutes apart re-writes the same cached
+// context block each time, and ADR-0044 measured that block as the bulk of PAN's
+// token traffic. This assessor reads the cost ledger for exactly that signature:
+// a cache WRITE that follows an idle gap of five to sixty minutes — a miss the
+// one-hour lifetime would have turned into a hit. It recommends the setting only
+// when the pattern recurs, because one-hour writes bill at 2× base input against
+// 1.25× for five-minute writes: the longer lifetime pays off once a block is read
+// twice inside the hour, and costs more on bursts that never idle.
+
+const TTL_SHORT_MIN = 5;     // the default subagent lifetime, in minutes
+const TTL_LONG_MIN = 60;     // the lifetime the setting buys
+const TTL_MIN_WRITE_TOKENS = 1000;  // ignore trivial writes (a few tokens of tool results)
+const TTL_RECOMMEND_AT = 2;  // recurrence, not a single event, earns the recommendation
+
+/**
+ * Pure. Scan ledger records (oldest first by `ts`) for cache writes that follow
+ * an idle gap in (TTL_SHORT_MIN, TTL_LONG_MIN] — writes the one-hour lifetime
+ * would have avoided. Records without a parseable `ts`, and records flagged
+ * suspect by the caller (pass them pre-filtered), are ignored.
+ *
+ * @param {Array<object>} records - cost ledger rows ({ts, cache_write_tokens, …})
+ * @param {{minWriteTokens?:number, recommendAt?:number}} [opts]
+ * @returns {{records_considered:number, writes_after_short_idle:number, tokens_after_short_idle:number, writes_after_long_idle:number, recommend:boolean, setting:string, advice:string|null}}
+ */
+function assessCacheTtl(records, opts = {}) {
+  const minWrite = opts.minWriteTokens ?? TTL_MIN_WRITE_TOKENS;
+  const recommendAt = opts.recommendAt ?? TTL_RECOMMEND_AT;
+  const rows = (Array.isArray(records) ? records : [])
+    .map(r => ({ t: r && r.ts ? new Date(r.ts).getTime() : NaN, w: Number(r && r.cache_write_tokens) || 0 }))
+    .filter(r => Number.isFinite(r.t))
+    .sort((a, b) => a.t - b.t);
+  let shortIdle = 0; let shortIdleTokens = 0; let longIdle = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i].w < minWrite) continue;
+    const gapMin = (rows[i].t - rows[i - 1].t) / 60000;
+    if (gapMin > TTL_SHORT_MIN && gapMin <= TTL_LONG_MIN) { shortIdle++; shortIdleTokens += rows[i].w; }
+    else if (gapMin > TTL_LONG_MIN) longIdle++;
+  }
+  const recommend = shortIdle >= recommendAt;
+  const setting = 'subagentPromptCacheTtl';
+  const advice = recommend
+    ? `${shortIdle} cache writes followed an idle gap of ${TTL_SHORT_MIN}–${TTL_LONG_MIN} min (~${shortIdleTokens.toLocaleString()} tokens re-written): subagents get the five-minute cache lifetime by default — set \`${setting}: "1h"\` in a Claude Code settings file. One-hour writes bill at 2× base input against 1.25×, so this pays off once a block is read twice within the hour.`
+    : null;
+  return {
+    records_considered: rows.length,
+    writes_after_short_idle: shortIdle,
+    tokens_after_short_idle: shortIdleTokens,
+    writes_after_long_idle: longIdle,
+    recommend,
+    setting,
+    advice,
+  };
+}
+
 function cmdContextBudget(cwd, raw) {
   const planDir = planningPath(cwd);
   if (!fileAccessible(planDir)) {
@@ -204,6 +264,14 @@ function cmdContextBudget(cwd, raw) {
         : `cached context is re-read on every agent call; largest file ${largest[0].path} (~${largest[0].tokens} tokens)`
           + (largest[0].path.endsWith('state.md') ? ' — run `pan-tools state compact`' : '');
 
+    // Lifetime signal from the ledger (suspect rows excluded — they carry
+    // poisoned counters, not real writes). Absent ledger → zero rows, no advice.
+    let ttl = null;
+    try {
+      const { readRecords, isSuspectRecord } = require('./cost.cjs');
+      ttl = assessCacheTtl(readRecords(cwd).filter(r => !isSuspectRecord(r)));
+    } catch { ttl = null; }
+
     cache = {
       block_count: cached.blocks.length,
       block_paths: cached.blocks.map(b => b.path),
@@ -216,6 +284,7 @@ function cmdContextBudget(cwd, raw) {
       crit_tokens: CACHE_BLOCK_CRIT_TOKENS,
       file_warn_tokens: CACHE_FILE_WARN_TOKENS,
       advice,
+      ttl,
       sha: cached.sha,
     };
   } catch {
@@ -275,4 +344,5 @@ module.exports = {
   cmdContextBudget,
   estimateTokens,
   estimateRelevanceRatio,
+  assessCacheTtl,
 };

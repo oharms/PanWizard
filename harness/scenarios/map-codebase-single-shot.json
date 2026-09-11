@@ -1,0 +1,29 @@
+{
+  "id": "map-codebase-single-shot",
+  "tier": 1,
+  "description": "Map a tiny codebase with no .planning/: single-shot mode (one agent) must produce the codebase documents.",
+  "why": "Reality check RC20/R17 and RC7: the README once said 'six parallel agents'; the command runs single-shot below the sharding threshold. This seed is far below it, so exactly the single-shot path is exercised and its output — .planning/codebase/*.md — is the assertion.",
+  "seed": "small-repo",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 3,
+    "maxMinutes": 20,
+    "maxStepMinutes": 15
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:map-codebase",
+      "expect": [
+        "exit:0",
+        "glob:.planning/codebase/*.md"
+      ],
+      "why": "map-codebase.md: output is .planning/codebase/ with structured documents about the codebase."
+    }
+  ]
+}
