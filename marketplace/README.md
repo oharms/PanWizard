@@ -30,7 +30,7 @@ Everything else about the plugin is already tested — this is the gap.
 From **any directory that is not inside `dist/pan-wizard-plugin/`** — Claude Code
 refuses a printed path that is the session's own directory or one of its parents:
 
-```
+```text
 /plugin marketplace add D:/PanWizard/marketplace
 /plugin install pan-wizard@pan-wizard-local
 ```
@@ -40,11 +40,11 @@ acceptance. If the install summary says `Run /reload-plugins to activate.`, do t
 
 Then:
 
-```
+```text
 /pan-plugin-selftest
 ```
 
-It reports four probes and ends with a line like `VERDICT: case A`. Probe 4 was
+It reports four probes and ends with a line like `VERDICT: case A`. The command is plugin-only: `scripts/build-plugin.js` writes it from `buildPluginSelfTestCommand()` in `bin/install-lib.cjs`; there is no `commands/pan/` file for it. Probe 4 was
 added in 2026-09 and answers a separate question: whether the plugin's agents
 load under the scoped `pan-wizard:pan-…` name that its bundled `workflows/`
 scripts spawn — reported on its own line as `AGENT_SCOPE: scoped` or
@@ -93,8 +93,8 @@ nothing about markdown.
 | **case B** | Not substituted, but the env var is set | A *shell* command inside content still works, because the shell expands it. Anything resolved as a path by something that is not a shell — an `@` file import, notably — breaks. PAN's content rewrite would need narrowing to shell invocations only |
 | **case C** | Neither | Content cannot address the plugin root at all. PAN would need runtime path resolution, and publishing stays gated |
 
-Record the answer in `docs/ECOSYSTEM-REVIEW-2026-08.md` §7 and in
-`scripts/build-plugin.js`'s header, which currently states the question as open.
+The answer is recorded in `docs/ECOSYSTEM-REVIEW-2026-08.md` §7 and in the header of
+`scripts/build-plugin.js` (case A — the placeholder expands).
 
 ## Notes
 
@@ -115,7 +115,7 @@ Record the answer in `docs/ECOSYSTEM-REVIEW-2026-08.md` §7 and in
 For iterating on the plugin itself you do not need this marketplace at all.
 Claude Code loads a plugin directory straight from the command line:
 
-```
+```bash
 npm run build:plugin
 claude --plugin-dir D:/PanWizard/dist/pan-wizard-plugin
 ```
@@ -139,11 +139,11 @@ marketplace. For Copilot CLI, Codex, Cursor and Kiro the equivalent is the
 
 > **Build before you install from the Codex or Copilot marketplaces.** Both `.agents/plugins/marketplace.json` and `.github/plugin/marketplace.json` resolve to `./dist/pan-agent-plugin`, and unlike the Claude `command` source nothing rebuilds it on resolve — a stale bundle installs silently. Run `npm run build:agent-plugin` first; the release gate (`node scripts/release-check.js`, Gate 8) refuses to pass while `dist/pan-agent-plugin` differs from a fresh build.
 
-```
+```bash
 npm run build:agent-plugin        # → dist/pan-agent-plugin/
 ```
 
-Two marketplace files in the repository root point at that build:
+Two marketplace files in the repository (`.agents/plugins/` and `.github/plugin/`) point at that build:
 
 - `.agents/plugins/marketplace.json` — Codex reads it automatically inside this
   repository (repo-scoped marketplace). Open Codex here, run `/plugins`, install

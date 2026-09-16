@@ -42,7 +42,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 ### Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │  YOU                                                        │
 │  /pan:new-project → /pan:plan-phase → /pan:exec-phase    │
@@ -101,9 +101,9 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 - **A human merges.** The Release squad prepares a squash-merge and surfaces an `always-ask` approval instead of merging; pair it with branch protection on your repo, which is what makes that unbypassable rather than merely instructed. Recovery is `git revert` or the previous tag, never a force-push.
 - **Isolated builders.** Each Build agent forks its own `army/<task>` branch + git worktree, so parallel agents never share a file.
-- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn by Mission Control's protocol (prompt-enforced; the MCP `pan_next_action` path enforces the caps in code) — the same harness as hierarchical exec, at campaign scale.
+- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn by Mission Control's protocol (prompt-enforced; the MCP `pan_next_action` path enforces the cycle cap, the budget cap when `caps.enforceBudget` is set, the abort switch and the human gate in code — delegation depth is bounded by which agents hold the `Task` tool) — the same harness as hierarchical exec, at campaign scale.
 
-**Run it over days.** `--schedule` arms a resumable campaign with a per-day budget that burns the backlog down across sessions (the budget is advisory unless `budget.enforce` is set, and an external scheduler triggers each `--continue`) — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
+**Run it over days.** `--schedule` arms a resumable campaign with a per-day budget that burns the backlog down across sessions (the per-day budget is advisory — `campaign status` shows the day's spend — and an external scheduler triggers each `--continue`) — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
 
 **Watch it live.** `/pan:hud` renders a single self-contained HTML dashboard — Mission Control over the squads, in-flight worktrees, campaign budget, telemetry, and the safety harness — in one page.
 
@@ -174,7 +174,7 @@ npx pan-wizard --copilot --local   # Install to ./.github/
 npx pan-wizard --all --global      # Install to all directories
 ```
 
-Use `--global` (`-g`) or `--local` (`-l`) to skip the location prompt.
+Use `--global` (`-g`) to install into your home config directory; `--local` (`-l`) is the default and may be omitted.
 Use `--claude`, `--opencode`, `--gemini`, `--codex`, `--copilot`, or `--all` to skip the runtime prompt.
 Add `--unified-skills` to install commands as one shared `.agents/skills/` tree read natively by every runtime (and Antigravity CLI) instead of per-runtime formats — see the User Guide for details.
 
@@ -287,7 +287,7 @@ If you prefer not to use that flag, add this to your project's `.claude/settings
 
 ### 1. Initialize Project
 
-```
+```text
 /pan:new-project
 ```
 
@@ -306,7 +306,7 @@ You approve the roadmap. Now you're ready to build.
 
 ### 2. Discuss Phase
 
-```
+```text
 /pan:discuss-phase 1
 ```
 
@@ -334,15 +334,15 @@ The deeper you go here, the more the system builds what you actually want. Skip 
 
 ### 3. Plan Phase
 
-```
+```text
 /pan:plan-phase 1
 ```
 
 The system:
 
 1. **Researches** — Investigates how to implement this phase, guided by your context.md decisions
-2. **Plans** — Creates 2-3 atomic task plans with XML structure
-3. **Verifies** — Checks plans against requirements; up to three revision passes, then the remaining issues come to you
+2. **Plans** — Creates atomic plans of 2-3 tasks each, with XML structure
+3. **Verifies** — Checks plans against requirements; up to three checker passes (two revisions), then the remaining issues come to you
 
 Each plan is small enough to execute in a fresh context window. No degradation, no "I'll be more concise now."
 
@@ -352,7 +352,7 @@ Each plan is small enough to execute in a fresh context window. No degradation, 
 
 ### 4. Execute Phase
 
-```
+```text
 /pan:exec-phase 1
 ```
 
@@ -369,7 +369,7 @@ Walk away, come back to completed work with clean git history.
 
 Plans are grouped into "waves" based on dependencies. Within each wave, plans run in parallel. Waves run sequentially.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │  PHASE EXECUTION                                                     │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -403,36 +403,36 @@ This is why "vertical slices" (Plan 01: User feature end-to-end) parallelize bet
 
 ### 5. Verify Work
 
-```
+```text
 /pan:verify-phase 1
 ```
 
 **This is where you confirm it actually works.**
 
-Automated verification checks that code exists and tests pass. But does the feature *work* the way you expected? This is your chance to use it.
+Automated verification checks that code exists and tests pass. `/pan:verify-phase` re-runs that check on demand, goal-backward: does the codebase deliver what the phase promised?
 
 The system:
 
-1. **Extracts testable deliverables** — What you should be able to do now
-2. **Walks you through one at a time** — "Can you log in with email?" Yes/no, or describe what's wrong
-3. **Diagnoses failures automatically** — Spawns debug agents to find root causes
-4. **Creates verified fix plans** — Ready for immediate re-execution
+1. **Gates on the test suite** — a failing (or non-running) suite forces the verdict to `gaps_found`; the must-have checks still run so the report is complete
+2. **Checks every must-have** — each phase promise is verified against the code, not the task list
+3. **Reports the gaps** — a verification report with a per-truth status and the recommended fix plans
+4. **Hands the gaps to the planner** — `/pan:plan-phase N --gaps` writes the fix plans (`gap_closure: true`); `/pan:exec-phase N --gaps-only` runs just those
 
-If everything passes, you move on. If something's broken, you don't manually debug — you just run `/pan:exec-phase` again with the fix plans it created.
+On Claude Code, `/pan-diagnose-issues <phase>` spawns one debugger per failed UAT truth to find root causes. Manual acceptance testing stays yours: use the feature and record what you find in the phase's UAT file.
 
-**Creates:** `{phase_num}-uat.md`, fix plans if issues found
+**Creates:** `{phase_num}-verification.md`; fix plans follow from `/pan:plan-phase N --gaps`
 
 ---
 
 ### 6. Repeat → Complete → Next Milestone
 
-```
+```text
 /pan:discuss-phase 2
 /pan:plan-phase 2
 /pan:exec-phase 2
 /pan:verify-phase 2
 ...
-/pan:milestone-done
+/pan:milestone-done 1.0
 /pan:milestone-new
 ```
 
@@ -448,7 +448,7 @@ Then `/pan:milestone-new` starts the next version — same flow as `new-project`
 
 ### Quick Mode
 
-```
+```text
 /pan:quick
 ```
 
@@ -462,12 +462,12 @@ Quick mode gives you PAN guarantees (atomic commits, state tracking) with a fast
 
 Use for: bug fixes, small features, config changes, one-off tasks.
 
-```
+```text
 /pan:quick
 > What do you want to do? "Add dark mode toggle to settings"
 ```
 
-**Creates:** `.planning/quick/001-add-dark-mode-toggle/plan.md`, `summary.md`
+**Creates:** `.planning/quick/001-add-dark-mode-toggle/001-plan.md`, `001-summary.md`
 
 ---
 
@@ -520,7 +520,7 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 | Stage | Orchestrator does | Agents do |
 |-------|------------------|-----------|
 | Research | Coordinates, presents findings | 4 parallel researchers investigate stack, features, architecture, pitfalls |
-| Planning | Validates, manages iteration | Planner creates plans, checker verifies, up to three revision passes |
+| Planning | Validates, manages iteration | Planner creates plans, checker verifies, up to three passes |
 | Execution | Groups into waves, tracks progress | Executors implement in parallel, each with a fresh context window |
 | Verification | Presents results, routes next | Verifier checks codebase against goals, debuggers diagnose failures |
 
@@ -602,9 +602,9 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:design-phase [N]` | Design a phase — architecture, ADR, threat-lite — before planning |
 | `/pan:plan-phase [N] [--auto]` | Research + plan + verify for a phase |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves, verify when complete |
-| `/pan:verify-phase [N]` | Manual user acceptance testing ¹ |
+| `/pan:verify-phase [N]` | Re-run goal-backward verification with a test-suite gate; lists gaps for `/pan:plan-phase N --gaps` ¹ |
 | `/pan:milestone-audit` | Verify milestone achieved its definition of done |
-| `/pan:milestone-done` | Archive milestone, tag release |
+| `/pan:milestone-done <version>` | Archive milestone, tag release |
 | `/pan:milestone-new [name]` | Start next version: questions → research → requirements → roadmap |
 
 ### Navigation
@@ -613,6 +613,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 |---------|--------------|
 | `/pan:progress` | Where am I? What's next? |
 | `/pan:hud` (alias `/pan:dashboard`) | Render a self-contained HTML dashboard of project + bot-army state to `.planning/hud.html` (`--open`, `--out`, `--stdout`) |
+| `/pan:report phase <N> \| index \| all` | Self-contained HTML report for one phase, or a timeline index linking every phase report (`--out`, `--open`, `--stdout`; `--bundle` on `index` inlines every phase report into one file) |
 | `/pan:help` | Show all commands and usage guide |
 | `/pan:update` | Update PAN with changelog preview |
 | `/pan:discord` | Join the PAN Discord community |
@@ -633,9 +634,9 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:add-phase` | Append phase to roadmap |
-| `/pan:insert-phase [N]` | Insert urgent work between phases |
-| `/pan:remove-phase [N]` | Remove future phase, renumber |
+| `/pan:add-phase <description>` | Append phase to roadmap |
+| `/pan:insert-phase <after> <description>` | Insert urgent work between phases |
+| `/pan:remove-phase <N>` | Remove future phase, renumber |
 | `/pan:assumptions [N]` | See Claude's intended approach before planning |
 | `/pan:milestone-gaps` | Create phases to close gaps from audit |
 
@@ -657,14 +658,15 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:debug [desc]` | Systematic debugging with persistent state |
 | `/pan:quick [--full]` | Execute ad-hoc task with PAN guarantees (`--full` adds plan-checking and verification) |
 | `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` auto-fixes detected issues |
-| `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs); `--apply` executes the safe fixes — ledgers are quarantined by rename, never deleted, and settled `state.md` history is archived rather than dropped |
+| `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs); `--apply` executes the safe fixes — poisoned ledgers are quarantined by rename (only the newest quarantine copy is kept), and settled `state.md` history is archived rather than dropped |
 | `/pan:links [--strict]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027, v3.8.0+) |
-| `/pan:phase-tests [N]` | Generate tests for a completed phase based on UAT criteria |
+| `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase based on UAT criteria |
 | `/pan:milestone-cleanup` | Archive accumulated phase directories from completed milestones |
 | `/pan:retro` | Milestone retrospective — estimation accuracy, verification patterns, gap analysis |
 | `/pan:patches` | Restore local modifications after a PAN update |
 | `/pan:research-phase [N]` | Standalone deep research for a phase (usually part of plan-phase) |
 | `/pan:phase-budget` | Estimate context window utilization for current phase |
+| `/pan:experiment <subcommand>` | Manage external self-improvement experiments — scaffold, run, harvest, promote findings back to PAN (never inside the PAN source repo) |
 
 ### Operations
 
@@ -708,7 +710,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:learn` | Analyze trace events, generate optimization report with auto-apply block |
 | `/pan:optimize {apply\|list\|stats\|trace}` | Apply optimizer recommendations, list reports, view stats, manage trace sessions |
 | `/pan:git <subcommand>` | Phase-aware git workflow: commit/branch/push/status/log/stash/diff/rollback/tag/sync |
-| `/pan:audit-deployment` | Audit a PAN installation for integrity (manifest verification, drift detection) |
+| `/pan:audit-deployment <target-directory> [--enhancements] [--repair]` | Audit a PAN installation for integrity, project health, and draft enhancement specs |
 
 <sup>¹ Contributed by reddit user OracleGreyBeard</sup>
 
@@ -738,7 +740,7 @@ Control which Claude model each agent uses. Balance quality vs token spend.
 > `reasoning` = the session model (inherit) — every agent runs on the model you launched the session with, except the reviewer-class agents (reviewer, hardener, meta-reviewer), which pin a reasoning-tier model. Both `quality` and `balanced` resolve this way; only `budget` steps down to a Sonnet/Haiku mix. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
 
 Switch profiles:
-```
+```text
 /pan:profile budget
 ```
 
@@ -782,7 +784,7 @@ Control how PAN handles branches during execution.
 - **`phase`** — Creates a branch per phase, merges at phase completion
 - **`milestone`** — Creates one branch for entire milestone, merges at completion
 
-At milestone completion, PAN Wizard offers squash merge (recommended) or merge with history.
+At milestone completion you merge the milestone branch yourself (`git merge --squash` or `--no-ff`); `/pan:milestone-done <version>` archives and tags but does not merge.
 
 ---
 

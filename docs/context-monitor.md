@@ -1,6 +1,6 @@
 # Context Window Monitor
 
-> **Note:** This document is superseded by [HOOKS.md](HOOKS.md), which covers all five built-in hooks including the context monitor. This file is retained for backward compatibility.
+> **Note:** This document is superseded by [HOOKS.md](HOOKS.md), which covers all the built-in hooks including the context monitor. This file is retained for backward compatibility.
 
 A PostToolUse hook that warns the agent when context window usage is high.
 
@@ -32,7 +32,7 @@ To avoid spamming the agent with repeated warnings:
 
 ## Architecture
 
-```
+```text
 Statusline Hook (pan-statusline.js)
     | writes
     v

@@ -6,73 +6,99 @@
 
 ## Project Structure
 
-```
+```text
 pan-wizard/
-  bin/install.js              # Interactive installer (npx pan-wizard entry point)
-  package.json                # Zero runtime deps; devDependencies retained for future bundling option
-  commands/pan/               # Command .md files (Claude Code slash commands)
+  bin/
+    install.js                # Interactive installer (npx pan-wizard entry point)
+    install-lib.cjs           # Installer functions — pure apart from verifyInstall()/dirDigest(), which read the filesystem: converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
+  package.json                # Zero runtime deps; devDependencies are the VS Code e2e harness only
+  commands/pan/               # Command .md files (Claude Code format; converted per runtime at install)
   agents/                     # Agent .md files (specialized AI roles)
   pan-wizard-core/
     bin/
-      pan-tools.cjs           # CLI bridge — all commands/agents call this
-      lib/                    # Core CJS modules
-        core.cjs              # Model profiles, output helpers, toPosix(), loadConfig()
-        config.cjs            # Config CRUD (dot-notation get/set)
+      pan-tools.cjs           # CLI dispatcher — all commands/agents call this
+      lib/                    # Core CJS modules (responsibilities and the dependency graph: ARCHITECTURE.md)
+        constants.cjs         # Shared path constants, file patterns, regex, FOREIGN_PLANNING_MARKERS
+        core.cjs              # Model profiles, output()/error() exit-code contract, toPosix(), loadConfig()
+        utils.cjs             # readJsonFile, planningPath()/planningRel() (built on planning-root), listPhaseDirs
+        planning-root.cjs     # Which .planning tree a command acts on: --track / --planning-dir + provenance (ADR-0043)
+        lock.cjs              # Advisory file locking + atomic writes for .planning/ concurrency (ADR-0030)
+        config.cjs            # Config CRUD (dot-notation get/set), standards catalog
         state.cjs             # state.md operations + frontmatter sync
-        init.cjs              # Compound init commands (bootstrap context)
-        phase.cjs             # Phase CRUD (list, add, insert, remove, complete)
+        state-compact.cjs     # state compact — archive settled history to state-history.md (ADR-0044)
+        init.cjs              # Compound init commands (bootstrap context per workflow)
+        phase.cjs             # Phase CRUD facade; phase-remove.cjs — removal + renumbering cascade
         roadmap.cjs           # roadmap.md parsing (get-phase, analyze)
-        verify.cjs            # Verification + health validation
+        verify.cjs            # Verification + health facade; verify-{drift,retro,deploy,preflight}.cjs re-exported
+        foreign-planning.cjs  # Is this .planning/ another tool's? (gsd-core markers) — hygiene, health and init consult it
         milestone.cjs         # Milestone lifecycle (archive, milestones.md)
         frontmatter.cjs       # YAML-like frontmatter CRUD
-        commands.cjs          # Misc: history-digest, scaffold, progress, todo, commit
+        commands.cjs          # Misc facade: history-digest, scaffold, progress, todo, commit; commands-learnings.cjs re-exported
         template.cjs          # Template loading from templates/
-        constants.cjs         # Shared path constants, file patterns, regex
-        utils.cjs             # Shared utilities: readJsonFile, planningPath, listPhaseDirs
-        context-budget.cjs    # Context window utilization estimation + token counting
+        context-budget.cjs    # Context window utilization, cache block classification, cache.ttl recommendation
         focus.cjs             # Strategic project management: scan, plan, sync, exec, design, auto
         codebase.cjs          # Codebase analysis: language detection, imports, best practices
-        memory.cjs            # Cross-phase agent memory (read/append/list/compact)
-        cost.cjs              # Token usage + cost dashboard (Spec B v2 Y-6)
-        bus.cjs               # Agent message channels (Spec B v2 Y-7)
+        memory.cjs            # Cross-phase agent memory; memory-optimize.cjs and memory-rebuild.cjs (ADR-0040)
+        agents-md.cjs         # AGENTS.md PAN section + CLAUDE.md bridge (shared by the installer and memory rebuild)
+        cost.cjs              # Token ledger, dated rate table, managed modelPricing (Y-6); models check
+        bus.cjs               # Agent message channels (Y-7)
         preview.cjs           # Foresight: phase blast radius, dependency graph (Y-1)
         review-deep.cjs       # Deep review merge (reviewer + hardener + meta) (Y-2)
         knowledge.cjs         # Grounded Q&A / discuss / playbook (Y-3)
         whatif.cjs            # Counterfactual phase replay in worktree (Y-4)
-        bridge.cjs             # MCP discovery + recommendation (Y-5)
+        bridge.cjs            # MCP discovery + recommendation — the CLIENT side (Y-5)
         optimize.cjs          # Circular optimization loop (trace, learn, apply) (v3.5)
         git.cjs               # /pan:git command family (v3.5)
         distill.cjs           # AI code-bloat 5-pass optimizer (v3.5)
-        doc-lint.cjs          # Markdown frontmatter+structure linter (vendored from whooo)
-        experiment.cjs        # Self-improvement loop scaffolding
-        runner.cjs            # External agent runner (Claude/Codex/Gemini/OpenCode)
-        learn-lint.cjs        # Learnings-store integrity linter (L-001..L-005)
+        doc-lint.cjs          # Markdown frontmatter+structure linter; `doc-lint counts` is release Gate 4
+        links.cjs             # Doc–code link graph: `links validate` (ADR-0027); release Gate 5
+        suggest.cjs           # "Did you mean" for unknown commands — error path only
+        experiment.cjs        # Self-improvement loop scaffolding; runner.cjs — external agent runner
+        learn-lint.cjs        # Learnings-store integrity linter (L-001..L-006)
         learn-index.cjs       # Learnings index + topics-for queries (per-agent relevance)
         squads.cjs            # Squad registry — army roles architecture/build/quality/release (ADR-0032)
         worktree.cjs          # Branch-per-agent git worktree isolation for parallel builders (ADR-0033)
         campaign.cjs          # Scheduled self-resuming army campaigns ("dreaming") (ADR-0034)
         hud.cjs               # Single self-contained HTML dashboard of project + bot army (ADR-0035)
+        phase-report.cjs      # Per-phase HTML report + timeline index (v3.15)
         skill-align.cjs       # Skill-Aligned Decomposition pass for the planner (ADR-0038)
         hygiene.cjs           # Project cleanup + version alignment (scan/clean)
-    workflows/                # Workflow .md files (multi-step procedures)
+    mcp/                      # MCP bridge — the SERVER side: zero-dep JSON-RPC stdio server over pan-tools (ADR-0041)
+    workflows/                # Workflow .md files (multi-step procedures); the native Claude Code workflow scripts are generated by buildNativeWorkflowScripts() in bin/install-lib.cjs at install and plugin-build time, not stored here
     references/               # Reference .md files (loaded by agents)
     templates/                # Template files (scaffolding)
+    learnings/                # Learnings store (universal/ ships; internal/ is stripped by the installer)
   hooks/
-    dist/                     # Hooks (copied from hooks/, no bundling — they're pure Node.js)
+    pan-*.js                  # Hook sources (pure Node.js)
+    dist/                     # Build output — copied, not bundled; gitignored
       pan-statusline.js       # Writes context metrics bridge file
       pan-context-monitor.js  # Injects context warnings to agent
-      pan-check-update.js     # Periodic update check
+      pan-check-update.js     # Periodic update check (spawns `npm view pan-wizard version`)
       pan-cost-logger.js      # SubagentStop hook — appends cost record to tokens.jsonl (v3.4)
       pan-trace-logger.js     # SubagentStop hook — circular optimization tracing (v3.5)
       pan-stop-guard.js       # Stop hook — blocks the auto-advance boundary drop once (v3.23)
   scripts/
-    build-hooks.js            # Copy hooks from hooks/ to hooks/dist/ (no bundling)
+    build-hooks.js            # Copy hooks/ → hooks/dist/ (no bundling)
+    build-plugin.js           # Claude Code plugin → dist/pan-wizard-plugin/
+    build-agent-plugin.js     # Agent Plugins 1.0 bundle → dist/pan-agent-plugin/ (ADR-0045)
+    plugin-path.js            # Rebuilds the plugin and prints its path as one stdout line (command-source marketplace contract)
+    release-check.js          # The release gates — `npm run release:check`, also `prepublishOnly`
+    deprecate-old-versions.js # Post-publish housekeeping; dry-run by default, `--apply` to act; never unpublishes
+    run-tests.cjs             # Glob-free test runner (the CI matrix shells do not expand test globs)
+    install-git-hooks.js      # `prepare` script — points core.hooksPath at scripts/git-hooks/ (the gitleaks pre-commit scan)
+    generate-skills-docs.py   # Regenerates docs/SKILLS-REFERENCE.md and docs/SKILLS-FULL-TEXT.md
+  harness/                    # PAN Harness — behavioural scenarios against installs built from a packed artifact (ADR-0047); not shipped
+  marketplace/                # Local command-source Claude plugin marketplace for the dev loop; not shipped
+  .agents/plugins/marketplace.json   # Codex marketplace → ./dist/pan-agent-plugin (build first)
+  .github/plugin/marketplace.json    # Copilot marketplace → ./dist/pan-agent-plugin (its version is pinned to package.json by a test)
+  pan-zcode/                  # Experimental: ZCode subsystem — a consumer of the shared MCP bridge, with its own installer
   tests/                      # Test suite (node:test + node:assert)
-    helpers.cjs               # Test utilities: runPanTools(), createTempProject(), cleanup()
+    helpers.cjs               # runPanTools(), createTempProject(), cleanup(), buildPluginInto(), buildAgentPluginInto()
     *.test.cjs                # Unit test files
-    scenarios/                # Scenario test files (scenario + integration)
-  docs/                       # User-facing documentation
-  assets/                     # SVG terminal recordings
+    scenarios/                # Scenario test files (installer + integration + workflow)
+    fixtures/                 # Pinned fixtures (module export surfaces, Agent Plugins schemas, …)
+  docs/                       # User and contributor docs; decisions/ (ADRs), specs/, audits/
+  assets/                     # README images (hero, terminal SVG, avatar)
 ```
 
 ## Development Setup
@@ -85,6 +111,8 @@ npm test             # Run unit tests
 npm run test:scenarios  # Run scenario tests (install + integration)
 npm run test:all     # Run all tests (unit + scenario)
 npm run build:hooks  # Copy hooks from hooks/ to hooks/dist/ (no bundling — pure Node.js)
+npm run release:check   # The release gates — what `npm publish` runs via prepublishOnly (see Release Process)
+npm run harness         # Tier 0 of the behavioural harness: model-free, free (see Behavioural Harness)
 ```
 
 ### Local Testing
@@ -110,9 +138,9 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 
 1. Create `agents/pan-your-agent.md`
 2. Define role, context requirements, constraints, output format using XML structure
-3. Add model profile entry to `core.cjs` MODEL_PROFILES table
+3. Add the agent to `MODEL_PROFILES` and `AGENT_BASE_EFFORT` in `core.cjs`, and set the agent's `effort:` frontmatter to that base effort (`tests/core.test.cjs` pins all three)
 4. Reference from workflow .md that spawns it via Task tool
-5. That's it — the installer copies `agents/` recursively, so new agent files ship automatically (no installer edit needed)
+5. That's it — the installer copies every top-level `agents/*.md` file (subdirectories are not scanned), so new agent files ship automatically (no installer edit needed)
 
 ## How to Add a Core Module Function
 
@@ -124,8 +152,8 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 ## How to Add a Hook
 
 1. Create source in `hooks/your-hook.js`
-2. Run `npm run build:hooks` (copies hooks from `hooks/` to `hooks/dist/`; no bundling — they're pure Node.js)
-3. Register in installer: hooks are copied and registered in the target runtime's settings.json
+2. Add the file to `HOOKS_TO_COPY` in `scripts/build-hooks.js`, then run `npm run build:hooks` (copy-only; no bundling — they're pure Node.js)
+3. Register it in `bin/install.js` (the hook-command block near `buildHookCommand` and the uninstall list), in `HOOK_EVENT_MAP` in `bin/install-lib.cjs` if it needs a new event, and in the plugin hooks builders there
 
 ## Writing Tests
 
@@ -138,10 +166,11 @@ const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
 
 describe('your feature', () => {
   test('does the thing', () => {
-    const tmp = createTempProject();    // Creates temp .planning/ structure
+    const tmp = createTempProject();    // Temp dir with an empty .planning/phases/
     try {
-      const result = runPanTools(['your-command', 'arg'], tmp);
-      assert.strictEqual(result.field, 'expected');
+      const result = runPanTools('your-command arg', tmp);   // one argument string, not an array
+      const data = JSON.parse(result.output);
+      assert.strictEqual(data.field, 'expected');
     } finally {
       cleanup(tmp);                     // Always clean up
     }
@@ -151,16 +180,19 @@ describe('your feature', () => {
 
 ### Test Helpers (tests/helpers.cjs)
 
-- `runPanTools(args, cwd)` — Runs `pan-tools.cjs` with given args in cwd, returns parsed JSON
-- `createTempProject(options)` — Creates temp directory with .planning/ scaffold (optional: roadmap, state, config, phases)
+- `runPanTools(argsString, cwd)` — runs `pan-tools.cjs` with a pre-joined argument string; returns `{ success, output, error? }` where `output` is the raw stdout (`JSON.parse` it yourself)
+- `createTempProject()` — creates a temp directory containing an empty `.planning/phases/` scaffold (no options)
 - `cleanup(dir)` — Recursively removes temp directory
+- `createScenarioRunner(runtime)` — installs PAN for `'claude'|'opencode'|'gemini'|'codex'|'copilot'` into a temp dir; returns `{ tmpDir, installedToolsPath, configDir, run(args, cwd?), cleanup() }`
+- `buildPluginInto()` / `buildAgentPluginInto()` — build the two distribution bundles into a fresh private temp directory and return its path (never into `dist/`); the caller owns `cleanup(dir)`
+- `TOOLS_PATH`, `INSTALLER_PATH` — absolute paths to `pan-tools.cjs` and `bin/install.js`; `RUNTIME_DIR` — the runtime → config-directory-name map (`claude` → `.claude`, …, `copilot` → `.github`) mirroring the installer's `getDirName`
 
 ### Running Tests
 
 ```bash
-npm test                                    # All tests
+npm test                                    # Unit tests (npm run test:all adds the scenarios)
 node --test tests/phase.test.cjs            # Single file
-node --test --test-reporter spec tests/*.test.cjs  # Verbose
+node scripts/run-tests.cjs tests            # Cross-platform runner; a tests/*.test.cjs glob only expands on bash or Node 22+
 ```
 
 ## Cross-Platform Considerations
@@ -233,6 +265,7 @@ References are knowledge documents in `pan-wizard-core/references/` that agents 
 | `checkpoints.md` | Checkpoint types, automation patterns, auth gates |
 | `continuation-format.md` | "Next Up" block format for workflow transitions |
 | `decimal-phase-calculation.md` | Phase numbering logic for inserted phases |
+| `design-methodology.md` | Shared design method — depth tiers and the quality bar that `pan-designer` (via `/pan:design-phase`) and `focus-design` both hold design artifacts to, and that `pan-design-checker` verifies against |
 | `git-integration.md` | Commit format, per-task commits, branching |
 | `git-planning-commit.md` | How pan-tools commits planning docs |
 | `guardrails.md` (v3.6.0+) | Behavioral guardrails — anti-patterns, Code Preservation Principle, Stop-the-Line Rule |
@@ -262,15 +295,17 @@ Templates in `pan-wizard-core/templates/` scaffold new project files. The `templ
 | Category | Templates | Used by |
 |----------|-----------|---------|
 | Project | project.md, requirements.md, roadmap.md, state.md | `/pan:new-project` |
-| Phase | context.md, research.md, discovery.md, phase-prompt.md | `/pan:discuss-phase`, `/pan:plan-phase` |
+| Phase | context.md, research.md, phase-prompt.md (discovery.md is unreferenced by shipped content) | `/pan:discuss-phase`, `/pan:plan-phase` |
 | Codebase | architecture.md, stack.md, conventions.md, concerns.md, integrations.md, structure.md, testing.md, relationships.md, best-practices.md | `/pan:map-codebase` |
 | Summary | summary.md, summary-minimal.md, summary-standard.md, summary-complex.md | pan-executor |
 | Verification | validation.md, uat.md, verification-report.md | pan-verifier |
-| Debug | debug.md, debug-subagent-prompt.md | `/pan:debug` |
+| Debug | debug-subagent-prompt.md (debug.md is unreferenced by shipped content) | the `diagnose-issues` workflow (the native `/pan-diagnose-issues` script carries its own inline prompt) |
 | Research | research-project/stack.md, features.md, architecture.md, pitfalls.md, summary.md | pan-phase-researcher |
-| Planning | planner-subagent-prompt.md, standards.md, user-setup.md | pan-planner, `/pan:new-project` |
-| Lifecycle | milestone.md, milestone-archive.md, retrospective.md, continue-here.md | Milestone commands |
+| Planning / execution | user-setup.md (planner-subagent-prompt.md and standards.md are unreferenced by shipped content) | `execute-plan.md` writes `{phase}-USER-SETUP.md` from user-setup.md |
+| Lifecycle | milestone-archive.md (continue-here.md, milestone.md and retrospective.md are unreferenced by shipped content — `pause.md` writes `.continue-here.md` from its own inline structure) | `/pan:milestone-done` |
 | Spec B v2 | playbook.md (knowledge system), preview-report.md (foresight/preview) | `/pan:knowledge`, `/pan:preview` |
+| Design & experiments | design.md, idea.md | `/pan:design-phase` (pan-designer), `/pan:experiment` |
+| Config | config.json | Unreferenced by shipped content — `config-ensure-section` writes `buildConfigDefaults()` from `config.cjs`, not this file |
 
 To customize: edit templates in `pan-wizard-core/templates/` directly. Changes take effect on next use. After PAN updates, check for template changes in the changelog.
 
@@ -293,18 +328,39 @@ Besides the loose-file installer, two builders package PAN as a plugin. Neither 
 | `npm run build:plugin` | `dist/pan-wizard-plugin/` | Claude Code (plugin marketplaces; the local `command`-source test bed in `marketplace/`) | `.claude-plugin/plugin.json`, `commands/`, `agents/`, `hooks/`, `workflows/`, `.mcp.json`, `pan-wizard-core/` |
 | `npm run build:agent-plugin` | `dist/pan-agent-plugin/` | Copilot CLI / VS Code, Codex, Cursor, Kiro — the vendor-neutral **Agent Plugins 1.0** format (ADR-0045) | `plugin.json`, `skills/`, `mcp.json`, `pan-wizard-core/`, `hooks/` (scripts + Codex `hooks.json`), `com.github.copilot/` (agents + hooks) |
 
-Two marketplace files in the repository point at the Agent Plugins build so a checkout can install it without publishing: `.agents/plugins/marketplace.json` (Codex, repo-scoped, discovered automatically inside the repo) and `.github/plugin/marketplace.json` (Copilot, added with `copilot plugin marketplace add`). Both reference `./dist/pan-agent-plugin`, so run the builder first. The release gate (`scripts/release-check.js`, gate 8) builds both bundles into temp directories and fails the release if either does not produce its manifest.
+Two marketplace files in the repository point at the Agent Plugins build so a checkout can install it without publishing: `.agents/plugins/marketplace.json` (Codex, repo-scoped, discovered automatically inside the repo) and `.github/plugin/marketplace.json` (Copilot, added with `copilot plugin marketplace add`). Both reference `./dist/pan-agent-plugin`, so run the builder first. The release gate (`scripts/release-check.js`, gate 8) builds both bundles into temp directories and fails the release if either does not produce its manifest — and, since `2026-09-10`, digests the local `dist/pan-agent-plugin` (untracked — `dist/` is gitignored) against the fresh build whenever it exists, so a stale bundle behind those two marketplaces fails the release with the fix named.
 
 The vendor directories carry their own verification status, recorded in ADR-0045: the Codex hooks shape and `${PLUGIN_ROOT}` expansion come from Codex's plugin reference; the Copilot namespace and its flat PascalCase hooks come from VS Code's documentation, and a live `copilot plugin install` on a machine that has the CLI is the remaining gate. No Antigravity variant is emitted — its manifest schema is closed and different.
 
 Both builders take an output override (`PAN_PLUGIN_OUT`, `PAN_AGENT_PLUGIN_OUT`) and refuse to wipe a directory that is not a previous build of theirs. Tests never build into `dist/`: they go through `buildPluginInto()` / `buildAgentPluginInto()` in `tests/helpers.cjs`, which build into private temp directories, because `node --test` runs files in parallel and two files rebuilding one directory raced.
 
-The skills in the Agent Plugins bundle come from the same unified-skills compiler the installer's `--unified-skills` path uses (`rewriteUnifiedSkillCommandContent`, `convertClaudeCommandToUnifiedSkill` in `bin/install-lib.cjs`). Do not add a second converter: `tests/unified-skills-install.test.cjs` pins the installer's output and `tests/agent-plugin-build.test.cjs` pins the bundle's, including that the Claude plugin stays byte-identical.
+The skills in the Agent Plugins bundle come from the same unified-skills compiler the installer's `--unified-skills` path uses (`rewriteUnifiedSkillCommandContent`, `convertClaudeCommandToUnifiedSkill` in `bin/install-lib.cjs`). Do not add a second converter: `tests/unified-skills-install.test.cjs` pins the installer's output and `tests/agent-plugin-build.test.cjs` pins the bundle's, including that the Claude plugin build carries no bundle token or Agent Plugins artefact.
+
+## Behavioural Harness
+
+`harness/` is the PAN Harness (ADR-0047): JSON scenarios run against installs built from a **packed** artifact. A run packs the repository, extracts the tarball (never `npx`), installs from the package into seeded workspaces, and asserts on what the installed PAN does — the install matrix across the five runtimes, the bridge answering for another project through the per-call `cwd`, the deployed native workflow scripts, the Agent Plugins bundle, live gates on CLIs that are present, and (with a spend cap) whole execution chains. It succeeds the external PanLoop harness and lives in-repo so it cannot be lost separately from the contracts it asserts. Not shipped — `harness/` is outside the package `files` allowlist.
+
+```bash
+npm run harness                                    # tier 0 — model-free, free, about a minute
+npm run harness:model -- --max-usd 10 --repeat 5   # tier 2 — chain runs; skipped (never green) without a spend cap
+```
+
+Tier 0 is the one to run before a release. Model tiers spend your Claude usage and are skipped — never green — without `--max-usd`, which is split across the model-tier scenarios in the run. Run state goes outside the checkout (`D:\pantesting\harness-runs\<run-id>\` on the maintainer's machine); `harness/ledger.jsonl` is the tracked findings history, deduped by signature. A scenario's `requires` (`cli`, `minVersion`) **skips** it with the reason when the environment cannot run it — never a pass — and a model step that never ran is a harness error, not a finding. Every assertion kind has a both-direction test in `tests/harness.test.cjs`; add a kind there first. `harness/README.md` has the scenario schema, the tiers, and the headless background-wait ceiling the runner lifts.
 
 ## Release Process
 
-1. Run all tests: `npm run test:all` (all must pass)
-2. Build hooks: `npm run build:hooks`
-3. Update version in `package.json` — and the `version` of the `pan-wizard` entry in `.github/plugin/marketplace.json`, which a test pins to it
-4. Update `CHANGELOG.md` with new version entry
-5. `npm publish` (triggers `prepublishOnly`, which runs the release-check gates — tests, hook rebuild, npm pack dry-run, etc.)
+Releases are published by CI from a tag; nothing is published from a laptop. The flow, as run for recent releases:
+
+1. **Gate locally:** `npm run release:check`. It is the same script `prepublishOnly` runs in CI, so a red gate here is a red publish there. In order: hook build; `test:all`; `npm audit --omit=dev`; `doc-lint counts` over `docs/` (no filesystem-derived counts outside `CLAUDE.md`); `links validate` (the doc↔code link graph resolves); `npm pack` size sanity **and zero runtime dependencies**; a smoke install of the packed tarball into a temp directory; and both distribution bundles building, with `dist/pan-agent-plugin` digested against the fresh build. Run `npm run harness` (tier 0) as well.
+2. **Refresh the counts table** in `CLAUDE.md` with the snippet it carries — the only place counts live — and, if any command or dev skill changed, regenerate the skills docs: `python scripts/generate-skills-docs.py`.
+3. **Bump the version** in `package.json` — and the `version` of the `pan-wizard` entry in `.github/plugin/marketplace.json`, which a test pins to it.
+4. **Turn `## [Unreleased]` into `## [x.y.z] - YYYY-MM-DD`** in `CHANGELOG.md`.
+5. **Commit as `release(x.y.z): …`** on a `release/vx.y.z` branch and open a PR to `main`. The required checks (secret scan, audit, the OS × Node test matrix, CodeQL) must be green before merge.
+6. **Tag the merge commit and push the tag by explicit refspec:**
+
+   ```bash
+   git tag vx.y.z && git push origin refs/tags/vx.y.z
+   ```
+
+   A `v*` tag triggers `.github/workflows/release.yml`, which reruns the gates through `prepublishOnly` and publishes with npm provenance. Do not rely on `git push --follow-tags` — it has silently dropped the tag before, and then nothing publishes.
+7. **After a successful publish:** `node scripts/deprecate-old-versions.js` (dry-run by default; `--apply` deprecates every stable release outside the newest-three window and any superseded prerelease — it never unpublishes), then upgrade the installs you maintain with the installer.

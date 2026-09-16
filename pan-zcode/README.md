@@ -13,7 +13,7 @@ ZCode through the one interface it speaks: **MCP**.
 
 ## How it fits
 
-```
+```text
 ZCode harness (GLM-5.2)          primary Agent drives everything; ported subagents fan out
         │  MCP · local stdio
 pan-wizard-core/mcp  (SHARED)    a thin, zero-dep bridge — verbs → MCP tools/resources

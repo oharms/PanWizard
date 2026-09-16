@@ -163,7 +163,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 | `--push` | off | Push approved merges to origin (still human-gated). |
 | `--clean-seal` | off | One clean build + full verification after the last item (commands from config). |
 | `--schedule` | off | Arm a self-resuming campaign at this cadence (`hourly`/`daily`/`weekly`/`Nh`/`Nd`) instead of running once — writes the schedule descriptor (ADR-0034). Pair with `--daily-budget`. |
-| `--daily-budget` | 300 | Per-day point budget for a scheduled campaign. Advisory by default (an indicator of the day's spend); it only pauses the day's run when `budget.enforce`/`enforce_budget` is set. |
+| `--daily-budget` | 300 | Per-day point budget for a scheduled campaign. Advisory by default (an indicator of the day's spend); it only pauses the day's run when `enforce_budget: true` is set by hand in the schedule descriptor (`schedule.json`); no flag or config key sets it. |
 | `--dry-run` | off | Plan + squad delegation preview only; STOP. |
 | `--continue` / `--stop` / `--status` | — | Resume / halt / report from `.planning/orchestration/` + focus-auto state. |
 
@@ -8018,9 +8018,9 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 **What it does:**
 1. `pan-tools preview phase <N>` returns `{files_mentioned, test_files_mentioned, risk_signals, risk_score, plans[], status}`.
 2. Spawn `pan-previewer` with the payload as `<preview_input>`.
-3. Agent writes `.planning/phases/<N>/preview.md` with files touched / tests at risk / migration steps / risk assessment / bottom line.
+3. Agent writes `.planning/phases/<NN-slug>/preview.md` with files touched / tests at risk / migration steps / risk assessment / bottom line.
 
-**Output:** `.planning/phases/<N>/preview.md`
+**Output:** `.planning/phases/<NN-slug>/preview.md`
 
 ### `phases` — Cross-phase dependency graph
 
@@ -11216,9 +11216,11 @@ Add a row only for a genuinely new market primitive; note the addition in the re
 
 ---
 
-### /review (36 lines)
+### /review (38 lines)
 
 ```markdown
+# /review - Review Current Code Changes
+
 Review the current code changes:
 
 ## ⛔ Self-Protection Gate

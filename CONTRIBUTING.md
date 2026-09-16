@@ -25,7 +25,7 @@ Thank you for your interest in contributing to PAN Wizard!
 3. Make your changes
 4. Add tests if applicable
 5. Update documentation
-6. Run test suite: `npm test`
+6. Run the whole suite: `npm run test:all` (and `npm run release:check` before a release PR)
 7. Commit with clear messages
 8. Push and create PR
 
@@ -53,7 +53,7 @@ node <path-to-clone>/bin/install.js --claude --global  # Install to ~/.claude/
 ### Building Hooks
 
 PAN's hooks are pure Node.js with zero dependencies, so `build:hooks` simply
-copies `hooks/*.js` to `hooks/dist/` — there is no bundler or compile step.
+copies the hooks listed in `HOOKS_TO_COPY` (`scripts/build-hooks.js`) to `hooks/dist/` — there is no bundler or compile step.
 After modifying `hooks/`:
 
 ```bash
@@ -64,7 +64,7 @@ Output goes to `hooks/dist/`.
 
 ## Project Structure
 
-```
+```text
 PanWizard/
   bin/                  # Installer entry point (install.js)
   commands/pan/         # command .md files (Claude Code format)
@@ -73,16 +73,19 @@ PanWizard/
   pan-wizard-core/      # Core library
     bin/lib/            # CJS modules (config, state, init, verify, etc.)
     bin/pan-tools.cjs   # CLI tool for commands/agents to call
+    mcp/                # MCP bridge — zero-dep stdio server exposing pan-tools to MCP clients
     workflows/          # Workflow orchestration .md files
     references/         # Reference docs loaded by agents
     templates/          # File templates (config.json, plans, etc.)
   hooks/
     pan-*.js            # Hook source files
     dist/               # Built hooks (copied output)
-  scripts/              # Build scripts
+  scripts/              # Build, release-gate and test-runner scripts
+  harness/              # Behavioural harness against packed installs (dev only: npm run harness)
+  marketplace/          # Local Claude plugin marketplace for the dev loop (not shipped)
   tests/                # Test suite (node:test + node:assert)
   docs/                 # User-facing documentation
-  assets/               # SVG terminal recordings
+  assets/               # README images and logos (hero PNGs, terminal SVG, avatar)
 ```
 
 ### Key Files
@@ -99,21 +102,25 @@ PanWizard/
 ## Testing
 
 ```bash
-# Run all tests
+# Unit tests
 npm test
+
+# Scenario tests (installer + integration + workflow), then everything together
+npm run test:scenarios
+npm run test:all
 
 # Run specific test file
 node --test tests/phase.test.cjs
 
-# Run with verbose output
-node --test --test-reporter spec tests/*.test.cjs
+# The runner npm test uses (cross-platform; a tests/*.test.cjs glob only expands on bash or Node 22+)
+node scripts/run-tests.cjs tests
 ```
 
 Tests use `node:test` and `node:assert` (no external test framework). All modules are CommonJS (`.cjs`).
 
 ### Cross-Platform Considerations
 
-- Use `toPosix()` from helpers for file paths (Windows backslashes break comparisons)
+- Use `toPosix()` from `pan-wizard-core/bin/lib/core.cjs` for file paths (Windows backslashes break comparisons)
 - Use file-based input for shell commands containing `$` signs (avoids shell expansion)
 - Test on both Windows and macOS/Linux when touching path-related code
 
@@ -148,7 +155,8 @@ Agents should:
 
 - Update README.md for user-facing feature changes
 - Update docs/USER-GUIDE.md for detailed configuration or workflow changes
-- Update CHANGELOG.md for all notable changes
+- Update CHANGELOG.md for all notable changes, under `## [Unreleased]` — the release commit turns that heading into the version
+- Never embed filesystem-derived counts (commands, agents, tests, modules, …) anywhere but `CLAUDE.md`; release Gate 4 (`doc-lint counts`) fails on them — write "all shipped commands", not a number
 - Keep docs/context-monitor.md current if hooks change
 
 ## Further Reading

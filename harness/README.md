@@ -5,11 +5,13 @@ artifact**, not the source tree — the successor to PanLoop (ADR-0047). It live
 repository so it cannot be lost separately from the contracts it asserts; its run state
 lives outside the checkout.
 
-```
+```bash
 node harness/src/run.cjs                       # tier 0: model-free, free, ~a minute
 node harness/src/run.cjs --tier 1 --max-usd 2  # + single-turn model steps, capped spend
 node harness/src/run.cjs --tier 2 --max-usd 10 --repeat 5   # + chain runs, five times each
 node harness/src/run.cjs --scenario install-matrix          # one scenario
+node harness/src/run.cjs --repo <dir> --keep                 # pack another checkout; keep the extracted artifact after the run
+node harness/src/run.cjs --help
 ```
 
 Or `npm run harness` (tier 0) and `npm run harness:model -- --max-usd <n>`.
@@ -38,7 +40,7 @@ Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on this machine
 | 1 | + one `model` turn per step (`claude -p`) | your Claude usage | needs `--max-usd` |
 | 2 | + chain runs (a whole `/pan-exec-waves`) | more | needs `--max-usd`, run `--repeat 5` |
 
-A model step is **refused** without `--max-usd`. The cap is **split equally across the
+A model-tier scenario is **skipped with the reason** `model tier requires --max-usd` when no cap is given (never green). The cap is **split equally across the
 model-tier scenarios in the run** and enforced per scenario from the measured
 `total_cost_usd` in Claude Code's JSON output, so an oracle cannot starve the scenario it is
 compared with; reps are interleaved (every scenario's rep 1 before any rep 2) so an
@@ -70,11 +72,19 @@ Every model step's full `claude -p` output is written to `<run>/steps/<scenario>
   "steps": [ { "kind": "pan", "argv": ["models", "check"], "expect": ["exit:0", "json:stale=false"], "why": "…" } ] }
 ```
 
+`requires` gates a scenario on the environment rather than letting it pass vacuously: `cli`
+names a binary that must be on PATH, and `minVersion` (needs `cli`) is compared against that
+binary's `--version` — `/skill-doctor` exists from Claude Code 2.1.261, so the skill-doctor
+scenario carries `"minVersion": "2.1.261"`. An unmet requirement **skips** the scenario and
+records the reason it found; it is never green.
+
 Step kinds: `pan` (installed `pan-tools` argv), `fs` (assert; `read: <rel>` puts a file's
 text in stdout for `json:` assertions), `sh` (a script under `harness/scripts/`), `build`
 (a repo `scripts/*.js` builder with the output override), `cli` (a bare command on PATH),
 `mcp` (a JSON-RPC batch to the installed bridge; `cwd: "other"` runs it from a directory
 that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin).
+Any step may carry `timeoutMinutes` (default `budget.maxStepMinutes`); `pan` and `mcp` steps may
+name a `runtime`; `model` steps take `strictMcp` (default true); `mcp` steps take `cwd: "other"` to address the second workspace; `build` steps take `out`.
 Placeholders `<ws>`, `<other>`, `<repo>`, `<pkg>` are filled in argv, args, paths and prompts.
 
 Assertion kinds: `exit:<n>`, `file:<rel>`, `absent:<rel>`, `glob:<pattern>`,
@@ -85,7 +95,9 @@ both-direction test in `tests/harness.test.cjs`; add a kind there first.
 Every step carries a `why`. That is not decoration — it is what makes a finding readable
 when it surfaces months later, and the runner prints it under each failure.
 
-## Coverage today
+## Representative scenarios
+
+The full set lives in `harness/scenarios/` (`ls harness/scenarios`); this table names the ones the docs refer to.
 
 | Scenario | Tier | Covers |
 |---|---|---|
@@ -97,10 +109,19 @@ when it surfaces months later, and the runner prints it under each failure.
 | `plugin-agent-scope` | 1 | `/pan-plugin-selftest` inside the Claude plugin: `AGENT_SCOPE: scoped\|bare` |
 | `native-exec-waves-chain` | 2 | `/pan-exec-waves` on a seeded two-plan phase: every plan gets a summary and the phase a verification |
 | `markdown-exec-phase-chain` | 2 | The markdown twin on the same seed — the oracle for the chain comparison |
+| `live-gate-gemini` / `-opencode` | 0 | Ask the CLI itself whether it loaded PAN's MCP registration — skipped with reason where the CLI is absent |
+| `focus-design-ab-original` / `-split` | 1 | The body-budget A/B: the shipped `/pan:focus-design` versus a split variant on the same seed and prompt (R21) |
+| `skill-doctor-context-cost` | 1 | `/skill-doctor`'s static context cost for PAN's skills; requires Claude Code 2.1.261+ |
+| `map-codebase-single-shot` | 1 | Single-shot map-codebase on a repo below the sharding threshold |
+| `pause-resume` | 1 | `/pan:pause` then `/pan:resume` restores the session |
+| `unified-skills-discovery` | 1 | Claude Code discovers the `.agents/skills/` tree (ADR-0028's default-on gate) |
+| `plan-phase-checker-loop` | 2 | Research → plan → checker loop on an unplanned phase |
+| `quick-mode` | 2 | `/pan:quick` end to end on a small repo |
+| `uat-diagnose-native` | 2 | `/pan-diagnose-issues` on a phase with one failed UAT truth and the matching real defect |
 
 ## Seeds
 
-`harness/seeds/<name>/` is copied into the workspace before install. Seeds are written the
+`harness/seeds/<name>/` is copied into the workspace before install (`"seed": "empty"` is reserved and means no seed). Seeds are written the
 way PAN's own templates write them (roadmap checklist lines, state frontmatter, plan files
 with the `wave` / `autonomous` frontmatter `phase-plan-index` parses) — a fixture in a
 format PAN never emits verifies nothing.

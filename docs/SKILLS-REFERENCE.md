@@ -947,7 +947,7 @@ These exist only in the PAN source repository (`.claude/commands/`) and are NOT 
 | `/featureAI` | /featureAI - Feature Investigation, Design & Specification |
 | `/pandev` | /pandev - Structured PAN Wizard Development Workflow |
 | `/reality-check` | Full reality check of PAN Wizard — claims vs code vs deployed installs, market and runtime delta, peer comparison, optimisation review, and a sized what's-next queue |
-| `/review` | review |
+| `/review` | /review - Review Current Code Changes |
 | `/superplan` | /superplan — Strategic Work Plan Generator |
 
 #### /execplan
@@ -976,7 +976,9 @@ Full reality check of PAN Wizard — claims vs code vs deployed installs, market
 
 #### /review
 
-**Lines:** 36
+/review - Review Current Code Changes
+
+**Lines:** 38
 
 #### /superplan
 
