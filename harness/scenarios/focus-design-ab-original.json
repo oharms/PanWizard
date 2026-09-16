@@ -1,0 +1,29 @@
+{
+  "id": "focus-design-ab-original",
+  "tier": 1,
+  "description": "A/B control: run /pan:focus-design --spike with the SHIPPED command body on the small-repo seed; assert the spec artefact and record cost.",
+  "why": "Reality check RC19 / plan item R21: five emitted command bodies exceed the Agent Skills recommendation; the August note said a split changes what the agent reads and when, so it must be measured, not assumed. Same seed, same prompt, same mode (--spike: the cheapest full pass); the comparison is artefact presence plus the per-step cost the runner records from claude -p. Run --repeat 2 with both scenarios in one invocation so reps interleave. This is the control arm.",
+  "seed": "small-repo",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 4,
+    "maxMinutes": 25,
+    "maxStepMinutes": 20
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:focus-design \"add a --json flag to bin/cli.js so that `tiny add` and `tiny greet` print a JSON object ({\\\"result\\\": ...}) instead of plain text, with tests\" --spike",
+      "expect": [
+        "exit:0",
+        "glob:docs/specs/*_featureai.md"
+      ],
+      "why": "focus-design.md Phase 10.1: the spec is written to docs/specs/<feature_name>_featureai.md. --spike skips competitive research, so this is the minimal pipeline; the artefact is the outcome, the recorded costUsd the measurement."
+    }
+  ]
+}

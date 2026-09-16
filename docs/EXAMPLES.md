@@ -11,7 +11,7 @@ A solo developer building a CLI task manager from zero.
 
 ### Step 1 -- Initialize the project
 
-```
+```text
 /pan:new-project
 ```
 
@@ -19,7 +19,7 @@ PAN asks a series of scoping questions: what you are building, who it is for,
 tech stack preferences, deployment targets, and rough scope. Answer
 conversationally -- PAN extracts structure from your responses.
 
-```
+```text
 PAN: What are you building?
 You: A CLI task manager called "doto". It stores tasks in a local SQLite
      database, supports priorities, due dates, and tags. Written in Python.
@@ -41,15 +41,15 @@ When the conversation is complete PAN creates:
 
 ### Step 2 -- Discuss implementation preferences for Phase 1
 
-```
+```text
 /pan:discuss-phase 1
 ```
 
 PAN asks about implementation details specific to Phase 1: database schema
 choices, CLI framework (click vs argparse vs typer), output formatting, error
-handling style. Your answers are recorded in `.planning/phases/01-{name}/context.md` as decisions.
+handling style. Your answers are recorded in `.planning/phases/01-{name}/01-context.md` as decisions.
 
-```
+```text
 PAN: Which CLI framework do you prefer?
 You: Typer -- I want automatic --help generation and type hints.
 
@@ -59,7 +59,7 @@ You: Rich tables for list view, plain text for single-task view.
 
 ### Step 3 -- Plan Phase 1
 
-```
+```text
 /pan:plan-phase 1
 ```
 
@@ -74,7 +74,7 @@ file-by-file change descriptions, and dependency notes.
 
 ### Step 4 -- Execute Phase 1
 
-```
+```text
 /pan:exec-phase 1
 ```
 
@@ -87,18 +87,20 @@ You see real-time progress as files are created and tests are run.
 
 ### Step 5 -- Verify the work
 
-```
+```text
 /pan:verify-phase 1
 ```
 
-PAN walks you through user acceptance testing. It suggests specific things to
-try ("run `doto add 'Buy milk' --priority high` and confirm it appears in
-`doto list`") and asks you to confirm or flag issues. Fixes are applied
-immediately. When you approve, `.planning/phases/01-{name}/verification.md` is written.
+PAN re-runs goal-backward verification with a test-suite gate and writes
+`.planning/phases/01-{name}/01-verification.md`. If it reports `gaps_found`,
+run `/pan:plan-phase 1 --gaps` to plan the fixes and execute that plan as usual.
+Manual acceptance testing (for example `doto add 'Buy milk' --priority high`
+followed by `doto list`) is yours to run; `/pan:verify-phase` does not walk you
+through it.
 
 ### Step 6 -- Continue through the remaining phases
 
-```
+```text
 /pan:discuss-phase 2
 /pan:plan-phase 2
 /pan:exec-phase 2
@@ -115,11 +117,11 @@ Each phase builds on the verified output of the previous one.
 
 ### Step 7 -- Complete the milestone
 
-```
-/pan:milestone-done
+```text
+/pan:milestone-done 0.1.0
 ```
 
-Once all three phases are verified, `/pan:milestone-done` archives the
+Once all three phases are verified, `/pan:milestone-done 0.1.0` archives the
 milestone's phase artifacts, tags the release (`v0.1.0`), and updates
 `.planning/roadmap.md` to mark the milestone complete.
 
@@ -131,7 +133,7 @@ You have a Django web app and want to add a REST API layer.
 
 ### Step 1 -- Map the existing codebase
 
-```
+```text
 /pan:map-codebase
 ```
 
@@ -148,14 +150,14 @@ and your existing test patterns.
 
 ### Step 2 -- Initialize the API project
 
-```
+```text
 /pan:new-project
 ```
 
 Because the codebase has been mapped, PAN tailors its questions to the
 brownfield scenario:
 
-```
+```text
 PAN: I see a Django 4.2 app with 12 models and session-based auth.
      What do you want to add?
 You: A REST API using Django REST Framework. Token auth for external
@@ -173,7 +175,7 @@ by name and account for your existing URL structure.
 
 ### Step 3 -- Plan and execute
 
-```
+```text
 /pan:discuss-phase 1
 /pan:plan-phase 1
 /pan:exec-phase 1
@@ -189,11 +191,11 @@ everything from scratch. Tests are written to match your existing test style.
 
 A user reports that dates are displayed in UTC instead of local time.
 
-```
+```text
 /pan:quick
 ```
 
-```
+```text
 PAN: What do you need?
 You: The task list shows due dates in UTC. They should display in the
      user's local timezone. The relevant code is in src/display.py.
@@ -203,25 +205,25 @@ PAN reads the file, identifies the formatting call, applies the fix, and
 runs existing tests. No research phase, no plan document -- just a focused
 change with verification.
 
-```
+```text
 PAN: Fixed. Changed `task.due_date.strftime(...)` to
      `task.due_date.astimezone(tz.tzlocal()).strftime(...)` in
      src/display.py:47. All 23 tests pass.
 ```
 
-For larger ad-hoc work, use `--full` to get research and planning without
-the full phase ceremony:
+For larger ad-hoc work, use `--full` to add a plan-checker pass (max 2
+iterations) and post-execution verification without the full phase ceremony:
 
-```
+```text
 /pan:quick --full
 ```
 
-```
+```text
 You: Add CSV export to the task list command.
 ```
 
-PAN researches CSV best practices, plans the implementation, executes it,
-and verifies -- all in one flow, without creating a formal phase.
+PAN plans the implementation, has the plan checked, executes it, and
+verifies -- all in one flow, without research and without creating a formal phase.
 
 ---
 
@@ -232,14 +234,14 @@ remember where you left off.
 
 ### Check current state
 
-```
+```text
 /pan:progress
 ```
 
 PAN reads `.planning/state.md` and `.planning/roadmap.md` and prints a
 summary:
 
-```
+```text
 Project: doto (CLI task manager)
 Milestone: v0.2.0
 
@@ -257,7 +259,7 @@ Next step: /pan:exec-phase 2   (resumes at wave 3)
 
 ### Restore full context
 
-```
+```text
 /pan:resume
 ```
 
@@ -266,7 +268,7 @@ execution state. It reconstructs what has been built, what remains, and any
 blockers noted in `state.md`. You are back to full working context without
 re-reading anything yourself.
 
-```
+```text
 PAN: Context restored. Phase 2 execution is at wave 3 of 3.
      Remaining work: date-range filtering and the `doto filter` subcommand.
      Ready to continue with /pan:exec-phase 2
@@ -276,7 +278,7 @@ PAN: Context restored. Phase 2 execution is at wave 3 of 3.
 
 When you need to stop mid-session:
 
-```
+```text
 /pan:pause
 ```
 
@@ -292,21 +294,21 @@ You are working on a side project and want to minimize token usage.
 
 ### Switch to the budget profile
 
-```
+```text
 /pan:profile budget
 ```
 
-This configures PAN to use cheaper models for research and planning agents.
+This configures PAN to use cheaper models for research, planning and code-writing agents.
 The orchestrator still uses a capable model for coordination, but the
 parallel sub-agents use lighter ones.
 
 ### Disable optional stages
 
-```
+```text
 /pan:settings
 ```
 
-```
+```text
 PAN: Current settings:
   research: true
   plan_check: true
@@ -326,7 +328,7 @@ to roughly 15-25k tokens -- a 70-80% reduction.
 
 ### The workflow is identical
 
-```
+```text
 /pan:discuss-phase 1
 /pan:plan-phase 1        # faster, cheaper -- no research or plan-check
 /pan:exec-phase 1
@@ -344,7 +346,7 @@ You are three phases into a project when priorities shift.
 
 ### Original roadmap
 
-```
+```text
 Phase 1: User authentication     [complete]
 Phase 2: Dashboard               [complete]
 Phase 3: Reporting               [in progress]
@@ -357,7 +359,7 @@ Phase 5: Admin panel             [pending]
 The team needs a webhook integration before the next demo. Insert it as a
 new phase:
 
-```
+```text
 /pan:insert-phase 3 "Webhook Integration"
 ```
 
@@ -366,7 +368,7 @@ and never renumbers existing phases: it inserts `Phase 3.1: Webhook Integration`
 right after Phase 3. Notifications stays at 4, Admin Panel stays at 5 — every
 existing phase number is preserved. The roadmap updates:
 
-```
+```text
 Phase 1: User authentication     [complete]
 Phase 2: Dashboard               [complete]
 Phase 3: Reporting               [in progress]
@@ -379,11 +381,11 @@ Phase 5: Admin panel             [pending]
 
 The admin panel has been deprioritized indefinitely:
 
-```
+```text
 /pan:remove-phase 5
 ```
 
-```
+```text
 Phase 1: User authentication     [complete]
 Phase 2: Dashboard               [complete]
 Phase 3: Reporting               [in progress]
@@ -396,7 +398,7 @@ references update automatically.
 
 ### Continue normally
 
-```
+```text
 /pan:exec-phase 3     # finish current work
 /pan:verify-phase 3
 /pan:discuss-phase 3.1     # move to the inserted phase
@@ -444,7 +446,7 @@ pip-installable, Python 3.10+.
 
 ### Run automated initialization
 
-```
+```text
 /pan:new-project --auto @prd.md
 ```
 
@@ -452,7 +454,7 @@ PAN reads the PRD, extracts goals, requirements, constraints, and technical
 decisions. Instead of asking you questions, it generates all planning
 artifacts directly:
 
-```
+```text
 PAN: Read prd.md (847 tokens). Extracting project structure...
 
 Created:
@@ -470,7 +472,7 @@ or run /pan:new-project to refine interactively.
 
 From here the workflow is identical to the interactive path:
 
-```
+```text
 /pan:discuss-phase 1     # refine any implementation details
 /pan:plan-phase 1 --auto # auto mode works here too -- skips discussion,
                          # uses PRD decisions directly
@@ -505,11 +507,11 @@ is detailed enough to answer implementation questions.
 
 You've planned a database migration in phase 7. Before running `exec-phase`, sanity-check the blast radius.
 
-```
+```text
 /pan:preview phase 7
 ```
 
-The data layer scans `01-plan.md`, `02-plan.md`, etc., extracts file paths mentioned in backticks or under known source roots (`src/`, `tests/`, etc.), and runs the risk regex over the combined plan text. The `pan-previewer` agent then synthesizes a report at `.planning/phases/07/preview.md`:
+The data layer scans `07-01-plan.md`, `07-02-plan.md`, etc., extracts file paths mentioned in backticks or under known source roots (`src/`, `tests/`, etc.), and runs the risk regex over the combined plan text. The `pan-previewer` agent then synthesizes a report at `.planning/phases/07-<slug>/preview.md`:
 
 - **Files likely touched** — `src/db/migrations.js`, `src/models/User.js`, `tests/migrations.test.cjs`
 - **Tests at risk** — 3 test files reference migration schemas
@@ -522,11 +524,11 @@ If risk ≥ 7 or auth keywords hit, review the plan before `/pan:exec-phase`. Co
 
 Phase 4 adds JWT authentication. Run exec-phase with deep-review enabled:
 
-```
-/pan:exec-phase 4 --deep-review
+```text
+/pan:exec-phase 04 --deep-review
 ```
 
-After the normal pipeline (plan → executors → reviewer → verifier), the command auto-invokes `/pan:review-deep 4`:
+After the normal pipeline (plan → executors → reviewer → verifier), the command auto-invokes `/pan:review-deep 04` (the reviews directory takes the phase argument verbatim, so pass it zero-padded):
 
 1. **pan-hardener** (OWASP + STRIDE) writes `.planning/reviews/04/hardener.md`. Looks for missing authorization checks, credential storage weaknesses, session management gaps.
 2. **pan-meta-reviewer** reads both reviewer + hardener, writes `.planning/reviews/04/meta.md`. Flags what either missed, disputes overstated severities.
@@ -539,8 +541,8 @@ Verdict `block` means a critical issue was found — don't merge until resolved.
 
 After shipping a milestone, capture accumulated lessons for onboarding:
 
-```
-/pan:milestone-done
+```text
+/pan:milestone-done 0.1.0
 /pan:knowledge playbook
 ```
 

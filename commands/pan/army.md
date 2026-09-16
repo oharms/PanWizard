@@ -92,7 +92,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 | `--push` | off | Push approved merges to origin (still human-gated). |
 | `--clean-seal` | off | One clean build + full verification after the last item (commands from config). |
 | `--schedule` | off | Arm a self-resuming campaign at this cadence (`hourly`/`daily`/`weekly`/`Nh`/`Nd`) instead of running once — writes the schedule descriptor (ADR-0034). Pair with `--daily-budget`. |
-| `--daily-budget` | 300 | Per-day point budget for a scheduled campaign. Advisory by default (an indicator of the day's spend); it only pauses the day's run when `budget.enforce`/`enforce_budget` is set. |
+| `--daily-budget` | 300 | Per-day point budget for a scheduled campaign. Advisory by default (an indicator of the day's spend); it only pauses the day's run when `enforce_budget: true` is set by hand in the schedule descriptor (`schedule.json`); no flag or config key sets it. |
 | `--dry-run` | off | Plan + squad delegation preview only; STOP. |
 | `--continue` / `--stop` / `--status` | — | Resume / halt / report from `.planning/orchestration/` + focus-auto state. |
 

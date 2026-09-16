@@ -1,0 +1,17 @@
+{
+  "id": "plugin-agent-scope",
+  "tier": 1,
+  "description": "Load the Claude plugin built from this checkout with --plugin-dir and run /pan-plugin-selftest headlessly; read back the verdict and whether the plugin's agents load scoped or bare.",
+  "why": "Plan item 3b. The plugin's native workflow scripts spawn `pan-wizard:pan-…` because plugin agents are DOCUMENTED to load under the scoped name — but that premise was never live-measured, and the plugin's command prose still names agents bare. Probe 4 of the self-test answers both; the verdict line re-confirms placeholder expansion on the current Claude Code build. One model turn.",
+  "seed": "empty",
+  "install": null,
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 1, "maxMinutes": 10, "maxStepMinutes": 8 },
+  "steps": [
+    { "kind": "build", "script": "build-plugin.js", "out": "plugin", "expect": ["exit:0", "file:plugin/.claude-plugin/plugin.json", "file:plugin/commands/pan-plugin-selftest.md", "count:plugin/workflows/pan-*.js=4"],
+      "why": "The plugin under test is built fresh into the workspace, so the run measures this checkout and nothing cached." },
+    { "kind": "model", "prompt": "/pan-plugin-selftest", "pluginDir": "<ws>/plugin", "strictMcp": false,
+      "expect": ["exit:0", "stdout~VERDICT: case [ABC]", "stdout~AGENT_SCOPE: (scoped|bare)"],
+      "why": "The self-test ends with two greppable lines. `case A` = placeholder expands in command markdown (measured 2026-08-14 on 2.1.233); `AGENT_SCOPE: scoped` = the plugin's agents are namespaced as the workflow scripts assume. Either other answer is the finding, not a harness error." }
+  ]
+}

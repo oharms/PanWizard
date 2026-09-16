@@ -34,9 +34,9 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 **What it does:**
 1. `pan-tools preview phase <N>` returns `{files_mentioned, test_files_mentioned, risk_signals, risk_score, plans[], status}`.
 2. Spawn `pan-previewer` with the payload as `<preview_input>`.
-3. Agent writes `.planning/phases/<N>/preview.md` with files touched / tests at risk / migration steps / risk assessment / bottom line.
+3. Agent writes `.planning/phases/<NN-slug>/preview.md` with files touched / tests at risk / migration steps / risk assessment / bottom line.
 
-**Output:** `.planning/phases/<N>/preview.md`
+**Output:** `.planning/phases/<NN-slug>/preview.md`
 
 ### `phases` — Cross-phase dependency graph
 

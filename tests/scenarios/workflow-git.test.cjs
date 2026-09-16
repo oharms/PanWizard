@@ -99,7 +99,7 @@ describe('E2E Workflow: Git Integration', () => {
 
   test('step 6: validate health works in git repo', () => {
     const r = runner.run('validate health');
-    assert.ok(r.success, `should succeed: ${r.error}`);
+    assert.equal(r.success, JSON.parse(r.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const p = JSON.parse(r.output);
     assert.ok(['healthy', 'degraded', 'broken'].includes(p.status));
   });

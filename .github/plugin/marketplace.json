@@ -1,0 +1,19 @@
+{
+  "name": "pan-wizard-local",
+  "owner": {
+    "name": "PAN Wizard contributors",
+    "email": "noreply@example.com"
+  },
+  "metadata": {
+    "description": "PAN Wizard as an Agent Plugins bundle, built from this checkout (npm run build:agent-plugin). Installs skills, the MCP bridge, hooks and Copilot agents as one versioned unit.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "pan-wizard",
+      "description": "Command a bot army for your codebase: a reasoning-tier Mission Control delegates whole-project goals to specialist squads and ships behind a human merge gate. Five AI CLIs, zero context rot.",
+      "version": "3.27.0",
+      "source": "./dist/pan-agent-plugin"
+    }
+  ]
+}

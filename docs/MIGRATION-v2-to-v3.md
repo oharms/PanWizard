@@ -78,7 +78,7 @@ If you ever want to reset: these directories are safe to delete — they rebuild
 
 ### New hook registration
 
-The installer adds one new entry to `.claude/settings.json` under `hooks.SubagentStop`:
+The installer adds `SubagentStop` entries for `pan-cost-logger.js` and `pan-trace-logger.js`, and (since v3.23) a `Stop` entry for `pan-stop-guard.js`, to `.claude/settings.json`. The v3.4 cost-logger entry looked like this:
 
 ```json
 {
@@ -97,7 +97,7 @@ The installer adds one new entry to `.claude/settings.json` under `hooks.Subagen
 }
 ```
 
-The hook is non-blocking and silently no-ops on runtimes that don't fire SubagentStop. Nothing else in settings.json changes.
+The hook is non-blocking and silently no-ops on runtimes that don't fire SubagentStop. Today's installer also writes the trace-logger and stop-guard entries described above; nothing else in settings.json changes.
 
 ### Shipped hooks
 
@@ -106,6 +106,7 @@ The hook is non-blocking and silently no-ops on runtimes that don't fire Subagen
 - `pan-check-update.js` (unchanged)
 - `pan-cost-logger.js` (new in v3.4)
 - `pan-trace-logger.js` (new in v3.5 — circular optimization tracing)
+- `pan-stop-guard.js` (Stop hook, added in v3.23 — blocks the auto-advance boundary drop once)
 
 ### New core modules
 
@@ -232,8 +233,8 @@ No — the log is append-only from the moment you upgrade. Historical cost data 
 
 Partially:
 - `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:what-if`, `/pan:review-deep`: **yes** on all 5 runtimes. Agent quality varies with model capability.
-- `/pan:preview phases` (single-shot whole-repo pass): the fast path needs a model with a 1M-context window; smaller-context models take the sharded fallback.
-- `/pan:mcp-bridge`: Claude Code only (MCP is a Claude-first protocol).
+- `/pan:preview phases` (single-shot whole-repo pass): the fast path needs a model with a 1M-context window; smaller-context models skip the cross-reference bonus and rely on the data-layer output alone.
+- `/pan:mcp-bridge`: runs on all five runtimes as a cache reader (the host runtime populates the cache); Claude Code is the primary target.
 - `/pan:exec-phase --hierarchical`: Claude Code only — it needs native sub-agent spawning, which is a runtime limit rather than a model one. Elsewhere the flag is a no-op that warns and falls back to flat exec.
 
 ### What if I want to skip v3.0-v3.4 and go straight to v3.5?

@@ -70,6 +70,9 @@
     "test:e2e": "node scripts/run-tests.cjs tests/scenarios",
     "test:vscode": "npx playwright test --config tests/e2e/playwright.config.mjs",
     "test:watch": "node scripts/run-tests.cjs --watch tests tests/scenarios",
-    "build:plugin": "node scripts/build-plugin.js"
+    "build:plugin": "node scripts/build-plugin.js",
+    "build:agent-plugin": "node scripts/build-agent-plugin.js",
+    "harness": "node harness/src/run.cjs --tier 0",
+    "harness:model": "node harness/src/run.cjs --tier 2"
   }
 }

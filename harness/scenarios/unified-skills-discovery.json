@@ -1,0 +1,38 @@
+{
+  "id": "unified-skills-discovery",
+  "tier": 1,
+  "description": "Install with --unified-skills and ask Claude Code, headlessly and without tools, which pan- skills it can see; the answer measures whether the shared .agents/skills tree is discovered.",
+  "why": "ADR-0028's default-on gate (P4) and the README's claim that the unified tree is read natively were never live-measured on Claude Code. Unified skill names are `pan-<command>` (no colon); the proprietary commands are `/pan:<command>`, so a colon-free name in the answer can only have come from the shared tree.",
+  "seed": "empty",
+  "install": [
+    "--claude",
+    "--unified-skills"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 1,
+    "maxMinutes": 10,
+    "maxStepMinutes": 5
+  },
+  "steps": [
+    {
+      "kind": "fs",
+      "expect": [
+        "file:.agents/skills/pan-help/SKILL.md"
+      ],
+      "why": "The installer's contract: the unified tree exists before the question is asked."
+    },
+    {
+      "kind": "model",
+      "prompt": "Without using any tools, list the names of the skills currently available to you whose names begin with pan- (with a hyphen, not a colon), one per line, exactly as they are spelled. Then print the single word DONE on its own line.",
+      "expect": [
+        "exit:0",
+        "stdout~DONE",
+        "stdout~pan-help"
+      ],
+      "why": "If Claude Code loads .agents/skills, pan-help appears; if only .claude/commands/pan is loaded, the answer holds /pan:help forms and the assertion fails — that failure is the measurement ADR-0028 has been waiting for."
+    }
+  ]
+}

@@ -2,11 +2,40 @@
  * PAN Tools Test Helpers
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const TOOLS_PATH = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+
+/**
+ * Build the Claude Code plugin into a FRESH temp directory and return its path.
+ *
+ * Every test that needs a built plugin must go through here rather than run the
+ * builder against dist/pan-wizard-plugin: `node --test` runs test files in
+ * parallel, and two files rebuilding the same directory raced (one's rmSync
+ * inside the other's copy → ENOENT) on 2026-09-10. The builder honours
+ * PAN_PLUGIN_OUT for exactly this reason. Callers own cleanup(dir).
+ */
+function buildPluginInto() {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-plugin-'));
+  execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
+    cwd: path.join(__dirname, '..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PAN_PLUGIN_OUT: out },
+  });
+  return out;
+}
+
+/** Same contract for the Agent Plugins bundle (scripts/build-agent-plugin.js, ADR-0045). */
+function buildAgentPluginInto() {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-agent-plugin-'));
+  execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-agent-plugin.js')], {
+    cwd: path.join(__dirname, '..'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PAN_AGENT_PLUGIN_OUT: out },
+  });
+  return out;
+}
 
 // Helper to run pan-tools command
 function runPanTools(args, cwd = process.cwd()) {
@@ -120,4 +149,4 @@ function createScenarioRunner(runtime) {
   return { tmpDir, installedToolsPath, configDir, run, cleanup: cleanupRunner };
 }
 
-module.exports = { runPanTools, createTempProject, cleanup, createScenarioRunner, TOOLS_PATH, INSTALLER_PATH, RUNTIME_DIR };
+module.exports = { runPanTools, createTempProject, cleanup, createScenarioRunner, buildPluginInto, buildAgentPluginInto, TOOLS_PATH, INSTALLER_PATH, RUNTIME_DIR };

@@ -8,6 +8,7 @@ const path = require('path');
 const os = require('os');
 
 const lib = require('../bin/install-lib.cjs');
+const { buildPluginInto, cleanup } = require('./helpers.cjs');
 
 // ─── getDirName ─────────────────────────────────────────────────────────────
 
@@ -639,6 +640,14 @@ describe('detectModelCapabilities', () => {
   test('opus-4-7 has all capabilities including 1M', () => {
     const r = lib.detectModelCapabilities('claude-opus-4-7');
     assert.deepEqual(r, { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' });
+  });
+
+  test('claude-fable-5-1 (Claude Code default, and the installer\'s recommended flagship) has all capabilities including 1M', () => {
+    const r = lib.detectModelCapabilities('claude-fable-5-1');
+    assert.equal(r.has_1m_ctx, true);
+    assert.equal(r.has_thinking, true);
+    assert.equal(r.has_cache, true);
+    assert.equal(r.tier, 'reasoning');
   });
 
   test('claude-fable-5 has all capabilities including 1M', () => {
@@ -1399,6 +1408,30 @@ describe('mergeCodexHooksConfig', () => {
     assert.equal(twice.hooks.SessionStart.length, 2, 'reinstall must not duplicate');
     assert.equal(twice.hooks.SubagentStop.length, 2);
   });
+
+  // Upgrade path (3.27 → 3.28): a hooks.json written before the async column has
+  // every marker present, so a presence-only merge skipped the handlers and the
+  // observers stayed on the critical path forever. The merge must set the flag on
+  // the existing handler — and clear a stray one on the context monitor.
+  test('upgrade: a pre-async hooks.json gains the flag on its existing observer handlers', () => {
+    const legacy = { hooks: {
+      SessionStart: [{ hooks: [{ type: 'command', command: COMMANDS.updateCheckCommand }] }],
+      PostToolUse: [{ hooks: [{ type: 'command', command: COMMANDS.contextMonitorCommand, async: true }] }],
+      SubagentStop: [
+        { hooks: [{ type: 'command', command: COMMANDS.costLoggerCommand }] },
+        { hooks: [{ type: 'command', command: COMMANDS.traceLoggerCommand }] },
+      ],
+    } };
+    const merged = lib.mergeCodexHooksConfig(legacy, COMMANDS);
+    const handlers = Object.values(merged.hooks).flat().flatMap(g => g.hooks);
+    const byMarker = (m) => handlers.find(h => h.command.includes(m));
+    assert.equal(handlers.length, 4, 'no duplicate registrations on upgrade');
+    for (const observer of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger']) {
+      assert.equal(byMarker(observer).async, true, `${observer} gains async on upgrade`);
+    }
+    assert.equal(byMarker('pan-context-monitor').async, undefined,
+      'a stray async on the context monitor is cleared — its additionalContext must land this turn');
+  });
 });
 
 describe('removeCodexPanHooks', () => {
@@ -1470,17 +1503,40 @@ describe('plugin packaging builders', () => {
     assert.ok(!('type' in config.mcpServers.pan));
   });
 
-  test('the built plugin DECLARES the mcp server, not just ships it', () => {
+  test('the builder refuses to wipe a directory that is not a previous plugin build', (t) => {
+    // PAN_PLUGIN_OUT is a user-supplied path and the builder rmSync's it. A
+    // non-empty directory without our manifest must be refused, untouched.
+    const fs = require('fs');
+    const { execFileSync } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-notaplugin-'));
+    t.after(() => cleanup(dir));
+    fs.writeFileSync(path.join(dir, 'precious.txt'), 'do not delete');
+    assert.throws(() => execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PAN_PLUGIN_OUT: dir },
+    }), /refusing to replace/);
+    assert.ok(fs.existsSync(path.join(dir, 'precious.txt')), 'the refused directory must be left intact');
+    // An EMPTY override directory, and one holding a previous build, are accepted.
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-empty-'));
+    t.after(() => cleanup(empty));
+    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PAN_PLUGIN_OUT: empty },
+    });
+    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
+      encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PAN_PLUGIN_OUT: empty },
+    });
+    assert.ok(fs.existsSync(path.join(empty, '.claude-plugin', 'plugin.json')), 'rebuild over a previous build succeeds');
+  });
+
+  test('the built plugin DECLARES the mcp server, not just ships it', (t) => {
     // REGRESSION: pan-wizard-core is copied wholesale, so mcp/ landed in the
     // bundle from the moment it moved there — while nothing registered it. A
     // shipped-but-undeclared server is invisible; assert both halves together,
     // and assert the declared path actually resolves inside the bundle.
     const fs = require('fs');
     const { execFileSync } = require('child_process');
-    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
-      encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const out = path.join(__dirname, '..', 'dist', 'pan-wizard-plugin');
+    // Built into a private temp dir (see helpers.buildPluginInto) — never dist/.
+    const out = buildPluginInto();
+    t.after(() => cleanup(out));
     const mcpPath = path.join(out, '.mcp.json');
     assert.ok(fs.existsSync(mcpPath), 'plugin root must carry .mcp.json');
     const declared = JSON.parse(fs.readFileSync(mcpPath, 'utf8')).mcpServers.pan.args[0];
@@ -1488,13 +1544,12 @@ describe('plugin packaging builders', () => {
     assert.ok(fs.existsSync(resolved), `declared server path missing in bundle: ${declared}`);
   });
 
-  test('build-plugin script emits the verified plugin layout', () => {
+  test('build-plugin script emits the verified plugin layout', (t) => {
     const fs = require('fs');
     const { execFileSync } = require('child_process');
-    execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-plugin.js')], {
-      encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    const out = path.join(__dirname, '..', 'dist', 'pan-wizard-plugin');
+    // Built into a private temp dir (see helpers.buildPluginInto) — never dist/.
+    const out = buildPluginInto();
+    t.after(() => cleanup(out));
     assert.ok(fs.existsSync(path.join(out, '.claude-plugin', 'plugin.json')), 'manifest should exist');
     assert.ok(fs.existsSync(path.join(out, 'commands', 'pan', 'help.md')), 'commands should ship');
     assert.ok(fs.existsSync(path.join(out, 'agents', 'pan-planner.md')), 'agents should ship');
@@ -1506,6 +1561,56 @@ describe('plugin packaging builders', () => {
     assert.ok(gitMd.includes('${CLAUDE_PLUGIN_ROOT}/pan-wizard-core/'),
       'content paths should be plugin-root-relative');
     assert.ok(!gitMd.includes('.claude/pan-wizard-core'), 'no install-dir paths should remain');
+
+    // Native workflows (plan item 3, 2026-09): the plugin used to ship LESS than
+    // a loose install because the builder never wrote `workflows/`. Assert the
+    // directory, and assert the one thing that differs from the installer's copy:
+    // every agentType is scoped to the plugin (plugin agents load as
+    // `<plugin>:<agent>`), and every scoped agent actually exists in the bundle —
+    // a dead agent reference looks exactly like a live one on disk.
+    const manifest = JSON.parse(fs.readFileSync(path.join(out, '.claude-plugin', 'plugin.json'), 'utf8'));
+    const scripts = lib.buildNativeWorkflowScripts();
+    assert.ok(scripts.length > 0, 'non-vacuity: the builder must emit at least one script');
+    for (const s of scripts) {
+      const shipped = path.join(out, 'workflows', s.name);
+      assert.ok(fs.existsSync(shipped), `plugin must ship workflows/${s.name}`);
+      const src = fs.readFileSync(shipped, 'utf8');
+      assert.ok(src.startsWith('export const meta = {'), `${s.name} must keep the meta export first`);
+      const types = [...src.matchAll(/agentType:\s*'([^']+)'/g)].map(m => m[1]);
+      assert.ok(types.length > 0, `${s.name} spawns no agents — the rewrite has nothing to act on`);
+      for (const t of types) {
+        assert.ok(t.startsWith(manifest.name + ':'), `${s.name}: agentType '${t}' is not scoped to ${manifest.name}`);
+        const agentFile = path.join(out, 'agents', t.slice(manifest.name.length + 1) + '.md');
+        assert.ok(fs.existsSync(agentFile), `${s.name}: scoped agent '${t}' has no ${path.basename(agentFile)} in the bundle`);
+      }
+    }
+  });
+});
+
+describe('namespaceWorkflowAgentTypes (plugin copy of the native scripts)', () => {
+  test('scopes bare agentType values to the plugin and leaves everything else byte-identical', () => {
+    const src = "agent('x', { agentType: 'pan-reviewer', label: 'review' })\nagent('y', {agentType:'pan-hardener'})\n";
+    const out = lib.namespaceWorkflowAgentTypes(src, 'pan-wizard');
+    assert.ok(out.includes("agentType: 'pan-wizard:pan-reviewer'"));
+    assert.ok(out.includes("agentType:'pan-wizard:pan-hardener'"), 'whitespace after the colon is preserved');
+    assert.equal(out.replace(/pan-wizard:/g, ''), src, 'nothing but the scope prefix may change');
+  });
+
+  test('is idempotent and never double-scopes an already scoped name', () => {
+    const once = lib.namespaceWorkflowAgentTypes("{ agentType: 'pan-reviewer' }", 'pan-wizard');
+    assert.equal(lib.namespaceWorkflowAgentTypes(once, 'pan-wizard'), once);
+    assert.equal(lib.namespaceWorkflowAgentTypes("{ agentType: 'other:agent' }", 'pan-wizard'), "{ agentType: 'other:agent' }");
+  });
+
+  test('every emitted script is changed by the rewrite (proves the regex matches how the scripts are actually written)', () => {
+    for (const s of lib.buildNativeWorkflowScripts()) {
+      assert.notEqual(lib.namespaceWorkflowAgentTypes(s.content, 'pan-wizard'), s.content,
+        `${s.name}: the rewrite matched nothing — the emitted agentType shape drifted from the regex`);
+    }
+  });
+
+  test('passes content through untouched when given no plugin name', () => {
+    assert.equal(lib.namespaceWorkflowAgentTypes("agentType: 'pan-x'", ''), "agentType: 'pan-x'");
   });
 });
 

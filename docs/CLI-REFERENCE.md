@@ -2,7 +2,7 @@
 
 Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Every shipped command and agent ultimately invokes pan-tools for state management, verification, scaffolding, context gathering, prompt-cache priming, cross-phase memory, model-capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree, MCP bridge), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`, `runner`) plus vendored markdown linter (`doc-lint`).
 
-```
+```bash
 node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
 ```
 
@@ -37,6 +37,9 @@ node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
 - [22. Spec B v2 Commands](#22-spec-b-v2-commands-v30-v34)
 - [23. Self-Improvement Loop Commands](#23-self-improvement-loop-commands)
 - [24. Doc-Lint Commands](#24-doc-lint-commands)
+- [25. Skill-Aligned Decomposition Commands](#25-skill-aligned-decomposition-commands)
+- [26. Hygiene Commands](#26-hygiene-commands)
+- [27. Optimization, Git and Distill Commands](#27-optimization-git-and-distill-commands-v35)
 
 ---
 
@@ -52,7 +55,7 @@ Pass `--verbose` to any command to enable debug trace output on stderr. Sets `PA
 
 ### Large Output (`@file:` Protocol)
 
-When JSON output exceeds ~50 KB, the tool writes it to a temporary file and prints `@file:/tmp/pan-XXXXX.json` instead. Callers must detect the `@file:` prefix and read the file. This prevents context window pollution when AI agents consume the output.
+When JSON output exceeds ~50 KB, the tool writes it to a temporary file and prints `@file:<tmpdir>/pan-XXXXXX/out.json` instead (a fresh private directory under the OS temp dir, created with `mkdtemp`). Callers must detect the `@file:` prefix and read the file. If the temp file cannot be written, the JSON is truncated to 50 000 characters and printed to stdout instead, so treat a parse failure on a large payload as that fallback. This prevents context window pollution when AI agents consume the output.
 
 ### Exit Codes
 
@@ -142,15 +145,15 @@ Override the working directory. Accepts `--cwd /path` or `--cwd=/path`. Useful w
 |---|---|
 | `--track <name>` | Act on `.planning/tracks/<name>/`. Name must be a slug (`[A-Za-z0-9][A-Za-z0-9._-]*`) — it becomes a single path segment. |
 | `--planning-dir <path>` | Act on an arbitrary project-relative planning tree. Absolute, drive-relative, and `..`-containing paths are rejected. |
-| `--all-tracks` | Act on the root tree **and** every discovered track. Implemented for `hygiene`; other commands ignore it. |
+| `--all-tracks` | Act on the root tree **and** every discovered track. Implemented for `hygiene scan`/`hygiene clean` and `init milestone-op`; other commands ignore it. |
 
 Both value flags accept `--flag value` and `--flag=value`, and are mutually exclusive. Environment equivalents `PAN_TRACK` and `PAN_PLANNING_DIR` apply when no flag is given; flags win, and `PAN_PLANNING_DIR` outranks `PAN_TRACK`.
 
 **Tracks are discovered, not declared.** Any directory under `.planning/tracks/` carrying a planning spine (`state.md`, `roadmap.md`, `phases/`, `focus/`, `orchestration/`, …) is a track; an incidental folder is not.
 
-**Commands report the root they resolved.** Payloads that read a planning tree carry `planning_root`, `track`, `planning_root_source` (`default` / `env:PAN_TRACK` / `flag:--track` / …), and `planning_root_exists`. A mistyped `--track` therefore shows `planning_root_exists: false` next to its zero findings, instead of reading as a healthy project.
+**Commands report the root they resolved.** The `hygiene` payloads and every `init *` payload except `init new-milestone` and `init verify-work` carry `planning_root`, `track`, `planning_root_source` (`default` / `env:PAN_TRACK` / `flag:--track` / …), and `planning_root_exists`. A mistyped `--track` therefore shows `planning_root_exists: false` next to its zero findings, instead of reading as a healthy project.
 
-```
+```bash
 pan-tools hygiene scan --track verify --raw
 pan-tools hygiene scan --all-tracks --raw
 PAN_TRACK=verify pan-tools init milestone-op
@@ -183,7 +186,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `context-budget.cjs` | Context window utilization (v2.10.0: cache metrics surfaced in health output; v3.27: cache block classified `ok`/`warn`/`critical`/`absent` with remediation advice) |
 | `focus.cjs` | Focus workflow scan/plan/sync/exec/auto/design + v2.10.0: `focus classify-stages`, `focus reflection` |
 | `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices + v2.10.0: `codebase estimate-size` |
-| `memory.cjs` | **(v2.10.0, E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact` |
+| `memory.cjs` | **(v2.10.0, E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact`, `memory select`, `memory budget` |
 | `memory-optimize.cjs` | Reconcile the always-loaded project memory: `memory optimize [--apply] [--keep N]` (dedupe / placeholder-strip / cap-with-archive state.md); also runs automatically in the focus + normal flows |
 | `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply]` (AGENTS.md PAN section, CLAUDE.md bridge, state.md frontmatter) |
 | `agents-md.cjs` | Single source for the AGENTS.md PAN section + CLAUDE.md `@AGENTS.md` bridge builders (shared by the installer and `memory rebuild`) |
@@ -195,26 +198,27 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `knowledge.cjs` | **(v3.2, Y-3)** Grounded Q&A: `knowledge ask`, `knowledge discuss`, `knowledge playbook`. |
 | `whatif.cjs` | **(v3.3, Y-4)** Counterfactual worktree: `whatif prepare`, `whatif report`, `whatif cleanup`. |
 | `bridge.cjs` | **(v3.3, Y-5)** MCP discovery: `bridge list`, `bridge recommend`, `bridge cache`. |
-| `optimize.cjs` | **(v3.5)** Circular optimization loop: `optimize trace init/end/current/list/log/reconcile`, `optimize learn`, `optimize apply`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` (v3.21) rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
+| `optimize.cjs` | **(v3.5)** Circular optimization loop: `optimize trace init/end/current/list/show/log/reconcile`, `optimize learn`, `optimize apply`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` (v3.21) rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
 | `git.cjs` | **(v3.5)** Phase-aware git workflow: `git commit/branch/push/status/log/stash/diff/rollback/tag/sync`. Reuses `runCommitSafetyChecks` for commit hardening. |
 | `distill.cjs` | **(v3.5)** AI code-bloat optimizer (5-pass pipeline): `distill scan/analyze/report`. Cross-session memory at `.planning/memory/distill-patterns.md`. |
-| `doc-lint.cjs` | Markdown frontmatter + structure linter: `doc-lint <dir>`, `doc-lint schema-check`. |
+| `doc-lint.cjs` | Markdown frontmatter + structure linter: `doc-lint <dir>`, `doc-lint schema-check`, `doc-lint counts <dir>`, `doc-lint flags`. |
 | `experiment.cjs` | Self-improvement loop scaffolding: `experiment new/list/manifest/harvest/prune`. |
 | `runner.cjs` | External agent runner: `experiment run/status/stop`. Spawns Claude/Codex/Gemini/OpenCode via `spawnSync`. |
-| `learn-lint.cjs` | Learnings-store integrity linter: `learn lint`. Checks L-001..L-005 (duplicate IDs, dangling cross-refs, empty source_experiments, PAN-internal terms in universal-scope rules, revision marker without `superseded_by`). |
+| `learn-lint.cjs` | Learnings-store integrity linter: `learn lint`. Checks L-001..L-006 (duplicate IDs, dangling cross-refs, empty source_experiments, PAN-internal terms in universal-scope rules, revision marker without `superseded_by`, universal-scope pattern citing an internal pattern id). |
 | `learn-index.cjs` | Learnings index + queries: `learn build-index` (writes `pan-wizard-core/learnings/index.json` with topic→agent-relevance map), `learn topics-for --agent <role>` (budget-aware topic selection per agent role). Replaces "skim universal/" with targeted load. |
 | `squads.cjs` | **(v3.11, ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Role-scoped squads (`squad list` enumerates them), each carrying a model tier + an **advisory** access contract — the module's own header says it "modifies no agent and changes no execution path", so those labels are the contract the conductor is instructed to honour and the enforced grant stays each agent's `tools:` frontmatter. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
 | `worktree.cjs` | **(v3.11, ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`), `worktree cleanup` (`--force`; campaign teardown sweep, v3.24+). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
-| `campaign.cjs` | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--pause`/`--resume`/`--disable`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
+| `campaign.cjs` | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--source`/`--pause`/`--resume`/`--disable`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
 | `hud.cjs` | **(v3.12, ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
 | `skill-align.cjs` | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
-| `hygiene.cjs` | **(v3.13)** Project cleanup + version alignment: `hygiene scan` (version drift per runtime manifest, legacy uppercase filenames, .tmp orphans, memory bloat, poisoned ledgers, stale traces, fragment planning dirs), `hygiene clean [--apply]` (dry-run by default; safe fixes only — renames, compaction, quarantine-by-rename, trace pruning; installer re-runs and fragment removal stay manual). |
-| `phase-report.cjs` | **(v3.15)** Per-phase HTML report + project timeline index: `report phase <N>`, `report index` (`--bundle` for one self-contained inlined file), `report all` (`--out`/`--open`/`--stdout`). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`; bundle `.planning/report-bundle.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. Opt-in auto-generation at the verify→complete gate, focus-auto checkpoints, and army INTEGRATE via `workflow.phase_reports`. |
+| `hygiene.cjs` | **(v3.13)** Project cleanup + version alignment: `hygiene scan` (version drift per runtime manifest, legacy uppercase filenames, .tmp orphans, memory bloat, poisoned ledgers, stale traces and optimization reports, oversized cached context, fragment planning dirs, foreign planning trees), `hygiene clean [--apply]` (dry-run by default; safe fixes only — renames, compaction, quarantine-by-rename, trace pruning; installer re-runs and fragment removal stay manual). |
+| `phase-report.cjs` | **(v3.15)** Per-phase HTML report + project timeline index: `report phase <N>` and `report index` (`--out`/`--open`/`--stdout`; `index` also `--bundle` for one self-contained inlined file), `report all` (no effective flags — `--open` is parsed but ignored; writes every phase report plus the index to their default paths). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`; bundle `.planning/report-bundle.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. Opt-in auto-generation at the verify→complete gate, focus-auto checkpoints, and army INTEGRATE via `workflow.phase_reports`. |
 | `links.cjs` | Doc-Code Link Graph engine behind `links validate` (ADR-0027): parses frontmatter link declarations, resolves doc↔code references, and reports dangling/stale links. |
 | `constants.cjs` | Shared constants used across the dispatcher — e.g. `COMMAND_RENAME_MAP` (legacy→current command names) and `FOCUS_CATEGORIES`. No CLI surface; imported by other modules. |
 | `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
-| `utils.cjs` | Cross-cutting helpers (path normalization via `toPosix()`, safe reads, small parsers) shared by the other modules. No CLI surface. |
+| `utils.cjs` | Planning-root path builders (`planningPath()`, `planningRel()`, `phasesPath()`, `milestonesPath()`), `fileAccessible()`/`readJsonFile()`, plan/summary file filters and `classifyPhaseStatus()`, shared by the other modules. No CLI surface. (`toPosix()` and `safeReadFile()` live in `core.cjs`.) |
 | `planning-root.cjs` | **(v3.27)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
+| `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that belongs to another tool from markers PAN never writes (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys). Consulted by `hygiene scan`/`clean` (one `foreign-planning-tree` warning, the rename fix refused), `validate health` (`E006`, stops before `E002`–`E005`) and `init new-project` (refuses with an error payload). The remedy is always `--planning-dir <dir>`. No CLI surface of its own. |
 
 ---
 
@@ -422,6 +426,8 @@ Quick reference of all CLI commands grouped by category.
 | 196 | `memory budget` | Memory | memory.cjs |
 | 197 | `doc-lint counts` | Linting | doc-lint.cjs |
 | 198 | `doc-lint flags` | Linting | doc-lint.cjs |
+| 199 | `state compact` | State Progression | state-compact.cjs |
+| 200 | `optimize trace show` | Optimization | optimize.cjs |
 
 ---
 
@@ -433,8 +439,9 @@ Commands for reading and writing state.md — the central project state file.
 
 Load project config and planning state. This is the most commonly called command — nearly every workflow starts here.
 
-```
+```bash
 pan-tools state load [--raw]
+pan-tools state                   # bare `state` is an alias for `state load`
 ```
 
 **JSON output:**
@@ -450,9 +457,9 @@ pan-tools state load [--raw]
 
 **`--raw` output:** Key=value lines: `model_profile=balanced`, `commit_docs=true`, etc.
 
-**Error:** `{ "error": "state.md not found" }` on stdout, **exit 1**, if `.planning/state.md` doesn't exist.
+**Missing state.md is not an error here:** `state load` returns `state_exists: false` with an empty `state_raw` and exits `0`. `state json`, `state get` and the state-progression commands return `{ "error": "state.md not found" }` (exit 1).
 
-**Implementation:** `state.cjs → cmdStateLoad()` — Uses `readStateSafe()` for race-condition-safe file access.
+**Implementation:** `state.cjs → cmdStateLoad()` — reads state.md with a tolerant `fs.readFileSync` (absence is not an error).
 
 ---
 
@@ -460,7 +467,7 @@ pan-tools state load [--raw]
 
 Output state.md frontmatter as JSON. Returns the YAML frontmatter block parsed into a JSON object. If no frontmatter exists, it is built from the markdown body.
 
-```
+```bash
 pan-tools state json [--raw]
 ```
 
@@ -491,7 +498,7 @@ pan-tools state json [--raw]
 
 Update a single `**Field:** value` line in state.md.
 
-```
+```bash
 pan-tools state update "Current Phase" "06"
 ```
 
@@ -502,7 +509,7 @@ pan-tools state update "Current Phase" "06"
 
 If the field is not found:
 ```json
-{ "updated": false, "reason": "Field \"Current Phase\" not found in state.md" }
+{ "updated": false, "reason": "Field \"Current Phase\" not found in state.md", "error": "field_not_found" }
 ```
 
 **Note:** Field names are case-sensitive and match the bold markdown format (e.g., `"Current Phase"`, `"Status"`).
@@ -513,7 +520,7 @@ If the field is not found:
 
 Get full state.md content, or a specific field/section.
 
-```
+```bash
 pan-tools state get                    # Full content
 pan-tools state get "Status"           # Extract **Status:** value
 pan-tools state get "Session"          # Extract ## Session section
@@ -535,9 +542,11 @@ pan-tools state get "Session"          # Extract ## Session section
 
 ### `state patch --field val ...`
 
+> If state.md is missing, `state patch` prints `Error: state.md not found` on stderr (exit 1) rather than a JSON body.
+
 Batch update multiple `**Field:** value` lines in a single operation.
 
-```
+```bash
 pan-tools state patch --Status "Ready to execute" --"Current Plan" "3"
 ```
 
@@ -554,9 +563,9 @@ pan-tools state patch --Status "Ready to execute" --"Current Plan" "3"
 
 Structured parse of state.md into a comprehensive JSON object. Unlike `state json` (which returns frontmatter), this parses the full markdown body including decisions, blockers, and session info.
 
-```
-pan-tools state-snapshot [--raw]
-pan-tools state snapshot [--raw]    # equivalent alias — the spaced form dispatches to the same handler
+```bash
+pan-tools state-snapshot
+pan-tools state snapshot            # equivalent alias — the spaced form dispatches to the same handler
 ```
 
 **JSON output:**
@@ -596,7 +605,7 @@ Move settled history out of `state.md` into `state-history.md`. See [ADR-0044](d
 
 `state.md` is in the cached context block, so **every byte is re-read into every agent call** — and its section writers only append, so the file can only grow. In the field this reached 54 KB, of which 30 KB was a ten-week-old session log, a resolved milestone audit, and three phase closures: ~7k tokens of finished work re-read on every call.
 
-```
+```bash
 pan-tools state compact                   # dry-run: what would move, and what it saves
 pan-tools state compact --apply
 pan-tools state compact --keep-days 90
@@ -605,7 +614,7 @@ pan-tools state compact --keep-days 90
 **What moves:** a section whose heading is dated past the retention window (default 30 days), or whose heading says "closure"/"closed".
 
 **What never moves:**
-- headings PAN reads or writes (Decisions, Blockers, Next Action, Phase Progress, Project Reference, Source Authority, Toolchain, Session, Status, Metrics) — `state get <section>` can read any heading by name
+- headings PAN reads or writes (matched as heading prefixes: Decisions, Accumulated…, Blockers, Concerns, Session, Next Action, Phase Progress, Project Reference, Source Authority, Toolchain, Metrics, Current…, Status) — `state get <section>` can read any heading by name
 - any section carrying a field the frontmatter is rebuilt from (`**Status:**`, `**Current Phase:**`, `**Progress:**`, …), because `syncStateFrontmatter` regenerates frontmatter from the **first** such match in the body
 - anything unrecognised — the classifier declines rather than guesses
 - everything, when archiving would not actually shrink the file (on a small `state.md` the pointer costs more than the section)
@@ -618,7 +627,7 @@ pan-tools state compact --keep-days 90
 
 Increment the current plan counter. If the last plan is reached, set status to "ready for verification".
 
-```
+```bash
 pan-tools state advance-plan [--raw]
 ```
 
@@ -640,7 +649,7 @@ pan-tools state advance-plan [--raw]
 
 Record execution metrics in the Performance Metrics table in state.md.
 
-```
+```bash
 pan-tools state record-metric --phase 5 --plan 1 --duration 12min --tasks 4 --files 6
 ```
 
@@ -662,7 +671,7 @@ pan-tools state record-metric --phase 5 --plan 1 --duration 12min --tasks 4 --fi
 
 Recalculate and update the progress bar in state.md based on SUMMARY/PLAN counts across all phases.
 
-```
+```bash
 pan-tools state update-progress [--raw]
 ```
 
@@ -685,7 +694,7 @@ pan-tools state update-progress [--raw]
 
 Add a decision entry to the Decisions section in state.md.
 
-```
+```bash
 pan-tools state add-decision --summary "Use PostgreSQL" --phase 5 --rationale "Better JSON support"
 pan-tools state add-decision --summary-file /tmp/decision.txt --phase 5
 ```
@@ -710,7 +719,7 @@ pan-tools state add-decision --summary-file /tmp/decision.txt --phase 5
 
 Add a blocker to the Blockers section in state.md.
 
-```
+```bash
 pan-tools state add-blocker --text "Waiting on API credentials"
 pan-tools state add-blocker --text-file /tmp/blocker.txt
 ```
@@ -726,7 +735,7 @@ pan-tools state add-blocker --text-file /tmp/blocker.txt
 
 Remove a blocker from the Blockers section by matching text (case-insensitive substring match).
 
-```
+```bash
 pan-tools state resolve-blocker --text "API credentials"
 ```
 
@@ -735,15 +744,15 @@ pan-tools state resolve-blocker --text "API credentials"
 { "resolved": true, "blocker": "API credentials" }
 ```
 
-If no match: `{ "resolved": false, "reason": "No blocker matching \"API credentials\" found" }`.
+If no match: `{ "resolved": false, "reason": "no matching blocker", "blocker": "API credentials", "error": "blocker_not_matched" }` — exit 1.
 
 ---
 
 ### `state record-session --stopped-at "..." [--resume-file path]`
 
-Update session continuity fields in state.md (Last session, Stopped At, Resume File).
+Update session continuity fields in state.md (Last session, Stopped At, Resume File). **Side effect:** after a successful write this is the normal-flow memory checkpoint — `memory optimize` runs automatically unless `memory.auto_optimize` is `false`.
 
-```
+```bash
 pan-tools state record-session --stopped-at "Finished plan 3, starting plan 4"
 pan-tools state record-session --stopped-at "Mid-task" --resume-file .planning/phases/05-setup/05-02-plan.md
 ```
@@ -767,7 +776,7 @@ Commands for managing phase lifecycle — adding, inserting, removing, and compl
 
 Calculate the next available decimal phase number for inserting a sub-phase.
 
-```
+```bash
 pan-tools phase next-decimal 5 [--raw]
 ```
 
@@ -791,7 +800,7 @@ If decimals exist: `{ ..., "next": "05.3", "existing": ["05.1", "05.2"] }`.
 
 Append a new phase to roadmap.md and create the corresponding directory on disk.
 
-```
+```bash
 pan-tools phase add "API Integration Layer" [--raw]
 ```
 
@@ -808,7 +817,7 @@ pan-tools phase add "API Integration Layer" [--raw]
 
 **`--raw` output:** The padded phase number.
 
-**Side effects:** Creates `.planning/phases/NN-slug/` directory and appends a new section to roadmap.md.
+**Side effects:** Creates `.planning/phases/NN-slug/` (with a `.gitkeep`), appends a new `### Phase N:` detail section to roadmap.md, and adds a `- [ ] **Phase N: <name>**` checklist entry when the roadmap has a checklist.
 
 ---
 
@@ -816,7 +825,7 @@ pan-tools phase add "API Integration Layer" [--raw]
 
 Insert a decimal phase after an existing phase. Creates the directory and updates roadmap.md.
 
-```
+```bash
 pan-tools phase insert 5 "Emergency Hotfix" [--raw]
 ```
 
@@ -839,8 +848,8 @@ pan-tools phase insert 5 "Emergency Hotfix" [--raw]
 
 Remove a phase, delete its directory, and renumber all subsequent phases. Also updates roadmap.md and state.md.
 
-```
-pan-tools phase remove 7 [--raw]
+```bash
+pan-tools phase remove 7
 pan-tools phase remove 5.2 --force    # Force removal even if summaries exist
 ```
 
@@ -868,12 +877,14 @@ pan-tools phase remove 5.2 --force    # Force removal even if summaries exist
 
 ---
 
-### `phase complete <phase>`
+### `phase complete <phase> [--no-commit]`
 
 Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances state.md to the next phase, and updates requirements.md traceability.
 
-```
-pan-tools phase complete 5 [--raw]
+```bash
+pan-tools phase complete 5 [--no-commit]
+# Auto-commits .planning/ ("docs(NN): complete phase — <name>") and reports commit_hash,
+# unless --no-commit is passed or cwd is not a git repo.
 ```
 
 **JSON output:**
@@ -893,7 +904,7 @@ pan-tools phase complete 5 [--raw]
 
 **Side effects:** Checks off the phase checkbox in roadmap.md, updates the progress table row, advances `Current Phase` in state.md, and marks completed requirements in requirements.md. Both padded and unpadded phase spellings tick the same checklist line (`phase complete 01` and `phase complete 1` are equivalent).
 
-**When the tick cannot land** (roadmap unreadable, no checklist entry names the phase, or the write fails), the result carries a `roadmap_warning` string describing why and `roadmap_updated` is `false` — the completion is never silently unrecorded.
+**When the tick cannot land** (roadmap unreadable, no checklist entry names the phase, or the write fails), the result carries a `roadmap_warning` string describing why and `roadmap_updated` is `false` — the completion is never silently unrecorded. A `requirements_warning` string appears when requirements.md exists but could not be written; `roadmap_updated` is unaffected by it.
 
 ---
 
@@ -905,7 +916,7 @@ Commands for discovering phase directories and their contents.
 
 List phase directories or files within phases.
 
-```
+```bash
 pan-tools phases list [--raw]
 pan-tools phases list --type plans --phase 5 [--raw]
 pan-tools phases list --include-archived [--raw]
@@ -934,8 +945,8 @@ pan-tools phases list --include-archived [--raw]
 
 Index all plans within a phase, grouped by wave, with completion status. Used by the execute-phase workflow to determine which plans to run and in what order.
 
-```
-pan-tools phase-plan-index 5 [--raw]
+```bash
+pan-tools phase-plan-index 5
 ```
 
 **JSON output:**
@@ -965,9 +976,9 @@ pan-tools phase-plan-index 5 [--raw]
 
 ### `find-phase <phase>`
 
-Find a phase directory by number. Searches current phases, then archived milestone phases.
+Find a phase directory by number. Searches `.planning/phases/` only; archived milestone phases are not consulted (use `phases list --include-archived` to see them).
 
-```
+```bash
 pan-tools find-phase 5 [--raw]
 pan-tools find-phase 12A.1 [--raw]
 ```
@@ -996,7 +1007,7 @@ Commands for reading and updating roadmap.md — the project phase plan.
 
 Extract a phase section from roadmap.md.
 
-```
+```bash
 pan-tools roadmap get-phase 5 [--raw]
 ```
 
@@ -1020,8 +1031,8 @@ pan-tools roadmap get-phase 5 [--raw]
 
 Full roadmap parse with on-disk status for every phase. This is the most comprehensive view of project progress.
 
-```
-pan-tools roadmap analyze [--raw]
+```bash
+pan-tools roadmap analyze
 ```
 
 **JSON output:**
@@ -1059,9 +1070,9 @@ pan-tools roadmap analyze [--raw]
 
 ### `roadmap update-plan-progress <phase>`
 
-Update the progress table row in roadmap.md for a specific phase, based on actual PLAN/SUMMARY counts on disk.
+Update the progress table row and the `**Plans:**` count in roadmap.md for a specific phase from the on-disk PLAN/SUMMARY counts; when the phase is complete it also ticks the phase checkbox (with the completion date), and it ticks each plan's own checkbox whose summary exists.
 
-```
+```bash
 pan-tools roadmap update-plan-progress 5 [--raw]
 ```
 
@@ -1087,7 +1098,7 @@ pan-tools roadmap update-plan-progress 5 [--raw]
 
 Mark requirement IDs as complete in requirements.md (updates checkboxes and traceability table).
 
-```
+```bash
 pan-tools requirements mark-complete REQ-01,REQ-02
 pan-tools requirements mark-complete REQ-01 REQ-02
 pan-tools requirements mark-complete "[REQ-01, REQ-02]"
@@ -1111,11 +1122,11 @@ pan-tools requirements mark-complete "[REQ-01, REQ-02]"
 
 ## 7. Milestone Operations
 
-### `milestone complete <version> [--name <name>] [--archive-phases]`
+### `milestone complete <version> [--name <name>] [--archive-phases] [--no-commit]`
 
-Archive a milestone: gathers stats, archives roadmap.md and requirements.md, creates/appends milestones.md, and updates state.md for the next milestone.
+Archive a milestone: gathers stats, archives roadmap.md and requirements.md, creates/appends milestones.md, and updates state.md for the next milestone. Auto-commits `.planning/` and creates the git tag `milestone-<version>` (payload `commit_hash`, `tag`) unless `--no-commit` is passed.
 
-```
+```bash
 pan-tools milestone complete v1.0 --name "Core Platform" --archive-phases
 ```
 
@@ -1145,7 +1156,7 @@ pan-tools milestone complete v1.0 --name "Core Platform" --archive-phases
 }
 ```
 
-**Side effects:** Creates `milestones/` directory, archives roadmap.md and requirements.md with version prefix, optionally moves phase dirs, resets state.md for next milestone.
+**Side effects:** Creates `milestones/` directory, archives roadmap.md and requirements.md with version prefix, optionally moves phase dirs, moves `<version>-milestone-audit.md` into the archive when present (`archived.audit`), resets state.md for the next milestone; archive failures are reported in `archive_warnings[]`.
 
 ---
 
@@ -1155,9 +1166,11 @@ Commands for checking project health and consistency.
 
 ### `validate consistency`
 
+**Exit code:** always `0` — `passed: false` is a verdict, not an error-family key; gate on `passed`.
+
 Check phase numbering, disk/roadmap synchronization, plan numbering gaps, and orphaned summaries.
 
-```
+```bash
 pan-tools validate consistency [--raw]
 ```
 
@@ -1182,8 +1195,8 @@ pan-tools validate consistency [--raw]
 
 Comprehensive `.planning/` integrity check. Validates project.md, roadmap.md, state.md, config.json, phase directory naming, and orphaned plans. With `--standards`, also checks standards compliance. With `--drift`, runs convention drift analysis. With `--links`, attaches a doc-code link-graph summary (ADR-0027).
 
-```
-pan-tools validate health [--raw]
+```bash
+pan-tools validate health
 pan-tools validate health --repair
 pan-tools validate health --standards
 pan-tools validate health --full
@@ -1192,11 +1205,13 @@ pan-tools validate health --links
 ```
 
 **Flags:**
-- `--repair` — Attempt automatic repairs (create default config.json, regenerate state.md)
+- `--repair` — Attempt automatic repairs: create/reset config.json, regenerate state.md (a timestamped `state.md.bak-<ts>` backup is written first and reported as `backupState`), and tick requirement/plan checkboxes for `STATE_REQ_DRIFT`/`STATE_ROADMAP_DRIFT` (`syncRequirements`/`syncRoadmap`)
 - `--standards` — Include standards compliance check (reads standards.md, reports per-standard coverage)
 - `--full` — Run tests and build checks (slower, includes test_status and build_status)
 - `--drift` — Run convention drift analysis (includes drift_status with score and violations)
 - `--links` *(v3.8.0+)* — Attach `link_graph` summary (ADR-0027). Errors degrade health to a `LINKS_ERR` warning (advisory, non-blocking). Run `pan-tools links validate` standalone for the full finding list.
+
+**Exit code:** `1` when `status` is `broken` (a missing `.planning/` included), `0` for `healthy` and `degraded` — warnings are not failures. This is a verdict command: it sets the code explicitly instead of deriving it from an `error` key (see "Error Shape" above), so gate on the exit code, not on `errors.length`.
 
 **JSON output:**
 ```json
@@ -1229,6 +1244,7 @@ pan-tools validate health --links
 | E003 | error | `roadmap.md` not found | No |
 | E004 | error | `state.md` not found | Yes |
 | E005 | error | `config.json` JSON parse error | Yes |
+| E006 | error | `.planning/` belongs to another tool (gsd-core markers found); PAN stops before E002–E005 and `--repair` writes nothing | No |
 | W001 | warning | `project.md` missing required section | No |
 | W002 | warning | `state.md` references non-existent phase | Yes |
 | W003 | warning | `config.json` not found | Yes |
@@ -1265,7 +1281,7 @@ without a row here.
 
 Validates PAN installations in the current directory. Detects all installed runtimes (by checking for `pan-file-manifest.json`), then for each runtime validates: manifest file hashes match on-disk files, settings integrity, hook path resolution, and the **MCP server registration** the installer wrote.
 
-```
+```bash
 pan-tools validate deployment [--raw]
 ```
 
@@ -1302,11 +1318,13 @@ pan-tools validate deployment [--raw]
 
 **Status values:** `clean` (all files match), `modified` (hash mismatch, or an MCP registration problem), `broken` (files missing).
 
-**The `mcp` block** reports the registration for runtimes PAN registers (`claude`, `copilot`, `gemini`, `opencode`). It distinguishes three failures that used to be indistinguishable — all three previously reported `clean`:
+**The `mcp` block** reports the registration for runtimes PAN registers (`claude`, `copilot`, `gemini`, `opencode`). It distinguishes five failures that used to be indistinguishable — all previously reported `clean`:
 
 | `mcp.issues[0]` names | Meaning |
 |---|---|
 | *missing* | the config file was never written — registration did not happen |
+| *no "pan" entry* | the config parses but carries no `pan` registration under the runtime's container key |
+| *names no server path* | a `pan` entry exists but has no `args[0]` / `command[1]` to check |
 | *unreadable* | the file exists but is not valid JSON, so PAN deliberately left it untouched |
 | *does not exist* | a `pan` entry is registered but its server path resolves to nothing |
 
@@ -1318,18 +1336,20 @@ pan-tools validate deployment [--raw]
 
 Commands for verifying plan structure, phase completeness, file references, git commits, and build artifacts. Used by the pan-verifier and pan-plan-checker agents.
 
+**Exit code:** these verdict commands exit `0` whether the verdict passes or fails (exit `1` comes only from an unreadable input — `File not found` for `plan-structure`/`references`/`artifacts`/`key-links`, `Phase not found` or an unreadable phase directory for `phase-completeness` — and from usage errors; `verify-summary` reports a missing summary as `passed: false` at exit `0`) — gate on the `valid`/`passed` field, not the exit code. `verify reconcile` and `verify stubs --gate` are the exceptions and set the code explicitly.
+
 ### `verify-summary <path> [--check-count N]`
 
 Verify a summary.md file: checks existence, spot-checks referenced files, validates commit hashes, and looks for self-check section status.
 
-```
+```bash
 pan-tools verify-summary .planning/phases/05-setup/05-01-summary.md [--raw]
 pan-tools verify-summary path/to/summary.md --check-count 5
 ```
 
 **Arguments:**
 - `<path>` — Relative path to the summary.md file
-- `--check-count N` — Number of referenced files to spot-check (default: 2)
+- `--check-count N` — Number of referenced files to spot-check (default: 2; clamped to 1–20, non-numeric values fall back to 2)
 
 **JSON output:**
 ```json
@@ -1353,7 +1373,7 @@ pan-tools verify-summary path/to/summary.md --check-count 5
 
 Check a plan.md file for required frontmatter fields and valid `<task>` element structure.
 
-```
+```bash
 pan-tools verify plan-structure .planning/phases/05-setup/05-01-plan.md [--raw]
 ```
 
@@ -1381,7 +1401,7 @@ pan-tools verify plan-structure .planning/phases/05-setup/05-01-plan.md [--raw]
 
 Check that all plans in a phase have corresponding summaries.
 
-```
+```bash
 pan-tools verify phase-completeness 5 [--raw]
 ```
 
@@ -1407,7 +1427,7 @@ pan-tools verify phase-completeness 5 [--raw]
 
 Check that `@`-references and backtick file paths in a document resolve to existing files.
 
-```
+```bash
 pan-tools verify references .planning/phases/05-setup/05-01-plan.md [--raw]
 ```
 
@@ -1429,7 +1449,7 @@ pan-tools verify references .planning/phases/05-setup/05-01-plan.md [--raw]
 
 Batch verify that commit hashes exist in the git history.
 
-```
+```bash
 pan-tools verify commits abc1234 def5678 ghi9012 [--raw]
 ```
 
@@ -1451,7 +1471,7 @@ pan-tools verify commits abc1234 def5678 ghi9012 [--raw]
 
 Check that `must_haves.artifacts` from a plan.md frontmatter exist on disk and meet specified criteria (min_lines, contains, exports).
 
-```
+```bash
 pan-tools verify artifacts .planning/phases/05-setup/05-01-plan.md [--raw]
 ```
 
@@ -1475,7 +1495,7 @@ pan-tools verify artifacts .planning/phases/05-setup/05-01-plan.md [--raw]
 
 Check that `must_haves.key_links` from a plan.md frontmatter are satisfied (source references target, or pattern matches).
 
-```
+```bash
 pan-tools verify key-links .planning/phases/05-setup/05-01-plan.md [--raw]
 ```
 
@@ -1499,7 +1519,7 @@ pan-tools verify key-links .planning/phases/05-setup/05-01-plan.md [--raw]
 
 Cross-check a phase's recorded verification against its actual state so a rubber-stamped "verified" can't slip through. Exits non-zero when a contradiction is found (so `exec-phase`'s auto-advance gate stops), zero when reconciled.
 
-```
+```bash
 pan-tools verify reconcile 5 [--raw]
 ```
 
@@ -1509,9 +1529,9 @@ pan-tools verify reconcile 5 [--raw]
 
 ### `verify stubs [--gate]`
 
-Scan the uncommitted/changed file set (git diff vs HEAD plus staged/index changes, so it gates a handoff) for stub / fake-return markers (`not implemented`, `NotImplemented`, `throw new Error("stub"/"todo")`, HTTP `501`, `coming soon`/`placeholder`, etc.) that indicate unfinished work. With `--gate`, exits non-zero when blocking (high-severity) findings exist; without it, always reports and exits zero.
+Scan the uncommitted/changed file set (git diff vs HEAD, staged/index changes, and untracked files, so it gates a handoff) for stub / fake-return markers (`not implemented`, `NotImplemented`, `throw new Error("stub"/"todo")`, HTTP `501`, `coming soon`/`placeholder`, etc.) that indicate unfinished work. With `--gate`, exits non-zero when blocking (high-severity) findings exist; without it, always reports and exits zero.
 
-```
+```bash
 pan-tools verify stubs [--gate] [--raw]
 ```
 
@@ -1527,9 +1547,9 @@ Commands for viewing project progress and estimating context window utilization.
 
 Render milestone progress in various formats.
 
-```
+```bash
 pan-tools progress              # JSON (default)
-pan-tools progress json [--raw]
+pan-tools progress json
 pan-tools progress table [--raw]
 pan-tools progress bar [--raw]
 pan-tools progress health [--raw]
@@ -1590,15 +1610,18 @@ pan-tools progress health [--raw]
 
 Estimate context window utilization for the current phase. Measures how much of the assumed context window would be consumed by loading project files, roadmap, state, and plans for the active phase. The denominator is PAN's own fixed budget constant — 200,000 tokens (`CONTEXT_WINDOW` in `constants.cjs`) — **not a reading of your model's real window.** Nothing detects the model here; the number is a deliberately conservative planning assumption, so on a larger-context model the real headroom is greater than the report implies. That constant is the window size PAN commits to, and `progress health`'s `context` block divides by the same one.
 
-```
+```bash
 pan-tools context-budget [--raw]
 ```
+
+The `cache` block classifies the cached context (`status` of `ok` / `warn` / `critical` / `absent`, with advice naming the largest file) and, under `cache.ttl`, reads the cost ledger for the prompt-cache **lifetime** signal: how many cache writes followed an idle gap of five to sixty minutes — the misses a one-hour subagent cache lifetime would have avoided. `cache.ttl.recommend` turns true only when that recurs, and `cache.ttl.advice` then names the Claude Code setting (`subagentPromptCacheTtl`) with its cost trade-off. Suspect ledger rows are excluded from the count.
 
 **JSON output:**
 ```json
 {
   "status": "healthy",
   "currentPhase": "01",
+  "phaseDirectory": ".planning/phases/01-setup",
   "contextWindow": 200000,
   "budgetUtilization": 0.05,
   "plans": 2,
@@ -1610,18 +1633,22 @@ pan-tools context-budget [--raw]
     "plans": 500,
     "total": 1000
   },
-  "recommendation": "Context budget is healthy. Proceed with execution.",
-  "modelProfile": "balanced"
+  "recommendation": "Within budget. ~190 more plans could fit before degradation.",
+  "modelProfile": "balanced",
+  "cache": { "status": "ok", "total_tokens": 500, "ttl": { "recommend": false, "setting": "subagentPromptCacheTtl" } },
+  "relevanceSignal": null
 }
 ```
+
+*The `cache` object is abbreviated here — its full field list (`block_count`, `block_paths`, `block_tokens`, `total_bytes`, `total_tokens`, `eligible_pct`, `status`, `warn_tokens`, `crit_tokens`, `file_warn_tokens`, `advice`, `ttl.*`, `sha`) is described in the paragraph above.*
 
 **Status thresholds:**
 
 | Status | Utilization | Meaning |
 |--------|------------|---------|
 | `healthy` | < 60% | Proceed normally |
-| `warning` | 60-80% | Consider splitting the phase |
-| `critical` | > 80% | Phase too large, split recommended |
+| `warning` | 60% to <80% | Consider splitting the phase |
+| `critical` | ≥ 80% | Phase too large, split recommended |
 | `idle` | N/A | No current phase set |
 
 **`--raw` output:** Human-readable text with budget breakdown.
@@ -1634,7 +1661,7 @@ pan-tools context-budget [--raw]
 
 Move a todo file from `.planning/todos/pending/` to `.planning/todos/completed/`, adding a completion timestamp.
 
-```
+```bash
 pan-tools todo complete improve-error-handling.md [--raw]
 ```
 
@@ -1651,7 +1678,7 @@ pan-tools todo complete improve-error-handling.md [--raw]
 
 Count and enumerate pending todo files from `.planning/todos/pending/`.
 
-```
+```bash
 pan-tools list-todos [--raw]
 pan-tools list-todos refactoring [--raw]
 ```
@@ -1687,7 +1714,7 @@ Commands for creating template files in phase directories. All scaffold commands
 
 Create a context.md template file in a phase directory.
 
-```
+```bash
 pan-tools scaffold context --phase 5 [--raw]
 ```
 
@@ -1696,13 +1723,15 @@ pan-tools scaffold context --phase 5 [--raw]
 { "created": true, "path": ".planning/phases/05-setup/05-context.md" }
 ```
 
+If the file already exists: `{ "created": false, "reason": "already_exists", "path": … }` (exit `0`, nothing overwritten). `--name "..."` overrides the phase name written into the template.
+
 ---
 
 ### `scaffold uat --phase <N>`
 
 Create a uat.md template file in a phase directory.
 
-```
+```bash
 pan-tools scaffold uat --phase 5 [--raw]
 ```
 
@@ -1717,7 +1746,7 @@ pan-tools scaffold uat --phase 5 [--raw]
 
 Create a verification.md template file in a phase directory.
 
-```
+```bash
 pan-tools scaffold verification --phase 5 [--raw]
 ```
 
@@ -1732,7 +1761,7 @@ pan-tools scaffold verification --phase 5 [--raw]
 
 Create a new phase directory under `.planning/phases/`.
 
-```
+```bash
 pan-tools scaffold phase-dir --phase 5 --name "Database Setup" [--raw]
 ```
 
@@ -1744,12 +1773,11 @@ pan-tools scaffold phase-dir --phase 5 --name "Database Setup" [--raw]
 ```json
 {
   "created": true,
-  "directory": ".planning/phases/05-database-setup",
-  "path": "/absolute/path/.planning/phases/05-database-setup"
+  "directory": ".planning/phases/05-database-setup"
 }
 ```
 
-**`--raw` output:** The absolute path.
+**`--raw` output:** The project-relative directory (e.g. `.planning/phases/05-database-setup`).
 
 ---
 
@@ -1761,8 +1789,8 @@ Commands for reading and writing YAML frontmatter in markdown files. Frontmatter
 
 Extract YAML frontmatter from a file as JSON.
 
-```
-pan-tools frontmatter get .planning/phases/05-setup/05-01-plan.md [--raw]
+```bash
+pan-tools frontmatter get .planning/phases/05-setup/05-01-plan.md
 pan-tools frontmatter get path/to/plan.md --field wave [--raw]
 ```
 
@@ -1790,7 +1818,7 @@ pan-tools frontmatter get path/to/plan.md --field wave [--raw]
 
 Update a single frontmatter field. The value is JSON-parsed (so `"true"` becomes boolean `true`, `"[1,2]"` becomes an array).
 
-```
+```bash
 pan-tools frontmatter set path/to/plan.md --field wave --value 2 [--raw]
 pan-tools frontmatter set path/to/plan.md --field autonomous --value false [--raw]
 ```
@@ -1808,7 +1836,7 @@ pan-tools frontmatter set path/to/plan.md --field autonomous --value false [--ra
 
 Merge a JSON object into the file's frontmatter (shallow merge — existing keys are overwritten, new keys are added).
 
-```
+```bash
 pan-tools frontmatter merge path/to/plan.md --data '{"wave": 2, "autonomous": false}' [--raw]
 ```
 
@@ -1825,7 +1853,7 @@ pan-tools frontmatter merge path/to/plan.md --data '{"wave": 2, "autonomous": fa
 
 Validate that a file's frontmatter contains all required fields for the given schema.
 
-```
+```bash
 pan-tools frontmatter validate path/to/plan.md --schema plan [--raw]
 ```
 
@@ -1857,20 +1885,20 @@ Commands for selecting and filling plan/summary/verification templates.
 
 ### `template select <plan-path>`
 
-Select the optimal SUMMARY template based on a plan's complexity (task count, file count, decisions presence). Used internally by workflows to choose between simple and detailed summary templates.
+Select the optimal SUMMARY template based on a plan's complexity (task count, file count, decisions presence). Used internally by workflows to pick the `minimal`, `standard` or `complex` summary template; an unreadable plan falls back to `standard` with an `error` string (exit `0`).
 
-```
+```bash
 pan-tools template select .planning/phases/05-setup/05-01-plan.md [--raw]
 ```
 
 **JSON output:**
 ```json
 {
-  "template": ".planning/references/summary-template.md",
+  "template": "templates/summary-standard.md",
   "type": "standard",
-  "task_count": 3,
-  "file_count": 5,
-  "has_decisions": true
+  "taskCount": 3,
+  "fileCount": 5,
+  "hasDecisions": true
 }
 ```
 
@@ -1882,7 +1910,7 @@ pan-tools template select .planning/phases/05-setup/05-01-plan.md [--raw]
 
 Create a pre-filled summary.md file in the phase directory.
 
-```
+```bash
 pan-tools template fill summary --phase 5 --plan 1 --name "Database Setup"
 pan-tools template fill summary --phase 5 --fields '{"subsystem": "database"}'
 ```
@@ -1900,11 +1928,11 @@ pan-tools template fill summary --phase 5 --fields '{"subsystem": "database"}'
 
 ---
 
-### `template fill plan --phase N [--plan M] [--type execute|tdd] [--wave N] [--fields '{json}']`
+### `template fill plan --phase N [--plan M] [--type execute|tdd] [--wave N] [--name "..."] [--fields '{json}']`
 
 Create a pre-filled plan.md file in the phase directory.
 
-```
+```bash
 pan-tools template fill plan --phase 5 --plan 2 --type tdd --wave 1
 ```
 
@@ -1913,6 +1941,7 @@ pan-tools template fill plan --phase 5 --plan 2 --type tdd --wave 1
 - `--plan M` — Plan number (default: `01`)
 - `--type execute|tdd` — Plan type (default: `execute`)
 - `--wave N` — Wave number (default: `1`)
+- `--name "..."` — Phase name used in the generated frontmatter and body (default: the phase directory's name)
 - `--fields '{json}'` — Additional frontmatter fields to merge
 
 **JSON output:**
@@ -1922,11 +1951,11 @@ pan-tools template fill plan --phase 5 --plan 2 --type tdd --wave 1
 
 ---
 
-### `template fill verification --phase N [--fields '{json}']`
+### `template fill verification --phase N [--name "..."] [--fields '{json}']`
 
 Create a pre-filled verification.md file in the phase directory.
 
-```
+```bash
 pan-tools template fill verification --phase 5
 ```
 
@@ -1943,9 +1972,9 @@ Commands for managing `.planning/config.json` — the per-project configuration 
 
 ### `config-ensure-section`
 
-Initialize `.planning/config.json` with defaults. Does nothing if the file already exists. Merges user-level defaults from `~/.pan-wizard/defaults.json` if available. Auto-detects Brave Search API key availability.
+Creates `.planning/` if missing, then initializes `config.json` with defaults; the config file itself is left untouched if it already exists. Merges user-level defaults from `~/.pan-wizard/defaults.json` if available. Auto-detects Brave Search API key availability.
 
-```
+```bash
 pan-tools config-ensure-section [--raw]
 ```
 
@@ -1961,7 +1990,7 @@ pan-tools config-ensure-section [--raw]
 
 **`--raw` output:** `created` or `exists`.
 
-**Default config values:**
+**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`, `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -1972,11 +2001,11 @@ pan-tools config-ensure-section [--raw]
 | `workflow.research` | `true` | Enable research phase before planning |
 | `workflow.plan_check` | `true` | Enable plan-checker agent verification loop |
 | `workflow.phase_reports` | `{ enabled: false, open: false, theme: "auto", index: true }` | Opt-in HTML phase reports as a build deliverable. When `enabled`, the verify→complete gate, focus-auto checkpoints, and army INTEGRATE regenerate per-phase reports (and, when `index`, the timeline index); default off. |
-| `memory.auto_optimize` | `true` | Reconcile the always-loaded project memory automatically at the focus-auto checkpoint and the normal-flow session record. No-op when state.md is already lean. Set `false` to opt out and reconcile only via `memory optimize`. |
+| `memory.auto_optimize` | (not written; absent = `true`) | Reconcile the always-loaded project memory automatically at the focus-auto checkpoint and the normal-flow session record. No-op when state.md is already lean. Set `false` to opt out and reconcile only via `memory optimize`. |
 | `budget.enforce` | `false` | Make the spawn/point budget a hard stop. Advisory by default (tracked + surfaced, never stops a run). |
 | `budget.verify_reserve` | `0.15` | Fraction of the spawn budget (0–0.5) held back for re-verification so it can't be starved. Surfaced as `new_work_budget_remaining` / `into_verify_reserve` always; a hard early stop (`budget_reserve_reached`) only under `budget.enforce` / `--enforce-budget`. Override per-run with `--verify-reserve`. |
-| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25 } }`. Applied to both `cost append` and aggregate reporting. |
-| `cache.extra_files` | `[]` | **(v3.27)** Extra planning-root-relative docs to include in the cached context block, e.g. `["research/api-contract.md"]`. The built-in list is the *phase-model* spine (project/requirements/roadmap/state/standards), so a focus-model project has an empty block and gets **no prompt caching at all**. Entries are appended after the built-ins (the cache prefix stays byte-stable for projects that set nothing); absolute paths, drive paths, and `..` segments are ignored. |
+| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25 } }`. Applied to both `cost append` and aggregate reporting. Precedence: this key, then a Claude Code managed `modelPricing` block (contracted input/output rates; cache rates derived from the family's multipliers), then the built-in table. |
+| `cache.extra_files` | (not written; absent = no extra files) | **(v3.27)** Extra planning-root-relative docs to include in the cached context block, e.g. `["research/api-contract.md"]`. The built-in list is the *phase-model* spine (project/requirements/roadmap/state/standards), so a focus-model project has an empty block and gets **no prompt caching at all**. Entries are appended after the built-ins (the cache prefix stays byte-stable for projects that set nothing); absolute paths, drive paths, and `..` segments are ignored. |
 | `brave_search` | auto-detected | Brave Search API availability |
 
 ---
@@ -1985,7 +2014,7 @@ pan-tools config-ensure-section [--raw]
 
 Read a value from `.planning/config.json`. Supports dot-notation for nested keys.
 
-```
+```bash
 pan-tools config-get model_profile [--raw]
 pan-tools config-get workflow.research [--raw]
 ```
@@ -1998,9 +2027,9 @@ pan-tools config-get workflow.research [--raw]
 
 ### `config-set <key.path> <value>`
 
-Write a value to `.planning/config.json`. Supports dot-notation for nested keys. Automatically parses `true`/`false` as booleans and numeric strings as numbers.
+Write a value to `.planning/config.json`. Supports dot-notation for nested keys. Automatically parses `true`/`false` as booleans and numeric strings as numbers. Creates config.json if it does not exist, and refuses (exit 1, stderr) when the existing file is valid JSON but not an object.
 
-```
+```bash
 pan-tools config-set model_profile quality [--raw]
 pan-tools config-set workflow.research false [--raw]
 pan-tools config-set parallelization true [--raw]
@@ -2023,8 +2052,10 @@ Standalone utility commands used across workflows.
 
 Get the model name for an agent based on the current model profile in config. The model profile (`quality`/`balanced`/`budget`) determines which model tier each agent type uses.
 
-```
-pan-tools resolve-model pan-executor [--raw]
+```bash
+pan-tools resolve-model pan-executor [--metadata '<json>'] [--raw]
+# --metadata: {phaseNum, fileCount, waveCount, requirementCount, isArchitectural, context_estimate, needs_thinking, cache_warm}
+#             enables the roadmap per-phase tier, complexity routing (routing.strategy: complexity) and the capability hints
 ```
 
 **Agent types:** any key in `MODEL_PROFILES` (`core.cjs`) — the shipped `pan-*` agents, listed in the matrix below. The argument is not validated against an allowlist: a name that isn't in the table resolves to the mid tier and sets `unknown_agent: true` rather than erroring.
@@ -2055,7 +2086,7 @@ For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "st
 
 Commit planning docs to git. Respects `commit_docs` config setting and `.gitignore`. Includes safety checks for deleted and sensitive files.
 
-```
+```bash
 pan-tools commit "Phase 5 planning complete" [--raw]
 pan-tools commit "Update plans" --files .planning/phases/05-setup/05-01-plan.md
 pan-tools commit "" --amend
@@ -2088,24 +2119,24 @@ pan-tools commit "bugfix" --type fix --force
 
 **Block reasons:** `deleted_files_detected`, `sensitive_file_detected`.
 
-**Skip reasons:** `skipped_commit_docs_false`, `skipped_gitignored`, `nothing_to_commit`.
+**Skip reasons:** `skipped_commit_docs_false`, `skipped_gitignored`, `nothing_to_commit`, `not_a_git_repo` (exit 0, with a `hint`). A blocked commit exits 1 with `error: commit_blocked`; PAN un-stages what it staged itself (`safety_checks.unstaged_by_pan`) and leaves anything you had staged beforehand untouched.
 
-**`--raw` output:** The short hash, `skipped`, `blocked`, or `nothing`.
+**`--raw` output:** The short hash, `skipped`, `blocked`, `nothing`, `not a git repo`, or `failed`.
 
 ---
 
 ### `rollback-snapshot <phase>`
 
-Create a git tag snapshot before execution for easy rollback. Tag format: `pan-rollback-{phase}-{timestamp}`.
+Create a git tag snapshot before execution for easy rollback. Tag format: `pan-rollback-{phase}-{timestamp}` (dots in a decimal phase become dashes, e.g. `pan-rollback-5-1-…`; a colliding tag gets a `-1` suffix).
 
-```
+```bash
 pan-tools rollback-snapshot 5 [--raw]
 pan-tools rollback-snapshot 5.1
 ```
 
 **JSON output:**
 ```json
-{ "tag": "pan-rollback-05-20260301T120000", "hash": "abc1234", "phase": "5" }
+{ "tag": "pan-rollback-5-20260301T120000", "hash": "abc1234", "phase": "5" }
 ```
 
 **Not a git repo:** Returns `{ "tag": null, "warning": "Not a git repository or no commits" }`.
@@ -2116,17 +2147,17 @@ pan-tools rollback-snapshot 5.1
 
 ### `batch-commit <items-json>`
 
-Stage and commit multiple planning file groups in a single operation. Respects `commit_docs` config — returns `{ committed: false, reason: "skipped_commit_docs_false" }` when disabled.
+Commit the current `.planning/` changes in one commit that summarises a completed batch: `<items-json>` is an array of `{title}` objects and each title becomes a bullet in the commit body (`docs: focus-exec batch — N items completed`); per-item `files`/`message` are not read. Respects `commit_docs` config — returns `{ committed: false, reason: "skipped_commit_docs_false" }` when disabled.
 
 **Module:** `commands.cjs`
 
-```
-pan-tools batch-commit '[{"files":["f1.md"],"message":"docs: update"}]' [--raw]
+```bash
+pan-tools batch-commit '[{"title":"Fix login button"},{"title":"Add audit log"}]' [--raw]
 ```
 
 **JSON output:**
 ```json
-{ "committed": true, "count": 1 }
+{ "committed": true, "hash": "abc1234", "reason": "committed", "items_count": 2 }
 ```
 
 **Not a git repo:** Returns `{ "committed": false, "reason": "not_a_git_repo" }`.
@@ -2139,7 +2170,7 @@ Estimate relative cost multipliers for each model profile. Shows total and avera
 
 **Module:** `commands.cjs`
 
-```
+```bash
 pan-tools estimate-cost [--raw]
 ```
 
@@ -2164,7 +2195,7 @@ pan-tools estimate-cost [--raw]
 
 Convert arbitrary text to a URL-safe slug.
 
-```
+```bash
 pan-tools generate-slug "Database Migration Layer" [--raw]
 ```
 
@@ -2175,7 +2206,7 @@ pan-tools generate-slug "Database Migration Layer" [--raw]
 
 **`--raw` output:** The slug string.
 
-**Rules:** Lowercase, spaces/underscores become hyphens, non-alphanumeric characters removed, consecutive hyphens collapsed.
+**Rules:** Lowercase; every run of non-alphanumeric characters (spaces, underscores, punctuation) becomes a single hyphen; leading and trailing hyphens are trimmed.
 
 ---
 
@@ -2183,7 +2214,7 @@ pan-tools generate-slug "Database Migration Layer" [--raw]
 
 Get the current timestamp.
 
-```
+```bash
 pan-tools current-timestamp            # full (default)
 pan-tools current-timestamp date       # YYYY-MM-DD
 pan-tools current-timestamp filename   # YYYY-MM-DDTHH-MM-SS (no colons)
@@ -2210,7 +2241,7 @@ pan-tools current-timestamp filename   # YYYY-MM-DDTHH-MM-SS (no colons)
 
 Check whether a file or directory exists.
 
-```
+```bash
 pan-tools verify-path-exists src/index.ts [--raw]
 ```
 
@@ -2229,7 +2260,7 @@ Type is `file`, `directory`, or `other`. If not found: `{ "exists": false, "type
 
 Aggregate data from all summary.md files across current and archived phases. Extracts dependency graphs, decisions, patterns, and tech stack.
 
-```
+```bash
 pan-tools history-digest [--raw]
 ```
 
@@ -2259,7 +2290,7 @@ pan-tools history-digest [--raw]
 
 Extract structured data from a summary.md file's frontmatter.
 
-```
+```bash
 pan-tools summary-extract .planning/phases/05-setup/05-01-summary.md
 pan-tools summary-extract path/to/summary.md --fields key_files,decisions
 ```
@@ -2289,7 +2320,7 @@ pan-tools summary-extract path/to/summary.md --fields key_files,decisions
 
 Search the web via the Brave Search API. Requires `BRAVE_API_KEY` environment variable. This is the only async command in pan-tools.
 
-```
+```bash
 pan-tools websearch "Node.js stream backpressure" --limit 5 --freshness week
 ```
 
@@ -2323,13 +2354,13 @@ If `BRAVE_API_KEY` is not set: `{ "available": false, "reason": "BRAVE_API_KEY n
 
 These commands gather all context needed for a specific workflow in a single call, avoiding multiple round trips. Each init command resolves models, checks file existence, reads state, and returns a comprehensive JSON object that the workflow's command `.md` file consumes.
 
-All init commands support `--raw` (returns key=value pairs) and `--cwd <path>`.
+All init commands accept `--raw` (no effect — init output is always JSON) and `--cwd <path>`.
 
 ### `init execute-phase <phase> [--dry-run] [--budget N]`
 
 All context for the execute-phase workflow. Includes tier classification, budget tracking, and execution mode.
 
-```
+```bash
 pan-tools init execute-phase 5 [--raw]
 pan-tools init execute-phase 5 --dry-run
 pan-tools init execute-phase 5 --budget 30
@@ -2355,7 +2386,7 @@ pan-tools init execute-phase 5 --dry-run --budget 25
 - `budget_exceeded` — `true` if estimated > budget
 - `execution_mode` — Execution ordering strategy (default: `wave_order`)
 - `dry_run` — Whether this is a preview-only run
-- `rollback_tag` — Git rollback tag (null in dry-run mode)
+- `rollback_tag` — always `null` (the tag is created separately by `rollback-snapshot`)
 
 ---
 
@@ -2363,7 +2394,7 @@ pan-tools init execute-phase 5 --dry-run --budget 25
 
 All context for the plan-phase workflow.
 
-```
+```bash
 pan-tools init plan-phase 5 [--raw]
 ```
 
@@ -2380,7 +2411,7 @@ pan-tools init plan-phase 5 [--raw]
 
 All context for the new-project workflow. Includes brownfield detection.
 
-```
+```bash
 pan-tools init new-project [--raw]
 ```
 
@@ -2388,7 +2419,7 @@ pan-tools init new-project [--raw]
 - `researcher_model`, `synthesizer_model`, `roadmapper_model` — Model names
 - `project_exists`, `has_codebase_map`, `planning_exists` — Existing state
 - `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map` — Brownfield detection
-- `has_git`, `brave_search_available` — Environment detection
+- `has_git` — **runs `git init` when the project is not yet a repository** and reports the result; `brave_search_available` — environment detection
 
 ---
 
@@ -2396,7 +2427,7 @@ pan-tools init new-project [--raw]
 
 All context for the new-milestone workflow.
 
-```
+```bash
 pan-tools init new-milestone [--raw]
 ```
 
@@ -2411,7 +2442,7 @@ pan-tools init new-milestone [--raw]
 
 All context for the quick task workflow.
 
-```
+```bash
 pan-tools init quick "Fix login button alignment" [--raw]
 ```
 
@@ -2427,7 +2458,7 @@ pan-tools init quick "Fix login button alignment" [--raw]
 
 All context for the resume-project workflow.
 
-```
+```bash
 pan-tools init resume [--raw]
 ```
 
@@ -2442,7 +2473,7 @@ pan-tools init resume [--raw]
 
 All context for the verify-work workflow.
 
-```
+```bash
 pan-tools init verify-work 5 [--raw]
 ```
 
@@ -2456,7 +2487,7 @@ pan-tools init verify-work 5 [--raw]
 
 Generic phase operation context. Falls back to roadmap.md if no directory exists.
 
-```
+```bash
 pan-tools init phase-op 5 [--raw]
 ```
 
@@ -2471,7 +2502,7 @@ pan-tools init phase-op 5 [--raw]
 
 All context for todo workflows.
 
-```
+```bash
 pan-tools init todos [--raw]
 pan-tools init todos refactoring [--raw]
 ```
@@ -2488,7 +2519,7 @@ pan-tools init todos refactoring [--raw]
 
 All context for milestone operations. Backs `/pan:milestone-audit`, `/pan:milestone-done`, and `/pan:milestone-new`.
 
-```
+```bash
 pan-tools init milestone-op [--raw]
 pan-tools init milestone-op --track core
 pan-tools init milestone-op --all-tracks
@@ -2513,7 +2544,7 @@ pan-tools init milestone-op --all-tracks
 
 All context for the map-codebase workflow.
 
-```
+```bash
 pan-tools init map-codebase [--raw]
 ```
 
@@ -2528,7 +2559,7 @@ pan-tools init map-codebase [--raw]
 
 All context for the progress workflow.
 
-```
+```bash
 pan-tools init progress [--raw]
 ```
 
@@ -2550,7 +2581,7 @@ Strategic project management: work item scanning, capacity budgeting, documentat
 
 Collect, classify, and sort all work items from phases, todos, and error patterns.
 
-```
+```bash
 pan-tools focus scan [--lean] [--raw]
 ```
 
@@ -2572,14 +2603,14 @@ pan-tools focus scan [--lean] [--raw]
 
 Create a capacity-budgeted execution batch from scanned items.
 
-```
+```bash
 pan-tools focus plan [--budget N] [--mode MODE] [--priority P0-P6] [--lean] [--raw]
 ```
 
 **Modes:**
 | Mode | Budget | Algorithm |
 |------|--------|-----------|
-| `bugfix` | 40 pts | P0 mandatory → P1 → P2-P4 smallest-first, no features |
+| `bugfix` | 40 pts | Single greedy pass over P0 → P4 in priority order (P5–P6 excluded; no item-type filter) |
 | `balanced` | 50 pts | Stability (60%) + Feature (40%) split |
 | `features` | 50 pts | P0 mandatory, then 80% features, 20% stability |
 | `full` | 60 pts | All priorities equally, impact-first |
@@ -2596,8 +2627,8 @@ pan-tools focus plan [--budget N] [--mode MODE] [--priority P0-P6] [--lean] [--r
 
 Check documentation staleness by comparing actual file counts against documented counts.
 
-```
-pan-tools focus sync [--check-only] [--raw]
+```bash
+pan-tools focus sync [--check-only] [--tests N] [--suites N] [--raw]   # --tests/--suites supply live counts to reconcile against the docs
 ```
 
 **Key output fields:**
@@ -2608,10 +2639,10 @@ pan-tools focus sync [--check-only] [--raw]
 
 ### `focus exec`
 
-Load the latest batch and classify items by execution tier.
+Load the oldest open batch (lexically first `batch-YYYY-MM-DD.json`, so older unfinished batches run first) and classify items by execution tier.
 
-```
-pan-tools focus exec [--dry-run] [--raw]
+```bash
+pan-tools focus exec [--dry-run] [--force] [--raw]   # refuses with dirty_working_tree on uncommitted changes unless --dry-run or --force
 ```
 
 **Key output fields:**
@@ -2622,7 +2653,7 @@ pan-tools focus exec [--dry-run] [--raw]
 - `items[]` — Full batch items
 - `batch_file` — Path to batch file
 
-**Reads:** Latest `.planning/focus/batch-*.json`
+**Reads:** Oldest `.planning/focus/batch-*.json`
 
 ### `squad list | show <name>` (v3.11, ADR-0032)
 
@@ -2644,9 +2675,9 @@ Scheduled, self-resuming bot-army campaigns. PAN is not a daemon: this module ow
 
 **Module:** `campaign.cjs`
 
-- `campaign schedule` — arm or update the schedule. Flags: `--cadence <hourly|daily|weekly|Nh|Nd>` (default `daily`), `--daily-budget <points>` (default 300), `--goal <text>`, `--source <name>` (default `backlog`), `--pause`, `--resume`, `--disable`. Returns the written descriptor.
-- `campaign status` — full descriptor plus computed `spent_today`, `due`, and `reason`. Also the default when `campaign` is run with no subcommand.
-- `campaign due` — host-scheduler gate: returns `{due, reason, next_due}`. `reason` is one of `no_schedule`, `disabled`, `paused`, `budget_exhausted_today`, `due`, `not_yet`. **Exit codes:** `0` — due; `1` — not due. The payload has no `error` key, so the code is set explicitly; a `cron`/`&&` trigger can gate on it without parsing the body. "Not due" is a negative *answer*, not a failure, so pair the exit code with `reason` if you need to distinguish it from a broken descriptor.
+- `campaign schedule` — arm or update the schedule. Flags: `--cadence <hourly|daily|weekly|Nh|Nd>` (default `daily`), `--daily-budget <points>` (default 300), `--goal <text>`, `--source <name>` (default `backlog`), `--pause`, `--resume`, `--disable`. Returns the written descriptor. There is no `--enable`: after `--disable`, set `"enabled": true` in `.planning/orchestration/schedule.json` by hand (the same goes for `enforce_budget`, which has no flag).
+- `campaign status` — `{scheduled, enabled, paused, cadence, daily_budget, next_due, last_run, runs, spent_today, due, reason, verify_reserve, into_verify_reserve}` (`{scheduled: false}` when nothing is armed; `goal`, `source` and `history` live only in `schedule.json` and the `campaign schedule` return). Also the default when `campaign` is run with no subcommand.
+- `campaign due` — host-scheduler gate: returns `{due, reason, next_due}`. `reason` is one of `no_schedule`, `disabled`, `paused`, `budget_exhausted_today` (only when the descriptor's `enforce_budget` is `true` — the daily budget is advisory otherwise), `due`, `not_yet`. **Exit codes:** `0` — due; `1` — not due. The payload has no `error` key, so the code is set explicitly; a `cron`/`&&` trigger can gate on it without parsing the body. "Not due" is a negative *answer*, not a failure, so pair the exit code with `reason` if you need to distinguish it from a broken descriptor.
 - `campaign record-run` — record a completed run and advance `next_due`. Flags: `--items <N>`, `--points <N>`.
 
 ### `hud [--out <file>] [--open] [--stdout]` (v3.12, ADR-0035)
@@ -2655,9 +2686,9 @@ Generates a single self-contained HTML dashboard of the project + bot army (defa
 
 **Module:** `hud.cjs`
 
-### `report phase <N> | index [--bundle] | all [--out <file>] [--open] [--stdout]` (v3.15)
+### `report phase <N> [--out <file>] [--open] [--stdout] | index [--bundle] [--out <file>] [--open] [--stdout] | all` (v3.15)
 
-Generates self-contained HTML reports for a project's phases, reusing the HUD's rendering. `report phase <N>` writes one phase's report (objective, roadmap position, what changed, verification verdict and gaps) to `.planning/phases/<NN-slug>/<NN>-report.html`; `report index` writes the project timeline to `.planning/report-index.html`, where each row links to a phase report; `report all` regenerates every phase report plus the index in one pass. Like `hud`, these are read-only **views** — every value is read from what PAN already tracks on disk (phase `plan`/`summary`/`verification` artifacts and their frontmatter, `roadmap.md`, and the cost ledger), and the command writes only its rendered file(s), so it can never corrupt planning data. Writes are deterministic: re-running with unchanged phase data rewrites nothing (the volatile generated-at timestamp is ignored when comparing), so reports produce no git churn. `--out` overrides the path, `--open` best-effort launches the default browser, `--stdout` prints HTML instead of writing (for `phase`/`index`). `--bundle` (on `index`) instead writes one self-contained `.planning/report-bundle.html` with every phase inlined under in-page anchors and no links to sibling files — the form to email or attach. A phase-less (focus-auto) project has nothing to report; `index` exits with a message pointing to `pan-tools hud` instead.
+`report all` accepts no effective flags — the dispatcher parses `--open` for it but the module ignores it; it writes every phase report plus the index to their default paths and never opens a browser. Generates self-contained HTML reports for a project's phases, reusing the HUD's rendering. `report phase <N>` writes one phase's report (objective, roadmap position, what changed, verification verdict and gaps) to `.planning/phases/<NN-slug>/<NN>-report.html`; `report index` writes the project timeline to `.planning/report-index.html`, where each row links to a phase report; `report all` regenerates every phase report plus the index in one pass. Like `hud`, these are read-only **views** — every value is read from what PAN already tracks on disk (phase `plan`/`summary`/`verification` artifacts and their frontmatter, `roadmap.md`, and the cost ledger), and the command writes only its rendered file(s), so it can never corrupt planning data. Writes are deterministic: re-running with unchanged phase data rewrites nothing (the volatile generated-at timestamp is ignored when comparing), so reports produce no git churn. `--out` overrides the path, `--open` best-effort launches the default browser (only when the file was written or changed), `--stdout` prints HTML instead of writing (for `phase`/`index`). `--bundle` (on `index`) instead writes one self-contained `.planning/report-bundle.html` with every phase inlined under in-page anchors and no links to sibling files — the form to email or attach. A phase-less (focus-auto) project has nothing to report; `index` exits with a message pointing to `pan-tools hud` instead.
 
 **Module:** `phase-report.cjs`
 
@@ -2665,8 +2696,8 @@ Generates self-contained HTML reports for a project's phases, reusing the HUD's 
 
 Auto-runner state management: initialize, status, update, stop.
 
-```
-pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N]
+```bash
+pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--enforce-budget] [--verify-reserve F] [--deep-review]
                      [--total-budget N] [--parallel-research] [--parallel-verify] [--clean-seal]
                      [--status] [--stop] [--update] [--continue] [--dry-run] [--raw]
 ```
@@ -2678,14 +2709,17 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
 **Operations:**
 - Default: Initialize new auto-run with category defaults
 - `--status`: Show current run state with computed budget/cycles remaining
-- `--update`: Record cycle results (pass `--items-completed`, `--points-used`, `--tests-before`, `--tests-after`)
+- `--update`: Record cycle results (pass `--items-completed`, `--items-failed`, `--points-used`, `--tests-before`, `--tests-after`, `--batch-file`, `--command`, and — for the `prompts` category — `--prompts-remaining N`). Defaults: `--max-cycles` 10 (1–50), `--total-budget` 500 (5–5000), `--budget` per category (5–100). **Side effect:** each update checkpoint-commits `.planning/` (`commit_hash` in the output) unless `focus.auto_commit` or `commit_docs` is false, after running the memory auto-optimize and, when `workflow.phase_reports.enabled`, regenerating the HTML reports
 - `--stop`: Gracefully stop an active run
 - `--continue`: Resume a stopped/initialized run
 - `--dry-run`: Show what would be initialized without writing
 
 **Stop conditions (auto-detected on --update):**
 - `regression` — tests decreased between cycles
-- `budget_cap` — cumulative points exceeded `--total-budget`
+- `budget_cap` — cumulative points reached `--total-budget`; fires only when enforcement is on (`--enforce-budget` or config `budget.enforce`) — the budget is advisory otherwise
+- `budget_reserve_reached` — under enforcement, spend crossed into the verify reserve (`--verify-reserve`, default `budget.verify_reserve`)
+- `security_complete` / `distill_complete` — a cycle completed nothing in that category (the category-specific form of `zero_completed`)
+- `prompts_complete` — the `prompts` category has no prompts remaining
 - `max_cycles` — iteration limit reached
 - `zero_completed` — no items completed in a cycle
 - `diminishing_returns` — optimize only: cycle efficiency < 30% of previous cycle
@@ -2698,13 +2732,13 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
 
 Workflow-only command that routes to the 10-phase investigation pipeline.
 
-```
+```bash
 pan-tools focus design [--raw]
 ```
 
 **Output:** JSON message directing to `/pan:focus-design` workflow.
 
-**Modes:** `--full` (default), `--internal`, `--outward`, `--spike`
+**Modes** (flags of the `/pan:focus-design` command — `pan-tools focus design` itself parses none): `--full` (default), `--internal`, `--outward`, `--spike`
 **Modifiers:** `--gate`, `--audit`, `--mvp`
 
 ---
@@ -2719,7 +2753,7 @@ Industry standards selection and advisory compliance. Select standards from a bu
 
 List all available standards from the built-in catalog.
 
-```
+```bash
 pan-tools standards list [--raw]
 pan-tools standards list --category security
 ```
@@ -2741,7 +2775,7 @@ pan-tools standards list --category security
 
 Add a standard to the project. Creates/updates `.planning/standards.md`.
 
-```
+```bash
 pan-tools standards select owasp-top10
 pan-tools standards select wcag-22
 ```
@@ -2761,7 +2795,7 @@ pan-tools standards select wcag-22
 
 Remove a standard from the project. Deletes standards.md when last standard removed.
 
-```
+```bash
 pan-tools standards remove owasp-top10
 ```
 
@@ -2778,7 +2812,7 @@ pan-tools standards remove owasp-top10
 
 Report compliance status for all selected standards. Counts checked vs unchecked items.
 
-```
+```bash
 pan-tools standards status [--raw]
 ```
 
@@ -2797,9 +2831,9 @@ pan-tools standards status [--raw]
 
 ### `standards recommend`
 
-Recommend standards based on project.md content analysis. Detects project types (web, api, ai, agent, enterprise, cli) via keyword matching.
+Recommend standards based on project.md content analysis. Detects project types (web, api, ai, agent, enterprise, cli) via keyword matching; falls back to `general` when none match.
 
-```
+```bash
 pan-tools standards recommend [--raw]
 ```
 
@@ -2808,7 +2842,7 @@ pan-tools standards recommend [--raw]
 {
   "project_types": ["web", "api"],
   "recommendations": [
-    { "id": "owasp-top10", "name": "OWASP Top 10 (2025)", "category": "security", "description": "..." }
+    { "id": "owasp-top10", "name": "OWASP Top 10 (2025)", "reason": "web project detected", "priority": "high", "source_type": "web" }
   ]
 }
 ```
@@ -2819,7 +2853,7 @@ pan-tools standards recommend [--raw]
 
 Show which standards are relevant to a specific phase and their compliance state. Analyzes plan.md content for keywords that map to standards.
 
-```
+```bash
 pan-tools standards phase-track <phase-number> [--raw]
 ```
 
@@ -2842,7 +2876,7 @@ pan-tools standards phase-track <phase-number> [--raw]
 
 List external scanning tools recommended for selected or specified standards.
 
-```
+```bash
 pan-tools standards tools [standard-id] [--raw]
 ```
 
@@ -2876,7 +2910,7 @@ Run pre-flight validation checks before execution. Validates state, blockers, gi
 
 **Module:** `verify.cjs`
 
-```
+```bash
 pan-tools preflight [target] [--raw]
 ```
 
@@ -2915,7 +2949,7 @@ Aggregated project overview showing phase progress, blockers, and next action.
 
 **Module:** `state.cjs`
 
-```
+```bash
 pan-tools dashboard [--raw]
 ```
 
@@ -2926,7 +2960,7 @@ pan-tools dashboard [--raw]
   "version": "1.0.0",
   "current_phase": { "number": "03", "name": "core", "status": "Executing" },
   "blockers": 0,
-  "phase_progress": { "total": 5, "with_plans": 3, "with_summaries": 2 },
+  "progress": { "phases_completed": 2, "phases_total": 5, "plans_total": 6, "plans_completed": 4 },
   "milestone": { "version": "1.0.0", "name": "Initial Release" },
   "next_phase": { "number": "04", "name": "testing" },
   "last_activity": "2026-03-03"
@@ -2939,7 +2973,7 @@ Auto-extract learnings from session history, error patterns, and phase summaries
 
 **Module:** `commands.cjs`
 
-```
+```bash
 pan-tools learnings extract [--raw]
 ```
 
@@ -2967,7 +3001,7 @@ List all extracted learnings with type breakdown.
 
 **Module:** `commands.cjs`
 
-```
+```bash
 pan-tools learnings list [--raw]
 ```
 
@@ -2988,7 +3022,7 @@ Remove learnings by age or specific ID.
 
 **Module:** `commands.cjs`
 
-```
+```bash
 pan-tools learnings prune --days N [--raw]
 pan-tools learnings prune --id LEARN-NNN [--raw]
 ```
@@ -3007,11 +3041,11 @@ pan-tools learnings prune --id LEARN-NNN [--raw]
 
 ### `links validate` (v3.8.0+)
 
-Validate the doc–code link graph (ADR-0027). Walks `docs/`, `pan-wizard-core/`, `commands/`, `agents/` for inline `[[<id>]]` refs and `// @pan: <id>` source-comment anchors. Reports broken refs, stale anchors, and uncovered backlink contracts.
+Validate the doc–code link graph (ADR-0027). Walks `docs/`, `pan-wizard-core/{workflows,templates,references,learnings}/`, `commands/`, `agents/` for inline `[[<id>]]` refs, and `pan-wizard-core/`, `bin/`, `hooks/`, `scripts/` for `// @pan: <id>` source-comment anchors. Reports broken refs, stale anchors, and uncovered backlink contracts.
 
 **Module:** `links.cjs`
 
-```
+```bash
 pan-tools links validate [--strict] [--doc-root <p>] [--source-root <p>] [--raw]
 ```
 
@@ -3036,7 +3070,7 @@ Cross-reference roadmap phases vs disk directories and detect orphaned requireme
 
 **Module:** `verify.cjs`
 
-```
+```bash
 pan-tools deps validate [--raw]
 ```
 
@@ -3069,7 +3103,7 @@ Check changed files against project conventions and produce a quantitative drift
 
 **Module:** `verify.cjs`
 
-```
+```bash
 pan-tools drift-check [--since <ref>] [--threshold <0.0-1.0>] [--files <path,...>] [--verbose] [--raw]
 ```
 
@@ -3079,7 +3113,7 @@ pan-tools drift-check [--since <ref>] [--threshold <0.0-1.0>] [--files <path,...
 - `--files <paths>` — Comma-separated specific files to check (bypasses git diff)
 - `--verbose` — Include `per_file` breakdown grouping violations by file
 
-**Convention sources:** `.planning/codebase/CONVENTIONS.md` + `CLAUDE.md` + 5 built-in PAN rules.
+**Convention sources:** `.planning/codebase/CONVENTIONS.md` + `CLAUDE.md` + the built-in PAN rules (`BUILTIN_DRIFT_RULES` in `constants.cjs`).
 
 **JSON output:**
 ```json
@@ -3108,7 +3142,7 @@ Milestone retrospective — analyze estimation accuracy, verification patterns, 
 
 **Module:** `verify.cjs`
 
-```
+```bash
 pan-tools retro [--write-memory] [--max N] [--raw]
 ```
 
@@ -3152,7 +3186,7 @@ Read the append-only memory log for an agent. Returns parsed entries as JSON.
 
 **Module:** `memory.cjs`
 
-```
+```bash
 pan-tools memory read <agent> [--raw]
 ```
 
@@ -3174,7 +3208,7 @@ Returns `{agent, exists: false, entries: []}` when no memory file exists.
 
 Append a lesson to an agent's memory. Creates file + directory if missing. Entries are auto-prefixed with today's date if not already prefixed.
 
-```
+```bash
 pan-tools memory append <agent> <entry text can have spaces>
 ```
 
@@ -3184,7 +3218,7 @@ Agent name must match `^[a-zA-Z0-9_-]+$` (blocks path traversal). Newlines in th
 
 List all agents that have memory files plus their entry counts.
 
-```
+```bash
 pan-tools memory list [--raw]
 ```
 
@@ -3197,7 +3231,7 @@ pan-tools memory list [--raw]
 
 Trim an agent's memory file to the last `max` entries (default 500).
 
-```
+```bash
 pan-tools memory compact <agent> 50
 ```
 
@@ -3210,7 +3244,7 @@ pan-tools memory compact <agent> 50
 
 Return a budget-bounded selection of an agent's memory entries for loading into a spawn. Always keeps the most-recent `--recency-floor` entries, then fills the remaining `--token-budget` with entries most relevant to `--cue` (both fall back to built-in defaults). Read-only.
 
-```
+```bash
 pan-tools memory select pan-executor --cue "auth refactor" --token-budget 2000 --recency-floor 5 [--raw]
 ```
 
@@ -3223,17 +3257,17 @@ pan-tools memory select pan-executor --cue "auth refactor" --token-budget 2000 -
 
 Report the total token footprint of all agent memory files against the project's typical per-call input size (median from the cost log), so you can see how much of a spawn's context memory is consuming. Read-only.
 
-```
+```bash
 pan-tools memory budget [--raw]
 ```
 
 ### `memory optimize [--apply] [--keep N]`
 
-Reconcile the always-loaded project memory so it stays small. Reconciles state.md's append-heavy bullet sections (Decisions / Blockers / Concerns / Todos / Session Continuity): dedupe, strip placeholders once real entries exist, and cap to the most-recent `N` (default 12), **archiving** the overflow to `.planning/memory/state-archive.md` — nothing is hard-deleted. Also consolidates any per-agent episodic log over the entry cap. Tables, prose, sub-bullets, and every non-target section are preserved byte-for-byte.
+Reconcile the always-loaded project memory so it stays small. Reconciles state.md's append-heavy bullet sections (Decisions / Blockers / Concerns / Todos / Pending Todos / Accumulated Context / Recent Activity / Session Continuity): dedupe, strip placeholders once real entries exist, and cap to the most-recent `N` (default 12), **archiving** the overflow to `.planning/memory/state-archive.md` (bullets that read like injected instructions go to `.planning/memory/quarantine.md` instead, reported as `quarantined`) — nothing is hard-deleted. Also consolidates any per-agent episodic log over the entry cap. Tables, prose, sub-bullets, and every non-target section are preserved byte-for-byte.
 
 Dry-run by default (reports what *would* change); pass `--apply` to write. Idempotent — a second run on already-lean content is a no-op.
 
-```
+```bash
 pan-tools memory optimize            # dry-run: report what would change
 pan-tools memory optimize --apply    # write the reconciled state.md + archive
 pan-tools memory optimize --apply --keep 20
@@ -3257,7 +3291,7 @@ Regenerate PAN's *derived* tools-memory as an idempotent projection from source:
 
 Dry-run by default; pass `--apply` to write. A second run changes nothing.
 
-```
+```bash
 pan-tools memory rebuild             # dry-run: report the derived targets
 pan-tools memory rebuild --apply     # regenerate AGENTS.md / CLAUDE.md / state.md frontmatter
 ```
@@ -3280,11 +3314,11 @@ pan-tools memory rebuild --apply     # regenerate AGENTS.md / CLAUDE.md / state.
 
 ### `cache prime [--summary]`
 
-Build an ordered, cache-eligible context block list from stable `.planning/` files (project.md, requirements.md, roadmap.md, state.md, standards.md). Commands call this once per invocation to prime the prompt cache; sub-agents spawned within 5 minutes hit cached reads.
+Build an ordered, cache-eligible context block list from stable `.planning/` files (project.md, requirements.md, roadmap.md, state.md, standards.md), plus any planning-root-relative paths listed in `config.json` → `cache.extra_files` (appended after the built-ins so existing cache keys stay stable). Commands call this once per invocation to prime the prompt cache; sub-agents spawned within the provider's prompt-cache lifetime hit cached reads (see `context-budget` → `cache.ttl`).
 
 **Module:** `core.cjs` (wrapper in dispatcher)
 
-```
+```bash
 pan-tools cache prime [--summary] [--raw]
 ```
 
@@ -3313,7 +3347,7 @@ Estimate total token size of a repository for single-shot vs sharded `/pan:map-c
 
 **Module:** `codebase.cjs`
 
-```
+```bash
 pan-tools codebase estimate-size [--threshold 700000] [--no-docs] [--raw]
 ```
 
@@ -3343,12 +3377,12 @@ Classify a focus-exec batch into parallel-tool-use waves + a `parallelism_hint` 
 
 **Module:** `focus.cjs`
 
-```
+```bash
 pan-tools focus classify-stages [--stdin] [--raw]
 ```
 
 **Flags:**
-- `--stdin` — read items JSON from stdin instead of the latest batch file.
+- `--stdin` — read items JSON from stdin instead of the oldest batch file.
 
 **JSON output:**
 ```json
@@ -3371,7 +3405,7 @@ Emit a reflection prompt between focus-auto cycles. Reads `{run, cycle, batch, t
 
 **Module:** `focus.cjs`
 
-```
+```bash
 echo '{"run": {...}, "cycle": {...}, "batch": [...], "tier": "reasoning"}' \
   | pan-tools focus reflection [--raw]
 ```
@@ -3397,7 +3431,7 @@ Detect programming languages used in a codebase via extension mapping and manife
 
 **Module:** `codebase.cjs`
 
-```
+```bash
 pan-tools codebase detect-languages [--raw]
 ```
 
@@ -3417,7 +3451,7 @@ Build a dependency graph from import analysis with circular dependency detection
 
 **Module:** `codebase.cjs`
 
-```
+```bash
 pan-tools codebase analyze-imports [--raw]
 ```
 
@@ -3440,7 +3474,7 @@ Detect best practices across 5 categories: Error Handling, Testing, Naming Conve
 
 **Module:** `codebase.cjs`
 
-```
+```bash
 pan-tools codebase best-practices [--raw]
 ```
 
@@ -3468,7 +3502,7 @@ Aggregate per-call cost across all PAN invocations in the project.
 
 **Module:** `cost.cjs`
 
-```
+```bash
 pan-tools cost report [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
 ```
 
@@ -3483,7 +3517,7 @@ Three formats:
 
 Manually append a cost record. Used by explicit callers; the hook path handles automatic capture.
 
-```
+```bash
 pan-tools cost append \
   [--agent <name>] [--command <name>] [--model <id>] [--tier reasoning|mid|fast] \
   [--input-tokens N] [--output-tokens N] \
@@ -3503,11 +3537,13 @@ Report whether the built-in model rate table is stale.
 
 **Module:** `cost.cjs`
 
-```
+```bash
 pan-tools models check [--raw]
 ```
 
-Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers}`. The rate table carries the date it was last verified against published provider pricing; `stale` flips to `true` once that date is older than the threshold (roughly half a year). When stale, re-verify provider pricing, update `DEFAULT_RATES`, and bump `RATES_VERIFIED_AT` in `cost.cjs`. `--raw` prints a one-line human summary instead of JSON.
+Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers, managed_model_pricing}`. The rate table carries the date it was last verified against published provider pricing; `stale` flips to `true` once that date is older than the threshold (roughly half a year). When stale, re-verify provider pricing, update `DEFAULT_RATES`, and bump `RATES_VERIFIED_AT` in `cost.cjs`. `--raw` prints a one-line human summary instead of JSON.
+
+`managed_model_pricing` lists the model ids found in a Claude Code managed `modelPricing` block (contracted per-model rates an organisation deploys through managed settings). PAN prices with those rates when present — see the `cost.rates` config key for the precedence — and reads them from the directory Claude Code documents for each OS; `PAN_MANAGED_SETTINGS_DIR` redirects the lookup. An empty list means no block was found, not that the setting is unsupported.
 
 ### `bus publish <channel> <payload> [--source <name>]` (v3.0, Y-7)
 
@@ -3522,7 +3558,7 @@ Channel and source names validated against `^[a-zA-Z0-9_-]+$` (path-traversal sa
 Read messages from a channel.
 
 - `peek` (default) — non-destructive read
-- `consume` — read + truncate file to zero bytes
+- `consume` — read, then remove only the drained window (`offset`..`offset+limit`) from the file; messages outside the window survive, and the file is emptied only when the window covers every line
 - `archive` — read + rename file to `<channel>-<timestamp>.archive.jsonl`
 
 ### `bus list` (v3.0, Y-7)
@@ -3535,7 +3571,7 @@ Blast-radius analysis for a single phase.
 
 **Module:** `preview.cjs`
 
-```
+```bash
 pan-tools preview phase <N> [--raw]
 ```
 
@@ -3567,7 +3603,7 @@ Retrieve candidate source files for a natural-language question, scored by keywo
 
 **Module:** `knowledge.cjs`
 
-```
+```bash
 pan-tools knowledge ask "why does phase 4 have a race condition fix?"
 pan-tools knowledge ask "how is auth wired?" --recall-cue "session tokens"
 ```
@@ -3629,11 +3665,11 @@ The autonomous external-build loop: scaffold an experiment folder, drive an exte
 
 ### `experiment new <slug> --idea <path> [--root <dir>] [--runtime <name>] [--budget N] [--skip-installer]` (v3.7.0)
 
-Scaffold a new experiment folder at `<root>/<slug>/`. Copies `<idea>` to `<root>/<slug>/.planning/idea.md`, writes the `experiment.json` manifest, and (unless `--skip-installer`) runs the PAN installer for the chosen runtime inside the experiment dir. Default root: `~/pan-experiments/`. Default runtime: `claude`. Hard `PAN_SOURCE_ROOT` guard refuses to scaffold inside the source repo.
+Scaffold a new experiment folder at `<root>/<slug>/`. Copies `<idea>` to `<root>/<slug>/.planning/idea.md`, writes the `experiment.json` manifest, initialises a git repository in the folder with a local commit identity, and (unless `--skip-installer`) runs the PAN installer for the chosen runtime inside the experiment dir (in an installed, non-source PAN the installer is unavailable and the result carries `installer_skipped`). Default root: `~/pan-experiments/`. Default runtime: `claude`. Hard `PAN_SOURCE_ROOT` guard refuses to scaffold inside the source repo.
 
 ### `experiment list [--root <dir>] [--include-archived]` (v3.7.0)
 
-Enumerate experiments under root with `{slug, runtime, status, created_at, path}` per entry. By default archived experiments are omitted; pass `--include-archived` to list them too.
+Enumerate experiments under root with `{experiment_id, runtime, status, created_at, path, …}` per entry (the full `experiment.json` manifest plus `path`). By default archived experiments are omitted; pass `--include-archived` to list them too.
 
 ### `experiment manifest <slug> [--root <dir>]` (v3.7.0)
 
@@ -3657,13 +3693,13 @@ Finalize/record a stopped experiment in `run-state.json`. This **cannot** termin
 
 ### `experiment harvest <slug> [--root <dir>] [--source-root <dir>] [--force]` (v3.7.0)
 
-Copy `learnings/`, `traces/`, `run-state.json`, `agent-history.json`, `experiment.json`, and the rendered `commands/pan/`, `agents/`, references back into a fixed destination at `<source-root>/experiments/<slug>/`. `--source-root` selects the PAN source root (destination base); `--force` overwrites an existing harvest at that path. Non-destructive — leaves the experiment folder intact for re-runs.
+Copy `.planning/idea.md`, `experiment.json`, `state.md`, `run-state.json`, `agent-history.json`, `optimization/` (traces + reports) and `phases/` back into a fixed destination at `<source-root>/experiments/<slug>/`. `--source-root` selects the PAN source root (destination base); `--force` overwrites an existing harvest at that path. Non-destructive — leaves the experiment folder intact for re-runs.
 
 ### `experiment prune <slug> [--root <dir>] [--hard]` (v3.7.0)
 
 Remove the experiment. Default is a soft prune — the experiment folder is archive-renamed (preserved, not deleted). With `--hard`, the folder is permanently deleted.
 
-### `learn promote --pattern <id> --scope <s> --topic <t> [--summary] [--evidence] [--rule] [--applies-in] [--source-experiments csv]`
+### `learn promote --pattern <id> --scope <s> --topic <t> --summary <text> --rule <text> [--evidence] [--applies-in] [--source-experiments csv] [--source-root <path>]`
 
 Append a promoted pattern into `pan-wizard-core/learnings/{scope}/{topic}.md`. Scope is `universal` (ships to installs) or `internal` (source-only, stripped at install). Refuses duplicate IDs within the same topic file. When `--scope universal` is used, classifies the rule via `classifyPatternKind()` and attaches a `warning` to the result if the rule looks prompt-fragment-shaped (per P-RES-007). Returns `{promoted_to, pattern_id, scope, topic, promoted_at, warning?}`.
 
@@ -3677,7 +3713,7 @@ Walk both scopes; return inventory `{universal: [...], internal: [...], total}` 
 
 ### `learn lint [--scope universal|internal] [--strict]`
 
-Validate the learnings store integrity. Checks: L-001 duplicate IDs across files, L-002 dangling pattern cross-references, L-003 empty `source_experiments` while body cites a known experiment name, L-004 universal-scope rule prose using PAN-internal terms, L-005 revision marker (`-rN`) without `superseded_by` frontmatter on the base. Exits non-zero on errors; warnings are advisory unless `--strict`. Wired into `/check`. Module: `learn-lint.cjs`.
+Validate the learnings store integrity. Checks: L-001 duplicate IDs across files, L-002 dangling pattern cross-references, L-003 empty `source_experiments` while body cites a known experiment name, L-004 universal-scope rule prose using PAN-internal terms, L-005 revision marker (`-rN`) without `superseded_by` frontmatter on the base, L-006 universal-scope pattern citing an internal pattern id (dangles after install). Exits non-zero on errors; warnings are advisory unless `--strict`. Wired into `/check`. Module: `learn-lint.cjs`.
 
 ### `learn build-index`
 
@@ -3699,7 +3735,7 @@ Markdown frontmatter + structure linter, vendored from the whooo experiment. Val
 
 > Corrected in this version: the JSON paths used to exit `0` unconditionally, because `output()` exits the process and the `process.exit(<verdict>)` line below each call was unreachable. `doc-lint --format json` therefore never failed, and `doc-lint schema-check` never failed in *either* format. Earlier revisions of this page documented the JSON path as merely "reporting `schema_errors` in the body" — that described the defect, not an intended design. If you pinned a version to that behaviour, the linter was not gating.
 
-### `doc-lint <dir> [--schema <name>] [--format human|json]` (v3.7.1)
+### `doc-lint <dir> [--schema <path>] [--format human|json] [--strict] [--exclude <glob>]` (v3.7.1)
 
 Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command` for files under `commands/pan/`). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. JSON output suitable for CI gates; human output for terminal review. Exits `1` when any violation has `severity: error` (warnings alone exit `0`), `2` if the schema could not be parsed.
 
@@ -3727,7 +3763,7 @@ SAD pass (ADR-0038, spec `docs/specs/skill-aligned-decomposition.md`): the plann
 
 Build (on the fly — nothing persisted) and print the skill index: `commands/pan/*.md`, `pan-wizard-core/templates/**` (recursive), `pan-wizard-core/references/*.md`, plus learnings topics via `learn-index.cjs`. Returns `{entries, total, by_kind, skipped_roots}`. Missing roots are skipped and reported, never thrown — partial installs and non-Claude runtime layouts degrade gracefully. Default root is the install root (resolved relative to the module); `--source-root` exists for tests.
 
-```
+```bash
 pan-tools skills index --raw
 ```
 
@@ -3735,7 +3771,7 @@ pan-tools skills index --raw
 
 Score each draft task (bullets/numbered/checkbox lines all accepted) against the skill index using `scoreRelevance`, after stripping planning glue words from the cue. Returns per-task top-k matches (names only), `coverage`, and a deduplicated `vocabulary` hint list ranked by aggregate score and greedy-packed into the token budget (default 1500) — overflow lands in `dropped`, never silently truncated. A draft that yields no tasks, or one over the max-task threshold, is reported as an `{error}` JSON body on stdout at **exit 1** (per "Error Shape"); omitting both `--draft` and `--draft-file` is a usage error on stderr, also exit 1.
 
-```
+```bash
 pan-tools skills align --draft-file /tmp/draft-tasks.md --raw
 ```
 
@@ -3753,18 +3789,66 @@ Both subcommands accept the planning-root flags (`--track`, `--planning-dir`, `-
 
 ### `hygiene scan [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
 
-Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the block re-read into every agent call, warned at 15k tokens and critical at 25k, with any single file over 6k called out and `state.md` carrying the `compact-state` remedy; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines). Returns `{findings, installs, latest_version, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
+Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the block re-read into every agent call, warned at 15k tokens and critical at 25k, with any single file over 6k called out and `state.md` carrying the `compact-state` remedy; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; and, under `cache-context` at `info`, the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Returns `{findings, installs, latest_version, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
 
-```
+```bash
 pan-tools hygiene scan --raw
 ```
 
 ### `hygiene clean [--apply] [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
 
-Dry-run by default (lists what would change); `--apply` executes the safe subset: two-step case-hop renames of legacy filenames, `.tmp` orphan deletion, memory-log compaction (`compactMemory`), poisoned-ledger **quarantine-by-rename** (`tokens.jsonl.quarantined-<date>` — content never deleted), and stale-trace pruning. Version drift (remediation = re-run the installer) and fragment dirs (manual review) are never auto-fixed. Returns `{dry_run, applied, skipped, planning_root, track, all_tracks, roots_scanned, summary}`. Under `--all-tracks` each fix is applied within its own tree's scope, so a track's bloated memory log is compacted in that track rather than in the root tree.
+Dry-run by default (lists what would change); `--apply` executes the safe subset: two-step case-hop renames of legacy filenames, `.tmp` orphan deletion, memory-log compaction (`compactMemory`), poisoned-ledger **quarantine-by-rename** (`tokens.jsonl.quarantined-<date>` — the poisoned rows are kept, but only the newest quarantine file survives and the hook's `.cost-cursor.json` is reset), stale-trace and stale-report pruning, and `state.md` compaction (`compact-state`, archiving settled sections to `.planning/state-history.md`, beside state.md). Version drift (remediation = re-run the installer) and fragment dirs (manual review) are never auto-fixed, and the legacy-filename rename refuses outright on a tree the scan flagged as `foreign-planning-tree` — PAN never renames another tool's state. Returns `{dry_run, applied, skipped, planning_root, track, all_tracks, roots_scanned, summary}`. Under `--all-tracks` each fix is applied within its own tree's scope, so a track's bloated memory log is compacted in that track rather than in the root tree.
 
-```
+```bash
 pan-tools hygiene clean --apply --raw
 ```
 
 Wrapped by the `/pan:hygiene` command: scan → present by severity → confirm → clean → re-scan.
+
+---
+
+## 27. Optimization, Git and Distill Commands (v3.5)
+
+Three verbs the Command Index lists that had no section of their own. Wrapped by `/pan:optimize`, `/pan:learn`, `/pan:git` and the `distill` focus-auto category.
+
+### `optimize trace <init|log|end|current|list|show|reconcile>` · `optimize learn` · `optimize apply` · `optimize list` · `optimize stats`
+
+**Module:** `optimize.cjs`. Trace sessions live at `.planning/optimization/traces/<session>/` (`trace.jsonl` + `session.json`); reports at `.planning/optimization/reports/`. Bare `learn` is the documented alias for `optimize learn`.
+
+```bash
+pan-tools optimize trace init --description "exec phase 5" --command exec-phase --phase 5
+pan-tools optimize trace log --agent pan-executor --type decision --category deviation --impact medium --tokens-wasted 1200 --context '{"task":"05-01"}'
+pan-tools optimize trace current                    # the open session
+pan-tools optimize trace list                       # every session on disk (open and ended)
+pan-tools optimize trace show --session <id>        # one session's events
+pan-tools optimize trace reconcile [--session <id> | --all]   # rewrite session.json counters from trace.jsonl — the open session by default, one by id, or all (v3.21)
+pan-tools optimize trace end [--session <id>]
+pan-tools optimize learn [--session <id>]           # analyse events → report
+pan-tools optimize apply [--report <path>]          # write auto-applicable findings to memory
+pan-tools optimize list                             # reports on disk
+pan-tools optimize stats
+```
+
+The dispatcher parses these flags for `trace`: `--session`, `--all`, `--description`, `--command`, `--phase`, `--agent`, `--type`, `--category`, `--impact`, `--correction`, `--tokens-wasted` (number), `--context` (JSON). `learn` takes `--session`; `apply` takes `--report`.
+
+### `git <commit|branch|push|status|log|stash|diff|rollback|tag|sync> [...]`
+
+**Module:** `git.cjs` — phase-aware git workflow; `commit` reuses `runCommitSafetyChecks` (deleted-file and sensitive-file gates). Works in any git repo, with or without `.planning/`.
+
+```bash
+pan-tools git commit --message "..." [--type feat] [--all] [--amend] [--force] [<file>...]
+pan-tools git branch <create|switch|list|delete|current> [--name <n>] [--phase <N>] [--force]   # --phase 3 names it pan/phase-3
+pan-tools git push [--remote <r>] [--branch <b>] [--force]     # remote validated; --force required for a force-push
+pan-tools git status
+pan-tools git log [--count <N>]                     # default 10
+pan-tools git stash <save|pop|list|drop> [--name <n>] [--index <i>]
+pan-tools git diff [--staged] [--file <path>]
+pan-tools git rollback [--tag <pan-rollback-*>] [--dry-run]    # resets --hard to the given tag, or to the lexically last pan-rollback-* tag (`git tag -l` order — not necessarily the newest; pass --tag to be explicit); refuses on a dirty tree (dirty_working_tree);
+                                                               # --dry-run only reports the target — list snapshots with `git tag list --pattern 'pan-rollback-*'`
+pan-tools git tag <list|create|delete> [--name <n>] [--message <m>] [--pattern <glob>]   # --pattern for list; --name/--message for create; --name for delete
+pan-tools git sync [--remote <r>] [--branch <b>] [--rebase]
+```
+
+### `distill <scan|analyze|report> [--bloat-threshold N] [--touched-loc N]`
+
+**Module:** `distill.cjs` — the deterministic passes of the AI code-bloat optimizer (phantom try/catch, unused imports, magic numbers, long functions, wide parameter lists, single-instance factories, deep nesting, repeated blocks, unreferenced exports); the `pan-distiller` agent judges only the flagged spans. Cross-session memory at `.planning/memory/distill-patterns.md`. The bloat-budget gate compares touched LOC against essential LOC; `--bloat-threshold` overrides the default ratio of `2.0`.

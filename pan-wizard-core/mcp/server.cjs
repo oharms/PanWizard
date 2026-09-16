@@ -50,7 +50,36 @@ const META_SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo';
 // claim to speak a version we don't. Newest first (the `server/discover` order).
 const SUPPORTED_VERSIONS_LIST = [MODERN_PROTOCOL_VERSION, '2025-06-18', '2025-03-26', '2024-11-05'];
 const SUPPORTED_PROTOCOL_VERSIONS = new Set(SUPPORTED_VERSIONS_LIST);
-const SERVER_INFO = { name: 'pan-mcp', version: '0.1.0' };
+/**
+ * The version the server reports in `initialize` / `server/discover`. Read from the
+ * package.json two levels up: the repository root in the source tree, the runtime
+ * directory in an install (the installer writes package.json beside pan-wizard-core/).
+ * The plugin bundles carry no package.json there, so fall back to the plugin manifest
+ * and finally to a marker that is visibly not a release. Never throws: a missing
+ * file must not stop the server from answering. Reality check R9: this was a literal
+ * '0.1.0' while the package shipped 3.x.
+ */
+function readPackageVersion(baseDir = path.join(__dirname, '..', '..')) {
+  // Order: the repo/runtime package.json when it carries a version; the install
+  // manifest every runtime writes (the runtime directory's package.json is a bare
+  // `{"type":"commonjs"}` marker with no version — measured on a fresh install,
+  // 2026-09-10, where the first version of this reader answered 0.0.0-unknown); the
+  // Claude plugin manifest; an Agent Plugins manifest.
+  const candidates = [
+    path.join(baseDir, 'package.json'),
+    path.join(baseDir, 'pan-file-manifest.json'),
+    path.join(baseDir, '.claude-plugin', 'plugin.json'),
+    path.join(baseDir, 'plugin.json'),
+  ];
+  for (const file of candidates) {
+    try {
+      const v = JSON.parse(fs.readFileSync(file, 'utf8')).version;
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    } catch { /* try the next candidate */ }
+  }
+  return '0.0.0-unknown';
+}
+const SERVER_INFO = { name: 'pan-mcp', version: readPackageVersion() };
 
 /**
  * Default engine location: `bin/` is a sibling of this `mcp/` directory inside
@@ -73,6 +102,25 @@ const SERVER_INFO = { name: 'pan-mcp', version: '0.1.0' };
  */
 function defaultPanToolsPath() {
   return path.join(__dirname, '..', 'bin', 'pan-tools.cjs');
+}
+
+/**
+ * A verdict payload: a JSON object with no error-family key. The family is `error`
+ * and any key ending in `_error` — the same definition core.cjs's reportsFailure()
+ * uses for the CLI exit code, mirrored here because the server stays engine-agnostic
+ * (it never requires the engine's modules; it spawns them). Plural collections such
+ * as `errors[]` are verdict DETAIL, not a failure signal. Returns the parsed object,
+ * or null when the text is not such a payload.
+ */
+function parseVerdict(text) {
+  if (typeof text !== 'string' || !text.trim()) return null;
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { return null; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  for (const k of Object.keys(parsed)) {
+    if (k === 'error' || k.endsWith('_error')) { if (parsed[k]) return null; }
+  }
+  return parsed;
 }
 
 /** Real spawn: shell-less execFile of `node <argv...>`. */
@@ -154,7 +202,7 @@ function createServer(opts = {}) {
   const gitImpl = opts.gitImpl || makeDefaultGit(cwd);
   const env = opts.env || process.env;
 
-  function runVerb(verb, extraArgs) {
+  function runVerb(verb, extraArgs, verbCwd = cwd) {
     // Defense in depth: the verb always comes from the registry, but re-check the
     // forbidden pattern here so no future caller can smuggle a force/reset op past it.
     if (reg.FORBIDDEN_VERB.test(verb)) {
@@ -163,9 +211,29 @@ function createServer(opts = {}) {
     // No --raw: pan-tools' default output is structured JSON (which is what the MCP
     // client wants); --raw would instead emit a bare human scalar. Large results
     // arrive via the @file: overflow protocol, resolved here.
-    const r = spawn([panToolsPath, verb, ...extraArgs, '--cwd', cwd]);
+    const r = spawn([panToolsPath, verb, ...extraArgs, '--cwd', verbCwd]);
     if (r && r.ok) r.stdout = resolveOverflow(r.stdout);
     return r;
+  }
+
+  /**
+   * Per-call project root (ADR-0045 D6). Every TOOL accepts an optional `cwd`;
+   * it must be an absolute path to an existing directory. Returns
+   * { cwd, input } with the field removed from the input handed to the tool, or
+   * { error } shaped for a -32602 — a bad root is a bad REQUEST, and nothing is
+   * spawned. Resources never come through here: their argv is static.
+   */
+  function resolveCallCwd(input) {
+    const src = input || {};
+    if (src.cwd === undefined) return { cwd, input: src };
+    let candidate;
+    try { candidate = reg.validateProjectCwd(src.cwd); }
+    catch (e) { return { error: { code: -32602, message: String((e && e.message) || e) } }; }
+    let isDir = false;
+    try { isDir = fs.statSync(candidate).isDirectory(); } catch { /* absent → not a directory */ }
+    if (!isDir) return { error: { code: -32602, message: `Invalid "cwd": not an existing directory: ${candidate}` } };
+    const { cwd: _omit, ...rest } = src;
+    return { cwd: path.resolve(candidate), input: rest };
   }
 
   // Returns { error:{code,message} } for JSON-RPC protocol errors (unknown tool /
@@ -174,11 +242,15 @@ function createServer(opts = {}) {
   function callTool(name, input) {
     const tool = reg.byToolName[name];
     if (!tool) return { error: { code: -32602, message: `Unknown tool: ${name}` } };
+    const call = resolveCallCwd(input);
+    if (call.error) return { error: call.error };
     // Native, in-process tools (orchestrator / merge gate) run a handler; a thrown
     // Error means bad params (-32602), matching the spawn-tool validation path.
+    // The git executor follows the per-call root unless a test injected one.
     if (typeof tool.handler === 'function') {
       try {
-        const out = tool.handler({ cwd, input: input || {}, env, gitImpl });
+        const gitForCall = opts.gitImpl ? gitImpl : (call.cwd === cwd ? gitImpl : makeDefaultGit(call.cwd));
+        const out = tool.handler({ cwd: call.cwd, input: call.input, env, gitImpl: gitForCall });
         const text = (out && out.text != null) ? out.text : JSON.stringify(out && out.json);
         return { result: { content: [{ type: 'text', text }], isError: !!(out && out.isError) } };
       } catch (e) {
@@ -186,9 +258,9 @@ function createServer(opts = {}) {
       }
     }
     let extra;
-    try { extra = tool.args ? tool.args(input || {}) : []; }
+    try { extra = tool.args ? tool.args(call.input) : []; }
     catch (e) { return { error: { code: -32602, message: String((e && e.message) || e) } }; }
-    const r = runVerb(tool.verb, extra);
+    const r = runVerb(tool.verb, extra, call.cwd);
     return { result: { content: [{ type: 'text', text: r.ok ? r.stdout : (r.stderr || 'error') }], isError: !r.ok } };
   }
 
@@ -206,7 +278,19 @@ function createServer(opts = {}) {
     // non-array into the spawn.
     const tail = Array.isArray(res.args) ? res.args : [];
     const r = runVerb(res.verb, tail);
-    if (!r.ok) return { error: { code: -32603, message: r.stderr || 'resource read failed' } };
+    if (!r.ok) {
+      // A VERDICT is data, not a failed read. `validate health` (pan://health) exits
+      // non-zero when its verdict is `broken` — CLI-REFERENCE: verdict commands set
+      // their exit code explicitly, for shell gating — while still printing the full
+      // JSON report. Over MCP the report IS the resource, so accept stdout when it is
+      // a JSON object carrying no error-family key. Anything else (no JSON, or an
+      // `error`/`*_error` key) is a genuine read failure → JSON-RPC error.
+      const text = resolveOverflow(r.stdout);
+      if (parseVerdict(text) !== null) {
+        return { result: { contents: [{ uri, mimeType: 'application/json', text }] } };
+      }
+      return { error: { code: -32603, message: r.stderr || 'resource read failed' } };
+    }
     return { result: { contents: [{ uri, mimeType: 'application/json', text: r.stdout }] } };
   }
 
@@ -315,6 +399,6 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
-  createServer, defaultPanToolsPath, defaultSpawn, SERVER_INFO, toMcpTool, toMcpResource,
+  createServer, defaultPanToolsPath, defaultSpawn, parseVerdict, readPackageVersion, SERVER_INFO, toMcpTool, toMcpResource,
   PROTOCOL_VERSION, MODERN_PROTOCOL_VERSION, SUPPORTED_VERSIONS_LIST, META_PROTOCOL_VERSION_KEY,
 };

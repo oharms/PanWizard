@@ -586,3 +586,204 @@ describe('pan-zcode real round-trip (spawns actual pan-tools)', () => {
     }
   });
 });
+
+describe('per-call project root — `cwd` on every tool (ADR-0045 D6)', () => {
+  // Agent Plugins clients launch a stdio server in the PLUGIN root (spec default),
+  // so the process cwd is never the project there. Every TOOL therefore accepts an
+  // optional absolute `cwd`, honoured for that call only. Resources stay static.
+
+  test('tools/list advertises `cwd` on every tool, never as required; resources are untouched', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    assert.ok(r.result.tools.length > 0, 'non-vacuity');
+    for (const t of r.result.tools) {
+      assert.equal(t.inputSchema.properties.cwd.type, 'string', `${t.name} must accept cwd`);
+      assert.ok(!(t.inputSchema.required || []).includes('cwd'), `${t.name}: cwd must stay optional`);
+      assert.equal(t.inputSchema.additionalProperties, false, `${t.name}: schema stays closed`);
+    }
+    // The decoration is applied to COPIES — the source descriptors keep their shape.
+    for (const t of [...reg.SPAWN_TOOLS, ...reg.NATIVE_TOOLS]) {
+      assert.equal((t.inputSchema.properties || {}).cwd, undefined, `${t.name}: source descriptor must not be mutated`);
+    }
+    for (const res of reg.RESOURCES) assert.ok(!('inputSchema' in res), `${res.uri}: resources take no input`);
+  });
+
+  test('a call with cwd spawns the verb against THAT root, with cwd stripped from the tool input', () => {
+    const rec = [];
+    const given = os.tmpdir(); // exists; is not the server's cwd
+    const s = createServer({ spawnImpl: fakeSpawn(rec, '{"model":"x"}'), panToolsPath: '/x/pan-tools.cjs', cwd: '/proj' });
+    const r = s.handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: { agent: 'pan-planner', cwd: given } } });
+    assert.equal(r.result.isError, false);
+    assert.deepEqual(rec[0], ['/x/pan-tools.cjs', 'resolve-model', 'pan-planner', '--cwd', path.resolve(given)]);
+    // And without cwd the server's own root is used, exactly as before.
+    s.handle({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: { agent: 'pan-planner' } } });
+    assert.deepEqual(rec[1].slice(-2), ['--cwd', '/proj']);
+  });
+
+  test('a bad cwd is a bad REQUEST (-32602) and nothing is spawned', () => {
+    const rec = [];
+    const s = createServer({ spawnImpl: fakeSpawn(rec), cwd: '/proj' });
+    const nope = path.join(os.tmpdir(), `pan-cwd-does-not-exist-${process.pid}-${Date.now()}`);
+    for (const bad of ['relative/dir', './here', '', 5, nope, 'C:\\x\0y']) {
+      const r = s.handle({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: { agent: 'pan-planner', cwd: bad } } });
+      assert.equal(r.error && r.error.code, -32602, `cwd=${JSON.stringify(bad)} should be rejected`);
+      assert.match(r.error.message, /cwd/);
+    }
+    assert.equal(rec.length, 0, 'no spawn may happen for a rejected root');
+  });
+
+  test('validateProjectCwd accepts absolute paths of both platform families and rejects the rest', () => {
+    for (const ok of ['/srv/proj', 'C:\\Users\\me\\proj', 'D:/PanTesting/x', '\\\\server\\share\\proj']) {
+      assert.equal(reg.validateProjectCwd(ok), ok);
+    }
+    for (const bad of ['proj', './proj', '../proj', '', 'C:relative', 'a'.repeat(1025), '/x\0']) {
+      assert.throws(() => reg.validateProjectCwd(bad), /Invalid "cwd"/, `should reject ${JSON.stringify(bad)}`);
+    }
+  });
+
+  test('native tools receive the per-call root too', () => {
+    const tool = reg.byToolName.pan_next_action;
+    const original = tool.handler;
+    const seen = [];
+    tool.handler = (ctx) => { seen.push(ctx); return { json: { ok: true } }; };
+    try {
+      const s = createServer({ spawnImpl: fakeSpawn([]), cwd: '/proj' });
+      const given = os.tmpdir();
+      const r = s.handle({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'pan_next_action', arguments: { state: {}, cwd: given } } });
+      assert.equal(r.result.isError, false);
+      assert.equal(seen[0].cwd, path.resolve(given));
+      assert.equal(seen[0].input.cwd, undefined, 'cwd is the server\'s concern, not the handler\'s input');
+      assert.deepEqual(seen[0].input, { state: {} });
+      assert.equal(typeof seen[0].gitImpl, 'function', 'a git executor bound to the per-call root is supplied');
+    } finally {
+      tool.handler = original;
+    }
+  });
+
+  test('real engine: a server started in one project answers for ANOTHER project when cwd says so', () => {
+    // The Agent Plugins scenario in miniature: the server's own cwd is a project
+    // with the default profile; the call names a project on the budget profile.
+    const home = createTempProject();
+    const other = createTempProject();
+    try {
+      fs.mkdirSync(path.join(other, '.planning'), { recursive: true });
+      fs.writeFileSync(path.join(other, '.planning', 'config.json'), JSON.stringify({ model_profile: 'budget' }));
+      const s = createServer({ cwd: home });
+      const call = (args) => s.handle({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'pan_resolve_model', arguments: args } });
+      const viaHome = call({ agent: 'pan-verifier' });
+      const viaOther = call({ agent: 'pan-verifier', cwd: other });
+      assert.equal(viaHome.result.isError, false, viaHome.result.content[0].text);
+      assert.equal(viaOther.result.isError, false, viaOther.result.content[0].text);
+      const a = JSON.parse(viaHome.result.content[0].text);
+      const b = JSON.parse(viaOther.result.content[0].text);
+      assert.ok(a.model && b.model, 'both calls resolve a model');
+      assert.notEqual(b.model, a.model, `the budget project must resolve differently (home=${a.model}, other=${b.model})`);
+    } finally {
+      cleanup(home); cleanup(other);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reality check RC2 / plan item R2 (2026-09-10). `validate health` now exits
+// non-zero on a `broken` verdict (CLI-REFERENCE: verdict commands set their exit
+// code explicitly, for shell gating) while still printing the full JSON report.
+// pan://health wraps that verb as a RESOURCE, and the resource rule says a resource
+// must be readable on a bare project — so the reader must treat a JSON verdict on a
+// non-zero exit as DATA, and only a payload with an error-family key (or no JSON at
+// all) as a failed read. The real-engine test above ("readable on a bare project")
+// went red the moment the exit code changed; these pin the reader's rule directly.
+// Revert-proof: drop the parseVerdict branch in readResource and the first test
+// fails with a -32603 error.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resources/read: a JSON verdict on a non-zero exit is data, not a failed read (R2)', () => {
+  const { parseVerdict } = require('../pan-wizard-core/mcp/server.cjs');
+  const brokenVerdict = '{"status":"broken","errors":[{"code":"E001","message":".planning/ directory not found","fix":"Run /pan:new-project to initialize","repairable":false}],"warnings":[],"info":[],"repairable_count":0}';
+  const failing = (stdout, stderr = 'Command failed: node pan-tools.cjs validate health') => () => ({ ok: false, stdout, stderr });
+
+  test('pan://health with verdict `broken` and exit≠0 returns the report as contents', () => {
+    const s = createServer({ spawnImpl: failing(brokenVerdict) });
+    const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'pan://health' } });
+    assert.ok(!r.error, `expected contents, got error: ${r.error && r.error.message}`);
+    const body = JSON.parse(r.result.contents[0].text);
+    assert.equal(body.status, 'broken');
+    assert.ok(body.errors.some(e => e.code === 'E001'));
+    assert.equal(r.result.contents[0].mimeType, 'application/json');
+  });
+
+  test('an error-family payload on exit≠0 is still a failed read (JSON-RPC -32603)', () => {
+    const s = createServer({ spawnImpl: failing('{"error":"state.md not found"}', 'boom') });
+    const r = s.handle({ jsonrpc: '2.0', id: 2, method: 'resources/read', params: { uri: 'pan://state' } });
+    assert.ok(r.error, 'an error-family payload must not be served as a resource');
+    assert.equal(r.error.code, -32603);
+  });
+
+  test('a renamed error key (`*_error`) on exit≠0 is also a failed read', () => {
+    const s = createServer({ spawnImpl: failing('{"worktree_error":"dirty"}') });
+    const r = s.handle({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'pan://state' } });
+    assert.ok(r.error && r.error.code === -32603);
+  });
+
+  test('non-JSON stdout on exit≠0 is a failed read carrying stderr', () => {
+    const s = createServer({ spawnImpl: failing('not json at all', 'engine exploded') });
+    const r = s.handle({ jsonrpc: '2.0', id: 4, method: 'resources/read', params: { uri: 'pan://progress' } });
+    assert.ok(r.error);
+    assert.match(r.error.message, /engine exploded/);
+  });
+
+  test('parseVerdict: the error family is `error` and `*_error`; plural `errors[]` is detail', () => {
+    assert.ok(parseVerdict('{"status":"broken","errors":[1]}'));
+    assert.equal(parseVerdict('{"error":"x"}'), null);
+    assert.equal(parseVerdict('{"drain_error":"x"}'), null);
+    assert.ok(parseVerdict('{"error":null,"ok":true}'), 'a falsy error key is not a failure (the exit-code contract says the same)');
+    assert.equal(parseVerdict('[1,2]'), null);
+    assert.equal(parseVerdict('null'), null);
+    assert.equal(parseVerdict(''), null);
+    assert.equal(parseVerdict('nope'), null);
+  });
+});
+
+// Reality check R9: serverInfo.version was a hardcoded '0.1.0' while the package
+// shipped 3.x. It now comes from the package.json two levels above mcp/ (repo root
+// here; the runtime dir in an install), with the plugin manifest as the fallback.
+describe('serverInfo.version is the package version (R9)', () => {
+  const { readPackageVersion } = require('../pan-wizard-core/mcp/server.cjs');
+  const pkgVersion = require('../package.json').version;
+
+  test('initialize reports the repository package version in the source tree', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([]) });
+    const r = s.handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+    assert.equal(r.result.serverInfo.version, pkgVersion);
+    assert.notEqual(r.result.serverInfo.version, '0.1.0', 'the old literal must be gone');
+  });
+
+  test('readPackageVersion never throws and never returns an empty string', () => {
+    const v = readPackageVersion();
+    assert.equal(typeof v, 'string');
+    assert.ok(v.trim().length > 0);
+  });
+
+  // Measured on a fresh five-runtime install (2026-09-10): the runtime directory's
+  // package.json is a bare {"type":"commonjs"} marker without a version, so the first
+  // version of this reader answered 0.0.0-unknown from every install. The install
+  // manifest is the version source every runtime writes.
+  test('an install layout with a version-less package.json falls through to the manifest', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcp-version-'));
+    try {
+      fs.writeFileSync(path.join(base, 'package.json'), JSON.stringify({ type: 'commonjs' }));
+      fs.writeFileSync(path.join(base, 'pan-file-manifest.json'), JSON.stringify({ version: '9.8.7', files: [] }));
+      assert.equal(readPackageVersion(base), '9.8.7');
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
+
+  test('a versioned package.json wins over the manifest; nothing readable yields the unknown marker', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcp-version-'));
+    try {
+      fs.writeFileSync(path.join(base, 'pan-file-manifest.json'), JSON.stringify({ version: '1.1.1' }));
+      fs.writeFileSync(path.join(base, 'package.json'), JSON.stringify({ version: '2.2.2' }));
+      assert.equal(readPackageVersion(base), '2.2.2');
+      assert.equal(readPackageVersion(path.join(base, 'nowhere')), '0.0.0-unknown');
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
+});

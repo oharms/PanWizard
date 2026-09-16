@@ -53,17 +53,17 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Version | (see `package.json`) |
 | Commands (`commands/pan/*.md`) | 59 |
 | Agents (`agents/*.md`) | 24 |
-| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 53 |
+| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 54 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 16 |
-| Unit test files (`tests/*.test.cjs`) | 124 |
+| Unit test files (`tests/*.test.cjs`) | 131 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 4002 |
-| Total test suites | 864 |
+| Total tests (npm run test:all) | 4154 |
+| Total test suites | 897 |
 | Hooks (`hooks/*.js`) | 6 |
-| Specs (`docs/specs/*.md`) | 45 |
-| ADRs (`docs/decisions/ADR-*.md`) | 44 |
+| Specs (`docs/specs/*.md`) | 47 |
+| ADRs (`docs/decisions/ADR-*.md`) | 48 |
 
 These are a snapshot of the **current working tree**, not of any released tag — a branch mid-audit carries files `main` does not (test files especially). They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
 
@@ -75,7 +75,7 @@ These are a snapshot of the **current working tree**, not of any released tag �
 
 - NEVER run `node bin/install.js` from `d:/PanWizard/` (or wherever this repo is cloned)
 - NEVER create `.claude/pan-wizard-core/`, `.claude/pan-file-manifest.json`, or `.claude/package.json` in this repo
-- NEVER copy source files into `.codex/`, `.gemini/`, or `.opencode/` within this repo
+- NEVER copy source files into `.codex/`, `.gemini/`, `.opencode/`, or `.github/` (Copilot's project dir) within this repo
 - The installer has a hard guard (`PAN_SOURCE_ROOT` check in `bin/install.js` — search for the constant) that refuses to run from the source directory
 - `.gitignore` blocks all self-install artifacts from being committed
 
@@ -124,7 +124,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 ### Source code (shipped by installer)
 
 - `bin/install.js` — Installer entry point
-- `bin/install-lib.cjs` — Pure functions for installer (side-effect free)
+- `bin/install-lib.cjs` — Installer functions, pure apart from the read-only `verifyInstall()`/`dirDigest()`
 - `pan-wizard-core/bin/pan-tools.cjs` — CLI dispatcher
 - `pan-wizard-core/bin/lib/*.cjs` — Core CJS modules
 - `pan-wizard-core/workflows/*.md` — Multi-step workflow definitions
@@ -147,22 +147,24 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `docs/decisions/ADR-*.md` — Architecture Decision Records
 - `docs/specs/*.md` — Feature specs
 
-### Development tools (not shipped — for PAN development only)
+### Development tools (for PAN development only — `.claude/`, `marketplace/` and `harness/` are not shipped; `scripts/` does ship because `package.json` `files` includes it)
 
 - `.claude/commands/*.md` — Dev commands (`/build`, `/test`, `/check`, `/pandev`, etc.)
 - `.claude/agents/*.md` — Dev agents (dev-orchestrator, dev-workflow)
 - `.claude/workflows/*.md` — Workflow protocols
 - `.claude/settings.json` — Claude Code permissions
-- `scripts/build-hooks.js` — hook copy script (`hooks/*.js` → `hooks/dist/`; copy-only, no bundler)
-- `scripts/build-plugin.js` — emits the Claude Code plugin to `dist/pan-wizard-plugin/` (manifest, commands, agents, hooks, `.mcp.json`, core)
+- `scripts/build-hooks.js` — hook copy script (copies the hooks listed in `HOOKS_TO_COPY` to `hooks/dist/`; copy-only, no bundler — a new hook must be added to that list)
+- `scripts/build-plugin.js` — emits the Claude Code plugin to `dist/pan-wizard-plugin/` (manifest, commands, agents, hooks, workflows, `.mcp.json`, core)
 - `scripts/plugin-path.js` — rebuilds the plugin and prints its absolute path as **exactly one stdout line**, the contract a plugin-marketplace `command` source requires. Claude Code runs it from the user's HOME, so nothing may depend on cwd, and the builder's output is relayed to stderr
 - `scripts/deprecate-old-versions.js` — release housekeeping: after a successful publish, deprecates every stable release outside the newest-3 window plus any superseded prerelease. Dry-run by default; **never unpublishes** (a test asserts the script has no unpublish path)
 - `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
+- `scripts/build-agent-plugin.js` — emits the vendor-neutral **Agent Plugins** bundle to `dist/pan-agent-plugin/` (ADR-0045) for Copilot CLI, Codex, Cursor, Kiro. `.agents/plugins/marketplace.json` (Codex) and `.github/plugin/marketplace.json` (Copilot) point at it
+- `harness/` — the **PAN Harness** (ADR-0047): behavioural scenarios run against deployed installs built from a packed artifact. `npm run harness` is tier 0 (model-free, free); model tiers need `--max-usd`. Run state goes to `d:\pantesting\harness-runs\`; `harness/ledger.jsonl` is the tracked finding history. Not shipped. See `harness/README.md`
 
 ### Key design patterns
 
 - **CommonJS (.cjs)** for all core modules — required for Claude Code compatibility
-- **Pure functions** in `install-lib.cjs` — no side effects, fully testable
+- **Pure functions** in `install-lib.cjs` — side-effect free apart from two read-only helpers (`verifyInstall()`, `dirDigest()`) that read the filesystem; fully testable
 - **Runtime-agnostic** commands and agents — no PAN-specific hardcoding in shipped content
 - **Path normalization** via `toPosix()` — cross-platform path handling
 - **Manifest-based tracking** — `pan-file-manifest.json` tracks all installed files

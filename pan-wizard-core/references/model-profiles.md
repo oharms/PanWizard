@@ -11,8 +11,8 @@ PAN uses three abstract tiers instead of hardcoded model names:
 | Tier | Purpose | Anthropic | OpenAI | Google |
 |------|---------|-----------|--------|--------|
 | `reasoning` | Architecture, planning, complex decisions | inherit (your session's top-tier model) | inherit | inherit |
-| `mid` | Execution, research, verification | Sonnet | mid | mid |
-| `fast` | Read-only extraction, budget tasks | Haiku | fast | fast |
+| `mid` | Execution, research, verification | Sonnet | mid | gemini-2.5-flash |
+| `fast` | Read-only extraction, budget tasks | Haiku | fast | gemini-2.5-flash-lite |
 
 **Why `inherit` for reasoning?** Host runtimes map "opus" to a specific model version. PAN returns `inherit` for reasoning-tier agents, so they use whatever top-tier model the user has configured. This avoids version conflicts and silent fallbacks.
 

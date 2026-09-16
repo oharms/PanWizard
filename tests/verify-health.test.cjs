@@ -77,7 +77,7 @@ describe('validate health command', () => {
     fs.rmSync(path.join(tmpDir, '.planning'), { recursive: true, force: true });
 
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.status, 'broken', 'should report broken');
@@ -93,7 +93,7 @@ describe('validate health command', () => {
     fs.unlinkSync(path.join(tmpDir, '.planning', 'roadmap.md'));
 
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.status, 'broken', 'should report broken');
@@ -108,7 +108,7 @@ describe('validate health command', () => {
     fs.unlinkSync(path.join(tmpDir, '.planning', 'state.md'));
 
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.status, 'broken', 'should report broken');
@@ -156,7 +156,7 @@ describe('validate health command', () => {
     );
 
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.status, 'broken', 'should report broken for invalid JSON');
@@ -193,7 +193,7 @@ describe('validate health command', () => {
     fs.unlinkSync(path.join(tmpDir, '.planning', 'state.md'));
 
     const result = runPanTools('validate health --repair', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
 
     const output = JSON.parse(result.output);
     assert.ok(output.repairs_performed, 'should have repairs_performed array');
@@ -217,7 +217,7 @@ describe('validate health command', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), '{invalid json!!!', 'utf-8');
 
     const result = runPanTools('validate health --repair', tmpDir);
-    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
 
     const output = JSON.parse(result.output);
     assert.ok(output.repairs_performed, 'should have repairs_performed array');
@@ -827,7 +827,7 @@ describe('validate health --repair', () => {
     try { fs.unlinkSync(path.join(planDir, 'state.md')); } catch {}
 
     const result = runPanTools('validate health --repair', tmpDir);
-    assert.ok(result.success, result.error);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const data = JSON.parse(result.output);
     assert.ok((data.repairs_performed || []).some(a => a.action === 'regenerateState'));
     assert.ok(fs.existsSync(path.join(planDir, 'state.md')));
@@ -880,7 +880,7 @@ describe('validate health edge cases', () => {
     // tmpDir has .planning from createTempProject — remove it
     fs.rmSync(path.join(tmpDir, '.planning'), { recursive: true, force: true });
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const data = JSON.parse(result.output);
     assert.strictEqual(data.status, 'broken');
   });
@@ -893,7 +893,7 @@ describe('validate health edge cases', () => {
       fs.rmSync(p, { recursive: true, force: true });
     }
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const data = JSON.parse(result.output);
     assert.ok(['degraded', 'broken'].includes(data.status));
   });
@@ -902,7 +902,7 @@ describe('validate health edge cases', () => {
     createHealthyProject(tmpDir);
     fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), 'NOT JSON{{{');
     const result = runPanTools('validate health', tmpDir);
-    assert.ok(result.success);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const data = JSON.parse(result.output);
     assert.ok(data.errors.some(e => e.code === 'E005'));
   });
@@ -989,5 +989,57 @@ describe('validateRuntimeInstall', () => {
     fs.writeFileSync(path.join(tmpDir, '.github', 'hooks', 'pan-statusline.js'), '// hook');
     const ok = validateRuntimeInstall(tmpDir, '.github', 'copilot');
     assert.strictEqual(ok.settings_ok, true, 'resolvable hook path should pass');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exit-code contract for `validate health` (reality check RC2 / plan item R2)
+//
+// The payload is a VERDICT: its `errors[]` is a plural collection, outside
+// output()'s error family, so before 2026-09-10 a `broken` verdict exited 0 and an
+// orchestrator gating on the exit code read a missing .planning/ as healthy.
+// CLI-REFERENCE says verdict commands set their exit code explicitly (as
+// `reconcile` does). These tests run the REAL CLI and read the REAL exit code.
+// Revert-proof: drop the explicit exitCode from either output() site in
+// cmdValidateHealth and the `broken` case below fails.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('validate health exit code mirrors the verdict (R2)', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('healthy → exit 0', () => {
+    createHealthyProject(tmpDir);
+    const result = runPanTools('validate health', tmpDir);
+    const data = JSON.parse(result.output);
+    assert.strictEqual(data.status, 'healthy');
+    assert.strictEqual(result.success, true, 'a healthy verdict exits 0');
+  });
+
+  test('degraded (warnings only) → exit 0', () => {
+    createHealthyProject(tmpDir);
+    fs.unlinkSync(path.join(tmpDir, '.planning', 'config.json')); // W003, repairable
+    const result = runPanTools('validate health', tmpDir);
+    const data = JSON.parse(result.output);
+    assert.strictEqual(data.status, 'degraded');
+    assert.strictEqual(result.success, true, 'warnings are not failures');
+  });
+
+  test('broken (missing .planning/) → exit 1, JSON still on stdout', () => {
+    fs.rmSync(path.join(tmpDir, '.planning'), { recursive: true, force: true });
+    const result = runPanTools('validate health', tmpDir);
+    assert.strictEqual(result.success, false, 'a broken verdict must exit non-zero');
+    const data = JSON.parse(result.output);
+    assert.strictEqual(data.status, 'broken');
+    assert.ok(data.errors.some(e => e.code === 'E001'));
+  });
+
+  test('broken (missing roadmap.md, errors[] non-empty) → exit 1', () => {
+    createHealthyProject(tmpDir);
+    fs.unlinkSync(path.join(tmpDir, '.planning', 'roadmap.md'));
+    const result = runPanTools('validate health', tmpDir);
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(JSON.parse(result.output).status, 'broken');
   });
 });

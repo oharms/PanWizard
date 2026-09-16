@@ -1,0 +1,37 @@
+{
+  "id": "uat-diagnose-native",
+  "tier": 2,
+  "description": "Run the native /pan-diagnose-issues workflow on a phase whose UAT records one failed truth; assert a debugger investigated and root-cause output landed under .planning/debug/.",
+  "why": "Reality check RC20/R17: UAT auto-diagnosis was a claim with no scenario. The markdown /pan:verify-phase walkthrough is interactive (one test at a time, awaiting the user) and cannot run headlessly, so the deterministic native script is the measurable entry point; its markdown twin is diagnose-issues.md. The seeded defect is real (farewell prints '!' where the roadmap says '.'), so a correct root cause names src/farewell.js.",
+  "seed": "uat-with-failure",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 5,
+    "maxMinutes": 30,
+    "maxStepMinutes": 25
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan-diagnose-issues 1",
+      "expect": [
+        "exit:0",
+        "glob:.planning/debug/*"
+      ],
+      "why": "diagnose-issues.md: debug files use the .planning/debug/ path. One gap, one debugger, at least one artefact."
+    },
+    {
+      "kind": "fs",
+      "expect": [
+        "file:.planning/phases/01-greetings/01-uat.md",
+        "file:src/farewell.js"
+      ],
+      "why": "Diagnosis investigates only — the UAT file stays and the defective source is untouched (fixes come from /pan:plan-phase --gaps)."
+    }
+  ]
+}

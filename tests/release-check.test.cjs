@@ -48,3 +48,17 @@ describe('release-check — pack gates read the tarball from disk (v3.15.0 regre
     assert.match(CODE, /50 \* 1024 \* 1024/, 'Gate 6 should keep the <50MB tarball-size ceiling');
   });
 });
+
+// Reality check R10: Gate 8 must refuse a stale dist/pan-agent-plugin (the Codex and
+// Copilot marketplaces install from it with no rebuild-on-resolve).
+describe('release-check — Gate 8 compares dist/pan-agent-plugin with the fresh build (R10)', () => {
+  test('the gate digests both trees and names the stale condition', () => {
+    assert.match(CODE, /dirDigest\(distAgent\)\s*!==\s*dirDigest\(agentOut\)/, 'compare dist/ with the temp build by content digest');
+    assert.match(CODE, /STALE/, 'the failure text must say stale');
+    assert.match(CODE, /build:agent-plugin/, 'and tell the operator how to fix it');
+  });
+  test('the gate never writes into dist/', () => {
+    const gate8 = CODE.slice(CODE.indexOf('Gate 8/8'));
+    assert.ok(!/(copyFileSync|writeFileSync|rmSync)\([^)]*dist/.test(gate8), 'Gate 8 is read-only with respect to dist/');
+  });
+});

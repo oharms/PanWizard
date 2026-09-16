@@ -1,0 +1,41 @@
+{
+  "id": "plan-phase-checker-loop",
+  "tier": 2,
+  "description": "Plan an unplanned roadmap phase headlessly: research if the workflow calls for it, planner, plan-checker revision loop; assert plan files exist and the phase's plan count in state.md moved off zero.",
+  "why": "Reality check RC20/R17: research-before-planning and the plan-checker loop were claims no scenario measured. The checker loop is capped at three passes, then defers to the user — in a headless run that would surface as a non-zero exit or missing plans, which is the finding. Run with --repeat 5; one green run proves nothing at a 4/5 failure rate.",
+  "seed": "phase-needs-plan",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 6,
+    "maxMinutes": 40,
+    "maxStepMinutes": 35
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:plan-phase 1",
+      "expect": [
+        "exit:0",
+        "glob:.planning/phases/01-greetings/01-*-plan.md"
+      ],
+      "why": "The planner's output is the plan files; the checker's approval is what lets the workflow exit cleanly. Research is not asserted: the workflow may skip per-phase research for a first phase."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "phases",
+        "list"
+      ],
+      "expect": [
+        "exit:0",
+        "json:phases"
+      ],
+      "why": "The engine still reads the tree the agents wrote — a plan file that breaks frontmatter parsing would show here, not in the file glob."
+    }
+  ]
+}

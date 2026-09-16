@@ -8,6 +8,9 @@
  *   agents/pan-*.md               agent definitions
  *   hooks/hooks.json              PAN hooks with ${CLAUDE_PLUGIN_ROOT} paths
  *   hooks/pan-*.js                hook scripts
+ *   .mcp.json                     MCP bridge declaration (${CLAUDE_PLUGIN_ROOT} path)
+ *   workflows/pan-*.js            native workflow scripts, agentType namespaced
+ *                                 `<plugin>:<agent>` (plugin agents load scoped)
  *   pan-wizard-core/              dispatcher + modules + workflows + templates
  *
  * Distribution status: built ALONGSIDE the loose-file installer. Marketplace
@@ -38,7 +41,28 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const OUT = path.join(ROOT, 'dist', 'pan-wizard-plugin');
+// Output directory. `PAN_PLUGIN_OUT` overrides the default so that callers which
+// may run CONCURRENTLY — test files under `node --test`, which runs files in
+// parallel — each build into their own directory instead of racing on one:
+// one process's `rmSync` below landed in the middle of another's copy
+// (ENOENT mid-tree, and an empty stdout for plugin-path.js) on 2026-09-10.
+const OUT = process.env.PAN_PLUGIN_OUT
+  ? path.resolve(process.env.PAN_PLUGIN_OUT)
+  : path.join(ROOT, 'dist', 'pan-wizard-plugin');
+
+/**
+ * Refuse to wipe a directory that is not a previous plugin build. The default
+ * path is ours by construction; an override is a user-supplied path, and
+ * `rmSync(recursive)` on the wrong one is unrecoverable. A directory that does
+ * not exist yet, is empty, or carries our own manifest is fair game.
+ */
+function assertSafeToReplace(dir) {
+  if (!fs.existsSync(dir)) return;
+  const entries = fs.readdirSync(dir);
+  if (entries.length === 0) return;
+  if (fs.existsSync(path.join(dir, '.claude-plugin', 'plugin.json'))) return;
+  throw new Error(`build-plugin: refusing to replace ${dir} — it is non-empty and does not look like a previous plugin build (no .claude-plugin/plugin.json)`);
+}
 const pkg = require(path.join(ROOT, 'package.json'));
 const lib = require(path.join(ROOT, 'bin', 'install-lib.cjs'));
 
@@ -73,13 +97,15 @@ function copyTree(srcDir, destDir, transformMd) {
 
 function main() {
   // Clean output
+  assertSafeToReplace(OUT);
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(path.join(OUT, '.claude-plugin'), { recursive: true });
 
   // 1. Manifest
+  const manifest = lib.buildPluginManifest(pkg);
   fs.writeFileSync(
     path.join(OUT, '.claude-plugin', 'plugin.json'),
-    JSON.stringify(lib.buildPluginManifest(pkg), null, 2) + '\n'
+    JSON.stringify(manifest, null, 2) + '\n'
   );
 
   // 2. Commands (Claude flavor, plugin-root-relative paths)
@@ -109,7 +135,7 @@ function main() {
   // deliberately bypasses rewriteContent().
   fs.writeFileSync(
     path.join(OUT, 'commands', 'pan-plugin-selftest.md'),
-    lib.buildPluginSelfTestCommand(CONTENT_PREFIX.replace(/\/$/, ''))
+    lib.buildPluginSelfTestCommand(CONTENT_PREFIX.replace(/\/$/, ''), manifest.name)
   );
 
   // 4b. MCP registration. The server itself rides along inside pan-wizard-core
@@ -125,12 +151,31 @@ function main() {
   fs.rmSync(path.join(OUT, 'pan-wizard-core', 'learnings', 'internal'), { recursive: true, force: true });
   fs.writeFileSync(path.join(OUT, 'pan-wizard-core', 'VERSION'), pkg.version);
 
+  // 6. Native workflows. A plugin loads `workflows/` at its root and exposes each
+  // script as `/<plugin>:<meta.name>`. Until 2026-09 the builder never wrote this
+  // directory, so the plugin shipped LESS than a loose-file install (which has
+  // written `.claude/workflows/` since 2026-06). One thing differs from that
+  // install: the scripts spawn PAN agents by name, and plugin agents load under a
+  // SCOPED name — `agents/pan-reviewer.md` here is `pan-wizard:pan-reviewer`
+  // (plugins-reference, read 2026-09-10) — so a bare `agentType: 'pan-…'` that
+  // resolves in a loose install would not resolve inside the plugin. The rewrite
+  // is applied to the plugin copy only; the installer keeps bare names.
+  fs.mkdirSync(path.join(OUT, 'workflows'), { recursive: true });
+  const workflowScripts = lib.buildNativeWorkflowScripts();
+  for (const { name, content } of workflowScripts) {
+    fs.writeFileSync(
+      path.join(OUT, 'workflows', name),
+      lib.namespaceWorkflowAgentTypes(content, manifest.name)
+    );
+  }
+
   // Sanity report
   const count = (p) => { try { return fs.readdirSync(p).length; } catch { return 0; } };
   console.log('PAN plugin built at', path.relative(ROOT, OUT));
   console.log('  commands/pan:', count(path.join(OUT, 'commands', 'pan')));
   console.log('  agents:', count(path.join(OUT, 'agents')));
   console.log('  hooks:', count(path.join(OUT, 'hooks')));
+  console.log('  workflows:', workflowScripts.length);
   console.log('  version:', pkg.version);
 }
 

@@ -4,6 +4,10 @@ This document turns the April 2026 project review into an actionable improvement
 
 > **June 2026 update:** a follow-up ecosystem review with time-critical items (Gemini→Antigravity transition, model-table staleness, runtime format migrations, skills-standard convergence) lives in [ECOSYSTEM-REVIEW-2026-06.md](ECOSYSTEM-REVIEW-2026-06.md). Items there are proposals until promoted into this backlog or an ADR.
 
+> **September 2026 update:** an interim market-delta scan (checked on `2026-09-10`, four weeks after the August ecosystem review) found one standard the August review missed — Agent Plugins, a vendor-neutral plugin bundle that Copilot CLI, Codex and Antigravity now load natively — plus a stale rate row for the current default Claude model and a plugin build that omits the native workflows. The prioritised queue lives in [specs/market-delta-2026-09-superplan.md](specs/market-delta-2026-09-superplan.md); items there are proposals until executed.
+
+> **September 2026 reality check (`2026-09-10`):** the first run of the `/reality-check` dev skill re-verified the same-day scan against primary sources and a packed install into all five runtimes. It found the scan's "no release since May" claim wrong for BMAD and for GSD (which continues as gsd-core and is PAN's closest peer), a wrong rationale for the flagship bump (the newest Fable-tier model is what the `fable` and `best` aliases resolve to, not any plan's default), a `validate health` verdict that exits 0 when broken, and a comparison matrix whose "no competitor" claims no longer hold. Findings and the sized queue live in the addendum of [specs/market-delta-2026-09-superplan.md](specs/market-delta-2026-09-superplan.md); the narrative is section 9 of [ECOSYSTEM-REVIEW-2026-08.md](ECOSYSTEM-REVIEW-2026-08.md), and the detailed execution plan is [specs/reality-check-2026-09-superplan.md](specs/reality-check-2026-09-superplan.md).
+
 Do not duplicate filesystem-derived counts here. `CLAUDE.md` remains the single source of truth for command, agent, module, workflow, test, hook, spec, and ADR counts.
 
 ## Goals
@@ -16,7 +20,9 @@ Do not duplicate filesystem-derived counts here. `CLAUDE.md` remains the single 
 
 ## Priority Work
 
-### P0: Release Gate Hardening
+### P0: Release Gate Hardening — DONE
+
+> **Status:** shipped. `scripts/release-check.js` runs as `npm run release:check` and as `prepublishOnly`, and the tag-triggered release workflow reruns it before publishing. The gate has since grown past this list: `doc-lint counts` over `docs/`, the doc↔code link graph, a zero-runtime-dependency assertion inside the pack gate, and both distribution bundles with a stale-`dist/` digest check (`2026-09-10`). The flow is documented under "Release Process" in [DEVELOPMENT.md](DEVELOPMENT.md). Original task list retained.
 
 Current issue: `prepublishOnly` only runs the hook build step. That is too light for a CLI installer that ships commands, agents, workflows, hooks, runtime adapters, and generated install layouts.
 
@@ -38,7 +44,9 @@ Acceptance criteria:
 - The release process can be run locally with one command.
 - The release document names the required commands but does not duplicate test counts.
 
-### P0: Installer Manifest Verification
+### P0: Installer Manifest Verification — partially DONE
+
+> **Status:** per-file write failures in the installer's copy paths are collected as warnings instead of swallowed, `verifyInstalled()` checks each required install directory after the copy, and `pan-tools validate deployment` verifies an install against its manifest after the fact, and `verifyInstall()` has unit tests for a missing or file-less manifest. Not verified against this list: a regression test that simulates a copy or write failure mid-install. Original task list retained.
 
 Current issue: parts of `bin/install.js` swallow copy/write errors. Some later checks prove that directories exist, but not that every expected file landed correctly.
 
@@ -56,7 +64,9 @@ Acceptance criteria:
 - Optional cleanup failures do not hide required install failures.
 - Tests cover at least one simulated copy/write failure.
 
-### P1: Documentation Drift Guard
+### P1: Documentation Drift Guard — DONE
+
+> **Status:** shipped. `pan-tools doc-lint counts <dir>` flags filesystem-derived counts outside `CLAUDE.md`, runs over `docs/` as release Gate 4, and `tests/claude-md-counts.test.cjs` pins the counts table's own contract. Historical changelog entries keep their snapshots by design.
 
 Current issue: the project rule says counts live only in `CLAUDE.md`, but other docs and specs still contain count-like values. This makes docs look authoritative after they have gone stale.
 
@@ -73,7 +83,9 @@ Acceptance criteria:
 - Current user-facing docs no longer embed mutable project counts.
 - `CLAUDE.md` remains the only active count table.
 
-### P1: Test Result Artifact Cleanup
+### P1: Test Result Artifact Cleanup — DONE
+
+> **Status:** resolved as generated artifacts: `test-results/` is gitignored and nothing under it is tracked.
 
 Current issue: `test-results/latest.txt` and `test-results/scenarios.txt` can become stale and misleading.
 
@@ -89,7 +101,9 @@ Acceptance criteria:
 - The repository no longer contains stale test output from old package versions.
 - The policy for test-result files is documented.
 
-### P1: Runtime Artifact Ignore Rules
+### P1: Runtime Artifact Ignore Rules — DONE
+
+> **Status:** shipped. `.gitignore` carries `.claude/*.lock` and `.claude/scheduled_tasks.lock` alongside the self-install artifact rules; the dev `.claude/commands`, `.claude/agents` and `.claude/workflows` stay trackable.
 
 Current issue: local runtime files can still appear in the source worktree, such as `.claude/*.lock` files.
 
@@ -117,7 +131,9 @@ Remaining (open):
 
 - Split the central `pan-tools.cjs` switch into command-family routers or a table-driven dispatcher. Lower urgency now that the implementation modules are focused; do it behind the same harness plus dispatch-level contract tests.
 
-### P2: Hook Build Naming and Dependency Cleanup
+### P2: Hook Build Naming and Dependency Cleanup — DONE
+
+> **Status:** copy-only chosen. `build:hooks` copies `hooks/*.js` to `hooks/dist/`; ARCHITECTURE, DEVELOPMENT, HOOKS and CONTRIBUTING all say so; no bundler remains in `devDependencies` (only the VS Code e2e harness).
 
 Current issue: docs and dependencies imply hooks are compiled with esbuild, but the build script currently copies pure Node.js files.
 
@@ -134,7 +150,9 @@ Acceptance criteria:
 - Build docs, script behavior, and dependencies agree.
 - Contributors do not need to infer whether hook files are copied or bundled.
 
-### P2: Package Documentation Policy
+### P2: Package Documentation Policy — open (policy implicit)
+
+> **Status:** the `files` allowlist in `package.json` ships `bin`, `commands`, `agents`, `pan-wizard-core` (minus internal learnings), `hooks/dist`, `scripts`, `assets` and `pan-zcode`; `docs/` is not in the package and the README's Documentation table links to GitHub. That is the de-facto policy; making it explicit in the README remains open. `tests/package-contract.test.cjs` now pins the allowlist, so a change to it is a deliberate one.
 
 Current issue: the npm package includes `README.md` automatically, but not the full `docs/` directory. That may be intentional, but the policy should be explicit.
 
@@ -177,6 +195,8 @@ Acceptance criteria:
 Reference: Claude Code's `/goal` ([docs](https://code.claude.com/docs/en/goal)) introduced the worker/evaluator-split pattern. This item adopts the pattern in one subsystem where probabilistic judgment is appropriate, without adopting the Claude-Code-specific implementation.
 
 ## Suggested Execution Order
+
+> Shipped except: the dispatcher split (P2 decomposition), the copy-failure regression test (P0 manifest verification), the explicit package-docs policy (P2), and the optional LLM evaluator (P2, ADR awaiting review) — see the statuses above. Kept for the record.
 
 1. Add runtime artifact ignore rules and clean stale local artifacts.
 2. Fix or remove stale test-result files.

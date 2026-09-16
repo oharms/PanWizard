@@ -11,10 +11,10 @@
 | Runtime | Command prefix | Config location | Status |
 |---------|---------------|-----------------|--------|
 | Claude Code | `/pan:*` | `~/.claude/` or `./.claude/` | Full support |
-| OpenCode | `/pan-*` | `~/.config/opencode/` | Full support |
-| Gemini CLI | `/pan:*` | `~/.gemini/` | Full support |
+| OpenCode | `/pan-*` | `~/.config/opencode/` or `./.opencode/` | Full support |
+| Gemini CLI | `/pan:*` | `~/.gemini/` or `./.gemini/` | Full support |
 | Codex | `$pan-*` | `~/.codex/` or `./.codex/` | Skills-based |
-| Copilot CLI | `/pan-*` | `~/.copilot/` | Skills-based |
+| Copilot CLI | `/pan-*` | `~/.copilot/` or `./.github/` | Skills-based |
 
 ### How much does PAN cost?
 
@@ -27,7 +27,7 @@ PAN itself is free and open source. Token costs depend on your Claude/model usag
 | `budget` | The only profile that down-tiers: mid for code-writing agents, fast for research/verification | High-volume work, prototyping |
 
 Reduce costs further by disabling optional agents:
-```
+```text
 /pan:settings
 ```
 Toggle off `research`, `plan_check`, or `verifier` for familiar domains.
@@ -38,7 +38,7 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 
 | Stage | Agents spawned | Approximate tokens | Skippable? |
 |-------|---------------|-------------------|------------|
-| Research (new-project) | 4 parallel researchers + synthesizer | 30-50K total | Yes (`--skip-research`) |
+| Research (new-project) | 4 parallel researchers + synthesizer | 30-50K total | Yes (answer No to the research question, or set `research_enabled: false` in the idea frontmatter) |
 | Research (plan-phase) | 1 phase researcher | 10-20K | Yes (`--skip-research`) |
 | Planning | 1 planner + 1 plan-checker (up to 3 iterations) | 20-40K | Checker skippable (`plan_check: false`) |
 | Execution | 1 executor per plan (fresh context each) | 20-80K per plan | No |
@@ -58,14 +58,14 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 Yes. PAN research agents can use Brave Search API for domain research. Setup:
 
 1. Get a free API key from the [Brave Search API](https://brave.com/search/api/)
-2. Set `BRAVE_API_KEY` environment variable, OR save the key to `~/.pan-wizard/brave_api_key`
+2. Set the `BRAVE_API_KEY` environment variable — the `websearch` verb reads only the env var. Optionally also create `~/.pan-wizard/brave_api_key`, which makes new projects default `brave_search` to `true`
 3. Set `brave_search: true` in `/pan:settings`
 
 When enabled, researchers use web search to investigate technologies, libraries, and best practices during the research phase.
 
 ### Is my code sent anywhere?
 
-No. PAN runs entirely within your local Claude Code (or other runtime) session. It uses standard tool calls — no external servers, no telemetry, no data collection. Your code stays on your machine and in your Claude session.
+No. PAN runs entirely within your local Claude Code (or other runtime) session. It uses standard tool calls — no PAN servers, no telemetry, no data collection. Your code stays on your machine and in your Claude session. The only network calls PAN itself makes are the periodic update check, which runs `npm view pan-wizard version` against the npm registry and sends nothing about your project, and web research through the Brave Search API — only after you opt in with `brave_search: true` and a key, and then only the research queries. The MCP bridge PAN registers is a local stdio process; it opens no sockets.
 
 ### How do I uninstall PAN?
 
@@ -91,13 +91,13 @@ This removes all PAN commands, agents, hooks, and settings while preserving your
 
 ### Can I use PAN with an existing project?
 
-Yes. Run `/pan:map-codebase` first — it spawns parallel agents to analyze your stack, architecture, conventions, and concerns. Then `/pan:new-project` will focus questions on what you're *adding* rather than what already exists.
+Yes. Run `/pan:map-codebase` first — it maps your stack, architecture, conventions, and concerns (one agent for small repos, six in parallel above the size threshold). Then `/pan:new-project` will focus questions on what you're *adding* rather than what already exists.
 
 ### Does PAN commit to git automatically?
 
 Yes. Each task gets its own atomic commit immediately after completion. Commit messages follow conventional format with phase numbers (e.g., `feat(03-02): add login endpoint`).
 
-To disable: set `planning.commit_docs: false` in `/pan:settings` and add `.planning/` to `.gitignore`.
+`commit_docs: false` (plus gitignoring `.planning/`) stops only the planning-doc commits; the per-task code commits are always made.
 
 ### What happens when context runs out?
 
@@ -149,11 +149,11 @@ Run `/pan:cost report`. Since v3.4, a SubagentStop hook auto-captures every sub-
 
 ### What's the difference between `pan-reviewer` and `/pan:review-deep`?
 
-`pan-reviewer` is always-on during `/pan:exec-phase` — it flags convention, style, and basic quality issues on changed files. `/pan:review-deep` is opt-in (run standalone or with `--deep-review`) and adds two more agents: `pan-hardener` runs an OWASP Top 10 + STRIDE security audit, and `pan-meta-reviewer` cross-checks the reviewer + hardener output for missed issues or overstated severities. Costs roughly 3× a normal review; recommended for auth/payment/PII/migration phases.
+`pan-reviewer` runs by default during `/pan:exec-phase` (skip it with `--skip-review` or `--fast`) — it flags convention, style, and basic quality issues on changed files. `/pan:review-deep` is opt-in (run standalone or with `--deep-review`) and adds two more agents: `pan-hardener` runs an OWASP Top 10 + STRIDE security audit, and `pan-meta-reviewer` cross-checks the reviewer + hardener output for missed issues or overstated severities. Costs roughly 3× a normal review; recommended for auth/payment/PII/migration phases.
 
 ### When should I use `/pan:exec-phase --hierarchical`?
 
-Only when the phase has ≥4 autonomous plans that genuinely parallelize and the total work is large enough to amortize the ~20-30% orchestration overhead. `pan-conductor` spawns sub-agents in waves with a strict safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude Code only — it needs native sub-agent spawning; the other four runtimes silently fall back to flat exec. There's no model gate, so switching models won't turn it on or off. For single-plan or checkpoint-heavy phases, skip the flag — flat exec is cheaper and more predictable.
+Only when the phase has ≥4 autonomous plans that genuinely parallelize and the total work is large enough to amortize the ~20-30% orchestration overhead. `pan-conductor` spawns sub-agents in waves with a strict safety harness (2-level nesting cap, 12-spawn cap, budget ceiling, `.planning/orchestration/abort` kill-switch). Claude Code only — it needs native sub-agent spawning; the other four runtimes fall back to flat exec with a warning. There's no model gate, so switching models won't turn it on or off. For single-plan or checkpoint-heavy phases, skip the flag — flat exec is cheaper and more predictable.
 
 ### What is `/pan:army` and how is it different from a normal phase?
 
@@ -161,7 +161,7 @@ Only when the phase has ≥4 autonomous plans that genuinely parallelize and the
 
 ### Can the army run on a schedule / unattended?
 
-Within a run, yes — it self-drives the loop. Across days, `/pan:army --schedule daily --daily-budget 200` (v3.12) arms a self-resuming campaign. PAN isn't a daemon, so it doesn't wake itself: it writes a schedule descriptor and you point an external trigger at it — a host scheduler (Claude Code routines / cron / scheduled tasks), a `/loop`, or the next-open nudge — which polls `pan-tools campaign due` and runs `/pan:army --continue` when due. Each day's run is capped by `--daily-budget` and resumes the next day; `pan-tools campaign status` shows where it stands. Crucially, scheduling changes nothing about safety: the merge to a protected branch is still an `always-ask` human gate, so a scheduled campaign burns the backlog down to staged, reviewed, green PRs and waits for you at every merge.
+Within a run, yes — it self-drives the loop. Across days, `/pan:army --schedule daily --daily-budget 200` (v3.12) arms a self-resuming campaign. PAN isn't a daemon, so it doesn't wake itself: it writes a schedule descriptor and you point an external trigger at it — a host scheduler (Claude Code routines / cron / scheduled tasks), a `/loop`, or the next-open nudge — which polls `pan-tools campaign due` and runs `/pan:army --continue` when due. Each day's spend is tracked against `--daily-budget` (advisory — `campaign due` reports `budget_exhausted_today` only if you set `enforce_budget: true` in `schedule.json` by hand; no flag or config key does that. Otherwise only the `/pan:army --continue` prompt tells the conductor to stop once the day's spend is used up) and the campaign resumes the next day; `pan-tools campaign status` shows where it stands. Crucially, scheduling changes nothing about safety: the merge to a protected branch is still an `always-ask` human gate, so a scheduled campaign burns the backlog down to staged, reviewed, green PRs and waits for you at every merge.
 
 ### Is `/pan:army` safe to let loose on my repo?
 
@@ -183,6 +183,10 @@ Yes. `/pan:preview phase <N>` analyzes the phase's plan files, extracts mentione
 
 MCP (Model Context Protocol) tools are external integrations the host runtime provides — e.g. Linear, Slack, databases. In v3.3, `/pan:mcp-bridge list` shows which tools Claude Code has discovered, and `/pan:mcp-bridge recommend <phase>` suggests which apply to a phase plan based on keyword matching. This is **discovery-only** through v3.5 — PAN doesn't auto-invoke MCP tools. You see the recommendations and reference them in the phase plan; the executor agent uses them via Claude Code's normal tool-use flow. Auto-injection + auto-invocation remain on the roadmap.
 
+### Does PAN have an MCP server of its own?
+
+Yes — the other direction. `/pan:mcp-bridge` is PAN as an MCP *client*, discovering tools the host offers. Every install also registers PAN's **MCP bridge** where the runtime's config can be merged safely (a Claude `--global` install prints the `claude mcp add` command for you to run instead, and Codex always gets a printed TOML snippet), a zero-dependency stdio server under `pan-wizard-core/mcp/` that exposes the `pan-tools` engine to any MCP client as tools and read-only resources (`pan://…`). Registration is automatic and non-destructive — `.mcp.json` at the project root for Claude Code, the runtime's own config for Copilot, Gemini and OpenCode, a printed TOML snippet for Codex — and every tool takes an optional `cwd`, so a client that launches the server somewhere else (Agent Plugins hosts start it in the plugin root) still operates on your project. History-rewriting git verbs are refused in code, and the merge gate needs a human-supplied token an agent cannot produce. Details: the "MCP server registration" section of the [User Guide](USER-GUIDE.md) and the bridge section of [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## v3.5 Features
 
 ### How does the circular optimization loop work?
@@ -191,11 +195,11 @@ MCP (Model Context Protocol) tools are external integrations the host runtime pr
 
 ### What does `/pan:focus-auto --category distill` do?
 
-The `distill` focus-auto category targets **AI-generated code bloat** via a 5-pass pipeline (deterministic-first, LLM-on-narrow-spans). Pass 1 deterministically catches phantom try/catch (try around JSON.parse), unused imports, magic numbers, long functions, wide param lists. Pass 2 detects single-instance factory classes and deep nesting via AST-style analysis. Pass 3 finds repeated 5+ line blocks and unreferenced exports across files. Pass 4 spawns the `pan-distiller` agent with **only the flagged spans** (not full files) — it validates each pattern, refines safety tier (safe/review/risky), and proposes a minimal diff. Pass 5 writes findings to `.planning/memory/distill-patterns.md` so next session detects regressed patterns ("we already fixed this"). A bloat-budget gate (touched_LOC / essential_LOC, default 2.0×) prevents runaway code growth.
+The `distill` focus-auto category targets **AI-generated code bloat** via a 5-pass pipeline (deterministic-first, LLM-on-narrow-spans). Pass 1 deterministically catches phantom try/catch (try around JSON.parse), unused imports, magic numbers, long functions, wide param lists. Pass 2 detects single-instance factory classes and deep nesting via AST-style analysis. Pass 3 finds repeated 5+ line blocks and unreferenced exports across files. Pass 4 spawns the `pan-distiller` agent with **only the flagged spans** (not full files) — it validates each pattern, refines the safety tier (`safe` / `review_required` / `risky`), and proposes a minimal diff. Pass 5 writes findings to `.planning/memory/distill-patterns.md` so next session detects regressed patterns ("we already fixed this"). A bloat-budget gate (touched_LOC / essential_LOC, default 2.0×) prevents runaway code growth.
 
 ### What does `/pan:git` give me that raw `git` doesn't?
 
-Phase-aware naming + safety guardrails matching the project's `.claude/commands/commit.md` quality bar. `/pan:git commit --type feat --message "..."` runs deleted-file detection and sensitive-file pattern checks (env, key, secret, token, credentials) before allowing the commit. `/pan:git branch create --phase 3` auto-names the branch `pan/phase-3`. `/pan:git push` validates the remote exists and requires explicit `--force` for force-push. `/pan:git rollback` lists `pan-rollback-*` snapshot tags created by exec-phase and resets to one (with `--dry-run` preview). Subcommands: commit, branch, push, status, log, stash, diff, rollback, tag, sync. Works on any git repo regardless of whether `.planning/` exists.
+Phase-aware naming + safety guardrails. `/pan:git commit --type feat --message "..."` runs deleted-file detection and sensitive-file pattern checks (env, key, secret, token, credentials) before allowing the commit. `/pan:git branch create --phase 3` auto-names the branch `pan/phase-3`. `/pan:git push` validates the remote exists and requires explicit `--force` for force-push. `/pan:git rollback` lists `pan-rollback-*` snapshot tags created by exec-phase and resets to one (with `--dry-run` preview). Subcommands: commit, branch, push, status, log, stash, diff, rollback, tag, sync. Works on any git repo regardless of whether `.planning/` exists.
 
 ## Customization
 
@@ -207,12 +211,12 @@ After a PAN update, your local modifications may be overwritten. Use `/pan:patch
 
 ### Can I add my own commands?
 
-Yes. Create a `.md` file in `commands/pan/` following the existing pattern. The filename becomes the slash command. Commands should be thin orchestrators — read state via `pan-tools.cjs`, spawn agents for heavy work.
+Yes. Create a `.md` file in `.claude/commands/pan/` (or `~/.claude/commands/pan/` for a global install) following the existing pattern. The filename becomes the slash command. Commands should be thin orchestrators — read state via `pan-tools.cjs`, spawn agents for heavy work.
 
 ### How do I change which model each agent uses?
 
 Switch profiles globally:
-```
+```text
 /pan:profile budget
 ```
 

@@ -30,7 +30,7 @@ A deep dive into how PAN Wizard is structured, how data flows between layers, an
 
 PAN Wizard is organized as a 5-layer architecture. Each layer has a single responsibility and communicates with adjacent layers through well-defined interfaces.
 
-```
+```text
 +-------------------------------------------------------------------+
 |                  USER (Claude Code / OpenCode / Gemini /           |
 |                        Codex / Copilot CLI)                        |
@@ -154,7 +154,7 @@ The `references/<topic>.md` + workflow-cross-reference pattern (proven in v3.6.0
 
 The serial pipeline (planner → researcher → executor → verifier) hands work file-mediated. Plan and summary artifacts traditionally carried only OUTPUTS, not the reasoning that produced them. Per Cognition (June 2025) "Don't build multi-agents", silent decisions in upstream artifacts force downstream agents to reconcile contradictions blindly. PAN now passes the reasoning trace explicitly:
 
-- **`pan-wizard-core/references/handoff-decisions.md`** — schema for `## Plan Decisions` (in plan.md) and `## Implementation Decisions` (in summary.md). Three buckets: Locked / Open / Considered+rejected.
+- **`pan-wizard-core/references/handoff-decisions.md`** — schema for `## Plan Decisions` (in plan.md) and `## Implementation Decisions` (in summary.md). Plan Decisions buckets: Locked / Open / Considered+rejected; Implementation Decisions buckets: Taken / Deviations / Open questions.
 - **`agents/pan-planner.md`** — emits `## Plan Decisions` between objective and tasks.
 - **`agents/pan-executor.md`** — reads Plan Decisions before coding, writes Implementation Decisions when deviating from the plan.
 - **`agents/pan-verifier.md`** — Step 1b consumes the reasoning trace; Step 1c reads `codebase/CONVENTIONS.md` per P-RES-005 (repo-norm violation detection).
@@ -163,8 +163,8 @@ The serial pipeline (planner → researcher → executor → verifier) hands wor
 
 ### Production-readiness gates (v3.7.10)
 
-- **`bin/install.js verifyInstall()`** — post-install manifest walk checks every entry in `pan-file-manifest.json` exists on disk; missing files fail with exit 1. `INSTALL_WARNINGS` collector hardens `copyWithPathReplacement` (mkdir failures hard-throw; per-file failures collected as warnings rather than silently swallowed).
-- **`scripts/release-check.js`** — 6-gate pre-publish validation (build → test:all → npm audit → doc-lint counts → npm pack dry-run → smoke install). Wired to `package.json prepublishOnly` so `npm publish` cannot ship a broken release.
+- **`verifyInstall()`** (in `bin/install-lib.cjs`, called post-install by `bin/install.js`) — post-install manifest walk checks every entry in `pan-file-manifest.json` exists on disk; missing files fail with exit 1. `INSTALL_WARNINGS` collector hardens `copyWithPathReplacement` (mkdir failures hard-throw; per-file failures collected as warnings rather than silently swallowed).
+- **`scripts/release-check.js`** — multi-gate pre-publish validation (build:hooks → test:all → npm audit → doc-lint counts → links validate → npm pack + zero-dependency check → smoke install → distribution bundles). Wired to `package.json prepublishOnly` so `npm publish` cannot ship a broken release.
 - **`pan-tools commit --fail-on-error`** — routes a git refusal through `error()` (bare message on stderr) rather than a `commit_failed` JSON body (closes P-EXP-001 silent-failure surface where missing git identity in fresh experiment folders looked successful). Since `output()` derives the exit code from the payload, `commit_failed` exits non-zero with or without the flag — see CLI-REFERENCE "Error Shape".
 
 ### v3.6.0 additions — Behavioral Guardrails Layer
@@ -222,7 +222,10 @@ Several commands are self-contained in their `.md` file and do not delegate to a
 | `phase-budget.md` | Calls `pan-tools.cjs context-budget` directly; no multi-step workflow |
 | `discord.md` | Static information display; no system operations |
 | `patches.md` | User-guided manual process; no automated workflow |
-| `research-phase.md` | Self-contained research orchestrator; spawns pan-phase-researcher directly |
+| `research-phase.md` | Self-contained research orchestrator; spawns pan-phase-researcher directly (the sibling `workflows/research-phase.md` is not referenced by the command) |
+| `debug.md` | Self-contained debug orchestrator; spawns pan-debugger directly |
+| `design-phase.md` | Self-contained design orchestrator; spawns pan-designer and pan-design-checker directly (max 2 revision iterations) |
+| `milestone-done.md` | Self-contained milestone close-out (archive, tag, offer `/pan:milestone-new`); no workflow file |
 | `focus-scan.md` | Self-contained scan pipeline; calls `pan-tools focus scan` for data |
 | `focus-plan.md` | Self-contained batch planner; calls `pan-tools focus plan` for data |
 | `focus-exec.md` | Self-contained execution pipeline with staged waves and per-stage behavioral rules |
@@ -255,9 +258,7 @@ Some workflows have different names than their corresponding commands. This is i
 | Command | Workflow | Reason |
 |---------|----------|--------|
 | `resume.md` | `resume-project.md` | Command is user action; workflow is system operation |
-| `verify-phase.md` | `verify-phase.md` | User verifies "work"; system verifies "phase" |
 | `exec-phase.md` | `exec-phase.md` + `execute-plan.md` | Orchestrator + per-plan worker |
-| `debug.md` | `diagnose-issues.md` | User "debugs"; system "diagnoses" |
 | (no command) | `transition.md` | Internal phase-to-phase transition logic |
 
 ### Internal Workflows
@@ -268,6 +269,8 @@ These workflows have no corresponding user command — they are invoked internal
 |----------|---------|
 | `execute-plan.md` | Per-plan execution worker (spawned by `exec-phase.md` per plan) |
 | `transition.md` | Phase-to-phase transition logic |
+| `diagnose-issues.md` | One debugger per failed UAT truth, root cause only; ported to the native `/pan-diagnose-issues` script — no command references it directly |
+| `research-phase.md` | Standalone research protocol; not referenced by any command today (`/pan:research-phase` is self-contained) |
 
 ---
 
@@ -280,28 +283,28 @@ Agents are Markdown files that define specialized AI roles. Each agent runs as a
 | Agent | Role | Spawned By |
 |-------|------|-----------|
 | `pan-project-researcher` | Researches domain ecosystem | `/pan:new-project`, `/pan:milestone-new` |
-| `pan-research-synthesizer` | Synthesizes parallel research outputs | `/pan:new-project` |
+| `pan-research-synthesizer` | Synthesizes parallel research outputs | `/pan:new-project`, `/pan:milestone-new` |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` |
 | `pan-document_code` | Analyzes existing codebase (6 focus areas) | `/pan:map-codebase` (x6 parallel) |
 | `pan-designer` | Designs specs before planning | `/pan:design-phase` |
-| `pan-design-checker` | Validates design specs | `/pan:design-phase` |
+| `pan-design-checker` | Validates design specs | `/pan:design-phase`, `/pan:focus-design` |
 | `pan-phase-researcher` | Investigates how to implement a phase | `/pan:plan-phase` |
-| `pan-planner` | Creates executable plan.md files | `/pan:plan-phase` |
-| `pan-plan-checker` | Validates plans against goals across multiple dimensions | `/pan:plan-phase` |
-| `pan-executor` | Executes plans with atomic commits | `/pan:exec-phase`, `/pan:quick` |
-| `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase` |
+| `pan-planner` | Creates executable plan.md files | `/pan:plan-phase`, `/pan:quick` |
+| `pan-plan-checker` | Validates plans against goals across multiple dimensions | `/pan:plan-phase`, `/pan:quick --full` |
+| `pan-executor` | Executes plans with atomic commits | `/pan:exec-phase`, `/pan:quick`, `/pan:army` (Build squad) |
+| `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase`, `/pan:quick --full` |
 | `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase` |
 | `pan-integration-checker` | Verifies cross-phase wiring and E2E flows | `/pan:milestone-audit` |
-| `pan-debugger` | Systematic bug investigation | `/pan:debug` |
+| `pan-debugger` | Systematic bug investigation | `/pan:debug`, `diagnose-issues` workflow |
 | `pan-previewer` (v3.1+) | Foresight — blast radius / dependency graph / milestone ETA | `/pan:preview` |
-| `pan-hardener` (v3.2+) | OWASP Top 10 + STRIDE security audit | `/pan:review-deep` |
+| `pan-hardener` (v3.2+) | OWASP Top 10 + STRIDE security audit | `/pan:review-deep`, `/pan:focus-auto` (security category) |
 | `pan-meta-reviewer` (v3.2+) | Reviews reviewer + hardener output; flags missed issues | `/pan:review-deep` |
 | `pan-knowledge` (v3.2+) | Grounded Q&A / multi-turn discussion / playbook generation | `/pan:knowledge` |
 | `pan-counterfactual` (v3.3+) | Explores alternative phase approaches in isolated worktree | `/pan:what-if` |
-| `pan-conductor` (v3.4+) | Top-level hierarchical exec orchestrator with safety harness | `/pan:exec-phase --hierarchical` |
+| `pan-conductor` (v3.4+) | Top-level hierarchical exec orchestrator with safety harness | `/pan:exec-phase --hierarchical`, `/pan:army` (Mission Control) |
 | `pan-optimizer` (v3.5+) | Reads trace events; identifies error/gap/redundancy patterns; produces ranked optimization report with auto-apply JSON block | `/pan:learn`, `/pan:optimize` |
 | `pan-distiller` (v3.5+) | Read-only LLM judgment on AI code-bloat findings; receives only flagged spans (max 50 lines context); proposes minimal diff rewrite | `/pan:focus-auto --category distill` |
-| `pan-experiment-runner` | Observation-only watchdog that drives an external AI session against an isolated experiment folder; reports back to the orchestrator | `/pan:experiment run` |
+| `pan-experiment-runner` | Observation-only watchdog that drives an external AI session against an isolated experiment folder; reports back to the orchestrator | — (no shipped command spawns it directly; `/pan:experiment run` drives the runtime through `runner.cjs`; listed among the tier-2 `workers` Mission Control may delegate to under `/pan:army`) |
 | `pan-release` (v3.11+) | Release squad agent: prepares the squash-merge, surfaces an always-ask approval; a human merges to the protected branch | `/pan:army` (Release squad) |
 
 Every agent starts with zero context and receives only what it needs. This is PAN's key quality guarantee — agents never suffer from context degradation.
@@ -315,11 +318,11 @@ For deep dives on each agent's inputs, outputs, behaviors, and unique features, 
 **Location:** `pan-wizard-core/bin/lib/*.cjs`
 **CLI entry:** `pan-wizard-core/bin/pan-tools.cjs`
 
-The Node.js runtime layer. Zero external dependencies — only `node:` built-in modules (`fs`, `path`, `child_process`, `os`, `crypto`). Commands and workflows call `pan-tools.cjs` via bash and parse JSON output.
+The Node.js runtime layer. Zero external dependencies — only Node.js built-in modules (`fs`, `path`, `child_process`, `os`, `crypto`). Commands and workflows call `pan-tools.cjs` via bash and parse JSON output.
 
 ### CLI Interface
 
-```
+```bash
 node pan-tools.cjs <command> [subcommand] [args...] [--raw] [--cwd <path>]
 ```
 
@@ -332,7 +335,7 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | Category | Example Commands |
 |----------|-----------------|
 | **State** | `state load`, `state update`, `state get`, `state json`, `state advance-plan`, `state record-metric` |
-| **Phase** | `phase list`, `phase add`, `phase insert`, `phase remove`, `phase complete`, `phase next-decimal` |
+| **Phase** | `phases list`, `phase add`, `phase insert`, `phase remove`, `phase complete`, `phase next-decimal` |
 | **Roadmap** | `roadmap get-phase`, `roadmap analyze`, `roadmap update-plan-progress` |
 | **Config** | `config-get`, `config-set`, `config-ensure-section` |
 | **Frontmatter** | `frontmatter get`, `frontmatter set`, `frontmatter merge`, `frontmatter validate` |
@@ -370,8 +373,8 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | Module | Lines | Responsibility |
 |--------|-------|---------------|
 | `constants.cjs` | — | Shared path constants, file patterns, regex patterns. Foundation module. |
-| `core.cjs` | — | Model profile table, `output()`/`error()` helpers, `toPosix()`, `safeReadFile()`, `loadConfig()`, `resolveModel()`, `findPhase()`, `generateSlug()`, `execGit()` |
-| `utils.cjs` | — | Shared utilities: `readJsonFile()`, `planningPath()`, `listPhaseDirs()`, `filterPlanFiles()`, `filterSummaryFiles()`, `classifyPhaseStatus()`, `scanPendingTodos()` |
+| `core.cjs` | — | Model profile table, `output()`/`error()` helpers, `toPosix()`, `safeReadFile()`, `loadConfig()`, `resolveModelInternal()`, `findPhaseInternal()`, `generateSlugInternal()`, `scanPendingTodos()`, `execGit()` |
+| `utils.cjs` | — | Shared utilities: `readJsonFile()`, `planningPath()`, `listPhaseDirs()`, `filterPlanFiles()`, `filterSummaryFiles()`, `classifyPhaseStatus()`, `planningRel()` |
 | `frontmatter.cjs` | — | YAML-like frontmatter CRUD: `extractFrontmatter()`, `reconstructFrontmatter()`, get/set/merge/validate |
 | `config.cjs` | — | Config CRUD: create default `config.json`, get/set with dot-notation paths (e.g., `workflow.auto_advance`), standards catalog (list, select, remove, status, recommend, phase-track, tools) |
 | `state.cjs` | — | state.md operations: load, get, update, patch, json output, `readStateSafe()`, frontmatter sync; writes serialize through lock.cjs (ADR-0030) |
@@ -406,20 +409,23 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `doc-lint.cjs` | — | Markdown frontmatter + structure linter (vendored from the whooo experiment). Adapter over `pan-wizard-core/bin/lib/doc-lint/{frontmatter,schema,validate,walk,reporter}.js`. Validates `commands/pan/*.md` and other PAN-shipped markdown against schemas in `pan-wizard-core/references/schemas/`. Subcommands: `doc-lint <dir>` (lint), `doc-lint schema-check` (verify schema yaml). |
 | `experiment.cjs` | — | Self-improvement loop scaffolding. `newExperiment` (slug + idea path → scaffold `<root>/<slug>/.planning/`, copy idea, write manifest, optionally run installer), `listExperiments`, `getExperimentManifest`, `harvestExperiment` (extract learnings/, traces/, run-state, etc.), `pruneExperiment`. Hard `PAN_SOURCE_ROOT` guard prevents scaffolding inside the source repo. |
 | `runner.cjs` | — | External agent runner. `runExperiment` spawns the runtime adapter (Claude/Codex/Gemini/OpenCode) via `spawnSync` against an experiment folder, observes via `run-state.json`, enforces timeout + circuit breaker. `RUNTIME_RUNNERS` adapter map (per-runtime headless invocation, `shell: 'win32'` for `.cmd` shims, arg quoting). The `captureMetrics: true` opt switches the claude adapter to `--output-format json` and `parseClaudeJsonEnvelope` extracts cost/turns/tokens into `runState.metrics`. Reads state.md milestone status to distinguish `success` from `incomplete`. |
-| `learn-lint.cjs` | — | Learnings-store integrity linter for `pan-wizard-core/learnings/{universal,internal}/`. `lintLearnings({scope, strict})` runs L-001 (duplicate IDs across files), L-002 (dangling pattern cross-references), L-003 (empty `source_experiments` while body cites a known experiment), L-004 (universal-scope rule prose using PAN-internal terms), L-005 (revision marker `-rN` without `superseded_by` frontmatter on the base). Wired into `/check`. |
-| `learn-index.cjs` | — | Learnings index + agent-relevance queries. `buildIndex()` walks both scopes and writes `pan-wizard-core/learnings/index.json` with topic→`{patterns, size_tokens_est, agent_relevance}` per topic; the curated `RELEVANCE` table assigns `high|medium|low` per `(topic, agent_role)` for `planner / executor / verifier / reviewer`. `topicsForAgent({agent, minRelevance, tokenBudget})` returns budget-aware topic selection. Workflow files (`plan-phase.md`, `exec-phase.md`, `verify-phase.md`, `execute-plan.md`) use it to load only relevant learnings instead of skim-the-folder. |
+| `learn-lint.cjs` | — | Learnings-store integrity linter for `pan-wizard-core/learnings/{universal,internal}/`. `cmdLearnLint(sourceRoot, {scope, strict})` (over `lintPatterns()`) runs L-001 (duplicate IDs across files), L-002 (dangling pattern cross-references), L-003 (empty `source_experiments` while body cites a known experiment), L-004 (universal-scope rule prose using PAN-internal terms), L-005 (revision marker `-rN` without `superseded_by` frontmatter on the base). Wired into `/check`. |
+| `learn-index.cjs` | — | Learnings index + agent-relevance queries. `buildIndex()` walks both scopes and writes `pan-wizard-core/learnings/index.json` with topic→`{patterns, size_tokens_est, agent_relevance}` per topic; the curated `RELEVANCE` table assigns `high\|medium\|low` per `(topic, agent_role)` for `planner / executor / verifier / reviewer`. `topicsForAgent({agent, minRelevance, tokenBudget})` returns budget-aware topic selection. Workflow files (`plan-phase.md`, `exec-phase.md`, `verify-phase.md`, `execute-plan.md`) use it to load only relevant learnings instead of skim-the-folder. |
 | `links.cjs` | — | **(v3.8.0)** Doc–code link graph (ADR-0027). `validateAll(cwd, opts)` runs three passes: forward links (inline `[[<id>]]` + `must_haves.key_links`) → finding codes F-001..F-004; backlink contract for docs with `require-code-mention: true` frontmatter → B-001/B-002; anchor-target existence for `// @pan: <id>` source comments → A-001/A-002/A-004. `resolveDocId` handles `ADR-NNNN` glob, relative `.md` paths, and `<doc>#section` slug match. `cmdLinksValidate` goes through `core.output()` with an explicit exit code (`1` on fail — the verdict payload has no `error` key), which also gives it the `@file:` large-output protocol the former hand-rolled bypass lacked. Reuses `doc-lint/walk.js` and `frontmatter.cjs` — zero new dependencies. Wired into `validate health --links` for advisory pre-flight. |
 | `squads.cjs` | — | **(v3.11, ADR-0032)** Bot-army squad registry + resolver: `SQUADS` (architecture/build/quality/release with tier + advisory access contract), `listSquads`, `getSquad`, `squadForAgent`, `validateRoster` (drift guard: every member is a real agent, every agent placed). `cmdSquadList` / `cmdSquadShow`. Registry only — modifies no agent and no execution path. |
 | `worktree.cjs` | — | **(v3.11, ADR-0033)** Branch-per-agent isolation for the Build squad: `createTaskWorktree` / `removeTaskWorktree` / `listArmyWorktrees` (army/`<task>`-prefixed; removal refuses non-army branches). Generalized from `whatif.cjs`. `cmdWorktreeList` / `cmdWorktreeCreate` / `cmdWorktreeRemove`. |
 | `campaign.cjs` | — | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `parseCadence`, `writeSchedule`/`readSchedule`, `isRunDue` (enabled/paused/budget/next-due), `recordRun` (advance next-due + per-day spend), `isDreamDue`. Descriptor at `.planning/orchestration/schedule.json`. PAN owns the due-check; the host scheduler fires `/pan:army --continue`. Never relaxes the human merge gate. |
 | `hud.cjs` | — | **(v3.12, ADR-0035)** Single-page HTML army + project dashboard. `collectHudData` (pure: aggregates state.md, roadmap/phases, squad registry, campaign schedule, army worktrees, cost ledger, requirements, verification, git log), `renderHud` (self-contained HTML — no server/network/external assets), `cmdHud`. A read-only **view**: owns no state, writes only `.planning/hud.html`. Army-only panels degrade gracefully when no campaign/worktrees exist. Reads `squads.cjs` + `campaign.cjs` + `worktree.cjs` + `cost.cjs`. |
 | `skill-align.cjs` | — | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass. `buildSkillIndex(root)` walks commands/templates/references + learnings topics on the fly (nothing persisted); `alignTasks(root, tasks, opts)` scores draft planner tasks via `scoreRelevance` (glue-word stop-list, capped scoring head) and returns per-task top-k matches plus a deduped, token-budgeted `vocabulary` hint list with explicit `dropped` overflow. Advisory + fail-open: missing roots are skipped and reported. Used by `pan-planner`'s `skill_alignment` step. `cmdSkillsIndex` / `cmdSkillsAlign`. |
-| `hygiene.cjs` | — | **(v3.13)** Project cleanup + version alignment. `scanHygiene` runs seven checks: per-runtime manifest version vs latest, untracked installs, legacy uppercase planning filenames, `.tmp` orphans, memory-log bloat, poisoned cost ledgers (via `cost.cjs isSuspectRecord`), stale trace sessions, fragment `.planning/` dirs. `cleanHygiene` applies only the safe subset (case-hop renames, orphan deletion, `compactMemory`, ledger quarantine-by-rename, trace pruning) — dry-run by default, `--apply` to execute; installer re-runs and fragment removal always stay manual. `cmdHygieneScan` / `cmdHygieneClean`. |
+| `hygiene.cjs` | — | **(v3.13)** Project cleanup + version alignment. `scanHygiene` runs the checks named by its finding ids: `version-alignment` (per-runtime manifest version vs latest, untracked installs), `legacy-filenames`, `tmp-orphans`, `memory-bloat`, `poisoned-ledger` (via `cost.cjs isSuspectRecord`, gated on record count *or* token mass), `stale-traces`, `stale-reports`, `cache-context` (cached-context bloat, plus the prompt-cache lifetime recommendation at `info`), `planning-fragment`, and `foreign-planning-tree` (via `foreign-planning.cjs` — a tree that belongs to another tool gets that one warning and no per-tree checks). `cleanHygiene` applies only the safe subset (case-hop renames, orphan deletion, `compactMemory`, ledger quarantine-by-rename, trace pruning) — dry-run by default, `--apply` to execute; installer re-runs and fragment removal always stay manual. `cmdHygieneScan` / `cmdHygieneClean`. |
 | `phase-report.cjs` | — | **(v3.15)** Per-phase graphical HTML report + project-level timeline index (`pan-tools report phase <N>` \| `index` \| `all`). Three layers mirroring hud.cjs: `collectPhaseData`/`collectIndexData` (pure `.planning/` reads), `renderPhaseHtml`/`renderIndexHtml` (pure self-contained docs), `cmdReport` (only side-effecting layer). Reuses hud.cjs's rendering foundation verbatim so both surfaces render identically. |
 | `agents-md.cjs` | — | AGENTS.md universal rules layer (ADR-0028 Phase 3). Single source of truth for the marker-fenced PAN section and the CLAUDE.md `@AGENTS.md` bridge; lives under the core so the installer AND an installed `memory rebuild` regenerate byte-identical content. User content outside the markers is never touched. |
 | `memory-rebuild.cjs` | — | Rebuilds agent memory from `.planning/` state, scanning for injected directives and surfacing them as warnings (ADR-0040). |
 | `memory-optimize.cjs` | — | Memory compaction and the quarantine path for entries carrying injected directives (ADR-0040). |
 | `suggest.cjs` | — | **(2026-08)** "Did you mean" corrections for an unknown command. PURE. `buildSubcommandIndex()` parses the dispatcher's own `Unknown <group> subcommand. Available:` strings — load-bearing text a user sees, so it cannot rot quietly — and `suggestCommand()` resolves a namespace miss (`trace` → `pan-tools optimize trace`) or a near-miss typo. Runs on the ERROR PATH ONLY, so a healthy invocation pays nothing, and fails open to the plain message. |
+| `planning-root.cjs` | — | **(v3.27, ADR-0043)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance so a wrong target is visible instead of passing for a healthy project. Leaf module — Node builtins only; `utils.planningPath()` / `utils.planningRel()` are the primary path constructors built on it; commands, hygiene, init and verify also read its root helpers directly. No CLI surface. |
+| `state-compact.cjs` | — | **(v3.27, ADR-0044)** `state compact [--apply] [--keep-days N]`: archives settled history out of `state.md` into `state-history.md` so it stops being re-read into every agent call. Archive first, then rewrite, nothing deleted; live sections and frontmatter-source fields are protected; dry-run by default. |
+| `foreign-planning.cjs` | — | **(2026-09)** `detectForeignPlanningTree(dir)` / `detectForeignPlanningTreeAt(cwd)`: does this `.planning/` belong to another tool? Answered from POSITIVE markers PAN never writes (`FOREIGN_PLANNING_MARKERS` in `constants.cjs` — gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys). Never throws. Consumed by `hygiene.cjs` (one `foreign-planning-tree` warning, no per-tree checks, `applyFix` refuses the rename), `verify.cjs` (`validate health` `E006`, stops before `E002`–`E005`) and `init.cjs` (`init new-project` refuses). |
 
 ---
 
@@ -429,7 +435,9 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 
 Markdown and JSON files that survive context resets. This is the single source of truth for project state.
 
-```
+The tree below shows the core files. Depending on which features a project has used it also carries `pause.md`, `learnings.md`, `standards.md`, `state-history.md`, `playbook.md`, `hud.html`, `report-index.html`, `report-bundle.html` and the `milestones/`, `memory/`, `bus/`, `metrics/`, `optimization/`, `orchestration/`, `counterfactuals/`, `conversations/`, `reviews/`, `bridge/`, `focus/` and `tracks/` directories.
+
+```text
 .planning/
   project.md            Project definition, scope, and constraints
   requirements.md       Scoped requirements with unique IDs (REQ-01, etc.)
@@ -457,7 +465,7 @@ Markdown and JSON files that survive context resets. This is the single source o
     best-practices.md   Recommended patterns for this codebase
   todos/
     pending/            Captured ideas awaiting work
-    done/               Completed todos
+    completed/          Completed todos (`pan-tools todo complete` moves files here)
   debug/                Active debug sessions
     resolved/           Archived debug sessions
   quick/                Quick mode task plans and summaries
@@ -506,6 +514,8 @@ Context documents loaded by agents and workflows at runtime. These provide domai
 | `design-methodology.md` | Design methodology for the design phase (architecture, ADR, threat-lite) |
 | `git-integration.md` | Git operations, commit format, branching strategies |
 | `git-planning-commit.md` | How to commit `.planning/` artifacts (respects `commit_docs` config) |
+| `guardrails.md` | Behavioral guardrails — anti-patterns, Code Preservation Principle, Stop-the-Line Rule |
+| `handoff-decisions.md` | Planner → executor decision-trace handoff (locked / open / rejected decisions) |
 | `model-profile-resolution.md` | How to resolve model profiles once at orchestration start |
 | `model-profiles.md` | Model profile table (quality/balanced/budget per agent) |
 | `phase-argument-parsing.md` | Normalize phase arguments across commands |
@@ -567,7 +577,7 @@ Interactive CLI that copies commands, agents, hooks, and core library to the cor
 
 A complete trace from user input to approved plans:
 
-```
+```text
 User                  Command                 Workflow
   |                     |                       |
   |  /pan:plan-phase 1  |                       |
@@ -619,7 +629,7 @@ User                  Command                 Workflow
 4. Workflow calls `pan-tools.cjs init plan-phase "1"` to bootstrap context
 5. pan-tools returns JSON with all file paths, config, and model assignments
 6. Workflow spawns `pan-phase-researcher` agent to investigate the phase's domain
-7. Researchers write research.md (and optionally validation.md if Nyquist enabled)
+7. Researcher writes research.md; if Nyquist is enabled the workflow then writes validation.md from the template using the researcher's Validation Architecture section
 8. Workflow spawns `pan-planner` with project.md + requirements.md + context.md + research.md
 9. Planner creates plan.md files (typically 2-3 per phase)
 10. Workflow spawns `pan-plan-checker` to validate plans across multiple dimensions
@@ -628,7 +638,7 @@ User                  Command                 Workflow
 
 ### Example: `/pan:exec-phase 1`
 
-```
+```text
 User                  Workflow                   Agents
   |                     |                          |
   |  /pan:exec-phase |                          |
@@ -655,19 +665,24 @@ User                  Workflow                   Agents
 
 ## Module Dependency Graph
 
-```
+```text
 pan-tools.cjs (CLI entry point — routes to all modules)
   │
   │  LAYER 1: Foundation (no internal deps)
   ├── constants.cjs
+  ├── planning-root.cjs   (ADR-0043 — which .planning tree a command acts on)
+  ├── lock.cjs            (ADR-0030 — advisory file locking, used by state.cjs)
   │
-  │  LAYER 2: Core (depends on constants + Node.js builtins)
+  │  LAYER 2: Core (depends on constants, utils + Node.js builtins)
   ├── core.cjs
-  │     └── (no internal deps — uses node:fs, node:path, node:child_process)
+  │     ├── constants.cjs
+  │     └── utils.cjs (planningPath / planningRel)
   │
-  │  LAYER 3: Utilities (depends on constants, core)
+  │  LAYER 3: Utilities
   ├── utils.cjs
-  │     └── constants.cjs
+  │     ├── constants.cjs
+  │     ├── planning-root.cjs
+  │     └── core.cjs (lazy, inside a function — comparePhaseNum)
   │
   │  LAYER 4: Functional modules
   ├── frontmatter.cjs
@@ -682,7 +697,8 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   ├── context-budget.cjs
   │     ├── core.cjs
   │     ├── utils.cjs
-  │     └── constants.cjs
+  │     ├── constants.cjs
+  │     └── cost.cjs (lazy)
   │
   ├── roadmap.cjs
   │     ├── core.cjs
@@ -693,7 +709,9 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── core.cjs
   │     ├── frontmatter.cjs
   │     ├── constants.cjs
-  │     └── utils.cjs
+  │     ├── utils.cjs
+  │     ├── lock.cjs
+  │     └── memory-optimize.cjs (lazy)
   │
   ├── template.cjs
   │     ├── core.cjs
@@ -707,6 +725,8 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── state.cjs
   │     ├── constants.cjs
   │     ├── utils.cjs
+  │     ├── planning-root.cjs, foreign-planning.cjs
+  │     ├── config.cjs, links.cjs, memory.cjs (lazy)
   │     └── verify-{drift,retro,deploy,preflight}.cjs (re-exported)
   │
   ├── phase.cjs (facade)
@@ -715,6 +735,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── state.cjs
   │     ├── constants.cjs
   │     ├── utils.cjs
+  │     ├── roadmap.cjs
   │     └── phase-remove.cjs (re-exported)
   │
   ├── milestone.cjs
@@ -730,7 +751,9 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── frontmatter.cjs
   │     ├── constants.cjs
   │     ├── utils.cjs
-  │     └── context-budget.cjs
+  │     ├── context-budget.cjs
+  │     ├── planning-root.cjs
+  │     └── commands-learnings.cjs (re-exported)
   │
   ├── focus.cjs
   │     ├── core.cjs
@@ -738,50 +761,60 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── frontmatter.cjs
   │     ├── roadmap.cjs
   │     ├── commands.cjs
-  │     └── utils.cjs
+  │     ├── utils.cjs
+  │     ├── cost.cjs (lazy)
+  │     ├── memory-optimize.cjs (lazy)
+  │     └── phase-report.cjs (lazy)
   │
   └── init.cjs
         ├── core.cjs
         ├── constants.cjs
-        ├── roadmap.cjs
-        └── utils.cjs
+        ├── utils.cjs
+        ├── frontmatter.cjs
+        ├── phase.cjs
+        ├── codebase.cjs
+        ├── planning-root.cjs
+        └── foreign-planning.cjs
 
   │  LAYER 6: Spec B v2 modules (v3.0–v3.4) — leaf modules
-  ├── bus.cjs            (depends on: core, constants, utils)
-  ├── cost.cjs           (depends on: core, constants, utils)
-  ├── preview.cjs        (depends on: utils, frontmatter, verify)
-  ├── review-deep.cjs    (depends on: core, constants, utils)
-  ├── knowledge.cjs      (depends on: core, constants, utils)
-  ├── whatif.cjs         (depends on: core, constants, utils)
-  ├── bridge.cjs         (depends on: core, constants, utils)
-  ├── codebase.cjs       (depends on: core, constants, utils)
-  ├── memory.cjs         (depends on: core, constants, utils)
+  ├── bus.cjs            (depends on: core, utils)
+  ├── cost.cjs           (depends on: core, utils — shared infrastructure: read by context-budget, focus, hud, hygiene, memory, optimize, phase-report)
+  ├── preview.cjs        (depends on: core, constants, utils, frontmatter, verify)
+  ├── review-deep.cjs    (depends on: core, utils, bus)
+  ├── knowledge.cjs      (depends on: core, utils, memory)
+  ├── whatif.cjs         (depends on: core, utils)
+  ├── bridge.cjs         (depends on: core, utils)
+  ├── codebase.cjs       (depends on: core, constants, utils — read by init)
+  ├── memory.cjs         (depends on: core, constants, utils, cost — read by knowledge, verify, verify-retro, hygiene, memory-optimize)
   │
   │  LAYER 7: v3.5 modules — leaf modules
-  ├── optimize.cjs       (depends on: core, constants)
+  ├── optimize.cjs       (depends on: core, utils, cost)
   ├── git.cjs            (depends on: core, commands — for runCommitSafetyChecks reuse)
-  ├── distill.cjs        (depends on: core)
+  ├── distill.cjs        (depends on: core, utils)
   │
   │  LAYER 8: concurrency + bot army (ADR-0030/0032/0033/0034/0035)
-  ├── lock.cjs           (depends on: Node builtins only — used by state.cjs)
   ├── squads.cjs         (depends on: core — registry, no agent/exec coupling)
   ├── worktree.cjs       (depends on: core — git worktree lifecycle)
-  ├── campaign.cjs       (depends on: core, constants — schedule descriptor)
+  ├── campaign.cjs       (depends on: core, constants, utils — schedule descriptor)
   ├── hud.cjs            (depends on: core, constants, utils, squads, campaign, worktree, cost — read-only aggregating view)
   │
   │  LAYER 9: v3.13 modules
   ├── skill-align.cjs    (depends on: core, constants, knowledge — scoreRelevance reuse, learn-index — topics)
-  └── hygiene.cjs        (depends on: core, constants, utils, memory — compaction, cost — suspect-record quarantine)
+  ├── hygiene.cjs        (depends on: core, constants, utils, memory — compaction, cost — suspect-record quarantine, context-budget, planning-root, state-compact, foreign-planning)
+  │
+  │  LAYER 10: the cached-context bound (v3.27, ADR-0044) and foreign-tree detection (2026-09) — planning-root.cjs (ADR-0043) sits in Layer 1
+  ├── state-compact.cjs  (depends on: core, constants, utils, state — writeStateMd)
+  └── foreign-planning.cjs (depends on: constants — FOREIGN_PLANNING_MARKERS, utils — planningPath; consumed by hygiene, verify, init)
 ```
 
 **Key observations:**
-- `constants.cjs` is the true foundation — required by every other module
-- `core.cjs` has no internal dependencies (only Node.js builtins) and provides the `output()`/`error()` I/O contract — including the single point where the process exit code is decided: `error()` is stderr + exit 1, while `output()` derives its code from the payload (a truthy top-level key in the **error family** — `error` or `*_error` — exits non-zero) unless a command passes one explicitly or opts out with `EXIT_OK`. Sites that report a failure as `<verb>: false` carry an error-family key so this one derivation covers them too, including payloads built by pure functions elsewhere and passed straight through by the dispatcher. See CLI-REFERENCE "Error Shape".
+- `constants.cjs` is the foundation for the planning-file modules (core, utils, config, state, phase, verify, focus, init …); many leaf modules reach it only through core/utils, and `planning-root.cjs` and `lock.cjs` require nothing internal
+- `core.cjs` depends only on `constants.cjs` and `utils.cjs` (plus Node.js builtins) and provides the `output()`/`error()` I/O contract — including the single point where the process exit code is decided: `error()` is stderr + exit 1, while `output()` derives its code from the payload (a truthy top-level key in the **error family** — `error` or `*_error` — exits non-zero) unless a command passes one explicitly or opts out with `EXIT_OK`. Sites that report a failure as `<verb>: false` carry an error-family key so this one derivation covers them too, including payloads built by pure functions elsewhere and passed straight through by the dispatcher. See CLI-REFERENCE "Error Shape".
 - `frontmatter.cjs` is widely depended upon (state, verify, phase, milestone, commands, template all use it)
-- Layer 6 (Spec B v2) and Layer 7 (v3.5) modules are mostly leaves — they read shared infrastructure but do not have downstream consumers, so they can be added/removed without rippling through the graph
-- `git.cjs` reuses `runCommitSafetyChecks` from `commands.cjs` (the only v3.5 module with a non-core internal dependency)
-- No circular dependencies exist — the graph is a clean DAG
-- `pan-tools.cjs` requires every module but is itself a script (no `module.exports`)
+- Most Layer 6 (Spec B v2) and Layer 7 (v3.5) modules are leaves, but `cost.cjs` and `memory.cjs` are shared infrastructure with many consumers, `bus.cjs` feeds review-deep, `codebase.cjs` feeds init and `knowledge.cjs` feeds skill-align — remove those with care
+- `git.cjs` reuses `runCommitSafetyChecks` from `commands.cjs`; `optimize.cjs` reads `cost.cjs`; `optimize.cjs` and `distill.cjs` also use `utils.cjs` (`git.cjs` does not)
+- Two cycles exist — `core ⇄ utils` and `state ⇄ memory-optimize` — each broken by a lazy in-function `require` on one side; everything else is a DAG
+- `pan-tools.cjs` requires every module with a CLI surface (the foundation and the re-exported submodules load transitively) but is itself a script (no `module.exports`)
 
 ---
 
@@ -805,8 +838,8 @@ PAN installs to 5 runtimes with format conversion at install time. The core work
 |-----------|---------------------------|-------|-------------|
 | Commands | `commands/pan/*.md` | `.agents/skills/pan-*/SKILL.md` | `skills/pan-*/SKILL.md` |
 | Agents | `agents/*.md` | `agents/*.toml` | `agents/*.agent.md` |
-| Hooks | `hooks/*.js` in `settings.json` | `hooks/*.js` in `.codex/hooks.json` (since 2026-06) | `hooks/*.js` in `.github/hooks/pan.json` |
-| Config | `settings.json` | `config.toml` | `config.json` |
+| Hooks | `hooks/*.js` in `settings.json` (Claude, Gemini — none for OpenCode) | `hooks/*.js` in `.codex/hooks.json` (since 2026-06) | `hooks/*.js` in `.github/hooks/pan.json` |
+| Config | `settings.json` | `config.toml` | `.github/copilot/settings.json` (statusline) · `.github/mcp.json` (MCP) · `.github/hooks/pan.json` (hooks) |
 
 ### Tool Name Mapping (Copilot CLI)
 
@@ -852,6 +885,14 @@ own header puts it, the CLI's JSON contract **is** the tool contract.
   regex with a length bound, a `FORBIDDEN_VERB` guard that refuses to expose any
   history-rewriting or force git op (recovery is revert-only), and a merge gate that requires
   an out-of-band human token an agent-supplied value cannot satisfy.
+- **The project root travels with the call.** Every tool accepts an optional `cwd` — the
+  absolute path of the project to operate on, validated as an existing directory and used for
+  that call only; without it the server falls back to `PAN_PROJECT_ROOT` when set, else the directory it was started in.
+  Resources never take it: their argv is static, which is the whole of their safety argument.
+  The reason is the Agent Plugins format (ADR-0045): its clients launch a stdio server in the
+  **plugin root** by default, so a server that trusted its own cwd would read `.planning/`
+  from inside the plugin cache and report an empty project — cleanly. The decoration is applied
+  centrally in the registry, so a tool added later cannot miss it.
 - **Registration** is per-runtime and non-destructive; the verified path/shape table is
   `MCP_REGISTRATION` in `bin/install-lib.cjs`, deliberately sitting beside `HOOK_EVENT_MAP`
   because it is the same class of problem. Paths there are **config-dir-relative**. Codex and
@@ -881,7 +922,7 @@ Claude Code's `node:test` runner and the hook copy pipeline work more reliably w
 
 ### 2. Zero Runtime Dependencies
 
-The core library uses only `node:` built-in modules (`node:fs`, `node:path`, `node:child_process`, `node:os`, `node:crypto`). This keeps installation fast, eliminates supply chain risk, and ensures the tool works offline after install.
+The core library uses only Node.js built-in modules (`fs`, `path`, `child_process`, `os`, `crypto`). This keeps installation fast, eliminates supply chain risk, and ensures the tool works offline after install.
 
 ### 3. Markdown-as-Code
 
@@ -918,7 +959,7 @@ Agents never communicate directly. All data flows through `.planning/` files on 
 
 ### 10. Layered Architecture with Strict Boundaries
 
-- Commands (Layer 1) never call core library directly — they go through workflows
+- Commands (Layer 1) delegate substantive logic to workflows; self-contained commands (`debug`, `phase-budget`, the `focus-*` family) call `pan-tools` directly for bootstrap data
 - Workflows (Layer 2) never import agent `.md` files — they spawn agents via Task tool
 - Agents (Layer 3) never import other agents — they communicate via `.planning/` files
 - Core modules (Layer 4) never call `output()` from helper functions — only from `cmd*` entry points

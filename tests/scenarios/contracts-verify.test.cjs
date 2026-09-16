@@ -34,7 +34,7 @@ describe('E2E Validation/Verify Contracts', () => {
 
   test('validate health returns status enum and error/warning arrays', () => {
     const result = runner.run('validate health');
-    assert.ok(result.success, `should succeed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const parsed = JSON.parse(result.output);
     assertSchema(parsed, {
       success_fields: ['status', 'errors', 'warnings'],
@@ -45,7 +45,7 @@ describe('E2E Validation/Verify Contracts', () => {
 
   test('validate health includes info and repairable_count', () => {
     const result = runner.run('validate health');
-    assert.ok(result.success);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const parsed = JSON.parse(result.output);
     assert.ok('info' in parsed, 'should have info field');
     assert.ok('repairable_count' in parsed, 'should have repairable_count field');
@@ -97,7 +97,7 @@ describe('E2E Validation/Verify Contracts', () => {
     // Just create .planning with nothing in it
     fs.mkdirSync(path.join(brokenDir, '.planning'), { recursive: true });
     const result = runner.run('validate health', brokenDir);
-    assert.ok(result.success, `should succeed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const parsed = JSON.parse(result.output);
     assert.ok(['broken', 'degraded'].includes(parsed.status),
       `broken project should be broken/degraded, got "${parsed.status}"`);
@@ -107,7 +107,7 @@ describe('E2E Validation/Verify Contracts', () => {
   test('validate health on missing .planning returns broken', () => {
     const emptyDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-empty-'));
     const result = runner.run('validate health', emptyDir);
-    assert.ok(result.success);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const parsed = JSON.parse(result.output);
     assert.equal(parsed.status, 'broken', 'missing .planning should be broken');
     assert.ok(parsed.errors.length > 0, 'should have errors');

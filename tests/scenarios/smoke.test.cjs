@@ -59,7 +59,7 @@ describe('E2E Smoke Tests — Layer 4', () => {
   test('ST-005: validate health returns valid JSON with status field', () => {
     // ST-004 already initialized, so health check should work
     const result = runner.run('validate health');
-    assert.ok(result.success, `validate health should succeed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const parsed = JSON.parse(result.output);
     assert.ok('status' in parsed, 'output should have status field');
     assert.ok(['healthy', 'degraded', 'broken'].includes(parsed.status),

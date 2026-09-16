@@ -141,6 +141,24 @@ describe('Codex: install structure', () => {
     assert.ok(config.hooks.SubagentStop, 'SubagentStop (PascalCase) should exist');
   });
 
+  // Codex `async` handlers (0.148+) run off the critical path and cannot inject
+  // context. Observers get the flag; the context monitor, whose whole job is to
+  // inject `additionalContext` the model must read this turn, must NOT.
+  test('hooks.json marks the observer hooks async and leaves the context monitor synchronous', () => {
+    const hooksJsonPath = path.join(tempDir, '.codex', 'hooks.json');
+    const config = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8'));
+    const handlers = Object.values(config.hooks).flat().flatMap(g => g.hooks || []);
+    const byMarker = (m) => handlers.find(h => h.command && h.command.includes(m));
+    for (const observer of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger']) {
+      assert.equal(byMarker(observer)?.async, true, `${observer} is a pure observer and should be async`);
+    }
+    const monitor = byMarker('pan-context-monitor');
+    assert.ok(monitor, 'context monitor should be registered');
+    assert.equal(monitor.async, undefined,
+      'context monitor returns additionalContext and must stay synchronous — async output is deferred');
+    for (const h of handlers) assert.equal(h.type, 'command', 'every PAN handler is a command handler');
+  });
+
   test('hook scripts are installed to .codex/hooks/', () => {
     const hooksDir = path.join(tempDir, '.codex', 'hooks');
     assert.ok(fs.existsSync(hooksDir), 'hooks dir should exist');

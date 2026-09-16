@@ -15,6 +15,7 @@ const {
   BUILTIN_DRIFT_RULES, DRIFT_VERDICTS, BINARY_EXTENSIONS, DRIFT_MAX_FILES, DRIFT_MAX_FILE_SIZE, DRIFT_SEVERITY_WEIGHTS,
 } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible } = require('./utils.cjs');
+const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
 // Drift detection lives in verify-drift.cjs; re-exported below so consumers of
 // verify.cjs are unaffected by the decomposition.
 const { runDriftCheck, parseConventionRules, checkFileConventions, calculateDriftScore, getChangedFiles, cmdDriftCheck } = require('./verify-drift.cjs');
@@ -1293,13 +1294,29 @@ function cmdValidateHealth(cwd, options, raw) {
 
   // Check 1: .planning/ exists (fatal if missing -- skip remaining checks)
   if (!checkPlanningDirExists(cwd, addIssue)) {
+    // A verdict payload carries `errors[]`, which is OUTSIDE output()'s error family
+    // (plural collections are detail, not a failure signal — see CLI-REFERENCE "Error
+    // Shape"), so the exit code must be set explicitly here, as `reconcile` does.
+    // `broken` → 1. Reality check RC2 (2026-09-10): this site exited 0 for a missing
+    // .planning/, so an orchestrator gating on the exit code read it as healthy.
     output({
       status: HEALTH_STATUS.BROKEN,
       errors,
       warnings,
       info,
       repairable_count: 0,
-    }, raw);
+    }, raw, undefined, 1);
+    return;
+  }
+
+  // Check 1b: the tree exists but belongs to another tool (gsd-core shares the
+  // directory name and PAN's legacy uppercase file names). Report that as its own
+  // error and stop: E002-E005 would describe a foreign layout as a broken PAN one,
+  // and --repair must never write into it. Reality check R15.
+  const foreign = detectForeignPlanningTree(planningPath(cwd));
+  if (foreign) {
+    addIssue('error', 'E006', `planning tree belongs to ${foreign.tool}: ${foreign.evidence.join(', ')}`, 'Run PAN with --planning-dir <dir> to use a separate tree (ADR-0043)');
+    output({ status: HEALTH_STATUS.BROKEN, errors, warnings, info, repairable_count: 0 }, raw, undefined, 1);
     return;
   }
 
@@ -1418,7 +1435,10 @@ function cmdValidateHealth(cwd, options, raw) {
     result.link_graph = linkGraphResult;
   }
 
-  output(result, raw);
+  // Explicit verdict exit: `broken` → 1; `degraded` and `healthy` → 0 (warnings are
+  // not failures). Computed AFTER --repair ran, so the code reflects the post-repair
+  // state the JSON reports. See the note at the early-return site above.
+  output(result, raw, undefined, status === HEALTH_STATUS.BROKEN ? 1 : 0);
 }
 
 /**

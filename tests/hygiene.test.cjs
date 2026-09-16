@@ -670,3 +670,37 @@ describe('hygiene — clean converges', () => {
     assert.equal(fs.readFileSync(path.join(metrics(), quarantined), 'utf8'), original);
   });
 });
+
+// ─── cache-context: prompt-cache lifetime recommendation (ADR-0046 D5) ──────
+
+describe('hygiene — cache-context lifetime recommendation', () => {
+  let tmp;
+  beforeEach(() => { tmp = createTempProject(); });
+  afterEach(() => { cleanup(tmp); });
+
+  const row = (min) => JSON.stringify({
+    ts: new Date(Date.UTC(2026, 8, 10, 0, min, 0)).toISOString(),
+    agent: 'pan-executor', input_tokens: 100, output_tokens: 50, cache_write_tokens: 8000,
+  });
+  const seed = (rows) => {
+    fs.writeFileSync(path.join(tmp, '.planning', 'state.md'), '# State\n');
+    fs.mkdirSync(path.join(tmp, '.planning', 'metrics'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, '.planning', 'metrics', 'tokens.jsonl'), rows.join('\n') + '\n');
+  };
+
+  test('recommends subagentPromptCacheTtl when the ledger shows repeated writes after short idle gaps', () => {
+    seed([row(0), row(20), row(45)]);
+    const f = checkCachedContext(tmp).findings.find(x => /subagentPromptCacheTtl/.test(x.detail));
+    assert.ok(f, 'expected the lifetime recommendation');
+    assert.equal(f.severity, 'info', 'a cost trade the user weighs — informational');
+    assert.equal(f.fixable, false, 'never advertised as auto-fixable: the remedy is a Claude Code setting');
+    assert.match(f.path, /tokens\.jsonl$/);
+  });
+
+  test('stays silent for a burst that never idles, and for a project with no ledger', () => {
+    seed([row(0), row(1), row(3)]);
+    assert.equal(checkCachedContext(tmp).findings.some(x => /subagentPromptCacheTtl/.test(x.detail)), false);
+    fs.rmSync(path.join(tmp, '.planning', 'metrics'), { recursive: true, force: true });
+    assert.equal(checkCachedContext(tmp).findings.some(x => /subagentPromptCacheTtl/.test(x.detail)), false);
+  });
+});

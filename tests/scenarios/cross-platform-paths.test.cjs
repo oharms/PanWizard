@@ -71,7 +71,7 @@ describe('Cross-platform paths in JSON output', () => {
 
   test('validate health output has no absolute paths', () => {
     const result = runner.run('validate health');
-    assert.ok(result.success, `validate health failed: ${result.error}`);
+    assert.equal(result.success, JSON.parse(result.output).status !== 'broken', 'exit code mirrors the verdict: broken exits non-zero (reality check R2)');
     const output = result.output;
     // Should not contain user temp directory in output
     assert.ok(!output.includes(runner.tmpDir.replace(/\\/g, '\\\\')),

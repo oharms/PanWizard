@@ -1,0 +1,54 @@
+{
+  "id": "live-gate-opencode",
+  "tier": 0,
+  "description": "Install PAN for OpenCode locally and confirm OpenCode itself lists the `pan` MCP server from .opencode/opencode.json.",
+  "why": "Reality check RC8 (2026-09-10): PAN writes its MCP registration to .opencode/opencode.json — a path opencode.ai/docs/config never lists (it documents only a repo-root opencode.json), while OpenCode's loader source (packages/opencode/src/config/config.ts) reads opencode.json/.jsonc inside any .opencode directory. A file that exists on disk is not proof the runtime reads it; this scenario asks OpenCode. SKIPPED with reason when the CLI is absent.",
+  "seed": "empty",
+  "install": [
+    "--opencode",
+    "--local"
+  ],
+  "requires": {
+    "cli": "opencode"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 8,
+    "maxStepMinutes": 4
+  },
+  "steps": [
+    {
+      "kind": "fs",
+      "read": ".opencode/opencode.json",
+      "expect": [
+        "json:mcp.pan.type=local",
+        "json:mcp.pan.enabled=true"
+      ],
+      "why": "The installer's contract: the registration is on disk in the shape the OpenCode docs give for the mcp block."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode",
+      "args": [
+        "--version"
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Pins which OpenCode build the measurement was taken on; the report records stdout."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode",
+      "args": [
+        "mcp",
+        "list"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~pan"
+      ],
+      "why": "The measurement: OpenCode enumerates the servers it loaded for this workspace. If the subcommand does not exist on this build, its stderr is the evidence to adjust from — either outcome is information."
+    }
+  ]
+}

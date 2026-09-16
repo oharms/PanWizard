@@ -54,7 +54,7 @@ When the executor hits an authentication error (not a code bug), it creates a dy
 
 ### Auto-Advance Behavior
 
-With `auto_advance: true` in config:
+With `workflow.auto_advance: true` in config.json:
 - `human-verify` -- Auto-approved (assumes pass)
 - `decision` -- First option auto-selected
 - `human-action` -- Still requires human (cannot be automated)
@@ -88,7 +88,7 @@ PAN's executor follows RED-GREEN-REFACTOR discipline for tasks flagged as testab
 2. **GREEN** -- Write the minimum code to make the test pass
 3. **REFACTOR** -- Clean up while keeping tests green
 
-**Context budget:** TDD tasks use ~40% more context than standard tasks due to the three-phase cycle. PAN accounts for this when estimating phase complexity.
+**Context budget:** TDD plans target ~40% context usage (against ~50% for standard plans) so the three-phase cycle has headroom; PAN gives each TDD feature its own plan.
 
 ### Commit Pattern
 
@@ -132,7 +132,7 @@ After execution, PAN's verifier checks that artifacts are real implementations -
 
 Each layer must connect to the next:
 
-```
+```text
 Component -> API call (fetch/axios/tRPC)
     -> API route -> Database query (Prisma/Drizzle/SQL)
         -> Schema -> Indexes + constraints
@@ -146,12 +146,12 @@ Component -> API call (fetch/axios/tRPC)
 
 ### Verification Report Structure
 
-verification.md includes:
+verification.md (layout from `templates/verification-report.md`) includes:
 - Per-requirement pass/fail assessment
 - Stub inventory (if any found)
 - Wiring chain validation
 - Gap analysis with suggested fixes
-- Overall phase health score
+- Overall score (N/M must-haves verified)
 
 ---
 
@@ -165,22 +165,23 @@ PAN creates granular, per-task commits during execution -- not bulk commits per 
 
 | Event | Commit? | Type |
 |-------|---------|------|
-| Project initialization (project.md, roadmap.md) | Yes | `chore(init)` |
-| Plan creation (plan.md) | No | -- |
+| Project initialization (project.md, roadmap.md) | Yes | planning-docs commit (`pan-tools commit`) |
+| Plan / research / discovery creation | No | -- (no shipped commit stages plan.md or research.md; the plan-completion commit stages summary.md, state.md, roadmap.md, requirements.md) |
 | Task completion | Yes | `feat/fix/test(phase-plan)` |
 | Plan completion (summary.md metadata) | Yes | `docs(phase-plan)` |
-| Phase completion | No | -- |
+| Handoff created (`/pan:pause`) | Yes | planning-docs commit (WIP state preserved) |
+| Phase completion (verification, roadmap, state) | Yes | `docs(phase-X): complete phase execution` |
 
 ### Commit Message Format
 
-```
+```text
 {type}({phase}-{plan}): {description}
 ```
 
-**Types:** `feat`, `fix`, `test`, `refactor`, `perf`, `chore`, `docs`
+**Types:** task commits use `feat`, `fix`, `test`, `refactor`, `perf`, `chore` (`references/git-integration.md`); planning-doc commits go through `pan-tools commit`, whose `--type` accepts only `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
 
 **Examples:**
-```
+```text
 feat(04-01): Add user authentication middleware
 test(04-01): Add auth middleware test suite
 fix(04-02): Handle expired JWT tokens in refresh flow
@@ -227,15 +228,16 @@ Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) ar
 
 Model resolution follows a priority chain:
 
-```
+```text
 1. Per-agent override    → config.model_overrides[agentType]
 2. Per-phase override    → <!-- model_tier: X --> in roadmap phase
-3. Complexity routing    → adjusts tier ±1 based on task metadata (if strategy = "complexity")
-4. Profile lookup        → MODEL_PROFILES[agentType][profile]
-5. Provider resolution   → resolveTierToModel(tier, provider)
+3. Profile lookup        → MODEL_PROFILES[agentType][profile]
+4. Complexity routing    → adjusts that tier ±1 from task metadata (if strategy = "complexity")
+5. Capability hints      → adjustTierForCapabilities(): context_estimate / needs_thinking / cache_warm
+6. Provider resolution   → resolveTierToModel(tier, provider)
 ```
 
-**Provider detection:** Explicit `routing.provider` in config → `PAN_PROVIDER` env var → runtime directory presence (`.claude/` = Anthropic, `.codex/` = OpenAI, `.gemini/` = Google) → default.
+**Provider detection:** Explicit `routing.provider` in config → `PAN_PROVIDER` env var → runtime directory presence (`.claude/` = Anthropic, `.codex/` and `.opencode/` = OpenAI, `.gemini/` = Google, `.github/` = default) → default.
 
 ### Routing Strategies
 
@@ -263,7 +265,7 @@ Override specific agents in config:
 {
   "model_overrides": {
     "pan-executor": "opus",
-    "pan-researcher": "sonnet"
+    "pan-phase-researcher": "sonnet"
   }
 }
 ```
@@ -299,7 +301,8 @@ PAN supports three git branching strategies for project organization.
 When completing a phase or milestone:
 - **Squash:** Clean single commit on target branch
 - **Merge:** Preserve full commit history
-- **Discard:** Delete branch, keep commits on original
+- **Delete without merging:** `git branch -D` — the branch work is discarded
+- **Keep branches:** leave them for manual handling
 
 ### Config Example
 
@@ -313,6 +316,8 @@ When completing a phase or milestone:
 }
 ```
 
+`config-ensure-section` writes these keys at the top level of `config.json`; the nested `git` form above is also accepted on read.
+
 ---
 
 ## UI Conventions
@@ -323,13 +328,11 @@ PAN uses consistent visual patterns for all output.
 
 ### Stage Banners
 
-Major workflow stages use boxed banners:
-```
-+==============================================================+
-|  *  STAGE NAME                                               |
-+==============================================================+
-|  Description of what's happening                             |
-+==============================================================+
+Major workflow stages use a `PAN ►` banner between two rules (stage name in caps, e.g. `PLANNING PHASE 3`, `PHASE 3 COMPLETE ✓`):
+```text
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ PAN ► {STAGE NAME}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ### Status Symbols
@@ -338,29 +341,33 @@ Major workflow stages use boxed banners:
 |--------|---------|
 | checkmark | Success / Complete |
 | cross | Failure / Error |
-| diamond | Active / Current |
+| diamond | In progress |
 | circle | Pending / Not started |
-| lightning | In progress |
+| lightning | Auto-approved |
 | warning | Warning |
 
 ### Checkpoint Boxes
 
+```text
+╔══════════════════════════════════════════════════════════════╗
+║  CHECKPOINT: Verification Required                           ║
+╚══════════════════════════════════════════════════════════════╝
+
+Check that the login page renders correctly at http://localhost:3000/login
+
+──────────────────────────────────────────────────────────────
+→ Type "approved" or describe issues
+──────────────────────────────────────────────────────────────
 ```
-+---------------------------------------------+
-|  * Verification Required                     |
-|                                              |
-|  Check that the login page renders           |
-|  correctly at http://localhost:3000/login     |
-|                                              |
-|  [Continue] [Reject]                         |
-+---------------------------------------------+
-```
+
+62-character width. The action prompt varies by type: `→ Type "approved" or describe issues` (Verification Required), `→ Select: option-a / option-b` (Decision Required), `→ Type "done" when complete` (Action Required).
 
 ### Anti-Patterns
 
 - Don't vary box widths within the same workflow
 - Don't use random symbols -- stick to the defined symbol set
 - Don't mix banner styles
+- Don't drop the `PAN ►` prefix from stage banners
 - Don't omit the "Next Up" block after major completions
 
 ---
@@ -395,7 +402,7 @@ PAN's project initialization uses a collaborative discussion model, not a requir
 
 - **Checklist walking:** Don't ask generic questions in order
 - **Interrogation:** Don't ask 10 questions at once
-- **Assumption:** Don't assume you know what they mean
+- **Shallow acceptance:** Don't take vague answers without probing
 - **Skill assessment:** Don't ask "What's your experience level?"
 
 ---
@@ -408,19 +415,24 @@ After completing a workflow step, PAN always presents a "Next Up" block telling 
 
 ### Structure
 
-```
+```text
 ---
 
-**Next up -- Phase 02: Authentication**
-Set up user login, registration, and session management.
+## ▶ Next Up
 
--> `/pan:plan-phase 2`
+**Phase 02: Authentication** — Set up user login, registration, and session management.
 
-Also available:
-- `/pan:progress` -- Review overall status
-- `/pan:verify-phase 1` -- Re-verify Phase 1
+`/pan:plan-phase 2`
 
-Tip: Run `/clear` before starting to free context.
+<sub>`/clear` first → fresh context window</sub>
+
+---
+
+**Also available:**
+- `/pan:progress` — Review overall status
+- `/pan:verify-phase 1` — Re-verify Phase 1
+
+---
 ```
 
 ### Key Rules
@@ -444,6 +456,7 @@ PAN's agents load knowledge from reference files at runtime using `@`-syntax. Th
 | `tdd.md` | Test-driven development cycle, when to apply | High |
 | `verification-patterns.md` | Stub detection, wiring checks, verification scripts | High |
 | `handoff-decisions.md` | Decisions-trace schema for planner/executor/verifier handoff | High |
+| `design-methodology.md` | Design-phase methodology (architecture, ADR, threat-lite), shared by pan-designer and focus-design | Medium |
 | `git-integration.md` | Commit strategy, per-task commits, recovery | High |
 | `model-profiles.md` | Agent model selection by profile | High |
 | `questioning.md` | Discussion philosophy, question techniques | High |
@@ -455,7 +468,7 @@ PAN's agents load knowledge from reference files at runtime using `@`-syntax. Th
 | `decimal-phase-calculation.md` | Emergency phase insertion numbering | Low |
 | `phase-argument-parsing.md` | Phase argument normalization | Low |
 
-Agents reference these files with `@`-syntax in their markdown definitions. For example, the executor agent loads `@checkpoints.md` and `@tdd.md` at startup.
+Agents reference these files with `@`-syntax in their markdown definitions. For example, the executor agent references `references/checkpoints.md` in its checkpoint protocol and `references/handoff-decisions.md` when writing its implementation decisions.
 
 ---
 

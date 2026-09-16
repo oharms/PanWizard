@@ -687,6 +687,27 @@ const REFLECTION_THRESHOLD = {
   enable_on_tiers: ['reasoning'],
 };
 
+/**
+ * Markers of a `.planning/` tree written by ANOTHER tool. gsd-core (open-gsd/gsd-core,
+ * the continuation of Get Shit Done) uses the same directory name and the same uppercase
+ * core files PAN's pre-v2.2 layout used, so hygiene's legacy-filename rename would rename
+ * another tool's state. These are POSITIVE markers PAN never writes — files, directories,
+ * and gsd-core's flat dotted config keys (PAN nests `workflow: {}`). Source: gsd-core
+ * docs/USER-GUIDE.md, read 2026-09-10. Consumed by foreign-planning.cjs (reality check R15).
+ */
+const FOREIGN_PLANNING_MARKERS = Object.freeze({
+  gsd: Object.freeze({
+    tool: 'gsd-core',
+    files: Object.freeze(['HANDOFF.json', '.gsd-allow-shrink']),
+    dirs: Object.freeze(['forensics', 'threads', 'seeds', 'ui-reviews', 'sketches', 'spikes', 'onboarding']),
+    configKeys: Object.freeze([
+      'workflow.discuss_mode', 'workflow.context_coverage_gate', 'workflow.ui_phase', 'workflow.ui_safety_gate',
+      'workflow.skip_discuss', 'workflow.drift_action', 'workflow.drift_threshold', 'plan_review.source_grounding',
+      'graphify.enabled', 'intel.enabled', 'hooks.workflow_guard', 'dynamic_routing', 'resolve_model_ids',
+    ]),
+  }),
+});
+
 module.exports = {
   // Directories
   PLANNING_DIR,
@@ -765,6 +786,7 @@ module.exports = {
   COMPLEX_FILE_THRESHOLD,
   CHARS_PER_TOKEN,
   HEALTH_STATUS,
+  FOREIGN_PLANNING_MARKERS,
   MAX_JSON_SIZE,
   PROGRESS_BAR_WIDTH,
   MAX_SLUG_LENGTH,

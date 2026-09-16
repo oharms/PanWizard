@@ -788,3 +788,30 @@ describe('Cross-runtime manifest hook parity', () => {
     }
   });
 });
+
+// Reality check R13 (2026-09-10): Copilot CLI 1.0.83 custom agents accept a `model:`
+// list tried in order plus `model-policy`. Built as a converter option, NOT wired into
+// the installer: the Copilot model ids need a live check first (ADR-0028), which
+// live-gate-copilot.json carries. Revert-proof: drop the modelYaml block and the
+// first test fails; the second pins that the default output is unchanged.
+describe('convertClaudeToCopilotAgent — optional model fallback lists (R13)', () => {
+  const lib = require('../bin/install-lib.cjs');
+  const src = '---\nname: pan-reviewer\ndescription: Reviews\nmodel: opus\ntools: Read, Grep\n---\nBody.';
+  test('a pinned alias with a mapping emits a model list and model-policy: prefer', () => {
+    const out = lib.convertClaudeToCopilotAgent(src, { modelLists: { opus: ['vendor-model-a', 'vendor-model-b'] } });
+    const fm = out.split('---')[1];
+    assert.match(fm, /model:\n  - "?vendor-model-a"?\n  - "?vendor-model-b"?/);
+    assert.match(fm, /model-policy: prefer/);
+    assert.ok(!/model: opus/.test(fm), 'the bare alias must not leak into Copilot frontmatter');
+  });
+  test('without the option, or without a mapping for the alias, output is unchanged', () => {
+    const plain = lib.convertClaudeToCopilotAgent(src);
+    assert.equal(lib.convertClaudeToCopilotAgent(src, {}), plain);
+    assert.equal(lib.convertClaudeToCopilotAgent(src, { modelLists: { sonnet: ['x'] } }), plain);
+    assert.ok(!/model/.test(plain.split('---')[1]), 'no model key by default — the installer is not wired');
+  });
+  test('an agent without a pinned model gets no list even when the map is given', () => {
+    const noPin = '---\nname: pan-planner\ndescription: Plans\n---\nBody.';
+    assert.ok(!/model/.test(lib.convertClaudeToCopilotAgent(noPin, { modelLists: { opus: ['a'] } }).split('---')[1]));
+  });
+});

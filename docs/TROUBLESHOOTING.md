@@ -27,7 +27,7 @@ This guide covers root causes, diagnostic steps, and recovery procedures for sce
 
 ### Plan frontmatter validation fails
 
-**Symptom:** Plan checker rejects your plan with "missing required field" errors.
+**Symptom:** Plan checker rejects your plan with "Missing required frontmatter field: <name>" errors.
 
 **Required frontmatter fields:**
 
@@ -110,7 +110,7 @@ must_haves: []
 
 ### Plan checker enters infinite rejection loop
 
-**Symptom:** The planner generates a plan, the checker rejects it, the planner regenerates, the checker rejects again -- repeating up to the maximum iteration count (default 3).
+**Symptom:** The planner generates a plan, the checker rejects it, the planner regenerates, the checker rejects again -- repeating up to the maximum of 3 checker iterations (hard-coded in the plan-phase workflow; two revisions).
 
 **Root cause:** The planner and checker have conflicting expectations. Common triggers:
 
@@ -218,7 +218,7 @@ must_haves: []
 
 **Diagnostic:**
 
-```
+```text
 /pan:health
 ```
 
@@ -233,8 +233,8 @@ must_haves: []
 
 1. **Auto-repair:** Run `/pan:health --repair` to fix consistency issues automatically
 2. **Manual fix:** Edit `.planning/state.md` directly -- ensure fields use `**Field:** value` format and the YAML frontmatter matches
-3. **Reconstruct from disk:** Delete state.md and run `/pan:progress` -- PAN regenerates state by scanning roadmap.md and existing summary.md files
-4. **Full reset:** Delete `.planning/state.md` and `.planning/roadmap.md`, then re-run `/pan:progress` to rebuild from project.md and phase directories
+3. **Reconstruct from disk:** Delete state.md and run `/pan:health --repair` (or `/pan:resume`, which offers to reconstruct it) -- `/pan:progress` does not regenerate state.md; with it missing it points you at `/pan:new-project`
+4. **Full reset:** restore `.planning/roadmap.md` from git (or recreate it with `/pan:milestone-new`), delete `.planning/state.md`, then run `/pan:health --repair` to regenerate state.md from the roadmap. `/pan:new-project` refuses to run while `project.md` exists — delete that too only for a true from-scratch reset
 
 ### config.json will not parse
 
@@ -257,12 +257,12 @@ must_haves: []
 **Fix:**
 
 1. Correct the JSON syntax error
-2. If the file is badly corrupted, delete it and run any `/pan:` command -- config is recreated with defaults
+2. If the file is badly corrupted, delete it and run `/pan:health --repair` (or `pan-tools config-ensure-section`) to recreate it with defaults -- other commands fall back to in-memory defaults and write nothing
 3. Then use `/pan:settings` to reconfigure your preferences
 
 ### .planning/ directory missing or inaccessible
 
-**Symptom:** "Failed to create .planning directory", "EACCES: permission denied", or commands report "Project not initialized" despite previous initialization.
+**Symptom:** "Failed to create .planning directory", "EACCES: permission denied", or `/pan:health` reports `E001: .planning/ directory not found` despite previous initialization.
 
 **Common causes:**
 
@@ -280,8 +280,16 @@ must_haves: []
 **Fix:**
 
 - For permission issues: adjust permissions so your user has read/write access to `.planning/` and all subdirectories
-- For missing directory: run `/pan:new-project` to reinitialize (this will not overwrite existing files if `.planning/project.md` exists)
+- For missing directory: run `/pan:new-project` to reinitialize (if `.planning/project.md` still exists it refuses to run and points you at `/pan:progress`; `/pan:resume` also picks the project back up)
 - For wrong working directory: navigate to the project root before running PAN commands
+
+### PAN says the planning tree belongs to another tool
+
+**Symptom:** `/pan:health` (or `pan-tools validate health`) reports `E006: planning tree belongs to gsd-core: …` with status `broken` and no other errors; `pan-tools hygiene scan` raises a single `foreign-planning-tree` warning, and `hygiene clean --apply` reports the legacy-filename fix as `refused`; `/pan:new-project` stops with `planning tree belongs to gsd-core`.
+
+**Root cause:** the project's `.planning/` was written by another tool. gsd-core (the continuation of Get Shit Done) also uses `.planning/`, with `STATE.md`, `ROADMAP.md`, `PROJECT.md` and `REQUIREMENTS.md` in uppercase — exactly the filenames PAN used before v2.2 — so without this check PAN read the tree as a legacy PAN layout: hygiene would have renamed the other tool's state, health called it broken, and `new-project` would have scaffolded PAN files into it. PAN now recognises the tree from markers it never writes itself (`HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or gsd-core's flat dotted `config.json` keys such as `"workflow.discuss_mode"`) and refuses to touch it. This is deliberate, not corruption.
+
+**Fix:** give PAN a tree of its own. Run PAN with `--planning-dir <dir>` (or set `PAN_PLANNING_DIR`) so it works in a separate, project-relative planning directory — the planning-root flags are documented in `docs/CLI-REFERENCE.md` (ADR-0043). If the tree really is an old PAN project and the markers are a coincidence, remove the foreign markers and re-run `pan-tools hygiene scan`: a genuine legacy PAN tree still gets the `legacy-filenames` finding and its rename fix.
 
 ### Phase directory numbering mismatch
 
@@ -295,7 +303,7 @@ must_haves: []
 2. Compare against roadmap.md phase listing
 3. Run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase N --raw` to see what PAN resolves
 
-**Fix:** Do not rename phase directories manually. Use `/pan:insert-phase` and `/pan:remove-phase` to manage phase structure. If directories are already mismatched, run `/pan:health --repair` to attempt reconciliation.
+**Fix:** Do not rename phase directories manually. Use `/pan:insert-phase` and `/pan:remove-phase` to manage phase structure. If directories are already mismatched, `/pan:health --repair` only rewrites state.md as a minimal scaffold from roadmap.md (after a timestamped `.bak-` backup) and does not touch phase directories; fix the directory names by hand.
 
 ---
 
@@ -319,7 +327,7 @@ must_haves: []
 
 ### Checkpoint appears during auto-advance mode
 
-**Symptom:** You enabled `auto_advance: true` in config but still get a checkpoint that pauses execution.
+**Symptom:** You enabled `workflow.auto_advance: true` in config but still get a checkpoint that pauses execution.
 
 **What auto-advance handles automatically:**
 
@@ -399,7 +407,7 @@ must_haves: []
 
 **What wiring means in PAN's verification model:**
 
-```
+```text
 UI Component
     --> calls API endpoint (fetch/axios/etc.)
         --> API handler queries database (ORM/SQL/etc.)
@@ -514,7 +522,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Current format:** `{type}({phase}-{plan}): {description}`
 
-**Available types:** `feat`, `fix`, `test`, `refactor`, `chore`, `docs`
+**Available types (task commits, per `references/git-integration.md`):** `feat`, `fix`, `test`, `refactor`, `perf`, `chore`. Planning-doc commits go through `pan-tools commit`, whose `--type` accepts only `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
 
 **Workarounds:**
 
@@ -596,7 +604,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 So if the symptom is "an agent ran on a weaker model", the profile to look at is `budget`; moving between `balanced` and `quality` will not change it.
 
-**Override precedence:** Per-agent override > profile default > hardcoded default
+**Override precedence:** Per-agent override (`model_overrides`) > per-phase roadmap model tier > profile default > hardcoded `mid`
 
 **Diagnostic steps:**
 
@@ -633,6 +641,27 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 2. Consider re-planning with smaller, more detailed tasks
 3. If you are on `budget`, complex tasks are the case for leaving it — or pin just the executor back up with `model_overrides: { "pan-executor": "reasoning" }`
 4. Add more detail to the phase's context.md to provide implementation guidance
+
+### Per-agent `effort:` appears to have no effect
+
+**Symptom:** PAN's agents carry an `effort:` level in their frontmatter (from `AGENT_BASE_EFFORT`, `effort_overrides`, or the `budget` profile's step-down), but every agent runs at the session's effort regardless.
+
+**Root cause:** Claude Code before `2.1.267` ignored `effort:` frontmatter on custom commands, skills and subagents whenever the model had a pinned default effort. PAN emitted the field correctly the whole time; the runtime did not read it.
+
+**Fix:** Update Claude Code (`claude --version` to check) — nothing changes on PAN's side. On the other runtimes PAN never relied on the field: their agent files carry an effort-scaled prose preamble instead, which is unaffected.
+
+**Also check `maxEffortLevel`.** Claude Code `2.1.267` added a `maxEffortLevel` setting (top-level, or per model under `modelSettings`). A managed or user value there clamps every `effort:` PAN emits, so an agent that seems to ignore its frontmatter on a current build may be capped rather than ignored. `claude config get maxEffortLevel` (or the settings file) shows whether one is set.
+
+### Cost report disagrees with Claude Code's `/usage` or with the invoice
+
+**Symptom:** `pan-tools cost report` totals differ from what Claude Code shows or what the provider bills.
+
+**Causes, in the order to check them:**
+
+1. **Stale rate table.** `pan-tools models check` prints when the built-in rates were last verified and flags the table once it is old. Provider prices move faster than PAN releases; if it says STALE, the fix is a rate refresh, not a config change.
+2. **Cache-read pricing on the newest Fable-tier model.** Its cache reads bill at a quarter of the multiplier every other Claude model uses. PAN carries a dedicated rate row for it (see `DEFAULT_RATES` in `cost.cjs`); releases before that row existed priced its reads at the previous Fable model's rate, high by roughly four times on the line that dominates PAN's traffic.
+3. **Contracted rates.** If your organisation pins `modelPricing` in Claude Code's managed settings, PAN reads the same block and prices with it; `pan-tools models check --raw` lists the model ids it found under `managed_model_pricing`. Precedence is `.planning/config.json → cost.rates`, then managed `modelPricing`, then the built-in table. If the list is empty on a machine where the policy should apply, check that the file sits where Claude Code reads it (its managed-settings documentation gives the per-OS directory; the legacy Windows `ProgramData` path is read by neither tool), or point PAN at a relocated directory with `PAN_MANAGED_SETTINGS_DIR`.
+4. **Hook rows are priced at read time.** Records the SubagentStop hook writes carry `cost_usd: null` and are priced when the report runs, so a rate change re-prices history. That is deliberate: it is what lets a rate fix correct old totals.
 
 ---
 
@@ -699,6 +728,22 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 2. Run `/pan:health --repair` to fix any state inconsistencies
 3. Check `git log` for duplicate or conflicting commits
 4. Manually resolve any git conflicts
+
+### Agents re-read the cached context at full price after a short pause
+
+**Symptom:** `/usage` shows a low prompt-cache hit ratio for PAN's agents, or the ledger shows repeated cache *writes* of the same context block within an hour.
+
+**Root cause:** Claude Code decides the prompt-cache lifetime per request bucket. The main conversation can get the one-hour lifetime on a subscription; **everything else — subagents, workflows, forks — gets five minutes** unless you say otherwise. Every PAN agent is a subagent, so a phase whose agents are spaced more than five minutes apart re-caches the same planning context each time. ADR-0044 measured that block as the bulk of PAN's token traffic.
+
+**Fix:** Set `subagentPromptCacheTtl` to `"1h"` in a Claude Code settings file (Claude Code `2.1.242` or later). Weigh it first: one-hour cache writes bill at twice the base input rate against 1.25× for five-minute writes, so the longer lifetime pays off once a block is read at least twice inside the hour — true for a phase run, false for a single quick agent. To see which lifetime a session is using, `/usage` shows a `Prompt cache (main)` line with the hit ratio and, on recent builds, the likely cause of the last miss. On PAN's side, `pan-tools context-budget` reports the block's size under `cache.status` and, under `cache.ttl`, how many cache writes in the ledger followed an idle gap of five to sixty minutes — the misses the one-hour lifetime would have avoided — recommending the setting only when that recurs; `pan-tools hygiene scan` raises the same recommendation as an `info` finding.
+
+### `/skill-doctor` lists most PAN skills as unused
+
+**Symptom:** Claude Code's `/skill-doctor` reports many `pan-*` skills loaded but never invoked, with a context cost beside each.
+
+**Why this is expected:** A unified-skills install ships the whole command set as skills, and only a few are used in any one session. Until a skill is invoked it costs its `description` line and nothing else — PAN's descriptions are short by design, and the tool's per-skill figure is that line, not the body.
+
+**Fix, if you want a shorter list:** use Claude Code's `skillOverrides` setting to mark individual skills `hidden` or `collapsed` rather than deleting their files — PAN's manifest tracks every installed file, and a deleted skill comes back on the next upgrade and fails verification until then.
 
 ---
 
@@ -893,23 +938,34 @@ git worktree prune
 
 The MCP tool cache at `.planning/bridge/available-tools.json` isn't populated. Causes:
 
-- **Host runtime hasn't discovered MCP servers yet.** PAN reads the cache; it doesn't probe MCP servers directly. Check your Claude Code MCP configuration (`.claude/settings.json` or `~/.claude/settings.json` under `mcpServers`).
+- **Host runtime hasn't discovered MCP servers yet.** PAN reads the cache; it doesn't probe MCP servers directly. Check `.mcp.json` at the project root (where PAN registers its own server) or run `claude mcp list`.
 - **Not on Claude Code.** MCP is Claude-first. Other runtimes report empty.
 - **Testing without MCP setup.** Seed the cache manually with `pan-tools bridge cache --runtime claude --servers '[{"name":"test","tools":[{"name":"test.x","description":"test"}]}]'`.
 
 This is expected behavior — `bridge list` is designed to report cleanly when no tools are available.
 
+### The `pan` MCP server is missing on Gemini CLI in a fresh checkout
+
+**Symptom:** PAN installed for Gemini and wrote its `pan` server into `.gemini/settings.json`, but Gemini CLI lists no such server.
+
+**Root cause:** Gemini CLI `0.59.0` (released `2026-09-08`) enforces workspace trust fail-closed. Its trusted-folders documentation states that in an untrusted folder the **whole project `.gemini/settings.json` is not loaded** — so PAN's hooks are absent too, not only the MCP server — and the release note names `mcpServers`, `tools`, `policyPaths` and telemetry among the keys filtered in restricted mode. The registration is present and correct; the runtime declines to load it until you trust the folder.
+
+**Fix:** Accept Gemini CLI's trust prompt for the workspace (or mark it trusted through its workspace-trust setting), then restart the session. PAN's own install checks still pass in the meantime — they verify the file on disk, not the runtime's trust state — so a clean install check plus a missing server is the signature of this case.
+
+### A Codex plugin upgrade seems to need a restart
+
+Since Codex CLI `0.154.0` (released `2026-09-09`), a live session picks up newly installed plugin tools and refreshes skills and hooks after an external plugin upgrade — no restart. If a PAN skill still reads stale after `pan-check-update` reported a newer version, the cause is the install, not Codex caching: re-run the installer and compare the `version` in `pan-file-manifest.json` with the `VERSION` file the installer writes inside the installed core directory (beside its `bin/` folder).
+
 ### `/pan:exec-phase --hierarchical` printed a warning and ran flat
 
 Expected when:
 - You're not on Claude Code — the flag needs native sub-agent spawning, which the other four runtimes don't support cleanly
-- Your phase has only 1 plan file (`pan-conductor` refuses to orchestrate a single-plan phase — it would be pure overhead)
 
-The flag degrades to flat exec in both cases. There is **no model gate**: `pan-conductor` carries no `model:` frontmatter, so it runs on whatever model you launched the session with (the `budget` profile's advisory tiering is the only thing that would nominate a cheaper one, and it does not block the flag). So "wrong model" is never the reason — if you're on Claude Code with a multi-plan phase and still getting flat exec, read the stderr warning; it names the specific guard that fired. `commands/pan/exec-phase.md` documents the flag's conditions.
+The flag degrades to flat exec in that case. There is **no model gate**: `pan-conductor` carries no `model:` frontmatter, so it runs on whatever model you launched the session with (the `budget` profile's advisory tiering is the only thing that would nominate a cheaper one, and it does not block the flag). So "wrong model" is never the reason — if you're on Claude Code with a multi-plan phase and still getting flat exec, the fallback is prose-driven — no deterministic guard exists in code, so check the runtime and the flag's conditions in `commands/pan/exec-phase.md`.
 
 ### Cost log records have `input_tokens: 0` and `cost_usd: null`
 
-The SubagentStop hook captures whatever Claude Code's event payload provides. If `usage` data isn't present in the payload (depends on Claude Code version + Task tool implementation), the record logs zeros.
+The SubagentStop hook sums the transcript slice since the previous SubagentStop (`transcript_path`); the payload's `usage` block is only a fallback. Zeros mean no transcript slice was available (headless `claude -p`) or a parallel sibling already consumed it — the record's `token_source` field says which path ran.
 
 Options:
 - **Upgrade Claude Code** if your version predates `usage` field support in SubagentStop.
