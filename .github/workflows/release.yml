@@ -2,11 +2,16 @@ name: Release
 
 # Publish to npm when a `v*` tag is pushed.
 #
-# How to ship a release:
-#   1. Bump `version` in package.json (e.g. 3.8.0 → 3.8.1).
-#   2. Commit the bump: `git commit -am "release(v3.8.1): summary"`.
-#   3. Tag it: `git tag v3.8.1`.
-#   4. Push both: `git push --follow-tags`.
+# How to ship a release (full flow: docs/DEVELOPMENT.md → Release Process):
+#   1. Bump `version` in package.json and in .github/plugin/marketplace.json;
+#      turn CHANGELOG's [Unreleased] into the version heading.
+#   2. Commit as `release(x.y.z): summary` on a release/vx.y.z branch, open a
+#      PR to main and merge once the required checks are green.
+#   3. Tag the merge commit: `git tag vx.y.z`.
+#   4. Push the tag BY EXPLICIT REFSPEC: `git push origin refs/tags/vx.y.z`.
+#      `git push --follow-tags` silently drops the tag in this repo —
+#      remote.origin.push is pinned to main — and then nothing publishes
+#      (this stalled v3.26.0 on 2026-08-16).
 #   5. Watch this workflow run. Done.
 #
 # Security properties:
