@@ -1408,6 +1408,30 @@ describe('mergeCodexHooksConfig', () => {
     assert.equal(twice.hooks.SessionStart.length, 2, 'reinstall must not duplicate');
     assert.equal(twice.hooks.SubagentStop.length, 2);
   });
+
+  // Upgrade path (3.27 → 3.28): a hooks.json written before the async column has
+  // every marker present, so a presence-only merge skipped the handlers and the
+  // observers stayed on the critical path forever. The merge must set the flag on
+  // the existing handler — and clear a stray one on the context monitor.
+  test('upgrade: a pre-async hooks.json gains the flag on its existing observer handlers', () => {
+    const legacy = { hooks: {
+      SessionStart: [{ hooks: [{ type: 'command', command: COMMANDS.updateCheckCommand }] }],
+      PostToolUse: [{ hooks: [{ type: 'command', command: COMMANDS.contextMonitorCommand, async: true }] }],
+      SubagentStop: [
+        { hooks: [{ type: 'command', command: COMMANDS.costLoggerCommand }] },
+        { hooks: [{ type: 'command', command: COMMANDS.traceLoggerCommand }] },
+      ],
+    } };
+    const merged = lib.mergeCodexHooksConfig(legacy, COMMANDS);
+    const handlers = Object.values(merged.hooks).flat().flatMap(g => g.hooks);
+    const byMarker = (m) => handlers.find(h => h.command.includes(m));
+    assert.equal(handlers.length, 4, 'no duplicate registrations on upgrade');
+    for (const observer of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger']) {
+      assert.equal(byMarker(observer).async, true, `${observer} gains async on upgrade`);
+    }
+    assert.equal(byMarker('pan-context-monitor').async, undefined,
+      'a stray async on the context monitor is cleared — its additionalContext must land this turn');
+  });
 });
 
 describe('removeCodexPanHooks', () => {

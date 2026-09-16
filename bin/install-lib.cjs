@@ -1283,13 +1283,24 @@ function mergeCodexHooksConfig(existing, commands) {
   for (const [event, command, marker, async] of wanted) {
     if (!command) continue;
     if (!Array.isArray(config.hooks[event])) config.hooks[event] = [];
-    const present = config.hooks[event].some(group =>
-      Array.isArray(group.hooks) && group.hooks.some(h => h.command && h.command.includes(marker)));
-    if (!present) {
-      const handler = { type: 'command', command };
-      if (async) handler.async = true;
-      config.hooks[event].push({ hooks: [handler] });
+    let existingHandler = null;
+    for (const group of config.hooks[event]) {
+      if (!Array.isArray(group.hooks)) continue;
+      existingHandler = group.hooks.find(h => h && h.command && h.command.includes(marker)) || null;
+      if (existingHandler) break;
     }
+    if (existingHandler) {
+      // Upgrade path: a hooks.json written before the async column keeps its
+      // handler (and any command edits) but must pick up the flag — and lose it
+      // if the column ever says synchronous. Otherwise an install upgraded from
+      // 3.27 would run the observers on the critical path forever.
+      if (async) existingHandler.async = true;
+      else delete existingHandler.async;
+      continue;
+    }
+    const handler = { type: 'command', command };
+    if (async) handler.async = true;
+    config.hooks[event].push({ hooks: [handler] });
   }
   return config;
 }
