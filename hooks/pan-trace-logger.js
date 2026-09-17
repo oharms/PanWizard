@@ -84,8 +84,9 @@ const TRACE_EVENT_FILE = 'trace.jsonl';
 
 // Trace event schema version — kept in sync by hand with pan-cost-logger.js
 // (standalone zero-dep hooks can't share a module). v3 added the per-invocation
-// `event_sig` discriminator to the completion event's context. See that file.
-const SCHEMA_V = 3;
+// `event_sig` discriminator to the completion event's context; v4 added
+// `agent_id` and the `agent-transcript` token source. See that file.
+const SCHEMA_V = 4;
 
 // YYYYMMDD stamp for a Date (the day-scope of an auto-session id).
 function dayStamp(d) {
@@ -290,14 +291,19 @@ function addSeenSig(cursor, transcriptPath, sig) {
   for (let i = 0; i < keys.length - MAX_SEEN_TRANSCRIPTS; i++) delete se[keys[i]];
 }
 
+// Cursor path keys: with per-agent transcripts every spawn adds a key that lives as
+// long as Claude Code keeps the file, so existence-pruning alone no longer bounds
+// the map (L40). Keep the most recently written keys (mirrors pan-cost-logger).
+const MAX_CURSOR_KEYS = 512;
+
 function writeTraceCursor(cwd, cursor) {
   try {
-    // Prune dead-transcript keys so the cursor map stays bounded (L40, ADR audit 2026-08).
+    // Prune dead-transcript keys, then keep only the newest MAX_CURSOR_KEYS so the
+    // cursor map stays bounded (L40, ADR audit 2026-08). Insertion order is write
+    // order — a key is re-inserted when advanced.
     const pruned = {};
-    for (const [tp, v] of Object.entries(cursor)) {
-      if (tp === SEEN_EVENTS || tp === LEGACY_CONSUME_KEYS) continue; // reserved markers — not paths
-      if (tp && fs.existsSync(tp)) pruned[tp] = v;
-    }
+    const live = Object.entries(cursor).filter(([tp]) => tp !== SEEN_EVENTS && tp !== LEGACY_CONSUME_KEYS && tp && fs.existsSync(tp));
+    for (const [tp, v] of live.slice(-MAX_CURSOR_KEYS)) pruned[tp] = v;
     // Preserve the seen-event marker (N17/N25-N27). Deliberately NOT pruned by
     // transcript existence — a missing-transcript first fire's marker must
     // survive this very write (N27); bounded by count instead (L40).
@@ -375,6 +381,54 @@ function clampPlausible(n) {
   return typeof n === 'number' && n >= 0 && n <= PLAUSIBLE_MAX ? n : 0;
 }
 
+// Per-agent transcript resolution — mirrors pan-cost-logger.js (the hooks are
+// standalone and cannot share a module; keep the two in sync by hand). On
+// SubagentStop the host hands over the PARENT session transcript plus the
+// subagent's `agent_id`; the subagent's own conversation lives beside it as
+// `<parent dir>/<session_id>/subagents/agent-<agent_id>.jsonl`. Slicing the
+// parent per event attributed the session's usage to whichever subagent stopped
+// next, so the agent file is preferred whenever it exists. An explicit
+// `agent_transcript_path` in the payload wins over the derivation.
+const AGENT_ID_SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+function resolveAgentTranscript(data) {
+  try {
+    const explicit = data.agent_transcript_path;
+    if (typeof explicit === 'string' && explicit && fs.existsSync(explicit)) return explicit;
+    const agentId = data.agent_id;
+    if (typeof agentId !== 'string' || !AGENT_ID_SAFE.test(agentId)) return null;
+    if (typeof data.transcript_path !== 'string' || !data.transcript_path) return null;
+    if (typeof data.session_id !== 'string' || !AGENT_ID_SAFE.test(data.session_id)) return null;
+    const base = path.dirname(data.transcript_path);
+    const subagentsDir = path.join(base, data.session_id, 'subagents');
+    const resolvedBase = path.resolve(base);
+    const contained = (p) => path.resolve(p).startsWith(resolvedBase + path.sep);
+    const direct = path.join(subagentsDir, `agent-${agentId}.jsonl`);
+    if (contained(direct) && fs.existsSync(direct)) return direct;
+    // Workflow-tool subagents live one level down: subagents/workflows/<wf_id>/.
+    const workflowsDir = path.join(subagentsDir, 'workflows');
+    let runs = [];
+    try { runs = fs.readdirSync(workflowsDir); } catch { return null; }
+    for (const run of runs) {
+      const nested = path.join(workflowsDir, run, `agent-${agentId}.jsonl`);
+      if (contained(nested) && fs.existsSync(nested)) return nested;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Slice ceilings — a sum over one subagent's conversation, so above a single
+// call's PLAUSIBLE_MAX; cache_read and output mirror cost.cjs isSuspectRecord's
+// absolute limits, input is a hook-only sanity ceiling (same values as
+// pan-cost-logger's SLICE_MAX). A value past its ceiling is a session's cumulative
+// usage that leaked into the slice — drop it to 0 and flag the event. The span
+// is recorded as measured; the reader's six-hour rule judges it.
+const SLICE_MAX = { input: 2e7, output: 1e7, cache_read: 5e8 };
+function clampSlice(n, max) {
+  return typeof n === 'number' && n >= 0 && n <= max ? n : 0;
+}
+
 /**
  * P-1805 (v3.7.8): extract usage totals by reading the SubagentStop transcript.
  * The hook payload from Claude Code in headless mode does NOT include
@@ -413,6 +467,12 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
     return totals;
   }
   let seen = 0; // count of non-empty JSONL records (the cursor unit)
+  // One API turn, one usage: Claude Code writes an assistant turn as one record
+  // per content block, each repeating the turn's `message.id` with a usage
+  // snapshot (the last block's holds the final counts). Key by id, last wins;
+  // records without an id are summed as they come. Mirrors pan-cost-logger.
+  const byMessage = new Map();
+  let unkeyed = 0;
   for (const line of raw.split('\n')) {
     if (!line) continue;
     seen++;
@@ -442,6 +502,12 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
       || (entry.type === 'assistant' && entry.message?.usage)
       || null;
     if (!usage || typeof usage !== 'object') continue;
+    const messageId = entry.message && typeof entry.message.id === 'string' && entry.message.id
+      ? entry.message.id
+      : `__unkeyed_${unkeyed++}`;
+    byMessage.set(messageId, usage);
+  }
+  for (const usage of byMessage.values()) {
     totals.input_tokens += extractNumber(usage, 'input_tokens');
     totals.output_tokens += extractNumber(usage, 'output_tokens');
     totals.cache_read_input_tokens += extractNumber(usage, 'cache_read_input_tokens');
@@ -487,23 +553,47 @@ function buildTraceEvents(data, sessionId, cwd) {
   let outputTokens = 0;
   let cacheRead = 0;
   let durationMs = null;
-  let tokenSource = data.transcript_path ? 'transcript' : 'usage-fallback';
+  // `agent-transcript` when the subagent's own conversation file was sliced,
+  // `transcript` for a slice of the shared parent transcript (the fallback when
+  // the host names no agent), `usage-fallback` for the payload's own counters.
+  const agentTranscript = resolveAgentTranscript(data);
+  const parentPath = typeof data.transcript_path === 'string' && data.transcript_path ? data.transcript_path : null;
+  // A named agent whose file is not there consumes nothing (see pan-cost-logger:
+  // the parent slice would be the whole session booked to one spawn).
+  const agentNamed = (typeof data.agent_id === 'string' && AGENT_ID_SAFE.test(data.agent_id))
+    || (typeof data.agent_transcript_path === 'string' && data.agent_transcript_path !== '');
+  const agentFileMissing = !agentTranscript && agentNamed && parentPath !== null;
+  const sliceSource = agentTranscript || (agentFileMissing ? null : parentPath);
+  const tokenSource = agentTranscript ? 'agent-transcript'
+    : agentFileMissing ? 'agent-transcript-missing'
+      : sliceSource ? 'transcript' : 'usage-fallback';
+  const agentId = typeof data.agent_id === 'string' && data.agent_id ? data.agent_id : null;
   let clamped = false;
-  if (data.transcript_path) {
+  if (sliceSource || agentFileMissing) {
+    const keyPath = sliceSource || parentPath;
     const cursor = readTraceCursor(cwd);
-    const since = cursor[data.transcript_path] || 0;
-    const fromTranscript = readUsageFromTranscript(data.transcript_path, data.session_id, since);
-    inputTokens = fromTranscript.input_tokens;
-    outputTokens = fromTranscript.output_tokens;
-    cacheRead = fromTranscript.cache_read_input_tokens;
-    durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts);
+    const since = cursor[keyPath] || 0;
+    const fromTranscript = sliceSource
+      ? readUsageFromTranscript(sliceSource, data.session_id, since)
+      : { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: null, first_ts: null, last_ts: null, lineCount: since };
+    const rawIn = fromTranscript.input_tokens;
+    const rawOut = fromTranscript.output_tokens;
+    const rawCr = fromTranscript.cache_read_input_tokens;
+    inputTokens = clampSlice(rawIn, SLICE_MAX.input);
+    outputTokens = clampSlice(rawOut, SLICE_MAX.output);
+    cacheRead = clampSlice(rawCr, SLICE_MAX.cache_read);
+    clamped = rawIn > SLICE_MAX.input || rawOut > SLICE_MAX.output || rawCr > SLICE_MAX.cache_read;
+    durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts); // as measured
     if (!model) model = fromTranscript.model;
     if (cwd && fromTranscript.lineCount > since) {
       // A real slice. Advance the cursor and remember this event's signature
       // (N17/N25) so a later empty-slice event can tell its re-fire from a
       // parallel sibling — even when other siblings are recorded in between (N25).
-      cursor[data.transcript_path] = fromTranscript.lineCount;
-      addSeenSig(cursor, data.transcript_path, eventSig);
+      // Re-insert so insertion order tracks write order (writeTraceCursor keeps
+      // the newest keys).
+      delete cursor[keyPath];
+      cursor[keyPath] = fromTranscript.lineCount;
+      addSeenSig(cursor, keyPath, eventSig);
       writeTraceCursor(cwd, cursor);
     } else if (cwd && fromTranscript.lineCount <= since) {
       // No transcript records past the cursor: this event consumed NO slice of its
@@ -522,12 +612,13 @@ function buildTraceEvents(data, sessionId, cwd) {
       // The full-payload signature distinguishes them (N25/N26): emit nothing
       // ONLY when this exact payload was already seen for this transcript;
       // otherwise fall through and emit the completion.
-      if (eventSig && getSeenSigs(cursor, data.transcript_path).includes(eventSig)) {
+      if (eventSig && getSeenSigs(cursor, keyPath).includes(eventSig)) {
         return []; // already-seen event → re-fire; emit nothing (M61)
       }
-      // Sibling / first-fire: remember this event's signature so its own re-fire
-      // is subsequently dropped, then fall through to emit the completion.
-      addSeenSig(cursor, data.transcript_path, eventSig);
+      // Sibling / first-fire / named-but-missing agent file: remember this
+      // event's signature so its own re-fire is subsequently dropped, then fall
+      // through to emit the completion.
+      addSeenSig(cursor, keyPath, eventSig);
       writeTraceCursor(cwd, cursor);
     }
   } else {
@@ -562,6 +653,7 @@ function buildTraceEvents(data, sessionId, cwd) {
     context: {
       model,
       command: data.command || sessionMeta.command || null,
+      agent_id: agentId,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cache_read_tokens: cacheRead,
@@ -593,8 +685,10 @@ function buildTraceEvents(data, sessionId, cwd) {
   });
 
   // Heuristic: if output tokens > 3000 and no cache hits, flag as potential redundancy
-  // (expensive agent run that wasn't cached — may be repeated research)
-  if (outputTokens > 3000 && cacheRead === 0) {
+  // (expensive agent run that wasn't cached — may be repeated research). A zero
+  // the plausibility guard produced is not a cache miss, so a clamped event never
+  // trips it.
+  if (outputTokens > 3000 && cacheRead === 0 && !clamped) {
     events.push({
       v: SCHEMA_V,
       ts,
@@ -712,6 +806,7 @@ if (require.main === module) {
 module.exports = {
   buildTraceEvents,
   appendTraceEvents,
+  resolveAgentTranscript,
   getCurrentSessionId,
   ensureSessionId,
   isPanProject,

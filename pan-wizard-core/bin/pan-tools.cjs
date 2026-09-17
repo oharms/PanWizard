@@ -203,6 +203,7 @@ const codebase = require('./lib/codebase.cjs');
 const memory = require('./lib/memory.cjs');
 const bus = require('./lib/bus.cjs');
 const cost = require('./lib/cost.cjs');
+const costRebuild = require('./lib/cost-rebuild.cjs');
 const preview = require('./lib/preview.cjs');
 const reviewDeep = require('./lib/review-deep.cjs');
 const knowledge = require('./lib/knowledge.cjs');
@@ -1207,8 +1208,14 @@ async function main() {
         cost.cmdCostAppend(cwd, rec, raw);
       } else if (subcommand === 'clear') {
         cost.cmdCostClear(cwd, raw);
+      } else if (subcommand === 'rebuild') {
+        costRebuild.cmdCostRebuild(cwd, {
+          apply: args.includes('--apply'),
+          mainThread: !args.includes('--no-main-thread'),
+          claudeDir: getArgValue(args, '--claude-dir'),
+        }, raw);
       } else {
-        error('Unknown cost subcommand. Available: report, append, clear');
+        error('Unknown cost subcommand. Available: report, append, clear, rebuild');
       }
       break;
     }

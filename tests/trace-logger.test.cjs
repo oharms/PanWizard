@@ -345,15 +345,17 @@ describe('pan-trace-logger — A1/A2 completion discriminator (six-case behavior
     assert.equal(fire(sib('exec-2')), true, 'the second same-type sibling is recorded');
     const c = completions('sess1');
     assert.equal(c.length, 3, 'verifier + both executors');
-    // The two sibling completions are identical apart from ts and the discriminator
-    // — which is precisely why the discriminator is what saves the second one.
+    // The two sibling completions are identical apart from ts and the discriminators
+    // — the hashed signature, and since v3.29 the host's own `agent_id` carried in
+    // the clear — which is precisely what saves the second one.
     const strip = (e) => {
       const { ts, ...rest } = e;
-      const { event_sig, ...ctx } = rest.context;
+      const { event_sig, agent_id, ...ctx } = rest.context;
       return JSON.stringify({ ...rest, context: ctx });
     };
     assert.equal(strip(c[1]), strip(c[2]), 'the sibling completions differ in nothing else');
     assert.notEqual(c[1].context.event_sig, c[2].context.event_sig, 'distinct per-invocation discriminators');
+    assert.deepEqual([c[1].context.agent_id, c[2].context.agent_id], ['exec-1', 'exec-2'], 'the host id is on the event itself');
   });
 
   test('(4) a 3-sibling same-type wave yields THREE completions', () => {
@@ -725,5 +727,86 @@ describe('pan-trace-logger — v3.21.0 enrichment', () => {
     fs.mkdirSync(optDir, { recursive: true });
     fs.writeFileSync(path.join(optDir, 'current-session'), 'sess_20260101T120000\n');
     assert.equal(ensureSessionId(tmpDir), 'sess_20260101T120000');
+  });
+});
+
+// Mirrors the cost logger's per-agent attribution (2026-09): the host passes the
+// PARENT session transcript on SubagentStop; the subagent's own file sits under
+// <session_id>/subagents/agent-<agent_id>.jsonl and is what a completion event
+// should carry. See tests/cost-logger-hook.test.cjs for the field numbers.
+describe('pan-trace-logger — per-agent transcript attribution', () => {
+  test('slices the subagent\'s own transcript when agent_id names one; clamps and flags a session-sized parent slice otherwise', () => {
+    const SESSION = 'f1e2d3c4-0000-4000-8000-000000000001';
+    const parent = path.join(tmpDir, `${SESSION}.jsonl`);
+    const line = (u, ts) => JSON.stringify({ type: 'assistant', timestamp: ts, message: { model: 'claude-opus-5', usage: u } });
+    fs.writeFileSync(parent,
+      line({ input_tokens: 100, output_tokens: 5000, cache_read_input_tokens: 900000000 }, '2026-09-01T08:00:00.000Z') + '\n'
+      + line({ input_tokens: 100, output_tokens: 5000, cache_read_input_tokens: 100 }, '2026-09-09T08:00:00.000Z') + '\n');
+    const sub = path.join(tmpDir, SESSION, 'subagents');
+    fs.mkdirSync(sub, { recursive: true });
+    fs.writeFileSync(path.join(sub, 'agent-a1.jsonl'), line({ input_tokens: 10, output_tokens: 4000, cache_read_input_tokens: 50000 }, '2026-09-02T10:00:00.000Z') + '\n');
+    const base = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', session_id: SESSION, transcript_path: parent };
+
+    const own = completionOf(buildTraceEvents({ ...base, agent_id: 'a1' }, 'sess1', tmpDir));
+    assert.equal(own.v, 4);
+    assert.equal(own.context.token_source, 'agent-transcript');
+    assert.equal(own.context.agent_id, 'a1');
+    assert.equal(own.context.cache_read_tokens, 50000);
+    assert.equal(own.context.output_tokens, 4000);
+    assert.equal(own.context.clamped, false);
+
+    const missing = completionOf(buildTraceEvents({ ...base, agent_id: 'absent' }, 'sess1', tmpDir));
+    assert.equal(missing.context.token_source, 'agent-transcript-missing', 'a named agent without a file consumes nothing');
+    assert.equal(missing.context.cache_read_tokens, 0);
+    assert.equal(missing.context.clamped, false);
+
+    const shared = buildTraceEvents(base, 'sess1', tmpDir);
+    const c = completionOf(shared);
+    assert.equal(c.context.token_source, 'transcript', 'no agent id at all → the parent slice');
+    assert.equal(c.context.cache_read_tokens, 0, 'a 900M cache-read slice is a session, dropped');
+    assert.equal(c.context.clamped, true);
+    assert.equal(c.context.duration_ms, Date.parse('2026-09-09T08:00:00.000Z') - Date.parse('2026-09-01T08:00:00.000Z'),
+      'the eight-day span is recorded as measured; the reader judges it');
+    assert.equal(shared.some((e) => e.category === 'uncached_heavy_run'), false,
+      'a guard-produced zero is not a cache miss — no redundancy event');
+  });
+
+  test('one turn, one usage: block records sharing a message.id are counted once, last snapshot wins', () => {
+    const SESSION = 'f1e2d3c4-0000-4000-8000-000000000002';
+    const parent = path.join(tmpDir, `${SESSION}.jsonl`);
+    fs.writeFileSync(parent, '');
+    const sub = path.join(tmpDir, SESSION, 'subagents');
+    fs.mkdirSync(sub, { recursive: true });
+    const turn = (id, u) => JSON.stringify({ type: 'assistant', timestamp: '2026-09-02T10:00:00.000Z', message: { id, model: 'claude-opus-5', usage: u } });
+    fs.writeFileSync(path.join(sub, 'agent-z1.jsonl'), [
+      turn('m1', { input_tokens: 5, output_tokens: 1, cache_read_input_tokens: 1000 }),
+      turn('m1', { input_tokens: 5, output_tokens: 80, cache_read_input_tokens: 1000 }),
+      turn('m2', { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 1200 }),
+    ].join('\n') + '\n');
+    const c = completionOf(buildTraceEvents({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', session_id: SESSION, transcript_path: parent, agent_id: 'z1' }, 'sess1', tmpDir));
+    assert.equal(c.context.cache_read_tokens, 2200, 'two turns, not three blocks');
+    assert.equal(c.context.output_tokens, 90, "the turn's final snapshot");
+  });
+
+  test('a resumed agent is charged only its new lines; its byte-identical re-fire emits nothing; a Workflow-tool agent one level down resolves', () => {
+    const SESSION = 'f1e2d3c4-0000-4000-8000-000000000003';
+    const parent = path.join(tmpDir, `${SESSION}.jsonl`);
+    fs.writeFileSync(parent, '');
+    const sub = path.join(tmpDir, SESSION, 'subagents');
+    fs.mkdirSync(path.join(sub, 'workflows', 'wf_x'), { recursive: true });
+    const turn = (id, u, ts) => JSON.stringify({ type: 'assistant', timestamp: ts, message: { id, model: 'claude-opus-5', usage: u } });
+    const agentPath = path.join(sub, 'agent-r1.jsonl');
+    fs.writeFileSync(agentPath, turn('a', { input_tokens: 1, output_tokens: 10, cache_read_input_tokens: 100 }, '2026-09-02T10:00:00.000Z') + '\n');
+    const p = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', session_id: SESSION, transcript_path: parent, agent_id: 'r1' };
+    const first = buildTraceEvents(p, 'sess1', tmpDir);
+    assert.equal(completionOf(first).context.output_tokens, 10);
+    assert.deepEqual(buildTraceEvents(p, 'sess1', tmpDir), [], 'no new lines, seen signature → re-fire, nothing emitted');
+    fs.appendFileSync(agentPath, turn('b', { input_tokens: 2, output_tokens: 20, cache_read_input_tokens: 200 }, '2026-09-02T10:05:00.000Z') + '\n');
+    const resumed = completionOf(buildTraceEvents({ ...p, last_assistant_message: 'more' }, 'sess1', tmpDir));
+    assert.equal(resumed.context.output_tokens, 20, 'only the delta');
+    fs.writeFileSync(path.join(sub, 'workflows', 'wf_x', 'agent-w9.jsonl'), turn('w', { input_tokens: 5, output_tokens: 500, cache_read_input_tokens: 5000 }, '2026-09-03T10:00:00.000Z') + '\n');
+    const wf = completionOf(buildTraceEvents({ ...p, agent_type: 'workflow-subagent', agent_id: 'w9' }, 'sess1', tmpDir));
+    assert.equal(wf.context.token_source, 'agent-transcript');
+    assert.equal(wf.context.cache_read_tokens, 5000);
   });
 });

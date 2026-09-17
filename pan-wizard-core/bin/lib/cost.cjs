@@ -330,21 +330,65 @@ function readRecords(cwd) {
  */
 /**
  * A record is "suspect" when its token counts are physically implausible for a
- * single subagent — the signature of the pre-v3.12.4 transcript-oversum bug
- * (billions of cache-read, cache-read dwarfing input, 100% cache-hit). Such
- * records are quarantined from aggregates so a poisoned ledger can't report
- * millions of dollars. See docs/FIELD-REPORT-army-2026-06.md.
+ * single subagent — the oversum signature: a session's cumulative usage booked
+ * to one subagent row (billions of cache-read, cache-read dwarfing input, 100%
+ * cache-hit). Written by pre-v3.12.4 hooks, and by the parent-transcript slice
+ * path of every later hook up to v3.28 whenever a slice started at cursor 0 on a
+ * long-lived session. Such records are quarantined from aggregates so a
+ * poisoned ledger can't report millions of dollars.
+ * See docs/FIELD-REPORT-army-2026-06.md.
  * @param {Object} r - a cost record
  * @returns {boolean}
  */
+// No single subagent runs for six hours — the longest native-workflow phase runs
+// measured in the harness finish inside an hour — while a parent-transcript slice
+// that spans a working day, or the idle night between two stops, does. Mirrored by
+// the hooks' SLICE_MAX_DURATION_MS, which nulls the span on write. Calibrated on
+// eleven field ledgers (2026-09): of the timed rows the old ratio rule flagged,
+// 55 spanned under three hours and 12 spanned six to twenty-four — the latter all
+// parent slices booked to a `general-purpose` or workflow subagent.
+const SUSPECT_MAX_DURATION_MS = 6 * 60 * 60 * 1000;
+
 function isSuspectRecord(r) {
   if (!r || typeof r !== 'object') return false;
+  // Rows measured from a transcript that belongs to exactly one actor — the
+  // subagent's own file (v3.29 hooks, `cost rebuild`) or the main thread's
+  // session file (`cost rebuild`) — cannot carry another actor's usage, so the
+  // oversum signature does not apply to them: a 24-day main thread with
+  // billions of cached reads is simply a long session, measured exactly.
+  if (r.token_source === 'agent-transcript' || r.token_source === 'session-transcript') return false;
   const cr = r.cache_read_tokens || 0;
   const io = (r.input_tokens || 0) + (r.output_tokens || 0);
   if (cr > 5e8) return true;                        // no scoped subagent re-reads >500M cached tokens
-  if (cr > 1e7 && cr > 100 * (io + 1)) return true; // cache-read dwarfs input+output
   if ((r.output_tokens || 0) > 1e7) return true;    // ~10M output = cumulative oversum
+  const dur = typeof r.duration_ms === 'number' ? r.duration_ms : null;
+  if (dur != null && dur > SUSPECT_MAX_DURATION_MS) return true; // a six-hour-plus "subagent" is a session's history
+  // Cache-read dwarfing input+output is the oversum signature ONLY for a row the
+  // hook could not time (pre-v3.20 rows, unreadable transcripts). A timed row
+  // with a plausible span is a real agent: under prompt caching every turn
+  // re-reads the cached context, so a hundred-turn agent legitimately reads
+  // 300× more cached tokens than it writes. Applied to timed rows, this rule
+  // had excluded fifty sub-hour agents (~3 billion real cache-read tokens)
+  // from eleven field ledgers (2026-09).
+  if (dur == null && cr > 1e7 && cr > 100 * (io + 1)) return true;
   return false;
+}
+
+/**
+ * A record is "empty" when it carries no tokens on any axis and no model: a
+ * spawn the hook could not measure — a sibling stop that arrived before the
+ * shared parent transcript had grown (the pre-v3.29 slice path), or a payload
+ * with neither usage nor a readable transcript. It has no cost and no tokens;
+ * counting it as a call inflated call counts by up to 2x in the field (480 of
+ * 976 rows across eleven ledgers, 2026-09). A zero-token row that names a model
+ * is NOT empty — that is a measured run that happened to use nothing.
+ * @param {Object} r - a cost record
+ * @returns {boolean}
+ */
+function isEmptyRecord(r) {
+  if (!r || typeof r !== 'object') return false;
+  if (r.model) return false;
+  return !(r.input_tokens || r.output_tokens || r.cache_read_tokens || r.cache_write_tokens);
 }
 
 function aggregate(cwd, opts) {
@@ -372,6 +416,7 @@ function aggregate(cwd, opts) {
     cost_usd: 0,
     cost_unknown: 0,
     suspect_excluded: 0,
+    empty_excluded: 0,
     malformed_skipped: malformedSkipped,
   };
 
@@ -393,9 +438,11 @@ function aggregate(cwd, opts) {
   }
 
   for (const r of filtered) {
-    // Quarantine physically-impossible records (pre-v3.12.4 transcript-oversum
-    // bug) so a poisoned ledger doesn't poison the totals / HUD / /pan:cost.
+    // Quarantine physically-impossible records (the transcript-oversum
+    // signature) so a poisoned ledger doesn't poison the totals / HUD / /pan:cost.
     if (isSuspectRecord(r)) { totals.suspect_excluded += 1; continue; }
+    // Skip unmeasured spawns: no tokens, no model, nothing to price or count.
+    if (isEmptyRecord(r)) { totals.empty_excluded += 1; continue; }
     totals.calls += 1;
     totals.input_tokens += r.input_tokens || 0;
     totals.output_tokens += r.output_tokens || 0;
@@ -452,7 +499,12 @@ function renderTable(agg) {
   lines.push(window);
   lines.push('');
   lines.push('Totals');
-  lines.push(`  Calls              : ${agg.totals.calls}${agg.totals.malformed_skipped > 0 ? ` (+${agg.totals.malformed_skipped} malformed)` : ''}`);
+  const skipped = [
+    agg.totals.suspect_excluded > 0 ? `${agg.totals.suspect_excluded} suspect` : null,
+    agg.totals.empty_excluded > 0 ? `${agg.totals.empty_excluded} empty` : null,
+    agg.totals.malformed_skipped > 0 ? `${agg.totals.malformed_skipped} malformed` : null,
+  ].filter(Boolean);
+  lines.push(`  Calls              : ${agg.totals.calls}${skipped.length ? ` (excluded: ${skipped.join(', ')})` : ''}`);
   lines.push(`  Input tokens       : ${agg.totals.input_tokens.toLocaleString()}`);
   lines.push(`  Output tokens      : ${agg.totals.output_tokens.toLocaleString()}`);
   lines.push(`  Cache read         : ${agg.totals.cache_read_tokens.toLocaleString()}`);
@@ -572,6 +624,7 @@ module.exports = {
   readRecords,
   aggregate,
   isSuspectRecord,
+  isEmptyRecord,
   renderTable,
   renderChart,
   resolveRate,

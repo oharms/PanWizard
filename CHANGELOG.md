@@ -5,6 +5,89 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — the cost logger booked the session's usage to whichever subagent stopped
+
+On `SubagentStop` Claude Code hands the hooks the *parent* session transcript; the
+subagent's own conversation is written beside it as
+`<session_id>/subagents/agent-<agent_id>.jsonl` (one level down, under
+`subagents/workflows/<wf_id>/`, for the subagents the Workflow tool spawns — the
+majority of spawns where the native `/pan-*` scripts are in use). Both hooks sliced the parent
+transcript per event, so the first stop on a long-lived session — or the first
+after a ledger quarantine had reset the cursor — booked the session's entire
+history to one row (7.5 billion cache-read tokens over a ten-day "duration" in
+one field ledger), and sibling stops that arrived before the parent grew produced
+all-zero rows, 63% of that ledger. Across eleven field ledgers, 49 such rows held
+88% of the recorded token mass and 480 of 976 rows were empty. `pan-cost-logger`
+and `pan-trace-logger` now slice the agent's own transcript whenever `agent_id`
+names one (an explicit `agent_transcript_path` wins), keep the parent slice only
+as the fallback for hosts that supply no id, record an id whose file is not there
+as an unmeasured spawn (`agent-transcript-missing`, zeros) rather than booking
+the parent slice to it, and clamp either slice's token axes at the ceilings
+`aggregate()` quarantines on — the parent slice had no guard at all, which is why
+every oversum row carried `clamped: false`. The span is written as measured and
+judged by the reader (below). Rows gain `agent_id` and a `token_source` of
+`agent-transcript` (schema `v: 4`); a zero the guard produced no longer trips the
+trace logger's "uncached heavy run" heuristic.
+
+The transcript reader also counted one API turn several times. Claude Code writes
+an assistant turn as one JSONL record per content block, each repeating the
+turn's `message.id` with a usage snapshot, and both hooks summed every record: a
+real 65-turn agent transcript (118 records) summed to 14.8M cache-read tokens
+against 8.5M actual, and other agents measured 2–6× over. Usage is now keyed by
+`message.id` with the last snapshot winning; records without an id sum as before.
+
+Three reader-side corrections, so the ledgers already on disk report honestly.
+`aggregate()` no longer counts unmeasured spawns (no tokens, no model) as calls —
+`empty_excluded` joins the totals and the table's exclusions. The oversum test no
+longer flags a *timed* row for cache reads dwarfing its output — under prompt
+caching a hundred-turn agent legitimately reads 300× what it writes, and the rule
+had excluded fifty sub-hour agents (~3 billion real cache-read tokens) from those
+ledgers — and instead flags any row whose span exceeds six hours (of the timed
+rows it had flagged, everything under three hours was a real agent and everything
+over six was a parent slice spanning a working day or an idle night); the ratio
+rule still applies to rows the hook could not time. Rows measured from a single
+actor's own transcript (`token_source` `agent-transcript` or `session-transcript`)
+are exempt from the whole test: they cannot carry another actor's usage, and a
+24-day main thread with billions of cached reads is simply a long session. And `hygiene clean` no longer
+deletes `.cost-cursor.json` when it quarantines a ledger: the cursor indexes the
+session transcripts, not the ledger, and deleting it made the next stop re-sum the
+whole transcript, so each quarantine produced the next poison. The hygiene
+finding and the HUD's ledger-reliability advisory stop calling the signature
+"pre-v3.12.4", and the HUD points at `hygiene clean --apply` instead of `cost
+clear`. The cursor file itself is now bounded by key count as well as by
+transcript existence, since per-agent transcripts add a key per spawn.
+
+### Added — `cost rebuild`: the ledger rebuilt from the transcripts themselves
+
+Rows the old hooks wrote cannot be corrected in place — but the transcripts they
+were cut from survive under Claude Code's project directory for its retention
+window, and they hold the truth: one file per subagent (Workflow-tool subagents
+one level down), the main thread's `Agent` calls pairing each agent id with its
+type and resolved model, and the Workflow run records naming what spawned each
+workflow agent. `pan-tools cost rebuild` (`cost-rebuild.cjs`) reads them and
+writes one row per agent transcript with its exact per-turn usage, type, model
+and measured span, plus one row per session for the main thread's own usage —
+the spend the parent slices had been the only place to capture, and which the
+per-agent hooks no longer see (`--no-main-thread` omits it). Hook rows of a
+rebuilt session are superseded; rows whose session transcript is gone, and rows
+appended by callers, are kept. Dry-run by default with a per-session before →
+after; `--apply` copies the current ledger aside as `tokens.jsonl.rebuilt-<date>`
+(never overwriting an earlier copy), carries forward a row a live hook appends
+mid-rebuild, writes through a temp file and rename, and is a no-op when nothing
+changes. A folder reached only because the ledger names one of its sessions
+contributes that session alone, so a ledger copied from another project cannot
+pull that project's history in. Transcripts are parsed from a Buffer (a
+24-day session file passed 187 MB), an unreadable one is named in the plan's
+warnings, and an interruption's `<synthetic>` model is ignored. Rows measured
+from a single actor's own transcript are exempt from the oversum quarantine, and
+the cache-lifetime signal in `context-budget` skips the main-thread rows. The
+HUD's ledger advisory and the hygiene finding now point at the rebuild first:
+run it before `hygiene clean --apply`, which moves the whole file aside. On the
+field project that motivated the fix, every one of its eight sessions was still
+on disk and 371 agent transcripts were measured.
+
 ## [3.28.0] - 2026-09-16
 
 The September 2026 market-delta plan

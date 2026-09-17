@@ -41,6 +41,7 @@ pan-wizard/
         memory.cjs            # Cross-phase agent memory; memory-optimize.cjs and memory-rebuild.cjs (ADR-0040)
         agents-md.cjs         # AGENTS.md PAN section + CLAUDE.md bridge (shared by the installer and memory rebuild)
         cost.cjs              # Token ledger, dated rate table, managed modelPricing (Y-6); models check
+        cost-rebuild.cjs      # `cost rebuild`: the ledger regenerated from Claude Code transcripts (v3.29)
         bus.cjs               # Agent message channels (Y-7)
         preview.cjs           # Foresight: phase blast radius, dependency graph (Y-1)
         review-deep.cjs       # Deep review merge (reviewer + hardener + meta) (Y-2)
