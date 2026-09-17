@@ -12,15 +12,19 @@ name: Release
 #      `git push --follow-tags` silently drops the tag in this repo —
 #      remote.origin.push is pinned to main — and then nothing publishes
 #      (this stalled v3.26.0 on 2026-08-16).
-#   5. Watch this workflow run. Done.
+#   5. Watch this workflow run. It publishes to npm AND creates the GitHub
+#      Release from the CHANGELOG section for that version. Done.
 #
 # Security properties:
 #   - No long-lived token anywhere — OIDC mints a short-lived credential per run.
 #   - `--provenance` cryptographically signs that the tarball was built by THIS
 #     workflow run. Anyone can verify with `npm view pan-wizard --json` and the
 #     sigstore signature visible on https://www.npmjs.com/package/pan-wizard.
-#   - `id-token: write` is the ONLY elevated permission; `contents: read` is the
-#     default. Pinned action SHAs prevent tag-substitution.
+#   - Two elevated permissions, both needed and both scoped to this job:
+#     `id-token: write` for sigstore provenance, and `contents: write` for the
+#     GitHub Release (it writes a release object against the tag that triggered
+#     the run — no branch or file is touched). Pinned action SHAs prevent
+#     tag-substitution.
 #   - The version-tag must match `package.json` — drift fails the build before
 #     anything is uploaded.
 #
@@ -55,7 +59,9 @@ jobs:
       # Required for npm provenance — gives the runner a short-lived OIDC token
       # that sigstore exchanges for a signing certificate.
       id-token: write
-      contents: read
+      # For the GitHub Release created after a successful publish. The release is
+      # written against the tag that triggered this run; nothing else is writable.
+      contents: write
 
     steps:
       - name: Harden runner
@@ -124,13 +130,63 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: node scripts/deprecate-old-versions.js --apply
 
+      # The GitHub Release. Until 2026-09-17 this workflow published to npm and
+      # stopped, so nine tagged versions (3.20.0-3.22.0, 3.24.0-3.28.0) have a tag and
+      # an npm release but no release object — a gap nobody noticed because nothing
+      # asserted it. The tag, the npm publish and the Release now move together.
+      #
+      # Notes come from the CHANGELOG section for this exact version, so the release
+      # page says what the version changed rather than a generated commit list. A
+      # version with no section gets a short pointer instead of an empty release.
+      #
+      # `continue-on-error` for the same reason as the deprecate step above: the
+      # package is already published by this point, and a missing release object is a
+      # cosmetic omission. Marking the run red would claim the publish failed, which
+      # would be false. The Summary step below reports whether the release exists, so
+      # the omission is visible instead of silent.
+      - name: Create the GitHub Release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          NOTES=$(mktemp)
+          {
+            echo "Published to npm as [pan-wizard@$VERSION](https://www.npmjs.com/package/pan-wizard/v/$VERSION) with SLSA provenance."
+            echo ""
+            awk -v v="$VERSION" '
+              $0 ~ "^## \\[" v "\\]" { f = 1; next }
+              f && /^## \[/ { exit }
+              f { print }
+            ' CHANGELOG.md
+          } > "$NOTES"
+          if [ "$(wc -l < "$NOTES")" -le 3 ]; then
+            echo "::warning::no CHANGELOG section for $VERSION — publishing a pointer instead"
+            printf '\nSee [CHANGELOG.md](https://github.com/%s/blob/main/CHANGELOG.md).\n' "$GITHUB_REPOSITORY" >> "$NOTES"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — leaving it alone."
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" --verify-tag
+          fi
+
       - name: Summary
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            RELEASE="- Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/v$VERSION"
+          else
+            RELEASE="- Release: **NOT created** — the npm publish succeeded; create it by hand with \`gh release create v$VERSION\`."
+          fi
           {
             echo "## Published \`pan-wizard@$VERSION\` :rocket:"
             echo ""
             echo "- Tarball: https://registry.npmjs.org/pan-wizard/-/pan-wizard-$VERSION.tgz"
             echo "- Page: https://www.npmjs.com/package/pan-wizard/v/$VERSION"
             echo "- Provenance: visible on the package page (sigstore signature)."
+            echo "$RELEASE"
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
