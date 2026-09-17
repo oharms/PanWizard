@@ -3,7 +3,7 @@
  * release-check.js — Pre-publish validation gate.
  *
  * Wired into `prepublishOnly` so `npm publish` fails BEFORE upload if any
- * gate is red. Runs eight checks in order; first failure aborts.
+ * gate is red. Runs nine checks in order; first failure aborts.
  *
  *   1. build:hooks      — hook scripts copy/build cleanly
  *   2. test:all         — full test suite (unit + scenario) passes
@@ -11,9 +11,13 @@
  *                         (we have zero runtime deps, but the dev-deps are checked)
  *   4. doc-lint counts  — no drift-prone count violations in user-facing docs
  *   5. links validate   — doc↔code link graph resolves (no broken references)
- *   6. npm pack dry-run — package builds; size is sane
+ *   6. npm pack dry-run — package builds; size is sane; zero runtime dependencies
  *   7. smoke install    — npm pack + install into temp dir + run pan-tools list
  *                         catches "ships but doesn't actually work" failures
+ *   8. bundles          — both plugin builders build; dist/pan-agent-plugin is fresh
+ *   9. coverage gate    — the suite under Node's coverage: every dispatcher arm
+ *                         executed, line/function floors per module group
+ *                         (scripts/coverage-gate.cjs; skipped on Node < 22)
  *
  * Usage:
  *   node scripts/release-check.js              # all gates
@@ -57,7 +61,7 @@ function run(cmd, args, opts = {}) {
 }
 
 // Gate 1: build:hooks
-process.stderr.write('\n[release-check] Gate 1/8: build:hooks\n');
+process.stderr.write('\n[release-check] Gate 1/9: build:hooks\n');
 {
   const r = run('npm', ['run', 'build:hooks']);
   logGate('build:hooks', r.status === 0, r.status !== 0 ? `exit ${r.status}` : '');
@@ -65,7 +69,7 @@ process.stderr.write('\n[release-check] Gate 1/8: build:hooks\n');
 }
 
 // Gate 2: test:all
-process.stderr.write('\n[release-check] Gate 2/8: test:all\n');
+process.stderr.write('\n[release-check] Gate 2/9: test:all\n');
 {
   const r = run('npm', ['run', 'test:all']);
   logGate('test:all', r.status === 0, r.status !== 0 ? `exit ${r.status}` : '');
@@ -74,9 +78,9 @@ process.stderr.write('\n[release-check] Gate 2/8: test:all\n');
 
 // Gate 3: npm audit (production deps only)
 if (SKIP_AUDIT) {
-  process.stderr.write('\n[release-check] Gate 3/8: npm audit (SKIPPED)\n');
+  process.stderr.write('\n[release-check] Gate 3/9: npm audit (SKIPPED)\n');
 } else {
-  process.stderr.write('\n[release-check] Gate 3/8: npm audit --omit=dev\n');
+  process.stderr.write('\n[release-check] Gate 3/9: npm audit --omit=dev\n');
   const r = run('npm', ['audit', '--omit=dev', '--audit-level=high'], { capture: true });
   // npm audit exits non-zero on findings. We tolerate moderate; fail on high+.
   const ok = r.status === 0;
@@ -88,7 +92,7 @@ if (SKIP_AUDIT) {
 }
 
 // Gate 4: doc-lint counts on user-facing docs (count-SSoT enforcement)
-process.stderr.write('\n[release-check] Gate 4/8: doc-lint counts docs/\n');
+process.stderr.write('\n[release-check] Gate 4/9: doc-lint counts docs/\n');
 {
   const tools = path.join(REPO_ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
   const docsDir = path.join(REPO_ROOT, 'docs');
@@ -103,7 +107,7 @@ process.stderr.write('\n[release-check] Gate 4/8: doc-lint counts docs/\n');
 
 // Gate 5: doc↔code link graph resolves (anti-fake — a doc cannot reference a
 // code anchor that doesn't exist; deterministic, self-enforcing exit 1).
-process.stderr.write('\n[release-check] Gate 5/8: links validate\n');
+process.stderr.write('\n[release-check] Gate 5/9: links validate\n');
 {
   const tools = path.join(REPO_ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
   const r = run('node', [tools, 'links', 'validate', '--raw'], { capture: true });
@@ -125,7 +129,7 @@ process.stderr.write('\n[release-check] Gate 5/8: links validate\n');
 
 // Gate 6: npm pack — produces a non-empty, sanely-sized tarball (read the file,
 // never parse stdout)
-process.stderr.write('\n[release-check] Gate 6/8: npm pack (size sanity)\n');
+process.stderr.write('\n[release-check] Gate 6/9: npm pack (size sanity)\n');
 {
   const tmp6 = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-release-pack-'));
   const r = run('npm', ['pack', '--pack-destination', tmp6], { capture: true });
@@ -149,9 +153,9 @@ process.stderr.write('\n[release-check] Gate 6/8: npm pack (size sanity)\n');
 
 // Gate 7: smoke install — pack and install into temp dir, run pan-tools
 if (SKIP_SMOKE) {
-  process.stderr.write('\n[release-check] Gate 7/8: smoke install (SKIPPED)\n');
+  process.stderr.write('\n[release-check] Gate 7/9: smoke install (SKIPPED)\n');
 } else {
-  process.stderr.write('\n[release-check] Gate 7/8: smoke install (npm pack + install + sanity)\n');
+  process.stderr.write('\n[release-check] Gate 7/9: smoke install (npm pack + install + sanity)\n');
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-release-smoke-'));
   try {
     // Pack — read the .tgz npm writes to tmpDir; never parse its stdout (see note).
@@ -201,7 +205,7 @@ if (SKIP_SMOKE) {
 // temp dirs (never dist/) so the gate cannot race a concurrently running test and
 // leaves the checkout untouched. A bundle that fails to build is a release that
 // ships a broken marketplace entry.
-process.stderr.write('\n[release-check] Gate 8/8: distribution bundles (build:plugin + build:agent-plugin)\n');
+process.stderr.write('\n[release-check] Gate 8/9: distribution bundles (build:plugin + build:agent-plugin)\n');
 {
   const tmp8 = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-release-bundles-'));
   try {
@@ -235,6 +239,23 @@ process.stderr.write('\n[release-check] Gate 8/8: distribution bundles (build:pl
     }
   } finally {
     try { fs.rmSync(tmp8, { recursive: true, force: true }); } catch { /* best-effort */ }
+  }
+}
+
+// Gate 9: coverage gate — the whole suite once more, under Node's own coverage
+// instrumentation, then: every dispatcher case arm executed (or allowlisted with a
+// reason in tests/fixtures/coverage-policy.json) and line/function floors per module
+// group. Gate 2 says the tests pass; this gate says the shipped code ran. On Node
+// below 22 the script reports "skipped" and exits 0 — the CI Node-22 job carries it.
+process.stderr.write('\n[release-check] Gate 9/9: coverage gate (dispatcher arms + coverage floors)\n');
+{
+  const r = run('node', [path.join(REPO_ROOT, 'scripts', 'coverage-gate.cjs')], { capture: true });
+  const text = ((r.stdout || '') + (r.stderr || '')).trim();
+  const first = text.split('\n')[0] || '';
+  logGate('coverage gate', r.status === 0, first.replace(/^coverage gate — /, ''));
+  if (r.status !== 0) {
+    process.stderr.write(text + '\n');
+    process.exit(1);
   }
 }
 

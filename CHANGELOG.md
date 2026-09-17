@@ -59,6 +59,33 @@ finding and the HUD's ledger-reliability advisory stop calling the signature
 clear`. The cursor file itself is now bounded by key count as well as by
 transcript existence, since per-agent transcripts add a key per spawn.
 
+### Changed — the test suite is measured against the code's own surface
+
+Three development-side checks, from `docs/specs/testing-system-redesign-2026-09.md`
+(phase 1 of that plan; nothing shipped changes). `scripts/test-surface.cjs` derives
+the shipped surface from the code — every verb from the dispatcher's usage line, every
+subcommand from its "Unknown … subcommand. Available:" strings, every installer flag
+literal, every hook × runtime registration from `HOOK_EVENT_MAP`, every MCP tool and
+resource, every config default key, the content directories — into the committed
+registry `tests/fixtures/surface.json`; `tests/surface-map.test.cjs` fails when a row
+is named by no test and is not in `tests/fixtures/surface-allowlist.json` with a
+reason, and when the registry drifts from the code (`--check`); `--scaffold` emits a
+todo stub per unreferenced row, so a suite rebuilt from an empty directory cannot miss
+a surface by construction. `scripts/coverage-gate.cjs` runs the suite under Node's own
+coverage instrumentation and enforces that every dispatcher `case` arm executed (or is
+allowlisted with a reason in `tests/fixtures/coverage-policy.json`) and that line and
+function coverage stay above per-group floors set a point below the measured baseline;
+it is release-check Gate 9 and an advisory CI step on the Node 22 job. And
+`tests/test-quality.test.cjs` bans, per `scripts/test-quality-lint.cjs`, the assertion
+shapes that passed while the feature they named was broken: OR-shaped liveness
+asserts (`output || error`), in-process calls to a module's `cmd*` functions (they
+exit the process — a test file reported one passing test while fifteen never ran),
+`assert(true)`, CLI output asserted only by its length, platform conditionals that
+bare-return, tight wall-clock bounds, reads of the real home directory, and committed
+todos — each allowlisted per file and rule with a count and a reason that must stay
+true. The allowlists are seeded from today's suite and are the phase-2 work list.
+`tests/helpers.cjs` gains `withFakeHome`, `readLedger`, `spawnHook` and `installInto`.
+
 ### Added — `cost rebuild`: the ledger rebuilt from the transcripts themselves
 
 Rows the old hooks wrote cannot be corrected in place — but the transcripts they
