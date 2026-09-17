@@ -192,6 +192,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `agents-md.cjs` | Single source for the AGENTS.md PAN section + CLAUDE.md `@AGENTS.md` bridge builders (shared by the installer and `memory rebuild`) |
 | `core.cjs` (CLI surface) | **(v2.10.0, E-1)** Prompt cache: `cache prime [--summary]` (wraps `buildCachedContext`) |
 | `cost.cjs` | **(v3.0, Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, plus `models check` rate-table staleness (v3.9). Log at `.planning/metrics/tokens.jsonl`. |
+| `cost-rebuild.cjs` | **(v3.29)** `cost rebuild`: rebuilds the ledger from Claude Code's session and per-agent transcripts (usage deduped per turn, agents typed from the main thread's `Agent` calls, Workflow-tool subagents included, one main-thread row per session); supersedes hook rows of rebuilt sessions, keeps the rest, moves the old ledger aside. |
 | `bus.cjs` | **(v3.0, Y-7)** Agent message channels: `bus publish`, `bus drain`, `bus list`. Channels at `.planning/bus/<channel>.jsonl`. |
 | `preview.cjs` | **(v3.1, Y-1)** Foresight: `preview phase <N>`, `preview phases`, `preview milestone`. |
 | `review-deep.cjs` | **(v3.2, Y-2)** Deep review merge: `review-deep merge`, `review-deep analyze`. |
@@ -428,6 +429,7 @@ Quick reference of all CLI commands grouped by category.
 | 198 | `doc-lint flags` | Linting | doc-lint.cjs |
 | 199 | `state compact` | State Progression | state-compact.cjs |
 | 200 | `optimize trace show` | Optimization | optimize.cjs |
+| 201 | `cost rebuild` | Cost (v3.29) | cost-rebuild.cjs |
 
 ---
 
@@ -3506,7 +3508,7 @@ Aggregate per-call cost across all PAN invocations in the project.
 pan-tools cost report [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD]
 ```
 
-Reads `.planning/metrics/tokens.jsonl` (append-only log — populated automatically since v3.4 by the `pan-cost-logger` SubagentStop hook, and manually via `cost append`). Aggregates by agent / command / tier / day, computes cache hit rate, and surfaces an overall USD estimate with the default rate table or `cost.rates` overrides.
+Reads `.planning/metrics/tokens.jsonl` (append-only log — populated automatically since v3.4 by the `pan-cost-logger` SubagentStop hook, and manually via `cost append`). Aggregates by agent / command / tier / day, computes cache hit rate, and surfaces an overall USD estimate with the default rate table or `cost.rates` overrides. Three kinds of row never reach the totals and are counted instead: `suspect_excluded` (the oversum signature — more than 500M cache-read or 10M output tokens, a span over six hours, or, for a row the hook could not time, cache reads dwarfing input and output; rows measured from a single actor's own transcript, `token_source` `agent-transcript` or `session-transcript`, are exempt because they cannot carry anyone else's usage), `empty_excluded` (no tokens on any axis and no model — an unmeasured spawn), and `malformed_skipped` (unparseable lines). The table format prints them beside `Calls`.
 
 Three formats:
 - `json` (default) — machine-readable, full payload
@@ -3530,6 +3532,17 @@ Missing fields default to `null` or `0`. Cost is auto-computed when `model` or `
 ### `cost clear` (v3.0, Y-6)
 
 Delete the cost log. Useful at the start of a billing cycle.
+
+### `cost rebuild [--apply] [--no-main-thread] [--claude-dir <path>]` (v3.29)
+
+**Module:** `cost-rebuild.cjs`
+
+Rebuild the ledger from Claude Code's own transcripts instead of trusting what the hooks wrote. Rows written before v3.29 were slices of the *parent* session transcript booked to whichever subagent stopped, and counted a turn once per content block; they cannot be corrected in place, but the transcripts they came from survive under `<Claude config dir>/projects/<encoded cwd>/` for Claude Code's retention window (`cleanupPeriodDays`, 30 by default). The folder is matched under the working directory as given and under its resolved real path — Claude Code names it after the real path, so a symlinked `--cwd` still finds it. The rebuild reads every session the ledger names plus every session of the project that has agent transcripts, writes one row per agent transcript (`<session>/subagents/agent-<id>.jsonl`, and `subagents/workflows/<run>/agent-<id>.jsonl` for Workflow-tool subagents) with its exact usage deduped by `message.id`, its type from the main thread's `Agent` tool call, its model and measured span, plus one row per session for the main thread's own usage (`agent: "(main thread)"`, `token_source: "session-transcript"`; `--no-main-thread` omits it). Hook rows of a rebuilt session are superseded; rows of sessions whose transcripts are gone, and caller-appended rows, are kept. A transcript folder reached only because the ledger names one of its sessions contributes that session alone (a ledger copied from another project must not import that project's history). Dry-run by default: prints per-session `rows before → after`, `cost before → after` priced as `cost report` prices (quarantined and empty rows at zero), and any `warnings` (an unreadable transcript contributes nothing and says so). `--apply` copies the current ledger to `tokens.jsonl.rebuilt-<date>` (`-2`, `-3`… when one exists — an earlier backup is never overwritten), carries forward any row a live hook appended while the plan was being read, writes through a temp file and rename, and writes nothing when the plan changes nothing; running it again is a no-op. `--claude-dir` overrides the Claude config directory (`CLAUDE_CONFIG_DIR`, else `~/.claude`). Plain chat sessions with neither agents nor ledger rows are left out, so the ledger stays a record of agent work and the sessions around it. Run it **before** `hygiene clean --apply` on a poisoned ledger — quarantine moves the whole file aside, and a rebuild afterwards has no rows left to keep. The main-thread row is dated to the session's last record with the whole session as its span, so a long session's own usage lands on its final day in the per-day view and in `--since`/`--until` windows; the cache-lifetime signal in `context-budget` ignores these rows. Transcripts whose last record is an interruption (`<synthetic>` model) take the model most of their records name.
+
+```bash
+pan-tools cost rebuild            # dry run — what would change, per session
+pan-tools cost rebuild --apply    # write it (previous ledger kept beside it)
+```
 
 ### `models check` (v3.9)
 

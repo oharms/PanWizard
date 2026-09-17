@@ -424,8 +424,10 @@ function fmtTokens(n) {
 /**
  * Assess whether a cost ledger is trustworthy enough to show dollar figures.
  * Two failure modes are treated as "don't quote a number":
- *   - legacy: more records were quarantined as implausible than survived (the
- *     pre-v3.12.4 transcript-oversum bug) — reset advised.
+ *   - legacy: more records were quarantined as implausible than were measured
+ *     (the transcript-oversum signature: a session's cumulative usage booked to
+ *     one subagent, written by hooks before v3.29) — quarantine advised.
+ *     Unmeasured spawns (`empty_excluded`) count on neither side.
  *   - unresolved: every surviving record lacks a resolvable model→rate, so the
  *     computed spend is a misleading $0 even though real tokens were spent.
  * Returns { ok:true } when figures are safe to display.
@@ -439,7 +441,7 @@ function ledgerReliability(totals) {
     const total = suspect + calls;
     return {
       ok: false, kind: 'legacy',
-      message: `${suspect} of ${total} cost records are implausible (the pre-v3.12.4 telemetry capture bug). Reset the ledger with <b>pan-tools cost clear</b> — records captured after the fix are accurate.`,
+      message: `${suspect} of ${total} measured cost records are implausible (a session's usage booked to one subagent — rows written by hooks before v3.29). Rebuild the ledger from the transcripts with <b>pan-tools cost rebuild --apply</b> (dry-run first without the flag); if the transcripts are gone, quarantine it with <b>pan-tools hygiene clean --apply</b>. Rows captured by v3.29+ hooks are attributed per agent.`,
     };
   }
   if (calls > 0 && unknown >= calls) {

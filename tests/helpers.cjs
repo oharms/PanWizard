@@ -149,4 +149,66 @@ function createScenarioRunner(runtime) {
   return { tmpDir, installedToolsPath, configDir, run, cleanup: cleanupRunner };
 }
 
-module.exports = { runPanTools, createTempProject, cleanup, createScenarioRunner, buildPluginInto, buildAgentPluginInto, TOOLS_PATH, INSTALLER_PATH, RUNTIME_DIR };
+/**
+ * Run `fn(fakeHome)` with HOME, USERPROFILE and CLAUDE_CONFIG_DIR pointed at a fresh
+ * temp directory, then restore them and remove it. Tests must never read the
+ * developer's real home (test-quality rule Q7): a global PAN install or a real
+ * ~/.claude/projects tree there makes a test pass or fail for reasons unrelated to
+ * the change under test.
+ */
+function withFakeHome(fn) {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-home-'));
+  const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR };
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  process.env.CLAUDE_CONFIG_DIR = path.join(fakeHome, '.claude');
+  try {
+    return fn(fakeHome);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    cleanup(fakeHome);
+  }
+}
+
+/** The cost ledger rows of a project, parsed; [] when there is no ledger. */
+function readLedger(cwd) {
+  try {
+    return fs.readFileSync(path.join(cwd, '.planning', 'metrics', 'tokens.jsonl'), 'utf-8')
+      .split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l));
+  } catch { return []; }
+}
+
+/**
+ * Spawn a hook script as its host would: JSON payload on stdin, the project as cwd.
+ * `hook` is a file name in hooks/ (source) or an absolute path (an installed copy).
+ * Returns { status, stdout, stderr }. The environment is inherited (so coverage
+ * instrumentation reaches the hook) with `extraEnv` layered on top.
+ */
+function spawnHook(hook, payload, cwd, extraEnv = {}) {
+  const { spawnSync } = require('child_process');
+  const script = path.isAbsolute(hook) ? hook : path.join(__dirname, '..', 'hooks', hook);
+  const r = spawnSync(process.execPath, [script], {
+    cwd, input: JSON.stringify(payload), encoding: 'utf-8', env: { ...process.env, ...extraEnv }, timeout: 20000,
+  });
+  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+/**
+ * Run the installer into `cwd` with the given flags (e.g. ['--claude', '--local']).
+ * Refuses the source repository: the installer has its own guard, but a test must
+ * never even ask. Returns { success, output, error }.
+ */
+function installInto(cwd, flags) {
+  const repo = path.resolve(__dirname, '..');
+  if (path.resolve(cwd) === repo || path.resolve(cwd).startsWith(repo + path.sep)) {
+    throw new Error(`installInto: refusing to install into the source repository (${cwd})`);
+  }
+  try {
+    const out = execFileSync(process.execPath, [INSTALLER_PATH, ...flags], { cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60000 });
+    return { success: true, output: out.trim() };
+  } catch (err) {
+    return { success: false, output: err.stdout?.toString().trim() || '', error: err.stderr?.toString().trim() || err.message };
+  }
+}
+
+module.exports = { runPanTools, createTempProject, cleanup, createScenarioRunner, buildPluginInto, buildAgentPluginInto, withFakeHome, readLedger, spawnHook, installInto, TOOLS_PATH, INSTALLER_PATH, RUNTIME_DIR };

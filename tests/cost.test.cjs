@@ -576,6 +576,42 @@ describe('cost — aggregate', () => {
     assert.equal(agg.by_agent['workflow-subagent'], undefined, 'suspect agent excluded from the breakdown');
   });
 
+  test('unmeasured spawns — no tokens on any axis and no model — are excluded from calls, not counted as unknown-cost', () => {
+    // The pre-v3.29 parent-slice path wrote one of these for every sibling that
+    // stopped before the shared transcript grew: 480 of 976 rows across eleven
+    // field ledgers, inflating call counts by up to 2x and cost_unknown with them.
+    appendRecord(tmpDir, { agent: 'workflow-subagent', model: null, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, source: 'hook' });
+    appendRecord(tmpDir, { agent: 'pan-executor', model: 'claude-opus-5', input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 });
+    appendRecord(tmpDir, { agent: 'pan-planner', model: 'claude-opus-5', input_tokens: 10, output_tokens: 5 });
+    const agg = aggregate(tmpDir);
+    assert.equal(agg.totals.empty_excluded, 1);
+    assert.equal(agg.totals.calls, 2, 'a zero-token run that names a model is a measured call');
+    assert.equal(agg.totals.cost_unknown, 0);
+    assert.equal(agg.by_agent['workflow-subagent'], undefined, 'an unmeasured spawn is not a call for its agent either');
+    assert.match(renderTable(agg), /Calls\s+: 2 \(excluded: 1 empty\)/);
+  });
+
+  test('a timed long-running agent with heavy cache reads is not suspect; the same ratio on an untimed row still is; a six-hour-plus span always is', () => {
+    // Under prompt caching every turn re-reads the cached context: a real
+    // 65-turn agent in the field read 8.5M cached tokens against 47k output over
+    // 12m44s (180×), and the pre-dedupe hooks booked it as 14.8M — 300×. The
+    // ratio rule alone excluded fifty such rows (~3 billion real cache-read
+    // tokens) from eleven ledgers.
+    assert.equal(isSuspectRecord({ input_tokens: 236, output_tokens: 47950, cache_read_tokens: 14801352, duration_ms: 764316 }), false, 'timed, plausible span — a real agent even at 300×');
+    assert.equal(isSuspectRecord({ input_tokens: 130, output_tokens: 47438, cache_read_tokens: 8513015, duration_ms: 764316 }), false, 'the deduped row, likewise');
+    assert.equal(isSuspectRecord({ input_tokens: 236, output_tokens: 47950, cache_read_tokens: 14801352 }), true, 'untimed — the pre-v3.20 oversum signature still applies');
+    assert.equal(isSuspectRecord({ input_tokens: 500, output_tokens: 90000, cache_read_tokens: 12000000, duration_ms: 45.7 * 3600e3 }), true, 'a 45-hour "subagent" is a session slice');
+    assert.equal(isSuspectRecord({ input_tokens: 500, output_tokens: 9000, cache_read_tokens: 7486471684, duration_ms: 600000 }), true, 'the absolute ceiling holds regardless of timing');
+    // A row measured from one actor's own transcript cannot carry anyone else's
+    // usage, so the oversum test does not apply: a real 24-day main thread read
+    // 9.5 billion cached tokens over 17,381 turns.
+    assert.equal(isSuspectRecord({ token_source: 'session-transcript', model: 'claude-opus-5', input_tokens: 35032, output_tokens: 13080748, cache_read_tokens: 9560341733, duration_ms: 24 * 86400e3 }), false, 'a session transcript is exact, however long');
+    assert.equal(isSuspectRecord({ token_source: 'agent-transcript', model: 'claude-opus-5', input_tokens: 10, output_tokens: 5000, cache_read_tokens: 30000000, duration_ms: 7 * 3600e3 }), false, 'a seven-hour agent measured from its own file is real');
+    assert.equal(isSuspectRecord({ token_source: 'transcript', model: 'claude-opus-5', input_tokens: 10, output_tokens: 5000, cache_read_tokens: 30000000, duration_ms: 7 * 3600e3 }), true, 'the same numbers from a parent slice are a session, quarantined');
+    assert.equal(isSuspectRecord({ input_tokens: 500, output_tokens: 12000000, cache_read_tokens: 1000, duration_ms: 600000 }), true, 'ten million output tokens in ten minutes is a cumulative counter');
+    assert.equal(isSuspectRecord({ input_tokens: 500, output_tokens: 12000, cache_read_tokens: 1000, duration_ms: 5.9 * 3600e3 }), false, 'just under the six-hour span is still a subagent');
+  });
+
   test('respects since filter', () => {
     appendRecord(tmpDir, { ts: '2026-01-01T00:00:00Z', agent: 'a', model: 'claude-opus-4-7', input_tokens: 1 });
     appendRecord(tmpDir, { ts: '2026-05-01T00:00:00Z', agent: 'b', model: 'claude-opus-4-7', input_tokens: 2 });

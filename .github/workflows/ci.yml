@@ -63,6 +63,15 @@ jobs:
       - name: Scenario tests
         run: npm run test:scenarios
 
+      # Did the shipped code RUN? Every dispatcher arm executed, coverage floors per
+      # module group (scripts/coverage-gate.cjs). Node's coverage include/exclude flags
+      # exist from 22; advisory for one release, then required — see the testing-system
+      # spec in docs/specs.
+      - name: Coverage gate (advisory)
+        if: matrix.node == 22
+        continue-on-error: true
+        run: node scripts/coverage-gate.cjs
+
       - name: Doc↔code link graph (anti-fake — docs can't reference code that doesn't exist)
         run: node pan-wizard-core/bin/pan-tools.cjs links validate --raw
 

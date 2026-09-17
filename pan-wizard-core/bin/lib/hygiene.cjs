@@ -5,7 +5,9 @@
  * campaigns run: runtime installs fall behind the latest version, legacy
  * uppercase planning filenames linger from pre-v2.2 layouts, atomic-write
  * .tmp orphans survive crashes, per-agent memory logs grow past the cap,
- * cost ledgers written by pre-v3.12.4 hooks are 100% poisoned, telemetry
+ * cost ledgers carry oversum rows (a session's cumulative usage booked to one
+ * subagent — pre-v3.12.4 hooks wrote nothing else, and the parent-transcript
+ * slice path kept producing them up to v3.28), telemetry
  * trace sessions pile up unboundedly, and stray fragment `.planning/`
  * directories appear where a mapping step once ran.
  *
@@ -253,7 +255,8 @@ function recordMass(r) {
 }
 
 /**
- * H-5: cost ledger dominated by physically implausible (pre-v3.12.4) records.
+ * H-5: cost ledger dominated by physically implausible records — the oversum
+ * signature, a session's cumulative usage booked to one subagent row.
  *
  * Gated on token MASS as well as record count. A count-only gate passes a ledger
  * whose few bad rows carry most of the tokens — field case: 24% of rows suspect
@@ -286,7 +289,7 @@ function checkCostLedger(cwd) {
       : 'token mass';
   findings.push(mkFinding('poisoned-ledger', 'critical',
     planningRel(METRICS_DIR, TOKENS_FILE),
-    `${suspect}/${records.length} records suspect (${Math.round(ratio * 100)}% of rows, ${Math.round(massRatio * 100)}% of token mass) — pre-v3.12.4 oversum signature, tripped on ${basis}; aggregates quarantine them but the file is dead weight`,
+    `${suspect}/${records.length} records suspect (${Math.round(ratio * 100)}% of rows, ${Math.round(massRatio * 100)}% of token mass) — oversum signature (a session's cumulative usage booked to one subagent row), tripped on ${basis}; aggregates quarantine them but the file is dead weight. Run \`cost rebuild\` first while the session transcripts still exist — quarantining moves the whole ledger aside, and a rebuild afterwards has no rows left to keep`,
     { action: 'quarantine-ledger' }));
   return { findings };
 }
@@ -661,16 +664,14 @@ function applyFix(cwd, finding) {
         const dest = `${abs}.quarantined-${stamp}`;
         fs.renameSync(abs, dest);
 
-        // The cursor is a per-transcript high-water mark INTO the ledger we just
-        // moved aside. Left behind it points at rows that are no longer there,
-        // so the fresh ledger starts mid-stream and the next slice is undercounted.
-        // A "fresh ledger" that inherits the old ledger's read position is not fresh.
-        let cursorNote = '';
-        try {
-          const cursor = path.join(path.dirname(abs), COST_CURSOR_FILE);
-          fs.unlinkSync(cursor);
-          cursorNote = ', cursor reset';
-        } catch { /* no cursor to reset */ }
+        // The cost cursor (COST_CURSOR_FILE) STAYS. It is a per-TRANSCRIPT
+        // high-water mark — how many records of each session transcript the
+        // hooks have already attributed — not a position in the ledger, so it
+        // has nothing to do with the file being moved aside. This step used to
+        // delete it as "a fresh ledger must not inherit the old read position",
+        // and the next SubagentStop then re-summed every session transcript from
+        // line 0: a fresh oversum row the day after each quarantine (field,
+        // 2026-08-25 → 08-26). Quarantine and poison had become a loop.
 
         // Quarantine leaves a dated copy behind, and nothing else ever removes
         // one. Run hygiene a few times over a year and the metrics dir fills
@@ -680,7 +681,7 @@ function applyFix(cwd, finding) {
 
         return {
           applied: true,
-          detail: `renamed to ${path.basename(dest)}${cursorNote}${prunedNote} — fresh ledger starts clean`,
+          detail: `renamed to ${path.basename(dest)}${prunedNote} — fresh ledger starts clean; transcript cursor kept`,
         };
       }
       default:

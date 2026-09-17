@@ -290,6 +290,20 @@
     "toPosix:function",
     "verbose:function"
   ],
+  "cost-rebuild.cjs": [
+    "MAIN_THREAD_AGENT:string",
+    "applyRebuild:function",
+    "cmdCostRebuild:function",
+    "discoverSessions:function",
+    "encodeProjectDirName:function",
+    "listAgentFiles:function",
+    "mapAgentsFromParent:function",
+    "mapAgentsFromWorkflowRuns:function",
+    "planRebuild:function",
+    "readJsonl:function",
+    "renderPlan:function",
+    "sumTranscriptUsage:function"
+  ],
   "cost.cjs": [
     "DEFAULT_RATES:object",
     "METRICS_DIR:string",
@@ -304,6 +318,7 @@
     "cmdModelsCheck:function",
     "computeCost:function",
     "effectiveRates:function",
+    "isEmptyRecord:function",
     "isSuspectRecord:function",
     "loadManagedModelPricing:function",
     "managedSettingsDir:function",

@@ -647,7 +647,7 @@ describe('hygiene — clean converges', () => {
     assert.equal(second.summary.fixable, 0);
   });
 
-  test('quarantining prunes superseded quarantines and resets the cursor', () => {
+  test('quarantining prunes superseded quarantines and leaves the transcript cursor alone', () => {
     writePoisonedLedger();
     fs.writeFileSync(path.join(metrics(), 'tokens.jsonl.quarantined-2026-01-01'), 'old\n');
     fs.writeFileSync(path.join(metrics(), 'tokens.jsonl.quarantined-2026-02-01'), 'older\n');
@@ -657,8 +657,12 @@ describe('hygiene — clean converges', () => {
 
     const left = fs.readdirSync(metrics()).filter(f => f.includes('quarantined'));
     assert.equal(left.length, 1, 'only the newest quarantine survives');
-    assert.ok(!fs.existsSync(path.join(metrics(), '.cost-cursor.json')),
-      'a fresh ledger must not inherit the old read position');
+    // The cursor is a high-water mark into each session TRANSCRIPT, not a position
+    // in the ledger. Deleting it here made the next SubagentStop re-sum the whole
+    // transcript from line 0 — a fresh oversum row the day after every quarantine
+    // (field, 2026-08-25 → 08-26) — so quarantine and poison were a loop.
+    assert.equal(fs.readFileSync(path.join(metrics(), '.cost-cursor.json'), 'utf8'), '{"/t":5}',
+      'the transcript cursor survives a ledger quarantine');
   });
 
   test('the poisoned ledger itself is renamed, never deleted', () => {

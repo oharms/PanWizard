@@ -7,9 +7,11 @@
 //
 // We append a minimal record to .planning/metrics/tokens.jsonl so
 // `/pan:cost` reports reflect real agent spawns, not just manually-appended
-// entries. Token counts are best-effort: if the hook input doesn't carry
-// them, we log a record with zeros + a `source: "hook"` flag so the
-// aggregator distinguishes these from fully-instrumented records.
+// entries. Token counts come from the subagent's OWN transcript when the host
+// names one (`agent_id` → `<session>/subagents/agent-<id>.jsonl`, see
+// resolveAgentTranscript), else from a slice of the parent session transcript,
+// else from the payload's plausibility-guarded counters. A `source: "hook"`
+// flag distinguishes these rows from fully-instrumented records.
 //
 // This hook NEVER blocks the main agent loop — all errors are swallowed.
 
@@ -79,12 +81,13 @@ const CURSOR_FILE = '.cost-cursor.json';
 
 // Ledger row schema version. Bump when the record shape changes so readers can
 // tell which shape a row was written in (pre-versioned rows read as v1); v3 added
-// the per-invocation `event_sig` discriminator. Kept as a literal in each hook —
+// the per-invocation `event_sig` discriminator; v4 added `agent_id` and the
+// `agent-transcript` token source. Kept as a literal in each hook —
 // they are standalone zero-dep scripts that can't import from pan-wizard-core, so
 // the two hooks must stay in sync by hand. No constant in pan-wizard-core mirrors
 // it: the readers there take a row field by field rather than switching on its
 // version, so an added field is additive for them.
-const SCHEMA_V = 3;
+const SCHEMA_V = 4;
 
 // Reverse-map a resolved model id to its cost tier so the "By tier" dashboard
 // section isn't blind on the hook path. Anthropic families only (the tiers PAN
@@ -194,6 +197,12 @@ const LEGACY_CONSUME_KEYS = '__consumeKeys';
 // below for what widening either window was measured to cost.
 const MAX_SEEN_SIGS = 8;
 const MAX_SEEN_TRANSCRIPTS = 16;
+// Cursor path keys. With per-agent transcripts every spawn adds a key that lives
+// as long as Claude Code keeps the file (weeks), so existence-pruning alone no
+// longer bounds the map (L40). Keep the most recently written keys only; a
+// spawn's transcript is sliced once, so an evicted key costs nothing but a
+// re-sum if that agent is ever resumed weeks later.
+const MAX_CURSOR_KEYS = 512;
 
 // Signature of a SubagentStop event: a hash of the FULL payload as delivered.
 // A dual-registration re-fire is byte-identical on stdin (the host pipes the
@@ -214,13 +223,15 @@ const MAX_SEEN_TRANSCRIPTS = 16;
 //   • `model` and `phase` came out null in those recorded rows: the payload
 //     carried neither.
 //   • `usage` is absent entirely in headless mode (docs/HOOKS.md, P-1805).
-//   • No recorded payload in this repo carries an `agent_id` or any other
-//     per-invocation id. `grep -rn agent_id hooks/ pan-wizard-core/ tests/`
-//     finds only PAN's own agent-tracking artifacts (written by workflows) and
-//     the hook tests, which inject one as a stand-in.
-// So for two CONCURRENT SAME-TYPE siblings no varying payload field is
-// confirmed on any host. Where the host supplies one, both spawns are admitted;
-// where it supplies none the two payloads are the same bytes, hence
+//   • Claude Code's hook reference documents `agent_id` as a common input field
+//     "present only when the hook fires inside a subagent call", and the
+//     matching per-agent transcript files exist on disk beside the session
+//     transcript (resolveAgentTranscript). Where it is present, the slice comes
+//     from the agent's own transcript and two concurrent same-type siblings are
+//     separable by that field alone.
+// So on a host that omits `agent_id`, two CONCURRENT SAME-TYPE siblings have no
+// confirmed varying payload field. Where the host supplies one, both spawns are
+// admitted; where it supplies none the two payloads are the same bytes, hence
 // informationally indistinguishable from a re-fire, and the second stays
 // suppressed.
 //
@@ -301,10 +312,10 @@ function writeCursor(cwd, cursor) {
     // Prune cursor keys for transcripts that no longer exist so the map can't
     // grow without bound over a long-lived project (L40, ADR audit 2026-08).
     const pruned = {};
-    for (const [tp, v] of Object.entries(cursor)) {
-      if (tp === SEEN_EVENTS || tp === LEGACY_CONSUME_KEYS) continue; // reserved markers — not paths
-      if (tp && fs.existsSync(tp)) pruned[tp] = v;
-    }
+    const live = Object.entries(cursor).filter(([tp]) => tp !== SEEN_EVENTS && tp !== LEGACY_CONSUME_KEYS && tp && fs.existsSync(tp));
+    // Insertion order is write order (a key is re-inserted when advanced), so
+    // the tail of the list is the most recently sliced transcripts.
+    for (const [tp, v] of live.slice(-MAX_CURSOR_KEYS)) pruned[tp] = v;
     // Preserve the seen-event marker (N17/N25-N27). Deliberately NOT pruned by
     // transcript existence — a missing-transcript first fire's marker must
     // survive this very write, or its re-fire is re-admitted as a phantom row
@@ -322,6 +333,73 @@ function writeCursor(cwd, cursor) {
     fs.mkdirSync(path.dirname(cursorFilePath(cwd)), { recursive: true });
     fs.writeFileSync(cursorFilePath(cwd), JSON.stringify(pruned), 'utf-8');
   } catch { /* best-effort — never block the agent loop */ }
+}
+
+// ─── Per-agent transcript resolution ────────────────────────────────────────
+//
+// On SubagentStop Claude Code hands the hook the PARENT session's transcript
+// (`transcript_path`) plus the subagent's `agent_id`; the subagent's own
+// conversation is written beside the parent transcript as
+// `<parent dir>/<session_id>/subagents/agent-<agent_id>.jsonl`. Slicing the
+// parent transcript per event booked whatever the session had done since the
+// previous stop to whichever subagent happened to stop next — and the FIRST stop
+// on a long-lived session (cursor 0, or a cursor a ledger quarantine had reset)
+// booked the session's entire history to one row: 7.5 billion cache-read tokens
+// over a ten-day "duration" was observed in the field (2026-09). Sibling stops
+// arriving before the parent transcript grew produced the complementary all-zero
+// rows — 63% of one ledger. The agent transcript is the subagent's usage and
+// nothing else, so it is preferred whenever it exists; the parent-slice path
+// remains the fallback for hosts that supply no agent id. An explicit
+// `agent_transcript_path` in the payload wins over the derivation.
+const AGENT_ID_SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+function resolveAgentTranscript(data) {
+  try {
+    const explicit = data.agent_transcript_path;
+    if (typeof explicit === 'string' && explicit && fs.existsSync(explicit)) return explicit;
+    const agentId = data.agent_id;
+    if (typeof agentId !== 'string' || !AGENT_ID_SAFE.test(agentId)) return null;
+    if (typeof data.transcript_path !== 'string' || !data.transcript_path) return null;
+    if (typeof data.session_id !== 'string' || !AGENT_ID_SAFE.test(data.session_id)) return null;
+    const base = path.dirname(data.transcript_path);
+    const subagentsDir = path.join(base, data.session_id, 'subagents');
+    // Containment: every derived path must stay under the parent transcript's directory.
+    const resolvedBase = path.resolve(base);
+    const contained = (p) => path.resolve(p).startsWith(resolvedBase + path.sep);
+    const direct = path.join(subagentsDir, `agent-${agentId}.jsonl`);
+    if (contained(direct) && fs.existsSync(direct)) return direct;
+    // Subagents spawned by the Workflow tool (the native `/pan-*` workflow
+    // scripts) are written one level down, under the run that spawned them:
+    // `subagents/workflows/<wf_id>/agent-<agent_id>.jsonl`. In the field those
+    // were the majority of spawns (269 of 331 rows in one ledger), so missing
+    // this level would have recorded them as unmeasured.
+    const workflowsDir = path.join(subagentsDir, 'workflows');
+    let runs = [];
+    try { runs = fs.readdirSync(workflowsDir); } catch { return null; }
+    for (const run of runs) {
+      const nested = path.join(workflowsDir, run, `agent-${agentId}.jsonl`);
+      if (contained(nested) && fs.existsSync(nested)) return nested;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// A slice is a SUM over one subagent's conversation, so its ceiling sits above a
+// single call's (PLAUSIBLE_MAX): a long agent legitimately re-reads its cached
+// context on every turn. The cache_read and output ceilings are the absolute
+// limits cost.cjs isSuspectRecord quarantines on; input and cache_write are
+// hook-only sanity ceilings (the reader has no rule for them). A value past its
+// ceiling is a session's cumulative usage that leaked into the slice, never one
+// subagent's own — drop it to 0 and flag the row. The parent-slice path had NO
+// guard before v3.29: every oversum row in the field carried `clamped: false`.
+// The slice's SPAN is not clamped: it is recorded as measured, and the reader's
+// six-hour rule (cost.cjs SUSPECT_MAX_DURATION_MS) quarantines a slice that ran
+// longer. Nulling the span here instead would hand the row to the reader's
+// untimed cache-ratio rule and lose a legitimate long agent with it.
+const SLICE_MAX = { input: 2e7, output: 1e7, cache_read: 5e8, cache_write: 1e8 };
+function clampSlice(n, max) {
+  return typeof n === 'number' && n >= 0 && n <= max ? n : 0;
 }
 
 /**
@@ -352,10 +430,27 @@ function buildCostRecord(data, cwd) {
   let cacheRead = 0;
   let cacheWrite = 0;
   let durationMs = null;
-  // token_source records WHICH path produced the counts; clamped marks a value
-  // dropped to 0 by the plausibility guard so a guarded zero is distinguishable
-  // from a genuine zero-token run.
-  let tokenSource = data.transcript_path ? 'transcript' : 'usage-fallback';
+  // token_source records WHICH path produced the counts: `agent-transcript` (the
+  // subagent's own conversation file — see resolveAgentTranscript), `transcript`
+  // (a slice of the parent session transcript, the fallback when the host names
+  // no agent) or `usage-fallback` (the payload's own counters). `clamped` marks
+  // a value dropped to 0 by a plausibility guard so a guarded zero is
+  // distinguishable from a genuine zero-token run.
+  const agentTranscript = resolveAgentTranscript(data);
+  const parentPath = typeof data.transcript_path === 'string' && data.transcript_path ? data.transcript_path : null;
+  // The host NAMED an agent (a bare id, or an explicit agent transcript path) but
+  // its file is not there — not flushed yet, or a host that sends ids without
+  // per-agent files. The parent slice is the wrong answer for that spawn: it is
+  // the whole session since the last parent-slice stop, booked to one agent. So
+  // this event consumes nothing and records an unmeasured spawn (zeros, a
+  // distinct token_source), which the reader excludes from calls.
+  const agentNamed = (typeof data.agent_id === 'string' && AGENT_ID_SAFE.test(data.agent_id))
+    || (typeof data.agent_transcript_path === 'string' && data.agent_transcript_path !== '');
+  const agentFileMissing = !agentTranscript && agentNamed && parentPath !== null;
+  const sliceSource = agentTranscript || (agentFileMissing ? null : parentPath);
+  const tokenSource = agentTranscript ? 'agent-transcript'
+    : agentFileMissing ? 'agent-transcript-missing'
+      : sliceSource ? 'transcript' : 'usage-fallback';
   let clamped = false;
   // Set when a transcript-sourced event consumed no new records AND is an
   // identical re-fire / dual-registration. Carried on the returned record as a
@@ -363,29 +458,46 @@ function buildCostRecord(data, cwd) {
   // the ledger (M61).
   let emptySlice = false;
   const agent = data.agent_type || data.subagent_type || null;
+  const agentId = typeof data.agent_id === 'string' && data.agent_id ? data.agent_id : null;
   // This event's per-invocation identity, hashed once and used by BOTH layers:
   // the seen-event marker below and the `event_sig` row field further down.
   // buildCostRecord never mutates `data`, so hoisting the hash here yields the
   // same value the marker calls used when they each computed it themselves.
   const eventSig = eventSignature(data);
-  if (data.transcript_path) {
+  if (sliceSource || agentFileMissing) {
+    // The cursor and the seen-event marker are keyed by whichever file is being
+    // sliced: the agent transcript (one file per spawn, so a re-fire is the only
+    // way to see an empty slice) or the shared parent transcript. A named-but-
+    // missing agent file consumes nothing and is keyed by the parent, so the
+    // re-fire / sibling marker logic below applies to it unchanged.
+    const keyPath = sliceSource || parentPath;
     const cursor = readCursor(cwd);
-    const since = cursor[data.transcript_path] || 0;
-    const fromTranscript = readUsageFromTranscript(data.transcript_path, data.session_id, since);
-    inputTokens = fromTranscript.input_tokens;
-    outputTokens = fromTranscript.output_tokens;
-    cacheRead = fromTranscript.cache_read_input_tokens;
-    cacheWrite = fromTranscript.cache_creation_input_tokens;
-    durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts);
+    const since = cursor[keyPath] || 0;
+    const fromTranscript = sliceSource
+      ? readUsageFromTranscript(sliceSource, data.session_id, since)
+      : { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: null, first_ts: null, last_ts: null, lineCount: since };
+    const rawIn = fromTranscript.input_tokens;
+    const rawOut = fromTranscript.output_tokens;
+    const rawCr = fromTranscript.cache_read_input_tokens;
+    const rawCw = fromTranscript.cache_creation_input_tokens;
+    inputTokens = clampSlice(rawIn, SLICE_MAX.input);
+    outputTokens = clampSlice(rawOut, SLICE_MAX.output);
+    cacheRead = clampSlice(rawCr, SLICE_MAX.cache_read);
+    cacheWrite = clampSlice(rawCw, SLICE_MAX.cache_write);
+    clamped = rawIn > SLICE_MAX.input || rawOut > SLICE_MAX.output
+      || rawCr > SLICE_MAX.cache_read || rawCw > SLICE_MAX.cache_write;
+    durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts); // as measured — see SLICE_MAX
     if (!model) model = fromTranscript.model;
     if (fromTranscript.lineCount > since) {
       // A real slice. Advance the cursor so the next subagent's record starts
       // fresh — the slices partition the transcript, so it is never re-summed on
       // every event. Remember this event's signature (N17/N25) so a later
       // empty-slice event can tell its re-fire from a parallel sibling — even
-      // when other siblings are recorded in between (N25).
-      cursor[data.transcript_path] = fromTranscript.lineCount;
-      addSeenSig(cursor, data.transcript_path, eventSig);
+      // when other siblings are recorded in between (N25). Re-insert the key so
+      // insertion order tracks write order (writeCursor keeps the newest keys).
+      delete cursor[keyPath];
+      cursor[keyPath] = fromTranscript.lineCount;
+      addSeenSig(cursor, keyPath, eventSig);
       writeCursor(cwd, cursor);
     } else {
       // No transcript records past the cursor: this event consumed NO slice of
@@ -406,12 +518,13 @@ function buildCostRecord(data, cwd) {
       // The full-payload signature distinguishes them (N25/N26): DROP only when
       // this exact payload was already seen for this transcript (true re-fire);
       // otherwise record the spawn.
-      if (eventSig && getSeenSigs(cursor, data.transcript_path).includes(eventSig)) {
+      if (eventSig && getSeenSigs(cursor, keyPath).includes(eventSig)) {
         emptySlice = true; // already-seen event → re-fire; appendRecord drops the phantom row (M61)
       } else {
-        // Sibling / first-fire: record the spawn (zero tokens) and remember its
-        // signature so a subsequent re-fire of THIS event is dropped.
-        addSeenSig(cursor, data.transcript_path, eventSig);
+        // Sibling / first-fire / named-but-missing agent file: record the spawn
+        // (zero tokens) and remember its signature so a subsequent re-fire of
+        // THIS event is dropped.
+        addSeenSig(cursor, keyPath, eventSig);
         writeCursor(cwd, cursor);
       }
     }
@@ -443,6 +556,10 @@ function buildCostRecord(data, cwd) {
     v: SCHEMA_V,
     ts: new Date().toISOString(),
     agent,
+    // The host's per-spawn id (null where the host supplies none). What made
+    // the agent's own transcript addressable; persisted so a reader can tell
+    // two same-type siblings apart without hashing the payload.
+    agent_id: agentId,
     command,
     model,
     tier: tierForModel(model),
@@ -527,6 +644,16 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
   let raw;
   try { raw = fs.readFileSync(transcriptPath, 'utf-8'); } catch { return totals; }
   let seen = 0; // count of non-empty JSONL records (the cursor unit)
+  // One API turn, one usage. Claude Code writes an assistant turn as one JSONL
+  // record PER CONTENT BLOCK (text, tool_use, …), each carrying that turn's
+  // `message.id` and a usage snapshot; the last block's snapshot holds the
+  // turn's final counts. Summing every record therefore counted a three-block
+  // turn three times — a real 65-turn agent transcript summed to 14.8M
+  // cache-read tokens against 8.5M actual (2026-09). Keyed by `message.id`,
+  // last snapshot wins; records with no id (older transcripts, other hosts)
+  // are summed as they come.
+  const byMessage = new Map();
+  let unkeyed = 0;
   for (const line of raw.split('\n')) {
     if (!line) continue;
     seen++;
@@ -551,6 +678,12 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
       || (entry.type === 'assistant' && entry.message?.usage)
       || null;
     if (!usage || typeof usage !== 'object') continue;
+    const messageId = entry.message && typeof entry.message.id === 'string' && entry.message.id
+      ? entry.message.id
+      : `__unkeyed_${unkeyed++}`;
+    byMessage.set(messageId, usage);
+  }
+  for (const usage of byMessage.values()) {
     totals.input_tokens += extractNumber(usage, 'input_tokens');
     totals.output_tokens += extractNumber(usage, 'output_tokens');
     totals.cache_read_input_tokens += extractNumber(usage, 'cache_read_input_tokens');
@@ -655,4 +788,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildCostRecord, appendRecord, readUsageFromTranscript, readCursor, writeCursor, isPanProject, METRICS_DIR, TOKENS_FILE, CURSOR_FILE };
+module.exports = { buildCostRecord, appendRecord, readUsageFromTranscript, resolveAgentTranscript, readCursor, writeCursor, isPanProject, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };

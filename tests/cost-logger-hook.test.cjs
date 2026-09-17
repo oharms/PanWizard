@@ -506,11 +506,13 @@ describe('pan-cost-logger — A1/A2 ledger-row discriminator (six-case behavior 
     assert.equal(fire(sib('exec-2')), true, 'the second same-type sibling is recorded');
     const r = rows();
     assert.equal(r.length, 3, 'verifier + both executors');
-    // The two sibling rows are identical apart from ts and the discriminator —
-    // which is precisely why the discriminator is what saves the second one.
-    const strip = (x) => { const { ts, event_sig, ...rest } = x; return JSON.stringify(rest); };
+    // The two sibling rows are identical apart from ts and the discriminators —
+    // the hashed signature, and since v3.29 the host's own `agent_id`, persisted
+    // in the clear — which is precisely what saves the second one.
+    const strip = (x) => { const { ts, event_sig, agent_id, ...rest } = x; return JSON.stringify(rest); };
     assert.equal(strip(r[1]), strip(r[2]), 'the sibling rows differ in nothing else');
     assert.notEqual(r[1].event_sig, r[2].event_sig, 'distinct per-invocation discriminators');
+    assert.deepEqual([r[1].agent_id, r[2].agent_id], ['exec-1', 'exec-2'], 'the host id is on the row itself');
   });
 
   test('(4) a 3-sibling same-type wave yields THREE rows', () => {
@@ -938,5 +940,217 @@ describe('pan-cost-logger — planning root', () => {
     } finally {
       cleanup(bare);
     }
+  });
+});
+
+// ─── Per-agent transcript attribution (2026-09) ─────────────────────────────
+
+/**
+ * On SubagentStop the host passes the PARENT session transcript; the subagent's
+ * own conversation sits beside it under <session_id>/subagents/agent-<agent_id>.jsonl
+ * (the layout observed on disk, whose first record carries the same agentId and
+ * sessionId). Slicing the parent per event booked the session's usage to
+ * whichever subagent stopped next — 7.5 billion cache-read tokens over a ten-day
+ * "duration" on one field row — and produced all-zero rows for siblings that
+ * stopped before the parent grew. The numbers below are that field agent's real
+ * totals (two summed usage records standing in for its 118).
+ */
+describe('pan-cost-logger — per-agent transcript attribution', () => {
+  const { resolveAgentTranscript } = require('../hooks/pan-cost-logger.js');
+  const { isSuspectRecord } = require('../pan-wizard-core/bin/lib/cost.cjs');
+  const SESSION = 'a72c1321-73dd-422f-95c8-2b8a17d86efe';
+  let tmp, home, parent, subagents;
+  const usageLine = (u, ts, model = 'claude-opus-5') =>
+    JSON.stringify({ type: 'assistant', timestamp: ts, message: { model, usage: u } });
+
+  beforeEach(() => {
+    tmp = createTempProject();
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-transcripts-'));
+    parent = path.join(home, `${SESSION}.jsonl`);
+    // The parent transcript: a long-lived session with a session's worth of history.
+    fs.writeFileSync(parent, [
+      usageLine({ input_tokens: 500, output_tokens: 9000, cache_read_input_tokens: 700000000, cache_creation_input_tokens: 900000 }, '2026-09-01T08:00:00.000Z'),
+      usageLine({ input_tokens: 400, output_tokens: 8000, cache_read_input_tokens: 600000000, cache_creation_input_tokens: 800000 }, '2026-09-10T08:00:00.000Z'),
+    ].join('\n') + '\n');
+    subagents = path.join(home, SESSION, 'subagents');
+    fs.mkdirSync(subagents, { recursive: true });
+  });
+  afterEach(() => { cleanup(tmp); fs.rmSync(home, { recursive: true, force: true }); });
+
+  const agentFile = (id, lines) => {
+    const p = path.join(subagents, `agent-${id}.jsonl`);
+    fs.writeFileSync(p, lines.join('\n') + '\n');
+    return p;
+  };
+  const payload = (extra) => ({ hook_event_name: 'SubagentStop', agent_type: 'pan-executor', session_id: SESSION, transcript_path: parent, ...extra });
+  const rows = () => fs.readFileSync(path.join(tmp, '.planning', METRICS_DIR, TOKENS_FILE), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+
+  test('the subagent\'s own transcript is sliced when agent_id names one — never the parent session', () => {
+    const agentPath = agentFile('a15f28b4fab5c68d1', [
+      usageLine({ input_tokens: 120, output_tokens: 24000, cache_read_input_tokens: 7400000, cache_creation_input_tokens: 210000 }, '2026-09-02T18:03:09.614Z'),
+      usageLine({ input_tokens: 116, output_tokens: 23950, cache_read_input_tokens: 7401352, cache_creation_input_tokens: 207922 }, '2026-09-02T18:15:53.930Z'),
+    ]);
+    const rec = buildCostRecord(payload({ agent_id: 'a15f28b4fab5c68d1' }), tmp);
+    assert.equal(rec.v, 4);
+    assert.equal(rec.token_source, 'agent-transcript');
+    assert.equal(rec.agent_id, 'a15f28b4fab5c68d1');
+    assert.equal(rec.input_tokens, 236);
+    assert.equal(rec.output_tokens, 47950);
+    assert.equal(rec.cache_read_tokens, 14801352, 'the agent\'s own cache reads, not the session\'s 1.3 billion');
+    assert.equal(rec.cache_write_tokens, 417922);
+    assert.equal(rec.duration_ms, Date.parse('2026-09-02T18:15:53.930Z') - Date.parse('2026-09-02T18:03:09.614Z'));
+    assert.equal(rec.clamped, false);
+    assert.equal(rec.model, 'claude-opus-5');
+    assert.equal(isSuspectRecord(rec), false, 'a real agent row must survive aggregate()');
+    const cursor = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', METRICS_DIR, CURSOR_FILE), 'utf8'));
+    assert.equal(cursor[agentPath], 2, 'the cursor is keyed by the agent transcript');
+    assert.equal(cursor[parent], undefined, 'the parent transcript is not consumed');
+  });
+
+  test('a Workflow-tool subagent — written under subagents/workflows/<run>/ — is found one level down', () => {
+    // The native /pan-* workflow scripts spawn their agents through the Workflow
+    // tool, whose transcripts land under the run that spawned them. In the
+    // field those were 269 of one ledger's 331 rows; missing the level would
+    // have recorded every one of them as an unmeasured spawn.
+    const run = path.join(subagents, 'workflows', 'wf_01987606-115');
+    fs.mkdirSync(run, { recursive: true });
+    fs.writeFileSync(path.join(run, 'agent-a03a8fead919fb4a9.jsonl'),
+      usageLine({ input_tokens: 9, output_tokens: 900, cache_read_input_tokens: 90000, cache_creation_input_tokens: 0 }, '2026-09-03T20:11:30.913Z') + '\n');
+    const rec = buildCostRecord(payload({ agent_type: 'workflow-subagent', agent_id: 'a03a8fead919fb4a9' }), tmp);
+    assert.equal(rec.token_source, 'agent-transcript');
+    assert.equal(rec.cache_read_tokens, 90000);
+    assert.equal(rec.output_tokens, 900);
+    assert.equal(resolveAgentTranscript(payload({ agent_id: 'a03a8fead919fb4a9' })), path.join(run, 'agent-a03a8fead919fb4a9.jsonl'));
+  });
+
+  test('a resumed agent — a second stop on the same agent transcript — is charged only its new lines', () => {
+    const p = agentFile('b1', [usageLine({ input_tokens: 10, output_tokens: 100, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:00.000Z')]);
+    appendRecord(tmp, buildCostRecord(payload({ agent_id: 'b1' }), tmp));
+    fs.appendFileSync(p, usageLine({ input_tokens: 20, output_tokens: 200, cache_read_input_tokens: 2000, cache_creation_input_tokens: 0 }, '2026-09-02T10:05:00.000Z') + '\n');
+    appendRecord(tmp, buildCostRecord(payload({ agent_id: 'b1', last_assistant_message: 'done' }), tmp));
+    assert.deepEqual(rows().map((r) => r.output_tokens), [100, 200]);
+    assert.deepEqual(rows().map((r) => r.cache_read_tokens), [1000, 2000]);
+  });
+
+  test('an explicit agent_transcript_path in the payload wins over the derivation', () => {
+    const explicit = path.join(home, 'elsewhere.jsonl');
+    fs.writeFileSync(explicit, usageLine({ input_tokens: 5, output_tokens: 50, cache_read_input_tokens: 500, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:00.000Z') + '\n');
+    const rec = buildCostRecord(payload({ agent_id: 'no-such-agent', agent_transcript_path: explicit }), tmp);
+    assert.equal(rec.token_source, 'agent-transcript');
+    assert.equal(rec.output_tokens, 50);
+  });
+
+  test('one turn, one usage: a turn written as several content-block records is counted once, last snapshot wins', () => {
+    // Claude Code writes an assistant turn as one JSONL record per content block,
+    // each carrying the turn's message.id and a usage snapshot; on a real 65-turn
+    // agent file that made 118 records and a per-record sum of 14.8M cache-read
+    // tokens against 8.5M actual. Records without an id still sum individually.
+    const turn = (id, u, ts) => JSON.stringify({ type: 'assistant', timestamp: ts, message: { id, model: 'claude-opus-5', usage: u } });
+    agentFile('d4', [
+      turn('msg_A', { input_tokens: 5, output_tokens: 1, cache_read_input_tokens: 100000, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:00.000Z'),
+      turn('msg_A', { input_tokens: 5, output_tokens: 90, cache_read_input_tokens: 100000, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:04.000Z'),
+      turn('msg_A', { input_tokens: 5, output_tokens: 146, cache_read_input_tokens: 100000, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:06.000Z'),
+      turn('msg_B', { input_tokens: 3, output_tokens: 40, cache_read_input_tokens: 100200, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:20.000Z'),
+      usageLine({ input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 3, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:30.000Z'),
+      usageLine({ input_tokens: 1, output_tokens: 2, cache_read_input_tokens: 3, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:31.000Z'),
+    ]);
+    const rec = buildCostRecord(payload({ agent_id: 'd4' }), tmp);
+    assert.equal(rec.cache_read_tokens, 100000 + 100200 + 3 + 3, 'two turns plus two unkeyed records — not five blocks');
+    assert.equal(rec.output_tokens, 146 + 40 + 2 + 2, "the turn's final snapshot, not the sum of its blocks");
+    assert.equal(rec.input_tokens, 5 + 3 + 1 + 1);
+  });
+
+  test('without an agent id the parent slice is still used — token axes are clamped and flagged, the span is recorded and the reader quarantines it', () => {
+    const rec = buildCostRecord(payload({}), tmp);
+    assert.equal(rec.token_source, 'transcript');
+    assert.equal(rec.agent_id, null);
+    assert.equal(rec.cache_read_tokens, 0, '1.3 billion cache reads is a session, not a subagent — dropped');
+    assert.equal(rec.cache_write_tokens, 1700000, 'axes under their ceiling keep their values');
+    assert.equal(rec.output_tokens, 17000);
+    assert.equal(rec.clamped, true);
+    assert.equal(rec.duration_ms, Date.parse('2026-09-10T08:00:00.000Z') - Date.parse('2026-09-01T08:00:00.000Z'),
+      'the nine-day span is written as measured, not nulled — nulling would hand the row to the untimed ratio rule');
+    assert.equal(isSuspectRecord(rec), true, "a nine-day 'subagent' is a session's history; the reader's span rule quarantines it");
+  });
+
+  test('a named agent whose transcript file is absent consumes nothing: zeros, its own token_source, and the parent is left for others', () => {
+    // Not flushed yet, or a host that sends ids without per-agent files. Slicing
+    // the parent here would book the whole session since the last parent-slice
+    // stop to this one spawn (the reviewer's 120M-cache-read probe).
+    const rec = buildCostRecord(payload({ agent_id: 'notflushed' }), tmp);
+    assert.equal(rec.token_source, 'agent-transcript-missing');
+    assert.equal(rec.agent_id, 'notflushed');
+    assert.deepEqual([rec.input_tokens, rec.output_tokens, rec.cache_read_tokens, rec.cache_write_tokens], [0, 0, 0, 0]);
+    assert.equal(rec.model, null);
+    assert.equal(rec.duration_ms, null);
+    assert.equal(appendRecord(tmp, rec), true, 'the spawn is recorded');
+    const cursor = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', METRICS_DIR, CURSOR_FILE), 'utf8'));
+    assert.equal(cursor[parent], undefined, 'the parent transcript was not consumed');
+    const refire = buildCostRecord(payload({ agent_id: 'notflushed' }), tmp);
+    assert.equal(appendRecord(tmp, refire), false, 'its byte-identical re-fire is still dropped');
+    const { isEmptyRecord } = require('../pan-wizard-core/bin/lib/cost.cjs');
+    assert.equal(isEmptyRecord(rec), true, 'the reader excludes it from calls as an unmeasured spawn');
+    // The parent slice remains available to a stop that names no agent at all.
+    const other = buildCostRecord(payload({}), tmp);
+    assert.equal(other.token_source, 'transcript');
+    assert.equal(other.output_tokens, 17000);
+  });
+
+  test('an agent_id that is not a bare id never becomes a path', () => {
+    fs.writeFileSync(path.join(home, 'agent-x.jsonl'), '');
+    for (const bad of ['../agent-x', '..\\agent-x', '/abs', 'a b', '', 42]) {
+      assert.equal(resolveAgentTranscript(payload({ agent_id: bad })), null, JSON.stringify(bad));
+    }
+    assert.equal(resolveAgentTranscript(payload({ agent_id: 'x', session_id: '../..' })), null, 'a traversing session_id is refused too');
+  });
+
+  test('stdin driver: a SubagentStop payload with agent_id lands the agent\'s numbers in tokens.jsonl', () => {
+    agentFile('c9', [usageLine({ input_tokens: 7, output_tokens: 70, cache_read_input_tokens: 7000, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:00.000Z')]);
+    const r = spawnSync(process.execPath, [COST_HOOK], { input: JSON.stringify({ ...payload({ agent_id: 'c9' }), cwd: tmp }), encoding: 'utf8' });
+    assert.equal(r.status, 0);
+    const written = rows();
+    assert.equal(written.length, 1);
+    assert.equal(written[0].cache_read_tokens, 7000);
+    assert.equal(written[0].token_source, 'agent-transcript');
+    assert.equal(written[0].agent_id, 'c9');
+    assert.equal(written[0].v, 4);
+  });
+
+  test('a byte-identical re-fire on the agent-transcript path is dropped; an explicit agent_transcript_path that is missing is an unmeasured spawn', () => {
+    agentFile('r1', [usageLine({ input_tokens: 3, output_tokens: 30, cache_read_input_tokens: 300, cache_creation_input_tokens: 0 }, '2026-09-02T10:00:00.000Z')]);
+    const p = payload({ agent_id: 'r1' });
+    assert.equal(appendRecord(tmp, buildCostRecord(p, tmp)), true, 'first fire recorded');
+    const refire = buildCostRecord(p, tmp);
+    assert.equal(refire.__emptySlice, true, 'the agent file has no new lines and the signature was seen');
+    assert.equal(appendRecord(tmp, refire), false);
+    assert.equal(rows().length, 1);
+    const missing = buildCostRecord(payload({ agent_transcript_path: path.join(home, 'not-flushed-yet.jsonl') }), tmp);
+    assert.equal(missing.token_source, 'agent-transcript-missing');
+    assert.equal(missing.output_tokens, 0);
+  });
+
+  test('every token axis has its ceiling on the agent path: output and input past theirs are dropped and flagged, the rest kept', () => {
+    agentFile('big', [usageLine({ input_tokens: 25000000, output_tokens: 11000000, cache_read_input_tokens: 400000, cache_creation_input_tokens: 5000 }, '2026-09-02T10:00:00.000Z')]);
+    const rec = buildCostRecord(payload({ agent_id: 'big' }), tmp);
+    assert.deepEqual([rec.input_tokens, rec.output_tokens, rec.cache_read_tokens, rec.cache_write_tokens], [0, 0, 400000, 5000]);
+    assert.equal(rec.clamped, true);
+  });
+
+  test('the cursor keeps only the newest MAX_CURSOR_KEYS transcript keys (a key per spawn no longer grows it without bound)', () => {
+    const { readCursor, writeCursor, MAX_CURSOR_KEYS } = require('../hooks/pan-cost-logger.js');
+    const cursor = {};
+    const files = [];
+    for (let i = 0; i < MAX_CURSOR_KEYS + 40; i++) {
+      const f = path.join(subagents, `agent-k${i}.jsonl`);
+      fs.writeFileSync(f, '');
+      files.push(f);
+      cursor[f] = i + 1;
+    }
+    writeCursor(tmp, cursor);
+    const kept = readCursor(tmp);
+    const keys = Object.keys(kept).filter((k) => k !== '__seenEvents');
+    assert.equal(keys.length, MAX_CURSOR_KEYS);
+    assert.equal(kept[files[0]], undefined, 'the oldest key is evicted');
+    assert.equal(kept[files[files.length - 1]], MAX_CURSOR_KEYS + 40, 'the newest key survives with its value');
   });
 });

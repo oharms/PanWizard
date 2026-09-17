@@ -416,6 +416,14 @@ describe('assessCacheTtl', () => {
     assert.match(r.advice, /2× base input/);
   });
 
+  it('ignores a `cost rebuild` main-thread row — one session dated at its end is not a subagent re-writing after an idle gap', () => {
+    const main = { ...at(20, { cache_write_tokens: 9600000 }), token_source: 'session-transcript', agent: '(main thread)' };
+    const r = assessCacheTtl([at(0), main, at(45), at(70)]);
+    assert.equal(r.records_considered, 3, 'the session row is not considered');
+    assert.equal(r.writes_after_short_idle, 2, 'the 45 and 70 rows follow 45- and 25-minute gaps; the session row neither counts nor breaks the gap');
+    assert.equal(r.tokens_after_short_idle, 10000, 'its 9.6M-token write is not attributed to the subagent cache');
+  });
+
   it('does not recommend on a single event, on trivial writes, or with nothing to read', () => {
     assert.equal(assessCacheTtl([at(0), at(20)]).recommend, false, 'one event is not a pattern');
     const trivial = assessCacheTtl([at(0), at(20, { cache_write_tokens: 10 }), at(40, { cache_write_tokens: 10 })]);

@@ -105,6 +105,10 @@ function assessCacheTtl(records, opts = {}) {
   const minWrite = opts.minWriteTokens ?? TTL_MIN_WRITE_TOKENS;
   const recommendAt = opts.recommendAt ?? TTL_RECOMMEND_AT;
   const rows = (Array.isArray(records) ? records : [])
+    // A `cost rebuild` main-thread row is one session's whole usage dated to its
+    // last record: its cache writes are not a subagent's re-write after an idle
+    // gap, and the subagent cache lifetime setting does not govern them.
+    .filter(r => !(r && r.token_source === 'session-transcript'))
     .map(r => ({ t: r && r.ts ? new Date(r.ts).getTime() : NaN, w: Number(r && r.cache_write_tokens) || 0 }))
     .filter(r => Number.isFinite(r.t))
     .sort((a, b) => a.t - b.t);

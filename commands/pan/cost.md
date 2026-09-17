@@ -2,7 +2,7 @@
 name: pan:cost
 group: Observability
 description: Show token usage and estimated cost across PAN commands and agents
-argument-hint: "[report|append|clear] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD]"
+argument-hint: "[report|append|clear|rebuild] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]"
 allowed-tools:
   - Read
   - Bash
@@ -45,7 +45,10 @@ pan-tools cost report [--format json|table|chart] [--since YYYY-MM-DD] [--until 
     "cache_read_tokens": 50000,
     "cache_write_tokens": 5000,
     "cost_usd": 2.1234,
-    "cost_unknown": 0
+    "cost_unknown": 0,
+    "suspect_excluded": 0,
+    "empty_excluded": 0,
+    "malformed_skipped": 0
   },
   "cache_hit_rate_pct": 40.5,
   "by_agent": { "pan-planner": { "calls": 8, "input": 50000, ... } },
@@ -76,6 +79,15 @@ Delete the cost log. Useful at the start of a billing cycle.
 
 ```
 pan-tools cost clear
+```
+
+### `rebuild`
+
+Rebuild the ledger from Claude Code's own transcripts (session file plus the per-agent files under `<session>/subagents/`, Workflow-tool subagents one level down). Rows written by hooks before v3.29 booked a slice of the parent session to whichever subagent stopped and counted turns once per content block; the rebuild replaces them with one exact row per agent transcript, typed from the main thread's `Agent` calls, plus one row per session for the main thread's own usage (`--no-main-thread` omits it). Rows whose session transcript is gone, and caller-appended rows, are kept. Dry-run by default — show the user the per-session before → after (and any `warnings`), then apply only on their say-so; the previous ledger is kept beside the new one as `tokens.jsonl.rebuilt-<date>` (a later copy never overwrites an earlier one). Run it **before** `/pan:hygiene --apply` on a poisoned ledger: quarantine moves the whole file aside, and a rebuild afterwards has no rows left to keep. The main-thread row is dated to the session's last record, so `--since`/`--until` windows and the per-day view see a session's own usage on its final day.
+
+```
+pan-tools cost rebuild              # dry run
+pan-tools cost rebuild --apply      # write the rebuilt ledger
 ```
 
 </subcommands>

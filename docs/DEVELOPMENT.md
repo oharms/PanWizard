@@ -41,6 +41,7 @@ pan-wizard/
         memory.cjs            # Cross-phase agent memory; memory-optimize.cjs and memory-rebuild.cjs (ADR-0040)
         agents-md.cjs         # AGENTS.md PAN section + CLAUDE.md bridge (shared by the installer and memory rebuild)
         cost.cjs              # Token ledger, dated rate table, managed modelPricing (Y-6); models check
+        cost-rebuild.cjs      # `cost rebuild`: the ledger regenerated from Claude Code transcripts (v3.29)
         bus.cjs               # Agent message channels (Y-7)
         preview.cjs           # Foresight: phase blast radius, dependency graph (Y-1)
         review-deep.cjs       # Deep review merge (reviewer + hardener + meta) (Y-2)
@@ -186,6 +187,20 @@ describe('your feature', () => {
 - `createScenarioRunner(runtime)` — installs PAN for `'claude'|'opencode'|'gemini'|'codex'|'copilot'` into a temp dir; returns `{ tmpDir, installedToolsPath, configDir, run(args, cwd?), cleanup() }`
 - `buildPluginInto()` / `buildAgentPluginInto()` — build the two distribution bundles into a fresh private temp directory and return its path (never into `dist/`); the caller owns `cleanup(dir)`
 - `TOOLS_PATH`, `INSTALLER_PATH` — absolute paths to `pan-tools.cjs` and `bin/install.js`; `RUNTIME_DIR` — the runtime → config-directory-name map (`claude` → `.claude`, …, `copilot` → `.github`) mirroring the installer's `getDirName`
+- `withFakeHome(fn)` — runs `fn(fakeHome)` with `HOME`, `USERPROFILE` and `CLAUDE_CONFIG_DIR` pointed at a fresh temp directory, then restores them; tests never read the developer's real home
+- `readLedger(cwd)` — the project's parsed cost-ledger rows (`[]` without a ledger)
+- `spawnHook(hookFile, payload, cwd, extraEnv?)` — spawns a hook as its host would (JSON payload on stdin, the project as cwd; a file name in `hooks/` or an absolute installed path); returns `{ status, stdout, stderr }`
+- `installInto(cwd, flags)` — runs the installer into `cwd` with the given flags and refuses the source repository
+
+### What the suite must cover, and what an assertion must be
+
+Three checks, run with the rest of the suite, decide this from the code rather than from the tests (the plan is `docs/specs/testing-system-redesign-2026-09.md`):
+
+- **The surface registry.** `node scripts/test-surface.cjs --write` derives every shipped surface — verbs from the dispatcher's usage line, subcommands from its `Unknown … subcommand. Available:` strings, dispatcher `case` arms, installer flag literals, hook × runtime registrations from `HOOK_EVENT_MAP`, MCP tools and resources, config default keys, the content directories — into `tests/fixtures/surface.json`, which is committed and reviewed like code. `tests/surface-map.test.cjs` fails when the registry drifts from the code (`npm run test:surface`) and when a row is named by no test: a verb or subcommand as a quoted CLI argument, a flag as a literal, a hook together with its runtime, an MCP tool by name, a config key as a key. A row without a test goes in `tests/fixtures/surface-allowlist.json` **with a reason**, and the entry fails once a test names it. `node scripts/test-surface.cjs --scaffold <dir>` writes one todo stub per unreferenced row; that is how a suite rebuilt from an empty directory starts.
+- **The coverage gate.** `npm run test:coverage` runs the suite under Node's own instrumentation (Node 22+; the processes tests spawn are captured through the inherited `NODE_V8_COVERAGE`) and fails when a dispatcher `case` arm never executed or a module group falls below the floors in `tests/fixtures/coverage-policy.json` (set a point below the measured baseline). An arm no test dispatches yet is allowlisted there with a reason, and the entry fails once a test dispatches it. Release-check Gate 9 runs it; CI runs it on the Node 22 job.
+- **The quality lint.** `tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file and fails on the shapes that have passed while the feature they named was broken: an OR between result-status fields (`output || error` — a crash satisfies it), an in-process call to a lib module's `cmd*` function (they end in `output()`/`error()`, which exit the process, so the test child dies and `node --test` reports the file as one passing test — always go through `runPanTools`), `assert(true)`, CLI output asserted only by its length, a platform conditional that bare-returns instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read of the real home directory, and a committed `test.todo`. Exceptions live in `tests/fixtures/test-quality-allowlist.json` per file and rule with a count and a reason; an entry that allows more than the file has is stale and fails too.
+
+The two allowlists are the debt register: seeded from the suite as it stood on 2026-09-17, burned down in the spec's phase 2.
 
 ### Running Tests
 
@@ -193,6 +208,8 @@ describe('your feature', () => {
 npm test                                    # Unit tests (npm run test:all adds the scenarios)
 node --test tests/phase.test.cjs            # Single file
 node scripts/run-tests.cjs tests            # Cross-platform runner; a tests/*.test.cjs glob only expands on bash or Node 22+
+npm run test:surface                        # The committed surface registry still matches the code
+npm run test:coverage                       # The suite under coverage: dispatcher arms + per-group floors (Node 22+)
 ```
 
 ## Cross-Platform Considerations
