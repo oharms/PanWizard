@@ -100,19 +100,29 @@ describe('E2E Phase Command Contracts', () => {
     assert.ok('directory' in parsed, 'should have directory');
   });
 
-  test('phase remove nonexistent phase returns graceful result', () => {
+  test('phase remove nonexistent phase fails with a not-found error', () => {
     const result = runner.run('phase remove 99');
-    assert.ok(result.output || result.error, 'should produce some output');
-    if (result.success && result.output) {
-      const parsed = JSON.parse(result.output);
-      assert.ok('removed' in parsed, 'should have removed field');
-    }
+    // Measured 2026-09-17 on this fixture (phases 01, 01.1, 02 exist): exit 1,
+    // empty stdout, and a stderr line naming both misses. The `if (result.success
+    // && result.output)` branch never ran, so the old assert only proved stderr
+    // was non-empty — which a stack trace also is.
+    assert.equal(result.success, false, 'removing a missing phase must exit non-zero');
+    assert.equal(result.output, '');
+    assert.match(result.error, /^Error: Phase 99 not found — no phase directory and no roadmap entry$/);
   });
 
-  test('phase complete already-done phase handles gracefully', () => {
+  test('phase complete on an already-completed phase is idempotent', () => {
     const result = runner.run('phase complete 01');
-    // Should not crash regardless of result
-    assert.ok(result.output || result.error, 'should produce output');
+    // Measured 2026-09-17: phase 01 was completed by the test above, and running
+    // it again exits 0 with the same payload (same next_phase, both updates
+    // reported true) rather than erroring.
+    assert.equal(result.success, true, `re-completing a phase should exit 0: ${result.error}`);
+    const parsed = JSON.parse(result.output);
+    assert.equal(parsed.completed_phase, '01');
+    assert.equal(parsed.phase_name, 'auth-system');
+    assert.equal(parsed.next_phase, '01.1');
+    assert.equal(parsed.roadmap_updated, true);
+    assert.equal(parsed.state_updated, true);
   });
 
   test('phases list on empty project returns zero count', () => {

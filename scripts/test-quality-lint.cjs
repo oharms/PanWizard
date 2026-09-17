@@ -15,7 +15,11 @@
  *       `t.skip(reason)`;
  *   Q6  a wall-clock upper bound under two seconds on a spawned process;
  *   Q7  a read of the developer's real HOME / USERPROFILE / os.homedir();
- *   Q8  a committed `test.todo` (scaffold stubs must be filled before commit).
+ *   Q8  a committed `test.todo` (scaffold stubs must be filled before commit);
+ *   Q9  an OR of bare property reads inside assert.ok — `assert.ok(a.x || a.y)` asks only
+ *       whether one of them exists, which an empty object, the wrong field, or a payload
+ *       that means failure all satisfy. Q1 covers the result-status fields; this covers
+ *       the same vacuity for arbitrary ones.
  *
  * `lintTestSource(src, file)` is pure; tests/test-quality.test.cjs applies it to the
  * suite with tests/fixtures/test-quality-allowlist.json (entries { file, rule,
@@ -172,6 +176,28 @@ const RULES = [
     detect(lines) {
       const out = [];
       lines.forEach((raw, i) => { if (/\b(?:test|it|describe)\.todo\s*\(|\{\s*todo\s*:/.test(stripComments(raw))) out.push({ line: i + 1, text: raw.trim() }); });
+      return out;
+    },
+  },
+  {
+    id: 'Q9',
+    title: 'OR of bare property reads in assert.ok',
+    fix: 'assert the specific field and its expected value, not that one of several exists',
+    detect(lines) {
+      const out = [];
+      lines.forEach((raw, i) => {
+        const line = stripComments(raw);
+        const m = line.match(/assert\.ok\(\s*([^;]*?)\s*(?:,\s*['"`][^;]*)?\)\s*;/);
+        if (!m || !m[1].includes('||')) return;
+        const expr = m[1];
+        // A comparison, a call, a negation or a length check is making a claim about a
+        // value; only a bare existence test is vacuous in this way.
+        if (/[=<>]|\(|\)|!|\.length|typeof|Array\.isArray/.test(expr)) return;
+        const operands = expr.split('||').map((s) => s.trim());
+        if (operands.length < 2) return;
+        if (!operands.every((o) => /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)+$/.test(o))) return;
+        out.push({ line: i + 1, text: raw.trim() });
+      });
       return out;
     },
   },

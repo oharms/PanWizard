@@ -106,8 +106,8 @@ describe('install-zcode buildBundle (M4)', () => {
     assert.doesNotThrow(() => assertNotInSourceRepo(path.join(os.tmpdir(), 'x'), REPO_ROOT));
   });
 
-  test('the source-repo guard is case-insensitive on case-folding filesystems', () => {
-    if (process.platform !== 'win32' && process.platform !== 'darwin') return; // case-sensitive FS: N/A
+  test('the source-repo guard is case-insensitive on case-folding filesystems', (t) => {
+    if (process.platform !== 'win32' && process.platform !== 'darwin') { t.skip('case-sensitive filesystem'); return; }
     // A case-variant of the repo path pointing back inside the repo must still be refused.
     const variant = path.join(REPO_ROOT.toUpperCase(), 'pan-zcode', 'out');
     assert.throws(() => assertNotInSourceRepo(variant, REPO_ROOT), /source repo/);

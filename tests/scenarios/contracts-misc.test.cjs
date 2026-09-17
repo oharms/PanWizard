@@ -107,12 +107,15 @@ describe('E2E Roadmap/Config/Template/Misc Contracts', () => {
 
   // === Error cases ===
 
-  test('config-get unknown key does not crash', () => {
+  test('config-get unknown key fails with a key-not-found error', () => {
     const result = runner.run('config-get nonexistent_key');
-    // May fail (error on stderr) or succeed with null/undefined — either is fine
-    // The important thing is it doesn't throw an uncaught exception
-    assert.ok(result.success || result.error || result.output === '',
-      'should handle gracefully without crash');
+    // Measured 2026-09-17 against this fixture (config.json exists, key absent):
+    // exit 1, empty stdout, `Error: Key not found: <key>` on stderr. The old
+    // `success || error || output === ''` assert was true for every possible
+    // outcome, a crash included.
+    assert.equal(result.success, false, 'an unknown config key must exit non-zero');
+    assert.equal(result.output, '');
+    assert.match(result.error, /^Error: Key not found: nonexistent_key$/);
   });
 
   test('roadmap analyze on project with no phases returns zero counts', () => {

@@ -1,0 +1,12 @@
+{
+  "hook_event": "Stop",
+  "runtime": "claude",
+  "captured_at": "2026-09-17",
+  "captured_from": "The fields hooks/pan-stop-guard.js reads off a Stop payload — `stop_hook_active` and `cwd` — with the loop-safety semantics of `stop_hook_active` documented in docs/HOOKS.md (\"the host sets stop_hook_active on stop attempts that follow a stop-hook block\") and both spellings already pinned end to end by tests/stop-guard-hook.test.cjs. `session_id` and `transcript_path` are the common input fields the other PAN hooks read; their identity shape was confirmed against a local Claude Code transcript tree on this machine on 2026-09-17 — structure only, nothing copied out, and every value here is neutral synthetic.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id",
+    "{{TRANSCRIPT_PATH}}": "absolute path of the session transcript",
+    "{{PROJECT_DIR}}": "absolute path of the project whose .planning/ tree arms or disarms the guard"
+  },
+  "notes": "`stop_hook_active: false` is the arming case — the first stop attempt of a chain. The e2e test flips it to true on the same fixture to prove the one-shot rule, so the fixture deliberately carries the value that lets the guard fire."
+}

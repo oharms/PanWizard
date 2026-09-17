@@ -81,13 +81,13 @@ describe('getArgValue behavior via CLI', () => {
     assert.ok(output.reason, 'should include a reason');
   });
 
-  test('template fill uses defaults for optional flags', () => {
-    // Without --phase, --plan etc., should not crash with TypeError
+  test('template fill without --phase is a usage error, not a TypeError', () => {
+    // Measured 2026-09-17: exit 1, empty stdout, `Error: --phase required` on
+    // stderr. The old `!result.success || result.output` assert was satisfied by
+    // any non-zero exit, a TypeError crash included — the very thing it named.
     const result = runPanTools('template fill summary', tmpDir);
-    // Should fail with a proper error about missing phase/plan, not TypeError
-    assert.ok(!result.success || result.output, 'should produce output or proper error');
-    if (!result.success) {
-      assert.ok(!result.error.includes('TypeError'), 'should not crash with TypeError');
-    }
+    assert.equal(result.success, false, 'template fill without --phase must exit non-zero');
+    assert.equal(result.output, '');
+    assert.match(result.error, /^Error: --phase required$/);
   });
 });

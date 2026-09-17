@@ -1,35 +1,78 @@
 [
-  { "id": "sub:bridge cache", "reason": "no test dispatches it (baseline 2026-09-17) — P2 dispatcher-arms test, spec §3.2 item 10" },
-  { "id": "sub:campaign record-run", "reason": "no test dispatches it (baseline 2026-09-17) — P2 dispatcher-arms test" },
-  { "id": "sub:focus reflection", "reason": "no test dispatches it (baseline 2026-09-17) — P2 dispatcher-arms test" },
-  { "id": "sub:learn unpromote", "reason": "no test dispatches it (baseline 2026-09-17) — P2 dispatcher-arms test" },
-  { "id": "sub:memory budget", "reason": "module function tested, CLI arm never dispatched (baseline 2026-09-17) — P2 dispatcher-arms test" },
-  { "id": "sub:optimize apply", "reason": "no test dispatches it (baseline 2026-09-17) — P2 dispatcher-arms test" },
-  { "id": "sub:optimize list", "reason": "no test dispatches it (baseline 2026-09-17) — P2 dispatcher-arms test" },
-  { "id": "sub:optimize stats", "reason": "no test dispatches it (baseline 2026-09-17) — P2 dispatcher-arms test" },
-  { "id": "sub:squad list", "reason": "module tested via squads.test.cjs, CLI arm never dispatched — P2 dispatcher-arms test" },
-  { "id": "sub:squad show", "reason": "module tested via squads.test.cjs, CLI arm never dispatched — P2 dispatcher-arms test" },
-  { "id": "sub:worktree create", "reason": "module tested via worktree.test.cjs, CLI arm never dispatched — P2 dispatcher-arms test" },
-  { "id": "sub:worktree list", "reason": "module tested via worktree.test.cjs, CLI arm never dispatched — P2 dispatcher-arms test" },
-  { "id": "flag:--both", "reason": "legacy alias kept working for old scripts; no test names it — P2 installer-flags test" },
-  { "id": "hook:gemini/pan-stop-guard.js", "reason": "the Gemini Stop guard registration is not asserted by name — P2 gemini-hooks test (spec §3.2 item 7)" },
-  { "id": "mcp-tool:pan_find_phase", "reason": "MCP tools are exercised by verb in tests/pan-zcode-mcp.test.cjs, not by tool name — P2: call each tool by name through the bridge" },
-  { "id": "mcp-tool:pan_preview_phase", "reason": "MCP tools are exercised by verb, not by tool name — P2: call each tool by name through the bridge" },
-  { "id": "mcp-tool:pan_preview_phases", "reason": "MCP tools are exercised by verb, not by tool name — P2: call each tool by name through the bridge" },
-  { "id": "mcp-tool:pan_roadmap_analyze", "reason": "MCP tools are exercised by verb, not by tool name — P2: call each tool by name through the bridge" },
-  { "id": "config:brave_search", "reason": "default written, never named by a test — P2 config-defaults test: set each key and assert the behaviour it governs" },
-  { "id": "config:budget.default_points", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:budget.verify_reserve", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:commit.conventional_types", "reason": "written but read nowhere (documented as reserved) — decide: read it or drop the default" },
-  { "id": "config:execution.default_mode", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:execution.error_pattern_learning", "reason": "written but read nowhere (documented as reserved) — decide: read it or drop the default" },
-  { "id": "config:execution.rollback_snapshots", "reason": "written but read nowhere (documented as reserved) — decide: read it or drop the default" },
-  { "id": "config:milestone_branch_template", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:phase_branch_template", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:routing.cascade_quality_gate", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:routing.complexity_thresholds.downgrade_max", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:routing.complexity_thresholds.upgrade_min", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:search_gitignored", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:workflow.nyquist_validation", "reason": "default written, never named by a test — P2 config-defaults test" },
-  { "id": "config:workflow.phase_record_compact", "reason": "default written, never named by a test — P2 config-defaults test" }
+  {
+    "id": "mcp-tool:pan_find_phase",
+    "reason": "MCP tools are exercised by verb in tests/pan-zcode-mcp.test.cjs, not by tool name — P2: call each tool by name through the bridge"
+  },
+  {
+    "id": "mcp-tool:pan_preview_phase",
+    "reason": "MCP tools are exercised by verb, not by tool name — P2: call each tool by name through the bridge"
+  },
+  {
+    "id": "mcp-tool:pan_preview_phases",
+    "reason": "MCP tools are exercised by verb, not by tool name — P2: call each tool by name through the bridge"
+  },
+  {
+    "id": "mcp-tool:pan_roadmap_analyze",
+    "reason": "MCP tools are exercised by verb, not by tool name — P2: call each tool by name through the bridge"
+  },
+  {
+    "id": "config:brave_search",
+    "reason": "default written, never named by a test — P2 config-defaults test: set each key and assert the behaviour it governs"
+  },
+  {
+    "id": "config:budget.default_points",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:budget.verify_reserve",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:commit.conventional_types",
+    "reason": "written but read nowhere (documented as reserved) — decide: read it or drop the default"
+  },
+  {
+    "id": "config:execution.default_mode",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:execution.error_pattern_learning",
+    "reason": "written but read nowhere (documented as reserved) — decide: read it or drop the default"
+  },
+  {
+    "id": "config:execution.rollback_snapshots",
+    "reason": "written but read nowhere (documented as reserved) — decide: read it or drop the default"
+  },
+  {
+    "id": "config:milestone_branch_template",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:phase_branch_template",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:routing.cascade_quality_gate",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:routing.complexity_thresholds.downgrade_max",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:routing.complexity_thresholds.upgrade_min",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:search_gitignored",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:workflow.nyquist_validation",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  },
+  {
+    "id": "config:workflow.phase_record_compact",
+    "reason": "default written, never named by a test — P2 config-defaults test"
+  }
 ]

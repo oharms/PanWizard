@@ -87,6 +87,49 @@ unattributed; only genuine typed turns count, because a tool result can quote a 
 tag verbatim — a session that had grepped another project's transcripts reported that
 project's command as its own until the reader was record-scoped rather than text-scoped.
 
+### Changed — the test system's phases 2 to 6
+
+Phase 1 derived the surface from the code; these phases close the gaps it measured
+(`docs/specs/testing-system-redesign-2026-09.md`). Nothing shipped changes.
+
+`tests/dispatcher-arms.test.cjs` is driven from the dispatcher's own source, so a new verb
+group changes what it asserts and no arm can go unexercised. It covers every one of the
+thirty-five "Unknown <group> subcommand. Available: …" arms — each must exit 1, name the
+group, list its real subcommands and leak no stack trace — the twelve CLI arms whose
+modules were tested but which no test had ever dispatched, the four verbs no test
+dispatched at all, and both spellings of `--flag value` and `--flag=value`. Writing it
+corrected four assumptions about behaviour that turned out to be wrong: a bare group name
+is its own no-argument form rather than a menu, an unknown verb points at `--help` rather
+than printing the verb list, `optimize apply` refuses rather than returning an empty
+success, and the squad registry ships four built-in squads rather than none. Those are
+pinned as measured. Thirteen entries left `tests/fixtures/surface-allowlist.json`,
+including the legacy `--both` installer alias, which now has a test that installs with it.
+
+CI gained a behavioural tier: `npm run harness` (tier 0, model-free and free) runs on the
+ubuntu Node-22 job, followed by a `git diff --exit-code` check that the suite and the
+harness both leave the tree as they found it. The harness gained `--no-ledger` for that
+job, since `harness/ledger.jsonl` is a tracked file whose history nobody reads on a
+throwaway runner.
+
+`scripts/mutation-probe.cjs` (`npm run test:mutate`) answers what coverage cannot: not
+whether a line ran but whether a test would fail if it were wrong. It applies one small
+mutation at a time inside a throwaway `git worktree`, runs the tests that claim to cover
+that file, and reports the mutations nothing noticed. It is sampled, seeded and
+reproducible, and it is **report-only** — a surviving mutant is a question, and some
+survivors are correct, so release-check and CI do not run it and a test asserts they do
+not. The phase-6 plan proposed Stryker as a devDependency; PAN's tests assert through
+spawned processes, so a framework built around in-process instrumentation would re-run
+whole subprocess suites per mutant anyway, and this keeps the dependency tree empty.
+
+`CONTRIBUTING.md` documents the loop the registry implies: add a surface, run the
+scaffold, fill the stub, and write every assertion from measured output rather than from
+what a verb ought to emit.
+
+The gate is stricter for it. Every one of the dispatcher`s 79 `case` arms is now executed
+by a test, so `arms_allow` in the coverage policy is **empty**: an arm that stops being
+dispatched fails the gate rather than earning an entry. The per-group floors move up to a
+point below the new measured baseline (overall lines 93.9%, functions 94.5%).
+
 ### Fixed — the cost logger booked the session's usage to whichever subagent stopped
 
 On `SubagentStop` Claude Code hands the hooks the *parent* session transcript; the

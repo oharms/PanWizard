@@ -52,9 +52,16 @@ const CONTENT_DIRS = Object.freeze({
 // Hooks the installer wires outside HOOK_EVENT_MAP (bin/install.js: the Stop guard
 // on the two runtimes with a Stop event, the statusline on Claude Code only).
 const EXTRA_HOOK_ROWS = Object.freeze([
-  { runtime: 'claude', hook: 'pan-stop-guard.js', event: 'Stop' },
-  { runtime: 'gemini', hook: 'pan-stop-guard.js', event: 'Stop' },
-  { runtime: 'claude', hook: 'pan-statusline.js', event: 'statusLine' },
+  { runtime: 'claude', hook: 'pan-stop-guard.js', event: 'Stop', surface: 'settings.json' },
+  { runtime: 'gemini', hook: 'pan-stop-guard.js', event: 'Stop', surface: 'settings.json' },
+  { runtime: 'claude', hook: 'pan-statusline.js', event: 'statusLine', surface: 'settings.json' },
+  // Gemini and Copilot register a statusline too. Both were missing here until a real
+  // install was read back (2026-09-17) — the registry's whole purpose is that a shipped
+  // registration cannot sit outside it, so a hand-maintained list is the weak point and
+  // these rows are the evidence for why it must be checked against an install.
+  { runtime: 'gemini', hook: 'pan-statusline.js', event: 'statusLine', surface: 'settings.json' },
+  // Copilot keeps its hooks in hooks/pan.json but its statusline in copilot/settings.json.
+  { runtime: 'copilot', hook: 'pan-statusline.js', event: 'statusLine', surface: 'copilot/settings.json' },
 ]);
 const EVENT_HOOKS = Object.freeze({
   sessionStart: ['pan-check-update.js'],
@@ -121,7 +128,9 @@ function hookMatrix(hookEventMap) {
       for (const hook of hooks) rows.push({ runtime, hook, event: spec[slot], surface: spec.surface });
     }
   }
-  rows.push(...EXTRA_HOOK_ROWS.map((r) => ({ ...r, surface: 'settings.json' })));
+  // Each extra row names its own surface; these registrations are not all in the file
+  // the runtime's hooks live in.
+  rows.push(...EXTRA_HOOK_ROWS.map((r) => ({ ...r })));
   return rows.sort((a, b) => `${a.runtime}/${a.hook}`.localeCompare(`${b.runtime}/${b.hook}`));
 }
 

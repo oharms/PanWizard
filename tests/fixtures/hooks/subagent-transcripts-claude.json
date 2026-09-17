@@ -1,0 +1,105 @@
+{
+  "parent": [
+    {
+      "parentUuid": null,
+      "isSidechain": false,
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": "<command-message>exec-phase is running…</command-message>\n<command-name>/pan:exec-phase</command-name>"
+      },
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "timestamp": "2026-09-17T10:00:00.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    }
+  ],
+  "agent": [
+    {
+      "parentUuid": null,
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": {
+        "role": "user",
+        "content": "synthetic subagent prompt"
+      },
+      "uuid": "00000000-0000-4000-8000-000000000011",
+      "timestamp": "2026-09-17T10:00:00.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000011",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_turn_a",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "text", "text": "synthetic first content block" }],
+        "usage": {
+          "input_tokens": 120,
+          "cache_creation_input_tokens": 800,
+          "cache_read_input_tokens": 5000,
+          "output_tokens": 40,
+          "service_tier": "standard"
+        }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000012",
+      "timestamp": "2026-09-17T10:00:00.400Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000011",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_turn_a",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_1", "name": "Read", "input": {} }],
+        "usage": {
+          "input_tokens": 120,
+          "cache_creation_input_tokens": 800,
+          "cache_read_input_tokens": 5000,
+          "output_tokens": 340,
+          "service_tier": "standard"
+        }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000013",
+      "timestamp": "2026-09-17T10:00:00.900Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000013",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_turn_b",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "text", "text": "synthetic second turn" }],
+        "usage": {
+          "input_tokens": 6,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 9000,
+          "output_tokens": 210,
+          "service_tier": "standard"
+        }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000014",
+      "timestamp": "2026-09-17T10:00:01.500Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    }
+  ]
+}

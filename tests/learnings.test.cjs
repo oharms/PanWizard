@@ -214,6 +214,10 @@ describe('learnings prune command', () => {
 
   test('reports error when no prune criteria given', () => {
     const result = runPanTools('learnings prune', tmpDir);
-    assert.ok(!result.success || result.error, 'should fail without criteria');
+    // Measured 2026-09-17: exit 1, empty stdout, and a stderr line that names both
+    // accepted criteria. The old assert passed on any non-zero exit.
+    assert.equal(result.success, false, 'prune without criteria must exit non-zero');
+    assert.equal(result.output, '');
+    assert.match(result.error, /^Error: Prune requires --days N or --id LEARN-NNN$/);
   });
 });

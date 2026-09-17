@@ -1,0 +1,13 @@
+{
+  "hook_event": "SubagentStop",
+  "runtime": "claude",
+  "captured_at": "2026-09-17",
+  "captured_from": "Field names and types of a Claude Code SubagentStop hook payload, derived from two evidence sources on 2026-09-17: (a) the fields the shipped hooks actually read — hooks/pan-cost-logger.js buildCostRecord/resolveAgentTranscript and hooks/pan-trace-logger.js buildTraceEvents — together with the payload shapes their suites already pin (tests/cost-logger-hook.test.cjs, tests/trace-logger.test.cjs) and the field list documented in docs/HOOKS.md under pan-cost-logger.js; (b) the structure of a local Claude Code transcript tree on this machine, read on 2026-09-17 to confirm the parent-session-plus-per-agent layout the payload addresses. Structure only: no project name, path, prose, code or business detail was copied out of that tree, and every value below is neutral synthetic.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id; the test substitutes a synthetic one that also names the subagents/ directory",
+    "{{TRANSCRIPT_PATH}}": "absolute path of the PARENT session transcript the host hands the hook",
+    "{{PROJECT_DIR}}": "absolute path of the project the hook writes its ledger row into",
+    "{{AGENT_ID}}": "the host's per-spawn agent id; resolves <parent dir>/<session_id>/subagents/agent-<id>.jsonl"
+  },
+  "notes": "`usage` is deliberately implausible (a cumulative session counter, which is what the host really sends on this event — docs/HOOKS.md). The agent transcript in subagent-transcripts-claude.json holds the true per-spawn counts, so a row built from `usage` instead of the agent transcript is visibly wrong rather than merely different. Omitted on purpose because the hooks do not read them and no local evidence fixes their shape: `model`, `phase`, `command`, `exit_code`, `agent_transcript_path`. docs/HOOKS.md records that real payloads carried no `model` or `phase`, and that `usage` is absent entirely in headless mode."
+}

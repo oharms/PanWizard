@@ -79,13 +79,21 @@ describe('E2E Workflow: Focus System', () => {
 
   test('step 5: focus auto --init creates auto-run state', () => {
     const r = runner.run('focus auto --category stability --init');
-    // May succeed or fail depending on auto-run state
-    if (r.success && r.output) {
-      const p = JSON.parse(r.output);
-      assert.ok('status' in p, 'should have status field');
-    }
-    // Either way, should not crash
-    assert.ok(r.success || r.error, 'should produce result');
+    // Measured 2026-09-17: with no auto-run in flight (steps 1-4 write only
+    // .planning/focus/batch-*.json), --init exits 0 and returns the initialized
+    // run, and the run file it names exists on disk. A second --init would exit 1
+    // with "Auto-run already in progress", so this is a one-shot assertion.
+    assert.equal(r.success, true, `focus auto --init should exit 0: ${r.error}`);
+    const p = JSON.parse(r.output);
+    assert.equal(p.status, 'initialized');
+    assert.equal(p.category, 'stability');
+    assert.equal(p.source, 'scan');
+    assert.deepEqual(p.cycles, []);
+    assert.equal(p.totals.cycles_completed, 0);
+    assert.equal(p.stop_reason, null);
+    assert.equal(p.run_file, '.planning/focus/auto-run.json');
+    assert.equal(fs.existsSync(path.join(pd, 'focus', 'auto-run.json')), true,
+      'the run file named in the payload must exist on disk');
   });
 
   test('step 6: focus scan output has correct structure', () => {
