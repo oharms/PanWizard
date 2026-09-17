@@ -122,8 +122,46 @@ describe('memory — memoryLoadBudget (ADR-0036 acceptance signal)', () => {
   test('degrades gracefully with no cost ledger (median null)', () => {
     appendMemory(tmp, 'pan-executor', 'one entry');
     const b = memoryLoadBudget(tmp);
-    assert.equal(b.median_input_tokens, null);
+    assert.equal(b.median_prompt_tokens, null);
     assert.equal(b.fraction, null);
+  });
+
+  test('the denominator is the whole prompt, not the uncached remainder: a cached ledger does not make a small memory critical', () => {
+    // Field shape (sweep 2026-09-17): under prompt caching `input_tokens` is tens of
+    // tokens while the agent's real prompt is ~500k cached. Dividing by input alone
+    // reported 1.8k of memory as 8,940% of "median agent input" and called it critical.
+    const ledger = path.join(tmp, '.planning', 'metrics', 'tokens.jsonl');
+    fs.mkdirSync(path.dirname(ledger), { recursive: true });
+    const rows = [];
+    for (let i = 0; i < 9; i++) {
+      rows.push({
+        v: 4, ts: `2026-09-0${i + 1}T10:00:00.000Z`, agent: 'pan-executor', model: 'claude-opus-5',
+        input_tokens: 20, output_tokens: 3000, cache_read_tokens: 500000, cache_write_tokens: 8000,
+        duration_ms: 600000, session: 's1', source: 'hook', token_source: 'agent-transcript',
+      });
+    }
+    fs.writeFileSync(ledger, rows.map(r => JSON.stringify(r)).join('\n') + '\n');
+    appendMemory(tmp, 'pan-executor', 'a few hundred bytes of episodic memory');
+
+    const b = memoryLoadBudget(tmp);
+    assert.equal(b.median_prompt_tokens, 508020, 'median is input + cache_read + cache_write');
+    assert.ok(b.memory_tokens > 0, 'memory was measured');
+    assert.ok(b.fraction < 0.01, `memory is a sliver of the prompt, got ${b.fraction}`);
+    assert.equal(b.status, 'ok');
+    assert.equal(b.advisory, 'Memory-load within budget.');
+  });
+
+  test('an oversum or empty ledger row never becomes the denominator', () => {
+    const ledger = path.join(tmp, '.planning', 'metrics', 'tokens.jsonl');
+    fs.mkdirSync(path.dirname(ledger), { recursive: true });
+    fs.writeFileSync(ledger, [
+      // a real row, and two that aggregate() excludes: an untimed oversum and an empty spawn
+      { v: 4, ts: '2026-09-01T10:00:00.000Z', agent: 'a', model: 'claude-opus-5', input_tokens: 100, output_tokens: 900, cache_read_tokens: 40000, cache_write_tokens: 0, duration_ms: 60000, token_source: 'transcript' },
+      { v: 4, ts: '2026-09-02T10:00:00.000Z', agent: 'b', model: 'claude-opus-5', input_tokens: 10, output_tokens: 10, cache_read_tokens: 9000000000, cache_write_tokens: 0, token_source: 'transcript' },
+      { v: 4, ts: '2026-09-03T10:00:00.000Z', agent: 'c', model: null, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, token_source: 'agent-transcript-missing' },
+    ].map(r => JSON.stringify(r)).join('\n') + '\n');
+    appendMemory(tmp, 'pan-executor', 'one entry');
+    assert.equal(memoryLoadBudget(tmp).median_prompt_tokens, 40100, 'only the trustworthy row counts');
   });
 });
 

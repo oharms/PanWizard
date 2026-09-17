@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `commit` called "nothing to commit" a failed commit
+
+Git has two ways of saying there was nothing to do: `nothing to commit` for a clean tree,
+and `nothing added to commit but untracked files present` when the only changes are
+untracked. Both `cmdGitCommit` and `cmdCommit` matched the first phrasing only, so a
+commit in a repo whose changes were all untracked fell through to the generic failure path
+and reported `reason: "commit_failed"` with `error: "unknown git error"` — a real change
+failure, which it was not, and an exit code of 1 where the documented contract is 0 ("no
+change was NEEDED, not that a change failed"). Both sites now match either phrasing.
+
+The assertion covering that path had been `assert.ok(r.output || r.error, 'should produce
+output')`, which a wrong payload satisfies as happily as a right one; the defect surfaced
+the moment it was rewritten to name the fields. That is the whole argument for the
+assertion lint, so it is worth recording which of the two found it.
+
+### Fixed — six findings from running PAN's own telemetry over the field projects
+
+The 2026-09-17 sweep ran PAN's read-only verbs across the fourteen projects on this
+machine that have a `.planning/` tree. The cost-attribution defect it found is above;
+these are the other six, each reproduced against a real project before being changed.
+
+**`validate health` called eight of the fourteen projects broken.** It ran the phase
+model's checks against every tree, so a focus-model project — `/pan:focus`, no
+`project.md`, `roadmap.md` or `state.md` by design — failed E002, E003 and E004 and, since
+3.28.0, exited 1. The heaviest project on the machine is one of those. A tree's workflow
+model is now read from the entries only that model creates (`PLANNING_MODEL_MARKERS`,
+`detectPlanningModel`): the phase model, the focus model, an orchestration campaign, or a
+fragment holding nothing but generated artifacts. Health runs the phase-model checks on a
+phase-model tree, reports `I003` naming the model on the others, and `config.json` is
+checked on all of them because every model has one. `hygiene scan`'s fragment finding now
+asks the same function, so the two verbs cannot disagree about a tree.
+
+**The hooks scaffolded `.planning/` in projects that had never run a PAN command.** A
+global-install hook fires in every repo the user opens, and the gate accepted a bare
+install marker — right for "is PAN here", wrong as a licence to write. Five of the
+fourteen projects had a planning tree no `/pan` command created, which then read as a
+half-built project to health and hygiene. Telemetry now fills a tree that exists and never
+creates one: before the first `/pan` command there is nothing to attribute a run to, so
+the honest record is no record.
+
+**The optimisation instrument had recorded nothing it was designed to record.** Across the
+fourteen projects it held 3,737 events, 99.7% of them the completion rows the hook writes,
+and not one error, gap or correction in its whole history. The cause was not agents
+ignoring the instruction: `optimize trace log` returned `logged: false` when no trace
+session was active, the phase pipeline never starts one, and the sixteen call sites in the
+workflows are fire-and-forget (`2>/dev/null || true`), so every agent-reported event was
+discarded in silence. `logTraceEvent` now creates the day-scoped session itself, with the
+same `sess_auto_YYYYMMDD` id the trace hook mints so a day's hook-written and
+agent-reported events share one session.
+
+**A `current-session` pointer stayed "current" forever.** An explicit (non-auto) session
+had no age bound at all: one field project still pointed at a session started on 17 July
+when it was swept on 17 September, and every ledger row written in between had inherited
+that session's command and phase. A pointer is now evidence only while the session it
+names is alive (`SESSION_STALE_MS`, judged from the session's own last write, not its
+start, so a long run stays live); the trace hook finalizes a dead one on its way past, and
+the cost hook backfills nothing from it.
+
+**`memory budget` reported 1.8k tokens of memory as 8,940% of a "median agent input".**
+The denominator was `input_tokens` alone, which under prompt caching is tens of tokens.
+Memory is injected into the whole prompt, so the whole prompt is what it is measured
+against: `median_prompt_tokens` is the median of `input + cache_read + cache_write` over
+the ledger's trustworthy rows, and rows the reader excludes are excluded here too.
+
+**The cache-lifetime recommendation was filed where nothing surfaces it.** It fired in
+eight of ten projects at `info`. `assessCacheTtl` now carries its own severity, and
+hygiene uses it: above a million re-written tokens the recommendation is a `warn`, the way
+the cached-block findings already scale, and below that it stays informational.
+
+**Command attribution now works outside focus mode.** `command` came only from the
+optimizer's trace session, which is off by default, so every field row outside focus mode
+carried `command: null` and "which command got expensive" could not be answered from PAN's
+own telemetry. A runtime records a slash-command invocation as a typed user turn carrying
+`<command-name>`, so both hooks read the most recent PAN command from the parent
+transcript's tail. Only PAN's own namespace counts (`/pan:exec-phase`, `/pan-exec-phase`),
+so a host command such as `/model` and a plain typed prompt leave the row honestly
+unattributed; only genuine typed turns count, because a tool result can quote a command
+tag verbatim — a session that had grepped another project's transcripts reported that
+project's command as its own until the reader was record-scoped rather than text-scoped.
+
 ### Fixed — the cost logger booked the session's usage to whichever subagent stopped
 
 On `SubagentStop` Claude Code hands the hooks the *parent* session transcript; the

@@ -113,6 +113,10 @@ function defaultFetchLatest() {
     encoding: 'utf8',
     timeout: 10000,
     windowsHide: true,
+    // Own the silence here rather than relying on the caller's stdio: 'ignore'. npm
+    // writes registry and PATH failures to stderr, and a hook that lets them through
+    // puts its own diagnostics in front of the user mid-session.
+    stdio: ['ignore', 'pipe', 'ignore'],
   }).trim();
 }
 

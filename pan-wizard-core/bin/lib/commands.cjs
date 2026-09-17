@@ -428,7 +428,9 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
   const commitArgs = amend ? ['commit', '--amend', '--no-edit'] : ['commit', '-m', finalMessage];
   const commitResult = execGit(cwd, commitArgs);
   if (commitResult.exitCode !== 0) {
-    if (commitResult.stdout.includes('nothing to commit') || commitResult.stderr.includes('nothing to commit')) {
+    // Both of git's phrasings — see the matching guard in git.cjs cmdGitCommit.
+    if ((commitResult.stdout + commitResult.stderr).includes('nothing to commit')
+      || (commitResult.stdout + commitResult.stderr).includes('nothing added to commit')) {
       output({ committed: false, hash: null, reason: 'nothing_to_commit' }, raw, 'nothing');
       return;
     }

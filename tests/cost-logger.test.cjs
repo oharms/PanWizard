@@ -189,15 +189,38 @@ describe('buildCostRecord — v3.21.0 enrichment (duration / tier / provenance /
     assert.equal(rec.token_source, 'transcript');
   });
 
-  test('command/phase are backfilled from the active trace session', () => {
+  // The session fixture carries started_at because a real one does (initTraceSession
+  // writes it) and because the pointer is only evidence while the session is alive — a
+  // field project still pointed at a 17 July session on 17 September, and every row in
+  // between had inherited its command and phase (sweep 2026-09-17).
+  const writeSession = (sid, meta) => {
     const optDir = path.join(tmpDir, '.planning', 'optimization');
-    fs.mkdirSync(path.join(optDir, 'traces', 'sess_x'), { recursive: true });
-    fs.writeFileSync(path.join(optDir, 'current-session'), 'sess_x\n');
-    fs.writeFileSync(path.join(optDir, 'traces', 'sess_x', 'session.json'), JSON.stringify({ command: 'exec-phase', phase: '07' }));
+    fs.mkdirSync(path.join(optDir, 'traces', sid), { recursive: true });
+    fs.writeFileSync(path.join(optDir, 'current-session'), sid + '\n');
+    fs.writeFileSync(path.join(optDir, 'traces', sid, 'session.json'),
+      JSON.stringify({ session_id: sid, started_at: new Date().toISOString(), ended_at: null, ...meta }));
+  };
+
+  test('command/phase are backfilled from the active trace session', () => {
+    writeSession('sess_x', { command: 'exec-phase', phase: '07' });
     const p = writeTranscript([{ type: 'assistant', message: { model: 'claude-opus-4-8', usage: { input_tokens: 1 } } }]);
     const rec = buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir);
     assert.equal(rec.command, 'exec-phase');
     assert.equal(rec.phase, '07');
+  });
+
+  test('a long-dead session backfills nothing', () => {
+    writeSession('sess_old', { command: 'army', phase: '03', started_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString() });
+    const p = writeTranscript([{ type: 'assistant', message: { model: 'claude-opus-4-8', usage: { input_tokens: 1 } } }]);
+    const rec = buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir);
+    assert.equal(rec.command, null, 'two months quiet is not the session running now');
+    assert.notEqual(rec.phase, '03');
+  });
+
+  test('a session whose meta carries no timestamps cannot be shown to be alive', () => {
+    writeSession('sess_nots', { command: 'exec-phase', phase: '07', started_at: undefined });
+    const p = writeTranscript([{ type: 'assistant', message: { model: 'claude-opus-4-8', usage: { input_tokens: 1 } } }]);
+    assert.equal(buildCostRecord({ hook_event_name: 'SubagentStop', transcript_path: p }, tmpDir).command, null);
   });
 
   test('command stays null when no active session exists', () => {

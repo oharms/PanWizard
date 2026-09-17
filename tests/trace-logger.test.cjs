@@ -12,7 +12,7 @@ const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
 const {
-  buildTraceEvents, appendTraceEvents, isPanProject,
+  buildTraceEvents, appendTraceEvents, isPanProject, hasPlanningTree, readCommandFromTranscript,
   PLANNING_DIR, OPTIMIZE_DIR, TRACES_DIR, TRACE_EVENT_FILE, CURRENT_SESSION_FILE,
 } = require('../hooks/pan-trace-logger.js');
 
@@ -21,6 +21,72 @@ const TRACE_HOOK = path.join(__dirname, '..', 'hooks', 'pan-trace-logger.js');
 let tmpDir;
 beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-tracelog-')); });
 afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+
+// ── Telemetry fills a planning tree; it never creates one ────────────────────
+// isPanProject also accepts a bare install marker, which is right for "is PAN here"
+// and wrong as a licence to write: a global-install hook fires in every repo the user
+// opens, and five of the fourteen projects swept on 2026-09-17 carried a .planning/
+// tree no /pan command ever created, which then read as a half-built project to
+// `validate health` and `hygiene scan`.
+describe('pan-trace-logger — never scaffolds a planning tree', () => {
+  let bare;
+  beforeEach(() => { bare = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-notree-')); });
+  afterEach(() => { fs.rmSync(bare, { recursive: true, force: true }); });
+
+  const fire = () => spawnSync(process.execPath, [TRACE_HOOK], {
+    cwd: bare, input: JSON.stringify({ hook_event_name: 'SubagentStop', cwd: bare, agent_id: 'a1', session_id: 's1', usage: { input_tokens: 10, output_tokens: 5 } }), encoding: 'utf-8',
+  });
+
+  test('an install marker alone buys no write: no .planning/, and the gate says why', () => {
+    fs.mkdirSync(path.join(bare, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(bare, '.claude', 'pan-file-manifest.json'), '{}');
+    assert.equal(isPanProject(bare), true, 'the marker still answers "is PAN installed here"');
+    assert.equal(hasPlanningTree(bare), false, 'but it is not a licence to write');
+
+    const r = fire();
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(path.join(bare, '.planning')), false, 'the hook must not scaffold a tree');
+  });
+
+  test('a plain repo with no PAN trace at all is untouched', () => {
+    const r = fire();
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(path.join(bare, '.planning')), false);
+  });
+
+  test('once a /pan command has created the tree, the hook writes into it as before', () => {
+    fs.mkdirSync(path.join(bare, '.planning'), { recursive: true });
+    const r = fire();
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(path.join(bare, PLANNING_DIR, OPTIMIZE_DIR)), true, 'the artifact lands in the existing tree');
+  });
+});
+
+describe('pan-trace-logger — readCommandFromTranscript matches the cost logger copy', () => {
+  test('both hooks carry the same reader, byte for byte', () => {
+    // The two hooks are standalone zero-dep scripts that cannot import from each other,
+    // the same reason resolveAgentTranscript exists twice. Drift between the copies
+    // would attribute a trace event and its ledger row to different commands.
+    const lift = (file) => {
+      const src = fs.readFileSync(path.join(__dirname, '..', 'hooks', file), 'utf-8').replace(/\r\n/g, '\n');
+      const m = src.match(/function readCommandFromTranscript\(transcriptPath\) \{[\s\S]*?\n\}\n/);
+      assert.ok(m, `${file} must define readCommandFromTranscript`);
+      return m[0];
+    };
+    assert.equal(lift('pan-trace-logger.js'), lift('pan-cost-logger.js'));
+  });
+
+  test('it reads a typed PAN invocation and ignores one quoted in tool output', () => {
+    const f = path.join(tmpDir, 'session.jsonl');
+    const rec = (content) => JSON.stringify({ type: 'user', timestamp: '2026-09-17T10:00:00.000Z', message: { role: 'user', content } });
+    fs.writeFileSync(f, [
+      rec('<command-name>/pan:optimize</command-name>'),
+      rec([{ type: 'tool_result', tool_use_id: 't1', content: '<command-name>/pan:army</command-name>' }]),
+    ].join('\n') + '\n');
+    assert.equal(readCommandFromTranscript(f), 'optimize');
+  });
+});
 
 function writeTranscript(lines) {
   const p = path.join(tmpDir, 'transcript.jsonl');
@@ -722,11 +788,36 @@ describe('pan-trace-logger — v3.21.0 enrichment', () => {
     assert.equal(finalized.type_counts.error, 1);
   });
 
-  test('an explicit (non-auto) session stays sticky — no rollover', () => {
-    const optDir = path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR);
-    fs.mkdirSync(optDir, { recursive: true });
-    fs.writeFileSync(path.join(optDir, 'current-session'), 'sess_20260101T120000\n');
-    assert.equal(ensureSessionId(tmpDir), 'sess_20260101T120000');
+  // "Sticky" used to mean "forever": an explicit session had no age bound at all, which
+  // is how a field project was still pointing at a 17 July session on 17 September, with
+  // every ledger row since inheriting its command and phase (sweep 2026-09-17). It is now
+  // sticky while in use and rolls over once quiet.
+  test('an explicit (non-auto) session stays sticky while it is in use', () => {
+    const sid = 'sess_20260101T120000';
+    const dir = path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, TRACES_DIR, sid);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ session_id: sid, started_at: new Date().toISOString(), ended_at: null }));
+    fs.writeFileSync(path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, 'current-session'), sid + '\n');
+    assert.equal(ensureSessionId(tmpDir), sid, 'no rollover while the session is alive');
+  });
+
+  test('an explicit session that has gone quiet rolls over to the day-scoped one', () => {
+    const sid = 'sess_20260717T143520';
+    const dir = path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, TRACES_DIR, sid);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ session_id: sid, started_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(), ended_at: null }));
+    fs.writeFileSync(path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, 'current-session'), sid + '\n');
+
+    const fresh = ensureSessionId(tmpDir);
+    assert.match(fresh, /^sess_auto_\d{8}$/, `expected a day-scoped session, got ${fresh}`);
+    const finalized = JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf-8'));
+    assert.ok(finalized.ended_at, 'the dead session is finalized on the way out');
+  });
+
+  test('a pointer at a session with no directory at all rolls over too', () => {
+    fs.mkdirSync(path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, PLANNING_DIR, OPTIMIZE_DIR, 'current-session'), 'sess_vanished\n');
+    assert.match(ensureSessionId(tmpDir), /^sess_auto_\d{8}$/);
   });
 });
 

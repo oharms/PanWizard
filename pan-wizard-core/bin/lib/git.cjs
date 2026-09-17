@@ -82,7 +82,11 @@ function cmdGitCommit(cwd, opts, raw) {
   const commitArgs = amend ? ['commit', '--amend', '--no-edit'] : ['commit', '-m', finalMessage];
   const r = execGit(cwd, commitArgs);
   if (r.exitCode !== 0) {
-    if (r.stdout.includes('nothing to commit') || r.stderr.includes('nothing to commit')) {
+    // Git says "nothing to commit" for a clean tree and "nothing added to commit but
+    // untracked files present" when the only changes are untracked. Both mean no change
+    // was NEEDED; only the first was recognised, so the second was reported as a failed
+    // commit with "unknown git error" (measured 2026-09-17).
+    if ((r.stdout + r.stderr).includes('nothing to commit') || (r.stdout + r.stderr).includes('nothing added to commit')) {
       // No error key, exit 0: nothing to commit means no change was NEEDED, not that
       // a change failed. Pinned as a success in CLI-REFERENCE ("Error Shape").
       output({ committed: false, reason: 'nothing_to_commit' }, raw, 'nothing to commit');
