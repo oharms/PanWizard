@@ -42,7 +42,8 @@ describe('cost-rebuild — rebuilding the ledger from transcripts', () => {
   beforeEach(() => {
     tmp = createTempProject();
     claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-claude-'));
-    projDir = path.join(claudeDir, 'projects', encodeProjectDirName(tmp));
+    // Claude Code names the folder after process.cwd(), i.e. the REAL path (macOS: /var/… → /private/var/…).
+    projDir = path.join(claudeDir, 'projects', encodeProjectDirName(fs.realpathSync(tmp)));
     fs.mkdirSync(projDir, { recursive: true });
 
     // S1 main thread: an Agent tool_use paired to its result (agentId a1 → pan-executor)
@@ -290,6 +291,18 @@ describe('cost-rebuild — rebuilding the ledger from transcripts', () => {
     const plan = planRebuild(tmp, { claudeDir: fs.mkdtempSync(path.join(os.tmpdir(), 'pan-empty-')) });
     assert.equal(plan.sessions.length, 0);
     assert.equal(plan.totals.new_rows, plan.totals.old_rows);
+  });
+
+  test('the project folder is found through a symlinked cwd: Claude Code names it after the real path, the caller may pass the link (macOS /var → /private/var)', (t) => {
+    const link = path.join(os.tmpdir(), `pan-link-${process.pid}-${Date.now()}`);
+    try { fs.symlinkSync(tmp, link, 'junction'); } catch (e) { t.skip(`symlinks not permitted here: ${e.code}`); return; }
+    try {
+      assert.notEqual(encodeProjectDirName(link), encodeProjectDirName(fs.realpathSync(tmp)), 'the link encodes to a different folder name');
+      const plan = planRebuild(link, { claudeDir });
+      assert.deepEqual(plan.sessions.map((s) => s.session).sort(), [S1, S3].sort(), 'both agent-bearing sessions are found through the link');
+    } finally {
+      try { fs.unlinkSync(link); } catch { try { fs.rmdirSync(link); } catch { /* left in the temp dir */ } }
+    }
   });
 
   test('CLI: `cost rebuild` defaults to a dry run with the row list stripped; --raw prints the table; --apply --no-main-thread writes a subagent-only ledger; unknown subcommands name it', () => {

@@ -61,6 +61,15 @@ function encodeProjectDirName(cwd) {
   return path.resolve(cwd).replace(/[^A-Za-z0-9-]/g, '-');
 }
 
+/** The folder names Claude Code may have used for `cwd`: the path as given and its
+ *  resolved real path. Claude Code names the folder after `process.cwd()`, which is the
+ *  real path (macOS: `/var/…` → `/private/var/…`), while a caller may pass either spelling. */
+function projectDirNames(cwd) {
+  const names = new Set([encodeProjectDirName(cwd).toLowerCase()]);
+  try { names.add(encodeProjectDirName(fs.realpathSync(cwd)).toLowerCase()); } catch { /* unresolvable — the given spelling alone */ }
+  return names;
+}
+
 function tierForModel(model) {
   if (typeof model !== 'string' || !model) return null;
   if (/opus|fable|mythos/i.test(model)) return 'reasoning';
@@ -231,15 +240,15 @@ const dirKey = (d) => (process.platform === 'win32' ? path.resolve(d).toLowerCas
 /**
  * Sessions of this project that can be rebuilt: { sessionId, transcript, sessionDir, dir, agentFiles }.
  * Swept directories (every agent-bearing session counts): the encoded cwd under the
- * projects root (case-insensitive — on Windows two spellings of one folder were
- * observed) and every directory a cost-cursor SESSION transcript points into.
+ * projects root — under the given spelling and its real path (Claude Code uses the real
+ * path), case-insensitive (on Windows two spellings of one folder were observed) and every directory a cost-cursor SESSION transcript points into.
  * Named-only directories (just the sessions the ledger names): any directory that
  * holds such a session but is neither of the above — a ledger copied from another
  * project must not pull that project's whole history in.
  */
 function discoverSessions(cwd, ledgerSessions, opts) {
   const projectsRoot = path.join(claudeConfigDir(opts), 'projects');
-  const wanted = encodeProjectDirName(cwd).toLowerCase();
+  const wanted = projectDirNames(cwd);
   const dirs = new Map(); // dirKey → { dir, sweep }
   const add = (d, sweep) => {
     const k = dirKey(d);
@@ -249,7 +258,7 @@ function discoverSessions(cwd, ledgerSessions, opts) {
   };
   let all = [];
   try { all = fs.readdirSync(projectsRoot); } catch { all = []; }
-  for (const name of all) if (name.toLowerCase() === wanted) add(path.join(projectsRoot, name), true);
+  for (const name of all) if (wanted.has(name.toLowerCase())) add(path.join(projectsRoot, name), true);
   for (const d of readCursorDirs(cwd)) add(d, true);
   for (const sid of ledgerSessions) {
     for (const name of all) if (fs.existsSync(path.join(projectsRoot, name, `${sid}.jsonl`))) add(path.join(projectsRoot, name), false);

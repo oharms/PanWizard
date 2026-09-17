@@ -105,7 +105,9 @@ after; `--apply` copies the current ledger aside as `tokens.jsonl.rebuilt-<date>
 mid-rebuild, writes through a temp file and rename, and is a no-op when nothing
 changes. A folder reached only because the ledger names one of its sessions
 contributes that session alone, so a ledger copied from another project cannot
-pull that project's history in. Transcripts are parsed from a Buffer (a
+pull that project's history in. The project's own folder is matched under the
+working directory as given and under its real path — Claude Code names it after
+the real path (`/var/…` is `/private/var/…` on macOS), a caller may pass either. Transcripts are parsed from a Buffer (a
 24-day session file passed 187 MB), an unreadable one is named in the plan's
 warnings, and an interruption's `<synthetic>` model is ignored. Rows measured
 from a single actor's own transcript are exempt from the oversum quarantine, and
