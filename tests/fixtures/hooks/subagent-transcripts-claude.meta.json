@@ -1,0 +1,12 @@
+{
+  "hook_event": "SubagentStop",
+  "runtime": "claude",
+  "captured_at": "2026-09-17",
+  "captured_from": "Record structure of a Claude Code JSONL transcript pair, derived from a local Claude Code transcript tree on this machine read on 2026-09-17 — a parent session file `<session>.jsonl` and a per-agent file `<session>/subagents/agent-<id>.jsonl`. Only the shape was taken: the key names, their nesting and their types (`type`, `uuid`, `parentUuid`, `isSidechain`, `agentId`, `sessionId`, `timestamp`, `cwd`, and for an assistant record `message.model`, `message.id`, `message.content[]`, `message.usage.{input_tokens,output_tokens,cache_read_input_tokens,cache_creation_input_tokens,service_tier}`). No project name, path, prose, code or business detail was copied out of that tree; every value here is neutral synthetic. The typed-command record in `parent` follows the `<command-name>` shape already pinned by tests/cost-logger-hook.test.cjs.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id, written into every record as `sessionId`",
+    "{{PROJECT_DIR}}": "absolute path of the project, written into every record as `cwd`",
+    "{{AGENT_ID}}": "the host's per-spawn agent id, written into every agent record as `agentId`"
+  },
+  "notes": "Two structural facts this pair exists to carry. (1) One API turn is written as one record PER CONTENT BLOCK, each repeating that turn's `message.id` with its own usage snapshot — `msg_fixture_turn_a` appears twice here so a slice that sums records instead of turns over-counts visibly (output 590 instead of 550, cache-read 19000 instead of 14000). (2) Real records name the session in camelCase `sessionId`; there is no `session_id` key on any record of the local tree inspected (0 of 388 records across the 5 transcript files of one session tree), which is what makes the hooks' `entry.session_id` session filter inert on real Claude Code transcripts. Fields the real records also carry but the hooks never read (`version`, `gitBranch`, `userType`, `entrypoint`, `requestId`, `attributionAgent`, `attributionSkill`, `effort`, `message.stop_reason`, `message.diagnostics`) are omitted rather than invented."
+}

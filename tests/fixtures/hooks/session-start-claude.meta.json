@@ -1,0 +1,12 @@
+{
+  "hook_event": "SessionStart",
+  "runtime": "claude",
+  "captured_at": "2026-09-17",
+  "captured_from": "The common hook input fields PAN's own code and docs establish for this event: docs/HOOKS.md registers pan-check-update.js on SessionStart, and `session_id` / `transcript_path` / `cwd` are the common input fields the other PAN hooks read off their payloads (hooks/pan-cost-logger.js, hooks/pan-context-monitor.js). Their identity shape — a UUID session id, an absolute transcript path, an absolute cwd — was confirmed against a local Claude Code transcript tree on this machine on 2026-09-17: structure only, no project name, path or content copied out, and the values here are neutral synthetic.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id",
+    "{{TRANSCRIPT_PATH}}": "absolute path of the session transcript",
+    "{{PROJECT_DIR}}": "absolute path of the project"
+  },
+  "notes": "pan-check-update.js reads NO stdin — it resolves the installed VERSION from disk, spawns a detached child for the npm query and exits — so this payload's content is immaterial to its behaviour. It exists so the e2e test drives the event through the same door the host uses, and so a future SessionStart hook that does read stdin has a payload to be driven with. Event-specific fields another host sends on SessionStart (a `source` discriminator, for instance) are omitted rather than invented: nothing in this repo or on this machine evidences their spelling."
+}

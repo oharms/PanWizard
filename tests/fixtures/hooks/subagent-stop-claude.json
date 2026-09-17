@@ -1,0 +1,15 @@
+{
+  "hook_event_name": "SubagentStop",
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{PROJECT_DIR}}",
+  "agent_id": "{{AGENT_ID}}",
+  "agent_type": "pan-executor",
+  "stop_hook_active": false,
+  "usage": {
+    "input_tokens": 4,
+    "output_tokens": 2,
+    "cache_read_input_tokens": 2400000,
+    "cache_creation_input_tokens": 31000
+  }
+}

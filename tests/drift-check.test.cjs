@@ -269,7 +269,11 @@ describe('drift-check command', () => {
 
   test('invalid threshold returns error', () => {
     const result = runPanTools('drift-check --threshold 2.0', tmpDir);
-    assert.ok(!result.success || result.error);
+    // Measured 2026-09-17: exit 1, empty stdout, and the range in the message.
+    // `!result.success || result.error` was true for any failure, including a crash.
+    assert.equal(result.success, false, 'an out-of-range threshold must exit non-zero');
+    assert.equal(result.output, '');
+    assert.match(result.error, /^Error: threshold must be 0\.0-1\.0$/);
   });
 
   test('loads conventions from CONVENTIONS.md', () => {

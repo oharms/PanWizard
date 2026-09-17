@@ -1242,9 +1242,9 @@ pan-tools validate health --links
 | Code | Severity | Description | Repairable |
 |------|----------|-------------|------------|
 | E001 | error | `.planning/` directory not found | No |
-| E002 | error | `project.md` not found | No |
-| E003 | error | `roadmap.md` not found | No |
-| E004 | error | `state.md` not found | Yes |
+| E002 | error | `project.md` not found (phase-model projects only — a focus-model tree reports I003 instead) | No |
+| E003 | error | `roadmap.md` not found (phase-model projects only — a focus-model tree reports I003 instead) | No |
+| E004 | error | `state.md` not found (phase-model projects only — a focus-model tree reports I003 instead) | Yes |
 | E005 | error | `config.json` JSON parse error | Yes |
 | E006 | error | `.planning/` belongs to another tool (gsd-core markers found); PAN stops before E002–E005 and `--repair` writes nothing | No |
 | W001 | warning | `project.md` missing required section | No |
@@ -1256,6 +1256,7 @@ pan-tools validate health --links
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
 | I002 | info | Phase in ROADMAP ahead of the current phase, not planned yet | No |
+| I003 | info | The tree runs the focus model or an orchestration campaign, so the phase-model checks (E002–E004, W005–W007, the state-consistency and verification gates) do not apply | No |
 | STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `REQUIREMENTS.md` has unchecked boxes | Yes |
 | STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
@@ -3257,7 +3258,7 @@ pan-tools memory select pan-executor --cue "auth refactor" --token-budget 2000 -
 
 ### `memory budget`
 
-Report the total token footprint of all agent memory files against the project's typical per-call input size (median from the cost log), so you can see how much of a spawn's context memory is consuming. Read-only.
+Report the total token footprint of all agent memory files against the project's typical per-call **prompt** size (`median_prompt_tokens` — the median of `input + cache_read + cache_write` over the ledger's trustworthy rows), so you can see how much of a spawn's context memory is consuming. Under prompt caching the uncached `input` alone is tens of tokens, which is why the denominator is the whole prompt. Read-only.
 
 ```bash
 pan-tools memory budget [--raw]

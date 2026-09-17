@@ -182,10 +182,32 @@ function hasBraveSearchKey() {
   return fileAccessible(path.join(os.homedir(), '.pan-wizard', 'brave_api_key'));
 }
 
+/**
+ * Which workflow model a planning tree runs (PLANNING_MODEL_MARKERS). The phase model
+ * wins when its markers are present, since a phase project may also hold focus
+ * artifacts; `fragment` means entries exist but none of them mark a deliberate
+ * workflow, and `absent` that the directory could not be read.
+ *
+ * @param {string} planningDir - absolute path to the tree (e.g. planningPath(cwd))
+ * @returns {{model: 'phase'|'focus'|'campaign'|'fragment'|'empty'|'absent', evidence: string[], entries: number}}
+ */
+function detectPlanningModel(planningDir) {
+  const { PLANNING_MODEL_MARKERS } = require('./constants.cjs');
+  let entries;
+  try { entries = fs.readdirSync(planningDir); } catch { return { model: 'absent', evidence: [], entries: 0 }; }
+  const lower = new Set(entries.map(e => String(e).toLowerCase()));
+  for (const model of ['phase', 'focus', 'campaign']) {
+    const evidence = PLANNING_MODEL_MARKERS[model].filter(m => lower.has(m));
+    if (evidence.length) return { model, evidence, entries: entries.length };
+  }
+  return { model: entries.length ? 'fragment' : 'empty', evidence: [], entries: entries.length };
+}
+
 module.exports = {
   readJsonFile,
   removeQuotes,
   planningPath,
+  detectPlanningModel,
   planningRel,
   phasesPath,
   milestonesPath,

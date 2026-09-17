@@ -8,7 +8,7 @@ const path = require('path');
 const os = require('os');
 
 const lib = require('../bin/install-lib.cjs');
-const { buildPluginInto, cleanup } = require('./helpers.cjs');
+const { buildPluginInto, cleanup, withFakeHome } = require('./helpers.cjs');
 
 // ─── getDirName ─────────────────────────────────────────────────────────────
 
@@ -62,8 +62,12 @@ describe('getConfigDirFromHome', () => {
 
 describe('expandTilde', () => {
   test('expands ~/path to home + path', () => {
-    const result = lib.expandTilde('~/foo/bar');
-    assert.equal(result, path.join(os.homedir(), 'foo/bar'));
+    // Sandboxed home (test-quality Q7): expandTilde resolves through os.homedir(),
+    // which honours HOME/USERPROFILE, so pointing those at a temp dir proves the
+    // substitution is the HOME value rather than re-deriving it from the same call.
+    withFakeHome((fakeHome) => {
+      assert.equal(lib.expandTilde('~/foo/bar'), path.join(fakeHome, 'foo/bar'));
+    });
   });
   test('does not expand paths without ~/', () => {
     assert.equal(lib.expandTilde('/absolute/path'), '/absolute/path');

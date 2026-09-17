@@ -185,7 +185,14 @@ describe('E2E: Install and run from installed location', () => {
       const result = runInstalled('phase add "E2E Test Phase"');
       assert.ok(result.success, `Command failed: ${result.error}`);
       const output = JSON.parse(result.output);
-      assert.ok(output.created || output.directory, 'should confirm phase creation');
+      assert.strictEqual(output.name, 'E2E Test Phase', 'the phase keeps the name it was given');
+      assert.strictEqual(output.slug, 'e2e-test-phase', 'the slug is kebab-case');
+      assert.strictEqual(output.padded, '01', 'the first phase is 01');
+      assert.strictEqual(output.directory, '.planning/phases/01-e2e-test-phase',
+        `unexpected phase directory: ${output.directory}`);
+      // The claim is "creates a directory", so check the filesystem, not just the payload.
+      assert.ok(fs.existsSync(path.join(tempDir, output.directory)),
+        `phase add reported ${output.directory} but nothing is there`);
     });
 
     test('phases list shows the added phase', () => {

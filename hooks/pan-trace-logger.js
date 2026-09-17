@@ -51,7 +51,13 @@ function planningPath(cwd, ...segments) {
 }
 
 // Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
-const PAN_RUNTIME_DIRS = ['.claude', '.codex', '.gemini', '.opencode', '.github'];
+// Every runtime PAN installs into, by config-directory name. Built from the runtime
+// names rather than written as literals on purpose: the installer templates a hook by
+// rewriting the string `'.claude'`, including a catch-all for unanchored occurrences,
+// which rewrote this list too — a Codex install shipped `.codex` twice and no `.claude`
+// at all, so this predicate stopped recognising a Claude-only project (2026-09-17).
+// This list is runtime-AGNOSTIC and must survive the install byte for byte.
+const PAN_RUNTIME_DIRS = ['claude', 'codex', 'gemini', 'opencode', 'github'].map((r) => `.${r}`);
 
 // M62: only instrument actual PAN projects. A global-install hook fires in EVERY
 // repo the user opens; without this gate it silently creates .planning/
@@ -77,6 +83,23 @@ function isPanProject(cwd) {
 // Resolved per call via planningDirName() so a track-scoped run traces into
 // its own tree; kept as a name for the code paths that only need the label.
 const PLANNING_DIR = planningDirName();
+
+// Telemetry FILLS a planning tree; it never brings one into existence. isPanProject
+// above also accepts a bare install marker, which is right for "is PAN here" but wrong
+// as a licence to write: a global-install hook fires in every repo the user opens, and
+// scaffolding `.planning/` on the marker alone made repos that had merely installed PAN
+// look like half-built projects to `validate health` and `hygiene scan` — five of the
+// fourteen field projects swept on 2026-09-17 had a planning tree no /pan command ever
+// created. Before the first /pan command there is no project to attribute a run to, so
+// the honest record is no record. Best-effort — never throws.
+function hasPlanningTree(cwd) {
+  try {
+    return !!cwd && fs.existsSync(planningPath(cwd));
+  } catch {
+    return false;
+  }
+}
+
 const OPTIMIZE_DIR = 'optimization';
 const TRACES_DIR = 'traces';
 const CURRENT_SESSION_FILE = 'current-session';
@@ -144,6 +167,113 @@ function finalizeSession(cwd, sid) {
     meta.type_counts = typeCounts;
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
   } catch { /* best-effort */ }
+}
+
+// How much of a session transcript's tail to read when looking for the command that
+// spawned this agent. A long session file runs to hundreds of megabytes, and the answer
+// is always in the most recent turns, so the read is bounded.
+const COMMAND_TAIL_BYTES = 262144;
+
+// PAN's own command namespace, as a runtime writes it: `/pan:exec-phase` (Claude Code,
+// Gemini) or `/pan-exec-phase` (Codex, OpenCode, Copilot). Only these spawn PAN agents,
+// so only these are attributed — a host UI command (`/model`, `/compact`) and a plain
+// typed prompt leave the row honestly unattributed instead of borrowing a name.
+const PAN_COMMAND_RE = /<command-name>\s*\/?pan[:-]([a-z0-9][a-z0-9-]*)\s*<\/command-name>/i;
+
+/**
+ * The PAN command in whose turn this agent ran, read from the PARENT session transcript.
+ *
+ * `command` used to come only from the optimizer's trace session, and tracing is off by
+ * default, so outside focus mode every field row carried `command: null` and "which
+ * command got expensive" was unanswerable from PAN's own telemetry (field sweep
+ * 2026-09-17, 976 rows). A runtime records a slash-command invocation as a TYPED user
+ * turn carrying `<command-name>`, so the tail's most recent such turn names this work.
+ *
+ * Only typed user turns count. A tool_result record is the host replying to a tool call,
+ * and its payload may quote a command tag verbatim — a transcript that had grepped another
+ * project's history reported that project's command as its own until this was record-scoped
+ * rather than text-scoped. Turns without a command (plain prose, an injected reminder) are
+ * skipped rather than treated as clearing the attribution, so a mid-run "continue" does not
+ * erase it.
+ *
+ * This is attribution by recency, not by proof: an agent spawned from a plain prompt long
+ * after a PAN command still reads as that command while it remains in the window. Scoping
+ * the match to PAN's namespace is what keeps that bounded — a session that has run no PAN
+ * command reports null rather than naming whatever the user last typed.
+ *
+ * Returns the bare command name (`/pan:exec-phase` → `exec-phase`) or null. Never throws.
+ */
+function readCommandFromTranscript(transcriptPath) {
+  try {
+    if (typeof transcriptPath !== 'string' || !transcriptPath) return null;
+    const fd = fs.openSync(transcriptPath, 'r');
+    let text;
+    let partial = false;
+    try {
+      const size = fs.fstatSync(fd).size;
+      const start = Math.max(0, size - COMMAND_TAIL_BYTES);
+      partial = start > 0;
+      const len = size - start;
+      if (len <= 0) return null;
+      const buf = Buffer.allocUnsafe(len);
+      const read = fs.readSync(fd, buf, 0, len, start);
+      text = buf.toString('utf-8', 0, read);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const lines = text.split(/\r?\n/);
+    if (partial) lines.shift(); // a mid-record first line
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (!lines[i]) continue;
+      let rec;
+      try { rec = JSON.parse(lines[i]); } catch { continue; }
+      if (!rec || rec.type !== 'user' || !rec.message) continue;
+      const content = rec.message.content;
+      let typed = null;
+      if (typeof content === 'string') typed = content;
+      else if (Array.isArray(content)) {
+        if (content.some((b) => b && b.type === 'tool_result')) continue; // host reply, not a typed turn
+        typed = content.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n');
+      }
+      if (!typed) continue;
+      const m = typed.match(PAN_COMMAND_RE);
+      if (m) return m[1].toLowerCase();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// How long a `current-session` pointer is evidence of a live session. An explicit
+// (non-auto) session used to stay "current" indefinitely: a field project still pointed
+// at a session started on 17 July when it was swept on 17 September, so every ledger row
+// since had inherited that session's command and phase. Mirrors SESSION_STALE_MS in
+// optimize.cjs — the hooks cannot import it.
+const SESSION_STALE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Last write to a session — its event log, else the moment it started, else null.
+ * Best-effort; never throws.
+ */
+function sessionLastActivityMs(dir) {
+  try {
+    return fs.statSync(path.join(dir, 'trace.jsonl')).mtimeMs;
+  } catch { /* no events yet */ }
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf-8'));
+    const t = new Date(meta.started_at).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Finished, or too old to be the session running now. */
+function isSessionStale(dir, meta, now = Date.now()) {
+  if (meta && meta.ended_at) return true;
+  const last = sessionLastActivityMs(dir);
+  return last === null || now - last > SESSION_STALE_MS;
 }
 
 function getOptimizeDir(cwd) {
@@ -333,11 +463,15 @@ function ensureSessionId(cwd) {
   const stamp = dayStamp(now); // YYYYMMDD
   const existing = getCurrentSessionId(cwd);
   if (existing) {
-    // Day-rollover: a stale day-scoped auto-session from a previous day must not
-    // keep accumulating today's rows. Finalize it and mint a fresh one. Explicit
-    // (non-auto) sessions stay sticky — only auto-sessions roll over.
+    // Day-rollover: a stale day-scoped auto-session from a previous day must not keep
+    // accumulating today's rows. Finalize it and mint a fresh one. An EXPLICIT session
+    // used to stay sticky with no bound at all, which is how a field project was still
+    // pointing at a 17 July session on 17 September; it now rolls over once it has been
+    // quiet for SESSION_STALE_MS, so "sticky while in use" no longer means "forever".
     const m = /^sess_auto_(\d{8})$/.exec(existing);
-    if (m && m[1] !== stamp) {
+    const dir = path.join(getTracesDir(cwd), existing);
+    const stale = isSessionStale(dir, readSessionMetaById(cwd, existing));
+    if ((m && m[1] !== stamp) || stale) {
       finalizeSession(cwd, existing);
       // fall through to mint a new day-scoped session below
     } else {
@@ -485,7 +619,14 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
     }
     // Filter to entries from this subagent if a session_id is provided.
     // The transcript may include parent + child traffic; session_id discriminates.
-    if (sessionId && entry.session_id && entry.session_id !== sessionId) continue;
+    // Claude Code names this field `sessionId`; the guard read `session_id` only, so it
+    // was inert — 199 of 200 records in a real local transcript carry the camelCase
+    // spelling and none carry the snake_case one (measured 2026-09-17). Harmless on the
+    // per-agent path, where every record in the file belongs to the one agent, but the
+    // scoping it claims to do never happened on the parent-slice fallback. Both
+    // spellings are accepted rather than one guessed at.
+    const entrySession = entry.sessionId || entry.session_id;
+    if (sessionId && entrySession && entrySession !== sessionId) continue;
     // Span of this subagent's slice (after the session filter) for duration_ms,
     // and the model id (mirrors pan-cost-logger — keep the last model seen).
     const entryTs = typeof entry.timestamp === 'string' ? entry.timestamp : null;
@@ -652,7 +793,9 @@ function buildTraceEvents(data, sessionId, cwd) {
     description: `${agent} completed`,
     context: {
       model,
-      command: data.command || sessionMeta.command || null,
+      // Outside focus mode the trace session carries no command; the parent transcript
+      // names it instead (see readCommandFromTranscript).
+      command: data.command || sessionMeta.command || readCommandFromTranscript(data.transcript_path) || null,
       agent_id: agentId,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
@@ -790,8 +933,9 @@ if (require.main === module) {
       const data = JSON.parse(input);
       const cwd = data.cwd || data.workspace?.current_dir || process.cwd();
       // M62: a global-install hook fires in every repo; skip non-PAN projects so
-      // we don't create .planning/ optimization + trace artifacts in them.
-      if (!isPanProject(cwd)) return;
+      // we don't create .planning/ optimization + trace artifacts in them. The tree
+      // must already exist — see hasPlanningTree (field sweep 2026-09-17).
+      if (!hasPlanningTree(cwd)) return;
       // In a PAN project, ensure a session exists — creates a day-scoped
       // auto-session if needed.
       const sessionId = ensureSessionId(cwd);
@@ -810,6 +954,10 @@ module.exports = {
   getCurrentSessionId,
   ensureSessionId,
   isPanProject,
+  hasPlanningTree,
+  PAN_RUNTIME_DIRS,
+  readCommandFromTranscript,
+  isSessionStale,
   PLANNING_DIR,
   OPTIMIZE_DIR,
   TRACES_DIR,

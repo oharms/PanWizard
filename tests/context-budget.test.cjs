@@ -396,6 +396,26 @@ describe('estimateRelevanceRatio', () => {
 // (`subagentPromptCacheTtl: "1h"`) would have avoided. The assessor counts those.
 
 describe('assessCacheTtl', () => {
+  it('carries its own severity: recurring waste above a million re-written tokens is a warning, not an aside', () => {
+    // The recommendation fired in eight of ten field projects while hygiene filed it at
+    // `info`, where nothing surfaces it (sweep 2026-09-17). Severity now scales with the
+    // tokens actually re-written, the way the cached-block findings already do.
+    const big = (min) => ({ ts: new Date(Date.UTC(2026, 8, 10, 0, min, 0)).toISOString(), cache_write_tokens: 900000 });
+    const heavy = assessCacheTtl([big(0), big(20), big(45)]);
+    assert.equal(heavy.recommend, true);
+    assert.equal(heavy.tokens_after_short_idle, 1800000);
+    assert.equal(heavy.severity, 'warn', 'two short-idle writes of 0.9M each is real money');
+
+    const small = (min) => ({ ts: new Date(Date.UTC(2026, 8, 10, 0, min, 0)).toISOString(), cache_write_tokens: 5000 });
+    const light = assessCacheTtl([small(0), small(20), small(45)]);
+    assert.equal(light.recommend, true);
+    assert.equal(light.severity, 'info', 'the pattern is real but cheap');
+
+    const quiet = assessCacheTtl([small(0), small(2)]);
+    assert.equal(quiet.recommend, false);
+    assert.equal(quiet.severity, 'info', 'no recommendation is never a warning');
+  });
+
   // A ledger row `min` minutes after midnight, with a real-sized cache write.
   const at = (min, extra = {}) => ({
     ts: new Date(Date.UTC(2026, 8, 10, 0, min, 0)).toISOString(),

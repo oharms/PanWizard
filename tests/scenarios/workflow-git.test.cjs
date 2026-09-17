@@ -63,17 +63,30 @@ describe('E2E Workflow: Git Integration', () => {
     assert.ok(log.length > 0, 'git log should have entries');
   });
 
-  test('step 3: commit command detects git repo', () => {
+  test('step 3: commit takes its message positionally, not via --message', () => {
     // Make a change first
     fs.writeFileSync(path.join(runner.tmpDir, 'test.txt'), 'hello');
-    const r = runner.run('commit --message test-commit');
-    // commit may succeed or report clean tree — either is fine
-    assert.ok(r.output || r.error, 'should produce output');
-    if (r.success && r.output) {
-      const p = JSON.parse(r.output);
-      // Should have committed or reported status
-      assert.ok(typeof p === 'object', 'output should be JSON object');
-    }
+
+    // Measured 2026-09-17: the dispatcher reads the message from args[1] and
+    // ignores unknown flags, so `--message X` is NOT a message — every run of
+    // this line has always been a usage error, which `r.output || r.error` hid.
+    const flagged = runner.run('commit --message test-commit');
+    assert.equal(flagged.success, false, '--message is not a recognised flag');
+    assert.equal(flagged.output, '');
+    assert.match(flagged.error, /^Error: commit message required$/);
+
+    // The documented invocation reaches the git path: .planning/ is already committed by
+    // step 2 and test.txt is outside it, so git finds nothing staged and says "nothing
+    // added to commit but untracked files present". That is not a failed commit, and it
+    // used to be reported as one ("commit_failed" / "unknown git error") because only
+    // git's other phrasing, "nothing to commit", was recognised — the bug this
+    // assertion's OR-shaped predecessor hid.
+    const positional = runner.run('commit test-commit');
+    const p = JSON.parse(positional.output);
+    assert.equal(p.committed, false);
+    assert.equal(p.reason, 'nothing_to_commit', `untracked-only should be nothing_to_commit, got ${JSON.stringify(p)}`);
+    assert.equal(p.error, undefined, 'nothing to commit is not an error');
+    assert.equal(positional.success, true, 'no change was NEEDED, so this exits 0 (CLI-REFERENCE "Error Shape")');
   });
 
   test('step 4: git log shows commit history', () => {

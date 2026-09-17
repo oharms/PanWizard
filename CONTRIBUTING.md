@@ -118,6 +118,50 @@ node scripts/run-tests.cjs tests
 
 Tests use `node:test` and `node:assert` (no external test framework). All modules are CommonJS (`.cjs`).
 
+### What the suite must cover — the code decides, not the tests
+
+What must be tested is derived from the code. `scripts/test-surface.cjs` reads the
+shipped surface straight out of the source — every dispatcher verb and subcommand, every
+installer flag, every hook × runtime registration, every MCP tool and resource, every
+config default key, the content directories — into the committed registry
+`tests/fixtures/surface.json`. `tests/surface-map.test.cjs` then fails when a row is
+named by no test. So a change that adds a surface adds a test, and the suite says so.
+
+The loop:
+
+```bash
+node scripts/test-surface.cjs --write            # refresh the registry from the code
+node scripts/test-surface.cjs --map              # which test names each row
+node scripts/test-surface.cjs --scaffold <dir>   # a todo stub per unreferenced row
+npm run test:surface                             # the registry still matches the code
+npm run test:coverage                            # every dispatcher arm executed + floors (Node 22+)
+npm run harness                                  # tier 0: behavioural, model-free, free
+```
+
+If a row genuinely cannot have a test yet, add it to
+`tests/fixtures/surface-allowlist.json` **with a reason**. The entry fails the suite the
+moment a test does name it, so the list can only shrink — it is a debt register, not an
+exemption list.
+
+### What an assertion has to be
+
+`tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file
+and rejects the shapes that have passed while the feature they named was broken:
+
+- an OR between result-status fields (`assert.ok(r.output || r.error)`) — a crash satisfies it
+- an in-process call to a lib module's `cmd*` function. They end in `output()`/`error()`,
+  which call `process.exit`, so the test child dies and `node --test` reports the whole
+  file as **one passing test**. This once hid fifteen tests behind a green check. Always
+  go through `runPanTools`
+- `assert(true)`, CLI output asserted only by its length, a platform conditional that
+  bare-`return`s instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read
+  of the real home directory (use the `withFakeHome` helper), a committed `test.todo`
+
+Write assertions from **measured** output, never from what a verb ought to emit: run the
+command, look at the real payload and exit code, then assert those. Several tests here
+were written the other way round and had to be corrected once the behaviour was checked.
+
+
 ### Cross-Platform Considerations
 
 - Use `toPosix()` from `pan-wizard-core/bin/lib/core.cjs` for file paths (Windows backslashes break comparisons)

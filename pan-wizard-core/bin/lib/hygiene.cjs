@@ -41,7 +41,7 @@ const {
   CHARS_PER_TOKEN,
   STATE_FILE,
 } = require('./constants.cjs');
-const { planningPath, planningRel } = require('./utils.cjs');
+const { planningPath, planningRel, detectPlanningModel } = require('./utils.cjs');
 const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
 const { listMemoryAgents, readMemory, compactMemory } = require('./memory.cjs');
 const { readRecords, isSuspectRecord, METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
@@ -469,7 +469,7 @@ function checkCachedContext(cwd) {
   try {
     const ttl = assessCacheTtl(readRecords(cwd).filter(r => !isSuspectRecord(r)));
     if (ttl.recommend) {
-      findings.push(mkFinding('cache-context', 'info', planningRel(path.join(METRICS_DIR, TOKENS_FILE)), ttl.advice, null));
+      findings.push(mkFinding('cache-context', ttl.severity, planningRel(path.join(METRICS_DIR, TOKENS_FILE)), ttl.advice, null));
     }
   } catch { /* no ledger, or unreadable — nothing to say */ }
   return { findings };
@@ -497,15 +497,11 @@ function checkPlanningFragment(cwd) {
   const dir = planningPath(cwd);
   let entries = [];
   try { entries = fs.readdirSync(dir); } catch { return { findings, planning_exists: false }; }
-  const lower = entries.map(e => e.toLowerCase());
-  // Spine = anything that marks a deliberate PAN workflow: the phase model
-  // (project/state/phases/roadmap/requirements/milestones) OR the focus model
-  // (focus/quick) OR an orchestration campaign. A dir holding only generated
-  // artifacts (codebase maps, metrics, traces) is a stray fragment.
-  const SPINE = ['project.md', 'state.md', 'phases', 'roadmap.md', 'requirements.md',
-    'milestones', 'focus', 'quick', 'orchestration'];
-  const hasSpine = SPINE.some(s => lower.includes(s));
-  if (!hasSpine && entries.length > 0) {
+  // A spine is whatever marks a deliberate PAN workflow — the phase model, the focus
+  // model, or an orchestration campaign (PLANNING_MODEL_MARKERS, shared with
+  // `validate health` so the two verbs cannot disagree about a tree). A dir holding
+  // only generated artifacts (codebase maps, metrics, traces) is a stray fragment.
+  if (detectPlanningModel(dir).model === 'fragment') {
     findings.push(mkFinding('planning-fragment', 'info', planningRootRel(),
       `.planning exists with ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} (${entries.slice(0, 5).join(', ')}) but no workflow spine (project/state/phases/focus/…) — likely a stray partial run; review and delete manually`,
       null));

@@ -1,22 +1,3 @@
 [
-  { "file": "tests/commands.test.cjs", "rule": "Q1", "count": 1, "reason": "asserts error-or-reason on a failure payload; P2: assert the exact error field the verb emits" },
-  { "file": "tests/dispatcher.test.cjs", "rule": "Q1", "count": 1, "reason": "'output or proper error' liveness assert (baseline 2026-09-17); P2: exit code + parsed error body" },
-  { "file": "tests/drift-check.test.cjs", "rule": "Q1", "count": 1, "reason": "'!success || error' liveness assert; P2: assert the failure exit code and the error string" },
-  { "file": "tests/installer-functions.test.cjs", "rule": "Q7", "count": 1, "reason": "compares a pure tilde-expansion helper against os.homedir(); reads nothing under it — legitimate" },
-  { "file": "tests/learn-index.test.cjs", "rule": "Q2", "count": 1, "reason": "cmdBuildIndex returns its result instead of printing and exiting (verified 2026-09-17); the Q2 rule over-approximates on cmd* names" },
-  { "file": "tests/learnings.test.cjs", "rule": "Q1", "count": 1, "reason": "'!success || error' liveness assert; P2: assert the failure exit code and the error string" },
-  { "file": "tests/pan-zcode-install.test.cjs", "rule": "Q5", "count": 1, "reason": "case-folding guard bare-returns on Linux and counts as a pass; P2: t.skip('case-sensitive filesystem')" },
-  { "file": "tests/scenarios/contracts-misc.test.cjs", "rule": "Q1", "count": 1, "reason": "'success || error || output === \"\"' accepts anything; P2: exit code + parsed error body" },
-  { "file": "tests/scenarios/contracts-phase.test.cjs", "rule": "Q1", "count": 2, "reason": "'output || error' liveness asserts; P2: exit code + parsed payload" },
-  { "file": "tests/scenarios/contracts-state.test.cjs", "rule": "Q1", "count": 2, "reason": "'output || error' liveness asserts; P2: exit code + parsed payload" },
-  { "file": "tests/scenarios/feedback-errors.test.cjs", "rule": "Q1", "count": 4, "reason": "liveness asserts on error paths (audit 2026-09-17 HIGH); P2: assert the exit code and the error payload each verb documents" },
-  { "file": "tests/scenarios/feedback-errors.test.cjs", "rule": "Q4", "count": 1, "reason": "'output.length > 0 || error.length > 0' is satisfied by a crash; P2 with the Q1 rewrite" },
-  { "file": "tests/scenarios/feedback-output.test.cjs", "rule": "Q1", "count": 1, "reason": "'success || error' under --raw; P2: assert the raw text shape" },
-  { "file": "tests/scenarios/global-install.test.cjs", "rule": "Q7", "count": 1, "reason": "snapshots the developer's real ~/.agents/skills to prove the installer left it alone (flakiness risk, audit 2026-09-17); P2: withFakeHome" },
-  { "file": "tests/scenarios/runtime-matrix.test.cjs", "rule": "Q1", "count": 1, "reason": "'error || state' accepts an error payload for 'runs state json' (audit MEDIUM); P2: seed state.md and assert fields" },
-  { "file": "tests/scenarios/smoke.test.cjs", "rule": "Q1", "count": 1, "reason": "ST-001 'responds without crash' is satisfied by a crash (audit HIGH); P2: exit code + parsed error body" },
-  { "file": "tests/scenarios/smoke.test.cjs", "rule": "Q4", "count": 1, "reason": "same assertion as the Q1 entry above" },
-  { "file": "tests/scenarios/workflow-focus.test.cjs", "rule": "Q1", "count": 1, "reason": "'success || error' liveness assert; P2: exit code + parsed payload" },
-  { "file": "tests/scenarios/workflow-git.test.cjs", "rule": "Q1", "count": 1, "reason": "'output || error' liveness assert; P2: exit code + parsed payload" },
-  { "file": "tests/verify-extended.test.cjs", "rule": "Q2", "count": 2, "reason": "the matches are 'function cmdFoo() {' inside string fixtures the test writes to disk, not calls" }
+  { "file": "tests/learn-index.test.cjs", "rule": "Q2", "count": 1, "reason": "re-verified 2026-09-17 by reading learn-index.cjs:226 — cmdBuildIndex() calls buildIndex+writeIndex and RETURNS a plain summary object; it never calls output()/error(), so it cannot exit the test process. The Q2 name pattern over-approximates on cmd* identifiers" }
 ]

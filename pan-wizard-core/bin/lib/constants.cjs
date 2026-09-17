@@ -670,6 +670,22 @@ const CACHEABLE_CONTEXT_FILES = [
   'state.md',
   'standards.md',
 ];
+/**
+ * Which workflow model a `.planning/` tree is running, by the entries only that model
+ * creates. PAN has three: the PHASE model (`/pan:new-project` → project/roadmap/state
+ * → phases), the FOCUS model (`/pan:focus` → .planning/focus/, no phase spine), and an
+ * orchestration CAMPAIGN. A tree with none of these holds only generated artifacts
+ * (metrics, traces, codebase maps) — a fragment, typically scaffolded by a hook.
+ * Checks that belong to one model must not be run against another: a focus-model
+ * project has no project.md by design, and reporting that as an error called eight of
+ * fourteen field projects broken (field sweep 2026-09-17).
+ */
+const PLANNING_MODEL_MARKERS = {
+  phase: ['project.md', 'roadmap.md', 'state.md', 'requirements.md', 'phases', 'milestones'],
+  focus: ['focus', 'quick'],
+  campaign: ['orchestration'],
+};
+
 /** Default thinking budget (tokens) for verification-heavy agents */
 const THINKING_BUDGETS = {
   'pan-plan-checker': 8000,
@@ -796,6 +812,7 @@ module.exports = {
   LARGE_CONTEXT_TOKEN_THRESHOLD,
   SMALL_CONTEXT_TOKEN_THRESHOLD,
   CACHEABLE_CONTEXT_FILES,
+  PLANNING_MODEL_MARKERS,
   THINKING_BUDGETS,
   REFLECTION_THRESHOLD,
   CONTEXT_WINDOW,

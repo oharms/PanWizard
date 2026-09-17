@@ -6,17 +6,286 @@
  * SubagentStop event shape.
  */
 
-const { test, describe, beforeEach, afterEach } = require('node:test');
+const { test, describe, before, after, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { buildCostRecord, appendRecord, isPanProject, METRICS_DIR, TOKENS_FILE, CURSOR_FILE } =
+const { buildCostRecord, appendRecord, isPanProject, hasPlanningTree, readCommandFromTranscript, readUsageFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE } =
   require('../hooks/pan-cost-logger.js');
-const { createTempProject, cleanup } = require('./helpers.cjs');
+const { createTempProject, cleanup, installInto } = require('./helpers.cjs');
 
 const COST_HOOK = path.join(__dirname, '..', 'hooks', 'pan-cost-logger.js');
+
+
+// ── Telemetry fills a planning tree; it never creates one ────────────────────
+// isPanProject also accepts a bare install marker, which is right for "is PAN here"
+// and wrong as a licence to write: a global-install hook fires in every repo the user
+// opens, and five of the fourteen projects swept on 2026-09-17 carried a .planning/
+// tree no /pan command ever created, which then read as a half-built project to
+// `validate health` and `hygiene scan`.
+describe('pan-cost-logger — never scaffolds a planning tree', () => {
+  let bare;
+  beforeEach(() => { bare = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-notree-')); });
+  afterEach(() => { fs.rmSync(bare, { recursive: true, force: true }); });
+
+  const fire = () => spawnSync(process.execPath, [COST_HOOK], {
+    cwd: bare, input: JSON.stringify({ hook_event_name: 'SubagentStop', cwd: bare, agent_id: 'a1', session_id: 's1', usage: { input_tokens: 10, output_tokens: 5 } }), encoding: 'utf-8',
+  });
+
+  test('an install marker alone buys no write: no .planning/, and the gate says why', () => {
+    fs.mkdirSync(path.join(bare, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(bare, '.claude', 'pan-file-manifest.json'), '{}');
+    assert.equal(isPanProject(bare), true, 'the marker still answers "is PAN installed here"');
+    assert.equal(hasPlanningTree(bare), false, 'but it is not a licence to write');
+
+    const r = fire();
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(path.join(bare, '.planning')), false, 'the hook must not scaffold a tree');
+  });
+
+  test('a plain repo with no PAN trace at all is untouched', () => {
+    const r = fire();
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(path.join(bare, '.planning')), false);
+  });
+
+  test('once a /pan command has created the tree, the hook writes into it as before', () => {
+    fs.mkdirSync(path.join(bare, '.planning'), { recursive: true });
+    const r = fire();
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(path.join(bare, '.planning', METRICS_DIR, TOKENS_FILE)), true, 'the artifact lands in the existing tree');
+  });
+});
+
+
+// ── Command attribution from the parent transcript ───────────────────────────
+// `command` used to come only from the optimizer's trace session, which is off by
+// default, so outside focus mode every field row carried `command: null` and "which
+// command got expensive" could not be answered from PAN's own telemetry (sweep
+// 2026-09-17). A runtime records a slash-command invocation as a typed user turn.
+describe('pan-cost-logger — a dead trace session backfills nothing', () => {
+  // readActiveSessionMeta used to trust the `current-session` pointer at any age. A field
+  // project still pointed at a session started on 17 July when it was swept on
+  // 17 September, so every ledger row written in between inherited that session's command
+  // and phase — which is also why command attribution looked like a focus-mode-only
+  // feature (sweep 2026-09-17).
+  let tree;
+  beforeEach(() => { tree = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stalesess-')); fs.mkdirSync(path.join(tree, '.planning'), { recursive: true }); });
+  afterEach(() => { fs.rmSync(tree, { recursive: true, force: true }); });
+
+  const writeSession = (sid, meta) => {
+    const dir = path.join(tree, '.planning', 'optimization', 'traces', sid);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'session.json'), JSON.stringify({ session_id: sid, ...meta }, null, 2) + '\n');
+    fs.writeFileSync(path.join(tree, '.planning', 'optimization', 'current-session'), sid + '\n');
+    return dir;
+  };
+  const transcriptNaming = (command) => {
+    const f = path.join(tree, 'parent.jsonl');
+    fs.writeFileSync(f, JSON.stringify({ type: 'user', timestamp: '2026-09-17T10:00:00.000Z', message: { role: 'user', content: `<command-name>${command}</command-name>` } }) + '\n');
+    return f;
+  };
+  const rowFor = (transcript) => {
+    const payload = { hook_event_name: 'SubagentStop', cwd: tree, transcript_path: transcript, session_id: 's1', usage: { input_tokens: 10, output_tokens: 5 } };
+    const r = spawnSync(process.execPath, [COST_HOOK], { cwd: tree, input: JSON.stringify(payload), encoding: 'utf-8' });
+    assert.equal(r.status, 0, r.stderr);
+    const rows = fs.readFileSync(path.join(tree, '.planning', METRICS_DIR, TOKENS_FILE), 'utf-8').trim().split('\n').map((l) => JSON.parse(l));
+    return rows[rows.length - 1];
+  };
+
+  test('a two-month-old pointer supplies nothing, and the transcript names the command instead', () => {
+    const sid = 'sess_20260717T143520';
+    const dir = writeSession(sid, { started_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(), command: 'army', phase: '03-legacy', ended_at: null });
+    assert.equal(isSessionStale(dir, JSON.parse(fs.readFileSync(path.join(dir, 'session.json'), 'utf-8'))), true);
+
+    const row = rowFor(transcriptNaming('/pan:exec-phase'));
+    assert.equal(row.command, 'exec-phase', 'the live transcript decides, not the dead session');
+    assert.notEqual(row.phase, '03-legacy', 'nor does the dead session set the phase');
+  });
+
+  test('a session active now still supplies its command', () => {
+    writeSession('sess_auto_today', { started_at: new Date().toISOString(), command: 'optimize', phase: '05-tuning', ended_at: null });
+    const row = rowFor(transcriptNaming('/pan:exec-phase'));
+    assert.equal(row.command, 'optimize', 'a live trace session is the better source');
+    assert.equal(row.phase, '05-tuning');
+  });
+
+  test('a session that has ended is not active, however recent', () => {
+    writeSession('sess_done', { started_at: new Date().toISOString(), command: 'army', ended_at: new Date().toISOString() });
+    assert.equal(rowFor(transcriptNaming('/pan:verify-phase')).command, 'verify-phase');
+  });
+});
+
+describe('pan-cost-logger — readCommandFromTranscript', () => {
+  let dir;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-cmd-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+  const jsonl = (...records) => {
+    const f = path.join(dir, 'session.jsonl');
+    fs.writeFileSync(f, records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    return f;
+  };
+  const typed = (text) => ({ type: 'user', timestamp: '2026-09-17T10:00:00.000Z', message: { role: 'user', content: text } });
+  const cmd = (name) => typed(`<command-message>running</command-message>\n<command-name>${name}</command-name>`);
+  const toolResult = (text) => ({
+    type: 'user', timestamp: '2026-09-17T10:00:01.000Z',
+    message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: text }] },
+  });
+
+  test('names the PAN command from a typed invocation, in either runtime spelling', () => {
+    assert.equal(readCommandFromTranscript(jsonl(cmd('/pan:exec-phase'))), 'exec-phase');
+    assert.equal(readCommandFromTranscript(jsonl(cmd('/pan-exec-phase'))), 'exec-phase', 'Codex/OpenCode/Copilot spelling');
+    assert.equal(readCommandFromTranscript(jsonl(cmd('pan:map-codebase'))), 'map-codebase', 'no leading slash');
+  });
+
+  test('the most recent invocation wins', () => {
+    assert.equal(readCommandFromTranscript(jsonl(cmd('/pan:plan-phase'), cmd('/pan:exec-phase'))), 'exec-phase');
+  });
+
+  test('a plain typed turn after the command does not erase the attribution', () => {
+    // A mid-run "continue", or an injected reminder, arrives as a typed user turn with
+    // no command of its own. The agent is still doing the command's work.
+    const f = jsonl(cmd('/pan:exec-phase'), typed('continue'), toolResult('ok'));
+    assert.equal(readCommandFromTranscript(f), 'exec-phase');
+  });
+
+  test('a command quoted inside tool output is not an invocation', () => {
+    // Regression: a session that had grepped another project's transcripts carried the
+    // literal tag in a Bash tool_result and reported that project's command as its own.
+    const quoted = toolResult('grep output: <command-name>/pan:army</command-name>');
+    assert.equal(readCommandFromTranscript(jsonl(quoted)), null);
+    assert.equal(readCommandFromTranscript(jsonl(cmd('/pan:update'), quoted)), 'update',
+      'a real invocation is still found past the quoted one');
+  });
+
+  test('a host UI command and a non-PAN command are never attributed', () => {
+    assert.equal(readCommandFromTranscript(jsonl(cmd('/model'), cmd('/compact'))), null);
+    assert.equal(readCommandFromTranscript(jsonl(cmd('/execplan'))), null, 'a dev skill is not a PAN command');
+    assert.equal(readCommandFromTranscript(jsonl(typed('just a prompt'))), null);
+  });
+
+  test('an unreadable path, a missing file and a non-string never throw', () => {
+    assert.equal(readCommandFromTranscript(path.join(dir, 'nope.jsonl')), null);
+    assert.equal(readCommandFromTranscript(null), null);
+    assert.equal(readCommandFromTranscript(''), null);
+    assert.equal(readCommandFromTranscript(dir), null, 'a directory is not a transcript');
+    fs.writeFileSync(path.join(dir, 'empty.jsonl'), '');
+    assert.equal(readCommandFromTranscript(path.join(dir, 'empty.jsonl')), null);
+  });
+
+  test('malformed lines are skipped, not fatal', () => {
+    const f = path.join(dir, 'mixed.jsonl');
+    fs.writeFileSync(f, ['{not json', JSON.stringify(cmd('/pan:focus')), '}{'].join('\n') + '\n');
+    assert.equal(readCommandFromTranscript(f), 'focus');
+  });
+
+  test('an invocation beyond the tail window is out of scope, and the truncated first record is not misread', () => {
+    const f = path.join(dir, 'big.jsonl');
+    const filler = JSON.stringify(toolResult('x'.repeat(4000)));
+    const lines = [JSON.stringify(cmd('/pan:army'))];
+    for (let i = 0; i < 120; i++) lines.push(filler); // ~480 KB, well past COMMAND_TAIL_BYTES
+    fs.writeFileSync(f, lines.join('\n') + '\n');
+    assert.equal(readCommandFromTranscript(f), null, 'recency window is bounded on purpose');
+  });
+
+  test('the record lands on the row: a stop in a project whose transcript names a PAN command is attributed', () => {
+    const tree = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-cmdproj-'));
+    try {
+      fs.mkdirSync(path.join(tree, '.planning'), { recursive: true });
+      const transcript = jsonl(cmd('/pan:exec-phase'));
+      const payload = {
+        hook_event_name: 'SubagentStop', cwd: tree, transcript_path: transcript,
+        session_id: 's1', usage: { input_tokens: 10, output_tokens: 5 },
+      };
+      const r = spawnSync(process.execPath, [COST_HOOK], { cwd: tree, input: JSON.stringify(payload), encoding: 'utf-8' });
+      assert.equal(r.status, 0, r.stderr);
+      const rows = fs.readFileSync(path.join(tree, '.planning', METRICS_DIR, TOKENS_FILE), 'utf-8')
+        .trim().split('\n').map((l) => JSON.parse(l));
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].command, 'exec-phase');
+    } finally { fs.rmSync(tree, { recursive: true, force: true }); }
+  });
+});
+
+
+// ── The runtime list must survive the installer's templating ────────────────
+// The installer templates a hook by rewriting the string `'.claude'`, with a
+// documented catch-all for unanchored occurrences. That rewrote PAN_RUNTIME_DIRS too:
+// a Codex install shipped ['.codex', '.codex', '.gemini', '.opencode', '.github'] —
+// `.claude` gone, the target duplicated — so isPanProject in four of the five installed
+// copies stopped recognising a project carrying only a `.claude/` local install
+// (measured against a real 5-runtime install, 2026-09-17). The list is runtime-AGNOSTIC
+// and the assertion is about the INSTALLED copy, because the source was always right.
+describe('pan-cost-logger — the installed copy still knows every runtime', () => {
+  let target;
+  before(() => { target = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-rdirs-')); installInto(target, ['--codex', '--local']); });
+  after(() => { fs.rmSync(target, { recursive: true, force: true }); });
+
+  test('a non-Claude install lists all five config dirs, once each', () => {
+    const installed = require(path.join(target, '.codex', 'hooks', 'pan-cost-logger.js'));
+    const dirs = installed.PAN_RUNTIME_DIRS;
+    assert.ok(Array.isArray(dirs), 'the installed hook must still export the runtime list');
+    assert.deepEqual([...dirs].sort(), ['.claude', '.codex', '.gemini', '.github', '.opencode'],
+      `the installer corrupted the runtime list: ${JSON.stringify(dirs)}`);
+    assert.equal(new Set(dirs).size, dirs.length, `a duplicated entry means a rewrite hit the list: ${JSON.stringify(dirs)}`);
+  });
+
+  test('so a Codex install still recognises a project that carries only a .claude/ install', () => {
+    const installed = require(path.join(target, '.codex', 'hooks', 'pan-cost-logger.js'));
+    const probe = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-rdirs-probe-'));
+    try {
+      fs.mkdirSync(path.join(probe, '.claude'), { recursive: true });
+      fs.writeFileSync(path.join(probe, '.claude', 'pan-file-manifest.json'), '{}');
+      assert.equal(installed.isPanProject(probe), true, 'a .claude-only project is still a PAN project');
+    } finally {
+      fs.rmSync(probe, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('pan-cost-logger — the transcript session filter reads the field Claude Code writes', () => {
+  // The guard read `entry.session_id`; real records name it `sessionId` — 199 of 200 in a
+  // local transcript carried the camelCase spelling and none the snake_case one (measured
+  // 2026-09-17), so the scoping it claimed to do never happened. Harmless on the per-agent
+  // path, where every record in the file belongs to the one agent, but the parent-slice
+  // fallback was summing a sibling session's records too. Both spellings are accepted now.
+  let dir;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-sesskey-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+  const rec = (key, session, out) => JSON.stringify({
+    type: 'assistant', [key]: session, timestamp: '2026-09-17T10:00:00.000Z',
+    message: { id: `m-${session}-${out}`, model: 'claude-opus-5', usage: { input_tokens: 1, output_tokens: out } },
+  });
+  const write = (...records) => {
+    const f = path.join(dir, 'transcript.jsonl');
+    fs.writeFileSync(f, records.join('\n') + '\n');
+    return f;
+  };
+
+  test('scopes to the given session, and sums everything when none is given', () => {
+    const f = write(rec('sessionId', 'mine', 100), rec('sessionId', 'other', 900));
+    assert.equal(readUsageFromTranscript(f, 'mine', 0).output_tokens, 100,
+      'a sibling session\'s records must not be attributed to this one');
+    assert.equal(readUsageFromTranscript(f, null, 0).output_tokens, 1000,
+      'with no session to scope to, every record still counts');
+  });
+
+  test('the snake_case spelling keeps working, in case a host writes it', () => {
+    const f = write(rec('session_id', 'mine', 100), rec('session_id', 'other', 900));
+    assert.equal(readUsageFromTranscript(f, 'mine', 0).output_tokens, 100);
+  });
+
+  test('a record naming no session is counted, not dropped', () => {
+    // The file is the session's own transcript, so an unlabelled record belongs to it.
+    const bare = JSON.stringify({ type: 'assistant', timestamp: '2026-09-17T10:00:00.000Z', message: { id: 'm-bare', model: 'claude-opus-5', usage: { input_tokens: 1, output_tokens: 7 } } });
+    const f = write(rec('sessionId', 'mine', 100), bare);
+    assert.equal(readUsageFromTranscript(f, 'mine', 0).output_tokens, 107);
+  });
+});
 
 describe('pan-cost-logger — buildCostRecord', () => {
   test('returns null for non-object input', () => {

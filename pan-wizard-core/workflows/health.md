@@ -162,6 +162,7 @@ Report final status.
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
 | I002 | info | Phase in ROADMAP ahead of current phase, not planned yet | No |
+| I003 | info | Focus-model or campaign tree — the phase-model checks do not apply | No |
 | STATE_REQ_DRIFT | warning | state.md complete but REQUIREMENTS.md has unchecked boxes | Yes |
 | STATE_ROADMAP_DRIFT | warning | state.md complete but roadmap.md has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record | No |

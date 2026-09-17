@@ -21,6 +21,26 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+/**
+ * What "PAN configured this file" actually means, measured against a real
+ * `--claude --local` install on 2026-09-17: the four hook events plus a statusline
+ * command. Asserting the shape rather than `hooks || statusLine` is the difference
+ * between "something is there" and "the hooks that make PAN work are there" — an empty
+ * `hooks: {}` satisfied the old form.
+ */
+function assertPanConfigured(after, what) {
+  assert.ok(after.hooks, `${what}: no hooks block at all`);
+  for (const event of ['SessionStart', 'PostToolUse', 'SubagentStop', 'Stop']) {
+    assert.ok(Array.isArray(after.hooks[event]) && after.hooks[event].length > 0,
+      `${what}: ${event} is not registered`);
+  }
+  const subagentStop = JSON.stringify(after.hooks.SubagentStop);
+  assert.match(subagentStop, /pan-cost-logger/, `${what}: SubagentStop is missing the cost logger`);
+  assert.match(subagentStop, /pan-trace-logger/, `${what}: SubagentStop is missing the trace logger`);
+  assert.match(String(after.statusLine && after.statusLine.command), /pan-statusline/,
+    `${what}: no PAN statusline`);
+}
+
 const PROJECT_ROOT = path.join(__dirname, '..');
 const INSTALLER = path.join(PROJECT_ROOT, 'bin', 'install.js');
 
@@ -152,7 +172,7 @@ describe('installer still configures settings.json when it can', () => {
     assert.doesNotMatch(out, /Could not parse/, 'a valid file must not be reported as unusable');
     assert.equal(after.model, 'opus', 'user keys preserved');
     assert.deepEqual(after.permissions, { allow: ['Bash(ls)'] }, 'user keys preserved');
-    assert.ok(after.hooks || after.statusLine, 'PAN must actually have configured something');
+    assertPanConfigured(after, 'a valid settings.json');
   });
 
   test('an empty settings.json is treated as nothing-to-preserve and gets configured', () => {
@@ -164,7 +184,7 @@ describe('installer still configures settings.json when it can', () => {
     assert.equal(code, 0);
     assert.doesNotMatch(out, /Could not parse/, 'an empty file is not an unparseable one');
     const after = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-    assert.ok(after.hooks || after.statusLine, 'PAN must configure an empty settings.json');
+    assertPanConfigured(after, 'an empty settings.json');
   });
 
   test('an absent settings.json is created', () => {
@@ -172,6 +192,6 @@ describe('installer still configures settings.json when it can', () => {
     const { code } = install(dir, ['--claude', '--local']);
     assert.equal(code, 0);
     const after = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'settings.json'), 'utf-8'));
-    assert.ok(after.hooks || after.statusLine);
+    assertPanConfigured(after, 'an absent settings.json');
   });
 });

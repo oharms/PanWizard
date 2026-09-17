@@ -200,7 +200,9 @@ Three checks, run with the rest of the suite, decide this from the code rather t
 - **The coverage gate.** `npm run test:coverage` runs the suite under Node's own instrumentation (Node 22+; the processes tests spawn are captured through the inherited `NODE_V8_COVERAGE`) and fails when a dispatcher `case` arm never executed or a module group falls below the floors in `tests/fixtures/coverage-policy.json` (set a point below the measured baseline). An arm no test dispatches yet is allowlisted there with a reason, and the entry fails once a test dispatches it. Release-check Gate 9 runs it; CI runs it on the Node 22 job.
 - **The quality lint.** `tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file and fails on the shapes that have passed while the feature they named was broken: an OR between result-status fields (`output || error` — a crash satisfies it), an in-process call to a lib module's `cmd*` function (they end in `output()`/`error()`, which exit the process, so the test child dies and `node --test` reports the file as one passing test — always go through `runPanTools`), `assert(true)`, CLI output asserted only by its length, a platform conditional that bare-returns instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read of the real home directory, and a committed `test.todo`. Exceptions live in `tests/fixtures/test-quality-allowlist.json` per file and rule with a count and a reason; an entry that allows more than the file has is stale and fails too.
 
-The two allowlists are the debt register: seeded from the suite as it stood on 2026-09-17, burned down in the spec's phase 2.
+The two allowlists are the debt register: seeded from the suite as it stood on 2026-09-17 and burned down in the spec's phase 2 — the twelve never-dispatched CLI arms, the four never-dispatched verbs and every "Unknown <group> subcommand" arm are now covered by `tests/dispatcher-arms.test.cjs`, which is driven from the dispatcher's own source rather than a hand-kept list.
+
+A fourth check is **not** part of the gate and is run by hand: `npm run test:mutate` breaks the code on purpose — one small mutation at a time, inside a throwaway `git worktree` so your checkout is never touched — and reports the mutations the suite did not notice. Coverage says a line executed; a surviving mutant says no assertion constrained it. Some survivors are correct (equivalent mutants, defensive `|| 0` defaults, log strings), which is exactly why it reports and never fails: a survivor is a question about whether a behaviour is worth pinning.
 
 ### Running Tests
 
@@ -210,6 +212,8 @@ node --test tests/phase.test.cjs            # Single file
 node scripts/run-tests.cjs tests            # Cross-platform runner; a tests/*.test.cjs glob only expands on bash or Node 22+
 npm run test:surface                        # The committed surface registry still matches the code
 npm run test:coverage                       # The suite under coverage: dispatcher arms + per-group floors (Node 22+)
+npm run harness                             # Tier 0 of the PAN Harness: behavioural, model-free, free
+npm run test:mutate                         # Report-only: which deliberate breakages the suite fails to notice
 ```
 
 ## Cross-Platform Considerations

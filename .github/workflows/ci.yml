@@ -75,6 +75,23 @@ jobs:
       - name: Doc↔code link graph (anti-fake — docs can't reference code that doesn't exist)
         run: node pan-wizard-core/bin/pan-tools.cjs links validate --raw
 
+      # Did the shipped artifact BEHAVE? Tier 0 of the PAN Harness (ADR-0047) packs this
+      # checkout, installs it into a throwaway directory and drives real scenarios — the
+      # layer a unit test cannot reach. Tier 0 is model-free and costs nothing; the model
+      # tiers need --max-usd and stay a local/manual call. One job only: it builds and
+      # installs an artifact, so running it on all nine would buy nothing. --no-ledger
+      # keeps harness/ledger.jsonl (a tracked file) out of it; the run reports through its
+      # own report.md under the runner's temp directory.
+      - name: PAN Harness (tier 0, model-free)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm run harness -- --no-ledger
+
+      # The suite and the harness must both leave the tree as they found it. A gate that
+      # writes into the checkout hides its own side effects from review.
+      - name: Working tree is unchanged
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: git diff --exit-code
+
   audit:
     name: npm audit (production)
     runs-on: ubuntu-latest

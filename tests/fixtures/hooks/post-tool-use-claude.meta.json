@@ -1,0 +1,12 @@
+{
+  "hook_event": "PostToolUse",
+  "runtime": "claude",
+  "captured_at": "2026-09-17",
+  "captured_from": "docs/HOOKS.md \"Developing Custom Hooks → Hook Input\" documents the PostToolUse payload verbatim as `{ session_id, tool_name, tool_input: { command } }`, and its worked example drives a hook with exactly that shape; `cwd` and `transcript_path` are the common input fields the other PAN hooks read (hooks/pan-cost-logger.js). `session_id` is the only field hooks/pan-context-monitor.js reads, and its bridge-file naming `claude-ctx-<session_id>.json` is pinned by tests/context-monitor-hook.test.cjs and tests/statusline.test.cjs. Identity shapes (UUID session id, absolute paths) confirmed against a local Claude Code transcript tree on this machine on 2026-09-17 — structure only, nothing copied out; all values here are neutral synthetic.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id; also names the statusline→monitor bridge file",
+    "{{TRANSCRIPT_PATH}}": "absolute path of the session transcript",
+    "{{PROJECT_DIR}}": "absolute path of the project"
+  },
+  "notes": "`tool_response` is omitted: real hosts send one, but no shape for it is evidenced in this repo or on this machine, and pan-context-monitor.js never reads it. The monitor's decision comes entirely from the bridge file the statusline wrote, so the e2e test has to seed that file to reach the emit path — the payload only supplies the session id that names it."
+}

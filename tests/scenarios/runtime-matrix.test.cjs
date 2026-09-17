@@ -8,6 +8,9 @@
 
 const { describe, test, after } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { createScenarioRunner, RUNTIME_DIR } = require('../helpers.cjs');
 
 const RUNTIMES = ['claude', 'opencode', 'gemini', 'codex', 'copilot'];
@@ -43,11 +46,30 @@ for (const runtime of RUNTIMES) {
 
     test('runs state json from installed path', () => {
       assert.ok(runner, 'runner must be initialized');
-      const result = runner.run('state json');
-      // state json returns error when no state.md exists, but it should
-      // still produce valid JSON output (not crash)
-      const parsed = JSON.parse(result.output);
-      assert.ok(parsed.error || parsed.state, 'should return error or state');
+      // Measured 2026-09-17: a freshly installed project has no .planning/, and
+      // `state json` reports that as a JSON error body on stdout with exit 1.
+      // (`parsed.error || parsed.state` passed on the error branch alone, and
+      // `state` is not even a field this verb emits.)
+      const missing = runner.run('state json');
+      assert.equal(missing.success, false, 'no state.md must exit non-zero');
+      assert.deepEqual(JSON.parse(missing.output), { error: 'state.md not found' });
+
+      // Positive pin: the installed engine reads a real state.md from the cwd it
+      // is handed and returns its frontmatter (not just the error branch).
+      const seeded = fs.mkdtempSync(path.join(os.tmpdir(), `pan-state-${runtime}-`));
+      try {
+        fs.mkdirSync(path.join(seeded, '.planning'), { recursive: true });
+        fs.writeFileSync(path.join(seeded, '.planning', 'state.md'), [
+          '---', 'pan_state_version: "1.0"', 'Status: In progress', 'Milestone: v9.9', '---', '',
+        ].join('\n'));
+        const ok = runner.run('state json', seeded);
+        assert.equal(ok.success, true, `state json should exit 0 on a seeded project: ${ok.error}`);
+        assert.deepEqual(JSON.parse(ok.output), {
+          pan_state_version: '1.0', Status: 'In progress', Milestone: 'v9.9',
+        });
+      } finally {
+        fs.rmSync(seeded, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      }
     });
 
     test('runs config-ensure-section from installed path', () => {

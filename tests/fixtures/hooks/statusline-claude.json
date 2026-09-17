@@ -1,0 +1,14 @@
+{
+  "session_id": "{{SESSION_ID}}",
+  "transcript_path": "{{TRANSCRIPT_PATH}}",
+  "cwd": "{{PROJECT_DIR}}",
+  "model": {
+    "display_name": "Opus"
+  },
+  "workspace": {
+    "current_dir": "{{PROJECT_DIR}}"
+  },
+  "context_window": {
+    "remaining_percentage": 28.5
+  }
+}

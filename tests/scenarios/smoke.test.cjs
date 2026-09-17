@@ -18,10 +18,16 @@ describe('E2E Smoke Tests — Layer 4', () => {
     runner.cleanup();
   });
 
-  test('ST-001: pan-tools responds to unknown command without crash', () => {
+  test('ST-001: pan-tools rejects an unknown command with a usage error', () => {
     const result = runner.run('nonexistent-command');
-    // Should not crash — returns output (help text or error JSON)
-    assert.ok(result.output.length > 0 || result.error.length > 0, 'should produce some output');
+    // Measured against the INSTALLED engine on 2026-09-17: exit 1, nothing on
+    // stdout, and the dispatcher's unknown-command line on stderr. The previous
+    // `output.length > 0 || error.length > 0` assert was satisfied by any crash
+    // (a stack trace is non-empty stderr too) — these three are not.
+    assert.equal(result.success, false, 'an unknown command must exit non-zero');
+    assert.equal(result.output, '', 'an unknown command must print nothing on stdout');
+    assert.match(result.error, /^Error: Unknown command: nonexistent-command\. Run pan-tools --help/);
+    assert.doesNotMatch(result.error, /at .*\.cjs:\d+|TypeError|ReferenceError/, 'must be a usage error, not a crash');
   });
 
   test('ST-002: All 38+ commands discoverable after Claude install', () => {

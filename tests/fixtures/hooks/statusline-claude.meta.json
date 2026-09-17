@@ -1,0 +1,12 @@
+{
+  "hook_event": "statusLine",
+  "runtime": "claude",
+  "captured_at": "2026-09-17",
+  "captured_from": "The exact fields hooks/pan-statusline.js reads off the statusline payload — `model.display_name`, `workspace.current_dir`, `session_id`, `context_window.remaining_percentage` — every one of them already pinned with these spellings by tests/statusline.test.cjs, and the bridge record it derives (`{ session_id, remaining_percentage, used_pct, timestamp }`) documented verbatim in docs/HOOKS.md. `transcript_path` and `cwd` are the common input fields the other PAN hooks read. Identity shapes (UUID session id, absolute paths) confirmed against a local Claude Code transcript tree on this machine on 2026-09-17 — structure only, no project name, path or content copied out; all values here are neutral synthetic.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id; names the bridge file the context monitor then reads",
+    "{{TRANSCRIPT_PATH}}": "absolute path of the session transcript",
+    "{{PROJECT_DIR}}": "absolute path of the project, whose basename the statusline prints"
+  },
+  "notes": "statusLine is not a hook event in HOOK_EVENT_MAP — the installer wires it into Claude Code's `statusLine.command` only (bin/install.js), which is why scripts/test-surface.cjs carries it as an extra hook row for claude alone. `remaining_percentage: 28.5` sits in the orange band: the hook rescales so 80% real usage shows as 100%, so 28.5 remaining renders as 89% used, and any rescale regression moves that number. Fields a real host also sends but the hook never reads (`model.id`, `workspace.project_dir`, `version`, `output_style`, `cost`) are omitted rather than invented."
+}

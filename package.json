@@ -1,6 +1,6 @@
 {
   "name": "pan-wizard",
-  "version": "3.28.0",
+  "version": "3.29.0",
   "description": "Command a bot army for your codebase: a reasoning-tier Mission Control delegates whole-project goals to specialist squads and ships behind a human merge gate. Five AI CLIs, zero context rot.",
   "bin": {
     "pan-wizard": "bin/install.js"
@@ -72,6 +72,7 @@
     "test:watch": "node scripts/run-tests.cjs --watch tests tests/scenarios",
     "test:coverage": "node scripts/coverage-gate.cjs",
     "test:surface": "node scripts/test-surface.cjs --check",
+    "test:mutate": "node scripts/mutation-probe.cjs",
     "build:plugin": "node scripts/build-plugin.js",
     "build:agent-plugin": "node scripts/build-agent-plugin.js",
     "harness": "node harness/src/run.cjs --tier 0",

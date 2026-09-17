@@ -63,18 +63,17 @@ describe('E2E Feedback: Output Safety', () => {
     fs.rmSync(emptyDir, { recursive: true, force: true });
   });
 
-  test('FL-011: --raw flag produces plain text', () => {
+  test('FL-011: --raw on state json falls back to the JSON body', () => {
     const r = runner.run('state json --raw');
-    if (r.success && r.output) {
-      // Raw output should NOT be wrapped in JSON braces
-      const trimmed = r.output.trim();
-      // If it starts with { it's JSON, not raw
-      if (trimmed.startsWith('{')) {
-        // Some commands may still return JSON in raw mode — that's acceptable
-        // The key check is it doesn't crash
-      }
-    }
-    assert.ok(r.success || r.error, 'should not crash with --raw');
+    // Measured 2026-09-17: `state json` passes an EMPTY raw template to output(),
+    // so --raw changes nothing — stdout is the same pretty-printed JSON as without
+    // the flag, exit 0. Asserted as measured; the flag's no-op here is reported,
+    // not "fixed".
+    assert.equal(r.success, true, `state json --raw should exit 0: ${r.error}`);
+    const withoutRaw = runner.run('state json');
+    assert.equal(r.output, withoutRaw.output, '--raw produces byte-identical output for state json');
+    const p = JSON.parse(r.output);
+    assert.equal(p.Status, 'In progress', 'the fixture state.md is what was parsed');
   });
 
   test('FL-012: No console.log leaks mixed into JSON', () => {

@@ -140,15 +140,23 @@ describe('E2E State Command Contracts', () => {
     fs.rmSync(emptyDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  test('state add-decision without --summary flag fails gracefully', () => {
+  test('state add-decision without --summary flag returns an error payload', () => {
     const result = runner.run('state add-decision');
-    // Should not crash — returns error or empty result
-    assert.ok(result.output || result.error, 'should produce some output');
+    // Measured 2026-09-17: the missing argument is reported as a JSON error body on
+    // STDOUT with exit 1 (not a stderr `Error:` line), and state.md is untouched.
+    assert.equal(result.success, false, 'a missing --summary must exit non-zero');
+    const parsed = JSON.parse(result.output);
+    assertErrorSchema(parsed, 'summary required');
+    assert.deepEqual(Object.keys(parsed), ['error'], 'nothing but the error field');
   });
 
-  test('state add-blocker without --text flag fails gracefully', () => {
+  test('state add-blocker without --text flag returns an error payload', () => {
     const result = runner.run('state add-blocker');
-    assert.ok(result.output || result.error, 'should produce some output');
+    // Measured 2026-09-17 — same shape as add-decision, different field name.
+    assert.equal(result.success, false, 'a missing --text must exit non-zero');
+    const parsed = JSON.parse(result.output);
+    assertErrorSchema(parsed, 'text required');
+    assert.deepEqual(Object.keys(parsed), ['error'], 'nothing but the error field');
   });
 
   test('all state commands return valid JSON (no mixed stdout)', () => {

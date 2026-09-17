@@ -90,6 +90,10 @@ const TTL_SHORT_MIN = 5;     // the default subagent lifetime, in minutes
 const TTL_LONG_MIN = 60;     // the lifetime the setting buys
 const TTL_MIN_WRITE_TOKENS = 1000;  // ignore trivial writes (a few tokens of tool results)
 const TTL_RECOMMEND_AT = 2;  // recurrence, not a single event, earns the recommendation
+// Above this much re-written context the recommendation is a warning, not an aside: it
+// fired in eight of ten field projects while filed at `info`, where nothing surfaces it
+// (sweep 2026-09-17). Below it the pattern is real but cheap, and stays informational.
+const TTL_WARN_TOKENS = 1000000;
 
 /**
  * Pure. Scan ledger records (oldest first by `ts`) for cache writes that follow
@@ -121,6 +125,7 @@ function assessCacheTtl(records, opts = {}) {
   }
   const recommend = shortIdle >= recommendAt;
   const setting = 'subagentPromptCacheTtl';
+  const severity = recommend && shortIdleTokens >= (opts.warnTokens ?? TTL_WARN_TOKENS) ? 'warn' : 'info';
   const advice = recommend
     ? `${shortIdle} cache writes followed an idle gap of ${TTL_SHORT_MIN}–${TTL_LONG_MIN} min (~${shortIdleTokens.toLocaleString()} tokens re-written): subagents get the five-minute cache lifetime by default — set \`${setting}: "1h"\` in a Claude Code settings file. One-hour writes bill at 2× base input against 1.25×, so this pays off once a block is read twice within the hour.`
     : null;
@@ -131,6 +136,7 @@ function assessCacheTtl(records, opts = {}) {
     writes_after_long_idle: longIdle,
     recommend,
     setting,
+    severity,
     advice,
   };
 }

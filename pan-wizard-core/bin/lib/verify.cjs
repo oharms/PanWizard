@@ -14,7 +14,7 @@ const {
   PLAN_SUFFIX, SUMMARY_SUFFIX, STANDARDS_FILE, STANDARDS_CATALOG, HEALTH_STATUS,
   BUILTIN_DRIFT_RULES, DRIFT_VERDICTS, BINARY_EXTENSIONS, DRIFT_MAX_FILES, DRIFT_MAX_FILE_SIZE, DRIFT_SEVERITY_WEIGHTS,
 } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible } = require('./utils.cjs');
+const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, detectPlanningModel } = require('./utils.cjs');
 const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
 // Drift detection lives in verify-drift.cjs; re-exported below so consumers of
 // verify.cjs are unaffected by the decomposition.
@@ -1320,19 +1320,33 @@ function cmdValidateHealth(cwd, options, raw) {
     return;
   }
 
+  // Check 1c: which workflow model is this tree running? Checks 2-8b below are the
+  // PHASE model's — a focus-model project (`/pan:focus`, no project/roadmap/state by
+  // design) and an orchestration campaign would each fail all of them and be called
+  // broken, which is what eight of fourteen field projects hit (sweep 2026-09-17).
+  // config.json is the one check every model shares.
+  const shape = detectPlanningModel(planningPath(cwd));
+  const phaseModel = shape.model === 'phase' || shape.model === 'fragment' || shape.model === 'empty';
+
   // Checks 2-8: individual structure and consistency checks
-  checkProjectFile(cwd, addIssue);
-  checkRoadmapFile(cwd, addIssue);
-  checkStateFile(cwd, addIssue, repairs);
+  if (phaseModel) {
+    checkProjectFile(cwd, addIssue);
+    checkRoadmapFile(cwd, addIssue);
+    checkStateFile(cwd, addIssue, repairs);
+  } else {
+    addIssue('info', 'I003', `${shape.model}-model project (${shape.evidence.join(', ')}) — the phase-model checks (project.md, roadmap.md, state.md, phases/) do not apply`, null);
+  }
   checkConfigFile(cwd, addIssue, repairs);
-  checkPhaseDirectories(cwd, addIssue);
-  checkPhaseContents(cwd, addIssue);
+  if (phaseModel) {
+    checkPhaseDirectories(cwd, addIssue);
+    checkPhaseContents(cwd, addIssue);
 
-  // Check 8b: cross-document state consistency
-  checkStateConsistency(cwd, addIssue, repairs);
+    // Check 8b: cross-document state consistency
+    checkStateConsistency(cwd, addIssue, repairs);
 
-  // Check 8c: verification gate (phases with verifier enabled need verification.md)
-  checkVerificationGate(cwd, addIssue);
+    // Check 8c: verification gate (phases with verifier enabled need verification.md)
+    checkVerificationGate(cwd, addIssue);
+  }
 
   // Check 9 (optional): standards compliance
   if (options.standards) {

@@ -34,6 +34,9 @@ const {
   TRACE_EVENT_FILE,
   OPT_SESSION_FILE,
   CURRENT_SESSION_FILE,
+  autoSessionId,
+  isSessionStale,
+  SESSION_STALE_MS,
   EVENT_TYPES,
   IMPACT_LEVELS,
 } = require('../pan-wizard-core/bin/lib/optimize.cjs');
@@ -149,9 +152,80 @@ describe('logTraceEvent', () => {
   let cwd;
   afterEach(() => { if (cwd) { cleanup(cwd); cwd = null; } });
 
-  test('returns false when no session active', () => {
+  // This used to assert `false`, which is the defect it pinned rather than a contract:
+  // the 16 `optimize trace log` call sites in the workflows are fire-and-forget
+  // (`2>/dev/null || true`), and the phase pipeline never starts a trace session, so every
+  // agent-reported event was silently dropped. Across fourteen field projects the
+  // instrument held 3,737 events — 99.7% of them the hook's own completion rows — and not
+  // one error, gap or correction in its whole history (sweep 2026-09-17).
+  test('with no session active it creates the day-scoped auto-session and logs', () => {
     cwd = createTempProject();
-    assert.equal(logTraceEvent(cwd, { type: 'error', description: 'x' }), false);
+    assert.equal(logTraceEvent(cwd, { type: 'error', category: 'reviewer_correction', description: 'reviewer found 3 errors', impact: 'major' }), true);
+
+    const sid = autoSessionId();
+    assert.equal(getCurrentSessionId(cwd), sid, 'the pointer names the day-scoped session');
+    const events = readJsonl(path.join(getTracesDir(cwd), sid, TRACE_EVENT_FILE));
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'error');
+    assert.equal(events[0].category, 'reviewer_correction');
+
+    // The id matches the shape the trace hook mints, so a day's hook-written and
+    // agent-reported events share one session rather than splitting into two.
+    assert.match(sid, /^sess_auto_\d{8}$/);
+    assert.equal(logTraceEvent(cwd, { type: 'gap', description: 'second event' }), true);
+    assert.equal(readJsonl(path.join(getTracesDir(cwd), sid, TRACE_EVENT_FILE)).length, 2, 'the same session is reused');
+    assert.equal(getOptimizeStats(cwd).total_errors_traced, 1, 'stats can finally see an agent-reported error');
+  });
+
+  test('an explicit --session that does not resolve is the caller\'s error, not an auto-session', () => {
+    cwd = createTempProject();
+    assert.equal(logTraceEvent(cwd, { type: 'error', description: 'x' }, 'sess_does_not_exist'), true,
+      'an explicit id is honoured verbatim — the session directory is created for it');
+    assert.equal(getCurrentSessionId(cwd), null, 'but it never becomes the current session');
+  });
+
+  test('a stale pointer is not a session: the event goes to a fresh auto-session', () => {
+    cwd = createTempProject();
+    // An explicit session used to stay "current" with no bound at all — a field project
+    // still pointed at a 17 July session when it was swept on 17 September.
+    const old = initTraceSession(cwd, { sessionId: 'sess_20260717T143520', description: 'explicit' });
+    const metaPath = path.join(getTracesDir(cwd), old.session_id, OPT_SESSION_FILE);
+    const meta = readJson(metaPath);
+    meta.started_at = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
+    assert.equal(isSessionStale(cwd, old.session_id), true, 'two months quiet is not "running now"');
+
+    assert.equal(logTraceEvent(cwd, { type: 'correction', description: 'x' }), true);
+    assert.equal(getCurrentSessionId(cwd), autoSessionId(), 'today owns the events');
+    assert.equal(fs.existsSync(path.join(getTracesDir(cwd), old.session_id, TRACE_EVENT_FILE)), false,
+      'nothing was written into the dead session');
+  });
+
+  test('isSessionStale: an ended session, an unreadable one, and a fresh one', () => {
+    cwd = createTempProject();
+    const fresh = initTraceSession(cwd, {});
+    assert.equal(isSessionStale(cwd, fresh.session_id), false);
+
+    const metaPath = path.join(getTracesDir(cwd), fresh.session_id, OPT_SESSION_FILE);
+    const meta = readJson(metaPath);
+    meta.ended_at = new Date().toISOString();
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
+    assert.equal(isSessionStale(cwd, fresh.session_id), true, 'a finished session is not running');
+
+    assert.equal(isSessionStale(cwd, 'sess_never_existed'), true, 'nothing to read is not "live"');
+    assert.ok(SESSION_STALE_MS >= 60 * 60 * 1000, 'the window must outlast a long single run');
+  });
+
+  test('event activity, not start time, keeps a long session alive', () => {
+    cwd = createTempProject();
+    const s = initTraceSession(cwd, { sessionId: 'sess_long_run' });
+    const metaPath = path.join(getTracesDir(cwd), s.session_id, OPT_SESSION_FILE);
+    const meta = readJson(metaPath);
+    meta.started_at = new Date(Date.now() - 3 * SESSION_STALE_MS).toISOString();
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + '\n');
+    // It started days ago but is still producing events, so it is still the live session.
+    fs.writeFileSync(path.join(getTracesDir(cwd), s.session_id, TRACE_EVENT_FILE), JSON.stringify({ ts: new Date().toISOString() }) + '\n');
+    assert.equal(isSessionStale(cwd, s.session_id), false);
   });
 
   test('appends event to trace.jsonl', () => {

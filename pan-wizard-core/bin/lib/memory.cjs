@@ -301,11 +301,17 @@ function selectMemory(cwd, agent, opts = {}) {
 /**
  * Memory-load telemetry gate (ADR-0036 acceptance signal). Estimates the tokens
  * of memory that would be injected whole (every agent log) and compares to the
- * median per-agent input from the trustworthy cost ledger (suspect records
+ * median per-agent PROMPT from the trustworthy cost ledger (suspect records
  * quarantined). Read-only, non-blocking; degrades to an absolute-token check
  * when the ledger is thin.
  *
- * @returns {{memory_tokens, agents, median_input_tokens, fraction, status, advisory}}
+ * The prompt is `input + cache_read + cache_write`, not `input` alone: under prompt
+ * caching the uncached remainder is tens of tokens, so dividing by it reported 1.8k
+ * of memory as 8,940% of a "median agent input" and called it critical (field sweep
+ * 2026-09-17). Memory is injected into the whole prompt, so the whole prompt is what
+ * it must be measured against.
+ *
+ * @returns {{memory_tokens, agents, median_prompt_tokens, fraction, status, advisory}}
  */
 function memoryLoadBudget(cwd, opts = {}) {
   const { agents } = listMemoryAgents(cwd);
@@ -317,12 +323,12 @@ function memoryLoadBudget(cwd, opts = {}) {
   let median = null;
   try {
     const cost = require('./cost.cjs');
-    const inputs = (cost.readRecords(cwd) || [])
-      .filter(r => !cost.isSuspectRecord(r))
-      .map(r => Number(r.input_tokens) || 0)
+    const prompts = (cost.readRecords(cwd) || [])
+      .filter(r => !cost.isSuspectRecord(r) && !cost.isEmptyRecord(r))
+      .map(r => (Number(r.input_tokens) || 0) + (Number(r.cache_read_tokens) || 0) + (Number(r.cache_write_tokens) || 0))
       .filter(n => n > 0)
       .sort((a, b) => a - b);
-    if (inputs.length) median = inputs[Math.floor(inputs.length / 2)];
+    if (prompts.length) median = prompts[Math.floor(prompts.length / 2)];
   } catch { /* thin/absent ledger — absolute-token check only */ }
 
   const fraction = median ? memoryTokens / median : null;
@@ -335,9 +341,9 @@ function memoryLoadBudget(cwd, opts = {}) {
   const advisory = status === 'ok'
     ? 'Memory-load within budget.'
     : `Memory injection is ~${memoryTokens} tokens across ${agents.length} agent log(s)` +
-      (fraction != null ? ` (~${Math.round(fraction * 100)}% of median agent input)` : '') +
+      (fraction != null ? ` (~${Math.round(fraction * 100)}% of a median agent prompt)` : '') +
       `. Bound it with cue-scoped 'memory select' or trim with 'memory compact <agent>'.`;
-  return { memory_tokens: memoryTokens, agents: agents.length, median_input_tokens: median, fraction, status, advisory };
+  return { memory_tokens: memoryTokens, agents: agents.length, median_prompt_tokens: median, fraction, status, advisory };
 }
 
 // ─── CLI command wrappers ────────────────────────────────────────────────────

@@ -134,9 +134,82 @@ function getCurrentSessionId(cwd) {
   }
 }
 
+/**
+ * Day-scoped auto-session id, the same shape the trace hook mints
+ * (`sess_auto_YYYYMMDD`) so a day's hook-written and agent-reported events share one
+ * session instead of splitting into two.
+ */
+function autoSessionId(now = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `sess_auto_${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}`;
+}
+
+/**
+ * How long a `current-session` pointer is evidence of a live session. An explicit
+ * (non-auto) session used to stay "current" indefinitely — a July session was still
+ * current in September in a field project, so `readActiveSessionMeta` in the cost hook
+ * backfilled two-month-old command/phase onto today's ledger rows, and agent-reported
+ * events would have landed in a long-dead session's directory (field sweep 2026-09-17).
+ */
+const SESSION_STALE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Last time anything was written to a session: its event log if it has one, else the
+ * moment it started. Null when the session cannot be read at all.
+ */
+function sessionLastActivityMs(cwd, sid) {
+  const dir = path.join(getTracesDir(cwd), sid);
+  try {
+    return fs.statSync(path.join(dir, TRACE_EVENT_FILE)).mtimeMs;
+  } catch { /* no events yet */ }
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, OPT_SESSION_FILE), 'utf-8'));
+    const t = new Date(meta.started_at).getTime();
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Is this session finished, or too old to still be the one running? Read-only —
+ * finalizing a stale session is the writing path's job (the trace hook's rollover).
+ */
+function isSessionStale(cwd, sid, now = Date.now()) {
+  const dir = path.join(getTracesDir(cwd), sid);
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, OPT_SESSION_FILE), 'utf-8'));
+    if (meta && meta.ended_at) return true;
+  } catch { /* unreadable meta — fall through to the age test */ }
+  const last = sessionLastActivityMs(cwd, sid);
+  if (last === null) return true;
+  return now - last > SESSION_STALE_MS;
+}
+
+/**
+ * Append one trace event.
+ *
+ * Creates the day's auto-session when none is active. It used to return false instead,
+ * and the 16 `optimize trace log` call sites in the workflows are fire-and-forget
+ * (`2>/dev/null || true`), so on the phase pipeline — which never starts a trace
+ * session — every agent-reported event was silently discarded. Across fourteen field
+ * projects the instrument held 3,737 events, 99.7% of them the completion rows the hook
+ * writes, and not one error, gap or correction in its whole history (sweep 2026-09-17).
+ * An explicit `--session` is still honoured verbatim.
+ */
 function logTraceEvent(cwd, event, sessionId) {
-  const sid = sessionId || getCurrentSessionId(cwd);
-  if (!sid) return false;
+  // An explicit id is honoured verbatim. A POINTER, by contrast, is only evidence while
+  // the session it names is alive; a dead one is no session at all.
+  let sid = sessionId || null;
+  if (!sid) {
+    const current = getCurrentSessionId(cwd);
+    if (current && !isSessionStale(cwd, current)) sid = current;
+  }
+  if (!sid) {
+    const created = initTraceSession(cwd, { sessionId: autoSessionId(), description: 'auto-session (day-scoped)' });
+    if (!created || created.error) return false;
+    sid = created.session_id;
+  }
 
   try {
     const sessionDir = path.join(getTracesDir(cwd), sid);
@@ -1290,6 +1363,9 @@ module.exports = {
   TRACE_EVENT_FILE,
   OPT_SESSION_FILE,
   CURRENT_SESSION_FILE,
+  autoSessionId,
+  isSessionStale,
+  SESSION_STALE_MS,
   EVENT_TYPES,
   IMPACT_LEVELS,
   VALID_SCOPES,

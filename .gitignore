@@ -79,6 +79,12 @@ tmp/
 
 # PAN planning state (project-specific, not part of source distribution)
 .planning/
+# ...except the harness seeds, whose planning trees ARE source: they are the fixtures the
+# behavioural scenarios run against. Without this, a fresh clone has seeds with no project
+# in them and every scenario measures an empty directory — which is what CI's first
+# harness run did (2026-09-17).
+!harness/seeds/*/.planning/
+!harness/seeds/*/.planning/**
 .tmp/
 
 # v3.7.0+ self-improvement loop: harvested experiment data IS part of the

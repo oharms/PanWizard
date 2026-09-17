@@ -7,8 +7,8 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync } = require('child_process');
-const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { execSync, execFileSync } = require('child_process');
+const { runPanTools, createTempProject, cleanup, TOOLS_PATH } = require('./helpers.cjs');
 
 describe('history-digest command', () => {
   let tmpDir;
@@ -688,12 +688,28 @@ describe('websearch command', () => {
   });
 
   test('returns error when query is empty', () => {
-    const result = runPanTools('websearch');
-    assert.ok(result.success, `Command should succeed: ${result.error}`);
-
-    const output = JSON.parse(result.output);
+    // Measured 2026-09-17: cmdWebsearch checks the API key BEFORE the query, so
+    // running this with no key took the "BRAVE_API_KEY not set" branch and never
+    // reached the empty-query path this test names — `output.error || output.reason`
+    // then passed on `reason`. With a key configured the empty query is a real
+    // failure: exit 1 with `error: "Query required"` on stdout. The fake key is
+    // never used: the query check returns before any fetch.
+    let out = '';
+    let code = 0;
+    try {
+      out = execFileSync(process.execPath, [TOOLS_PATH, 'websearch'], {
+        cwd: os.tmpdir(), encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, BRAVE_API_KEY: 'unused-key-empty-query-returns-first' },
+      });
+    } catch (err) {
+      code = err.status;
+      out = err.stdout?.toString() || '';
+    }
+    assert.strictEqual(code, 1, 'an empty query with a configured key must exit non-zero');
+    const output = JSON.parse(out);
     assert.strictEqual(output.available, false, 'should report not available');
-    assert.ok(output.error || output.reason, 'should include error or reason field');
+    assert.strictEqual(output.error, 'Query required');
+    assert.ok(!('reason' in output), 'the unconfigured-capability reason must not appear when a key is set');
   });
 });
 

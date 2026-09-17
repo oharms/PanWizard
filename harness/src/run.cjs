@@ -35,7 +35,7 @@ const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
 const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 
 function parseArgs(argv) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false };
+  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -45,6 +45,11 @@ function parseArgs(argv) {
     else if (k === '--state-dir') { a.stateDir = v; i++; }
     else if (k === '--repo') { a.repo = path.resolve(v); i++; }
     else if (k === '--keep') a.keep = true;
+    // harness/ledger.jsonl is a TRACKED file — the finding history across runs. A CI run
+    // is a throwaway checkout whose ledger nobody will read, and writing it there leaves
+    // the working tree dirty, so CI passes --no-ledger and the run reports through its
+    // own report.md/report.json under the state directory instead.
+    else if (k === '--no-ledger') a.ledger = false;
     else if (k === '--help' || k === '-h') { a.help = true; }
     else throw new Error(`unknown argument: ${k}`);
   }
@@ -206,7 +211,7 @@ function persistStepOutput(runDir, scenarioId, rep, index, outcome) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep]\n');
+    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger]\n');
     return 0;
   }
   const stateDir = args.stateDir || defaultStateDir();
@@ -321,7 +326,7 @@ function main() {
   // Ledger + report
   const now = new Date().toISOString();
   const entries = mergeRun(readLedger(LEDGER), { runId: id, build: `${art.build.version}@${(art.build.head || 'nogit').slice(0, 9)}`, now, failures, passedSteps });
-  writeLedger(LEDGER, entries);
+  if (args.ledger) writeLedger(LEDGER, entries);
   const promotable = entries.filter(isPromotable);
   // Per-scenario completion rate across reps — the number a chain comparison is about.
   const byScenario = {};

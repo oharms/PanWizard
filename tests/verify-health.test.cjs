@@ -38,6 +38,83 @@ function createHealthyProject(tmpDir) {
 // validate health command
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('validate health — the tree\'s workflow model decides which checks apply', () => {
+  // A focus-model project (`/pan:focus`) has no project.md, roadmap.md or state.md by
+  // design. Health ran the phase-model checks against every tree, so it called eight of
+  // the fourteen field projects swept on 2026-09-17 "broken" and exited 1 — including the
+  // heaviest one. The checks now follow the model the tree is actually running.
+  let tmp;
+  beforeEach(() => {
+    // A bare root: no phases/ directory, which createTempProject() would add and which
+    // is itself a phase-model marker.
+    tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-model-'));
+    fs.mkdirSync(path.join(tmp, '.planning'), { recursive: true });
+  });
+  afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+
+  const planning = () => path.join(tmp, '.planning');
+
+  test('detectPlanningModel names the model from the entries only that model creates', () => {
+    const { detectPlanningModel } = require('../pan-wizard-core/bin/lib/utils.cjs');
+    fs.mkdirSync(path.join(planning(), 'focus'), { recursive: true });
+    assert.deepEqual(detectPlanningModel(planning()), { model: 'focus', evidence: ['focus'], entries: 1 });
+    // phases/ alone is a phase marker, which is why a focus fixture must not have one.
+    fs.mkdirSync(path.join(planning(), 'phases'), { recursive: true });
+    assert.equal(detectPlanningModel(planning()).model, 'phase');
+    fs.rmSync(path.join(planning(), 'phases'), { recursive: true, force: true });
+
+    fs.writeFileSync(path.join(planning(), 'project.md'), '# P\n');
+    assert.equal(detectPlanningModel(planning()).model, 'phase', 'the phase model wins when both are present');
+
+    const frag = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-frag-'));
+    try {
+      fs.mkdirSync(path.join(frag, '.planning', 'metrics'), { recursive: true });
+      assert.equal(detectPlanningModel(path.join(frag, '.planning')).model, 'fragment',
+        'a tree holding only hook-written artifacts marks no workflow');
+      assert.equal(detectPlanningModel(path.join(frag, 'nope')).model, 'absent');
+    } finally { fs.rmSync(frag, { recursive: true, force: true }); }
+  });
+
+  test('a focus-model tree is not broken: no E002/E003/E004, exit 0, and I003 says why', () => {
+    fs.mkdirSync(path.join(planning(), 'focus'), { recursive: true });
+    fs.writeFileSync(path.join(planning(), 'focus', 'A1-notes.md'), '# notes\n');
+
+    const r = runPanTools('validate health', tmp);
+    assert.ok(r.success, r.error);
+    const v = JSON.parse(r.output);
+    const codes = (v.errors || []).map(e => e.code);
+    assert.deepEqual(codes, [], `focus-model tree reported errors: ${JSON.stringify(codes)}`);
+    assert.notEqual(v.status, 'broken');
+    const i003 = (v.info || []).find(i => i.code === 'I003');
+    assert.ok(i003, 'I003 must name the model whose checks were skipped');
+    assert.match(i003.message, /focus-model/);
+  });
+
+  test('an orchestration campaign is treated the same way', () => {
+    fs.mkdirSync(path.join(planning(), 'orchestration'), { recursive: true });
+    const v = JSON.parse(runPanTools('validate health', tmp).output);
+    assert.deepEqual((v.errors || []).map(e => e.code), []);
+    assert.match((v.info || []).find(i => i.code === 'I003').message, /campaign-model/);
+  });
+
+  test('a phase-model tree still reports its missing spine, and a bare tree is still judged as one', () => {
+    fs.writeFileSync(path.join(planning(), 'project.md'), '# P\n\n## What This Is\nx\n\n## Core Value\nx\n\n## Requirements\n- r\n');
+    const withSpine = JSON.parse(runPanTools('validate health', tmp).output);
+    const codes = (withSpine.errors || []).map(e => e.code);
+    assert.ok(codes.includes('E003') && codes.includes('E004'), `expected the phase checks to run, got ${JSON.stringify(codes)}`);
+    assert.equal((withSpine.info || []).some(i => i.code === 'I003'), false);
+
+    // An empty tree has no model markers at all; it must keep reading as a phase project
+    // being set up, not as a model whose checks do not apply.
+    const bare = createTempProject();
+    try {
+      const v = JSON.parse(runPanTools('validate health', bare).output);
+      assert.ok((v.errors || []).map(e => e.code).includes('E002'));
+      assert.equal((v.info || []).some(i => i.code === 'I003'), false);
+    } finally { cleanup(bare); }
+  });
+});
+
 describe('validate health command', () => {
   let tmpDir;
 
