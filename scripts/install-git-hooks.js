@@ -52,6 +52,11 @@ try {
 
 // 3. Confirm the hook file is executable on Unix. On Windows the bit doesn't
 //    matter — Git Bash treats `.sh` and shebanged scripts as executable.
+//    The file is TRACKED as 100755, so this is a safety net rather than the source
+//    of truth: it used to be tracked 100644, and since npm ci runs this script
+//    through `prepare`, every Linux and macOS checkout was left with a one-bit dirty
+//    tree that nothing looked at until CI began asserting the tree is unchanged
+//    (2026-09-17).
 const hookFile = path.join(REPO_ROOT, HOOKS_DIR, 'pre-commit');
 if (process.platform !== 'win32') {
   try {
