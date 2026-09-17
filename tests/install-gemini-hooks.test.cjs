@@ -67,7 +67,10 @@ describe('Gemini hook registration after a local --gemini install', () => {
   let output;
 
   before(() => {
-    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-gemini-hooks-'));
+    // macOS: os.tmpdir() is a symlink (/var → /private/var) and the installer records the
+    // RESOLVED path, so the root is resolved here — otherwise every path comparison below
+    // passes on Linux and Windows and fails on macOS.
+    projectDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-gemini-hooks-')));
     const r = installInto(projectDir, ['--gemini', '--local', '--skip-warnings']);
     if (!r.success) throw new Error(`gemini install failed: ${r.error || r.output}`);
     output = String(r.output || '').replace(/\u001b\[[0-9;]*m/g, '');

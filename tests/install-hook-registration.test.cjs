@@ -92,7 +92,10 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
   const config = {}; // runtime → parsed surface file
 
   before(() => {
-    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-hookreg-'));
+    // macOS: os.tmpdir() is a symlink (/var → /private/var) and the installer records the
+    // RESOLVED path, so the root is resolved here — otherwise every path comparison below
+    // passes on Linux and Windows and fails on macOS.
+    projectDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-hookreg-')));
     const r = installInto(projectDir, ['--claude', '--codex', '--gemini', '--opencode', '--copilot', '--local', '--skip-warnings']);
     if (!r.success) throw new Error(`five-runtime install failed: ${r.error || r.output}`);
     for (const runtime of WITH_HOOKS) {

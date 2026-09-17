@@ -90,7 +90,10 @@ describe('MCP registration after a real local install (every runtime in MCP_REGI
   let output;
 
   before(() => {
-    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcp-install-'));
+    // macOS: os.tmpdir() is a symlink (/var → /private/var) and the installer records the
+    // RESOLVED path, so the root is resolved here — otherwise every path comparison below
+    // passes on Linux and Windows and fails on macOS.
+    projectDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcp-install-')));
     // Seed a FOREIGN server into Claude's surface before the install, so the
     // non-destructive merge (and the uninstall strip) is measured on a file PAN
     // did not create rather than asserted about an empty one.
@@ -283,7 +286,7 @@ describe('MCP registration at global scope (claude is deliberately register-by-h
   const facts = {};
 
   before(() => {
-    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcp-global-'));
+    projectDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-mcp-global-')));
     withFakeHome((home) => {
       const r = installInto(projectDir, ['--claude', '--global', '--skip-warnings']);
       if (!r.success) throw new Error(`global claude install failed: ${r.error || r.output}`);

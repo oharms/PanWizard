@@ -151,7 +151,10 @@ function lintFixtureProvenance(dir) {
 
 const tempDirs = [];
 function mkTemp(prefix) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  // Resolved: macOS's os.tmpdir() is a symlink (/var → /private/var) and the installer
+  // records the real path, so an unresolved root makes every path comparison macOS-only
+  // fragile.
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
   tempDirs.push(dir);
   return dir;
 }
