@@ -123,7 +123,7 @@ When a record has neither a known model nor a known tier, its cost is `null` and
 
 <instrumentation_note>
 
-Token records are written by any caller that knows its usage — typically the host runtime or a wrapper. PAN ships the log format + aggregator (this command); the capture hook itself is opt-in (Wave 5 of Spec B v2). Until then, records can be appended manually via `pan-tools cost append` or by external scripts reading the provider API.
+Token records are written by any caller that knows its usage — typically the host runtime or a wrapper. PAN ships the log format, this aggregator, and the `pan-cost-logger` capture hook, which the installer registers on Claude Code, Codex and Copilot CLI. Elsewhere, records can be appended manually via `pan-tools cost append` or by external scripts reading the provider API.
 
 If `.planning/metrics/tokens.jsonl` is empty, `/pan:cost` returns zero totals — the feature is inert, not broken.
 
@@ -134,10 +134,10 @@ If `.planning/metrics/tokens.jsonl` is empty, `/pan:cost` returns zero totals �
 | Runtime | Support |
 |---------|---------|
 | Claude Code | Full — data format + aggregation + all output formats |
-| OpenCode | Full aggregator; token capture depends on OpenCode's own hooks |
-| Gemini | Full aggregator; token capture depends on Gemini CLI instrumentation |
-| Codex | Full aggregator; token capture via external script |
-| Copilot CLI | Full aggregator; Copilot doesn't currently expose per-call usage |
+| OpenCode | Full aggregator; PAN registers no hooks on OpenCode, so records come from `pan-tools cost append` or an external script |
+| Gemini | Full aggregator; PAN registers no cost hook on Gemini CLI (no subagent-completion event), so records come from `pan-tools cost append` or an external script |
+| Codex | Full — `pan-cost-logger` registered on `SubagentStop` in `.codex/hooks.json` |
+| Copilot CLI | Full aggregator; `pan-cost-logger` registered on `subagentStop` in `.github/hooks/pan.json` (token counts depend on what the payload carries) |
 
 The aggregator is runtime-agnostic. What varies across runtimes is how records *get into* `tokens.jsonl` in the first place.
 

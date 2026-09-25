@@ -62,7 +62,7 @@ PAN's `/pan:pause` command saves execution state. The WARNING message suggests u
 
 ## Setup
 
-Both hooks are automatically registered during `npx pan-wizard` installation:
+On Claude Code both hooks are automatically registered during `npx pan-wizard` installation (Gemini CLI gets neither: it has no statusline command and no hook payload carries context usage. Codex gets the monitor but no statusline, so it never warns there; Copilot CLI gets both (its statusline is experimental) and OpenCode neither — see [HOOKS.md](HOOKS.md#hook-runtime-support)):
 
 - **Statusline** (writes bridge file): Registered as `statusLine` in settings.json
 - **Context Monitor** (reads bridge file): Registered as `PostToolUse` hook in settings.json

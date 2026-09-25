@@ -77,7 +77,7 @@ For the detected runtime config directory (CONFIG_DIR), audit ALL of the followi
 - [ ] `CONFIG_DIR/pan-wizard-core/references/` — non-empty, every manifest-listed reference present
 
 **1.4 Commands**
-- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command file present
+- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command file present (a `--unified-skills` install has none: check `./.agents/skills/pan-*/SKILL.md`, and for Claude also `CONFIG_DIR/skills/pan-*/SKILL.md`)
 - For OpenCode: `CONFIG_DIR/commands/` — every manifest-listed `pan-*.md` present (flat, one file per command)
 - For Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
 - For Codex: the SHARED skills tree, not `CONFIG_DIR` — `./.agents/skills/pan-*/SKILL.md` for a local
@@ -95,7 +95,7 @@ For the detected runtime config directory (CONFIG_DIR), audit ALL of the followi
 
 **1.7 Settings/Config**
 - [ ] Settings file exists (settings.json / opencode.json / config.json)
-- [ ] Hooks are registered in settings (SessionStart, PostToolUse, statusLine)
+- [ ] Hooks are registered — Claude `settings.json`: SessionStart, PostToolUse, SubagentStop, Stop, statusLine; Gemini `settings.json`: SessionStart and AfterAgent only (no statusLine); Codex: `.codex/hooks.json`; Copilot: `.github/hooks/pan.json`
 - [ ] Hook commands point to existing files
 
 **1.8 Manifest Integrity**

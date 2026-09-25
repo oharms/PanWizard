@@ -1,7 +1,7 @@
 ---
 name: focus-auto
 group: Focus
-description: Continuous scan-plan-exec loop with purpose-driven categories and 5-layer safety harness
+description: Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness
 allowed-tools:
   - Read
   - Write
@@ -107,7 +107,7 @@ Wait for the user's reply before proceeding. Do not guess or pick a default cate
 | `--stop` | — | Gracefully stop active run |
 | `--status` | — | Show current campaign progress |
 | `--dry-run` | — | Show plan without executing |
-| `--deep-review` | off | After every exec cycle, run inline OWASP security check on changed files. Verdict `block` or `review_required` stops the campaign (6th safety harness). Works with all categories. |
+| `--deep-review` | off | After every exec cycle, run inline OWASP security check on changed files. Verdict `block` or `review_required` stops the campaign (the security-gate layer of the safety harness). Works with all categories. |
 | `--parallel-research` | off | Fan out the per-item *research* stage via the Workflow tool (read-only agents). No-op fallback to sequential where the host has no Workflow tool. (ADR-0031) |
 | `--parallel-verify` | off | Fan out the per-item *verify* stage via the Workflow tool (read-only). The implement/exec stage always stays a single agent. (ADR-0031) |
 | `--clean-seal` | off | After the loop's last item, run one clean build + full verification (commands from `config.json → build`/`verification`) to catch cross-item orphans. (ADR-0031) |
@@ -185,7 +185,7 @@ Phase 2 (each cycle): Scan → Plan → Exec → Commit is strictly sequential w
 HARD STOP conditions:
 - Phase 1 fails (tests broken): Do not enter main loop — report and exit
 - Any cycle: test count drops below baseline after revert → stop campaign, preserve state
-- Context drops below 25%: stop campaign cleanly (safety harness 3)
+- Context drops below 25%: stop campaign cleanly (safety harness)
 </phase_dependencies>
 
 ### Phase 2: Main Loop
@@ -413,7 +413,7 @@ Then continue immediately to the next cycle (back to Step 2.1).
 
 4. Remove safety tag: `git tag -d focus-auto-baseline 2>/dev/null`
 
-## 6-Layer Safety Harness
+## Layered Safety Harness
 
 | Layer | Mechanism | Action |
 |-------|-----------|--------|
@@ -425,7 +425,7 @@ Then continue immediately to the next cycle (back to Step 2.1).
 | Zero-completed guard | 0 items done in a cycle | Stop — further cycles won't help |
 | Security gate (`--deep-review`) | Critical/high OWASP pattern in changed files | Revert last commit (critical) or flag for manual review (high), stop campaign |
 
-## 9 Behavioral Rules
+## Behavioral Rules
 
 1. **Read Before Write** — Read every file before editing. Understand context, callers, invariants.
 2. **Root Cause** — Fix the actual defect, not symptoms. Trace the code path.

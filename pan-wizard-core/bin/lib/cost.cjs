@@ -30,8 +30,9 @@
  *   - hit rate: cache_read / (cache_read + input - cache_write) if any cache activity
  *
  * Rate table is approximate — real pricing comes from the provider's API.
- * Rates are US dollars per million tokens, indicative as of 2026-08. Users
- * can override with `.planning/config.json` → `cost.rates`.
+ * Rates are US dollars per million tokens, verified against each provider's
+ * pricing page on the date in RATES_VERIFIED_AT (below). Users can override with
+ * `.planning/config.json` → `cost.rates`.
  */
 
 const fs = require('fs');
@@ -47,63 +48,109 @@ const TOKENS_FILE = 'tokens.jsonl';
  * Override per-model in config.json → cost.rates.
  */
 const DEFAULT_RATES = {
-  // Anthropic — verified against platform pricing 2026-09-10. Opus 4.6+/Opus 5 are
-  // $5/$25 (the old $15/$75 Opus pricing ended with the 4.5 generation). Cache
-  // rates follow Anthropic's convention: read ≈ 0.1× input, write ≈ 1.25× input —
-  // EXCEPT Fable 5.1, whose cache reads bill at 0.025× input ($0.25). Fable 5.1
-  // needs its own row: without it the family-prefix fallback priced its reads at
-  // the Fable 5 rate, 4× too high on the model the `fable`/`best` aliases resolve to
-  // (model-config, read 2026-09-10: neither Fable model is any plan's default), and
-  // cached re-reads are the bulk of PAN's traffic (ADR-0044).
+  // Anthropic — platform.claude.com/docs/en/about-claude/pricing, every row read
+  // 2026-09-23. Opus 4.6+/Opus 5 are $5/$25 (the old $15/$75 Opus pricing ended with
+  // the 4.5 generation). cache_write is the 5-minute write rate (1.25× input; the
+  // 1-hour write bills 2×, which the ledger does not split yet). Cache reads follow
+  // the 0.1× convention EXCEPT on three models the page footnotes: Fable 5.1 and
+  // Mythos 5.1 at 0.025× input, Opus 5.5 at 0.05×. Each needs its own row, because
+  // the family-prefix fallback would otherwise price it at its predecessor's reads.
+  // Fable 5.1 is what the `fable`/`best` aliases resolve to (model-config: neither
+  // Fable model is any plan's default); cached re-reads are the bulk of PAN's
+  // traffic (ADR-0044).
   'claude-fable-5-1':   { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
   'claude-fable-5':     { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
-  // Mythos 5.1 / Mythos 5 (limited availability) — platform.claude.com/docs/en/about-claude/pricing,
-  // read 2026-09-10: $10/$50; the page's cache footnote names Fable 5.1 AND Mythos 5.1 as
-  // the two models whose cache reads bill at 0.025× input; Mythos 5 follows the 0.1× rule.
-  // Added for reality check R7: resolveRate returned null for both ids.
+  // Mythos 5.1 / Mythos 5 (limited availability): $10/$50; Mythos 5.1 reads at
+  // 0.025× input like Fable 5.1, Mythos 5 follows the 0.1× rule (R7).
   'claude-mythos-5-1':  { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
   'claude-mythos-5':    { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
+  // Opus 5.5 (claude-opus-5-5, released 2026-09-22): $4 input / $20 output, 5-minute
+  // writes $5, cache hits $0.20 — the page prices its hits at 0.05× input. Claude
+  // Code 2.1.280 made it the default model on every plan (model-config, read
+  // 2026-09-23), so PAN's inherit tier now runs on it. Without this row the family
+  // prefix priced it as Opus 5: cache reads 2.5× high, the rest a quarter high
+  // (reality check 2026-09-22, R25). The models overview lists no dated snapshot —
+  // from the 4.6 generation on, the dateless id is canonical.
+  'claude-opus-5-5':    { input: 4.0,  output: 20.0, cache_read: 0.20, cache_write: 5.0 },
   'claude-opus-5':      { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-8':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-7':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   'claude-opus-4-6':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
-  // Opus 4.5 (dated id claude-opus-4-5-20251101) — same pricing page, read 2026-09-10:
-  // $5/$25/$0.50/$6.25. Without this row the dated id had no family prefix to land on
-  // and priced as null (R7).
+  // Opus 4.5 (dated id claude-opus-4-5-20251101): without this row the dated id had
+  // no family prefix to land on and priced as null (R7).
   'claude-opus-4-5':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
   // Sonnet 5 is $2/$10: the launch price announced as introductory through
-  // 2026-08-31 was made permanent and the scheduled rise to $3/$15 cancelled
-  // (pricing page, read 2026-09-10). Lesson: never write down a pre-announced
-  // price — this row carried the future rate for a month and over-billed by half.
+  // 2026-08-31 was made permanent and the scheduled rise to $3/$15 cancelled.
+  // Lesson: never write down a pre-announced price — this row carried the future
+  // rate for a month and over-billed by half.
   'claude-sonnet-5':    { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50 },
   'claude-sonnet-4-6':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
-  // Sonnet 4.5 (dated id claude-sonnet-4-5-20250929) — pricing page, read 2026-09-10:
-  // $3/$15/$0.30/$3.75 (the pre-Sonnet-5 rate; Sonnet 5 is $2/$10). R7.
+  // Sonnet 4.5 (dated id claude-sonnet-4-5-20250929): $3/$15/$0.30/$3.75 (R7).
   'claude-sonnet-4-5':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
+  // Haiku 4.5: API id claude-haiku-4-5-20251001, alias claude-haiku-4-5.
   'claude-haiku-4-5':   { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25 },
 
-  // OpenAI — verified against published pricing 2026-08. Prompt caching is a 90%
-  // input discount with no separate write charge, so cache_write bills at the
-  // plain input rate. GPT-5.6 ships in three tiers; the bare `gpt-5.6` id prices
-  // as the Sol flagship, with tier-specific keys for Terra/Luna (longest-prefix
-  // match wins in resolveRate). Luna reflects the 2026-07-30 price cut.
-  'gpt-5.6':            { input: 5.0,  output: 30.0, cache_read: 0.5,  cache_write: 5.0 },
-  'gpt-5.6-terra':      { input: 2.0,  output: 12.0, cache_read: 0.2,  cache_write: 2.0 },
-  'gpt-5.6-luna':       { input: 0.20, output: 1.20, cache_read: 0.02, cache_write: 0.20 },
+  // OpenAI — developers.openai.com/api/docs/pricing, Standard tier, short context
+  // (≤272K input tokens), read 2026-09-23. On the GPT-5.6 and GPT-6 families a cache
+  // write bills at 1.25× input IN PLACE of the input rate ("writes are not an
+  // additive fee"); GPT-5.5 charges no cache write ("-"), so its write tokens bill
+  // as plain input. Until 2026-09-22 this block said "no separate write charge" for
+  // every row, which had stopped being true — Terra and Luna writes were a fifth
+  // low (R27). Longest-prefix match lets each tier key win over a shorter one.
+  // GPT-6: Astra is the flagship; Sol and Luna were released 2026-09-22. Codex's
+  // config docs use gpt-6-sol as the default model and gpt-6-luna for lower-cost
+  // subagents (learn.chatgpt.com/docs/config-file/config-basic, /agent-configuration/subagents).
+  'gpt-6-astra':        { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
+  'gpt-6-sol':          { input: 2.0,  output: 10.0, cache_read: 0.2,  cache_write: 2.5 },
+  'gpt-6-luna':         { input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125 },
+  // GPT-5.6. The bare `gpt-5.6` id is an alias that "routes requests to GPT-5.6 Sol"
+  // (its model page, read 2026-09-23), so it carries Sol's row — not the $5/$30 it
+  // carried before, which no page listed. Sol's price is promotional "at least
+  // through November 21, 2026": re-read it after that date.
+  'gpt-5.6':            { input: 4.0,  output: 20.0, cache_read: 0.4,  cache_write: 5.0 },
+  'gpt-5.6-sol':        { input: 4.0,  output: 20.0, cache_read: 0.4,  cache_write: 5.0 },
+  'gpt-5.6-terra':      { input: 2.0,  output: 12.0, cache_read: 0.2,  cache_write: 2.5 },
+  'gpt-5.6-luna':       { input: 0.20, output: 1.20, cache_read: 0.02, cache_write: 0.25 },
+  // Priced only in the page's separate "Cyber models" table, not in the Standard tiers.
+  'gpt-5.6-cyber':      { input: 12.5, output: 75.0, cache_read: 1.25, cache_write: 15.625 },
   'gpt-5.5':            { input: 5.0,  output: 30.0, cache_read: 0.5,  cache_write: 5.0 },
 
-  // Google Gemini — published rates (per million tokens, approximate; users can override via config.json → cost.rates).
-  // Pro tiers use the <=200K-context tier; long-context calls may be billed at ~2x. Cache rates are Google's context-cache pricing (~25% of input rate).
+  // Google Gemini — ai.google.dev/gemini-api/docs/pricing, paid tier, text input,
+  // the ≤200K-token prompt tier where the page splits by length, read 2026-09-23.
+  // cache_read is the page's "context caching" price: 0.1× input on every row, not
+  // the 0.25× this block carried until 2026-09-22 (cache reads 2.5× high, R26). The
+  // tokens that CREATE a cache bill at the standard input price (Google Cloud's
+  // context-cache overview; the Gemini API pages list only cached-token and storage
+  // charges), so cache_write = input. Cache STORAGE bills per million tokens per
+  // HOUR, which a per-token table cannot carry: PAN's Gemini totals exclude it.
+  // The 3.6/3.7/3.8 Flash prices run "through December 31, 2026" and double from
+  // January 1, 2027 (the page states both) — re-read them after that date.
+  'gemini-3.8-flash':       { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 },
+  'gemini-3.7-flash':       { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 },
+  'gemini-3.6-flash':       { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 },
+  'gemini-3.5-flash':       { input: 1.50, output: 9.00, cache_read: 0.15,  cache_write: 1.50 },
+  'gemini-3.5-flash-lite':  { input: 0.30, output: 2.50, cache_read: 0.03,  cache_write: 0.30 },
+  // Shutdown announced for 2027-05-07 (deprecations page); replacement gemini-3.5-flash-lite.
+  'gemini-3.1-flash-lite':  { input: 0.25, output: 1.50, cache_read: 0.025, cache_write: 0.25 },
+  'gemini-3-flash-preview': { input: 0.50, output: 3.00, cache_read: 0.05,  cache_write: 0.50 },
+  // The page lists 3.1 Pro only as gemini-3.1-pro-preview; the bare id keeps the
+  // preview's row so records written under it stay priced.
+  'gemini-3.1-pro':         { input: 2.00, output: 12.0, cache_read: 0.20,  cache_write: 2.00 },
+  'gemini-3.1-pro-preview': { input: 2.00, output: 12.0, cache_read: 0.20,  cache_write: 2.00 },
+  // The 2.5 family is "not deprecated", but the models page limits access to users
+  // who have used it before — new projects cannot count on it (PAN's Google routing
+  // tiers moved off it, R28). Rows kept for the ledgers that recorded it.
+  'gemini-2.5-pro':         { input: 1.25, output: 10.0, cache_read: 0.125, cache_write: 1.25 },
+  'gemini-2.5-flash':       { input: 0.30, output: 2.50, cache_read: 0.03,  cache_write: 0.30 },
+  'gemini-2.5-flash-lite':  { input: 0.10, output: 0.40, cache_read: 0.01,  cache_write: 0.10 },
   // (gemini-1.5-pro removed 2026-06: retired model; records for it fall back to tier rates.)
-  'gemini-3.1-pro':         { input: 2.00, output: 12.0, cache_read: 0.50,   cache_write: 2.00 },
-  'gemini-3.1-pro-preview': { input: 2.00, output: 12.0, cache_read: 0.50,   cache_write: 2.00 },
-  'gemini-2.5-pro':         { input: 1.25, output: 10.0, cache_read: 0.3125, cache_write: 1.25 },
-  'gemini-2.5-flash':       { input: 0.30, output: 2.50, cache_read: 0.075,  cache_write: 0.30 },
-  'gemini-2.5-flash-lite':  { input: 0.10, output: 0.40, cache_read: 0.025,  cache_write: 0.10 },
 
-  // Tier fallbacks when model id is unknown (reasoning tracks current Opus pricing)
-  'reasoning': { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
-  'mid':       { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
+  // Tier fallbacks when the model id is unknown: reasoning tracks the default Opus
+  // (Opus 5.5 since 2026-09-22 — the model the inherit tier runs on for most users),
+  // mid the Sonnet the `sonnet` alias resolves to on the Anthropic API (Sonnet 5),
+  // fast Haiku 4.5.
+  'reasoning': { input: 4.0,  output: 20.0, cache_read: 0.20, cache_write: 5.0 },
+  'mid':       { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50 },
   'fast':      { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25 },
 };
 
@@ -587,12 +634,22 @@ function cmdCostClear(cwd, raw) {
 
 // ─── Rate-table staleness ───────────────────────────────────────────────────
 
-// Date DEFAULT_RATES was last verified against published provider pricing.
-// Bump this whenever the table is re-verified; `models check` flags the table
-// once it is older than RATES_STALE_AFTER_DAYS (provider prices move faster
-// than PAN releases do).
-const RATES_VERIFIED_AT = '2026-09-10';
-const RATES_STALE_AFTER_DAYS = 180;
+// Date DEFAULT_RATES was last verified against published provider pricing — ALL
+// providers' pricing pages, not only Anthropic's (the 2026-09-10 bump covered the
+// Anthropic rows alone, and the Gemini and OpenAI rows it vouched for had never
+// matched their pages: reality check 2026-09-22, RC29). Bump it only when every
+// row has been read against its page that day.
+//
+// `models check` flags the table once it is older than RATES_STALE_AFTER_DAYS.
+// That window was half a year until 2026-09-22 (R38), which is longer than the
+// interval at which the lineup now moves: the default Claude model changed on
+// every plan inside twelve days of the last verification. Sixty days is the
+// review cadence the ecosystem reviews settled on. The calendar still cannot see
+// a default-model change inside the window — that is the job of the
+// documented-default-ids fixture test (tests/fixtures/documented-default-models.json,
+// R31), which fails the suite the day a documented default id has no exact row.
+const RATES_VERIFIED_AT = '2026-09-23';
+const RATES_STALE_AFTER_DAYS = 60;
 const RATE_TIERS = ['reasoning', 'mid', 'fast'];
 
 function checkRatesStaleness(now = new Date()) {

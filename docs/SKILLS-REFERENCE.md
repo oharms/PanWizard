@@ -120,7 +120,7 @@ Execute all plans in a phase with wave-based parallelization
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion  
 **Group:** Phase Lifecycle  
-**Lines:** 150
+**Lines:** 152
 
 #### /pan:plan-phase
 
@@ -249,7 +249,7 @@ Remove a future phase from roadmap and renumber subsequent phases
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
-| `/pan:focus-auto` | Read, Write, Edit, Bash, Grep, Glob, Agent | Continuous scan-plan-exec loop with purpose-driven categories and 5-layer safety harness |
+| `/pan:focus-auto` | Read, Write, Edit, Bash, Grep, Glob, Agent | Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness |
 | `/pan:focus-design` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs | Strategic 10-phase feature investigation, design, and specification pipeline |
 | `/pan:focus-doc-audit` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch | Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality |
 | `/pan:focus-drift-walking` | Read, Write, Edit, Bash, Grep, Glob, Agent | Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories |
@@ -260,7 +260,7 @@ Remove a future phase from roadmap and renumber subsequent phases
 
 #### /pan:focus-auto
 
-Continuous scan-plan-exec loop with purpose-driven categories and 5-layer safety harness
+Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness
 
 ```
 /pan:focus-auto
@@ -972,7 +972,7 @@ These exist only in the PAN source repository (`.claude/commands/`) and are NOT 
 
 Full reality check of PAN Wizard — claims vs code vs deployed installs, market and runtime delta, peer comparison, optimisation review, and a sized what's-next queue
 
-**Lines:** 444
+**Lines:** 446
 
 #### /review
 
@@ -1111,6 +1111,20 @@ End a PAN Wizard development session by verifying state and preserving context
 Start a PAN Wizard development session by loading project context and checking status
 
 **Lines:** 91
+
+---
+
+### Other
+
+| Skill | Description |
+|-------|-------------|
+| `/market-ideas` | Market idea scan for PAN Wizard — what shipped in the agent-tooling market (host tools, direct peers, new entrants, standards) since the last scan, triaged against the code and the ideas ledger into adopt / adapt / watch / skip, with a sized queue |
+
+#### /market-ideas
+
+Market idea scan for PAN Wizard — what shipped in the agent-tooling market (host tools, direct peers, new entrants, standards) since the last scan, triaged against the code and the ideas ledger into adopt / adapt / watch / skip, with a sized queue
+
+**Lines:** 222
 
 ---
 

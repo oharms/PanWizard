@@ -11,8 +11,8 @@ PAN uses three abstract tiers instead of hardcoded model names:
 | Tier | Purpose | Anthropic | OpenAI | Google |
 |------|---------|-----------|--------|--------|
 | `reasoning` | Architecture, planning, complex decisions | inherit (your session's top-tier model) | inherit | inherit |
-| `mid` | Execution, research, verification | Sonnet | mid | gemini-2.5-flash |
-| `fast` | Read-only extraction, budget tasks | Haiku | fast | gemini-2.5-flash-lite |
+| `mid` | Execution, research, verification | Sonnet | gpt-6-sol | gemini-3.8-flash |
+| `fast` | Read-only extraction, budget tasks | Haiku | gpt-6-luna | gemini-3.5-flash-lite |
 
 **Why `inherit` for reasoning?** Host runtimes map "opus" to a specific model version. PAN returns `inherit` for reasoning-tier agents, so they use whatever top-tier model the user has configured. This avoids version conflicts and silent fallbacks.
 
@@ -39,7 +39,7 @@ At install time PAN also runs a **best-effort, advisory** capability check on th
 | Class | Example model IDs | Role in PAN | Context | Relative cost | Notes |
 |-------|-------------------|-------------|---------|---------------|-------|
 | Fable / Mythos | `claude-fable-5` | **Recommended flagship** — deepest long-horizon reasoning; best for the bot army's Mission Control + planning | 1M | ~2× Opus | Runs input safety classifiers (see caveat below); requires 30-day data retention |
-| Opus | `claude-opus-5`, `claude-opus-4-8` | **Cost-conscious pick** — same 1M context + thinking, about half the cost, no cyber classifier | 1M | 1× | The safe pick when you want Opus behavior without Fable's refusal surface |
+| Opus | `claude-opus-5-5`, `claude-opus-5`, `claude-opus-4-8` | **Cost-conscious pick** — same 1M context + thinking, about half the cost, no cyber classifier | 1M | 1× | The safe pick when you want Opus behavior without Fable's refusal surface |
 
 **Why the Fable class is the recommended flagship.** It is Anthropic's deepest class for demanding, long-horizon agentic work — exactly what PAN's hierarchical bot army (Mission Control → squads → workers) asks of its reasoning tier. Select the current release in that class in your host runtime and `inherit` routes the reasoning-tier agents to it automatically.
 
@@ -117,7 +117,7 @@ PAN auto-detects the LLM provider to map tiers to the right model names:
 
 1. **Explicit config** — `routing.provider` in config.json (if not `"auto"`)
 2. **Environment variable** — `PAN_PROVIDER` env var
-3. **Runtime directory** — `.claude/` → Anthropic, `.codex/` → OpenAI, `.gemini/` → Google
+3. **Runtime directory** — `.claude/` → Anthropic, `.codex/` → OpenAI, `.gemini/` → Google, `.opencode/` → OpenAI, `.github/` → default (first match wins)
 4. **Fallback** — Default provider map (Anthropic-style names)
 
 ---

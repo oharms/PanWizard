@@ -4,24 +4,22 @@ Configuration options for `.planning/` directory behavior.
 
 <config_schema>
 ```json
-"planning": {
-  "commit_docs": true,
-  "search_gitignored": false
-},
-"git": {
-  "branching_strategy": "none",
-  "phase_branch_template": "pan/phase-{phase}-{slug}",
-  "milestone_branch_template": "pan/{milestone}-{slug}"
-}
+"commit_docs": true,
+"search_gitignored": false,
+"branching_strategy": "none",
+"phase_branch_template": "pan/phase-{phase}-{slug}",
+"milestone_branch_template": "pan/{milestone}-{slug}"
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `commit_docs` | `true` | Whether to commit planning artifacts to git |
 | `search_gitignored` | `false` | Add `--no-ignore` to broad rg searches |
-| `git.branching_strategy` | `"none"` | Git branching approach: `"none"`, `"phase"`, or `"milestone"` |
-| `git.phase_branch_template` | `"pan/phase-{phase}-{slug}"` | Branch template for phase strategy |
-| `git.milestone_branch_template` | `"pan/{milestone}-{slug}"` | Branch template for milestone strategy |
+| `branching_strategy` | `"none"` | Git branching approach: `"none"`, `"phase"`, or `"milestone"` |
+| `phase_branch_template` | `"pan/phase-{phase}-{slug}"` | Branch template for phase strategy |
+| `milestone_branch_template` | `"pan/{milestone}-{slug}"` | Branch template for milestone strategy |
+
+These keys are top-level. The nested `planning.*` / `git.*` forms older versions wrote are read only when the top-level key is absent. A config `config-ensure-section` creates carries every top-level key, and one `/pan:new-project` writes carries a top-level `commit_docs` — so write the top-level key; a nested one is ignored whenever the top-level key exists.
 </config_schema>
 
 <commit_docs_behavior>
@@ -84,10 +82,8 @@ To use uncommitted mode:
 
 1. **Set config:**
    ```json
-   "planning": {
-     "commit_docs": false,
-     "search_gitignored": true
-   }
+   "commit_docs": false,
+   "search_gitignored": true
    ```
 
 2. **Add to .gitignore:**
@@ -101,7 +97,7 @@ To use uncommitted mode:
    git commit -m "chore: stop tracking planning docs"
    ```
 
-4. **Branch merges:** When using `branching_strategy: phase` or `milestone`, the `milestone-done` workflow automatically strips `.planning/` files from staging before merge commits when `commit_docs: false`.
+4. **Branch merges:** PAN never merges branches; when you merge a phase or milestone branch yourself with `commit_docs: false`, keep `.planning/` out of the merge commit.
 
 </setup_uncommitted_mode>
 
@@ -113,24 +109,24 @@ To use uncommitted mode:
 |----------|---------------------|--------------|-------------|
 | `none` | Never | N/A | N/A |
 | `phase` | At `execute-phase` start | Single phase | User merges after phase |
-| `milestone` | At first `execute-phase` of milestone | Entire milestone | At `milestone-done` |
+| `milestone` | At first `execute-phase` of milestone | Entire milestone | User merges after milestone |
 
-**When `git.branching_strategy: "none"` (default):**
+**When `branching_strategy: "none"` (default):**
 - All work commits to current branch
 - Standard PAN behavior
 
-**When `git.branching_strategy: "phase"`:**
+**When `branching_strategy: "phase"`:**
 - `execute-phase` creates/switches to a branch before execution
 - Branch name from `phase_branch_template` (e.g., `pan/phase-03-authentication`)
 - All plan commits go to that branch
 - User merges branches manually after phase completion
-- `milestone-done` offers to merge all phase branches
+- `milestone-done` does not merge — merge the phase branches yourself
 
-**When `git.branching_strategy: "milestone"`:**
+**When `branching_strategy: "milestone"`:**
 - First `execute-phase` of milestone creates the milestone branch
 - Branch name from `milestone_branch_template` (e.g., `pan/v1.0-mvp`)
 - All phases in milestone commit to same branch
-- `milestone-done` offers to merge milestone branch to main
+- `milestone-done` archives and tags but does not merge — merge the milestone branch yourself
 
 **Template variables:**
 

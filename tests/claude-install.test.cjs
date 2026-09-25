@@ -1,6 +1,9 @@
 // Tests for Claude Code runtime install + uninstall.
-// Regression: uninstaller must clean up skills/pan-*.md shim files
-// (bug: prior versions only removed commands/pan/ and left skills/ orphaned).
+// The flat skills/pan-*.md shims (E-5) are retired (R33, 2026-09-23): Claude Code
+// discovers skills only as skills/<name>/SKILL.md directories, so they were never
+// loaded. What is pinned here now: a default install writes nothing under skills/,
+// an upgrade removes the shims older installs left, and uninstall removes every
+// PAN entry from skills/ while leaving the user's own skills alone.
 
 'use strict';
 
@@ -49,19 +52,16 @@ describe('Claude: install structure', () => {
     assert.ok(files.length >= 30, `should have 30+ command files, got ${files.length}`);
   });
 
-  test('skills/ has pan-*.md shim files (one per command)', () => {
+  test('a default install writes nothing under skills/ — the commands are the whole surface (R33)', () => {
+    // Claude Code loads <skills>/<entry>/SKILL.md and nothing else, so a flat
+    // skills/pan-*.md file is invisible to it; the nested commands already reach
+    // the model the way skills do. An install that still writes skills/ entries
+    // is shipping dead files again.
     const skillsDir = path.join(tempDir, '.claude', 'skills');
-    assert.ok(fs.existsSync(skillsDir), 'skills dir should exist');
-    const shims = fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-') && f.endsWith('.md'));
-    assert.ok(shims.length >= 30, `should have 30+ skill shims, got ${shims.length}`);
-  });
-
-  test('skill shim count matches command count', () => {
-    const commandsDir = path.join(tempDir, '.claude', 'commands', 'pan');
-    const skillsDir = path.join(tempDir, '.claude', 'skills');
-    const commands = fs.readdirSync(commandsDir).filter(f => f.endsWith('.md'));
-    const shims = fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-') && f.endsWith('.md'));
-    assert.equal(shims.length, commands.length, 'one shim per command');
+    const panEntries = fs.existsSync(skillsDir)
+      ? fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-'))
+      : [];
+    assert.deepEqual(panEntries, [], 'a default Claude install must not write PAN entries under skills/');
   });
 
   test('pan-wizard-core is installed', () => {
@@ -89,21 +89,21 @@ describe('Claude: install structure', () => {
     assert.ok(wfKeys.length >= 2, `manifest should track the native workflows, got ${wfKeys.length}`);
   });
 
-  test('skill shims are tracked in the manifest (L1 regression)', () => {
-    // Every skills/pan-*.md shim on disk must have a manifest entry so
-    // verifyInstall catches silent write failures and saveLocalPatches backs up
-    // user edits.
-    const skillsDir = path.join(tempDir, '.claude', 'skills');
-    const shimFiles = fs.existsSync(skillsDir)
-      ? fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-') && f.endsWith('.md'))
-      : [];
-    assert.ok(shimFiles.length >= 30, `should have written 30+ skill shims, got ${shimFiles.length}`);
+  test('the manifest tracks every installed command and no skills/ entry (L1 regression)', () => {
+    // L1's point survives the shim retirement: every file the install ships must
+    // have a manifest entry so verifyInstall catches a silent write failure and
+    // saveLocalPatches backs up a user edit — and nothing may be tracked that the
+    // install no longer writes.
+    const commandsDir = path.join(tempDir, '.claude', 'commands', 'pan');
+    const commands = fs.readdirSync(commandsDir).filter(f => f.endsWith('.md'));
+    assert.ok(commands.length >= 30, `should have 30+ command files, got ${commands.length}`);
     const manifest = JSON.parse(fs.readFileSync(
       path.join(tempDir, '.claude', 'pan-file-manifest.json'), 'utf8'));
-    for (const f of shimFiles) {
-      assert.ok(manifest.files['skills/' + f],
-        `manifest should track skills/${f}`);
+    for (const f of commands) {
+      assert.ok(manifest.files['commands/pan/' + f], `manifest should track commands/pan/${f}`);
     }
+    const skillKeys = Object.keys(manifest.files).filter(k => k.startsWith('skills/'));
+    assert.deepEqual(skillKeys, [], 'a default install tracks no skills/ entries');
   });
 
   test('agents are installed', () => {
@@ -127,6 +127,47 @@ describe('Claude: install structure', () => {
   });
 });
 
+// ─── Upgrade: an older install's flat shims are swept ──────────────────────────
+
+describe('Claude: reinstall over an install that wrote flat skill shims', () => {
+  let upgradeDir;
+  let output;
+
+  before(() => {
+    upgradeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-claude-upgrade-'));
+    const skillsDir = path.join(upgradeDir, '.claude', 'skills');
+    fs.mkdirSync(path.join(skillsDir, 'pan-renamed'), { recursive: true });
+    fs.mkdirSync(path.join(skillsDir, 'my-skill'), { recursive: true });
+    // What installs before R33 left: one flat shim per command, plus (after a
+    // --unified-skills install) a mirrored SKILL.md directory.
+    fs.writeFileSync(path.join(skillsDir, 'pan-help.md'), '---\nname: pan-help\nsource: pan-wizard\n---\n');
+    fs.writeFileSync(path.join(skillsDir, 'pan-renamed', 'SKILL.md'), '---\nname: pan-renamed\n---\n');
+    // The user's own skills, which the sweep must never touch.
+    fs.writeFileSync(path.join(skillsDir, 'my-skill', 'SKILL.md'), '---\nname: my-skill\n---\n');
+    fs.writeFileSync(path.join(skillsDir, 'notes.md'), 'user notes\n');
+    output = runInstaller('--claude --local', upgradeDir);
+  });
+
+  after(() => {
+    if (upgradeDir && fs.existsSync(upgradeDir)) {
+      fs.rmSync(upgradeDir, { recursive: true, force: true });
+    }
+  });
+
+  test('every PAN entry under skills/ is removed, and the install says so', () => {
+    const skillsDir = path.join(upgradeDir, '.claude', 'skills');
+    assert.deepEqual(fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-')), [],
+      'the legacy shim and the stale mirrored directory must both be swept');
+    assert.match(output.replace(/\u001b\[[0-9;]*m/g, ''), /Removed 2 legacy PAN entries from skills\//);
+  });
+
+  test("the user's own skills and files under skills/ survive", () => {
+    const skillsDir = path.join(upgradeDir, '.claude', 'skills');
+    assert.equal(fs.existsSync(path.join(skillsDir, 'my-skill', 'SKILL.md')), true, 'a non-PAN skill must survive');
+    assert.equal(fs.readFileSync(path.join(skillsDir, 'notes.md'), 'utf8'), 'user notes\n', 'a non-PAN file must survive unchanged');
+  });
+});
+
 // ─── Uninstall cleanup — including skills/ regression test ────────────────────
 
 describe('Claude: uninstall', () => {
@@ -135,6 +176,15 @@ describe('Claude: uninstall', () => {
   before(() => {
     uninstallDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-claude-uninstall-'));
     runInstaller('--claude --local', uninstallDir);
+    // Plant what earlier installs left under skills/ — a flat shim and a mirrored
+    // unified skill, and nothing else. Uninstall must remove both and then the
+    // emptied directory. Without the plant the two regressions below had nothing
+    // to remove and passed vacuously once the shims were retired. (User-owned
+    // skills are the next describe's job.)
+    const skillsDir = path.join(uninstallDir, '.claude', 'skills');
+    fs.mkdirSync(path.join(skillsDir, 'pan-plan-phase'), { recursive: true });
+    fs.writeFileSync(path.join(skillsDir, 'pan-help.md'), '---\nname: pan-help\n---\n');
+    fs.writeFileSync(path.join(skillsDir, 'pan-plan-phase', 'SKILL.md'), '---\nname: pan-plan-phase\n---\n');
     runInstaller('--claude --local --uninstall', uninstallDir);
   });
 
@@ -176,12 +226,10 @@ describe('Claude: uninstall', () => {
   });
 
   // Regression: previously, skills/pan-*.md shims were left behind after uninstall
-  test('REGRESSION: skills/pan-*.md shim files are removed', () => {
+  test('REGRESSION: the flat shim and the mirrored skill directory are both removed', () => {
     const skillsDir = path.join(uninstallDir, '.claude', 'skills');
-    if (fs.existsSync(skillsDir)) {
-      const shims = fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-') && f.endsWith('.md'));
-      assert.equal(shims.length, 0, 'all pan- skill shims should be removed');
-    }
+    assert.equal(fs.existsSync(path.join(skillsDir, 'pan-help.md')), false, 'the flat shim should be removed');
+    assert.equal(fs.existsSync(path.join(skillsDir, 'pan-plan-phase')), false, 'the mirrored skill directory should be removed');
   });
 
   // Found by the 2026-06-11 e2e teardown pass: SessionStart/PostToolUse were
@@ -218,9 +266,13 @@ describe('Claude: uninstall preserves non-PAN skills', () => {
   before(() => {
     preserveDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-claude-preserve-'));
     runInstaller('--claude --local', preserveDir);
-    // Add a user-owned skill shim (not starting with pan-)
-    const userSkill = path.join(preserveDir, '.claude', 'skills', 'my-custom-skill.md');
-    fs.writeFileSync(userSkill, '# My custom skill\n');
+    // A user-owned skill file (not pan-*) beside PAN entries an older install
+    // left. A default install no longer creates skills/, so the test makes it.
+    const skillsDir = path.join(preserveDir, '.claude', 'skills');
+    fs.mkdirSync(path.join(skillsDir, 'pan-help'), { recursive: true });
+    fs.writeFileSync(path.join(skillsDir, 'my-custom-skill.md'), '# My custom skill\n');
+    fs.writeFileSync(path.join(skillsDir, 'pan-exec-phase.md'), '---\nname: pan-exec-phase\n---\n');
+    fs.writeFileSync(path.join(skillsDir, 'pan-help', 'SKILL.md'), '---\nname: pan-help\n---\n');
     runInstaller('--claude --local --uninstall', preserveDir);
   });
 
@@ -240,9 +292,9 @@ describe('Claude: uninstall preserves non-PAN skills', () => {
     assert.ok(fs.existsSync(skillsDir), 'skills/ dir should remain when user skills exist');
   });
 
-  test('pan- shims are still removed (user skills untouched)', () => {
+  test('PAN entries are still removed (user skills untouched)', () => {
     const skillsDir = path.join(preserveDir, '.claude', 'skills');
-    const panShims = fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-') && f.endsWith('.md'));
-    assert.equal(panShims.length, 0, 'pan- shims should all be removed');
+    assert.deepEqual(fs.readdirSync(skillsDir).filter(f => f.startsWith('pan-')), [],
+      'the planted pan- shim and pan- skill directory should both be removed');
   });
 });

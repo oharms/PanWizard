@@ -175,7 +175,7 @@ function finalizeSession(cwd, sid) {
 const COMMAND_TAIL_BYTES = 262144;
 
 // PAN's own command namespace, as a runtime writes it: `/pan:exec-phase` (Claude Code,
-// Gemini) or `/pan-exec-phase` (Codex, OpenCode, Copilot). Only these spawn PAN agents,
+// Gemini) or `/pan-exec-phase` (Codex, OpenCode, Copilot, and Claude Code after --unified-skills). Only these spawn PAN agents,
 // so only these are attributed — a host UI command (`/model`, `/compact`) and a plain
 // typed prompt leave the row honestly unattributed instead of borrowing a name.
 const PAN_COMMAND_RE = /<command-name>\s*\/?pan[:-]([a-z0-9][a-z0-9-]*)\s*<\/command-name>/i;

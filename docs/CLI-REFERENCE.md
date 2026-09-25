@@ -2190,7 +2190,7 @@ pan-tools estimate-cost [--raw]
 
 `quality` and `balanced` report the same average by design — post cost reset both put every agent on the reasoning tier (15× baseline). `budget` is the only profile that down-tiers, so it's the only one that moves the number.
 
-**`--raw` output:** One line per profile: `quality: ~15.0x baseline (<N> agents)`.
+**`--raw` output:** One line per profile: `quality: ~15x baseline (<N> agents)`.
 
 ---
 
@@ -2685,7 +2685,7 @@ Scheduled, self-resuming bot-army campaigns. PAN is not a daemon: this module ow
 
 ### `hud [--out <file>] [--open] [--stdout]` (v3.12, ADR-0035)
 
-Generates a single self-contained HTML dashboard of the project + bot army (default `.planning/hud.html`). Aggregates existing state — `state.md`, roadmap/phases, the squad registry, the campaign schedule, army worktrees, the cost ledger, `requirements.md`, verification artifacts, and git history — into up to ten panels. It is a read-only **view**: it writes only its own rendered file and creates no new state. Army-only panels (command stack, campaign, safety harness, worktrees) self-hide on plain (non-army) projects. `--out` overrides the path, `--open` launches the default browser, `--stdout` prints HTML instead of writing. The file is dependency-free (inlined CSS, no `<script>`, no network) and identical across all five runtimes. Distinct from the JSON `pan-tools dashboard` command (`state.cjs`), which prints a compact project overview rather than HTML.
+Generates a single self-contained HTML dashboard of the project + bot army (default `.planning/hud.html`). Aggregates existing state — `state.md`, roadmap/phases, the squad registry, the campaign schedule, army worktrees, the cost ledger, `requirements.md`, verification artifacts, and git history — into one page of panels. It is a read-only **view**: it writes only its own rendered file and creates no new state. Army-only panels (command stack, campaign, safety harness, worktrees) self-hide on plain (non-army) projects. `--out` overrides the path, `--open` launches the default browser, `--stdout` prints HTML instead of writing. The file is dependency-free (inlined CSS, no `<script>`, no network) and identical on every runtime. Distinct from the JSON `pan-tools dashboard` command (`state.cjs`), which prints a compact project overview rather than HTML.
 
 **Module:** `hud.cjs`
 
@@ -3290,7 +3290,7 @@ pan-tools memory optimize --apply --keep 20
 
 ### `memory rebuild [--apply]`
 
-Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by every runtime), the `@AGENTS.md` bridge in `CLAUDE.md` (only when the Claude runtime is installed), and state.md's YAML frontmatter (re-derived from the body). User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
+Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI reads `GEMINI.md` by default and PAN does not point it at `AGENTS.md`), the `@AGENTS.md` bridge in `CLAUDE.md` (only when the Claude runtime is installed), and state.md's YAML frontmatter (re-derived from the body). User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
 
 Dry-run by default; pass `--apply` to write. A second run changes nothing.
 
@@ -3555,7 +3555,7 @@ Report whether the built-in model rate table is stale.
 pan-tools models check [--raw]
 ```
 
-Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers, managed_model_pricing}`. The rate table carries the date it was last verified against published provider pricing; `stale` flips to `true` once that date is older than the threshold (roughly half a year). When stale, re-verify provider pricing, update `DEFAULT_RATES`, and bump `RATES_VERIFIED_AT` in `cost.cjs`. `--raw` prints a one-line human summary instead of JSON.
+Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers, managed_model_pricing}`. The rate table carries the date it was last verified against published provider pricing; `stale` flips to `true` once that date is older than the threshold (sixty days, the cadence of PAN's ecosystem reviews). The calendar cannot see a default-model change inside that window; the suite's documented-default-models fixture test catches that instead. When stale, re-verify provider pricing, update `DEFAULT_RATES`, and bump `RATES_VERIFIED_AT` in `cost.cjs`. `--raw` prints a one-line human summary instead of JSON.
 
 `managed_model_pricing` lists the model ids found in a Claude Code managed `modelPricing` block (contracted per-model rates an organisation deploys through managed settings). PAN prices with those rates when present — see the `cost.rates` config key for the precedence — and reads them from the directory Claude Code documents for each OS; `PAN_MANAGED_SETTINGS_DIR` redirects the lookup. An empty list means no block was found, not that the setting is unsupported.
 
@@ -3858,7 +3858,7 @@ pan-tools git log [--count <N>]                     # default 10
 pan-tools git stash <save|pop|list|drop> [--name <n>] [--index <i>]
 pan-tools git diff [--staged] [--file <path>]
 pan-tools git rollback [--tag <pan-rollback-*>] [--dry-run]    # resets --hard to the given tag, or to the lexically last pan-rollback-* tag (`git tag -l` order — not necessarily the newest; pass --tag to be explicit); refuses on a dirty tree (dirty_working_tree);
-                                                               # --dry-run only reports the target — list snapshots with `git tag list --pattern 'pan-rollback-*'`
+                                                               # --dry-run only reports the target — list snapshots with `pan-tools git tag list --pattern 'pan-rollback-*'`
 pan-tools git tag <list|create|delete> [--name <n>] [--message <m>] [--pattern <glob>]   # --pattern for list; --name/--message for create; --name for delete
 pan-tools git sync [--remote <r>] [--branch <b>] [--rebase]
 ```

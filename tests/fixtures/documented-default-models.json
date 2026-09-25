@@ -1,0 +1,89 @@
+{
+  "why": "Every model id a target runtime documents as its default, or as the target of a default alias, must price at an exact DEFAULT_RATES row. The calendar staleness check cannot see a default change; tests/documented-default-models.test.cjs turns one into a failing test once the id is recorded here. Update this file whenever a runtime's model documentation changes, citing the page and the date it was read.",
+  "verified_at": "2026-09-23",
+  "defaults": [
+    {
+      "runtime": "claude",
+      "id": "claude-opus-5-5",
+      "role": "the default model on every Claude plan and the Anthropic API, and on Bedrock, Google Cloud and Claude Platform on AWS (Claude Code 2.1.280 and later); also where the opus alias resolves on those providers",
+      "source": "https://code.claude.com/docs/en/model-config",
+      "read": "2026-09-23"
+    },
+    {
+      "runtime": "claude",
+      "id": "claude-fable-5-1",
+      "role": "the target of the fable and best aliases where Fable is available",
+      "source": "https://code.claude.com/docs/en/model-config",
+      "read": "2026-09-23"
+    },
+    {
+      "runtime": "claude",
+      "id": "claude-sonnet-5",
+      "role": "the target of the sonnet alias on the Anthropic API",
+      "source": "https://code.claude.com/docs/en/model-config",
+      "read": "2026-09-23"
+    },
+    {
+      "runtime": "claude",
+      "id": "claude-sonnet-4-5",
+      "role": "the default model on Microsoft Foundry, and the sonnet alias on Bedrock and Google Cloud",
+      "source": "https://code.claude.com/docs/en/model-config",
+      "read": "2026-09-23"
+    },
+    {
+      "runtime": "claude",
+      "id": "claude-sonnet-4-6",
+      "role": "the target of the sonnet alias on Claude Platform on AWS",
+      "source": "https://code.claude.com/docs/en/model-config",
+      "read": "2026-09-23"
+    },
+    {
+      "runtime": "claude",
+      "id": "claude-opus-4-6",
+      "role": "the target of the opus alias on Microsoft Foundry",
+      "source": "https://code.claude.com/docs/en/model-config",
+      "read": "2026-09-23"
+    },
+    {
+      "runtime": "claude",
+      "id": "claude-haiku-4-5",
+      "role": "the current Haiku in the models overview lineup, which the haiku alias uses (model-config names no Haiku version)",
+      "source": "https://platform.claude.com/docs/en/models/overview",
+      "read": "2026-09-23"
+    },
+    {
+      "runtime": "codex",
+      "id": "gpt-6-sol",
+      "role": "the model Codex's configuration docs set as the default (model = \"gpt-6-sol\" in config-basic and the sample config)",
+      "source": "https://learn.chatgpt.com/docs/config-file/config-basic",
+      "read": "2026-09-23"
+    },
+    {
+      "runtime": "codex",
+      "id": "gpt-6-luna",
+      "role": "the faster, lower-cost model Codex's subagent docs recommend beside gpt-6-sol",
+      "source": "https://learn.chatgpt.com/docs/agent-configuration/subagents",
+      "read": "2026-09-23"
+    }
+  ],
+  "no_documented_default": [
+    {
+      "runtime": "gemini",
+      "source": "https://geminicli.com/docs/cli/settings/",
+      "read": "2026-09-21",
+      "why": "The settings reference documents model.name with no default value, and Antigravity's models page lists its models without naming one as the default."
+    },
+    {
+      "runtime": "opencode",
+      "source": "https://opencode.ai/docs/config/",
+      "read": "2026-09-21",
+      "why": "The config reference documents the model key without a default; the model comes from the provider the user configures."
+    },
+    {
+      "runtime": "copilot",
+      "source": "https://github.com/github/copilot-cli/releases",
+      "read": "2026-09-21",
+      "why": "Copilot CLI routes requests through its Auto model selection (release 1.0.87 adds organisation defaults for the Auto tier) and documents no fixed default model id."
+    }
+  ]
+}

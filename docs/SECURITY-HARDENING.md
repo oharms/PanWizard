@@ -129,30 +129,26 @@ Only if you publish `pan-wizard` to npm. Skip if you don't.
 
    One-time setup:
 
-   1. **Create an Automation token on npm** — different from the granular publish tokens above. Automation tokens are designed for CI and **bypass the 2FA "Auth and writes" prompt** that would otherwise stall a non-interactive publish.
-      - https://www.npmjs.com/settings/oharms/tokens → **Generate New Token** → **Automation**.
-      - Name: `pan-wizard-ci-release`.
-      - Expires: 90 days (set a calendar reminder to rotate).
-      - Packages and scopes: select **Only select packages** → `pan-wizard`.
-      - Permission: Read and write.
-   2. **Store the token as a GitHub secret**: https://github.com/oharms/PanWizard/settings/secrets/actions → **New repository secret** → name `NPM_TOKEN`, paste the token value. The secret is encrypted at rest and never visible after creation, even to you. The workflow reads it via `${{ secrets.NPM_TOKEN }}`.
+   1. **Configure npm trusted publishing (OIDC)** — no publish token at all. On npmjs.com → the `pan-wizard` package → Settings → Trusted Publishing, add a GitHub Actions publisher: user `oharms`, repository `PanWizard`, workflow filename `release.yml`, Environment blank. The workflow's `npm publish` exchanges the runner's OIDC id-token for a short-lived credential — nothing to rotate, no 2FA prompt.
+   2. **Optional — an `NPM_TOKEN` secret for the deprecate step only.** The post-publish `deprecate-old-versions.js --apply` step reads `${{ secrets.NPM_TOKEN }}` because the OIDC credential is scoped to publishing; without the secret that step logs the refusal and the release still passes. If you want it, create a granular token (`pan-wizard` only, read and write, 90-day expiry) and store it at https://github.com/oharms/PanWizard/settings/secrets/actions as `NPM_TOKEN`.
 
    How to ship a release from now on:
 
    ```powershell
-   # 1. Bump the version (npm rewrites package.json + tags the commit).
-   npm version patch    # 3.8.0 → 3.8.1   (or `minor` / `major`)
+   # 1. Release PR (main is protected — see docs/DEVELOPMENT.md → Release Process): bump package.json,
+   #    package-lock.json and .github/plugin/marketplace.json, turn CHANGELOG [Unreleased] into the
+   #    version heading, merge once the required checks are green, then tag the merge commit.
+   git switch main; git pull; git tag -a v<version> -m "release(<version>): <summary>"
 
-   # 2. Push the commit, then the tag by explicit refspec. This repo's remote.origin.push is
+   # 2. Push the tag by explicit refspec. This repo's remote.origin.push is
    #    pinned to main, which makes --follow-tags drop the tag — and then nothing publishes.
-   git push origin main
    git push origin refs/tags/v<version>
    ```
 
    The tag push triggers [.github/workflows/release.yml](../.github/workflows/release.yml), which:
    - Checks the tag version matches `package.json` (catches drift).
-   - Reruns the full release-check (build:hooks, test:all, audit, doc-lint counts, links validate, pack + zero-dependency check, smoke-install, distribution bundles) via `prepublishOnly`.
-   - Calls `npm publish --provenance --access public`.
+   - Reruns the full release-check (build:hooks, test:all, audit, doc-lint counts, links validate, pack + zero-dependency check, smoke-install, distribution bundles, coverage gate) via `prepublishOnly`.
+   - Calls `npm publish --provenance --access public`, then deprecates superseded versions and creates the GitHub Release from the CHANGELOG section for that version (both `continue-on-error`).
    - The `--provenance` flag has GitHub's runner exchange a short-lived OIDC token with sigstore for a signing certificate. The resulting tarball carries a cryptographic attestation that anyone can verify against https://www.npmjs.com/package/pan-wizard.
 
    No token on your laptop. No token in any chat. No `.npmrc`. The whole publish surface is a tag push.

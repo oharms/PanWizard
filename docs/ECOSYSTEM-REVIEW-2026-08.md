@@ -299,3 +299,19 @@ A same-day re-verification after the §8 scan, run as the first execution of the
 **What not to do — re-affirmed, two additions.** Every entry from §4 and the plan still holds. Added: *do not describe `.planning/` as unthreatened* — the layout is shared with gsd-core, so the differentiator is the depth of what PAN does with it, and hygiene should recognise a foreign layout rather than call it broken; *do not write "no competitor" or "nobody else" in an evergreen doc without a dated peer check* — such claims were false today where checked.
 
 **Cadence.** This run replaces the interim; the full October re-run stands. Re-run earlier if gsd-core or Spec Kit ships an MCP or harness change, if a runtime drops a path PAN writes, or if the `fable` and `best` alias target moves.
+
+---
+
+## 10. Reality check (run `2026-09-22`, queue executed `2026-09-23`)
+
+The second run of `/reality-check`, against `main` @ `371a76b` (`3.29.0`), reported to chat; its queue was executed the next day on branch `feat/reality-check-2026-09-22`. The findings, the items with their statuses and the sources are the second addendum of [specs/market-delta-2026-09-superplan.md](specs/market-delta-2026-09-superplan.md).
+
+**A correction to §9.** §9's "What held" says the rate rows matched the provider pricing page read that day. That held for the Anthropic rows only. The Gemini rows' cache reads were two and a half times their page, OpenAI's newer families had started billing cache writes the rows did not charge, the bare `gpt-5.6` carried a price no page listed, and Codex's documented default had no row. §9 is left as written; this section is the correction.
+
+**What changed in the picture.**
+
+- **The default Claude model moved under PAN.** Claude Code `2.1.280` made Claude Opus 5.5 the default on every plan on `2026-09-22`, and PAN's inherit tier ran on it at the previous Opus row's price (cache reads two and a half times high). A calendar rule could not have caught it inside twelve days; a fixture of each runtime's documented defaults now does.
+- **Gemini CLI never ran three of PAN's four hooks.** PAN wrote Claude's event names into Gemini's settings from v3.4 on, and Gemini's hook registry skips names outside its own vocabulary with a warning. Every test passed, because each was generated from the installer's own table. Gemini now gets the update check and the stop guard (on its `AfterAgent` event) and nothing it cannot run; a vocabulary fixture pins every runtime's emitted keys against its documentation.
+- **The unified skills tree left Claude Code with no commands.** Every other target runtime reads `.agents/skills/`; Claude does not. The installer now gives Claude its own copy, and the flat skill shims Claude had never loaded are gone.
+
+**Cadence.** The October re-run stands. This run adds one trigger to re-run early: a new default model on any target runtime.

@@ -39,6 +39,19 @@
 // per stop chain, so a user who genuinely wants to stop is delayed by exactly
 // one continuation, never trapped.
 //
+// Gemini CLI (R29, 2026-09-23): the guard is registered there on AfterAgent,
+// Gemini's end-of-turn event — until this date PAN registered it under Claude's
+// `Stop` key, which Gemini skips with an "Invalid hook event name" warning, so it
+// had never run. AfterAgent honours the same {decision: 'block', reason} output
+// (a block re-prompts the agent with the reason), but its stop_hook_active is only
+// true for the AfterAgent that evaluates a continuation the block started
+// directly: a continuation that used tools reports false again (gemini-cli
+// client.ts / useGeminiStream.ts, read 2026-09-23). The flag alone would let the
+// guard block every such turn. So on AfterAgent the one-shot promise is kept with
+// a marker per session, project and target phase in the per-user 0700 hook
+// directory: a second stop aimed at the same phase is allowed. No safe marker
+// directory, or no session id, means no block (fail open, as everywhere else).
+//
 // Escape hatch: set workflow.stop_guard to false in .planning/config.json to
 // disable the guard entirely without turning off auto_advance.
 //
@@ -51,7 +64,9 @@
 // rather than only reachable via stdin (same pattern as the other PAN hooks).
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 /**
  * Which planning tree this hook acts on.
  *
@@ -155,6 +170,63 @@ function readIfExists(p) {
   try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
 }
 
+// Per-user hook state directory inside tmpdir, created 0700 — the same directory
+// and the same checks as bridgeDir() in pan-context-monitor.js (hooks are
+// standalone files and cannot require one another). Fail CLOSED (null) when the
+// directory is not provably ours: a shared host must not be able to pre-plant a
+// marker that silences the guard, or a symlink it writes through (M60).
+function hookStateDir() {
+  const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
+  const dir = path.join(os.tmpdir(), `pan-hooks-${uid}`);
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const st = fs.lstatSync(dir);
+    if (st.isSymbolicLink()) return null;
+    // POSIX-only ownership and mode checks: Windows fakes mode bits (N15).
+    if (typeof process.getuid === 'function') {
+      if (st.uid !== process.getuid()) return null;
+      if ((st.mode & 0o077) !== 0) return null;
+    }
+    return dir;
+  } catch { return null; }
+}
+
+/**
+ * The file name of the one-shot marker for an AfterAgent block (Gemini CLI).
+ * Keyed by session, project and the block's reason — the reason names the target
+ * phase, so a later drop at a DIFFERENT phase in the same session is still caught.
+ * Pure; null when there is no session id to key on.
+ */
+function onceMarkerName(sessionId, projectDir, reason) {
+  if (typeof sessionId !== 'string' || !sessionId) return null;
+  const key = crypto.createHash('sha256').update(`${sessionId}\0${projectDir}\0${reason}`).digest('hex').slice(0, 32);
+  return `stop-guard-${key}.json`;
+}
+
+const MARKER_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+
+/**
+ * Apply the AfterAgent one-shot rule: returns true when this block may be issued
+ * (and records it), false when the same session already got it or no safe place
+ * to remember it exists. Best-effort pruning keeps the directory from growing.
+ */
+function claimOnceMarker(dir, name, now = Date.now()) {
+  if (!dir || !name) return false;
+  const marker = path.join(dir, name);
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!/^stop-guard-[0-9a-f]{32}\.json$/.test(f)) continue;
+      try { if (now - fs.statSync(path.join(dir, f)).mtimeMs > MARKER_MAX_AGE_MS) fs.unlinkSync(path.join(dir, f)); } catch { /* keep */ }
+    }
+  } catch { /* unreadable dir — the exclusive create below still decides */ }
+  try {
+    // 'wx' fails when the marker exists: the create IS the check, so two hook
+    // processes racing on the same stop cannot both block.
+    fs.writeFileSync(marker, JSON.stringify({ at: new Date(now).toISOString() }), { flag: 'wx', mode: 0o600 });
+    return true;
+  } catch { return false; }
+}
+
 function main() {
   let input = '';
   process.stdin.setEncoding('utf8');
@@ -171,12 +243,19 @@ function main() {
       let config = null;
       try { config = JSON.parse(fs.readFileSync(path.join(planningDir, 'config.json'), 'utf8')); } catch { /* no project / bad config -> allow */ }
 
-      const decision = buildStopDecision({
+      let decision = buildStopDecision({
         stopHookActive: payload.stop_hook_active === true,
         config,
         stateContent: readIfExists(path.join(planningDir, 'state.md')),
         roadmapContent: readIfExists(path.join(planningDir, 'roadmap.md')),
       });
+
+      // Gemini CLI's end-of-turn event: its stop_hook_active cannot carry the
+      // one-shot promise on its own (see the header), so a marker does.
+      if (decision && payload.hook_event_name === 'AfterAgent') {
+        const name = onceMarkerName(payload.session_id, projectDir, decision.reason);
+        if (!claimOnceMarker(hookStateDir(), name)) decision = null;
+      }
 
       if (decision) process.stdout.write(JSON.stringify(decision));
     } catch { /* fail open — never break a stop */ }
@@ -188,4 +267,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildStopDecision, UNTICKED_PHASE_RE };
+module.exports = { buildStopDecision, UNTICKED_PHASE_RE, onceMarkerName, claimOnceMarker };

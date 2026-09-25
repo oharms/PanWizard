@@ -44,10 +44,16 @@ describe('test system — surface extractor', () => {
   });
 
   test('the hook matrix follows HOOK_EVENT_MAP: a runtime with no hook system contributes nothing', () => {
-    const rows = hookMatrix({ claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop' }, opencode: null });
+    const rows = hookMatrix({ claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop' }, opencode: null });
     assert.ok(rows.some((r) => r.runtime === 'claude' && r.hook === 'pan-trace-logger.js' && r.event === 'SubagentStop'));
     assert.ok(!rows.some((r) => r.runtime === 'opencode'));
-    assert.ok(rows.some((r) => r.runtime === 'claude' && r.hook === 'pan-stop-guard.js'), 'the Stop guard rows come from the installer, not the map');
+    assert.ok(rows.some((r) => r.runtime === 'claude' && r.hook === 'pan-stop-guard.js' && r.event === 'Stop'), 'the stop guard comes from the map\'s stop slot');
+  });
+
+  test('a null slot contributes no row — Gemini registers neither the context monitor nor the loggers (R29)', () => {
+    const rows = hookMatrix({ gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent' } });
+    assert.deepEqual(rows.filter((r) => r.runtime === 'gemini').map((r) => `${r.hook}@${r.event}`).sort(),
+      ['pan-check-update.js@SessionStart', 'pan-stop-guard.js@AfterAgent']);
   });
 });
 

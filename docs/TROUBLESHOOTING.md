@@ -659,9 +659,18 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 **Causes, in the order to check them:**
 
 1. **Stale rate table.** `pan-tools models check` prints when the built-in rates were last verified and flags the table once it is old. Provider prices move faster than PAN releases; if it says STALE, the fix is a rate refresh, not a config change.
-2. **Cache-read pricing on the newest Fable-tier model.** Its cache reads bill at a quarter of the multiplier every other Claude model uses. PAN carries a dedicated rate row for it (see `DEFAULT_RATES` in `cost.cjs`); releases before that row existed priced its reads at the previous Fable model's rate, high by roughly four times on the line that dominates PAN's traffic.
-3. **Contracted rates.** If your organisation pins `modelPricing` in Claude Code's managed settings, PAN reads the same block and prices with it; `pan-tools models check --raw` lists the model ids it found under `managed_model_pricing`. Precedence is `.planning/config.json → cost.rates`, then managed `modelPricing`, then the built-in table. If the list is empty on a machine where the policy should apply, check that the file sits where Claude Code reads it (its managed-settings documentation gives the per-OS directory; the legacy Windows `ProgramData` path is read by neither tool), or point PAN at a relocated directory with `PAN_MANAGED_SETTINGS_DIR`.
-4. **Hook rows are priced at read time.** Records the SubagentStop hook writes carry `cost_usd: null` and are priced when the report runs, so a rate change re-prices history. That is deliberate: it is what lets a rate fix correct old totals.
+2. **Cache-read pricing on the newest Fable-tier model.** Its cache reads bill at a quarter of the standard Claude cache-read multiplier. PAN carries a dedicated rate row for it (see `DEFAULT_RATES` in `cost.cjs`); releases before that row existed priced its reads at the previous Fable model's rate, high by roughly four times on the line that dominates PAN's traffic.
+3. **The newest Opus-tier model, now the default everywhere.** Claude Code `2.1.280` made it the default model on every plan, and its cache reads bill at half the standard multiplier — a third cache-read rate in the current lineup. Releases before PAN carried its row priced it through the family-prefix fallback at the previous Opus row: cache reads high by two and a half times, input, output and cache writes by a quarter. Upgrade PAN; `pan-tools models check` (without `--raw`, which prints only the one-line verdict) lists the model ids the table prices under `models`.
+4. **Contracted rates.** If your organisation pins `modelPricing` in Claude Code's managed settings, PAN reads the same block and prices with it; `pan-tools models check` (JSON output, not `--raw`) lists the model ids it found under `managed_model_pricing`. Precedence is `.planning/config.json → cost.rates`, then managed `modelPricing`, then the built-in table. If the list is empty on a machine where the policy should apply, check that the file sits where Claude Code reads it (its managed-settings documentation gives the per-OS directory; the legacy Windows `ProgramData` path is read by neither tool), or point PAN at a relocated directory with `PAN_MANAGED_SETTINGS_DIR`.
+5. **Hook rows are priced at read time.** Records the SubagentStop hook writes carry `cost_usd: null` and are priced when the report runs, so a rate change re-prices history. That is deliberate: it is what lets a rate fix correct old totals.
+
+### Usage limits arrive sooner after a Claude Code update
+
+**Symptom:** After updating Claude Code, a PAN phase uses noticeably more of the plan's allowance, or the cost report's model column moves from a Sonnet-tier id to an Opus-tier one.
+
+**Root cause:** Claude Code `2.1.280` changed the default model on the Pro and Team Standard plans from Sonnet to the newest Opus-tier model, matching the other plans. PAN's `quality` and `balanced` profiles run every agent on the session's own model (`inherit`), so a change of default moves every agent at once — nothing in PAN changed.
+
+**Fix:** Choose the session model yourself with `/model`, or switch PAN to the `budget` profile (planning and execution on the mid tier, verification and research on the fast tier), or pin individual agents with `model_overrides` in `.planning/config.json`.
 
 ---
 
@@ -736,6 +745,30 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 **Root cause:** Claude Code decides the prompt-cache lifetime per request bucket. The main conversation can get the one-hour lifetime on a subscription; **everything else — subagents, workflows, forks — gets five minutes** unless you say otherwise. Every PAN agent is a subagent, so a phase whose agents are spaced more than five minutes apart re-caches the same planning context each time. ADR-0044 measured that block as the bulk of PAN's token traffic.
 
 **Fix:** Set `subagentPromptCacheTtl` to `"1h"` in a Claude Code settings file (Claude Code `2.1.242` or later). Weigh it first: one-hour cache writes bill at twice the base input rate against 1.25× for five-minute writes, so the longer lifetime pays off once a block is read at least twice inside the hour — true for a phase run, false for a single quick agent. To see which lifetime a session is using, `/usage` shows a `Prompt cache (main)` line with the hit ratio and, on recent builds, the likely cause of the last miss. On PAN's side, `pan-tools context-budget` reports the block's size under `cache.status` and, under `cache.ttl`, how many cache writes in the ledger followed an idle gap of five to sixty minutes — the misses the one-hour lifetime would have avoided — recommending the setting only when that recurs; `pan-tools hygiene scan` raises the same recommendation as an `info` finding.
+
+### A headless `claude -p` run sees no PAN commands, agents or hooks
+
+**Symptom:** A scripted or CI run of Claude Code answers as if PAN were not installed: `/pan:*` commands are unknown, no PAN agent can be spawned, and the cost and context hooks never fire.
+
+**Root cause:** The run is in bare mode. Claude Code's headless documentation recommends `--bare` for scripted and SDK calls and says it "will become the default for `-p` in a future release". Bare mode skips auto-discovery of hooks, skills, custom commands, subagents, plugins, MCP servers, auto memory and CLAUDE.md. With `--add-dir` it loads that directory's `.claude/skills/` but still skips `.claude/commands/` and `.claude/agents/`, and it never reads OAuth credentials (it needs an API key).
+
+**Fix:** Leave `--bare` off for runs that need PAN. Where bare mode is imposed, load PAN's parts explicitly: `--settings` for a settings file carrying PAN's hooks, `--mcp-config .mcp.json` for the bridge, `--agents` for agent definitions, or `--plugin-dir` pointing at the built PAN plugin. A `--unified-skills` install places its skills under `.claude/skills/`, which is the one PAN surface `--add-dir` still loads.
+
+### The exec-phase orchestrator shows no todo checklist
+
+**Symptom:** On the newest Claude models the `/pan:exec-phase` orchestrator never shows a todo list, although the command lists a todo tool among its allowed tools.
+
+**Root cause:** Since Claude Code `2.1.233` its task-tracking tools (`TodoWrite` and the `TaskCreate` family) are offered by default only on older models; on newer ones they are absent unless `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` is set. PAN never depends on them — the wave record is the attention anchor the orchestrator prints after each wave, the wave summaries, and `state.md`.
+
+**Fix:** Nothing is required. Set `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` if you want the checklist back.
+
+### PAN's project rules are not picked up
+
+**Symptom:** Agents ignore the rules PAN adds to the project (for example they do not know where `.planning/` lives), in a project where the rules file exists.
+
+**Root cause:** PAN writes its rules into a marker-fenced section of `AGENTS.md` and adds an `@AGENTS.md` import to `CLAUDE.md`, so Claude Code loads them either way. Since `2.1.277` Claude Code also reads `AGENTS.md` directly, but only when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working directory or above, and not on Bedrock, Vertex or Foundry. So the rules go missing when the `@AGENTS.md` import has been removed from `CLAUDE.md` while a `CLAUDE.md` still exists, or when the project instructions setting in `/config` is limited to `CLAUDE.md` files.
+
+**Fix:** Restore the import (re-running the installer does it), or set the project instructions setting back to its default, which reads `CLAUDE.md` or `AGENTS.md`.
 
 ### `/skill-doctor` lists most PAN skills as unused
 
@@ -822,7 +855,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 ## Diagnostic Commands
 
-Quick reference for diagnosing PAN issues at various levels.
+Quick reference for diagnosing PAN issues at various levels. The `~/.claude/pan-wizard-core/...` paths below are a global Claude Code install's. A local install (the default) keeps the core in the project, so run `node .claude/pan-wizard-core/bin/pan-tools.cjs` from the project root, and use your runtime's directory (`.codex`, `.gemini`, `.opencode`, `.github`) in place of `.claude`.
 
 ### Project health
 
@@ -839,7 +872,7 @@ Quick reference for diagnosing PAN issues at various levels.
 |---------|---------------|
 | `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs validate consistency` | Direct consistency check between ROADMAP and disk |
 | `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structure <file>` | Validate a single plan.md structure |
-| `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load` | Dump current state.md as structured JSON |
+| `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load` | Config plus the raw state.md text, as JSON (`state json` parses the frontmatter) |
 | `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state json` | state.md frontmatter as JSON |
 | `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase N` | Resolve phase number to directory path |
 
@@ -849,7 +882,7 @@ To inspect PAN's internal state directly:
 
 ```bash
 # Full state dump as JSON
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load --raw
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load
 
 # Specific field value
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state get "Current Phase" --raw
@@ -954,12 +987,12 @@ This is expected behavior — `bridge list` is designed to report cleanly when n
 
 ### A Codex plugin upgrade seems to need a restart
 
-Since Codex CLI `0.154.0` (released `2026-09-09`), a live session picks up newly installed plugin tools and refreshes skills and hooks after an external plugin upgrade — no restart. If a PAN skill still reads stale after `pan-check-update` reported a newer version, the cause is the install, not Codex caching: re-run the installer and compare the `version` in `pan-file-manifest.json` with the `VERSION` file the installer writes inside the installed core directory (beside its `bin/` folder).
+Since Codex CLI `0.154.0` (released `2026-09-09`), a live session picks up newly installed plugin tools and refreshes skills and hooks after an external plugin upgrade — no restart. If a PAN skill still reads stale after upgrading PAN, the cause is the install, not Codex caching (on Codex `pan-check-update` only records the newest version in `~/.codex/cache/pan-update-check.json`, since Codex runs no PAN statusline to show it): re-run the installer and compare the `version` in `pan-file-manifest.json` with the `VERSION` file the installer writes inside the installed core directory (beside its `bin/` folder).
 
 ### `/pan:exec-phase --hierarchical` printed a warning and ran flat
 
 Expected when:
-- You're not on Claude Code — the flag needs native sub-agent spawning, which the other four runtimes don't support cleanly
+- You're not on Claude Code — the flag needs native sub-agent spawning, which the other runtimes don't support cleanly
 
 The flag degrades to flat exec in that case. There is **no model gate**: `pan-conductor` carries no `model:` frontmatter, so it runs on whatever model you launched the session with (the `budget` profile's advisory tiering is the only thing that would nominate a cheaper one, and it does not block the flag). So "wrong model" is never the reason — if you're on Claude Code with a multi-plan phase and still getting flat exec, the fallback is prose-driven — no deterministic guard exists in code, so check the runtime and the flag's conditions in `commands/pan/exec-phase.md`.
 
@@ -968,7 +1001,7 @@ The flag degrades to flat exec in that case. There is **no model gate**: `pan-co
 The SubagentStop hook reads the subagent's own transcript when the payload carries an `agent_id` (`token_source: "agent-transcript"`); without one it sums the slice of the parent session transcript since the previous SubagentStop (`token_source: "transcript"`), and the payload's `usage` block is only a fallback. Zeros mean no transcript was available (headless `claude -p` on a host without agent ids), a parallel sibling already consumed the shared slice, or the host named an agent whose transcript file was not there yet (`token_source: "agent-transcript-missing"`) — the record's `token_source` field says which path ran. Since v3.29 a row with no tokens and no model is an unmeasured spawn: `cost report` excludes it from `calls` and counts it under `totals.empty_excluded` rather than as an unknown-cost call. Rows written by 3.28 and earlier from the parent slice can carry a whole session's usage; `cost report` quarantines those as `suspect_excluded` when they exceed 500M cache-read or 10M output tokens, span more than six hours, or (untimed rows only) show cache reads dwarfing input and output — a timed parent-slice row under those limits is counted, attributed to the subagent that happened to stop — and `hygiene scan` names the ledger poisoned when the quarantined rows dominate it.
 
 Options:
-- **Upgrade Claude Code** if your version predates `usage` field support in SubagentStop.
+- **Upgrade Claude Code** if its SubagentStop payload carries no `agent_id` (the row's `agent_id` is `null`): the hook needs it to read the subagent's own transcript, and the payload's `usage` block is only the last resort.
 - **Append explicit records** for calls you care about: `pan-tools cost append --agent X --model <model-id> --input-tokens N --output-tokens N`. The aggregator merges hook-sourced and caller-sourced records.
 - **Reconcile from provider billing.** The hook is directional — use the provider's API (Anthropic console, etc.) for exact monthly totals.
 

@@ -446,7 +446,7 @@ function convertClaudeCommandToCodexSkill(content, skillName) {
  *
  * Unlike the Codex/Copilot adapters, this header makes no assumptions about
  * the consuming runtime — the same SKILL.md in the shared `.agents/skills/`
- * tree is read by every runtime, so invocation, delegation, and interaction
+ * tree is read by every runtime (Claude Code via its byte-identical .claude/skills/ copy), so invocation, delegation, and interaction
  * guidance are phrased in terms of "your runtime's native mechanism".
  */
 function getUnifiedSkillAdapterHeader(skillName, note) {
@@ -885,51 +885,6 @@ function buildHookCommand(configDir, hookName) {
 // ─── Opus 4.7 Skills & Thinking ────────────────────────────────────────────
 
 /**
- * Build a Claude Code native skill shim for a PAN command.
- *
- * Claude Code 1.x discovers skills in `.claude/skills/` by frontmatter.
- * PAN's commands live in `.claude/commands/pan/`, so we write a small shim
- * that registers the command as a skill pointing back at the command file.
- *
- * @param {Object} opts
- * @param {string} opts.commandName - e.g. "focus-scan"
- * @param {string} opts.description - Human-readable one-liner (≤120 chars preferred)
- * @param {string} [opts.trigger] - Optional trigger guidance for auto-invocation
- * @returns {string} Skill markdown content
- */
-function buildClaudeSkillShim(opts) {
-  if (!opts || typeof opts.commandName !== 'string' || !opts.commandName.trim()) {
-    throw new Error('buildClaudeSkillShim: commandName is required');
-  }
-  const name = opts.commandName.trim();
-  const description = (opts.description || '').replace(/\s+/g, ' ').trim();
-  const trigger = (opts.trigger || '').replace(/\s+/g, ' ').trim();
-
-  const frontmatter = [
-    '---',
-    `name: pan-${name}`,
-    `description: ${yamlQuote(description)}`,
-    trigger ? `trigger: ${yamlQuote(trigger)}` : null,
-    'source: pan-wizard',
-    '---',
-  ].filter(Boolean).join('\n');
-
-  const body = [
-    '',
-    `# /pan:${name}`,
-    '',
-    description || `PAN command: ${name}`,
-    '',
-    `Invokes the command defined at \`.claude/commands/pan/${name}.md\`.`,
-    '',
-    `To use, run: \`/pan:${name}\``,
-    '',
-  ].join('\n');
-
-  return frontmatter + body;
-}
-
-/**
  * Translate a reasoning-depth directive from the generic PAN frontmatter
  * shape into runtime-specific syntax (or prose fallback).
  *
@@ -1075,7 +1030,7 @@ function buildCopilotHooksConfig(commands) {
     config.hooks.postToolUse = [{ type: 'command', command: contextMonitorCommand }];
   }
   // subagentStop is Copilot's SubagentStop equivalent (verified docs.github.com
-  // 2026-06) — carries the cost + trace loggers, same as Claude/Gemini.
+  // 2026-06) — carries the cost + trace loggers, same as Claude and Codex (Gemini registers neither).
   const subagentStop = [];
   if (costLoggerCommand) subagentStop.push({ type: 'command', command: costLoggerCommand });
   if (traceLoggerCommand) subagentStop.push({ type: 'command', command: traceLoggerCommand });
@@ -1088,20 +1043,71 @@ function buildCopilotHooksConfig(commands) {
 // ─── Codex hooks config (2026-06) ───────────────────────────────────────────
 
 /**
- * Cross-runtime hook event map (canonical PAN event → per-runtime name).
- * Claude/Gemini register in settings.json; Codex in `.codex/hooks.json`
- * (Claude-compatible PascalCase events — verified developers.openai.com
- * 2026-06, project-scoped hooks load once the project is trusted); Copilot
- * in `.github/hooks/pan.json` (camelCase — verified docs.github.com 2026-06).
- * OpenCode has no hook support.
+ * Cross-runtime hook event map: canonical PAN slot → the event name PAN registers
+ * under on each runtime, or null where PAN deliberately registers nothing for that
+ * slot. The installers read this table; tests/fixtures/hook-vocabulary.json holds
+ * each runtime's documented event names, and tests/hook-vocabulary.test.cjs fails
+ * when an emitted key is not one of them.
+ *
+ *   - claude: settings.json, PascalCase (code.claude.com/docs/en/hooks).
+ *   - gemini: settings.json, in Gemini's OWN vocabulary (gemini-cli
+ *     packages/core/src/hooks/types.ts `HookEventName`, read 2026-09-23). Any
+ *     other key is skipped at load with an "Invalid hook event name" warning —
+ *     which is what PAN's Claude-named PostToolUse, SubagentStop and Stop entries
+ *     were from v3.4 until 2026-09-23: registered, reported, never run (R29).
+ *     postToolUse is null because no Gemini hook payload or setting exposes the
+ *     context-window usage the context monitor reads (Gemini has no statusline
+ *     command either). subagentStop is null because Gemini has no
+ *     subagent-completion event and hands every hook the main session's
+ *     transcript, not the subagent's, so neither logger has anything to measure.
+ *   - codex: `.codex/hooks.json`, Claude-compatible PascalCase (developers.openai.com
+ *     2026-06; codex-rs config/src/hook_config.rs read 2026-09-23). Project-scoped
+ *     hooks load once the project is trusted.
+ *   - copilot: `.github/hooks/pan.json`, camelCase (docs.github.com hooks reference).
+ *   - opencode: no hook system.
+ *
+ * `stop` is where the auto-advance stop guard registers (P-1809): Claude's Stop
+ * and Gemini's AfterAgent, both of which re-prompt the agent when a hook blocks.
+ * Codex and Copilot have a stop event too; PAN does not register the guard there yet.
  */
 const HOOK_EVENT_MAP = Object.freeze({
-  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop' },
-  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop' },
-  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop' },
-  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop' },
+  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop' },
+  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent' },
+  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: null },
+  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: null },
   opencode: null,
 });
+
+/** The hook scripts PAN registers in a Claude-shaped settings.json `hooks` block. */
+const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard']);
+
+/**
+ * Remove, from every event array of a Claude-shaped `hooks` object except
+ * `keepEvent`, the entries that run one of `hookNames`; emptied arrays are
+ * dropped. Returns the event names entries were removed from. Mutates `hooks`.
+ *
+ * This is how a hook that moved event, or lost its event on a runtime, is cleaned
+ * up on upgrade and on uninstall — keyed on the script, never on a remembered list
+ * of event names, which is how dead keys survived before (R29).
+ *
+ * @param {object} hooks - settings.hooks
+ * @param {string[]} hookNames - script basenames without `.js` (e.g. 'pan-stop-guard')
+ * @param {string|null} [keepEvent] - the event the hook now belongs to, left alone
+ * @returns {string[]}
+ */
+function stripPanHookEntries(hooks, hookNames, keepEvent = null) {
+  const touched = [];
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return touched;
+  for (const event of Object.keys(hooks)) {
+    if (event === keepEvent || !Array.isArray(hooks[event])) continue;
+    const before = hooks[event].length;
+    hooks[event] = hooks[event].filter(entry => !(entry && Array.isArray(entry.hooks)
+      && entry.hooks.some(h => h && typeof h.command === 'string' && hookNames.some(n => h.command.includes(n)))));
+    if (hooks[event].length < before) touched.push(event);
+    if (hooks[event].length === 0) delete hooks[event];
+  }
+  return touched;
+}
 
 // ─── MCP server registration (2026-08) ──────────────────────────────────────
 
@@ -2289,7 +2295,6 @@ module.exports = {
   parseJsonc,
   // Opus 4.7 capabilities
   detectModelCapabilities,
-  buildClaudeSkillShim,
   translateThinkingDirective,
   stripThinkingFrontmatter,
   // Gemini CLI → Antigravity transition (2026-06)
@@ -2300,6 +2305,8 @@ module.exports = {
   // Copilot CLI hooks config (2026-06)
   buildCopilotHooksConfig,
   HOOK_EVENT_MAP,
+  PAN_SETTINGS_HOOKS,
+  stripPanHookEntries,
   mergeCodexHooksConfig,
   MCP_REGISTRATION,
   buildMcpServerEntry,

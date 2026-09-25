@@ -47,6 +47,8 @@ Execute every phase that the flags leave enabled. Do NOT stop between phases. Th
 7. **Never propose retiring what the "What not to do" list protects** without a new finding that overturns the recorded reason. The list is carried forward in Phase 5 and re-affirmed item by item.
 8. **No secrets leave the machine.** This skill reads public docs; it never posts anything, never opens PRs, never pushes. `--write` writes files in the checkout and nothing else.
 9. **Run the installed engine from the install directory.** `cd d:/pantesting/<run>` before any `node .claude/pan-wizard-core/...` call: the same relative path typed from the source root resolves against the source tree, fails, and looks like a product error. Measure footprints there too — a `cd` in the middle of a compound command silently re-roots every `find` after it. And `npm run harness` appends to the tracked `harness/ledger.jsonl`; that diff is expected, list it.
+10. **A scout's number is a lead until a second read of the raw page agrees.** On `2026-09-22` a scout reported GPT-6 prices at double the page and a Codex default that moved the same day; both were caught only because the queue re-read the raw pricing arrays before writing a rate row. Before encoding any price, default model id or event name, re-read it from the raw primary text (curl the page, parse the table or the embedded JSON) on the day you write it.
+11. **A runtime-integration test derived from PAN's own table agrees with PAN, not with the runtime.** Every Gemini hook test passed while Gemini skipped three of PAN's four hook keys, because the tests read their event names from `HOOK_EVENT_MAP`. Check emitted config against the runtime's documented vocabulary (`tests/fixtures/hook-vocabulary.json`) and emitted model ids against its documented defaults (`tests/fixtures/documented-default-models.json`), and add a fixture of the same kind for any new integration surface.
 
 ---
 
@@ -370,7 +372,7 @@ Then a session queue at roughly forty points each, P0/P1 first, packaging before
 
 ### 5.5 What not to do — carried forward and re-affirmed
 
-List every entry from the previous review's "What not to do" and the superplan's additions. For each: **still holds (reason unchanged)** or **overturned by finding F#**. Add new entries only with a reason. Current inherited entries include: do not retire the markdown workflows · do not chase a sixth runtime · do not standardise `.planning/` · do not soften the behavioural harness · do not list on a skills marketplace on quality grounds alone · do not fork the skills compiler · do not emit frontmatter a runtime has not been seen to read · do not add a model rate without a primary citation.
+List every entry from the previous review's "What not to do" and the superplan's additions. For each: **still holds (reason unchanged)** or **overturned by finding F#**. Add new entries only with a reason. Current inherited entries include: do not derive a runtime-integration test from the installer's own table alone (`2026-09-22`) · do not retire the markdown workflows · do not chase a sixth runtime · do not standardise `.planning/` · do not soften the behavioural harness · do not list on a skills marketplace on quality grounds alone · do not fork the skills compiler · do not emit frontmatter a runtime has not been seen to read · do not add a model rate without a primary citation.
 
 ### 5.6 Verification caveats and cadence
 

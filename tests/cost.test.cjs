@@ -72,15 +72,19 @@ describe('cost — resolveRate', () => {
     assert.deepEqual(resolveRate('claude-fable-5[1m]', null, null), resolveRate('claude-fable-5', null, null));
   });
 
-  test('reasoning tier fallback tracks current Opus pricing', () => {
+  test('reasoning tier fallback tracks the default Opus (Opus 5.5 since 2026-09-22)', () => {
+    // The inherit tier runs on the session model, which Claude Code now defaults to
+    // Opus 5.5 on every plan — a record with no model id prices as that, not Opus 5.
     const r = resolveRate(null, 'reasoning', null);
-    assert.equal(r.input, 5.0);
-    assert.equal(r.output, 25.0);
+    assert.deepEqual(r, resolveRate('claude-opus-5-5', null, null));
+    assert.equal(r.input, 4.0);
+    assert.equal(r.cache_read, 0.20);
   });
 
-  test('unknown model falls through to tier', () => {
+  test('unknown model falls through to tier (mid tracks the sonnet alias: Sonnet 5)', () => {
     const r = resolveRate('claude-unknown-model', 'mid', null);
-    assert.equal(r.input, 3.0);
+    assert.deepEqual(r, resolveRate('claude-sonnet-5', null, null));
+    assert.equal(r.input, 2.0);
   });
 
   test('null model + null tier returns null rate', () => {
@@ -141,23 +145,37 @@ describe('cost — resolveRate', () => {
       'non-matching ids still fall through');
   });
 
-  test('gpt-5.5 has explicit rate (verified 2026-06)', () => {
+  test('gpt-5.5 has explicit rate (verified 2026-09-23)', () => {
     const r = resolveRate('gpt-5.5', null, null);
     assert.ok(r, 'gpt-5.5 should resolve to a rate');
     assert.equal(r.input, 5.0);
     assert.equal(r.output, 30.0);
-    // OpenAI prompt caching: 90% input discount, no separate write charge
+    // The page shows no cache-write charge for GPT-5.5 ("-"): write tokens bill as plain input.
     assert.equal(r.cache_read, 0.5);
     assert.equal(r.cache_write, 5.0);
   });
 
-  test('gemini-3.1-pro has explicit rate, preview alias matches (verified 2026-06)', () => {
+  test('gemini-3.1-pro has explicit rate, preview alias matches (verified 2026-09-23)', () => {
     const r = resolveRate('gemini-3.1-pro', null, null);
     assert.ok(r, 'gemini-3.1-pro should resolve to a rate');
     assert.equal(r.input, 2.00);
     assert.equal(r.output, 12.0);
     const preview = resolveRate('gemini-3.1-pro-preview', null, null);
     assert.deepEqual(preview, r, 'preview id should carry the same rate');
+  });
+
+  test('Gemini cache reads are the page\'s context-caching price, 0.1x input on every row (R26)', () => {
+    // Until 2026-09-22 every Gemini row carried 0.25x input — 2.5x the page. The
+    // tokens that create a cache bill at the standard input rate, so writes = input.
+    const gemini = Object.keys(DEFAULT_RATES).filter((k) => k.startsWith('gemini-'));
+    assert.ok(gemini.length > 0, 'non-vacuity: the table carries Gemini rows');
+    for (const id of gemini) {
+      const r = DEFAULT_RATES[id];
+      assert.equal(Number((r.cache_read / r.input).toFixed(6)), 0.1, `${id}: cache_read must be 0.1x input`);
+      assert.equal(r.cache_write, r.input, `${id}: cache creation bills at the standard input rate`);
+    }
+    const flash = resolveRate('gemini-3.8-flash', null, null);
+    assert.deepEqual(flash, { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 });
   });
 
   test('claude-opus-5 has explicit rate ($5/$25, verified 2026-08)', () => {
@@ -178,21 +196,38 @@ describe('cost — resolveRate', () => {
     assert.equal(r.cache_write, 2.50);
   });
 
-  test('gpt-5.6 tiers: bare id prices as Sol; Terra/Luna win by longest-prefix (verified 2026-08)', () => {
-    const sol = resolveRate('gpt-5.6', null, null);
-    assert.ok(sol, 'gpt-5.6 should resolve to a rate');
-    assert.equal(sol.input, 5.0);
-    assert.equal(sol.output, 30.0);
-    // A "gpt-5.6-sol" id has no explicit key → prefix-matches the Sol base.
-    assert.deepEqual(resolveRate('gpt-5.6-sol', null, null), sol);
-    // Terra/Luna have explicit keys; longest-prefix match must pick them, not the
-    // shorter `gpt-5.6` base, even for versioned ids.
+  test('gpt-5.6 tiers: the bare id is an alias of Sol; each tier has its own row (verified 2026-09-23)', () => {
+    // OpenAI's gpt-5.6 page: "The gpt-5.6 alias routes requests to GPT-5.6 Sol". The
+    // bare row used to carry $5/$30, a price no page listed (R27).
+    const sol = resolveRate('gpt-5.6-sol', null, null);
+    assert.deepEqual(sol, { input: 4.0, output: 20.0, cache_read: 0.4, cache_write: 5.0 });
+    assert.deepEqual(resolveRate('gpt-5.6', null, null), sol, 'the alias prices as Sol');
+    // Longest-prefix match must pick each tier's own row, even for versioned ids.
     const terra = resolveRate('gpt-5.6-terra-20260731', null, null);
-    assert.equal(terra.input, 2.0);
-    assert.equal(terra.output, 12.0);
+    assert.deepEqual(terra, { input: 2.0, output: 12.0, cache_read: 0.2, cache_write: 2.5 });
     const luna = resolveRate('gpt-5.6-luna', null, null);
-    assert.equal(luna.input, 0.20);
-    assert.equal(luna.output, 1.20);
+    assert.deepEqual(luna, { input: 0.20, output: 1.20, cache_read: 0.02, cache_write: 0.25 });
+  });
+
+  test('GPT-5.6 and GPT-6 cache writes bill at 1.25x input, in place of the input rate (R27)', () => {
+    for (const id of ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.6-cyber']) {
+      const r = DEFAULT_RATES[id];
+      assert.ok(r, `${id} should have its own row`);
+      assert.equal(Number((r.cache_write / r.input).toFixed(6)), 1.25, `${id}: cache_write must be 1.25x input`);
+      assert.equal(Number((r.cache_read / r.input).toFixed(6)), 0.1, `${id}: cache_read must be 0.1x input`);
+    }
+    // Codex's documented default resolves exactly, not through a family prefix.
+    assert.deepEqual(resolveRate('gpt-6-sol', null, null), { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 });
+  });
+
+  test('claude-opus-5-5 prices at its own row with the 0.05x cache-read multiplier (R25)', () => {
+    const r = resolveRate('claude-opus-5-5', null, null);
+    assert.deepEqual(r, { input: 4.0, output: 20.0, cache_read: 0.20, cache_write: 5.0 });
+    assert.equal(Number((r.cache_read / r.input).toFixed(6)), 0.05, 'Opus 5.5 hits bill at 0.05x input');
+    // A dated or context-suffixed id lands on the 5.5 row, not on the shorter Opus 5 family.
+    assert.deepEqual(resolveRate('claude-opus-5-5-20260922', null, null), r);
+    assert.deepEqual(resolveRate('claude-opus-5-5[1m]', null, null), r);
+    assert.notDeepEqual(r, resolveRate('claude-opus-5', null, null), 'the 5.5 row must differ from the Opus 5 fallback it replaces');
   });
 });
 

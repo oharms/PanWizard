@@ -208,8 +208,8 @@ PAN uses three profiles to control which model tier each agent type uses. Tiers 
 | Tier | Anthropic | OpenAI | Google | Default |
 |------|-----------|--------|--------|---------|
 | `reasoning` | inherit (Opus) | inherit | inherit | inherit |
-| `mid` | Sonnet | mid | gemini-2.5-flash | Sonnet |
-| `fast` | Haiku | fast | gemini-2.5-flash-lite | Haiku |
+| `mid` | Sonnet | gpt-6-sol | gemini-3.8-flash | Sonnet |
+| `fast` | Haiku | gpt-6-luna | gemini-3.5-flash-lite | Haiku |
 
 Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) are supported for backward compatibility.
 
@@ -294,7 +294,7 @@ PAN supports three git branching strategies for project organization.
 |----------|------------|---------|
 | `{phase}` | Zero-padded phase number | `01`, `02.1` |
 | `{slug}` | Phase name as slug | `setup-auth` |
-| `{milestone}` | Milestone version | `0.2.0` |
+| `{milestone}` | Milestone version | `v0.2.0` |
 
 ### Merge at Completion
 
@@ -308,15 +308,13 @@ When completing a phase or milestone:
 
 ```json
 {
-  "git": {
-    "branching_strategy": "phase",
-    "phase_branch_template": "pan/phase-{phase}-{slug}",
-    "milestone_branch_template": "pan/{milestone}-{slug}"
-  }
+  "branching_strategy": "phase",
+  "phase_branch_template": "pan/phase-{phase}-{slug}",
+  "milestone_branch_template": "pan/{milestone}-{slug}"
 }
 ```
 
-`config-ensure-section` writes these keys at the top level of `config.json`; the nested `git` form above is also accepted on read.
+These are top-level keys of `config.json`, the form `config-ensure-section` writes. A nested `git` form is read only when the top-level key is absent, so it is ignored in any config `config-ensure-section` created.
 
 ---
 

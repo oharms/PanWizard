@@ -1,0 +1,36 @@
+{
+  "id": "unified-skills-claude",
+  "tier": 0,
+  "description": "Install the packed artifact for Claude Code with --unified-skills and assert Claude gets its own copy of the compiled skills, because it does not read the shared .agents/skills tree.",
+  "why": "R32 (reality check 2026-09-22): the unified install swept Claude's nested commands and wrote the skills only to .agents/skills/, which Claude Code's skills documentation does not list as a discovery location — so Claude was left with no PAN commands while the installer printed /pan:new-project. The unit and scenario tests run from the source tree; this runs from the packed artifact.",
+  "seed": "empty",
+  "install": [
+    "--claude",
+    "--unified-skills"
+  ],
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 5,
+    "maxStepMinutes": 3
+  },
+  "steps": [
+    {
+      "kind": "fs",
+      "expect": [
+        "file:.agents/skills/pan-help/SKILL.md",
+        "file:.claude/skills/pan-help/SKILL.md",
+        "file:.claude/skills/pan-new-project/SKILL.md",
+        "glob:.claude/skills/pan-*/SKILL.md"
+      ],
+      "why": "The shared tree for every other runtime, and Claude Code's own copy of it at the only skills path Claude reads."
+    },
+    {
+      "kind": "fs",
+      "expect": [
+        "absent:.claude/commands/pan",
+        "absent:.claude/skills/pan-help.md"
+      ],
+      "why": "The nested /pan:<name> commands are swept so nothing resolves twice, and no flat shim (R33) comes back with the copy."
+    }
+  ]
+}

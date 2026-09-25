@@ -4,7 +4,7 @@
 
 # PanWizard
 
-**Command a bot army for your codebase** — a *Mission Control* agent delegates whole-project goals to specialist squads and ships behind a human merge gate (the army runs on Claude Code; the planning pipeline runs on all five CLIs). Five AI CLIs, zero context rot.
+**Command a bot army for your codebase** — a *Mission Control* agent delegates whole-project goals to specialist squads and ships behind a human merge gate (the army is built for Claude Code; the planning pipeline runs on all five CLIs). Five AI CLIs, zero context rot.
 
 **Solves context rot** — the quality degradation that happens as the model fills its context window.
 
@@ -56,12 +56,12 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 ┌─────────────────────▼───────────────────────────────────────┐
 │  AGENTS (specialized)                                       │
 │  planner · executor · verifier · researcher · debugger ...  │
-│  Each runs in a fresh context window                        │
+│  Each in its own context (native on Claude Code)            │
 └─────────────────────┬───────────────────────────────────────┘
                       │ uses
 ┌─────────────────────▼───────────────────────────────────────┐
 │  CORE LIBRARY (pan-wizard-core/)                            │
-│  config · state · init · verify · commit · phase-utils      │
+│  config · state · init · verify · commit · phase · roadmap  │
 │  Cross-platform CLI tools, zero runtime dependencies        │
 └─────────────────────┬───────────────────────────────────────┘
                       │ reads/writes
@@ -76,7 +76,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 ## Bot Army
 
-> **Don't run one phase — run the whole project.** `/pan:army` (Claude Code only — it needs native sub-agent spawning; the other runtimes run the flat pipeline) turns PAN's agents into a coordinated army that delivers a goal end-to-end: a **Mission Control** agent plans the mission and delegates to specialist **squads**, parallel builders each work an isolated git worktree, and **nothing reaches your main branch without green checks and your explicit approval.**
+> **Don't run one phase — run the whole project.** `/pan:army` (built and tested on Claude Code, which has native sub-agent spawning; the command installs on every runtime, but nothing gates it elsewhere and it is untested there — use the flat pipeline on the other runtimes) turns PAN's agents into a coordinated army that delivers a goal end-to-end: a **Mission Control** agent plans the mission and delegates to specialist **squads**, parallel builders each work an isolated git worktree, and **the Release squad stops at your explicit approval instead of merging.** On the MCP path that gate is enforced in code; on `/pan:army` it is the squads' instructions, so pair it with branch protection to make green checks a rule your repository enforces.
 
 <div align="center">
 <img src="https://cdn.jsdelivr.net/npm/pan-wizard@latest/assets/pan-orchestration.png" alt="PanWizard specialist agents orchestrated along a pipeline" width="340" />
@@ -101,7 +101,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 - **A human merges.** The Release squad prepares a squash-merge and surfaces an `always-ask` approval instead of merging; pair it with branch protection on your repo, which is what makes that unbypassable rather than merely instructed. Recovery is `git revert` or the previous tag, never a force-push.
 - **Isolated builders.** Each Build agent forks its own `army/<task>` branch + git worktree, so parallel agents never share a file.
-- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn by Mission Control's protocol (prompt-enforced; the MCP `pan_next_action` path enforces the cycle cap, the budget cap when `caps.enforceBudget` is set, the abort switch and the human gate in code — delegation depth is bounded by which agents hold the `Task` tool) — the same harness as hierarchical exec, at campaign scale.
+- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn by Mission Control's protocol (prompt-enforced; the MCP `pan_next_action` path enforces the cycle cap, the budget cap when `caps.enforceBudget` is set, an `aborted` flag the caller sets (it does not read the abort file) and the human gate in code — delegation depth is bounded by which agents hold the `Task` tool) — the same harness as hierarchical exec, at campaign scale.
 
 **Run it over days.** `--schedule` arms a resumable campaign with a per-day budget that burns the backlog down across sessions (the per-day budget is advisory — `campaign status` shows the day's spend — and an external scheduler triggers each `--continue`) — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
 
@@ -163,8 +163,8 @@ npx pan-wizard --opencode --global # Install to ~/.config/opencode/
 npx pan-wizard --gemini --global   # Install to ~/.gemini/
 
 # Codex (skills-first)
-npx pan-wizard --codex --global    # Install to ~/.codex/
-npx pan-wizard --codex --local     # Install to ./.codex/
+npx pan-wizard --codex --global    # Skills to ~/.agents/skills/, core and hooks to ~/.codex/
+npx pan-wizard --codex --local     # Skills to ./.agents/skills/, core and hooks to ./.codex/
 
 # GitHub Copilot CLI (skills-first)
 npx pan-wizard --copilot --global  # Install to ~/.copilot/
@@ -176,7 +176,7 @@ npx pan-wizard --all --global      # Install to all directories
 
 Use `--global` (`-g`) to install into your home config directory; `--local` (`-l`) is the default and may be omitted.
 Use `--claude`, `--opencode`, `--gemini`, `--codex`, `--copilot`, or `--all` to skip the runtime prompt.
-Add `--unified-skills` to install commands as one shared `.agents/skills/` tree read natively by every runtime (and Antigravity CLI) instead of per-runtime formats — see the User Guide for details.
+Add `--unified-skills` to install commands as one shared `.agents/skills/` tree instead of per-runtime formats. Codex, Gemini CLI, OpenCode, Copilot CLI and Antigravity CLI read that tree; Claude Code does not, so for Claude the installer also copies each skill into `.claude/skills/` and the commands become `/pan-<name>`. Gemini CLI gives skills no slash command, so on a unified Gemini install you ask for the task and `/skills list` shows what loaded. See the User Guide for details.
 
 > **Gemini CLI note:** from June 18, 2026, Google's Gemini CLI serves Gemini Code Assist (Standard/Enterprise) customers; individual free / AI Pro / Ultra accounts are directed to Antigravity CLI instead. PAN's `--gemini` target installs for Gemini CLI. Antigravity CLI is not yet a PAN install target, but it reads the shared `.agents/skills/` tree natively — install with `--unified-skills` and PAN's commands are usable from Antigravity in the same project.
 
@@ -283,7 +283,7 @@ If you prefer not to use that flag, add this to your project's `.claude/settings
 
 ## How It Works
 
-> **Already have code?** Run `/pan:map-codebase` first. It analyzes your stack, architecture, conventions, and concerns — single-shot with one agent for repositories under the sharding threshold, six-way sharded above it. Then `/pan:new-project` knows your codebase — questions focus on what you're adding, and planning automatically loads your patterns.
+> **Already have code?** Run `/pan:map-codebase` first. It analyzes your stack, architecture, conventions, and concerns — single-shot with one agent for repositories under the sharding threshold, sharded across parallel mapper agents above it. Then `/pan:new-project` knows your codebase — questions focus on what you're adding, and planning automatically loads your patterns.
 
 ### 1. Initialize Project
 
@@ -438,7 +438,7 @@ On Claude Code, `/pan-diagnose-issues <phase>` spawns one debugger per failed UA
 
 Loop **discuss → plan → execute → verify** until milestone complete.
 
-Each phase gets your input (discuss), proper research (plan), clean execution (execute), and human verification (verify). Context stays fresh. Quality stays high.
+Each phase gets your input (discuss), proper research (plan), clean execution (execute), and goal-backward verification (verify). Context stays fresh. Quality stays high.
 
 When all phases are done, `/pan:milestone-done` archives the milestone and tags the release.
 
@@ -467,7 +467,7 @@ Use for: bug fixes, small features, config changes, one-off tasks.
 > What do you want to do? "Add dark mode toggle to settings"
 ```
 
-**Creates:** `.planning/quick/001-add-dark-mode-toggle/001-plan.md`, `001-summary.md`
+**Creates:** `.planning/quick/1-add-dark-mode-toggle-to-settings/1-plan.md`, `1-summary.md`
 
 ---
 
@@ -491,7 +491,7 @@ PAN handles it for you:
 | `standards.md` | Selected industry standards (OWASP, WCAG, NIST, etc.) — advisory checklists for agents |
 | `todos/` | Captured ideas and tasks for later work |
 
-Size limits based on where Claude's quality degrades. Stay under, get consistent excellence.
+Sizing guidance, not an enforced limit: the planner aims to finish each plan within about half a context window, before quality starts to degrade. Stay under it and results stay consistent.
 
 ### XML Prompt Formatting
 
@@ -519,9 +519,9 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 
 | Stage | Orchestrator does | Agents do |
 |-------|------------------|-----------|
-| Research | Coordinates, presents findings | 4 parallel researchers investigate stack, features, architecture, pitfalls |
+| Research | Coordinates, presents findings | Parallel researchers investigate stack, features, architecture and pitfalls |
 | Planning | Validates, manages iteration | Planner creates plans, checker verifies, up to three passes |
-| Execution | Groups into waves, tracks progress | Executors implement in parallel, each with a fresh context window |
+| Execution | Groups into waves, tracks progress | Executors implement in parallel, each in a fresh context (native sub-agents on Claude Code, each runtime's own delegation elsewhere) |
 | Verification | Presents results, routes next | Verifier checks codebase against goals, debuggers diagnose failures |
 
 The orchestrator never does heavy lifting. It spawns agents, waits, integrates results.
@@ -535,7 +535,7 @@ When agents hand work off via files, only OUTPUTS get passed by default — not 
 - Plans carry a `## Plan Decisions` section (Locked / Open / Considered+rejected buckets) — the executor reads it before coding so it doesn't re-argue settled choices.
 - Summaries carry an `## Implementation Decisions` section — the verifier reads it to understand WHY the executor deviated from the plan, not just THAT it did.
 
-The plan-checker enforces this with two dedicated dimensions (Spec Sufficiency for Handoff, Decision Trace Completeness). Schema lives in `pan-wizard-core/references/handoff-decisions.md`.
+The plan-checker enforces this with dedicated dimensions for Spec Sufficiency for Handoff and Decision Trace Completeness. Schema lives in `pan-wizard-core/references/handoff-decisions.md`.
 
 ### Self-Improving Learnings
 
@@ -548,7 +548,7 @@ PAN runs autonomous experiments in isolated folders, harvests the resulting tele
 
 ### Atomic Git Commits
 
-Each task gets its own commit immediately after completion (consecutive trivial chore or docs tasks are coalesced):
+The executor commits each task as soon as it completes — a rule of its protocol, not a git hook (consecutive trivial chore or docs tasks are coalesced):
 
 ```bash
 abc123f docs(08-02): complete user registration plan
@@ -575,13 +575,13 @@ You're never locked in. The system adapts.
 
 ## How PAN Compares
 
-| | PAN Wizard | Cursor / Windsurf | Aider / Cline | GitHub Copilot |
+| | PAN Wizard | Cursor / Devin Desktop (ex-Windsurf) | Aider / Cline | GitHub Copilot |
 |---|---|---|---|---|
-| **Context rot prevention** | Phase-scoped fresh context windows | No — context degrades over time | No (Cline: condensing) | No |
-| **Multi-agent** | Specialized agents, parallel waves | Up to 8 parallel (Cursor 2.0) | Single agent | Specialized sub-agents |
+| **Context rot prevention** | Phase-scoped fresh context windows (native sub-agents on Claude Code) | No — context degrades over time | No (Cline: condensing) | No |
+| **Multi-agent** | Specialized agents, parallel waves | Parallel agents in worktrees (Cursor) | Single agent (Cline: subagents) | Custom agents as subagents |
 | **Plan → Verify loop** | Research → plan → verify with iteration | Agent generates plan | Plan mode (Cline) | Plan step |
 | **Post-execution verification** | Auto verifier + human UAT | Iterative error-fix | Manual test runs | Auto-fix loop |
-| **Session persistence** | state.md + pause/resume + handoff | Notepad / Memories | None / Task history | None |
+| **Session persistence** | state.md + pause/resume + handoff | Memory tool / transcripts | None / checkpoints (Cline) | Copilot Memory, CLI session recovery |
 | **Runtime support** | Claude Code, OpenCode, Gemini CLI, Codex, Copilot CLI | IDE-locked | Terminal / VS Code | VS Code + CLI |
 | **Zero dependencies** | Yes (Node builtins only) | No (Electron) | No (Python / Node) | No |
 
@@ -598,7 +598,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | Command | What it does |
 |---------|--------------|
 | `/pan:new-project [--auto]` | Full initialization: questions → research → requirements → roadmap |
-| `/pan:discuss-phase [N] [--auto]` | Capture implementation decisions before planning |
+| `/pan:discuss-phase <N> [--auto]` | Capture implementation decisions before planning |
 | `/pan:design-phase [N]` | Design a phase — architecture, ADR, threat-lite — before planning |
 | `/pan:plan-phase [N] [--auto]` | Research + plan + verify for a phase |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves, verify when complete |
@@ -659,7 +659,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:quick [--full]` | Execute ad-hoc task with PAN guarantees (`--full` adds plan-checking and verification) |
 | `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` auto-fixes detected issues |
 | `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs); `--apply` executes the safe fixes — poisoned ledgers are quarantined by rename (only the newest quarantine copy is kept), and settled `state.md` history is archived rather than dropped |
-| `/pan:links [--strict]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027, v3.8.0+) |
+| `/pan:links [--strict]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027) |
 | `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase based on UAT criteria |
 | `/pan:milestone-cleanup` | Archive accumulated phase directories from completed milestones |
 | `/pan:retro` | Milestone retrospective — estimation accuracy, verification patterns, gap analysis |
@@ -684,15 +684,15 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | Command | What it does |
 |---------|--------------|
 | `/pan:focus-scan` | Collect, classify, and prioritize all work items with Reality Score |
-| `/pan:focus-plan` | Create capacity-budgeted execution batch (4 modes: bugfix/balanced/features/full) |
+| `/pan:focus-plan` | Create capacity-budgeted execution batch (modes: bugfix, balanced, features, full) |
 | `/pan:focus-exec` | Execute items from batch with tier-based test cadence |
-| `/pan:focus-auto` | Continuous scan→plan→exec loop with purpose-driven categories and 5-layer safety harness |
+| `/pan:focus-auto` | Continuous scan→plan→exec loop with purpose-driven categories and a layered safety harness |
 | `/pan:focus-sync` | Detect and report stale documentation counts |
-| `/pan:focus-design` | 10-phase strategic feature investigation pipeline |
+| `/pan:focus-design` | Multi-phase strategic feature investigation pipeline |
 | `/pan:focus-drift-walking` | Walk project tree, detect doc-code drift, score severity, auto-repair |
-| `/pan:focus-doc-audit` | Multi-dimensional document audit with 8-dimension quality scoring |
+| `/pan:focus-doc-audit` | Multi-dimensional document audit with a quality score per dimension |
 
-### Spec B v2 (v3.0–v3.4)
+### Cost, Foresight & Review
 
 | Command | What it does |
 |---------|--------------|
@@ -703,7 +703,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:what-if <phase> "scenario"` | Counterfactual phase replay in isolated git worktree |
 | `/pan:mcp-bridge {list\|recommend\|cache}` | Discover MCP tools and recommend per-phase relevance |
 
-### Optimization & Git (v3.5)
+### Optimization & Git
 
 | Command | What it does |
 |---------|--------------|
@@ -724,7 +724,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 
 | Setting | Options | Default | What it controls |
 |---------|---------|---------|------------------|
-| `mode` | `yolo`, `interactive` | chosen at `/pan:new-project` (usually `interactive`) | Auto-approve vs confirm at each step |
+| `mode` | `yolo`, `interactive` | chosen at `/pan:new-project` (`yolo` is the recommended answer; `--auto` always sets it) | Auto-approve vs confirm at each step |
 | `depth` | `quick`, `standard`, `comprehensive` | chosen at `/pan:new-project` (usually `standard`) | Planning thoroughness (phases × plans) |
 
 ### Model Profiles
@@ -737,7 +737,7 @@ Control which Claude model each agent uses. Balance quality vs token spend.
 | `balanced` (default) | reasoning | reasoning | reasoning |
 | `budget` | Sonnet | Sonnet | Haiku |
 
-> `reasoning` = the session model (inherit) — every agent runs on the model you launched the session with, except the reviewer-class agents (reviewer, hardener, meta-reviewer), which pin a reasoning-tier model. Both `quality` and `balanced` resolve this way; only `budget` steps down to a Sonnet/Haiku mix. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
+> `reasoning` = the session model (inherit) — every agent runs on the model you launched the session with, except the reviewer-class agents (reviewer, hardener, meta-reviewer), which pin a reasoning-tier model on Claude Code. The other runtimes' agent files drop the pin, so there those agents inherit the session model too. Both `quality` and `balanced` resolve this way; only `budget` steps down — to a Sonnet/Haiku mix on Claude Code, and to the provider's own mid and fast models where PAN detects OpenAI (Codex, OpenCode) or Google (Gemini CLI); `pan-tools resolve-model <agent>` prints the id. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
 
 Switch profiles:
 ```text
@@ -767,7 +767,7 @@ Use `/pan:settings` to toggle these, or override per-invocation:
 | Setting | Default | What it controls |
 |---------|---------|------------------|
 | `parallelization.enabled` | `true` | Run independent plans simultaneously |
-| `planning.commit_docs` | `true` | Track `.planning/` in git |
+| `commit_docs` | `true` | Track `.planning/` in git |
 
 ### Git Branching
 
@@ -775,14 +775,14 @@ Control how PAN handles branches during execution.
 
 | Setting | Options | Default | What it does |
 |---------|---------|---------|--------------|
-| `git.branching_strategy` | `none`, `phase`, `milestone` | `none` | Branch creation strategy |
-| `git.phase_branch_template` | string | `pan/phase-{phase}-{slug}` | Template for phase branches |
-| `git.milestone_branch_template` | string | `pan/{milestone}-{slug}` | Template for milestone branches |
+| `branching_strategy` | `none`, `phase`, `milestone` | `none` | Branch creation strategy |
+| `phase_branch_template` | string | `pan/phase-{phase}-{slug}` | Template for phase branches |
+| `milestone_branch_template` | string | `pan/{milestone}-{slug}` | Template for milestone branches |
 
 **Strategies:**
 - **`none`** — Commits to current branch (default PAN behavior)
-- **`phase`** — Creates a branch per phase, merges at phase completion
-- **`milestone`** — Creates one branch for entire milestone, merges at completion
+- **`phase`** — Creates a branch per phase; you merge it yourself (PAN never merges)
+- **`milestone`** — Creates one branch for the entire milestone; you merge it yourself
 
 At milestone completion you merge the milestone branch yourself (`git merge --squash` or `--no-ff`); `/pan:milestone-done <version>` archives and tags but does not merge.
 
@@ -823,12 +823,12 @@ This prevents Claude from reading these files entirely, regardless of what comma
 
 **Commands not found after install?**
 - Restart your runtime to reload commands/skills
-- Verify files exist in `~/.claude/commands/pan/` (global) or `./.claude/commands/pan/` (local)
+- For Claude Code, verify files exist in `~/.claude/commands/pan/` (global) or `./.claude/commands/pan/` (local) — or, after a `--unified-skills` install, in `.claude/skills/pan-*/SKILL.md`
 - For Codex, verify skills exist in `~/.agents/skills/pan-*/SKILL.md` (global) or `./.agents/skills/pan-*/SKILL.md` (local)
 - For Copilot CLI, verify skills exist in `~/.copilot/skills/pan-*/SKILL.md` (global) or `./.github/skills/pan-*/SKILL.md` (local)
 
 **Commands not working as expected?**
-- Run `/pan:help` to verify installation
+- Run `/pan:help` (`/pan-help` on OpenCode, Copilot CLI and unified Claude installs; `$pan-help` on Codex) to verify installation
 - Re-run `npx pan-wizard` to reinstall
 
 **Updating to the latest version?**
@@ -879,7 +879,7 @@ This removes all PAN commands, agents, hooks, and settings while preserving your
 | [User Guide](docs/USER-GUIDE.md) | Users | Workflow diagrams, command reference, config schema, troubleshooting |
 | [FAQ](docs/FAQ.md) | Users | Common questions about cost, runtimes, customization |
 | [Examples](docs/EXAMPLES.md) | Users | Worked examples from new project to cost-conscious development |
-| [Architecture](docs/ARCHITECTURE.md) | Contributors | 5-layer system design, data flow, module graph |
+| [Architecture](docs/ARCHITECTURE.md) | Contributors | Layered system design, data flow, module graph |
 | [Development Guide](docs/DEVELOPMENT.md) | Contributors | Setup, how to add commands/agents/tests, cross-platform pitfalls |
 | [CLI Reference](docs/CLI-REFERENCE.md) | Contributors | Every pan-tools.cjs subcommand with args, flags, and JSON output |
 | [Agent System](docs/AGENTS.md) | Contributors | Agent inventory, lifecycle, model profiles, collaboration patterns |

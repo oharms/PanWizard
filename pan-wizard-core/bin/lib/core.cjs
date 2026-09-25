@@ -31,10 +31,23 @@ const { planningPath, planningRel } = require('./utils.cjs');
  * Each provider maps reasoning/mid/fast to its native model identifiers.
  * "inherit" means the host runtime uses its own top-tier model selection.
  */
+//
+// Every non-inherit value must be a model id the host accepts: a Claude Code alias
+// (sonnet, haiku) for Anthropic, otherwise a concrete API id that DEFAULT_RATES in
+// cost.cjs prices exactly (tests/documented-default-models.test.cjs pins both).
+// Until 2026-09-22 the OpenAI row held the literal strings 'mid' and 'fast', so a
+// budget-profile project on Codex or OpenCode was told to spawn a model called
+// "mid" (reality check R28).
+//   - openai: Codex's subagent docs (learn.chatgpt.com/docs/agent-configuration/
+//     subagents, read 2026-09-23): "start with gpt-6-sol. Use gpt-6-luna when you
+//     want a faster, lower-cost option". gpt-6-astra is the flagship above both.
+//   - google: the newest stable Flash and Flash-Lite on ai.google.dev's models page
+//     (read 2026-09-23). The 2.5 family these rows used is "not deprecated" but
+//     limited to users who have used it before, so a new project may not reach it.
 const PROVIDER_MODELS = {
   anthropic: { reasoning: 'inherit', mid: 'sonnet',                 fast: 'haiku' },
-  openai:    { reasoning: 'inherit', mid: 'mid',                    fast: 'fast'  },
-  google:    { reasoning: 'inherit', mid: 'gemini-2.5-flash',       fast: 'gemini-2.5-flash-lite' },
+  openai:    { reasoning: 'inherit', mid: 'gpt-6-sol',              fast: 'gpt-6-luna' },
+  google:    { reasoning: 'inherit', mid: 'gemini-3.8-flash',       fast: 'gemini-3.5-flash-lite' },
   default:   { reasoning: 'inherit', mid: 'sonnet',                 fast: 'haiku' },
 };
 
@@ -52,7 +65,7 @@ const COST_MULTIPLIERS = { reasoning: 15, mid: 3, fast: 1 };
 // isolation (each subagent runs in its own window), not a cheaper model, is what
 // keeps the main conversation clean. Cheapness is now OPT-IN: choose the `budget`
 // profile (the only column that still down-tiers) or pin a specific agent via
-// config `model_overrides`. The 3 security agents additionally pin `model: opus`
+// config `model_overrides`. The reviewer-class agents additionally pin `model: opus`
 // in their own frontmatter (a native, deliberate exception). resolve-model /
 // MODEL_PROFILES is advisory + cost-estimation; native Claude Code delegation
 // reads each agent file's static `model:` (unset → inherit).
@@ -781,7 +794,7 @@ function adjustTierForCapabilities(tier, opts) {
  * @param {string} agentType - Agent name (e.g., "pan-planner", "pan-executor")
  * @param {Object} [taskMetadata] - Optional metadata. Supports complexity fields and
  *   capability hints: {context_estimate, needs_thinking, cache_warm}.
- * @returns {string} Model identifier: "inherit", "sonnet", "haiku", "mid", "fast", etc.
+ * @returns {string} Model identifier: "inherit", a Claude Code alias ("sonnet", "haiku"), or a provider model id from PROVIDER_MODELS
  */
 function resolveModelInternal(cwd, agentType, taskMetadata) {
   const config = loadConfig(cwd);

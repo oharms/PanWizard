@@ -117,6 +117,8 @@ Next: Wave {N+1} — {task count} tasks [{task IDs}]
 ```
 This prevents drift in multi-wave phases where the agent loses track of which waves remain and what the test baseline was.
 
+**Task tracking:** where your runtime offers a todo or task-tracking tool, you may keep the wave list in it. Do not depend on one: some runtimes offer none on their newest models (Claude Code gates its task tools behind `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` there). The attention anchor above, the wave summaries and state.md are the record either way.
+
 **State Intent Before Implementing (M+ tasks):**
 For each STANDARD or FULL task, state before coding: "I will modify [files], adding [what], to achieve [goal]. Risk: [what could break]."
 

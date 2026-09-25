@@ -376,7 +376,7 @@
       "runtime": "copilot",
       "hook": "pan-statusline.js",
       "event": "statusLine",
-      "surface": "settings.json"
+      "surface": "copilot/settings.json"
     },
     {
       "runtime": "copilot",
@@ -392,32 +392,8 @@
     },
     {
       "runtime": "gemini",
-      "hook": "pan-context-monitor.js",
-      "event": "PostToolUse",
-      "surface": "settings.json"
-    },
-    {
-      "runtime": "gemini",
-      "hook": "pan-cost-logger.js",
-      "event": "SubagentStop",
-      "surface": "settings.json"
-    },
-    {
-      "runtime": "gemini",
-      "hook": "pan-statusline.js",
-      "event": "statusLine",
-      "surface": "settings.json"
-    },
-    {
-      "runtime": "gemini",
       "hook": "pan-stop-guard.js",
-      "event": "Stop",
-      "surface": "settings.json"
-    },
-    {
-      "runtime": "gemini",
-      "hook": "pan-trace-logger.js",
-      "event": "SubagentStop",
+      "event": "AfterAgent",
       "surface": "settings.json"
     }
   ],

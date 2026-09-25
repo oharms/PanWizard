@@ -49,24 +49,25 @@ const CONTENT_DIRS = Object.freeze({
   'pan-wizard-core/workflows': /\.(md|js)$/,
 });
 
-// Hooks the installer wires outside HOOK_EVENT_MAP (bin/install.js: the Stop guard
-// on the two runtimes with a Stop event, the statusline on Claude Code only).
+// Registrations the installer wires outside HOOK_EVENT_MAP: the statuslines. (The
+// stop guard moved INTO the table on 2026-09-23 as its `stop` slot, so its Gemini
+// row follows Gemini's vocabulary — AfterAgent — instead of a hand-written `Stop`
+// that Gemini never read.)
 const EXTRA_HOOK_ROWS = Object.freeze([
-  { runtime: 'claude', hook: 'pan-stop-guard.js', event: 'Stop', surface: 'settings.json' },
-  { runtime: 'gemini', hook: 'pan-stop-guard.js', event: 'Stop', surface: 'settings.json' },
   { runtime: 'claude', hook: 'pan-statusline.js', event: 'statusLine', surface: 'settings.json' },
-  // Gemini and Copilot register a statusline too. Both were missing here until a real
-  // install was read back (2026-09-17) — the registry's whole purpose is that a shipped
-  // registration cannot sit outside it, so a hand-maintained list is the weak point and
-  // these rows are the evidence for why it must be checked against an install.
-  { runtime: 'gemini', hook: 'pan-statusline.js', event: 'statusLine', surface: 'settings.json' },
+  // Copilot registers a statusline too; it was missing here until a real install was
+  // read back (2026-09-17) — the registry's whole purpose is that a shipped
+  // registration cannot sit outside it, so a hand-maintained list is the weak point.
   // Copilot keeps its hooks in hooks/pan.json but its statusline in copilot/settings.json.
+  // Gemini's row is gone: Gemini CLI has no statusline command, so PAN stopped
+  // writing one there (R29).
   { runtime: 'copilot', hook: 'pan-statusline.js', event: 'statusLine', surface: 'copilot/settings.json' },
 ]);
 const EVENT_HOOKS = Object.freeze({
   sessionStart: ['pan-check-update.js'],
   postToolUse: ['pan-context-monitor.js'],
   subagentStop: ['pan-cost-logger.js', 'pan-trace-logger.js'],
+  stop: ['pan-stop-guard.js'],
 });
 
 // ─── Parsers (pure) ─────────────────────────────────────────────────────────

@@ -38,7 +38,7 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 
 | Stage | Agents spawned | Approximate tokens | Skippable? |
 |-------|---------------|-------------------|------------|
-| Research (new-project) | 4 parallel researchers + synthesizer | 30-50K total | Yes (answer No to the research question, or set `research_enabled: false` in the idea frontmatter) |
+| Research (new-project) | Parallel researchers + synthesizer | 30-50K total | Yes (answer No to the research question, or set `research_enabled: false` in the idea frontmatter) |
 | Research (plan-phase) | 1 phase researcher | 10-20K | Yes (`--skip-research`) |
 | Planning | 1 planner + 1 plan-checker (up to 3 iterations) | 20-40K | Checker skippable (`plan_check: false`) |
 | Execution | 1 executor per plan (fresh context each) | 20-80K per plan | No |
@@ -91,7 +91,7 @@ This removes all PAN commands, agents, hooks, and settings while preserving your
 
 ### Can I use PAN with an existing project?
 
-Yes. Run `/pan:map-codebase` first — it maps your stack, architecture, conventions, and concerns (one agent for small repos, six in parallel above the size threshold). Then `/pan:new-project` will focus questions on what you're *adding* rather than what already exists.
+Yes. Run `/pan:map-codebase` first — it maps your stack, architecture, conventions, and concerns (one agent for small repos, several in parallel above the size threshold). Then `/pan:new-project` will focus questions on what you're *adding* rather than what already exists.
 
 ### Does PAN commit to git automatically?
 
@@ -101,7 +101,7 @@ Yes. Each task gets its own atomic commit immediately after completion. Commit m
 
 ### What happens when context runs out?
 
-PAN has a built-in context window monitor:
+On Claude Code and Copilot CLI (the runtimes where PAN installs the statusline that feeds it), PAN has a built-in context window monitor:
 - At **35% remaining**: WARNING — the agent wraps up current work
 - At **25% remaining**: CRITICAL — the agent saves state via `/pan:pause`
 
@@ -145,7 +145,7 @@ Note: you'll be prompted to approve agent spawning and other operations, which c
 
 ### How do I see what PAN is costing me?
 
-Run `/pan:cost report`. Since v3.4, a SubagentStop hook auto-captures every sub-agent completion into `.planning/metrics/tokens.jsonl` — so `/pan:cost` works without any manual instrumentation. Use `--format table` for human-readable output, `--format chart` for a daily bar chart, or `--since YYYY-MM-DD --until YYYY-MM-DD` to scope to a billing window.
+Run `/pan:cost report`. Since v3.4, on Claude Code, Codex and Copilot CLI (Gemini CLI has no subagent-completion event, and PAN registers no hooks on OpenCode), a SubagentStop hook auto-captures every sub-agent completion into `.planning/metrics/tokens.jsonl` — so `/pan:cost` works without any manual instrumentation. Use `--format table` for human-readable output, `--format chart` for a daily bar chart, or `--since YYYY-MM-DD --until YYYY-MM-DD` to scope to a billing window.
 
 ### What's the difference between `pan-reviewer` and `/pan:review-deep`?
 
@@ -191,7 +191,7 @@ Yes — the other direction. `/pan:mcp-bridge` is PAN as an MCP *client*, discov
 
 ### How does the circular optimization loop work?
 
-`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to write the auto-applicable findings as memory entries. Next session, those memory entries get loaded into executor context (W2 fix), so PAN avoids repeating the same mistakes. The exec-phase workflow also logs `reviewer_correction` events when the reviewer issues a fix commit (W1 fix), so the optimizer can track real quality signal — not just "tasks completed."
+`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to write the auto-applicable findings as memory entries. Next session, those memory entries get loaded into executor context (W2 fix), so PAN avoids repeating the same mistakes. The exec-phase workflow also logs `reviewer_correction` events when the reviewer issues a fix commit (W1 fix), so the optimizer can track real quality signal — not just "tasks completed."
 
 ### What does `/pan:focus-auto --category distill` do?
 
@@ -211,7 +211,7 @@ After a PAN update, your local modifications may be overwritten. Use `/pan:patch
 
 ### Can I add my own commands?
 
-Yes. Create a `.md` file in `.claude/commands/pan/` (or `~/.claude/commands/pan/` for a global install) following the existing pattern. The filename becomes the slash command. Commands should be thin orchestrators — read state via `pan-tools.cjs`, spawn agents for heavy work.
+Yes. Create a `.md` file in `.claude/commands/` (or `~/.claude/commands/` for a global install) following the existing pattern — not inside `commands/pan/`, which every PAN update deletes and rewrites without backing up files it did not install. The filename becomes the slash command. Commands should be thin orchestrators — read state via `pan-tools.cjs`, spawn agents for heavy work.
 
 ### How do I change which model each agent uses?
 
@@ -236,7 +236,7 @@ Or override specific agents in `.planning/config.json`:
 ### Commands not found after install
 
 1. Restart your runtime to reload commands
-2. Verify files exist in `~/.claude/commands/pan/` (global) or `.claude/commands/pan/` (local)
+2. Verify files exist in `~/.claude/commands/pan/` (global) or `.claude/commands/pan/` (local) — after a `--unified-skills` install, in `~/.claude/skills/pan-*/SKILL.md` (global) or `.claude/skills/pan-*/SKILL.md` (local) (commands are then `/pan-<name>`)
 3. For Codex, check `~/.agents/skills/pan-*/SKILL.md` (global) or `./.agents/skills/pan-*/SKILL.md` (local)
 4. Re-run `npx pan-wizard` to reinstall
 
