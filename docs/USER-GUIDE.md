@@ -118,11 +118,11 @@ PAN emits all of these unconditionally. They pay off in full on Claude Code with
 
 - **Prompt caching** — project.md, requirements.md, roadmap.md, state.md, standards.md are cached across agent calls in a phase. Expect 40-60% input-token savings on multi-wave execution. Requires a model/runtime that supports prompt caching.
 - **Effort-tuned reasoning** — every agent declares an `effort:` level (`AGENT_BASE_EFFORT` in `core.cjs`): the plan and design checkers, planner, designer, debugger and conductor run at `xhigh`, execution, verification, release, the hardener, the roadmapper and the remaining specialists (optimizer, previewer, counterfactual, integration checker, experiment runner) at `high`, research, knowledge, the distiller and the reviewer/meta-reviewer at `medium`, and the mechanical `pan-document_code` pass at `low`. Catches logic gaps earlier where it matters most.
-- **Single-shot map-codebase** — repos that fit the single-shot threshold (≤700K tokens, measured by `pan-tools codebase estimate-size`) map in a single agent instead of 6 parallel ones. Mode is chosen by repo size alone; holding a repo that large in one pass needs a model with a 1M-context window, so on smaller-context models prefer the sharded path (the command's hard-coded `estimate-size --threshold 700000` call decides the mode; lower that threshold in the command to force `sharded`).
+- **Single-shot map-codebase** — repos that fit the single-shot threshold (≤700K tokens, measured by `pan-tools codebase estimate-size`) map in a single agent instead of several parallel ones. Mode is chosen by repo size alone; holding a repo that large in one pass needs a model with a 1M-context window, so on smaller-context models prefer the sharded path (the command's hard-coded `estimate-size --threshold 700000` call decides the mode; lower that threshold in the command to force `sharded`).
 - **Cross-phase memory** — lessons learned in phase 3 (e.g. "prefer bulk Postgres writes") surface automatically in phase 7's planner. Inspect with `pan-tools memory list`. Trim with `pan-tools memory compact <agent> <max>`.
 - **Milestone retrospective with memory write** — `/pan:retro --write-memory` extracts recurring gap patterns as planner lessons. Run after every `/pan:milestone-done`.
 - **Capability-aware routing** — when a task needs thinking, the fast tier auto-upgrades to mid; when cache is warm and context is small, mid auto-downgrades to fast. The rules live in `resolveModelInternal()` and `adjustTierForCapabilities()` in `core.cjs`.
-- **Native skills discovery** — Claude Code sees PAN commands as first-class skills at `.claude/skills/pan-*.md` with descriptions, so it can auto-invoke them when relevant.
+- **Commands the model can invoke** — Claude Code exposes the `/pan:<name>` commands to the model the same way it exposes skills, with their descriptions, so it can invoke them when relevant. (Installs by PAN 3.29.0 and earlier also wrote flat `.claude/skills/pan-*.md` shims for this; Claude Code only loads `skills/<name>/SKILL.md` directories, so the shims were never read, and upgrading removes them.)
 
 On lower tiers (mid/fast models) and non-Claude runtimes, features degrade gracefully: thinking becomes a prose "think step-by-step" preamble, caching is a no-op, and the map-codebase command's `estimate-size --threshold 700000` call decides the map mode (lower it in the command to force the sharded path). None of this is gated at runtime — no feature, mode, or routing decision checks your model name before choosing a code path. (`/pan:cost` does look up the model ID recorded in the metrics log to price your token usage, but that only affects the number in a cost report, not what PAN runs.) The one model-name check you'll notice is advisory and runs once: at the end of install, the installer looks up the `model` field in your `settings.json` against a hand-maintained table of known model IDs (`detectModelCapabilities()` in `bin/install-lib.cjs`) and prints a note if that model is known to lack 1M context or extended thinking. The table recognizes the current generations by name and deliberately fails forward — the per-family threshold is the last reduced-capability release it records, not the newest release it lists, so any Claude ID newer than that boundary (a new major, or a later point release inside a major it already lists) inherits that family's modern profile rather than reading as capability-less, and upgrading to a new flagship doesn't produce a bogus warning. An ID resolves either by matching an explicit branch in the table or — for Claude names — by carrying a family plus a readable release number strictly newer than that family's last reduced-capability release; anything that resolves neither way reads as `tier: 'unknown'` with every capability flag false. That result may trigger the note spuriously. Either way it's a hint, never a block. Pass `--skip-warnings` to silence it.
 
@@ -130,7 +130,7 @@ On lower tiers (mid/fast models) and non-Claude runtimes, features degrade grace
 
 Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purpose. None modify the focus system. v3.5 added three more commands (`/pan:learn`, `/pan:optimize`, `/pan:git`) and two new focus-auto categories (`security`, `distill`).
 
-- **`/pan:cost` (v3.0)** — token usage + estimated cost across all PAN invocations. Three output formats (`json`/`table`/`chart`). Auto-populated since v3.4 by the SubagentStop hook; no manual instrumentation needed. Time-windowed with `--since YYYY-MM-DD --until YYYY-MM-DD`.
+- **`/pan:cost` (v3.0)** — token usage + estimated cost across all PAN invocations. Three output formats (`json`/`table`/`chart`). Auto-populated since v3.4 by the SubagentStop hook on Claude Code, Codex and Copilot CLI (not Gemini CLI or OpenCode); no manual instrumentation needed. Time-windowed with `--since YYYY-MM-DD --until YYYY-MM-DD`.
 - **`/pan:preview phase <N> | phases | milestone` (v3.1)** — read-only foresight. Three modes:
   - `phase N` — blast radius (files likely touched, tests at risk, risk score 1-10, migration flags)
   - `phases` — dependency graph (mermaid DAG + parallel batches + hidden coupling)
@@ -184,7 +184,7 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
              │  └──────────┬─────────┘    │
              │             │              │
              │  ┌──────────▼─────────┐    │
-             │  │ /pan:verify-phase   │    │  <- Manual UAT
+             │  │ /pan:verify-phase   │    │  <- Goal-backward verify
              │  └──────────┬─────────┘    │
              │             │              │
              │     Next Phase?────────────┘
@@ -343,7 +343,7 @@ off by default; turn it on for phases where planning test coverage up front matt
 
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
-| `/pan:map-codebase` | Analyze existing codebase (one agent for small repos, six in parallel above the size threshold) | Before `/pan:new-project` on existing code |
+| `/pan:map-codebase` | Analyze existing codebase (one agent for small repos, several in parallel above the size threshold) | Before `/pan:new-project` on existing code |
 | `/pan:quick` | Ad-hoc task with PAN guarantees | Bug fixes, small features, config changes |
 | `/pan:debug [desc]` | Systematic debugging with persistent state | When something breaks |
 | `/pan:todo-add [desc]` | Capture an idea for later | Think of something during a session |
@@ -406,11 +406,11 @@ pan-tools learnings list --raw   # Review what's been learned
 | `/pan:focus-scan` | Collect and classify all work items with priority and Reality Score | Strategic planning: "what needs doing?" |
 | `/pan:focus-plan` | Create capacity-budgeted execution batch | Session planning: "what should I do next?" |
 | `/pan:focus-exec` | Execute items from batch with tier-based cadence | Session execution: guided implementation |
-| `/pan:focus-auto` | Continuous scan→plan→exec loop with 5-layer safety harness | Hands-off batch work across categories |
+| `/pan:focus-auto` | Continuous scan→plan→exec loop with a layered safety harness | Hands-off batch work across categories |
 | `/pan:focus-sync` | Detect stale documentation counts | After changes: verify docs match code |
-| `/pan:focus-design` | 10-phase strategic feature investigation | Before building a new feature |
+| `/pan:focus-design` | Multi-phase strategic feature investigation | Before building a new feature |
 | `/pan:focus-drift-walking` | Walk project tree, detect doc-code drift, score severity, auto-repair | Documentation hygiene: "are my docs lying?" |
-| `/pan:focus-doc-audit` | Multi-dimensional document audit with 8-dimension quality scoring | Quality assurance: "how trustworthy are my docs?" |
+| `/pan:focus-doc-audit` | Multi-dimensional document audit with weighted multi-dimension quality scoring | Quality assurance: "how trustworthy are my docs?" |
 
 **Focus workflow:** `focus-scan` → `focus-plan` → `focus-exec` → `focus-sync`. Scan collects work from phases, todos, and error patterns. Plan budgets items using one of 4 modes (bugfix/balanced/features/full). Exec provides the execution pipeline. Sync verifies documentation stays current. Or use `focus-auto` to run continuous scan→plan→exec cycles across the supported categories (cleanup, tests, stability, features, docs, optimize, prompts, security, distill). Use `focus-drift-walking` to detect and repair documentation-code drift across all directories. Use `focus-doc-audit` for deep quality audits with per-file scoring. The `security` category targets OWASP Top 10 + STRIDE issues; the `distill` category targets AI-generated code bloat with a 5-pass deterministic→AST→graph→LLM→memory pipeline.
 
@@ -513,14 +513,14 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 }
 ```
 
-This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.cjs`). `/pan:new-project` adds `mode`, `depth` and `workflow.auto_advance` from its questions, and `brave_search` starts `true` when a Brave key is detected at creation. The nested `planning.{commit_docs, search_gitignored}` and `git.{branching_strategy, …}` forms written by older versions are still accepted on read.
+This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.cjs`). `/pan:new-project` adds `mode`, `depth` and `workflow.auto_advance` from its questions, and `brave_search` starts `true` when a Brave key is detected at creation. The nested `planning.{commit_docs, search_gitignored}` and `git.{branching_strategy, …}` forms written by older versions are read only when the flat key is absent — configs `config-ensure-section` creates carry every flat key and `/pan:new-project` configs carry a flat `commit_docs`, so set the flat keys.
 
 ### Core Settings
 
 | Setting | Options | Default | What it Controls |
 |---------|---------|---------|------------------|
-| `mode` | `interactive`, `yolo` | `interactive` | `yolo` auto-approves decisions; `interactive` confirms at each step |
-| `depth` | `quick`, `standard`, `comprehensive` | `standard` | Planning thoroughness: 3-5, 5-8, or 8-12 phases |
+| `mode` | `interactive`, `yolo` | asked by `/pan:new-project` (`--auto`: `yolo`) | `yolo` auto-approves decisions; `interactive` confirms at each step |
+| `depth` | `quick`, `standard`, `comprehensive` | asked by `/pan:new-project` (`--auto`: `quick`) | Planning thoroughness: 3-5, 5-8, or 8-12 phases |
 | `model_profile` | `quality`, `balanced`, `budget` | `balanced` | Model tier for each agent (see table below) |
 | `parallelization` | `true`, `false` | `true` | Execute independent plans within a wave in parallel |
 | `brave_search` | `true`, `false` | `false` unless a Brave key is detected when config.json is created | Enable web search in research agents (requires `BRAVE_API_KEY` env var or `~/.pan-wizard/brave_api_key`) |
@@ -531,8 +531,8 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 
 | Setting | Options | Default | What it Controls |
 |---------|---------|---------|------------------|
-| `planning.commit_docs` | `true`, `false` | `true` | Whether `.planning/` files are committed to git |
-| `planning.search_gitignored` | `true`, `false` | `false` | Add `--no-ignore` to broad searches to include `.planning/` |
+| `commit_docs` | `true`, `false` | `true` | Whether `.planning/` files are committed to git |
+| `search_gitignored` | `true`, `false` | `false` | Add `--no-ignore` to broad searches to include `.planning/` |
 | `memory.auto_optimize` | `true`, `false` | `true` | Reconcile the always-loaded project memory (dedupe / cap-with-archive state.md's append-heavy sections) automatically at the focus-auto checkpoint and normal-flow session record. No-op when already lean; opt out to reconcile only via `pan-tools memory optimize`. |
 | `budget.verify_reserve` | `0`–`0.5` | `0.15` | Fraction of the spawn budget held back for re-verification so the quality gate isn't starved. Surfaced as an indicator always; a hard early stop only when `budget.enforce` / `--enforce-budget` is on. Per-run override: `--verify-reserve`. |
 
@@ -580,9 +580,9 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 
 | Setting | Options | Default | What it Controls |
 |---------|---------|---------|------------------|
-| `git.branching_strategy` | `none`, `phase`, `milestone` | `none` | When and how branches are created |
-| `git.phase_branch_template` | Template string | `pan/phase-{phase}-{slug}` | Branch name for phase strategy |
-| `git.milestone_branch_template` | Template string | `pan/{milestone}-{slug}` | Branch name for milestone strategy |
+| `branching_strategy` | `none`, `phase`, `milestone` | `none` | When and how branches are created |
+| `phase_branch_template` | Template string | `pan/phase-{phase}-{slug}` | Branch name for phase strategy |
+| `milestone_branch_template` | Template string | `pan/{milestone}-{slug}` | Branch name for milestone strategy |
 
 **Branching strategies explained:**
 
@@ -655,7 +655,7 @@ claude --dangerously-skip-permissions
 /pan:discuss-phase 1        # Lock in your preferences
 /pan:plan-phase 1           # Research + plan + verify
 /pan:exec-phase 1        # Parallel execution
-/pan:verify-phase 1          # Manual UAT
+/pan:verify-phase 1          # Goal-backward verify + test gate
 /clear
 /pan:discuss-phase 2        # Repeat for each phase
 ...
@@ -674,7 +674,7 @@ claude --dangerously-skip-permissions
 ### Existing Codebase
 
 ```bash
-/pan:map-codebase           # Analyze what exists (one agent, or six above the size threshold)
+/pan:map-codebase           # Analyze what exists (one agent, or several in parallel above the size threshold)
 /pan:new-project            # Questions focus on what you're ADDING
 # (normal phase workflow from here)
 ```
@@ -995,14 +995,14 @@ Example: `feat(03-02): add login endpoint`
 
 **Branching Strategies (Detailed):**
 
-When `git.branching_strategy: "phase"`:
+When `branching_strategy: "phase"`:
 - A branch is created at exec-phase start using `phase_branch_template`
 - Example: `pan/phase-03-authentication`
 - All plan commits go to that branch
 - User merges branches after phase completion
 - Template variables: `{phase}` (zero-padded), `{slug}` (hyphenated name)
 
-When `git.branching_strategy: "milestone"`:
+When `branching_strategy: "milestone"`:
 - First exec-phase of milestone creates milestone branch using `milestone_branch_template`
 - Example: `pan/v1.0-mvp`
 - All phases commit to same branch
@@ -1017,7 +1017,7 @@ When `git.branching_strategy: "milestone"`:
 
 **Planning Doc Commits:**
 
-When `planning.commit_docs: false` or `.planning/` is gitignored, PAN automatically skips git operations for planning files. The `pan-tools commit` CLI handles this transparently.
+When `commit_docs: false` or `.planning/` is gitignored, PAN automatically skips git operations for planning files. The `pan-tools commit` CLI handles this transparently.
 
 ### Requirement Tracing
 
@@ -1103,7 +1103,7 @@ Run `/pan:progress`. It reads all state files and tells you exactly where you ar
 
 ### Need to Change Something After Execution
 
-Do not re-run `/pan:exec-phase`. Use `/pan:quick` for targeted fixes, or `/pan:verify-phase` to systematically identify and fix issues through UAT.
+Do not re-run `/pan:exec-phase`. Use `/pan:quick` for targeted fixes, or `/pan:verify-phase` to re-verify the phase and list gaps, then `/pan:plan-phase N --gaps`.
 
 ### Model Costs Too High
 
@@ -1143,12 +1143,12 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 
 ### Git Commits Not Appearing
 
-**Cause:** `planning.commit_docs: false` in config, or `.planning/` is in `.gitignore`.
+**Cause:** `commit_docs: false` in config, or `.planning/` is in `.gitignore`.
 **Fix:** Check config with `/pan:settings`. If you want planning docs committed, set `commit_docs: true` and remove `.planning/` from `.gitignore`. Code commits (task completions) are always created regardless of this setting.
 
 ### Context Monitor Warnings Not Showing
 
-**Cause:** Hooks not installed, or bridge file stale.
+**Cause:** Hooks not installed, bridge file stale, or a runtime with no PAN statusline (Gemini CLI, Codex, OpenCode — see [Feature Availability](#feature-availability)).
 **Fix:** Re-run `npx pan-wizard` to reinstall hooks. Check `.claude/settings.json` (local install) or `~/.claude/settings.json` (global) for hook registration. The statusline hook must be running for the context monitor to work (they communicate via `<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`).
 
 ### Wrong Model Being Used for Agents
@@ -1236,19 +1236,19 @@ parseable, and pointing at a server that exists.
 
 ### Unified skills tree (`--unified-skills`, ADR-0028 Phase 1 — alpha)
 
-Adding `--unified-skills` to any install compiles PAN's commands **once** into the runtime-neutral `.agents/skills/` tree (project root for local installs, `~/.agents/skills/` for global) instead of the per-runtime command formats below. The tree follows the Agent Skills standard (`SKILL.md` per skill directory), is read natively by every PAN runtime plus Antigravity CLI, and the proprietary command surface is swept so commands don't resolve twice. Agents, hooks, and settings still install per-runtime.
+Adding `--unified-skills` to any install compiles PAN's commands **once** into the runtime-neutral `.agents/skills/` tree (project root for local installs, `~/.agents/skills/` for global) instead of the per-runtime command formats below. The tree follows the Agent Skills standard (`SKILL.md` per skill directory) and the proprietary command surface is swept so commands don't resolve twice. Codex, Gemini CLI, OpenCode, Copilot CLI and Antigravity CLI list `.agents/skills/` among their skill locations. **Claude Code does not** — its skills documentation names only `.claude/skills/<name>/SKILL.md` locations, plugin skills and the legacy `.claude/commands/` — so for Claude the installer also copies every compiled skill, unchanged, into `.claude/skills/`, and PAN's commands there are `/pan-<name>` rather than `/pan:<name>`. On Gemini CLI skills have no slash command of their own; the model activates one when a request matches its description, and `/skills list` shows what loaded. Agents, hooks, and settings still install per-runtime.
 
 ```bash
-node bin/install.js --claude --local --unified-skills
+npx pan-wizard --claude --local --unified-skills
 ```
 
-Unified installs also ship a shared `pan-wizard-core` copy at `.agents/pan-wizard-core/`, which the compiled skills resolve against — so the tree's content is the same no matter which runtime installed it, and several runtimes can share one install safely. Uninstalls are ref-counted: the shared tree stays until the last runtime tracking it uninstalls. Alpha status reflects that per-runtime native discovery of `.agents/skills/` hasn't been live-verified on every runtime yet — see ADR-0028.
+Unified installs also ship a shared `pan-wizard-core` copy at `.agents/pan-wizard-core/`, which the compiled skills resolve against — so the tree's content is the same no matter which runtime installed it, and several runtimes can share one install safely. Uninstalls are ref-counted: the shared tree stays until the last runtime tracking it uninstalls. Alpha status reflects that per-runtime discovery of the installed skills hasn't been live-verified on every runtime yet — see ADR-0028.
 
 ### File Format Differences
 
 | Component | Claude Code | OpenCode | Gemini | Codex | Copilot CLI |
 |-----------|------------|----------|--------|-------|-------------|
-| Commands | `commands/pan/*.md` | `commands/*.md` | `commands/pan/*.toml` | `.agents/skills/pan-*/SKILL.md`¹ | `skills/pan-*/SKILL.md` |
+| Commands | `commands/pan/*.md` | `commands/pan-*.md` | `commands/pan/*.toml` | `.agents/skills/pan-*/SKILL.md`¹ | `skills/pan-*/SKILL.md` |
 | Agents | `agents/*.md` | `agents/*.md` | `agents/*.md` | `agents/*.toml` | `agents/*.agent.md` |
 | Hooks | `hooks/*.js` in settings.json | Not supported | `hooks/*.js` in settings.json | `hooks/*.js`, registered in `.codex/hooks.json`² | `hooks/*.js`, registered in `.github/hooks/pan.json`² |
 | Config | `settings.json` | `opencode.json` | `settings.json` | `config.toml` | `.github/copilot/settings.json` (local) / `~/.copilot/settings.json` (global) |
@@ -1265,15 +1265,15 @@ Codex and Copilot CLI use a "skills" format rather than slash commands. Each com
 |---------|------------|----------|--------|-------|-------------|
 | All commands | Yes | Yes | Yes | Yes | Yes |
 | All agents | Yes | Yes | Yes | Yes | Yes |
-| Hooks: update check, context monitor, cost + trace loggers | Yes | No | Yes | Yes | Yes |
-| Statusline (the context bridge the monitor reads) | Yes | No | Yes | No | Yes |
+| Hooks: update check, context monitor, cost + trace loggers | Yes | No | Update check only (Gemini has no context metric or subagent event for the others) | Yes | Yes |
+| Statusline (the context bridge the monitor reads) | Yes | No | No (Gemini CLI has no statusline command) | No | Yes |
 | Stop guard (auto-advance boundary) | Yes | No | Yes | No | No |
 | Model profiles | Yes | Yes | Yes | Yes | Yes |
 | Wave-based parallel execution | Yes | Depends on runtime | Depends on runtime | Yes | Yes |
 | Hierarchical exec + bot-army campaigns (`/pan:army`) | Yes | No (flat fallback) | No (flat fallback) | No (flat fallback) | No (flat fallback) |
 | `--dangerously-skip-permissions` | Yes | N/A | N/A | N/A | N/A |
 
-Hooks are supported by Claude Code, Gemini CLI, Codex (since June 2026, via `.codex/hooks.json` with Claude-compatible event names), and Copilot CLI. OpenCode does not currently support hooks.
+Hooks are supported by Claude Code, Gemini CLI, Codex (since June 2026, via `.codex/hooks.json` with Claude-compatible event names), and Copilot CLI. OpenCode does not currently support hooks. On Gemini CLI PAN registers only the update check (`SessionStart`) and the stop guard (`AfterAgent`, Gemini's end-of-turn event): Gemini exposes no context-window usage to hooks and has no subagent-completion event, so the context monitor and the cost and trace loggers do not run there.
 
 **Copilot CLI interaction handling:** Copilot CLI has no structured input controls (no checkboxes, radio buttons, or multi-select). PAN Wizard's install-time converter automatically rewrites `AskUserQuestion` blocks into numbered text menus with clear selection instructions. Single-select questions show "Type a number or label to choose", multi-select shows "Type the numbers you want, separated by commas (e.g., 1,3)". This runs transparently during installation — no user configuration needed.
 
@@ -1297,7 +1297,7 @@ For reference, here is what PAN creates in your project:
   research/               # Domain research from /pan:new-project
   todos/
     pending/              # Captured ideas awaiting work
-    done/                 # Completed todos
+    done/                 # Todos completed via /pan:todo-check (`pan-tools todo complete` uses completed/)
   debug/                  # Active debug sessions
     resolved/             # Archived debug sessions
   codebase/               # Brownfield codebase mapping (from /pan:map-codebase)
@@ -1339,6 +1339,6 @@ For reference, here is what PAN creates in your project:
 
 By default, `.planning/` is committed to git. To keep it private:
 
-1. Set `planning.commit_docs: false` in config.json
+1. Set `commit_docs: false` in config.json
 2. Add `.planning/` to `.gitignore`
 3. If previously tracked: `git rm -r --cached .planning/ && git commit -m "chore: stop tracking planning docs"`

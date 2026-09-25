@@ -23,7 +23,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { buildStopDecision, UNTICKED_PHASE_RE } = require('../hooks/pan-stop-guard.js');
+const { buildStopDecision, UNTICKED_PHASE_RE, onceMarkerName, claimOnceMarker } = require('../hooks/pan-stop-guard.js');
 
 const HOOK_PATH = path.join(__dirname, '..', 'hooks', 'pan-stop-guard.js');
 const TEMPLATE_ROADMAP = path.join(__dirname, '..', 'pan-wizard-core', 'templates', 'roadmap.md');
@@ -207,14 +207,60 @@ describe('the unticked-phase regex matches the SHIPPED template shape', () => {
   });
 });
 
+describe('the AfterAgent one-shot marker (Gemini CLI, R29)', () => {
+  test('the marker name is keyed by session, project and reason — and absent without a session', () => {
+    const a = onceMarkerName('s1', '/p', 'reason for Phase 2');
+    assert.match(a, /^stop-guard-[0-9a-f]{32}\.json$/);
+    assert.equal(onceMarkerName('s1', '/p', 'reason for Phase 2'), a, 'deterministic for the same stop');
+    assert.notEqual(onceMarkerName('s2', '/p', 'reason for Phase 2'), a, 'another session is another chain');
+    assert.notEqual(onceMarkerName('s1', '/q', 'reason for Phase 2'), a, 'another project is another chain');
+    assert.notEqual(onceMarkerName('s1', '/p', 'reason for Phase 3'), a, 'a drop at another phase is caught again');
+    assert.equal(onceMarkerName('', '/p', 'r'), null);
+    assert.equal(onceMarkerName(undefined, '/p', 'r'), null);
+  });
+
+  test('a claim succeeds once, then refuses; no directory or no name refuses (fail open)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stop-marker-'));
+    try {
+      const name = onceMarkerName('s1', dir, 'r');
+      assert.equal(claimOnceMarker(dir, name), true, 'the first block in a chain is allowed');
+      assert.equal(claimOnceMarker(dir, name), false, 'the second block for the same chain is refused');
+      assert.equal(claimOnceMarker(null, name), false, 'no safe marker directory means no block');
+      assert.equal(claimOnceMarker(dir, null), false, 'no session id means no block');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('markers older than a week are pruned when a new one is claimed', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stop-marker-'));
+    try {
+      const old = path.join(dir, onceMarkerName('old', dir, 'r'));
+      fs.writeFileSync(old, '{}');
+      const eightDaysAgo = (Date.now() - 8 * 24 * 3600 * 1000) / 1000;
+      fs.utimesSync(old, eightDaysAgo, eightDaysAgo);
+      assert.equal(claimOnceMarker(dir, onceMarkerName('new', dir, 'r')), true);
+      assert.equal(fs.existsSync(old), false, 'a stale marker is removed');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('hook process end to end', () => {
-  function runHook(payload, cwd) {
+  function runHook(payload, cwd, env) {
     return spawnSync(process.execPath, [HOOK_PATH], {
       input: typeof payload === 'string' ? payload : JSON.stringify(payload),
       cwd,
       encoding: 'utf8',
       timeout: 15000,
+      env: env ? { ...process.env, ...env } : process.env,
     });
+  }
+
+  /** A private tmpdir for the hook process, so its marker directory is the test's own. */
+  function tmpEnv(dir) {
+    return { TMPDIR: dir, TEMP: dir, TMP: dir };
   }
 
   function seedProject(root) {
@@ -254,6 +300,49 @@ describe('hook process end to end', () => {
       assert.equal(res.status, 0, 'bad stdin must never crash the stop');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('Gemini AfterAgent: one block per session and target phase, then the stop proceeds (R29)', () => {
+    // Gemini re-prompts with the reason on a block, but its stop_hook_active is
+    // false again after a continuation that used tools. Without the marker the
+    // second identical stop below would be blocked too, and the one after that.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stop-guard-'));
+    const hookTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stop-guard-tmp-'));
+    try {
+      seedProject(tmp);
+      const payload = (session) => ({ hook_event_name: 'AfterAgent', session_id: session, stop_hook_active: false, cwd: tmp, prompt: 'p', prompt_response: 'r' });
+      const first = runHook(payload('g1'), tmp, tmpEnv(hookTmp));
+      assert.equal(first.status, 0, `hook must exit 0: ${first.stderr}`);
+      assert.equal(JSON.parse(first.stdout).decision, 'block', 'the first boundary stop in a session is blocked');
+      const second = runHook(payload('g1'), tmp, tmpEnv(hookTmp));
+      assert.equal(second.status, 0);
+      assert.equal(second.stdout, '', 'a second stop aimed at the same phase must pass through');
+      const other = runHook(payload('g2'), tmp, tmpEnv(hookTmp));
+      assert.equal(JSON.parse(other.stdout).decision, 'block', 'another session is guarded on its own');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      fs.rmSync(hookTmp, { recursive: true, force: true });
+    }
+  });
+
+  test('Claude Stop payloads keep relying on stop_hook_active alone — no marker is consulted', () => {
+    // Claude Code sets stop_hook_active for the whole continuation, so the
+    // marker is Gemini-only; repeating a Claude Stop payload must still block.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stop-guard-'));
+    const hookTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stop-guard-tmp-'));
+    try {
+      seedProject(tmp);
+      const payload = { hook_event_name: 'Stop', session_id: 'c1', stop_hook_active: false, cwd: tmp };
+      for (let i = 0; i < 2; i++) {
+        const res = runHook(payload, tmp, tmpEnv(hookTmp));
+        assert.equal(JSON.parse(res.stdout).decision, 'block', `Claude stop #${i + 1} still blocks`);
+      }
+      assert.deepEqual(fs.existsSync(hookTmp) ? fs.readdirSync(hookTmp).filter((f) => f.startsWith('pan-hooks-')) : [], [],
+        'a Claude Stop must not create the marker directory');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      fs.rmSync(hookTmp, { recursive: true, force: true });
     }
   });
 

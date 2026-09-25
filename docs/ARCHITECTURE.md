@@ -69,15 +69,15 @@ PAN Wizard is organized as a 5-layer architecture. Each layer has a single respo
 
 ### Model-capability integration (since v2.10.0)
 
-PAN Wizard consumes these frontier-model capabilities across existing layers without changing the layer contracts. **There is no runtime capability gate.** PAN emits the capability unconditionally; whether it takes effect is decided by two things outside PAN's control — the **host runtime** (extended thinking directives and native skill shims are Claude-only; the installer rewrites or drops them for the other four) and the **model you launched the session with** (a 1M-context model can absorb a single-shot codebase map; a smaller-context one cannot). No module gates a *feature* on the model name — every workflow, mode selection, and routing decision runs the same code path whatever model you are on. (Some places do read a model name for non-gating reasons — the installer's advisory warning, described below; `cost.cjs`'s `resolveRate()`, which resolves a per-million-token price from the model ID recorded in the metrics log so `/pan:cost` can report spend; `hooks/pan-cost-logger.js`'s `tierForModel()`, which stamps a tier label onto every ledger row it writes; and the statusline hook, which displays the model's name. Those are reporting and display reads, not behavior — none of them change what PAN does. To find the current set rather than trust this list: `grep -rn "model" --include=*.cjs --include=*.js bin/ pan-wizard-core/bin/lib/ hooks/ | grep -iv comment`.)
+PAN Wizard consumes these frontier-model capabilities across existing layers without changing the layer contracts. **There is no runtime capability gate.** PAN emits the capability unconditionally; whether it takes effect is decided by two things outside PAN's control — the **host runtime** (extended thinking directives are Claude-only; the installer rewrites or drops them for the other four) and the **model you launched the session with** (a 1M-context model can absorb a single-shot codebase map; a smaller-context one cannot). No module gates a *feature* on the model name — every workflow, mode selection, and routing decision runs the same code path whatever model you are on. (Some places do read a model name for non-gating reasons — the installer's advisory warning, described below; `cost.cjs`'s `resolveRate()`, which resolves a per-million-token price from the model ID recorded in the metrics log so `/pan:cost` can report spend; `hooks/pan-cost-logger.js`'s `tierForModel()`, which stamps a tier label onto every ledger row it writes; and the statusline hook, which displays the model's name. Those are reporting and display reads, not behavior — none of them change what PAN does. To find the current set rather than trust this list: `grep -rn "model" --include=*.cjs --include=*.js bin/ pan-wizard-core/bin/lib/ hooks/ | grep -iv comment`.)
 
 - **Prompt caching (Layer 4/3 boundary):** `buildCachedContext(cwd)` returns the stable set of .planning files each agent reads. Commands prime the cache once via `pan-tools cache prime` before Wave 1 so sub-agents spawned in the next 5 minutes hit cached reads. See ADR-0023.
 - **Reasoning effort (Layer 3):** agents carry `effort:` frontmatter (`low`–`xhigh`; the adaptive-thinking-era replacement for the retired `thinking_budget`, v3.9.0). Claude Code consumes it natively; the installer strips it for non-Claude runtimes and injects an effort-scaled prose preamble. Profiles modulate the base via `resolveEffortInternal()`.
-- **Whole-project ingest (Layer 1/3):** `/pan:map-codebase` Stage 0 calls `pan-tools codebase estimate-size`; repos ≤700K tokens go single-shot, else 6-way sharded. The mode is chosen from repo size alone — there is no model check in `codebase.cjs` — so the single-shot path assumes a model with a 1M-context window; lower `--threshold` (or take the sharded path) on smaller-context models. The `pan-document_code` agent has a `<mode>` block so it knows which shape it was spawned with.
+- **Whole-project ingest (Layer 1/3):** `/pan:map-codebase` Stage 0 calls `pan-tools codebase estimate-size`; repos ≤700K tokens go single-shot, else sharded across parallel mappers. The mode is chosen from repo size alone — there is no model check in `codebase.cjs` — so the single-shot path assumes a model with a 1M-context window; lower `--threshold` (or take the sharded path) on smaller-context models. The `pan-document_code` agent has a `<mode>` block so it knows which shape it was spawned with.
 - **Cross-phase memory (Layer 5):** `.planning/memory/<agent>.md` stores append-only per-agent lessons. `/pan:retro --write-memory` populates planner/verifier memory from observed gap patterns.
 - **Capability-aware routing (Layer 4):** `resolveModel(agent, {context_estimate, needs_thinking, cache_warm})` adjusts tier upward for large context or thinking-heavy work, downward for warm cache + small context.
 
-Memory and caching are file-based, so they work on all 5 runtimes. Extended thinking and native skill shims (`.claude/skills/pan-*.md`) are Claude-only.
+Memory and caching are file-based, so they work on all 5 runtimes. Extended thinking is Claude-only. (The flat `.claude/skills/pan-*.md` shims earlier installs wrote were retired on `2026-09-23`: Claude Code loads skills only as `skills/<name>/SKILL.md` directories, and the `/pan:<name>` commands already reach the model the way skills do.)
 
 **The model-name read that users actually see** is the installer's, and it only prints advice. `detectModelCapabilities()` in `bin/install-lib.cjs` is a hand-maintained substring table over literal model-ID fragments (`opus-5`, `sonnet-4-6`, `gpt-5`, `gemini-3`, … — read the function for the current set rather than trusting this sample); `install.js` calls it once, post-install, against the `model` field in `settings.json`, and prints a note if that model is known to lack 1M context or extended thinking. That warning is the table's only consumer — it gates no feature and blocks nothing. `--skip-warnings` suppresses it.
 
@@ -164,7 +164,7 @@ The serial pipeline (planner → researcher → executor → verifier) hands wor
 ### Production-readiness gates (v3.7.10)
 
 - **`verifyInstall()`** (in `bin/install-lib.cjs`, called post-install by `bin/install.js`) — post-install manifest walk checks every entry in `pan-file-manifest.json` exists on disk; missing files fail with exit 1. `INSTALL_WARNINGS` collector hardens `copyWithPathReplacement` (mkdir failures hard-throw; per-file failures collected as warnings rather than silently swallowed).
-- **`scripts/release-check.js`** — multi-gate pre-publish validation (build:hooks → test:all → npm audit → doc-lint counts → links validate → npm pack + zero-dependency check → smoke install → distribution bundles). Wired to `package.json prepublishOnly` so `npm publish` cannot ship a broken release.
+- **`scripts/release-check.js`** — multi-gate pre-publish validation (build:hooks → test:all → npm audit → doc-lint counts → links validate → npm pack + zero-dependency check → smoke install → distribution bundles → coverage gate). Wired to `package.json prepublishOnly` so `npm publish` cannot ship a broken release.
 - **`pan-tools commit --fail-on-error`** — routes a git refusal through `error()` (bare message on stderr) rather than a `commit_failed` JSON body (closes P-EXP-001 silent-failure surface where missing git identity in fresh experiment folders looked successful). Since `output()` derives the exit code from the payload, `commit_failed` exits non-zero with or without the flag — see CLI-REFERENCE "Error Shape".
 
 ### v3.6.0 additions — Behavioral Guardrails Layer
@@ -231,9 +231,9 @@ Several commands are self-contained in their `.md` file and do not delegate to a
 | `focus-exec.md` | Self-contained execution pipeline with staged waves and per-stage behavioral rules |
 | `focus-sync.md` | Self-contained doc sync; calls `pan-tools focus sync` for data |
 | `focus-auto.md` | Self-contained auto-runner; calls `pan-tools focus auto` for state management |
-| `focus-design.md` | Self-contained 10-phase feature investigation pipeline |
+| `focus-design.md` | Self-contained multi-phase feature investigation pipeline |
 | `focus-drift-walking.md` | Self-contained directory-walking drift detection and documentation alignment |
-| `focus-doc-audit.md` | Self-contained multi-dimensional document audit with 8-dimension scoring |
+| `focus-doc-audit.md` | Self-contained multi-dimensional document audit with weighted per-dimension scoring |
 
 ---
 
@@ -285,7 +285,7 @@ Agents are Markdown files that define specialized AI roles. Each agent runs as a
 | `pan-project-researcher` | Researches domain ecosystem | `/pan:new-project`, `/pan:milestone-new` |
 | `pan-research-synthesizer` | Synthesizes parallel research outputs | `/pan:new-project`, `/pan:milestone-new` |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` |
-| `pan-document_code` | Analyzes existing codebase (6 focus areas) | `/pan:map-codebase` (x6 parallel) |
+| `pan-document_code` | Analyzes existing codebase (one focus area per mapper) | `/pan:map-codebase` (parallel) |
 | `pan-designer` | Designs specs before planning | `/pan:design-phase` |
 | `pan-design-checker` | Validates design specs | `/pan:design-phase`, `/pan:focus-design` |
 | `pan-phase-researcher` | Investigates how to implement a phase | `/pan:plan-phase` |
@@ -398,7 +398,7 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `memory.cjs` | — | Cross-phase agent memory (E-4): `readMemory`, `appendMemory`, `compactMemory`, `listMemoryAgents`. Append-only files at `.planning/memory/<agent>.md`. Agent-name validated against `^[a-zA-Z0-9_-]+$` to block path traversal. |
 | `bus.cjs` | — | (v3.0, Y-7) File-backed message channels at `.planning/bus/<channel>.jsonl`: `publish`, `readChannel`, `drain` (peek/consume/archive modes), `listChannels`. Agent audit trail for hierarchical exec and review-deep coordination. |
 | `cost.cjs` | — | (v3.0, Y-6) Per-call cost aggregation: `appendRecord`, `readRecords`, `aggregate`, `computeCost`, `renderTable`, `renderChart`. Log at `.planning/metrics/tokens.jsonl`. Ships a default per-model rate table (kept current in `cost.cjs`, matched by exact id then family prefix) plus per-tier fallbacks; override via `cost.rates` config. |
-| `cost-rebuild.cjs` | `cost.cjs`, `core.cjs`, `utils.cjs` | (v3.29) `cost rebuild`: regenerates the ledger from Claude Code's transcripts under `<config dir>/projects/<encoded cwd>/` — `sumTranscriptUsage` (one turn per `message.id`), `mapAgentsFromParent` (agent id → type/model from the main thread's `Agent` calls), `listAgentFiles` (direct and Workflow-tool subagents), `planRebuild` (dry run: per-session before → after), `applyRebuild` (moves the old ledger aside, idempotent). Supersedes hook rows of rebuilt sessions; keeps rows whose transcript is gone and caller-appended rows. |
+| `cost-rebuild.cjs` | — | (v3.29) `cost rebuild` (reads `cost.cjs`, `core.cjs`, `utils.cjs`): regenerates the ledger from Claude Code's transcripts under `<config dir>/projects/<encoded cwd>/` — `sumTranscriptUsage` (one turn per `message.id`), `mapAgentsFromParent` (agent id → type/model from the main thread's `Agent` calls), `listAgentFiles` (direct and Workflow-tool subagents), `planRebuild` (dry run: per-session before → after), `applyRebuild` (moves the old ledger aside, idempotent). Supersedes hook rows of rebuilt sessions; keeps rows whose transcript is gone and caller-appended rows. |
 | `preview.cjs` | — | (v3.1, Y-1) Foresight data layer: `buildPhasePreview` (blast radius), `buildPhaseDependencyGraph` (mermaid DAG + Kahn parallel batches + hidden-dep detection), `buildMilestoneETA` (velocity + ETA + confidence + bottleneck). |
 | `review-deep.cjs` | — | (v3.2, Y-2) Merges reviewer + hardener + meta-reviewer findings: `parseReviewFindings`, `mergeReviews` (verdict ladder), `writeDeepReview`. Publishes audit to `review-handoff` bus channel. |
 | `knowledge.cjs` | — | (v3.2, Y-3) Grounded Q&A + session state + playbook: `ask` (keyword-scored retrieval over CITATION_ROOTS), `loadSession`/`appendTurn` (`.planning/conversations/<phase>/`), `buildPlaybook`/`writePlaybook` (clusters memory into categorized sections). |
@@ -534,7 +534,7 @@ Scaffold templates for all planning files. Used by the `template.cjs` module and
 
 ### Hooks
 
-**Location:** `hooks/` (source), `hooks/dist/` (compiled)
+**Location:** `hooks/` (source), `hooks/dist/` (copied build output)
 
 The shipped hooks (copied to `hooks/dist/` by `npm run build:hooks` — pure Node.js, zero deps, no bundling):
 
@@ -545,11 +545,11 @@ The shipped hooks (copied to `hooks/dist/` by `npm run build:hooks` — pure Nod
 | `pan-check-update.js` | SessionStart | Background check for PAN updates with caching |
 | `pan-cost-logger.js` (v3.4+) | SubagentStop | Appends subagent cost record to `.planning/metrics/tokens.jsonl` (consumed by `/pan:cost`) |
 | `pan-trace-logger.js` (v3.5+) | SubagentStop | Appends decision/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` (consumed by `/pan:learn`, `/pan:optimize`); auto-creates day-scoped trace session |
-| `pan-stop-guard.js` (v3.23+) | Stop | Blocks a session stop once when the auto-advance chain dropped at a phase boundary (autonomy armed in config, no failure/gaps/blocker in state, roadmap phases unbuilt) and instructs the agent to continue the chain; fail-open, one-shot, escape hatch `workflow.stop_guard: false` — see `docs/HOOKS.md` |
+| `pan-stop-guard.js` (v3.24+) | Stop | Blocks a session stop once when the auto-advance chain dropped at a phase boundary (autonomy armed in config, no failure/gaps/blocker in state, roadmap phases unbuilt) and instructs the agent to continue the chain; fail-open, one-shot, escape hatch `workflow.stop_guard: false` — see `docs/HOOKS.md` |
 
 The statusline hook produces metrics; the context monitor consumes them. They communicate through a bridge file (`<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`, a per-user 0700 dir) to avoid coupling. The two SubagentStop hooks (cost-logger and trace-logger) fire in parallel after every sub-agent completion and write to independent log files.
 
-**Runtime support:** Claude Code and Gemini CLI register hooks in `settings.json`. Copilot CLI registers hooks in `.github/hooks/pan.json` (its `version: 1` schema with `type: "command"` entries and `sessionStart`/`postToolUse`/`subagentStop` events; since June 2026 — not `config.json`). Codex registers hooks in `.codex/hooks.json` (Claude-compatible PascalCase events, PAN entries merged non-destructively alongside any user hooks; loads once the project is trusted). The Copilot statusline registers in the documented settings read paths — `~/.copilot/settings.json` (global) or `.github/copilot/settings.json` (repo-level) — and is experimental on Copilot's side (`copilot --experimental`). OpenCode does not support hooks.
+**Runtime support:** Claude Code and Gemini CLI register hooks in `settings.json`, each in its own event vocabulary — Gemini's names differ (`AfterAgent` for the stop guard), and Gemini runs only the update check and the stop guard because no Gemini hook sees context usage or a subagent's completion. Copilot CLI registers hooks in `.github/hooks/pan.json` (its `version: 1` schema with `type: "command"` entries and `sessionStart`/`postToolUse`/`subagentStop` events; since June 2026 — not `config.json`). Codex registers hooks in `.codex/hooks.json` (Claude-compatible PascalCase events, PAN entries merged non-destructively alongside any user hooks; loads once the project is trusted). The Copilot statusline registers in the documented settings read paths — `~/.copilot/settings.json` (global) or `.github/copilot/settings.json` (repo-level) — and is experimental on Copilot's side (`copilot --experimental`). OpenCode does not support hooks.
 
 ### Installer
 
@@ -779,7 +779,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
 
   │  LAYER 6: Spec B v2 modules (v3.0–v3.4) — leaf modules
   ├── bus.cjs            (depends on: core, utils)
-  ├── cost.cjs           (depends on: core, utils — shared infrastructure: read by context-budget, focus, hud, hygiene, memory, optimize, phase-report)
+  ├── cost.cjs           (depends on: core, utils — shared infrastructure: read by context-budget, cost-rebuild, focus, hud, hygiene, memory, optimize, phase-report)
   ├── preview.cjs        (depends on: core, constants, utils, frontmatter, verify)
   ├── review-deep.cjs    (depends on: core, utils, bus)
   ├── knowledge.cjs      (depends on: core, utils, memory)
@@ -837,10 +837,10 @@ PAN installs to 5 runtimes with format conversion at install time. The core work
 
 | Component | Claude / OpenCode / Gemini | Codex | Copilot CLI |
 |-----------|---------------------------|-------|-------------|
-| Commands | `commands/pan/*.md` | `.agents/skills/pan-*/SKILL.md` | `skills/pan-*/SKILL.md` |
+| Commands | `commands/pan/*.md` (Claude) · `commands/pan-*.md` (OpenCode) · `commands/pan/*.toml` (Gemini) | `.agents/skills/pan-*/SKILL.md` | `skills/pan-*/SKILL.md` |
 | Agents | `agents/*.md` | `agents/*.toml` | `agents/*.agent.md` |
 | Hooks | `hooks/*.js` in `settings.json` (Claude, Gemini — none for OpenCode) | `hooks/*.js` in `.codex/hooks.json` (since 2026-06) | `hooks/*.js` in `.github/hooks/pan.json` |
-| Config | `settings.json` | `config.toml` | `.github/copilot/settings.json` (statusline) · `.github/mcp.json` (MCP) · `.github/hooks/pan.json` (hooks) |
+| Config | `settings.json` (Claude, Gemini) · `opencode.json` (OpenCode) | `config.toml` | `.github/copilot/settings.json` (statusline) · `.github/mcp.json` (MCP) · `.github/hooks/pan.json` (hooks) |
 
 ### Tool Name Mapping (Copilot CLI)
 

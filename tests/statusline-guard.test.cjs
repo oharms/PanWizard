@@ -63,22 +63,26 @@ function readSettings(projectDir, runtimeDir) {
 describe('statusline guard: multi-runtime non-interactive install preserves secondary custom statusline', () => {
   let tempDir;
   let output;
+  // Copilot's local statusline lives in .github/copilot/settings.json. (Gemini was
+  // the secondary runtime here until 2026-09-23; Gemini CLI has no statusline
+  // command, so PAN no longer offers it one — see the Gemini describe below.)
+  const COPILOT_SETTINGS_DIR = path.join('.github', 'copilot');
 
   before(() => {
     tempDir = mkTmp();
-    // Custom statusline in the SECONDARY runtime (gemini) only — claude, the
+    // Custom statusline in the SECONDARY runtime (copilot) only — claude, the
     // first statusline-capable runtime, is the primary.
-    seedStatusline(tempDir, '.gemini', 'node my-status-bar.js');
-    output = runInstaller('--claude --gemini --local --skip-warnings', tempDir);
+    seedStatusline(tempDir, COPILOT_SETTINGS_DIR, 'node my-status-bar.js');
+    output = runInstaller('--claude --copilot --local --skip-warnings', tempDir);
   });
 
   after(() => rmTmp(tempDir));
 
-  test('gemini custom statusline command survives byte-exact', () => {
-    // Reverting the finishInstall preserve guard (or treating gemini as
+  test('copilot custom statusline command survives byte-exact', () => {
+    // Reverting the finishInstall preserve guard (or treating copilot as
     // primary via broken isPrimaryStatusline threading) clobbers this with
-    // node .gemini/hooks/pan-statusline.js.
-    const settings = readSettings(tempDir, '.gemini');
+    // node .github/hooks/pan-statusline.js.
+    const settings = readSettings(tempDir, COPILOT_SETTINGS_DIR);
     assert.equal(settings.statusLine.type, 'command');
     assert.equal(settings.statusLine.command, 'node my-status-bar.js');
   });
@@ -95,6 +99,25 @@ describe('statusline guard: multi-runtime non-interactive install preserves seco
     const settings = readSettings(tempDir, '.claude');
     assert.equal(settings.statusLine.type, 'command');
     assert.equal(settings.statusLine.command, 'node .claude/hooks/pan-statusline.js');
+  });
+});
+
+describe('statusline guard: Gemini CLI gets no statusline, and a user\'s own survives (R29)', () => {
+  let tempDir;
+
+  before(() => {
+    tempDir = mkTmp();
+    seedStatusline(tempDir, '.gemini', 'node my-status-bar.js');
+    runInstaller('--claude --gemini --local --skip-warnings', tempDir);
+  });
+
+  after(() => rmTmp(tempDir));
+
+  test('a custom statusline in Gemini settings is left byte-exact — PAN only removes its own', () => {
+    // Gemini CLI has no statusline command (its footer shows built-in items), so
+    // PAN writes none there and strips only a block that runs pan-statusline.js.
+    const settings = readSettings(tempDir, '.gemini');
+    assert.equal(settings.statusLine.command, 'node my-status-bar.js');
   });
 });
 

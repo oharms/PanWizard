@@ -51,6 +51,15 @@
     },
     {
       "kind": "fs",
+      "expect": [
+        "file:.claude/commands/pan/help.md",
+        "absent:.claude/skills/pan-help.md",
+        "absent:.claude/skills/pan-help"
+      ],
+      "why": "R33 (reality check 2026-09-22): Claude Code loads a skill only as skills/<name>/SKILL.md, so the flat skills/pan-*.md shims earlier installs wrote were never loaded. A default install ships the nested /pan:<name> commands and nothing under skills/; the absent checks catch the shims coming back, and a stray copy of the unified tree that would list every command twice."
+    },
+    {
+      "kind": "fs",
       "read": ".mcp.json",
       "expect": [
         "json:mcpServers.pan.command=node"

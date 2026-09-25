@@ -11,6 +11,7 @@ node harness/src/run.cjs --tier 1 --max-usd 2  # + single-turn model steps, capp
 node harness/src/run.cjs --tier 2 --max-usd 10 --repeat 5   # + chain runs, five times each
 node harness/src/run.cjs --scenario install-matrix          # one scenario
 node harness/src/run.cjs --repo <dir> --keep                 # pack another checkout; keep the extracted artifact after the run
+node harness/src/run.cjs --no-ledger                        # leave the tracked harness/ledger.jsonl untouched (CI)
 node harness/src/run.cjs --help
 ```
 
@@ -114,7 +115,8 @@ The full set lives in `harness/scenarios/` (`ls harness/scenarios`); this table 
 | `skill-doctor-context-cost` | 1 | `/skill-doctor`'s static context cost for PAN's skills; requires Claude Code 2.1.261+ |
 | `map-codebase-single-shot` | 1 | Single-shot map-codebase on a repo below the sharding threshold |
 | `pause-resume` | 1 | `/pan:pause` then `/pan:resume` restores the session |
-| `unified-skills-discovery` | 1 | Claude Code discovers the `.agents/skills/` tree (ADR-0028's default-on gate) |
+| `unified-skills-claude` | 0 | A `--unified-skills` install gives Claude Code its own copy of the compiled skills under `.claude/skills/`, because Claude does not read `.agents/skills/` (R32), and writes no flat shim (R33) |
+| `unified-skills-discovery` | 1 | Claude Code, asked headlessly, names the unified `pan-` skills — ADR-0028's default-on gate, measured on the `.claude/skills/` copy since R32 |
 | `plan-phase-checker-loop` | 2 | Research → plan → checker loop on an unplanned phase |
 | `quick-mode` | 2 | `/pan:quick` end to end on a small repo |
 | `uat-diagnose-native` | 2 | `/pan-diagnose-issues` on a phase with one failed UAT truth and the matching real defect |

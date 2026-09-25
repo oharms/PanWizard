@@ -1329,12 +1329,17 @@ describe('PROVIDER_MODELS structure', () => {
     assert.strictEqual(PROVIDER_MODELS.anthropic.fast, 'haiku');
   });
 
-  test('google mid tier maps to gemini-2.5-flash', () => {
-    assert.strictEqual(PROVIDER_MODELS.google.mid, 'gemini-2.5-flash');
+  test('google mid tier maps to the newest stable Flash (gemini-3.8-flash, R28)', () => {
+    assert.strictEqual(PROVIDER_MODELS.google.mid, 'gemini-3.8-flash');
   });
 
-  test('google fast tier maps to gemini-2.5-flash-lite', () => {
-    assert.strictEqual(PROVIDER_MODELS.google.fast, 'gemini-2.5-flash-lite');
+  test('google fast tier maps to the newest stable Flash-Lite (gemini-3.5-flash-lite, R28)', () => {
+    assert.strictEqual(PROVIDER_MODELS.google.fast, 'gemini-3.5-flash-lite');
+  });
+
+  test('openai tiers are real Codex model ids, not the tier names (R28)', () => {
+    assert.strictEqual(PROVIDER_MODELS.openai.mid, 'gpt-6-sol');
+    assert.strictEqual(PROVIDER_MODELS.openai.fast, 'gpt-6-luna');
   });
 
   test('google reasoning tier inherits (host picks top Gemini Pro)', () => {
@@ -1391,8 +1396,9 @@ describe('resolveTierToModel', () => {
     assert.strictEqual(resolveTierToModel('fast', 'anthropic'), 'haiku');
   });
 
-  test('resolves mid for openai provider', () => {
-    assert.strictEqual(resolveTierToModel('mid', 'openai'), 'mid');
+  test('resolves mid for openai provider to a model id, never to the tier name (R28)', () => {
+    assert.strictEqual(resolveTierToModel('mid', 'openai'), 'gpt-6-sol');
+    assert.strictEqual(resolveTierToModel('fast', 'openai'), 'gpt-6-luna');
   });
 
   test('unknown provider falls back to default', () => {

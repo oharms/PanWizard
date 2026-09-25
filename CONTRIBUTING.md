@@ -94,7 +94,7 @@ PanWizard/
 |------|---------|
 | `bin/install.js` | Main installer — detects runtime, copies files |
 | `pan-wizard-core/bin/pan-tools.cjs` | CLI bridge — commands/agents call this for state, config, commits |
-| `pan-wizard-core/bin/lib/config.cjs` | Config loading, dot-notation get/set |
+| `pan-wizard-core/bin/lib/config.cjs` | Config CRUD (dot-notation get/set, ensure-section), standards catalog |
 | `pan-wizard-core/bin/lib/state.cjs` | State management (load, save, phase tracking) |
 | `pan-wizard-core/bin/lib/init.cjs` | Phase initialization (loads context for agents) |
 | `pan-wizard-core/bin/lib/verify.cjs` | Plan verification utilities |
@@ -155,7 +155,8 @@ and rejects the shapes that have passed while the feature they named was broken:
   go through `runPanTools`
 - `assert(true)`, CLI output asserted only by its length, a platform conditional that
   bare-`return`s instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read
-  of the real home directory (use the `withFakeHome` helper), a committed `test.todo`
+  of the real home directory (use the `withFakeHome` helper), a committed `test.todo`, an
+  `assert.ok(a.x || a.y)` that only asks whether one of several fields exists
 
 Write assertions from **measured** output, never from what a verb ought to emit: run the
 command, look at the real payload and exit code, then assert those. Several tests here
@@ -200,12 +201,12 @@ Agents should:
 - Update README.md for user-facing feature changes
 - Update docs/USER-GUIDE.md for detailed configuration or workflow changes
 - Update CHANGELOG.md for all notable changes, under `## [Unreleased]` — the release commit turns that heading into the version
-- Never embed filesystem-derived counts (commands, agents, tests, modules, …) anywhere but `CLAUDE.md`; release Gate 4 (`doc-lint counts`) fails on them — write "all shipped commands", not a number
+- Never embed filesystem-derived counts (commands, agents, tests, modules, …) anywhere but `CLAUDE.md`; release Gate 4 (`doc-lint counts`) fails on them under `docs/` (root files such as README are not scanned) — write "all shipped commands", not a number
 - Keep docs/context-monitor.md current if hooks change
 
 ## Further Reading
 
-- [Architecture Guide](docs/ARCHITECTURE.md) — 5-layer system design, data flow, module dependency graph
+- [Architecture Guide](docs/ARCHITECTURE.md) — layered system design, data flow, module dependency graph
 - [Development Guide](docs/DEVELOPMENT.md) — Detailed setup, how-to guides, cross-platform pitfalls
 - [Agent System](docs/AGENTS.md) — Agent inventory, lifecycle, model profiles
 - [FAQ](docs/FAQ.md) — Common questions and answers

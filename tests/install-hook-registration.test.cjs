@@ -110,12 +110,18 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
     assert.deepEqual(WITH_HOOKS, ['claude', 'codex', 'copilot', 'gemini'],
       'four runtimes register hooks; a fifth must be added to the table AND to the installer');
     assert.deepEqual(WITHOUT_HOOKS, ['opencode'], 'OpenCode is the only runtime with no hook system');
-    // 4 runtimes x (SessionStart + PostToolUse + 2 x SubagentStop) + 2 Stop guards
-    // + 3 statuslines (claude, gemini, copilot).
-    assert.equal(ROWS.length, 21, `expected 21 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
+    // claude: SessionStart + PostToolUse + 2 x SubagentStop + Stop + statusline;
+    // codex: the four event rows; copilot: the four + statusline; gemini (R29):
+    // SessionStart + AfterAgent only — Gemini has no event the context monitor or
+    // the loggers could run on, and no statusline command.
+    assert.equal(ROWS.length, 17, `expected 17 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
     for (const runtime of WITH_HOOKS) {
       const spec = lib.HOOK_EVENT_MAP[runtime];
-      assert.ok(spec.sessionStart && spec.postToolUse && spec.subagentStop, `${runtime}: all three canonical events must be named`);
+      assert.ok(spec.sessionStart, `${runtime}: every hook runtime runs the update check at session start`);
+      for (const slot of ['postToolUse', 'subagentStop', 'stop']) {
+        assert.ok(typeof spec[slot] === 'string' || spec[slot] === null,
+          `${runtime}.${slot} must name an event or be null (a deliberate "not on this runtime"), got ${spec[slot]}`);
+      }
       assert.ok(spec.surface, `${runtime}: the table must name the file the registrations go in`);
     }
   });
@@ -149,7 +155,7 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
     });
   }
 
-  for (const runtime of WITH_HOOKS) {
+  for (const runtime of WITH_HOOKS.filter((rt) => lib.HOOK_EVENT_MAP[rt].subagentStop)) {
     test(`${runtime}: ${lib.HOOK_EVENT_MAP[runtime].subagentStop} carries BOTH loggers`, () => {
       // THE known gap. The cost logger and the trace logger are appended by two
       // separate blocks in bin/install.js (and two rows of the Codex/Copilot
@@ -163,6 +169,18 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
         `${runtime}: ${event} must register the trace logger exactly once, saw [${commands.join(' | ')}]`);
       for (const c of commands) {
         assert.equal(fs.existsSync(hookFileOf(projectDir, c)), true, `${runtime}: ${event} points at a missing file — ${c}`);
+      }
+    });
+  }
+
+  for (const runtime of WITH_HOOKS.filter((rt) => !lib.HOOK_EVENT_MAP[rt].subagentStop)) {
+    test(`${runtime}: no subagent-completion event, so neither logger is registered anywhere`, () => {
+      // Gemini (R29): registering the loggers under an event it does not have is
+      // what left them dead from v3.4 on — the honest registration is none.
+      const commands = allHandlers(config[runtime], runtime).map((h) => String(h.command));
+      for (const logger of ['pan-cost-logger', 'pan-trace-logger']) {
+        assert.equal(commands.filter((c) => c.includes(logger)).length, 0,
+          `${runtime}: ${logger} must not be registered, saw [${commands.join(' | ')}]`);
       }
     });
   }

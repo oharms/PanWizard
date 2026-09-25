@@ -78,7 +78,7 @@ If you ever want to reset: these directories are safe to delete — they rebuild
 
 ### New hook registration
 
-The installer adds `SubagentStop` entries for `pan-cost-logger.js` and `pan-trace-logger.js`, and (since v3.23) a `Stop` entry for `pan-stop-guard.js`, to `.claude/settings.json`. The v3.4 cost-logger entry looked like this:
+The installer adds `SubagentStop` entries for `pan-cost-logger.js` and `pan-trace-logger.js`, and (since v3.24) a `Stop` entry for `pan-stop-guard.js`, to `.claude/settings.json`. The v3.4 cost-logger entry looked like this:
 
 ```json
 {
@@ -97,7 +97,7 @@ The installer adds `SubagentStop` entries for `pan-cost-logger.js` and `pan-trac
 }
 ```
 
-The hook is non-blocking and silently no-ops on runtimes that don't fire SubagentStop. Today's installer also writes the trace-logger and stop-guard entries described above; nothing else in settings.json changes.
+The hook is non-blocking and is registered on Claude Code, Codex and Copilot CLI; Gemini CLI (no subagent-completion event) and OpenCode (no PAN hooks) get no cost logger. Today's installer also writes the trace-logger and stop-guard entries described above; nothing else in settings.json changes.
 
 ### Shipped hooks
 
@@ -106,7 +106,7 @@ The hook is non-blocking and silently no-ops on runtimes that don't fire Subagen
 - `pan-check-update.js` (unchanged)
 - `pan-cost-logger.js` (new in v3.4)
 - `pan-trace-logger.js` (new in v3.5 — circular optimization tracing)
-- `pan-stop-guard.js` (Stop hook, added in v3.23 — blocks the auto-advance boundary drop once)
+- `pan-stop-guard.js` (Stop hook — `AfterAgent` on Gemini CLI — added in v3.24; blocks the auto-advance boundary drop once)
 
 ### New core modules
 
@@ -130,7 +130,7 @@ New modules in `pan-wizard-core/bin/lib/`. See [ARCHITECTURE.md](ARCHITECTURE.md
 - `.planning/project.md` format
 - `.planning/requirements.md` format
 - Phase directory structure (`.planning/phases/NN-slug/`)
-- Milestone archival flow (`/pan:milestone-done` → `.planning/milestones/vX.Y/`)
+- Milestone archival flow (`/pan:milestone-done` → `.planning/milestones/vX.Y-roadmap.md` + `vX.Y-requirements.md`)
 - Focus system commands (`/pan:focus-scan`, `/pan:focus-plan`, `/pan:focus-exec`, `/pan:focus-auto`, `/pan:focus-design`, `/pan:focus-doc-audit`, `/pan:focus-drift-walking`, `/pan:focus-sync`) — all behave identically
 - Workflow command behavior (`/pan:new-project`, `/pan:plan-phase`, `/pan:exec-phase`, `/pan:verify-phase`, `/pan:debug`)
 - Install CLI contracts (flags, runtimes, uninstall)
@@ -232,7 +232,7 @@ No — the log is append-only from the moment you upgrade. Historical cost data 
 ### Can I use Spec B v2 features on runtimes other than Claude Code?
 
 Partially:
-- `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:what-if`, `/pan:review-deep`: **yes** on all 5 runtimes. Agent quality varies with model capability.
+- `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:what-if`, `/pan:review-deep`: **yes** on all 5 runtimes (`/pan:cost` has data only where the cost logger runs — Claude Code, Codex, Copilot CLI). Agent quality varies with model capability.
 - `/pan:preview phases` (single-shot whole-repo pass): the fast path needs a model with a 1M-context window; smaller-context models skip the cross-reference bonus and rely on the data-layer output alone.
 - `/pan:mcp-bridge`: runs on all five runtimes as a cache reader (the host runtime populates the cache); Claude Code is the primary target.
 - `/pan:exec-phase --hierarchical`: Claude Code only — it needs native sub-agent spawning, which is a runtime limit rather than a model one. Elsewhere the flag is a no-op that warns and falls back to flat exec.
@@ -241,9 +241,9 @@ Partially:
 
 Each release is additive, so installing v3.5.0 directly is fine — you get all prior waves' functionality too. There's no staged migration path.
 
-### My installer says "SubagentStop hook already configured." Is that bad?
+### My installer didn't print "Configured cost logger hook". Is that bad?
 
-No — the installer is idempotent. If the hook entry already exists (from a previous install), it's left alone.
+No. On Claude Code the installer is idempotent: an entry left by a previous install is kept and nothing is printed for it. Codex and Copilot CLI report all their hooks on one `Configured hooks (…)` line, and Gemini CLI and OpenCode get no cost logger.
 
 ## Related
 

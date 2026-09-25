@@ -31,7 +31,7 @@ Parse current values (default to `true` if not present):
 - `workflow.nyquist_validation` — validation architecture research during plan-phase
 - `model_profile` — which model each agent uses (default: `balanced`)
 - `routing.strategy` — how model tiers are adjusted at runtime (default: `static`)
-- `git.branching_strategy` — branching approach (default: `"none"`)
+- `branching_strategy` — branching approach (default: `"none"`; a top-level key — a nested `git.branching_strategy` is ignored when the top-level key exists, as it does in every config `config-ensure-section` creates — write the top-level key)
 </step>
 
 <step name="present_settings">
@@ -131,9 +131,7 @@ Merge new settings into existing config.json:
     "auto_advance": true/false,
     "nyquist_validation": true/false
   },
-  "git": {
-    "branching_strategy": "none" | "phase" | "milestone"
-  },
+  "branching_strategy": "none" | "phase" | "milestone",
   "routing": {
     "strategy": "static" | "complexity"
   }

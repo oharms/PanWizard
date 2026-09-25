@@ -10,7 +10,7 @@
 pan-wizard/
   bin/
     install.js                # Interactive installer (npx pan-wizard entry point)
-    install-lib.cjs           # Installer functions — pure apart from verifyInstall()/dirDigest(), which read the filesystem: converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
+    install-lib.cjs           # Installer functions — no filesystem writes (verifyInstall()/dirDigest() read the filesystem; the merge helpers stripPanHookEntries()/mergeCodexHooksConfig()/mergeMcpRegistration() edit the object they are given): converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
   package.json                # Zero runtime deps; devDependencies are the VS Code e2e harness only
   commands/pan/               # Command .md files (Claude Code format; converted per runtime at install)
   agents/                     # Agent .md files (specialized AI roles)
@@ -77,7 +77,7 @@ pan-wizard/
       pan-check-update.js     # Periodic update check (spawns `npm view pan-wizard version`)
       pan-cost-logger.js      # SubagentStop hook — appends cost record to tokens.jsonl (v3.4)
       pan-trace-logger.js     # SubagentStop hook — circular optimization tracing (v3.5)
-      pan-stop-guard.js       # Stop hook — blocks the auto-advance boundary drop once (v3.23)
+      pan-stop-guard.js       # Stop hook (AfterAgent on Gemini CLI) — blocks the auto-advance boundary drop once (v3.24)
   scripts/
     build-hooks.js            # Copy hooks/ → hooks/dist/ (no bundling)
     build-plugin.js           # Claude Code plugin → dist/pan-wizard-plugin/
@@ -88,6 +88,11 @@ pan-wizard/
     run-tests.cjs             # Glob-free test runner (the CI matrix shells do not expand test globs)
     install-git-hooks.js      # `prepare` script — points core.hooksPath at scripts/git-hooks/ (the gitleaks pre-commit scan)
     generate-skills-docs.py   # Regenerates docs/SKILLS-REFERENCE.md and docs/SKILLS-FULL-TEXT.md
+    test-surface.cjs          # Shipped-surface registry → tests/fixtures/surface.json (--write/--check/--map/--scaffold)
+    coverage-gate.cjs         # Suite under Node coverage: dispatcher arms + floors (release Gate 9)
+    test-quality-lint.cjs     # Vacuous-assertion lint rules applied by tests/test-quality.test.cjs
+    mutation-probe.cjs        # Report-only mutation probe (npm run test:mutate)
+    git-hooks/                # Tracked pre-commit hook (gitleaks)
   harness/                    # PAN Harness — behavioural scenarios against installs built from a packed artifact (ADR-0047); not shipped
   marketplace/                # Local command-source Claude plugin marketplace for the dev loop; not shipped
   .agents/plugins/marketplace.json   # Codex marketplace → ./dist/pan-agent-plugin (build first)
@@ -147,14 +152,14 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 
 1. Add function to the appropriate `.cjs` file in `pan-wizard-core/bin/lib/`
 2. Export via `module.exports`
-3. Wire into `pan-tools.cjs` command routing (add case in the main switch)
+3. Wire into `pan-tools.cjs` command routing (add case in the main switch), then run `node scripts/test-surface.cjs --write` — `npm run test:surface` fails until the registry is refreshed, `tests/surface-map.test.cjs` until a test names the new verb or subcommand as a quoted CLI argument, and the coverage gate (`npm run test:coverage`) until a test dispatches the new arm
 4. Write tests in `tests/` using `node:test` and `node:assert`
 
 ## How to Add a Hook
 
 1. Create source in `hooks/your-hook.js`
 2. Add the file to `HOOKS_TO_COPY` in `scripts/build-hooks.js`, then run `npm run build:hooks` (copy-only; no bundling — they're pure Node.js)
-3. Register it in `bin/install.js` (the hook-command block near `buildHookCommand` and the uninstall list), in `HOOK_EVENT_MAP` in `bin/install-lib.cjs` if it needs a new event, and in the plugin hooks builders there
+3. Register it in `bin/install.js` (its `buildHookCommand` call, a row in the settings.json `registrations` table, and the uninstall `panHooks` list), in `bin/install-lib.cjs` (`PAN_SETTINGS_HOOKS`, a `HOOK_EVENT_MAP` slot carrying each runtime's own event name or `null` — `tests/hook-vocabulary.test.cjs` rejects names a runtime does not document — the Codex and Copilot builders `mergeCodexHooksConfig` / `buildCopilotHooksConfig`, which hard-code their event names, and the plugin hooks builders), and in `EVENT_HOOKS` in `scripts/test-surface.cjs`
 
 ## Writing Tests
 
@@ -197,8 +202,8 @@ describe('your feature', () => {
 Three checks, run with the rest of the suite, decide this from the code rather than from the tests (the plan is `docs/specs/testing-system-redesign-2026-09.md`):
 
 - **The surface registry.** `node scripts/test-surface.cjs --write` derives every shipped surface — verbs from the dispatcher's usage line, subcommands from its `Unknown … subcommand. Available:` strings, dispatcher `case` arms, installer flag literals, hook × runtime registrations from `HOOK_EVENT_MAP`, MCP tools and resources, config default keys, the content directories — into `tests/fixtures/surface.json`, which is committed and reviewed like code. `tests/surface-map.test.cjs` fails when the registry drifts from the code (`npm run test:surface`) and when a row is named by no test: a verb or subcommand as a quoted CLI argument, a flag as a literal, a hook together with its runtime, an MCP tool by name, a config key as a key. A row without a test goes in `tests/fixtures/surface-allowlist.json` **with a reason**, and the entry fails once a test names it. `node scripts/test-surface.cjs --scaffold <dir>` writes one todo stub per unreferenced row; that is how a suite rebuilt from an empty directory starts.
-- **The coverage gate.** `npm run test:coverage` runs the suite under Node's own instrumentation (Node 22+; the processes tests spawn are captured through the inherited `NODE_V8_COVERAGE`) and fails when a dispatcher `case` arm never executed or a module group falls below the floors in `tests/fixtures/coverage-policy.json` (set a point below the measured baseline). An arm no test dispatches yet is allowlisted there with a reason, and the entry fails once a test dispatches it. Release-check Gate 9 runs it; CI runs it on the Node 22 job.
-- **The quality lint.** `tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file and fails on the shapes that have passed while the feature they named was broken: an OR between result-status fields (`output || error` — a crash satisfies it), an in-process call to a lib module's `cmd*` function (they end in `output()`/`error()`, which exit the process, so the test child dies and `node --test` reports the file as one passing test — always go through `runPanTools`), `assert(true)`, CLI output asserted only by its length, a platform conditional that bare-returns instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read of the real home directory, and a committed `test.todo`. Exceptions live in `tests/fixtures/test-quality-allowlist.json` per file and rule with a count and a reason; an entry that allows more than the file has is stale and fails too.
+- **The coverage gate.** `npm run test:coverage` runs the suite under Node's own instrumentation (Node 22+; the processes tests spawn are captured through the inherited `NODE_V8_COVERAGE`) and fails when a dispatcher `case` arm never executed or a module group falls below the floors in `tests/fixtures/coverage-policy.json` (set a point below the measured baseline). An arm no test dispatches yet is allowlisted there with a reason, and the entry fails once a test dispatches it. Release-check Gate 9 runs it; CI runs it as an advisory (`continue-on-error`) step on the Node 22 jobs.
+- **The quality lint.** `tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file and fails on the shapes that have passed while the feature they named was broken: an OR between result-status fields (`output || error` — a crash satisfies it), an in-process call to a lib module's `cmd*` function (they end in `output()`/`error()`, which exit the process, so the test child dies and `node --test` reports the file as one passing test — always go through `runPanTools`), `assert(true)`, CLI output asserted only by its length, a platform conditional that bare-returns instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read of the real home directory, a committed `test.todo`, and an `assert.ok(a.x || a.y)` that only asks whether one of several fields exists. Exceptions live in `tests/fixtures/test-quality-allowlist.json` per file and rule with a count and a reason; an entry that allows more than the file has is stale and fails too.
 
 The two allowlists are the debt register: seeded from the suite as it stood on 2026-09-17 and burned down in the spec's phase 2 — the twelve never-dispatched CLI arms, the four never-dispatched verbs and every "Unknown <group> subcommand" arm are now covered by `tests/dispatcher-arms.test.cjs`, which is driven from the dispatcher's own source rather than a hand-kept list.
 
@@ -372,11 +377,11 @@ Tier 0 is the one to run before a release. Model tiers spend your Claude usage a
 
 Releases are published by CI from a tag; nothing is published from a laptop. The flow, as run for recent releases:
 
-1. **Gate locally:** `npm run release:check`. It is the same script `prepublishOnly` runs in CI, so a red gate here is a red publish there. In order: hook build; `test:all`; `npm audit --omit=dev`; `doc-lint counts` over `docs/` (no filesystem-derived counts outside `CLAUDE.md`); `links validate` (the doc↔code link graph resolves); `npm pack` size sanity **and zero runtime dependencies**; a smoke install of the packed tarball into a temp directory; and both distribution bundles building, with `dist/pan-agent-plugin` digested against the fresh build. Run `npm run harness` (tier 0) as well.
+1. **Gate locally:** `npm run release:check`. It is the same script `prepublishOnly` runs in CI, so a red gate here is a red publish there. In order: hook build; `test:all`; `npm audit --omit=dev`; `doc-lint counts` over `docs/` (no filesystem-derived counts outside `CLAUDE.md`); `links validate` (the doc↔code link graph resolves); `npm pack` size sanity **and zero runtime dependencies**; a smoke install of the packed tarball into a temp directory; both distribution bundles building, with `dist/pan-agent-plugin` digested against the fresh build; and the coverage gate (every dispatcher arm executed plus per-group floors; skipped below Node 22). Run `npm run harness` (tier 0) as well.
 2. **Refresh the counts table** in `CLAUDE.md` with the snippet it carries — the only place counts live — and, if any command or dev skill changed, regenerate the skills docs: `python scripts/generate-skills-docs.py`.
 3. **Bump the version** in `package.json` — and the `version` of the `pan-wizard` entry in `.github/plugin/marketplace.json`, which a test pins to it.
 4. **Turn `## [Unreleased]` into `## [x.y.z] - YYYY-MM-DD`** in `CHANGELOG.md`.
-5. **Commit as `release(x.y.z): …`** on a `release/vx.y.z` branch and open a PR to `main`. The required checks (secret scan, audit, the OS × Node test matrix, CodeQL) must be green before merge.
+5. **Commit as `release(x.y.z): …`** on a `release/vx.y.z` branch and open a PR to `main`. The required checks (secret scan, audit, the OS × Node test matrix) must be green before merge; CodeQL also runs but is not a required check.
 6. **Tag the merge commit and push the tag by explicit refspec:**
 
    ```bash
@@ -385,5 +390,5 @@ Releases are published by CI from a tag; nothing is published from a laptop. The
 
    A `v*` tag triggers `.github/workflows/release.yml`, which reruns the gates through `prepublishOnly`, publishes with npm provenance, and **creates the GitHub Release** from the `CHANGELOG.md` section for that version. Do not rely on `git push --follow-tags` — it has silently dropped the tag before, and then nothing publishes.
 
-   The Release step is new as of 3.29.0. Before it, the workflow published to npm and stopped, so nine tagged versions (3.20.0–3.22.0 and 3.24.0–3.28.0) carry a tag and an npm release but no release object. The step is `continue-on-error` — the package is already published by the time it runs, so a failure there is a cosmetic omission rather than a failed release — and the run summary states plainly whether the release exists, so an omission is visible instead of silent. A re-run never clobbers an existing release.
+   The Release step landed after 3.29.0 was tagged (that release object was created by hand). Before it, the workflow published to npm and stopped, so nine tagged versions (3.20.0–3.22.0 and 3.24.0–3.28.0) carry a tag and an npm release but no release object. The step is `continue-on-error` — the package is already published by the time it runs, so a failure there is a cosmetic omission rather than a failed release — and the run summary states plainly whether the release exists, so an omission is visible instead of silent. A re-run never clobbers an existing release.
 7. **After a successful publish:** the workflow already ran `deprecate-old-versions.js --apply` and created the Release; check the run summary for both. Then upgrade the installs you maintain with the installer. When sweeping `d:\` for installs to upgrade, exclude **everything** under `d:\pantesting\` except the root — its subdirectories are audit fixtures pinned to the version they were made on, and a name-based denylist has missed them before.

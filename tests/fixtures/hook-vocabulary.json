@@ -1,0 +1,56 @@
+{
+  "why": "Each runtime's documented hook event names. tests/hook-vocabulary.test.cjs fails when PAN emits an event key that is not in its runtime's list. PAN's Gemini hooks were registered under Claude's names from v3.4 until 2026-09-23, every test agreed with the installer's own output, and Gemini CLI skipped three of the four with an 'Invalid hook event name' warning (reality check 2026-09-22, R29/R30). Update a list only from its primary source, with the date read.",
+  "verified_at": "2026-09-23",
+  "runtimes": {
+    "claude": {
+      "source": "https://code.claude.com/docs/en/hooks",
+      "read": "2026-09-23",
+      "casing": "PascalCase",
+      "events": [
+        "SessionStart", "Setup", "UserPromptSubmit", "UserPromptExpansion", "PreToolUse", "PermissionRequest",
+        "PermissionDenied", "PostToolUse", "PostToolUseFailure", "PostToolBatch", "Notification", "MessageDisplay",
+        "SubagentStart", "SubagentStop", "TaskCreated", "TaskCompleted", "Stop", "StopFailure", "TeammateIdle",
+        "InstructionsLoaded", "ConfigChange", "CwdChanged", "DirectoryAdded", "FileChanged", "WorktreeCreate",
+        "WorktreeRemove", "PreCompact", "PostCompact", "PreModelSwitch", "PostModelSwitch", "Elicitation",
+        "ElicitationResult", "SessionEnd"
+      ]
+    },
+    "gemini": {
+      "source": "https://github.com/google-gemini/gemini-cli/blob/62364cb2000795537a6895261b37ec668e4cf527/packages/core/src/hooks/types.ts",
+      "read": "2026-09-23",
+      "casing": "PascalCase, Gemini's own names",
+      "note": "hookRegistry.ts skips any other key with an 'Invalid hook event name' warning; enabled, disabled and notifications are configuration fields, not events",
+      "events": [
+        "BeforeTool", "AfterTool", "BeforeAgent", "Notification", "AfterAgent", "SessionStart", "SessionEnd",
+        "PreCompress", "BeforeModel", "AfterModel", "BeforeToolSelection"
+      ]
+    },
+    "codex": {
+      "source": "https://learn.chatgpt.com/docs/hooks",
+      "source_code": "https://github.com/openai/codex/blob/c44deff7b1083e9660ac55d02122481f1cdf139b/codex-rs/config/src/hook_config.rs",
+      "read": "2026-09-23",
+      "casing": "PascalCase",
+      "note": "HooksFile is deny_unknown_fields: a top-level key other than description and hooks fails the whole file",
+      "top_level_keys": ["description", "hooks"],
+      "events": [
+        "PreToolUse", "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "SessionStart", "SessionEnd",
+        "UserPromptSubmit", "SubagentStart", "SubagentStop", "Stop", "Interrupt"
+      ]
+    },
+    "copilot": {
+      "source": "https://docs.github.com/en/copilot/reference/hooks-reference",
+      "read": "2026-09-23",
+      "casing": "camelCase native; the listed PascalCase aliases are also accepted (Copilot CLI 1.0.6 and later)",
+      "top_level_keys": ["version", "disableAllHooks", "hooks"],
+      "events": [
+        "agentStop", "errorOccurred", "notification", "permissionRequest", "postToolUse", "postToolUseFailure",
+        "preCompact", "preToolUse", "sessionEnd", "sessionStart", "subagentStart", "subagentStop",
+        "userPromptSubmitted", "userPromptTransformed"
+      ],
+      "pascal_aliases": [
+        "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+        "Stop", "SubagentStop", "ErrorOccurred", "PreCompact", "PermissionRequest"
+      ]
+    }
+  }
+}

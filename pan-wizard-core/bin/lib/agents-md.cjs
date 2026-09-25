@@ -2,8 +2,9 @@
 
 // ─── AGENTS.md universal rules layer (ADR-0028 Phase 3) ─────────────────────
 //
-// AGENTS.md is the cross-runtime project-instructions standard; every PAN
-// target runtime (and Antigravity CLI) reads it natively. PAN contributes one
+// AGENTS.md is the cross-runtime project-instructions standard; Codex,
+// OpenCode and Copilot CLI read it natively, Claude Code only through the @AGENTS.md
+// import in CLAUDE.md; Gemini CLI reads GEMINI.md by default, not this file. PAN contributes one
 // marker-fenced section so agents in any runtime understand the PAN context
 // when reading the repo. User content outside the markers is never touched.
 //

@@ -21,7 +21,7 @@ const {
   convertClaudeCommandToUnifiedSkill,
   getCopilotSkillAdapterHeader, convertClaudeCommandToCopilotSkill, convertClaudeToCopilotAgent,
   processAttribution, parseJsonc,
-  detectModelCapabilities, buildClaudeSkillShim, stripThinkingFrontmatter,
+  detectModelCapabilities, stripThinkingFrontmatter,
   geminiTransitionNotice,
   convertClaudeAgentToCodexToml, codexTrustNotice,
   buildCopilotHooksConfig,
@@ -262,7 +262,7 @@ console.log(banner);
 
 // Show help if requested
 if (hasHelp) {
-  console.log(`  ${yellow}Usage:${reset} npx pan-wizard [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-l, --local${reset}               Install locally to current directory (default)\n    ${cyan}-g, --global${reset}              Install globally to config directory\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for GitHub Copilot CLI only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall PAN (remove all PAN files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--unified-skills${reset}          Install commands as one shared .agents/skills/ tree (ADR-0028 alpha)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime; installs project-level)${reset}\n    npx pan-wizard\n\n    ${dim}# Install for Claude Code in current project (default, --local implied)${reset}\n    npx pan-wizard --claude\n\n    ${dim}# Install for all runtimes in current project${reset}\n    npx pan-wizard --all --local\n\n    ${dim}# Install globally (available in all projects)${reset}\n    npx pan-wizard --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx pan-wizard --gemini --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx pan-wizard --codex --global --config-dir ~/.codex-work\n\n    ${dim}# Uninstall PAN from Codex globally${reset}\n    npx pan-wizard --codex --global --uninstall\n\n  ${yellow}Notes:${reset}\n    By default, PAN installs into the current project directory only.\n    Use --global to install system-wide (writes to ~/.claude, ~/.gemini, etc.).\n    The --config-dir option takes priority over CLAUDE_CONFIG_DIR / GEMINI_CONFIG_DIR / CODEX_HOME.\n`);
+  console.log(`  ${yellow}Usage:${reset} npx pan-wizard [options]\n\n  ${yellow}Options:${reset}\n    ${cyan}-l, --local${reset}               Install locally to current directory (default)\n    ${cyan}-g, --global${reset}              Install globally to config directory\n    ${cyan}--claude${reset}                  Install for Claude Code only\n    ${cyan}--opencode${reset}                Install for OpenCode only\n    ${cyan}--gemini${reset}                  Install for Gemini only\n    ${cyan}--codex${reset}                   Install for Codex only\n    ${cyan}--copilot${reset}                 Install for GitHub Copilot CLI only\n    ${cyan}--all${reset}                     Install for all runtimes\n    ${cyan}-u, --uninstall${reset}           Uninstall PAN (remove all PAN files)\n    ${cyan}-c, --config-dir <path>${reset}   Specify custom config directory\n    ${cyan}-h, --help${reset}                Show this help message\n    ${cyan}--force-statusline${reset}        Replace existing statusline config\n    ${cyan}--unified-skills${reset}          Install commands as one shared .agents/skills/ tree, mirrored to .claude/skills/ for Claude Code (ADR-0028 alpha)\n\n  ${yellow}Examples:${reset}\n    ${dim}# Interactive install (prompts for runtime; installs project-level)${reset}\n    npx pan-wizard\n\n    ${dim}# Install for Claude Code in current project (default, --local implied)${reset}\n    npx pan-wizard --claude\n\n    ${dim}# Install for all runtimes in current project${reset}\n    npx pan-wizard --all --local\n\n    ${dim}# Install globally (available in all projects)${reset}\n    npx pan-wizard --claude --global\n\n    ${dim}# Install for Gemini globally${reset}\n    npx pan-wizard --gemini --global\n\n    ${dim}# Install to custom config directory${reset}\n    npx pan-wizard --codex --global --config-dir ~/.codex-work\n\n    ${dim}# Uninstall PAN from Codex globally${reset}\n    npx pan-wizard --codex --global --uninstall\n\n  ${yellow}Notes:${reset}\n    By default, PAN installs into the current project directory only.\n    Use --global to install system-wide (writes to ~/.claude, ~/.gemini, etc.).\n    The --config-dir option takes priority over CLAUDE_CONFIG_DIR / GEMINI_CONFIG_DIR / CODEX_HOME.\n`);
   process.exit(0);
 }
 
@@ -619,19 +619,70 @@ function sweepProprietaryCommandSurfaces(targetDir, runtime) {
       }
     } catch { /* dir absent — nothing to sweep */ }
   } else {
-    // Claude Code & Gemini: nested commands/pan tree (+ Claude skill shims)
+    // Claude Code & Gemini: nested commands/pan tree (+ legacy Claude skill shims)
     try { fs.rmSync(path.join(targetDir, 'commands', 'pan'), { recursive: true }); } catch {}
-    if (runtime === 'claude') {
-      const skillsDir = path.join(targetDir, 'skills');
-      try {
-        for (const file of fs.readdirSync(skillsDir)) {
-          if (file.startsWith('pan-') && file.endsWith('.md')) {
-            try { fs.unlinkSync(path.join(skillsDir, file)); } catch {}
-          }
-        }
-      } catch { /* dir absent — nothing to sweep */ }
-    }
+    if (runtime === 'claude') sweepClaudePanSkills(targetDir, { pruneEmpty: false });
   }
+}
+
+/**
+ * Remove every PAN-owned entry from a Claude Code `skills/` directory: the flat
+ * `pan-*.md` shims v2.10.0 (E-5) wrote, and the `pan-*` SKILL.md directories a
+ * --unified-skills install mirrors there. The `pan-` prefix is PAN's namespace
+ * here exactly as it is in the Codex and Copilot skill sweeps. Non-PAN skills are
+ * never touched, and the directory itself is removed only when PAN's entries were
+ * all it held. Returns the number of entries removed.
+ */
+function sweepClaudePanSkills(targetDir, { pruneEmpty = true } = {}) {
+  const skillsDir = path.join(targetDir, 'skills');
+  let entries;
+  try { entries = fs.readdirSync(skillsDir, { withFileTypes: true }); } catch { return 0; }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.name.startsWith('pan-')) continue;
+    const entryPath = path.join(skillsDir, entry.name);
+    try {
+      if (entry.isDirectory()) {
+        fs.rmSync(entryPath, { recursive: true });
+        removed++;
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        fs.unlinkSync(entryPath);
+        removed++;
+      }
+    } catch (err) { pushInstallWarning('staleCleanup', `skills/${entry.name}`, err); }
+  }
+  if (pruneEmpty) {
+    try { if (fs.readdirSync(skillsDir).length === 0) fs.rmdirSync(skillsDir); } catch { /* keep it */ }
+  }
+  return removed;
+}
+
+/**
+ * Claude Code does not read the shared `.agents/skills/` tree: its skills
+ * documentation lists `.claude/skills/<name>/SKILL.md` (personal, project, nested,
+ * managed, --add-dir), plugin skills, synced skills and legacy `.claude/commands/`
+ * files — and no `.agents/` location. Every other target runtime lists the shared
+ * tree. So a --unified-skills install for Claude copies each compiled skill into
+ * the runtime's own `skills/`, byte-identical to the shared copy: one compiler, two
+ * placements (ADR-0028), and the tree's content still does not depend on which
+ * runtime installed it. Returns the number of skills copied.
+ */
+function mirrorUnifiedSkillsForClaude(sharedSkillsDir, targetDir, prefix) {
+  sweepClaudePanSkills(targetDir, { pruneEmpty: false });
+  const claudeSkillsDir = path.join(targetDir, 'skills');
+  let copied = 0;
+  for (const name of listCodexSkillNames(sharedSkillsDir, `${prefix}-`)) {
+    const srcDir = path.join(sharedSkillsDir, name);
+    const destDir = path.join(claudeSkillsDir, name);
+    try {
+      fs.mkdirSync(destDir, { recursive: true });
+      for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+        if (entry.isFile()) fs.copyFileSync(path.join(srcDir, entry.name), path.join(destDir, entry.name));
+      }
+      copied++;
+    } catch (err) { pushInstallWarning('claudeSkillMirror', `skills/${name}`, err); }
+  }
+  return copied;
 }
 
 /**
@@ -1075,25 +1126,15 @@ function uninstall(isGlobal, runtime = 'claude') {
       console.log(`  ${green}✓${reset} Removed commands/pan/`);
     }
 
-    // Claude-only: remove skills/pan-*.md shim files (registered at install time)
+    // Claude-only: remove PAN's entries from skills/ — the SKILL.md directories a
+    // --unified-skills install mirrors there (R32) and the flat pan-*.md shims
+    // installs before R33 wrote. The skills/ dir goes only if nothing else is in
+    // it (the user may keep their own skills there).
     if (runtime === 'claude') {
-      const skillsDir = path.join(targetDir, 'skills');
-      if (fs.existsSync(skillsDir)) {
-        let skillCount = 0;
-        for (const file of fs.readdirSync(skillsDir)) {
-          if (file.startsWith('pan-') && file.endsWith('.md')) {
-            try { fs.unlinkSync(path.join(skillsDir, file)); } catch {}
-            skillCount++;
-          }
-        }
-        if (skillCount > 0) {
-          removedCount++;
-          console.log(`  ${green}✓${reset} Removed ${skillCount} PAN skill shims`);
-        }
-        // Remove the skills/ dir only if it's now empty (user may have non-PAN skills)
-        try {
-          if (fs.readdirSync(skillsDir).length === 0) fs.rmdirSync(skillsDir);
-        } catch {}
+      const skillCount = sweepClaudePanSkills(targetDir);
+      if (skillCount > 0) {
+        removedCount++;
+        console.log(`  ${green}✓${reset} Removed ${skillCount} PAN entries from skills/`);
       }
     }
   }
@@ -1428,7 +1469,7 @@ function uninstall(isGlobal, runtime = 'claude') {
       }
     }
 
-    // Remove PAN stop guard from Stop (P-1809, v3.23+)
+    // Remove PAN stop guard from Stop (P-1809, v3.24+)
     if (settings.hooks && settings.hooks.Stop) {
       const before = settings.hooks.Stop.length;
       settings.hooks.Stop = settings.hooks.Stop.filter(entry => {
@@ -1446,6 +1487,17 @@ function uninstall(isGlobal, runtime = 'claude') {
       }
       if (settings.hooks.Stop.length === 0) {
         delete settings.hooks.Stop;
+      }
+    }
+
+    // Any other event still running a PAN script: Gemini's AfterAgent stop guard
+    // (R29), or an entry an older install left under a key it has since moved
+    // off. Keyed on the script, so no event list can go stale here again.
+    if (settings.hooks) {
+      const sweptEvents = lib.stripPanHookEntries(settings.hooks, lib.PAN_SETTINGS_HOOKS);
+      if (sweptEvents.length > 0) {
+        settingsModified = true;
+        console.log(`  ${green}✓${reset} Removed PAN hooks from ${sweptEvents.join(', ')}`);
       }
     }
 
@@ -1877,19 +1929,17 @@ function writeManifest(configDir, runtime = 'claude', isGlobal = false) {
       }
     }
   }
-  // Claude native skill shims: flat skills/pan-*.md files (E-5). Only the Claude
-  // runtime's nested-commands install writes these; under --unified-skills the
-  // shared .agents/skills tree above already covers skills. Tracking them lets
-  // verifyInstall catch silent shim-write failures and saveLocalPatches back up
-  // user edits — the codex/copilot SKILL.md branch above matches directories, not
-  // these flat files.
-  if (runtime === 'claude' && !unifiedSkills) {
+  // Claude Code cannot read the shared tree, so a --unified-skills install copies
+  // each compiled skill into the runtime's own skills/ (R32). Tracking the copies
+  // lets verifyInstall catch a failed copy and saveLocalPatches back up a user
+  // edit. A default install writes nothing under skills/ (the E-5 flat shims were
+  // retired as never-loaded, R33), so there is nothing to track there.
+  if (runtime === 'claude' && unifiedSkills) {
     const claudeSkillsDir = path.join(configDir, 'skills');
-    if (fs.existsSync(claudeSkillsDir)) {
-      for (const file of fs.readdirSync(claudeSkillsDir)) {
-        if (file.startsWith('pan-') && file.endsWith('.md')) {
-          manifest.files['skills/' + file] = fileHash(path.join(claudeSkillsDir, file));
-        }
+    for (const skillName of listCodexSkillNames(claudeSkillsDir)) {
+      const skillHashes = generateManifest(path.join(claudeSkillsDir, skillName));
+      for (const [rel, hash] of Object.entries(skillHashes)) {
+        manifest.files[`skills/${skillName}/${rel}`] = hash;
       }
     }
   }
@@ -2187,7 +2237,7 @@ function install(isGlobal, runtime = 'claude') {
   // OpenCode uses commands/ (flat), Codex uses skills/, Claude/Gemini use commands/pan/
   try {
     if (unifiedSkills) {
-      // ADR-0028 Phase 1: every runtime consumes one runtime-neutral
+      // ADR-0028 Phase 1: every runtime consumes one runtime-neutral (Claude via the skills/ mirror below)
       // .agents/skills/ tree; the proprietary command surface is swept so
       // commands don't resolve twice.
       const skillsDir = getCodexSkillsRoot(isGlobal);
@@ -2232,6 +2282,17 @@ function install(isGlobal, runtime = 'claude') {
         console.log(`  ${green}✓${reset} Installed ${installedSkillNames.length} unified skills to ${label} (ADR-0028)`);
       } else {
         failures.push('.agents/skills/pan-* (unified)');
+      }
+
+      // Claude Code is the one target runtime that does not read the shared tree
+      // (R32): without this copy the sweep above leaves it with no PAN commands.
+      if (runtime === 'claude') {
+        const mirrored = mirrorUnifiedSkillsForClaude(skillsDir, targetDir, 'pan');
+        if (mirrored > 0 && mirrored === installedSkillNames.length) {
+          console.log(`  ${green}✓${reset} Mirrored ${mirrored} unified skills to skills/ (Claude Code does not read .agents/skills/)`);
+        } else {
+          failures.push('skills/pan-* (Claude copy of the unified tree)');
+        }
       }
     } else if (isOpencode) {
       // OpenCode: flat structure in commands/ directory. Plural since
@@ -2310,45 +2371,20 @@ function install(isGlobal, runtime = 'claude') {
         failures.push('commands/pan');
       }
 
-      // E-5: Claude native skill shims — register each PAN command as a skill
-      // so Claude Code's native skill discovery surfaces them. Gemini doesn't
-      // use the skills/ directory, so only generate for Claude.
+      // Claude Code discovers a skill only as a skills/<name>/SKILL.md directory:
+      // its skills documentation lists no flat-file form, and the loader it ships
+      // (2.1.280, read 2026-09-23) reads <skills>/<entry>/SKILL.md for every entry
+      // and drops anything else. So the flat skills/pan-*.md shims v2.10.0 (E-5)
+      // wrote here were never loaded. Nothing replaces them: the commands above
+      // already reach the model the way skills do (a command file and a skill
+      // "both create /deploy and work the same way", code.claude.com/docs/en/skills).
+      // The sweep removes the shims older installs left, and the skill
+      // directories a previous --unified-skills install mirrored, so no command
+      // resolves twice (reality check 2026-09-22, R33).
       if (runtime === 'claude') {
-        try {
-          const skillsDir = path.join(targetDir, 'skills');
-          fs.mkdirSync(skillsDir, { recursive: true });
-          // Upgrade path: sweep stale pan-* shims before regenerating, mirroring
-          // the stale-cleanup copyFlattenedCommands does for command trees.
-          // A rename/removal in commands/pan would otherwise leave orphan shims.
-          for (const file of fs.readdirSync(skillsDir)) {
-            if (file.startsWith('pan-') && file.endsWith('.md')) {
-              try { fs.unlinkSync(path.join(skillsDir, file)); } catch (err) { pushInstallWarning('staleCleanup', file, err); }
-            }
-          }
-          const workflowsDir = path.join(targetDir, 'workflows');
-          if (fs.existsSync(workflowsDir)) {
-            for (const file of fs.readdirSync(workflowsDir)) {
-              if (file.startsWith('pan-') && file.endsWith('.js')) {
-                try { fs.unlinkSync(path.join(workflowsDir, file)); } catch (err) { pushInstallWarning('staleCleanup', file, err); }
-              }
-            }
-          }
-          let shimCount = 0;
-          for (const file of fs.readdirSync(panDest)) {
-            if (!file.endsWith('.md')) continue;
-            const commandName = file.slice(0, -3);
-            const commandBody = fs.readFileSync(path.join(panDest, file), 'utf-8');
-            const description = lib.extractFrontmatterField(commandBody, 'description')
-              || `PAN command: ${commandName}`;
-            const shim = buildClaudeSkillShim({ commandName, description });
-            fs.writeFileSync(path.join(skillsDir, `pan-${commandName}.md`), shim, 'utf-8');
-            shimCount += 1;
-          }
-          if (shimCount > 0) {
-            console.log(`  ${green}✓${reset} Registered ${shimCount} commands as skills/pan-*.md`);
-          }
-        } catch (e) {
-          console.error(`  ${yellow}⚠${reset} Skill shim registration skipped: ${e.message}`);
+        const swept = sweepClaudePanSkills(targetDir);
+        if (swept > 0) {
+          console.log(`  ${green}✓${reset} Removed ${swept} legacy PAN entries from skills/`);
         }
       }
     }
@@ -2588,6 +2624,14 @@ function install(isGlobal, runtime = 'claude') {
     try {
       const workflowsDir = path.join(targetDir, 'workflows');
       fs.mkdirSync(workflowsDir, { recursive: true });
+      // Upgrade path: a script renamed or removed since the last install would
+      // otherwise survive the rewrite below. (This sweep used to sit inside the
+      // retired skill-shim step, so --unified-skills installs never ran it.)
+      for (const file of fs.readdirSync(workflowsDir)) {
+        if (file.startsWith('pan-') && file.endsWith('.js')) {
+          try { fs.unlinkSync(path.join(workflowsDir, file)); } catch (err) { pushInstallWarning('staleCleanup', file, err); }
+        }
+      }
       const scripts = lib.buildNativeWorkflowScripts();
       for (const { name, content } of scripts) {
         fs.writeFileSync(path.join(workflowsDir, name), content);
@@ -2609,7 +2653,7 @@ function install(isGlobal, runtime = 'claude') {
 
   // AGENTS.md universal rules layer (ADR-0028 Phase 3): contribute one
   // marker-fenced PAN section to the project's AGENTS.md (read natively by
-  // every PAN runtime), and bridge CLAUDE.md to it via @AGENTS.md for the
+  // Codex, OpenCode and Copilot), and bridge CLAUDE.md to it via @AGENTS.md for the
   // Claude runtime. Project-scoped — local installs only; user content
   // outside the markers is never touched.
   if (!isGlobal) {
@@ -2780,7 +2824,7 @@ function install(isGlobal, runtime = 'claude') {
   }
 
   // Configure statusline and hooks in settings.json
-  // Claude Code, Gemini, OpenCode use settings.json
+  // Claude Code and Gemini use settings.json (OpenCode's is unused; its config is opencode.json)
   const settingsPath = path.join(targetDir, 'settings.json');
   const rawSettings = readSettings(settingsPath);
   if (settingsUnusable(rawSettings, settingsPath, 'statusline and hook configuration')) {
@@ -2801,112 +2845,58 @@ function install(isGlobal, runtime = 'claude') {
     }
   }
 
-  // Configure SessionStart hook for update checking (skip for opencode)
+  // Hooks in settings.json (Claude Code, Gemini CLI; OpenCode has no hook system).
+  // Every event name comes from HOOK_EVENT_MAP, which carries each runtime's own
+  // vocabulary. Until 2026-09-23 these blocks wrote Claude's names for both
+  // runtimes, and Gemini CLI skips every key outside its own set with an "Invalid
+  // hook event name" warning — so on Gemini only SessionStart ever ran (R29).
   if (!isOpencode) {
     if (!settings.hooks) {
       settings.hooks = {};
     }
-    if (!settings.hooks.SessionStart) {
-      settings.hooks.SessionStart = [];
+    const events = lib.HOOK_EVENT_MAP[runtime] || {};
+    // One row per PAN hook: the table slot it serves, its command, the log label.
+    // The SubagentStop pair stays two separate entries so a host can run them
+    // independently; P-1809's stop guard blocks a stop ONCE when workflow
+    // autonomy is armed, state.md records no failure, and the roadmap has
+    // unbuilt phases — fail-open and inert outside PAN projects.
+    const registrations = [
+      { slot: 'sessionStart', hook: 'pan-check-update', command: updateCheckCommand, label: 'update check hook' },
+      { slot: 'postToolUse', hook: 'pan-context-monitor', command: contextMonitorCommand, label: 'context window monitor hook' },
+      { slot: 'subagentStop', hook: 'pan-cost-logger', command: costLoggerCommand, label: 'cost logger hook' },
+      { slot: 'subagentStop', hook: 'pan-trace-logger', command: traceLoggerCommand, label: 'trace logger hook' },
+      { slot: 'stop', hook: 'pan-stop-guard', command: stopGuardCommand, label: 'auto-advance stop guard hook' },
+    ];
+    const unsupported = [];
+    for (const r of registrations) {
+      const event = events[r.slot] || null;
+      // Upgrade path: an entry for this hook under any other event is dead (a key
+      // the runtime does not have) or a stale duplicate. Keyed on the script, so a
+      // hook that moved event is cleaned wherever an older install put it.
+      const removedFrom = lib.stripPanHookEntries(settings.hooks, [r.hook], event);
+      if (removedFrom.length > 0) {
+        console.log(`  ${green}✓${reset} Removed the ${r.label} from ${removedFrom.join(', ')}${event ? '' : ` (${runtime} has no event for it)`}`);
+      }
+      if (!event) {
+        unsupported.push(r.hook);
+        continue;
+      }
+      if (!Array.isArray(settings.hooks[event])) {
+        settings.hooks[event] = [];
+      }
+      const registered = settings.hooks[event].some(entry =>
+        entry.hooks && entry.hooks.some(h => h.command && h.command.includes(r.hook))
+      );
+      if (!registered) {
+        settings.hooks[event].push({ hooks: [{ type: 'command', command: r.command }] });
+        console.log(`  ${green}✓${reset} Configured ${r.label}`);
+      }
     }
-
-    const hasPanUpdateHook = settings.hooks.SessionStart.some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('pan-check-update'))
-    );
-
-    if (!hasPanUpdateHook) {
-      settings.hooks.SessionStart.push({
-        hooks: [
-          {
-            type: 'command',
-            command: updateCheckCommand
-          }
-        ]
-      });
-      console.log(`  ${green}✓${reset} Configured update check hook`);
+    if (Object.keys(settings.hooks).length === 0) {
+      delete settings.hooks;
     }
-
-    // Configure PostToolUse hook for context window monitoring
-    if (!settings.hooks.PostToolUse) {
-      settings.hooks.PostToolUse = [];
-    }
-
-    const hasContextMonitorHook = settings.hooks.PostToolUse.some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('pan-context-monitor'))
-    );
-
-    if (!hasContextMonitorHook) {
-      settings.hooks.PostToolUse.push({
-        hooks: [
-          {
-            type: 'command',
-            command: contextMonitorCommand
-          }
-        ]
-      });
-      console.log(`  ${green}✓${reset} Configured context window monitor hook`);
-    }
-
-    // v3.4+: SubagentStop hook for automatic cost logging.
-    // Gemini + OpenCode may not implement SubagentStop; we still register
-    // the entry — hosts that don't fire the event simply never trigger it.
-    if (!settings.hooks.SubagentStop) {
-      settings.hooks.SubagentStop = [];
-    }
-    const hasCostLoggerHook = settings.hooks.SubagentStop.some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('pan-cost-logger'))
-    );
-    if (!hasCostLoggerHook) {
-      settings.hooks.SubagentStop.push({
-        hooks: [
-          {
-            type: 'command',
-            command: costLoggerCommand
-          }
-        ]
-      });
-      console.log(`  ${green}✓${reset} Configured cost logger hook`);
-    }
-
-    // v3.5+: SubagentStop hook for circular optimization tracing.
-    // Logs agent completion events to the active trace session (if one is running).
-    const hasTraceLoggerHook = settings.hooks.SubagentStop.some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('pan-trace-logger'))
-    );
-    if (!hasTraceLoggerHook) {
-      settings.hooks.SubagentStop.push({
-        hooks: [
-          {
-            type: 'command',
-            command: traceLoggerCommand
-          }
-        ]
-      });
-      console.log(`  ${green}✓${reset} Configured trace logger hook`);
-    }
-
-    // v3.23+ (P-1809): Stop hook guarding the auto-advance phase boundary.
-    // Blocks a session stop ONCE when workflow.auto_advance is armed, state.md
-    // says "ready to plan", and the roadmap has unbuilt phases — the exact
-    // boundary-drop fingerprint from the 2026-08 field runs. Fail-open and
-    // inert outside PAN projects; hosts that never fire Stop never trigger it
-    // (same convention as the SubagentStop registrations above).
-    if (!settings.hooks.Stop) {
-      settings.hooks.Stop = [];
-    }
-    const hasStopGuardHook = settings.hooks.Stop.some(entry =>
-      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('pan-stop-guard'))
-    );
-    if (!hasStopGuardHook) {
-      settings.hooks.Stop.push({
-        hooks: [
-          {
-            type: 'command',
-            command: stopGuardCommand
-          }
-        ]
-      });
-      console.log(`  ${green}✓${reset} Configured auto-advance stop guard hook`);
+    if (isGemini && unsupported.length > 0) {
+      console.log(`  ${dim}ℹ Gemini CLI has no context-window metric for hooks and no subagent-completion event, so ${unsupported.join(', ')} ${unsupported.length === 1 ? 'is' : 'are'} not registered there${reset}`);
     }
   }
 
@@ -2927,7 +2917,18 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
   const isCodex = runtime === 'codex';
   const isCopilot = runtime === 'copilot';
 
-  if (shouldInstallStatusline && !isOpencode && !isCodex) {
+  // Gemini CLI has no statusline command: its footer shows built-in items only
+  // (gemini-cli packages/cli/src/config/settingsSchema.ts, read 2026-09-23), so the
+  // `statusLine` block PAN wrote into .gemini/settings.json was never read — and
+  // without it the context monitor has no metrics there either (R29). Remove
+  // PAN's own copy on upgrade; a user's custom block is not PAN's to touch.
+  if (runtime === 'gemini' && settings.statusLine && typeof settings.statusLine.command === 'string'
+      && /pan-statusline/.test(settings.statusLine.command)) {
+    delete settings.statusLine;
+    console.log(`  ${green}✓${reset} Removed the statusline block from Gemini settings (Gemini CLI has no statusline command)`);
+  }
+
+  if (shouldInstallStatusline && !isOpencode && !isCodex && runtime !== 'gemini') {
     // Preserve a user's EXISTING custom statusline in THIS runtime's settings.
     // finishInstall runs per runtime, so this is the per-runtime check the old
     // primary-only guard skipped — it clobbered custom Gemini/Copilot
@@ -3022,8 +3023,17 @@ function finishInstall(settingsPath, settings, statuslineCommand, shouldInstallS
   if (runtime === 'opencode') command = '/pan-new-project';
   if (runtime === 'codex') command = '$pan-new-project';
   if (runtime === 'copilot') command = '/pan-new-project';
+  // Under --unified-skills the nested /pan:<name> tree is swept: Claude Code gets
+  // the hyphenated skill names from its skills/ copy (R32), and Gemini CLI has no
+  // per-skill slash command at all — the model activates a skill when a request
+  // matches its description (geminicli.com/docs/cli/skills, read 2026-09-23).
+  if (unifiedSkills && runtime === 'claude') command = '/pan-new-project';
+  let nextStep = `run ${cyan}${command}${reset}`;
+  if (unifiedSkills && runtime === 'gemini') {
+    nextStep = `ask it to start a new PAN project (skills activate on request; ${cyan}/skills list${reset} shows them)`;
+  }
   console.log(`
-  ${green}Done!${reset} Open a blank directory in ${program} and run ${cyan}${command}${reset}.
+  ${green}Done!${reset} Open a blank directory in ${program} and ${nextStep}.
 
   ${cyan}Join the community:${reset} https://discord.gg/pan-wizard
 `);
@@ -3145,7 +3155,8 @@ function installAllRuntimes(runtimes, isGlobal, isInteractive) {
     results.push(result);
   }
 
-  const statuslineRuntimes = ['claude', 'gemini', 'copilot'];
+  // Gemini CLI has no statusline command (see finishInstall), so it is not offered one.
+  const statuslineRuntimes = ['claude', 'copilot'];
   const primaryStatuslineResult = results.find(r => statuslineRuntimes.includes(r.runtime));
 
   const finalize = (shouldInstallStatusline) => {

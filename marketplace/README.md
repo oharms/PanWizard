@@ -5,7 +5,7 @@ from this checkout on demand**. No hosting, no publishing, no registry.
 
 It exists to answer the one question that has kept `dist/pan-wizard-plugin/`
 unpublished: **does `${CLAUDE_PLUGIN_ROOT}` expand inside command *markdown*?**
-It is documented as substituted in hook and MCP *configs*; content is unverified.
+It is documented as substituted in hook and MCP *configs*; for content, the measurement below (case A, 2026-08-14) says it is.
 Everything else about the plugin is already tested — this is the gap.
 
 ## Requirements
@@ -14,13 +14,6 @@ Everything else about the plugin is already tested — this is the gap.
   v2.1.120–v2.1.228 the install fails with *"This plugin uses a source type your
   Claude Code version does not support. Update Claude Code and try again."*; on
   older versions the whole marketplace fails to load.
-
-  > ⚠️ **Checked 2026-08-14: `claude --version` reported `2.1.170` on this machine,
-  > which is inside the failing range.** The marketplace will load (that needs only
-  > v2.1.120) and `/plugin install` will refuse with the message above. **Update
-  > Claude Code before running the test**, then re-check with `claude --version`.
-  > Nothing else in this directory is blocked by the version — the automated tests
-  > cover the contract independently of the running CLI.
 - Not blocked by org policy. An administrator can disable command sources with
   `disableCommandPluginSources`, and setting `allowManagedHooksOnly` blocks them
   by default.
@@ -131,7 +124,7 @@ The marketplace above remains the path that exercises the `command` source, the
 placeholder-expansion probe, and install/uninstall — `--plugin-dir` skips all
 three, so it is a faster loop, not a substitute for the test.
 
-## The other four runtimes: the Agent Plugins bundle
+## Other hosts: the Agent Plugins bundle
 
 Claude Code is the only runtime that reads this directory's `command`-source
 marketplace. For Copilot CLI, Codex, Cursor and Kiro the equivalent is the

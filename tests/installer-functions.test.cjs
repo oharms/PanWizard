@@ -1664,8 +1664,31 @@ describe('HOOK_EVENT_MAP', () => {
     assert.equal(lib.HOOK_EVENT_MAP.copilot.subagentStop, 'subagentStop', 'Copilot uses camelCase');
     assert.equal(lib.HOOK_EVENT_MAP.opencode, null, 'OpenCode has no hook support');
     for (const rt of ['claude', 'gemini', 'codex', 'copilot']) {
-      assert.ok(lib.HOOK_EVENT_MAP[rt].sessionStart && lib.HOOK_EVENT_MAP[rt].postToolUse && lib.HOOK_EVENT_MAP[rt].subagentStop);
+      assert.ok(lib.HOOK_EVENT_MAP[rt].sessionStart, `${rt}: every hook runtime names its session-start event`);
     }
+    for (const rt of ['claude', 'codex', 'copilot']) {
+      assert.ok(lib.HOOK_EVENT_MAP[rt].postToolUse && lib.HOOK_EVENT_MAP[rt].subagentStop, `${rt}: tool and subagent events are named`);
+    }
+  });
+
+  test('Gemini uses its own vocabulary: AfterAgent for the stop guard, nothing for the monitor or loggers (R29)', () => {
+    assert.deepEqual(
+      { ...lib.HOOK_EVENT_MAP.gemini },
+      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent' });
+    assert.equal(lib.HOOK_EVENT_MAP.claude.stop, 'Stop', 'Claude keeps its Stop event for the guard');
+  });
+
+  test('stripPanHookEntries removes a hook from every event but the one it belongs to', () => {
+    const hooks = {
+      Stop: [{ hooks: [{ type: 'command', command: 'node .gemini/hooks/pan-stop-guard.js' }] }],
+      AfterAgent: [{ hooks: [{ type: 'command', command: 'node .gemini/hooks/pan-stop-guard.js' }] }],
+      BeforeTool: [{ hooks: [{ type: 'command', command: 'node mine.js' }] }],
+    };
+    assert.deepEqual(lib.stripPanHookEntries(hooks, ['pan-stop-guard'], 'AfterAgent'), ['Stop']);
+    assert.deepEqual(Object.keys(hooks).sort(), ['AfterAgent', 'BeforeTool'], 'the emptied key is dropped, the user hook kept');
+    assert.deepEqual(lib.stripPanHookEntries(hooks, lib.PAN_SETTINGS_HOOKS), ['AfterAgent'], 'no keep-event: every PAN entry goes');
+    assert.deepEqual(Object.keys(hooks), ['BeforeTool']);
+    assert.deepEqual(lib.stripPanHookEntries(null, ['x']), [], 'tolerates a missing hooks block');
   });
 });
 

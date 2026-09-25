@@ -1,5 +1,5 @@
 /**
- * Tests for Opus 4.7 enhancement helpers (Spec A items E-1, E-3, E-5, E-6, E-10).
+ * Tests for Opus 4.7 enhancement helpers (Spec A items E-1, E-3, E-6, E-10; E-5 retired).
  */
 
 const { test, describe, beforeEach, afterEach } = require('node:test');
@@ -9,7 +9,7 @@ const path = require('path');
 
 const { buildCachedContext } = require('../pan-wizard-core/bin/lib/core.cjs');
 const { determineContinuation, classifyStageDependencies } = require('../pan-wizard-core/bin/lib/focus.cjs');
-const { buildClaudeSkillShim, translateThinkingDirective, detectModelCapabilities } = require('../bin/install-lib.cjs');
+const { translateThinkingDirective, detectModelCapabilities } = require('../bin/install-lib.cjs');
 const { CACHEABLE_CONTEXT_FILES, FOCUS_TIERS } = require('../pan-wizard-core/bin/lib/constants.cjs');
 const { createTempProject, cleanup } = require('./helpers.cjs');
 
@@ -84,62 +84,8 @@ describe('buildCachedContext (E-1)', () => {
   });
 });
 
-// ─── E-5: buildClaudeSkillShim ──────────────────────────────────────────────
-
-describe('buildClaudeSkillShim (E-5)', () => {
-  test('emits frontmatter with pan- prefix', () => {
-    const out = buildClaudeSkillShim({ commandName: 'focus-scan', description: 'Strategic work scan' });
-    assert.match(out, /^---\nname: pan-focus-scan\n/);
-  });
-
-  test('quotes description via yamlQuote', () => {
-    const out = buildClaudeSkillShim({
-      commandName: 'audit',
-      description: 'Deep audit with "nested quotes"',
-    });
-    assert.match(out, /description: /);
-    // Should not break YAML — re-parsing the frontmatter naively should not throw.
-    const fm = out.match(/^---([\s\S]*?)---/)[1];
-    assert.ok(fm.includes('pan-audit'));
-  });
-
-  test('omits trigger field when not provided', () => {
-    const out = buildClaudeSkillShim({ commandName: 'cmd', description: 'x' });
-    assert.equal(/\ntrigger:/.test(out), false);
-  });
-
-  test('includes trigger field when provided', () => {
-    const out = buildClaudeSkillShim({
-      commandName: 'focus-scan',
-      description: 'x',
-      trigger: 'when user asks about work items',
-    });
-    assert.match(out, /trigger:/);
-  });
-
-  test('body references the command file path', () => {
-    const out = buildClaudeSkillShim({ commandName: 'plan-phase', description: 'x' });
-    assert.ok(out.includes('.claude/commands/pan/plan-phase.md'));
-    assert.ok(out.includes('/pan:plan-phase'));
-  });
-
-  test('throws on missing commandName', () => {
-    assert.throws(() => buildClaudeSkillShim({}));
-    assert.throws(() => buildClaudeSkillShim({ commandName: '' }));
-    assert.throws(() => buildClaudeSkillShim(null));
-  });
-
-  test('collapses multi-line description to one line', () => {
-    const out = buildClaudeSkillShim({ commandName: 'x', description: 'line1\n  line2\nline3' });
-    const descLine = out.match(/description: [^\n]+/)[0];
-    assert.equal(descLine.includes('\n'), false);
-  });
-
-  test('ends frontmatter with single --- on its own line', () => {
-    const out = buildClaudeSkillShim({ commandName: 'x', description: 'x' });
-    assert.ok(out.includes('\n---\n'));
-  });
-});
+// E-5 (buildClaudeSkillShim) was retired on 2026-09-23: Claude Code never loaded the
+// flat skills/pan-*.md shims it built (see the Claude skill-surface scenario test).
 
 // ─── E-3: translateThinkingDirective ────────────────────────────────────────
 

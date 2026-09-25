@@ -181,7 +181,7 @@ First run of the `/reality-check` dev skill (`.claude/commands/reality-check.md`
 | R8 | P3 | XS | 1 | Test: `package.json` has no `dependencies` key (also a release-gate line) | `tests/`, `scripts/release-check.js` | revert-prove by adding a dependency |  Done `2026-09-10` (79582dc) |
 | R9 | P7 | XS | 1 | `SERVER_INFO.version` read from the install's `package.json` (fallback to the current literal) | `pan-wizard-core/mcp/server.cjs`, `tests/pan-zcode-mcp.test.cjs` | `initialize` returns the package version on an install |  Done `2026-09-10` (ab50f06, 27945f2) |
 | R10 | P4 | S | 2 | Bundle freshness: release gate 8 fails if `dist/pan-agent-plugin/` exists and differs from the fresh build; `marketplace/README.md` says to build before a local Codex or Copilot install | `scripts/release-check.js`, `marketplace/README.md` | a stale `dist/` turns the gate red |  Done `2026-09-10` (fecb9d2) |
-| R11 | P7 | XS | 1 | Remove the stray `nul/` directory. Windows reserved name, so use the extended-path form from cmd: `rd /s /q \\?\D:\PanWizard\nul` | repository root | `git status` prints no warning | Open (user action) |
+| R11 | P7 | XS | 1 | Remove the stray `nul/` directory. Windows reserved name, so use the extended-path form from cmd: `rd /s /q \\?\D:\PanWizard\nul` | repository root | `git status` prints no warning | Done — verified gone `2026-09-22` (see the second addendum's corrections) |
 | R12 | P6 | XS | 1 | TROUBLESHOOTING precision (RC14), written by capability | `docs/TROUBLESHOOTING.md` | model-version-drift lint clean |  Done `2026-09-10` (2f36176) |
 | R13 | P5 | S | 2 | Copilot agent `model:` fallback lists for the model-pinned agents | `bin/install-lib.cjs` (`convertClaudeToCopilotAgent`), tests | live check on Copilot CLI at or above `1.0.83` before default-on |  Built `2026-09-10` (194565c), not wired — live probe pending Copilot CLI |
 | R14 | P4 | M | 4 | Antigravity: first test whether `agy plugin install` accepts the Claude plugin (Superpowers precedent); if yes, a marketplace entry; if no, the thin variant ADR-0045 deferred | `scripts/build-agent-plugin.js`, `harness/scenarios/live-gate-antigravity.json` | live gate passes |  Probe added `2026-09-10` (194565c) — pending `agy` |
@@ -213,3 +213,83 @@ All eight inherited entries hold. Added: **do not describe `.planning/` as unthr
 ### Sources read for this addendum (all `2026-09-10`)
 
 Claude Code: `code.claude.com/docs/en/model-config`, `/changelog`, `/sub-agents`, `/workflows`, `/plugins`, `/plugin-marketplaces`, `/hooks`, `/skills`; `raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md`. Anthropic pricing: `platform.claude.com/docs/en/about-claude/pricing`, `/models/overview`, `/about-claude/model-deprecations`. Codex: `github.com/openai/codex/releases`, `learn.chatgpt.com/docs/build-skills`, `/docs/hooks`, `/docs/extend/mcp`, `/docs/config-file/config-reference`, `developers.openai.com/plugins/build/plugins`. Gemini and Antigravity: `github.com/google-gemini/gemini-cli/releases` and PR `#29099`, `geminicli.com/docs/cli/trusted-folders/`, `/docs/hooks/`, `/docs/extensions/reference/`, `antigravity.google/docs/plugins/`, `/docs/cli/plugins/`, `/docs/models/`. OpenCode: `opencode.ai/docs/config/`, `/docs/mcp-servers/`, `/docs/agents/`, `/docs/skills/`, `raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/config/config.ts`, issue `anomalyco/opencode#3407`. Copilot: `github.com/github/copilot-cli/releases`, `docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-creating`, `/plugins-marketplace`, `/create-custom-agents-for-cli`, `/use-hooks`, `docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference`. Standards: `agent-plugins.org/specification`, `github.com/agentplugins/agent-plugins-spec` (`spec/1.0.0.md`, `schemas/1.0.0/*.json`, `MAINTAINERS.md`), `agentskills.io/specification`, `modelcontextprotocol.io/specification/latest` and `/2026-07-28/changelog`, `blog.modelcontextprotocol.io/posts/mcp-roadmap/`. Peers: GitHub releases API and READMEs for `github/spec-kit`, `bmad-code-org/BMAD-METHOD`, `open-gsd/gsd-core` (and the archived `gsd-build/get-shit-done`), `eyaltoledano/claude-task-master`, `obra/superpowers`, `Fission-AI/OpenSpec`, `ComposioHQ/agent-orchestrator`; `cursor.com/changelog`; `docs.devin.ai/desktop/changelog` and `/release-notes/overview`; Cline `CHANGELOG.md` and releases; `aider.chat/HISTORY.html`; `github.com/continuedev/continue`; `github.blog/changelog` (August and September 2026). Secondary-only material was excluded from every verdict; the peer agent's list of such claims is in the run transcript, not here.
+
+
+---
+
+## Addendum — reality check, `2026-09-22` (executed `2026-09-23`)
+
+Second run of the `/reality-check` dev skill, against `main` @ `371a76b` (`3.29.0`), reported to chat on `2026-09-22` without `--write`. Its queue, R25–R38, was executed on `2026-09-23` on branch `feat/reality-check-2026-09-22` (uncommitted at the time of writing; the user decides the commits). Every external fact the items encode was re-read from its primary source on `2026-09-23` — and two of the `2026-09-22` readings did not survive that re-read (corrections 3 and 4 below). The narrative is §10 of [ECOSYSTEM-REVIEW-2026-08.md](../ECOSYSTEM-REVIEW-2026-08.md). IDs continue the first addendum's numbering.
+
+### Corrections
+
+1. **The first addendum's baseline row "Rate table — every row matches the pricing page; `RATES_VERIFIED_AT` is today" was true for the Anthropic rows only.** The Gemini rows' cache reads were 2.5× their page (`0.25×` input where Google's context-caching price is `0.1×`), GPT-5.6 Terra's and Luna's cache writes were a fifth low (OpenAI now bills writes at `1.25×` input on its newer families), the bare `gpt-5.6` row carried a `$5/$30` no page listed, and Codex's documented default had no row. §9 of the August review repeats the claim ("the rate rows match the provider pricing page read today"); §10 records the correction there rather than editing the dated section.
+2. **R11 is done, not open.** The stray `nul/` directory is gone (checked `2026-09-22`).
+3. **RC29's "Google bills no per-token cache write, so `cache_write = input` is unsupported" is refuted in part.** Google Cloud's context-cache overview bills the tokens that create a cache "at the standard input token price"; the Gemini API pages list only cached-token and storage charges. So `cache_write = input` stands. What cannot be represented is the hourly storage charge, and the rows now say so.
+4. **The `2026-09-22` scout's GPT-6 prices and Codex default were wrong or stale.** Re-read from the pricing page's raw arrays on `2026-09-23`: GPT-6 Astra `$10/$50`, Sol `$2/$10`, Luna `$0.10/$0.50` (not `$20/$100`, `$4/$20`, `$0.20/$1.00`). GPT-6 Sol and Luna were released on `2026-09-22`, and Codex's configuration docs moved their default example from `gpt-5.6-sol` to `gpt-6-sol` the same day. Lesson kept in the skill's method notes: a scout's number is a lead until a second read of the raw page agrees.
+
+### Findings
+
+| # | Finding (verified `2026-09-22`, re-read `2026-09-23`) | Class |
+|---|---|---|
+| RC27 | Gemini CLI hooks never fired. PAN wrote `PostToolUse`, `SubagentStop` and `Stop` into `.gemini/settings.json`; Gemini's `HookEventName` enum has none of them and its registry skips unknown keys with a warning. Only the `SessionStart` update check ever ran | P1 WRONG |
+| RC28 | Claude Code `2.1.280` made Opus 5.5 the default on every plan; `resolveRate` priced it as Opus 5 (cache reads 2.5× high on the model PAN's inherit tier runs on) | P1 WRONG |
+| RC29 | Gemini and OpenAI rows never matched their pricing pages (correction 1) | P1 WRONG |
+| RC30 | `PROVIDER_MODELS.openai` held the literal tier names `'mid'` and `'fast'`; the Google tiers sat on the Gemini 2.5 family, which is limited to past users | P1 WRONG |
+| RC31 | `--unified-skills` left Claude Code with no command surface: the nested commands were swept and Claude does not read `.agents/skills/` | P1 WRONG |
+| RC32 | README called the focus-auto safety harness five-layer; the command defines six. Plus drift-prone inventory counts in README and COMPARISON | P1 WRONG (docs) |
+| RC33 | Release Gate 8 red locally on a stale `dist/pan-agent-plugin` | P2 |
+| RC34 | The calendar staleness rule (then 180 days) cannot see a default-model change | P3 |
+| RC35 | Nothing pinned emitted hook keys against a documented vocabulary, so tests generated from the installer's table agreed with the installer | P3 |
+| RC36 | The flat `.claude/skills/pan-*.md` shims (E-5, v2.10.0) were never loaded: Claude's loader reads `<skills>/<entry>/SKILL.md` only | P7 |
+| RC37 | Weakened README/COMPARISON claims: army gating, fresh context, the merge gate, the Codex install path, per-task commits and plan sizing, the reviewer model pin, undated "unique" and "pioneered", stale Windsurf lines | P6 |
+| RC38 | TROUBLESHOOTING lacked `--bare`, the gated task tools, `AGENTS.md` loading and the default-model change | P6 |
+| RC39 | Inherited status drift (correction 2) | P6 |
+| RC40 | **New, `2026-09-23`.** Copilot CLI also reads hooks from `.claude/settings.json` and `.claude/settings.local.json` (its hooks reference, and PascalCase names since `1.0.6`). In a project with both the Claude and Copilot runtimes installed, PAN's hooks may run twice under Copilot — once from each file. Unverified live | P2 |
+| RC41 | **New.** CLI-REFERENCE says the `AGENTS.md` rules section is "read natively by every runtime"; Gemini CLI reads `GEMINI.md` by default and PAN configures nothing else for it. Unverified against Gemini's context-file docs today | P6 |
+| RC42 | **New.** OpenCode is detected as the `openai` provider by its directory, so R28's `gpt-6-*` ids reach it as bare names; OpenCode's own model ids are `provider/model`. The placeholders were worse; the right OpenCode mapping is unverified | P5 |
+| RC43 | **New.** Codex skips hooks that are not managed until the user trusts them with `/hooks`, keyed on a hash of the hook definition (its hooks reference) — a reinstall that changes PAN's hook commands asks again. Not in TROUBLESHOOTING | P6 |
+| RC44 | **New.** The Claude plugin's `hooks/hooks.json` registers no stop guard, so a plugin install lacks P-1809's boundary protection that a loose install has | P4 |
+
+### Items
+
+| ID | Pri | Size | Pts | Title | Files | Gate / verify | Status |
+|---|---|---|---|---|---|---|---|
+| R25 | P1 | XS | 1 | `claude-opus-5-5` row with the `0.05×` cache multiplier | `cost.cjs`, `tests/cost.test.cjs` | dated and `[1m]` ids resolve to the 5.5 row | Done `2026-09-23` — revert-proven (dropping the row fails the default-models test) |
+| R26 | P1 | S | 2 | Gemini rows: cache read `0.1×`, writes at input, 3.x Flash rows | `cost.cjs`, tests | rows cite the page; test | Done `2026-09-23` — every Gemini row pinned at `0.1×`; storage documented as excluded |
+| R27 | P1 | S | 2 | OpenAI rows: Sol and the GPT-6 family; Terra/Luna writes; bare `gpt-5.6` | `cost.cjs`, tests | Codex default resolves exactly | Done `2026-09-23` — the bare id was kept as an alias of Sol (its model page says so) rather than retired |
+| R28 | P1 | S | 2 | Real model ids for the OpenAI and Google routing tiers | `core.cjs`, tests | no tier resolves to a tier name or an unpriced id | Done `2026-09-23` — revert-proven |
+| R29 | P1 | M | 4 | Gemini hook mapping and payload adaptation | `install-lib.cjs`, `install.js`, `hooks/pan-stop-guard.js`, tests, `docs/HOOKS.md` | fixture install; live gate on a Gemini machine | Done `2026-09-23` statically (upgrade and uninstall paths tested, one-shot marker revert-proven). **Live gate outstanding** — no Gemini CLI here |
+| R30 | P3 | S | 2 | Hook-vocabulary fixture test | `tests/fixtures/hook-vocabulary.json`, `tests/hook-vocabulary.test.cjs` | fails on the pre-fix Gemini keys | Done `2026-09-23` — revert-proven |
+| R31 | P3 | S | 2 | Documented-default-ids fixture test | `tests/fixtures/documented-default-models.json`, `tests/documented-default-models.test.cjs` | fails without the Opus 5.5 row | Done `2026-09-23` — revert-proven |
+| R32 | P1 | S | 2 | Claude copy of the unified skills; README and guide wording | `install.js`, tests, harness scenarios, docs | tier-0 assertion; discovery scenario when spend allowed | Done `2026-09-23` — tier-0 scenario `unified-skills-claude` added; the tier-1 discovery run still needs a cap |
+| R33 | P7 | S | 2 | Verify, then convert or remove the flat shims | `install.js`, `install-lib.cjs`, tests | manifest and uninstall paths updated | Done `2026-09-23` — verified dead from the 2.1.280 loader and the docs; removed, with upgrade and uninstall sweeps |
+| R34 | P6 | S | 2 | README and COMPARISON truth pass | `README.md`, `docs/COMPARISON.md` | doc-lint green; no FALSE row | Done `2026-09-23` — contract numbers (loop caps, plan sizing) and "five runtimes" kept; inventory counts removed |
+| R35 | P6 | XS | 1 | TROUBLESHOOTING entries; qualify the todo tool in exec-phase | `docs/TROUBLESHOOTING.md`, `commands/pan/exec-phase.md` | model-version lint green | Done `2026-09-23` |
+| R36 | P6 | XS | 1 | Addendum corrections | this file | — | Done `2026-09-23` (this addendum) |
+| R37 | P7 | XS | 1 | Rebuild `dist/pan-agent-plugin` | `dist/` | Gate 8 green | Done `2026-09-23` |
+| R38 | P2 | XS | 1 | Tighten the staleness rule | `cost.cjs`, `docs/CLI-REFERENCE.md` | — | Done `2026-09-23` — sixty days; R31's fixture carries the default-change case |
+| R39 | P2 | S | 2 | Duplicate hooks when Claude and Copilot share a project (RC40): measure on a Copilot machine, then dedupe (skip the Copilot file's hooks when `.claude/settings.json` carries PAN's, or the reverse) | `bin/install.js`, `hooks/` | a Copilot session in a two-runtime project fires each PAN hook once | Open — needs a Copilot CLI |
+| R40 | P6 | XS | 1 | Verify Gemini's context-file names, then fix CLI-REFERENCE's "read natively by every runtime" (RC41) | `docs/CLI-REFERENCE.md`, maybe the installer | Gemini docs cited | Open |
+| R41 | P5 | S | 2 | OpenCode model ids for routing (RC42): read OpenCode's model-id docs and map the tiers to `provider/model` for the OpenCode directory | `core.cjs`, tests | an OpenCode project resolves to a documented id | Open |
+| R42 | P6 | XS | 1 | TROUBLESHOOTING: Codex's per-hash hook trust (RC43) | `docs/TROUBLESHOOTING.md` | — | Open |
+| R43 | P4 | S | 2 | Stop guard in the Claude plugin's hooks (RC44) | `scripts/build-plugin.js`, tests | the built plugin registers the guard on `Stop` | Open |
+| R44 | P5 | M | 4 | A Gemini context monitor from the transcript's per-message token counts (Gemini records `tokens.input` per message in its JSONL session file) and a sourced context-window table | `hooks/`, `bin/install-lib.cjs` | live Gemini session shows a warning near the limit | Open — needs a Gemini CLI to verify |
+
+### Session queue (continues from S8)
+
+| Session | Items | Pts | Theme | Exit criterion |
+|---|---|---|---|---|
+| **S9** | R25, R26, R27, R28, R31, R36, R38 | 11 | Truth on today's defaults | **Done `2026-09-23`.** Every documented default prices at an exact row; no routing tier is a placeholder |
+| **S10** | R29, R30, R32, R33 | 10 | Hooks and the skills surface | **Done `2026-09-23` statically.** Gemini writes only its own event names; Claude has commands under unified skills; the shims are gone |
+| **S11** | R34, R35, R37 | 4 | Docs and the bundle | **Done `2026-09-23`** |
+| **S12** | R40, R42, R43, then R41 | 6 | Small follow-ups found while executing S9–S11 | the four doc and plugin gaps closed |
+| Needs machines | R39, R44, the R29 live gate | — | Copilot and Gemini CLIs | run where the CLIs exist |
+
+### What not to do — re-affirmed
+
+All inherited entries hold. One addition, from RC27 and RC35: **do not derive a runtime-integration test from the installer's own table alone** — pin it against the runtime's documented vocabulary as well, or the test agrees with the defect.
+
+### Sources read (all `2026-09-23` unless noted)
+
+Anthropic: `platform.claude.com/docs/en/about-claude/pricing` (raw table), `/docs/en/models/overview`; `code.claude.com/docs/en/model-config`, `/hooks`, `/skills`, `/plugins-reference`, `/claude-directory`, `/headless`, `/workflows`; the Claude Code `2.1.280` binary's skill loader. OpenAI: `developers.openai.com/api/docs/pricing` (embedded arrays, Standard tier), `/api/docs/models/gpt-5.6`, `/api/docs/changelog`; `learn.chatgpt.com/docs/config-file/config-basic`, `/config-file/config-sample`, `/agent-configuration/subagents`, `/docs/hooks`; `openai/codex` `codex-rs/config/src/hook_config.rs`, `codex-rs/hooks/src/schema.rs` @ `c44deff7`. Google: `ai.google.dev/gemini-api/docs/pricing`, `/models`, `/deprecations`, `/generate-content/caching`, `/billing`; `docs.cloud.google.com/gemini-enterprise-agent-platform/models/context-cache/context-cache-overview`; `google-gemini/gemini-cli` `packages/core/src/hooks/{types,hookRegistry,hookRunner}.ts`, `packages/core/src/core/client.ts`, `packages/cli/src/config/settingsSchema.ts` @ `62364cb2`; `geminicli.com/docs/hooks/`, `/docs/hooks/reference`, `/docs/cli/skills/`. GitHub: `docs.github.com/en/copilot/reference/hooks-reference`, `github/copilot-cli` `changelog.md`. Agent Skills: `agentskills.io/specification`. Read `2026-09-22`: the Copilot `1.0.85` release body, `openai/codex` `core-plugins/src/marketplace.rs`, Antigravity's plugins page.

@@ -107,7 +107,7 @@ function validateRuntimeInstall(cwd, configDir, runtime) {
         }
       }
     }
-    // Copilot/Gemini statusLine
+    // statusLine (Claude, Copilot; PAN writes none for Gemini since 2026-09-23)
     if (settings.statusLine && settings.statusLine.command) {
       hookCommands.push(settings.statusLine.command);
     }

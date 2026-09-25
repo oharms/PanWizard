@@ -5,6 +5,201 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — the default Claude model was priced as its predecessor
+
+Claude Code `2.1.280` (`2026-09-22`) made Claude Opus 5.5 (`claude-opus-5-5`) the
+default model on every plan and on the Anthropic API, Bedrock and Google Cloud.
+PAN's `quality` and `balanced` profiles run every agent on the session's model, so
+from that day almost every PAN agent ran on it — and the rate table had no row
+for it. `resolveRate` priced it through the family prefix as Claude Opus 5: cache
+reads at `$0.50` where the pricing page says `$0.20` (Opus 5.5's hits bill at
+`0.05×` input, a third cache-read multiplier beside Fable 5.1's and Mythos 5.1's
+`0.025×`), and input, output and cache writes a quarter high. The row is added
+from the pricing page read `2026-09-23`, with a test that dated and `[1m]`-suffixed
+ids land on it rather than on the shorter Opus 5 family. The `reasoning` tier
+fallback now tracks Opus 5.5 and the `mid` fallback Sonnet 5, the models the
+`inherit` tier and the `sonnet` alias resolve to on the Anthropic API.
+
+### Fixed — the Gemini and OpenAI rows had never matched their pricing pages
+
+The `2026-09-10` rate verification covered the Anthropic rows only, while
+`RATES_VERIFIED_AT` vouched for the whole table. Read against each provider's page
+on `2026-09-23`:
+
+- **Gemini cache reads were 2.5× high on every row.** PAN carried `0.25×` input;
+  Google's context-caching price is `0.1×` input on every model. Cache creation
+  bills at the standard input rate (Google Cloud's context-cache documentation),
+  so `cache_write` stays at the input rate; the hourly cache *storage* charge cannot
+  be expressed per token and is documented as excluded. Rows added for the Gemini
+  3.x Flash family (3.8, 3.7, 3.6, 3.5 Flash, 3.5 and 3.1 Flash-Lite, 3 Flash
+  preview); the 3.6–3.8 prices are marked as running through `2026-12-31`, when the
+  page says they double.
+- **OpenAI now bills cache writes on its newer families.** GPT-5.6 and GPT-6 cache
+  writes bill at `1.25×` input in place of the input rate; the table said "no
+  separate write charge" for every row, so GPT-5.6 Terra and Luna writes were a
+  fifth low. GPT-5.5 still charges none. Rows added for GPT-6 Astra, Sol and Luna,
+  GPT-5.6 Sol and GPT-5.6 Cyber. The bare `gpt-5.6` id is an alias that routes to
+  GPT-5.6 Sol (its model page), so it now carries Sol's row instead of a `$5/$30`
+  price no page listed. Codex's documented default, `gpt-6-sol`, had no row at all.
+
+`RATES_VERIFIED_AT` is `2026-09-23`, and its comment now says it may move only when
+every provider's rows were read that day.
+
+### Fixed — model routing named models that do not exist
+
+`PROVIDER_MODELS.openai` mapped the `mid` and `fast` tiers to the literal strings
+`'mid'` and `'fast'`, so on a `budget`-profile project detected as OpenAI (Codex,
+and OpenCode by its directory) `resolve-model` told the orchestrator to spawn a
+model called `mid`. The tiers now map to `gpt-6-sol` and `gpt-6-luna`, the pair
+Codex's subagent documentation recommends. The Google tiers moved from the Gemini
+2.5 family — not deprecated, but limited to users who have used it before, so a new
+project may not reach it — to `gemini-3.8-flash` and `gemini-3.5-flash-lite`, the
+newest stable Flash and Flash-Lite. A test now requires every provider tier to
+resolve to `inherit`, a Claude Code alias (on the Anthropic and default providers
+only) or an id with its own rate row.
+
+### Fixed — on Gemini CLI, every PAN hook but the update check had never run
+
+From v3.4 the installer wrote the same Claude Code event names into
+`.gemini/settings.json` that it writes into `.claude/settings.json`: `PostToolUse`
+for the context monitor, `SubagentStop` for the cost and trace loggers, `Stop` for
+the auto-advance stop guard. Gemini CLI's event vocabulary is its own
+(`HookEventName` in gemini-cli's `packages/core/src/hooks/types.ts`: `BeforeTool`,
+`AfterTool`, `BeforeAgent`, `AfterAgent`, `SessionStart`, `SessionEnd`,
+`PreCompress`, `BeforeModel`, `AfterModel`, `BeforeToolSelection`, `Notification`),
+and its hook registry skips any other key with an "Invalid hook event name"
+warning. So only the `SessionStart` update check ever ran on Gemini, and Gemini
+raised a warning for each of the other three whenever it loaded the settings. The tests passed throughout: they were
+generated from the installer's own table, so they agreed with it.
+
+Gemini now gets what it can run, in its own names. The stop guard registers on
+`AfterAgent`, Gemini's end-of-turn event, which re-prompts the agent with the
+reason on a `{"decision": "block"}` exactly as Claude's `Stop` does. Gemini sets
+`stop_hook_active` only for a continuation the block started directly, not after
+one that used tools, so on `AfterAgent` the guard keeps its one-shot promise with a
+marker per session, project and target phase in the per-user `0700` hook directory
+(no safe directory or no session id means no block, as with every other
+uncertainty). The context monitor, the cost logger and the trace logger are no
+longer registered on Gemini: no Gemini hook payload or setting carries
+context-window usage, Gemini has no subagent-completion event, and every hook
+receives the main session's transcript. The installer says so instead of printing
+"Configured". The `statusLine` block PAN wrote into Gemini settings is gone too —
+Gemini CLI has no statusline command. Reinstalling removes the dead keys and the
+statusline block from an existing `.gemini/settings.json`, leaving the user's own
+hooks alone; uninstall now strips PAN's scripts from every event key.
+
+The installer's Claude and Gemini hook blocks are now one writer driven by
+`HOOK_EVENT_MAP`, which gained a `stop` slot (`Stop` on Claude, `AfterAgent` on
+Gemini) and carries `null` where a runtime has nothing for a hook to run on.
+
+### Added — a hook-vocabulary test
+
+`tests/fixtures/hook-vocabulary.json` records each runtime's documented hook event
+names with its primary source and read date: Claude Code's hooks reference, Gemini
+CLI's `HookEventName` enum, Codex's hooks reference and `hook_config.rs`, and
+Copilot CLI's hooks reference with its PascalCase aliases.
+`tests/hook-vocabulary.test.cjs` fails when `HOOK_EVENT_MAP`, a real five-runtime
+install, the Claude plugin or the Agent Plugins bundle emits an event key the
+runtime does not document. It also checks that Codex's `hooks.json` carries no
+top-level key Codex rejects (it parses with `deny_unknown_fields`) and that
+Copilot's file is the version-1 schema. Restoring the pre-fix Gemini names turns
+it red.
+
+### Fixed — a `--unified-skills` install left Claude Code with no PAN commands
+
+The unified install sweeps each runtime's own command surface and writes the
+compiled skills to `.agents/skills/`. Codex, Gemini CLI, OpenCode, Copilot CLI and
+Antigravity CLI read that tree; Claude Code does not — its skills documentation
+lists `.claude/skills/<name>/SKILL.md` locations, plugin and synced skills and the
+legacy `.claude/commands/`, and no `.agents/` location. So after a unified install
+Claude had no PAN commands at all, while the installer printed "run
+`/pan:new-project`". The installer now copies each compiled skill, byte-identical,
+into `.claude/skills/<name>/SKILL.md`, tracks the copies in the manifest, removes
+them on uninstall and when a later install drops the flag, and prints
+`/pan-new-project`. Gemini CLI has no per-skill slash command, so its unified
+closing message now says to ask for a new project instead. A tier-0 harness
+scenario (`unified-skills-claude`) checks the copy from the packed artifact.
+
+### Removed — the flat `.claude/skills/pan-*.md` shims
+
+Since v2.10.0 (E-5) every Claude install wrote one flat `skills/pan-<command>.md`
+file per command, to register the commands as skills. Claude Code never loaded
+them: it discovers a skill only as a `skills/<name>/SKILL.md` directory (its skills
+documentation lists no flat form, and the loader in `2.1.280` reads
+`<skills>/<entry>/SKILL.md` for each entry and drops the rest). The commands already
+reach the model the way skills do. The shims are no longer written (`buildClaudeSkillShim` is gone from
+`bin/install-lib.cjs`, and `tests/scenarios/claude-skill-surface.test.cjs` replaces
+the scenario that asserted the shims existed); reinstalling
+removes the ones earlier installs left, uninstall removes them, and user skills in
+the same directory are left alone. The upgrade sweep of stale native workflow
+scripts, which lived inside the retired step, now runs before the scripts are
+written, so `--unified-skills` installs get it too.
+
+### Fixed — `/pan:settings` branching and the uncommitted-mode recipe set keys PAN ignores
+
+`loadConfig` reads a top-level key before its nested `planning.*` / `git.*` form,
+so a nested key counts only while the top-level one is absent. A config that
+`config-ensure-section` creates carries every top-level key (`commit_docs`,
+`search_gitignored`, `branching_strategy` and the two branch templates), and one
+that `/pan:new-project` writes carries a top-level `commit_docs`. Yet
+`/pan:settings` told the agent to write the branching choice as
+`git.branching_strategy`, and the shipped `references/planning-config.md`, the
+README and the User Guide documented the nested forms — including the
+uncommitted-mode recipe, `"planning": { "commit_docs": false, "search_gitignored":
+true }`. So a branching strategy picked in `/pan:settings` was ignored in every
+config `config-ensure-section` had created, and the recipe's `commit_docs: false`
+was ignored beside the top-level `commit_docs` every config carries (its
+`search_gitignored: true` too, in configs `config-ensure-section` created). Only
+the recipe's `.gitignore` step kept the docs out of commits, since `pan-tools
+commit` skips a gitignored `.planning/`. All of them now
+name the top-level keys, and the reference says when a nested form is ignored.
+
+### Changed — `models check` calls the rate table stale after sixty days
+
+The window was half a year, longer than the interval at which the lineup now
+moves: the default Claude model changed on every plan twelve days after the last
+verification. Sixty days is the cadence the ecosystem reviews settled on. The
+calendar cannot see a default change inside the window, so a new fixture test does
+that job: `tests/fixtures/documented-default-models.json` records the documented
+default models and alias targets of Claude Code and Codex with the page and date
+they were read (and why Gemini CLI, OpenCode and Copilot CLI document none), and `tests/documented-default-models.test.cjs` fails when one of them has no exact
+rate row.
+
+### Docs
+
+- README and COMPARISON truth pass: the `/pan:focus-auto` safety harness is no
+  longer counted (README said five layers, the command six), and the other
+  drift-prone inventory counts (layers, dimensions, modes, researchers, shards,
+  runtimes-with-a-feature) are gone. Claims that were
+  stronger than the code are qualified: the army is built and tested on Claude Code
+  but its command installs everywhere; fresh context per agent is native on Claude
+  Code and delegated elsewhere; the merge gate is code-enforced on the MCP path and
+  instruction-enforced on `/pan:army`; Codex commands install to `.agents/skills/`;
+  per-task commits and plan sizing are protocol rules; the reviewer-class model pin
+  applies on Claude Code only. Undated "unique position" and "pioneered" claims and
+  two stale Windsurf lines are gone from COMPARISON.
+- TROUBLESHOOTING gains entries for the new default Opus model (cost and usage),
+  headless `--bare` runs that load none of PAN, Claude Code's gated task-tracking
+  tools, and project rules that fail to load through `AGENTS.md`.
+- `/pan:exec-phase` no longer implies it depends on a todo tool, and `/pan:army`'s
+  budget line says which switch enforces which budget.
+- A full doc audit against the code, run before this release, corrected the rest:
+  the shipped `references/model-profiles.md` and INTERNALS still mapped the OpenAI
+  tiers to `mid`/`fast` and the Google tiers to Gemini 2.5; HOOKS, context-monitor,
+  FAQ, MIGRATION and `/pan:cost` now say which runtimes run the context monitor,
+  the cost logger and the trace logger (the context monitor never warns on Codex,
+  which has no PAN statusline to feed it), and `/pan:audit-deployment` expects the
+  new Gemini hook set and unified-skills layout; SECURITY-HARDENING describes the
+  OIDC trusted-publishing release instead of a stored npm token and a push to
+  `main`; DEVELOPMENT and ARCHITECTURE list the ninth release gate; README's
+  branching strategies no longer claim PAN merges (it never does); the stop guard
+  is dated v3.24 everywhere; `AGENTS.md` is no longer described as read natively
+  by every runtime (Claude Code loads it through the `CLAUDE.md` bridge; Gemini CLI
+  reads `GEMINI.md`); and `models check --raw` and `state load --raw` examples now
+  match what `--raw` prints.
+
 ## [3.29.0] - 2026-09-17
 
 ### Fixed — `commit` called "nothing to commit" a failed commit

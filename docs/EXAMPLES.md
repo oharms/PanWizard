@@ -78,7 +78,7 @@ file-by-file change descriptions, and dependency notes.
 /pan:exec-phase 1
 ```
 
-PAN reads the plan and groups independent tasks into parallel waves. Wave 1
+PAN reads the phase's plans and groups independent plans into parallel waves. Wave 1
 might create the project skeleton and database module simultaneously. Wave 2
 builds the CLI commands that depend on both. Each wave completes and is
 verified before the next begins.
@@ -122,7 +122,7 @@ Each phase builds on the verified output of the previous one.
 ```
 
 Once all three phases are verified, `/pan:milestone-done 0.1.0` archives the
-milestone's phase artifacts, tags the release (`v0.1.0`), and updates
+milestone's roadmap and requirements to `.planning/milestones/`, tags the release (`v0.1.0`), and updates
 `.planning/roadmap.md` to mark the milestone complete.
 
 ---
@@ -137,8 +137,8 @@ You have a Django web app and want to add a REST API layer.
 /pan:map-codebase
 ```
 
-PAN spawns parallel mapper agents that scan the repository, sharded by focus
-area. They
+PAN maps the repository — one agent for a small repo, parallel mappers sharded by focus
+area for a large one. They
 catalog models, views, URL patterns, middleware, settings, test structure,
 dependency versions, module relationships, and best practices. The output is
 a structured understanding of what already exists, stored so that subsequent
@@ -465,7 +465,7 @@ Created:
   .planning/config.json      -- default configuration
 
 Review the generated files. If anything needs adjustment, edit directly
-or run /pan:new-project to refine interactively.
+then use /pan:discuss-phase 1 to refine interactively.
 ```
 
 ### Continue with normal workflow

@@ -10,8 +10,8 @@
  *
  * Three derived targets:
  *   1. AGENTS.md — the universal, cross-runtime tools memory. PAN owns exactly
- *      the marker-fenced `<!-- BEGIN/END PAN WIZARD -->` section (every runtime,
- *      including Copilot/.github, reads AGENTS.md natively). User content
+ *      the marker-fenced `<!-- BEGIN/END PAN WIZARD -->` section (Codex, Copilot and
+ *      OpenCode read AGENTS.md natively; Claude via the CLAUDE.md bridge; Gemini reads GEMINI.md by default). User content
  *      outside the markers is preserved byte-for-byte.
  *   2. CLAUDE.md — the Claude bridge (`@AGENTS.md` import), regenerated only
  *      when the Claude runtime is installed here.
@@ -126,7 +126,7 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
   const targets = [];
   const warnings = [];
 
-  // 1. AGENTS.md — universal PAN section (all runtimes read it natively).
+  // 1. AGENTS.md — universal PAN section (Claude Code reads it through the bridge in step 2).
   {
     const p = path.join(cwd, 'AGENTS.md');
     const existing = safeReadFile(p);
