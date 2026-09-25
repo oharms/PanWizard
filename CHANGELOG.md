@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.30.0] - 2026-09-25
+
 ### Fixed — the default Claude model was priced as its predecessor
 
 Claude Code `2.1.280` (`2026-09-22`) made Claude Opus 5.5 (`claude-opus-5-5`) the
