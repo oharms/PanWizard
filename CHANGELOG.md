@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.31.0] - 2026-09-26
+
 ### Fixed — upgrades backed up untouched files as "locally modified"
 
 The installer compared each installed file with the SHA-256 its manifest recorded
