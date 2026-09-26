@@ -2,7 +2,7 @@
   "id": "live-gate-codex",
   "tier": 0,
   "description": "Register this checkout's repo-scoped marketplace with Codex CLI and confirm it is listed.",
-  "why": "Plan item 4d/4f's gate for Codex. The marketplace shape and CLI commands come from the Codex plugin reference (read 2026-09-10), unexercised live. SKIPPED with reason when the CLI is absent.",
+  "why": "Plan item 4d/4f's gate for Codex. The marketplace shape and CLI commands come from the Codex plugin reference (read 2026-09-10); first run live 2026-09-26 on Codex CLI 0.157.1, where both CLI steps passed. SKIPPED with reason when the CLI is absent.",
   "seed": "empty",
   "install": null,
   "requires": { "cli": "codex" },

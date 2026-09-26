@@ -129,16 +129,42 @@ describe('Codex: install structure', () => {
 
   // Codex hooks (2026-06): .codex/hooks.json with Claude-compatible
   // PascalCase events; hook scripts in .codex/hooks/.
-  test('hooks.json registers all four PAN hooks', () => {
+  test('hooks.json registers all five PAN hooks', () => {
     const hooksJsonPath = path.join(tempDir, '.codex', 'hooks.json');
     assert.ok(fs.existsSync(hooksJsonPath), '.codex/hooks.json should exist');
     const config = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8'));
     const flat = JSON.stringify(config.hooks);
-    for (const marker of ['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger']) {
+    for (const marker of ['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard']) {
       assert.ok(flat.includes(marker), `hooks.json should register ${marker}`);
     }
     assert.ok(config.hooks.SessionStart, 'SessionStart (PascalCase) should exist');
     assert.ok(config.hooks.SubagentStop, 'SubagentStop (PascalCase) should exist');
+  });
+
+  // M14: the auto-advance stop guard on Codex's Stop event. It must be
+  // synchronous — an async handler cannot block, so the guard would be inert.
+  // M10: pan-state-reinject.js on SessionStart narrowed to `source: "compact"` —
+  // the only Codex event after a compaction whose additionalContext reaches the
+  // model. Synchronous: an async handler's output is deferred to the next turn.
+  test('hooks.json registers pan-state-reinject.js on SessionStart with the compact matcher, synchronously', () => {
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, '.codex', 'hooks.json'), 'utf8'));
+    const groups = config.hooks.SessionStart.filter(g => (g.hooks || []).some(h => /pan-state-reinject\.js/.test(h.command)));
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].matcher, 'compact');
+    assert.equal(groups[0].hooks[0].async, undefined, 'its additionalContext must land in the continuation');
+    const updateGroup = config.hooks.SessionStart.find(g => (g.hooks || []).some(h => /pan-check-update/.test(h.command)));
+    assert.equal(updateGroup.matcher, undefined, 'the update check still runs on every start');
+    assert.ok(fs.existsSync(path.join(tempDir, '.codex', 'hooks', 'pan-state-reinject.js')), 'the script it runs is installed');
+  });
+
+  test('hooks.json registers the stop guard on Stop, synchronously', () => {
+    const config = JSON.parse(fs.readFileSync(path.join(tempDir, '.codex', 'hooks.json'), 'utf8'));
+    assert.ok(Array.isArray(config.hooks.Stop), 'Stop should exist');
+    const handlers = config.hooks.Stop.flatMap(g => g.hooks || []);
+    assert.equal(handlers.length, 1);
+    assert.match(handlers[0].command, /pan-stop-guard\.js/);
+    assert.equal(handlers[0].async, undefined, 'the stop guard decides whether the turn ends — never async');
+    assert.ok(fs.existsSync(path.join(tempDir, '.codex', 'hooks', 'pan-stop-guard.js')), 'the script it runs is installed');
   });
 
   // Codex `async` handlers (0.148+) run off the critical path and cannot inject

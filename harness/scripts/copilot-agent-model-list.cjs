@@ -1,8 +1,11 @@
 'use strict';
 // R13 probe helper (harness `sh` step): write a Copilot custom agent whose frontmatter
-// carries a `model:` list and `model-policy: prefer`, the shape PAN would emit for its
-// model-pinned agents. The ids below are candidates, not verified: the live gate exists
-// to find out whether Copilot accepts them. Usage: node copilot-agent-model-list.cjs <ws>
+// carries a `models:` priority list and `model-policy: preferred`, the shape PAN would
+// emit for its model-pinned agents (the list sat under the singular `model:` until
+// 2026-09-26; Copilot's reference names the list field `models`). The ids are Copilot's own (dotted), as its /models list
+// names them (read 2026-09-26, CLI 1.0.88). `model-policy: prefer`, which this probe
+// used until then, made Copilot refuse to load the agent: 'Expected "preferred" or
+// "required"'. Usage: node copilot-agent-model-list.cjs <ws>
 const fs = require('fs');
 const path = require('path');
 const ws = process.argv[2];
@@ -13,10 +16,10 @@ const agent = [
   '---',
   'name: pan-model-probe',
   'description: PAN harness probe - a custom agent with a model fallback list (R13).',
-  'model:',
-  '  - claude-fable-5.1',
+  'models:',
+  '  - claude-opus-5.5',
   '  - claude-opus-5',
-  'model-policy: prefer',
+  'model-policy: preferred',
   '---',
   'Reply with the single word PROBE.',
   '',

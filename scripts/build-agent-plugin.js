@@ -150,6 +150,8 @@ function hookCommands(rootVar) {
     contextMonitorCommand: cmd('pan-context-monitor.js'),
     costLoggerCommand: cmd('pan-cost-logger.js'),
     traceLoggerCommand: cmd('pan-trace-logger.js'),
+    stopGuardCommand: cmd('pan-stop-guard.js'),
+    stateReinjectCommand: cmd('pan-state-reinject.js'),
   };
 }
 
@@ -166,6 +168,8 @@ function emitCopilotNamespace(agentsSrc, nsDir) {
     content = lib.rewriteAgentReferenceCopy(content, TOKEN_PREFIX);
     content = lib.stripThinkingFrontmatter(content, 'copilot');
     content = lib.convertClaudeToCopilotAgent(content);
+    // The agent carries the root token, so it carries what the token means.
+    if (content.includes(TOKEN_PREFIX)) content = content.replace(/\s*$/, '\n\n' + lib.agentPluginSkillAdapterNote('agent') + '\n');
     fs.writeFileSync(path.join(agentsDest, f.replace(/\.md$/, '.agent.md')), content);
     agents++;
   }

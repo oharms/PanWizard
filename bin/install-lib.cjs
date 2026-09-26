@@ -677,7 +677,7 @@ function buildAgentPluginMcpConfig() {
  * @param {{updateCheckCommand?:string, contextMonitorCommand?:string, costLoggerCommand?:string, traceLoggerCommand?:string}} commands
  */
 function buildCopilotPluginHooksConfig(commands) {
-  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand } = commands || {};
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand } = commands || {};
   const hooks = {};
   if (updateCheckCommand) hooks.SessionStart = [{ type: 'command', command: updateCheckCommand }];
   if (contextMonitorCommand) hooks.PostToolUse = [{ type: 'command', command: contextMonitorCommand }];
@@ -685,6 +685,8 @@ function buildCopilotPluginHooksConfig(commands) {
   if (costLoggerCommand) subagentStop.push({ type: 'command', command: costLoggerCommand });
   if (traceLoggerCommand) subagentStop.push({ type: 'command', command: traceLoggerCommand });
   if (subagentStop.length > 0) hooks.SubagentStop = subagentStop;
+  // Copilot's documented PascalCase alias for agentStop (M14).
+  if (stopGuardCommand) hooks.Stop = [{ type: 'command', command: stopGuardCommand }];
   return { hooks };
 }
 
@@ -692,9 +694,15 @@ function buildCopilotPluginHooksConfig(commands) {
 const COPILOT_PLUGIN_NAMESPACE = 'com.github.copilot';
 
 /** The adapter paragraph appended to every bundled skill (ADR-0045 D3). */
-function agentPluginSkillAdapterNote() {
+function agentPluginSkillAdapterNote(kind = 'skill') {
+  // An agent file (<root>/com.github.copilot/agents/<name>.agent.md) sits as deep as a
+  // skill (<root>/skills/<name>/SKILL.md), so the same derivation holds; until
+  // 2026-09-26 only the skills carried the note, and the bundled Copilot agents held
+  // the token with nothing to say what it meant (3.28.0 review, LOW).
+  const what = kind === 'agent' ? 'agent' : 'skill';
+  const file = kind === 'agent' ? 'this agent file' : 'this SKILL.md';
   return `Plugin bundle (Agent Plugins format):
-- \`${AGENT_PLUGIN_ROOT_TOKEN}\` in this skill is the directory that holds this plugin's \`plugin.json\` — two levels above this SKILL.md. Your runtime reports this skill's file location when it loads it; derive the root from that path and substitute it wherever \`${AGENT_PLUGIN_ROOT_TOKEN}\` appears before running a command.
+- \`${AGENT_PLUGIN_ROOT_TOKEN}\` in this ${what} is the directory that holds this plugin's \`plugin.json\` — two levels above ${file}. Your runtime reports this ${what}'s file location when it loads it; derive the root from that path and substitute it wherever \`${AGENT_PLUGIN_ROOT_TOKEN}\` appears before running a command.
 - Prefer the \`pan\` MCP server's tools when your runtime has connected this plugin's \`mcp.json\`, and pass the project's absolute path as each tool's \`cwd\` argument — the server is started in the plugin's directory, which is never the project. Otherwise run \`node ${AGENT_PLUGIN_ROOT_TOKEN}/pan-wizard-core/bin/pan-tools.cjs <verb>\` from the project root.
 - \`${AGENT_PLUGIN_RUNTIME_HOME_TOKEN}\` is your runtime's user-level configuration directory (for example \`~/.claude\`, \`~/.codex\`, \`~/.gemini\`, \`~/.config/opencode\`, \`~/.copilot\`) and \`${AGENT_PLUGIN_RUNTIME_DIR_TOKEN}\` its project-level directory (\`.claude\`, \`.codex\`, \`.gemini\`, \`.opencode\`, \`.github\`). Substitute the one that applies to the runtime you are.`;
 }
@@ -742,13 +750,29 @@ function convertClaudeCommandToCopilotSkill(content, skillName) {
 /**
  * @param {string} content - Claude agent markdown
  * @param {object} [opts]
- * @param {Record<string,string[]>} [opts.modelLists] - Copilot CLI (>= 1.0.83) accepts a
- *   `model:` LIST tried in order plus `model-policy`. When a PAN agent pins `model:
- *   <alias>` and this map has an entry for the alias, the Copilot agent gets that list
- *   and `model-policy: prefer` (degrade gracefully; `required` would refuse to run).
- *   NOT wired into the installer yet: the Copilot model ids must be verified on a live
- *   CLI first (ADR-0028's rule; harness/scenarios/live-gate-copilot.json carries the
- *   probe). Reality check RC15 / plan item R13, 2026-09-10.
+ * Every agent carries `include-custom-instructions: true` (market-ideas M15). Copilot
+ * does not give a custom agent spawned as a subagent the repository's instruction
+ * files — `copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md` — unless its frontmatter
+ * opts in (Copilot CLI reference, "Repository custom instructions for subagents";
+ * default false). PAN's rules section lives in AGENTS.md, and PAN's agents run as
+ * subagents. Measured 2026-09-26 on Copilot CLI 1.0.88: with an AGENTS.md canary, a
+ * subagent with the field answered it and the same agent without the field answered
+ * that it had none.
+ *
+ * @param {Record<string,string[]>} [opts.modelLists] - Copilot CLI accepts a priority
+ *   list under `models:` ("the runtime uses the first model the user's plan can
+ *   access; if none resolve, dispatch falls back to the session's model") plus
+ *   `model-policy`. When a PAN agent pins `model: <alias>` and this map has an entry
+ *   for the alias, the Copilot agent gets that list and `model-policy: preferred`
+ *   (degrade gracefully; `required` would refuse to run). Until 2026-09-26 the list
+ *   was written under the singular `model:` and the policy as `prefer`; the first live
+ *   probe (Copilot CLI 1.0.88) refused to load that agent — `model-policy: Expected
+ *   "preferred" or "required"` — and the reference names the list field `models`.
+ *   Copilot's model ids are dotted (`claude-opus-5.5`; its /models list, same day). A
+ *   session on `auto` — every Copilot Free session — ignores the list, so the list's
+ *   fall-through is still unmeasured; NOT wired into the installer until it is, on a
+ *   paid plan (harness/scenarios/copilot-agent-frontmatter.json). Reality check RC15 /
+ *   plan item R13, 2026-09-10.
  */
 function convertClaudeToCopilotAgent(content, opts = {}) {
   const converted = convertClaudeToCopilotMarkdown(content);
@@ -806,10 +830,10 @@ function convertClaudeToCopilotAgent(content, opts = {}) {
     const pinned = extractFrontmatterField(frontmatter, 'model');
     const list = pinned && Array.isArray(lists[pinned]) ? lists[pinned].filter(Boolean) : null;
     if (list && list.length) {
-      modelYaml = `\nmodel:\n${list.map(m => `  - ${yamlQuote(m)}`).join('\n')}\nmodel-policy: prefer`;
+      modelYaml = `\nmodels:\n${list.map(m => `  - ${yamlQuote(m)}`).join('\n')}\nmodel-policy: preferred`;
     }
   }
-  return `---\nname: ${yamlQuote(name)}\ndescription: ${yamlQuote(description)}${toolsYaml}${modelYaml}\n---\n${body}`;
+  return `---\nname: ${yamlQuote(name)}\ndescription: ${yamlQuote(description)}${toolsYaml}\ninclude-custom-instructions: true${modelYaml}\n---\n${body}`;
 }
 
 // ─── Attribution Processing ─────────────────────────────────────────────────
@@ -1021,7 +1045,7 @@ function stripThinkingFrontmatter(content, runtime) {
  * @returns {Object} A `.github/hooks/pan.json` config object
  */
 function buildCopilotHooksConfig(commands) {
-  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand } = commands || {};
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand } = commands || {};
   const config = { version: 1, hooks: {} };
   if (updateCheckCommand) {
     config.hooks.sessionStart = [{ type: 'command', command: updateCheckCommand }];
@@ -1036,6 +1060,12 @@ function buildCopilotHooksConfig(commands) {
   if (traceLoggerCommand) subagentStop.push({ type: 'command', command: traceLoggerCommand });
   if (subagentStop.length > 0) {
     config.hooks.subagentStop = subagentStop;
+  }
+  // agentStop: the auto-advance stop guard (M14). Copilot blocks a stop only on
+  // the JSON `decision: "block"` output, and ends the turn anyway after eight
+  // consecutive blocks; the guard blocks once per stop chain.
+  if (stopGuardCommand) {
+    config.hooks.agentStop = [{ type: 'command', command: stopGuardCommand }];
   }
   return config;
 }
@@ -1066,20 +1096,38 @@ function buildCopilotHooksConfig(commands) {
  *   - copilot: `.github/hooks/pan.json`, camelCase (docs.github.com hooks reference).
  *   - opencode: no hook system.
  *
- * `stop` is where the auto-advance stop guard registers (P-1809): Claude's Stop
- * and Gemini's AfterAgent, both of which re-prompt the agent when a hook blocks.
- * Codex and Copilot have a stop event too; PAN does not register the guard there yet.
+ * `stop` is where the auto-advance stop guard registers (P-1809): Claude's Stop,
+ * Gemini's AfterAgent, Codex's Stop and Copilot's agentStop — each re-prompts the
+ * agent when a hook prints `{"decision":"block","reason":…}`, and each hands the
+ * hook `stop_hook_active` (M14, 2026-09-26: codex-rs hooks/schema
+ * stop.command.input.schema.json; Copilot hooks-reference, where the field stays
+ * snake_case in the camelCase agentStop payload). Copilot does not block on exit
+ * code 2 for agentStop — only the JSON form, which is what the guard prints.
+ *
+ * `compact` is where the state re-injection hook registers (M10): SessionStart with
+ * the `compact` matcher (HOOK_SLOT_MATCHERS), the one event after a compaction whose
+ * `hookSpecificOutput.additionalContext` reaches the model on Claude Code and Codex —
+ * both hosts' PostCompact discard it (hooks references, read 2026-09-26). Gemini's
+ * PreCompress fires before the summary and Copilot's preCompact is notification-only,
+ * so neither gets it.
  */
 const HOOK_EVENT_MAP = Object.freeze({
-  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop' },
-  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent' },
-  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: null },
-  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: null },
+  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart' },
+  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null },
+  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart' },
+  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null },
   opencode: null,
 });
 
+/**
+ * The matcher a slot's registration carries, where the event alone is too broad.
+ * `compact` is SessionStart narrowed to the start that follows a compaction — the
+ * `source: "compact"` matcher value on Claude Code and Codex alike.
+ */
+const HOOK_SLOT_MATCHERS = Object.freeze({ compact: 'compact' });
+
 /** The hook scripts PAN registers in a Claude-shaped settings.json `hooks` block. */
-const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard']);
+const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard', 'pan-state-reinject']);
 
 /**
  * Remove, from every event array of a Claude-shaped `hooks` object except
@@ -1263,7 +1311,7 @@ function buildCodexMcpSnippet(serverPath, panToolsPath, projectRoot, serverName 
  * @returns {object} Merged config object to serialize back to hooks.json
  */
 function mergeCodexHooksConfig(existing, commands) {
-  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand } = commands || {};
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand } = commands || {};
   const config = (existing && typeof existing === 'object') ? existing : {};
   if (!config.hooks || typeof config.hooks !== 'object') config.hooks = {};
 
@@ -1276,6 +1324,10 @@ function mergeCodexHooksConfig(existing, commands) {
   //   - check-update spawns a detached child and prints nothing → async.
   //   - context-monitor returns `additionalContext` the model must see THIS
   //     turn → stays synchronous.
+  //   - stop-guard decides whether the turn may end (`decision: "block"`), which
+  //     an async handler cannot do → synchronous (M14).
+  //   - state-reinject returns `additionalContext` for the continuation after a
+  //     compaction → synchronous, and matched to `source: "compact"` (M10).
   // Codex-only: Claude Code and Copilot hook schemas were not checked for an
   // equivalent flag (plan item 2 gate) — do not copy this column into their
   // builders without reading their docs first.
@@ -1284,9 +1336,11 @@ function mergeCodexHooksConfig(existing, commands) {
     ['PostToolUse', contextMonitorCommand, 'pan-context-monitor', false],
     ['SubagentStop', costLoggerCommand, 'pan-cost-logger', true],
     ['SubagentStop', traceLoggerCommand, 'pan-trace-logger', true],
+    ['Stop', stopGuardCommand, 'pan-stop-guard', false],
+    ['SessionStart', stateReinjectCommand, 'pan-state-reinject', false, HOOK_SLOT_MATCHERS.compact],
   ];
 
-  for (const [event, command, marker, async] of wanted) {
+  for (const [event, command, marker, async, matcher] of wanted) {
     if (!command) continue;
     if (!Array.isArray(config.hooks[event])) config.hooks[event] = [];
     let existingHandler = null;
@@ -1306,7 +1360,7 @@ function mergeCodexHooksConfig(existing, commands) {
     }
     const handler = { type: 'command', command };
     if (async) handler.async = true;
-    config.hooks[event].push({ hooks: [handler] });
+    config.hooks[event].push({ ...(matcher ? { matcher } : {}), hooks: [handler] });
   }
   return config;
 }
@@ -1322,7 +1376,7 @@ function removeCodexPanHooks(existing) {
   for (const event of Object.keys(existing.hooks)) {
     if (!Array.isArray(existing.hooks[event])) continue;
     existing.hooks[event] = existing.hooks[event].filter(group =>
-      !(Array.isArray(group.hooks) && group.hooks.some(h => h.command && /pan-(check-update|context-monitor|cost-logger|trace-logger)/.test(h.command))));
+      !(Array.isArray(group.hooks) && group.hooks.some(h => h.command && /pan-(check-update|context-monitor|cost-logger|trace-logger|stop-guard|state-reinject)/.test(h.command))));
     if (existing.hooks[event].length === 0) delete existing.hooks[event];
   }
   if (Object.keys(existing.hooks).length === 0) delete existing.hooks;
@@ -1395,6 +1449,8 @@ function codexTrustNotice() {
     'installed pan-* agents) only loads once the project is trusted in Codex.',
     'If commands or agents seem missing, approve the project when Codex prompts,',
     'or set trust_level for this path in ~/.codex/config.toml.',
+    'Codex also skips new or changed hooks until you trust them: after installing',
+    'or upgrading PAN, run /hooks in Codex and trust the pan-* hooks.',
   ].join('\n');
 }
 
@@ -1688,20 +1744,26 @@ function buildPluginManifest(pkg) {
 }
 
 /**
- * Build the plugin hooks/hooks.json — PAN's four hooks registered with
- * ${CLAUDE_PLUGIN_ROOT}-anchored commands (the documented plugin-relative
- * path convention for hook configs).
+ * Build the plugin hooks/hooks.json — every hook a Claude settings.json install
+ * registers (PAN_SETTINGS_HOOKS), with ${CLAUDE_PLUGIN_ROOT}-anchored commands
+ * (the documented plugin-relative path convention for hook configs). The stop
+ * guard was missing until R43 (2026-09-26), so an autonomous chain run from the
+ * plugin could drop at a phase boundary with nothing to catch it.
  * @returns {object} hooks.json object
  */
 function buildPluginHooksConfig() {
-  const hook = (script) => ({
+  const hook = (script, matcher) => ({
+    ...(matcher ? { matcher } : {}),
     hooks: [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/${script}"` }],
   });
+  const events = HOOK_EVENT_MAP.claude;
   return {
     hooks: {
-      SessionStart: [hook('pan-check-update.js')],
-      PostToolUse: [hook('pan-context-monitor.js')],
-      SubagentStop: [hook('pan-cost-logger.js'), hook('pan-trace-logger.js')],
+      // compact shares SessionStart with the update check, narrowed by its matcher (M10).
+      [events.sessionStart]: [hook('pan-check-update.js'), hook('pan-state-reinject.js', HOOK_SLOT_MATCHERS.compact)],
+      [events.postToolUse]: [hook('pan-context-monitor.js')],
+      [events.subagentStop]: [hook('pan-cost-logger.js'), hook('pan-trace-logger.js')],
+      [events.stop]: [hook('pan-stop-guard.js')],
     },
   };
 }
@@ -2305,6 +2367,7 @@ module.exports = {
   // Copilot CLI hooks config (2026-06)
   buildCopilotHooksConfig,
   HOOK_EVENT_MAP,
+  HOOK_SLOT_MATCHERS,
   PAN_SETTINGS_HOOKS,
   stripPanHookEntries,
   mergeCodexHooksConfig,
@@ -2364,7 +2427,9 @@ function dirDigest(dir) {
   const crypto = require('crypto');
   const lines = [];
   const walk = (abs, rel) => {
-    const entries = fs.readdirSync(abs, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    // Code-unit order, not localeCompare: the digest compares builds across machines,
+    // and a locale-dependent sort could order the same tree two ways (3.28.0 review, LOW).
+    const entries = fs.readdirSync(abs, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const e of entries) {
       const childAbs = path.join(abs, e.name);
       const childRel = rel ? `${rel}/${e.name}` : e.name;
@@ -2376,3 +2441,34 @@ function dirDigest(dir) {
   return crypto.createHash('sha256').update(lines.join('\n')).digest('hex');
 }
 module.exports.dirDigest = dirDigest;
+
+/**
+ * Whether `buf` is the file a manifest hash was taken from, allowing for line
+ * endings. The manifest records sha256 over raw bytes, so a file git re-checked
+ * out with `core.autocrlf=true` — or one an editor saved with the other line
+ * ending — hashed as a user edit, and every upgrade backed it up to
+ * pan-local-patches/ as a "locally modified PAN file" with nothing to merge (the
+ * 3.30.0 upgrade sweep: 8 such files in three projects, 357 in one that commits
+ * `.claude/` to git). A file matches when its raw bytes, its all-LF form or its
+ * all-CRLF form hash to `expectedHash`, so existing manifests keep working
+ * whichever line ending they were written with. A buffer holding a NUL byte is
+ * treated as binary and compared raw only. Pure. `validateRuntimeInstall` in
+ * pan-wizard-core/bin/lib/verify-deploy.cjs carries the same rule (the installed
+ * core cannot require this file); tests/install-eol-hash.test.cjs pins both.
+ * @param {Buffer} buf
+ * @param {string|null|undefined} expectedHash - hex sha256 from the manifest
+ * @returns {boolean}
+ */
+function bytesMatchHashIgnoringEol(buf, expectedHash) {
+  if (!expectedHash) return false;
+  const crypto = require('crypto');
+  const sha = b => crypto.createHash('sha256').update(b).digest('hex');
+  if (sha(buf) === expectedHash) return true;
+  if (buf.includes(0)) return false;
+  // latin1 maps every byte to one char and back, so the round trip is lossless;
+  // no UTF-8 multi-byte sequence contains 0x0D or 0x0A.
+  const lf = buf.toString('latin1').replace(/\r\n/g, '\n');
+  if (sha(Buffer.from(lf, 'latin1')) === expectedHash) return true;
+  return sha(Buffer.from(lf.replace(/\n/g, '\r\n'), 'latin1')) === expectedHash;
+}
+module.exports.bytesMatchHashIgnoringEol = bytesMatchHashIgnoringEol;

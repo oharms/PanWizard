@@ -7,6 +7,254 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — upgrades backed up untouched files as "locally modified"
+
+The installer compared each installed file with the SHA-256 its manifest recorded
+over the raw bytes, so a file that differed only in line endings — git's
+`core.autocrlf=true` checkout of a committed `.claude/`, or an editor that saves
+CRLF — counted as a user edit, and every upgrade copied it to `pan-local-patches/`
+with nothing to merge. The 3.30.0 upgrade sweep found 8 such files in each of three
+projects and 357 in one. The installer and `pan-tools validate deployment` now
+accept a file whose raw, all-LF or all-CRLF form matches the recorded hash, so
+existing manifests keep working; a real edit is still caught. A file holding a NUL
+byte is compared raw.
+
+### Fixed — a managed `modelPricing` block was never read
+
+PAN parsed Claude Code's managed `modelPricing` setting as
+`{ "<modelId>": { inputCostPer1MTokens, outputCostPer1MTokens } }` and derived the
+cache rates. The documented shape (settings reference, read `2026-09-26`) is
+`{ multiplier?, overrides?: { "<modelId>": { input, output, cacheRead, cacheWrite } } }`,
+so a real policy file matched nothing and PAN priced at list price. The parser now
+reads the documented shape: override rows carry all four rates (a row missing one,
+or holding one outside 0–10000, is dropped, as Claude Code drops it), and
+`multiplier` — above 0 and at most 10, a discount below 1 and a chargeback markup
+above — scales the override rows **and** the built-in rates of every model no row
+covers, as Claude Code applies it. A project's own `cost.rates` stay exactly as
+written. `pan-tools models check` reports the multiplier it applies, and one it
+had to ignore (market-ideas queue M2).
+
+### Fixed — one-hour cache writes were priced as five-minute ones
+
+Claude Code transcripts record, per turn, how many cache-write tokens went to the
+five-minute and to the one-hour cache; one-hour writes bill at 2× base input
+against 1.25×. The ledger kept only the total, so every write was priced at the
+five-minute rate. The cost-logger hook and `cost rebuild` now record
+`cache_write_1h_tokens` and `cache_write_5m_tokens` when the transcript carries
+the split (rows without it are unchanged), every Anthropic rate row gains its
+one-hour rate from the pricing page, and a row's one-hour share is billed at it.
+`context-budget` and `hygiene scan` count only five-minute writes as re-writes
+after an idle gap — a one-hour write outlives the gap — and their TTL advice says
+whether its numbers were measured or inferred (market-ideas queue M13).
+
+### Added — the stop guard on Codex, Copilot CLI and the Claude plugin
+
+The auto-advance stop guard now registers on Codex's `Stop` (synchronous — an
+async handler cannot block) and Copilot CLI's `agentStop`; both hosts pass
+`stop_hook_active` and turn `{"decision":"block","reason":…}` into a continuation
+prompt, as Claude Code does. The Claude plugin's `hooks/hooks.json` carried every
+settings hook but this one; it now registers the guard too (a test holds it to that list), and the Agent
+Plugins bundle registers it for Codex and Copilot too (market-ideas queue M14,
+reality check R43). Confirmed live on Copilot CLI 1.0.88: the guard blocked the stop
+once, Copilot fed its reason back as a new turn, and the next stop went through. Codex users: run `/hooks` after upgrading and trust the new
+hook — Codex skips a new or changed hook until it is reviewed (the install notice
+and TROUBLESHOOTING now say so, R42).
+
+### Fixed — PAN's hooks ran twice under Copilot CLI when Claude was installed too
+
+Copilot CLI runs the hooks in a repository's `.claude/settings.json` as well as its
+own `.github/hooks/*.json`. Measured on Copilot CLI 1.0.88: in a project with both
+the Claude and the Copilot install, every PAN hook ran twice per event under Copilot
+— two update checks, two context warnings, two stop-guard decisions. The Copilot
+copy of each hook now steps aside when the project's Claude settings register the
+same script, so each runs once; remove the Claude install and the Copilot copy runs
+again by itself. Re-measured live after the fix: one run per hook (reality check R39).
+
+### Added — PAN's agents on Copilot read the project's AGENTS.md
+
+Copilot gives a custom agent spawned as a subagent none of the repository's
+instruction files — `AGENTS.md`, `CLAUDE.md`, `copilot-instructions.md` — unless its
+frontmatter says `include-custom-instructions: true`, and PAN's rules section lives
+in `AGENTS.md`. Every PAN agent installed for Copilot now carries the field. Measured
+live before switching it on: an `AGENTS.md` canary reached the agent with the field
+and not the same agent without it (market-ideas queue M15).
+
+### Fixed — the Copilot model-list frontmatter would not have loaded
+
+The not-yet-wired Copilot model-list option (reality check R13) wrote the list under
+the singular `model:` and `model-policy: prefer`. Copilot CLI refuses to load such an
+agent (`model-policy: Expected "preferred" or "required"`), and its reference names
+the priority list `models:`. The converter now writes `models:` and
+`model-policy: preferred`, which Copilot loads. The option stays off: a session on
+`auto` — every Copilot Free session — ignores an agent's models, so whether the list
+falls through to its second entry still needs a paid plan to measure.
+
+### Added — the planning position survives a context compaction
+
+`pan-state-reinject.js` runs on `SessionStart` with the `compact` matcher on Claude
+Code and Codex — the one event after a compaction whose `additionalContext` reaches
+the model on both (their `PostCompact` discards output) — and hands the model the
+phase, plan, status and stop point from `.planning/state.md`. It is silent unless
+the project has a current phase and an unbuilt roadmap phase, and it never writes a
+file. Gemini CLI and Copilot CLI have no equivalent event (market-ideas queue M10).
+
+### Added — a failed attempt is retried one tier up
+
+`pan-tools resolve-model <agent> --attempt N` (and the MCP `pan_resolve_model`
+tool's `attempt`) raises the tier one step per failed attempt, capped by the new
+`routing.max_escalations` (default `1`) and never above the agent's own `quality`
+tier; the output names `escalated_from`. `/pan:exec-phase --gaps-only` — the fix
+round after a verification found gaps — resolves its executor as attempt 2. Under
+`quality` and `balanced` every agent already runs on the reasoning tier, so this is
+the `budget` profile's retry path; explicit `model_overrides` and roadmap per-phase
+tiers are never escalated (market-ideas queue M8).
+
+### Fixed — OpenCode was handed model ids it cannot use
+
+OpenCode names every model `provider/model`; PAN's routing returned Claude Code
+aliases (`sonnet`) or bare API ids (`gpt-6-sol`) there. The copy of PAN installed
+under `.opencode/` (or `~/.config/opencode/`) now resolves provider-qualified ids
+from models.dev — `anthropic/claude-sonnet-5`, `openai/gpt-6-sol`,
+`google/gemini-3.8-flash` and their fast-tier peers — and takes the provider from
+OpenCode's own configured `model` when routing names none (reality check R41).
+
+### Documented — Copilot runs no repository hooks headless in an untrusted folder
+
+`copilot -p` loads a repository's hooks — `.github/hooks/*.json` and the Claude
+settings alike — only when the folder is trusted, `COPILOT_ALLOW_ALL=true` is set, or
+`GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` is (Copilot CLI reference). An
+interactive session in a folder you have trusted runs them. TROUBLESHOOTING and
+HOOKS now say so. First live runs on Copilot CLI 1.0.88: the Agent Plugins bundle
+installs from a local path and lists as `pan-wizard`; the harness gained a paid
+`copilot-agent-frontmatter` scenario, `cli` steps marked `paid: true`, and quoting
+for Windows `.cmd` shims, which split any multi-word argument before.
+
+### Fixed — `state` and `roadmap` writes changed what they did not mean to
+
+A field report against 3.27.0 — seven sightings, by seven executor agents on one
+project — traced data loss to PAN's own writers. Every one of them wrote, reported
+success and exited 0.
+
+- **A second front-matter block on every write, on a CRLF checkout.** The block
+  stripper matched LF only, so under `core.autocrlf=true` the old block was never
+  removed and each `state` write stacked a new one on top; the front-matter reader
+  was LF-only too, so on such a file every reader saw none. Both now accept LF,
+  CRLF and a leading BOM, and `state.md` keeps its own line ending.
+- **Fields and keys dropped.** The front matter was rebuilt from the body's prose
+  on every write, so a field the body did not restate (the phase name, the current
+  plan) and every key PAN does not manage vanished. A field the body restates still
+  wins; anything else keeps its recorded value, and unknown keys are carried over in
+  place.
+- **A recorded milestone replaced by a guess.** With no milestone heading the
+  resolver guessed `v1.0` / `milestone`, and that guess overwrote the milestone
+  state.md recorded. A guess no longer replaces a recorded value.
+- **Written blind.** `state.md` is written only with exactly one front-matter block
+  and is read back under the lock; a file that already starts with two stacked
+  blocks is refused with an error, untouched, rather than rewritten on a guess.
+- **`roadmap update-plan-progress` rewrote a table row by position.** Cells 2–4 were
+  overwritten whatever the header said — on PAN's own milestone table variant that
+  put the plan count in the Milestone column, and on a roadmap with other columns it
+  destroyed the phase's goal and requirement ids. Cells are now found by header name;
+  a table without Plans and Status columns is left alone and reported
+  (`table_updated: false`, `table_reason`); the `**Plans:**` line is rewritten only
+  inside the phase's own section, where a lazy match used to reach the next phase's;
+  and the file is read back after writing.
+
+### Fixed — milestones named without a version were invisible
+
+The milestone resolver recognised only `vN.N` headings. A roadmap naming its
+milestones with a letter series (`R-1`, `R-2`) had none, and every reader fell back
+to `v1.0`. A heading whose first word is such a label is now a milestone; a heading
+repeated in a later section counts once (a repeat used to count as another,
+unshipped milestone); when everything is shipped the highest label is current, not
+the last in document order; and with no milestone heading at all, the `milestone:`
+state.md records is read before any constant (`milestone_basis: state`).
+
+### Fixed — commands that did not do what their docs said
+
+Found by the September doc audits and listed there for the maintainer; each now
+has a test that drives the CLI with the shape PAN itself writes.
+
+- **`todo complete` broke a todo's frontmatter.** It put `completed: <date>` on the
+  first line, above the `---` that `/pan:todo-add` opens every todo with. The date now
+  goes inside the frontmatter. The todo workflows moved finished todos to
+  `todos/done/`, a directory nothing counts; they now run `pan-tools todo complete`,
+  which files them under `todos/completed/` where `init todos` and `/pan:progress`
+  look.
+- **`perf` commits were refused.** The git reference lists `perf` as a task commit
+  type; `pan-tools commit --type perf` rejected it.
+- **`/pan:verify-phase` described a different command.** Its header promised a
+  conversational acceptance walkthrough writing `{N}-uat.md`; it runs goal-backward
+  verification with a test-suite gate and writes `{N}-verification.md`, as README
+  says. The header now says so.
+- **`template select` counted no tasks in a PAN plan.** It counted `### Task N`
+  headings; PAN plans write `<task>` blocks, so every plan picked its summary
+  template as if it had none.
+- **`workflow.nyquist_validation` was never read**, so `init plan-phase` reported it
+  off whatever the config said.
+- **`report all --open` ignored `--open`.** It now opens the index it wrote.
+- **Typo suggestions skipped six command groups.** `git`, `distill`, `experiment`,
+  `init`, `state` and `links` word their "unknown subcommand" messages differently,
+  and the suggester read only one wording — `pan-tools harvest` now answers
+  `did you mean: pan-tools experiment harvest`.
+- **A campaign's daily budget could be enforced only by editing `schedule.json`.**
+  `campaign schedule --enforce-budget` (and `--advisory-budget` to undo it) sets it,
+  and `/pan:army --schedule --enforce-budget` arms the campaign that way.
+- **Two CodeQL alerts:** the memory quarantine file's warning header hinged on an
+  existence check made before the write (a race; it is now created atomically with
+  the file), and a test carried a no-op string replacement.
+- **The 3.28.0 review's five LOWs:** the Agent Plugins bundle's Copilot agents now
+  carry the note that explains the plugin-root token they use; the update check
+  under a plugin host reads the core beside it instead of reporting `0.0.0`;
+  `scripts/plugin-path.js` ignores an inherited `PAN_PLUGIN_OUT`, so it builds where
+  it prints; the release gate's directory digest sorts by code unit, not by the
+  machine's locale; and the MCP per-call `cwd` states that the server acts on the
+  named directory with the user's permissions.
+
+### Changed — a release candidate publishes under `next`
+
+The release workflow ran `npm publish` with no `--tag`, and npm's default tag is
+`latest`, so an `-rc` version would have become what `npm install pan-wizard`
+resolves to. `scripts/npm-dist-tag.js` picks the tag from the version — `next`
+for a prerelease, `latest` otherwise — the publish passes it, and a prerelease's
+GitHub Release is marked as one and never as Latest (market-ideas queue M1).
+
+### Added — an eval suite for the Claude plugin
+
+The plugin now carries `evals/` for `claude plugin eval` (Claude Code 2.1.269+),
+built from `harness/plugin-evals/`: help discovery, progress routing, todo capture
+and the plugin self-test, all scored by mechanical graders. On Windows, Claude
+Code refuses an eval run that grants a shell tool (no sandbox backend), so the
+cases that need `Bash` or `Write` run fully only on Linux or macOS. A first live
+run on Windows (Claude Code 2.1.280, one run per case, no baseline arm, `$1.30`):
+help discovery, progress routing and the self-test scored 1.0 — the self-test
+re-confirming that plugin agents load under the scoped `pan-wizard:` name the
+native workflow scripts spawn — and todo capture 0.5, its file grader unable to
+pass without the `Write` grant (market-ideas queue M4).
+
+### Documented — the docs checked against this release's code
+
+A full doc audit ahead of this release brought the user docs in line with the
+changes above. USER-GUIDE's feature table now shows the stop guard on Codex and
+Copilot CLI and adds a row for state re-injection after compaction. Finished todos
+live in `todos/completed/`, `perf` is a valid commit type, and USER-GUIDE and FAQ
+explain the campaign budget with `--enforce-budget` instead of "no flag sets it".
+The shipped `/pan:help`, `/pan:progress` and `/pan:phase-tests` text calls
+`/pan:verify-phase` a goal-backward re-verification rather than conversational UAT,
+and TROUBLESHOOTING sends gap fixes through `/pan:plan-phase N --gaps`.
+MIGRATION, HOOKS and ARCHITECTURE list `pan-state-reinject.js`. INTERNALS adds the
+failure-escalation step to the model resolution order and the OpenCode `provider/model`
+ids. `~/.pan-wizard/defaults.json` is described as seeding a new project's config
+rather than overriding every project's.
+
+### Not done — a turn cap on the native executors (M9)
+
+ADR-0046 D1 deferred `maxTurns` until a native workflow owned the executor spawns,
+and `pan-exec-waves` now does. But the Workflow tool's `agent()` takes no turn cap
+per spawn, and `maxTurns` in `pan-executor`'s frontmatter would cap every executor
+on the markdown path too — the thing D1 declined. The item stays open until the
+engine offers a per-spawn cap; ADR-0046 records the check.
+
 ## [3.30.0] - 2026-09-25
 
 ### Fixed — the default Claude model was priced as its predecessor

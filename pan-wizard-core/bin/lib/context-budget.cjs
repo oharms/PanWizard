@@ -113,9 +113,23 @@ function assessCacheTtl(records, opts = {}) {
     // last record: its cache writes are not a subagent's re-write after an idle
     // gap, and the subagent cache lifetime setting does not govern them.
     .filter(r => !(r && r.token_source === 'session-transcript'))
-    .map(r => ({ t: r && r.ts ? new Date(r.ts).getTime() : NaN, w: Number(r && r.cache_write_tokens) || 0 }))
+    // A row that recorded the cache-write lifetime split (M13) says which writes
+    // were five-minute ones; only those can be a re-write after a short idle gap —
+    // a one-hour write already outlives it. Rows without the split fall back to the
+    // gap heuristic on the whole write.
+    .map(r => {
+      const measured = r && typeof r.cache_write_5m_tokens === 'number';
+      return {
+        t: r && r.ts ? new Date(r.ts).getTime() : NaN,
+        w: measured ? r.cache_write_5m_tokens : (Number(r && r.cache_write_tokens) || 0),
+        w1h: measured ? (Number(r.cache_write_1h_tokens) || 0) : 0,
+        measured,
+      };
+    })
     .filter(r => Number.isFinite(r.t))
     .sort((a, b) => a.t - b.t);
+  const measuredRows = rows.filter(r => r.measured);
+  const basis = measuredRows.length === 0 ? 'inferred' : measuredRows.length === rows.length ? 'measured' : 'mixed';
   let shortIdle = 0; let shortIdleTokens = 0; let longIdle = 0;
   for (let i = 1; i < rows.length; i++) {
     if (rows[i].w < minWrite) continue;
@@ -126,14 +140,25 @@ function assessCacheTtl(records, opts = {}) {
   const recommend = shortIdle >= recommendAt;
   const setting = 'subagentPromptCacheTtl';
   const severity = recommend && shortIdleTokens >= (opts.warnTokens ?? TTL_WARN_TOKENS) ? 'warn' : 'info';
+  const basisNote = basis === 'measured'
+    ? ' (measured: the ledger records each write\'s cache lifetime)'
+    : basis === 'mixed'
+      ? ' (partly measured: rows written before PAN recorded the cache lifetime are counted from idle gaps alone)'
+      : ' (inferred from idle gaps between rows: no row records the cache lifetime)';
   const advice = recommend
-    ? `${shortIdle} cache writes followed an idle gap of ${TTL_SHORT_MIN}–${TTL_LONG_MIN} min (~${shortIdleTokens.toLocaleString()} tokens re-written): subagents get the five-minute cache lifetime by default — set \`${setting}: "1h"\` in a Claude Code settings file. One-hour writes bill at 2× base input against 1.25×, so this pays off once a block is read twice within the hour.`
+    ? `${shortIdle} cache writes followed an idle gap of ${TTL_SHORT_MIN}–${TTL_LONG_MIN} min (~${shortIdleTokens.toLocaleString()} tokens re-written): subagents get the five-minute cache lifetime by default — set \`${setting}: "1h"\` in a Claude Code settings file. One-hour writes bill at 2× base input against 1.25×, so this pays off once a block is read twice within the hour.${basisNote}`
     : null;
   return {
     records_considered: rows.length,
     writes_after_short_idle: shortIdle,
     tokens_after_short_idle: shortIdleTokens,
     writes_after_long_idle: longIdle,
+    // Where the split came from: 'measured' (every row carries it), 'mixed', or
+    // 'inferred' (none does — the gap heuristic alone).
+    basis,
+    measured_rows: measuredRows.length,
+    cache_write_1h_tokens: measuredRows.reduce((n, r) => n + r.w1h, 0),
+    cache_write_5m_tokens: measuredRows.reduce((n, r) => n + r.w, 0),
     recommend,
     setting,
     severity,

@@ -65,6 +65,16 @@ describe('buildSubcommandIndex — parsed from the dispatcher, not hand-written'
     }
   });
 
+  test('reads all three wordings the dispatcher uses (2026-09-26)', () => {
+    // `Unknown X subcommand: <name>. Available`, `X subcommand required. Available`
+    // and `Unknown init workflow: <name>` + a newline + `Available` were all skipped before, so a
+    // typo in these groups got no suggestion.
+    const expect = { git: 'commit', distill: 'scan', experiment: 'harvest', init: 'plan-phase', state: 'advance-plan', links: 'validate' };
+    for (const [group, sub] of Object.entries(expect)) {
+      assert.ok(index[group] && index[group].includes(sub), `${group} must be indexed with ${sub}: ${index[group]}`);
+    }
+  });
+
   test('is pure and total — junk input yields an empty index, never a throw', () => {
     for (const bad of [null, undefined, 42, '', 'no availability strings here']) {
       assert.deepEqual(suggest.buildSubcommandIndex(bad), {});

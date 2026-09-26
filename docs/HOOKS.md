@@ -11,7 +11,8 @@ PAN ships a small set of built-in Claude Code hooks that enhance the development
 | `pan-check-update.js` | `SessionStart` | Checks for PAN updates in the background, caches result |
 | `pan-cost-logger.js` (v3.4+) | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
 | `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
-| `pan-stop-guard.js` (v3.24+) | `Stop` (Gemini CLI: `AfterAgent`) | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), no failure/gaps/blocker recorded in `state.md`, roadmap phases unbuilt — and tells the agent to continue the chain (P-1809/P-1810/P-1812). |
+| `pan-stop-guard.js` (v3.24+) | `Stop` (Gemini CLI: `AfterAgent`; Copilot CLI: `agentStop`) | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), no failure/gaps/blocker recorded in `state.md`, roadmap phases unbuilt — and tells the agent to continue the chain (P-1809/P-1810/P-1812). |
+| `pan-state-reinject.js` | `SessionStart`, matcher `compact` (Claude Code, Codex) | After a context compaction, hands the model the phase, plan, status and stop point from `.planning/state.md` as `additionalContext`, so a summarised session resumes the work in flight instead of re-planning it. Silent without a current phase and an unbuilt roadmap phase; never writes a file. |
 
 ### pan-statusline.js
 
@@ -66,15 +67,15 @@ The bridge file enables the context monitor to read metrics without coupling to 
 
 ### pan-check-update.js
 
-**Event:** `SessionStart` (runs once per session at startup)
+**Event:** `SessionStart` (registered without a matcher, so it runs at every session start the host reports — including the restart after a compaction — not only at startup)
 
 **What it does:**
-1. Reads the installed PAN version from `VERSION` file (checks local first, then global)
+1. Reads the installed PAN version from a `VERSION` file: the project's install first, then the `pan-wizard-core/VERSION` beside the hook's own copy (how a plugin install finds its version), then the global install
 2. Spawns a background process to query npm for the latest version
 3. Caches the result to `~/.claude/cache/pan-update-check.json` (on other runtimes the installer swaps in that runtime's config directory: `~/.gemini`, `~/.codex`, `~/.copilot`)
 4. The statusline reads the cached result for its update badge (on Gemini CLI and Codex, which run no PAN statusline, nothing displays it); the hook itself re-queries npm on every SessionStart, in a detached child, so the session is never blocked
 
-The update check runs once per session and doesn't block tool execution.
+The update check runs at each session start and doesn't block tool execution.
 
 ### pan-cost-logger.js (v3.4+)
 
@@ -117,6 +118,7 @@ Notes on the fields that are not self-evident:
 - **`v`** — ledger row schema version, a literal in each hook (`SCHEMA_V`). Rows written before it existed carry no `v`; readers never inspect the field. Readers in `pan-wizard-core` take a row field by field rather than switching on the version, so added fields are additive: a mixed-shape ledger aggregates as one. `v: 4` added `agent_id` and the `agent-transcript` token source.
 - **`agent_id`** — the host's per-spawn id, `null` where the host supplies none. It is what makes the agent's own transcript addressable, and it tells two same-type siblings apart without hashing the payload.
 - **`tier`** — derived from `model` (reasoning / mid / fast), `null` for a model the hook can't classify, so `/pan:cost`'s by-tier view and the HUD tier panel are not blind on the hook path.
+- **`cache_write_1h_tokens`** / **`cache_write_5m_tokens`** — the split of `cache_write_tokens` by cache lifetime (one-hour writes bill at a higher rate than five-minute ones), read from the `usage.cache_creation` block of the transcript (or of the payload's `usage` on the fallback path). Present only when the source carried that block; dropped when the write total was clamped.
 - **`duration_ms`** — the span of this event's transcript slice, first record timestamp to last. `null` when either bound is missing, never a fabricated `0`.
 - **`token_source`** — `"agent-transcript"` when the counts came from the subagent's own transcript, `"agent-transcript-missing"` when the host named an agent whose file was not there (an unmeasured spawn: zeros, excluded from `calls` by the reader), `"transcript"` when they came from a slice of the parent session transcript (the fallback when the host names no agent), `"usage-fallback"` when there was no transcript at all and the payload's own `usage` was used instead.
 - **`clamped`** — `true` when a plausibility guard dropped a token value to `0`, on any transcript or fallback path, so a guarded zero is distinguishable from a genuine zero-token run. Until v3.29 only the `usage-fallback` path had a guard, which is why every oversum row in the field carried `clamped: false`. The span is never clamped: `duration_ms` is the measured first-to-last record span, and `cost.cjs` quarantines a parent-slice row whose span exceeds six hours (a row sliced from the agent's own transcript is exempt — it cannot carry anyone else's usage).
@@ -196,11 +198,23 @@ One `SubagentStop` can reach the hooks more than once. A project with **both** a
 
 **One conditional worth knowing.** Two *concurrent same-type* siblings are admitted as two spawns only if the host puts some per-invocation field on the payload. PAN has confirmed that `agent_type`/`subagent_type` varies between siblings of different type, and that `session_id` and the transcript path are shared with the parent — but no field is confirmed to vary between two same-type siblings on any host. Where none does, their payloads are the same bytes, a new spawn and a re-fire are indistinguishable, and the second is suppressed. See the `eventSignature` comment in either hook for the full evidence trail.
 
+### pan-state-reinject.js (market-ideas M10)
+
+**Runtime support:** Claude Code (`SessionStart` with the `compact` matcher, in `settings.json` and the Claude plugin's `hooks/hooks.json`) and Codex (the same, in `.codex/hooks.json`, synchronous). Not registered for Gemini CLI, Copilot CLI or OpenCode: Gemini's `PreCompress` fires before the summary exists and Copilot's `preCompact` is notification-only, so neither can put text in front of the resumed model.
+
+**Why `SessionStart` and not `PostCompact`:** both hosts document `PostCompact`, and both discard its output — Claude Code lists it under "no decision control", and Codex's `PostCompact` output schema has no `additionalContext`. What each host does after a compaction is start the session again with `source: "compact"` and honour `hookSpecificOutput.additionalContext` from `SessionStart` hooks that match it. The hook also checks `source` itself, so a registration without the matcher stays silent on every other start.
+
+**What it injects:** a short block — current phase and name, plan `N of M`, status, the `Stopped At` line (or the last activity when there is none), the resume file, and the first unticked roadmap phase — followed by an instruction to re-read `state.md` and the current plan before the next step. Each field is truncated on its own and the block stays under 2,000 characters, well inside the host's 10,000-character limit. Template placeholders (`[X]`) and `None` are not treated as values.
+
+**When it is silent:** no `state.md`, no `Current Phase`, no `roadmap.md`, or every roadmap phase already ticked. It reads the planning tree the payload's `cwd` names (honouring `PAN_PLANNING_DIR`/`PAN_TRACK` like every PAN hook) and writes nothing — the field sweep found hooks that scaffolded `.planning/` in projects that never ran PAN, and this one cannot.
+
+**Failure posture:** fail-open — malformed stdin or an unreadable file exits 0 with no output.
+
 ### pan-stop-guard.js (v3.24+, P-1809)
 
-**Runtime support:** Claude Code (`Stop` in `settings.json`) and Gemini CLI (`AfterAgent` in `settings.json` — Gemini's end-of-turn event, which re-prompts the agent with the reason on a block exactly as Claude's `Stop` does). Gemini sets `stop_hook_active` only for a continuation the block started directly, not after one that used tools, so there the guard keeps its one-shot promise with a marker per session, project and target phase in the per-user `0700` hook directory; a second stop aimed at the same phase is allowed. Until `2026-09-23` PAN registered it on Gemini under `Stop`, which Gemini skips. Not registered for Codex, Copilot CLI or OpenCode.
+**Runtime support:** Claude Code (`Stop` in `settings.json`, and in the Claude plugin's `hooks/hooks.json`), Codex (`Stop` in `.codex/hooks.json`, synchronous — an `async` handler cannot block), Copilot CLI (`agentStop` in `.github/hooks/pan.json`) and Gemini CLI (`AfterAgent` in `settings.json` — Gemini's end-of-turn event, which re-prompts the agent with the reason on a block exactly as Claude's `Stop` does). Codex and Copilot hand the hook `stop_hook_active` like Claude Code (Copilot keeps that one field snake_case inside its camelCase payload), accept the same `{"decision":"block","reason":…}` output, and turn a block into a continuation prompt; Copilot blocks only on that JSON form, not on exit code 2, and ends the turn itself after eight consecutive blocks. Gemini sets `stop_hook_active` only for a continuation the block started directly, not after one that used tools, so there the guard keeps its one-shot promise with a marker per session, project and target phase in the per-user `0700` hook directory; a second stop aimed at the same phase is allowed. Until `2026-09-23` PAN registered it on Gemini under `Stop`, which Gemini skips. Codex and Copilot gained it on `2026-09-26`; the Claude plugin build carried every hook but this one until the same date. Not registered for OpenCode.
 
-**Event:** `Stop` on Claude Code, `AfterAgent` on Gemini CLI (runs when the main session tries to end its turn)
+**Event:** `Stop` on Claude Code and Codex, `agentStop` on Copilot CLI, `AfterAgent` on Gemini CLI (runs when the main session tries to end its turn)
 
 **What it does:** catches the auto-advance boundary drop mechanically. Field runs showed autonomous chains ending between transition.md's state update and the next-phase Task spawn at a low, nondeterministic rate — a failure prose instructions can reduce but not eliminate. When the session stops, this hook blocks **once**, with a reason instructing the agent to spawn the next phase, if and only if the disk shows the exact drop fingerprint:
 
@@ -248,10 +262,16 @@ Sub-agent finishes
              v
          .planning/optimization/traces/<session>/trace.jsonl ← consumed by /pan:learn, /pan:optimize
 
-Session stop (Claude Code Stop, Gemini AfterAgent)
+Session restarts after a compaction (Claude Code / Codex SessionStart, matcher compact)
     |
     v
-Stop Guard (pan-stop-guard.js, Stop / AfterAgent)
+State Re-inject (pan-state-reinject.js, SessionStart)
+    | reads .planning/state.md + roadmap.md → additionalContext
+
+Session stop (Claude Code / Codex Stop, Copilot agentStop, Gemini AfterAgent)
+    |
+    v
+Stop Guard (pan-stop-guard.js, Stop / agentStop / AfterAgent)
     | at an auto-advance boundary: block once with a continue reason; otherwise allow
 ```
 
@@ -277,6 +297,15 @@ Hooks are automatically installed and registered during `npx pan-wizard`. The bl
           {
             "type": "command",
             "command": "node ~/.claude/hooks/pan-check-update.js"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ~/.claude/hooks/pan-state-reinject.js"
           }
         ]
       }
@@ -335,6 +364,7 @@ hooks/
   pan-cost-logger.js        # Source (v3.4+)
   pan-trace-logger.js       # Source (v3.5+)
   pan-stop-guard.js         # Source (v3.24+)
+  pan-state-reinject.js     # Source
   dist/                     # Copied output (installed to user's machine)
     pan-statusline.js
     pan-context-monitor.js
@@ -342,6 +372,7 @@ hooks/
     pan-cost-logger.js
     pan-trace-logger.js
     pan-stop-guard.js
+    pan-state-reinject.js
 ```
 
 Build command:
@@ -355,11 +386,11 @@ The build script (`scripts/build-hooks.js`) simply copies files — no bundling 
 
 | Runtime | Hooks supported | Notes |
 |---------|----------------|-------|
-| Claude Code | Yes | Full support via settings.json hook registration |
-| Copilot CLI | Yes | `.github/hooks/pan.json` (version 1 schema: sessionStart, postToolUse, subagentStop) |
+| Claude Code | Yes | Full support via settings.json hook registration, including the state re-injection on `SessionStart` with the `compact` matcher |
+| Copilot CLI | Yes | `.github/hooks/pan.json` (version 1 schema: sessionStart, postToolUse, subagentStop, agentStop). Copilot also runs the hooks in the project's `.claude/settings.json`, so in a project with both installs the Copilot copy of each hook steps aside for the Claude registration and each runs once. Headless (`copilot -p`) Copilot loads repository hooks only in a trusted folder, or with `COPILOT_ALLOW_ALL=true` or `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` — see TROUBLESHOOTING |
 | OpenCode | No | PAN registers no hooks there; OpenCode's plugin API (`.opencode/plugins/*.js`) is not used yet |
-| Gemini CLI | Partly | settings.json, in Gemini's own event names: `SessionStart` runs the update check and `AfterAgent` the stop guard. No context monitor (no Gemini hook payload or setting carries context-window usage, and Gemini has no statusline command) and no cost or trace logger (no subagent-completion event). Until `2026-09-23` PAN wrote Claude's names here — `PostToolUse`, `SubagentStop`, `Stop` — which Gemini skips, with an "Invalid hook event name" warning, whenever it loads the settings |
-| Codex | Yes | `.codex/hooks.json` since 2026-06 (Claude-compatible PascalCase events; loads once the project is trusted). PAN registers four hooks there — update check, context monitor, cost and trace loggers; the three observers carry `async: true` (Codex CLI 0.148+) while the context monitor stays synchronous so its `additionalContext` would land in the same turn. No statusline, and the context monitor reads only the bridge file `pan-statusline.js` writes, so on Codex it finds none and never warns. No Stop guard |
+| Gemini CLI | Partly | settings.json, in Gemini's own event names: `SessionStart` runs the update check and `AfterAgent` the stop guard. No context monitor (no Gemini hook payload or setting carries context-window usage, and Gemini has no statusline command) and no cost or trace logger (no subagent-completion event) or state re-injection (`PreCompress` fires before the summary exists). Until `2026-09-23` PAN wrote Claude's names here — `PostToolUse`, `SubagentStop`, `Stop` — which Gemini skips, with an "Invalid hook event name" warning, whenever it loads the settings |
+| Codex | Yes | `.codex/hooks.json` since 2026-06 (Claude-compatible PascalCase events; loads once the project is trusted). PAN registers these hooks there — update check, context monitor, cost and trace loggers, the stop guard on `Stop`, and the state re-injection on `SessionStart` with the `compact` matcher; the observers (update check, cost and trace loggers) carry `async: true` (Codex CLI 0.148+) while the context monitor, the stop guard and the re-injection stay synchronous, because an async handler's output is deferred to a later turn and it cannot block. Codex runs a non-managed hook only after you trust it, and records that trust against a hash of the hook, so a new or changed PAN hook is skipped until you review it in `/hooks` — see TROUBLESHOOTING. No statusline, and the context monitor reads only the bridge file `pan-statusline.js` writes, so on Codex it finds none and never warns |
 
 PAN registers hooks on Claude Code, Gemini CLI, Codex, and Copilot CLI. It registers none on OpenCode, whose plugin API it does not use yet.
 

@@ -103,7 +103,7 @@ describe('commit safety checks', () => {
     const result = runPanTools('commit msg --type invalid', tmpDir);
     assert.ok(!result.success, 'should fail with invalid type');
     assert.ok(result.error.includes('Invalid commit type'), 'error should mention invalid type');
-    assert.ok(result.error.includes('feat, fix, docs, test, refactor, chore'), 'error should list valid types');
+    assert.ok(result.error.includes('feat, fix, docs, test, refactor, perf, chore'), 'error should list valid types');
   });
 
   test('commit without --type has null type in output', () => {

@@ -178,7 +178,7 @@ PAN creates granular, per-task commits during execution -- not bulk commits per 
 {type}({phase}-{plan}): {description}
 ```
 
-**Types:** task commits use `feat`, `fix`, `test`, `refactor`, `perf`, `chore` (`references/git-integration.md`); planning-doc commits go through `pan-tools commit`, whose `--type` accepts only `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
+**Types:** task commits use `feat`, `fix`, `test`, `refactor`, `perf`, `chore` (`references/git-integration.md`); planning-doc commits go through `pan-tools commit`, whose `--type` accepts only `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`
 
 **Examples:**
 ```text
@@ -211,7 +211,7 @@ PAN uses three profiles to control which model tier each agent type uses. Tiers 
 | `mid` | Sonnet | gpt-6-sol | gemini-3.8-flash | Sonnet |
 | `fast` | Haiku | gpt-6-luna | gemini-3.5-flash-lite | Haiku |
 
-Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) are supported for backward compatibility.
+Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) are supported for backward compatibility. On an OpenCode install the mid and fast tiers resolve to provider-qualified `provider/model` ids (`OPENCODE_MODELS` in `core.cjs`), the only form OpenCode accepts.
 
 ### Profile Comparison
 
@@ -234,10 +234,11 @@ Model resolution follows a priority chain:
 3. Profile lookup        → MODEL_PROFILES[agentType][profile]
 4. Complexity routing    → adjusts that tier ±1 from task metadata (if strategy = "complexity")
 5. Capability hints      → adjustTierForCapabilities(): context_estimate / needs_thinking / cache_warm
-6. Provider resolution   → resolveTierToModel(tier, provider)
+6. Failure escalation    → escalateTier(): a retry (attempt > 1) climbs toward the agent's quality tier, capped by routing.max_escalations (pins from 1–2 are never escalated)
+7. Provider resolution   → resolveTierToModel(tier, provider)
 ```
 
-**Provider detection:** Explicit `routing.provider` in config → `PAN_PROVIDER` env var → runtime directory presence (`.claude/` = Anthropic, `.codex/` and `.opencode/` = OpenAI, `.gemini/` = Google, `.github/` = default) → default.
+**Provider detection:** Explicit `routing.provider` in config → `PAN_PROVIDER` env var → on an OpenCode install, the provider prefix of OpenCode's configured `model` (`opencode.json` or `.opencode/opencode.json`) → runtime directory presence (`.claude/` = Anthropic, `.codex/` and `.opencode/` = OpenAI, `.gemini/` = Google, `.github/` = default) → default.
 
 ### Routing Strategies
 

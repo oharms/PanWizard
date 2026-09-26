@@ -28,9 +28,12 @@ function cmdTemplateSelect(cwd, planPath, raw) {
     const fullPath = path.join(cwd, planPath);
     const content = fs.readFileSync(fullPath, 'utf-8');
 
-    // Count task headings (### Task N)
-    const taskMatch = content.match(/###\s*Task\s*\d+/g) || [];
-    const taskCount = taskMatch.length;
+    // Count tasks: PAN plans write `<task type="...">` blocks (templates/phase-prompt.md,
+    // pan-planner); older plans used `### Task N` headings. Counting only the headings
+    // gave every current plan a task count of 0.
+    const xmlTasks = content.match(/<task[\s>]/g) || [];
+    const headingTasks = content.match(/###\s*Task\s*\d+/g) || [];
+    const taskCount = xmlTasks.length || headingTasks.length;
 
     // Check for decision-related keywords
     const decisionMatch = content.match(/decision/gi) || [];

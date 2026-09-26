@@ -84,7 +84,7 @@ Initialize a new project with deep context gathering and project.md
 | `/pan:exec-phase` | Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion | Execute all plans in a phase with wave-based parallelization |
 | `/pan:plan-phase` | Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__* | Create detailed phase plan (plan.md) with verification loop |
 | `/pan:research-phase` | Read, Bash, Task | Research how to implement a phase (standalone - usually use /pan:plan-phase instead) |
-| `/pan:verify-phase` | Read, Bash, Glob, Grep, Edit, Write, Task | Validate built features through conversational UAT with test suite gate |
+| `/pan:verify-phase` | Read, Bash, Glob, Grep, Edit, Write, Task | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps |
 
 #### /pan:design-phase
 
@@ -148,7 +148,7 @@ Research how to implement a phase (standalone - usually use /pan:plan-phase inst
 
 #### /pan:verify-phase
 
-Validate built features through conversational UAT with test suite gate
+Re-run goal-backward verification of a phase with a test-suite gate and list its gaps
 
 ```
 /pan:verify-phase [phase number, e.g., '4']
@@ -156,7 +156,7 @@ Validate built features through conversational UAT with test suite gate
 
 **Tools:** Read, Bash, Glob, Grep, Edit, Write, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 92
+**Lines:** 91
 
 ---
 

@@ -117,6 +117,14 @@ Parse JSON for: `phase`, `plans[]` (each with `id`, `wave`, `autonomous`, `objec
 
 **Filtering:** Skip plans where `has_summary: true`. If `--gaps-only`: also skip non-gap_closure plans. If all filtered: "No matching incomplete plans" → exit.
 
+**If `--gaps-only`:** this run is the fix round after a verification found gaps — a second attempt at work that failed once. Resolve the executor for that attempt and use it in place of `executor_model` for every spawn in this run:
+
+```bash
+EXECUTOR_MODEL=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-executor --attempt 2 --raw)
+```
+
+It equals `executor_model` unless the `budget` profile runs the executor below its quality tier; then it is one tier higher (capped by `routing.max_escalations`), so the gaps are not retried on the tier that left them.
+
 Report:
 ```
 ## Execution Plan

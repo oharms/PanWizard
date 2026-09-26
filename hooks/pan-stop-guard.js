@@ -52,6 +52,12 @@
 // directory: a second stop aimed at the same phase is allowed. No safe marker
 // directory, or no session id, means no block (fail open, as everywhere else).
 //
+// Codex and Copilot CLI (M14, 2026-09-26): registered on Codex's `Stop` and
+// Copilot's `agentStop`. Both payloads carry `cwd` and `stop_hook_active` (Copilot
+// keeps that one field snake_case inside its camelCase payload) and both honour the
+// same {decision: 'block', reason} output, so the logic above applies unchanged.
+// Copilot also ends the turn itself after eight consecutive blocks.
+//
 // Escape hatch: set workflow.stop_guard to false in .planning/config.json to
 // disable the guard entirely without turning off auto_advance.
 //
@@ -66,6 +72,45 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+
+// ─── R39: one run per hook when Claude and Copilot share a project ───────────
+// Copilot CLI also runs the hooks in a repository's .claude/settings.json and
+// .claude/settings.local.json. Measured 2026-09-26 (Copilot CLI 1.0.88, repository
+// hooks loaded): in a project with both the Claude and the Copilot install, every
+// PAN hook ran twice under Copilot — once from .github/hooks/pan.json, once from the
+// Claude settings. The Copilot project copy (this file under .github/hooks) steps
+// aside whenever the project's Claude settings register the same script, so the hook
+// runs once, and runs again from here the moment the Claude registration is gone.
+// Both files are repository hooks to Copilot and load under the same trust rule, so
+// deferring never leaves zero. Only this copy defers: Claude Code never reads
+// .github/hooks, Gemini and Codex never read .claude/settings.json, and a global
+// Copilot copy loads where repository hooks may not. Identical in every hook
+// Copilot registers — tests/copilot-hook-dedupe.test.cjs pins the copies.
+function deferToClaudeRegistration(projectDir, hookFile = __filename) {
+  // Assembled, not written as a literal: the installer rewrites every quoted .claude
+  // literal in a hook copy to that runtime's own directory, and this one must stay Claude's.
+  const claudeDir = ['.', 'claude'].join('');
+  try {
+    const hooksDir = path.dirname(hookFile);
+    if (path.basename(hooksDir) !== 'hooks' || path.basename(path.dirname(hooksDir)) !== '.github') return false;
+    if (typeof projectDir !== 'string' || !projectDir) return false;
+    const script = path.basename(hookFile);
+    for (const name of ['settings.json', 'settings.local.json']) {
+      let settings;
+      try { settings = JSON.parse(fs.readFileSync(path.join(projectDir, claudeDir, name), 'utf8')); } catch { continue; }
+      const events = settings && typeof settings.hooks === 'object' ? settings.hooks : null;
+      if (!events) continue;
+      for (const groups of Object.values(events)) {
+        if (!Array.isArray(groups)) continue;
+        for (const group of groups) {
+          const handlers = group && Array.isArray(group.hooks) ? group.hooks : [];
+          if (handlers.some((h) => h && typeof h.command === 'string' && h.command.includes(script))) return true;
+        }
+      }
+    }
+  } catch { /* fail open: run this copy */ }
+  return false;
+}
 const crypto = require('crypto');
 /**
  * Which planning tree this hook acts on.
@@ -238,6 +283,7 @@ function main() {
       if (!payload || typeof payload !== 'object') payload = {};
 
       const projectDir = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd();
+      if (deferToClaudeRegistration(projectDir)) process.exit(0);
       const planningDir = planningPath(projectDir);
 
       let config = null;
@@ -253,7 +299,7 @@ function main() {
       // Gemini CLI's end-of-turn event: its stop_hook_active cannot carry the
       // one-shot promise on its own (see the header), so a marker does.
       if (decision && payload.hook_event_name === 'AfterAgent') {
-        const name = onceMarkerName(payload.session_id, projectDir, decision.reason);
+        const name = onceMarkerName(payload.session_id || payload.sessionId, projectDir, decision.reason);
         if (!claimOnceMarker(hookStateDir(), name)) decision = null;
       }
 
@@ -267,4 +313,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildStopDecision, UNTICKED_PHASE_RE, onceMarkerName, claimOnceMarker };
+module.exports = { deferToClaudeRegistration, buildStopDecision, UNTICKED_PHASE_RE, onceMarkerName, claimOnceMarker };

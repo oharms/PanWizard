@@ -22,7 +22,8 @@ const HOOKS_TO_COPY = [
   'pan-statusline.js',
   'pan-cost-logger.js',
   'pan-trace-logger.js',
-  'pan-stop-guard.js'
+  'pan-stop-guard.js',
+  'pan-state-reinject.js'
 ];
 
 function build() {

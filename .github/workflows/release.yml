@@ -107,7 +107,15 @@ jobs:
       - name: Publish with provenance (OIDC)
         # prepublishOnly hook reruns release-check.js before upload; if any gate
         # fails the publish aborts and nothing is uploaded.
-        run: npm publish --provenance --access public
+        #
+        # The dist-tag is explicit: npm's default is `latest`, so a release
+        # candidate published without --tag would become what every
+        # `npm install pan-wizard` resolves to. Prereleases go to `next`.
+        run: |
+          set -euo pipefail
+          DIST_TAG=$(node scripts/npm-dist-tag.js)
+          echo "Publishing $(node -p "require('./package.json').version") under dist-tag '$DIST_TAG'"
+          npm publish --provenance --access public --tag "$DIST_TAG"
 
       # Housekeeping AFTER a successful publish. Keeps the newest 3 stable
       # releases installable-without-warning and deprecates everything older, plus
@@ -166,10 +174,17 @@ jobs:
             echo "::warning::no CHANGELOG section for $VERSION — publishing a pointer instead"
             printf '\nSee [CHANGELOG.md](https://github.com/%s/blob/main/CHANGELOG.md).\n' "$GITHUB_REPOSITORY" >> "$NOTES"
           fi
+          # A release candidate is marked as a prerelease so the repository's
+          # "Latest" badge stays on the newest stable version, matching npm.
+          PRERELEASE_FLAGS=""
+          if [ "$(node scripts/npm-dist-tag.js)" = "next" ]; then
+            PRERELEASE_FLAGS="--prerelease --latest=false"
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists — leaving it alone."
           else
-            gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" --verify-tag
+            # shellcheck disable=SC2086 # the flags are word-split on purpose
+            gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" --verify-tag $PRERELEASE_FLAGS
           fi
 
       - name: Summary

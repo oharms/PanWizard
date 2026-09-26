@@ -508,6 +508,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "strategy": "static",
     "provider": "auto",
     "cascade_quality_gate": true,
+    "max_escalations": 1,
     "complexity_thresholds": { "downgrade_max": 2, "upgrade_min": 6 }
   }
 }
@@ -526,6 +527,7 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `brave_search` | `true`, `false` | `false` unless a Brave key is detected when config.json is created | Enable web search in research agents (requires `BRAVE_API_KEY` env var or `~/.pan-wizard/brave_api_key`) |
 | `routing.strategy` | `static`, `complexity` | `static` | How model tiers are adjusted at runtime |
 | `routing.provider` | `auto`, `anthropic`, `openai`, `google` | `auto` | LLM provider for tier→model mapping |
+| `routing.max_escalations` | `0` or more | `1` | How many tiers a retry after a failure may climb (`fast → mid → reasoning`, never above the agent's quality tier). Only the `budget` profile runs agents low enough for it to matter; `/pan:exec-phase --gaps-only` retries on the escalated tier |
 
 ### Planning Settings
 
@@ -565,7 +567,7 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 | Setting | Options | Default | What it Controls |
 |---------|---------|---------|------------------|
 | `commit.safety_checks` | `true`, `false` | `true` | Enable deleted-file and sensitive-file checks before commit |
-| `commit.conventional_types` | `true`, `false` | `true` | Reserved — written by the defaults but not read; `--type` is always accepted and validated against `feat`, `fix`, `docs`, `test`, `refactor`, `chore` |
+| `commit.conventional_types` | `true`, `false` | `true` | Reserved — written by the defaults but not read; `--type` is always accepted and validated against `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore` |
 | `commit.sensitive_patterns` | array of regex | See default | File patterns blocked from commits (`.env`, `.pem`, etc.) |
 
 ### Execution Settings
@@ -596,7 +598,7 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 
 ### Model Profiles (Per-Agent Breakdown)
 
-PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-specific models. On Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. On OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents.
+PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-specific models. On Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. On OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents. Under OpenCode, mid/fast resolve to OpenCode's `provider/model` ids, with the provider taken from OpenCode's own configured `model` when neither `routing.provider` nor `PAN_PROVIDER` names one (and from the runtime directories, where `.opencode/` alone counts as OpenAI, when that names none either).
 
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
@@ -821,7 +823,7 @@ The experiment runner uses `spawnSync` to invoke external AI runtimes headlessly
 - ✅ Codex CLI (`codex exec <prompt>`)
 - ✅ Gemini CLI (`gemini -p <prompt>`)
 - ✅ OpenCode (`opencode <prompt>`)
-- ❌ GitHub Copilot CLI — no documented headless prompt mode (opt-out)
+- ❌ GitHub Copilot CLI — the runner has no adapter for it (`RUNTIME_RUNNERS.copilot` is `null`), so `experiment run` refuses it; scaffold and harvest still work
 
 **Spec & ADR:**
 
@@ -947,7 +949,7 @@ The same caps that bound hierarchical exec bound the campaign — delegation-dep
 /pan:army "burn down the v1 backlog" --schedule daily --daily-budget 200
 ```
 
-This writes a schedule descriptor (`.planning/orchestration/schedule.json`) — PAN does **not** run itself in the background (it's not a daemon). You wire an external trigger that polls `pan-tools campaign due` and runs `/pan:army --continue` when it reports due: a host scheduler (Claude Code routines / cron / scheduled tasks), a `/loop`, or simply the next time you open the project (a due campaign is surfaced as a nudge). The `--daily-budget` is advisory (it surfaces the day's spend); the schedule's `enforce_budget` field would pause a due run, but no flag or config key sets it today. Manage it with `pan-tools campaign status` (active/paused, spent today, next-due) and `campaign schedule --pause | --resume | --disable`.
+This writes a schedule descriptor (`.planning/orchestration/schedule.json`) — PAN does **not** run itself in the background (it's not a daemon). You wire an external trigger that polls `pan-tools campaign due` and runs `/pan:army --continue` when it reports due: a host scheduler (Claude Code routines / cron / scheduled tasks), a `/loop`, or simply the next time you open the project (a due campaign is surfaced as a nudge). The `--daily-budget` is advisory (it surfaces the day's spend) unless the schedule is armed with `--enforce-budget` (`/pan:army --schedule … --enforce-budget`, or `pan-tools campaign schedule --enforce-budget`), which pauses a due run once the day's spend is used up; `--advisory-budget` turns that back off. Manage it with `pan-tools campaign status` (active/paused, spent today, next-due) and `campaign schedule --pause | --resume | --disable`.
 
 **The one thing scheduling never changes:** the merge to a protected branch stays an `always-ask` human gate. A scheduled campaign runs the backlog down to staged, reviewed, green PRs unattended — and waits for you at every merge. Autonomy runs up to the irreversible step, a human at the step.
 
@@ -980,7 +982,7 @@ PAN uses conventional commits with phase-plan scope:
 {type}({phase}-{plan}): {description}
 ```
 
-Types for task commits: `feat`, `fix`, `test`, `refactor`, `perf`, `chore` (`references/git-integration.md`). Planning-doc commits use `docs(...)` through `pan-tools commit`, whose `--type` accepts only `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
+Types for task commits: `feat`, `fix`, `test`, `refactor`, `perf`, `chore` (`references/git-integration.md`). Planning-doc commits use `docs(...)` through `pan-tools commit`, whose `--type` accepts only `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`
 
 Example: `feat(03-02): add login endpoint`
 
@@ -1035,7 +1037,7 @@ When each plan completes, the executor runs `pan-tools requirements mark-complet
 
 ### Global Defaults
 
-PAN supports global defaults at `~/.pan-wizard/defaults.json`. These override hardcoded defaults for all projects.
+PAN supports global defaults at `~/.pan-wizard/defaults.json`. They seed each new project's `config.json` (when `config-ensure-section` creates it, or when you accept them in `/pan:new-project`); an existing project's config is not changed, and a key missing from a project's config falls back to the hardcoded default.
 
 **Precedence:** project `.planning/config.json` > `~/.pan-wizard/defaults.json` > hardcoded defaults
 
@@ -1267,13 +1269,14 @@ Codex and Copilot CLI use a "skills" format rather than slash commands. Each com
 | All agents | Yes | Yes | Yes | Yes | Yes |
 | Hooks: update check, context monitor, cost + trace loggers | Yes | No | Update check only (Gemini has no context metric or subagent event for the others) | Yes | Yes |
 | Statusline (the context bridge the monitor reads) | Yes | No | No (Gemini CLI has no statusline command) | No | Yes |
-| Stop guard (auto-advance boundary) | Yes | No | Yes | No | No |
+| Stop guard (auto-advance boundary) | Yes | No | Yes | Yes | Yes |
+| State re-injection after context compaction | Yes | No | No | Yes | No |
 | Model profiles | Yes | Yes | Yes | Yes | Yes |
 | Wave-based parallel execution | Yes | Depends on runtime | Depends on runtime | Yes | Yes |
 | Hierarchical exec + bot-army campaigns (`/pan:army`) | Yes | No (flat fallback) | No (flat fallback) | No (flat fallback) | No (flat fallback) |
 | `--dangerously-skip-permissions` | Yes | N/A | N/A | N/A | N/A |
 
-Hooks are supported by Claude Code, Gemini CLI, Codex (since June 2026, via `.codex/hooks.json` with Claude-compatible event names), and Copilot CLI. OpenCode does not currently support hooks. On Gemini CLI PAN registers only the update check (`SessionStart`) and the stop guard (`AfterAgent`, Gemini's end-of-turn event): Gemini exposes no context-window usage to hooks and has no subagent-completion event, so the context monitor and the cost and trace loggers do not run there.
+Hooks are supported by Claude Code, Gemini CLI, Codex (since June 2026, via `.codex/hooks.json` with Claude-compatible event names), and Copilot CLI. OpenCode does not currently support hooks. On Gemini CLI PAN registers only the update check (`SessionStart`) and the stop guard (`AfterAgent`, Gemini's end-of-turn event): Gemini exposes no context-window usage to hooks and has no subagent-completion event, so the context monitor and the cost and trace loggers do not run there. Two trust gates can keep registered hooks from running: headless Copilot (`copilot -p`) loads repository hooks only in a trusted folder (see [Troubleshooting](TROUBLESHOOTING.md#pans-hooks-do-not-run-under-copilot--p)), and Codex skips a new or changed hook until you trust it in `/hooks` — repeat that after a PAN upgrade that changes the hooks.
 
 **Copilot CLI interaction handling:** Copilot CLI has no structured input controls (no checkboxes, radio buttons, or multi-select). PAN Wizard's install-time converter automatically rewrites `AskUserQuestion` blocks into numbered text menus with clear selection instructions. Single-select questions show "Type a number or label to choose", multi-select shows "Type the numbers you want, separated by commas (e.g., 1,3)". This runs transparently during installation — no user configuration needed.
 
@@ -1297,7 +1300,7 @@ For reference, here is what PAN creates in your project:
   research/               # Domain research from /pan:new-project
   todos/
     pending/              # Captured ideas awaiting work
-    done/                 # Todos completed via /pan:todo-check (`pan-tools todo complete` uses completed/)
+    completed/            # Todos completed via /pan:todo-check or `pan-tools todo complete`
   debug/                  # Active debug sessions
     resolved/             # Archived debug sessions
   codebase/               # Brownfield codebase mapping (from /pan:map-codebase)

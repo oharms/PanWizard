@@ -1,0 +1,12 @@
+{
+  "hook_event": "SessionStart",
+  "runtime": "claude",
+  "captured_at": "2026-09-26",
+  "captured_from": "code.claude.com/docs/en/hooks (markdown source, read raw 2026-09-26): \"In addition to the common input fields, SessionStart hooks receive `source` and optionally `model`, `agent_type`, and `session_title`\", with `source` documented as \"`\"startup\"` for new sessions, `\"resume\"` for resumed sessions, `\"clear\"` after `/clear`, `\"compact\"` after compaction, or `\"fork\"`\". The common fields (`session_id`, `transcript_path`, `cwd`, `hook_event_name`) and their identity shape are the ones session-start-claude.json already carries. Codex documents the same `source: \"compact\"` discriminator for its SessionStart (codex hooks reference, read 2026-09-26). Every value is neutral synthetic.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id",
+    "{{TRANSCRIPT_PATH}}": "absolute path of the session transcript",
+    "{{PROJECT_DIR}}": "absolute path of the project whose .planning/ tree the hook reads"
+  },
+  "notes": "The optional `model`, `agent_type` and `session_title` fields are omitted: pan-state-reinject.js reads only `source` and `cwd`. The e2e driver flips `source` to \"startup\" on the same fixture to prove the hook is inert on every other start."
+}

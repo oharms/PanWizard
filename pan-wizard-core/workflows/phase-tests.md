@@ -364,7 +364,7 @@ Present next steps:
 
 **Also available:**
 - `/pan:phase-tests {next_phase}` — test another phase
-- `/pan:verify-phase {phase_number}` — run UAT verification
+- `/pan:verify-phase {phase_number}` — re-run goal-backward verification
 
 ---
 ```

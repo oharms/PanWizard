@@ -105,7 +105,7 @@ Use AskUserQuestion:
 - header: "Action"
 - question: "This todo relates to Phase [N]: [name]. What would you like to do?"
 - options:
-  - "Work on it now" — move to done, start working
+  - "Work on it now" — mark it completed, start working
   - "Add to phase plan" — include when planning Phase [N]
   - "Brainstorm approach" — think through before deciding
   - "Put it back" — return to list
@@ -116,7 +116,7 @@ Use AskUserQuestion:
 - header: "Action"
 - question: "What would you like to do with this todo?"
 - options:
-  - "Work on it now" — move to done, start working
+  - "Work on it now" — mark it completed, start working
   - "Create a phase" — /pan:add-phase with this scope
   - "Brainstorm approach" — think through before deciding
   - "Put it back" — return to list
@@ -125,8 +125,9 @@ Use AskUserQuestion:
 <step name="execute_action">
 **Work on it now:**
 ```bash
-mv ".planning/todos/pending/[filename]" ".planning/todos/done/"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs todo complete "[filename]"
 ```
+This moves it to `.planning/todos/completed/` with a `completed:` date — the directory `init todos` and `/pan:progress` count.
 Update state.md todo count. Present problem/solution context. Begin work or ask how to proceed.
 
 **Add to phase plan:**
@@ -150,11 +151,11 @@ Re-run `init todos` to get updated count, then update state.md "### Pending Todo
 </step>
 
 <step name="git_commit">
-If todo was moved to done/, commit the change:
+If the todo was completed, commit the change:
 
 ```bash
 git rm --cached .planning/todos/pending/[filename] 2>/dev/null || true
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: start work on todo - [title]" --files .planning/todos/done/[filename] .planning/state.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: start work on todo - [title]" --files .planning/todos/completed/[filename] .planning/state.md
 ```
 
 Tool respects `commit_docs` config and gitignore automatically.
@@ -172,5 +173,5 @@ Confirm: "Committed: docs: start work on todo - [title]"
 - [ ] Appropriate actions offered
 - [ ] Selected action executed
 - [ ] state.md updated if todo count changed
-- [ ] Changes committed to git (if todo moved to done/)
+- [ ] Changes committed to git (if the todo was completed)
 </success_criteria>

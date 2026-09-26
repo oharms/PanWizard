@@ -3,7 +3,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, loadConfig, isGitIgnored, isGitRepo, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, resolveEffortInternal, detectProvider, resolveTierToModel, estimateCostMultiplier, MODEL_PROFILES, output, error, findPhaseInternal, scanPendingTodos, toPosix } = require('./core.cjs');
+const { safeReadFile, loadConfig, isGitIgnored, isGitRepo, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, resolveModelDetailed, resolveEffortInternal, detectProvider, resolveTierToModel, estimateCostMultiplier, MODEL_PROFILES, output, error, findPhaseInternal, scanPendingTodos, toPosix } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { PHASES_DIR, MILESTONES_DIR, QUICK_DIR, STATE_FILE, ROADMAP_FILE, PROJECT_FILE, PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, CONTEXT_SUFFIX, UAT_SUFFIX, VERIFICATION_SUFFIX, isPlanFile, isSummaryFile, ARCHIVE_DIR_RE, PHASE_DIR_RE, CONTEXT_WINDOW, WARNING_THRESHOLD, CRITICAL_THRESHOLD, VALID_COMMIT_TYPES, DEFAULT_SENSITIVE_PATTERNS } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, planningRel } = require('./utils.cjs');
@@ -220,7 +220,7 @@ function cmdHistoryDigest(cwd, raw) {
  * @param {string} [metadataJson] - Optional JSON string with task metadata for complexity routing
  * @returns {void}
  */
-function cmdResolveModel(cwd, agentType, raw, metadataJson) {
+function cmdResolveModel(cwd, agentType, raw, metadataJson, attempt) {
   if (!agentType) {
     error('agent-type required');
   }
@@ -229,6 +229,11 @@ function cmdResolveModel(cwd, agentType, raw, metadataJson) {
   if (metadataJson) {
     try { taskMetadata = JSON.parse(metadataJson); }
     catch { /* ignore invalid metadata, use static routing */ }
+  }
+  // --attempt N (M8): the retry number, 1 for a first try. It rides in the
+  // metadata so every resolution rule sees it; the flag wins over a metadata key.
+  if (attempt !== undefined) {
+    taskMetadata = { ...(taskMetadata && typeof taskMetadata === 'object' ? taskMetadata : {}), attempt };
   }
 
   const config = loadConfig(cwd);
@@ -243,9 +248,14 @@ function cmdResolveModel(cwd, agentType, raw, metadataJson) {
     return;
   }
 
-  const model = resolveModelInternal(cwd, agentType, taskMetadata);
+  const resolved = resolveModelDetailed(cwd, agentType, taskMetadata);
+  const model = resolved.model;
   const effort = resolveEffortInternal(cwd, agentType);
   const result = { model, profile, strategy, effort };
+  if (taskMetadata && Number.isInteger(taskMetadata.attempt)) {
+    result.attempt = taskMetadata.attempt;
+    result.escalated_from = resolved.escalated_from;
+  }
   output(result, raw, model);
 }
 
@@ -804,7 +814,13 @@ function cmdTodoComplete(cwd, filename, raw) {
   }
 
   const today = new Date().toISOString().split('T')[0];
-  content = `completed: ${today}\n` + content;
+  // /pan:todo-add writes YAML frontmatter; the date goes inside it. Prepending it
+  // put `completed:` above the opening `---` and broke the block. A file with no
+  // frontmatter keeps the old first-line form.
+  const fm = content.match(/^---\r?\n/);
+  content = fm
+    ? fm[0] + `completed: ${today}` + fm[0].slice(3) + content.slice(fm[0].length)
+    : `completed: ${today}\n` + content;
 
   try {
     fs.writeFileSync(path.join(completedDir, filename), content, 'utf-8');

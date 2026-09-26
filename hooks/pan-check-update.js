@@ -12,6 +12,45 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// ─── R39: one run per hook when Claude and Copilot share a project ───────────
+// Copilot CLI also runs the hooks in a repository's .claude/settings.json and
+// .claude/settings.local.json. Measured 2026-09-26 (Copilot CLI 1.0.88, repository
+// hooks loaded): in a project with both the Claude and the Copilot install, every
+// PAN hook ran twice under Copilot — once from .github/hooks/pan.json, once from the
+// Claude settings. The Copilot project copy (this file under .github/hooks) steps
+// aside whenever the project's Claude settings register the same script, so the hook
+// runs once, and runs again from here the moment the Claude registration is gone.
+// Both files are repository hooks to Copilot and load under the same trust rule, so
+// deferring never leaves zero. Only this copy defers: Claude Code never reads
+// .github/hooks, Gemini and Codex never read .claude/settings.json, and a global
+// Copilot copy loads where repository hooks may not. Identical in every hook
+// Copilot registers — tests/copilot-hook-dedupe.test.cjs pins the copies.
+function deferToClaudeRegistration(projectDir, hookFile = __filename) {
+  // Assembled, not written as a literal: the installer rewrites every quoted .claude
+  // literal in a hook copy to that runtime's own directory, and this one must stay Claude's.
+  const claudeDir = ['.', 'claude'].join('');
+  try {
+    const hooksDir = path.dirname(hookFile);
+    if (path.basename(hooksDir) !== 'hooks' || path.basename(path.dirname(hooksDir)) !== '.github') return false;
+    if (typeof projectDir !== 'string' || !projectDir) return false;
+    const script = path.basename(hookFile);
+    for (const name of ['settings.json', 'settings.local.json']) {
+      let settings;
+      try { settings = JSON.parse(fs.readFileSync(path.join(projectDir, claudeDir, name), 'utf8')); } catch { continue; }
+      const events = settings && typeof settings.hooks === 'object' ? settings.hooks : null;
+      if (!events) continue;
+      for (const groups of Object.values(events)) {
+        if (!Array.isArray(groups)) continue;
+        for (const group of groups) {
+          const handlers = group && Array.isArray(group.hooks) ? group.hooks : [];
+          if (handlers.some((h) => h && typeof h.command === 'string' && h.command.includes(script))) return true;
+        }
+      }
+    }
+  } catch { /* fail open: run this copy */ }
+  return false;
+}
 const os = require('os');
 const { spawn } = require('child_process');
 
@@ -128,9 +167,17 @@ function main() {
   const cacheDir = path.join(homeDir, '.claude', 'cache');
   const cacheFile = path.join(cacheDir, 'pan-update-check.json');
 
-  // VERSION file locations (check project first, then global)
+  // VERSION file locations: the project's own install first; then the core this
+  // hook copy ships with, which sits beside it in every layout (<config>/hooks next
+  // to <config>/pan-wizard-core, and the same under a plugin root); then the global
+  // install. The plugin case is why the middle one exists: the two config-dir paths
+  // only ever find an install, so under a plugin host the installed version read as
+  // 0.0.0 (3.28.0 review, LOW).
   const projectVersionFile = path.join(cwd, '.claude', 'pan-wizard-core', 'VERSION');
-  const globalVersionFile = path.join(homeDir, '.claude', 'pan-wizard-core', 'VERSION');
+  const ownVersionFile = path.join(__dirname, '..', 'pan-wizard-core', 'VERSION');
+  const globalVersionFile = fs.existsSync(ownVersionFile)
+    ? ownVersionFile
+    : path.join(homeDir, '.claude', 'pan-wizard-core', 'VERSION');
 
   // Ensure cache directory exists
   try {
@@ -153,6 +200,9 @@ function main() {
     return;
   }
 
+  // Copilot also runs the Claude registration of this hook in a two-runtime project.
+  if (deferToClaudeRegistration(cwd)) return;
+
   // Parent mode: run the check in a detached background child so the 10s
   // `npm view` never blocks SessionStart. windowsHide prevents a console flash.
   const child = spawn(process.execPath, [__filename, '--run-check'], {
@@ -168,6 +218,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  deferToClaudeRegistration,
   parseVersion,
   compareVersions,
   isUpdateAvailable,

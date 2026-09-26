@@ -49,8 +49,13 @@ function fail(message) {
 function build() {
   try {
     // Relay the builder's stdout to stderr so stdout stays single-line.
+    // PAN_PLUGIN_OUT redirects the builder; this script prints PLUGIN_DIR, so a value
+    // inherited from the caller's environment would build one place and point the
+    // marketplace at another (3.28.0 review, LOW). Build where the path says.
+    const env = { ...process.env };
+    delete env.PAN_PLUGIN_OUT;
     const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-plugin.js')], {
-      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env,
     });
     if (out) process.stderr.write(out);
   } catch (err) {

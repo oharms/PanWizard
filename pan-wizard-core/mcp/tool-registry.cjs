@@ -75,13 +75,23 @@ const RESOURCES = [
 const SPAWN_TOOLS = [
   {
     name: 'pan_resolve_model', title: 'Resolve model for an agent', verb: 'resolve-model',
-    description: 'Resolve the model tier/id PAN would use for an agent under the active profile.',
+    description: 'Resolve the model tier/id PAN would use for an agent under the active profile. Pass attempt > 1 for a retry after a failure: the tier climbs toward the agent\'s quality tier (routing.max_escalations caps it).',
     readOnly: true, destructive: false,
     inputSchema: {
       type: 'object', additionalProperties: false, required: ['agent'],
-      properties: { agent: { type: 'string', description: 'Agent type, e.g. pan-planner' } },
+      properties: {
+        agent: { type: 'string', description: 'Agent type, e.g. pan-planner' },
+        attempt: { type: 'integer', minimum: 1, maximum: 99, description: '1 for a first try; 2 for the first retry after a failure' },
+      },
     },
-    args: (i) => [str('agent', i && i.agent, AGENT_RE, 64)],
+    args: (i) => {
+      const out = [str('agent', i && i.agent, AGENT_RE, 64)];
+      if (i && i.attempt !== undefined) {
+        if (!Number.isInteger(i.attempt) || i.attempt < 1 || i.attempt > 99) throw new Error('Invalid "attempt": must be an integer from 1 to 99');
+        out.push('--attempt', String(i.attempt));
+      }
+      return out;
+    },
   },
   {
     name: 'pan_find_phase', title: 'Find a phase', verb: 'find-phase',
@@ -155,7 +165,7 @@ const { NATIVE_TOOLS } = require('./native-tools.cjs');
 // safety argument of ADR-0041 is that no client input reaches it.
 const PROJECT_CWD_PROPERTY = Object.freeze({
   type: 'string',
-  description: 'Absolute path of the PAN project to operate on. Optional: defaults to the directory the server was started in. Pass it when the server was launched from a plugin directory (Agent Plugins clients do this by default), or to address another project.',
+  description: 'Absolute path of the PAN project to operate on. Optional: defaults to the directory the server was started in. Pass it when the server was launched from a plugin directory (Agent Plugins clients do this by default), or to address another project. The server acts on any existing directory named here with the permissions of the user who runs it — it trusts its caller as it trusts the session that started it.',
 });
 
 const PROJECT_CWD_MAX = 1024;

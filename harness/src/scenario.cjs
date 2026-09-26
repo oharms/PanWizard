@@ -52,8 +52,13 @@ function validateScenario(s, fileName = '<inline>') {
     if (st.kind === 'build' && !/^[a-z-]+\.js$/.test(String(st.script || ''))) err(`${at}: build steps need a scripts/<name>.js`);
     if (st.kind === 'sh' && !/^[a-z-]+\.cjs$/.test(String(st.script || ''))) err(`${at}: sh steps need a harness/scripts/<name>.cjs`);
     if (st.kind === 'cli' && !/^[a-z][a-z0-9-]*$/.test(String(st.bin || ''))) err(`${at}: cli steps need a bare bin name`);
+    // `paid: true` marks a cli step that spends another CLI's model credits (running a
+    // Copilot custom agent, say). It counts as the scenario's model step and, like one,
+    // may not live in tier 0 — tier 0 is the free tier.
+    if (st.paid !== undefined && (st.kind !== 'cli' || st.paid !== true)) err(`${at}: paid is only \`true\`, and only on cli steps`);
+    if (st.paid === true && s.tier === 0) err(`${at}: a paid cli step cannot live in a tier-0 scenario`);
   });
-  if (s.tier >= 1 && !s.steps.some(st => st.kind === 'model')) err('a tier ≥1 scenario should contain a model step (else it is tier 0)');
+  if (s.tier >= 1 && !s.steps.some(st => st.kind === 'model' || st.paid === true)) err('a tier ≥1 scenario should contain a model step or a paid cli step (else it is tier 0)');
   return errors;
 }
 

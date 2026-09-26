@@ -89,8 +89,11 @@ function extractFrontmatter(content) {
   const frontmatter = {};
 
   // --- Frontmatter delimiter detection ---
-  // Match the first YAML block bounded by opening "---\n" and closing "\n---"
-  const match = content.match(/^---\n([\s\S]+?)\n---/);
+  // Match the first YAML block bounded by opening "---\n" and closing "\n---".
+  // CRLF and a leading BOM are normalised first: the LF-only match found no front
+  // matter at all in a CRLF file, so every reader saw an empty object.
+  const text = String(content == null ? '' : content).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  const match = text.match(/^---\n([\s\S]+?)\n---/);
   if (!match) return frontmatter;
 
   const yaml = match[1];

@@ -1,0 +1,49 @@
+{
+  "id": "copilot-agent-frontmatter",
+  "tier": 1,
+  "description": "Write a Copilot custom agent in the shape PAN would emit for a model-pinned agent (a `models:` list plus `model-policy`) and run it headlessly with `copilot --agent`; the agent must load and answer.",
+  "why": "Reality check R13 / market-ideas M15. Copilot validates custom-agent frontmatter only when it loads the agent, and it loads the agent only to run it, so the check is paid (one short prompt, Copilot credits). The first live run (2026-09-26, CLI 1.0.88) is why this exists: PAN's `model-policy: prefer` made Copilot refuse the agent outright. Whether a model list falls through to its second entry cannot be read here on a Copilot Free account (every pin runs on `auto`); run it on a paid plan and read Copilot's log for the chosen model.",
+  "seed": "empty",
+  "install": null,
+  "requires": {
+    "cli": "copilot",
+    "minVersion": "1.0.86"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 6,
+    "maxStepMinutes": 4
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "copilot-agent-model-list.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "file:.github/agents/pan-model-probe.agent.md"
+      ],
+      "why": "The probe agent: PAN's emitted frontmatter shape, with Copilot's own dotted model ids."
+    },
+    {
+      "kind": "cli",
+      "bin": "copilot",
+      "paid": true,
+      "args": [
+        "--agent",
+        "pan-model-probe",
+        "-p",
+        "Reply with the single word PROBE.",
+        "-s",
+        "--allow-all-tools"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~PROBE"
+      ],
+      "why": "A malformed frontmatter makes Copilot print 'Custom agent ... failed to load' and exit 1 before any model call; a loadable agent runs and answers. The answer, not the model that gave it, is what this step measures."
+    }
+  ]
+}

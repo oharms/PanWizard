@@ -320,6 +320,78 @@ function cmdRoadmapAnalyze(cwd, raw) {
  * @param {boolean} raw - If true, output raw value instead of JSON
  * @returns {void}
  */
+// ─── Progress table and Plans line, located by name ─────────────────────────
+//
+// `roadmap update-plan-progress` used to rewrite the phase's table row by column
+// POSITION — cells 2 to 4, whatever the header said. On PAN's own milestone
+// variant (`| Phase | Milestone | Plans Complete | Status | Completed |`) that put
+// the plan count in the Milestone column; on a roadmap with other columns it
+// destroyed the phase's goal and requirement ids. And the `**Plans:**` update was a
+// lazy match from the phase heading onward, so a phase without its own Plans line
+// had the NEXT phase's rewritten. Both are now located by name, and a table without
+// Plans and Status columns is left alone and reported.
+
+const splitRow = (line) => {
+  const inner = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+  return inner.split(/(?<!\\)\|/).map((c) => c.trim());
+};
+const isTableLine = (line) => /^\s*\|.*\|\s*$/.test(line);
+const isSeparator = (line) => /^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/.test(line);
+
+/**
+ * Set the Plans / Status / Completed cells of the phase's row in any table whose
+ * header names Plans and Status columns. Pure.
+ * @returns {{content: string, updated: boolean, reason: string|null}}
+ */
+function updateProgressTableRow(content, phaseNum, values) {
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const phaseRe = new RegExp(`^(?:phase\\s+)?${escapeRegex(String(phaseNum))}\\.?(?=\\s|:|$)`, 'i');
+  let reason = null;
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (!isTableLine(lines[i]) || !isSeparator(lines[i + 1])) continue;
+    const header = splitRow(lines[i]);
+    const col = (re) => header.findIndex((h) => re.test(h));
+    const plansIdx = col(/\bplans?\b/i);
+    const statusIdx = col(/^status$/i);
+    const doneIdx = col(/^completed?(?:\s+on|\s+date)?$/i);
+    for (let r = i + 2; r < lines.length && isTableLine(lines[r]); r++) {
+      const cells = splitRow(lines[r]);
+      if (!phaseRe.test(cells[0] || '')) continue;
+      if (plansIdx < 0 || statusIdx < 0) {
+        reason = `the table holding phase ${phaseNum} has no Plans and Status columns (${header.join(' | ')}) — left unchanged`;
+        continue;
+      }
+      while (cells.length < header.length) cells.push('');
+      cells[plansIdx] = values.plans;
+      cells[statusIdx] = values.status;
+      if (doneIdx >= 0) cells[doneIdx] = values.completed || '';
+      const indent = lines[r].match(/^\s*/)[0];
+      lines[r] = `${indent}| ${cells.join(' | ')} |`;
+      return { content: lines.join(eol), updated: true, reason: null };
+    }
+  }
+  return { content, updated: false, reason: reason || `no progress-table row for phase ${phaseNum}` };
+}
+
+/** Rewrite `**Plans:**` inside the phase's own section only. Pure. */
+function updatePhasePlansLine(content, phaseNum, text) {
+  const lines = content.split(/(?<=\n)/);
+  const headRe = new RegExp(`^(#{2,4})\\s*Phase\\s+${escapeRegex(String(phaseNum))}(?=[\\s:.]|$)`, 'i');
+  const start = lines.findIndex((l) => headRe.test(l));
+  if (start < 0) return { content, updated: false };
+  const level = lines[start].match(headRe)[1].length;
+  const nextHead = new RegExp(`^#{1,${level}}\\s`);
+  for (let i = start + 1; i < lines.length && !nextHead.test(lines[i]); i++) {
+    const m = lines[i].match(/^(.*?(?:\*\*Plans:\*\*|\*\*Plans\*\*:)\s*)[^\r\n]*(\r?\n?)$/);
+    if (m) {
+      lines[i] = `${m[1]}${text}${m[2]}`;
+      return { content: lines.join(''), updated: true };
+    }
+  }
+  return { content, updated: false };
+}
+
 function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   if (!phaseNum) {
     error('phase number required for roadmap update-plan-progress');
@@ -356,26 +428,19 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
   }
   const phaseEscaped = escapeRegex(phaseNum);
 
-  // Progress table row: update Plans column (summaries/plans) and Status column
-  const tablePattern = new RegExp(
-    `(\\|\\s*${phaseEscaped}\\.?\\s[^|]*\\|)[^|]*(\\|)\\s*[^|]*(\\|)\\s*[^|]*(\\|)`,
-    'i'
-  );
-  const dateField = isComplete ? ` ${today} ` : '  ';
-  roadmapContent = roadmapContent.replace(
-    tablePattern,
-    `$1 ${summaryCount}/${planCount} $2 ${status.padEnd(11)}$3${dateField}$4`
-  );
+  // Progress table row: the Plans, Status and Completed cells, found by header.
+  const table = updateProgressTableRow(roadmapContent, phaseNum, {
+    plans: `${summaryCount}/${planCount}`,
+    status,
+    completed: isComplete ? today : '',
+  });
+  roadmapContent = table.content;
 
-  // Update plan count in phase detail section
-  const planCountPattern = new RegExp(
-    `(#{2,4}\\s*Phase\\s+${phaseEscaped}[\\s\\S]*?(?:\\*\\*Plans:\\*\\*|\\*\\*Plans\\*\\*:)\\s*)[^\\n]+`,
-    'i'
-  );
+  // Update plan count in the phase's own detail section
   const planCountText = isComplete
     ? `${summaryCount}/${planCount} plans complete`
     : `${summaryCount}/${planCount} plans executed`;
-  roadmapContent = roadmapContent.replace(planCountPattern, `$1${planCountText}`);
+  roadmapContent = updatePhasePlansLine(roadmapContent, phaseNum, planCountText).content;
 
   // If complete: check checkbox
   if (isComplete) {
@@ -402,6 +467,8 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
 
   try {
     fs.writeFileSync(roadmapPath, roadmapContent, 'utf-8');
+    // Read back: report success only for the file this command produced.
+    if (fs.readFileSync(roadmapPath, 'utf-8') !== roadmapContent) throw new Error('roadmap.md did not read back as written');
   } catch (err) {
     // error key => exit 1: the write failed, so progress was computed and then lost.
     output({ updated: false, reason: 'Failed to write roadmap.md: ' + err.message, error: err.message || 'roadmap_write_failed' }, raw, 'write error');
@@ -415,7 +482,9 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     summary_count: summaryCount,
     status,
     complete: isComplete,
-  }, raw, `${summaryCount}/${planCount} ${status}`);
+    table_updated: table.updated,
+    ...(table.updated ? {} : { table_reason: table.reason }),
+  }, raw, `${summaryCount}/${planCount} ${status}${table.updated ? '' : ' (progress table not updated)'}`);
 }
 
 /**

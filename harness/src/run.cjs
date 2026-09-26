@@ -73,6 +73,21 @@ function runIdPrefix() {
   return `run-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-`;
 }
 
+/**
+ * One argument for a cmd.exe command line. npm installs a CLI on Windows as a
+ * `.cmd` shim, which only runs through the shell, and Node then CONCATENATES the
+ * arguments unquoted — `-p "Reply with PROBE."` reached Copilot as four words and it
+ * refused the command (2026-09-26). Quote anything with whitespace, a quote or a cmd
+ * metacharacter; a quote inside becomes `\"`, which the shim's node process parses back.
+ */
+function quoteCmdArg(arg) {
+  const s = String(arg);
+  if (s !== '' && !/[\s"&|<>^()%!]/.test(s)) return s;
+  // Backslashes before a quote, and at the end, are doubled so the quote survives the
+  // program's own argv parsing (the MSVCRT rules node follows).
+  return '"' + s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1') + '"';
+}
+
 function fill(value, vars) {
   if (typeof value === 'string') return value.replace(/<(ws|other|repo|pkg)>/g, (_, k) => vars[k]);
   if (Array.isArray(value)) return value.map(v => fill(v, vars));
@@ -136,7 +151,9 @@ function runStep(step, ctx) {
     }
     case 'build': {
       const script = path.join(repo, 'scripts', step.script);
-      const out = path.join(ws, fill(step.out || 'bundle', vars));
+      // resolve, not join: an absolute `out` (live-gate-codex's `<repo>/dist/...`) must
+      // replace the workspace, where join glued it on and the build could not write.
+      const out = path.resolve(ws, fill(step.out || 'bundle', vars));
       const env = { ...process.env, PAN_AGENT_PLUGIN_OUT: out, PAN_PLUGIN_OUT: out };
       const r = spawnSync(process.execPath, [script], { cwd: repo, encoding: 'utf8', timeout: stepTimeout, env, stdio: ['ignore', 'pipe', 'pipe'] });
       return { code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') + (r.error ? r.error.message : '') };
@@ -144,7 +161,9 @@ function runStep(step, ctx) {
     case 'cli': {
       const bin = findCli(step.bin);
       if (!bin) return { code: 127, stdout: '', stderr: `${step.bin} not on PATH` };
-      const r = spawnSync(bin, fill(step.args || [], vars), { cwd: ws, encoding: 'utf8', timeout: stepTimeout, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin) });
+      const viaShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
+      const argv = fill(step.args || [], vars);
+      const r = spawnSync(viaShell ? quoteCmdArg(bin) : bin, viaShell ? argv.map(quoteCmdArg) : argv, { cwd: ws, encoding: 'utf8', timeout: stepTimeout, stdio: ['ignore', 'pipe', 'pipe'], shell: viaShell });
       return { code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') + (r.error ? r.error.message : '') };
     }
     case 'mcp': {
@@ -383,4 +402,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, runStep, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, quoteCmdArg, runStep, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };

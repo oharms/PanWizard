@@ -799,19 +799,31 @@ function calculateProgressBar(completed, total) {
  * Orchestrates extractFieldsFromState, scanPhaseProgress,
  * normalizePhaseStatus, and calculateProgressBar.
  */
-function buildStateFrontmatter(bodyContent, cwd) {
+function buildStateFrontmatter(bodyContent, cwd, existing = {}) {
   const fields = extractFieldsFromState(bodyContent);
+  const prior = existing && typeof existing === 'object' ? existing : {};
 
+  // The milestone comes from the roadmap resolver — unless the resolver only
+  // guessed (no milestone heading at all) and state.md already records one. A
+  // guess overwriting a recorded value is how a letter-series milestone ("R-2")
+  // was rewritten to the resolver's `v1.0` / `milestone` on every state write.
   let milestone = null;
   let milestoneName = null;
   if (cwd) {
     try {
       const info = getMilestoneInfo(cwd);
-      milestone = info.version;
-      milestoneName = info.name;
+      const guessed = info.basis === 'default' || info.basis === 'no-milestone-heading';
+      if (!(guessed && prior.milestone)) {
+        milestone = info.version;
+        milestoneName = info.name;
+      }
     } catch {
       // No milestone configured or milestone file unreadable -- skip milestone fields
     }
+  }
+  if (milestone == null && prior.milestone) {
+    milestone = prior.milestone;
+    milestoneName = prior.milestone_name != null ? prior.milestone_name : null;
   }
 
   let totalPhases = fields.totalPhasesRaw ? parseInt(fields.totalPhasesRaw, 10) : null;
@@ -837,20 +849,27 @@ function buildStateFrontmatter(bodyContent, cwd) {
     if (pctMatch) progressPercent = parseInt(pctMatch[1], 10);
   }
 
-  const normalizedStatus = normalizePhaseStatus(fields.status, fields.pausedAt);
-
   const frontmatter = { pan_state_version: '1.0' };
 
   if (milestone) frontmatter.milestone = milestone;
   if (milestoneName) frontmatter.milestone_name = milestoneName;
-  if (fields.currentPhase) frontmatter.current_phase = fields.currentPhase;
-  if (fields.currentPhaseName) frontmatter.current_phase_name = fields.currentPhaseName;
-  if (fields.currentPlan) frontmatter.current_plan = fields.currentPlan;
-  frontmatter.status = normalizedStatus;
-  if (fields.stoppedAt) frontmatter.stopped_at = fields.stoppedAt;
-  if (fields.pausedAt) frontmatter.paused_at = fields.pausedAt;
+  // A field the body restates wins; one it does not keeps its recorded value.
+  // Rebuilding from the body alone dropped current_phase_name, current_plan and
+  // the rest whenever a project's state.md did not repeat them in prose.
+  const keep = (key, fromBody) => {
+    if (fromBody != null && fromBody !== '') frontmatter[key] = fromBody;
+    else if (prior[key] != null) frontmatter[key] = prior[key];
+  };
+  keep('current_phase', fields.currentPhase);
+  keep('current_phase_name', fields.currentPhaseName);
+  keep('current_plan', fields.currentPlan);
+  frontmatter.status = (fields.status || fields.pausedAt)
+    ? normalizePhaseStatus(fields.status, fields.pausedAt)
+    : (prior.status != null ? prior.status : normalizePhaseStatus(null, null));
+  keep('stopped_at', fields.stoppedAt);
+  keep('paused_at', fields.pausedAt);
   frontmatter.last_updated = new Date().toISOString();
-  if (fields.lastActivity) frontmatter.last_activity = fields.lastActivity;
+  keep('last_activity', fields.lastActivity);
 
   const progress = {};
   if (totalPhases !== null) progress.total_phases = totalPhases;
@@ -859,19 +878,48 @@ function buildStateFrontmatter(bodyContent, cwd) {
   if (completedPlans !== null) progress.completed_plans = completedPlans;
   if (progressPercent !== null) progress.percent = progressPercent;
   if (Object.keys(progress).length > 0) frontmatter.progress = progress;
+  else if (prior.progress != null) frontmatter.progress = prior.progress;
 
-  return frontmatter;
+  // Keys PAN does not manage (a project's own notes) survive every write, in the
+  // order the file already had them; PAN's keys fill in around them.
+  const merged = {};
+  for (const key of Object.keys(prior)) merged[key] = key in frontmatter ? frontmatter[key] : prior[key];
+  for (const key of Object.keys(frontmatter)) if (!(key in merged)) merged[key] = frontmatter[key];
+  return merged;
 }
+
+// One front-matter block at the top of state.md: BOM-tolerant, LF or CRLF. The
+// previous `^---\n…\n---\n` matched LF only, so on a CRLF checkout (git
+// core.autocrlf=true) the old block was never stripped and every state write
+// stacked a new, re-derived block on top of it.
+const STATE_FRONTMATTER_RE = /^\uFEFF?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/;
 
 function stripFrontmatter(content) {
-  return content.replace(/^---\n[\s\S]*?\n---\n*/, '');
+  return String(content).replace(STATE_FRONTMATTER_RE, '').replace(/^\uFEFF/, '').replace(/^(?:\r?\n)+/, '');
 }
 
-function syncStateFrontmatter(content, cwd) {
-  const body = stripFrontmatter(content);
-  const frontmatter = buildStateFrontmatter(body, cwd);
+/**
+ * Re-derive state.md's front matter from its body, merged with the front matter
+ * already there. Output uses `eol` (default: whatever the content already uses).
+ * Throws (code STATE_STACKED_FRONTMATTER) when the content starts with more than
+ * one front-matter block — earlier releases stacked them on CRLF files, and
+ * choosing between them silently is exactly the guess this function must not make.
+ */
+function syncStateFrontmatter(content, cwd, eol) {
+  const text = String(content);
+  const lineEnd = eol || (/\r\n/.test(text) ? '\r\n' : '\n');
+  const m = text.match(STATE_FRONTMATTER_RE);
+  const existing = m ? extractFrontmatter(m[0]) : {};
+  const body = stripFrontmatter(text).replace(/\r\n/g, '\n');
+  if (STATE_FRONTMATTER_RE.test(body)) {
+    const err = new Error('state.md starts with more than one front-matter block (an earlier PAN release stacked them on CRLF files). Keep the block with the right values, delete the other, and run the command again — PAN will not pick one for you.');
+    err.code = 'STATE_STACKED_FRONTMATTER';
+    throw err;
+  }
+  const frontmatter = buildStateFrontmatter(body, cwd, existing);
   const yamlStr = reconstructFrontmatter(frontmatter);
-  return `---\n${yamlStr}\n---\n\n${body}`;
+  const out = `---\n${yamlStr}\n---\n\n${body}`;
+  return lineEnd === '\r\n' ? out.replace(/\n/g, '\r\n') : out;
 }
 
 /**
@@ -882,17 +930,33 @@ function syncStateFrontmatter(content, cwd) {
  * state.md.lock and lands atomically (temp + rename), so concurrent agents
  * cannot tear the file or interleave read-modify-write cycles. Lock
  * acquisition is best-effort — on timeout the write proceeds unlocked,
- * preserving single-agent behavior exactly.
+ * matching the file-lock contract.
+ *
+ * The file keeps its own line ending, and the write is verified: exactly one
+ * front-matter block goes in, and what is read back under the lock must be what
+ * was written. A write that cannot meet either stops with an error and leaves
+ * the file as it was — it never reports success over a file it did not produce.
  */
 function writeStateMd(statePath, content, cwd) {
-  const synced = syncStateFrontmatter(content, cwd);
+  let diskEol = null;
+  try { diskEol = /\r\n/.test(fs.readFileSync(statePath, 'utf-8')) ? '\r\n' : '\n'; } catch { /* new file */ }
+  let synced;
+  try {
+    synced = syncStateFrontmatter(content, cwd, diskEol);
+  } catch (err) {
+    if (err && err.code === 'STATE_STACKED_FRONTMATTER') error(err.message);
+    throw err;
+  }
+  let mismatch = false;
   try {
     withFileLock(statePath, () => {
       writeFileAtomic(statePath, synced);
+      mismatch = fs.readFileSync(statePath, 'utf-8') !== synced;
     });
   } catch (err) {
     throw new Error('Failed to write state.md: ' + err.message);
   }
+  if (mismatch) error('state.md did not read back as written — another writer changed it during the write. Re-run the command.');
 }
 
 /**
@@ -911,7 +975,7 @@ function cmdStateJson(cwd, raw) {
   const frontmatter = extractFrontmatter(content);
 
   if (!frontmatter || Object.keys(frontmatter).length === 0) {
-    const body = stripFrontmatter(content);
+    const body = stripFrontmatter(content).replace(/\r\n/g, '\n');
     const built = buildStateFrontmatter(body, cwd);
     output(built, raw, JSON.stringify(built, null, 2));
     return;

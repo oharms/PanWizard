@@ -173,6 +173,12 @@ describe('Copilot CLI: install structure', () => {
     const subagentCommands = config.hooks.subagentStop.map(h => h.command).join(' ');
     assert.ok(subagentCommands.includes('pan-cost-logger'), 'cost logger on subagentStop');
     assert.ok(subagentCommands.includes('pan-trace-logger'), 'trace logger on subagentStop');
+
+    // M14: the auto-advance stop guard on Copilot's agentStop.
+    assert.equal(config.hooks.agentStop.length, 1, 'one agentStop hook');
+    assert.equal(config.hooks.agentStop[0].type, 'command');
+    assert.match(config.hooks.agentStop[0].command, /pan-stop-guard\.js/);
+    assert.ok(fs.existsSync(path.join(tempDir, '.github', 'hooks', 'pan-stop-guard.js')), 'the script it runs is installed');
   });
 
   test('hook entries declare type: command (Copilot CLI schema)', () => {
@@ -797,21 +803,41 @@ describe('Cross-runtime manifest hook parity', () => {
 describe('convertClaudeToCopilotAgent — optional model fallback lists (R13)', () => {
   const lib = require('../bin/install-lib.cjs');
   const src = '---\nname: pan-reviewer\ndescription: Reviews\nmodel: opus\ntools: Read, Grep\n---\nBody.';
-  test('a pinned alias with a mapping emits a model list and model-policy: prefer', () => {
+  test('a pinned alias with a mapping emits a models list and model-policy: preferred', () => {
     const out = lib.convertClaudeToCopilotAgent(src, { modelLists: { opus: ['vendor-model-a', 'vendor-model-b'] } });
     const fm = out.split('---')[1];
-    assert.match(fm, /model:\n  - "?vendor-model-a"?\n  - "?vendor-model-b"?/);
-    assert.match(fm, /model-policy: prefer/);
+    // `models:` is Copilot's documented priority-list field; the singular `model:` is one id.
+    assert.match(fm, /^models:\n  - "?vendor-model-a"?\n  - "?vendor-model-b"?/m);
+    // Copilot CLI 1.0.88 refuses to load an agent with `prefer` (live, 2026-09-26):
+    // 'model-policy: Expected "preferred" or "required"'.
+    assert.match(fm, /^model-policy: preferred$/m);
     assert.ok(!/model: opus/.test(fm), 'the bare alias must not leak into Copilot frontmatter');
   });
   test('without the option, or without a mapping for the alias, output is unchanged', () => {
     const plain = lib.convertClaudeToCopilotAgent(src);
     assert.equal(lib.convertClaudeToCopilotAgent(src, {}), plain);
     assert.equal(lib.convertClaudeToCopilotAgent(src, { modelLists: { sonnet: ['x'] } }), plain);
-    assert.ok(!/model/.test(plain.split('---')[1]), 'no model key by default — the installer is not wired');
+    assert.ok(!/^models?:/m.test(plain.split('---')[1]), 'no model key by default — the installer is not wired');
   });
   test('an agent without a pinned model gets no list even when the map is given', () => {
     const noPin = '---\nname: pan-planner\ndescription: Plans\n---\nBody.';
-    assert.ok(!/model/.test(lib.convertClaudeToCopilotAgent(noPin, { modelLists: { opus: ['a'] } }).split('---')[1]));
+    assert.ok(!/^models?:/m.test(lib.convertClaudeToCopilotAgent(noPin, { modelLists: { opus: ['a'] } }).split('---')[1]));
+  });
+});
+
+// M15: a Copilot custom agent spawned as a subagent gets no repository instructions
+// (AGENTS.md, CLAUDE.md, copilot-instructions.md) unless it opts in. Measured live
+// 2026-09-26 (Copilot CLI 1.0.88): an AGENTS.md canary reached the subagent with the
+// field and not without it. PAN's rules live in AGENTS.md, so every agent opts in.
+describe('convertClaudeToCopilotAgent — repository instructions reach PAN subagents (M15)', () => {
+  const lib = require('../bin/install-lib.cjs');
+  test('every converted agent opts in to repository instructions', () => {
+    for (const src of [
+      '---\nname: pan-planner\ndescription: Plans\n---\nBody.',
+      '---\nname: pan-reviewer\ndescription: Reviews\nmodel: opus\ntools: Read, Grep\n---\nBody.',
+    ]) {
+      const fm = lib.convertClaudeToCopilotAgent(src).split('---')[1];
+      assert.match(fm, /^include-custom-instructions: true$/m);
+    }
   });
 });

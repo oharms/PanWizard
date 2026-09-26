@@ -186,7 +186,6 @@ describe('buildStopDecision — the boundary-drop fingerprint blocks, everything
     const withDecimal = '- [x] **Phase 1: A** - x\n- [ ] **Phase 1.1: Hotfix** - y\n';
     const decimalState = READY_STATE
       .replace('**Current Phase:** 02', '**Current Phase:** 01.1')
-      .replace('**Status:** Ready to plan', '**Status:** Ready to plan')
       .replace('ready to plan Phase 2', 'ready to plan Phase 1.1');
     const d = decide({ roadmapContent: withDecimal, stateContent: decimalState });
     assert.ok(d, 'decimal phase should still block');
@@ -345,6 +344,37 @@ describe('hook process end to end', () => {
       fs.rmSync(hookTmp, { recursive: true, force: true });
     }
   });
+
+  // M14: Codex's Stop and Copilot's agentStop payloads, as each runtime documents
+  // them (codex-rs hooks/schema stop.command.input.schema.json; Copilot
+  // hooks-reference — camelCase, but stop_hook_active stays snake_case).
+  const RUNTIME_STOP_PAYLOADS = {
+    codex: (cwd, active) => ({
+      hook_event_name: 'Stop', session_id: 'x1', turn_id: 't1', cwd, model: 'gpt-6-sol',
+      permission_mode: 'default', transcript_path: null, last_assistant_message: 'done', stop_hook_active: active,
+    }),
+    copilot: (cwd, active) => ({
+      sessionId: 'p1', timestamp: 1790000000000, cwd, transcriptPath: '/tmp/t.jsonl', stopReason: 'end_turn', stop_hook_active: active,
+    }),
+  };
+  for (const [runtime, payload] of Object.entries(RUNTIME_STOP_PAYLOADS)) {
+    test(`${runtime} stop payload: blocks on the fingerprint, and lets the continuation's stop through`, () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stop-guard-'));
+      try {
+        seedProject(tmp);
+        const first = runHook(payload(tmp, false), tmp);
+        assert.equal(first.status, 0, `hook must exit 0: ${first.stderr}`);
+        const out = JSON.parse(first.stdout);
+        assert.equal(out.decision, 'block');
+        assert.match(out.reason, /Phase 2/);
+        const again = runHook(payload(tmp, true), tmp);
+        assert.equal(again.status, 0);
+        assert.equal(again.stdout, '', 'the stop that follows a block must pass through');
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+  }
 
   test('stop_hook_active in the payload suppresses the block end to end', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-stop-guard-'));

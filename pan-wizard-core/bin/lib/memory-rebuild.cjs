@@ -149,8 +149,15 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
     const p = path.join(planningPath(cwd), 'state.md');
     const existing = safeReadFile(p);
     if (existing != null) {
-      const desired = syncStateFrontmatter(existing, cwd);
-      targets.push({ file: '.planning/state.md', ...rebuildFile(p, existing, desired, apply) });
+      let desired = null;
+      try {
+        desired = syncStateFrontmatter(existing, cwd);
+      } catch (err) {
+        // A state.md PAN refuses to re-derive (stacked front matter) is reported,
+        // never rewritten on a guess.
+        targets.push({ file: '.planning/state.md', action: 'refused', reason: err.message });
+      }
+      if (desired !== null) targets.push({ file: '.planning/state.md', ...rebuildFile(p, existing, desired, apply) });
     }
   }
 

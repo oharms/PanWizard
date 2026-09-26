@@ -77,7 +77,8 @@ pan-wizard/
       pan-check-update.js     # Periodic update check (spawns `npm view pan-wizard version`)
       pan-cost-logger.js      # SubagentStop hook — appends cost record to tokens.jsonl (v3.4)
       pan-trace-logger.js     # SubagentStop hook — circular optimization tracing (v3.5)
-      pan-stop-guard.js       # Stop hook (AfterAgent on Gemini CLI) — blocks the auto-advance boundary drop once (v3.24)
+      pan-stop-guard.js       # Stop hook (AfterAgent on Gemini CLI, agentStop on Copilot CLI) — blocks the auto-advance boundary drop once (v3.24)
+      pan-state-reinject.js   # SessionStart hook, matcher compact — re-injects the planning position after a compaction
   scripts/
     build-hooks.js            # Copy hooks/ → hooks/dist/ (no bundling)
     build-plugin.js           # Claude Code plugin → dist/pan-wizard-plugin/
@@ -85,6 +86,7 @@ pan-wizard/
     plugin-path.js            # Rebuilds the plugin and prints its path as one stdout line (command-source marketplace contract)
     release-check.js          # The release gates — `npm run release:check`, also `prepublishOnly`
     deprecate-old-versions.js # Post-publish housekeeping; dry-run by default, `--apply` to act; never unpublishes
+    npm-dist-tag.js           # Prints the npm dist-tag a version publishes under (next for a prerelease, latest otherwise)
     run-tests.cjs             # Glob-free test runner (the CI matrix shells do not expand test globs)
     install-git-hooks.js      # `prepare` script — points core.hooksPath at scripts/git-hooks/ (the gitleaks pre-commit scan)
     generate-skills-docs.py   # Regenerates docs/SKILLS-REFERENCE.md and docs/SKILLS-FULL-TEXT.md
@@ -159,7 +161,7 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 
 1. Create source in `hooks/your-hook.js`
 2. Add the file to `HOOKS_TO_COPY` in `scripts/build-hooks.js`, then run `npm run build:hooks` (copy-only; no bundling — they're pure Node.js)
-3. Register it in `bin/install.js` (its `buildHookCommand` call, a row in the settings.json `registrations` table, and the uninstall `panHooks` list), in `bin/install-lib.cjs` (`PAN_SETTINGS_HOOKS`, a `HOOK_EVENT_MAP` slot carrying each runtime's own event name or `null` — `tests/hook-vocabulary.test.cjs` rejects names a runtime does not document — the Codex and Copilot builders `mergeCodexHooksConfig` / `buildCopilotHooksConfig`, which hard-code their event names, and the plugin hooks builders), and in `EVENT_HOOKS` in `scripts/test-surface.cjs`
+3. Register it in `bin/install.js` (its `buildHookCommand` call, a row in the settings.json `registrations` table, and the uninstall `panHooks` list), in `bin/install-lib.cjs` (`PAN_SETTINGS_HOOKS`, a `HOOK_EVENT_MAP` slot carrying each runtime's own event name or `null` — `tests/hook-vocabulary.test.cjs` rejects names a runtime does not document — the Codex and Copilot builders `mergeCodexHooksConfig` / `buildCopilotHooksConfig`, which hard-code their event names, the plugin hooks builders, and the name regex in the Codex uninstall filter `removeCodexPanHooks`), in `hookCommands()` in `scripts/build-agent-plugin.js`, and in `EVENT_HOOKS` in `scripts/test-surface.cjs`. A hook Copilot registers must also carry the shared `deferToClaudeRegistration()` copy (the `.github` copy steps aside when the project's Claude settings register the same script) and be added to the `HOOKS` list in `tests/copilot-hook-dedupe.test.cjs`
 
 ## Writing Tests
 
@@ -324,7 +326,7 @@ Templates in `pan-wizard-core/templates/` scaffold new project files. The `templ
 | Phase | context.md, research.md, phase-prompt.md (discovery.md is unreferenced by shipped content) | `/pan:discuss-phase`, `/pan:plan-phase` |
 | Codebase | architecture.md, stack.md, conventions.md, concerns.md, integrations.md, structure.md, testing.md, relationships.md, best-practices.md | `/pan:map-codebase` |
 | Summary | summary.md, summary-minimal.md, summary-standard.md, summary-complex.md | pan-executor |
-| Verification | validation.md, uat.md, verification-report.md | pan-verifier |
+| Verification | validation.md, verification-report.md (uat.md is unreferenced by shipped content) | pan-verifier |
 | Debug | debug-subagent-prompt.md (debug.md is unreferenced by shipped content) | the `diagnose-issues` workflow (the native `/pan-diagnose-issues` script carries its own inline prompt) |
 | Research | research-project/stack.md, features.md, architecture.md, pitfalls.md, summary.md | pan-phase-researcher |
 | Planning / execution | user-setup.md (planner-subagent-prompt.md and standards.md are unreferenced by shipped content) | `execute-plan.md` writes `{phase}-USER-SETUP.md` from user-setup.md |
@@ -351,12 +353,12 @@ Besides the loose-file installer, two builders package PAN as a plugin. Neither 
 
 | Command | Output | Consumed by | Layout |
 |---|---|---|---|
-| `npm run build:plugin` | `dist/pan-wizard-plugin/` | Claude Code (plugin marketplaces; the local `command`-source test bed in `marketplace/`) | `.claude-plugin/plugin.json`, `commands/`, `agents/`, `hooks/`, `workflows/`, `.mcp.json`, `pan-wizard-core/` |
+| `npm run build:plugin` | `dist/pan-wizard-plugin/` | Claude Code (plugin marketplaces; the local `command`-source test bed in `marketplace/`) | `.claude-plugin/plugin.json`, `commands/`, `agents/`, `hooks/`, `workflows/`, `.mcp.json`, `pan-wizard-core/`, `evals/` (from `harness/plugin-evals/`, checkout builds only) |
 | `npm run build:agent-plugin` | `dist/pan-agent-plugin/` | Copilot CLI / VS Code, Codex, Cursor, Kiro — the vendor-neutral **Agent Plugins 1.0** format (ADR-0045) | `plugin.json`, `skills/`, `mcp.json`, `pan-wizard-core/`, `hooks/` (scripts + Codex `hooks.json`), `com.github.copilot/` (agents + hooks) |
 
 Two marketplace files in the repository point at the Agent Plugins build so a checkout can install it without publishing: `.agents/plugins/marketplace.json` (Codex, repo-scoped, discovered automatically inside the repo) and `.github/plugin/marketplace.json` (Copilot, added with `copilot plugin marketplace add`). Both reference `./dist/pan-agent-plugin`, so run the builder first. The release gate (`scripts/release-check.js`, gate 8) builds both bundles into temp directories and fails the release if either does not produce its manifest — and, since `2026-09-10`, digests the local `dist/pan-agent-plugin` (untracked — `dist/` is gitignored) against the fresh build whenever it exists, so a stale bundle behind those two marketplaces fails the release with the fix named.
 
-The vendor directories carry their own verification status, recorded in ADR-0045: the Codex hooks shape and `${PLUGIN_ROOT}` expansion come from Codex's plugin reference; the Copilot namespace and its flat PascalCase hooks come from VS Code's documentation, and a live `copilot plugin install` on a machine that has the CLI is the remaining gate. No Antigravity variant is emitted — its manifest schema is closed and different.
+The vendor directories carry their own verification status, recorded in ADR-0045: the Codex hooks shape and `${PLUGIN_ROOT}` expansion come from Codex's plugin reference; the Copilot namespace and its flat PascalCase hooks come from VS Code's documentation, and a live `copilot plugin install` from a local path has since passed on Copilot CLI 1.0.88 (the bundle lists as `pan-wizard`). No Antigravity variant is emitted — its manifest schema is closed and different.
 
 Both builders take an output override (`PAN_PLUGIN_OUT`, `PAN_AGENT_PLUGIN_OUT`) and refuse to wipe a directory that is not a previous build of theirs. Tests never build into `dist/`: they go through `buildPluginInto()` / `buildAgentPluginInto()` in `tests/helpers.cjs`, which build into private temp directories, because `node --test` runs files in parallel and two files rebuilding one directory raced.
 
@@ -371,7 +373,7 @@ npm run harness                                    # tier 0 — model-free, free
 npm run harness:model -- --max-usd 10 --repeat 5   # tier 2 — chain runs; skipped (never green) without a spend cap
 ```
 
-Tier 0 is the one to run before a release. Model tiers spend your Claude usage and are skipped — never green — without `--max-usd`, which is split across the model-tier scenarios in the run. Run state goes outside the checkout (`D:\pantesting\harness-runs\<run-id>\` on the maintainer's machine); `harness/ledger.jsonl` is the tracked findings history, deduped by signature. A scenario's `requires` (`cli`, `minVersion`) **skips** it with the reason when the environment cannot run it — never a pass — and a model step that never ran is a harness error, not a finding. Every assertion kind has a both-direction test in `tests/harness.test.cjs`; add a kind there first. `harness/README.md` has the scenario schema, the tiers, and the headless background-wait ceiling the runner lifts.
+Tier 0 is the one to run before a release. Model tiers spend your Claude usage (or, for a `cli` step marked `paid: true`, that CLI's credits) and are skipped — never green — without `--max-usd`, which is split across the model-tier scenarios in the run. Run state goes outside the checkout (`D:\pantesting\harness-runs\<run-id>\` on the maintainer's machine); `harness/ledger.jsonl` is the tracked findings history, deduped by signature. A scenario's `requires` (`cli`, `minVersion`) **skips** it with the reason when the environment cannot run it — never a pass — and a model step that never ran is a harness error, not a finding. Every assertion kind has a both-direction test in `tests/harness.test.cjs`; add a kind there first. `harness/README.md` has the scenario schema, the tiers, and the headless background-wait ceiling the runner lifts.
 
 ## Release Process
 
@@ -379,7 +381,7 @@ Releases are published by CI from a tag; nothing is published from a laptop. The
 
 1. **Gate locally:** `npm run release:check`. It is the same script `prepublishOnly` runs in CI, so a red gate here is a red publish there. In order: hook build; `test:all`; `npm audit --omit=dev`; `doc-lint counts` over `docs/` (no filesystem-derived counts outside `CLAUDE.md`); `links validate` (the doc↔code link graph resolves); `npm pack` size sanity **and zero runtime dependencies**; a smoke install of the packed tarball into a temp directory; both distribution bundles building, with `dist/pan-agent-plugin` digested against the fresh build; and the coverage gate (every dispatcher arm executed plus per-group floors; skipped below Node 22). Run `npm run harness` (tier 0) as well.
 2. **Refresh the counts table** in `CLAUDE.md` with the snippet it carries — the only place counts live — and, if any command or dev skill changed, regenerate the skills docs: `python scripts/generate-skills-docs.py`.
-3. **Bump the version** in `package.json` — and the `version` of the `pan-wizard` entry in `.github/plugin/marketplace.json`, which a test pins to it.
+3. **Bump the version** in `package.json` and `package-lock.json` — and the `version` of the `pan-wizard` entry in `.github/plugin/marketplace.json`, which a test pins to it.
 4. **Turn `## [Unreleased]` into `## [x.y.z] - YYYY-MM-DD`** in `CHANGELOG.md`.
 5. **Commit as `release(x.y.z): …`** on a `release/vx.y.z` branch and open a PR to `main`. The required checks (secret scan, audit, the OS × Node test matrix) must be green before merge; CodeQL also runs but is not a required check.
 6. **Tag the merge commit and push the tag by explicit refspec:**
@@ -388,7 +390,7 @@ Releases are published by CI from a tag; nothing is published from a laptop. The
    git tag vx.y.z && git push origin refs/tags/vx.y.z
    ```
 
-   A `v*` tag triggers `.github/workflows/release.yml`, which reruns the gates through `prepublishOnly`, publishes with npm provenance, and **creates the GitHub Release** from the `CHANGELOG.md` section for that version. Do not rely on `git push --follow-tags` — it has silently dropped the tag before, and then nothing publishes.
+   A `v*` tag triggers `.github/workflows/release.yml`, which reruns the gates through `prepublishOnly`, publishes with npm provenance, and **creates the GitHub Release** from the `CHANGELOG.md` section for that version. The npm dist-tag comes from the version (`scripts/npm-dist-tag.js`): a prerelease such as `3.31.0-rc.1` publishes under `next` and its GitHub Release is marked as a prerelease, never Latest, so `npm install pan-wizard` keeps resolving to the newest stable release; a plain version publishes under `latest`. Do not rely on `git push --follow-tags` — it has silently dropped the tag before, and then nothing publishes.
 
    The Release step landed after 3.29.0 was tagged (that release object was created by hand). Before it, the workflow published to npm and stopped, so nine tagged versions (3.20.0–3.22.0 and 3.24.0–3.28.0) carry a tag and an npm release but no release object. The step is `continue-on-error` — the package is already published by the time it runs, so a failure there is a cosmetic omission rather than a failed release — and the run summary states plainly whether the release exists, so an omission is visible instead of silent. A re-run never clobbers an existing release.
 7. **After a successful publish:** the workflow already ran `deprecate-old-versions.js --apply` and created the Release; check the run summary for both. Then upgrade the installs you maintain with the installer. When sweeping `d:\` for installs to upgrade, exclude **everything** under `d:\pantesting\` except the root — its subdirectories are audit fixtures pinned to the version they were made on, and a name-based denylist has missed them before.

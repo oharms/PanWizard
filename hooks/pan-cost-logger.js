@@ -17,6 +17,45 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// ─── R39: one run per hook when Claude and Copilot share a project ───────────
+// Copilot CLI also runs the hooks in a repository's .claude/settings.json and
+// .claude/settings.local.json. Measured 2026-09-26 (Copilot CLI 1.0.88, repository
+// hooks loaded): in a project with both the Claude and the Copilot install, every
+// PAN hook ran twice under Copilot — once from .github/hooks/pan.json, once from the
+// Claude settings. The Copilot project copy (this file under .github/hooks) steps
+// aside whenever the project's Claude settings register the same script, so the hook
+// runs once, and runs again from here the moment the Claude registration is gone.
+// Both files are repository hooks to Copilot and load under the same trust rule, so
+// deferring never leaves zero. Only this copy defers: Claude Code never reads
+// .github/hooks, Gemini and Codex never read .claude/settings.json, and a global
+// Copilot copy loads where repository hooks may not. Identical in every hook
+// Copilot registers — tests/copilot-hook-dedupe.test.cjs pins the copies.
+function deferToClaudeRegistration(projectDir, hookFile = __filename) {
+  // Assembled, not written as a literal: the installer rewrites every quoted .claude
+  // literal in a hook copy to that runtime's own directory, and this one must stay Claude's.
+  const claudeDir = ['.', 'claude'].join('');
+  try {
+    const hooksDir = path.dirname(hookFile);
+    if (path.basename(hooksDir) !== 'hooks' || path.basename(path.dirname(hooksDir)) !== '.github') return false;
+    if (typeof projectDir !== 'string' || !projectDir) return false;
+    const script = path.basename(hookFile);
+    for (const name of ['settings.json', 'settings.local.json']) {
+      let settings;
+      try { settings = JSON.parse(fs.readFileSync(path.join(projectDir, claudeDir, name), 'utf8')); } catch { continue; }
+      const events = settings && typeof settings.hooks === 'object' ? settings.hooks : null;
+      if (!events) continue;
+      for (const groups of Object.values(events)) {
+        if (!Array.isArray(groups)) continue;
+        for (const group of groups) {
+          const handlers = group && Array.isArray(group.hooks) ? group.hooks : [];
+          if (handlers.some((h) => h && typeof h.command === 'string' && h.command.includes(script))) return true;
+        }
+      }
+    }
+  } catch { /* fail open: run this copy */ }
+  return false;
+}
 const crypto = require('crypto');
 
 // Runtime config dirs a local PAN install lands in (mirrors installer getDirName).
@@ -564,6 +603,8 @@ function buildCostRecord(data, cwd) {
   let outputTokens = 0;
   let cacheRead = 0;
   let cacheWrite = 0;
+  // { h1, m5 } when the source carried the cache-write lifetime split (M13).
+  let ttlSplit = null;
   let durationMs = null;
   // token_source records WHICH path produced the counts: `agent-transcript` (the
   // subagent's own conversation file — see resolveAgentTranscript), `transcript`
@@ -621,6 +662,10 @@ function buildCostRecord(data, cwd) {
     cacheWrite = clampSlice(rawCw, SLICE_MAX.cache_write);
     clamped = rawIn > SLICE_MAX.input || rawOut > SLICE_MAX.output
       || rawCr > SLICE_MAX.cache_read || rawCw > SLICE_MAX.cache_write;
+    // A clamped write total no longer matches its split, so the split is dropped with it.
+    if (typeof fromTranscript.cache_write_1h_tokens === 'number' && rawCw <= SLICE_MAX.cache_write) {
+      ttlSplit = { h1: fromTranscript.cache_write_1h_tokens, m5: fromTranscript.cache_write_5m_tokens || 0 };
+    }
     durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts); // as measured — see SLICE_MAX
     if (!model) model = fromTranscript.model;
     if (fromTranscript.lineCount > since) {
@@ -676,6 +721,11 @@ function buildCostRecord(data, cwd) {
     cacheRead = clampPlausible(rawCr);
     cacheWrite = clampPlausible(rawCw);
     clamped = [rawIn, rawOut, rawCr, rawCw].some((n) => n > PLAUSIBLE_MAX);
+    const split = {};
+    addCacheTtlSplit(split, data.usage);
+    if (typeof split.cache_write_1h_tokens === 'number' && cacheWrite === rawCw) {
+      ttlSplit = { h1: clampPlausible(split.cache_write_1h_tokens), m5: clampPlausible(split.cache_write_5m_tokens) };
+    }
   }
 
   // Backfill command/phase from the active trace session when the payload omits
@@ -705,6 +755,8 @@ function buildCostRecord(data, cwd) {
     output_tokens: outputTokens,
     cache_read_tokens: cacheRead,
     cache_write_tokens: cacheWrite,
+    // The lifetime split of cache_write_tokens, present only when measured (M13).
+    ...(ttlSplit ? { cache_write_1h_tokens: ttlSplit.h1, cache_write_5m_tokens: ttlSplit.m5 } : {}),
     cost_usd: null,
     duration_ms: durationMs,
     phase,
@@ -833,9 +885,25 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
     totals.output_tokens += extractNumber(usage, 'output_tokens');
     totals.cache_read_input_tokens += extractNumber(usage, 'cache_read_input_tokens');
     totals.cache_creation_input_tokens += extractNumber(usage, 'cache_creation_input_tokens');
+    addCacheTtlSplit(totals, usage);
   }
   totals.lineCount = seen;
   return totals;
+}
+
+/**
+ * Add a usage record's cache-write lifetime split to `totals` (M13). Claude Code
+ * transcripts carry `usage.cache_creation: { ephemeral_5m_input_tokens,
+ * ephemeral_1h_input_tokens }` beside the `cache_creation_input_tokens` total;
+ * one-hour writes bill at 2x base input against 1.25x for five-minute ones, so
+ * the ledger keeps the split. The totals gain the two fields only when some
+ * record carried the block — rows from hosts without it stay unchanged.
+ */
+function addCacheTtlSplit(totals, usage) {
+  const cc = usage && usage.cache_creation;
+  if (!cc || typeof cc !== 'object') return;
+  totals.cache_write_1h_tokens = (totals.cache_write_1h_tokens || 0) + extractNumber(cc, 'ephemeral_1h_input_tokens');
+  totals.cache_write_5m_tokens = (totals.cache_write_5m_tokens || 0) + extractNumber(cc, 'ephemeral_5m_input_tokens');
 }
 
 /**
@@ -922,6 +990,7 @@ if (require.main === module) {
       // fall back to process.cwd() which is the project root when Claude Code
       // invokes the hook.
       const cwd = data.cwd || data.workspace?.current_dir || process.cwd();
+      if (deferToClaudeRegistration(cwd)) return;
       // M62: a global-install hook fires in every repo; don't pollute non-PAN
       // projects with .planning/ metrics artifacts. The tree must already exist —
       // see hasPlanningTree (field sweep 2026-09-17).
@@ -934,4 +1003,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { buildCostRecord, appendRecord, readUsageFromTranscript, resolveAgentTranscript, readCursor, writeCursor, isPanProject, hasPlanningTree, readCommandFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };
+module.exports = { deferToClaudeRegistration, buildCostRecord, appendRecord, readUsageFromTranscript, addCacheTtlSplit, resolveAgentTranscript, readCursor, writeCursor, isPanProject, hasPlanningTree, readCommandFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };

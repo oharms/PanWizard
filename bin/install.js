@@ -1218,7 +1218,7 @@ function uninstall(isGlobal, runtime = 'claude') {
   // 4. Remove PAN hooks (scripts + Copilot CLI hooks config file)
   const hooksDir = path.join(targetDir, 'hooks');
   if (fs.existsSync(hooksDir)) {
-    const panHooks = ['pan-statusline.js', 'pan-check-update.js', 'pan-check-update.sh', 'pan-context-monitor.js', 'pan-cost-logger.js', 'pan-trace-logger.js', 'pan-stop-guard.js', 'pan.json'];
+    const panHooks = ['pan-statusline.js', 'pan-check-update.js', 'pan-check-update.sh', 'pan-context-monitor.js', 'pan-cost-logger.js', 'pan-trace-logger.js', 'pan-stop-guard.js', 'pan-state-reinject.js', 'pan.json'];
     let hookCount = 0;
     for (const hook of panHooks) {
       const hookPath = path.join(hooksDir, hook);
@@ -2014,8 +2014,10 @@ function saveLocalPatches(configDir) {
 
     const fullPath = path.join(configDir, relPath);
     if (!fs.existsSync(fullPath)) continue;
-    const currentHash = fileHash(fullPath);
-    if (currentHash !== originalHash) {
+    // A line-ending-only difference is not a user edit (git autocrlf, editors).
+    let current;
+    try { current = fs.readFileSync(fullPath); } catch { continue; }
+    if (!lib.bytesMatchHashIgnoringEol(current, originalHash)) {
       const backupPath = path.join(patchesDir, safeRel);
       // Defence in depth: never write outside patchesDir, whatever the manifest says.
       const resolvedPatches = path.resolve(patchesDir);
@@ -2739,6 +2741,9 @@ function install(isGlobal, runtime = 'claude') {
   const stopGuardCommand = isGlobal
     ? buildHookCommand(targetDir, 'pan-stop-guard.js')
     : 'node ' + dirName + '/hooks/pan-stop-guard.js';
+  const stateReinjectCommand = isGlobal
+    ? buildHookCommand(targetDir, 'pan-state-reinject.js')
+    : 'node ' + dirName + '/hooks/pan-state-reinject.js';
 
   if (isCodex) {
     // Codex hooks (2026-06): Claude-compatible PascalCase events in the shared
@@ -2750,13 +2755,13 @@ function install(isGlobal, runtime = 'claude') {
       let existing = null;
       try { existing = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8')); } catch { /* absent or invalid — start fresh */ }
       const merged = lib.mergeCodexHooksConfig(existing, {
-        updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand,
+        updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand,
       });
       fs.writeFileSync(hooksJsonPath, JSON.stringify(merged, null, 2) + '\n');
       // Print the path we actually wrote. The hardcoded '.codex/hooks.json' was
       // wrong for --global and for --config-dir, telling users to inspect a file
       // that does not exist while the real one sat elsewhere.
-      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksJsonPath)}: update check, context monitor, cost + trace loggers)`);
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksJsonPath)}: update check, context monitor, cost + trace loggers, stop guard, state re-injection)`);
     } catch (e) {
       pushInstallWarning('codexHooks', 'hooks.json', e);
     }
@@ -2768,12 +2773,12 @@ function install(isGlobal, runtime = 'claude') {
   // from any legacy config.json registration.
   if (isCopilot) {
     const hooksConfigPath = path.join(targetDir, 'hooks', 'pan.json');
-    const hooksConfig = buildCopilotHooksConfig({ updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand });
+    const hooksConfig = buildCopilotHooksConfig({ updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand });
     try {
       fs.mkdirSync(path.dirname(hooksConfigPath), { recursive: true });
       fs.writeFileSync(hooksConfigPath, JSON.stringify(hooksConfig, null, 2) + '\n');
       // Same as the Codex case: a global Copilot install writes to ~/.copilot/, not .github/.
-      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, context monitor, cost + trace loggers)`);
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, context monitor, cost + trace loggers, stop guard)`);
     } catch (e) {
       console.error(`  ${yellow}✗${reset} Failed to write Copilot hooks config: ${e.message}`);
     }
@@ -2866,6 +2871,7 @@ function install(isGlobal, runtime = 'claude') {
       { slot: 'subagentStop', hook: 'pan-cost-logger', command: costLoggerCommand, label: 'cost logger hook' },
       { slot: 'subagentStop', hook: 'pan-trace-logger', command: traceLoggerCommand, label: 'trace logger hook' },
       { slot: 'stop', hook: 'pan-stop-guard', command: stopGuardCommand, label: 'auto-advance stop guard hook' },
+      { slot: 'compact', hook: 'pan-state-reinject', command: stateReinjectCommand, label: 'state re-injection hook (after compaction)' },
     ];
     const unsupported = [];
     for (const r of registrations) {
@@ -2888,7 +2894,8 @@ function install(isGlobal, runtime = 'claude') {
         entry.hooks && entry.hooks.some(h => h.command && h.command.includes(r.hook))
       );
       if (!registered) {
-        settings.hooks[event].push({ hooks: [{ type: 'command', command: r.command }] });
+        const matcher = lib.HOOK_SLOT_MATCHERS[r.slot];
+        settings.hooks[event].push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: r.command }] });
         console.log(`  ${green}✓${reset} Configured ${r.label}`);
       }
     }
@@ -2896,7 +2903,7 @@ function install(isGlobal, runtime = 'claude') {
       delete settings.hooks;
     }
     if (isGemini && unsupported.length > 0) {
-      console.log(`  ${dim}ℹ Gemini CLI has no context-window metric for hooks and no subagent-completion event, so ${unsupported.join(', ')} ${unsupported.length === 1 ? 'is' : 'are'} not registered there${reset}`);
+      console.log(`  ${dim}ℹ Gemini CLI has no context-window metric for hooks, no subagent-completion event and no post-compaction event that adds context, so ${unsupported.join(', ')} ${unsupported.length === 1 ? 'is' : 'are'} not registered there${reset}`);
     }
   }
 

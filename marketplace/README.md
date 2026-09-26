@@ -124,6 +124,24 @@ The marketplace above remains the path that exercises the `command` source, the
 placeholder-expansion probe, and install/uninstall — `--plugin-dir` skips all
 three, so it is a faster loop, not a substitute for the test.
 
+## Plugin evals
+
+The built plugin carries an eval suite in `evals/` for `claude plugin eval`
+(Claude Code 2.1.269 or later): help discovery, progress routing, todo capture and
+the self-test above, all scored by mechanical graders. The cases live in
+`harness/plugin-evals/` and the builder copies them in; that directory's README
+lists each case and the tools it needs.
+
+```bash
+npm run build:plugin
+claude plugin eval dist/pan-wizard-plugin --trust-plugin --runs 1 --ablation none --no-publish
+```
+
+The runs are paid model calls on your account; add `--max-cost-usd <n>` to cap
+them. On Windows, Claude Code refuses to start a case that is granted a shell tool
+(`--allow-tools Bash`), because it cannot sandbox one there; the cases that need
+`Bash` or `Write` run fully on Linux or macOS with `--allow-tools Bash Write`.
+
 ## Other hosts: the Agent Plugins bundle
 
 Claude Code is the only runtime that reads this directory's `command`-source
@@ -144,7 +162,10 @@ Two marketplace files in the repository (`.agents/plugins/` and `.github/plugin/
 - `.github/plugin/marketplace.json` — Copilot: `copilot plugin marketplace add`
   with this repository, then install `pan-wizard` from the plugin browser.
 
-Both reference the build output, so build first. Neither has been exercised
-live yet — no Copilot, Codex or Antigravity CLI was present on the machine that
-built them — so treat the vendor directories as conformance-tested, not
-field-verified, until the plan's live gates run.
+Both reference the build output, so build first. What has run live so far: the
+bundle installs on Copilot CLI from a local path (harness `live-gate-copilot`),
+and Codex CLI 0.157.1 accepts this repository as a marketplace and lists it as
+`pan-wizard-local` (harness `live-gate-codex`, 2026-09-26). Installing the plugin
+inside a Codex session, and anything on Antigravity (no CLI on the machine that
+built them), has not — so treat the vendor directories as conformance-tested, not
+field-verified, beyond those two gates.
