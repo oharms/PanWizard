@@ -51,6 +51,54 @@ const PROVIDER_MODELS = {
   default:   { reasoning: 'inherit', mid: 'sonnet',                 fast: 'haiku' },
 };
 
+// OpenCode names every model `provider/model` — in agent frontmatter, in config and
+// wherever a model is passed — and neither a bare API id nor a Claude Code alias
+// (`sonnet`) is one. OpenCode's models doc: "the full ID is `provider_id/model_id`",
+// with its built-in providers and ids taken from models.dev (anomalyco/opencode
+// packages/web/src/content/docs/models.mdx and models.dev/api.json, both read
+// 2026-09-26; every id below exists there under that provider). Same tiers as
+// PROVIDER_MODELS, provider-qualified; `default` is Anthropic as it is there.
+// Reality check R41.
+const OPENCODE_MODELS = {
+  anthropic: { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5', fast: 'anthropic/claude-haiku-4-5' },
+  openai:    { reasoning: 'inherit', mid: 'openai/gpt-6-sol',          fast: 'openai/gpt-6-luna' },
+  google:    { reasoning: 'inherit', mid: 'google/gemini-3.8-flash',   fast: 'google/gemini-3.5-flash-lite' },
+  default:   { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5', fast: 'anthropic/claude-haiku-4-5' },
+};
+
+/**
+ * The runtime whose copy of PAN is running, read from where this module is
+ * installed: each runtime gets its own `pan-wizard-core`, so the copy under
+ * `.opencode/` (project) or `~/.config/opencode/` (global) is only ever invoked by
+ * OpenCode's commands. Only OpenCode is distinguished — it is the one runtime
+ * whose model ids differ in form. A relocated `--config-dir` install is not
+ * recognised and keeps the plain ids.
+ * @param {string} [dir] - this module's directory (injectable for tests)
+ * @returns {'opencode'|null}
+ */
+function hostRuntime(dir = __dirname) {
+  const p = String(dir || '').replace(/\\/g, '/');
+  return /(^|\/)\.?opencode\/pan-wizard-core\/bin\/lib\/?$/.test(p) ? 'opencode' : null;
+}
+
+/**
+ * The provider prefix of OpenCode's own configured `model` (`"anthropic/…"`), from
+ * the project's `opencode.json` or `.opencode/opencode.json`, when it is one PAN
+ * routes for. Plain JSON only — a file that does not parse is skipped.
+ * @param {string} cwd
+ * @returns {'anthropic'|'openai'|'google'|null}
+ */
+function opencodeConfiguredProvider(cwd) {
+  for (const rel of ['opencode.json', path.join('.opencode', 'opencode.json')]) {
+    let parsed;
+    try { parsed = JSON.parse(fs.readFileSync(path.join(cwd, rel), 'utf8')); } catch { continue; }
+    const model = parsed && typeof parsed.model === 'string' ? parsed.model : '';
+    const prefix = model.includes('/') ? model.slice(0, model.indexOf('/')) : '';
+    if (prefix === 'anthropic' || prefix === 'openai' || prefix === 'google') return prefix;
+  }
+  return null;
+}
+
 /** Maps legacy Anthropic model names to provider-agnostic tier aliases. */
 const LEGACY_ALIASES = { opus: 'reasoning', sonnet: 'mid', haiku: 'fast' };
 
@@ -354,6 +402,7 @@ function loadConfig(cwd) {
     research: true,
     plan_checker: true,
     verifier: true,
+    nyquist_validation: false,
     parallelization: true,
     brave_search: false,
   };
@@ -391,6 +440,9 @@ function loadConfig(cwd) {
       research: get('research', { section: 'workflow', field: 'research' }) ?? defaults.research,
       plan_checker: get('plan_checker', { section: 'workflow', field: 'plan_check' }) ?? defaults.plan_checker,
       verifier: get('verifier', { section: 'workflow', field: 'verifier' }) ?? defaults.verifier,
+      // Written as workflow.nyquist_validation by config-ensure-section; loadConfig
+      // never read it, so `init plan-phase` reported it off whatever the config said.
+      nyquist_validation: get('nyquist_validation', { section: 'workflow', field: 'nyquist_validation' }) ?? defaults.nyquist_validation,
       parallelization,
       brave_search: get('brave_search') ?? defaults.brave_search,
       budget: parsed.budget || { default_points: 50, micro_threshold_tasks: 3, micro_threshold_files: 2, enforce: false },
@@ -787,6 +839,37 @@ function adjustTierForCapabilities(tier, opts) {
   return tier;
 }
 
+// ─── Failure-tier escalation (market-ideas queue M8, MI-029) ────────────────
+//
+// A retry of work that already failed once on a cheaper tier should not run on
+// that tier again. Three peers converged on the same rule (gsd-core's
+// dynamic_routing.escalate_on_failure, Superpowers' "more capable model" after
+// repeated failures, HydraFusion's cascade); PAN only chose a tier BEFORE a run.
+// Each failed attempt now raises the tier one step up this ladder, capped by
+// `routing.max_escalations` and never above the agent's own `quality` tier —
+// so under `quality` and `balanced`, where every agent already runs on the
+// reasoning tier, escalation is a no-op; it is the `budget` profile's retry path.
+const TIER_LADDER = Object.freeze(['fast', 'mid', 'reasoning']);
+const DEFAULT_MAX_ESCALATIONS = 1;
+
+/**
+ * Pure: the tier for the given attempt.
+ * @param {string} tier - the tier the profile/routing chose (legacy names accepted)
+ * @param {number} attempt - 1 for the first try; each later attempt follows a failure
+ * @param {{maxEscalations?: number, ceiling?: string}} [opts]
+ * @returns {{tier: string, escalated_from: string|null}}
+ */
+function escalateTier(tier, attempt, opts = {}) {
+  const from = LEGACY_ALIASES[tier] || tier;
+  const max = Number.isInteger(opts.maxEscalations) && opts.maxEscalations >= 0 ? opts.maxEscalations : DEFAULT_MAX_ESCALATIONS;
+  const ceiling = TIER_LADDER.indexOf(LEGACY_ALIASES[opts.ceiling] || opts.ceiling || 'reasoning');
+  const at = TIER_LADDER.indexOf(from);
+  const steps = Math.min(Number.isInteger(attempt) && attempt > 1 ? attempt - 1 : 0, max);
+  if (at === -1 || ceiling === -1 || steps === 0 || at >= ceiling) return { tier: from, escalated_from: null };
+  const to = Math.min(at + steps, ceiling);
+  return { tier: TIER_LADDER[to], escalated_from: to > at ? from : null };
+}
+
 /**
  * Resolve the model for a given agent type based on profile, provider, and routing strategy.
  * Returns "inherit" for reasoning-tier to let the host runtime use its top-tier model.
@@ -797,27 +880,38 @@ function adjustTierForCapabilities(tier, opts) {
  * @returns {string} Model identifier: "inherit", a Claude Code alias ("sonnet", "haiku"), or a provider model id from PROVIDER_MODELS
  */
 function resolveModelInternal(cwd, agentType, taskMetadata) {
+  return resolveModelDetailed(cwd, agentType, taskMetadata).model;
+}
+
+/**
+ * resolveModelInternal with its reasoning: the tier, and — when `taskMetadata.attempt`
+ * raised it (M8) — the tier it was escalated from. Explicit pins (a model_overrides
+ * entry, a roadmap per-phase tier) are the user's choice and are never escalated.
+ * @returns {{model: string, tier: string|null, escalated_from: string|null}}
+ */
+function resolveModelDetailed(cwd, agentType, taskMetadata) {
   const config = loadConfig(cwd);
   const provider = detectProvider(cwd, config);
+  const pinned = (tier) => ({ model: resolveTierToModel(tier, provider), tier: LEGACY_ALIASES[tier] || tier, escalated_from: null });
 
   // Check per-agent override first (highest priority)
   const override = config.model_overrides?.[agentType];
   if (override) {
-    return resolveTierToModel(override, provider);
+    return pinned(override);
   }
 
   // Check per-phase override from roadmap (second priority)
   if (taskMetadata?.phaseNum) {
     const phaseTier = getPhaseModelTier(cwd, taskMetadata.phaseNum);
     if (phaseTier) {
-      return resolveTierToModel(phaseTier, provider);
+      return pinned(phaseTier);
     }
   }
 
   // Fall back to profile lookup
   const profile = config.model_profile || 'balanced';
   const agentModels = MODEL_PROFILES[agentType];
-  if (!agentModels) return resolveTierToModel('mid', provider);
+  if (!agentModels) return pinned('mid');
 
   let tier = agentModels[profile] || agentModels['balanced'] || 'mid';
 
@@ -837,7 +931,19 @@ function resolveModelInternal(cwd, agentType, taskMetadata) {
     tier = adjustTierForCapabilities(tier, taskMetadata);
   }
 
-  return resolveTierToModel(tier, provider);
+  // Failure-tier escalation: a retry climbs toward the agent's quality tier (M8).
+  let escalatedFrom = null;
+  if (taskMetadata && Number.isInteger(taskMetadata.attempt) && taskMetadata.attempt > 1) {
+    const maxEscalations = config.routing?.max_escalations;
+    const esc = escalateTier(tier, taskMetadata.attempt, {
+      maxEscalations: Number.isInteger(maxEscalations) ? maxEscalations : DEFAULT_MAX_ESCALATIONS,
+      ceiling: agentModels.quality || 'reasoning',
+    });
+    tier = esc.tier;
+    escalatedFrom = esc.escalated_from;
+  }
+
+  return { model: resolveTierToModel(tier, provider), tier: LEGACY_ALIASES[tier] || tier, escalated_from: escalatedFrom };
 }
 
 /**
@@ -846,7 +952,7 @@ function resolveModelInternal(cwd, agentType, taskMetadata) {
  * @param {Object} config - Loaded config object
  * @returns {string} Provider name: "anthropic", "openai", "google", or "default"
  */
-function detectProvider(cwd, config) {
+function detectProvider(cwd, config, host = hostRuntime()) {
   // 1. Explicit config
   if (config.routing?.provider && config.routing.provider !== 'auto') {
     const p = config.routing.provider;
@@ -857,7 +963,13 @@ function detectProvider(cwd, config) {
   if (envProvider) {
     return PROVIDER_MODELS[envProvider] ? envProvider : 'default';
   }
-  // 3. Runtime directory detection
+  // 3. Under OpenCode, the provider of OpenCode's own configured model — OpenCode
+  //    runs any provider, so a `.opencode` directory says nothing about which.
+  if (host === 'opencode') {
+    const p = opencodeConfiguredProvider(cwd);
+    if (p) return p;
+  }
+  // 4. Runtime directory detection
   const checks = [
     ['.claude', 'anthropic'], ['.codex', 'openai'],
     ['.gemini', 'google'], ['.opencode', 'openai'], ['.github', 'default'],
@@ -873,11 +985,13 @@ function detectProvider(cwd, config) {
  * Resolve a tier alias (or legacy model name) to a provider-specific model name.
  * @param {string} tier - Tier alias ("reasoning", "mid", "fast") or legacy name ("opus", "sonnet", "haiku")
  * @param {string} provider - Provider key from detectProvider()
+ * @param {string|null} [host] - hostRuntime(); OpenCode gets `provider/model` ids
  * @returns {string} Provider-specific model name
  */
-function resolveTierToModel(tier, provider) {
+function resolveTierToModel(tier, provider, host = hostRuntime()) {
   const normalizedTier = LEGACY_ALIASES[tier] || tier;
-  const providerMap = PROVIDER_MODELS[provider] || PROVIDER_MODELS['default'];
+  const table = host === 'opencode' ? OPENCODE_MODELS : PROVIDER_MODELS;
+  const providerMap = table[provider] || table['default'];
   return providerMap[normalizedTier] || providerMap['mid'];
 }
 
@@ -958,7 +1072,7 @@ const MILESTONE_SUMMARY_RE = /^[ \t]*<summary>(.*\bv\d+(?:\.\d+)+\b.*?)<\/summar
 
 /** Status markers PAN's own roadmap template emits, plus their prose forms. */
 const MILESTONE_STATUS_MARKERS = [
-  { status: 'shipped', re: /✅|\bshipped\b|\bcomplete[d]?\b|\bdone\b/i },
+  { status: 'shipped', re: /✅|\bshipped\b|\bcomplete[d]?\b|\bdone\b|\bclosed\s+\d{4}-\d{2}-\d{2}/i },
   // `current` is matched as a word anywhere in the heading, not as the whole
   // parenthetical: real roadmaps write "(current, phases 1–10)", and requiring
   // an exact "(current)" silently missed the marker and fell through to
@@ -980,15 +1094,22 @@ const MILESTONE_STATUS_MARKERS = [
  */
 function parseMilestoneHeadings(roadmap) {
   const out = [];
+  const byLabel = new Map();
   const lines = String(roadmap || '').split(/\r?\n/);
 
   lines.forEach((line, i) => {
     const m = line.match(MILESTONE_HEADING_RE) || line.match(MILESTONE_SUMMARY_RE);
-    if (!m) return;
-    const heading = m[1];
+    const plain = m ? null : line.match(ANY_HEADING_RE);
+    const heading = m ? m[1] : plain ? plain[1] : null;
+    if (!heading) return;
 
-    const versionMatch = heading.match(/\bv(\d+(?:\.\d+)+)\b/);
-    if (!versionMatch) return;
+    // A version (`v4.1`) anywhere in the heading, or a letter-series label (`R-2`)
+    // as its first word. The resolver used to know only the first, so a project
+    // naming its milestones R-1, R-2 … had none, and every reader fell back to a
+    // made-up `v1.0`.
+    const versionMatch = m ? heading.match(/\bv(\d+(?:\.\d+)+)\b/) : null;
+    const label = versionMatch ? `v${versionMatch[1]}` : seriesLabel(heading);
+    if (!label) return;
 
     let status = 'unknown';
     for (const marker of MILESTONE_STATUS_MARKERS) {
@@ -998,16 +1119,68 @@ function parseMilestoneHeadings(roadmap) {
     // it carries no explicit marker.
     if (status === 'unknown' && MILESTONE_SUMMARY_RE.test(line)) status = 'shipped';
 
-    out.push({
-      version: `v${versionMatch[1]}`,
-      name: extractMilestoneName(heading, versionMatch[0]),
+    // One milestone per label. A roadmap that repeats a heading (a traceability
+    // or archive section) used to count each repeat as another milestone — and an
+    // unmarked repeat of a shipped one as UNSHIPPED work. The first heading keeps
+    // its place and name; a later one only fills in a status the first lacked.
+    const seen = byLabel.get(label);
+    if (seen) {
+      if (seen.status === 'unknown' && status !== 'unknown') seen.status = status;
+      return;
+    }
+    const entry = {
+      version: label,
+      name: extractMilestoneName(heading, versionMatch ? versionMatch[0] : label),
       status,
       line: i + 1,
       heading: heading.trim(),
-    });
+    };
+    byLabel.set(label, entry);
+    out.push(entry);
   });
 
   return out;
+}
+
+/** Any markdown heading line — letter-series milestones carry no `vN.N`. */
+const ANY_HEADING_RE = /^[ \t]{0,3}#{1,6}[ \t]+(.*?)[ \t]*$/;
+
+/** A letter-series milestone label: one to three capitals, a hyphen, one to three capitals or digits. */
+const SERIES_LABEL_RE = /^[A-Z]{1,3}-[A-Z0-9]{1,3}$/;
+
+/**
+ * The letter-series label a heading opens with — after status glyphs, emphasis
+ * and an optional "Milestone" — or null. Only the FIRST word counts, so a label
+ * mentioned inside a heading's text does not make the heading a milestone.
+ */
+function seriesLabel(heading) {
+  const text = String(heading)
+    .replace(/\p{Extended_Pictographic}️?/gu, ' ')
+    .replace(/[*_`]+/g, '')
+    .trim()
+    .replace(/^milestone\s+/i, '');
+  const first = (text.match(/^([^\s:·—–(]+)/) || [])[1] || '';
+  return SERIES_LABEL_RE.test(first) ? first : null;
+}
+
+/**
+ * Order two milestone labels: numerically for `vN.N`, by series then position for
+ * letter-series labels. 0 when they cannot be compared (mixed kinds).
+ */
+function compareMilestoneLabels(a, b) {
+  const num = (v) => { const m = /^v(\d+(?:\.\d+)*)$/.exec(v); return m ? m[1].split('.').map(Number) : null; };
+  const na = num(a), nb = num(b);
+  if (na && nb) {
+    for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+      const d = (na[i] || 0) - (nb[i] || 0);
+      if (d) return d;
+    }
+    return 0;
+  }
+  const ser = (v) => /^([A-Z]{1,3})-([A-Z0-9]{1,3})$/.exec(v);
+  const sa = ser(a), sb = ser(b);
+  if (sa && sb && sa[1] === sb[1]) return sa[2].localeCompare(sb[2], 'en', { numeric: true });
+  return 0;
 }
 
 /**
@@ -1025,9 +1198,12 @@ function extractMilestoneName(heading, versionToken) {
   name = name.replace(/<\/?[^>]+>/g, ' ');                     // stray inline tags
   name = name.replace(/[*_`]+/g, '');                          // markdown emphasis
   name = name.replace(/\p{Extended_Pictographic}️?/gu, ' ');  // ✅ 🚧 📋 status glyphs
-  name = name.replace(/^[\s:—–\-–]+/, '').replace(/[\s:—–\-–]+$/, '');
-  // "Shipped: 2025-11-25" style trailers add nothing to the name.
-  name = name.replace(/\b(shipped|completed?|done)\b[:\s]*\d{4}-\d{2}-\d{2}\s*$/i, '').trim();
+  name = name.replace(/^[\s:·—–\-–]+/, '').replace(/[\s:·—–\-–]+$/, '');
+  // "Shipped: 2025-11-25" / "CLOSED 2026-08-21" style trailers add nothing to the name,
+  // and neither does a "— Phases 19-22" range.
+  name = name.replace(/\b(shipped|completed?|done|closed)\b[:\s]*\d{4}-\d{2}-\d{2}\s*$/i, '').trim();
+  name = name.replace(/[\s·—–-]*\bphases?\s+\d+(?:\.\d+)?\s*[-–—]\s*\d+(?:\.\d+)?\s*$/i, '').trim();
+  name = name.replace(/[\s:·—–-]+$/, '');
   return name.trim();
 }
 
@@ -1055,7 +1231,11 @@ function selectCurrentMilestone(headings) {
   const unshipped = headings.find(h => h.status !== 'shipped');
   if (unshipped) return { milestone: unshipped, ambiguous: false, basis: 'first-unshipped' };
 
-  return { milestone: headings[headings.length - 1], ambiguous: false, basis: 'last-shipped' };
+  // Everything shipped: the newest is the HIGHEST label, not the last in document
+  // order — a roadmap listing milestones newest-first put the oldest last.
+  let newest = headings[headings.length - 1];
+  for (const h of headings) if (compareMilestoneLabels(h.version, newest.version) > 0) newest = h;
+  return { milestone: newest, ambiguous: false, basis: 'last-shipped' };
 }
 
 /**
@@ -1068,6 +1248,23 @@ function selectCurrentMilestone(headings) {
  * @returns {{version: string, name: string, status: string, basis: string, ambiguous: boolean, candidates: number}}
  *   Milestone info (defaults: v1.0, "milestone")
  */
+/**
+ * `milestone:` / `milestone_name:` from state.md's front matter, or null. Read
+ * inline (frontmatter.cjs requires this module, so it cannot be required here).
+ */
+function recordedStateMilestone(cwd) {
+  let text;
+  try { text = fs.readFileSync(planningPath(cwd, 'state.md'), 'utf-8'); } catch { return null; }
+  const block = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---/);
+  if (!block) return null;
+  const field = (key) => {
+    const m = block[1].match(new RegExp(`^${key}:[ \\t]*(.+)$`, 'm'));
+    return m ? m[1].trim().replace(/^(['"])(.*)\1$/, '$2') : null;
+  };
+  const version = field('milestone');
+  return version ? { version, name: field('milestone_name') } : null;
+}
+
 function getMilestoneInfo(cwd) {
   const fallback = { version: 'v1.0', name: 'milestone', status: 'unknown', basis: 'default', ambiguous: false, candidates: 0 };
   let roadmap;
@@ -1079,7 +1276,14 @@ function getMilestoneInfo(cwd) {
 
   const headings = parseMilestoneHeadings(roadmap);
   const { milestone, ambiguous, basis } = selectCurrentMilestone(headings);
-  if (!milestone) return { ...fallback, basis: 'no-milestone-heading' };
+  if (!milestone) {
+    // No milestone heading: what state.md records beats a constant. The resolver
+    // used to return `v1.0` / `milestone` here, so correcting state.md's
+    // `milestone:` changed nothing — the fallback never read it.
+    const recorded = recordedStateMilestone(cwd);
+    if (recorded) return { version: recorded.version, name: recorded.name || 'milestone', status: 'unknown', basis: 'state', ambiguous: false, candidates: 0 };
+    return { ...fallback, basis: 'no-milestone-heading' };
+  }
 
   return {
     version: milestone.version,
@@ -1235,6 +1439,8 @@ module.exports = {
   EFFORT_ORDER,
   resolveEffortInternal,
   PROVIDER_MODELS,
+  OPENCODE_MODELS,
+  hostRuntime,
   LEGACY_ALIASES,
   COST_MULTIPLIERS,
   output,
@@ -1255,6 +1461,9 @@ module.exports = {
   getArchivedPhaseDirs,
   getRoadmapPhaseInternal,
   resolveModelInternal,
+  resolveModelDetailed,
+  escalateTier,
+  TIER_LADDER,
   adjustTierForCapabilities,
   detectProvider,
   resolveTierToModel,

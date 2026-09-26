@@ -38,7 +38,7 @@ Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on this machine
 | Tier | Steps | Cost | Default |
 |---|---|---|---|
 | 0 | `pan`, `fs`, `sh`, `build`, `cli`, `mcp` | none | yes |
-| 1 | + one `model` turn per step (`claude -p`) | your Claude usage | needs `--max-usd` |
+| 1 | + one `model` turn per step (`claude -p`), or a `cli` step marked `paid: true` (another CLI's model run) | your Claude usage, or that CLI's credits | needs `--max-usd` |
 | 2 | + chain runs (a whole `/pan-exec-waves`) | more | needs `--max-usd`, run `--repeat 5` |
 
 A model-tier scenario is **skipped with the reason** `model tier requires --max-usd` when no cap is given (never green). The cap is **split equally across the
@@ -81,7 +81,9 @@ records the reason it found; it is never green.
 
 Step kinds: `pan` (installed `pan-tools` argv), `fs` (assert; `read: <rel>` puts a file's
 text in stdout for `json:` assertions), `sh` (a script under `harness/scripts/`), `build`
-(a repo `scripts/*.js` builder with the output override), `cli` (a bare command on PATH),
+(a repo `scripts/*.js` builder with the output override), `cli` (a bare command on PATH;
+`paid: true` marks one that spends that CLI's model credits — it may not live in tier 0,
+and it counts as a tier-1 scenario's model step; its credits are not counted against `--max-usd`),
 `mcp` (a JSON-RPC batch to the installed bridge; `cwd: "other"` runs it from a directory
 that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin).
 Any step may carry `timeoutMinutes` (default `budget.maxStepMinutes`); `pan` and `mcp` steps may
@@ -107,6 +109,7 @@ The full set lives in `harness/scenarios/` (`ls harness/scenarios`); this table 
 | `native-workflows-deployed` | 0 | The §3.2 static gate on the installed scripts |
 | `agent-plugin-bundle` | 0 | The Agent Plugins bundle builds and is shaped as the schemas and vendor docs require |
 | `live-gate-copilot` / `-codex` / `-antigravity` | 0 | Live installs on those CLIs — **skipped with reason** where the CLI is absent |
+| `copilot-agent-frontmatter` | 1 | A Copilot custom agent in PAN's model-list shape (`models:` + `model-policy: preferred`) loads and answers under `copilot --agent`; a paid `cli` step (Copilot credits), requires Copilot CLI 1.0.86+ |
 | `plugin-agent-scope` | 1 | `/pan-plugin-selftest` inside the Claude plugin: `AGENT_SCOPE: scoped\|bare` |
 | `native-exec-waves-chain` | 2 | `/pan-exec-waves` on a seeded two-plan phase: every plan gets a summary and the phase a verification |
 | `markdown-exec-phase-chain` | 2 | The markdown twin on the same seed — the oracle for the chain comparison |

@@ -33,6 +33,24 @@ function detectInstalledRuntimes(cwd) {
 }
 
 /**
+ * Whether `buf` is the file a manifest hash was taken from, allowing for line
+ * endings: raw bytes, the all-LF form or the all-CRLF form may match, so a file
+ * git re-checked out with `core.autocrlf=true` is not reported as modified.
+ * Binary (NUL-bearing) buffers compare raw only. Same rule as
+ * `bytesMatchHashIgnoringEol` in bin/install-lib.cjs, which the installed core
+ * cannot require; tests/install-eol-hash.test.cjs pins both.
+ */
+function bytesMatchHashIgnoringEol(crypto, buf, expectedHash) {
+  if (!expectedHash) return false;
+  const sha = b => crypto.createHash('sha256').update(b).digest('hex');
+  if (sha(buf) === expectedHash) return true;
+  if (buf.includes(0)) return false;
+  const lf = buf.toString('latin1').replace(/\r\n/g, '\n');
+  if (sha(Buffer.from(lf, 'latin1')) === expectedHash) return true;
+  return sha(Buffer.from(lf.replace(/\n/g, '\r\n'), 'latin1')) === expectedHash;
+}
+
+/**
  * Validate a single PAN runtime installation.
  * Checks: manifest files exist, hashes match, settings integrity.
  * @param {string} cwd
@@ -61,8 +79,7 @@ function validateRuntimeInstall(cwd, configDir, runtime) {
     const absPath = path.join(baseDir, relPath);
     try {
       const content = fs.readFileSync(absPath);
-      const actualHash = crypto.createHash('sha256').update(content).digest('hex');
-      if (actualHash !== expectedHash) {
+      if (!bytesMatchHashIgnoringEol(crypto, content, expectedHash)) {
         modified.push(relPath);
       }
     } catch (_) {

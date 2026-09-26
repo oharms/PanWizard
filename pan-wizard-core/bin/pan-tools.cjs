@@ -420,7 +420,13 @@ async function main() {
     case 'resolve-model': {
       const metadataIdx = args.indexOf('--metadata');
       const metadataJson = metadataIdx !== -1 ? args[metadataIdx + 1] : undefined;
-      commands.cmdResolveModel(cwd, args[1], raw, metadataJson);
+      const attemptRaw = getArgValue(args, '--attempt');
+      let attempt;
+      if (attemptRaw !== null && attemptRaw !== undefined) {
+        if (!/^[1-9]\d*$/.test(String(attemptRaw))) error('--attempt must be a positive integer (1 for a first try)');
+        attempt = parseInt(attemptRaw, 10);
+      }
+      commands.cmdResolveModel(cwd, args[1], raw, metadataJson, attempt);
       break;
     }
 
@@ -1272,6 +1278,9 @@ async function main() {
           daily_budget: budget != null ? Number(budget) : undefined,
           enabled: args.includes('--disable') ? false : undefined,
           paused: args.includes('--pause') ? true : (args.includes('--resume') ? false : undefined),
+          // campaign.cjs has always honoured enforce_budget; no flag reached it, so
+          // making the daily budget a hard stop meant editing schedule.json by hand.
+          enforce_budget: args.includes('--enforce-budget') ? true : (args.includes('--advisory-budget') ? false : undefined),
         }, raw);
       } else if (subcommand === 'status' || !subcommand) {
         campaign.cmdCampaignStatus(cwd, raw);

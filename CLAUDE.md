@@ -57,11 +57,11 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 16 |
-| Unit test files (`tests/*.test.cjs`) | 143 |
+| Unit test files (`tests/*.test.cjs`) | 155 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 4466 |
-| Total test suites | 947 |
-| Hooks (`hooks/*.js`) | 6 |
+| Total tests (npm run test:all) | 4658 |
+| Total test suites | 994 |
+| Hooks (`hooks/*.js`) | 7 |
 | Specs (`docs/specs/*.md`) | 50 |
 | ADRs (`docs/decisions/ADR-*.md`) | 48 |
 
@@ -154,8 +154,9 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `.claude/workflows/*.md` — Workflow protocols
 - `.claude/settings.json` — Claude Code permissions
 - `scripts/build-hooks.js` — hook copy script (copies the hooks listed in `HOOKS_TO_COPY` to `hooks/dist/`; copy-only, no bundler — a new hook must be added to that list)
-- `scripts/build-plugin.js` — emits the Claude Code plugin to `dist/pan-wizard-plugin/` (manifest, commands, agents, hooks, workflows, `.mcp.json`, core)
+- `scripts/build-plugin.js` — emits the Claude Code plugin to `dist/pan-wizard-plugin/` (manifest, commands, agents, hooks, workflows, `.mcp.json`, core, plus `evals/` from `harness/plugin-evals/` when built from a checkout)
 - `scripts/plugin-path.js` — rebuilds the plugin and prints its absolute path as **exactly one stdout line**, the contract a plugin-marketplace `command` source requires. Claude Code runs it from the user's HOME, so nothing may depend on cwd, and the builder's output is relayed to stderr
+- `scripts/npm-dist-tag.js` — prints the npm dist-tag a version publishes under (`next` for a prerelease, `latest` otherwise); `release.yml` publishes with it so a release candidate never becomes `latest`
 - `scripts/deprecate-old-versions.js` — release housekeeping: after a successful publish, deprecates every stable release outside the newest-3 window plus any superseded prerelease. Dry-run by default; **never unpublishes** (a test asserts the script has no unpublish path)
 - `scripts/test-surface.cjs` — derives the shipped surface from the code (verbs, subcommands, dispatcher arms, installer flags, hook × runtime, MCP tools/resources, config keys, content dirs) into `tests/fixtures/surface.json`; `--check` fails on drift, `--map` shows which test names each row, `--scaffold <dir>` writes a todo stub per unreferenced row. `tests/surface-map.test.cjs` enforces it with `tests/fixtures/surface-allowlist.json` (every entry needs a reason)
 - `scripts/coverage-gate.cjs` — runs the suite under Node's own coverage (`node --test --experimental-test-coverage`, Node 22+) and fails when a dispatcher `case` arm never executed or a module group drops below the floors in `tests/fixtures/coverage-policy.json`. Release-check Gate 9; advisory CI step on the Node 22 jobs. `npm run test:coverage`
@@ -163,7 +164,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `scripts/test-quality-lint.cjs` — the assertion shapes that passed while the feature was broken (OR-shaped liveness asserts, in-process `cmd*` calls that exit the process, `assert(true)`, length-only CLI asserts, bare platform returns, tight wall-clock bounds, real-HOME reads, committed todos, OR-of-bare-property existence asserts), applied to the suite by `tests/test-quality.test.cjs` with `tests/fixtures/test-quality-allowlist.json`
 - `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
 - `scripts/build-agent-plugin.js` — emits the vendor-neutral **Agent Plugins** bundle to `dist/pan-agent-plugin/` (ADR-0045) for Copilot CLI, Codex, Cursor, Kiro. `.agents/plugins/marketplace.json` (Codex) and `.github/plugin/marketplace.json` (Copilot) point at it
-- `harness/` — the **PAN Harness** (ADR-0047): behavioural scenarios run against deployed installs built from a packed artifact. `npm run harness` is tier 0 (model-free, free); model tiers need `--max-usd`. Run state goes to `d:\pantesting\harness-runs\`; `harness/ledger.jsonl` is the tracked finding history — `--no-ledger` leaves it alone, which is how CI runs tier 0 on the ubuntu Node-22 job without dirtying the tree. Not shipped. See `harness/README.md`
+- `harness/` — the **PAN Harness** (ADR-0047): behavioural scenarios run against deployed installs built from a packed artifact. `npm run harness` is tier 0 (model-free, free); model tiers need `--max-usd`. Run state goes to `d:\pantesting\harness-runs\`; `harness/plugin-evals/` holds the `claude plugin eval` suite `scripts/build-plugin.js` copies into the plugin's `evals/`; `harness/ledger.jsonl` is the tracked finding history — `--no-ledger` leaves it alone, which is how CI runs tier 0 on the ubuntu Node-22 job without dirtying the tree. Not shipped. See `harness/README.md`
 
 ### Key design patterns
 

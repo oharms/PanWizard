@@ -175,7 +175,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `verify-retro.cjs` | Milestone retrospective (`retro`); extracted from verify.cjs, re-exported through it |
 | `verify-deploy.cjs` | Deployment validation (`validate deployment`); extracted from verify.cjs, re-exported through it |
 | `verify-preflight.cjs` | Pre-execution gates (`preflight`, `deps validate`); extracted from verify.cjs, re-exported through it |
-| `suggest.cjs` | "Did you mean" corrections for an unknown command. Pure; the group→subcommand index is parsed from the dispatcher's own `Unknown <group> subcommand. Available:` strings on the error path only, so no second list can drift and a healthy call pays nothing |
+| `suggest.cjs` | "Did you mean" corrections for an unknown command. Pure; the group→subcommand index is parsed from the dispatcher's own `Unknown <group> subcommand … Available:`, `Unknown init workflow: … Available:` and `<group> subcommand required. Available:` strings on the error path only, so no second list can drift and a healthy call pays nothing |
 | `commands-learnings.cjs` | Error patterns, session history, learnings lifecycle; extracted from commands.cjs, re-exported through it |
 | `phase-remove.cjs` | Phase removal + renumbering cascade (`phase remove`); extracted from phase.cjs, re-exported through it |
 | `roadmap.cjs` | roadmap.md parsing and updates |
@@ -209,11 +209,11 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `learn-index.cjs` | Learnings index + queries: `learn build-index` (writes `pan-wizard-core/learnings/index.json` with topic→agent-relevance map), `learn topics-for --agent <role>` (budget-aware topic selection per agent role). Replaces "skim universal/" with targeted load. |
 | `squads.cjs` | **(v3.11, ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Role-scoped squads (`squad list` enumerates them), each carrying a model tier + an **advisory** access contract — the module's own header says it "modifies no agent and changes no execution path", so those labels are the contract the conductor is instructed to honour and the enforced grant stays each agent's `tools:` frontmatter. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
 | `worktree.cjs` | **(v3.11, ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`), `worktree cleanup` (`--force`; campaign teardown sweep, v3.24+). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
-| `campaign.cjs` | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--source`/`--pause`/`--resume`/`--disable`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
+| `campaign.cjs` | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--source`/`--pause`/`--resume`/`--disable`/`--enforce-budget`/`--advisory-budget`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
 | `hud.cjs` | **(v3.12, ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
 | `skill-align.cjs` | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
 | `hygiene.cjs` | **(v3.13)** Project cleanup + version alignment: `hygiene scan` (version drift per runtime manifest, legacy uppercase filenames, .tmp orphans, memory bloat, poisoned ledgers, stale traces and optimization reports, oversized cached context, fragment planning dirs, foreign planning trees), `hygiene clean [--apply]` (dry-run by default; safe fixes only — renames, compaction, quarantine-by-rename, trace pruning; installer re-runs and fragment removal stay manual). |
-| `phase-report.cjs` | **(v3.15)** Per-phase HTML report + project timeline index: `report phase <N>` and `report index` (`--out`/`--open`/`--stdout`; `index` also `--bundle` for one self-contained inlined file), `report all` (no effective flags — `--open` is parsed but ignored; writes every phase report plus the index to their default paths). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`; bundle `.planning/report-bundle.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. Opt-in auto-generation at the verify→complete gate, focus-auto checkpoints, and army INTEGRATE via `workflow.phase_reports`. |
+| `phase-report.cjs` | **(v3.15)** Per-phase HTML report + project timeline index: `report phase <N>` and `report index` (`--out`/`--open`/`--stdout`; `index` also `--bundle` for one self-contained inlined file), `report all` (`--open` opens the index; writes every phase report plus the index to their default paths). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`; bundle `.planning/report-bundle.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. Opt-in auto-generation at the verify→complete gate, focus-auto checkpoints, and army INTEGRATE via `workflow.phase_reports`. |
 | `links.cjs` | Doc-Code Link Graph engine behind `links validate` (ADR-0027): parses frontmatter link declarations, resolves doc↔code references, and reports dangling/stale links. |
 | `constants.cjs` | Shared constants used across the dispatcher — e.g. `COMMAND_RENAME_MAP` (legacy→current command names) and `FOCUS_CATEGORIES`. No CLI surface; imported by other modules. |
 | `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
@@ -1074,6 +1074,8 @@ pan-tools roadmap analyze
 
 Update the progress table row and the `**Plans:**` count in roadmap.md for a specific phase from the on-disk PLAN/SUMMARY counts; when the phase is complete it also ticks the phase checkbox (with the completion date), and it ticks each plan's own checkbox whose summary exists.
 
+The table cells are found **by header name**: the row whose first cell names the phase, in a table whose header has a Plans column and a Status column, gets those two cells (and a Completed column's date) rewritten; every other cell is left as it was. A table without Plans and Status columns is not touched — the output says `table_updated: false` with the reason in `table_reason`. The `**Plans:**` line is rewritten only inside the phase's own section, never the next phase's.
+
 ```bash
 pan-tools roadmap update-plan-progress 5 [--raw]
 ```
@@ -1086,11 +1088,12 @@ pan-tools roadmap update-plan-progress 5 [--raw]
   "plan_count": 3,
   "summary_count": 3,
   "status": "Complete",
-  "complete": true
+  "complete": true,
+  "table_updated": true
 }
 ```
 
-**`--raw` output:** `3/3 Complete`.
+**`--raw` output:** `3/3 Complete` (plus ` (progress table not updated)` when no table row was rewritten).
 
 ---
 
@@ -1617,7 +1620,7 @@ Estimate context window utilization for the current phase. Measures how much of 
 pan-tools context-budget [--raw]
 ```
 
-The `cache` block classifies the cached context (`status` of `ok` / `warn` / `critical` / `absent`, with advice naming the largest file) and, under `cache.ttl`, reads the cost ledger for the prompt-cache **lifetime** signal: how many cache writes followed an idle gap of five to sixty minutes — the misses a one-hour subagent cache lifetime would have avoided. `cache.ttl.recommend` turns true only when that recurs, and `cache.ttl.advice` then names the Claude Code setting (`subagentPromptCacheTtl`) with its cost trade-off. Suspect ledger rows are excluded from the count.
+The `cache` block classifies the cached context (`status` of `ok` / `warn` / `critical` / `absent`, with advice naming the largest file) and, under `cache.ttl`, reads the cost ledger for the prompt-cache **lifetime** signal: how many cache writes followed an idle gap of five to sixty minutes — the misses a one-hour subagent cache lifetime would have avoided. `cache.ttl.recommend` turns true only when that recurs, and `cache.ttl.advice` then names the Claude Code setting (`subagentPromptCacheTtl`) with its cost trade-off. Suspect ledger rows are excluded from the count. Rows that recorded the cache-write lifetime split (`cache_write_1h_tokens`/`cache_write_5m_tokens`, written when the transcript carries it) count only their five-minute writes — a one-hour write outlives the gap — and `cache.ttl.basis` says which way the count was made: `measured`, `mixed`, or `inferred` from gaps alone; `measured_rows`, `cache_write_1h_tokens` and `cache_write_5m_tokens` carry the measured totals.
 
 **JSON output:**
 ```json
@@ -1662,7 +1665,7 @@ The `cache` block classifies the cached context (`status` of `ok` / `warn` / `cr
 
 ### `todo complete <filename>`
 
-Move a todo file from `.planning/todos/pending/` to `.planning/todos/completed/`, adding a completion timestamp.
+Move a todo file from `.planning/todos/pending/` to `.planning/todos/completed/`, adding a `completed: YYYY-MM-DD` line as the first line of its front matter (or of the file, when it has no front matter).
 
 ```bash
 pan-tools todo complete improve-error-handling.md [--raw]
@@ -1901,7 +1904,7 @@ pan-tools template select .planning/phases/05-setup/05-01-plan.md [--raw]
   "type": "standard",
   "taskCount": 3,
   "fileCount": 5,
-  "hasDecisions": true
+  "hasDecisions": false
 }
 ```
 
@@ -2007,7 +2010,8 @@ pan-tools config-ensure-section [--raw]
 | `memory.auto_optimize` | (not written; absent = `true`) | Reconcile the always-loaded project memory automatically at the focus-auto checkpoint and the normal-flow session record. No-op when state.md is already lean. Set `false` to opt out and reconcile only via `memory optimize`. |
 | `budget.enforce` | `false` | Make the spawn/point budget a hard stop. Advisory by default (tracked + surfaced, never stops a run). |
 | `budget.verify_reserve` | `0.15` | Fraction of the spawn budget (0–0.5) held back for re-verification so it can't be starved. Surfaced as `new_work_budget_remaining` / `into_verify_reserve` always; a hard early stop (`budget_reserve_reached`) only under `budget.enforce` / `--enforce-budget`. Override per-run with `--verify-reserve`. |
-| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25 } }`. Applied to both `cost append` and aggregate reporting. Precedence: this key, then a Claude Code managed `modelPricing` block (contracted input/output rates; cache rates derived from the family's multipliers), then the built-in table. |
+| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25, "cache_write_1h": 10 } }`. `cache_write` is the five-minute cache write; the optional `cache_write_1h` prices the one-hour share of a row that recorded the split, which otherwise bills at `cache_write`. Applied to both `cost append` and aggregate reporting, exactly as written. Precedence: this key, then a Claude Code managed `modelPricing` block (its `overrides` rows, times its `multiplier`), then the built-in table (times the managed `multiplier` when one is set). |
+| `routing.max_escalations` | `1` | How many tiers a retry may climb under `resolve-model --attempt` (failure-tier escalation). `0` turns escalation off. |
 | `cache.extra_files` | (not written; absent = no extra files) | **(v3.27)** Extra planning-root-relative docs to include in the cached context block, e.g. `["research/api-contract.md"]`. The built-in list is the *phase-model* spine (project/requirements/roadmap/state/standards), so a focus-model project has an empty block and gets **no prompt caching at all**. Entries are appended after the built-ins (the cache prefix stays byte-stable for projects that set nothing); absolute paths, drive paths, and `..` segments are ignored. |
 | `brave_search` | auto-detected | Brave Search API availability |
 
@@ -2056,10 +2060,13 @@ Standalone utility commands used across workflows.
 Get the model name for an agent based on the current model profile in config. The model profile (`quality`/`balanced`/`budget`) determines which model tier each agent type uses.
 
 ```bash
-pan-tools resolve-model pan-executor [--metadata '<json>'] [--raw]
+pan-tools resolve-model pan-executor [--metadata '<json>'] [--attempt <n>] [--raw]
 # --metadata: {phaseNum, fileCount, waveCount, requirementCount, isArchitectural, context_estimate, needs_thinking, cache_warm}
 #             enables the roadmap per-phase tier, complexity routing (routing.strategy: complexity) and the capability hints
+# --attempt:  1 for a first try; each later attempt follows a failure and climbs one tier
 ```
+
+**Failure-tier escalation (`--attempt`):** a retry of work that already failed on a cheaper tier climbs one step up `fast → mid → reasoning` per failed attempt, capped by `routing.max_escalations` (default `1`; `0` turns it off) and never above the agent's own `quality` tier. Under `quality` and `balanced` every agent already runs on the reasoning tier, so the flag changes nothing there; it is the `budget` profile's retry path. A `model_overrides` entry or a roadmap per-phase tier is an explicit choice and is never escalated. With `--attempt`, a registered agent's JSON gains `attempt` and `escalated_from` (the tier it climbed from, or `null`); an unknown agent's carries neither. A value that is not a positive integer is an error. `/pan:exec-phase --gaps-only` resolves its executor as attempt 2.
 
 **Agent types:** any key in `MODEL_PROFILES` (`core.cjs`) — the shipped `pan-*` agents, listed in the matrix below. The argument is not validated against an allowlist: a name that isn't in the table resolves to the mid tier and sets `unknown_agent: true` rather than erroring.
 
@@ -2069,6 +2076,8 @@ pan-tools resolve-model pan-executor [--metadata '<json>'] [--raw]
 ```
 
 For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "medium", "unknown_agent": true }` — unknown agents get the mid tier regardless of profile.
+
+**Under OpenCode:** the copy of PAN installed under `.opencode/` (or `~/.config/opencode/`) resolves provider-qualified ids — the provider, a slash, and the model's models.dev id, such as `openai/gpt-6-sol` for the OpenAI mid tier (the table is `OPENCODE_MODELS` in `core.cjs`) — because OpenCode names every model `provider/model`. With `routing.provider` unset or `auto` (the default) and no `PAN_PROVIDER`, the provider is the one in OpenCode's own configured `model` (`opencode.json` at the project root, then `.opencode/opencode.json`) when it is `anthropic`, `openai` or `google`, and otherwise the runtime-directory detection's (`.opencode/` alone counts as OpenAI); the reasoning tier stays `inherit`.
 
 **`--raw` output:** Model name string (e.g., `inherit`, `sonnet`, `haiku`). `inherit` means "use the model the session was launched with" — PAN does not name a model here, so it never goes stale as the lineup moves.
 
@@ -2101,7 +2110,7 @@ pan-tools commit "bugfix" --type fix --force
 - `<message>` — Commit message (required unless `--amend`)
 - `--files f1 f2 ...` — Specific files to stage (default: `.planning/`)
 - `--amend` — Amend the previous commit instead of creating a new one
-- `--type TYPE` — Conventional commit type prefix. Valid: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`. Prepends `type: ` to message.
+- `--type TYPE` — Conventional commit type prefix. Valid: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`. Prepends `type: ` to message.
 - `--force` — Skip deleted-file safety check
 - `--fail-on-error` — Report a git refusal (e.g. missing identity) as a bare `error()` on **stderr** instead of a `commit_failed` JSON body on stdout. Both exit non-zero, so autonomous loops detect the silent-failure case where the artifact never actually landed either way; the flag only changes which stream carries the reason. (`nothing_to_commit` has no `error` key and is still a success at exit `0`.)
 
@@ -2535,7 +2544,9 @@ pan-tools init milestone-op --all-tracks
 - `phase_count`, `completed_phases`, `all_phases_complete` — Phase progress
 - `archived_milestones[]`, `archive_count` — Archive info
 
-**`milestone_basis`** is one of `marked-current` (an explicit `(current)` / 🚧 marker), `first-unshipped`, `last-shipped`, `default` (no roadmap), or `no-milestone-heading` (a roadmap with no milestone heading at all). It exists so a caller can tell a real `v1.0` from a fallback.
+**`milestone_basis`** is one of `marked-current` (an explicit `(current)` / 🚧 marker), `first-unshipped`, `last-shipped` (the highest label when every milestone is shipped), `state` (no milestone heading, so the `milestone:` recorded in state.md's front matter), `default` (no roadmap), or `no-milestone-heading` (no heading and nothing recorded). It exists so a caller can tell a real `v1.0` from a fallback.
+
+A milestone heading carries a version (`v4.1`) anywhere in its text, or a letter-series label (`R-2`, `AB-C`) as its **first word** — after status glyphs and an optional "Milestone". A heading repeated later in the roadmap (a traceability or archive section) counts once.
 
 **`milestone_ambiguous: true`** means the roadmap marks more than one milestone current — a planning-state error. The audit workflow stops rather than picking one, because auditing a silently-chosen milestone is how a report ends up describing a milestone that does not exist.
 
@@ -2678,7 +2689,7 @@ Scheduled, self-resuming bot-army campaigns. PAN is not a daemon: this module ow
 
 **Module:** `campaign.cjs`
 
-- `campaign schedule` — arm or update the schedule. Flags: `--cadence <hourly|daily|weekly|Nh|Nd>` (default `daily`), `--daily-budget <points>` (default 300), `--goal <text>`, `--source <name>` (default `backlog`), `--pause`, `--resume`, `--disable`. Returns the written descriptor. There is no `--enable`: after `--disable`, set `"enabled": true` in `.planning/orchestration/schedule.json` by hand (the same goes for `enforce_budget`, which has no flag).
+- `campaign schedule` — arm or update the schedule. Flags: `--cadence <hourly|daily|weekly|Nh|Nd>` (default `daily`), `--daily-budget <points>` (default 300), `--goal <text>`, `--source <name>` (default `backlog`), `--pause`, `--resume`, `--disable`, `--enforce-budget` (the daily budget pauses the day's run once spent) and `--advisory-budget` (back to the default: tracked, never a stop). Returns the written descriptor. There is no `--enable`: after `--disable`, set `"enabled": true` in `.planning/orchestration/schedule.json` by hand.
 - `campaign status` — `{scheduled, enabled, paused, cadence, daily_budget, next_due, last_run, runs, spent_today, due, reason, verify_reserve, into_verify_reserve}` (`{scheduled: false}` when nothing is armed; `goal`, `source` and `history` live only in `schedule.json` and the `campaign schedule` return). Also the default when `campaign` is run with no subcommand.
 - `campaign due` — host-scheduler gate: returns `{due, reason, next_due}`. `reason` is one of `no_schedule`, `disabled`, `paused`, `budget_exhausted_today` (only when the descriptor's `enforce_budget` is `true` — the daily budget is advisory otherwise), `due`, `not_yet`. **Exit codes:** `0` — due; `1` — not due. The payload has no `error` key, so the code is set explicitly; a `cron`/`&&` trigger can gate on it without parsing the body. "Not due" is a negative *answer*, not a failure, so pair the exit code with `reason` if you need to distinguish it from a broken descriptor.
 - `campaign record-run` — record a completed run and advance `next_due`. Flags: `--items <N>`, `--points <N>`.
@@ -2689,9 +2700,9 @@ Generates a single self-contained HTML dashboard of the project + bot army (defa
 
 **Module:** `hud.cjs`
 
-### `report phase <N> [--out <file>] [--open] [--stdout] | index [--bundle] [--out <file>] [--open] [--stdout] | all` (v3.15)
+### `report phase <N> [--out <file>] [--open] [--stdout] | index [--bundle] [--out <file>] [--open] [--stdout] | all [--open]` (v3.15)
 
-`report all` accepts no effective flags — the dispatcher parses `--open` for it but the module ignores it; it writes every phase report plus the index to their default paths and never opens a browser. Generates self-contained HTML reports for a project's phases, reusing the HUD's rendering. `report phase <N>` writes one phase's report (objective, roadmap position, what changed, verification verdict and gaps) to `.planning/phases/<NN-slug>/<NN>-report.html`; `report index` writes the project timeline to `.planning/report-index.html`, where each row links to a phase report; `report all` regenerates every phase report plus the index in one pass. Like `hud`, these are read-only **views** — every value is read from what PAN already tracks on disk (phase `plan`/`summary`/`verification` artifacts and their frontmatter, `roadmap.md`, and the cost ledger), and the command writes only its rendered file(s), so it can never corrupt planning data. Writes are deterministic: re-running with unchanged phase data rewrites nothing (the volatile generated-at timestamp is ignored when comparing), so reports produce no git churn. `--out` overrides the path, `--open` best-effort launches the default browser (only when the file was written or changed), `--stdout` prints HTML instead of writing (for `phase`/`index`). `--bundle` (on `index`) instead writes one self-contained `.planning/report-bundle.html` with every phase inlined under in-page anchors and no links to sibling files — the form to email or attach. A phase-less (focus-auto) project has nothing to report; `index` exits with a message pointing to `pan-tools hud` instead.
+`report all` writes every phase report plus the index to their default paths; its one flag, `--open`, opens the index in the default browser (only when the index was written or changed), and the result reports it as `opened`. Generates self-contained HTML reports for a project's phases, reusing the HUD's rendering. `report phase <N>` writes one phase's report (objective, roadmap position, what changed, verification verdict and gaps) to `.planning/phases/<NN-slug>/<NN>-report.html`; `report index` writes the project timeline to `.planning/report-index.html`, where each row links to a phase report; `report all` regenerates every phase report plus the index in one pass. Like `hud`, these are read-only **views** — every value is read from what PAN already tracks on disk (phase `plan`/`summary`/`verification` artifacts and their frontmatter, `roadmap.md`, and the cost ledger), and the command writes only its rendered file(s), so it can never corrupt planning data. Writes are deterministic: re-running with unchanged phase data rewrites nothing (the volatile generated-at timestamp is ignored when comparing), so reports produce no git churn. `--out` overrides the path, `--open` best-effort launches the default browser (only when the file was written or changed), `--stdout` prints HTML instead of writing (for `phase`/`index`). `--bundle` (on `index`) instead writes one self-contained `.planning/report-bundle.html` with every phase inlined under in-page anchors and no links to sibling files — the form to email or attach. A phase-less (focus-auto) project has nothing to report; `index` exits with a message pointing to `pan-tools hud` instead.
 
 **Module:** `phase-report.cjs`
 
@@ -3290,7 +3301,7 @@ pan-tools memory optimize --apply --keep 20
 
 ### `memory rebuild [--apply]`
 
-Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI reads `GEMINI.md` by default and PAN does not point it at `AGENTS.md`), the `@AGENTS.md` bridge in `CLAUDE.md` (only when the Claude runtime is installed), and state.md's YAML frontmatter (re-derived from the body). User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
+Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI reads `GEMINI.md` by default and PAN does not point it at `AGENTS.md`), the `@AGENTS.md` bridge in `CLAUDE.md` (only when the Claude runtime is installed), and state.md's YAML frontmatter (re-derived from the body, keeping recorded values the body does not restate; a state.md with more than one front-matter block is reported as `action: "refused"` and left as it is). User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
 
 Dry-run by default; pass `--apply` to write. A second run changes nothing.
 
@@ -3555,9 +3566,9 @@ Report whether the built-in model rate table is stale.
 pan-tools models check [--raw]
 ```
 
-Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers, managed_model_pricing}`. The rate table carries the date it was last verified against published provider pricing; `stale` flips to `true` once that date is older than the threshold (sixty days, the cadence of PAN's ecosystem reviews). The calendar cannot see a default-model change inside that window; the suite's documented-default-models fixture test catches that instead. When stale, re-verify provider pricing, update `DEFAULT_RATES`, and bump `RATES_VERIFIED_AT` in `cost.cjs`. `--raw` prints a one-line human summary instead of JSON.
+Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers, managed_model_pricing, managed_pricing_multiplier}`. The rate table carries the date it was last verified against published provider pricing; `stale` flips to `true` once that date is older than the threshold (sixty days, the cadence of PAN's ecosystem reviews). The calendar cannot see a default-model change inside that window; the suite's documented-default-models fixture test catches that instead. When stale, re-verify provider pricing, update `DEFAULT_RATES`, and bump `RATES_VERIFIED_AT` in `cost.cjs`. `--raw` prints a one-line human summary instead of JSON.
 
-`managed_model_pricing` lists the model ids found in a Claude Code managed `modelPricing` block (contracted per-model rates an organisation deploys through managed settings). PAN prices with those rates when present — see the `cost.rates` config key for the precedence — and reads them from the directory Claude Code documents for each OS; `PAN_MANAGED_SETTINGS_DIR` redirects the lookup. An empty list means no block was found, not that the setting is unsupported.
+`managed_model_pricing` lists the model ids of the usable `overrides` rows in a Claude Code managed `modelPricing` block (contracted per-model rates an organisation deploys through managed settings; each row carries `input`, `output`, `cacheRead` and `cacheWrite`, and a row missing one is dropped, as Claude Code drops it), and `managed_pricing_multiplier` the block's `multiplier` — above 0 and at most 10, a discount below 1 and a markup above — or `null`. A multiplier PAN could not apply is reported as `managed_pricing_multiplier_ignored`. PAN prices with those rates when present, and applies the multiplier to the built-in rates of every model no row covers, as Claude Code does — see the `cost.rates` config key for the precedence. It reads them from the directory Claude Code documents for each OS; `PAN_MANAGED_SETTINGS_DIR` redirects the lookup. An empty list means no usable row was found, not that the setting is unsupported.
 
 ### `bus publish <channel> <payload> [--source <name>]` (v3.0, Y-7)
 
@@ -3803,7 +3814,7 @@ Both subcommands accept the planning-root flags (`--track`, `--planning-dir`, `-
 
 ### `hygiene scan [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
 
-Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the block re-read into every agent call, warned at 15k tokens and critical at 25k, with any single file over 6k called out and `state.md` carrying the `compact-state` remedy; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; and, under `cache-context` at `info`, the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Returns `{findings, installs, latest_version, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
+Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the block re-read into every agent call, warned at 15k tokens and critical at 25k, with any single file over 6k called out and `state.md` carrying the `compact-state` remedy; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; and, under `cache-context` at `info` (`warn` once the re-written context is large), the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Returns `{findings, installs, latest_version, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
 
 ```bash
 pan-tools hygiene scan --raw

@@ -69,7 +69,7 @@ PanWizard/
   bin/                  # Installer entry point (install.js)
   commands/pan/         # command .md files (Claude Code format)
   agents/               # agent .md files
-  pan-zcode/            # Experimental: ZCode subsystem (MCP bridge; ZCode is beta)
+  pan-zcode/            # Experimental: ZCode subsystem (consumer of the shared MCP bridge; ZCode is beta)
   pan-wizard-core/      # Core library
     bin/lib/            # CJS modules (config, state, init, verify, etc.)
     bin/pan-tools.cjs   # CLI tool for commands/agents to call
@@ -202,7 +202,7 @@ Agents should:
 - Update docs/USER-GUIDE.md for detailed configuration or workflow changes
 - Update CHANGELOG.md for all notable changes, under `## [Unreleased]` — the release commit turns that heading into the version
 - Never embed filesystem-derived counts (commands, agents, tests, modules, …) anywhere but `CLAUDE.md`; release Gate 4 (`doc-lint counts`) fails on them under `docs/` (root files such as README are not scanned) — write "all shipped commands", not a number
-- Keep docs/context-monitor.md current if hooks change
+- Keep docs/HOOKS.md current if hooks change
 
 ## Further Reading
 

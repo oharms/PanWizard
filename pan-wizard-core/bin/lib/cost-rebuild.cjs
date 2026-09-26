@@ -136,6 +136,14 @@ function sumTranscriptUsage(file) {
     totals.output_tokens += num(u, 'output_tokens');
     totals.cache_read_tokens += num(u, 'cache_read_input_tokens');
     totals.cache_write_tokens += num(u, 'cache_creation_input_tokens');
+    // The cache-write lifetime split (M13), the same rule as the cost-logger hook:
+    // summed only when a record carries `cache_creation`, so the row gains the two
+    // fields only when the transcript measured them.
+    const cc = u.cache_creation;
+    if (cc && typeof cc === 'object') {
+      totals.cache_write_1h_tokens = (totals.cache_write_1h_tokens || 0) + num(cc, 'ephemeral_1h_input_tokens');
+      totals.cache_write_5m_tokens = (totals.cache_write_5m_tokens || 0) + num(cc, 'ephemeral_5m_input_tokens');
+    }
   }
   totals.turns = byMessage.size;
   let best = null;
@@ -293,6 +301,9 @@ function makeRow(fields) {
     output_tokens: fields.usage.output_tokens,
     cache_read_tokens: fields.usage.cache_read_tokens,
     cache_write_tokens: fields.usage.cache_write_tokens,
+    ...(typeof fields.usage.cache_write_1h_tokens === 'number'
+      ? { cache_write_1h_tokens: fields.usage.cache_write_1h_tokens, cache_write_5m_tokens: fields.usage.cache_write_5m_tokens || 0 }
+      : {}),
     cost_usd: null,
     duration_ms: fields.usage.first_ts && fields.usage.last_ts ? Date.parse(fields.usage.last_ts) - Date.parse(fields.usage.first_ts) : null,
     phase: null,

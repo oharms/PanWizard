@@ -68,6 +68,7 @@ const EVENT_HOOKS = Object.freeze({
   postToolUse: ['pan-context-monitor.js'],
   subagentStop: ['pan-cost-logger.js', 'pan-trace-logger.js'],
   stop: ['pan-stop-guard.js'],
+  compact: ['pan-state-reinject.js'],
 });
 
 // ─── Parsers (pure) ─────────────────────────────────────────────────────────

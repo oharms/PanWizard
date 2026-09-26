@@ -169,6 +169,15 @@ function main() {
     );
   }
 
+  // 7. Eval suite (market-ideas M4). `claude plugin eval` reads `evals/` at the
+  // plugin root; the cases live in harness/plugin-evals/ beside the harness
+  // scenarios they come from. harness/ is not in the npm package, so a build from
+  // an installed copy has no suite to copy and the plugin ships without one.
+  const evalsSrc = path.join(ROOT, 'harness', 'plugin-evals');
+  if (fs.existsSync(evalsSrc)) {
+    fs.cpSync(evalsSrc, path.join(OUT, 'evals'), { recursive: true });
+  }
+
   // Sanity report
   const count = (p) => { try { return fs.readdirSync(p).length; } catch { return 0; } };
   console.log('PAN plugin built at', path.relative(ROOT, OUT));
@@ -176,6 +185,7 @@ function main() {
   console.log('  agents:', count(path.join(OUT, 'agents')));
   console.log('  hooks:', count(path.join(OUT, 'hooks')));
   console.log('  workflows:', workflowScripts.length);
+  console.log('  eval cases:', count(path.join(OUT, 'evals')) ? fs.readdirSync(path.join(OUT, 'evals'), { withFileTypes: true }).filter(e => e.isDirectory()).length : 0);
   console.log('  version:', pkg.version);
 }
 

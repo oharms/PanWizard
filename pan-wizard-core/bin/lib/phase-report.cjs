@@ -724,8 +724,11 @@ function cmdReport(cwd, opts = {}, raw) {
   if (action === 'all') {
     const res = renderAllToDisk(cwd, { now });
     if (!res) return error('No phases found — nothing to report.');
+    // --open was parsed for `all` and never used; open the index it wrote, on the
+    // same only-when-written rule as the single-report actions.
+    const opened = opts.open && res.index.written ? openInBrowser(res.index.path) : false;
     return output(
-      { action, reports: res.reports, index: res.index },
+      { action, reports: res.reports, index: res.index, opened },
       raw,
       `generated ${res.reports.length} phase report(s)${res.index.path ? ' + index' : ''}`,
     );

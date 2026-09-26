@@ -56,6 +56,7 @@ const EVENT_HOOKS = Object.freeze({
   sessionStart: ['pan-check-update.js'],
   postToolUse: ['pan-context-monitor.js'],
   subagentStop: ['pan-cost-logger.js', 'pan-trace-logger.js'],
+  compact: ['pan-state-reinject.js'],
 });
 
 /**
@@ -544,6 +545,41 @@ function driveStopGuard(runtime) {
   assert.equal(disarmed.stdout, '', 'workflow.stop_guard false must disable the guard even with autonomy armed');
 }
 
+function driveStateReinject(runtime) {
+  const script = installedHook(runtime, 'pan-state-reinject.js');
+  const project = planningProject(`reinject-${runtime}`);
+  const planning = path.join(project, '.planning');
+  fs.writeFileSync(path.join(planning, 'state.md'), [
+    '# Project State', '',
+    '**Current Phase:** 2', '**Current Phase Name:** Bridge', '**Current Plan:** 1', '**Total Plans in Phase:** 3',
+    '**Status:** In progress', '**Stopped At:** Plan 2-01 task 3 committed', '',
+  ].join('\n'), 'utf-8');
+  fs.writeFileSync(path.join(planning, 'roadmap.md'), '- [x] **Phase 1: Groundwork**\n- [ ] **Phase 2: Bridge**\n', 'utf-8');
+  const before = fs.readdirSync(planning).sort();
+  const payload = substitute(fixture('session-start-compact-claude.json'), baseMap(project, `reinject-${runtime}-0001`, path.join(project, 'transcript.jsonl')));
+
+  const result = spawnHook(script, payload, project);
+  assert.equal(result.status, 0, `the re-injection hook must exit 0 on ${runtime}: ${result.stderr}`);
+  assert.equal(result.stderr, '', 'the context travels on stdout, never stderr');
+  const out = JSON.parse(result.stdout);
+  assert.equal(out.hookSpecificOutput.hookEventName, 'SessionStart');
+  const ctx = out.hookSpecificOutput.additionalContext;
+  assert.match(ctx, /Current phase: 2 \(Bridge\), plan 1 of 3/, 'the context must name the phase and plan in flight');
+  assert.match(ctx, /Stopped at: Plan 2-01 task 3 committed/);
+  assert.match(ctx, /First unbuilt roadmap phase: Phase 2/);
+
+  // Any other start is not a compaction: nothing to restore.
+  const startup = spawnHook(script, { ...payload, source: 'startup' }, project);
+  assert.equal(startup.status, 0);
+  assert.equal(startup.stdout, '', 'a startup is not a compaction — the hook stays silent');
+
+  // A finished roadmap has nothing in flight.
+  fs.writeFileSync(path.join(planning, 'roadmap.md'), '- [x] **Phase 1: Groundwork**\n- [x] **Phase 2: Bridge**\n', 'utf-8');
+  const done = spawnHook(script, payload, project);
+  assert.equal(done.stdout, '', 'every phase built — nothing to re-inject');
+  assert.deepEqual(fs.readdirSync(planning).sort(), before, 'the hook must never write into the planning tree');
+}
+
 function driveStatusline(runtime) {
   const script = installedHook(runtime, 'pan-statusline.js');
   const project = planningProject(`statusline-${runtime}`);
@@ -596,6 +632,10 @@ const DRIVERS = Object.freeze({
   'pan-statusline.js': {
     title: 'renders the context bar and writes the bridge record the monitor reads',
     run: driveStatusline,
+  },
+  'pan-state-reinject.js': {
+    title: 'restores the phase in flight after a compaction and stays silent otherwise',
+    run: driveStateReinject,
   },
 });
 

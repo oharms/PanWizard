@@ -224,7 +224,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 | `/pan:plan-phase <N>` | Research + plan a phase with verification |
 | `/pan:exec-phase <N>` | Execute plans with wave-based parallelization |
 | `/pan:research-phase <N>` | Deep ecosystem research for specialized domains |
-| `/pan:verify-phase <N>` | Validate built features through UAT |
+| `/pan:verify-phase <N>` | Re-run goal-backward verification with a test-suite gate |
 
 ### Phase Management
 | Command | Description |
@@ -348,7 +348,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **`/pan:exec-phase <N>`** — Execute all plans in a phase. Groups by wave, runs waves sequentially, plans within each wave in parallel.
 
-**`/pan:verify-phase <N>`** — Conversational UAT. Presents tests one at a time, diagnoses failures, creates fix plans.
+**`/pan:verify-phase <N>`** — Re-run goal-backward verification behind a test-suite gate. Writes the phase's verification report (passed, gaps_found or human_needed); fix gaps with `/pan:plan-phase <N> --gaps`.
 
 **`/pan:quick <desc>`** — Small tasks with PAN guarantees but shorter path. Skips researcher, checker, verifier. Lives in `.planning/quick/`.
 

@@ -48,15 +48,27 @@
 function buildSubcommandIndex(sourceText) {
   const index = {};
   if (typeof sourceText !== 'string') return index;
-  const re = /Unknown ([a-z][a-z-]*) subcommand\. Available: ([^'"`\n]+)/g;
-  let m;
-  while ((m = re.exec(sourceText)) !== null) {
-    const group = m[1];
-    const subs = m[2]
-      .split(',')
-      .map((s) => s.trim().split(/\s+/)[0])   // drop " [--apply]"-style hints
-      .filter((s) => /^[a-z][a-z0-9-]*$/.test(s));
-    if (subs.length) index[group] = subs;
+  // The dispatcher words these messages three ways, and until 2026-09-26 only the
+  // first was read, so git, distill, experiment, init, state and links got no
+  // suggestion on a typo:
+  //   Unknown optimize subcommand. Available: …
+  //   Unknown state subcommand: ${subcommand}. Available: …   (also `unknown …`, and
+  //   Unknown init workflow: ${workflow}\nAvailable: …)
+  //   git subcommand required. Available: …
+  const patterns = [
+    /[Uu]nknown ([a-z][a-z-]*) (?:subcommand|workflow)[^'"`\n.]*(?:\.\s*|\\n)Available: ([^'"`\n\\]+)/g,
+    /([a-z][a-z-]*) subcommand required\. Available: ([^'"`\n\\]+)/g,
+  ];
+  for (const re of patterns) {
+    let m;
+    while ((m = re.exec(sourceText)) !== null) {
+      const group = m[1];
+      const subs = m[2]
+        .split(',')
+        .map((s) => s.trim().split(/\s+/)[0])   // drop " [--apply]"-style hints
+        .filter((s) => /^[a-z][a-z0-9-]*$/.test(s));
+      if (subs.length) index[group] = [...new Set([...(index[group] || []), ...subs])];
+    }
   }
   return index;
 }

@@ -97,7 +97,7 @@ The installer adds `SubagentStop` entries for `pan-cost-logger.js` and `pan-trac
 }
 ```
 
-The hook is non-blocking and is registered on Claude Code, Codex and Copilot CLI; Gemini CLI (no subagent-completion event) and OpenCode (no PAN hooks) get no cost logger. Today's installer also writes the trace-logger and stop-guard entries described above; nothing else in settings.json changes.
+The hook is non-blocking and is registered on Claude Code, Codex and Copilot CLI; Gemini CLI (no subagent-completion event) and OpenCode (no PAN hooks) get no cost logger. Today's installer also writes the trace-logger and stop-guard entries described above, plus a `SessionStart` entry with the `compact` matcher for `pan-state-reinject.js`; nothing else in settings.json changes.
 
 ### Shipped hooks
 
@@ -107,6 +107,7 @@ The hook is non-blocking and is registered on Claude Code, Codex and Copilot CLI
 - `pan-cost-logger.js` (new in v3.4)
 - `pan-trace-logger.js` (new in v3.5 — circular optimization tracing)
 - `pan-stop-guard.js` (Stop hook — `AfterAgent` on Gemini CLI — added in v3.24; blocks the auto-advance boundary drop once)
+- `pan-state-reinject.js` (`SessionStart` hook with the `compact` matcher, Claude Code and Codex only; after a context compaction it re-injects the current phase and plan from `.planning/state.md`)
 
 ### New core modules
 

@@ -1,7 +1,7 @@
 ---
 name: pan:verify-phase
 group: Phase Lifecycle
-description: Validate built features through conversational UAT with test suite gate
+description: Re-run goal-backward verification of a phase with a test-suite gate and list its gaps
 argument-hint: "[phase number, e.g., '4']"
 allowed-tools:
   - Read
@@ -13,24 +13,23 @@ allowed-tools:
   - Task
 ---
 <objective>
-Validate built features through conversational testing with persistent state.
+Verify that the phase delivered what it promised, not just that its tasks completed.
 
-Purpose: Confirm what Claude built actually works from user's perspective. One test at a time, plain text responses, no interrogation. When issues are found, automatically diagnose, plan fixes, and prepare for execution.
+Purpose: goal-backward verification — what must be TRUE for the phase goal, what must EXIST for that, what must be WIRED — checked against the codebase, behind a test-suite gate.
 
-Output: {phase_num}-uat.md tracking all test results. If issues found: diagnosed gaps, verified fix plans ready for /pan:exec-phase
+Output: {phase_num}-verification.md with a status (passed, gaps_found or human_needed). Gaps found are listed for `/pan:plan-phase {phase_num} --gaps`.
 </objective>
 
 <execution_context>
 @~/.claude/pan-wizard-core/workflows/verify-phase.md
-@~/.claude/pan-wizard-core/templates/uat.md
 </execution_context>
 
 <context>
 Phase: $ARGUMENTS (optional)
 - If provided: Test specific phase (e.g., "4")
-- If not provided: Check for active sessions or prompt for phase
+- If not provided: prompt for the phase
 
-Context files are resolved inside the workflow (`init verify-work`) and delegated via `<files_to_read>` blocks.
+Context files are resolved inside the workflow (`init phase-op`).
 </context>
 
 <investigate_before_judging>
@@ -87,6 +86,6 @@ See [plan-phase.md](plan-phase.md) or [exec-phase.md](exec-phase.md) for the ful
 </cache_priming>
 
 <process>
-Execute the verify-work workflow from @~/.claude/pan-wizard-core/workflows/verify-phase.md end-to-end.
-Preserve all workflow gates (session management, test presentation, diagnosis, fix planning, routing).
+Execute the verify-phase workflow from @~/.claude/pan-wizard-core/workflows/verify-phase.md end-to-end.
+Preserve all workflow gates (the test-suite gate, the truth/artifact/wiring checks, status determination, the verification report).
 </process>

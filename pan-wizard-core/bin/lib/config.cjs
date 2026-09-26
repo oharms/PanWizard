@@ -84,6 +84,8 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       strategy: 'static',
       provider: 'auto',
       cascade_quality_gate: true,
+      // Failure-tier escalation (M8): how many tiers a retry may climb.
+      max_escalations: 1,
       complexity_thresholds: {
         downgrade_max: 2,
         upgrade_min: 6,

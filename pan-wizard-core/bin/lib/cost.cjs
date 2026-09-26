@@ -46,6 +46,14 @@ const TOKENS_FILE = 'tokens.jsonl';
 /**
  * Default rate table ($ per million tokens).
  * Override per-model in config.json → cost.rates.
+ *
+ * `cache_write` is the five-minute cache write. `cache_write_1h` — Anthropic rows
+ * only — is the one-hour write, 2x base input on every current Claude model
+ * (pricing table "1h cache writes", read 2026-09-26). It prices the
+ * `cache_write_1h_tokens` a ledger row carries when the transcript recorded the
+ * lifetime split; a row without it, or a rate without `cache_write_1h`, bills every
+ * write at `cache_write` (market-ideas queue M13). OpenAI and Google report no
+ * lifetime split, so their rows carry none.
  */
 const DEFAULT_RATES = {
   // Anthropic — platform.claude.com/docs/en/about-claude/pricing, every row read
@@ -58,12 +66,12 @@ const DEFAULT_RATES = {
   // Fable 5.1 is what the `fable`/`best` aliases resolve to (model-config: neither
   // Fable model is any plan's default); cached re-reads are the bulk of PAN's
   // traffic (ADR-0044).
-  'claude-fable-5-1':   { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
-  'claude-fable-5':     { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
+  'claude-fable-5-1':   { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5, cache_write_1h: 20.0 },
+  'claude-fable-5':     { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5, cache_write_1h: 20.0 },
   // Mythos 5.1 / Mythos 5 (limited availability): $10/$50; Mythos 5.1 reads at
   // 0.025× input like Fable 5.1, Mythos 5 follows the 0.1× rule (R7).
-  'claude-mythos-5-1':  { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5 },
-  'claude-mythos-5':    { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
+  'claude-mythos-5-1':  { input: 10.0, output: 50.0, cache_read: 0.25, cache_write: 12.5, cache_write_1h: 20.0 },
+  'claude-mythos-5':    { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5, cache_write_1h: 20.0 },
   // Opus 5.5 (claude-opus-5-5, released 2026-09-22): $4 input / $20 output, 5-minute
   // writes $5, cache hits $0.20 — the page prices its hits at 0.05× input. Claude
   // Code 2.1.280 made it the default model on every plan (model-config, read
@@ -71,24 +79,24 @@ const DEFAULT_RATES = {
   // prefix priced it as Opus 5: cache reads 2.5× high, the rest a quarter high
   // (reality check 2026-09-22, R25). The models overview lists no dated snapshot —
   // from the 4.6 generation on, the dateless id is canonical.
-  'claude-opus-5-5':    { input: 4.0,  output: 20.0, cache_read: 0.20, cache_write: 5.0 },
-  'claude-opus-5':      { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
-  'claude-opus-4-8':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
-  'claude-opus-4-7':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
-  'claude-opus-4-6':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
+  'claude-opus-5-5':    { input: 4.0,  output: 20.0, cache_read: 0.20, cache_write: 5.0, cache_write_1h: 8.0 },
+  'claude-opus-5':      { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25, cache_write_1h: 10.0 },
+  'claude-opus-4-8':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25, cache_write_1h: 10.0 },
+  'claude-opus-4-7':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25, cache_write_1h: 10.0 },
+  'claude-opus-4-6':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25, cache_write_1h: 10.0 },
   // Opus 4.5 (dated id claude-opus-4-5-20251101): without this row the dated id had
   // no family prefix to land on and priced as null (R7).
-  'claude-opus-4-5':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25 },
+  'claude-opus-4-5':    { input: 5.0,  output: 25.0, cache_read: 0.5,  cache_write: 6.25, cache_write_1h: 10.0 },
   // Sonnet 5 is $2/$10: the launch price announced as introductory through
   // 2026-08-31 was made permanent and the scheduled rise to $3/$15 cancelled.
   // Lesson: never write down a pre-announced price — this row carried the future
   // rate for a month and over-billed by half.
-  'claude-sonnet-5':    { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50 },
-  'claude-sonnet-4-6':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
+  'claude-sonnet-5':    { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50, cache_write_1h: 4.0 },
+  'claude-sonnet-4-6':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75, cache_write_1h: 6.0 },
   // Sonnet 4.5 (dated id claude-sonnet-4-5-20250929): $3/$15/$0.30/$3.75 (R7).
-  'claude-sonnet-4-5':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75 },
+  'claude-sonnet-4-5':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75, cache_write_1h: 6.0 },
   // Haiku 4.5: API id claude-haiku-4-5-20251001, alias claude-haiku-4-5.
-  'claude-haiku-4-5':   { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25 },
+  'claude-haiku-4-5':   { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25, cache_write_1h: 2.0 },
 
   // OpenAI — developers.openai.com/api/docs/pricing, Standard tier, short context
   // (≤272K input tokens), read 2026-09-23. On the GPT-5.6 and GPT-6 families a cache
@@ -149,9 +157,9 @@ const DEFAULT_RATES = {
   // (Opus 5.5 since 2026-09-22 — the model the inherit tier runs on for most users),
   // mid the Sonnet the `sonnet` alias resolves to on the Anthropic API (Sonnet 5),
   // fast Haiku 4.5.
-  'reasoning': { input: 4.0,  output: 20.0, cache_read: 0.20, cache_write: 5.0 },
-  'mid':       { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50 },
-  'fast':      { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25 },
+  'reasoning': { input: 4.0,  output: 20.0, cache_read: 0.20, cache_write: 5.0, cache_write_1h: 8.0 },
+  'mid':       { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50, cache_write_1h: 4.0 },
+  'fast':      { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25, cache_write_1h: 2.0 },
 };
 
 function metricsDir(cwd) {
@@ -175,29 +183,80 @@ function familyPrefixRate(rates, model) {
 
 // ─── Claude Code `modelPricing` as a rate source (2026-09) ──────────────────
 //
-// Claude Code ≥2.1.243 lets an organisation pin contracted per-model rates in
-// MANAGED settings — `modelPricing: { "<modelId>": { inputCostPer1MTokens,
-// outputCostPer1MTokens } }` (settings-reference, read 2026-09-10) — and prices
-// its own /usage with them. Honouring the same block keeps PAN's ledger on the
-// numbers the organisation actually pays. The shape carries no cache fields, so
-// cache rates are DERIVED: the family's own multipliers when DEFAULT_RATES knows
-// the family (Fable 5.1 reads bill at 0.025× input, not 0.1×), otherwise the
-// Anthropic convention (read 0.1×, write 1.25×).
+// Claude Code ≥2.1.242 lets an organisation report spend at contracted rates
+// through a MANAGED setting, and prices its own /usage, status line and
+// telemetry with it. Honouring the same block keeps PAN's ledger on the numbers
+// the organisation actually pays. The documented shape (settings-reference
+// `modelPricing`, read raw 2026-09-26):
+//
+//   modelPricing: {
+//     multiplier: 0.85,                      // optional, > 0 and ≤ 10
+//     overrides: {                           // optional
+//       "claude-sonnet-4-6": { input, output, cacheRead, cacheWrite }  // $/1M, each 0–10000, all four required
+//     }
+//   }
+//
+// `multiplier` "scales every cost Claude Code computes, whether or not an
+// overrides row covers it" — below 1 a discount, above 1 a chargeback markup
+// (2.1.271). It is applied on top of an override row's rates, and to the list
+// price of every model no row covers. Claude Code drops a row or a multiplier it
+// cannot parse and keeps the rest; PAN does the same.
+//
+// Until 2026-09-26 PAN parsed a different shape — `{ "<modelId>":
+// { inputCostPer1MTokens, outputCostPer1MTokens } }` with cache rates derived —
+// that the documentation does not describe; a real policy file matched nothing
+// and PAN priced at list price. (Market-ideas queue M2 found it while adding the
+// multiplier.)
 
 const round6 = (n) => Number(n.toFixed(6));
 
+const MODEL_PRICING_MAX_MULTIPLIER = 10;
+const MODEL_PRICING_MAX_RATE = 10000;
+
+// resolveRate reads this off a rates map to scale its built-in fallback. A
+// symbol, so Object.keys (the family-prefix match, `models check`) never sees it.
+const BUILTIN_MULTIPLIER = Symbol('pan.builtinRateMultiplier');
+
+/** The block's multiplier when it is a valid one, otherwise null. */
+function modelPricingMultiplier(modelPricing) {
+  if (!modelPricing || typeof modelPricing !== 'object' || !('multiplier' in modelPricing)) return null;
+  const raw = modelPricing.multiplier;
+  if (raw === null || raw === '' || typeof raw === 'boolean') return null;
+  const m = Number(raw);
+  return Number.isFinite(m) && m > 0 && m <= MODEL_PRICING_MAX_MULTIPLIER ? m : null;
+}
+
+const scaleRate = (rate, m) => ({
+  input: round6(rate.input * m),
+  output: round6(rate.output * m),
+  cache_read: round6(rate.cache_read * m),
+  cache_write: round6(rate.cache_write * m),
+  ...(typeof rate.cache_write_1h === 'number' ? { cache_write_1h: round6(rate.cache_write_1h * m) } : {}),
+});
+
+/**
+ * PAN rate rows for a managed `modelPricing` block's `overrides`, with the
+ * block's multiplier applied. A row missing any of the four rates, or holding
+ * one outside 0–10000, is dropped.
+ * @param {object|null} modelPricing - `{ multiplier?, overrides? }`
+ * @returns {Object<string, {input:number, output:number, cache_read:number, cache_write:number}>}
+ */
 function ratesFromModelPricing(modelPricing) {
   const out = {};
   if (!modelPricing || typeof modelPricing !== 'object' || Array.isArray(modelPricing)) return out;
-  for (const [id, p] of Object.entries(modelPricing)) {
+  const overrides = modelPricing.overrides;
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return out;
+  const m = modelPricingMultiplier(modelPricing) || 1;
+  const valid = (v) => v !== null && v !== '' && typeof v !== 'boolean'
+    && Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= MODEL_PRICING_MAX_RATE;
+  for (const [id, p] of Object.entries(overrides)) {
     if (!p || typeof p !== 'object') continue;
-    const input = Number(p.inputCostPer1MTokens);
-    const output = Number(p.outputCostPer1MTokens);
-    if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) continue;
-    const fam = DEFAULT_RATES[id] || familyPrefixRate(DEFAULT_RATES, id);
-    const readMult = fam && fam.input > 0 ? fam.cache_read / fam.input : 0.1;
-    const writeMult = fam && fam.input > 0 ? fam.cache_write / fam.input : 1.25;
-    out[id] = { input, output, cache_read: round6(input * readMult), cache_write: round6(input * writeMult) };
+    if (![p.input, p.output, p.cacheRead, p.cacheWrite].every(valid)) continue;
+    // "cacheWrite covers both five-minute and one-hour cache writes."
+    out[id] = scaleRate({
+      input: Number(p.input), output: Number(p.output),
+      cache_read: Number(p.cacheRead), cache_write: Number(p.cacheWrite), cache_write_1h: Number(p.cacheWrite),
+    }, m);
   }
   return out;
 }
@@ -229,25 +288,35 @@ function loadManagedModelPricing(dir = managedSettingsDir()) {
       .sort()
       .map(f => path.join(dropIns, f)));
   } catch { /* no drop-in directory */ }
+  // Later files win: a later `multiplier` replaces an earlier one, and
+  // `overrides` merge per model id.
   let merged = null;
   for (const f of files) {
     let parsed;
     try { parsed = JSON.parse(fs.readFileSync(f, 'utf8')); } catch { continue; }
     const mp = parsed && typeof parsed === 'object' ? parsed.modelPricing : null;
-    if (mp && typeof mp === 'object' && !Array.isArray(mp)) merged = { ...(merged || {}), ...mp };
+    if (!mp || typeof mp !== 'object' || Array.isArray(mp)) continue;
+    merged = merged || {};
+    if ('multiplier' in mp) merged.multiplier = mp.multiplier;
+    if (mp.overrides && typeof mp.overrides === 'object' && !Array.isArray(mp.overrides)) {
+      merged.overrides = { ...(merged.overrides || {}), ...mp.overrides };
+    }
   }
   return merged;
 }
 
 // The rate table a cost computation actually sees. Precedence, highest first:
-//   1. `.planning/config.json → cost.rates` — PAN's explicit per-project override
-//   2. managed `modelPricing` — the organisation's contracted rates
-//   3. DEFAULT_RATES — resolveRate's own fallback when neither names the model
-// Returns undefined (not {}) when nothing overrides, so callers keep the exact
-// pre-2026-09 behaviour of passing no config rates.
+//   1. `.planning/config.json → cost.rates` — PAN's explicit per-project override,
+//      used exactly as written (the managed multiplier does not touch it)
+//   2. managed `modelPricing.overrides` — contracted rates, × the multiplier
+//   3. DEFAULT_RATES — resolveRate's own fallback, × the managed multiplier
+// Returns undefined (not {}) when nothing overrides and no multiplier applies, so
+// callers keep the exact pre-2026-09 behaviour of passing no config rates.
 function effectiveRates(config, managedPricing = loadManagedModelPricing()) {
   const rates = { ...ratesFromModelPricing(managedPricing), ...(config?.cost?.rates || {}) };
-  return Object.keys(rates).length > 0 ? rates : undefined;
+  const m = modelPricingMultiplier(managedPricing);
+  if (m !== null && m !== 1) rates[BUILTIN_MULTIPLIER] = m;
+  return Object.keys(rates).length > 0 || rates[BUILTIN_MULTIPLIER] ? rates : undefined;
 }
 
 function resolveRate(model, tier, configRates) {
@@ -264,6 +333,12 @@ function resolveRate(model, tier, configRates) {
     }
     if (tier && configRates[tier]) return configRates[tier];
   }
+  const builtin = builtinRate(model, tier);
+  const m = configRates ? configRates[BUILTIN_MULTIPLIER] : undefined;
+  return builtin && m ? scaleRate(builtin, m) : builtin;
+}
+
+function builtinRate(model, tier) {
   if (model && DEFAULT_RATES[model]) return DEFAULT_RATES[model];
   if (model) {
     const fam = familyPrefixRate(DEFAULT_RATES, model);
@@ -299,8 +374,13 @@ function computeCost(rec, configRates) {
   // outright. On a realistic row (30k input / 5k output / 200k cache read / 12k
   // cache write on Opus-5 rates) it reported $0.30 against a true $0.45 — a 33%
   // understatement, always in the direction of looking cheaper.
-  const usd = (input * rate.input + output * rate.output
-    + cacheRead * rate.cache_read + cacheWrite * rate.cache_write) / 1_000_000;
+  // The one-hour share of the writes, when the row recorded the lifetime split (M13),
+  // bills at the one-hour rate; the rest — and every write on a row or rate without
+  // the split — at `cache_write`.
+  const write1h = Math.min(cacheWrite, Math.max(0, Number(rec.cache_write_1h_tokens) || 0));
+  const rate1h = typeof rate.cache_write_1h === 'number' ? rate.cache_write_1h : rate.cache_write;
+  const usd = (input * rate.input + output * rate.output + cacheRead * rate.cache_read
+    + (cacheWrite - write1h) * rate.cache_write + write1h * rate1h) / 1_000_000;
   return Math.round(usd * 10000) / 10000;
 }
 
@@ -668,7 +748,16 @@ function checkRatesStaleness(now = new Date()) {
 function cmdModelsCheck(raw) {
   // Surface the managed rates too: an organisation that pins `modelPricing`
   // should be able to see that PAN found the block, not infer it from totals.
-  const result = { ...checkRatesStaleness(), managed_model_pricing: Object.keys(loadManagedModelPricing() || {}) };
+  const managed = loadManagedModelPricing();
+  const result = {
+    ...checkRatesStaleness(),
+    managed_model_pricing: Object.keys(ratesFromModelPricing(managed)),
+    managed_pricing_multiplier: modelPricingMultiplier(managed),
+  };
+  // A multiplier PAN cannot apply is reported, not silently dropped.
+  if (managed && 'multiplier' in managed && result.managed_pricing_multiplier === null) {
+    result.managed_pricing_multiplier_ignored = managed.multiplier;
+  }
   const human = result.stale
     ? `Rate table verified ${result.rates_verified_at} (${result.age_days} days ago) — STALE: re-verify provider pricing and bump RATES_VERIFIED_AT in cost.cjs`
     : `Rate table verified ${result.rates_verified_at} (${result.age_days} days ago) — OK`;

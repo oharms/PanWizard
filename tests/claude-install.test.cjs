@@ -118,6 +118,19 @@ describe('Claude: install structure', () => {
     assert.ok(fs.existsSync(hooksDir));
   });
 
+  // M10: re-inject the planning position after a compaction — SessionStart with the
+  // `compact` matcher, beside (not instead of) the update check's unmatched entry.
+  test('settings.json registers the state re-injection on SessionStart, matcher compact', () => {
+    const settings = JSON.parse(fs.readFileSync(path.join(tempDir, '.claude', 'settings.json'), 'utf8'));
+    const groups = settings.hooks.SessionStart;
+    const reinject = groups.filter(g => g.hooks.some(h => h.command.includes('pan-state-reinject.js')));
+    assert.equal(reinject.length, 1);
+    assert.equal(reinject[0].matcher, 'compact');
+    const update = groups.find(g => g.hooks.some(h => h.command.includes('pan-check-update')));
+    assert.equal(update.matcher, undefined, 'the update check keeps running on every start');
+    assert.ok(fs.existsSync(path.join(tempDir, '.claude', 'hooks', 'pan-state-reinject.js')));
+  });
+
   test('manifest is written', () => {
     const manifestPath = path.join(tempDir, '.claude', 'pan-file-manifest.json');
     assert.ok(fs.existsSync(manifestPath));

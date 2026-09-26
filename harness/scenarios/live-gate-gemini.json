@@ -45,9 +45,9 @@
       ],
       "expect": [
         "exit:0",
-        "stdout~pan"
+        "stderr~pan: .*\\(stdio\\) - (?!Disabled)"
       ],
-      "why": "The measurement: Gemini enumerates the MCP servers it loaded. An empty list on a build at or above 0.59.0 means the workspace is untrusted, not that the registration is wrong — trust it and rerun."
+      "why": "The measurement: Gemini enumerates the MCP servers it configured, and whether each is enabled. Measured on Gemini CLI 0.61.0 (2026-09-26): the whole list goes to stderr (stdout is empty), and in an untrusted folder PAN's server is listed as `pan: node …server.cjs (stdio) - Disabled`. So a `Disabled` status means the workspace is untrusted, not that the registration is wrong — trust it and rerun. `--skip-trust` does not help here: `mcp list` rejects it, and before the subcommand it starts an interactive session."
     }
   ]
 }

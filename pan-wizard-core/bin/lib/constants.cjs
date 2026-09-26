@@ -607,7 +607,9 @@ const SKILL_ALIGN_MAX_TASKS = 50;               // larger drafts are a planning 
 const SKILL_ALIGN_CONTENT_CAP = 700;            // chars of file head scored (≈ objective paragraph)
 
 /** Valid conventional commit types */
-const VALID_COMMIT_TYPES = ['feat', 'fix', 'docs', 'test', 'refactor', 'chore'];
+// `perf` is a task commit type in references/git-integration.md; it was missing
+// here, so `pan-tools commit --type perf` refused a type the docs prescribe.
+const VALID_COMMIT_TYPES = ['feat', 'fix', 'docs', 'test', 'refactor', 'perf', 'chore'];
 
 /** Default sensitive file patterns for commit safety checks */
 const DEFAULT_SENSITIVE_PATTERNS = ['\\.env$', '\\.pem$', '\\.key$', 'credentials', 'secret', 'password', 'token'];

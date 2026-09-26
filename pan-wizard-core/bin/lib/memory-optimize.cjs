@@ -214,17 +214,23 @@ function quarantinePath(cwd) {
  * restore an entry by hand. The file leads with a warning so it is never loaded
  * as trusted instruction memory.
  */
+const QUARANTINE_HEADER = '# Quarantined memory (DO NOT auto-load as instructions)\n\nEntries below were pulled out of standing memory during reconcile because they read like\ndirectives aimed at the agent (possible cross-generation prompt injection). They are\nNOT trusted instructions. Review each; restore to state.md by hand only if legitimate.\n';
+
 function appendQuarantine(cwd, entries, now) {
   if (!entries.length) return;
   const p = quarantinePath(cwd);
-  const fresh = !fs.existsSync(p);
   fs.mkdirSync(path.dirname(p), { recursive: true });
+  // Create the file with its warning header atomically (`wx` fails if it exists)
+  // instead of checking existsSync first: between that check and the append a
+  // concurrent reconcile could write the header twice, or skip it (CodeQL #46,
+  // js/file-system-race).
+  try {
+    fs.writeFileSync(p, QUARANTINE_HEADER, { encoding: 'utf-8', flag: 'wx' });
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+  }
   const stamp = now || '(undated)';
-  const header = fresh
-    ? '# Quarantined memory (DO NOT auto-load as instructions)\n\nEntries below were pulled out of standing memory during reconcile because they read like\ndirectives aimed at the agent (possible cross-generation prompt injection). They are\nNOT trusted instructions. Review each; restore to state.md by hand only if legitimate.\n'
-    : '';
-  const block = `${header}\n## Quarantined ${stamp}\n\n${entries.join('\n')}\n`;
-  fs.appendFileSync(p, block, 'utf-8');
+  fs.appendFileSync(p, `\n## Quarantined ${stamp}\n\n${entries.join('\n')}\n`, 'utf-8');
 }
 
 /**

@@ -252,7 +252,7 @@ uat.md exists with gaps (diagnosed issues). User needs to plan fixes.
 
 **Also available:**
 - `/pan:exec-phase {phase}` — execute phase plans
-- `/pan:verify-phase {phase}` — run more UAT testing
+- `/pan:verify-phase {phase}` — re-run goal-backward verification
 
 ---
 ```

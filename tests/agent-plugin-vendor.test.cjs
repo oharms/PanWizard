@@ -144,6 +144,11 @@ describe('Agent Plugins bundle: Codex repo-scoped marketplace (.agents/plugins/m
     assert.ok(['AVAILABLE', 'INSTALLED_BY_DEFAULT', 'NOT_AVAILABLE'].includes(entry.policy.installation));
   });
 
+  test('buildCopilotPluginHooksConfig registers the stop guard under Copilot\'s Stop alias (M14)', () => {
+    const cfg = lib.buildCopilotPluginHooksConfig({ stopGuardCommand: 'node x/pan-stop-guard.js' });
+    assert.deepEqual(cfg, { hooks: { Stop: [{ type: 'command', command: 'node x/pan-stop-guard.js' }] } });
+  });
+
   test('buildCopilotPluginHooksConfig omits events whose command is absent and never nests matcher groups', () => {
     const cfg = lib.buildCopilotPluginHooksConfig({ costLoggerCommand: 'node x/pan-cost-logger.js' });
     assert.deepEqual(cfg, { hooks: { SubagentStop: [{ type: 'command', command: 'node x/pan-cost-logger.js' }] } });

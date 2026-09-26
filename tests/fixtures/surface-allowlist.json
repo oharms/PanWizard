@@ -68,10 +68,6 @@
     "reason": "default written, never named by a test — P2 config-defaults test"
   },
   {
-    "id": "config:workflow.nyquist_validation",
-    "reason": "default written, never named by a test — P2 config-defaults test"
-  },
-  {
     "id": "config:workflow.phase_record_compact",
     "reason": "default written, never named by a test — P2 config-defaults test"
   }

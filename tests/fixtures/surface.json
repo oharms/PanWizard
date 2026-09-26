@@ -89,6 +89,17 @@
     "cost rebuild",
     "cost report",
     "deps validate",
+    "distill analyze",
+    "distill report",
+    "distill scan",
+    "experiment harvest",
+    "experiment list",
+    "experiment manifest",
+    "experiment new",
+    "experiment prune",
+    "experiment run",
+    "experiment status",
+    "experiment stop",
     "focus auto",
     "focus classify-stages",
     "focus design",
@@ -101,8 +112,30 @@
     "frontmatter merge",
     "frontmatter set",
     "frontmatter validate",
+    "git branch",
+    "git commit",
+    "git diff",
+    "git log",
+    "git push",
+    "git rollback",
+    "git stash",
+    "git status",
+    "git sync",
+    "git tag",
     "hygiene clean",
     "hygiene scan",
+    "init execute-phase",
+    "init map-codebase",
+    "init milestone-op",
+    "init new-milestone",
+    "init new-project",
+    "init phase-op",
+    "init plan-phase",
+    "init progress",
+    "init quick",
+    "init resume",
+    "init todos",
+    "init verify-work",
     "knowledge ask",
     "knowledge discuss",
     "knowledge playbook",
@@ -314,6 +347,12 @@
     },
     {
       "runtime": "claude",
+      "hook": "pan-state-reinject.js",
+      "event": "SessionStart",
+      "surface": "settings.json"
+    },
+    {
+      "runtime": "claude",
       "hook": "pan-statusline.js",
       "event": "statusLine",
       "surface": "settings.json"
@@ -350,6 +389,18 @@
     },
     {
       "runtime": "codex",
+      "hook": "pan-state-reinject.js",
+      "event": "SessionStart",
+      "surface": "hooks.json"
+    },
+    {
+      "runtime": "codex",
+      "hook": "pan-stop-guard.js",
+      "event": "Stop",
+      "surface": "hooks.json"
+    },
+    {
+      "runtime": "codex",
       "hook": "pan-trace-logger.js",
       "event": "SubagentStop",
       "surface": "hooks.json"
@@ -377,6 +428,12 @@
       "hook": "pan-statusline.js",
       "event": "statusLine",
       "surface": "copilot/settings.json"
+    },
+    {
+      "runtime": "copilot",
+      "hook": "pan-stop-guard.js",
+      "event": "agentStop",
+      "surface": "hooks/pan.json"
     },
     {
       "runtime": "copilot",
@@ -440,6 +497,7 @@
     "routing.cascade_quality_gate",
     "routing.complexity_thresholds.downgrade_max",
     "routing.complexity_thresholds.upgrade_min",
+    "routing.max_escalations",
     "routing.provider",
     "routing.strategy",
     "search_gitignored",

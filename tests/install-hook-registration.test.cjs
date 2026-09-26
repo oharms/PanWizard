@@ -111,10 +111,12 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
       'four runtimes register hooks; a fifth must be added to the table AND to the installer');
     assert.deepEqual(WITHOUT_HOOKS, ['opencode'], 'OpenCode is the only runtime with no hook system');
     // claude: SessionStart + PostToolUse + 2 x SubagentStop + Stop + statusline;
-    // codex: the four event rows; copilot: the four + statusline; gemini (R29):
-    // SessionStart + AfterAgent only — Gemini has no event the context monitor or
-    // the loggers could run on, and no statusline command.
-    assert.equal(ROWS.length, 17, `expected 17 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
+    // plus the compact SessionStart re-injection (M10);
+    // codex: the four event rows + Stop (M14) + compact SessionStart (M10);
+    // copilot: the four + agentStop (M14) + statusline; gemini (R29): SessionStart +
+    // AfterAgent only — Gemini has no event the context monitor, the loggers or the
+    // re-injection could run on, and no statusline command.
+    assert.equal(ROWS.length, 21, `expected 21 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
     for (const runtime of WITH_HOOKS) {
       const spec = lib.HOOK_EVENT_MAP[runtime];
       assert.ok(spec.sessionStart, `${runtime}: every hook runtime runs the update check at session start`);

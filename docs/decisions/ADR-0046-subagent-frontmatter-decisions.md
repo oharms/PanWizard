@@ -30,6 +30,7 @@ Claude Code's subagent frontmatter grew a set of fields PAN's agents do not use:
 - Nothing is emitted; ADR-0028's rule is untouched. The plan's item 7b ("adopt whatever 7a accepts") closes with no adoption, by decision rather than omission.
 - The cache-lifetime capability arrives as data (`cache.ttl`) plus a documented setting, so the recommendation improves as the ledger grows and is wrong for nobody.
 - D1 names its own revisit trigger: native workflows owning orchestration. When `pan-exec-waves` or a successor runs executors, a `maxTurns` on those spawns with a scripted re-issue is the right shape, and this record should be superseded for that path.
+- **`2026-09-26` — the trigger fired, and D1 still stands.** `pan-exec-waves` (3.28.0) owns the executor spawns, so market-ideas queue item M9 took the revisit up. The Workflow tool's `agent()` takes `label`, `phase`, `schema`, `model`, `effort`, `isolation` and `agentType` — no turn cap per spawn (the workflow-authoring reference, read that day). The only other place for `maxTurns` is `pan-executor`'s frontmatter, and a cap there binds every executor spawn, the markdown `exec-phase` path included — exactly what D1 declined. So nothing ships; revisit when the engine offers a per-spawn cap, or if PAN ever emits a wave-only executor agent for the native path.
 
 ## Alternatives considered
 

@@ -17,7 +17,7 @@ const { check, checkOne, globToRegExp, getPath } = require('../harness/src/asser
 const { signature, normaliseDetail, mergeRun, isPromotable } = require('../harness/src/ledger.cjs');
 const { validateScenario, loadScenarios } = require('../harness/src/scenario.cjs');
 const { findCli } = require('../harness/src/cli-detect.cjs');
-const { fill, parseArgs, allocateBudget, interleave, MIN_MODEL_STEP_USD } = require('../harness/src/run.cjs');
+const { fill, quoteCmdArg, runStep, parseArgs, allocateBudget, interleave, MIN_MODEL_STEP_USD } = require('../harness/src/run.cjs');
 const { cleanup } = require('./helpers.cjs');
 
 const ROOT = path.join(__dirname, '..');
@@ -152,12 +152,50 @@ describe('harness scenarios — every shipped scenario validates, and bad ones a
     assert.ok(validateScenario({ ...good, steps: [{ kind: 'fs', expect: ['file:x'] }] }).length, 'missing why');
     assert.ok(validateScenario({ ...good, steps: [{ kind: 'model', prompt: 'p', expect: ['exit:0'], why: 'w' }] }).length, 'model step in tier 0');
     assert.ok(validateScenario({ ...good, tier: 1 }).length, 'tier 1 without a model step');
+    // A paid cli step (another CLI's model run) is tier-1 only, and counts as its model step.
+    const paid = { kind: 'cli', bin: 'copilot', paid: true, args: ['-p', 'x'], expect: ['exit:0'], why: 'w' };
+    assert.ok(validateScenario({ ...good, steps: [paid] }).length, 'paid cli step in tier 0');
+    assert.deepEqual(validateScenario({ ...good, tier: 1, steps: [paid] }), [], 'a paid cli step counts as a tier-1 scenario model step');
+    assert.ok(validateScenario({ ...good, steps: [{ kind: 'fs', paid: true, expect: ['file:x'], why: 'w' }] }).length, 'paid only on cli');
+    assert.ok(validateScenario({ ...good, tier: 1, steps: [{ ...paid, paid: 'yes' }] }).length, 'paid is only true');
     assert.ok(validateScenario({ ...good, install: ['rm -rf /'] }).length, 'install flags must be flags');
     assert.ok(validateScenario({ ...good, requires: { cli: 'a b' } }).length, 'cli must be a bare name');
   });
 });
 
 describe('harness runner helpers', () => {
+  test('quoteCmdArg keeps a spaced or quoted argument whole through a .cmd shim', () => {
+    // npm puts a Windows CLI behind a .cmd shim that only runs via the shell, where Node
+    // concatenates arguments unquoted; Copilot then refused '-p Reply with ...' as four
+    // words (2026-09-26). Pure string checks here; the round trip is exercised on Windows.
+    assert.equal(quoteCmdArg('--agent'), '--agent');
+    assert.equal(quoteCmdArg('Reply with PROBE.'), '"Reply with PROBE."');
+    assert.equal(quoteCmdArg('a"b'), '"a\\"b"');
+    assert.equal(quoteCmdArg('C:\\dir with space\\'), '"C:\\dir with space\\\\"', 'a trailing backslash is doubled so it cannot escape the closing quote');
+    assert.equal(quoteCmdArg(''), '""');
+  });
+
+  test('a build step writes an absolute `out` where it names, a relative one under the workspace', () => {
+    // live-gate-codex builds into `<repo>/dist/pan-agent-plugin`. path.join glued that
+    // absolute path onto the workspace, so the first live run (2026-09-26) failed its
+    // build with exit 1 before Codex was ever asked anything.
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-harness-repo-'));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-harness-ws-'));
+    try {
+      fs.mkdirSync(path.join(repo, 'scripts'));
+      fs.writeFileSync(path.join(repo, 'scripts', 'echo-out.js'), 'process.stdout.write(process.env.PAN_AGENT_PLUGIN_OUT);\n');
+      const ctx = { ws, other: ws, repo, pkg: '', runtime: 'claude', budget: {} };
+      const abs = runStep({ kind: 'build', script: 'echo-out.js', out: '<repo>/dist/bundle' }, ctx);
+      assert.equal(abs.code, 0, abs.stderr);
+      assert.equal(abs.stdout, path.resolve(repo, 'dist', 'bundle'));
+      const rel = runStep({ kind: 'build', script: 'echo-out.js', out: 'bundle' }, ctx);
+      assert.equal(rel.stdout, path.join(ws, 'bundle'));
+    } finally {
+      cleanup(repo);
+      cleanup(ws);
+    }
+  });
+
   test('fill substitutes only the known placeholders', () => {
     assert.deepEqual(fill(['<ws>/x', '<other>', '<repo>/scripts', 'plain', '<unknown>'], { ws: 'W', other: 'O', repo: 'R', pkg: 'P' }), ['W/x', 'O', 'R/scripts', 'plain', '<unknown>']);
   });

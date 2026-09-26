@@ -156,14 +156,14 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 | `--source` | `backlog` | Work selection (delegates to focus-auto): `backlog` = ranked roadmap/requirements items; `scan` = category code-scan. |
 | `--max-cycles` | 5 | Mission items landed before stopping. |
 | `--total-budget` | 300 | Cumulative point budget. **Advisory by default** — tracked/surfaced but not a hard stop unless `--enforce-budget` / config `budget.enforce: true`. |
-| `--enforce-budget` | off | Make `--total-budget` a hard stop again (also settable via config `budget.enforce: true`); `--daily-budget` is enforced only by `enforce_budget: true` in `schedule.json`. |
+| `--enforce-budget` | off | Make `--total-budget` a hard stop again (also settable via config `budget.enforce: true`). With `--schedule`, also arm the campaign with `pan-tools campaign schedule --enforce-budget`, so `--daily-budget` pauses the day's run once spent. |
 | `--verify-reserve` | 0.15 | Fraction of `--total-budget` (0–0.5) held back for the final Quality re-review so it can't be starved (config `budget.verify_reserve`). Advisory by default (surfaced as `into_verify_reserve`); under `--enforce-budget` it stops taking on new missions early (`budget_reserve_reached`) and the reserved points fund the closing `--clean-seal` re-verification before the last INTEGRATE. |
 | `--squads` | all | Restrict to a subset, e.g. `--squads architecture,build,quality`. |
 | `--no-build-worktrees` | off | Build in the main tree instead of branch-per-agent worktrees (small/serial projects). |
 | `--push` | off | Push approved merges to origin (still human-gated). |
 | `--clean-seal` | off | One clean build + full verification after the last item (commands from config). |
 | `--schedule` | off | Arm a self-resuming campaign at this cadence (`hourly`/`daily`/`weekly`/`Nh`/`Nd`) instead of running once — writes the schedule descriptor (ADR-0034). Pair with `--daily-budget`. |
-| `--daily-budget` | 300 | Per-day point budget for a scheduled campaign. Advisory by default (an indicator of the day's spend); it only pauses the day's run when `enforce_budget: true` is set by hand in the schedule descriptor (`schedule.json`); no flag or config key sets it. |
+| `--daily-budget` | 300 | Per-day point budget for a scheduled campaign. Advisory by default (an indicator of the day's spend); it pauses the day's run only when the schedule is armed with `--enforce-budget` (`enforce_budget: true` in `schedule.json`). |
 | `--dry-run` | off | Plan + squad delegation preview only; STOP. |
 | `--continue` / `--stop` / `--status` | — | Resume / halt / report from `.planning/orchestration/` + focus-auto state. |
 
@@ -234,10 +234,10 @@ PAN is not a daemon — it cannot wake itself while the session is closed. `--sc
 - **Arm:** `/pan:army "<goal>" --schedule daily --daily-budget 200` writes `.planning/orchestration/schedule.json` (cadence, daily budget, next-due) instead of running once.
 - **The trigger (you wire one):** a host scheduler (Claude Code routines / cron / scheduled-tasks) or a `/loop` runs `pan-tools campaign due` and, when it reports due, invokes `/pan:army --continue`. On next session open, a due campaign is surfaced as a nudge.
 - **Resume (`--continue`):** read the schedule + `.planning/orchestration/` + focus-auto state. If `campaign due` is true and the day's `--daily-budget` isn't spent, run the next mission(s), then `campaign record-run` (advances next-due, accrues the day's spend). If not due or budget-spent, report next-due and STOP.
-- **Bounded spend:** point budgets (`--total-budget`, `--daily-budget`) are **advisory indicators by default** — they're tracked and surfaced, not hard stops. `--enforce-budget` (or config `budget.enforce`) makes `--total-budget` a hard stop; a scheduled campaign's `--daily-budget` pauses the day's run only when `enforce_budget: true` is set by hand in `schedule.json`. The real bounds are `--max-cycles`, the conductor caps, the abort file, and the human merge gate at every integrate. A scheduled campaign runs the backlog down to staged, reviewed, green PRs over days.
+- **Bounded spend:** point budgets (`--total-budget`, `--daily-budget`) are **advisory indicators by default** — they're tracked and surfaced, not hard stops. `--enforce-budget` (or config `budget.enforce`) makes `--total-budget` a hard stop; a scheduled campaign's `--daily-budget` pauses the day's run only when the schedule was armed with `--enforce-budget` (`campaign schedule --enforce-budget`; `--advisory-budget` turns it back off). The real bounds are `--max-cycles`, the conductor caps, the abort file, and the human merge gate at every integrate. A scheduled campaign runs the backlog down to staged, reviewed, green PRs over days.
 - **Verify reserve:** a fraction of `--total-budget` (`--verify-reserve`, default 0.15) is held back so the closing Quality re-review isn't starved. Surfaced always via `campaign status` / `focus auto --status` (`into_verify_reserve`, `new_work_budget_remaining`); under `--enforce-budget` the run stops taking on new missions early (`budget_reserve_reached`) and spends the reserve on the final `--clean-seal` verification before the last INTEGRATE.
 
-Manage it: `pan-tools campaign status` (active/paused, spent today, next-due), `campaign schedule --pause` / `--resume` / `--disable`.
+Manage it: `pan-tools campaign status` (active/paused, spent today, next-due), `campaign schedule --pause` / `--resume` / `--disable`, and `--enforce-budget` / `--advisory-budget` for the daily budget.
 
 ---
 
@@ -9104,13 +9104,13 @@ The workflow handles all logic including:
 
 ---
 
-### /pan:verify-phase (92 lines)
+### /pan:verify-phase (91 lines)
 
 ```markdown
 ---
 name: pan:verify-phase
 group: Phase Lifecycle
-description: Validate built features through conversational UAT with test suite gate
+description: Re-run goal-backward verification of a phase with a test-suite gate and list its gaps
 argument-hint: "[phase number, e.g., '4']"
 allowed-tools:
   - Read
@@ -9122,24 +9122,23 @@ allowed-tools:
   - Task
 ---
 <objective>
-Validate built features through conversational testing with persistent state.
+Verify that the phase delivered what it promised, not just that its tasks completed.
 
-Purpose: Confirm what Claude built actually works from user's perspective. One test at a time, plain text responses, no interrogation. When issues are found, automatically diagnose, plan fixes, and prepare for execution.
+Purpose: goal-backward verification — what must be TRUE for the phase goal, what must EXIST for that, what must be WIRED — checked against the codebase, behind a test-suite gate.
 
-Output: {phase_num}-uat.md tracking all test results. If issues found: diagnosed gaps, verified fix plans ready for /pan:exec-phase
+Output: {phase_num}-verification.md with a status (passed, gaps_found or human_needed). Gaps found are listed for `/pan:plan-phase {phase_num} --gaps`.
 </objective>
 
 <execution_context>
 @~/.claude/pan-wizard-core/workflows/verify-phase.md
-@~/.claude/pan-wizard-core/templates/uat.md
 </execution_context>
 
 <context>
 Phase: $ARGUMENTS (optional)
 - If provided: Test specific phase (e.g., "4")
-- If not provided: Check for active sessions or prompt for phase
+- If not provided: prompt for the phase
 
-Context files are resolved inside the workflow (`init verify-work`) and delegated via `<files_to_read>` blocks.
+Context files are resolved inside the workflow (`init phase-op`).
 </context>
 
 <investigate_before_judging>
@@ -9196,8 +9195,8 @@ See [plan-phase.md](plan-phase.md) or [exec-phase.md](exec-phase.md) for the ful
 </cache_priming>
 
 <process>
-Execute the verify-work workflow from @~/.claude/pan-wizard-core/workflows/verify-phase.md end-to-end.
-Preserve all workflow gates (session management, test presentation, diagnosis, fix planning, routing).
+Execute the verify-phase workflow from @~/.claude/pan-wizard-core/workflows/verify-phase.md end-to-end.
+Preserve all workflow gates (the test-suite gate, the truth/artifact/wiring checks, status determination, the verification report).
 </process>
 ```
 

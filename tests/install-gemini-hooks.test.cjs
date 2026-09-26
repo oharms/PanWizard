@@ -111,7 +111,7 @@ describe('Gemini hook registration after a local --gemini install', () => {
   });
 
   test('the installer says which hooks Gemini cannot run, instead of claiming it configured them', () => {
-    assert.match(output, /Gemini CLI has no context-window metric for hooks and no subagent-completion event, so pan-context-monitor, pan-cost-logger, pan-trace-logger are not registered there/);
+    assert.match(output, /Gemini CLI has no context-window metric for hooks, no subagent-completion event and no post-compaction event that adds context, so pan-context-monitor, pan-cost-logger, pan-trace-logger, pan-state-reinject are not registered there/);
     assert.doesNotMatch(output, /Configured context window monitor hook/);
     assert.doesNotMatch(output, /Configured cost logger hook/);
   });

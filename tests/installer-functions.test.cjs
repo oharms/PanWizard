@@ -1130,6 +1130,8 @@ describe('codexTrustNotice', () => {
     assert.ok(notice.includes('.codex/'));
     assert.ok(notice.includes('trust'));
     assert.ok(notice.includes('config.toml'));
+    // R42: Codex trusts hooks per hash — a new or changed hook is skipped until reviewed.
+    assert.match(notice, /run \/hooks in Codex and trust the pan-\* hooks/);
   });
 });
 
@@ -1394,14 +1396,26 @@ describe('mergeCodexHooksConfig', () => {
     contextMonitorCommand: 'node .codex/hooks/pan-context-monitor.js',
     costLoggerCommand: 'node .codex/hooks/pan-cost-logger.js',
     traceLoggerCommand: 'node .codex/hooks/pan-trace-logger.js',
+    stopGuardCommand: 'node .codex/hooks/pan-stop-guard.js',
   };
 
-  test('builds all four registrations from scratch (PascalCase events)', () => {
+  test('builds all five registrations from scratch (PascalCase events)', () => {
     const config = lib.mergeCodexHooksConfig(null, COMMANDS);
     assert.equal(config.hooks.SessionStart.length, 1);
     assert.equal(config.hooks.PostToolUse.length, 1);
     assert.equal(config.hooks.SubagentStop.length, 2, 'cost + trace loggers');
     assert.equal(config.hooks.SubagentStop[0].hooks[0].type, 'command');
+    assert.deepEqual(config.hooks.Stop, [{ hooks: [{ type: 'command', command: COMMANDS.stopGuardCommand }] }],
+      'the stop guard is registered on Stop and never async (M14)');
+  });
+
+  test('upgrade: a hooks.json from before the stop guard gains it once', () => {
+    const { stopGuardCommand, ...older } = COMMANDS;
+    const before = lib.mergeCodexHooksConfig(null, older);
+    assert.equal(before.hooks.Stop, undefined);
+    const after = lib.mergeCodexHooksConfig(before, COMMANDS);
+    assert.equal(after.hooks.Stop.length, 1);
+    assert.equal(lib.mergeCodexHooksConfig(after, COMMANDS).hooks.Stop.length, 1, 'reinstall must not duplicate');
   });
 
   test('preserves foreign hooks and is idempotent', () => {
@@ -1429,7 +1443,7 @@ describe('mergeCodexHooksConfig', () => {
     const merged = lib.mergeCodexHooksConfig(legacy, COMMANDS);
     const handlers = Object.values(merged.hooks).flat().flatMap(g => g.hooks);
     const byMarker = (m) => handlers.find(h => h.command.includes(m));
-    assert.equal(handlers.length, 4, 'no duplicate registrations on upgrade');
+    assert.equal(handlers.length, 5, 'no duplicate registrations on upgrade (four kept + the stop guard added)');
     for (const observer of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger']) {
       assert.equal(byMarker(observer).async, true, `${observer} gains async on upgrade`);
     }
@@ -1453,6 +1467,22 @@ describe('removeCodexPanHooks', () => {
   test('returns null when only PAN hooks existed (caller deletes the file)', () => {
     const config = lib.mergeCodexHooksConfig(null, { updateCheckCommand: 'node x/pan-check-update.js' });
     assert.equal(lib.removeCodexPanHooks(config), null);
+  });
+
+  test('strips the state re-injection too (M10)', () => {
+    const config = lib.mergeCodexHooksConfig(null, { stateReinjectCommand: 'node x/pan-state-reinject.js' });
+    assert.deepEqual(config.hooks.SessionStart, [{ matcher: 'compact', hooks: [{ type: 'command', command: 'node x/pan-state-reinject.js' }] }]);
+    assert.equal(lib.removeCodexPanHooks(config), null);
+  });
+
+  test('strips the stop guard too (M14)', () => {
+    const config = lib.mergeCodexHooksConfig(
+      { hooks: { Stop: [{ hooks: [{ type: 'command', command: 'my-stop.sh' }] }] } },
+      { stopGuardCommand: 'node x/pan-stop-guard.js' }
+    );
+    assert.equal(config.hooks.Stop.length, 2);
+    const stripped = lib.removeCodexPanHooks(config);
+    assert.deepEqual(stripped.hooks.Stop, [{ hooks: [{ type: 'command', command: 'my-stop.sh' }] }]);
   });
 });
 
@@ -1482,13 +1512,20 @@ describe('plugin packaging builders', () => {
     assert.ok(manifest.repository.includes('PanWizard'));
   });
 
-  test('buildPluginHooksConfig anchors all four hooks at CLAUDE_PLUGIN_ROOT', () => {
+  test('buildPluginHooksConfig registers every settings hook at CLAUDE_PLUGIN_ROOT', () => {
     const config = lib.buildPluginHooksConfig();
     const flat = JSON.stringify(config);
-    for (const marker of ['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger']) {
-      assert.ok(flat.includes(marker), `should register ${marker}`);
+    // Driven from the settings.json list, so a hook added there cannot be left
+    // out of the plugin again (R43: the stop guard was).
+    for (const marker of lib.PAN_SETTINGS_HOOKS) {
+      assert.ok(flat.includes(`/hooks/${marker}.js`), `should register ${marker}`);
     }
     assert.equal(config.hooks.SubagentStop.length, 2);
+    assert.deepEqual(config.hooks.Stop, [{ hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/pan-stop-guard.js"' }] }]);
+    // M10: the re-injection shares SessionStart with the update check, narrowed by its matcher.
+    assert.deepEqual(config.hooks.SessionStart[1],
+      { matcher: 'compact', hooks: [{ type: 'command', command: 'node "${CLAUDE_PLUGIN_ROOT}/hooks/pan-state-reinject.js"' }] });
+    assert.equal(config.hooks.SessionStart[0].matcher, undefined);
     assert.ok(flat.includes('${CLAUDE_PLUGIN_ROOT}/hooks/'),
       'hook commands must use the documented plugin-root variable');
   });
@@ -1674,7 +1711,7 @@ describe('HOOK_EVENT_MAP', () => {
   test('Gemini uses its own vocabulary: AfterAgent for the stop guard, nothing for the monitor or loggers (R29)', () => {
     assert.deepEqual(
       { ...lib.HOOK_EVENT_MAP.gemini },
-      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent' });
+      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null });
     assert.equal(lib.HOOK_EVENT_MAP.claude.stop, 'Stop', 'Claude keeps its Stop event for the guard');
   });
 

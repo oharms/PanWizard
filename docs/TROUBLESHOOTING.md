@@ -35,7 +35,7 @@ This guide covers root causes, diagnostic steps, and recovery procedures for sce
 ---
 phase: "01"
 plan: "01"
-type: feature|fix|refactor|test|docs
+type: execute|tdd
 autonomous: true|false
 wave: 1
 depends_on: []
@@ -172,7 +172,7 @@ must_haves: []
 
 **Recovery:**
 
-1. Run `/pan:verify-phase N` to create fix plans targeting the deferred items
+1. Run `/pan:verify-phase N` to list the gaps, then `/pan:plan-phase N --gaps` to create gap-closure plans for them
 2. Execute fixes with `/pan:exec-phase N --gaps-only`
 3. For particularly stubborn issues, use `/pan:debug "description of the problem"` which spawns a dedicated debugging agent
 
@@ -186,13 +186,13 @@ must_haves: []
 
 1. Check each summary.md in the phase directory for "Deferred Issues" sections
 2. Check `deferred-items.md` for the consolidated list
-3. Run `/pan:verify-phase N` -- the verifier reads all deferred items and produces a gap analysis
+3. Run `/pan:verify-phase N` -- the verifier checks the phase goal against the codebase and produces a gap analysis (it does not read `deferred-items.md`, so check that separately)
 
 **Recovery:**
 
 1. Run `/pan:verify-phase N` to get a verification.md with a consolidated gap analysis
 2. Review the verification results to prioritize which items to fix
-3. Use `/pan:exec-phase N --gaps-only` to execute only the gap-closure plans
+3. Run `/pan:plan-phase N --gaps` to create the gap-closure plans, then `/pan:exec-phase N --gaps-only` to execute only those
 4. Repeat the verify-then-fix cycle until verification.md shows all clear
 
 ### Executor creates files in wrong locations
@@ -225,9 +225,10 @@ must_haves: []
 **Common causes:**
 
 - Manual editing of state.md broke the `**Field:** value` format (fields must follow this exact pattern)
-- YAML frontmatter and markdown body fields are out of sync (the frontmatter is canonical)
+- YAML frontmatter and markdown body fields are out of sync (the body is canonical: every state write re-derives the frontmatter from the `**Field:** value` lines, and a body value overwrites the frontmatter one)
 - Interrupted execution left state partially updated (executor crashed between `state advance-plan` and `state update-progress`)
 - A plan was manually deleted from the phase directory but state.md still references it
+- state.md starts with two front-matter blocks: earlier releases stacked a new block on every state write to a CRLF checkout (`core.autocrlf=true`). State writes now refuse such a file with "state.md starts with more than one front-matter block" — keep the block with the right values, delete the other, and run the command again
 
 **Fix options (from least to most destructive):**
 
@@ -397,7 +398,7 @@ must_haves: []
 **Recovery:**
 
 1. Read verification.md for the full list of stub components
-2. Run `/pan:verify-phase N` to generate targeted fix plans
+2. Run `/pan:plan-phase N --gaps` to generate targeted fix plans from verification.md
 3. Execute with `/pan:exec-phase N --gaps-only`
 4. Re-verify to confirm stubs are replaced with real implementations
 
@@ -430,7 +431,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 2. Check the actual source files to see if the connection code exists but is broken, or does not exist at all
 3. Look at import statements and function call chains
 
-**Fix:** Wiring issues usually require small, targeted changes (adding an import, changing a fetch URL, connecting a handler to the database). Run `/pan:verify-phase N` to create fix plans that specifically address the wiring gaps.
+**Fix:** Wiring issues usually require small, targeted changes (adding an import, changing a fetch URL, connecting a handler to the database). Run `/pan:plan-phase N --gaps` to create fix plans that specifically address the wiring gaps, then `/pan:exec-phase N --gaps-only` to run them.
 
 ### summary.md self-check shows failure
 
@@ -450,7 +451,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 - A commit was made but the hash was recorded incorrectly
 - The executor crashed after writing the summary but before the final commit
 
-**Fix:** If the actual work was done (files exist, commits present), the self-check failure is cosmetic. If files or commits are genuinely missing, use `/pan:verify-phase N` to identify and fill the gaps.
+**Fix:** If the actual work was done (files exist, commits present), the self-check failure is cosmetic. If files or commits are genuinely missing, use `/pan:verify-phase N` to identify the gaps and `/pan:plan-phase N --gaps` to plan their fixes.
 
 ### Verification produces false positives
 
@@ -522,7 +523,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Current format:** `{type}({phase}-{plan}): {description}`
 
-**Available types (task commits, per `references/git-integration.md`):** `feat`, `fix`, `test`, `refactor`, `perf`, `chore`. Planning-doc commits go through `pan-tools commit`, whose `--type` accepts only `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
+**Available types (task commits, per `references/git-integration.md`):** `feat`, `fix`, `test`, `refactor`, `perf`, `chore`. Planning-doc commits go through `pan-tools commit`, whose `--type` accepts `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`
 
 **Workarounds:**
 
@@ -661,7 +662,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 1. **Stale rate table.** `pan-tools models check` prints when the built-in rates were last verified and flags the table once it is old. Provider prices move faster than PAN releases; if it says STALE, the fix is a rate refresh, not a config change.
 2. **Cache-read pricing on the newest Fable-tier model.** Its cache reads bill at a quarter of the standard Claude cache-read multiplier. PAN carries a dedicated rate row for it (see `DEFAULT_RATES` in `cost.cjs`); releases before that row existed priced its reads at the previous Fable model's rate, high by roughly four times on the line that dominates PAN's traffic.
 3. **The newest Opus-tier model, now the default everywhere.** Claude Code `2.1.280` made it the default model on every plan, and its cache reads bill at half the standard multiplier — a third cache-read rate in the current lineup. Releases before PAN carried its row priced it through the family-prefix fallback at the previous Opus row: cache reads high by two and a half times, input, output and cache writes by a quarter. Upgrade PAN; `pan-tools models check` (without `--raw`, which prints only the one-line verdict) lists the model ids the table prices under `models`.
-4. **Contracted rates.** If your organisation pins `modelPricing` in Claude Code's managed settings, PAN reads the same block and prices with it; `pan-tools models check` (JSON output, not `--raw`) lists the model ids it found under `managed_model_pricing`. Precedence is `.planning/config.json → cost.rates`, then managed `modelPricing`, then the built-in table. If the list is empty on a machine where the policy should apply, check that the file sits where Claude Code reads it (its managed-settings documentation gives the per-OS directory; the legacy Windows `ProgramData` path is read by neither tool), or point PAN at a relocated directory with `PAN_MANAGED_SETTINGS_DIR`.
+4. **Contracted rates.** If your organisation pins `modelPricing` in Claude Code's managed settings, PAN reads the same block and prices with it — its `overrides` rows, and its `multiplier` over every model, as Claude Code applies them; `pan-tools models check` (JSON output, not `--raw`) lists the model ids it found under `managed_model_pricing` and the multiplier under `managed_pricing_multiplier`. PAN 3.30.0 and earlier read a row shape the documentation does not describe, and so priced a real policy file at list price. Precedence is `.planning/config.json → cost.rates`, then managed `modelPricing`, then the built-in table. If the list is empty on a machine where the policy should apply, check that the file sits where Claude Code reads it (its managed-settings documentation gives the per-OS directory; the legacy Windows `ProgramData` path is read by neither tool), or point PAN at a relocated directory with `PAN_MANAGED_SETTINGS_DIR`.
 5. **Hook rows are priced at read time.** Records the SubagentStop hook writes carry `cost_usd: null` and are priced when the report runs, so a rate change re-prices history. That is deliberate: it is what lets a rate fix correct old totals.
 
 ### Usage limits arrive sooner after a Claude Code update
@@ -744,7 +745,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Root cause:** Claude Code decides the prompt-cache lifetime per request bucket. The main conversation can get the one-hour lifetime on a subscription; **everything else — subagents, workflows, forks — gets five minutes** unless you say otherwise. Every PAN agent is a subagent, so a phase whose agents are spaced more than five minutes apart re-caches the same planning context each time. ADR-0044 measured that block as the bulk of PAN's token traffic.
 
-**Fix:** Set `subagentPromptCacheTtl` to `"1h"` in a Claude Code settings file (Claude Code `2.1.242` or later). Weigh it first: one-hour cache writes bill at twice the base input rate against 1.25× for five-minute writes, so the longer lifetime pays off once a block is read at least twice inside the hour — true for a phase run, false for a single quick agent. To see which lifetime a session is using, `/usage` shows a `Prompt cache (main)` line with the hit ratio and, on recent builds, the likely cause of the last miss. On PAN's side, `pan-tools context-budget` reports the block's size under `cache.status` and, under `cache.ttl`, how many cache writes in the ledger followed an idle gap of five to sixty minutes — the misses the one-hour lifetime would have avoided — recommending the setting only when that recurs; `pan-tools hygiene scan` raises the same recommendation as an `info` finding.
+**Fix:** Set `subagentPromptCacheTtl` to `"1h"` in a Claude Code settings file (Claude Code `2.1.242` or later). Weigh it first: one-hour cache writes bill at twice the base input rate against 1.25× for five-minute writes, so the longer lifetime pays off once a block is read at least twice inside the hour — true for a phase run, false for a single quick agent. To see which lifetime a session is using, `/usage` shows a `Prompt cache (main)` line with the hit ratio and, on recent builds, the likely cause of the last miss. On PAN's side, `pan-tools context-budget` reports the block's size under `cache.status` and, under `cache.ttl`, how many cache writes in the ledger followed an idle gap of five to sixty minutes (only the five-minute writes, on rows that record the cache-lifetime split; `cache.ttl.basis` says whether the count is `measured`, `mixed` or `inferred`) — the misses the one-hour lifetime would have avoided — recommending the setting only when that recurs; `pan-tools hygiene scan` raises the same recommendation as a `cache-context` finding — `info`, or `warn` once the re-written tokens reach `TTL_WARN_TOKENS` in `context-budget.cjs`.
 
 ### A headless `claude -p` run sees no PAN commands, agents or hooks
 
@@ -825,7 +826,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 - Files saved with non-UTF-8 encoding (e.g., UTF-16, Windows-1252)
 - BOM (Byte Order Mark) at the start of files confusing parsers
-- Line endings mixed between CRLF (Windows) and LF (Unix) causing parsing issues in YAML frontmatter
+- Line endings mixed between CRLF (Windows) and LF (Unix) in files another tool parses (PAN's own frontmatter reader normalises CRLF and a leading BOM)
 
 **Diagnostic steps:**
 
@@ -988,6 +989,22 @@ This is expected behavior — `bridge list` is designed to report cleanly when n
 ### A Codex plugin upgrade seems to need a restart
 
 Since Codex CLI `0.154.0` (released `2026-09-09`), a live session picks up newly installed plugin tools and refreshes skills and hooks after an external plugin upgrade — no restart. If a PAN skill still reads stale after upgrading PAN, the cause is the install, not Codex caching (on Codex `pan-check-update` only records the newest version in `~/.codex/cache/pan-update-check.json`, since Codex runs no PAN statusline to show it): re-run the installer and compare the `version` in `pan-file-manifest.json` with the `VERSION` file the installer writes inside the installed core directory (beside its `bin/` folder).
+
+### PAN's hooks do not run under `copilot -p`
+
+**Symptom:** Copilot CLI works in a PAN project, but no cost rows appear and the stop guard never fires when you run it headless with `copilot -p` — while an interactive session in the same folder behaves.
+
+**Root cause:** in prompt mode Copilot loads a repository's hooks — `.github/hooks/*.json` and the project's `.claude/settings.json` alike — only when the folder is already trusted, `COPILOT_ALLOW_ALL=true` is set, or `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` is set (Copilot CLI reference, environment variables). A folder you have never opened interactively is not trusted, so a scripted `copilot -p` there runs none of PAN's hooks.
+
+**Fix:** open the folder once in an interactive `copilot` session and trust it, or set `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` for the headless run.
+
+### PAN's hooks do not run on Codex, or stopped running after an upgrade
+
+**Symptom:** `.codex/hooks.json` lists PAN's hooks, but no cost rows appear, the stop guard never fires, or they worked before a PAN upgrade and do not now. Codex may print a warning at startup telling you to open `/hooks`.
+
+**Root cause:** Codex runs a non-managed hook only after you trust it, and records that trust against a hash of the hook's definition — its event, matcher and command. Its hooks documentation: "new or changed hooks are marked for review and skipped until trusted." A PAN install adds hooks, and an upgrade that registers a new one (the stop guard on `Stop`, or the state re-injection on `SessionStart`) or changes a command gives Codex hooks it has not reviewed; each is skipped until you trust it. Project-scoped `.codex/` hooks also load only once the project itself is trusted (the trust note the installer prints).
+
+**Fix:** In Codex, run `/hooks`, review the `pan-*` hooks and trust them — the startup prompt's "Trust all and continue" does the same for every hook waiting on review. `--dangerously-bypass-hook-trust` runs enabled hooks without persisted trust for that one invocation, which is useful for a quick check but not a setting to keep. Repeat after any PAN upgrade that changes the hooks.
 
 ### `/pan:exec-phase --hierarchical` printed a warning and ran flat
 
