@@ -135,3 +135,6 @@ experiments/**/.claude/pan-file-manifest.json
 # Plugin build output
 dist/
 
+
+# /investigate raw inputs — third-party text stays local (public repo)
+docs/specs/investigations/sources/

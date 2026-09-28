@@ -1118,7 +1118,14 @@ Start a PAN Wizard development session by loading project context and checking s
 
 | Skill | Description |
 |-------|-------------|
+| `/investigate` | Analyse something you bring (a news dump, article, paper, changelog, release notes — file path or pasted text) against PAN Wizard's existing features and write ADD / ENHANCE feature write-ups into docs/specs/investigations/ |
 | `/market-ideas` | Market idea scan for PAN Wizard — what shipped in the agent-tooling market (host tools, direct peers, new entrants, standards) since the last scan, triaged against the code and the ideas ledger into adopt / adapt / watch / skip, with a sized queue |
+
+#### /investigate
+
+Analyse something you bring (a news dump, article, paper, changelog, release notes — file path or pasted text) against PAN Wizard's existing features and write ADD / ENHANCE feature write-ups into docs/specs/investigations/
+
+**Lines:** 236
 
 #### /market-ideas
 
