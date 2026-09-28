@@ -9,7 +9,7 @@
 | Runtimes | all five (the verbs are runtime-neutral; the signal they read is richest where the trace hook runs) |
 | First seen | `2026-09-28` — [digest](../digests/2026-09-28.md) |
 | Ledger | — |
-| Status | PROPOSED |
+| Status | FILED `MI-061` |
 
 ## Source trail
 - `2026-09-28` — Growing Harness (arXiv:2609.26760 v2): each proposed change to the agent program is kept only if success on a held-out gate set does not drop; otherwise the whole change sequence since the last accepted checkpoint is rolled back, including state. Without the gate, their gate success rose to 30% and then fell to 16%; with it, the best result was retained (one run per variant, 50 tasks). Repairing a window of several failures at once beat single-failure repairs by 8 points (same caveats) (source: arXiv:2609.26760, via the LLM brief of `2026-09-28`).
@@ -53,3 +53,14 @@ Honest limit: the paper gates on a fixed held-out task set. A PAN project has no
 ## Open questions for the owner
 - Ship revert alone first (XS–S), and hold the verdict until the trace hook produces errors?
 - Is the optimize loop worth this investment at all, given the field shows it is barely used? The alternative is to fix the signal first and measure use before adding verbs.
+
+## Outcome (`2026-09-28`)
+
+Part 1 (revertible applies) is built on `feat/evidence-loop`:
+- every apply gets an `apply_id` with per-action records;
+- `optimize revert <apply_id|--last>` refuses a hand-edited file and reverts last-in, first-out per file, matching line endings tolerantly;
+- applying the same report twice now writes nothing the second time, where it used to append everything twice.
+
+Part 3 is built too: `optimize learn --sessions <n>` pools sessions.
+
+Part 2, the advisory before/after verdict, is deferred, which answers the owner's question: the loop is worth fixing (signal and safety) but not worth growing until it is used. The field showed 1 apply run in 14 projects. The apply records keep what the verdict needs, so it can be added without a migration. Trigger: apply runs in three or more projects.

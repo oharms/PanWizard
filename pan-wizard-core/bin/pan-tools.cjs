@@ -1450,17 +1450,23 @@ async function main() {
       } else if (subcommand === 'learn') {
         optimize.cmdOptimizeLearn(cwd, {
           sessionId: getArgValue(args, '--session'),
+          sessions: getArgValue(args, '--sessions'),
         }, raw);
       } else if (subcommand === 'apply') {
         optimize.cmdOptimizeApply(cwd, {
           reportPath: getArgValue(args, '--report'),
+        }, raw);
+      } else if (subcommand === 'revert') {
+        optimize.cmdOptimizeRevert(cwd, {
+          applyId: args[2] && !args[2].startsWith('--') ? args[2] : null,
+          last: args.includes('--last'),
         }, raw);
       } else if (subcommand === 'list') {
         optimize.cmdOptimizeList(cwd, raw);
       } else if (subcommand === 'stats') {
         optimize.cmdOptimizeStats(cwd, raw);
       } else {
-        error('Unknown optimize subcommand. Available: trace, learn, apply, list, stats');
+        error('Unknown optimize subcommand. Available: trace, learn, apply, revert, list, stats');
       }
       break;
     }

@@ -141,15 +141,16 @@ Notes on the fields that are not self-evident:
 2. Parses the SubagentStop event payload on stdin, reading the same fields with the same caveats, and attributes tokens from this event's transcript slice (it keeps its **own** cursor — the cost logger fires on the same event and the two must not consume each other's slice)
 3. Calls `ensureSessionId()` — creates a day-scoped `sess_auto_YYYYMMDD` trace session if none active, so tracing is always-on with zero setup. A day-scoped auto-session from an earlier day is finalized and rolled over; an explicit session stays sticky while in use but is rolled over the same way once it has ended or gone quiet for a day
 4. Builds these event types:
-   - `decision:agent_completion` — per-agent record with input/output/cache tokens, agent name, phase
+   - `decision:agent_completion` — per-agent record with input/output/cache tokens, agent name, phase, and the spawn's tool calls and failed tool results
    - `redundancy:uncached_heavy_run` — fired when output > 3000 tokens with zero cache hits (signals repeated research the optimizer should flag)
+   - `error:tool_error` — one per distinct failed tool call in the subagent's own transcript (see [Tool-failure capture](#tool-failure-capture))
 5. Appends events to `.planning/optimization/traces/<session>/trace.jsonl`, unless a [duplicate guard](#duplicate-and-re-fire-guards) drops the batch
 6. Silent on error — never blocks the agent loop
 
 **Record shape** — the completion event as the hook writes it, for the same spawn as the cost row above (the two hooks fire on one event, so the `event_sig` matches; values illustrative):
 ```json
 {
-  "v": 4,
+  "v": 5,
   "ts": "2026-08-06T10:21:22.554Z",
   "session": "sess_auto_20260806",
   "agent": "pan-executor",
@@ -169,6 +170,8 @@ Notes on the fields that are not self-evident:
     "exit_code": 0,
     "token_source": "agent-transcript",
     "clamped": false,
+    "tool_calls": 14,
+    "tool_errors": 2,
     "event_sig": "15235bf7d229360296873bf0fadeb5f3f79703d4"
   },
   "impact": "trivial",
@@ -179,11 +182,30 @@ Notes on the fields that are not self-evident:
 
 `v`, `agent_id`, `duration_ms`, `token_source`, `clamped`, and `event_sig` mean the same as on the cost row (see the field notes there); the trace event nests them under `context` and adds `total_tokens` (input + output). The trace logger resolves the agent transcript, dedupes block records by `message.id` and clamps the token axes exactly as the cost logger does, with its own cursor; a `clamped` completion never fires the `uncached_heavy_run` heuristic, since a guard-produced zero is not a cache miss. The `redundancy:uncached_heavy_run` event in the same batch carries the same `v`/`ts`/`session`/`agent`/`phase` envelope with a smaller `context` (`output_tokens`, `cache_read_tokens`) and `tokens_wasted` set.
 
+`tool_calls` and `tool_errors` count the tool calls and the failed tool results in this spawn's own transcript slice. Both are `null` whenever the slice is not the agent's own. The trace schema `v` is 5 since the evidence loop added them. The cost ledger's rows did not change and stay at 4.
+
+#### Tool-failure capture
+
+The optimiser learns from failures. Until the evidence loop, the only failures it saw were the ones an agent chose to report with `pan-tools optimize trace log`, and across the field projects that was none. Meanwhile about one subagent spawn in four had a failed tool call in its own transcript (measured 2026-09-28). The hook already reads that transcript for tokens, so it records the failed tool results from the same slice:
+
+- **One event per distinct failure.** A failure is identified by its tool, its class and its message with the digits normalised. Each event carries a `count`, so a retry loop repeating one failure produces one event, not a flood. At most 10 events are written per spawn; the completion's `tool_errors` keeps the total.
+- **Classes.** `exit_code` (a Bash or PowerShell command exited non-zero, with `exit_code` set), `not_found`, `permission_denied`, `edit_precondition`, `network_or_timeout`, `user_rejected`, `tool_input`, `other`. For a shell failure the message is the first line after `Exit code <n>` that is not npm/yarn/pnpm's `> script` echo.
+- **Redacted before it is written.** Some projects commit their traces, so the message loses bearer tokens, key/value secrets (`token=`, `password:`, `Authorization:`), known token prefixes (`sk-`, `ghp_`, `xox*-`, `AKIA…`, JWTs), long mixed letter-and-digit runs and URL query strings. The project directory becomes `.` and the home directory `~`. The message is capped at 160 characters.
+- **Only where it is attributable.** Capture runs only on the agent-transcript path. A slice of the shared parent transcript would book the session's failures to whichever spawn stopped, so that path records none. A resumed agent is sliced from its cursor, so earlier failures are not counted twice.
+- **Off switch.** `"execution": { "error_pattern_learning": false }` in `.planning/config.json` turns capture off. The key was shipped as "reserved"; this is its meaning.
+- **Not an agent verdict.** A failed call is often a normal step, such as a TDD red run or a grep with no match. `optimize learn` ranks failures by how many spawns and sessions they recur in (`tool_error_patterns`), and the optimiser writes memory only from recurring ones.
+
+Judge verdicts (verifier, plan checker, reviewer, design checker) reach the trace another way. `pan-tools findings record`, which the workflows run to read the verdict they branch on, logs `verdict_passed`, `verdict_failed` or `verdict_needs_human`, plus `verdict_retry` on a second attempt. That path works on every runtime, because it is a verb rather than a hook.
+
 **Integration:** events flow into the existing `optimize.cjs` analyzer; they're picked up by `/pan:learn` (single-session analysis) and `/pan:optimize` (cumulative reports + auto-apply memory entries). The circular optimization loop (trace → learn → optimize apply → next run smarter → repeat) makes PAN self-learning across cycles.
 
 **P-1805 transcript fallback (v3.7.8+):** Same fix as `pan-cost-logger.js`, with the same later reversal: the transcript is read whenever the payload names one and `data.usage` is only the fallback when it names none. `readUsageFromTranscript()` parses the JSONL transcript at `data.transcript_path` and sums `usage` from assistant messages whose `session_id` matches the payload's (the parent session's). Trace events now carry real token counts during autonomous runs instead of zeros. There is no timing fallback: when neither `data.usage` nor the transcript is available, `duration_ms` stays `null` rather than a measured or fabricated span.
 
 **Runtime support:** same surface as the cost logger — Claude via settings.json, Codex via `.codex/hooks.json`, Copilot via `.github/hooks/pan.json` (all on their SubagentStop-equivalent events; no-op on hosts that don't fire it). Not registered on Gemini CLI, for the cost logger's reason, or on OpenCode.
+
+Tool-failure capture needs a per-agent transcript, so today it works on Claude Code only. On Copilot CLI both loggers read the camelCase payload the Copilot hooks reference documents: `sessionId`, `transcriptPath`, `agentId`, and `agentName`, which is the agent's configured name and wins over `agentType`, the kind of agent. Before that, every Copilot spawn was booked as `unknown`. Copilot has one session transcript and no per-subagent file, so its rows carry the agent's name, `token_source: agent-transcript-missing`, and no captured failures. This payload shape is documented, not yet observed live; the fixture says so. Codex fires `SubagentStop`, but its per-agent transcript layout is unverified, so no capture is claimed there.
+
+**Why the loggers stay synchronous.** Claude Code's `async: true` would run a hook without blocking the session. The cost and trace loggers keep a read-modify-write cursor file shared by every stop, so overlapping asynchronous runs could lose each other's updates. A lost cursor entry makes the next stop re-read that transcript from the start and count its tokens twice. That is the defect class the per-agent attribution work fixed, so do not add `async` to these two (market item M16, declined 2026-09-28).
 
 ### Duplicate and re-fire guards
 

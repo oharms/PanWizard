@@ -177,7 +177,7 @@ function runStep(step, ctx) {
       if (cap !== null && cap < MIN_MODEL_STEP_USD) {
         return { code: 2, stdout: '', stderr: `budget exhausted: $${cap.toFixed(2)} of this scenario's $${ctx.shareUsd.toFixed(2)} share left (floor $${MIN_MODEL_STEP_USD})`, costUsd: 0, budgetExhausted: true };
       }
-      const r = runModelStep(ws, fill(step.prompt, vars), { maxUsd: cap, timeoutMs: stepTimeout, pluginDir: step.pluginDir ? fill(step.pluginDir, vars) : undefined, strictMcp: step.strictMcp !== false });
+      const r = runModelStep(ws, fill(step.prompt, vars), { maxUsd: cap, timeoutMs: stepTimeout, pluginDir: step.pluginDir ? fill(step.pluginDir, vars) : undefined, strictMcp: step.strictMcp !== false, persistSession: step.persistSession === true });
       ctx.addCost(r.costUsd || 0);
       // Claude Code stops a run at --max-budget-usd with is_error and a tool_use
       // stop reason. Spend within ~15% of the cap is that stop, not a PAN result.

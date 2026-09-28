@@ -576,7 +576,7 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 |---------|---------|---------|------------------|
 | `execution.default_mode` | `wave_order` | `wave_order` | Default execution ordering strategy |
 | `execution.rollback_snapshots` | `true`, `false` | `true` | Reserved — written by the defaults but not read; rollback tags are always created (`rollback-snapshot`) |
-| `execution.error_pattern_learning` | `true`, `false` | `true` | Reserved — written by the defaults but not read; error patterns are always recorded |
+| `execution.error_pattern_learning` | `true`, `false` | `true` | Tool-failure capture: the trace hook records the failed tool calls in each subagent's own transcript (redacted) as `error/tool_error` events for `/pan:learn`. `false` turns the capture off (see [The evidence loop](#the-evidence-loop)) |
 
 ### Git Branching
 
@@ -741,7 +741,28 @@ Two rules govern them. **They are additive**: the markdown commands remain the p
 
 **Measured, not assumed.** PAN's behavioural harness ran both paths on the same two-plan seed, five reps each (September 2026, Claude Code `2.1.233`): the markdown `/pan:exec-phase` completed every rep, and so did `/pan-exec-waves`, with the phase verifier's file written every time, about 15% faster and a few percent cheaper per rep. On Claude Code the native workflow is the recommended way to run a checkpoint-free phase; the markdown command stays the portable path and the fallback for phases with checkpoints. One caveat for headless or CI use: `claude -p` waits at most ten minutes for a background workflow before stopping it and dropping its result — set `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` (or a higher ceiling) when driving these workflows from a script. Interactive sessions are unaffected.
 
+**Host controls that shape these runs** (Claude Code; each checked against the official Claude Code documentation on 2026-09-28):
+
+- **Concurrency.** `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` caps how many agents a workflow script runs at once. The value is an integer from 1 to 256; the default is 16, or fewer on a machine with fewer CPUs. A wide wave in `/pan-exec-waves` queues behind this cap rather than failing, so lower it when parallel executors contend for a shared resource such as a database or a port.
+- **Permissions for headless runs.** A headless run has nobody to approve a tool. When its permission mode does not already allow the Workflow tool, add a permission rule: `Workflow` for every workflow, or `Workflow(pan-exec-waves)` for one by name.
+- **Cache visibility.** `/usage` includes a `Prompt cache (main)` line with the hit ratio, the miss count, whether the cache is warm or cold, and the likely cause of the last miss. Read it next to `/pan:cost` when a long session costs more than it should.
+- **Scripted plugin installs.** `claude plugin install <plugin> --json` prints one JSON object (the outcome, a message and, on failure, a failure code) instead of text, for setup scripts that install the PAN plugin.
+
 Each script names the markdown protocol it ports, and a test pins the pair so they cannot drift apart silently. Run them like any other slash command; `/workflows` shows progress per phase and per agent.
+
+### The Evidence Loop
+
+PAN's judges decide whether work passed: the plan checker, the reviewer, the design checker and the verifier. Their verdicts, what they found, and what was done about each finding are kept on record in `.planning/findings.jsonl`. The optimisation loop sees the failures that happen inside subagents.
+
+- **Verdicts on the record.** Each judge's report ends with a machine-readable verdict: a fenced `pan-verdict` block, or the verifier's verification.md frontmatter. The workflows save each report in the phase directory (`NN-review.md`, `NN-plan-check.md`, `NN-design-check.md`, `NN-verification.md`) and record it with `pan-tools findings record`. They branch on what the record says, so no verdict is re-parsed from prose.
+- **Fix rounds close their findings.** A re-verification after a gap-closure round is the next attempt. The gaps it no longer reports are marked fixed, and the retry is logged. Human-verification items and unrequested work are never closed this way, because a re-run does not re-check them.
+- **Nothing is continued past silently.** When a phase moves on with findings still open, the workflow records the reason. Examples: warnings accepted at review, "continue anyway" at `NEEDS_FIXES`, "force proceed" after three plan revisions. You can dispose findings yourself, too: `pan-tools findings dispose <id> --as deferred|dismissed|decision --reason "…"`. A reason is required.
+- **Milestone audits read the record.** `/pan:milestone-audit` takes its tech debt from `pan-tools findings debt`, the deferred findings with their reasons. It lists the findings nobody disposed, instead of reconstructing either from prose.
+- **Unrequested work is a finding.** The verifier runs `pan-tools verify scope <phase>`, which lists the files the phase changed that no plan declared. Whatever it judges to be work nobody asked for is recorded as `unrequested`. That finding does not fail the phase; keeping or removing the work is your decision.
+- **Failures inside subagents reach `/pan:learn`.** On Claude Code the trace hook records every failed tool call in a subagent's own transcript, redacted: a failing test run, a missing file, a refused permission. `/pan:learn` ranks them by how often they recur across spawns and sessions. `/pan:learn --sessions 5` pools the last five sessions, so a suggestion rests on a pattern, not on one run's accident.
+- **Applies can be undone.** `/pan:optimize apply` records exactly what it wrote. `/pan:optimize revert <apply_id>` (or `--last`) undoes one apply byte for byte, and refuses files someone edited since. Applying the same report twice writes nothing the second time.
+
+`pan-tools findings list` shows the ledger, filtered by phase, agent, status, class or milestone. MCP clients read the same data as `pan://findings`.
 
 ### Self-Improvement Loop
 

@@ -292,6 +292,22 @@ must_haves: []
 
 **Fix:** give PAN a tree of its own. Run PAN with `--planning-dir <dir>` (or set `PAN_PLANNING_DIR`) so it works in a separate, project-relative planning directory — the planning-root flags are documented in `docs/CLI-REFERENCE.md` (ADR-0043). If the tree really is an old PAN project and the markers are a coincidence, remove the foreign markers and re-run `pan-tools hygiene scan`: a genuine legacy PAN tree still gets the `legacy-filenames` finding and its rename fix.
 
+### planning-with-files shares the planning tree (I004)
+
+**Symptom:** `/pan:health` reports `I004: planning-with-files also writes into this planning tree: …` (info), and `pan-tools hygiene scan` raises a `shared-planning-tree` info finding.
+
+**Root cause:** planning-with-files writes into `.planning/` beside PAN: `.active_plan`, `.attestation`, `sessions/`, `ledger-<agent>.jsonl`, and a dated `YYYY-MM-DD-slug/` directory per task holding `task_plan.md`. Unlike gsd-core (E006), it does not take the tree over, so the two tools can share it.
+
+**Fix:** none is needed. PAN leaves those files alone and keeps checking its own, and `/pan:new-project` proceeds and reports the other tool in `shared_planning_tree`. If you prefer the tools apart, run PAN with `--planning-dir <dir>` (ADR-0043).
+
+### Planning commits commit nothing (I005)
+
+**Symptom:** `pan-tools commit` reports success for planning docs, but `git status` never shows them, and `/pan:health` reports `I005: .planning/ is ignored by git while commit_docs is true`.
+
+**Root cause:** `.planning/` is listed in `.gitignore`. planning-with-files adds that entry by default, so a project that uses both tools ends up with PAN committing into an ignored directory.
+
+**Fix:** remove `.planning/` from `.gitignore` to keep PAN's docs in git. To keep them out on purpose, say so in the config: `pan-tools config-set commit_docs false`.
+
 ### Phase directory numbering mismatch
 
 **Symptom:** Phase directories use different numbering than roadmap.md, or `find-phase` returns the wrong directory.

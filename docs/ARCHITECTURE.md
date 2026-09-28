@@ -150,6 +150,16 @@ The two-tier split prevents PAN-internal patterns ("always commit individually b
 
 The `references/<topic>.md` + workflow-cross-reference pattern (proven in v3.6.0 with `guardrails.md`) is now joined by `learnings/<scope>/<topic>.md` for the AI-derived counterpart. Together they form a complete behavioral surface: human-authored canonical rules (`references/`) + AI-derived advisory patterns (`learnings/universal/`).
 
+### Evidence loop (ADR-0049)
+
+PAN's judges emit their verdict in a machine-readable form, the verbs record it, and the workflows branch on the record:
+- **The verdict.** The plan checker, reviewer and design checker end their report with a `pan-verdict` block. The verifier's verdict is its verification.md frontmatter.
+- **The record.** `pan-tools findings record` writes the verdict and its findings to `.planning/findings.jsonl` and logs it to the trace. It works on every runtime, because it is a verb rather than a hook.
+- **Dispositions.** Findings the phase continues past get one, with a reason. `findings debt` gives the milestone audit its tech debt.
+- **Tool failures.** On Claude Code the trace hook also records the failed tool calls inside each subagent's own transcript, redacted.
+
+`optimize learn` ranks both signals by recurrence, and `optimize revert` undoes an apply exactly.
+
 ### Reasoning-trace handoff (P-RES-003)
 
 The serial pipeline (planner → researcher → executor → verifier) hands work file-mediated. Plan and summary artifacts traditionally carried only OUTPUTS, not the reasoning that produced them. Per Cognition (June 2025) "Don't build multi-agents", silent decisions in upstream artifacts force downstream agents to reconcile contradictions blindly. PAN now passes the reasoning trace explicitly:
@@ -426,7 +436,12 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `suggest.cjs` | — | **(2026-08)** "Did you mean" corrections for an unknown command. PURE. `buildSubcommandIndex()` parses the dispatcher's own `Unknown <group> subcommand. Available:` strings (and the `Unknown init workflow:` / `<group> subcommand required. Available:` variants) — load-bearing text a user sees, so it cannot rot quietly — and `suggestCommand()` resolves a namespace miss (`trace` → `pan-tools optimize trace`) or a near-miss typo. Runs on the ERROR PATH ONLY, so a healthy invocation pays nothing, and fails open to the plain message. |
 | `planning-root.cjs` | — | **(v3.27, ADR-0043)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance so a wrong target is visible instead of passing for a healthy project. Leaf module — Node builtins only; `utils.planningPath()` / `utils.planningRel()` are the primary path constructors built on it; commands, hygiene, init and verify also read its root helpers directly. No CLI surface. |
 | `state-compact.cjs` | — | **(v3.27, ADR-0044)** `state compact [--apply] [--keep-days N]`: archives settled history out of `state.md` into `state-history.md` so it stops being re-read into every agent call. Archive first, then rewrite, nothing deleted; live sections and frontmatter-source fields are protected; dry-run by default. |
-| `foreign-planning.cjs` | — | **(2026-09)** `detectForeignPlanningTree(dir)` / `detectForeignPlanningTreeAt(cwd)`: does this `.planning/` belong to another tool? Answered from POSITIVE markers PAN never writes (`FOREIGN_PLANNING_MARKERS` in `constants.cjs` — gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys). Never throws. Consumed by `hygiene.cjs` (one `foreign-planning-tree` warning, no per-tree checks, `applyFix` refuses the rename), `verify.cjs` (`validate health` `E006`, stops before `E002`–`E005`) and `init.cjs` (`init new-project` refuses). |
+| `foreign-planning.cjs` | — | **(2026-09)** `detectForeignPlanningTree(dir)` / `detectForeignPlanningTreeAt(cwd)`: does another tool write to this `.planning/`? Answered from POSITIVE markers PAN never writes (`FOREIGN_PLANNING_MARKERS` in `constants.cjs`); never throws.
+  - **gsd-core owns its tree.** Markers: `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene.cjs` gives one `foreign-planning-tree` warning, runs no per-tree checks, and `applyFix` refuses the rename. `verify.cjs` reports `E006` in `validate health` and stops before `E002`–`E005`. `init new-project` refuses.
+  - **planning-with-files shares it** (`coexists: true`). Markers: `.active_plan`, `.attestation`, `ledger-*.jsonl`, or a dated task directory holding `task_plan.md`. Hygiene raises a `shared-planning-tree` info finding and runs PAN's own checks, health reports `I004`, and init proceeds and reports it. |
+| `verdict.cjs` | — | **(evidence loop, ADR-0049)** The `pan-verdict` contract. PURE. `parseVerdictText()` reads the last fenced `pan-verdict` block of a judge's report, or a verification.md frontmatter through its own list-of-mappings reader, which the general frontmatter parser flattens to strings. `validateVerdict()` enforces the contract and records near-misses in their closest valid form, with warnings. `findingId()` and `recordSig()` give findings and artifacts stable identities. |
+| `findings.cjs` | — | **(evidence loop, ADR-0049)** The findings ledger `.planning/findings.jsonl` (verdict, finding and disposition rows; append-only; folded on read). `recordVerdict()` is idempotent per artifact, numbers attempts per agent and phase, auto-fixes a re-verified agent's unreported findings, and logs `verdict_*` / `verdict_retry` trace events. Also `disposeFindings()` (reason required for deferred, dismissed and decision), `listFindings()` and `findingsDebt()` (milestone-audit's tech debt). Backs `findings record/list/dispose/debt` and `pan://findings`. |
+| `verify-scope.cjs` | — | **(evidence loop)** `scopePhase()`: the files a phase changed (plan commits by subject, plus summary key-files) that its plans did not declare in `files_modified`. The planning tree, lockfiles and PAN's runtime directories are excluded. Backs `verify scope`; re-exported by verify.cjs. |
 
 ---
 
@@ -470,6 +485,7 @@ The tree below shows the core files. Depending on which features a project has u
   debug/                Active debug sessions
     resolved/           Archived debug sessions
   quick/                Quick mode task plans and summaries
+  findings.jsonl        Judges' verdicts, findings and dispositions (append-only; `pan-tools findings`)
   phases/
     XX-<slug>/
       context.md        Implementation preferences from discuss-phase
@@ -478,6 +494,9 @@ The tree below shows the core files. Depending on which features a project has u
       XX-YY-plan.md     Atomic execution plans
       XX-YY-summary.md  Post-execution summaries
       verification.md   Goal-backward verification results
+      XX-review.md      The reviewer's report, saved by exec-phase (read by /pan:review-deep)
+      XX-plan-check.md  The plan checker's report, saved by plan-phase
+      XX-design-check.md  The design checker's report, saved by design-phase
       uat.md            User acceptance test results
 ```
 
@@ -729,7 +748,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── utils.cjs
   │     ├── planning-root.cjs, foreign-planning.cjs
   │     ├── config.cjs, links.cjs, memory.cjs (lazy)
-  │     └── verify-{drift,retro,deploy,preflight}.cjs (re-exported)
+  │     └── verify-{drift,retro,deploy,preflight,scope}.cjs (re-exported)
   │
   ├── phase.cjs (facade)
   │     ├── core.cjs
@@ -778,6 +797,10 @@ pan-tools.cjs (CLI entry point — routes to all modules)
         ├── planning-root.cjs
         └── foreign-planning.cjs
 
+  │  Evidence loop (ADR-0049)
+  ├── verdict.cjs        (pure; depends on: crypto only)
+  ├── findings.cjs       (depends on: core, utils, verdict; optimize, lazily, for trace events)
+  │
   │  LAYER 6: Spec B v2 modules (v3.0–v3.4) — leaf modules
   ├── bus.cjs            (depends on: core, utils)
   ├── cost.cjs           (depends on: core, utils — shared infrastructure: read by context-budget, cost-rebuild, focus, hud, hygiene, memory, optimize, phase-report)

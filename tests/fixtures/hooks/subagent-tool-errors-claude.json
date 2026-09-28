@@ -1,0 +1,227 @@
+{
+  "meta": {
+    "agentType": "general-purpose",
+    "description": "synthetic subagent spawn",
+    "toolUseId": "toolu_fixture_spawn_0001",
+    "spawnDepth": 1,
+    "requestShape": "background",
+    "requestNonInteractive": true
+  },
+  "agent": [
+    {
+      "parentUuid": null,
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": { "role": "user", "content": "synthetic subagent prompt: run the tests and report" },
+      "uuid": "00000000-0000-4000-8000-000000000101",
+      "timestamp": "2026-09-28T10:00:00.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000101",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_err_1",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_bash_1", "name": "Bash", "input": { "command": "npm test" } }],
+        "usage": { "input_tokens": 90, "cache_creation_input_tokens": 400, "cache_read_input_tokens": 3000, "output_tokens": 30, "service_tier": "standard" }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000102",
+      "timestamp": "2026-09-28T10:00:05.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000102",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": { "role": "user", "content": [{ "type": "tool_result", "content": "Exit code 1\nnpm error Test failed.  See above for more details.", "is_error": true, "tool_use_id": "toolu_fixture_bash_1" }] },
+      "uuid": "00000000-0000-4000-8000-000000000103",
+      "timestamp": "2026-09-28T10:00:09.000Z",
+      "toolUseResult": "Error: Exit code 1\nnpm error Test failed.  See above for more details.",
+      "sourceToolAssistantUUID": "00000000-0000-4000-8000-000000000102",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000103",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_err_2",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_bash_2", "name": "Bash", "input": { "command": "npm test" } }],
+        "usage": { "input_tokens": 10, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 3400, "output_tokens": 25, "service_tier": "standard" }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000104",
+      "timestamp": "2026-09-28T10:00:14.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000104",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": { "role": "user", "content": [{ "type": "tool_result", "content": "Exit code 1\nnpm error Test failed.  See above for more details.", "is_error": true, "tool_use_id": "toolu_fixture_bash_2" }] },
+      "uuid": "00000000-0000-4000-8000-000000000105",
+      "timestamp": "2026-09-28T10:00:18.000Z",
+      "toolUseResult": "Error: Exit code 1\nnpm error Test failed.  See above for more details.",
+      "sourceToolAssistantUUID": "00000000-0000-4000-8000-000000000104",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000105",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_err_3",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_read_1", "name": "Read", "input": { "file_path": "{{PROJECT_DIR}}/src/missing.ts" } }],
+        "usage": { "input_tokens": 10, "cache_creation_input_tokens": 50, "cache_read_input_tokens": 3500, "output_tokens": 20, "service_tier": "standard" }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000106",
+      "timestamp": "2026-09-28T10:00:21.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000106",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": { "role": "user", "content": [{ "type": "tool_result", "content": "File does not exist. Note: your current working directory is {{PROJECT_DIR}}.", "is_error": true, "tool_use_id": "toolu_fixture_read_1" }] },
+      "uuid": "00000000-0000-4000-8000-000000000107",
+      "timestamp": "2026-09-28T10:00:22.000Z",
+      "toolUseResult": "Error: File does not exist. Note: your current working directory is {{PROJECT_DIR}}.",
+      "sourceToolAssistantUUID": "00000000-0000-4000-8000-000000000106",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000107",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_err_4",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_bash_3", "name": "Bash", "input": { "command": "curl -f https://api.example.invalid/v1/items" } }],
+        "usage": { "input_tokens": 10, "cache_creation_input_tokens": 50, "cache_read_input_tokens": 3600, "output_tokens": 22, "service_tier": "standard" }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000108",
+      "timestamp": "2026-09-28T10:00:25.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000108",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": { "role": "user", "content": [{ "type": "tool_result", "content": "Exit code 22\ncurl: (22) The requested URL returned error: 401 https://api.example.invalid/v1/items?key={{FAKE_SECRET}} token=fixturetoken123", "is_error": true, "tool_use_id": "toolu_fixture_bash_3" }] },
+      "uuid": "00000000-0000-4000-8000-000000000109",
+      "timestamp": "2026-09-28T10:00:26.000Z",
+      "toolUseResult": "Error: Exit code 22\ncurl: (22) The requested URL returned error: 401 https://api.example.invalid/v1/items?key={{FAKE_SECRET}} token=fixturetoken123",
+      "sourceToolAssistantUUID": "00000000-0000-4000-8000-000000000108",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000109",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_err_5",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_bash_4", "name": "Bash", "input": { "command": "rm -rf build" } }],
+        "usage": { "input_tokens": 10, "cache_creation_input_tokens": 50, "cache_read_input_tokens": 3700, "output_tokens": 18, "service_tier": "standard" }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000110",
+      "timestamp": "2026-09-28T10:00:29.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000110",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": { "role": "user", "content": [{ "type": "tool_result", "content": "Permission to use Bash with command rm -rf build has been denied.", "is_error": true, "tool_use_id": "toolu_fixture_bash_4" }] },
+      "uuid": "00000000-0000-4000-8000-000000000111",
+      "timestamp": "2026-09-28T10:00:29.500Z",
+      "toolUseResult": "Error: Permission to use Bash with command rm -rf build has been denied.",
+      "sourceToolAssistantUUID": "00000000-0000-4000-8000-000000000110",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000111",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_err_6",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_grep_1", "name": "Grep", "input": { "pattern": "TODO" } }],
+        "usage": { "input_tokens": 10, "cache_creation_input_tokens": 50, "cache_read_input_tokens": 3800, "output_tokens": 15, "service_tier": "standard" }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000112",
+      "timestamp": "2026-09-28T10:00:31.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000112",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": { "role": "user", "content": [{ "type": "tool_result", "content": "No matches found", "tool_use_id": "toolu_fixture_grep_1" }] },
+      "uuid": "00000000-0000-4000-8000-000000000113",
+      "timestamp": "2026-09-28T10:00:31.500Z",
+      "toolUseResult": { "mode": "files_with_matches", "filenames": [], "numFiles": 0 },
+      "sourceToolAssistantUUID": "00000000-0000-4000-8000-000000000112",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000113",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "assistant",
+      "message": {
+        "model": "claude-sonnet-4-5",
+        "id": "msg_fixture_err_7",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "text", "text": "synthetic final report: the tests fail and the build directory could not be removed" }],
+        "usage": { "input_tokens": 10, "cache_creation_input_tokens": 50, "cache_read_input_tokens": 3900, "output_tokens": 60, "service_tier": "standard" }
+      },
+      "uuid": "00000000-0000-4000-8000-000000000114",
+      "timestamp": "2026-09-28T10:00:35.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}"
+    }
+  ]
+}

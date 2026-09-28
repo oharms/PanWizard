@@ -576,6 +576,29 @@ function clampSlice(n, max) {
   return typeof n === 'number' && n >= 0 && n <= max ? n : 0;
 }
 
+// Copilot CLI's camelCase hook payload (docs.github.com/en/copilot/reference/hooks-reference,
+// read 2026-09-28; documented, not yet observed live) names every field differently from
+// Claude's snake_case one, so this hook read no session, transcript or agent from it and
+// booked every Copilot spawn as `unknown`. Its `agentType` is the KIND of agent (built-in
+// or custom); `agentName` is the configured name PAN's agents carry, so the name wins.
+// Claude payloads carry none of these keys and pass through unchanged. Identical in
+// pan-cost-logger.js and pan-trace-logger.js (tests/copilot-payload.test.cjs pins both).
+function normalizeHookPayload(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const pick = (...keys) => {
+    for (const k of keys) if (typeof data[k] === 'string' && data[k]) return data[k];
+    return undefined;
+  };
+  const out = { ...data };
+  if (out.session_id === undefined && pick('sessionId')) out.session_id = pick('sessionId');
+  if (out.transcript_path === undefined && pick('transcriptPath')) out.transcript_path = pick('transcriptPath');
+  if (out.agent_id === undefined && pick('agentId')) out.agent_id = pick('agentId');
+  const name = pick('agent_name', 'agentName');
+  if (name) out.agent_type = name;
+  else if (out.agent_type === undefined && pick('agentType')) out.agent_type = pick('agentType');
+  return out;
+}
+
 /**
  * Extract what we can from the SubagentStop event payload.
  * Pure function — safe to test without stdin.
@@ -586,6 +609,7 @@ function clampSlice(n, max) {
  */
 function buildCostRecord(data, cwd) {
   if (!data || typeof data !== 'object') return null;
+  data = normalizeHookPayload(data);
 
   // Only log actual subagent stops; ignore other Stop variants.
   if (data.hook_event_name && data.hook_event_name !== 'SubagentStop') return null;
@@ -1003,4 +1027,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { deferToClaudeRegistration, buildCostRecord, appendRecord, readUsageFromTranscript, addCacheTtlSplit, resolveAgentTranscript, readCursor, writeCursor, isPanProject, hasPlanningTree, readCommandFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };
+module.exports = { deferToClaudeRegistration, normalizeHookPayload, buildCostRecord, appendRecord, readUsageFromTranscript, addCacheTtlSplit, resolveAgentTranscript, readCursor, writeCursor, isPanProject, hasPlanningTree, readCommandFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };

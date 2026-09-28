@@ -839,7 +839,9 @@ describe('pan-trace-logger — per-agent transcript attribution', () => {
     const base = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', session_id: SESSION, transcript_path: parent };
 
     const own = completionOf(buildTraceEvents({ ...base, agent_id: 'a1' }, 'sess1', tmpDir));
-    assert.equal(own.v, 4);
+    // v5 (evidence loop): tool_calls / tool_errors on the completion, error/tool_error events.
+    assert.equal(own.v, 5);
+    assert.deepEqual([own.context.tool_calls, own.context.tool_errors], [0, 0], 'counted from the agent\'s own slice');
     assert.equal(own.context.token_source, 'agent-transcript');
     assert.equal(own.context.agent_id, 'a1');
     assert.equal(own.context.cache_read_tokens, 50000);

@@ -733,6 +733,24 @@ const FOREIGN_PLANNING_MARKERS = Object.freeze({
       'graphify.enabled', 'intel.enabled', 'hooks.workflow_guard', 'dynamic_routing', 'resolve_model_ids',
     ]),
   }),
+  // planning-with-files (OthmanAdi/planning-with-files README, read 2026-09-28 at
+  // v3.21.0; market item M3 / MI-028). It writes INTO .planning/ beside whatever else
+  // lives there: `.active_plan`, `.attestation`, `sessions/`, `ledger-<agent>.jsonl`, and
+  // one `YYYY-MM-DD-slug/` directory per task holding task_plan.md / findings.md /
+  // progress.md. PAN writes none of those names. `coexists`: unlike gsd-core, a match
+  // means the tree is SHARED, not owned. PAN keeps working in it and says so, rather
+  // than refusing. planning-with-files gitignores .planning/ by default, which is what
+  // the I005 health check exists for.
+  planning_with_files: Object.freeze({
+    tool: 'planning-with-files',
+    coexists: true,
+    files: Object.freeze(['.active_plan', '.attestation']),
+    filePatterns: Object.freeze([/^ledger-[A-Za-z0-9._-]+\.jsonl$/]),
+    dirs: Object.freeze(['sessions']),
+    // A dated task directory is strong evidence only with the tool's plan file in it.
+    dirPatterns: Object.freeze([{ re: /^\d{4}-\d{2}-\d{2}-[A-Za-z0-9][A-Za-z0-9._-]*$/, requires: 'task_plan.md' }]),
+    configKeys: Object.freeze([]),
+  }),
 });
 
 module.exports = {

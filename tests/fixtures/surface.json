@@ -167,6 +167,7 @@
     "optimize apply",
     "optimize learn",
     "optimize list",
+    "optimize revert",
     "optimize stats",
     "optimize trace",
     "phase add",

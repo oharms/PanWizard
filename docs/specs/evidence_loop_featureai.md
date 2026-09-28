@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | DESIGNED `2026-09-28` — build plan in [evidence-loop-plan.md](evidence-loop-plan.md) |
+| Status | BUILT `2026-09-28` on `feat/evidence-loop` — plan [evidence-loop-plan.md](evidence-loop-plan.md), both sessions executed |
 | Branch | `feat/evidence-loop` |
 | Inputs | [trace-failure-capture](investigations/features/trace-failure-capture.md) (ENHANCE P2), [optimize-apply-regression-gate](investigations/features/optimize-apply-regression-gate.md) (ENHANCE P3), [market-ideas queue](market-ideas-2026-09.md) M11, M12, M17 |
 | Decision record | [ADR-0049](../decisions/ADR-0049-machine-verdicts-and-findings-ledger.md) |

@@ -9,13 +9,16 @@
 // trace artifacts in every repo the user opens.
 //
 // Events logged per subagent:
-//   - completion: agent finished, tokens used, exit status
+//   - completion: agent finished, tokens used, exit status, tool calls/failures
 //   - redundancy: detected when the same agent type ran twice in this session
 //     with similar token counts (rough heuristic for repeated work)
+//   - tool_error: a failed tool call inside the subagent's own transcript
+//     (evidence loop, ADR-0049), grouped per spawn, redacted, capped
 //
 // Errors are swallowed — this hook must never block the main agent loop.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 // ─── R39: one run per hook when Claude and Copilot share a project ───────────
@@ -144,11 +147,13 @@ const TRACES_DIR = 'traces';
 const CURRENT_SESSION_FILE = 'current-session';
 const TRACE_EVENT_FILE = 'trace.jsonl';
 
-// Trace event schema version — kept in sync by hand with pan-cost-logger.js
-// (standalone zero-dep hooks can't share a module). v3 added the per-invocation
-// `event_sig` discriminator to the completion event's context; v4 added
-// `agent_id` and the `agent-transcript` token source. See that file.
-const SCHEMA_V = 4;
+// Trace event schema version. v3 added the per-invocation `event_sig`
+// discriminator to the completion event's context; v4 added `agent_id` and the
+// `agent-transcript` token source (both in lockstep with pan-cost-logger.js, whose
+// ledger rows gained the same fields). v5 is this hook's alone: `tool_calls` and
+// `tool_errors` on the completion and the `error/tool_error` event. The cost
+// ledger's rows did not change, so pan-cost-logger stays at 4.
+const SCHEMA_V = 5;
 
 // YYYYMMDD stamp for a Date (the day-scope of an auto-session id).
 function dayStamp(d) {
@@ -697,6 +702,191 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
   return totals;
 }
 
+// ─── Tool-failure capture (evidence loop EL-9, ADR-0049) ─────────────────────
+// The optimisation loop learns from failures, and until this capture the only
+// failures it saw were the ones an agent chose to report through `optimize trace
+// log`. Across the field projects that was none, while the subagents' own
+// transcripts held a failed tool call in roughly one spawn in four (measured
+// 2026-09-28). The hook already reads the subagent's own transcript for tokens, so
+// it records the failed tool results in that same slice. It does so only on the
+// agent-transcript path: a slice of the shared parent transcript would book the
+// session's failures to whichever spawn stopped.
+
+const MAX_FAILURE_EVENTS = 10;
+const ERROR_MESSAGE_MAX = 160;
+// First match wins; `exit_code` is decided before these, from the Bash result shape.
+const ERROR_CLASSES = [
+  ['permission_denied', /\bPermission (to use|for this command)\b|\bwas denied\b|\bdenied by\b/i],
+  ['edit_precondition', /String to replace not found|has not been read|modified since (it was )?read|must read/i],
+  ['not_found', /does not exist|no such file|\bENOENT\b|\bnot found\b/i],
+  ['network_or_timeout', /getaddrinfo|ECONNREFUSED|ECONNRESET|ETIMEDOUT|fetch failed|timed? ?out|socket hang up/i],
+  ['user_rejected', /\binterrupted\b|\brejected\b|doesn't want to proceed/i],
+  ['tool_input', /InputValidationError|Invalid tool parameters|invalid input/i],
+];
+const TOKEN_RE = /\b(?:sk-ant-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,})/g;
+const SECRET_KV_RE = /\b(api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|client[_-]?secret|token|secret|password|passwd|pwd|authorization)(["']?\s*[:=]\s*)(?!Bearer\s|<redacted>)("[^"]*"|'[^']*'|[^\s,;&]+)/gi;
+
+/** Records of a transcript past `sinceLine` (the same record count the token cursor uses). */
+function readTranscriptSlice(transcriptPath, sinceLine = 0) {
+  let raw;
+  try { raw = fs.readFileSync(transcriptPath, 'utf-8'); } catch { return []; }
+  const out = [];
+  let seen = 0;
+  for (const line of raw.split('\n')) {
+    if (!line) continue;
+    seen++;
+    if (seen <= sinceLine) continue;
+    try { out.push(JSON.parse(line)); } catch { /* a torn line is skipped, as in the token read */ }
+  }
+  return out;
+}
+
+/**
+ * Error text a trace file may hold. Trace files are committed in some projects, so
+ * the message is redacted before it is stored:
+ *   - bearer tokens, key/value secrets and known token prefixes;
+ *   - long mixed letter-and-digit runs;
+ *   - URL query strings;
+ *   - the project directory, which becomes . (portable, and shorter);
+ *   - the user's home directory, which becomes ~.
+ * The message is also capped at ERROR_MESSAGE_MAX characters.
+ */
+function redactErrorText(text, home = os.homedir(), projectDir = null) {
+  let t = String(text == null ? '' : text).replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
+  t = t.replace(/\bBearer\s+[A-Za-z0-9._~+\/=-]+/gi, 'Bearer <redacted>');
+  t = t.replace(SECRET_KV_RE, '$1$2<redacted>');
+  t = t.replace(TOKEN_RE, '<redacted>');
+  t = t.replace(/[A-Za-z0-9+=_-]{32,}/g, (run) => (/\d/.test(run) && /[A-Za-z]/.test(run) ? '<redacted>' : run));
+  t = t.replace(/(https?:\/\/[^\s?#]+)\?[^\s#]*/gi, '$1?<redacted>');
+  if (typeof projectDir === 'string' && projectDir.length > 3) {
+    for (const d of new Set([projectDir, projectDir.replace(/\\/g, '/'), projectDir.replace(/\//g, '\\')])) {
+      t = t.split(d).join('.');
+    }
+  }
+  if (home && home.length > 3) {
+    for (const h of new Set([home, home.replace(/\\/g, '/'), home.replace(/\//g, '\\')])) {
+      t = t.split(h).join('~');
+    }
+  }
+  t = t.replace(/[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s]+/gi, '~').replace(/\/(?:home|Users)\/[^/\s]+/g, '~');
+  t = t.replace(/\s+/g, ' ').trim();
+  return t.length > ERROR_MESSAGE_MAX ? t.slice(0, ERROR_MESSAGE_MAX - 1) + '…' : t;
+}
+
+/**
+ * Class, exit code and the informative line of a failed tool result. A shell failure
+ * (Bash, or PowerShell on Windows) opens with `Exit code <n>`, and a line after it
+ * says what failed. npm/yarn/pnpm first echo the script they run (`> pkg@1.0.0 test`,
+ * `> node --test`), which says nothing about the failure, so those lines are skipped.
+ * The first real run on 2026-09-28 recorded exactly that echo as its message.
+ */
+function classifyToolError(text) {
+  const lines = String(text == null ? '' : text).replace(/<\/?tool_use_error>/g, '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const first = lines[0] || '';
+  const exit = /^Exit code (\d+)$/.exec(first);
+  if (exit) {
+    const code = Number(exit[1]);
+    const said = lines.slice(1).find((l) => !/^> /.test(l));
+    return { errorClass: 'exit_code', exitCode: code, message: said || `exit code ${code}` };
+  }
+  const probe = lines.slice(0, 3).join(' ');
+  for (const [cls, re] of ERROR_CLASSES) if (re.test(probe)) return { errorClass: cls, exitCode: null, message: first };
+  return { errorClass: 'other', exitCode: null, message: first || '(no message)' };
+}
+
+/**
+ * The failed tool calls of one transcript slice, grouped by (tool, class, message).
+ * A retry loop repeating one failure is one group with a count, not a flood.
+ * @returns {{toolCalls: number, toolErrors: number, groups: Object[], omitted: number}}
+ */
+function extractToolFailures(records, home = os.homedir(), projectDir = null) {
+  const names = new Map();
+  let toolCalls = 0;
+  for (const r of records) {
+    const content = r && r.message && r.message.content;
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      if (b && b.type === 'tool_use' && typeof b.id === 'string') {
+        names.set(b.id, typeof b.name === 'string' && b.name ? b.name.slice(0, 64) : 'unknown');
+        toolCalls++;
+      }
+    }
+  }
+  const groups = new Map();
+  let toolErrors = 0;
+  for (const r of records) {
+    const content = r && r.message && r.message.content;
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      if (!b || b.type !== 'tool_result' || b.is_error !== true) continue;
+      toolErrors++;
+      const text = Array.isArray(b.content)
+        ? b.content.filter((x) => x && x.type === 'text' && typeof x.text === 'string').map((x) => x.text).join('\n')
+        : (typeof b.content === 'string' ? b.content : '');
+      const tool = names.get(b.tool_use_id) || 'unknown';
+      const { errorClass, exitCode, message } = classifyToolError(text);
+      const redacted = redactErrorText(message, home, projectDir);
+      const shape = redacted.replace(/\d+/g, 'N');
+      const key = `${tool}\u0000${errorClass}\u0000${shape}`;
+      const g = groups.get(key);
+      if (g) g.count++;
+      else groups.set(key, { tool, errorClass, exitCode, message: redacted, messageSig: crypto.createHash('sha256').update(shape).digest('hex').slice(0, 12), count: 1 });
+    }
+  }
+  const all = [...groups.values()];
+  return { toolCalls, toolErrors, groups: all.slice(0, MAX_FAILURE_EVENTS), omitted: Math.max(0, all.length - MAX_FAILURE_EVENTS) };
+}
+
+/**
+ * `execution.error_pattern_learning: false` in the project's config turns the
+ * capture off. The key shipped as "reserved" and was never read; this is its
+ * meaning. Default on; an unreadable config does not switch it off.
+ */
+function errorCaptureEnabled(cwd) {
+  if (!cwd) return true;
+  try {
+    const cfg = JSON.parse(fs.readFileSync(planningPath(cwd, 'config.json'), 'utf-8'));
+    const nested = cfg && cfg.execution && typeof cfg.execution === 'object' ? cfg.execution.error_pattern_learning : undefined;
+    return !(nested === false || (cfg && cfg['execution.error_pattern_learning'] === false));
+  } catch {
+    return true;
+  }
+}
+
+/** The agent type the host wrote beside a per-agent transcript (`agent-<id>.meta.json`). */
+function agentTypeFromMeta(agentTranscriptPath) {
+  try {
+    const meta = JSON.parse(fs.readFileSync(agentTranscriptPath.replace(/\.jsonl$/, '.meta.json'), 'utf-8'));
+    const type = meta && typeof meta.agentType === 'string' ? meta.agentType.trim() : '';
+    return /^[A-Za-z0-9][A-Za-z0-9:._-]{0,63}$/.test(type) ? type : null;
+  } catch {
+    return null;
+  }
+}
+
+// Copilot CLI's camelCase hook payload (docs.github.com/en/copilot/reference/hooks-reference,
+// read 2026-09-28; documented, not yet observed live) names every field differently from
+// Claude's snake_case one, so this hook read no session, transcript or agent from it and
+// booked every Copilot spawn as `unknown`. Its `agentType` is the KIND of agent (built-in
+// or custom); `agentName` is the configured name PAN's agents carry, so the name wins.
+// Claude payloads carry none of these keys and pass through unchanged. Identical in
+// pan-cost-logger.js and pan-trace-logger.js (tests/copilot-payload.test.cjs pins both).
+function normalizeHookPayload(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const pick = (...keys) => {
+    for (const k of keys) if (typeof data[k] === 'string' && data[k]) return data[k];
+    return undefined;
+  };
+  const out = { ...data };
+  if (out.session_id === undefined && pick('sessionId')) out.session_id = pick('sessionId');
+  if (out.transcript_path === undefined && pick('transcriptPath')) out.transcript_path = pick('transcriptPath');
+  if (out.agent_id === undefined && pick('agentId')) out.agent_id = pick('agentId');
+  const name = pick('agent_name', 'agentName');
+  if (name) out.agent_type = name;
+  else if (out.agent_type === undefined && pick('agentType')) out.agent_type = pick('agentType');
+  return out;
+}
+
 /**
  * Build trace event(s) from a SubagentStop payload.
  *
@@ -713,10 +903,11 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
  */
 function buildTraceEvents(data, sessionId, cwd) {
   if (!data || typeof data !== 'object') return [];
+  data = normalizeHookPayload(data);
   if (data.hook_event_name && data.hook_event_name !== 'SubagentStop') return [];
 
   const ts = new Date().toISOString();
-  const agent = data.agent_type || data.subagent_type || 'unknown';
+  let agent = data.agent_type || data.subagent_type || 'unknown';
   // This event's per-invocation identity, hashed once and used by BOTH layers:
   // the seen-event marker below and the completion's `event_sig` context field.
   // buildTraceEvents never mutates `data`, so hoisting the hash here yields the
@@ -737,6 +928,8 @@ function buildTraceEvents(data, sessionId, cwd) {
   // `transcript` for a slice of the shared parent transcript (the fallback when
   // the host names no agent), `usage-fallback` for the payload's own counters.
   const agentTranscript = resolveAgentTranscript(data);
+  // A payload without an agent type still names it in the host's meta file.
+  if (agent === 'unknown' && agentTranscript) agent = agentTypeFromMeta(agentTranscript) || agent;
   const parentPath = typeof data.transcript_path === 'string' && data.transcript_path ? data.transcript_path : null;
   // A named agent whose file is not there consumes nothing (see pan-cost-logger:
   // the parent slice would be the whole session booked to one spawn).
@@ -749,6 +942,7 @@ function buildTraceEvents(data, sessionId, cwd) {
       : sliceSource ? 'transcript' : 'usage-fallback';
   const agentId = typeof data.agent_id === 'string' && data.agent_id ? data.agent_id : null;
   let clamped = false;
+  let failures = null;
   if (sliceSource || agentFileMissing) {
     const keyPath = sliceSource || parentPath;
     const cursor = readTraceCursor(cwd);
@@ -765,6 +959,11 @@ function buildTraceEvents(data, sessionId, cwd) {
     clamped = rawIn > SLICE_MAX.input || rawOut > SLICE_MAX.output || rawCr > SLICE_MAX.cache_read;
     durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts); // as measured
     if (!model) model = fromTranscript.model;
+    // Failures come from the SAME slice the tokens did (records past the cursor), so
+    // a resumed agent's earlier failures are not counted again.
+    if (tokenSource === 'agent-transcript' && fromTranscript.lineCount > since && errorCaptureEnabled(cwd)) {
+      failures = extractToolFailures(readTranscriptSlice(sliceSource, since), os.homedir(), cwd ? path.resolve(cwd) : null);
+    }
     if (cwd && fromTranscript.lineCount > since) {
       // A real slice. Advance the cursor and remember this event's signature
       // (N17/N25) so a later empty-slice event can tell its re-fire from a
@@ -817,6 +1016,9 @@ function buildTraceEvents(data, sessionId, cwd) {
   // path otherwise bypasses).
   const sessionMeta = cwd ? readSessionMetaById(cwd, sessionId) : {};
   const phase = data.phase || sessionMeta.phase || null;
+  // Outside focus mode the trace session carries no command; the parent transcript
+  // names it instead (see readCommandFromTranscript).
+  const command = data.command || sessionMeta.command || readCommandFromTranscript(data.transcript_path) || null;
 
   const events = [];
 
@@ -832,9 +1034,7 @@ function buildTraceEvents(data, sessionId, cwd) {
     description: `${agent} completed`,
     context: {
       model,
-      // Outside focus mode the trace session carries no command; the parent transcript
-      // names it instead (see readCommandFromTranscript).
-      command: data.command || sessionMeta.command || readCommandFromTranscript(data.transcript_path) || null,
+      command,
       agent_id: agentId,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
@@ -844,6 +1044,10 @@ function buildTraceEvents(data, sessionId, cwd) {
       exit_code: data.exit_code || 0,
       token_source: tokenSource,
       clamped,
+      // Tool calls and failed tool results in this spawn's own transcript slice;
+      // null whenever the slice is not the agent's own (nothing is attributable).
+      tool_calls: failures ? failures.toolCalls : null,
+      tool_errors: failures ? failures.toolErrors : null,
       // This spawn's per-invocation discriminator: the event signature,
       // persisted. The signature was already hashed for the seen-event marker
       // but never written into the event, so two parallel same-type siblings
@@ -885,6 +1089,27 @@ function buildTraceEvents(data, sessionId, cwd) {
       correction: null,
       tokens_wasted: outputTokens,
     });
+  }
+
+  // One event per distinct failure (tool, class, message), with its count. The
+  // completion's tool_errors keeps the total when more groups exist than are written.
+  if (failures) {
+    for (const g of failures.groups) {
+      events.push({
+        v: SCHEMA_V,
+        ts,
+        session: sessionId,
+        agent,
+        phase,
+        type: 'error',
+        category: 'tool_error',
+        description: `${agent}: ${g.tool} failed (${g.errorClass})${g.count > 1 ? ` x${g.count}` : ''}`,
+        context: { tool: g.tool, error_class: g.errorClass, exit_code: g.exitCode, message: g.message, message_sig: g.messageSig, count: g.count, command, agent_id: agentId },
+        impact: 'minor',
+        correction: null,
+        tokens_wasted: null,
+      });
+    }
   }
 
   return events;
@@ -989,6 +1214,7 @@ if (require.main === module) {
 
 module.exports = {
   deferToClaudeRegistration,
+  normalizeHookPayload,
   buildTraceEvents,
   appendTraceEvents,
   resolveAgentTranscript,
@@ -999,6 +1225,13 @@ module.exports = {
   PAN_RUNTIME_DIRS,
   readCommandFromTranscript,
   isSessionStale,
+  readTranscriptSlice,
+  extractToolFailures,
+  classifyToolError,
+  redactErrorText,
+  errorCaptureEnabled,
+  agentTypeFromMeta,
+  MAX_FAILURE_EVENTS,
   PLANNING_DIR,
   OPTIMIZE_DIR,
   TRACES_DIR,

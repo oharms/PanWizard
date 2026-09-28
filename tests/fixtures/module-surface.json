@@ -636,6 +636,7 @@
     "cmdOptimizeApply:function",
     "cmdOptimizeLearn:function",
     "cmdOptimizeList:function",
+    "cmdOptimizeRevert:function",
     "cmdOptimizeStats:function",
     "cmdOptimizeTrace:function",
     "computeSessionCostAndCommits:function",
@@ -655,10 +656,12 @@
     "logTraceEvent:function",
     "parseAutoApplyBlock:function",
     "promotePattern:function",
+    "readApplyLog:function",
     "readTraceSession:function",
     "reconcileAllTraceSessions:function",
     "reconcileSessionMeta:function",
     "reconcileTraceSession:function",
+    "revertApply:function",
     "unpromotePattern:function"
   ],
   "phase-remove.cjs": [

@@ -323,3 +323,44 @@ describe('harness model steps lift the headless background-wait ceiling', () => 
     assert.match(src, /spawnSync\('claude'[\s\S]*env: modelEnv\(\)/, 'the spawn must carry the env');
   });
 });
+
+// Evidence loop EL-12: model steps run with --no-session-persistence, so the host
+// writes no transcripts, per-agent ones included, and no harness model run could
+// ever exercise a hook that reads them. `persistSession: true` opts one step in.
+describe('harness model steps can opt into session persistence', () => {
+  const { modelArgs } = require('../harness/src/model.cjs');
+  test('the default keeps --no-session-persistence; persistSession: true drops it', () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-harness-args-'));
+    try {
+      assert.ok(modelArgs(ws, { maxUsd: 1 }).includes('--no-session-persistence'));
+      const persisted = modelArgs(ws, { maxUsd: 1, persistSession: true });
+      assert.ok(!persisted.includes('--no-session-persistence'));
+      assert.deepEqual(persisted.slice(-2), ['--max-budget-usd', '1'], 'the budget cap is never dropped with it');
+    } finally { fs.rmSync(ws, { recursive: true, force: true }); }
+  });
+  test('persistSession is valid only as true, and only on model steps', () => {
+    const base = { id: 'x', tier: 1, description: 'd', why: 'w', seed: 'two-plan-phase', install: ['--claude'], steps: [] };
+    const step = (extra) => ({ ...base, steps: [{ kind: 'model', prompt: 'p', expect: ['exit:0'], why: 'w', ...extra }] });
+    assert.deepEqual(validateScenario(step({ persistSession: true })), []);
+    assert.ok(validateScenario(step({ persistSession: 'yes' })).some((e) => /persistSession/.test(e)));
+    const onPan = { ...base, tier: 0, steps: [{ kind: 'pan', argv: ['state'], expect: ['exit:0'], why: 'w', persistSession: true }] };
+    assert.ok(validateScenario(onPan).some((e) => /persistSession/.test(e)));
+  });
+  test('the tool-error-capture gate persists its model step', () => {
+    const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'tool-error-capture');
+    assert.ok(s, 'the scenario ships');
+    assert.equal(s.steps.find((st) => st.kind === 'model').persistSession, true);
+  });
+});
+
+// The package ships hooks/dist/, a gitignored build output; release.yml and CI build
+// it before packing. The harness packed without building, so a hook change was
+// deployed stale until a manual build (2026-09-28, evidence-loop scenario).
+describe('harness artifacts are built the way a release is', () => {
+  test('packAndExtract runs build-hooks before npm pack', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'harness', 'src', 'artifact.cjs'), 'utf8');
+    const build = src.indexOf("'build-hooks.js'");
+    const pack = src.indexOf("['pack', '--pack-destination'");
+    assert.ok(build > -1 && pack > -1 && build < pack, 'build-hooks runs, and before the pack');
+  });
+});

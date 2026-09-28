@@ -32,6 +32,11 @@ function gitHead(repo) {
  */
 function packAndExtract(repo, dest) {
   fs.mkdirSync(dest, { recursive: true });
+  // The package ships hooks/dist/, a gitignored build output. release.yml and CI run
+  // build:hooks before packing, so the harness must too, or it deploys whatever
+  // dist/ the last manual build left. The evidence-loop scenario ran against 2-day-old
+  // hooks that way on 2026-09-28 and failed for a reason that was not PAN's.
+  execFileSync(process.execPath, [path.join(repo, 'scripts', 'build-hooks.js')], { cwd: repo, stdio: ['ignore', 'pipe', 'pipe'] });
   // npm is a .cmd shim on Windows — needs a shell there, and only there.
   const packOut = execFileSync('npm', ['pack', '--pack-destination', dest, '--silent'], {
     cwd: repo, encoding: 'utf8', shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'],

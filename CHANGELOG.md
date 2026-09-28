@@ -7,6 +7,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the evidence loop: judges' verdicts on the record, failures the optimiser can learn from
+
+PAN's judges (plan checker, reviewer, design checker, verifier) decided whether work
+passed. Their verdicts were prose that each workflow re-parsed in its own way. Their
+findings were never recorded, and nothing said which were deferred, dismissed or
+fixed, or why. ADR-0049; spec `docs/specs/evidence_loop_featureai.md`.
+
+- **A machine verdict.** The plan checker, reviewer and design checker end their report
+  with a fenced `pan-verdict` JSON block: contract `1.0`, the agent's own verdict word,
+  outcome `pass`/`fail`/`needs_human`, and findings, each with a class
+  (`missing`/`partial`/`contradicts`/`unrequested`/`defect`/`risk`/`quality`/`human`),
+  a severity and a location. The verifier's verification.md frontmatter is read
+  through an adapter. The contract ships as `references/verdict-contract.md`. The
+  examples in each judge are checked intact in all five runtimes' converted copies.
+- **`pan-tools findings record|list|dispose|debt`** and the MCP resource
+  `pan://findings`, over an append-only `.planning/findings.jsonl`:
+  - Recording the same report twice is a no-op, and each new verdict from an agent on
+    a phase is the next attempt.
+  - A re-verification closes the gaps it no longer reports; human-verification and
+    unrequested items are exempt. A regressed fix reopens.
+  - `deferred`, `dismissed` and `decision` require a reason.
+  - Each record logs `verdict_passed`/`verdict_failed`/`verdict_needs_human` to the
+    trace, plus `verdict_retry` after a failed attempt, on every runtime.
+- **The workflows branch on the record and never continue past findings silently.**
+  - exec-phase, plan-phase and design-phase save each judge's report in the phase
+    directory, record it, and branch on the verdict it prints. The previous
+    grep/heading reads stay as fallbacks.
+  - They record a deferral whenever a phase moves on with findings open: warnings
+    accepted at review, "continue anyway", "force proceed", design caveats.
+  - `/pan:milestone-audit` takes its tech debt from `findings debt`, the deferred
+    findings with their reasons plus the ones nobody disposed.
+  - The prose `optimize trace log` calls on the verdict paths are gone.
+- **Unrequested work (market item M11).**
+  - `pan-tools verify scope <phase>` lists the files a phase changed that its plans
+    did not declare in `files_modified`. It reads the plan commits by subject and the
+    summary key-files, and excludes the planning tree, lockfiles and PAN's runtime
+    directories.
+  - The verifier judges the candidates and records the real ones as `unrequested:`
+    in verification.md. The reviewer has the same lens.
+- **Tool-failure capture in the trace hook.**
+  - On Claude Code, the hook records the failed tool calls in each subagent's own
+    transcript as `error/tool_error` events, with tool, class, exit code, a redacted
+    message and a count. The completion carries `tool_calls` and `tool_errors`.
+  - Redaction covers secrets, tokens, query strings, the project directory and the
+    home directory. `execution.error_pattern_learning: false`, a key reserved until
+    now, turns capture off.
+  - The trace schema moves to `v: 5`.
+  - First real run on 2026-09-28: a subagent's failing `npm test` was captured from
+    its own transcript through the installed hook.
+- **`optimize learn` reads the new signal.** The analysis adds `tool_error_patterns`,
+  ranked by the spawns and sessions they recur in, and `verdict_stats` per judge.
+  Suggestions come only from failures that recur. `optimize learn --sessions <n>`
+  pools the last n sessions.
+- **`contract: "1.0"`** on `state`, `state json`, `progress` and the `pan://state` /
+  `pan://progress` resources, with the additive rule documented (market item M17).
+- **planning-with-files coexistence (market item M3).** Its markers (`.active_plan`,
+  `.attestation`, `ledger-*.jsonl`, dated task directories holding `task_plan.md`)
+  mark a tree as shared, not foreign. `validate health` reports `I004` and keeps
+  checking PAN's files, `hygiene` raises `shared-planning-tree`, and `init
+  new-project` proceeds. New `I005`: `.planning/` is gitignored while `commit_docs`
+  is on, so planning commits commit nothing (planning-with-files adds that ignore
+  entry by default).
+- **User docs for the Claude Code controls that shape native-workflow runs (market
+  item M18).** `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS`, the `Workflow` /
+  `Workflow(<name>)` permission rule, the `/usage` prompt-cache line, and `claude
+  plugin install --json`. Each was checked against the official docs; one claimed
+  control (`OTEL_LOG_TOOL_DETAILS`) was not found and is not documented.
+
+### Fixed — `/pan:review-deep` never saw the reviewer's findings
+
+`/pan:review-deep` read `.planning/phases/<N>/review.md`. Nothing wrote that file (the
+reviewer is read-only), and no phase directory has that name. Even with the file
+present, the merger's bullet grammar never matched the tables the reviewer writes, so
+the reviewer half of every deep review merged as zero findings. exec-phase now saves
+the report as `{phase_dir}/{phase_number}-review.md`, review-deep reads that path, and
+the merger takes the reviewer's findings from its `pan-verdict` block.
+
+### Fixed — `/pan:exec-phase --deep-review` did nothing
+
+The flag was documented as "(v3.4+)", but no step of the exec-phase workflow read it.
+It now runs the deep review inline after the normal review: the hardener, the
+meta-reviewer, and `review-deep merge` over the saved report. It stops before
+verification on `review_required` or `block`.
+
+### Fixed — applying the same optimisation report twice appended everything twice
+
+`optimize apply` kept no record of what it wrote, so a second apply of one report
+appended every memory entry and note again, and nothing could be undone. Each apply
+now gets an `apply_id` with per-action records, and an action an earlier apply wrote
+is skipped. `pan-tools optimize revert <apply_id>` (or `--last`) undoes one apply byte
+for byte, CRLF files included. It refuses a file edited since the apply, and a file a
+later apply also wrote.
+
+### Fixed — Copilot spawns were booked as `unknown` with no session
+
+Copilot CLI's camelCase `subagentStop` payload (`sessionId`, `transcriptPath`,
+`agentId`, `agentName`; documented, not yet observed live) matched none of the
+snake_case names the cost and trace loggers read. Both loggers now accept it. The
+agent's configured name wins over `agentType`, which only says built-in or custom.
+
+### Fixed — the harness deployed stale hooks
+
+The package ships `hooks/dist/`, a gitignored build output. The release workflow and CI
+build it before packing; the harness packed without building, so any hook change was
+tested against whatever the last manual build left. The harness now runs
+`build-hooks.js` before `npm pack`. A model step can opt into session persistence
+(`persistSession: true`). The default `--no-session-persistence` means the host writes
+no transcripts, so no harness model run had ever exercised a hook that reads them.
+
+### Decided — the cost and trace loggers stay synchronous (market item M16)
+
+Claude Code supports `async: true` on command hooks, but the two loggers share a
+read-modify-write cursor file. Overlapping asynchronous runs could lose each other's
+updates, and a lost cursor entry re-reads a transcript from the start and counts its
+tokens twice. The update check already hands `SessionStart` back at once. Recorded in
+`docs/HOOKS.md`.
+
 ## [3.31.0] - 2026-09-26
 
 ### Fixed — upgrades backed up untouched files as "locally modified"

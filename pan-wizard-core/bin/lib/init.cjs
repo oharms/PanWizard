@@ -286,7 +286,7 @@ function cmdInitNewProject(cwd, raw) {
   // Never scaffold PAN's files into a .planning/ another tool owns (R15). The error
   // key carries the exit code; the fix is a separate tree via --planning-dir.
   const foreign = detectForeignPlanningTreeAt(cwd);
-  if (foreign) {
+  if (foreign && !foreign.coexists) {
     output({ error: `planning tree belongs to ${foreign.tool}`, evidence: foreign.evidence, fix: 'Run PAN with --planning-dir <dir> to use a separate tree (ADR-0043)' }, raw);
     return;
   }
@@ -356,6 +356,9 @@ function cmdInitNewProject(cwd, raw) {
 
     // File paths
     project_path: planningRelPath(PROJECT_FILE),
+
+    // Another tool that shares the tree (planning-with-files), or null
+    shared_planning_tree: foreign && foreign.coexists ? { tool: foreign.tool, evidence: foreign.evidence } : null,
   };
 
   output(result, raw);
