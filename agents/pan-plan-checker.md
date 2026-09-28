@@ -756,6 +756,13 @@ Return all issues as a structured `issues:` YAML list (see dimension examples fo
 
 <structured_returns>
 
+**Every return ends with a `pan-verdict` block.** The contract is in `~/.claude/pan-wizard-core/references/verdict-contract.md`. How to fill it:
+- `verdict` is `passed` or `issues_found` (the status from Step 10), and `outcome` is `pass` or `fail`.
+- Add one finding per issue you list. Blocker → `high`, warning → `medium`, info → `info`. The class follows the dimension, as mapped in the reference.
+- `where` is the plan file, plus `#task-N` when the issue is about one task.
+
+The orchestrator records the block, and the record is what it branches on. The block must say the same thing as your heading.
+
 ## VERIFICATION PASSED
 
 ```markdown
@@ -781,6 +788,14 @@ Return all issues as a structured `issues:` YAML list (see dimension examples fo
 
 Plans verified. Run `/pan:exec-phase {phase}` to proceed.
 ```
+
+End it with:
+
+````markdown
+```pan-verdict
+{"contract":"1.0","agent":"pan-plan-checker","phase":"{phase}","verdict":"passed","outcome":"pass","findings":[]}
+```
+````
 
 ## ISSUES FOUND
 
@@ -812,6 +827,14 @@ Plans verified. Run `/pan:exec-phase {phase}` to proceed.
 
 {N} blocker(s) require revision. Returning to planner with feedback.
 ```
+
+End it with one finding per listed issue:
+
+````markdown
+```pan-verdict
+{"contract":"1.0","agent":"pan-plan-checker","phase":"{phase}","verdict":"issues_found","outcome":"fail","findings":[{"class":"missing","severity":"high","where":"{phase}-01-plan.md","summary":"requirement AUTH-02 (password reset) has no covering task"},{"class":"risk","severity":"medium","where":"{phase}-02-plan.md","summary":"plan 02 modifies 12 files across 5 tasks; split it"}]}
+```
+````
 
 </structured_returns>
 

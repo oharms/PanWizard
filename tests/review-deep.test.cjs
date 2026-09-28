@@ -99,6 +99,69 @@ This phase looks good.`;
   });
 });
 
+// ─── The reviewer's real report shape (evidence loop EL-3) ──────────────────
+// pan-reviewer writes its findings as TABLES under `### Findings`
+// (agents/pan-reviewer.md <output_format>), which the bullet grammar never matched:
+// the reviewer half of every deep review merged as zero findings. Its report now
+// ends with a pan-verdict block, and the parser reads findings from the block.
+
+const FENCE = '`'.repeat(3);
+const REVIEWER_TABLES = `## Code Review — Phase 07
+
+### Summary
+- Files reviewed: 3
+- Errors: 1
+- Warnings: 1
+- Info: 0
+
+### Findings
+
+#### ERRORS (must fix before verification)
+| # | File | Line | Category | Finding |
+|---|------|------|----------|---------|
+| 1 | src/utils/parser.ts | 42 | Convention | Inconsistent naming — uses snake_case, project uses camelCase |
+
+#### WARNINGS (should fix)
+| # | File | Line | Category | Finding |
+|---|------|------|----------|---------|
+| 1 | src/api/users.ts | 7 | Security | User-supplied path not validated against the project root |
+
+### Verdict
+NEEDS_FIXES
+`;
+const REVIEWER_BLOCK = `${FENCE}pan-verdict
+{"contract":"1.0","agent":"pan-reviewer","phase":"07","verdict":"NEEDS_FIXES","outcome":"fail","findings":[{"class":"quality","severity":"high","where":"src/utils/parser.ts:42","summary":"Inconsistent naming — uses snake_case, project uses camelCase"},{"class":"risk","severity":"medium","where":"src/api/users.ts:7","summary":"User-supplied path not validated against the project root"}]}
+${FENCE}
+`;
+
+describe('review-deep — the reviewer report shape pan-reviewer actually writes', () => {
+  test('its findings are read from the closing pan-verdict block', () => {
+    const findings = parseReviewFindings(REVIEWER_TABLES + '\n' + REVIEWER_BLOCK, 'reviewer');
+    assert.deepEqual(findings, [
+      { source: 'reviewer', severity: 'high', category: 'quality', description: 'Inconsistent naming — uses snake_case, project uses camelCase', file: 'src/utils/parser.ts', line: 42, rationale: null },
+      { source: 'reviewer', severity: 'medium', category: 'risk', description: 'User-supplied path not validated against the project root', file: 'src/api/users.ts', line: 7, rationale: null },
+    ]);
+  });
+
+  test('without the block the tables yield nothing — the gap the block closes', () => {
+    assert.deepEqual(parseReviewFindings(REVIEWER_TABLES, 'reviewer'), []);
+  });
+
+  test('a broken block falls back to the bullet grammar the hardener uses', () => {
+    const md = `## Findings\n\n- **[HIGH] sqli** — concatenated query. File: \`src/db.js:9\` — parameterise.\n\n${FENCE}pan-verdict\n{not json}\n${FENCE}\n`;
+    const findings = parseReviewFindings(md, 'hardener');
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].category, 'sqli');
+  });
+
+  test('a where without a line number keeps the path and a null line', () => {
+    const block = `${FENCE}pan-verdict\n{"contract":"1.0","agent":"pan-reviewer","outcome":"pass","verdict":"PASS_WITH_WARNINGS","findings":[{"class":"quality","severity":"medium","where":"README.md","summary":"stale example"}]}\n${FENCE}\n`;
+    const [f] = parseReviewFindings(block, 'reviewer');
+    assert.equal(f.file, 'README.md');
+    assert.equal(f.line, null);
+  });
+});
+
 // ─── mergeReviews ───────────────────────────────────────────────────────────
 
 describe('review-deep — mergeReviews', () => {
@@ -259,6 +322,19 @@ describe('review-deep — CLI dispatch', () => {
     fs.writeFileSync(path.join(dir, 'reviewer.md'), reviewerMd);
     fs.writeFileSync(path.join(dir, 'hardener.md'), hardenerMd);
   }
+
+  test('review-deep merge counts the findings of a real pan-reviewer report (tables + pan-verdict block)', () => {
+    writeInputs(tmpDir, REVIEWER_TABLES + '\n' + REVIEWER_BLOCK, '## Findings\n\n- **[LOW] headers** — no CSP. File: `server.js:3`.\n');
+    const r = runPanTools(
+      `review-deep merge 07 --reviewer-file ${path.join(tmpDir, 'reviewer.md')} --hardener-file ${path.join(tmpDir, 'hardener.md')}`,
+      tmpDir
+    );
+    assert.ok(r.success, r.error);
+    const json = JSON.parse(r.output);
+    assert.equal(json.coverage.by_source.reviewer, 2, 'both reviewer findings reach the merge');
+    assert.equal(json.coverage.by_source.hardener, 1);
+    assert.equal(json.verdict, 'review_required', 'the reviewer ERROR (high) drives the verdict');
+  });
 
   test('review-deep merge writes deep-review.md and returns verdict', () => {
     writeInputs(

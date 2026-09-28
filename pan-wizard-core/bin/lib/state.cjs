@@ -20,6 +20,7 @@ const {
   PROGRESS_BAR_WIDTH,
   FILLED_BLOCK,
   EMPTY_BLOCK,
+  STATE_CONTRACT,
 } = require('./constants.cjs');
 const {
   planningPath,
@@ -51,6 +52,7 @@ function cmdStateLoad(cwd, raw) {
   const stateExists = stateRaw.length > 0;
 
   const result = {
+    contract: STATE_CONTRACT,
     config,
     state_raw: stateRaw,
     state_exists: stateExists,
@@ -976,12 +978,15 @@ function cmdStateJson(cwd, raw) {
 
   if (!frontmatter || Object.keys(frontmatter).length === 0) {
     const body = stripFrontmatter(content).replace(/\r\n/g, '\n');
-    const built = buildStateFrontmatter(body, cwd);
+    const built = { ...buildStateFrontmatter(body, cwd), contract: STATE_CONTRACT };
     output(built, raw, JSON.stringify(built, null, 2));
     return;
   }
 
-  output(frontmatter, raw, JSON.stringify(frontmatter, null, 2));
+  // `contract` is the output's shape version (STATE_CONTRACT), never a state.md
+  // field: PAN's state frontmatter has no such key, so nothing is shadowed.
+  const withContract = { ...frontmatter, contract: STATE_CONTRACT };
+  output(withContract, raw, JSON.stringify(withContract, null, 2));
 }
 
 /**

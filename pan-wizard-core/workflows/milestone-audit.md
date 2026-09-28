@@ -82,6 +82,18 @@ From each verification.md, extract:
 
 If a phase is missing verification.md, flag it as "unverified phase" — this is a blocker.
 
+### 2b. Read the Recorded Findings
+
+What the judges found in this milestone, and what was decided about each finding, is on record. Read it rather than reconstructing it from prose:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings debt --milestone "{version}"
+```
+
+- **`deferred`** findings were continued past on purpose, and each carries the reason recorded at the time. They are the milestone's tech debt: put every one in `tech_debt`, with its id and reason.
+- **`open`** findings were never disposed (no fix, deferral, dismissal or decision). List them under "Undisposed findings" in the report. They are not blockers by themselves: the verification gate handles blockers. They do mean the milestone cannot be `passed`, so the status is at least `tech_debt`.
+- A dismissal or decision is settled and not debt. `findings list --milestone "{version}" --status dismissed` shows the dismissals and their reasons when the report needs them.
+
 ## 3. Spawn Integration Checker
 
 With phase context collected:
@@ -181,11 +193,11 @@ gaps:  # Critical blockers
       evidence: "{specific evidence or lack thereof}"
   integration: [...]
   flows: [...]
-tech_debt:  # Non-critical, deferred
+tech_debt:  # Non-critical, deferred — from `findings debt` (step 2b) plus anything the verifications list
   - phase: 01-auth
     items:
+      - "[f_81ab3c9d20] no password strength validation — deferred: accepted at review: PASS_WITH_WARNINGS"
       - "TODO: add rate limiting"
-      - "Warning: no password strength validation"
   - phase: 03-dashboard
     items:
       - "Deferred: mobile responsive layout"
@@ -197,7 +209,7 @@ Plus full markdown report with tables for requirements, phases, integration, tec
 **Status values:**
 - `passed` — all requirements met, no critical gaps, minimal tech debt
 - `gaps_found` — critical blockers exist
-- `tech_debt` — no blockers but accumulated deferred items need review
+- `tech_debt` — no blockers but accumulated deferred items need review, or recorded findings were never disposed
 
 ## 7. Present Results
 

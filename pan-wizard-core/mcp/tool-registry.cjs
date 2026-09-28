@@ -69,6 +69,8 @@ const RESOURCES = [
     description: 'Doc↔code link graph verdict: forward links, backlink contracts, and anchor targets, with finding codes.' },
   { uri: 'pan://cost',     name: 'Token cost',     verb: 'cost',    args: ['report'],
     description: 'Aggregated token spend from the .planning/metrics ledger. Reads as zeros on a project with no recorded calls.' },
+  { uri: 'pan://findings', name: 'Findings',       verb: 'findings', args: ['list'],
+    description: 'Every finding PAN\'s judges recorded (verifier, plan checker, reviewer, design checker), with its folded status — open, fixed, deferred, dismissed or decision — and the reason given. Reads as an empty list on a project with no recorded verdicts.' },
 ];
 
 /** Actionable pan-tools verbs → MCP tools (each spawns `node pan-tools.cjs <verb>`). */

@@ -12,6 +12,9 @@ phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
 status: passed | gaps_found | human_needed
 score: N/M must-haves verified
+unrequested: # Only when the scope check (`pan-tools verify scope <phase>`) found work no plan asked for
+  - path: "src/admin/panel.tsx"
+    what: "An admin panel no plan or requirement asked for"
 ---
 
 # Phase {X}: {Name} Verification Report
@@ -88,6 +91,19 @@ None — all verifiable items checked programmatically.
 **Test:** {What to do}
 **Expected:** {What should happen}
 **Why human:** {Why can't verify programmatically}
+
+## Unrequested Work
+
+{If the scope check found none:}
+None: every change traces to a plan.
+
+{Otherwise, one row per `unrequested:` entry:}
+
+| File | What it adds | Why no plan covers it |
+|------|--------------|-----------------------|
+| src/admin/panel.tsx | An admin panel | No requirement mentions admin tooling |
+
+Unrequested work is recorded, not blocking: the status does not change because of it.
 
 ## Gaps Summary
 

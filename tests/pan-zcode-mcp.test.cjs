@@ -561,11 +561,31 @@ describe('resources return real data on a project WITH CONTENT (not just a bare 
       assert.ok(Array.isArray(ph.directories) && ph.directories.length === 2);
 
       // The rest must still be parseable and non-trivial with content present.
-      for (const uri of ['pan://state', 'pan://progress', 'pan://health', 'pan://links', 'pan://cost']) {
+      for (const uri of ['pan://state', 'pan://progress', 'pan://health', 'pan://links', 'pan://cost', 'pan://findings']) {
         const body = read(uri);
         assert.ok(body && typeof body === 'object' && Object.keys(body).length > 0,
           `${uri} returned an empty object on a seeded project`);
       }
+    } finally {
+      cleanup(proj);
+    }
+  });
+
+  test('pan://findings returns the findings a recorded verdict left in the ledger', () => {
+    const proj = createTempProject();
+    try {
+      fs.mkdirSync(path.join(proj, '.planning', 'phases', '01-alpha'), { recursive: true });
+      const findings = require('../pan-wizard-core/bin/lib/findings.cjs');
+      const rec = findings.recordVerdict(proj, {
+        phase: '1',
+        text: '---\nstatus: gaps_found\ngaps:\n  - truth: "alpha greets"\n    status: failed\n    reason: "greet() is a stub"\n---\n',
+      });
+      assert.equal(rec.recorded, true, JSON.stringify(rec));
+      const s = createServer({ cwd: proj });
+      const body = JSON.parse(s.handle({ jsonrpc: '2.0', id: 1, method: 'resources/read', params: { uri: 'pan://findings' } }).result.contents[0].text);
+      assert.equal(body.contract, '1.0');
+      assert.equal(body.counts.total, 1);
+      assert.deepEqual([body.findings[0].class, body.findings[0].status, body.findings[0].agent], ['missing', 'open', 'pan-verifier']);
     } finally {
       cleanup(proj);
     }

@@ -448,20 +448,20 @@ Task(
 
 ## 11. Handle Checker Return
 
-- **`## VERIFICATION PASSED`:** Display confirmation, proceed to step 13.
-  ```bash
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type decision --category plan_verified \
-    --description "Plan-checker passed for phase ${PHASE_NUMBER}" \
-    --agent pan-plan-checker --impact trivial 2>/dev/null || true
-  ```
-- **`## ISSUES FOUND`:** Display issues, check iteration count, proceed to step 12.
-  ```bash
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type error --category plan_checker_issues \
-    --description "Plan-checker found issues in phase ${PHASE_NUMBER} plans" \
-    --agent pan-plan-checker --impact minor 2>/dev/null || true
-  ```
+Save the checker's returned text, verbatim and in full (including its closing `pan-verdict` block), to `{phase_dir}/{padded_phase}-plan-check.md` with the Write tool. Then record it, and branch on the record. The record also adds the issues to the findings ledger and logs the check to the trace; there is no separate trace call:
+
+```bash
+CHECK_FILE="{phase_dir}/{padded_phase}-plan-check.md"
+CHECK_VERDICT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${PHASE_NUMBER}" --agent pan-plan-checker --file "$CHECK_FILE" --raw 2>/dev/null) \
+  || CHECK_VERDICT=$(grep -q '^## VERIFICATION PASSED' "$CHECK_FILE" && echo passed || echo issues_found)
+```
+
+The fallback reads the heading when the report carries no valid `pan-verdict` block.
+
+- **`passed`:** Display confirmation, proceed to step 13.
+- **`issues_found`:** Display issues, check iteration count, proceed to step 12.
+
+Each re-check in the revision loop overwrites the same file and is recorded again as the next attempt. The issues a revision resolved are closed by that record.
 
 ## 12. Revision Loop (Max 3 Iterations)
 
@@ -509,6 +509,11 @@ After planner returns -> spawn checker again (step 10), increment iteration_coun
 Display: `Max iterations reached. {N} issues remain:` + issue list
 
 Offer: 1) Force proceed, 2) Provide guidance and retry, 3) Abandon
+
+**On "Force proceed":** record that planning continues past the remaining issues. Execution and the milestone audit will see them as deferred, with this reason:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "${PHASE_NUMBER}" --agent pan-plan-checker --open --as deferred --reason "force proceed after 3 plan revision iterations"
+```
 
 ## 13. Present Final Status
 

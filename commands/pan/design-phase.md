@@ -58,6 +58,14 @@ ELSE (default):
    - If it finds gaps (iteration 1) → `pan-designer` revises (address genuine gaps only), re-check.
    - If it finds gaps (iteration 2) → final revision, record remaining gaps as caveats.
    - **Max 2 revision iterations** (design → check → revise → check → final) — the same guardrail `plan-phase` uses with `pan-plan-checker`.
+   - **Record each check.** Save the checker's returned text verbatim to `{phase_dir}/{padded_phase}-design-check.md` with the Write tool. Record it and branch on the verdict it prints (`PASS` or `GAPS`):
+     ```bash
+     node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "{phase}" --agent pan-design-checker --file "{phase_dir}/{padded_phase}-design-check.md" --raw
+     ```
+     A re-check is the next attempt and closes the gaps it no longer reports. When the final iteration still has gaps, record them as the caveats they are before writing the design:
+     ```bash
+     node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "{phase}" --agent pan-design-checker --open --as deferred --reason "design caveat after 2 revision iterations"
+     ```
 5. **Write** `{phase}-design.md` to the phase directory and commit via `pan-tools commit`.
 6. **Present** results + next step (`/pan:plan-phase` — which will consume this design.md).
 </process>

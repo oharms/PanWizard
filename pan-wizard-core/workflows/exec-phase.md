@@ -425,13 +425,21 @@ Task(
 )
 ```
 
-3. Handle review results:
+3. **Save the report.** Use the Write tool to write the reviewer's returned text, verbatim and in full (including its closing `pan-verdict` block), to `{phase_dir}/{phase_number}-review.md`. The reviewer is read-only by design, so the orchestrator saves the report. `/pan:review-deep` and the findings ledger read this file.
+
+4. **Record the verdict, then act on it.** The record is what this step branches on. It also adds the findings to the ledger (`.planning/findings.jsonl`) and logs the verdict to the trace, so no separate trace call is needed:
+```bash
+REVIEW_FILE="{phase_dir}/{phase_number}-review.md"
+REVIEW_VERDICT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${PHASE_NUMBER}" --agent pan-reviewer --file "$REVIEW_FILE" --raw 2>/dev/null) \
+  || REVIEW_VERDICT=$(grep -A1 '^### Verdict' "$REVIEW_FILE" | tail -1 | tr -d ' ')
+```
+The fallback reads the word under `### Verdict` when the report carries no valid `pan-verdict` block.
 
 | Verdict | Action |
 |---------|--------|
 | `PASS` | Continue to verification |
-| `PASS_WITH_WARNINGS` | Report warnings, continue to verification |
-| `NEEDS_FIXES` | Present ERROR findings to user: "Fix before verification?" or "Continue anyway?" |
+| `PASS_WITH_WARNINGS` | Report the warnings, then record that the phase continues past them (below), and continue to verification |
+| `NEEDS_FIXES` | Present the ERROR findings to the user: "Fix before verification?" or "Continue anyway?" |
 
 ```
 ## Code Review Results
@@ -442,34 +450,60 @@ Task(
 {If errors: list top 5 with file:line}
 ```
 
-**If user chooses "Continue anyway":** Proceed to verification. Review findings are informational, not blocking.
+**Never continue past findings silently.** Whenever the phase moves on with review findings still open, record why. The reason is what a milestone audit later reports as tech debt:
+- `PASS_WITH_WARNINGS`:
+  ```bash
+  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "${PHASE_NUMBER}" --agent pan-reviewer --open --as deferred --reason "accepted at review: PASS_WITH_WARNINGS"
+  ```
+- **The user chooses "Continue anyway"** at `NEEDS_FIXES`: the same command with `--reason "continued past NEEDS_FIXES at the user's choice"`, then proceed to verification.
+- **The user chooses "Fix before verification"**: apply the fixes, then run the review once more (steps 2–4). The new record closes the findings it no longer reports.
 
-4. **Circular optimization — log reviewer corrections to trace bus (W1 fix):**
+5. **No separate trace logging.** The record logs `verdict_passed` or `verdict_failed` for the reviewer on every runtime. The `reviewer_correction` and `reviewer_warnings` trace calls that used to sit here read the error count from a shell variable nothing ever set.
 
-   When verdict is `NEEDS_FIXES`, write a `reviewer_correction` event so the optimizer can see the primary quality signal:
-   ```bash
-   # Extract error count from review output (parse "Errors: N" line)
-   REVIEW_ERROR_COUNT=$(echo "$REVIEW_OUTPUT" | grep -E "^- Errors: [0-9]+" | grep -oE "[0-9]+" | head -1)
-   REVIEW_ERROR_COUNT=${REVIEW_ERROR_COUNT:-1}
-   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-     --type error --category reviewer_correction \
-     --description "Phase ${PHASE_NUMBER} reviewer: NEEDS_FIXES — ${REVIEW_ERROR_COUNT} error(s) found" \
-     --agent pan-reviewer --impact major \
-     --context "{\"phase\":\"${PHASE_NUMBER}\",\"verdict\":\"NEEDS_FIXES\",\"error_count\":${REVIEW_ERROR_COUNT}}" \
-     2>/dev/null || true
+6. **Deep review — only when `--deep-review` is in $ARGUMENTS.** The security pass and cross-check that `/pan:review-deep` runs, done inline right after the normal review. If the normal review was skipped (`--skip-review` or `--fast`), say that `--deep-review` needs the review it builds on, and continue without it.
+
+   a. Spawn the hardener. Its output path is `.planning/reviews/${PHASE_NUMBER}/hardener.md`:
+   ```
+   Task(
+     subagent_type="pan-hardener",
+     model="$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-hardener --raw)",
+     prompt="
+       <files_to_read>
+       - {phase_dir}/{phase_number}-review.md (the first-pass review)
+       - the phase plans: {phase_dir}/*-plan.md
+       Changed files to audit:
+       ${CHANGED_FILES_LIST}
+       </files_to_read>
+       <output_path>.planning/reviews/${PHASE_NUMBER}/hardener.md</output_path>
+       <framework_scope>OWASP Top 10 (2025) and STRIDE, across every changed file.</framework_scope>
+     "
+   )
    ```
 
-   When verdict is `PASS_WITH_WARNINGS`, log a softer signal:
-   ```bash
-   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-     --type decision --category reviewer_warnings \
-     --description "Phase ${PHASE_NUMBER} reviewer: PASS_WITH_WARNINGS — warnings present" \
-     --agent pan-reviewer --impact trivial \
-     --context "{\"phase\":\"${PHASE_NUMBER}\",\"verdict\":\"PASS_WITH_WARNINGS\"}" \
-     2>/dev/null || true
+   b. Spawn the meta-reviewer on both first-pass reports. Its output path is `.planning/reviews/${PHASE_NUMBER}/meta.md`:
    ```
+   Task(
+     subagent_type="pan-meta-reviewer",
+     model="$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-meta-reviewer --raw)",
+     prompt="
+       <files_to_read>
+       - {phase_dir}/{phase_number}-review.md
+       - .planning/reviews/${PHASE_NUMBER}/hardener.md
+       </files_to_read>
+       <output_path>.planning/reviews/${PHASE_NUMBER}/meta.md</output_path>
+     "
+   )
+   ```
+   If either agent returns its report instead of writing the output path, save the returned text there with the Write tool before the merge.
 
-   When verdict is `PASS`, no trace event needed — clean passes are the expected baseline.
+   c. Merge the three reports:
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs review-deep merge "${PHASE_NUMBER}" \
+     --reviewer-file "{phase_dir}/{phase_number}-review.md" \
+     --hardener-file ".planning/reviews/${PHASE_NUMBER}/hardener.md" \
+     --meta-file ".planning/reviews/${PHASE_NUMBER}/meta.md"
+   ```
+   This writes `.planning/reviews/${PHASE_NUMBER}/deep-review.md` and prints its verdict (`ok` · `ok_with_minor` · `fix_before_merge` · `review_required` · `block`). Report the verdict and the finding count. On `review_required` or `block`, stop before verification and present the high and critical findings to the user, as with `NEEDS_FIXES`.
 </step>
 
 <step name="close_parent_artifacts">
@@ -539,31 +573,15 @@ Create verification.md.",
 )
 ```
 
-Read status:
+Record the verification and read its status:
 ```bash
-VERIF_STATUS=$(grep "^status:" "$PHASE_DIR"/*-verification.md | cut -d: -f2 | tr -d ' ')
+VERIF_FILE=$(ls "$PHASE_DIR"/*-verification.md 2>/dev/null | head -1)
+VERIF_STATUS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${PHASE_NUMBER}" --file "$VERIF_FILE" --raw 2>/dev/null) \
+  || VERIF_STATUS=$(grep "^status:" "$VERIF_FILE" | cut -d: -f2 | tr -d ' ')
 ```
+`findings record` reads the verdict from the verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`) and adds its findings to the ledger. A re-verification after a fix round is the next attempt: the gaps it no longer reports are closed, and the retry is logged. Recording the same file twice is a no-op, so verify-phase recording it too is safe. The grep fallback keeps the old reading when the record cannot parse the file.
 
-**P-1806 fix (v3.7.8):** the trace event for verify-phase outcome is logged HERE (in exec-phase.md after the verifier returns) rather than only at the end of verify-phase.md. When verification runs inline (orchestrator-as-verifier in auto mode, no separate Task spawn), the trace.log block at the bottom of verify-phase.md never executes — the orchestrator just writes verification.md and continues. By logging here, the event fires regardless of the verification path taken. Surfaced by the wookie autonomous build (v3.7.5–v3.7.7): all 5 phases used inline verification, no `verification_passed` events appeared in the trace despite v3.7.5 adding the trace block to verify-phase.md.
-
-```bash
-if [ "$VERIF_STATUS" = "passed" ]; then
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type decision --category verification_passed \
-    --description "Phase ${PHASE_NUMBER} verification passed (logged from exec-phase, P-1806)" \
-    --agent pan-verifier --impact minor 2>/dev/null || true
-elif [ "$VERIF_STATUS" = "gaps_found" ]; then
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type error --category verification_gaps \
-    --description "Phase ${PHASE_NUMBER} verification found gaps" \
-    --agent pan-verifier --impact major 2>/dev/null || true
-elif [ "$VERIF_STATUS" = "human_needed" ]; then
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type decision --category verification_human_needed \
-    --description "Phase ${PHASE_NUMBER} verification awaiting human review" \
-    --agent pan-verifier --impact minor 2>/dev/null || true
-fi
-```
+**Trace logging happens in the record.** The record above logs the verification outcome (`verdict_passed`, `verdict_failed` or `verdict_needs_human`) here, after the verifier returns. That covers inline verification too, which is the reason P-1806 moved the trace call here (v3.7.8). No separate `optimize trace log` call is needed.
 
 | Status | Action |
 |--------|--------|

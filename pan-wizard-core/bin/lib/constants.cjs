@@ -541,6 +541,15 @@ const HEALTH_STATUS = { HEALTHY: 'healthy', DEGRADED: 'degraded', BROKEN: 'broke
 /** Max JSON payload size before writing to tmpfile (bytes) */
 const MAX_JSON_SIZE = 50000;
 
+/**
+ * Shape version of the machine-readable state JSON: `state` (load), `state json`,
+ * `progress` (json) and the MCP resources that wrap them (market item M17).
+ * Additive rule: fields may be added within a major version and are never renamed
+ * or removed; readers accept any 1.x and ignore fields they do not know. A rename
+ * or removal is a major bump ("2.0").
+ */
+const STATE_CONTRACT = '1.0';
+
 /** Width of progress bar in status display (character count) */
 const PROGRESS_BAR_WIDTH = 10;
 
@@ -806,6 +815,7 @@ module.exports = {
   HEALTH_STATUS,
   FOREIGN_PLANNING_MARKERS,
   MAX_JSON_SIZE,
+  STATE_CONTRACT,
   PROGRESS_BAR_WIDTH,
   MAX_SLUG_LENGTH,
   FILLED_BLOCK,

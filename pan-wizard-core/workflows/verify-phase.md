@@ -321,21 +321,11 @@ If human_needed: list items requiring human testing.
 
 Orchestrator routes: `passed` → update_roadmap | `gaps_found` → create/execute fixes, re-verify | `human_needed` → present to user.
 
-**Circular optimization — log verification outcome:**
+**Record the verification.** The record adds its findings to the ledger and logs the outcome to the trace (`verdict_passed`, `verdict_failed` or `verdict_needs_human`). A re-verification is the next attempt, and it closes the gaps it no longer reports:
 ```bash
-# Map status to impact and event type
-if [ "${STATUS}" = "passed" ]; then
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type decision --category verification_passed \
-    --description "Phase ${PHASE_NUMBER} verification passed (score: ${SCORE})" \
-    --agent pan-verifier --impact minor 2>/dev/null || true
-elif [ "${STATUS}" = "gaps_found" ]; then
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type error --category verification_gaps \
-    --description "Phase ${PHASE_NUMBER} verification found gaps (score: ${SCORE})" \
-    --agent pan-verifier --impact major 2>/dev/null || true
-fi
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${PHASE_NUMBER}" --file "$REPORT_PATH" 2>/dev/null || true
 ```
+Recording the same report twice is a no-op, so exec-phase recording it again after this workflow returns is safe.
 </step>
 
 </process>

@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { safeReadFile, loadConfig, isGitIgnored, isGitRepo, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, resolveModelDetailed, resolveEffortInternal, detectProvider, resolveTierToModel, estimateCostMultiplier, MODEL_PROFILES, output, error, findPhaseInternal, scanPendingTodos, toPosix } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
-const { PHASES_DIR, MILESTONES_DIR, QUICK_DIR, STATE_FILE, ROADMAP_FILE, PROJECT_FILE, PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, CONTEXT_SUFFIX, UAT_SUFFIX, VERIFICATION_SUFFIX, isPlanFile, isSummaryFile, ARCHIVE_DIR_RE, PHASE_DIR_RE, CONTEXT_WINDOW, WARNING_THRESHOLD, CRITICAL_THRESHOLD, VALID_COMMIT_TYPES, DEFAULT_SENSITIVE_PATTERNS } = require('./constants.cjs');
+const { PHASES_DIR, MILESTONES_DIR, QUICK_DIR, STATE_FILE, ROADMAP_FILE, PROJECT_FILE, PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, CONTEXT_SUFFIX, UAT_SUFFIX, VERIFICATION_SUFFIX, isPlanFile, isSummaryFile, ARCHIVE_DIR_RE, PHASE_DIR_RE, CONTEXT_WINDOW, WARNING_THRESHOLD, CRITICAL_THRESHOLD, VALID_COMMIT_TYPES, DEFAULT_SENSITIVE_PATTERNS, STATE_CONTRACT } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, planningRel } = require('./utils.cjs');
 const { estimateTokens } = require('./context-budget.cjs');
 const { collectPhaseSummaries, readErrorPatterns, appendErrorPattern, appendSessionSummary, parseLearnings, formatLearningEntry, cmdLearningsExtract, cmdLearningsList, cmdLearningsPrune } = require('./commands-learnings.cjs');
@@ -692,6 +692,7 @@ function cmdProgressRender(cwd, format, raw) {
   } else {
     // JSON format
     output({
+      contract: STATE_CONTRACT,
       milestone_version: milestone.version,
       milestone_name: milestone.name,
       phases,

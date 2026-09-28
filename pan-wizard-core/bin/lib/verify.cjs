@@ -22,6 +22,7 @@ const { runDriftCheck, parseConventionRules, checkFileConventions, calculateDrif
 const { collectVerificationStats, countRoadmapPhases, groupGapPatterns, cmdRetro } = require('./verify-retro.cjs');
 const { detectInstalledRuntimes, validateRuntimeInstall, cmdValidateDeployment } = require('./verify-deploy.cjs');
 const { cmdPreflight, cmdDepsValidate } = require('./verify-preflight.cjs');
+const { scopePhase, cmdVerifyScope } = require('./verify-scope.cjs');
 const { planningRootRel } = require('./planning-root.cjs');
 
 /**
@@ -1535,6 +1536,8 @@ module.exports = {
   cmdVerifyReconcile,
   scanStubs,
   cmdVerifyStubs,
+  scopePhase,
+  cmdVerifyScope,
   cmdValidateConsistency,
   cmdValidateHealth,
   cmdPreflight,

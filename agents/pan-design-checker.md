@@ -80,4 +80,22 @@ asserting a gap that forces unnecessary rework.
 check → revise → check → final) — the same guardrail `plan-phase` uses with
 `pan-plan-checker`. On the final iteration, report remaining gaps as caveats
 rather than blocking indefinitely.
+
+**Machine verdict (required).** End the verdict with a `pan-verdict` block. The
+contract is in `~/.claude/pan-wizard-core/references/verdict-contract.md`. How to fill it:
+- `verdict` is `PASS` or `GAPS`, and `outcome` is `pass` or `fail`.
+- Add one finding per gap, in your ranked order.
+- The class follows the dimension: requirement coverage → `missing`, architecture
+  conformance → `contradicts`, threat coverage → `risk`, scope discipline →
+  `unrequested`, every other dimension → `partial`.
+- Each gap is `high`. A gap you report as a caveat on the final iteration is `medium`.
+- `where` is the design section.
+
+The orchestrator records the block, so it must say what your verdict says.
+
+````markdown
+```pan-verdict
+{"contract":"1.0","agent":"pan-design-checker","phase":"{phase}","verdict":"GAPS","outcome":"fail","findings":[{"class":"missing","severity":"high","where":"{phase}-design.md#requirements","summary":"REQ-12 (export to CSV) maps to no design element"}]}
+```
+````
 </output_contract>

@@ -28,6 +28,7 @@
  *   history-digest                     Aggregate all summary.md data
  *   summary-extract <path> [--fields]  Extract structured data from summary.md
  *   state-snapshot                     Structured parse of state.md (alias: state snapshot)
+ *   findings record|list|dispose|debt  Judges' verdicts and their findings ledger (evidence loop)
  *   phase-plan-index <phase>           Index plans with waves and status
  *   websearch <query>                  Search web via Brave API (if configured)
  *     [--limit N] [--freshness day|week|month]
@@ -206,6 +207,7 @@ const cost = require('./lib/cost.cjs');
 const costRebuild = require('./lib/cost-rebuild.cjs');
 const preview = require('./lib/preview.cjs');
 const reviewDeep = require('./lib/review-deep.cjs');
+const findings = require('./lib/findings.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -331,7 +333,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links';
 
   if (!command) {
     error(USAGE);
@@ -607,8 +609,10 @@ async function main() {
         verify.cmdVerifyReconcile(cwd, args[2], raw);
       } else if (subcommand === 'stubs') {
         verify.cmdVerifyStubs(cwd, { gate: args.includes('--gate') }, raw);
+      } else if (subcommand === 'scope') {
+        verify.cmdVerifyScope(cwd, args[2], raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope');
       }
       break;
     }
@@ -1173,6 +1177,44 @@ async function main() {
         reviewDeep.cmdReviewDeepAnalyze(cwd, phaseNum, opts, raw);
       } else {
         error('Unknown review-deep subcommand. Available: merge, analyze');
+      }
+      break;
+    }
+
+    case 'findings': {
+      // Evidence loop (ADR-0049): judges' verdicts recorded from their reports, and
+      // the dispositions workflows give the findings they continue past.
+      const subcommand = args[1];
+      const filters = {
+        phase: getArgValue(args, '--phase'),
+        agent: getArgValue(args, '--agent'),
+        status: getArgValue(args, '--status'),
+        class: getArgValue(args, '--class'),
+        milestone: getArgValue(args, '--milestone'),
+      };
+      if (subcommand === 'record') {
+        findings.cmdFindingsRecord(cwd, {
+          phase: filters.phase,
+          agent: filters.agent,
+          file: getArgValue(args, '--file'),
+          text: getArgValue(args, '--text'),
+          stdin: args.includes('--stdin'),
+        }, raw);
+      } else if (subcommand === 'list') {
+        findings.cmdFindingsList(cwd, filters, raw);
+      } else if (subcommand === 'dispose') {
+        findings.cmdFindingsDispose(cwd, {
+          ids: findings.findingIdsIn(args.slice(2)),
+          phase: filters.phase,
+          agent: filters.agent,
+          open: args.includes('--open'),
+          as: getArgValue(args, '--as'),
+          reason: getArgValue(args, '--reason'),
+        }, raw);
+      } else if (subcommand === 'debt') {
+        findings.cmdFindingsDebt(cwd, { milestone: filters.milestone }, raw);
+      } else {
+        error('Unknown findings subcommand. Available: record, list, dispose, debt');
       }
       break;
     }
