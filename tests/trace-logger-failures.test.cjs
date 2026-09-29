@@ -40,10 +40,13 @@ function seed({ withAgentType = true, withMeta = true } = {}) {
   const sub = path.join(dir, SESSION, 'subagents');
   fs.mkdirSync(sub, { recursive: true });
   const parent = path.join(dir, `${SESSION}.jsonl`);
-  const map = { '{{PROJECT_DIR}}': project, '{{SESSION_ID}}': SESSION, '{{AGENT_ID}}': AGENT, '{{TRANSCRIPT_PATH}}': parent, '{{FAKE_SECRET}}': FAKE_SECRET };
+  const agentFile = path.join(sub, `agent-${AGENT}.jsonl`);
+  const map = {
+    '{{PROJECT_DIR}}': project, '{{SESSION_ID}}': SESSION, '{{AGENT_ID}}': AGENT, '{{TRANSCRIPT_PATH}}': parent,
+    '{{AGENT_TRANSCRIPT_PATH}}': agentFile, '{{SCRATCHPAD_DIR}}': path.join(project, 'scratchpad'), '{{FAKE_SECRET}}': FAKE_SECRET,
+  };
   const fx = substitute(fixture('subagent-tool-errors-claude.json'), map);
   fs.writeFileSync(parent, JSON.stringify({ type: 'user', sessionId: SESSION, message: { role: 'user', content: 'parent' } }) + '\n');
-  const agentFile = path.join(sub, `agent-${AGENT}.jsonl`);
   fs.writeFileSync(agentFile, fx.agent.map((r) => JSON.stringify(r)).join('\n') + '\n');
   if (withMeta) fs.writeFileSync(agentFile.replace(/\.jsonl$/, '.meta.json'), JSON.stringify(fx.meta));
   const payload = substitute(fixture('subagent-stop-claude.json'), map);

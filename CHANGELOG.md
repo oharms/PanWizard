@@ -77,7 +77,7 @@ fixed, or why. ADR-0049; spec `docs/specs/evidence_loop_featureai.md`.
 
 ### Fixed — Claude Code's own helper agents were booked as `unknown` spawns
 
-Claude Code fires `SubagentStop` for helper agents of its own: the compaction summariser, and one at almost every turn end of an interactive session. Their payload carries an `agent_id`, an empty `agent_type`, and an `agent_transcript_path` it never writes (a real `/compact` payload was captured on Claude Code 2.1.280 for the fixture).
+Claude Code fires `SubagentStop` for helper agents of its own: the compaction summariser, and one at almost every turn end of an interactive session. Their payload carries an `agent_id`, an empty `agent_type`, and an `agent_transcript_path` it never writes (a real `/compact` payload was captured on Claude Code 2.1.280 for the fixture). The test fixtures for a named agent's `SubagentStop` and for `Stop` were recaptured from the same version: each lacked keys the host sends, and the `SubagentStop` one lacked the `agent_transcript_path` the loggers prefer.
 
 The cost and trace loggers booked each one as an `unknown` zero-token spawn: 181 rows in three field projects in eleven days, which skewed spawn counts and `optimize learn`'s agent stats. Both loggers now record nothing for an agent instance that has no type and no transcript, and the trace logger no longer mints a session for one. A named spawn whose file is missing, and a payload with no agent instance at all, are recorded as before. Rows written before this fix stay in the ledgers.
 
