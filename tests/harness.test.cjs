@@ -521,3 +521,30 @@ describe('harness scenarios send only commands that exist', () => {
     assert.deepEqual(bad, []);
   });
 });
+
+describe('harness seeds: each seed\'s own test script runs green on this Node', () => {
+  // Found 2026-09-29: every seed ran `node --test tests/`, which Node 24 cannot run (a
+  // directory argument is no longer searched), so each seed's `npm test` failed before any
+  // work began. /pan:exec-phase rightly stopped at its test baseline and the markdown chain
+  // scenario failed for a reason that had nothing to do with PAN. Seeds now run `node --test`.
+  const { spawnSync } = require('child_process');
+  const seedsDir = path.join(ROOT, 'harness', 'seeds');
+  for (const seed of fs.readdirSync(seedsDir).filter((d) => fs.existsSync(path.join(seedsDir, d, 'package.json')))) {
+    test(`${seed}: npm test exits 0 as shipped`, () => {
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `pan-seed-${seed}-`));
+      try {
+        fs.cpSync(path.join(seedsDir, seed), tmp, { recursive: true });
+        // Run the seed's suite as a fresh test runner. Under `node --test` this process
+        // carries NODE_TEST_CONTEXT, and a nested `node --test` that inherits it runs in
+        // child mode and exits 0 even when its tests fail, which made this check vacuous
+        // on its first draft (measured: the old script exits 1 alone, 0 with the variable).
+        const env = { ...process.env };
+        delete env.NODE_TEST_CONTEXT;
+        const r = spawnSync('npm', ['test', '--silent'], { cwd: tmp, env, encoding: 'utf8', shell: process.platform === 'win32', timeout: 120000 });
+        assert.equal(r.status, 0, `${seed}'s npm test failed:\n${String(r.stdout || '').slice(-600)}${String(r.stderr || '').slice(-600)}`);
+      } finally {
+        cleanup(tmp);
+      }
+    });
+  }
+});

@@ -150,6 +150,10 @@ tokens twice. The update check already hands `SessionStart` back at once. Record
 
 The `pause-resume` harness scenario sent `/pan:resume-project`, which no command defines (`resume-project` is the workflow `/pan:resume` loads), so its paid step would have been refused before it reached the model. It now sends `/pan:resume`, and a tier-0 test checks that every scenario's `/pan:` prompt names a command in `commands/pan/`.
 
+### Fixed — the harness seeds' test script failed on Node 24
+
+Every harness seed ran `node --test tests/`. Node 24 no longer searches a directory argument, so each seed's `npm test` failed before any work began. The pre-release run of `markdown-exec-phase-chain` stopped there: `/pan:exec-phase` correctly refused to execute a phase whose test baseline was already red, while the native chain passed only because an executor rewrote the script itself. The seeds now run `node --test`, which finds the same files on every supported Node, and a model-free test runs each seed's `npm test` as shipped (it clears `NODE_TEST_CONTEXT`, without which a nested `node --test` exits 0 even when its tests fail). `tool-error-capture` had depended on that accidental failure; it now adds a deliberately failing test before its subagent runs the suite.
+
 ### Documented — the docs checked against this branch's code
 
 A full doc audit brought the docs in line with the code on this branch. Auditors read each doc against the code, and verifiers then checked every fix against the code before it stayed. The main corrections:
