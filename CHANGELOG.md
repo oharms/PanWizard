@@ -113,6 +113,14 @@ Copilot CLI's camelCase `subagentStop` payload (`sessionId`, `transcriptPath`,
 snake_case names the cost and trace loggers read. Both loggers now accept it. The
 agent's configured name wins over `agentType`, which only says built-in or custom.
 
+### Fixed — the Gemini live gate failed on every run, and would have passed a broken server
+
+`live-gate-gemini` asked Gemini CLI to list PAN's MCP server. A harness workspace is new on every run, so Gemini never trusted it and listed the server as `Disabled`: the gate failed every time once Gemini CLI was installed. Measured from the Gemini CLI 0.61.0 bundle: `GEMINI_CLI_HOME` moves every user-level file, including `.gemini/trustedFolders.json`, and folder trust is on by default.
+
+The scenario now runs every `gemini` call under a scratch home in the run's `<other>` directory, so the user's real `~/.gemini` is never read or written. A new `harness/scripts/gemini-trust.cjs` writes the same trust entry Gemini's own prompt writes, for exactly the scenario's workspace, and refuses a home that is the real one. The gate is now a contrast pair: `Disabled` while untrusted, then `Connected` once trusted.
+
+The check also got stronger. A broken registration lists as `Disconnected` with exit 0, and the old expectation (anything but `Disabled`) would have passed it. Harness `cli` steps take a step-scoped `env`, with placeholders filled.
+
 ### Fixed — the harness deployed stale hooks
 
 The package ships `hooks/dist/`, a gitignored build output. The release workflow and CI

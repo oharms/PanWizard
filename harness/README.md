@@ -87,7 +87,7 @@ and it counts as a tier-1 scenario's model step; its credits are not counted aga
 `mcp` (a JSON-RPC batch to the installed bridge; `cwd: "other"` runs it from a directory
 that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin).
 Any step may carry `timeoutMinutes` (default `budget.maxStepMinutes`); `pan` and `mcp` steps may
-name a `runtime`; `model` steps take `strictMcp` (default true); `mcp` steps take `cwd: "other"` to address the second workspace; `build` steps take `out`.
+name a `runtime`; `model` steps take `strictMcp` (default true) and `persistSession: true` (the host writes transcripts, which a step that measures transcript-reading hooks needs); `mcp` steps take `cwd: "other"` to address the second workspace; `build` steps take `out`; `cli` steps take `env` (`{"NAME": "value"}`, placeholders filled), which `live-gate-gemini` uses to give Gemini a scratch home under `<other>` instead of the user's real `~/.gemini`.
 Placeholders `<ws>`, `<other>`, `<repo>`, `<pkg>` are filled in argv, args, paths and prompts.
 
 Assertion kinds: `exit:<n>`, `file:<rel>`, `absent:<rel>`, `glob:<pattern>`,
@@ -113,7 +113,7 @@ The full set lives in `harness/scenarios/` (`ls harness/scenarios`); this table 
 | `plugin-agent-scope` | 1 | `/pan-plugin-selftest` inside the Claude plugin: `AGENT_SCOPE: scoped\|bare` |
 | `native-exec-waves-chain` | 2 | `/pan-exec-waves` on a seeded two-plan phase: every plan gets a summary and the phase a verification |
 | `markdown-exec-phase-chain` | 2 | The markdown twin on the same seed — the oracle for the chain comparison |
-| `live-gate-gemini` / `-opencode` | 0 | Ask the CLI itself whether it loaded PAN's MCP registration — skipped with reason where the CLI is absent |
+| `live-gate-gemini` / `-opencode` | 0 | Ask the CLI itself whether it loaded PAN's MCP registration — skipped with reason where the CLI is absent. The Gemini gate runs every `gemini` call against a scratch home under `<other>` and proves the trust precondition both ways: `Disabled` while untrusted, then `Connected` once it trusts its own workspace |
 | `focus-design-ab-original` / `-split` | 1 | The body-budget A/B: the shipped `/pan:focus-design` versus a split variant on the same seed and prompt (R21) |
 | `skill-doctor-context-cost` | 1 | `/skill-doctor`'s static context cost for PAN's skills; requires Claude Code 2.1.261+ |
 | `map-codebase-single-shot` | 1 | Single-shot map-codebase on a repo below the sharding threshold |

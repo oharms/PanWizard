@@ -364,3 +364,135 @@ describe('harness artifacts are built the way a release is', () => {
     assert.ok(build > -1 && pack > -1 && build < pack, 'build-hooks runs, and before the pack');
   });
 });
+
+// ── live-gate-gemini trusts its own workspace in a scratch home (2026-09-29) ─
+// A harness workspace is created fresh each run, so Gemini CLI never trusted it, and
+// the gate failed on every run once Gemini was installed. Every `gemini` call now runs
+// with GEMINI_CLI_HOME set to a scratch home under <other>; Gemini 0.61.0 reads every
+// user-level file from there, including <home>/.gemini/trustedFolders.json (measured
+// from its bundle). The outputs below are Gemini 0.61.0's own `mcp list` stderr for the
+// three states, captured 2026-09-29 with only the install path shortened.
+const GEMINI_UNTRUSTED = 'Warning: MCP servers are configured but disabled because this folder is untrusted.\nUser-level servers are also suppressed in untrusted folders to prevent accidental side-effects.\n\nConfigured MCP servers:\n\n○ pan: node D:\\ws\\.gemini\\pan-wizard-core\\mcp\\server.cjs (stdio) - Disabled\n';
+const GEMINI_CONNECTED = 'Configured MCP servers:\n\n✓ pan: node D:\\ws\\.gemini\\pan-wizard-core\\mcp\\server.cjs (stdio) - Connected\n';
+const GEMINI_BROKEN = 'Configured MCP servers:\n\n✗ pan: node D:\\ws\\.gemini\\pan-wizard-core\\mcp\\no-such-server.cjs (stdio) - Disconnected\n';
+
+describe('harness cli steps take a step-scoped env', () => {
+  const { stepEnv } = require('../harness/src/run.cjs');
+  test('stepEnv fills placeholders into the overrides and leaves the base untouched', () => {
+    const base = { PATH: 'p', KEEP: 'k' };
+    const env = stepEnv({ env: { GEMINI_CLI_HOME: '<other>/gemini-home', N: 1 } }, { ws: 'W', other: 'O', repo: 'R', pkg: 'P' }, base);
+    assert.deepEqual(env, { PATH: 'p', KEEP: 'k', GEMINI_CLI_HOME: 'O/gemini-home', N: '1' });
+    assert.deepEqual(base, { PATH: 'p', KEEP: 'k' }, 'pure: the base is not mutated');
+    assert.equal(stepEnv({}, {}, base), base, 'no env, no copy');
+  });
+
+  test('runStep hands the filled env to the child a cli step spawns', () => {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-harness-envcli-'));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-harness-envws-'));
+    const isWin = process.platform === 'win32';
+    fs.writeFileSync(path.join(bin, isWin ? 'fakeenvcli.cmd' : 'fakeenvcli'), isWin ? '@echo home=%GEMINI_CLI_HOME% 1>&2\r\n' : '#!/bin/sh\necho "home=$GEMINI_CLI_HOME" >&2\n', { mode: 0o755 });
+    const saved = { PATH: process.env.PATH, Path: process.env.Path };
+    process.env.PATH = bin + path.delimiter + (saved.PATH || '');
+    if (isWin) process.env.Path = process.env.PATH;
+    try {
+      const other = path.join(ws, 'other');
+      const r = runStep({ kind: 'cli', bin: 'fakeenvcli', args: [], env: { GEMINI_CLI_HOME: '<other>/gemini-home' }, expect: [], why: 'w' },
+        { ws, other, repo: ROOT, pkg: ROOT, runtime: 'claude', budget: { maxStepMinutes: 1 } });
+      assert.equal(r.code, 0, r.stderr);
+      assert.match(r.stderr, new RegExp(`home=${(other + '/gemini-home').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    } finally {
+      process.env.PATH = saved.PATH;
+      if (isWin) process.env.Path = saved.Path;
+      cleanup(bin);
+      cleanup(ws);
+    }
+  });
+
+  test('env is valid only on cli steps, with upper-case names and string values', () => {
+    const base = { id: 'x', tier: 0, description: 'd', why: 'w', seed: 'empty', install: null };
+    const cli = (env) => ({ ...base, steps: [{ kind: 'cli', bin: 'gemini', args: ['mcp', 'list'], env, expect: ['exit:0'], why: 'w' }] });
+    assert.deepEqual(validateScenario(cli({ GEMINI_CLI_HOME: '<other>/gemini-home' })), []);
+    for (const bad of [{ gemini_cli_home: 'x' }, { GEMINI_CLI_HOME: 1 }, ['GEMINI_CLI_HOME']]) {
+      assert.ok(validateScenario(cli(bad)).some((e) => /env is only for cli steps/.test(e)), JSON.stringify(bad));
+    }
+    const onPan = { ...base, steps: [{ kind: 'pan', argv: ['state'], env: { A: 'b' }, expect: ['exit:0'], why: 'w' }] };
+    assert.ok(validateScenario(onPan).some((e) => /env is only for cli steps/.test(e)));
+  });
+});
+
+describe('harness gemini-trust.cjs trusts one workspace in a scratch home', () => {
+  const script = path.join(ROOT, 'harness', 'scripts', 'gemini-trust.cjs');
+  const { spawnSync } = require('child_process');
+  const run = (args, env) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
+
+  test('writes {"<real ws path>": "TRUST_FOLDER"} into <home>/.gemini/trustedFolders.json and keeps other entries', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-gemini-home-'));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-gemini-ws-'));
+    try {
+      fs.mkdirSync(path.join(home, '.gemini'));
+      fs.writeFileSync(path.join(home, '.gemini', 'trustedFolders.json'), JSON.stringify({ '/some/where': 'DO_NOT_TRUST' }));
+      const r = run([home, ws]);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      const out = JSON.parse(r.stdout);
+      assert.equal(out.trusted, fs.realpathSync(ws));
+      assert.equal(out.entries, 2);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, '.gemini', 'trustedFolders.json'), 'utf8')),
+        { '/some/where': 'DO_NOT_TRUST', [fs.realpathSync(ws)]: 'TRUST_FOLDER' });
+    } finally { cleanup(home); cleanup(ws); }
+  });
+
+  test('refuses a home that is the real one, and a workspace that does not exist', () => {
+    // The "real" home is simulated: HOME/USERPROFILE point the child at a temp dir, so the
+    // refusal is tested without the test ever touching the user's real home.
+    const fakeReal = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-gemini-realhome-'));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-gemini-ws-'));
+    try {
+      const refused = run([fakeReal, ws], { HOME: fakeReal, USERPROFILE: fakeReal });
+      assert.equal(refused.status, 1);
+      assert.match(JSON.parse(refused.stdout).error, /refusing to write into the real home/);
+      assert.equal(fs.existsSync(path.join(fakeReal, '.gemini')), false, 'nothing was written');
+      const missing = run([path.join(fakeReal, 'scratch'), path.join(ws, 'nope')]);
+      assert.equal(missing.status, 1);
+      assert.match(JSON.parse(missing.stdout).error, /workspace does not exist/);
+    } finally { cleanup(fakeReal); cleanup(ws); }
+  });
+});
+
+describe('live-gate-gemini: isolated trust, a contrast pair, and a measurement that fails on a broken registration', () => {
+  const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'live-gate-gemini');
+  const geminiSteps = s.steps.filter((st) => st.kind === 'cli' && st.bin === 'gemini');
+
+  test('every gemini call runs under a scratch GEMINI_CLI_HOME inside <other>, never the real home', () => {
+    assert.ok(geminiSteps.length >= 3);
+    for (const st of geminiSteps) assert.match(String(st.env && st.env.GEMINI_CLI_HOME), /^<other>\//, JSON.stringify(st.args));
+    const trust = s.steps.find((st) => st.kind === 'sh' && st.script === 'gemini-trust.cjs');
+    assert.ok(trust, 'the scenario trusts its workspace itself');
+    assert.deepEqual(trust.args, [geminiSteps[0].env.GEMINI_CLI_HOME, '<ws>'], 'the same scratch home, the scenario\'s own workspace');
+  });
+
+  test('order: untrusted contrast, then trust, then the Connected measurement', () => {
+    const idx = (pred) => s.steps.findIndex(pred);
+    const contrast = idx((st) => st.kind === 'cli' && (st.expect || []).some((e) => /- Disabled/.test(e)));
+    const trust = idx((st) => st.kind === 'sh' && st.script === 'gemini-trust.cjs');
+    const measure = idx((st) => st.kind === 'cli' && (st.expect || []).some((e) => /- Connected/.test(e)));
+    assert.ok(contrast > -1 && trust > contrast && measure > trust, `${contrast} < ${trust} < ${measure}`);
+  });
+
+  test('on Gemini\'s real output, the measurement passes only when PAN\'s server connects', () => {
+    const measure = s.steps.find((st) => st.kind === 'cli' && (st.expect || []).some((e) => /- Connected/.test(e)));
+    const verdict = (stderr) => check(measure.expect, { code: 0, stdout: '', stderr }, os.tmpdir());
+    assert.deepEqual(verdict(GEMINI_CONNECTED), []);
+    assert.notDeepEqual(verdict(GEMINI_BROKEN), [], 'a broken registration (Disconnected) must fail the gate');
+    assert.notDeepEqual(verdict(GEMINI_UNTRUSTED), [], 'an untrusted folder (Disabled) must fail the gate');
+    // The expectation this replaced accepted anything but Disabled, so a broken registration passed.
+    assert.equal(checkOne('stderr~pan: .*\\(stdio\\) - (?!Disabled)', { code: 0, stdout: '', stderr: GEMINI_BROKEN }, os.tmpdir()), null);
+  });
+
+  test('on Gemini\'s real output, the contrast step recognises the untrusted state and nothing else', () => {
+    const contrast = s.steps.find((st) => st.kind === 'cli' && (st.expect || []).some((e) => /- Disabled/.test(e)));
+    const verdict = (stderr) => check(contrast.expect, { code: 0, stdout: '', stderr }, os.tmpdir());
+    assert.deepEqual(verdict(GEMINI_UNTRUSTED), []);
+    assert.notDeepEqual(verdict(GEMINI_CONNECTED), []);
+    assert.notDeepEqual(verdict(GEMINI_BROKEN), []);
+  });
+});
