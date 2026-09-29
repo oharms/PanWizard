@@ -40,9 +40,13 @@ if (!fs.existsSync(wsArg)) fail(`workspace does not exist: ${wsArg}`);
 const ws = fs.realpathSync(path.resolve(wsArg));
 const dir = path.join(home, '.gemini');
 const file = path.join(dir, 'trustedFolders.json');
+// Read, then write: no exists-check first, so nothing can change between a check and
+// the read (CodeQL js/file-system-race). A missing file is an empty trust map.
 let entries = {};
-if (fs.existsSync(file)) {
-  try { entries = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { fail(`unparseable ${file}`); }
+let raw = null;
+try { raw = fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') fail(`cannot read ${file}: ${e.message}`); }
+if (raw !== null) {
+  try { entries = JSON.parse(raw); } catch { fail(`unparseable ${file}`); }
   if (!entries || typeof entries !== 'object' || Array.isArray(entries)) fail(`${file} is not a JSON object`);
 }
 entries[ws] = 'TRUST_FOLDER';

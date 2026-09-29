@@ -154,6 +154,10 @@ The `pause-resume` harness scenario sent `/pan:resume-project`, which no command
 
 Every harness seed ran `node --test tests/`. Node 24 no longer searches a directory argument, so each seed's `npm test` failed before any work began. The pre-release run of `markdown-exec-phase-chain` stopped there: `/pan:exec-phase` correctly refused to execute a phase whose test baseline was already red, while the native chain passed only because an executor rewrote the script itself. The seeds now run `node --test`, which finds the same files on every supported Node, and a model-free test runs each seed's `npm test` as shipped (it clears `NODE_TEST_CONTEXT`, without which a nested `node --test` exits 0 even when its tests fail). `tool-error-capture` had depended on that accidental failure; it now adds a deliberately failing test before its subagent runs the suite.
 
+### Security — SHA-256 event signatures, and no check-then-read in the Gemini trust script
+
+CodeQL flagged the loggers' duplicate-event signature: SHA-1 over a payload that carries a session id, which the new Copilot normaliser made visible to it. The signature is a dedup key, not a security boundary, but it is now SHA-256, cut to the same 40 hex characters so persisted `event_sig` values keep their shape. A signature written before the upgrade will not match one written after it, so at most one re-fired event at that boundary goes unrecognised. `harness/scripts/gemini-trust.cjs` no longer checks that the trust file exists before reading it; a missing file reads as an empty map. CI's gitleaks step now prints each finding's file, line, commit and rule, still redacted.
+
 ### Documented — the docs checked against this branch's code
 
 A full doc audit brought the docs in line with the code on this branch. Auditors read each doc against the code, and verifiers then checked every fix against the code before it stayed. The main corrections:

@@ -441,10 +441,13 @@ const MAX_SEEN_TRANSCRIPTS = 16;
 // reinstates the duplicate-record bug. It is the one UNDER-count residual —
 // distinct from the evicted-marker phantom (over-count) and from N29.
 //
-// Null when unserializable → fail open.
+// Null when unserializable → fail open. SHA-256 cut to the 40 hex characters the
+// SHA-1 it replaced produced, so persisted `event_sig` values keep their shape: a
+// dedup key, not a security boundary, but CodeQL rightly flags SHA-1 over a payload
+// that carries a session id (2026-09-29).
 function eventSignature(data) {
   try {
-    return crypto.createHash('sha1').update(JSON.stringify(data)).digest('hex');
+    return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex').slice(0, 40);
   } catch { return null; }
 }
 

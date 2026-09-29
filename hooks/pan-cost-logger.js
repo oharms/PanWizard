@@ -458,10 +458,13 @@ const MAX_CURSOR_KEYS = 512;
 // marker phantom (an over-count) and from N29 (concurrent same-type siblings).
 //
 // Returns null when the payload cannot be serialized — callers then fail OPEN
-// (record, never mark).
+// (record, never mark). SHA-256 cut to the 40 hex characters the SHA-1 it replaced
+// produced, so persisted `event_sig` values keep their shape: a dedup key, not a
+// security boundary, but CodeQL rightly flags SHA-1 over a payload that carries a
+// session id (2026-09-29).
 function eventSignature(data) {
   try {
-    return crypto.createHash('sha1').update(JSON.stringify(data)).digest('hex');
+    return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex').slice(0, 40);
   } catch { return null; }
 }
 
