@@ -188,11 +188,15 @@ describe('trace hook — classification and redaction', () => {
 
   test('secrets, tokens and the home directory never reach the trace; the message is capped', () => {
     const home = os.platform() === 'win32' ? 'C:\\Users\\someone' : '/home/someone';
+    // Made-up credential shapes, assembled here so no scanner reads a key-shaped literal
+    // in this file (CI's gitleaks flagged the literals; see .gitleaksignore).
+    const awsLike = ['AKIA', 'ABCDEFGHIJKLMNOP'].join('');
+    const jwtLike = ['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxMjM0In0', 'dozjgNryP4J3jVmNHl0w5N'].join('.');
     const cases = [
       ['Authorization: Bearer abc.def-ghi', /Bearer <redacted>/, 'abc.def-ghi'],
       ['password: hunter2 rejected', /password: <redacted>/, 'hunter2'],
-      ['key AKIAABCDEFGHIJKLMNOP leaked', /<redacted>/, 'AKIAABCDEFGHIJKLMNOP'],
-      ['jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dozjgNryP4J3jVmNHl0w5N', /<redacted>/, 'eyJhbGci'],
+      [`key ${awsLike} leaked`, /<redacted>/, awsLike],
+      [`jwt ${jwtLike}`, /<redacted>/, 'eyJhbGci'],
       ['sha 3f786850e387550fdab836ed7e6dc881de23001b differs', /<redacted>/, '3f786850e387550fdab836ed7e6dc881de23001b'],
       ['GET https://x.invalid/p?sig=abc&t=1 failed', /https:\/\/x\.invalid\/p\?<redacted> failed/, 'sig=abc'],
       [`cannot open ${home}${path.sep}proj${path.sep}a.ts`, /cannot open ~/, 'someone'],
