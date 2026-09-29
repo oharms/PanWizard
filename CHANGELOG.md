@@ -5,7 +5,7 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.32.0] - 2026-09-29
 
 ### Added — the evidence loop: judges' verdicts on the record, failures the optimiser can learn from
 
