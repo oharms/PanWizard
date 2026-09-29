@@ -17,6 +17,7 @@ const {
   checkDocStaleness,
   checkOldCommandNames,
   checkVersionCrossRef,
+  listBatchFiles,
   readLatestBatch,
   categoryFilter,
   readAutoRun,
@@ -426,24 +427,144 @@ describe('readLatestBatch', () => {
     assert.equal(readLatestBatch(tmpDir), null);
   });
 
-  test('reads the oldest batch file first', () => {
+  test('reads the newest batch, by the date in its name', () => {
+    // Until 2026-09-29 this read the OLDEST (v2.10.0, E-12). Nothing marks a batch
+    // finished, so that returned a project's first batch forever, while /pan:focus-exec
+    // ran the newest one.
     const focusDir = path.join(tmpDir, '.planning', 'focus');
     fs.mkdirSync(focusDir, { recursive: true });
-    fs.writeFileSync(path.join(focusDir, 'batch-2026-01-01.json'), JSON.stringify({ date: '2026-01-01', batch: [{ id: 'old' }] }));
     fs.writeFileSync(path.join(focusDir, 'batch-2026-03-01.json'), JSON.stringify({ date: '2026-03-01', batch: [{ id: 'new' }] }));
+    fs.writeFileSync(path.join(focusDir, 'batch-2026-01-01.json'), JSON.stringify({ date: '2026-01-01', batch: [{ id: 'old' }] }));
 
     const batch = readLatestBatch(tmpDir);
-    assert.ok(batch);
-    assert.equal(batch.date, '2026-01-01');
-    assert.equal(batch.batch[0].id, 'old');
+    assert.equal(batch.file, 'batch-2026-03-01.json');
+    assert.equal(batch.items_key, 'batch');
+    assert.equal(batch.batch[0].id, 'new');
   });
 
-  test('returns null for malformed JSON', () => {
+  test('a malformed newest batch is reported by name, never replaced by an older one', () => {
     const focusDir = path.join(tmpDir, '.planning', 'focus');
     fs.mkdirSync(focusDir, { recursive: true });
-    fs.writeFileSync(path.join(focusDir, 'batch-2026-01-01.json'), 'not json');
+    fs.writeFileSync(path.join(focusDir, 'batch-2026-01-01.json'), JSON.stringify({ batch: [{ id: 'old' }] }));
+    fs.writeFileSync(path.join(focusDir, 'batch-2026-02-01.json'), 'not json');
 
-    assert.equal(readLatestBatch(tmpDir), null);
+    const batch = readLatestBatch(tmpDir);
+    assert.equal(batch.file, 'batch-2026-02-01.json');
+    assert.equal(batch.error, 'batch-2026-02-01.json is not valid JSON');
+    assert.deepEqual(batch.batch, []);
+  });
+});
+
+// ─── readLatestBatch: the shapes batch files really have (2026-09-29) ────────
+// A field project reported `pan-tools focus exec` throwing a TypeError on its oldest
+// batch. Measured the same day across four projects, structure only: 1 of 102 batch
+// files had a `batch` array (the `focus plan` shape). Most keep the list under `items`,
+// often with `batch` holding the batch's name, and most names carry a slug after the date.
+
+describe('readLatestBatch — the batch shapes PAN and agents write', () => {
+  const focusDir = () => path.join(tmpDir, '.planning', 'focus');
+  const write = (name, data, mtimeSec) => {
+    fs.mkdirSync(focusDir(), { recursive: true });
+    const f = path.join(focusDir(), name);
+    fs.writeFileSync(f, JSON.stringify(data));
+    if (mtimeSec) fs.utimesSync(f, mtimeSec, mtimeSec);
+  };
+
+  test('the /pan:focus-auto shape keeps its items under `items`', () => {
+    // The shape commands/pan/focus-auto.md tells the agent to write.
+    write('batch-2026-09-20-security.json', {
+      date: '2026-09-20', mode: 'bugfix', budget: 10, allocated: 1,
+      items: [{ order: 1, id: 'S-1', title: 't', priority: 'P1', size: 'XS', points: 1, tier: 'MICRO', file: 'a.js', fix: 'f' }],
+      deferred: [],
+    });
+    const b = readLatestBatch(tmpDir);
+    assert.equal(b.items_key, 'items');
+    assert.deepEqual(b.batch.map((i) => i.id), ['S-1']);
+    assert.equal(b.error, undefined);
+  });
+
+  test('the field shape: `batch` names the batch and the list is `items`', () => {
+    write('batch-2026-09-21-v02-w1.json', { batch: 'v02-w1', mode: 'balanced', budget: 20, items: [{ id: 'P1-1', tier: 'STANDARD' }] });
+    const b = readLatestBatch(tmpDir);
+    assert.equal(b.batch_name, 'v02-w1');
+    assert.equal(b.items_key, 'items');
+    assert.deepEqual(b.batch, [{ id: 'P1-1', tier: 'STANDARD' }]);
+  });
+
+  test('a batch with neither list is reported with the reason', () => {
+    write('batch-2026-09-22-ladder.json', { batch: 'ladder', tasks: [{ id: 'T1' }] });
+    const b = readLatestBatch(tmpDir);
+    assert.equal(b.error, 'batch-2026-09-22-ladder.json has no item list (expected a "batch" or "items" array)');
+    assert.equal(b.items_key, null);
+    assert.deepEqual(b.batch, []);
+  });
+
+  test('order: the date in the name, then the time it was written, then the name', () => {
+    const t = Math.floor(Date.now() / 1000);
+    write('batch-2026-09-20.json', { batch: [{ id: 'plan' }] }, t - 120);
+    write('batch-2026-09-20-security.json', { items: [{ id: 'auto' }] }, t - 60);
+    write('batch-2026-09-19-zzz.json', { items: [{ id: 'yesterday' }] }, t);
+    // A plain name sort ranks batch-2026-09-20.json last ('.' sorts after '-').
+    assert.deepEqual(listBatchFiles(tmpDir), ['batch-2026-09-19-zzz.json', 'batch-2026-09-20.json', 'batch-2026-09-20-security.json']);
+    assert.equal(readLatestBatch(tmpDir).batch[0].id, 'auto');
+  });
+});
+
+describe('focus exec and classify-stages on the batches projects really have', () => {
+  const focusDir = () => path.join(tmpDir, '.planning', 'focus');
+
+  test('focus exec runs the newest batch and names the file it read', () => {
+    // The newest batch is written by PAN's own `focus plan`; an older agent-written batch
+    // sits beside it. The old code read the older one and threw on `batch.batch.filter`.
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), '## Phase 01: Setup\n**Goal:** Setup\n');
+    const p1 = path.join(tmpDir, '.planning', 'phases', '01-setup');
+    fs.mkdirSync(p1, { recursive: true });
+    fs.writeFileSync(path.join(p1, 'plan.md'), '---\npriority: P3\neffort: S\n---\n# Plan');
+    const plan = runPanTools('focus plan', tmpDir);
+    assert.ok(plan.success, plan.error);
+    const planned = JSON.parse(plan.output).batch_file;
+    fs.writeFileSync(path.join(focusDir(), 'batch-2020-01-01-v02-w1.json'), JSON.stringify({ batch: 'v02-w1', items: [{ id: 'old', tier: 'MICRO' }] }));
+
+    const r = runPanTools('focus exec --dry-run', tmpDir);
+    assert.ok(r.success, r.error);
+    const data = JSON.parse(r.output);
+    assert.equal(data.batch_file, planned);
+    assert.equal(data.total_items, 1);
+  });
+
+  test('focus exec reads the field shape and skips entries that are not objects when counting tiers', () => {
+    fs.mkdirSync(focusDir(), { recursive: true });
+    fs.writeFileSync(path.join(focusDir(), 'batch-2026-09-21-v02-w1.json'),
+      JSON.stringify({ batch: 'v02-w1', mode: 'balanced', budget: 20, items: [{ id: 'a', tier: 'MICRO' }, null, 'loose', { id: 'b', tier: 'FULL' }] }));
+    const r = runPanTools('focus exec --dry-run', tmpDir);
+    assert.ok(r.success, r.error);
+    const data = JSON.parse(r.output);
+    assert.deepEqual(data.tiers, { micro: 1, standard: 0, full: 1 });
+    assert.equal(data.total_items, 4);
+    assert.equal(data.batch_file, '.planning/focus/batch-2026-09-21-v02-w1.json');
+  });
+
+  test('a newest batch with no item list is refused cleanly by both verbs, naming the file', () => {
+    fs.mkdirSync(focusDir(), { recursive: true });
+    fs.writeFileSync(path.join(focusDir(), 'batch-2026-09-01.json'), JSON.stringify({ batch: [{ id: 'older', tier: 'MICRO' }] }));
+    fs.writeFileSync(path.join(focusDir(), 'batch-2026-09-22-ladder.json'), JSON.stringify({ batch: 'ladder', tasks: [{ id: 'T1' }] }));
+    for (const cmd of ['focus exec --dry-run', 'focus classify-stages']) {
+      const r = runPanTools(cmd, tmpDir);
+      assert.equal(r.success, false, `${cmd} must refuse an unusable newest batch`);
+      assert.doesNotMatch(`${r.error}\n${r.output}`, /TypeError/);
+      assert.match(JSON.parse(r.output).error, /^batch-2026-09-22-ladder\.json has no item list/);
+    }
+  });
+
+  test('classify-stages classifies the batch focus exec runs', () => {
+    fs.mkdirSync(focusDir(), { recursive: true });
+    fs.writeFileSync(path.join(focusDir(), 'batch-2026-01-01.json'), JSON.stringify({ batch: [{ id: 'old', tier: 'FULL' }] }));
+    fs.writeFileSync(path.join(focusDir(), 'batch-2026-03-01-auto.json'), JSON.stringify({ items: [{ id: 'A', tier: 'MICRO' }, { id: 'B', tier: 'MICRO' }] }));
+    const r = runPanTools('focus classify-stages', tmpDir);
+    assert.ok(r.success, r.error);
+    const data = JSON.parse(r.output);
+    assert.deepEqual(data.waves.map((w) => w.map((i) => i.id)), [['A', 'B']]);
+    assert.equal(data.parallelism_hint, 'emit-micro-in-parallel');
   });
 });
 

@@ -81,6 +81,12 @@ Claude Code fires `SubagentStop` for helper agents of its own: the compaction su
 
 The cost and trace loggers booked each one as an `unknown` zero-token spawn: 181 rows in three field projects in eleven days, which skewed spawn counts and `optimize learn`'s agent stats. Both loggers now record nothing for an agent instance that has no type and no transcript, and the trace logger no longer mints a session for one. A named spawn whose file is missing, and a payload with no agent instance at all, are recorded as before. Rows written before this fix stay in the ledgers.
 
+### Fixed — `pan-tools focus exec` crashed on the batches agents write, and read the oldest batch
+
+A field project reported `pan-tools focus exec` throwing a TypeError. Two defects combined. The CLI read the **oldest** batch in `.planning/focus/`: v2.10.0 sorted ascending so "older unfinished batches execute before newer ones", but nothing marks a batch finished, so it returned the first batch a project ever planned, every time. It also read the items only from a `batch` array, the shape `focus plan` writes. `/pan:focus-auto` documents `items`, and agent-written batches put the list under `items`, often with `batch` holding the batch's name: across four field projects, 1 of 102 batch files had a `batch` array. A name in `batch` threw `batch.batch.filter is not a function`, and a file with no `batch` key threw on `.length`.
+
+`focus exec` and `focus classify-stages` now read the newest batch, ordered by the date in the file name and then by the time it was written. That is the batch `/pan:focus-exec` runs; its Stage 3.0 had been classifying a different batch from the one it executed. Items come from `batch` or `items`, and entries that are not objects no longer break the tier count. A newest batch with neither list, or with invalid JSON, is refused with an error that names the file; an older batch never stands in. `batch_file` now names the file that was read (it was rebuilt from the batch's `date`, which does not match slugged names), and `preflight batch` names the same batch.
+
 ### Fixed — `/pan:review-deep` never saw the reviewer's findings
 
 `/pan:review-deep` read `.planning/phases/<N>/review.md`. Nothing wrote that file (the

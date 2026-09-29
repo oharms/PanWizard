@@ -418,6 +418,7 @@
     "computeRealityScore:function",
     "determineContinuation:function",
     "determineStopReason:function",
+    "listBatchFiles:function",
     "readAutoRun:function",
     "readLatestBatch:function",
     "sortByPriority:function",

@@ -158,6 +158,29 @@ describe('preflight command', () => {
     assert.ok(batchCheck.detail.includes('batch-2026-01-01.json'), 'should show batch filename');
   });
 
+  test('names the batch focus exec would run: the newest, not the last name in the listing', () => {
+    // Two batches planned the same day; the slugged one was written later. A name sort
+    // puts batch-2026-02-01.json last ('.' sorts after '-'), and readdir order is not
+    // sorted at all on every filesystem. The shared ordering in focus.cjs decides.
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'state.md'),
+      '# Project State\n\n**Current Phase:** 01\n\n## Blockers\n- None\n'
+    );
+    const focusDir = path.join(tmpDir, '.planning', 'focus');
+    fs.mkdirSync(focusDir, { recursive: true });
+    const t = Math.floor(Date.now() / 1000);
+    fs.writeFileSync(path.join(focusDir, 'batch-2026-02-01.json'), JSON.stringify({ batch: [] }));
+    fs.utimesSync(path.join(focusDir, 'batch-2026-02-01.json'), t - 120, t - 120);
+    fs.writeFileSync(path.join(focusDir, 'batch-2026-02-01-security.json'), JSON.stringify({ items: [] }));
+    fs.utimesSync(path.join(focusDir, 'batch-2026-02-01-security.json'), t - 60, t - 60);
+
+    const result = runPanTools('preflight batch', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const batchCheck = JSON.parse(result.output).checks.find(c => c.name === 'batch_exists');
+    assert.strictEqual(batchCheck.passed, true);
+    assert.strictEqual(batchCheck.detail, 'batch-2026-02-01-security.json');
+  });
+
   test('fails when target batch directory missing', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'state.md'),

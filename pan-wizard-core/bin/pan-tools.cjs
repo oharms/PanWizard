@@ -918,7 +918,13 @@ async function main() {
             output({ error: 'No batch file found. Run focus plan first.' }, raw);
             break;
           }
-          items = batch.batch || [];
+          if (batch.error) {
+            // The newest batch is the one /pan:focus-exec runs; classifying another would
+            // hand it waves for the wrong items, so an unusable newest batch is an error.
+            output({ error: batch.error }, raw);
+            break;
+          }
+          items = batch.batch;
         }
         output(focus.classifyStageDependencies(items), raw);
       } else if (subcommand === 'reflection') {

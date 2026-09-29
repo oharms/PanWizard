@@ -566,30 +566,76 @@ function cmdFocusSync(cwd, raw, ...args) {
 
 // ─── Exec helpers ───────────────────────────────────────────────────────────
 
+const BATCH_DATE_RE = /^batch-(\d{4}-\d{2}-\d{2})/;
+
 /**
- * Read the oldest open batch file from .planning/focus/.
- * Batches are named batch-YYYY-MM-DD.json; lexical sort == chronological.
- * Oldest-first ensures older unfinished batches get executed before newer ones.
+ * The batch files in .planning/focus/, oldest first; the last one is the batch to run.
+ * Order: the date in the name, then the modification time for batches planned the same
+ * day, then the name. `focus plan` writes batch-YYYY-MM-DD.json; `/pan:focus-auto` and
+ * hand-planned batches add a slug after the date, which a plain name sort would rank
+ * below the same day's plain file whatever order they were written in. This is the one
+ * ordering every reader uses: `focus exec`, `focus classify-stages` and `preflight
+ * batch` each used to choose a batch its own way.
  * @param {string} cwd - Project root
- * @returns {Object|null} Parsed batch data or null
+ * @returns {string[]} File names, oldest first
+ */
+function listBatchFiles(cwd) {
+  const focusDir = planningPath(cwd, FOCUS_DIR);
+  let names;
+  try {
+    names = fs.readdirSync(focusDir).filter(f => f.startsWith('batch-') && f.endsWith('.json'));
+  } catch {
+    return [];
+  }
+  const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  return names
+    .map((name) => {
+      const m = BATCH_DATE_RE.exec(name);
+      let mtime = 0;
+      try { mtime = fs.statSync(path.join(focusDir, name)).mtimeMs; } catch { /* removed meanwhile */ }
+      return { name, date: m ? m[1] : '', mtime };
+    })
+    .sort((a, b) => cmp(a.date, b.date) || a.mtime - b.mtime || cmp(a.name, b.name))
+    .map((e) => e.name);
+}
+
+/**
+ * Read the newest batch in .planning/focus/, with its items as an array.
+ *
+ * Newest, not oldest. v2.10.0 (E-12) sorted ascending so "older unfinished batches
+ * execute before newer ones", but nothing ever marks a batch finished, so it returned
+ * the first batch a project planned, every time. `/pan:focus-exec` executes the newest
+ * batch, so its `classify-stages` step was classifying a different batch from the one it
+ * ran. A batch is a snapshot of the backlog: a newer plan already carries whatever an
+ * older one left undone.
+ *
+ * Items: `focus plan` writes them under `batch`. `/pan:focus-auto` documents `items`, and
+ * batches agents write put the list under `items`, often with `batch` holding the batch's
+ * NAME (measured 2026-09-29, structure only: 1 of 102 batch files in four projects had a
+ * `batch` array). Either way the list comes back as `.batch`, with the key it came from
+ * in `.items_key`, a string `batch` kept as `.batch_name`, and the file name in `.file`.
+ *
+ * @param {string} cwd - Project root
+ * @returns {Object|null} null when there is no batch file. When the newest file cannot be
+ *   used: `{ file, error, batch: [], items_key: null }`. An older batch never stands in.
  */
 function readLatestBatch(cwd) {
-  const focusDir = planningPath(cwd, FOCUS_DIR);
-  let files;
-  try {
-    files = fs.readdirSync(focusDir).filter(f => f.startsWith('batch-') && f.endsWith('.json'));
-  } catch {
-    return null;
-  }
+  const files = listBatchFiles(cwd);
   if (files.length === 0) return null;
-  files.sort();
-  const content = safeReadFile(path.join(focusDir, files[0]));
-  if (!content) return null;
+  const file = files[files.length - 1];
+  const unusable = (why) => ({ file, error: `${file} ${why}`, batch: [], items_key: null });
+  let data;
   try {
-    return JSON.parse(content);
+    data = JSON.parse(safeReadFile(path.join(planningPath(cwd, FOCUS_DIR), file)));
   } catch {
-    return null;
+    return unusable('is not valid JSON');
   }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return unusable('is not a batch object');
+  const itemsKey = Array.isArray(data.batch) ? 'batch' : Array.isArray(data.items) ? 'items' : null;
+  if (!itemsKey) return unusable('has no item list (expected a "batch" or "items" array)');
+  const out = { ...data, batch: data[itemsKey], items_key: itemsKey, file };
+  if (typeof data.batch === 'string') out.batch_name = data.batch;
+  return out;
 }
 
 /**
@@ -619,16 +665,22 @@ function cmdFocusExec(cwd, raw, ...args) {
     output({ error: 'No batch file found. Run focus plan first.' }, raw);
     return;
   }
-
-  if (batch.batch.length === 0) {
-    output({ error: 'Batch is empty. Run focus plan with items.' }, raw);
+  const batchFile = planningRel(FOCUS_DIR, batch.file);
+  if (batch.error) {
+    output({ error: batch.error, batch_file: batchFile }, raw);
     return;
   }
 
-  // Classify items by tier
-  const micro = batch.batch.filter(i => i.tier === FOCUS_TIERS.MICRO);
-  const standard = batch.batch.filter(i => i.tier === FOCUS_TIERS.STANDARD);
-  const full = batch.batch.filter(i => i.tier === FOCUS_TIERS.FULL);
+  if (batch.batch.length === 0) {
+    output({ error: 'Batch is empty. Run focus plan with items.', batch_file: batchFile }, raw);
+    return;
+  }
+
+  // Classify items by tier (agent-written batches can hold non-object entries)
+  const tierOf = (i) => (i && typeof i === 'object' ? i.tier : undefined);
+  const micro = batch.batch.filter(i => tierOf(i) === FOCUS_TIERS.MICRO);
+  const standard = batch.batch.filter(i => tierOf(i) === FOCUS_TIERS.STANDARD);
+  const full = batch.batch.filter(i => tierOf(i) === FOCUS_TIERS.FULL);
 
   const result = {
     dry_run: dryRun,
@@ -642,7 +694,7 @@ function cmdFocusExec(cwd, raw, ...args) {
       full: full.length,
     },
     items: batch.batch,
-    batch_file: planningRel(FOCUS_DIR, `batch-${batch.date}.json`),
+    batch_file: batchFile,
   };
 
   output(result, raw);
@@ -1192,6 +1244,7 @@ module.exports = {
   checkVersionCrossRef,
   // Exec
   cmdFocusExec,
+  listBatchFiles,
   readLatestBatch,
   // Auto
   categoryFilter,

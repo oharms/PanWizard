@@ -2690,7 +2690,7 @@ pan-tools focus sync [--check-only] [--tests N] [--suites N] [--raw]   # --tests
 
 ### `focus exec`
 
-Load the oldest open batch (lexically first `batch-YYYY-MM-DD.json`, so older unfinished batches run first) and classify items by execution tier.
+Load the newest batch in `.planning/focus/` and classify its items by execution tier. Newest means the date in the file name (`batch-YYYY-MM-DD.json` from `focus plan`, or `batch-YYYY-MM-DD-<slug>.json`), then the time the file was written for batches from the same day. That is the batch `/pan:focus-exec` runs. The items come from a `batch` array, or from `items`, which `/pan:focus-auto` and agent-written batches use. A newest batch with neither list, or one that is not valid JSON, is refused with an error that names the file; an older batch never stands in.
 
 ```bash
 pan-tools focus exec [--dry-run] [--force] [--raw]   # refuses with dirty_working_tree on uncommitted changes unless --dry-run or --force
@@ -2702,9 +2702,9 @@ pan-tools focus exec [--dry-run] [--force] [--raw]   # refuses with dirty_workin
 - `total_items` — Items in batch
 - `tiers` — `{micro, standard, full}` counts
 - `items[]` — Full batch items
-- `batch_file` — Path to batch file
+- `batch_file` — The batch file that was read
 
-**Reads:** Oldest `.planning/focus/batch-*.json`
+**Reads:** The newest `.planning/focus/batch-*.json`
 
 ### `squad list | show <name>` (v3.11, ADR-0032)
 
@@ -3433,7 +3433,7 @@ pan-tools focus classify-stages [--stdin] [--raw]
 ```
 
 **Flags:**
-- `--stdin` — read items JSON from stdin instead of the oldest batch file.
+- `--stdin` — read items JSON from stdin instead of the newest batch file (the one `focus exec` reads). Without `--stdin`, a newest batch that has no item list is refused with the same error `focus exec` gives.
 
 **JSON output:**
 ```json

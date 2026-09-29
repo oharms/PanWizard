@@ -102,10 +102,12 @@ function cmdPreflight(cwd, target, raw) {
     const currentPhaseMatch = stateContent.match(/\*\*Current Phase:\*\*\s*(\S+)/);
     const currentPhase = currentPhaseMatch ? currentPhaseMatch[1] : null;
     if (target === 'batch') {
-      // Check that a batch file exists
+      // Check that a batch file exists, and name the one `focus exec` would run (the
+      // shared ordering in focus.cjs; required lazily, it is only needed here)
       const focusDir = path.join(planDir, 'focus');
       try {
-        const files = fs.readdirSync(focusDir).filter(f => f.startsWith('batch-') && f.endsWith('.json'));
+        fs.readdirSync(focusDir);
+        const files = require('./focus.cjs').listBatchFiles(cwd);
         if (files.length > 0) {
           checks.push({ name: 'batch_exists', passed: true, detail: files[files.length - 1] });
         } else {
