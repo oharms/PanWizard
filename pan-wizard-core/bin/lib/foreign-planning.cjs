@@ -11,10 +11,14 @@
  * tool? — from POSITIVE markers PAN never writes (FOREIGN_PLANNING_MARKERS in
  * constants.cjs, sourced from gsd-core's docs/USER-GUIDE.md, read 2026-09-10).
  *
- * Rule: foreign when any marker FILE exists, or at least two marker DIRECTORIES exist,
- * or config.json carries any of the tool's flat dotted keys (PAN nests `workflow: {}`;
- * gsd-core writes `"workflow.discuss_mode"`). An unreadable config.json is not evidence.
- * Returns { tool, key, evidence[] } or null. Never throws.
+ * Rule: foreign when any marker FILE exists (a name, or a name pattern), or at least
+ * two marker DIRECTORIES exist, or config.json carries any of the tool's flat dotted
+ * keys (PAN nests `workflow: {}`; gsd-core writes `"workflow.discuss_mode"`). A pattern
+ * directory holding the file it `requires` counts as file-strength evidence; without
+ * that file it is one directory. An unreadable config.json is not evidence.
+ * Returns { tool, key, evidence[], coexists } or null. Never throws. `coexists` marks
+ * a tool that SHARES the tree (planning-with-files): callers keep working and report
+ * it, instead of refusing the tree as another tool's.
  */
 const fs = require('fs');
 const path = require('path');
@@ -35,13 +39,27 @@ function detectForeignPlanningTree(planningDir) {
   }
   for (const [key, m] of Object.entries(FOREIGN_PLANNING_MARKERS)) {
     const fileHits = m.files.filter(f => names.has(f));
+    for (const re of m.filePatterns || []) {
+      for (const e of entries) if (!e.isDirectory() && re.test(e.name)) fileHits.push(e.name);
+    }
     const dirHits = m.dirs.filter(d => dirs.has(d));
+    const strongDirs = [];
+    for (const { re, requires } of m.dirPatterns || []) {
+      for (const d of [...dirs].sort()) {
+        if (!re.test(d)) continue;
+        let holds = false;
+        try { holds = fs.existsSync(path.join(planningDir, d, requires)); } catch { holds = false; }
+        if (holds) strongDirs.push(d);
+        else dirHits.push(d);
+      }
+    }
     const configHits = cfg ? m.configKeys.filter(k => Object.prototype.hasOwnProperty.call(cfg, k)) : [];
-    if (fileHits.length > 0 || dirHits.length >= 2 || configHits.length > 0) {
+    if (fileHits.length > 0 || strongDirs.length > 0 || dirHits.length >= 2 || configHits.length > 0) {
       return {
         tool: m.tool,
         key,
-        evidence: [...fileHits, ...dirHits.map(d => d + '/'), ...configHits.map(k => 'config.json:' + k)],
+        evidence: [...fileHits, ...strongDirs.map(d => d + '/'), ...dirHits.map(d => d + '/'), ...configHits.map(k => 'config.json:' + k)],
+        coexists: m.coexists === true,
       };
     }
   }

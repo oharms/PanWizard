@@ -69,6 +69,10 @@ If a changed file path starts with any of these prefixes, **skip it silently**.
 | Duplicate code | > 10 identical lines across files | INFO |
 | TODO/FIXME/HACK | New instances added in this phase | INFO |
 
+## Scope (unrequested work)
+
+Compare what the changed code does with what the phase's plans asked for (their tasks and `must_haves`). Code that adds behaviour no plan task or requirement mentions is a finding: a feature nobody asked for, an unrelated refactor folded into the change, or an option no requirement needs. Use category `Unrequested` at WARNING, or at ERROR when it changes existing behaviour without a plan saying so. Its class in the `pan-verdict` block is `unrequested`. Supporting code the tasks need (tests, types, wiring) is not a finding.
+
 </review_checks>
 
 <output_format>
@@ -106,6 +110,21 @@ Return a structured review report:
 - **PASS**: Zero errors, zero warnings
 - **PASS_WITH_WARNINGS**: Zero errors, warnings present
 - **NEEDS_FIXES**: Any errors present
+
+**Machine verdict (required).** End the report with a `pan-verdict` block. The contract is in `~/.claude/pan-wizard-core/references/verdict-contract.md`. How to fill it:
+- `verdict` is the word under `### Verdict`; `outcome` is `fail` for NEEDS_FIXES and `pass` otherwise.
+- Add one finding per table row. ERROR → `high`, WARNING → `medium`, INFO → `info`.
+- Category maps to class: Convention → `quality`, Security → `risk`, Code Quality → `defect`, Unrequested → `unrequested`.
+- `where` is `file:line`.
+- A clean review has `"findings": []`.
+
+The orchestrator records this block. It is how your findings reach the phase's findings ledger and `/pan:review-deep`.
+
+````markdown
+```pan-verdict
+{"contract":"1.0","agent":"pan-reviewer","phase":"{phase_number}","verdict":"NEEDS_FIXES","outcome":"fail","findings":[{"class":"quality","severity":"high","where":"src/utils/parser.ts:42","summary":"Inconsistent naming — uses snake_case, project uses camelCase"}]}
+```
+````
 </output_format>
 
 <constraints>

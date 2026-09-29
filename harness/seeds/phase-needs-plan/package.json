@@ -4,6 +4,6 @@
   "private": true,
   "description": "Deterministic seed project for the PAN Harness (two functions, two plans).",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test"
   }
 }

@@ -541,6 +541,15 @@ const HEALTH_STATUS = { HEALTHY: 'healthy', DEGRADED: 'degraded', BROKEN: 'broke
 /** Max JSON payload size before writing to tmpfile (bytes) */
 const MAX_JSON_SIZE = 50000;
 
+/**
+ * Shape version of the machine-readable state JSON: `state` (load), `state json`,
+ * `progress` (json) and the MCP resources that wrap them (market item M17).
+ * Additive rule: fields may be added within a major version and are never renamed
+ * or removed; readers accept any 1.x and ignore fields they do not know. A rename
+ * or removal is a major bump ("2.0").
+ */
+const STATE_CONTRACT = '1.0';
+
 /** Width of progress bar in status display (character count) */
 const PROGRESS_BAR_WIDTH = 10;
 
@@ -724,6 +733,24 @@ const FOREIGN_PLANNING_MARKERS = Object.freeze({
       'graphify.enabled', 'intel.enabled', 'hooks.workflow_guard', 'dynamic_routing', 'resolve_model_ids',
     ]),
   }),
+  // planning-with-files (OthmanAdi/planning-with-files README, read 2026-09-28 at
+  // v3.21.0; market item M3 / MI-028). It writes INTO .planning/ beside whatever else
+  // lives there: `.active_plan`, `.attestation`, `sessions/`, `ledger-<agent>.jsonl`, and
+  // one `YYYY-MM-DD-slug/` directory per task holding task_plan.md / findings.md /
+  // progress.md. PAN writes none of those names. `coexists`: unlike gsd-core, a match
+  // means the tree is SHARED, not owned. PAN keeps working in it and says so, rather
+  // than refusing. planning-with-files gitignores .planning/ by default, which is what
+  // the I005 health check exists for.
+  planning_with_files: Object.freeze({
+    tool: 'planning-with-files',
+    coexists: true,
+    files: Object.freeze(['.active_plan', '.attestation']),
+    filePatterns: Object.freeze([/^ledger-[A-Za-z0-9._-]+\.jsonl$/]),
+    dirs: Object.freeze(['sessions']),
+    // A dated task directory is strong evidence only with the tool's plan file in it.
+    dirPatterns: Object.freeze([{ re: /^\d{4}-\d{2}-\d{2}-[A-Za-z0-9][A-Za-z0-9._-]*$/, requires: 'task_plan.md' }]),
+    configKeys: Object.freeze([]),
+  }),
 });
 
 module.exports = {
@@ -806,6 +833,7 @@ module.exports = {
   HEALTH_STATUS,
   FOREIGN_PLANNING_MARKERS,
   MAX_JSON_SIZE,
+  STATE_CONTRACT,
   PROGRESS_BAR_WIDTH,
   MAX_SLUG_LENGTH,
   FILLED_BLOCK,

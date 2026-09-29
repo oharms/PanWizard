@@ -96,7 +96,7 @@ Design a roadmap phase before planning — architecture, ADR, threat-lite, machi
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__*  
 **Group:** Phase Lifecycle  
-**Lines:** 77
+**Lines:** 85
 
 #### /pan:discuss-phase
 
@@ -786,7 +786,7 @@ Analyze trace sessions or harvested experiments via pan-optimizer; generate rank
 
 **Tools:** Read, Bash, Glob, Grep, Task  
 **Group:** Self-Improvement  
-**Lines:** 75
+**Lines:** 77
 
 #### /pan:optimize
 
@@ -798,7 +798,7 @@ Manage the circular optimization loop — apply recommendations, view stats, lis
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep  
 **Group:** Self-Improvement  
-**Lines:** 99
+**Lines:** 111
 
 ---
 

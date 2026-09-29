@@ -1,7 +1,7 @@
 {
   "id": "quick-mode",
   "tier": 2,
-  "description": "Run /pan:quick on a codebase with no phases: planner (quick mode) + executor produce a plan under .planning/quick/ and the requested source file, committed.",
+  "description": "Run /pan:quick on the two-plan seed (quick mode refuses a project with no roadmap): planner (quick mode) + executor produce a plan under .planning/quick/ and the requested source file, committed.",
   "why": "Reality check RC20/R17: quick mode (planner + executor, no research, checker or verifier) had no scenario. The observable outcome is a plan file in .planning/quick/<n>-<slug>/ and the artefact it asked for.",
   "seed": "two-plan-phase",
   "install": [

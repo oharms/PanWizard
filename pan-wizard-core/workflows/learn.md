@@ -31,10 +31,10 @@ If `--session <id>` was specified, use that session ID.
 
 Run:
 ```
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn [--session <id>]
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn [--session <id> | --sessions <n>]
 ```
 
-This produces `.planning/optimization/reports/{session}-analysis.json`.
+This produces `.planning/optimization/reports/{session}-analysis.json`. With `--sessions <n>` it pools the last n sessions into `pooled-<n>-{session}-analysis.json`: a recommendation should explain failures that recur across runs, not one run's accident.
 
 Read the output and note:
 - `summary.errors` — how many error events
@@ -42,6 +42,8 @@ Read the output and note:
 - `summary.memory_misses` — how many memory miss events
 - `summary.wasted_tokens` — tokens wasted on redundancies
 - `top_error_patterns` — most frequent error categories
+- `top_tool_error_patterns` — failed tool calls captured from the subagents' own transcripts, ranked by how many spawns hit them
+- `verdict_stats` — each judge's pass/fail counts, retries, and the retries that resolved a failure
 - `top_memory_misses` — most frequent memory miss topics
 
 ## Step 3 — Invoke pan-optimizer agent

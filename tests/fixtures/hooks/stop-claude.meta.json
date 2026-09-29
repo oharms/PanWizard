@@ -1,12 +1,13 @@
 {
   "hook_event": "Stop",
   "runtime": "claude",
-  "captured_at": "2026-09-17",
-  "captured_from": "The fields hooks/pan-stop-guard.js reads off a Stop payload — `stop_hook_active` and `cwd` — with the loop-safety semantics of `stop_hook_active` documented in docs/HOOKS.md (\"the host sets stop_hook_active on stop attempts that follow a stop-hook block\") and both spellings already pinned end to end by tests/stop-guard-hook.test.cjs. `session_id` and `transcript_path` are the common input fields the other PAN hooks read; their identity shape was confirmed against a local Claude Code transcript tree on this machine on 2026-09-17 — structure only, nothing copied out, and every value here is neutral synthetic.",
+  "captured_at": "2026-09-29",
+  "captured_from": "A real Stop payload from Claude Code 2.1.280, captured 2026-09-29 by a raw dump hook in a scratch project under d:\\pantesting at the end of a headless `claude -p --permission-mode default` turn. The keys, their order and their value types are the captured ones. The values are synthetic: the ids, the paths and the final message are replaced. `permission_mode` keeps the captured value, and background_tasks is the empty list the turn-final Stop carried. The previous version of this fixture (2026-09-17) was derived from the fields hooks/pan-stop-guard.js reads, `stop_hook_active` and `cwd`, and lacked six keys the host sends: scratchpad_dir, prompt_id, permission_mode, last_assistant_message, background_tasks and session_crons.",
   "placeholders": {
     "{{SESSION_ID}}": "the host session id",
     "{{TRANSCRIPT_PATH}}": "absolute path of the session transcript",
-    "{{PROJECT_DIR}}": "absolute path of the project whose .planning/ tree arms or disarms the guard"
+    "{{PROJECT_DIR}}": "absolute path of the project whose .planning/ tree arms or disarms the guard",
+    "{{SCRATCHPAD_DIR}}": "the host's per-session scratchpad directory; no PAN hook reads it"
   },
-  "notes": "`stop_hook_active: false` is the arming case — the first stop attempt of a chain. The e2e test flips it to true on the same fixture to prove the one-shot rule, so the fixture deliberately carries the value that lets the guard fire."
+  "notes": "`stop_hook_active: false` is the arming case — the first stop attempt of a chain. The e2e test flips it to true on the same fixture to prove the one-shot rule, so the fixture deliberately carries the value that lets the guard fire. The loop-safety semantics (\"the host sets stop_hook_active on stop attempts that follow a stop-hook block\") are documented in docs/HOOKS.md and pinned in both spellings by tests/stop-guard-hook.test.cjs. The same capture showed a Stop that fired while a subagent was still running: background_tasks then listed that agent ({id, type: subagent, status: running, description, agent_type}). The guard does not read the field."
 }

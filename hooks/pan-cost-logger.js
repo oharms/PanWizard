@@ -146,9 +146,11 @@ const CURSOR_FILE = '.cost-cursor.json';
 // the per-invocation `event_sig` discriminator; v4 added `agent_id` and the
 // `agent-transcript` token source. Kept as a literal in each hook —
 // they are standalone zero-dep scripts that can't import from pan-wizard-core, so
-// the two hooks must stay in sync by hand. No constant in pan-wizard-core mirrors
-// it: the readers there take a row field by field rather than switching on its
-// version, so an added field is additive for them.
+// each hook's copy is kept by hand (in lockstep through v4; the trace logger's events
+// have since moved to 5 on their own). cost-rebuild.cjs in
+// pan-wizard-core mirrors it for the rows it rebuilds; the readers there take a row
+// field by field rather than switching on its version, so an added field is additive
+// for them.
 const SCHEMA_V = 4;
 
 // Reverse-map a resolved model id to its cost tier so the "By tier" dashboard
@@ -456,10 +458,13 @@ const MAX_CURSOR_KEYS = 512;
 // marker phantom (an over-count) and from N29 (concurrent same-type siblings).
 //
 // Returns null when the payload cannot be serialized — callers then fail OPEN
-// (record, never mark).
+// (record, never mark). SHA-256 cut to the 40 hex characters the SHA-1 it replaced
+// produced, so persisted `event_sig` values keep their shape: a dedup key, not a
+// security boundary, but CodeQL rightly flags SHA-1 over a payload that carries a
+// session id (2026-09-29).
 function eventSignature(data) {
   try {
-    return crypto.createHash('sha1').update(JSON.stringify(data)).digest('hex');
+    return crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex').slice(0, 40);
   } catch { return null; }
 }
 
@@ -559,6 +564,27 @@ function resolveAgentTranscript(data) {
   }
 }
 
+// Host-internal agents (measured 2026-09-28). Claude Code runs helper agents of its own:
+// the compaction summariser, and one at almost every turn end of an interactive session.
+// It fires SubagentStop for them with an `agent_id`, an EMPTY `agent_type`, and an
+// `agent_transcript_path` it never writes. That shape was captured from a real `/compact`
+// on Claude Code 2.1.280 (tests/fixtures/hooks/subagent-stop-internal-claude.json). Both
+// loggers booked each as an `unknown` zero-token spawn: 181 rows in three field projects
+// in eleven days, skewing optimize learn's agent stats and the ledger's spawn counts.
+// The host documents `agent_type` as present whenever a hook fires inside a subagent, so
+// a named instance with no type and no transcript is not a spawn anyone asked for, and
+// nothing is recorded. A NAMED spawn whose file is late or missing keeps its zero-token
+// row (N17/N25); a payload with no agent instance at all keeps the parent-slice path.
+// Identical in pan-cost-logger.js and pan-trace-logger.js (tests/trace-logger.test.cjs
+// pins the copies).
+function isHostInternalAgent(data, agentTranscript) {
+  if (!data || typeof data !== 'object' || agentTranscript) return false;
+  const typed = [data.agent_type, data.subagent_type].some((v) => typeof v === 'string' && v.trim() !== '');
+  if (typed) return false;
+  return (typeof data.agent_id === 'string' && AGENT_ID_SAFE.test(data.agent_id))
+    || (typeof data.agent_transcript_path === 'string' && data.agent_transcript_path !== '');
+}
+
 // A slice is a SUM over one subagent's conversation, so its ceiling sits above a
 // single call's (PLAUSIBLE_MAX): a long agent legitimately re-reads its cached
 // context on every turn. The cache_read and output ceilings are the absolute
@@ -576,6 +602,29 @@ function clampSlice(n, max) {
   return typeof n === 'number' && n >= 0 && n <= max ? n : 0;
 }
 
+// Copilot CLI's camelCase hook payload (docs.github.com/en/copilot/reference/hooks-reference,
+// read 2026-09-28; documented, not yet observed live) names every field differently from
+// Claude's snake_case one, so this hook read no session, transcript or agent from it and
+// booked every Copilot spawn as `unknown`. Its `agentType` is the KIND of agent (built-in
+// or custom); `agentName` is the configured name PAN's agents carry, so the name wins.
+// Claude payloads carry none of these keys and pass through unchanged. Identical in
+// pan-cost-logger.js and pan-trace-logger.js (tests/copilot-payload.test.cjs pins both).
+function normalizeHookPayload(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const pick = (...keys) => {
+    for (const k of keys) if (typeof data[k] === 'string' && data[k]) return data[k];
+    return undefined;
+  };
+  const out = { ...data };
+  if (out.session_id === undefined && pick('sessionId')) out.session_id = pick('sessionId');
+  if (out.transcript_path === undefined && pick('transcriptPath')) out.transcript_path = pick('transcriptPath');
+  if (out.agent_id === undefined && pick('agentId')) out.agent_id = pick('agentId');
+  const name = pick('agent_name', 'agentName');
+  if (name) out.agent_type = name;
+  else if (out.agent_type === undefined && pick('agentType')) out.agent_type = pick('agentType');
+  return out;
+}
+
 /**
  * Extract what we can from the SubagentStop event payload.
  * Pure function — safe to test without stdin.
@@ -586,6 +635,7 @@ function clampSlice(n, max) {
  */
 function buildCostRecord(data, cwd) {
   if (!data || typeof data !== 'object') return null;
+  data = normalizeHookPayload(data);
 
   // Only log actual subagent stops; ignore other Stop variants.
   if (data.hook_event_name && data.hook_event_name !== 'SubagentStop') return null;
@@ -613,6 +663,7 @@ function buildCostRecord(data, cwd) {
   // a value dropped to 0 by a plausibility guard so a guarded zero is
   // distinguishable from a genuine zero-token run.
   const agentTranscript = resolveAgentTranscript(data);
+  if (isHostInternalAgent(data, agentTranscript)) return null; // the host's own helper, not a spawn
   const parentPath = typeof data.transcript_path === 'string' && data.transcript_path ? data.transcript_path : null;
   // The host NAMED an agent (a bare id, or an explicit agent transcript path) but
   // its file is not there — not flushed yet, or a host that sends ids without
@@ -731,13 +782,14 @@ function buildCostRecord(data, cwd) {
   // Backfill command/phase from the active trace session when the payload omits
   // them (real SubagentStop payloads carry neither); tier is derived from the model.
   const sessionMeta = readActiveSessionMeta(cwd);
-  // The trace session only exists while the optimizer runs, so the parent transcript is
-  // the fallback that makes command attribution work outside focus mode — see
+  // The trace logger's day-scoped auto-session names no command (only a session opened
+  // by `optimize trace init` or focus mode does), so the parent transcript is the
+  // fallback that makes command attribution work in ordinary use — see
   // readCommandFromTranscript.
   const command = data.command || sessionMeta.command || readCommandFromTranscript(data.transcript_path) || null;
-  // The trace session is only present while the optimizer is running (off by
-  // default), so state.md is the fallback that makes phase attribution work in
-  // ordinary use instead of only under tracing.
+  // The day-scoped auto-session names no phase either, so state.md is the fallback
+  // that makes phase attribution work in ordinary use, not only in a session that
+  // was opened with one.
   const phase = data.phase || sessionMeta.phase || readCurrentPhase(cwd) || null;
 
   const record = {
@@ -1003,4 +1055,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { deferToClaudeRegistration, buildCostRecord, appendRecord, readUsageFromTranscript, addCacheTtlSplit, resolveAgentTranscript, readCursor, writeCursor, isPanProject, hasPlanningTree, readCommandFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };
+module.exports = { deferToClaudeRegistration, normalizeHookPayload, isHostInternalAgent, buildCostRecord, appendRecord, readUsageFromTranscript, addCacheTtlSplit, resolveAgentTranscript, readCursor, writeCursor, isPanProject, hasPlanningTree, readCommandFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };

@@ -64,8 +64,9 @@ for (const runtime of RUNTIMES) {
         ].join('\n'));
         const ok = runner.run('state json', seeded);
         assert.equal(ok.success, true, `state json should exit 0 on a seeded project: ${ok.error}`);
+        // `contract` is the output's shape version (M17), added beside the frontmatter.
         assert.deepEqual(JSON.parse(ok.output), {
-          pan_state_version: '1.0', Status: 'In progress', Milestone: 'v9.9',
+          pan_state_version: '1.0', Status: 'In progress', Milestone: 'v9.9', contract: '1.0',
         });
       } finally {
         fs.rmSync(seeded, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

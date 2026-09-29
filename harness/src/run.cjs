@@ -94,6 +94,19 @@ function fill(value, vars) {
   return value;
 }
 
+/**
+ * The environment a `cli` step's child runs with: the harness's own, plus the step's
+ * `env` overrides with placeholders filled. Pure. live-gate-gemini points
+ * GEMINI_CLI_HOME at a scratch home under <other>, so the CLI never reads or writes
+ * the user's real ~/.gemini, and a trust entry written there trusts only that workspace.
+ */
+function stepEnv(step, vars, base = process.env) {
+  if (!step.env) return base;
+  const env = { ...base };
+  for (const [k, v] of Object.entries(step.env)) env[k] = fill(String(v), vars);
+  return env;
+}
+
 // A model step is not started with less than this much cap left: a run cut off by
 // the budget records nothing about PAN, only about the budget. Your first tier-2
 // run started its last rep with ~$0.50 and logged eight false failures.
@@ -163,7 +176,7 @@ function runStep(step, ctx) {
       if (!bin) return { code: 127, stdout: '', stderr: `${step.bin} not on PATH` };
       const viaShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(bin);
       const argv = fill(step.args || [], vars);
-      const r = spawnSync(viaShell ? quoteCmdArg(bin) : bin, viaShell ? argv.map(quoteCmdArg) : argv, { cwd: ws, encoding: 'utf8', timeout: stepTimeout, stdio: ['ignore', 'pipe', 'pipe'], shell: viaShell });
+      const r = spawnSync(viaShell ? quoteCmdArg(bin) : bin, viaShell ? argv.map(quoteCmdArg) : argv, { cwd: ws, env: stepEnv(step, vars), encoding: 'utf8', timeout: stepTimeout, stdio: ['ignore', 'pipe', 'pipe'], shell: viaShell });
       return { code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') + (r.error ? r.error.message : '') };
     }
     case 'mcp': {
@@ -177,7 +190,7 @@ function runStep(step, ctx) {
       if (cap !== null && cap < MIN_MODEL_STEP_USD) {
         return { code: 2, stdout: '', stderr: `budget exhausted: $${cap.toFixed(2)} of this scenario's $${ctx.shareUsd.toFixed(2)} share left (floor $${MIN_MODEL_STEP_USD})`, costUsd: 0, budgetExhausted: true };
       }
-      const r = runModelStep(ws, fill(step.prompt, vars), { maxUsd: cap, timeoutMs: stepTimeout, pluginDir: step.pluginDir ? fill(step.pluginDir, vars) : undefined, strictMcp: step.strictMcp !== false });
+      const r = runModelStep(ws, fill(step.prompt, vars), { maxUsd: cap, timeoutMs: stepTimeout, pluginDir: step.pluginDir ? fill(step.pluginDir, vars) : undefined, strictMcp: step.strictMcp !== false, persistSession: step.persistSession === true });
       ctx.addCost(r.costUsd || 0);
       // Claude Code stops a run at --max-budget-usd with is_error and a tool_use
       // stop reason. Spend within ~15% of the cap is that stop, not a PAN result.
@@ -402,4 +415,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, quoteCmdArg, runStep, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };

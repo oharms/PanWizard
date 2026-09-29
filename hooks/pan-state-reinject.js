@@ -37,8 +37,8 @@ const path = require('path');
  * Which planning tree this hook acts on.
  *
  * Mirrors pan-wizard-core/bin/lib/planning-root.cjs, which hooks cannot require
- * (they are standalone and run inside the host runtime). All PAN hooks carry an
- * identical copy — if the CLI is pointed at a track while a hook still writes to
+ * (they are standalone and run inside the host runtime). Every PAN hook that
+ * reads the planning tree carries an identical copy — if the CLI is pointed at a track while a hook still writes to
  * `.planning/`, that tree's telemetry lands in the wrong place.
  *
  * Env only — a hook gets no argv. A value that escapes the project root is

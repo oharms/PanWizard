@@ -147,3 +147,118 @@ describe('validate health and init refuse a foreign tree (R15)', () => {
     assert.ok(Array.isArray(data.evidence) && data.evidence.length > 0);
   });
 });
+
+// Market item M3 / MI-028 (planning-with-files README, read 2026-09-28 at v3.21.0).
+// planning-with-files writes INTO .planning/ beside PAN: `.active_plan`, `.attestation`,
+// `sessions/`, `ledger-<agent>.jsonl`, and one dated `YYYY-MM-DD-slug/` task directory
+// holding task_plan.md. Unlike gsd-core it SHARES the tree, so PAN names it and keeps
+// working instead of refusing. It also gitignores .planning/ by default, which silently
+// defeats commit_docs: that is I005.
+
+/** A PAN phase-model tree with planning-with-files' files beside it. */
+function makeSharedTree(tmpDir, { marker = 'active_plan' } = {}) {
+  const dir = resetPlanning(tmpDir);
+  fs.writeFileSync(path.join(dir, 'project.md'), '# Project\n');
+  fs.writeFileSync(path.join(dir, 'roadmap.md'), '# Roadmap\n');
+  fs.writeFileSync(path.join(dir, 'state.md'), '---\ncurrent_phase: 1\n---\n# State\n');
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ model_profile: 'balanced' }));
+  fs.mkdirSync(path.join(dir, 'phases', '01-alpha'), { recursive: true });
+  if (marker === 'active_plan') fs.writeFileSync(path.join(dir, '.active_plan'), '2026-09-28-auth\n');
+  const task = path.join(dir, '2026-09-28-auth');
+  fs.mkdirSync(task, { recursive: true });
+  fs.writeFileSync(path.join(task, 'task_plan.md'), '# Task plan\n- [ ] step\n');
+  return dir;
+}
+
+describe('planning-with-files shares the tree (M3)', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  test('its markers are recognised as a coexisting tool, with the evidence named', () => {
+    const r = detectForeignPlanningTree(makeSharedTree(tmpDir));
+    assert.equal(r.tool, 'planning-with-files');
+    assert.equal(r.coexists, true);
+    assert.deepEqual(r.evidence, ['.active_plan', '2026-09-28-auth/']);
+    assert.equal(detectForeignPlanningTree(makeGsdTree(tmpDir)).coexists, false, 'gsd-core owns its tree');
+  });
+
+  test('a dated task directory counts only with its task_plan.md; sessions/ plus a bare dated directory is two directories', () => {
+    const dir = resetPlanning(tmpDir);
+    fs.mkdirSync(path.join(dir, '2026-09-28-auth'));
+    assert.equal(detectForeignPlanningTree(dir), null, 'a dated directory alone is too weak');
+    fs.mkdirSync(path.join(dir, 'sessions'));
+    assert.equal(detectForeignPlanningTree(dir).tool, 'planning-with-files');
+    const withPlan = resetPlanning(tmpDir);
+    fs.mkdirSync(path.join(withPlan, '2026-09-28-auth'));
+    fs.writeFileSync(path.join(withPlan, '2026-09-28-auth', 'task_plan.md'), '# plan\n');
+    assert.deepEqual(detectForeignPlanningTree(withPlan).evidence, ['2026-09-28-auth/']);
+  });
+
+  test('its per-agent ledger file is evidence; PAN\'s own findings ledger is not', () => {
+    const dir = resetPlanning(tmpDir);
+    fs.writeFileSync(path.join(dir, 'findings.jsonl'), '');
+    assert.equal(detectForeignPlanningTree(dir), null, 'findings.jsonl is PAN\'s evidence-loop ledger');
+    fs.writeFileSync(path.join(dir, 'ledger-claude.jsonl'), '');
+    assert.deepEqual(detectForeignPlanningTree(dir).evidence, ['ledger-claude.jsonl']);
+  });
+
+  test('validate health reports I004 and runs PAN\'s own checks, instead of E006', () => {
+    makeSharedTree(tmpDir);
+    const data = JSON.parse(runPanTools('validate health', tmpDir).output);
+    assert.ok(!data.errors.some(e => e.code === 'E006'), JSON.stringify(data.errors));
+    const i004 = data.info.find(i => i.code === 'I004');
+    assert.ok(i004, JSON.stringify(data.info));
+    assert.match(i004.message, /planning-with-files also writes into this planning tree: \.active_plan, 2026-09-28-auth\//);
+    assert.notEqual(data.status, 'broken', 'a shared tree is not a broken one');
+  });
+
+  test('hygiene scan names the shared tree and still checks PAN\'s files', () => {
+    const dir = makeSharedTree(tmpDir);
+    // Remove first: on a case-insensitive filesystem writing STATE.md over state.md keeps the lowercase name.
+    fs.rmSync(path.join(dir, 'state.md'));
+    fs.writeFileSync(path.join(dir, 'STATE.md'), '# legacy\n');
+    const checks = JSON.parse(runPanTools('hygiene scan', tmpDir).output).findings.map(f => f.check);
+    assert.ok(checks.includes('shared-planning-tree'), checks.join(', '));
+    assert.ok(checks.includes('legacy-filenames'), 'PAN\'s own legacy file is still offered its rename');
+    assert.ok(!checks.includes('foreign-planning-tree'));
+  });
+
+  test('init new-project proceeds in a shared tree and reports who shares it', () => {
+    makeSharedTree(tmpDir);
+    const r = runPanTools('init new-project', tmpDir);
+    assert.equal(r.success, true, r.output);
+    const data = JSON.parse(r.output);
+    assert.deepEqual(data.shared_planning_tree, { tool: 'planning-with-files', evidence: ['.active_plan', '2026-09-28-auth/'] });
+  });
+});
+
+describe('I005: a gitignored planning tree with commit_docs on (M3)', () => {
+  let tmpDir;
+  const git = (...args) => require('child_process').execFileSync('git', args, { cwd: tmpDir, stdio: 'pipe' });
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    makeSharedTree(tmpDir, { marker: 'none' });
+    git('init', '-q');
+  });
+  afterEach(() => { cleanup(tmpDir); });
+  const infoCodes = () => JSON.parse(runPanTools('validate health', tmpDir).output).info.map(i => i.code);
+
+  test('.planning/ in .gitignore while commit_docs is on reports I005 with the fix', () => {
+    fs.writeFileSync(path.join(tmpDir, '.gitignore'), '.planning/\n');
+    const data = JSON.parse(runPanTools('validate health', tmpDir).output);
+    const i005 = data.info.find(i => i.code === 'I005');
+    assert.ok(i005, JSON.stringify(data.info));
+    assert.match(i005.fix, /Remove \.planning\/ from \.gitignore .* config-set commit_docs false/);
+  });
+
+  test('no I005 when the tree is committed, when commit_docs is off, or outside git', () => {
+    assert.ok(!infoCodes().includes('I005'), 'not ignored');
+    fs.writeFileSync(path.join(tmpDir, '.gitignore'), '.planning/\n');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), JSON.stringify({ model_profile: 'balanced', commit_docs: false }));
+    assert.ok(!infoCodes().includes('I005'), 'keeping docs out of git on purpose is not a finding');
+    fs.rmSync(path.join(tmpDir, '.git'), { recursive: true, force: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), JSON.stringify({ model_profile: 'balanced' }));
+    assert.ok(!infoCodes().includes('I005'), 'no git, no finding');
+  });
+});

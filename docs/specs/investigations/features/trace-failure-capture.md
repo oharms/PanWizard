@@ -9,7 +9,7 @@
 | Runtimes | Claude first (per-agent transcripts are proven there); Codex and Copilot also fire a subagent-stop event (`HOOK_EVENT_MAP` in `bin/install-lib.cjs`) but their transcript shape is unverified; Gemini and OpenCode register no subagent-stop hook |
 | First seen | `2026-09-28` — [digest](../digests/2026-09-28.md) |
 | Ledger | — |
-| Status | PROPOSED |
+| Status | FILED `MI-060` |
 
 ## Source trail
 - `2026-09-28` — Growing Harness (arXiv:2609.26760 v2): an agent program improves from task feedback only when each failure is recorded by the runtime as an execution trace (function calls, model and tool calls, errors) and tied to the code it passed through. Removing that function-level localisation halved final success in their ablation (36% → 18%, one run, 50 tasks). The paper's thesis is that recurring control belongs in code, not in model context (source: arXiv:2609.26760, via the LLM brief of `2026-09-28`).
@@ -58,3 +58,12 @@ A tier-1 harness run on a seed with a deliberately failing test records at least
 ## Open questions for the owner
 - Keep or delete the workflow-prose `optimize trace log` calls the hook makes redundant?
 - Is the verdict match stable enough across PAN's agents, or should the verifier and plan-checker emit a machine line (for example a fenced JSON verdict) that the hook reads?
+
+## Outcome (`2026-09-28`)
+
+Built on `feat/evidence-loop`, designed in [evidence_loop_featureai.md](../../evidence_loop_featureai.md) (ADR-0049).
+- **Premise re-measured first.** No field project had ever recorded an error event, while subagent transcripts held 869 failed tool calls across 1,969 spawns. The write-up's claim that agents never call `optimize trace log` was only half right: they did, on success branches, and never on error branches.
+- **Verdicts.** Both open questions are answered in the spec. The judges emit a `pan-verdict` block, and a verb (`findings record`) reads it rather than the hook, because the verb works on every runtime and the workflow needs the answer. The verdict-path prose calls were removed.
+- **Tool failures.** The hook records them from per-agent transcripts on Claude Code, redacted, and `execution.error_pattern_learning: false` turns it off.
+- **Runtimes.** Codex and Copilot were checked: Copilot's documented payload has no per-subagent transcript, and its field names are now read.
+- **Gate met.** The tier-1 harness run `tool-error-capture` captured a real subagent's failing `npm test` through the installed hook ($0.50); the unit test built on the real record shape fails against the pre-change hook.

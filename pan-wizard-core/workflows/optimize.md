@@ -8,6 +8,7 @@ Manage the circular optimization loop — apply reports, check stats, control tr
 |------------|--------|
 | `apply` | Apply safe recommendations from most recent report |
 | `apply --report <file>` | Apply from a specific report |
+| `revert <apply_id>` / `revert --last` | Undo one apply exactly |
 | `list` | List all reports |
 | `stats` | Show cumulative stats |
 | `trace init` | Start a new trace session |
@@ -40,8 +41,9 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize apply [--report <path>
 
 Show the user:
 - **Applied** — each item that was written (memory entries, notes)
-- **Skipped** — items that already exist or had unknown types
+- **Skipped** — items that already exist, that an earlier apply already wrote, or that had unknown types
 - **Still needs review** — prompt/workflow suggestions in `suggestions.md`
+- **The `apply_id`**, and how to undo the apply: `/pan:optimize revert <apply_id>`
 
 If memory entries were written, tell the user:
 > Memory entries have been added to `.planning/memory/`. They will be loaded on the next agent run, reducing future memory misses for these topics.
@@ -51,6 +53,17 @@ If memory entries were written, tell the user:
 If `.planning/optimization/suggestions.md` exists, tell the user to review it for:
 - Agent prompt improvements (apply by editing `agents/pan-*.md`)
 - Workflow step additions (apply by editing `pan-wizard-core/workflows/*.md`)
+
+---
+
+## revert
+
+```
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize revert <apply_id>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize revert --last
+```
+
+Show the user each reverted action and each refused one, with its reason. A refusal means someone edited the file after the apply, or a later apply also wrote it. Revert that later apply first; never force it. The status is `reverted`, `partial`, `refused` or `nothing_to_revert`.
 
 ---
 

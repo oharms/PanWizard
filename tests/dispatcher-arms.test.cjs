@@ -93,6 +93,33 @@ describe('dispatcher arms — every group refuses an unknown subcommand the same
     });
   }
 
+  test('each group lists every subcommand its arm dispatches', () => {
+    // The case above only proves an error repeats its own list, so a subcommand missing
+    // from that list passed. Found by the 2026-09-29 doc audit: `state compact` was
+    // dispatched and documented but absent from the state group's "Available:" list, and
+    // suggest.cjs and scripts/test-surface.cjs both build their index from those lists.
+    // The arm's own `subcommand === '<name>'` comparisons are the truth here.
+    const src = fs.readFileSync(DISPATCHER, 'utf-8').split('\n');
+    const problems = [];
+    let compared = 0;
+    src.forEach((line, i) => {
+      const m = /Unknown ([a-z][a-z-]*) subcommand[^`']*Available: ([^`']+)/.exec(line);
+      if (!m) return;
+      const listed = new Set(m[2].split(',').map((s) => s.trim().split(/\s+/)[0]));
+      let start = i;
+      while (start > 0 && !src[start].includes(`case '${m[1]}'`)) start--;
+      assert.ok(start > 0, `no \`case '${m[1]}'\` arm above pan-tools.cjs:${i + 1}`);
+      for (let j = start; j < i; j++) {
+        for (const h of src[j].matchAll(/\bsubcommand\s*===\s*'([a-z][a-z0-9-]*)'/g)) {
+          compared++;
+          if (!listed.has(h[1])) problems.push(`${m[1]} dispatches "${h[1]}" but its error at pan-tools.cjs:${i + 1} does not list it`);
+        }
+      }
+    });
+    assert.ok(compared >= 100, `expected the dispatcher's subcommand comparisons, found ${compared}`);
+    assert.deepEqual(problems, []);
+  });
+
   test('a bare group name is its own no-argument form, not an error arm', () => {
     const tmp = createTempProject();
     try {

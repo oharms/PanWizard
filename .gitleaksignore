@@ -20,3 +20,11 @@
 # to path.join() at tests/commands.test.cjs:633 — a filename, not an API key.
 5b5331e89a50167266c6e5a42104047cb540bc6b:tests/commands.test.cjs:generic-api-key:631
 8927fdefddb8458efb97090d1368c722081cb445:tests/commands.test.cjs:generic-api-key:631
+
+# ── Made-up credential shapes in the trace hook's redaction test
+# `AKIA` + 16 capitals and a three-part `eyJ…` string are synthetic inputs that prove
+# redactErrorText() strips AWS-key- and JWT-shaped text before a failure reaches the
+# trace (tests/trace-logger-failures.test.cjs). No real key or token. Flagged by the CI's
+# gitleaks 8.21.2 (8.30 does not); the file builds both at runtime from 2026-09-29 on.
+94f67dc5a150343532541ec1fedddd014ebfae3a:tests/trace-logger-failures.test.cjs:aws-access-token:191
+94f67dc5a150343532541ec1fedddd014ebfae3a:tests/trace-logger-failures.test.cjs:jwt:192

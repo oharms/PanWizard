@@ -10,7 +10,7 @@
 pan-wizard/
   bin/
     install.js                # Interactive installer (npx pan-wizard entry point)
-    install-lib.cjs           # Installer functions — no filesystem writes (verifyInstall()/dirDigest() read the filesystem; the merge helpers stripPanHookEntries()/mergeCodexHooksConfig()/mergeMcpRegistration() edit the object they are given): converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
+    install-lib.cjs           # Installer functions — no filesystem writes (verifyInstall()/dirDigest() read the filesystem; the merge and strip helpers stripPanHookEntries()/mergeCodexHooksConfig()/removeCodexPanHooks()/mergeMcpRegistration()/stripMcpRegistration() edit the object they are given): converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
   package.json                # Zero runtime deps; devDependencies are the VS Code e2e harness only
   commands/pan/               # Command .md files (Claude Code format; converted per runtime at install)
   agents/                     # Agent .md files (specialized AI roles)
@@ -29,12 +29,12 @@ pan-wizard/
         init.cjs              # Compound init commands (bootstrap context per workflow)
         phase.cjs             # Phase CRUD facade; phase-remove.cjs — removal + renumbering cascade
         roadmap.cjs           # roadmap.md parsing (get-phase, analyze)
-        verify.cjs            # Verification + health facade; verify-{drift,retro,deploy,preflight}.cjs re-exported
-        foreign-planning.cjs  # Is this .planning/ another tool's? (gsd-core markers) — hygiene, health and init consult it
+        verify.cjs            # Verification + health facade; verify-{drift,retro,deploy,preflight,scope}.cjs re-exported
+        foreign-planning.cjs  # Is this .planning/ another tool's? (gsd-core markers; planning-with-files markers make it shared, not foreign) — hygiene, health and init consult it
         milestone.cjs         # Milestone lifecycle (archive, milestones.md)
         frontmatter.cjs       # YAML-like frontmatter CRUD
         commands.cjs          # Misc facade: history-digest, scaffold, progress, todo, commit; commands-learnings.cjs re-exported
-        template.cjs          # Template loading from templates/
+        template.cjs          # template select (picks a summary template) + template fill (built-in generators); reads nothing in templates/
         context-budget.cjs    # Context window utilization, cache block classification, cache.ttl recommendation
         focus.cjs             # Strategic project management: scan, plan, sync, exec, design, auto
         codebase.cjs          # Codebase analysis: language detection, imports, best practices
@@ -45,10 +45,12 @@ pan-wizard/
         bus.cjs               # Agent message channels (Y-7)
         preview.cjs           # Foresight: phase blast radius, dependency graph (Y-1)
         review-deep.cjs       # Deep review merge (reviewer + hardener + meta) (Y-2)
+        verdict.cjs           # The pan-verdict contract: parses and validates a judge's block, or the verifier's verification.md frontmatter (ADR-0049)
+        findings.cjs          # Findings ledger .planning/findings.jsonl: findings record/list/dispose/debt (ADR-0049)
         knowledge.cjs         # Grounded Q&A / discuss / playbook (Y-3)
         whatif.cjs            # Counterfactual phase replay in worktree (Y-4)
         bridge.cjs            # MCP discovery + recommendation — the CLIENT side (Y-5)
-        optimize.cjs          # Circular optimization loop (trace, learn, apply) (v3.5)
+        optimize.cjs          # Circular optimization loop (trace, learn, apply, revert) (v3.5)
         git.cjs               # /pan:git command family (v3.5)
         distill.cjs           # AI code-bloat 5-pass optimizer (v3.5)
         doc-lint.cjs          # Markdown frontmatter+structure linter; `doc-lint counts` is release Gate 4
@@ -165,7 +167,7 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 
 ## Writing Tests
 
-Tests use Node.js built-in `node:test` and `node:assert`. No external framework.
+Tests use Node.js built-in `node:test` and `node:assert`. No external framework — the one exception is the opt-in VS Code e2e harness in `tests/e2e/` (`npm run test:vscode`), which runs on Playwright.
 
 ```javascript
 const { describe, test } = require('node:test');
@@ -207,7 +209,7 @@ Three checks, run with the rest of the suite, decide this from the code rather t
 - **The coverage gate.** `npm run test:coverage` runs the suite under Node's own instrumentation (Node 22+; the processes tests spawn are captured through the inherited `NODE_V8_COVERAGE`) and fails when a dispatcher `case` arm never executed or a module group falls below the floors in `tests/fixtures/coverage-policy.json` (set a point below the measured baseline). An arm no test dispatches yet is allowlisted there with a reason, and the entry fails once a test dispatches it. Release-check Gate 9 runs it; CI runs it as an advisory (`continue-on-error`) step on the Node 22 jobs.
 - **The quality lint.** `tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file and fails on the shapes that have passed while the feature they named was broken: an OR between result-status fields (`output || error` — a crash satisfies it), an in-process call to a lib module's `cmd*` function (they end in `output()`/`error()`, which exit the process, so the test child dies and `node --test` reports the file as one passing test — always go through `runPanTools`), `assert(true)`, CLI output asserted only by its length, a platform conditional that bare-returns instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read of the real home directory, a committed `test.todo`, and an `assert.ok(a.x || a.y)` that only asks whether one of several fields exists. Exceptions live in `tests/fixtures/test-quality-allowlist.json` per file and rule with a count and a reason; an entry that allows more than the file has is stale and fails too.
 
-The two allowlists are the debt register: seeded from the suite as it stood on 2026-09-17 and burned down in the spec's phase 2 — the twelve never-dispatched CLI arms, the four never-dispatched verbs and every "Unknown <group> subcommand" arm are now covered by `tests/dispatcher-arms.test.cjs`, which is driven from the dispatcher's own source rather than a hand-kept list.
+The allowlists are the debt register: seeded from the suite as it stood on 2026-09-17 and burned down in the spec's phase 2 — the never-dispatched CLI arms and verbs and every "Unknown <group> subcommand" arm are now covered by `tests/dispatcher-arms.test.cjs`, which is driven from the dispatcher's own source rather than a hand-kept list.
 
 A fourth check is **not** part of the gate and is run by hand: `npm run test:mutate` breaks the code on purpose — one small mutation at a time, inside a throwaway `git worktree` so your checkout is never touched — and reports the mutations the suite did not notice. Coverage says a line executed; a surviving mutant says no assertion constrained it. Some survivors are correct (equivalent mutants, defensive `|| 0` defaults, log strings), which is exactly why it reports and never fails: a survivor is a question about whether a behaviour is worth pinning.
 
@@ -232,17 +234,17 @@ Windows uses `\`, macOS/Linux use `/`. All JSON output must use forward slashes.
 
 ```javascript
 const { toPosix } = require('./core.cjs');
-// path.join(cwd, '.planning', 'state.md') → '.planning\state.md' on Windows
+// path.join('.planning', 'state.md') → '.planning\state.md' on Windows
 // toPosix(relPath) → '.planning/state.md' always
 ```
 
 ### Dollar Sign Shell Expansion (EP-002)
 Bash expands `$` in strings. If content contains `$100`, it gets mangled.
 
-**Fix:** Write content to a temp file, pass `--text-file <path>` instead of inline strings.
+**Fix:** Write content to a temp file and pass it with the verb's file flag (`state add-blocker --text-file`, `state add-decision --summary-file`/`--rationale-file`, `findings record --file`) instead of inline strings.
 
 ### CommonJS Format (EP-003)
-All modules use `.cjs` extension with `require()`/`module.exports`. Do NOT use ESM (`import`/`export`).
+All modules are CommonJS (`require()`/`module.exports`): the core modules use the `.cjs` extension, and hooks, `bin/install.js` and several scripts are CommonJS `.js`. Do NOT use ESM (`import`/`export`). The exceptions are the opt-in Playwright harness in `tests/e2e/` and the native workflow scripts that `buildNativeWorkflowScripts()` in `bin/install-lib.cjs` emits for `.claude/workflows/`, which must open with `export const meta`.
 
 ### node:test Not Jest (EP-004)
 Tests use `node:test` and `node:assert/strict`. Do NOT use `describe`/`it` from Jest or Mocha.
@@ -305,14 +307,15 @@ References are knowledge documents in `pan-wizard-core/references/` that agents 
 | `questioning.md` | Discussion methodology for new-project/discuss-phase |
 | `tdd.md` | TDD workflow (RED/GREEN/REFACTOR) in plan execution |
 | `ui-brand.md` | Status banners, checkpoint boxes, progress display |
+| `verdict-contract.md` | The `pan-verdict` block judges end their reports with: fields, verdict → outcome per judge, finding classes, severities |
 | `verification-patterns.md` | Stub detection, wiring checks, verification checklists |
 
 ## How to Customize Templates
 
-Templates in `pan-wizard-core/templates/` scaffold new project files. The `template.cjs` module handles loading and placeholder substitution.
+Templates in `pan-wizard-core/templates/` scaffold new project files. Agents read these files and fill them in; `template.cjs` never loads them — it selects a summary template and writes pre-filled phase files from its own generators.
 
 1. Templates are plain Markdown files with `{placeholder}` variables
-2. `cmdTemplateFill()` replaces placeholders with phase/plan context
+2. `cmdTemplateFill()` (`template fill summary|plan|verification --phase N`) writes a pre-filled file into the phase directory from built-in generators, not from `templates/`
 3. `cmdTemplateSelect()` auto-selects summary template based on plan complexity:
    - **minimal** — ≤2 tasks, ≤3 files, no decisions
    - **standard** — typical plans
@@ -393,4 +396,4 @@ Releases are published by CI from a tag; nothing is published from a laptop. The
    A `v*` tag triggers `.github/workflows/release.yml`, which reruns the gates through `prepublishOnly`, publishes with npm provenance, and **creates the GitHub Release** from the `CHANGELOG.md` section for that version. The npm dist-tag comes from the version (`scripts/npm-dist-tag.js`): a prerelease such as `3.31.0-rc.1` publishes under `next` and its GitHub Release is marked as a prerelease, never Latest, so `npm install pan-wizard` keeps resolving to the newest stable release; a plain version publishes under `latest`. Do not rely on `git push --follow-tags` — it has silently dropped the tag before, and then nothing publishes.
 
    The Release step landed after 3.29.0 was tagged (that release object was created by hand). Before it, the workflow published to npm and stopped, so nine tagged versions (3.20.0–3.22.0 and 3.24.0–3.28.0) carry a tag and an npm release but no release object. The step is `continue-on-error` — the package is already published by the time it runs, so a failure there is a cosmetic omission rather than a failed release — and the run summary states plainly whether the release exists, so an omission is visible instead of silent. A re-run never clobbers an existing release.
-7. **After a successful publish:** the workflow already ran `deprecate-old-versions.js --apply` and created the Release; check the run summary for both. Then upgrade the installs you maintain with the installer. When sweeping `d:\` for installs to upgrade, exclude **everything** under `d:\pantesting\` except the root — its subdirectories are audit fixtures pinned to the version they were made on, and a name-based denylist has missed them before.
+7. **After a successful publish:** the workflow already ran `deprecate-old-versions.js --apply` and created the Release. The run summary says whether the Release exists; the deprecations appear only in the `Deprecate superseded versions` step log, which stays green even when npm refuses every one. Then upgrade the installs you maintain with the installer. When sweeping `d:\` for installs to upgrade, exclude **everything** under `d:\pantesting\` except the root — its subdirectories are audit fixtures pinned to the version they were made on, and a name-based denylist has missed them before.

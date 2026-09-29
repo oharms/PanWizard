@@ -22,6 +22,7 @@ const path = require('path');
 const { output, error, safeReadFile, toPosix } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
 const { publish } = require('./bus.cjs');
+const { findVerdictBlocks, validateVerdict } = require('./verdict.cjs');
 
 const REVIEWS_DIR = 'reviews';
 const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info'];
@@ -41,12 +42,19 @@ function reviewsDir(cwd) {
  * Recognized severities (case-insensitive): critical, high, medium, low, info.
  * Missing severity defaults to `info`.
  *
+ * A report that ends with a valid `pan-verdict` block (verdict.cjs) is read from
+ * the block instead. pan-reviewer's report puts its findings in tables under
+ * `### Findings`, which the bullet grammar above never matched, so before the
+ * block existed the reviewer half of every deep review merged as zero findings.
+ *
  * @param {string} content - Full markdown content
  * @param {string} source - Label for finding.source (e.g. "reviewer", "hardener")
  * @returns {Array<Object>}
  */
 function parseReviewFindings(content, source) {
   if (typeof content !== 'string' || !content) return [];
+  const fromBlock = findingsFromVerdictBlock(content, source);
+  if (fromBlock) return fromBlock;
   const findings = [];
   const lines = content.split('\n');
   let inFindings = false;
@@ -79,6 +87,34 @@ function parseReviewFindings(content, source) {
     });
   }
   return findings;
+}
+
+/**
+ * The findings of a report's last `pan-verdict` block, in this module's finding
+ * shape; null when the report has no usable block (then the bullet grammar runs).
+ * `where` is `path[:line]`; the class becomes the category.
+ */
+function findingsFromVerdictBlock(content, source) {
+  const blocks = findVerdictBlocks(content);
+  if (!blocks.length) return null;
+  const last = blocks[blocks.length - 1];
+  if (!last.closed) return null;
+  let parsed;
+  try { parsed = JSON.parse(last.body); } catch { return null; }
+  const r = validateVerdict(parsed);
+  if (!r.ok) return null;
+  return r.verdict.findings.map((f) => {
+    const m = f.where ? /^(.*?)(?::(\d+))?$/.exec(f.where) : null;
+    return {
+      source,
+      severity: f.severity,
+      category: f.class,
+      description: f.summary,
+      file: m ? m[1] : null,
+      line: m && m[2] ? Number(m[2]) : null,
+      rationale: null,
+    };
+  });
 }
 
 /**

@@ -7,8 +7,8 @@ lives outside the checkout.
 
 ```bash
 node harness/src/run.cjs                       # tier 0: model-free, free, ~a minute
-node harness/src/run.cjs --tier 1 --max-usd 2  # + single-turn model steps, capped spend
-node harness/src/run.cjs --tier 2 --max-usd 10 --repeat 5   # + chain runs, five times each
+node harness/src/run.cjs --tier 1 --max-usd 2 --scenario plugin-agent-scope  # one tier-1 scenario, capped spend
+node harness/src/run.cjs --tier 2 --max-usd 50 --repeat 5 --scenario native-exec-waves-chain --scenario markdown-exec-phase-chain   # the chain pair, five reps each
 node harness/src/run.cjs --scenario install-matrix          # one scenario
 node harness/src/run.cjs --repo <dir> --keep                 # pack another checkout; keep the extracted artifact after the run
 node harness/src/run.cjs --no-ledger                        # leave the tracked harness/ledger.jsonl untouched (CI)
@@ -19,19 +19,19 @@ Or `npm run harness` (tier 0) and `npm run harness:model -- --max-usd <n>`.
 
 ## What a run does
 
-1. `npm pack` the checkout into the run directory, extract with `tar` (never `npx`), and
+1. Run `scripts/build-hooks.js` (the package ships the gitignored `hooks/dist/`), `npm pack` the checkout into the run directory, extract with `tar` (never `npx`), and
    record the package version, repository HEAD and tarball SHA-256 — a build is identified
    by content, not by version string.
 2. For each scenario at or below the requested tier: create a workspace, apply its seed
-   (a PAN-shaped `.planning/` tree plus a tiny project), `git init`, install PAN **from the
+   (a tiny project, usually with a PAN-shaped `.planning/` tree), `git init`, install PAN **from the
    extracted package** with the scenario's installer flags, then run its steps.
 3. Evaluate every step's `expect` list. A failed assertion becomes a finding with a stable
    signature in `harness/ledger.jsonl` (tracked); a step that later passes resolves it.
 4. Write `report.md` and `report.json` under the run directory and print a one-line JSON
-   summary. Exit 1 when any step failed. **Skipped scenarios are never green.**
+   summary. Exit 1 when any step failed or a model step never reached the model (recorded as `error`, with no assertion evaluated and no finding filed). **Skipped scenarios are never green.**
 
 Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on this machine
-(`--state-dir` or `PAN_HARNESS_STATE` elsewhere).
+(`<os temp>/pan-harness-runs/` elsewhere; `--state-dir` or `PAN_HARNESS_STATE` overrides it).
 
 ## Tiers and spend
 
@@ -55,7 +55,7 @@ exactly one `pan` server — the workspace's.
 
 ## Headless background-wait ceiling
 
-Native PAN workflows run as background Workflows inside `claude -p`. Claude Code waits for them, but by default **the wait ends after ten minutes and the workflow is stopped with its partial result dropped** (`code.claude.com/docs/en/headless`, "Background tasks at exit"). The runner therefore sets `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for every model step (`modelEnv()` in `src/model.cjs`); the scenario's `budget.maxStepMinutes` remains the bound. The two native-chain reps measured on 2026-09-10 before this fix both died at ~605 s with `Workflow aborted` — that was the ceiling, not the chain, and the ledger entries they filed were withdrawn for that reason.
+Native PAN workflows run as background Workflows inside `claude -p`. Claude Code waits for them, but by default **the wait ends after ten minutes and the workflow is stopped with its partial result dropped** (`code.claude.com/docs/en/headless`, "Background tasks at exit"). The runner therefore sets `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` for every model step whose environment does not already set it (`modelEnv()` in `src/model.cjs`); the scenario's `budget.maxStepMinutes` remains the bound. The two native-chain reps measured on 2026-09-10 before this fix both died at ~605 s with `Workflow aborted` — that was the ceiling, not the chain, and the ledger entries they filed were withdrawn for that reason.
 
 Every model step's full `claude -p` output is written to `<run>/steps/<scenario>-<rep>-<step>.json` so a run that dies mid-agent leaves its evidence on disk.
 
@@ -86,9 +86,9 @@ text in stdout for `json:` assertions), `sh` (a script under `harness/scripts/`)
 and it counts as a tier-1 scenario's model step; its credits are not counted against `--max-usd`),
 `mcp` (a JSON-RPC batch to the installed bridge; `cwd: "other"` runs it from a directory
 that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin).
-Any step may carry `timeoutMinutes` (default `budget.maxStepMinutes`); `pan` and `mcp` steps may
-name a `runtime`; `model` steps take `strictMcp` (default true); `mcp` steps take `cwd: "other"` to address the second workspace; `build` steps take `out`.
-Placeholders `<ws>`, `<other>`, `<repo>`, `<pkg>` are filled in argv, args, paths and prompts.
+Any step may carry `timeoutMinutes` (default `budget.maxStepMinutes`, else 5) and `fatal: true` (a failed step ends the scenario); a step due after `budget.maxMinutes` (default 30) has passed is not run, and the overrun is a failure with a finding, not a `budget` stop; `pan` and `mcp` steps may
+name a `runtime`; `model` steps take `strictMcp` (default true) and `persistSession: true` (the host writes transcripts, which a step that measures transcript-reading hooks needs); `mcp` steps take `cwd: "other"` to address the second workspace; `build` steps take `out`; `cli` steps take `env` (`{"NAME": "value"}`, placeholders filled), which `live-gate-gemini` uses to give Gemini a scratch home under `<other>` instead of the user's real `~/.gemini`.
+Placeholders `<ws>`, `<other>`, `<repo>`, `<pkg>` are filled in argv, args, paths and prompts; an `mcp` step's requests get `<ws>` and `<other>` only.
 
 Assertion kinds: `exit:<n>`, `file:<rel>`, `absent:<rel>`, `glob:<pattern>`,
 `count:<pattern>=<n>`, `json:<path>`, `json:<path>=<value>`, `json!:<path>`,
@@ -96,7 +96,7 @@ Assertion kinds: `exit:<n>`, `file:<rel>`, `absent:<rel>`, `glob:<pattern>`,
 both-direction test in `tests/harness.test.cjs`; add a kind there first.
 
 Every step carries a `why`. That is not decoration — it is what makes a finding readable
-when it surfaces months later, and the runner prints it under each failure.
+when it surfaces months later, and the runner writes it under each failure in `report.md`.
 
 ## Representative scenarios
 
@@ -108,12 +108,12 @@ The full set lives in `harness/scenarios/` (`ls harness/scenarios`); this table 
 | `mcp-bridge-cwd` | 0 | The installed bridge, run from a foreign directory, answers for the project named by the per-call `cwd` |
 | `native-workflows-deployed` | 0 | The §3.2 static gate on the installed scripts |
 | `agent-plugin-bundle` | 0 | The Agent Plugins bundle builds and is shaped as the schemas and vendor docs require |
-| `live-gate-copilot` / `-codex` / `-antigravity` | 0 | Live installs on those CLIs — **skipped with reason** where the CLI is absent |
+| `live-gate-copilot` / `-codex` / `-antigravity` | 0 | Live installs on those CLIs (for Codex, registering this checkout's marketplace and listing it) — **skipped with reason** where the CLI is absent |
 | `copilot-agent-frontmatter` | 1 | A Copilot custom agent in PAN's model-list shape (`models:` + `model-policy: preferred`) loads and answers under `copilot --agent`; a paid `cli` step (Copilot credits), requires Copilot CLI 1.0.86+ |
 | `plugin-agent-scope` | 1 | `/pan-plugin-selftest` inside the Claude plugin: `AGENT_SCOPE: scoped\|bare` |
 | `native-exec-waves-chain` | 2 | `/pan-exec-waves` on a seeded two-plan phase: every plan gets a summary and the phase a verification |
 | `markdown-exec-phase-chain` | 2 | The markdown twin on the same seed — the oracle for the chain comparison |
-| `live-gate-gemini` / `-opencode` | 0 | Ask the CLI itself whether it loaded PAN's MCP registration — skipped with reason where the CLI is absent |
+| `live-gate-gemini` / `-opencode` | 0 | Ask the CLI itself whether it loaded PAN's MCP registration — skipped with reason where the CLI is absent. The Gemini gate runs every `gemini` call against a scratch home under `<other>` and proves the trust precondition both ways: `Disabled` while untrusted, then `Connected` once it trusts its own workspace |
 | `focus-design-ab-original` / `-split` | 1 | The body-budget A/B: the shipped `/pan:focus-design` versus a split variant on the same seed and prompt (R21) |
 | `skill-doctor-context-cost` | 1 | `/skill-doctor`'s static context cost for PAN's skills; requires Claude Code 2.1.261+ |
 | `map-codebase-single-shot` | 1 | Single-shot map-codebase on a repo below the sharding threshold |
@@ -121,12 +121,14 @@ The full set lives in `harness/scenarios/` (`ls harness/scenarios`); this table 
 | `unified-skills-claude` | 0 | A `--unified-skills` install gives Claude Code its own copy of the compiled skills under `.claude/skills/`, because Claude does not read `.agents/skills/` (R32), and writes no flat shim (R33) |
 | `unified-skills-discovery` | 1 | Claude Code, asked headlessly, names the unified `pan-` skills — ADR-0028's default-on gate, measured on the `.claude/skills/` copy since R32 |
 | `plan-phase-checker-loop` | 2 | Research → plan → checker loop on an unplanned phase |
-| `quick-mode` | 2 | `/pan:quick` end to end on a small repo |
+| `quick-mode` | 2 | `/pan:quick` end to end on the two-plan seed (quick mode needs a roadmap) |
 | `uat-diagnose-native` | 2 | `/pan-diagnose-issues` on a phase with one failed UAT truth and the matching real defect |
+| `evidence-loop` | 0 | The evidence loop through a deployed Claude install, model-free: the installed trace hook captures failing tool calls from a subagent transcript, the installed engine records verdicts and a deferral, `optimize learn` sees both, and `optimize revert` undoes an apply byte for byte (ADR-0049) |
+| `tool-error-capture` | 1 | A real subagent's failing `npm test` is recorded by the installed trace hook as an `error/tool_error` event read from that subagent's own transcript; the model step sets `persistSession: true` |
 
 ## Seeds
 
 `harness/seeds/<name>/` is copied into the workspace before install (`"seed": "empty"` is reserved and means no seed). Seeds are written the
-way PAN's own templates write them (roadmap checklist lines, state frontmatter, plan files
+way PAN's own templates write them (roadmap checklist lines, the state template's `**Field:**` lines, plan files
 with the `wave` / `autonomous` frontmatter `phase-plan-index` parses) — a fixture in a
 format PAN never emits verifies nothing.

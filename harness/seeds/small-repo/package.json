@@ -6,6 +6,6 @@
     "tiny": "bin/cli.js"
   },
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test"
   }
 }

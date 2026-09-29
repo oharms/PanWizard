@@ -36,10 +36,6 @@
     "reason": "default written, never named by a test — P2 config-defaults test"
   },
   {
-    "id": "config:execution.error_pattern_learning",
-    "reason": "written but read nowhere (documented as reserved) — decide: read it or drop the default"
-  },
-  {
     "id": "config:execution.rollback_snapshots",
     "reason": "written but read nowhere (documented as reserved) — decide: read it or drop the default"
   },

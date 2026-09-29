@@ -50,7 +50,7 @@ before ADR-0028.
   preserves the body; plus a command → skill wrapper.
 - **M4 — bundle + install.** `bin/install-zcode.js` — assembles `agents/` + `pan-mcp.json` +
   manifest + `INSTALL-ZCODE.md` into a `--target` dir; refuses to write inside the source repo;
-  drives ZCode's own Import to finish.
+  leaves the finish to the human in ZCode's own Settings and Import, following `INSTALL-ZCODE.md`.
 - **M5 — hardening + docs.** Full test matrix + [`KNOWN-BETA-RISKS.md`](KNOWN-BETA-RISKS.md)
   (the beta-churn ledger + the M0 go/no-go questions).
 
@@ -59,11 +59,11 @@ Tests: `tests/pan-zcode-mcp.test.cjs`, `tests/pan-zcode-orchestration.test.cjs`,
 
 ## Still pending — M0 (needs a real ZCode install)
 
-Two go/no-go facts can only be settled empirically: **can a subagent call MCP tools?** and **are
+Among the go/no-go facts only a real install can settle (the M0 table in `KNOWN-BETA-RISKS.md`) are **can a subagent call MCP tools?** and **are
 local stdio MCP calls metered?** Both have folded-in fallbacks (see `KNOWN-BETA-RISKS.md`), so the
 design holds either way — but confirm them before relying on the richer paths.
 
-A third M0 checkpoint (added 2026-08): **which protocol era does the real ZCode client speak?**
+Another M0 checkpoint (added 2026-08, not yet in `KNOWN-BETA-RISKS.md`): **which protocol era does the real ZCode client speak?**
 The bridge is now dual-era (ADR-0041), so it answers both a legacy `initialize` handshake and a
 modern `server/discover` probe. Confirm on a real install which path ZCode takes and that the
 version it declares is in our supported list; if ZCode ever declares a revision newer than

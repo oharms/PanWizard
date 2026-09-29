@@ -40,6 +40,7 @@ node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
 - [25. Skill-Aligned Decomposition Commands](#25-skill-aligned-decomposition-commands)
 - [26. Hygiene Commands](#26-hygiene-commands)
 - [27. Optimization, Git and Distill Commands](#27-optimization-git-and-distill-commands-v35)
+- [28. Evidence Loop Commands](#28-evidence-loop-commands)
 
 ---
 
@@ -47,7 +48,11 @@ node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
 
 ### Output Format
 
-**All output is JSON** unless `--raw` is passed. When `--raw` is used, commands emit a single plain-text value suitable for shell variable capture (e.g., a directory path, a count, or `true`/`false`).
+**Output is JSON** unless `--raw` is passed (or a flag such as `hud --stdout` asks for HTML). Under `--raw`, a command that has a plain-text form prints it instead: usually a single value suitable for shell variable capture (e.g., a directory path, a count, or `true`/`false`), for some commands a human-readable summary. A command without one prints its JSON under `--raw` too (every `init *`, `state json`, `findings dispose`).
+
+### Output Contracts (`contract`)
+
+Some machine-readable outputs carry a `contract` field: a version string for their shape. The outputs are `state` (`state load`), `state json`, `progress` (`progress json`), every `findings` output, and the MCP resources `pan://state`, `pan://progress` and `pan://findings` that wrap them. The judges' `pan-verdict` block has one too. The rule is additive: fields are added within a major version (`1.x`) and never renamed or removed; a rename or removal is a major bump. Consumers pin the major, accept any `1.x`, and ignore fields they do not know. The key=value `--raw` form of `state load` carries no `contract` line, and no error payload (`{"error": …}`) from any of these outputs carries one.
 
 ### Debug Logging
 
@@ -74,7 +79,7 @@ pan-tools has **two** error mechanisms. They differ in where the text lands, not
 | Mechanism | Text goes to | stdout | Exit code |
 |---|---|---|---|
 | `error(msg)` | **stderr**, as a bare `Error: <msg>` line — no JSON | empty | always `1` |
-| `output(payload, …)` with a truthy top-level **error-family** key | **stdout**, as `{ "error": "<description>" }` (or the plain message under `--raw`) | the payload | `1` unless the command opts out (below) |
+| `output(payload, …)` with a truthy top-level **error-family** key | **stdout**, as `{ "error": "<description>" }` (or, under `--raw`, the command's plain-text form when it has one) | the payload | `1` unless the command opts out (below) |
 
 The **error family** is `error` and any key ending in `_error` — `worktree_error` (`whatif prepare`), `drain_error` (`bus drain`). A renamed error key is still an error key. Plural collections (`errors`, `schema_errors`) and counters (`error_count`) are *not* in the family: they are the detail of a verdict payload, and an empty array is truthy in JavaScript, so treating them as failure signals would fail every clean run. Commands whose result is a verdict set their exit code explicitly instead.
 
@@ -97,7 +102,7 @@ Mutating commands report the outcome as a past-tense flag: `{committed}`, `{upda
 | Payload | Exit | Why |
 |---|---|---|
 | `{committed: false, reason: "commit_failed", error: …}` | `1` | git refused; nothing landed |
-| `{committed: false, reason: "commit_blocked", error: …}` | `1` | a safety check protected you; nothing landed |
+| `{committed: false, reason: …, error: "commit_blocked"}` | `1` | a safety check protected you; nothing landed (`reason` names the check: `sensitive_file_detected` or `deleted_files_detected`) |
 | `{updated: false, reason: "state.md not found", error: …}` | `1` | the write had nowhere to go |
 | `{resolved: false, reason: "no matching blocker", error: …}` | `1` | the blocker is still open |
 | `{committed: false, reason: "nothing_to_commit"}` | `0` | no change was needed |
@@ -110,7 +115,7 @@ Mutating commands report the outcome as a past-tense flag: `{committed}`, `{upda
 
 The failures carry an error-family key and the answers do not — which is *why* the same shape can mean both. This split is a per-command judgement recorded in the source next to each payload, not something you can infer from the shape.
 
-`{available: false}` is worth one more line, because it appears with and without an error key on purpose: `web-search` with no `BRAVE_API_KEY` is unconfigured (exit `0`, degrade gracefully), while a configured search that gets an API 5xx is broken (exit `1`).
+`{available: false}` is worth one more line, because it appears with and without an error key on purpose: `websearch` with no `BRAVE_API_KEY` is unconfigured (exit `0`, degrade gracefully), while a configured search that gets an API 5xx is broken (exit `1`).
 
 #### How a caller tells them apart
 
@@ -151,7 +156,7 @@ Both value flags accept `--flag value` and `--flag=value`, and are mutually excl
 
 **Tracks are discovered, not declared.** Any directory under `.planning/tracks/` carrying a planning spine (`state.md`, `roadmap.md`, `phases/`, `focus/`, `orchestration/`, …) is a track; an incidental folder is not.
 
-**Commands report the root they resolved.** The `hygiene` payloads and every `init *` payload except `init new-milestone` and `init verify-work` carry `planning_root`, `track`, `planning_root_source` (`default` / `env:PAN_TRACK` / `flag:--track` / …), and `planning_root_exists`. A mistyped `--track` therefore shows `planning_root_exists: false` next to its zero findings, instead of reading as a healthy project.
+**Commands report the root they resolved.** The `hygiene` payloads and every `init *` payload except `init new-milestone` and `init verify-work` carry `planning_root`, `track`, `planning_root_source` (`default` / `env:PAN_TRACK` / `flag:--track` / …), and `planning_root_exists` (`init milestone-op --all-tracks` carries them on each entry of `tracks[]`). A mistyped `--track` therefore shows `planning_root_exists: false` next to its zero findings, instead of reading as a healthy project.
 
 ```bash
 pan-tools hygiene scan --track verify --raw
@@ -199,7 +204,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `knowledge.cjs` | **(v3.2, Y-3)** Grounded Q&A: `knowledge ask`, `knowledge discuss`, `knowledge playbook`. |
 | `whatif.cjs` | **(v3.3, Y-4)** Counterfactual worktree: `whatif prepare`, `whatif report`, `whatif cleanup`. |
 | `bridge.cjs` | **(v3.3, Y-5)** MCP discovery: `bridge list`, `bridge recommend`, `bridge cache`. |
-| `optimize.cjs` | **(v3.5)** Circular optimization loop: `optimize trace init/end/current/list/show/log/reconcile`, `optimize learn`, `optimize apply`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` (v3.21) rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
+| `optimize.cjs` | **(v3.5)** Circular optimization loop: `optimize trace init/end/current/list/show/log/reconcile`, `optimize learn`, `optimize apply`, `optimize revert`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` (v3.21) rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
 | `git.cjs` | **(v3.5)** Phase-aware git workflow: `git commit/branch/push/status/log/stash/diff/rollback/tag/sync`. Reuses `runCommitSafetyChecks` for commit hardening. |
 | `distill.cjs` | **(v3.5)** AI code-bloat optimizer (5-pass pipeline): `distill scan/analyze/report`. Cross-session memory at `.planning/memory/distill-patterns.md`. |
 | `doc-lint.cjs` | Markdown frontmatter + structure linter: `doc-lint <dir>`, `doc-lint schema-check`, `doc-lint counts <dir>`, `doc-lint flags`. |
@@ -219,7 +224,10 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
 | `utils.cjs` | Planning-root path builders (`planningPath()`, `planningRel()`, `phasesPath()`, `milestonesPath()`), `fileAccessible()`/`readJsonFile()`, plan/summary file filters and `classifyPhaseStatus()`, shared by the other modules. No CLI surface. (`toPosix()` and `safeReadFile()` live in `core.cjs`.) |
 | `planning-root.cjs` | **(v3.27)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
-| `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that belongs to another tool from markers PAN never writes (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys). Consulted by `hygiene scan`/`clean` (one `foreign-planning-tree` warning, the rename fix refused), `validate health` (`E006`, stops before `E002`–`E005`) and `init new-project` (refuses with an error payload). The remedy is always `--planning-dir <dir>`. No CLI surface of its own. |
+| `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
+| `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
+| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A re-verification auto-fixes the findings it no longer reports, a regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
+| `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. Re-exported through verify.cjs. |
 
 ---
 
@@ -430,6 +438,12 @@ Quick reference of all CLI commands grouped by category.
 | 199 | `state compact` | State Progression | state-compact.cjs |
 | 200 | `optimize trace show` | Optimization | optimize.cjs |
 | 201 | `cost rebuild` | Cost (v3.29) | cost-rebuild.cjs |
+| 202 | `findings record` | Evidence loop | findings.cjs |
+| 203 | `findings list` | Evidence loop | findings.cjs |
+| 204 | `findings dispose` | Evidence loop | findings.cjs |
+| 205 | `findings debt` | Evidence loop | findings.cjs |
+| 206 | `verify scope` | Verification | verify-scope.cjs |
+| 207 | `optimize revert` | Optimization | optimize.cjs |
 
 ---
 
@@ -449,6 +463,7 @@ pan-tools state                   # bare `state` is an alias for `state load`
 **JSON output:**
 ```json
 {
+  "contract": "1.0",
   "config": { "model_profile": "balanced", "commit_docs": true, ... },
   "state_raw": "<full state.md content>",
   "state_exists": true,
@@ -459,7 +474,7 @@ pan-tools state                   # bare `state` is an alias for `state load`
 
 **`--raw` output:** Key=value lines: `model_profile=balanced`, `commit_docs=true`, etc.
 
-**Missing state.md is not an error here:** `state load` returns `state_exists: false` with an empty `state_raw` and exits `0`. `state json`, `state get` and the state-progression commands return `{ "error": "state.md not found" }` (exit 1).
+**Missing state.md is not an error here:** `state load` returns `state_exists: false` with an empty `state_raw` and exits `0`. `state json`, `state get` and the state-progression commands return `{ "error": "state.md not found" }` (exit 1); `state compact` reports it as a bare `Error: … not found — nothing to compact` line on stderr (exit 1).
 
 **Implementation:** `state.cjs → cmdStateLoad()` — reads state.md with a tolerant `fs.readFileSync` (absence is not an error).
 
@@ -488,9 +503,12 @@ pan-tools state json [--raw]
     "total_plans": 30,
     "completed_plans": 18,
     "percent": 60
-  }
+  },
+  "contract": "1.0"
 }
 ```
+
+`contract` is the output's shape version (see [Output Contracts](#output-contracts-contract)), never a state.md field.
 
 **Implementation:** `state.cjs → cmdStateJson()` — Parses YAML frontmatter first, falls back to markdown body parsing.
 
@@ -514,7 +532,7 @@ If the field is not found:
 { "updated": false, "reason": "Field \"Current Phase\" not found in state.md", "error": "field_not_found" }
 ```
 
-**Note:** Field names are case-sensitive and match the bold markdown format (e.g., `"Current Phase"`, `"Status"`).
+**Note:** Field names match the bold markdown format (e.g., `"Current Phase"`, `"Status"`), case-insensitively; only the first matching line is updated.
 
 ---
 
@@ -1249,7 +1267,7 @@ pan-tools validate health --links
 | E003 | error | `roadmap.md` not found (phase-model projects only — a focus-model tree reports I003 instead) | No |
 | E004 | error | `state.md` not found (phase-model projects only — a focus-model tree reports I003 instead) | Yes |
 | E005 | error | `config.json` JSON parse error | Yes |
-| E006 | error | `.planning/` belongs to another tool (gsd-core markers found); PAN stops before E002–E005 and `--repair` writes nothing | No |
+| E006 | error | `.planning/` belongs to another tool (gsd-core markers found); PAN stops before E002–E005 and `--repair` writes nothing. A tool that shares the tree instead reports I004 | No |
 | W001 | warning | `project.md` missing required section | No |
 | W002 | warning | `state.md` references non-existent phase | Yes |
 | W003 | warning | `config.json` not found | Yes |
@@ -1259,7 +1277,9 @@ pan-tools validate health --links
 | W007 | warning | Phase on disk but not in ROADMAP | No |
 | I001 | info | Plan without SUMMARY (may be in progress) | No |
 | I002 | info | Phase in ROADMAP ahead of the current phase, not planned yet | No |
-| I003 | info | The tree runs the focus model or an orchestration campaign, so the phase-model checks (E002–E004, W005–W007, the state-consistency and verification gates) do not apply | No |
+| I003 | info | The tree runs the focus model or an orchestration campaign, so the phase-model checks (E002–E004, W001, W002, W005–W007, I001, I002, the state-consistency and verification gates) do not apply | No |
+| I004 | info | Another tool shares the planning tree (planning-with-files markers: `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories such as `sessions/`). PAN leaves its files alone and keeps checking its own | No |
+| I005 | info | The planning tree is ignored by git while `commit_docs` is true, so planning commits commit nothing. planning-with-files adds `.planning/` to `.gitignore` by default. Fix: remove the entry, or set `commit_docs` to false | No |
 | STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `REQUIREMENTS.md` has unchecked boxes | Yes |
 | STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
@@ -1342,7 +1362,7 @@ pan-tools validate deployment [--raw]
 
 Commands for verifying plan structure, phase completeness, file references, git commits, and build artifacts. Used by the pan-verifier and pan-plan-checker agents.
 
-**Exit code:** these verdict commands exit `0` whether the verdict passes or fails (exit `1` comes only from an unreadable input — `File not found` for `plan-structure`/`references`/`artifacts`/`key-links`, `Phase not found` or an unreadable phase directory for `phase-completeness` — and from usage errors; `verify-summary` reports a missing summary as `passed: false` at exit `0`) — gate on the `valid`/`passed` field, not the exit code. `verify reconcile` and `verify stubs --gate` are the exceptions and set the code explicitly.
+**Exit code:** these verdict commands exit `0` whether the verdict passes or fails (exit `1` comes only from an unreadable input — `File not found` for `plan-structure`/`references`/`artifacts`/`key-links`, `Phase not found` or an unreadable phase directory for `phase-completeness` — and from usage errors; `verify-summary` reports a missing summary as `passed: false` at exit `0`) — gate on the `valid`/`passed` field, not the exit code. `verify reconcile` and `verify stubs --gate` are the exceptions and set the code explicitly; `verify scope` exits `1` for a missing or unknown phase.
 
 ### `verify-summary <path> [--check-count N]`
 
@@ -1533,6 +1553,22 @@ pan-tools verify reconcile 5 [--raw]
 
 ---
 
+### `verify scope <phase>`
+
+The files a phase changed that none of its plans declared: the mechanical half of the verifier's unrequested-work check (market item M11).
+- **Changed:** the files the phase's plan commits touched (subjects of the form `{type}({phase}-{plan}):`, with or without zero padding, no merges, read from a bounded window of recent history — `COMMIT_SCAN_LIMIT` in `verify-scope.cjs`), plus the summaries' `key-files`.
+- **Declared:** the union of the plans' `files_modified`; a declared directory ends in `/`.
+- **Excluded:** the planning tree, lockfiles, and PAN's own runtime directories, each listed in `excluded[]` with a reason.
+
+A test for a declared file carries `hint: test_for_declared`. The verifier judges the candidates and records the real ones as `unrequested:` in verification.md.
+
+```bash
+pan-tools verify scope 3          # {phase, directory, declared[], changed[], candidates[{path, hint, sources}], excluded[], git, commits}
+pan-tools verify scope 3 --raw    # the candidate count
+```
+
+Works without git (summaries only; `git: false`). Exits 1 without a phase or for an unknown one.
+
 ### `verify stubs [--gate]`
 
 Scan the uncommitted/changed file set (git diff vs HEAD, staged/index changes, and untracked files, so it gates a handoff) for stub / fake-return markers (`not implemented`, `NotImplemented`, `throw new Error("stub"/"todo")`, HTTP `501`, `coming soon`/`placeholder`, etc.) that indicate unfinished work. With `--gate`, exits non-zero when blocking (high-severity) findings exist; without it, always reports and exits zero.
@@ -1573,6 +1609,7 @@ pan-tools progress health [--raw]
 **JSON output (json format):**
 ```json
 {
+  "contract": "1.0",
   "milestone_version": "v1.0",
   "milestone_name": "Core Platform",
   "phases": [
@@ -2003,7 +2040,7 @@ pan-tools config-ensure-section [--raw]
 | `model_profile` | `"balanced"` | Agent model selection: `quality`, `balanced`, `budget` |
 | `commit_docs` | `true` | Auto-commit planning docs after state changes |
 | `parallelization` | `true` | Enable parallel wave execution |
-| `branching_strategy` | `"none"` | Git branching: `none`, `phase`, `plan` |
+| `branching_strategy` | `"none"` | Git branching: `none`, `phase`, `milestone` |
 | `workflow.research` | `true` | Enable research phase before planning |
 | `workflow.plan_check` | `true` | Enable plan-checker agent verification loop |
 | `workflow.phase_reports` | `{ enabled: false, open: false, theme: "auto", index: true }` | Opt-in HTML phase reports as a build deliverable. When `enabled`, the verify→complete gate, focus-auto checkpoints, and army INTEGRATE regenerate per-phase reports (and, when `index`, the timeline index); default off. |
@@ -2431,7 +2468,7 @@ pan-tools init new-project [--raw]
 - `researcher_model`, `synthesizer_model`, `roadmapper_model` — Model names
 - `project_exists`, `has_codebase_map`, `planning_exists` — Existing state
 - `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map` — Brownfield detection
-- `has_git` — **runs `git init` when the project is not yet a repository** and reports the result; `brave_search_available` — environment detection
+- `has_git` — **runs `git init` when the project is not yet a repository** and reports the result; `brave_search_available` — environment detection; `shared_planning_tree` — `{tool, evidence}` when another tool shares the planning tree (planning-with-files), else `null`. A tree another tool owns (gsd-core) is refused instead: `{error, evidence, fix}` at exit 1.
 
 ---
 
@@ -2529,7 +2566,7 @@ pan-tools init todos refactoring [--raw]
 
 ### `init milestone-op [--track <name>] [--all-tracks]`
 
-All context for milestone operations. Backs `/pan:milestone-audit`, `/pan:milestone-done`, and `/pan:milestone-new`.
+All context for milestone operations. Backs `/pan:milestone-audit`.
 
 ```bash
 pan-tools init milestone-op [--raw]
@@ -2653,7 +2690,7 @@ pan-tools focus sync [--check-only] [--tests N] [--suites N] [--raw]   # --tests
 
 ### `focus exec`
 
-Load the oldest open batch (lexically first `batch-YYYY-MM-DD.json`, so older unfinished batches run first) and classify items by execution tier.
+Load the newest batch in `.planning/focus/` and classify its items by execution tier. Newest means the date in the file name (`batch-YYYY-MM-DD.json` from `focus plan`, or `batch-YYYY-MM-DD-<slug>.json`), then the time the file was written for batches from the same day. That is the batch `/pan:focus-exec` runs. The items come from a `batch` array, or from `items`, which `/pan:focus-auto` and agent-written batches use. A newest batch with neither list, or one that is not valid JSON, is refused with an error that names the file; an older batch never stands in.
 
 ```bash
 pan-tools focus exec [--dry-run] [--force] [--raw]   # refuses with dirty_working_tree on uncommitted changes unless --dry-run or --force
@@ -2665,9 +2702,9 @@ pan-tools focus exec [--dry-run] [--force] [--raw]   # refuses with dirty_workin
 - `total_items` — Items in batch
 - `tiers` — `{micro, standard, full}` counts
 - `items[]` — Full batch items
-- `batch_file` — Path to batch file
+- `batch_file` — The batch file that was read
 
-**Reads:** Oldest `.planning/focus/batch-*.json`
+**Reads:** The newest `.planning/focus/batch-*.json`
 
 ### `squad list | show <name>` (v3.11, ADR-0032)
 
@@ -3396,7 +3433,7 @@ pan-tools focus classify-stages [--stdin] [--raw]
 ```
 
 **Flags:**
-- `--stdin` — read items JSON from stdin instead of the oldest batch file.
+- `--stdin` — read items JSON from stdin instead of the newest batch file (the one `focus exec` reads). Without `--stdin`, a newest batch that has no item list is refused with the same error `focus exec` gives.
 
 **JSON output:**
 ```json
@@ -3756,13 +3793,13 @@ Markdown frontmatter + structure linter, vendored from the whooo experiment. Val
 
 **Module:** `doc-lint.cjs` (adapter) + `pan-wizard-core/bin/lib/doc-lint/{frontmatter,schema,validate,walk,reporter}.js`.
 
-**Exit codes — all four subcommands.** `0` clean · `1` violations found · `2` (`doc-lint <dir>` only) the schema itself is malformed. The verdict is identical on the `--raw` and JSON paths; gate on the exit code in either format.
+**Exit codes — every subcommand.** `0` clean · `1` violations found · `2` (`doc-lint <dir>` only) the schema itself is malformed. The verdict is identical on the `--raw` and JSON paths; gate on the exit code in either format.
 
 > Corrected in this version: the JSON paths used to exit `0` unconditionally, because `output()` exits the process and the `process.exit(<verdict>)` line below each call was unreachable. `doc-lint --format json` therefore never failed, and `doc-lint schema-check` never failed in *either* format. Earlier revisions of this page documented the JSON path as merely "reporting `schema_errors` in the body" — that described the defect, not an intended design. If you pinned a version to that behaviour, the linter was not gating.
 
 ### `doc-lint <dir> [--schema <path>] [--format human|json] [--strict] [--exclude <glob>]` (v3.7.1)
 
-Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command` for files under `commands/pan/`). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. JSON output suitable for CI gates; human output for terminal review. Exits `1` when any violation has `severity: error` (warnings alone exit `0`), `2` if the schema could not be parsed.
+Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command` for files under `commands/pan/`). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. `--format` applies under `--raw` (a human report, or the violations as JSON); without `--raw` the result is always the JSON payload, suitable for CI gates. Exits `1` when any violation has `severity: error` (warnings alone exit `0`), `2` if the schema could not be parsed.
 
 ### `doc-lint schema-check <path>` (v3.7.1)
 
@@ -3814,7 +3851,7 @@ Both subcommands accept the planning-root flags (`--track`, `--planning-dir`, `-
 
 ### `hygiene scan [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
 
-Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the block re-read into every agent call, warned at 15k tokens and critical at 25k, with any single file over 6k called out and `state.md` carrying the `compact-state` remedy; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; and, under `cache-context` at `info` (`warn` once the re-written context is large), the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Returns `{findings, installs, latest_version, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
+Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the block re-read into every agent call, warned at 15k tokens and critical at 25k, with any single file over 6k called out and `state.md` carrying the `compact-state` remedy; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; a **`shared-planning-tree`** info finding when another tool writes into the tree beside PAN (planning-with-files markers), after which PAN's own checks still run; and, under `cache-context` at `info` (`warn` once the re-written context is large), the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Returns `{findings, installs, latest_version, planning_exists, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
 
 ```bash
 pan-tools hygiene scan --raw
@@ -3822,7 +3859,7 @@ pan-tools hygiene scan --raw
 
 ### `hygiene clean [--apply] [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
 
-Dry-run by default (lists what would change); `--apply` executes the safe subset: two-step case-hop renames of legacy filenames, `.tmp` orphan deletion, memory-log compaction (`compactMemory`), poisoned-ledger **quarantine-by-rename** (`tokens.jsonl.quarantined-<date>` — the poisoned rows are kept, but only the newest quarantine file survives and the hook's `.cost-cursor.json` is reset), stale-trace and stale-report pruning, and `state.md` compaction (`compact-state`, archiving settled sections to `.planning/state-history.md`, beside state.md). Version drift (remediation = re-run the installer) and fragment dirs (manual review) are never auto-fixed, and the legacy-filename rename refuses outright on a tree the scan flagged as `foreign-planning-tree` — PAN never renames another tool's state. Returns `{dry_run, applied, skipped, planning_root, track, all_tracks, roots_scanned, summary}`. Under `--all-tracks` each fix is applied within its own tree's scope, so a track's bloated memory log is compacted in that track rather than in the root tree.
+Dry-run by default (lists what would change); `--apply` executes the safe subset: two-step case-hop renames of legacy filenames, `.tmp` orphan deletion, memory-log compaction (`compactMemory`), poisoned-ledger **quarantine-by-rename** (`tokens.jsonl.quarantined-<date>` — the poisoned rows are kept, but only the newest quarantine file survives; the hook's `.cost-cursor.json` is kept, since it tracks transcripts rather than the ledger), stale-trace and stale-report pruning, and `state.md` compaction (`compact-state`, archiving settled sections to `.planning/state-history.md`, beside state.md). Version drift (remediation = re-run the installer) and fragment dirs (manual review) are never auto-fixed, and the legacy-filename rename refuses outright on a tree the scan flagged as `foreign-planning-tree` — PAN never renames another tool's state. Returns `{dry_run, applied, skipped, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}`. Under `--all-tracks` each fix is applied within its own tree's scope, so a track's bloated memory log is compacted in that track rather than in the root tree.
 
 ```bash
 pan-tools hygiene clean --apply --raw
@@ -3834,27 +3871,37 @@ Wrapped by the `/pan:hygiene` command: scan → present by severity → confirm 
 
 ## 27. Optimization, Git and Distill Commands (v3.5)
 
-Three verbs the Command Index lists that had no section of their own. Wrapped by `/pan:optimize`, `/pan:learn`, `/pan:git` and the `distill` focus-auto category.
+Verbs the Command Index lists that had no section of their own. Wrapped by `/pan:optimize`, `/pan:learn`, `/pan:git` and the `distill` focus-auto category.
 
-### `optimize trace <init|log|end|current|list|show|reconcile>` · `optimize learn` · `optimize apply` · `optimize list` · `optimize stats`
+### `optimize trace <init|log|end|current|list|show|reconcile>` · `optimize learn` · `optimize apply` · `optimize revert` · `optimize list` · `optimize stats`
 
 **Module:** `optimize.cjs`. Trace sessions live at `.planning/optimization/traces/<session>/` (`trace.jsonl` + `session.json`); reports at `.planning/optimization/reports/`. Bare `learn` is the documented alias for `optimize learn`.
 
 ```bash
 pan-tools optimize trace init --description "exec phase 5" --command exec-phase --phase 5
-pan-tools optimize trace log --agent pan-executor --type decision --category deviation --impact medium --tokens-wasted 1200 --context '{"task":"05-01"}'
+pan-tools optimize trace log --agent pan-executor --type decision --category deviation --impact minor --tokens-wasted 1200 --context '{"task":"05-01"}'
 pan-tools optimize trace current                    # the open session
 pan-tools optimize trace list                       # every session on disk (open and ended)
 pan-tools optimize trace show --session <id>        # one session's events
 pan-tools optimize trace reconcile [--session <id> | --all]   # rewrite session.json counters from trace.jsonl — the open session by default, one by id, or all (v3.21)
 pan-tools optimize trace end [--session <id>]
 pan-tools optimize learn [--session <id>]           # analyse events → report
-pan-tools optimize apply [--report <path>]          # write auto-applicable findings to memory
+pan-tools optimize learn --sessions <n>             # pool the last n sessions into one analysis
+pan-tools optimize apply [--report <path>]          # write auto-applicable findings to memory; prints the apply_id
+pan-tools optimize revert <apply_id> | --last       # undo one apply exactly
 pan-tools optimize list                             # reports on disk
 pan-tools optimize stats
 ```
 
-The dispatcher parses these flags for `trace`: `--session`, `--all`, `--description`, `--command`, `--phase`, `--agent`, `--type`, `--category`, `--impact`, `--correction`, `--tokens-wasted` (number), `--context` (JSON). `learn` takes `--session`; `apply` takes `--report`.
+The dispatcher parses these flags for `trace`: `--session`, `--all`, `--description`, `--command`, `--phase`, `--agent`, `--type` (`decision`, `error`, `gap`, `correction`, `redundancy`, `memory_hit`, `memory_miss` or `surprise`; anything else is stored as `unknown`), `--category`, `--impact` (`critical`, `major`, `minor` or `trivial`; anything else is stored as `minor`), `--correction`, `--tokens-wasted` (number), `--context` (JSON; invalid JSON is dropped). `learn` takes `--session`, or `--sessions <n>` (a whole number; `1` analyses the current session as plain `learn` does, and a larger number writes `pooled-<k>-<newest session>-analysis.json`, `k` being the sessions actually found). `apply` takes `--report`, and `revert` takes an `apply_id` or `--last`.
+
+**What `learn` reads.** The analysis carries `tool_error_patterns`, failed tool calls the trace hook captured from subagent transcripts. They are grouped by agent, tool, class and message, and ranked by the number of `spawns` they recur in, then by occurrences; each also carries its `sessions` count. It also carries `verdict_stats`: each judge's `pass`/`fail`/`needs_human`, its `retries`, and the retries that resolved a failure. The legacy verdict categories that older sessions hold are counted too. Suggestions are derived only from failures that recur across spawns.
+
+**Revertible applies.** Every apply is logged in `optimization/applied.jsonl` with an `apply_id` and one record per action it wrote: the path, `created` or `appended`, the exact appended text, and a line-ending-insensitive hash of the file after the write. Applying the same report again skips each action with `already applied in <apply_id>`. `revert` deletes the files an apply created and cuts the text it appended, and it refuses in two cases:
+- a file that changed, or is gone, since the apply;
+- a file that a later unreverted apply also wrote (reverts go last-in, first-out per file).
+
+A CRLF file is written back CRLF. The status is `reverted`, `partial`, `refused` or `nothing_to_revert`, with `refused[]` naming each file and why. Applies logged before these records existed report `not_revertible`. `stats` counts `apply_runs` and `reverted_runs` and names the `last_apply_id`.
 
 ### `git <commit|branch|push|status|log|stash|diff|rollback|tag|sync> [...]`
 
@@ -3877,3 +3924,37 @@ pan-tools git sync [--remote <r>] [--branch <b>] [--rebase]
 ### `distill <scan|analyze|report> [--bloat-threshold N] [--touched-loc N]`
 
 **Module:** `distill.cjs` — the deterministic passes of the AI code-bloat optimizer (phantom try/catch, unused imports, magic numbers, long functions, wide parameter lists, single-instance factories, deep nesting, repeated blocks, unreferenced exports); the `pan-distiller` agent judges only the flagged spans. Cross-session memory at `.planning/memory/distill-patterns.md`. The bloat-budget gate compares touched LOC against essential LOC; `--bloat-threshold` overrides the default ratio of `2.0`.
+
+---
+
+## 28. Evidence Loop Commands
+
+**Module:** `findings.cjs` (with `verdict.cjs`). ADR-0049. PAN's judges put their verdict on record:
+- the plan checker, the reviewer and the design checker end their report with a fenced `pan-verdict` JSON block;
+- the verifier's verdict is its verification.md frontmatter.
+
+The workflows save each report, record it with `findings record`, and branch on what the record prints. Whenever they continue past findings, they record why with `findings dispose`. The ledger is `.planning/findings.jsonl`: append-only, folded on read, committed with the other planning docs.
+
+```bash
+pan-tools findings record --phase 3 --file .planning/phases/03-auth/03-verification.md [--raw]
+pan-tools findings record --phase 3 --agent pan-reviewer --file .planning/phases/03-auth/03-review.md --raw
+pan-tools findings record --phase 3 --stdin < report.md
+pan-tools findings list [--phase N] [--agent A] [--status open|fixed|deferred|dismissed|decision] [--class C] [--milestone V]
+pan-tools findings dispose f_81ab3c9d20 --as dismissed --reason "generated file, not project code"
+pan-tools findings dispose --phase 3 --agent pan-reviewer --open --as deferred --reason "accepted at review: PASS_WITH_WARNINGS"
+pan-tools findings debt [--milestone v1.1] [--raw]
+```
+
+**`findings record`** takes exactly one of `--file`, `--text` or `--stdin`, plus `--phase` and optionally `--agent`.
+- **Input.** It reads the last `pan-verdict` block; without one, it reads a verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`). It prints `{contract, recorded, duplicate, verdict_id, agent, verdict, outcome, source_kind, attempt, phase, findings, new, auto_fixed, reopened, warnings}`, plus `ledger` when it wrote a verdict. `--raw` prints the judge's own verdict word (`gaps_found`, `NEEDS_FIXES`, `issues_found`, `GAPS` …), or the outcome when there is none.
+- **Exit codes.** A failed verdict is data: exit 0. An unreadable input exits 1 with `{error, reason}`, for example `no_verdict`, `invalid_json`, `unsupported_contract` or `phase_not_found`. That is what a workflow's `||` fallback runs on.
+- **Idempotency and attempts.** Recording the same artifact twice is a no-op that returns the first verdict. Each new verdict from an agent on a phase is the next `attempt`.
+- **Automatic status changes.** The agent's earlier open findings on that phase that the new verdict no longer reports become `fixed`, except `human` and `unrequested` ones. A `fixed` finding reported again is open again.
+- **Trace.** It logs `verdict_passed`, `verdict_failed` or `verdict_needs_human`, plus `verdict_retry` after a failed attempt.
+
+**`findings dispose`** takes finding ids, or `--phase N [--agent A] --open`, and records `fixed`, `deferred`, `dismissed` or `decision`. It refuses `deferred`, `dismissed` and `decision` without `--reason` (exit 1: never dispose silently). A later report does not override a `deferred`, `dismissed` or `decision` disposition; a `fixed` one, deliberate or automatic, reopens when the finding is reported again.
+
+**`findings debt`** is what `/pan:milestone-audit` reads for tech debt. For one milestone (default: the current one), it groups the `deferred` findings, each with the reason recorded at the time, and the `open` ones nobody disposed, by phase.
+
+**Finding vocabulary.** `class` is one of `missing`, `partial`, `contradicts`, `unrequested`, `defect`, `risk`, `quality`, `human`. `severity` is one of `critical`, `high`, `medium`, `low`, `info`. The shipped reference `pan-wizard-core/references/verdict-contract.md` maps each judge's own terms onto them.
+

@@ -105,16 +105,16 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 **Run it over days.** `--schedule` arms a resumable campaign with a per-day budget that burns the backlog down across sessions (the per-day budget is advisory unless the schedule is armed with `--enforce-budget`, which pauses the day's run once spent — `campaign status` shows the day's spend — and an external scheduler triggers each `--continue`) — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
 
-**Watch it live.** `/pan:hud` renders a single self-contained HTML dashboard — Mission Control over the squads, in-flight worktrees, campaign budget, telemetry, and the safety harness — in one page.
+**See it.** `/pan:hud` renders a single self-contained HTML snapshot — Mission Control over the squads, in-flight worktrees, campaign budget, telemetry, and the safety harness — in one page. The page does not refresh itself; re-run the command for a fresh one.
 
 ```bash
 /pan:army "ship the v1 reporting module"     # plan → delegate → build → review → human-gated ship
 /pan:army "harden auth across the app" --schedule daily --daily-budget 200
 /pan:army --status        # where the campaign stands
-/pan:hud --open           # watch the army work, live
+/pan:hud --open           # snapshot of the army's current state
 ```
 
-Resolve the live squad roster any time with `pan-tools squad list`.
+Resolve the live squad roster any time with `pan-tools squad list` (`pan-tools` is shorthand; see [Operations](#operations) for how to run it).
 
 ---
 
@@ -142,7 +142,7 @@ Verify with:
 
 ### Staying Updated
 
-PAN evolves fast. Update periodically:
+PAN evolves fast. On Claude Code, update periodically with `/pan:update`, which detects whether the install is local or global but passes no other flag, so it always updates Claude Code in its default location. For any other runtime, or an install made with `--config-dir` or `--unified-skills`, re-run the installer yourself with the flags you installed with (add `--global` for a global install, since the installer defaults to the current project):
 
 ```bash
 npx pan-wizard@latest
@@ -163,8 +163,8 @@ npx pan-wizard --opencode --global # Install to ~/.config/opencode/
 npx pan-wizard --gemini --global   # Install to ~/.gemini/
 
 # Codex (skills-first)
-npx pan-wizard --codex --global    # Skills to ~/.agents/skills/, core and hooks to ~/.codex/
-npx pan-wizard --codex --local     # Skills to ./.agents/skills/, core and hooks to ./.codex/
+npx pan-wizard --codex --global    # Skills to ~/.agents/skills/, core, agents and hooks to ~/.codex/
+npx pan-wizard --codex --local     # Skills to ./.agents/skills/, core, agents and hooks to ./.codex/
 
 # GitHub Copilot CLI (skills-first)
 npx pan-wizard --copilot --global  # Install to ~/.copilot/
@@ -175,7 +175,7 @@ npx pan-wizard --all --global      # Install to all directories
 ```
 
 Use `--global` (`-g`) to install into your home config directory; `--local` (`-l`) is the default and may be omitted.
-Use `--claude`, `--opencode`, `--gemini`, `--codex`, `--copilot`, or `--all` to skip the runtime prompt.
+Use `--claude`, `--opencode`, `--gemini`, `--codex`, `--copilot`, or `--all` to skip the runtime prompt. A local install also writes outside the runtime directory: a marker-fenced PAN section in the project's `AGENTS.md`; for Claude Code, an `@AGENTS.md` import in `CLAUDE.md` and a `pan` MCP server in `.mcp.json`; and for Codex or `--unified-skills`, the shared `.agents/` tree (skills, plus a shared core under `--unified-skills`). `--uninstall` removes them (the `AGENTS.md` and `CLAUDE.md` blocks and the `.agents/` tree stay while another PAN runtime in the project still uses them).
 Add `--unified-skills` to install commands as one shared `.agents/skills/` tree instead of per-runtime formats. Codex, Gemini CLI, OpenCode, Copilot CLI and Antigravity CLI read that tree; Claude Code does not, so for Claude the installer also copies each skill into `.claude/skills/` and the commands become `/pan-<name>`. Gemini CLI gives skills no slash command, so on a unified Gemini install you ask for the task and `/skills list` shows what loaded. See the User Guide for details.
 
 > **Gemini CLI note:** from June 18, 2026, Google's Gemini CLI serves Gemini Code Assist (Standard/Enterprise) customers; individual free / AI Pro / Ultra accounts are directed to Antigravity CLI instead. PAN's `--gemini` target installs for Gemini CLI. Antigravity CLI is not yet a PAN install target, but it reads the shared `.agents/skills/` tree natively — install with `--unified-skills` and PAN's commands are usable from Antigravity in the same project.
@@ -190,8 +190,10 @@ directory. The installer hard-refuses to install into its own source repo (a
 `PAN_SOURCE_ROOT` guard exits with an error), so point it at a different target:
 
 ```bash
-# 1. Get the source
+# 1. Get the source and build the hooks (hooks/dist/ is build output a clone lacks;
+#    the installer copies the hooks from there)
 git clone https://github.com/oharms/PanWizard.git
+cd PanWizard && npm run build:hooks
 
 # 2. Install into a DIFFERENT project directory (never the PanWizard source dir)
 cd /path/to/some-test-project
@@ -346,7 +348,7 @@ The system:
 
 Each plan is small enough to execute in a fresh context window. No degradation, no "I'll be more concise now."
 
-**Creates:** `{phase_num}-research.md`, `{phase_num}-{N}-plan.md`
+**Creates:** `{phase_num}-research.md`, `{phase_num}-{N}-plan.md`, `{phase_num}-plan-check.md` (the checker's report, when the checker runs)
 
 ---
 
@@ -397,7 +399,7 @@ Plans are grouped into "waves" based on dependencies. Within each wave, plans ru
 
 This is why "vertical slices" (Plan 01: User feature end-to-end) parallelize better than "horizontal layers" (Plan 01: All models, Plan 02: All APIs).
 
-**Creates:** `{phase_num}-{N}-summary.md`, `{phase_num}-verification.md`
+**Creates:** `{phase_num}-{N}-summary.md`, `{phase_num}-review.md` (unless `--skip-review` or `--fast`), `{phase_num}-verification.md`
 
 ---
 
@@ -481,7 +483,7 @@ PAN handles it for you:
 
 | File | What it does |
 |------|--------------|
-| `project.md` | Project vision, always loaded |
+| `project.md` | Project vision, read when PAN plans, researches or resumes work |
 | `research/` | Ecosystem knowledge (stack, features, architecture, pitfalls) |
 | `requirements.md` | Scoped v1/v2 requirements with phase traceability |
 | `roadmap.md` | Where you're going, what's done |
@@ -522,7 +524,7 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 | Research | Coordinates, presents findings | Parallel researchers investigate stack, features, architecture and pitfalls |
 | Planning | Validates, manages iteration | Planner creates plans, checker verifies, up to three passes |
 | Execution | Groups into waves, tracks progress | Executors implement in parallel, each in a fresh context (native sub-agents on Claude Code, each runtime's own delegation elsewhere) |
-| Verification | Presents results, routes next | Verifier checks codebase against goals, debuggers diagnose failures |
+| Verification | Presents results, routes next | Verifier checks codebase against goals; on Claude Code, `/pan-diagnose-issues` sends one debugger per failed UAT truth |
 
 The orchestrator never does heavy lifting. It spawns agents, waits, integrates results.
 
@@ -613,7 +615,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 |---------|--------------|
 | `/pan:progress` | Where am I? What's next? |
 | `/pan:hud` (alias `/pan:dashboard`) | Render a self-contained HTML dashboard of project + bot-army state to `.planning/hud.html` (`--open`, `--out`, `--stdout`) |
-| `/pan:report phase <N> \| index \| all` | Self-contained HTML report for one phase, or a timeline index linking every phase report (`--out`, `--open`, `--stdout`; `--bundle` on `index` inlines every phase report into one file) |
+| `/pan:report phase <N> \| index \| all` | Self-contained HTML report for one phase, or a timeline index linking every phase report (`--out`, `--open`, `--stdout` on `phase` and `index`; `--bundle` on `index` inlines every phase report into one file; `all` regenerates every phase report plus the index and takes only `--open`) |
 | `/pan:help` | Show all commands and usage guide |
 | `/pan:update` | Update PAN with changelog preview |
 | `/pan:discord` | Join the PAN Discord community |
@@ -657,7 +659,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:todo-check` | List pending todos |
 | `/pan:debug [desc]` | Systematic debugging with persistent state |
 | `/pan:quick [--full]` | Execute ad-hoc task with PAN guarantees (`--full` adds plan-checking and verification) |
-| `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` auto-fixes detected issues |
+| `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` fixes the issues it marks repairable |
 | `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs); `--apply` executes the safe fixes — poisoned ledgers are quarantined by rename (only the newest quarantine copy is kept), and settled `state.md` history is archived rather than dropped |
 | `/pan:links [--strict]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027) |
 | `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase based on UAT criteria |
@@ -669,6 +671,8 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:experiment <subcommand>` | Manage external self-improvement experiments — scaffold, run, harvest, promote findings back to PAN (never inside the PAN source repo) |
 
 ### Operations
+
+`pan-tools` is shorthand for `node .claude/pan-wizard-core/bin/pan-tools.cjs`; the installer adds no `pan-tools` command to your PATH. Use your runtime's directory in place of `.claude` (`.codex`, `.gemini`, `.opencode`, `.github`), or its global config directory after a `--global` install.
 
 | Command | What it does |
 |---------|--------------|
@@ -687,7 +691,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:focus-plan` | Create capacity-budgeted execution batch (modes: bugfix, balanced, features, full) |
 | `/pan:focus-exec` | Execute items from batch with tier-based test cadence |
 | `/pan:focus-auto` | Continuous scan→plan→exec loop with purpose-driven categories and a layered safety harness |
-| `/pan:focus-sync` | Detect and report stale documentation counts |
+| `/pan:focus-sync` | Detect stale documentation (counts, missing commands, outdated references); `--all` also fixes it |
 | `/pan:focus-design` | Multi-phase strategic feature investigation pipeline |
 | `/pan:focus-drift-walking` | Walk project tree, detect doc-code drift, score severity, auto-repair |
 | `/pan:focus-doc-audit` | Multi-dimensional document audit with a quality score per dimension |
@@ -697,7 +701,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | Command | What it does |
 |---------|--------------|
 | `/pan:cost` | Token usage + estimated cost across PAN invocations (json/table/chart) |
-| `/pan:preview <phase\|phases\|milestone>` | Read-only foresight: blast radius, dependency graph, milestone ETA |
+| `/pan:preview phase <N>\|phases\|milestone` | Read-only foresight: blast radius, dependency graph, milestone ETA |
 | `/pan:review-deep <phase>` | Security audit (OWASP + STRIDE) + cross-check by meta-reviewer |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook |
 | `/pan:what-if <phase> "scenario"` | Counterfactual phase replay in isolated git worktree |
@@ -708,7 +712,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | Command | What it does |
 |---------|--------------|
 | `/pan:learn` | Analyze trace events, generate optimization report with auto-apply block |
-| `/pan:optimize {apply\|list\|stats\|trace}` | Apply optimizer recommendations, list reports, view stats, manage trace sessions |
+| `/pan:optimize {apply\|revert\|list\|stats\|trace}` | Apply optimizer recommendations, undo one apply (`revert <apply_id>` or `revert --last`), list reports, view stats, manage trace sessions |
 | `/pan:git <subcommand>` | Phase-aware git workflow: commit/branch/push/status/log/stash/diff/rollback/tag/sync |
 | `/pan:audit-deployment <target-directory> [--enhancements] [--repair]` | Audit a PAN installation for integrity, project health, and draft enhancement specs |
 
@@ -725,7 +729,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 | Setting | Options | Default | What it controls |
 |---------|---------|---------|------------------|
 | `mode` | `yolo`, `interactive` | chosen at `/pan:new-project` (`yolo` is the recommended answer; `--auto` always sets it) | Auto-approve vs confirm at each step |
-| `depth` | `quick`, `standard`, `comprehensive` | chosen at `/pan:new-project` (usually `standard`) | Planning thoroughness (phases × plans) |
+| `depth` | `quick`, `standard`, `comprehensive` | chosen at `/pan:new-project` (`--auto` uses `quick` unless the idea document's frontmatter sets `planning_depth`) | Planning thoroughness (phases × plans) |
 
 ### Model Profiles
 
@@ -766,7 +770,7 @@ Use `/pan:settings` to toggle these, or override per-invocation:
 
 | Setting | Default | What it controls |
 |---------|---------|------------------|
-| `parallelization.enabled` | `true` | Run independent plans simultaneously |
+| `parallelization` | `true` | Run independent plans simultaneously |
 | `commit_docs` | `true` | Track `.planning/` in git |
 
 ### Git Branching
@@ -781,7 +785,7 @@ Control how PAN handles branches during execution.
 
 **Strategies:**
 - **`none`** — Commits to current branch (default PAN behavior)
-- **`phase`** — Creates a branch per phase; you merge it yourself (PAN never merges)
+- **`phase`** — Creates a branch per phase; you merge it yourself (the phase workflows never merge it)
 - **`milestone`** — Creates one branch for the entire milestone; you merge it yourself
 
 At milestone completion you merge the milestone branch yourself (`git merge --squash` or `--no-ff`); `/pan:milestone-done <version>` archives and tags but does not merge.
@@ -829,20 +833,20 @@ This prevents Claude from reading these files entirely, regardless of what comma
 
 **Commands not working as expected?**
 - Run `/pan:help` (`/pan-help` on OpenCode, Copilot CLI and unified Claude installs; `$pan-help` on Codex) to verify installation
-- Re-run `npx pan-wizard` to reinstall
+- Re-run `npx pan-wizard` with the flags you installed with (the runtime, `--global`/`--local`, and any `--config-dir` or `--unified-skills`) to reinstall
 
-**Updating to the latest version?**
+**Updating to the latest version?** On Claude Code, run `/pan:update`. For any other runtime, or an install made with `--config-dir` or `--unified-skills`, re-run the installer with the flags you installed with (`--global` for a global install):
 ```bash
 npx pan-wizard@latest
 ```
 
 **Using Docker or containerized environments?**
 
-If file reads fail with tilde paths (`~/.claude/...`), set `CLAUDE_CONFIG_DIR` before installing:
+If Claude Code in the container reads its config from somewhere other than the installing user's `~/.claude`, set `CLAUDE_CONFIG_DIR` to that directory before installing (`--global --config-dir <path>` does the same):
 ```bash
 CLAUDE_CONFIG_DIR=/home/youruser/.claude npx pan-wizard --global
 ```
-This ensures absolute paths are used instead of `~` which may not expand correctly in containers.
+PAN then installs into that directory and writes its absolute path into the installed commands, agents and hook commands. A global install writes absolute paths whether or not the variable is set.
 
 ### Uninstalling
 

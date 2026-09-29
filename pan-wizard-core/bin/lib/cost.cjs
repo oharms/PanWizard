@@ -59,7 +59,7 @@ const DEFAULT_RATES = {
   // Anthropic — platform.claude.com/docs/en/about-claude/pricing, every row read
   // 2026-09-23. Opus 4.6+/Opus 5 are $5/$25 (the old $15/$75 Opus pricing ended with
   // the 4.5 generation). cache_write is the 5-minute write rate (1.25× input; the
-  // 1-hour write bills 2×, which the ledger does not split yet). Cache reads follow
+  // 1-hour write bills 2× and is priced from cache_write_1h, see above). Cache reads follow
   // the 0.1× convention EXCEPT on three models the page footnotes: Fable 5.1 and
   // Mythos 5.1 at 0.025× input, Opus 5.5 at 0.05×. Each needs its own row, because
   // the family-prefix fallback would otherwise price it at its predecessor's reads.
@@ -469,8 +469,8 @@ function readRecords(cwd) {
  */
 // No single subagent runs for six hours — the longest native-workflow phase runs
 // measured in the harness finish inside an hour — while a parent-transcript slice
-// that spans a working day, or the idle night between two stops, does. Mirrored by
-// the hooks' SLICE_MAX_DURATION_MS, which nulls the span on write. Calibrated on
+// that spans a working day, or the idle night between two stops, does. The hooks
+// write the span as measured; only this reader applies the rule. Calibrated on
 // eleven field ledgers (2026-09): of the timed rows the old ratio rule flagged,
 // 55 spanned under three hours and 12 spanned six to twenty-four — the latter all
 // parent slices booked to a `general-purpose` or workflow subagent.

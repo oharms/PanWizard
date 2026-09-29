@@ -35,7 +35,9 @@ describe('pan-trace-logger — never scaffolds a planning tree', () => {
   afterEach(() => { fs.rmSync(bare, { recursive: true, force: true }); });
 
   const fire = () => spawnSync(process.execPath, [TRACE_HOOK], {
-    cwd: bare, input: JSON.stringify({ hook_event_name: 'SubagentStop', cwd: bare, agent_id: 'a1', session_id: 's1', usage: { input_tokens: 10, output_tokens: 5 } }), encoding: 'utf-8',
+    // A spawned subagent names its type; an id with neither a type nor a transcript is the host's
+    // own helper agent, which records nothing by design (isHostInternalAgent) — not this gate's subject.
+    cwd: bare, input: JSON.stringify({ hook_event_name: 'SubagentStop', cwd: bare, agent_id: 'a1', agent_type: 'pan-executor', session_id: 's1', usage: { input_tokens: 10, output_tokens: 5 } }), encoding: 'utf-8',
   });
 
   test('an install marker alone buys no write: no .planning/, and the gate says why', () => {
@@ -839,7 +841,9 @@ describe('pan-trace-logger — per-agent transcript attribution', () => {
     const base = { hook_event_name: 'SubagentStop', agent_type: 'pan-executor', session_id: SESSION, transcript_path: parent };
 
     const own = completionOf(buildTraceEvents({ ...base, agent_id: 'a1' }, 'sess1', tmpDir));
-    assert.equal(own.v, 4);
+    // v5 (evidence loop): tool_calls / tool_errors on the completion, error/tool_error events.
+    assert.equal(own.v, 5);
+    assert.deepEqual([own.context.tool_calls, own.context.tool_errors], [0, 0], 'counted from the agent\'s own slice');
     assert.equal(own.context.token_source, 'agent-transcript');
     assert.equal(own.context.agent_id, 'a1');
     assert.equal(own.context.cache_read_tokens, 50000);
@@ -899,5 +903,102 @@ describe('pan-trace-logger — per-agent transcript attribution', () => {
     const wf = completionOf(buildTraceEvents({ ...p, agent_type: 'workflow-subagent', agent_id: 'w9' }, 'sess1', tmpDir));
     assert.equal(wf.context.token_source, 'agent-transcript');
     assert.equal(wf.context.cache_read_tokens, 5000);
+  });
+});
+
+// ── Host-internal helper agents record nothing (2026-09-28) ─────────────────
+// Claude Code fires SubagentStop for helper agents of its own: the compaction summariser,
+// and one at almost every turn end of an interactive session. The payload carries an
+// agent_id, an EMPTY agent_type and an agent_transcript_path it never writes. The fixture
+// was captured from a real `/compact`; see its .meta.json. Both loggers booked 181 such
+// `unknown` zero-token rows in three field projects in eleven days. The boundaries matter
+// as much as the rule: a NAMED spawn whose file is missing is still recorded (N17/N25),
+// and a payload with no agent instance still takes the parent-slice path.
+describe('pan-trace-logger — host-internal helper agents', () => {
+  const FIX = path.join(__dirname, 'fixtures', 'hooks');
+  const load = (name) => JSON.parse(fs.readFileSync(path.join(FIX, name), 'utf8'));
+  const fill = (v, map) => (typeof v === 'string' ? v.replace(/\{\{[A-Z_]+\}\}/g, (m) => (m in map ? map[m] : m))
+    : Array.isArray(v) ? v.map((x) => fill(x, map))
+      : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x, map)])) : v);
+  const SESSION = 'c0ffee00-0000-4000-8000-00000000f00d';
+  const HELPER = 'a0000000000c0ffee';
+  let project;
+  /** The captured shape, laid out as the host leaves it: the parent exists, the helper's file never does. */
+  function seed({ withOwnTranscript = false } = {}) {
+    project = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-internal-agent-')));
+    fs.mkdirSync(path.join(project, '.planning'), { recursive: true });
+    const tdir = path.join(project, 'transcripts');
+    const sub = path.join(tdir, SESSION, 'subagents');
+    fs.mkdirSync(sub, { recursive: true });
+    const parent = path.join(tdir, `${SESSION}.jsonl`);
+    fs.writeFileSync(parent, JSON.stringify({ type: 'user', sessionId: SESSION, message: { role: 'user', content: 'parent' } }) + '\n');
+    // An earlier NAMED agent's pair, as the captured subagents/ held.
+    fs.writeFileSync(path.join(sub, 'agent-a0000000000000001.jsonl'), JSON.stringify({ type: 'assistant', message: { id: 'm1', usage: { input_tokens: 3, output_tokens: 2 } } }) + '\n');
+    fs.writeFileSync(path.join(sub, 'agent-a0000000000000001.meta.json'), JSON.stringify({ agentType: 'Explore' }));
+    const own = path.join(sub, `agent-${HELPER}.jsonl`);
+    if (withOwnTranscript) fs.writeFileSync(own, JSON.stringify({ type: 'assistant', timestamp: '2026-09-28T10:00:00.000Z', message: { id: 'm2', usage: { input_tokens: 40, output_tokens: 7 } } }) + '\n');
+    return fill(load('subagent-stop-internal-claude.json'), {
+      '{{SESSION_ID}}': SESSION, '{{TRANSCRIPT_PATH}}': parent, '{{PROJECT_DIR}}': project,
+      '{{SCRATCHPAD_DIR}}': path.join(project, 'scratch'), '{{AGENT_ID}}': HELPER, '{{AGENT_TRANSCRIPT_PATH}}': own,
+    });
+  }
+  afterEach(() => { if (project) fs.rmSync(project, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); project = null; });
+  const optimizeDir = () => path.join(project, PLANNING_DIR, OPTIMIZE_DIR);
+
+  test('the captured helper payload yields no event and touches no cursor', () => {
+    const payload = seed();
+    assert.equal(payload.agent_type, '', 'the captured shape: agent_type present but empty');
+    assert.deepEqual(buildTraceEvents(payload, 'sess1', project), []);
+    assert.equal(fs.existsSync(optimizeDir()), false, 'no cursor, no session, nothing written');
+  });
+
+  test('run as the host runs it, the hook records nothing and mints no session', () => {
+    const payload = seed();
+    const r = spawnSync(process.execPath, [TRACE_HOOK], { cwd: project, input: JSON.stringify(payload), encoding: 'utf-8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(optimizeDir()), false, 'a helper agent must not create the day\'s trace session');
+  });
+
+  test('boundary: the same payload for a NAMED spawn is still recorded, with zero tokens (N17/N25)', () => {
+    const payload = { ...seed(), agent_type: 'pan-executor' };
+    const events = buildTraceEvents(payload, 'sess1', project);
+    const c = events.find((e) => e.category === 'agent_completion');
+    assert.ok(c, 'a named spawn whose file is missing keeps its row');
+    assert.deepEqual([c.agent, c.context.token_source, c.context.total_tokens], ['pan-executor', 'agent-transcript-missing', 0]);
+  });
+
+  test('boundary: an untyped agent whose own transcript exists is recorded from it', () => {
+    const payload = seed({ withOwnTranscript: true });
+    const c = buildTraceEvents(payload, 'sess1', project).find((e) => e.category === 'agent_completion');
+    assert.ok(c, 'a transcript is attributable, so the spawn is recorded');
+    assert.deepEqual([c.context.token_source, c.context.input_tokens, c.context.output_tokens], ['agent-transcript', 40, 7]);
+  });
+
+  test('boundary: a payload with no agent instance keeps the parent-slice path', () => {
+    const payload = seed();
+    delete payload.agent_id;
+    delete payload.agent_transcript_path;
+    const c = buildTraceEvents(payload, 'sess1', project).find((e) => e.category === 'agent_completion');
+    assert.ok(c);
+    assert.equal(c.context.token_source, 'transcript');
+  });
+
+  test('a whitespace-only type is no type; subagent_type counts as one', () => {
+    const { isHostInternalAgent } = require('../hooks/pan-trace-logger.js');
+    assert.equal(isHostInternalAgent({ agent_id: 'a1', agent_type: '  ' }, null), true);
+    assert.equal(isHostInternalAgent({ agent_id: 'a1', subagent_type: 'general-purpose' }, null), false);
+    assert.equal(isHostInternalAgent({ agent_transcript_path: '/x/agent-a1.jsonl' }, null), true);
+    assert.equal(isHostInternalAgent({ agent_id: 'a1' }, '/x/agent-a1.jsonl'), false, 'an existing transcript is attributable');
+    assert.equal(isHostInternalAgent({ session_id: 's' }, null), false, 'no agent instance at all');
+  });
+
+  test('both hooks carry the same rule, byte for byte', () => {
+    const lift = (file) => {
+      const src = fs.readFileSync(path.join(__dirname, '..', 'hooks', file), 'utf-8').replace(/\r\n/g, '\n');
+      const start = src.indexOf('function isHostInternalAgent(');
+      assert.notEqual(start, -1, `${file} defines isHostInternalAgent`);
+      return src.slice(start, src.indexOf('\n}\n', start) + 2);
+    };
+    assert.equal(lift('pan-trace-logger.js'), lift('pan-cost-logger.js'));
   });
 });

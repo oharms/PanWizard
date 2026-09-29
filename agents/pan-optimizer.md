@@ -32,13 +32,17 @@ Read all inputs before producing the report.
 ### Step 1: Load the analysis JSON
 
 Read the `-analysis.json` file. It contains:
-- `summary` — total event counts by type
+- `summary` — total event counts by type, plus `tool_errors`, `spawns_with_tool_errors` / `spawns_measured`, `verdict_failures`, `verdict_retries`
 - `error_patterns` — recurring error categories (sorted by frequency)
+- `tool_error_patterns` — failed tool calls captured from the subagents' own transcripts, grouped by agent, tool, class (`exit_code`, `not_found`, `permission_denied`, …) and message. Each carries `occurrences`, `spawns` and `sessions`, ranked by `spawns`
+- `verdict_stats` — per judge (verifier, plan checker, reviewer, design checker): `pass`, `fail`, `needs_human`, `retries`, `resolved_by_retry`. The findings behind them are in `.planning/findings.jsonl` (`pan-tools findings list`)
 - `gap_patterns` — knowledge gaps the model had to infer
 - `memory_miss_patterns` — topics missing from memory
 - `agent_stats` — per-agent error rates
 - `critical_events` / `major_events` — highest-impact events
 - `raw_events` — the full event stream
+
+**Recurrence before memory.** A tool failure in one spawn is not a lesson: a test run expected to fail (a TDD red step) or a grep with no match exits non-zero on purpose. Write a memory entry only from a `tool_error_patterns` row with `spawns` of 2 or more, and prefer the ones that span `sessions`. The analysis may pool several sessions (`pooled_sessions`, from `pan-tools optimize learn --sessions <n>`); that window is where recurrence shows. A `permission_denied` pattern is an environment finding (the host's permission rules), not an agent's mistake: suggest a note, never a memory entry.
 
 ### Step 2: Read raw trace events
 

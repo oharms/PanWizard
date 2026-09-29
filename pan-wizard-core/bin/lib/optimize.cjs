@@ -459,6 +459,65 @@ function listTraceSessions(cwd) {
 
 // ─── Local analysis (no agent) ────────────────────────────────────────────────
 
+// Judge verdicts, as the findings ledger logs them (evidence loop) and as the
+// workflow prose logged them before it (legacy categories, kept so older sessions
+// still analyse). Legacy categories name no agent reliably, so each maps to its judge.
+const VERDICT_CATEGORIES = {
+  verdict_passed: { outcome: 'pass' },
+  verdict_failed: { outcome: 'fail' },
+  verdict_needs_human: { outcome: 'needs_human' },
+  verification_passed: { outcome: 'pass', agent: 'pan-verifier' },
+  verification_gaps: { outcome: 'fail', agent: 'pan-verifier' },
+  verification_human_needed: { outcome: 'needs_human', agent: 'pan-verifier' },
+  plan_verified: { outcome: 'pass', agent: 'pan-plan-checker' },
+  plan_checker_issues: { outcome: 'fail', agent: 'pan-plan-checker' },
+  reviewer_correction: { outcome: 'fail', agent: 'pan-reviewer' },
+  reviewer_warnings: { outcome: 'pass', agent: 'pan-reviewer' },
+};
+
+/**
+ * Failed tool calls grouped the way a lesson would be: the same agent hitting the
+ * same failure (tool, class, message signature). `spawns` and `sessions` are what
+ * separate a recurring failure from one run's accident.
+ */
+function toolErrorPatterns(toolErrors) {
+  const groups = new Map();
+  for (const e of toolErrors) {
+    const c = e.context || {};
+    const key = [e.agent || 'unknown', c.tool || 'unknown', c.error_class || 'other', c.message_sig || c.message || ''].join('\u0000');
+    let g = groups.get(key);
+    if (!g) {
+      g = { agent: e.agent || 'unknown', tool: c.tool || 'unknown', error_class: c.error_class || 'other', exit_code: c.exit_code == null ? null : c.exit_code, message: c.message || '', occurrences: 0, spawns: new Set(), sessions: new Set() };
+      groups.set(key, g);
+    }
+    g.occurrences += typeof c.count === 'number' && c.count > 0 ? c.count : 1;
+    g.spawns.add(c.agent_id || `${e.session}|${e.ts}`);
+    if (e.session) g.sessions.add(e.session);
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, spawns: g.spawns.size, sessions: g.sessions.size }))
+    .sort((a, b) => b.spawns - a.spawns || b.occurrences - a.occurrences);
+}
+
+/** Per-judge verdict counts, retries and the retries that turned a failure into a pass. */
+function verdictStats(events) {
+  const stats = {};
+  const bump = (agent) => (stats[agent] = stats[agent] || { pass: 0, fail: 0, needs_human: 0, retries: 0, resolved_by_retry: 0 });
+  for (const e of events) {
+    const v = VERDICT_CATEGORIES[e.category];
+    if (v) {
+      const agent = (e.context && e.context.agent) || v.agent || e.agent || 'unknown';
+      bump(agent)[v.outcome]++;
+    } else if (e.type === 'correction' && e.category === 'verdict_retry') {
+      const agent = (e.context && e.context.agent) || e.agent || 'unknown';
+      const s = bump(agent);
+      s.retries++;
+      if (e.context && e.context.outcome === 'pass') s.resolved_by_retry++;
+    }
+  }
+  return stats;
+}
+
 function analyzeEvents(events, sessionMeta) {
   const errors = events.filter(e => e.type === 'error');
   const gaps = events.filter(e => e.type === 'gap');
@@ -466,8 +525,14 @@ function analyzeEvents(events, sessionMeta) {
   const decisions = events.filter(e => e.type === 'decision');
   const corrections = events.filter(e => e.type === 'correction');
   const memoryMisses = events.filter(e => e.type === 'memory_miss');
-  const reviewerCorrections = events.filter(e => e.type === 'error' && e.category === 'reviewer_correction');
+  // The legacy category, or the reviewer's failed verdict as the findings ledger logs it.
+  const reviewerCorrections = events.filter(e => e.type === 'error'
+    && (e.category === 'reviewer_correction' || (e.category === 'verdict_failed' && ((e.context && e.context.agent) || e.agent) === 'pan-reviewer')));
   const memoryPrimed = events.filter(e => e.type === 'decision' && e.category === 'memory_primed');
+  const toolErrors = events.filter(e => e.type === 'error' && e.category === 'tool_error');
+  const toolPatterns = toolErrorPatterns(toolErrors);
+  const verdicts = verdictStats(events);
+  const measuredSpawns = events.filter(e => e.category === 'agent_completion' && e.context && typeof e.context.tool_errors === 'number');
 
   function frequencyMap(arr) {
     const map = {};
@@ -591,6 +656,12 @@ function analyzeEvents(events, sessionMeta) {
       wasted_tokens: wastedTokens,
       reviewer_corrections: reviewerCorrections.length,
       memory_primed_count: memoryPrimed.length,
+      tool_errors: toolPatterns.reduce((n, p) => n + p.occurrences, 0),
+      tool_error_patterns: toolPatterns.length,
+      spawns_measured: measuredSpawns.length,
+      spawns_with_tool_errors: measuredSpawns.filter(e => e.context.tool_errors > 0).length,
+      verdict_failures: Object.values(verdicts).reduce((n, s) => n + s.fail, 0),
+      verdict_retries: Object.values(verdicts).reduce((n, s) => n + s.retries, 0),
       total_input_tokens: tokenTotals.input,
       total_output_tokens: tokenTotals.output,
       total_cache_read_tokens: tokenTotals.cache_read,
@@ -599,6 +670,8 @@ function analyzeEvents(events, sessionMeta) {
     timing,
     overhead,
     error_patterns: frequencyMap(errors),
+    tool_error_patterns: toolPatterns,
+    verdict_stats: verdicts,
     gap_patterns: frequencyMap(gaps),
     memory_miss_patterns: frequencyMap(memoryMisses),
     agent_stats: agentStats,
@@ -672,6 +745,54 @@ function parseAutoApplyBlock(reportContent) {
 
 // ─── Apply recommendations ────────────────────────────────────────────────────
 
+// Every apply is recorded so it can be undone exactly (evidence loop EL-11, spec D10).
+// A memory entry is read by every agent in every later run, so a bad one degrades
+// all of them; before these records an append could not even be located afterwards,
+// and running the same report twice appended everything twice.
+
+function sha256Hex(s) {
+  return require('crypto').createHash('sha256').update(s, 'utf8').digest('hex');
+}
+
+/** Hash of a file's content with its line endings normalised: a CRLF checkout of the same bytes matches. */
+function normalisedHash(text) {
+  return sha256Hex(String(text).replace(/\r\n/g, '\n'));
+}
+
+/** One action's identity, from what the report asked for (not from the text written, which carries a timestamp). */
+function actionSig(action) {
+  return sha256Hex([action.type, action.path || action.target || '', action.description || '', action.content || action.suggestion || ''].join('\u0000')).slice(0, 16);
+}
+
+function newApplyId(now = new Date()) {
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}_${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+  return `apl_${stamp}_${require('crypto').randomBytes(2).toString('hex')}`;
+}
+
+/** Rows of optimization/applied.jsonl in order; legacy rows (before apply records) have no `kind`. */
+function readApplyLog(cwd) {
+  let raw = '';
+  try { raw = fs.readFileSync(path.join(getOptimizeDir(cwd), APPLIED_LOG), 'utf-8'); } catch { return []; }
+  const rows = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    try { rows.push(JSON.parse(line)); } catch { /* a torn line is skipped */ }
+  }
+  return rows;
+}
+
+/** apply_id → Set of reverted action indices. */
+function revertedIndices(rows) {
+  const out = new Map();
+  for (const r of rows) {
+    if (r.kind !== 'revert' || !r.apply_id) continue;
+    if (!out.has(r.apply_id)) out.set(r.apply_id, new Set());
+    for (const i of r.reverted || []) out.get(r.apply_id).add(i);
+  }
+  return out;
+}
+
 function applyReportRecommendations(cwd, reportPath) {
   let reportContent;
   try {
@@ -696,11 +817,30 @@ function applyReportRecommendations(cwd, reportPath) {
     return { applied: [], skipped: [], note: 'Auto-apply block is not a valid array' };
   }
 
+  // Actions an earlier apply wrote and nobody reverted: applying them again would
+  // append the same text a second time.
+  const log = readApplyLog(cwd);
+  const reverted = revertedIndices(log);
+  const live = new Map();
+  for (const r of log) {
+    if (r.kind !== 'apply' || !Array.isArray(r.actions)) continue;
+    const undone = reverted.get(r.apply_id) || new Set();
+    for (const a of r.actions) if (a.action_sig && !undone.has(a.i)) live.set(a.action_sig, r.apply_id);
+  }
+
+  const applyId = newApplyId();
   const applied = [];
   const skipped = [];
+  const records = [];
+  const rel = (abs) => toPosixRel(cwd, abs);
+  const appendRecorded = (abs, text, action, i) => {
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.appendFileSync(abs, text, 'utf-8');
+    records.push({ i, type: action.type, path: rel(abs), kind: 'appended', text, sha256_after: normalisedHash(fs.readFileSync(abs, 'utf-8')), action_sig: actionSig(action) });
+  };
 
   const resolvedCwd = path.resolve(cwd);
-  for (const action of actions) {
+  actions.forEach((action, i) => {
     try {
       // Containment: action.path on memory writes is report/agent-authored and
       // must stay inside the project. A `../` (or absolute) path otherwise
@@ -709,8 +849,13 @@ function applyReportRecommendations(cwd, reportPath) {
         const abs = path.resolve(cwd, action.path || '');
         if (abs !== resolvedCwd && !abs.startsWith(resolvedCwd + path.sep)) {
           skipped.push({ action, reason: 'path escapes project root — skipped' });
-          continue;
+          return;
         }
+      }
+      const earlier = live.get(actionSig(action));
+      if (earlier) {
+        skipped.push({ action, reason: `already applied in ${earlier} — skipped (revert that apply to apply it again)` });
+        return;
       }
       if (action.type === 'memory') {
         // Write new memory entry (skip if file exists to avoid overwriting manual edits)
@@ -721,25 +866,21 @@ function applyReportRecommendations(cwd, reportPath) {
         } catch {
           fs.mkdirSync(path.dirname(memPath), { recursive: true });
           fs.writeFileSync(memPath, action.content, 'utf-8');
+          records.push({ i, type: action.type, path: rel(memPath), kind: 'created', sha256_after: normalisedHash(fs.readFileSync(memPath, 'utf-8')), action_sig: actionSig(action) });
           applied.push({ action, result: `Written to ${action.path}` });
         }
       } else if (action.type === 'memory_append') {
-        // Append to existing memory file
-        const memPath = path.join(cwd, action.path);
-        fs.mkdirSync(path.dirname(memPath), { recursive: true });
-        fs.appendFileSync(memPath, '\n' + action.content, 'utf-8');
+        appendRecorded(path.join(cwd, action.path), '\n' + action.content, action, i);
         applied.push({ action, result: `Appended to ${action.path}` });
       } else if (action.type === 'note') {
         // Write a human-readable suggestion note
-        const notePath = path.join(getOptimizeDir(cwd), 'suggestions.md');
         const entry = `\n## ${new Date().toISOString()}: ${action.description || 'Suggestion'}\n\n${action.content || action.suggestion || ''}\n\n**Target:** ${action.target || 'unspecified'}\n`;
-        fs.appendFileSync(notePath, entry);
+        appendRecorded(path.join(getOptimizeDir(cwd), 'suggestions.md'), entry, action, i);
         applied.push({ action, result: 'Suggestion written to optimization/suggestions.md' });
       } else if (action.type === 'planning_note') {
         // Write optimization note into .planning/optimization/config-suggestions.md
-        const notePath = path.join(getOptimizeDir(cwd), 'config-suggestions.md');
         const entry = `\n## ${new Date().toISOString()}\n${action.content}\n`;
-        fs.appendFileSync(notePath, entry);
+        appendRecorded(path.join(getOptimizeDir(cwd), 'config-suggestions.md'), entry, action, i);
         applied.push({ action, result: 'Config suggestion recorded' });
       } else {
         skipped.push({ action, reason: `Unknown action type: ${action.type}` });
@@ -747,21 +888,108 @@ function applyReportRecommendations(cwd, reportPath) {
     } catch (e) {
       skipped.push({ action, reason: e.message });
     }
-  }
+  });
 
-  // Log what was applied for cumulative stats
+  // Log what was applied: the counts for cumulative stats, the actions for revert.
   try {
     const logEntry = {
       ts: new Date().toISOString(),
+      kind: 'apply',
+      apply_id: applyId,
       report: path.basename(reportPath),
       applied_count: applied.length,
       skipped_count: skipped.length,
       applied_types: applied.map(a => a.action.type),
+      actions: records,
     };
+    fs.mkdirSync(getOptimizeDir(cwd), { recursive: true });
     fs.appendFileSync(path.join(getOptimizeDir(cwd), APPLIED_LOG), JSON.stringify(logEntry) + '\n');
   } catch {}
 
-  return { applied, skipped };
+  return { apply_id: applyId, applied, skipped };
+}
+
+function toPosixRel(cwd, abs) {
+  return path.relative(path.resolve(cwd), abs).split(path.sep).join('/');
+}
+
+/**
+ * Undo one apply: delete the files it created, cut the text it appended.
+ *
+ * It refuses, and says why, whenever undoing could destroy someone's work:
+ *   - a file whose content changed since the apply (the hash ignores line
+ *     endings, so a CRLF checkout of the same bytes still matches);
+ *   - a file a LATER unreverted apply also wrote. Reverts go last-in, first-out
+ *     per file, so an earlier append is never cut from under a later one.
+ * A CRLF file is written back CRLF. Legacy log rows (before apply records) cannot
+ * be reverted and are reported as such.
+ *
+ * @param {string} cwd
+ * @param {string} which - an apply_id, or 'last'
+ */
+function revertApply(cwd, which) {
+  const rows = readApplyLog(cwd);
+  const reverted = revertedIndices(rows);
+  const applies = rows.map((r, seq) => ({ r, seq })).filter(({ r }) => r.kind === 'apply' || !r.kind);
+  let target;
+  if (which === 'last') {
+    target = [...applies].reverse().find(({ r }) => r.kind !== 'apply' || (r.actions || []).some((a) => !(reverted.get(r.apply_id) || new Set()).has(a.i)));
+    if (!target) return { error: 'nothing_applied', reason: 'no apply with anything left to revert' };
+  } else {
+    target = applies.find(({ r }) => r.apply_id === which);
+    if (!target) return { error: 'unknown_apply', reason: `no apply ${which} in optimization/${APPLIED_LOG}` };
+  }
+  const { r: apply, seq } = target;
+  if (apply.kind !== 'apply' || !Array.isArray(apply.actions)) {
+    return { error: 'not_revertible', reason: `the apply of ${apply.report || 'that report'} at ${apply.ts || 'an unknown time'} predates apply records, so what it wrote cannot be located` };
+  }
+  const done = reverted.get(apply.apply_id) || new Set();
+  const pending = apply.actions.filter((a) => !done.has(a.i));
+  if (!pending.length) return { apply_id: apply.apply_id, reverted: [], refused: [], status: 'nothing_to_revert' };
+
+  const resolvedCwd = path.resolve(cwd);
+  const laterOwner = (p) => {
+    for (const { r, seq: s } of applies) {
+      if (s <= seq || r.kind !== 'apply' || !Array.isArray(r.actions)) continue;
+      const undone = reverted.get(r.apply_id) || new Set();
+      if (r.actions.some((a) => a.path === p && !undone.has(a.i))) return r.apply_id;
+    }
+    return null;
+  };
+
+  const out = [];
+  const refused = [];
+  for (const a of [...pending].sort((x, y) => y.i - x.i)) {
+    const abs = path.resolve(cwd, a.path || '');
+    if (!a.path || (abs !== resolvedCwd && !abs.startsWith(resolvedCwd + path.sep))) { refused.push({ i: a.i, path: a.path, reason: 'path outside the project' }); continue; }
+    const later = laterOwner(a.path);
+    if (later) { refused.push({ i: a.i, path: a.path, reason: `a later apply (${later}) also changed this file; revert it first` }); continue; }
+    let raw;
+    try { raw = fs.readFileSync(abs, 'utf-8'); } catch { refused.push({ i: a.i, path: a.path, reason: 'the file is gone' }); continue; }
+    if (normalisedHash(raw) !== a.sha256_after) { refused.push({ i: a.i, path: a.path, reason: 'the file changed since the apply (edited by hand?)' }); continue; }
+    try {
+      if (a.kind === 'created') {
+        fs.unlinkSync(abs);
+      } else {
+        const crlf = raw.includes('\r\n');
+        const norm = raw.replace(/\r\n/g, '\n');
+        const text = String(a.text || '').replace(/\r\n/g, '\n');
+        if (!text || !norm.endsWith(text)) { refused.push({ i: a.i, path: a.path, reason: 'the appended text is not at the end of the file' }); continue; }
+        const kept = norm.slice(0, norm.length - text.length);
+        fs.writeFileSync(abs, crlf ? kept.replace(/\n/g, '\r\n') : kept, 'utf-8');
+      }
+      out.push(a.i);
+    } catch (e) {
+      refused.push({ i: a.i, path: a.path, reason: e.message });
+    }
+  }
+  if (out.length || refused.length) {
+    try {
+      fs.appendFileSync(path.join(getOptimizeDir(cwd), APPLIED_LOG), JSON.stringify({ ts: new Date().toISOString(), kind: 'revert', apply_id: apply.apply_id, reverted: out, refused }) + '\n');
+    } catch {}
+  }
+  const remaining = pending.length - out.length;
+  return { apply_id: apply.apply_id, reverted: out.sort((x, y) => x - y), refused, status: remaining === 0 ? 'reverted' : (out.length ? 'partial' : 'refused') };
 }
 
 // Derive basic memory actions from a raw JSON analysis when no optimizer agent
@@ -780,6 +1008,26 @@ function deriveActionsFromAnalysis(analysis) {
       });
     });
   }
+
+  // A failure becomes a suggestion only once it recurs across spawns: one run's
+  // accident (a TDD red step, a grep with no match) is not a lesson.
+  const recurring = (analysis.tool_error_patterns || []).filter(p => p.spawns >= 2).slice(0, 3);
+  recurring.forEach(p => {
+    actions.push({
+      type: 'note',
+      description: `Recurring tool failure: ${p.agent} ${p.tool} (${p.error_class})`,
+      content: `${p.agent}'s ${p.tool} call failed with "${p.message}" in ${p.spawns} spawns across ${p.sessions} session(s) (${p.occurrences} times in all). Record the working form of the call, or the precondition it needs, as a memory entry for ${p.agent}.`,
+      target: '.planning/memory/',
+    });
+  });
+  Object.entries(analysis.verdict_stats || {}).filter(([, s]) => s.fail >= 2).forEach(([agent, s]) => {
+    actions.push({
+      type: 'note',
+      description: `Repeated judge failures: ${agent}`,
+      content: `${agent} failed ${s.fail} time(s) (${s.retries} retr${s.retries === 1 ? 'y' : 'ies'}, ${s.resolved_by_retry} resolved by the retry). Read the recorded findings (\`pan-tools findings list --agent ${agent}\`) for the class that keeps recurring before the next phase.`,
+      target: '.planning/memory/',
+    });
+  });
 
   if (gap_patterns && gap_patterns.length > 0) {
     gap_patterns.slice(0, 3).forEach(p => {
@@ -812,14 +1060,18 @@ function getOptimizeStats(cwd) {
     let totalApplied = 0;
     let totalSkipped = 0;
     let applyRuns = 0;
+    let lastApplyId = null;
+    const revertedRuns = new Set();
     try {
       const raw = fs.readFileSync(path.join(getOptimizeDir(cwd), APPLIED_LOG), 'utf-8');
       raw.trim().split('\n').filter(Boolean).forEach(line => {
         try {
           const e = JSON.parse(line);
+          if (e.kind === 'revert') { if (e.apply_id && (e.reverted || []).length) revertedRuns.add(e.apply_id); return; }
           totalApplied += e.applied_count || 0;
           totalSkipped += e.skipped_count || 0;
           applyRuns++;
+          if (e.apply_id) lastApplyId = e.apply_id;
         } catch {}
       });
     } catch {}
@@ -832,6 +1084,8 @@ function getOptimizeStats(cwd) {
       total_optimizations_applied: totalApplied,
       total_skipped: totalSkipped,
       apply_runs: applyRuns,
+      reverted_runs: revertedRuns.size,
+      last_apply_id: lastApplyId,
       current_session: getCurrentSessionId(cwd),
     };
   } catch (e) {
@@ -866,20 +1120,81 @@ function cmdOptimizeTrace(cwd, sub, opts, raw) {
   }
 }
 
+/**
+ * The last `n` trace sessions, newest last, by start time (the session id's own
+ * date order when a session never recorded one).
+ */
+function recentSessionIds(cwd, n) {
+  let dirs = [];
+  try { dirs = fs.readdirSync(getTracesDir(cwd), { withFileTypes: true }).filter(e => e.isDirectory() && e.name.startsWith('sess_')).map(e => e.name); } catch { return []; }
+  const started = (sid) => {
+    try { return JSON.parse(fs.readFileSync(path.join(getTracesDir(cwd), sid, OPT_SESSION_FILE), 'utf-8')).started_at || ''; } catch { return ''; }
+  };
+  return dirs.map(sid => ({ sid, at: started(sid) }))
+    .sort((a, b) => (a.at || a.sid).localeCompare(b.at || b.sid))
+    .slice(-n)
+    .map(x => x.sid);
+}
+
+/**
+ * One analysis over several sessions (`optimize learn --sessions <n>`): a
+ * recommendation should explain failures that recur across runs, not one run's
+ * accident.
+ */
+function generatePooledReport(cwd, sessionIds) {
+  const events = [];
+  const starts = [];
+  const ends = [];
+  for (const sid of sessionIds) {
+    const s = readTraceSession(cwd, sid);
+    if (s.error) continue;
+    events.push(...s.events);
+    if (s.metadata && s.metadata.started_at) starts.push(s.metadata.started_at);
+    if (s.metadata && s.metadata.ended_at) ends.push(s.metadata.ended_at);
+  }
+  const metadata = {
+    pooled_sessions: sessionIds,
+    started_at: starts.length ? starts.sort()[0] : undefined,
+    ended_at: ends.length ? ends.sort()[ends.length - 1] : undefined,
+  };
+  return {
+    session_id: sessionIds[sessionIds.length - 1],
+    pooled_sessions: sessionIds,
+    generated_at: new Date().toISOString(),
+    metadata,
+    ...analyzeEvents(events, metadata),
+    raw_events: events,
+  };
+}
+
 function cmdOptimizeLearn(cwd, opts, raw) {
-  const sessionId = opts.sessionId || getCurrentSessionId(cwd);
-  if (!sessionId) {
-    output({ error: 'No trace session active. Start one with: pan-tools optimize trace init' }, raw);
+  const pool = opts.sessions == null ? null : Number(opts.sessions);
+  if (pool !== null && (!Number.isInteger(pool) || pool < 1)) {
+    output({ error: '--sessions must be a whole number of sessions (1 or more)' }, raw);
     return;
   }
-
-  const report = generateLocalReport(cwd, sessionId);
-  if (report.error) { output(report, raw); return; }
+  let report;
+  let reportName;
+  if (pool !== null && pool > 1) {
+    const ids = recentSessionIds(cwd, pool);
+    if (!ids.length) { output({ error: 'No trace sessions to pool. Sessions appear once a PAN command has run.' }, raw); return; }
+    report = generatePooledReport(cwd, ids);
+    reportName = `pooled-${ids.length}-${ids[ids.length - 1]}-analysis.json`;
+  } else {
+    const sessionId = opts.sessionId || getCurrentSessionId(cwd);
+    if (!sessionId) {
+      output({ error: 'No trace session active. Start one with: pan-tools optimize trace init' }, raw);
+      return;
+    }
+    report = generateLocalReport(cwd, sessionId);
+    if (report.error) { output(report, raw); return; }
+    reportName = `${sessionId}-analysis.json`;
+  }
+  const sessionId = report.session_id;
 
   // Persist as JSON analysis for the optimizer agent to read
   const reportsDir = getReportsDir(cwd);
   try { fs.mkdirSync(reportsDir, { recursive: true }); } catch {}
-  const reportName = `${sessionId}-analysis.json`;
   const reportPath = path.join(reportsDir, reportName);
   try {
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
@@ -891,8 +1206,11 @@ function cmdOptimizeLearn(cwd, opts, raw) {
   output({
     session_id: sessionId,
     analysis_path: planningRel(OPTIMIZE_DIR, OPT_REPORTS_DIR, reportName),
+    ...(report.pooled_sessions ? { pooled_sessions: report.pooled_sessions } : {}),
     summary: report.summary,
     top_error_patterns: report.error_patterns.slice(0, 5),
+    top_tool_error_patterns: report.tool_error_patterns.slice(0, 5),
+    verdict_stats: report.verdict_stats,
     top_gap_patterns: report.gap_patterns.slice(0, 5),
     top_memory_misses: report.memory_miss_patterns.slice(0, 5),
     agent_stats: report.agent_stats,
@@ -910,6 +1228,13 @@ function cmdOptimizeApply(cwd, opts, raw) {
   const reportPath = opts.reportPath || reports.reports[0].path;
   const result = applyReportRecommendations(cwd, reportPath);
   output({ report: path.basename(reportPath), ...result }, raw);
+}
+
+function cmdOptimizeRevert(cwd, opts, raw) {
+  const which = opts.last ? 'last' : opts.applyId;
+  if (!which) { output({ error: 'Usage: optimize revert <apply_id> | --last' }, raw); return; }
+  const r = revertApply(cwd, which);
+  output(r, raw, r.error ? undefined : r.status);
 }
 
 function cmdOptimizeStats(cwd, raw) {
@@ -1344,6 +1669,9 @@ module.exports = {
   cmdOptimizeTrace,
   cmdOptimizeLearn,
   cmdOptimizeApply,
+  cmdOptimizeRevert,
+  revertApply,
+  readApplyLog,
   cmdOptimizeStats,
   cmdOptimizeList,
   // Path helpers (used by hook)

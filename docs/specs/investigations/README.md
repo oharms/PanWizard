@@ -22,5 +22,5 @@ Statuses: PROPOSED → FILED `MI-nnn` (entered in the ledger) or REJECTED (with 
 
 | Feature | Verdict | Priority | Status | Last updated |
 |---|---|---|---|---|
-| [Failure capture in the trace hook](features/trace-failure-capture.md) | ENHANCE | P2 | PROPOSED | `2026-09-28` |
-| [Regression gate and rollback for `optimize apply`](features/optimize-apply-regression-gate.md) | ENHANCE | P3 | PROPOSED | `2026-09-28` |
+| [Failure capture in the trace hook](features/trace-failure-capture.md) | ENHANCE | P2 | FILED `MI-060` (built, ADR-0049) | `2026-09-28` |
+| [Regression gate and rollback for `optimize apply`](features/optimize-apply-regression-gate.md) | ENHANCE | P3 | FILED `MI-061` (revert built; verdict deferred) | `2026-09-28` |

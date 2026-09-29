@@ -534,7 +534,15 @@ function scanOneRoot(cwd, root, opts) {
     // rename would rename its state files. One warn finding, nothing fixable, and
     // none of the per-tree checks run on it. Reality check R15.
     const foreign = detectForeignPlanningTree(planningPath(cwd));
-    if (foreign) {
+    // A tool that SHARES the tree (planning-with-files) owns only its own names;
+    // PAN's checks still apply to PAN's files. One info finding says so.
+    const shared = foreign && foreign.coexists
+      ? mkFinding('shared-planning-tree', 'info', planningRel(),
+        `${foreign.tool} also writes into this planning tree (${foreign.evidence.join(', ')}) — PAN leaves its files alone and checks only its own`,
+        null)
+      : null;
+    if (shared) shared.track = root.name;
+    if (foreign && !foreign.coexists) {
       const f = mkFinding('foreign-planning-tree', 'warn', planningRel(),
         `planning tree belongs to ${foreign.tool} (${foreign.evidence.join(', ')}) — PAN will not rename or repair its files; run PAN with --planning-dir to give it a tree of its own (ADR-0043)`,
         null);
@@ -543,6 +551,7 @@ function scanOneRoot(cwd, root, opts) {
     }
     const fragment = checkPlanningFragment(cwd);
     const findings = [
+      ...(shared ? [shared] : []),
       ...fragment.findings,
       ...checkLegacyUppercase(cwd).findings,
       ...checkTmpOrphans(cwd).findings,
@@ -621,7 +630,8 @@ function applyFix(cwd, finding) {
         // Defence in depth for R15: the scan never emits this fix for a foreign tree,
         // but a stale findings list or a hand-built one must not rename another
         // tool's files either.
-        if (detectForeignPlanningTree(path.dirname(abs))) {
+        const owner = detectForeignPlanningTree(path.dirname(abs));
+        if (owner && !owner.coexists) {
           return { applied: false, detail: 'refused: this planning tree belongs to another tool (see the foreign-planning-tree finding)' };
         }
         // Two-step rename: Windows treats case-only renames inconsistently

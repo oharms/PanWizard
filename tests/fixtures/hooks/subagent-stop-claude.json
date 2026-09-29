@@ -1,11 +1,26 @@
 {
-  "hook_event_name": "SubagentStop",
   "session_id": "{{SESSION_ID}}",
   "transcript_path": "{{TRANSCRIPT_PATH}}",
   "cwd": "{{PROJECT_DIR}}",
+  "scratchpad_dir": "{{SCRATCHPAD_DIR}}",
+  "prompt_id": "00000000-0000-4000-8000-000000000101",
+  "permission_mode": "default",
   "agent_id": "{{AGENT_ID}}",
   "agent_type": "pan-executor",
+  "hook_event_name": "SubagentStop",
   "stop_hook_active": false,
+  "agent_transcript_path": "{{AGENT_TRANSCRIPT_PATH}}",
+  "last_assistant_message": "synthetic final report: the plan's tasks are done and committed",
+  "background_tasks": [
+    {
+      "id": "{{AGENT_ID}}",
+      "type": "subagent",
+      "status": "running",
+      "description": "Execute plan 01-01",
+      "agent_type": "pan-executor"
+    }
+  ],
+  "session_crons": [],
   "usage": {
     "input_tokens": 4,
     "output_tokens": 2,

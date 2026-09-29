@@ -450,6 +450,21 @@ Include in verification report under a "### Standards Compliance" section:
 
 This is advisory only — standards gaps do NOT block verification status. They appear as warnings/info in the report.
 
+## Step 7c: Check Scope — Unrequested Work
+
+Find what the phase changed that no plan asked for. The file list is mechanical; the judgement is yours:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify scope "$PHASE_NUM"
+```
+
+`candidates` are files the phase changed that no plan declared in `files_modified`. The changes come from the phase's plan commits and its summaries' key-files; the planning tree, lockfiles and PAN's own directories are already excluded. Judge each candidate:
+
+- **Supporting work** the declared tasks need is not a finding. That includes a test for a declared file (`hint: test_for_declared`), a fixture, a config entry the feature requires, and a type the declared code imports.
+- **Work the plans' intent does not cover** goes in the frontmatter as an `unrequested:` entry: `path` and `what` (what it adds that nobody asked for). Examples are a feature nobody asked for, an unrelated refactor, or a file outside the phase's purpose. Behaviour counts too: a declared file that also does something no requirement asked for is unrequested work in that file.
+
+Unrequested work never changes the status on its own; a phase can pass with it. Keeping it (a decision) or removing it is the user's call, and the recorded finding is how the call gets made.
+
 ## Step 8: Identify Human Verification Needs
 
 **Always needs human:** Visual appearance, user flow completion, real-time behavior, external service integration, performance feel, error message clarity.
@@ -536,6 +551,9 @@ human_verification: # Only if status: human_needed
   - test: "What to do"
     expected: "What should happen"
     why_human: "Why can't verify programmatically"
+unrequested: # Only if Step 7c found work no plan asked for
+  - path: "src/path/to/file.tsx"
+    what: "What it adds that no plan or requirement asked for"
 ---
 
 # Phase {X}: {Name} Verification Report
@@ -580,6 +598,10 @@ human_verification: # Only if status: human_needed
 ### Human Verification Required
 
 {Items needing human testing — detailed format for user}
+
+### Unrequested Work
+
+{Files or behaviour no plan asked for (Step 7c), each with what it adds — or "None: every change traces to a plan."}
 
 ### Gaps Summary
 
@@ -706,6 +728,7 @@ return <div>No messages</div>  // Always shows "no messages"
 - [ ] Requirements coverage assessed (if applicable)
 - [ ] Anti-patterns scanned and categorized
 - [ ] Human verification items identified
+- [ ] Scope checked with `verify scope`; unrequested work recorded in `unrequested:`
 - [ ] Overall status determined
 - [ ] Gaps structured in YAML frontmatter (if gaps_found)
 - [ ] Re-verification metadata included (if previous existed)

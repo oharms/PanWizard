@@ -1,0 +1,12 @@
+{
+  "sessionId": "{{SESSION_ID}}",
+  "timestamp": 1790000000000,
+  "cwd": "{{PROJECT_DIR}}",
+  "transcriptPath": "{{TRANSCRIPT_PATH}}",
+  "agentId": "{{AGENT_ID}}",
+  "agentType": "custom",
+  "agentName": "pan-executor",
+  "agentDisplayName": "PAN executor",
+  "response": "synthetic subagent final text",
+  "stopReason": "end_turn"
+}

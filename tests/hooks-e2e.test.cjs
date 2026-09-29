@@ -330,20 +330,22 @@ function baseMap(project, sessionId, transcriptPath, agentId) {
     '{{SESSION_ID}}': sessionId,
     '{{TRANSCRIPT_PATH}}': transcriptPath,
     '{{AGENT_ID}}': agentId || 'unused',
+    '{{SCRATCHPAD_DIR}}': path.join(project, 'scratchpad'),
   };
 }
 
 /**
  * Lay out the transcript pair a real SubagentStop addresses — the parent session file
  * plus the subagent's own conversation at `<parent dir>/<session_id>/subagents/
- * agent-<agent_id>.jsonl` — and return the payload the host would send with it.
+ * agent-<agent_id>.jsonl` — and return the payload the host would send with it, which
+ * names that agent transcript in `agent_transcript_path` as Claude Code 2.1.280 does.
  */
 function seedSubagentStop(project, sessionId, agentId) {
   const dir = path.join(project, 'transcripts');
   fs.mkdirSync(path.join(dir, sessionId, 'subagents'), { recursive: true });
   const parentPath = path.join(dir, `${sessionId}.jsonl`);
   const agentPath = path.join(dir, sessionId, 'subagents', `agent-${agentId}.jsonl`);
-  const map = baseMap(project, sessionId, parentPath, agentId);
+  const map = { ...baseMap(project, sessionId, parentPath, agentId), '{{AGENT_TRANSCRIPT_PATH}}': agentPath };
   const transcripts = substitute(fixture('subagent-transcripts-claude.json'), map);
   const jsonl = (records) => records.map((r) => JSON.stringify(r)).join('\n') + '\n';
   fs.writeFileSync(parentPath, jsonl(transcripts.parent), 'utf-8');
@@ -816,6 +818,15 @@ describe('hook payload fixtures carry their provenance', () => {
       }
     }
     assert.deepEqual(undocumented, [], 'a placeholder the test substitutes must be explained in the fixture\'s provenance');
+  });
+
+  test('the named and the helper SubagentStop fixtures carry the same captured keys, in order', () => {
+    // Both were captured from Claude Code 2.1.280 (2026-09-28 and 2026-09-29) and differ only
+    // in values. A recapture carried to one and not the other would test the two agent shapes
+    // against two different hosts. `usage` is the one documented, never-captured extra.
+    const named = Object.keys(fixture('subagent-stop-claude.json')).filter((k) => k !== 'usage');
+    const helper = Object.keys(fixture('subagent-stop-internal-claude.json'));
+    assert.deepEqual(named, helper);
   });
 
   test('every fixture names a hook event this suite drives, and a runtime that exists', () => {

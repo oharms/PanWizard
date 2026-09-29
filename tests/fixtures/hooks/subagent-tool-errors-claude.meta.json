@@ -1,0 +1,13 @@
+{
+  "hook_event": "SubagentStop",
+  "runtime": "claude",
+  "captured_at": "2026-09-28",
+  "captured_from": "Record structure of failed tool calls in a Claude Code per-agent transcript. Derived on 2026-09-28 from this machine's PAN-development subagent transcripts: `<session>/subagents/agent-<id>.jsonl` under the D--PanWizard project folder, 58 files holding 28 failed tool results. A failed call is a `type: user` record whose `message.content[]` holds `{type: tool_result, content: <string>, is_error: true, tool_use_id}`, with a top-level `toolUseResult` (a string prefixed `Error: `) and `sourceToolAssistantUUID`. The tool's name is the `name` of the matching `{type: tool_use, id, name, input}` block in the preceding assistant record. Observed first lines: a Bash failure opens `Exit code <n>` and states the failure on the next line; a Read of a missing file opens `File does not exist. Note: your current working directory is …`; a permission refusal opens `Permission to use Bash with command …`. A successful result carries no `is_error` key. Beside each agent file the host writes `agent-<id>.meta.json` with `agentType`, `description`, `toolUseId`, `spawnDepth`, `requestShape` and `requestNonInteractive`. Structure only: no project name, path, prose, code or business detail was copied from those transcripts, and every value here is neutral synthetic. The curl line carries planted fake secrets (a query-string key built at runtime from {{FAKE_SECRET}}, and a token= pair), so that redaction is tested on the real record shape.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id, written into every record as `sessionId`",
+    "{{PROJECT_DIR}}": "absolute path of the project, written into every record as `cwd` and into the missing-file message",
+    "{{AGENT_ID}}": "the host's per-spawn agent id, written into every agent record as `agentId`",
+    "{{FAKE_SECRET}}": "a secret-shaped API key the TEST builds at runtime (['sk', '…'].join('-')), so that no committed file carries one: the repository's gitleaks pre-commit scan rightly flags a literal. Redaction must remove it from the trace"
+  },
+  "notes": "Six tool calls, five failed. Two are the same Bash test failure (a retry loop, so one group with count 2); one is a Read of a missing file; one is a curl 401 carrying a query-string key and a token=… pair (both must be redacted); one is a permission refusal. The Grep call succeeds (no is_error). Classes measured across 1,969 field transcripts on the same day, for scale: exit code 69%, not found 10%, permission denied 2%."
+}

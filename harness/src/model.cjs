@@ -7,6 +7,12 @@
  *          --no-session-persistence --max-budget-usd <cap>
  *          [--mcp-config <ws>/.mcp.json --strict-mcp-config] [--plugin-dir <dir>]
  *
+ * `persistSession: true` on a step drops --no-session-persistence. Without session
+ * persistence the host writes no transcripts, including the per-agent
+ * `subagents/agent-<id>.jsonl` files, so a step that measures what PAN's hooks read
+ * from transcripts (tool-failure capture, per-agent token slices) must persist.
+ * Every other step keeps the default: nothing lands in ~/.claude/projects.
+ *
  * The prompt goes in on STDIN so no shell quoting is involved (`claude` is a .cmd
  * shim on Windows and needs a shell there; the argv stays literal). Isolation:
  * when the workspace carries an MCP registration the run is pinned to it with
@@ -37,15 +43,23 @@ function modelEnv(base = process.env) {
   return env;
 }
 
-function runModelStep(ws, prompt, opts) {
-  const { maxUsd, timeoutMs = 20 * 60000, pluginDir, strictMcp = true } = opts;
-  if (!(typeof maxUsd === 'number' && maxUsd > 0)) {
-    return { code: 2, stdout: '', stderr: 'refused: model steps require an explicit --max-usd', costUsd: 0, refused: true };
-  }
-  const args = ['-p', '--output-format', 'json', '--dangerously-skip-permissions', '--no-session-persistence', '--max-budget-usd', String(maxUsd)];
+/** The `claude` argv for a model step. Pure apart from the .mcp.json existence check. */
+function modelArgs(ws, { maxUsd, pluginDir, strictMcp = true, persistSession = false }) {
+  const args = ['-p', '--output-format', 'json', '--dangerously-skip-permissions'];
+  if (!persistSession) args.push('--no-session-persistence');
+  args.push('--max-budget-usd', String(maxUsd));
   const mcpConfig = path.join(ws, '.mcp.json');
   if (strictMcp && fs.existsSync(mcpConfig)) args.push('--mcp-config', mcpConfig, '--strict-mcp-config');
   if (pluginDir) args.push('--plugin-dir', pluginDir);
+  return args;
+}
+
+function runModelStep(ws, prompt, opts) {
+  const { maxUsd, timeoutMs = 20 * 60000 } = opts;
+  if (!(typeof maxUsd === 'number' && maxUsd > 0)) {
+    return { code: 2, stdout: '', stderr: 'refused: model steps require an explicit --max-usd', costUsd: 0, refused: true };
+  }
+  const args = modelArgs(ws, opts);
   const r = spawnSync('claude', args, {
     cwd: ws, input: prompt, encoding: 'utf8', timeout: timeoutMs, env: modelEnv(),
     stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024,
@@ -66,4 +80,4 @@ function runModelStep(ws, prompt, opts) {
   };
 }
 
-module.exports = { runModelStep , modelEnv };
+module.exports = { runModelStep, modelEnv, modelArgs };

@@ -38,13 +38,13 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 
 | Stage | Agents spawned | Approximate tokens | Skippable? |
 |-------|---------------|-------------------|------------|
-| Research (new-project) | Parallel researchers + synthesizer | 30-50K total | Yes (answer No to the research question, or set `research_enabled: false` in the idea frontmatter) |
+| Research (new-project) | Parallel researchers + synthesizer | 30-50K total | Yes (answer "Skip research" to the research question; `--auto` always researches — `research_enabled: false` in the idea frontmatter only turns off per-phase research) |
 | Research (plan-phase) | 1 phase researcher | 10-20K | Yes (`--skip-research`) |
 | Planning | 1 planner + 1 plan-checker (up to 3 iterations) | 20-40K | Checker skippable (`plan_check: false`) |
 | Execution | 1 executor per plan (fresh context each) | 20-80K per plan | No |
 | Verification | 1 verifier | 10-20K | Yes (`verifier: false`) |
 
-**Profile multiplier:** the numbers above assume the default `balanced` profile, where every agent runs on the model you launched with (`quality` is identical — same reasoning tier for every agent, so switching between the two changes nothing). `budget` is the only profile that down-tiers: mid for the code-writing agents, fast for research and verification. On PAN's relative cost scale (`pan-tools estimate-cost`, reasoning = 15×, mid = 3×, fast = 1×) that puts `quality` and `balanced` at ~15× baseline and `budget` at ~1.6×.
+**Profile multiplier:** the numbers above assume the default `balanced` profile, where every agent is on the reasoning tier and inherits the model you launched with, apart from a few review agents that pin their own (`quality` is identical — same reasoning tier for every agent, so switching between the two changes nothing). `budget` is the only profile that down-tiers: mid for the code-writing agents, fast for research and verification. On PAN's relative cost scale (`pan-tools estimate-cost`, reasoning = 15×, mid = 3×, fast = 1×) that puts `quality` and `balanced` at ~15× baseline and `budget` at ~1.6×.
 
 **Optimization tips:**
 - Skip research for familiar domains: `/pan:plan-phase N --skip-research`
@@ -58,8 +58,8 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 Yes. PAN research agents can use Brave Search API for domain research. Setup:
 
 1. Get a free API key from the [Brave Search API](https://brave.com/search/api/)
-2. Set the `BRAVE_API_KEY` environment variable — the `websearch` verb reads only the env var. Optionally also create `~/.pan-wizard/brave_api_key`, which makes new projects default `brave_search` to `true`
-3. Set `brave_search: true` in `/pan:settings`
+2. Set the `BRAVE_API_KEY` environment variable — the `websearch` verb reads only the env var. Optionally also create `~/.pan-wizard/brave_api_key`, which pre-sets `brave_search: true` in a config `config-ensure-section` creates (`/pan:new-project` does not set `brave_search`)
+3. Set `brave_search: true` with `pan-tools config-set brave_search true` (`/pan:settings` has no Brave question)
 
 When enabled, researchers use web search to investigate technologies, libraries, and best practices during the research phase.
 
@@ -177,11 +177,11 @@ Run `/pan:knowledge ask "why does phase 4 have a race condition fix?"`. The comm
 
 ### Can I preview a phase before running it?
 
-Yes. `/pan:preview phase <N>` analyzes the phase's plan files, extracts mentioned file paths, checks for risk keywords (drop / delete / migrate / rename / breaking / auth), and scores the phase 1-10. For cross-phase planning, `/pan:preview phases` emits a mermaid dependency graph + parallelizable-batches recommendation. For milestone-level forecasting, `/pan:preview milestone` projects an ETA with confidence interval from historical phase durations.
+Yes. `/pan:preview phase <N>` analyzes the phase's plan files, extracts mentioned file paths, checks for risk keywords (drop / delete / migrate / rename / breaking / auth), and scores the phase 1-10. For cross-phase planning, `/pan:preview phases` emits a mermaid dependency graph + parallelizable-batches recommendation. For milestone-level forecasting, `/pan:preview milestone` projects an ETA with a confidence percentage from historical phase durations.
 
 ### What are MCP tools and how does PAN use them?
 
-MCP (Model Context Protocol) tools are external integrations the host runtime provides — e.g. Linear, Slack, databases. In v3.3, `/pan:mcp-bridge list` shows which tools Claude Code has discovered, and `/pan:mcp-bridge recommend <phase>` suggests which apply to a phase plan based on keyword matching. This is **discovery-only** through v3.5 — PAN doesn't auto-invoke MCP tools. You see the recommendations and reference them in the phase plan; the executor agent uses them via Claude Code's normal tool-use flow. Auto-injection + auto-invocation remain on the roadmap.
+MCP (Model Context Protocol) tools are external integrations the host runtime provides — e.g. Linear, Slack, databases. In v3.3, `/pan:mcp-bridge list` shows which tools Claude Code has discovered, and `/pan:mcp-bridge recommend <phase>` suggests which apply to a phase plan based on keyword matching. This is **discovery-only** — PAN doesn't auto-invoke MCP tools. You see the recommendations and reference them in the phase plan; the executor agent uses them via Claude Code's normal tool-use flow. Auto-injection + auto-invocation remain on the roadmap.
 
 ### Does PAN have an MCP server of its own?
 
@@ -191,7 +191,7 @@ Yes — the other direction. `/pan:mcp-bridge` is PAN as an MCP *client*, discov
 
 ### How does the circular optimization loop work?
 
-`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to write the auto-applicable findings as memory entries. Next session, those memory entries get loaded into executor context (W2 fix), so PAN avoids repeating the same mistakes. The exec-phase workflow also logs `reviewer_correction` events when the reviewer issues a fix commit (W1 fix), so the optimizer can track real quality signal — not just "tasks completed."
+`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to write the auto-applicable findings as memory entries. Next session, those memory entries get loaded into executor context (W2 fix), so PAN avoids repeating the same mistakes. `/pan:plan-phase`, `/pan:design-phase`, `/pan:exec-phase` and `/pan:verify-phase` also record each judge's verdict with `pan-tools findings record`, which logs `verdict_passed`, `verdict_failed` or `verdict_needs_human` (and `verdict_retry` after a failed attempt) to the trace, so the optimizer can track real quality signal — not just "tasks completed."
 
 ### What does `/pan:focus-auto --category distill` do?
 
@@ -199,7 +199,7 @@ The `distill` focus-auto category targets **AI-generated code bloat** via a 5-pa
 
 ### What does `/pan:git` give me that raw `git` doesn't?
 
-Phase-aware naming + safety guardrails. `/pan:git commit --type feat --message "..."` runs deleted-file detection and sensitive-file pattern checks (env, key, secret, token, credentials) before allowing the commit. `/pan:git branch create --phase 3` auto-names the branch `pan/phase-3`. `/pan:git push` validates the remote exists and requires explicit `--force` for force-push. `/pan:git rollback` lists `pan-rollback-*` snapshot tags created by exec-phase and resets to one (with `--dry-run` preview). Subcommands: commit, branch, push, status, log, stash, diff, rollback, tag, sync. Works on any git repo regardless of whether `.planning/` exists.
+Phase-aware naming + safety guardrails. `/pan:git commit --type feat --message "..."` runs deleted-file detection and sensitive-file pattern checks (env, key, secret, token, credentials) before allowing the commit. `/pan:git branch create --phase 3` auto-names the branch `pan/phase-3`. `/pan:git push` validates the remote exists and requires explicit `--force` for force-push. `/pan:git rollback` lists `pan-rollback-*` snapshot tags and resets to one (with `--dry-run` preview); the tags come from `pan-tools rollback-snapshot <phase>`, which no workflow runs for you. Subcommands: commit, branch, push, status, log, stash, diff, rollback, tag, sync. Works on any git repo regardless of whether `.planning/` exists.
 
 ## Customization
 
@@ -220,7 +220,7 @@ Switch profiles globally:
 /pan:profile budget
 ```
 
-Or override specific agents in `.planning/config.json`:
+Or override specific agents in `.planning/config.json`. The values are tiers, not model ids: `opus` (or `reasoning`) is the model you launched with, `sonnet`/`mid` and `haiku`/`fast` the provider's mid and fast models, and anything else falls back to `mid`:
 ```json
 {
   "model_profile": "balanced",

@@ -19,6 +19,8 @@ Manage the circular optimization loop: apply recommendations, view stats, list r
 ```
 /pan:optimize apply
 /pan:optimize apply --report <filename>
+/pan:optimize revert <apply_id>
+/pan:optimize revert --last
 /pan:optimize list
 /pan:optimize stats
 /pan:optimize trace init [--description "what you're building"]
@@ -42,7 +44,17 @@ Requires human review (never auto-applied):
 - Workflow step additions
 - Structural changes to commands
 
-After applying, the report lists what was applied and what still needs review.
+After applying, the report lists what was applied and what still needs review, plus the `apply_id` that undoes it. Every apply is recorded action by action in `.planning/optimization/applied.jsonl`: the path, whether the file was created or appended to, the exact text, and a hash of the file after the write. Applying the same report a second time writes nothing: each action names the apply that already wrote it.
+
+### revert
+Undo one apply exactly: delete the memory files it created and cut the text it appended (`revert --last` for the newest).
+
+Revert never destroys work someone did since:
+- It refuses a file whose content changed after the apply. The comparison ignores line endings, so a CRLF checkout still matches.
+- It refuses a file that a later apply also wrote. Revert that later apply first.
+- It says which files it refused, and why.
+
+A CRLF file comes back CRLF. Applies logged before apply records existed cannot be reverted. After a revert, the same report can be applied again.
 
 ### list
 List all optimization reports in `.planning/optimization/reports/`, most recent first.
@@ -52,7 +64,7 @@ Show cumulative optimization statistics:
 - Total trace sessions run
 - Total events traced
 - Total errors/gaps/redundancies seen
-- Total optimizations applied across all runs
+- Total optimizations applied across all runs, the apply runs, the reverted runs, and the last `apply_id`
 - Current active trace session (if any)
 
 ### trace init

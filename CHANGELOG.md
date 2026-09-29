@@ -5,7 +5,170 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.32.0] - 2026-09-29
+
+### Added — the evidence loop: judges' verdicts on the record, failures the optimiser can learn from
+
+PAN's judges (plan checker, reviewer, design checker, verifier) decided whether work
+passed. Their verdicts were prose that each workflow re-parsed in its own way. Their
+findings were never recorded, and nothing said which were deferred, dismissed or
+fixed, or why. ADR-0049; spec `docs/specs/evidence_loop_featureai.md`.
+
+- **A machine verdict.** The plan checker, reviewer and design checker end their report
+  with a fenced `pan-verdict` JSON block: contract `1.0`, the agent's own verdict word,
+  outcome `pass`/`fail`/`needs_human`, and findings, each with a class
+  (`missing`/`partial`/`contradicts`/`unrequested`/`defect`/`risk`/`quality`/`human`),
+  a severity and a location. The verifier's verification.md frontmatter is read
+  through an adapter. The contract ships as `references/verdict-contract.md`. The
+  examples in each judge are checked intact in all five runtimes' converted copies.
+- **`pan-tools findings record|list|dispose|debt`** and the MCP resource
+  `pan://findings`, over an append-only `.planning/findings.jsonl`:
+  - Recording the same report twice is a no-op, and each new verdict from an agent on
+    a phase is the next attempt.
+  - A re-verification closes the gaps it no longer reports; human-verification and
+    unrequested items are exempt. A regressed fix reopens.
+  - `deferred`, `dismissed` and `decision` require a reason.
+  - Each record logs `verdict_passed`/`verdict_failed`/`verdict_needs_human` to the
+    trace, plus `verdict_retry` after a failed attempt, on every runtime.
+- **The workflows branch on the record and never continue past findings silently.**
+  - exec-phase, plan-phase and design-phase save each judge's report in the phase
+    directory, record it, and branch on the verdict it prints. The previous
+    grep/heading reads stay as fallbacks.
+  - They record a deferral when a phase moves on past a judge's warnings or failure: warnings
+    accepted at review, "continue anyway", "force proceed", design caveats.
+  - `/pan:milestone-audit` takes its tech debt from `findings debt`, the deferred
+    findings with their reasons plus the ones nobody disposed.
+  - The prose `optimize trace log` calls on the verdict paths are gone.
+- **Unrequested work (market item M11).**
+  - `pan-tools verify scope <phase>` lists the files a phase changed that its plans
+    did not declare in `files_modified`. It reads the plan commits by subject and the
+    summary key-files, and excludes the planning tree, lockfiles and PAN's runtime
+    directories.
+  - The verifier judges the candidates and records the real ones as `unrequested:`
+    in verification.md. The reviewer has the same lens.
+- **Tool-failure capture in the trace hook.**
+  - On Claude Code, the hook records the failed tool calls in each subagent's own
+    transcript as `error/tool_error` events, with tool, class, exit code, a redacted
+    message and a count. The completion carries `tool_calls` and `tool_errors`.
+  - Redaction covers secrets, tokens, query strings, the project directory and the
+    home directory. `execution.error_pattern_learning: false`, a key reserved until
+    now, turns capture off.
+  - The trace schema moves to `v: 5`.
+  - First real run on 2026-09-28: a subagent's failing `npm test` was captured from
+    its own transcript through the installed hook.
+- **`optimize learn` reads the new signal.** The analysis adds `tool_error_patterns`,
+  ranked by the spawns they recur in (sessions are counted too), and `verdict_stats` per judge.
+  Suggestions come only from failures that recur. `optimize learn --sessions <n>`
+  pools the last n sessions.
+- **`contract: "1.0"`** on `state`, `state json`, `progress` and the `pan://state` /
+  `pan://progress` resources, with the additive rule documented (market item M17).
+- **planning-with-files coexistence (market item M3).** Its markers (`.active_plan`,
+  `.attestation`, `ledger-*.jsonl`, dated task directories holding `task_plan.md`)
+  mark a tree as shared, not foreign. `validate health` reports `I004` and keeps
+  checking PAN's files, `hygiene` raises `shared-planning-tree`, and `init
+  new-project` proceeds. New `I005`: `.planning/` is gitignored while `commit_docs`
+  is on, so planning commits commit nothing (planning-with-files adds that ignore
+  entry by default).
+- **User docs for the Claude Code controls that shape native-workflow runs (market
+  item M18).** `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS`, the `Workflow` /
+  `Workflow(<name>)` permission rule, the `/usage` prompt-cache line, and `claude
+  plugin install --json`. Each was checked against the official docs; one claimed
+  control (`OTEL_LOG_TOOL_DETAILS`) was not found and is not documented.
+
+### Fixed — Claude Code's own helper agents were booked as `unknown` spawns
+
+Claude Code fires `SubagentStop` for helper agents of its own: the compaction summariser, and one at almost every turn end of an interactive session. Their payload carries an `agent_id`, an empty `agent_type`, and an `agent_transcript_path` it never writes (a real `/compact` payload was captured on Claude Code 2.1.280 for the fixture). The test fixtures for a named agent's `SubagentStop` and for `Stop` were recaptured from the same version: each lacked keys the host sends, and the `SubagentStop` one lacked the `agent_transcript_path` the loggers prefer.
+
+The cost and trace loggers booked each one as an `unknown` zero-token spawn: 181 rows in three field projects in eleven days, which skewed spawn counts and `optimize learn`'s agent stats. Both loggers now record nothing for an agent instance that has no type and no transcript, and the trace logger no longer mints a session for one. A named spawn whose file is missing, and a payload with no agent instance at all, are recorded as before. Rows written before this fix stay in the ledgers.
+
+### Fixed — `pan-tools focus exec` crashed on the batches agents write, and read the oldest batch
+
+A field project reported `pan-tools focus exec` throwing a TypeError. Two defects combined. The CLI read the **oldest** batch in `.planning/focus/`: v2.10.0 sorted ascending so "older unfinished batches execute before newer ones", but nothing marks a batch finished, so it returned the first batch a project ever planned, every time. It also read the items only from a `batch` array, the shape `focus plan` writes. `/pan:focus-auto` documents `items`, and agent-written batches put the list under `items`, often with `batch` holding the batch's name: across four field projects, 1 of 102 batch files had a `batch` array. A name in `batch` threw `batch.batch.filter is not a function`, and a file with no `batch` key threw on `.length`.
+
+`focus exec` and `focus classify-stages` now read the newest batch, ordered by the date in the file name and then by the time it was written. That is the batch `/pan:focus-exec` runs; its Stage 3.0 had been classifying a different batch from the one it executed. Items come from `batch` or `items`, and entries that are not objects no longer break the tier count. A newest batch with neither list, or with invalid JSON, is refused with an error that names the file; an older batch never stands in. `batch_file` now names the file that was read (it was rebuilt from the batch's `date`, which does not match slugged names), and `preflight batch` names the same batch.
+
+### Fixed — `/pan:review-deep` never saw the reviewer's findings
+
+`/pan:review-deep` read `.planning/phases/<N>/review.md`. Nothing wrote that file (the
+reviewer is read-only), and no phase directory has that name. Even with the file
+present, the merger's bullet grammar never matched the tables the reviewer writes, so
+the reviewer half of every deep review merged as zero findings. exec-phase now saves
+the report as `{phase_dir}/{phase_number}-review.md`, review-deep reads that path, and
+the merger takes the reviewer's findings from its `pan-verdict` block.
+
+### Fixed — `/pan:exec-phase --deep-review` did nothing
+
+The flag was documented as "(v3.4+)", but no step of the exec-phase workflow read it.
+It now runs the deep review inline after the normal review: the hardener, the
+meta-reviewer, and `review-deep merge` over the saved report. It stops before
+verification on `review_required` or `block`.
+
+### Fixed — applying the same optimisation report twice appended everything twice
+
+`optimize apply` kept no record of what it wrote, so a second apply of one report
+appended every memory entry and note again, and nothing could be undone. Each apply
+now gets an `apply_id` with per-action records, and an action an earlier apply wrote
+is skipped. `pan-tools optimize revert <apply_id>` (or `--last`) undoes one apply byte
+for byte, CRLF files included (a file whose line endings are mixed comes back all CRLF). It refuses a file edited since the apply, and a file a
+later apply also wrote.
+
+### Fixed — Copilot spawns were booked as `unknown` with no session
+
+Copilot CLI's camelCase `subagentStop` payload (`sessionId`, `transcriptPath`,
+`agentId`, `agentName`; documented, not yet observed live) matched none of the
+snake_case names the cost and trace loggers read. Both loggers now accept it. The
+agent's configured name wins over `agentType`, which only says built-in or custom.
+
+### Fixed — the Gemini live gate failed on every run, and would have passed a broken server
+
+`live-gate-gemini` asked Gemini CLI to list PAN's MCP server. A harness workspace is new on every run, so Gemini never trusted it and listed the server as `Disabled`: the gate failed every time once Gemini CLI was installed. Measured from the Gemini CLI 0.61.0 bundle: `GEMINI_CLI_HOME` moves every user-level file, including `.gemini/trustedFolders.json`, and folder trust is on by default.
+
+The scenario now runs every `gemini` call under a scratch home in the run's `<other>` directory, so the user's real `~/.gemini` is never read or written. A new `harness/scripts/gemini-trust.cjs` writes the same trust entry Gemini's own prompt writes, for exactly the scenario's workspace, and refuses a home that is the real one. The gate is now a contrast pair: `Disabled` while untrusted, then `Connected` once trusted.
+
+The check also got stronger. A broken registration lists as `Disconnected` with exit 0, and the old expectation (anything but `Disabled`) would have passed it. Harness `cli` steps take a step-scoped `env`, with placeholders filled.
+
+### Fixed — the harness deployed stale hooks
+
+The package ships `hooks/dist/`, a gitignored build output. The release workflow and CI
+build it before packing; the harness packed without building, so any hook change was
+tested against whatever the last manual build left. The harness now runs
+`build-hooks.js` before `npm pack`. A model step can opt into session persistence
+(`persistSession: true`). The default `--no-session-persistence` means the host writes
+no transcripts, so no harness model run had ever exercised a hook that reads them.
+
+### Decided — the cost and trace loggers stay synchronous on Claude Code (market item M16)
+
+Claude Code supports `async: true` on command hooks, but each of the two loggers keeps a
+read-modify-write cursor file. Overlapping asynchronous runs could lose each other's
+updates, and a lost cursor entry re-reads a transcript from the start and counts its
+tokens twice. The update check already hands `SessionStart` back at once. Recorded in
+`docs/HOOKS.md`.
+
+### Fixed — the `state` subcommand list left out `compact`, and a harness scenario sent a command that does not exist
+
+`pan-tools state compact` worked and was documented, but the list of state subcommands the dispatcher prints for an unknown one left it out. `suggest.cjs` builds its did-you-mean index from those lists and `scripts/test-surface.cjs` builds the surface registry from them, so both missed it. The list now names it, and `tests/dispatcher-arms.test.cjs` checks every group's list against the subcommands its arm dispatches.
+
+The `pause-resume` harness scenario sent `/pan:resume-project`, which no command defines (`resume-project` is the workflow `/pan:resume` loads), so its paid step would have been refused before it reached the model. It now sends `/pan:resume`, and a tier-0 test checks that every scenario's `/pan:` prompt names a command in `commands/pan/`.
+
+### Fixed — the harness seeds' test script failed on Node 24
+
+Every harness seed ran `node --test tests/`. Node 24 no longer searches a directory argument, so each seed's `npm test` failed before any work began. The pre-release run of `markdown-exec-phase-chain` stopped there: `/pan:exec-phase` correctly refused to execute a phase whose test baseline was already red, while the native chain passed only because an executor rewrote the script itself. The seeds now run `node --test`, which finds the same files on every supported Node, and a model-free test runs each seed's `npm test` as shipped (it clears `NODE_TEST_CONTEXT`, without which a nested `node --test` exits 0 even when its tests fail). `tool-error-capture` had depended on that accidental failure; it now adds a deliberately failing test before its subagent runs the suite.
+
+### Security — SHA-256 event signatures, and no check-then-read in the Gemini trust script
+
+CodeQL flagged the loggers' duplicate-event signature: SHA-1 over a payload that carries a session id, which the new Copilot normaliser made visible to it. The signature is a dedup key, not a security boundary, but it is now SHA-256, cut to the same 40 hex characters so persisted `event_sig` values keep their shape. A signature written before the upgrade will not match one written after it, so at most one re-fired event at that boundary goes unrecognised. `harness/scripts/gemini-trust.cjs` no longer checks that the trust file exists before reading it; a missing file reads as an empty map. CI's gitleaks step now prints each finding's file, line, commit and rule, still redacted.
+
+### Documented — the docs checked against this branch's code
+
+A full doc audit brought the docs in line with the code on this branch. Auditors read each doc against the code, and verifiers then checked every fix against the code before it stayed. The main corrections:
+
+- **Setup and config.** `brave_search` starts `true` only in a config `config-ensure-section` creates, not in the one `/pan:new-project` writes, and `/pan:settings` asks about neither `commit_docs` nor Brave. `/pan:new-project --auto` chains discuss, plan and execute for phase 1 instead of stopping at the roadmap. No workflow creates rollback tags. `/pan:update` passes no runtime flag, so the README now tells other runtimes to re-run the installer.
+- **Agents.** Codex maps `effort` to its native `model_reasoning_effort`; model tiering takes effect where a workflow passes the resolved tier as a spawn's `model`; memory lessons reach the executors, not the planner; the planner commits its plans; `/pan:map-codebase` runs a single agent in single-shot mode.
+- **The evidence loop.** The `findings` verbs, `optimize revert`, `verify scope`, the verdict contract and the judges' saved reports now appear in ARCHITECTURE, INTERNALS, AGENTS and DEVELOPMENT. A `fixed` disposition reopens when the finding is reported again, and auto-fix acts per phase.
+- **Reference.** CLI-REFERENCE names `websearch`, the `branching_strategy` values `none`, `phase` and `milestone`, case-insensitive `state update` fields, the cost cursor `hygiene clean` keeps, and the real commit-blocked error. HOOKS says when the loggers fall back to state.md and what the `v` and `source` fields are for. README calls `/pan:hud` a snapshot, adds `npm run build:hooks` to the development install, and lists what a local install writes outside the runtime directory.
+- **Repo rules.** CLAUDE.md no longer says `.gitignore` blocks every self-install artifact (the installer guard is what keeps them out), and says the manifest hashes the files PAN copies in, not the configs it merges.
+
+The generated skills docs were regenerated, stale comments in `cost.cjs` and the hooks were corrected, and ARCHITECTURE's module table lost a line-count column that the counts rule kept empty.
 
 ## [3.31.0] - 2026-09-26
 

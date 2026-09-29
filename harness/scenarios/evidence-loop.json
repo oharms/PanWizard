@@ -1,0 +1,20 @@
+{
+  "id": "evidence-loop",
+  "tier": 0,
+  "description": "Drive the evidence loop through a deployed Claude install, model-free: the installed trace hook captures failing tool calls from a subagent transcript, the installed engine records verdicts, auto-fixes a re-verified gap, keeps a deferral's reason for the milestone audit, learns from the captured failures, and reverts an optimizer apply byte for byte.",
+  "why": "Plan item EL-12 / ADR-0049. The unit suites exercise the source files. This scenario proves the copies a host actually runs carry the loop: the hook the installer registered, the engine it deployed, and the reference the judges point at. Tier 0 because nothing here needs a model. The model half (a real subagent failing a real tool call) is tool-error-capture, tier 1.",
+  "seed": "two-plan-phase",
+  "install": ["--claude"],
+  "budget": { "maxUsd": 0, "maxMinutes": 6, "maxStepMinutes": 3 },
+  "steps": [
+    { "kind": "sh", "script": "evidence-loop.cjs", "args": ["<ws>", "<repo>"],
+      "expect": ["exit:0", "json:checks=17", "json:problems"],
+      "why": "The script prints {checks, problems} and exits 1 on any failed check. All 17 checks must run, and `problems` must be PRESENT, so an early exit cannot pass." },
+    { "kind": "pan", "argv": ["findings", "list", "--status", "deferred"],
+      "expect": ["exit:0", "json:contract=1.0", "json:counts.total=1"],
+      "why": "The deferral recorded by the script is visible to the CLI as a separate call: the ledger is on disk, not in the script's memory." },
+    { "kind": "fs", "read": ".claude/pan-wizard-core/references/verdict-contract.md",
+      "expect": ["exit:0", "stdout~pan-verdict"],
+      "why": "The judges point at this reference. It must ship with the install, or every judge is told to follow a file that is not there." }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "hook_event": "SubagentStop",
+  "runtime": "claude",
+  "captured_at": "2026-09-28",
+  "captured_from": "A real SubagentStop payload from Claude Code 2.1.280, captured 2026-09-28 by a raw dump hook in a scratch project under d:\\pantesting. The project's .claude/settings.json registered one command hook on SubagentStart, SubagentStop and Stop; the hook appended each stdin payload plus a listing of what existed on disk at that moment. The payload fired when `/compact` ran on a resumed `claude -p` session. The keys, their order and their value types are the captured ones. The values are synthetic: the ids, the paths, and the 4,066-character compaction summary that arrived in last_assistant_message. `permission_mode` keeps the captured value, set by --dangerously-skip-permissions. When the hook ran, the file at agent_transcript_path (the standard `<parent dir>/<session_id>/subagents/agent-<agent_id>.jsonl`) did not exist, and the session's subagents/ held only an earlier named agent's pair of files. The same run's SubagentStart for a named agent carried agent_type \"Explore\".",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id; the test substitutes a synthetic one that also names the subagents/ directory",
+    "{{TRANSCRIPT_PATH}}": "absolute path of the PARENT session transcript, which exists",
+    "{{PROJECT_DIR}}": "absolute path of the project",
+    "{{SCRATCHPAD_DIR}}": "the host's per-session scratchpad directory",
+    "{{AGENT_ID}}": "the helper agent's id, 17 lowercase hex characters like every agent id",
+    "{{AGENT_TRANSCRIPT_PATH}}": "the path the host names for the helper's transcript, which it never writes"
+  },
+  "notes": "This is the host-internal helper-agent shape: an agent_id, an EMPTY agent_type (present, not absent), and an agent_transcript_path to a file that is never written. The host documents agent_type as present whenever a hook fires inside a subagent, so this is not a spawn anyone asked for. Field evidence, aggregate only and never copied: 181 such completions in three projects between 2026-09-17 and 2026-09-28. In the sessions that had them, they ran at about one per main-session turn end (a system/stop_hook_summary record within 5 s of 116 of 141 whose parent transcript survives) plus some at compaction boundaries (18). No agent_id was referenced in its parent transcript. None had tokens, a model, a command or a duration. Headless `-p` turn ends did not produce one; `/compact` did. The loggers record nothing for this shape (isHostInternalAgent)."
+}

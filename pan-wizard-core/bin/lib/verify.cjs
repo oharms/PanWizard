@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { safeReadFile, normalizePhaseName, comparePhaseNum, execGit, findPhaseInternal, getMilestoneInfo, toPosix, output, EXIT_OK, error, escapeRegex } = require('./core.cjs');
+const { safeReadFile, normalizePhaseName, comparePhaseNum, execGit, findPhaseInternal, getMilestoneInfo, toPosix, output, EXIT_OK, error, escapeRegex, loadConfig, isGitIgnored, isGitRepo } = require('./core.cjs');
 const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
 const {
@@ -22,6 +22,7 @@ const { runDriftCheck, parseConventionRules, checkFileConventions, calculateDrif
 const { collectVerificationStats, countRoadmapPhases, groupGapPatterns, cmdRetro } = require('./verify-retro.cjs');
 const { detectInstalledRuntimes, validateRuntimeInstall, cmdValidateDeployment } = require('./verify-deploy.cjs');
 const { cmdPreflight, cmdDepsValidate } = require('./verify-preflight.cjs');
+const { scopePhase, cmdVerifyScope } = require('./verify-scope.cjs');
 const { planningRootRel } = require('./planning-root.cjs');
 
 /**
@@ -821,6 +822,23 @@ function checkStateFile(cwd, addIssue, repairs) {
  * @param {Function} addIssue - Issue recording callback
  * @param {string[]} repairs - Mutable array of repair actions to schedule
  */
+/**
+ * I005: the planning tree is ignored by git while `commit_docs` is on, so every
+ * `pan-tools commit` of planning docs commits nothing, silently. planning-with-files
+ * adds `.planning/` to .gitignore by default (its README, read 2026-09-28), which is
+ * how a PAN project ends up like this (market item M3). Info, not a warning: keeping
+ * the docs out of git is a legitimate choice, and it is one config key away.
+ */
+function checkPlanningIgnored(cwd, addIssue) {
+  try {
+    if (loadConfig(cwd).commit_docs === false || !isGitRepo(cwd)) return;
+    const rel = planningRootRel();
+    if (!isGitIgnored(cwd, `${rel}/`)) return;
+    addIssue('info', 'I005', `${rel}/ is ignored by git while commit_docs is true, so PAN's planning commits commit nothing`,
+      `Remove ${rel}/ from .gitignore (planning-with-files adds it by default), or keep the docs out of git on purpose: pan-tools config-set commit_docs false`);
+  } catch { /* best effort: a git failure is not a finding */ }
+}
+
 function checkConfigFile(cwd, addIssue, repairs) {
   const configFullPath = path.join(planningPath(cwd), CONFIG_FILE);
   let rawContent;
@@ -1314,7 +1332,9 @@ function cmdValidateHealth(cwd, options, raw) {
   // error and stop: E002-E005 would describe a foreign layout as a broken PAN one,
   // and --repair must never write into it. Reality check R15.
   const foreign = detectForeignPlanningTree(planningPath(cwd));
-  if (foreign) {
+  if (foreign && foreign.coexists) {
+    addIssue('info', 'I004', `${foreign.tool} also writes into this planning tree: ${foreign.evidence.join(', ')}`, 'None needed: PAN leaves its files alone. Give PAN its own tree with --planning-dir if you prefer them apart (ADR-0043)');
+  } else if (foreign) {
     addIssue('error', 'E006', `planning tree belongs to ${foreign.tool}: ${foreign.evidence.join(', ')}`, 'Run PAN with --planning-dir <dir> to use a separate tree (ADR-0043)');
     output({ status: HEALTH_STATUS.BROKEN, errors, warnings, info, repairable_count: 0 }, raw, undefined, 1);
     return;
@@ -1337,6 +1357,7 @@ function cmdValidateHealth(cwd, options, raw) {
     addIssue('info', 'I003', `${shape.model}-model project (${shape.evidence.join(', ')}) — the phase-model checks (project.md, roadmap.md, state.md, phases/) do not apply`, null);
   }
   checkConfigFile(cwd, addIssue, repairs);
+  checkPlanningIgnored(cwd, addIssue);
   if (phaseModel) {
     checkPhaseDirectories(cwd, addIssue);
     checkPhaseContents(cwd, addIssue);
@@ -1535,6 +1556,8 @@ module.exports = {
   cmdVerifyReconcile,
   scanStubs,
   cmdVerifyStubs,
+  scopePhase,
+  cmdVerifyScope,
   cmdValidateConsistency,
   cmdValidateHealth,
   cmdPreflight,

@@ -2,7 +2,7 @@
   "id": "pause-resume",
   "tier": 1,
   "description": "Write a pause handoff mid-phase, then resume from it in a fresh session; assert the handoff file exists and the resume run exits cleanly.",
-  "why": "Reality check RC20/R17: session persistence (pause/resume/handoff) is a headline claim with no scenario. Two single-turn model steps: /pan:pause must write .continue-here.md into the current phase directory (pause.md), /pan:resume-project must read it without error.",
+  "why": "Reality check RC20/R17: session persistence (pause/resume/handoff) is a headline claim with no scenario. Two single-turn model steps: /pan:pause must write .continue-here.md into the current phase directory (pause.md), /pan:resume (which loads the resume-project workflow) must read it without error.",
   "seed": "two-plan-phase",
   "install": [
     "--claude"
@@ -27,12 +27,12 @@
     },
     {
       "kind": "model",
-      "prompt": "/pan:resume-project",
+      "prompt": "/pan:resume",
       "expect": [
         "exit:0",
         "stdout~[Gg]reetings|[Pp]hase 1|[Cc]ontinue"
       ],
-      "why": "resume-project reads the handoff and reports where work stopped; the phase name or number in its output is the evidence it read the right file."
+      "why": "/pan:resume reads the handoff and reports where work stopped; the phase name or number in its output is the evidence it read the right file."
     }
   ]
 }

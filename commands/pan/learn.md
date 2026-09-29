@@ -18,12 +18,14 @@ Analyze the most recent trace session and generate an optimization report.
 ```
 /pan:learn
 /pan:learn --session <session-id>
+/pan:learn --sessions 3
 /pan:learn --experiment <slug>
 /pan:learn --apply
 ```
 
 **Flags:**
 - `--session <id>` — analyze a specific session instead of the most recent
+- `--sessions <n>` — pool the last n sessions into one analysis, so recommendations rest on failures that recur across runs
 - `--experiment <slug>` *(v3.7.0+, W3)* — analyze a harvested experiment instead of the current project's traces. Reads from `<source-repo>/experiments/<slug>/.planning/optimization/` and writes the report to `<source-repo>/experiments/<slug>/learnings/report-<timestamp>.md`. Used by the self-improvement loop. Run `/pan:experiment harvest <slug>` first.
 - `--apply` — automatically apply safe optimizations after generating the report (equivalent to running `/pan:optimize apply` immediately after)
 

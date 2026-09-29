@@ -57,6 +57,15 @@ function validateScenario(s, fileName = '<inline>') {
     // may not live in tier 0 — tier 0 is the free tier.
     if (st.paid !== undefined && (st.kind !== 'cli' || st.paid !== true)) err(`${at}: paid is only \`true\`, and only on cli steps`);
     if (st.paid === true && s.tier === 0) err(`${at}: a paid cli step cannot live in a tier-0 scenario`);
+    // `env` gives a cli step's child extra variables (placeholders filled), e.g. a scratch
+    // GEMINI_CLI_HOME so the CLI never touches the user's real home.
+    if (st.env !== undefined) {
+      const ok = st.kind === 'cli' && st.env && typeof st.env === 'object' && !Array.isArray(st.env)
+        && Object.entries(st.env).every(([k, v]) => /^[A-Z_][A-Z0-9_]*$/.test(k) && typeof v === 'string');
+      if (!ok) err(`${at}: env is only for cli steps, as {"NAME": "value"} with upper-case names and string values`);
+    }
+    // `persistSession: true` lets a model step's host write transcripts (see model.cjs).
+    if (st.persistSession !== undefined && (st.kind !== 'model' || st.persistSession !== true)) err(`${at}: persistSession is only \`true\`, and only on model steps`);
   });
   if (s.tier >= 1 && !s.steps.some(st => st.kind === 'model' || st.paid === true)) err('a tier ≥1 scenario should contain a model step or a paid cli step (else it is tier 0)');
   return errors;

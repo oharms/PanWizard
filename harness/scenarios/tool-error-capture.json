@@ -1,0 +1,22 @@
+{
+  "id": "tool-error-capture",
+  "tier": 1,
+  "description": "A real subagent runs the project's test suite, which fails on a test the harness adds. The installed trace hook must record the failed Bash call as an error/tool_error event read from that subagent's own transcript, with no agent calling optimize trace log.",
+  "why": "The gate the trace-failure-capture investigation set (docs/specs/investigations/features/trace-failure-capture.md): the unit test proves the extractor on a fixture shaped like a real transcript, and this run proves the host writes that transcript and the installed hook reads it. The step persists its session, because without persistence the host writes no per-agent transcripts, and every earlier harness model run had it off.",
+  "seed": "uat-with-failure",
+  "install": ["--claude"],
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 1, "maxMinutes": 10, "maxStepMinutes": 8 },
+  "steps": [
+    { "kind": "sh", "script": "add-failing-test.cjs", "args": ["<ws>"],
+      "expect": ["exit:0", "json:written"],
+      "why": "Make the suite fail on purpose, with a real assertion, on every Node version. The seed's own tests pass; until 2026-09-29 this scenario's failure came from the seed's `node --test tests/` script, which Node 24 cannot run, so on Node 18 or 20 it would have had nothing to capture." },
+    { "kind": "model", "persistSession": true,
+      "prompt": "Use the Task tool to start exactly one general-purpose subagent with this instruction: \"Run `npm test` once in the project root and report its exit code and the first line that mentions a failure. Do not change any file and do not run anything else.\" When it returns, reply with the exit code it reported and nothing else.",
+      "expect": ["exit:0"],
+      "why": "The added test fails, so the subagent's shell call returns a non-zero exit code: a failed tool result in its own transcript. First run 2026-09-28 on Windows: the host ran it through its PowerShell tool, the installed hook captured one failure with token_source agent-transcript, spend $0.50." },
+    { "kind": "sh", "script": "trace-tool-errors.cjs", "args": ["<ws>"],
+      "expect": ["exit:0", "json:problems", "json:shell_exit_code"],
+      "why": "At least one failed shell call (Bash, or PowerShell on Windows) was captured, and at least one completion carries tool counts, so the hook read the agent's own transcript. `problems` must be present, so a crash cannot pass." }
+  ]
+}

@@ -38,7 +38,7 @@ Consolidates Spec B v1's X-4 (self-review) + X-12 (harden) into a single command
 /pan:review-deep 07
 ```
 
-Run after `/pan:exec-phase 07` completes. Requires `pan-reviewer` to have already written its review to `.planning/phases/07/review.md` (exec-phase does this automatically).
+Run after `/pan:exec-phase 07` completes. It reads the review that exec-phase's code-review step saved in the phase directory (`.planning/phases/07-<slug>/07-review.md`). The reviewer is read-only, so it is exec-phase that writes the review there.
 
 ### Integrated with exec-phase
 
@@ -46,7 +46,7 @@ Run after `/pan:exec-phase 07` completes. Requires `pan-reviewer` to have alread
 /pan:exec-phase 07 --deep-review
 ```
 
-Runs the normal exec → reviewer pipeline, then auto-invokes this command. Recommended for phases touching auth, payment, PII, migrations, or public APIs.
+Runs the normal exec → reviewer pipeline, then runs this command's process inline, before the verifier. Recommended for phases touching auth, payment, PII, migrations, or public APIs.
 
 ### Integrated with focus-exec
 
@@ -60,7 +60,7 @@ Per-item deep review during focus campaigns. Useful for high-stakes batches.
 
 <process>
 
-1. **Load reviewer output** — read `.planning/phases/<N>/review.md` written by the earlier `pan-reviewer` step. If missing, warn and offer to run `pan-reviewer` first.
+1. **Load reviewer output.** Resolve the phase with `pan-tools find-phase <N>`, then read `{directory}/{phase_number}-review.md`, which exec-phase's code-review step wrote. If it is missing, warn and offer to run `pan-reviewer` first. Its findings come from the report's closing `pan-verdict` block.
 
 2. **Spawn pan-hardener** (parallel-safe with step 3 isolation below, but recommended sequential for audit clarity):
    - Prompt includes: `<files_to_read>` with phase plan + diff + reviewer output; `<output_path>` = `.planning/reviews/<N>/hardener.md`; `<framework_scope>` block reminding of OWASP/STRIDE coverage.
@@ -73,7 +73,7 @@ Per-item deep review during focus campaigns. Useful for high-stakes batches.
 4. **Merge** — call:
    ```
    pan-tools review-deep merge <N> \
-     --reviewer-file .planning/phases/<N>/review.md \
+     --reviewer-file {directory}/{phase_number}-review.md \
      --hardener-file .planning/reviews/<N>/hardener.md \
      --meta-file .planning/reviews/<N>/meta.md
    ```
@@ -99,7 +99,7 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 
 <output_files>
 
-- `.planning/phases/<N>/review.md` — pan-reviewer output (written earlier by exec-phase)
+- `{phase_dir}/{phase_number}-review.md` — pan-reviewer output (written by exec-phase's code-review step)
 - `.planning/reviews/<N>/hardener.md` — pan-hardener output (new)
 - `.planning/reviews/<N>/meta.md` — pan-meta-reviewer output (new)
 - `.planning/reviews/<N>/deep-review.md` — merged consolidated report (final deliverable)

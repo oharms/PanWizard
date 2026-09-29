@@ -220,6 +220,7 @@
     "STANDARDS_FILE:string",
     "STANDARDS_RECOMMENDATIONS:object",
     "STATE_COMPACT_KEEP_DAYS:number",
+    "STATE_CONTRACT:string",
     "STATE_FILE:string",
     "STATE_HISTORY_FILE:string",
     "SUMMARY_SUFFIX:string",
@@ -384,6 +385,21 @@
     "newExperiment:function",
     "pruneExperiment:function"
   ],
+  "findings.cjs": [
+    "FINDINGS_FILE:string",
+    "STATUSES:object",
+    "cmdFindingsDebt:function",
+    "cmdFindingsDispose:function",
+    "cmdFindingsList:function",
+    "cmdFindingsRecord:function",
+    "disposeFindings:function",
+    "findingIdsIn:function",
+    "findingsDebt:function",
+    "foldFindings:function",
+    "listFindings:function",
+    "readLedger:function",
+    "recordVerdict:function"
+  ],
   "focus.cjs": [
     "allocateBudget:function",
     "categoryFilter:function",
@@ -402,6 +418,7 @@
     "computeRealityScore:function",
     "determineContinuation:function",
     "determineStopReason:function",
+    "listBatchFiles:function",
     "readAutoRun:function",
     "readLatestBatch:function",
     "sortByPriority:function",
@@ -620,6 +637,7 @@
     "cmdOptimizeApply:function",
     "cmdOptimizeLearn:function",
     "cmdOptimizeList:function",
+    "cmdOptimizeRevert:function",
     "cmdOptimizeStats:function",
     "cmdOptimizeTrace:function",
     "computeSessionCostAndCommits:function",
@@ -639,10 +657,12 @@
     "logTraceEvent:function",
     "parseAutoApplyBlock:function",
     "promotePattern:function",
+    "readApplyLog:function",
     "readTraceSession:function",
     "reconcileAllTraceSessions:function",
     "reconcileSessionMeta:function",
     "reconcileTraceSession:function",
+    "revertApply:function",
     "unpromotePattern:function"
   ],
   "phase-remove.cjs": [
@@ -829,6 +849,26 @@
     "readJsonFile:function",
     "removeQuotes:function"
   ],
+  "verdict.cjs": [
+    "AUTO_FIX_EXEMPT:object",
+    "DISPOSITIONS:object",
+    "FINDING_CLASSES:object",
+    "KNOWN_VERDICTS:object",
+    "LIMITS:object",
+    "OUTCOMES:object",
+    "REASON_REQUIRED:object",
+    "SEVERITIES:object",
+    "VERDICT_CONTRACT:string",
+    "comparablePhase:function",
+    "findVerdictBlocks:function",
+    "findingId:function",
+    "normaliseEol:function",
+    "outcomeForVerdict:function",
+    "parseVerdictText:function",
+    "recordSig:function",
+    "validateVerdict:function",
+    "verdictFromVerificationFrontmatter:function"
+  ],
   "verify-deploy.cjs": [
     "MCP_EXPECTED:object",
     "cmdValidateDeployment:function",
@@ -854,6 +894,11 @@
     "countRoadmapPhases:function",
     "groupGapPatterns:function"
   ],
+  "verify-scope.cjs": [
+    "LOCKFILES:object",
+    "cmdVerifyScope:function",
+    "scopePhase:function"
+  ],
   "verify.cjs": [
     "calculateDriftScore:function",
     "checkArtifacts:function",
@@ -874,6 +919,7 @@
     "cmdVerifyPlanStructure:function",
     "cmdVerifyReconcile:function",
     "cmdVerifyReferences:function",
+    "cmdVerifyScope:function",
     "cmdVerifyStubs:function",
     "cmdVerifySummary:function",
     "collectVerificationStats:function",
@@ -884,6 +930,7 @@
     "parseConventionRules:function",
     "reconcilePhase:function",
     "scanStubs:function",
+    "scopePhase:function",
     "syncRequirementCheckboxes:function",
     "syncRoadmapPlanCheckboxes:function",
     "validateRuntimeInstall:function"

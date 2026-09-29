@@ -1,8 +1,8 @@
 {
   "id": "live-gate-gemini",
   "tier": 0,
-  "description": "Install PAN for Gemini CLI locally and confirm Gemini lists the `pan` MCP server from .gemini/settings.json once the workspace is trusted.",
-  "why": "Reality check RC8/RC14 (2026-09-10): Gemini CLI 0.59.0 enforces workspace trust fail-closed and skips the whole project .gemini/settings.json in an untrusted folder — hooks and mcpServers alike. PAN's install check verifies the file on disk, not the runtime's trust state, so a clean install plus a missing server is exactly the case this scenario measures. The workspace must be trusted first (Gemini's trust prompt or its workspace-trust setting); record how it was trusted in the run. SKIPPED with reason when the CLI is absent.",
+  "description": "Install PAN for Gemini CLI locally and confirm Gemini lists the `pan` MCP server from .gemini/settings.json as Connected once the workspace is trusted, with trust granted in a scratch Gemini home so the user's real ~/.gemini is never touched.",
+  "why": "Reality check RC8/RC14 (2026-09-10): Gemini CLI enforces workspace trust fail-closed and skips the whole project .gemini/settings.json in an untrusted folder, hooks and mcpServers alike. PAN's install check verifies the file on disk, not the runtime's trust state, so a clean install plus a missing server is exactly the case this scenario measures. A harness workspace is created fresh on every run, so it is never trusted, and the gate failed on every run once Gemini CLI was installed (2026-09-28). Every `gemini` call below runs with GEMINI_CLI_HOME set to a scratch home under <other>. Gemini 0.61.0 reads every user-level file from there, including <home>/.gemini/trustedFolders.json (measured from its bundle 2026-09-29), so the real home is neither read nor written. The trust is recorded in the run: the gemini-trust step prints the path it trusted and the file it wrote. SKIPPED with reason when the CLI is absent.",
   "seed": "empty",
   "install": [
     "--gemini",
@@ -31,10 +31,11 @@
       "args": [
         "--version"
       ],
+      "env": { "GEMINI_CLI_HOME": "<other>/gemini-home" },
       "expect": [
         "exit:0"
       ],
-      "why": "Pins the Gemini CLI build; trust behaviour changed at 0.59.0."
+      "why": "Pins the Gemini CLI build (trust behaviour changed at 0.59.0), already under the scratch home like every call below."
     },
     {
       "kind": "cli",
@@ -43,11 +44,41 @@
         "mcp",
         "list"
       ],
+      "env": { "GEMINI_CLI_HOME": "<other>/gemini-home" },
       "expect": [
         "exit:0",
-        "stderr~pan: .*\\(stdio\\) - (?!Disabled)"
+        "stderr~folder is untrusted",
+        "stderr~pan: .*\\(stdio\\) - Disabled"
       ],
-      "why": "The measurement: Gemini enumerates the MCP servers it configured, and whether each is enabled. Measured on Gemini CLI 0.61.0 (2026-09-26): the whole list goes to stderr (stdout is empty), and in an untrusted folder PAN's server is listed as `pan: node …server.cjs (stdio) - Disabled`. So a `Disabled` status means the workspace is untrusted, not that the registration is wrong — trust it and rerun. `--skip-trust` does not help here: `mcp list` rejects it, and before the subcommand it starts an interactive session."
+      "why": "The contrast, before trust. In the empty scratch home, folder trust is on by default, so the fresh workspace is untrusted and PAN's server lists as Disabled. That proves Gemini is really enforcing trust in the isolated home, so the Connected result below comes from the trust entry and not from a leak of the user's own trust settings or a disabled check. The whole list goes to stderr; stdout is empty (Gemini CLI 0.61.0)."
+    },
+    {
+      "kind": "sh",
+      "script": "gemini-trust.cjs",
+      "args": [
+        "<other>/gemini-home",
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:trusted",
+        "json:entries=1"
+      ],
+      "why": "Trust exactly this workspace: { \"<ws>\": \"TRUST_FOLDER\" } in the scratch home's .gemini/trustedFolders.json, the file and entry Gemini's own trust prompt writes. The script refuses a home that resolves to the real one."
+    },
+    {
+      "kind": "cli",
+      "bin": "gemini",
+      "args": [
+        "mcp",
+        "list"
+      ],
+      "env": { "GEMINI_CLI_HOME": "<other>/gemini-home" },
+      "expect": [
+        "exit:0",
+        "stderr~pan: .*\\(stdio\\) - Connected"
+      ],
+      "why": "The measurement: once the workspace is trusted, Gemini loads PAN's registration, starts the server, and connects to it. `Connected`, not merely not-Disabled. A broken registration (a wrong server path, measured 2026-09-29) lists as `✗ pan: … - Disconnected` with exit 0, which the old not-Disabled check would have passed."
     }
   ]
 }

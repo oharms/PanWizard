@@ -1,0 +1,13 @@
+{
+  "hook_event": "subagentStop",
+  "runtime": "copilot",
+  "captured_at": "2026-09-28",
+  "captured_from": "DOCUMENTED, NOT OBSERVED. Field names, types and the example shape of Copilot CLI's camelCase `subagentStop` hook input, from the GitHub Copilot hooks reference (https://docs.github.com/en/copilot/reference/hooks-reference, read 2026-09-28): sessionId, timestamp (Unix milliseconds), cwd, transcriptPath, agentId, agentType ('Classification of the agent (built-in or custom)'), agentName ('The name identifier of the agent as configured'), agentDisplayName (optional), response (the subagent's final text) and stopReason ('end_turn'). Per the same reference, the camelCase format carries no hook_event_name, and transcriptPath is the one session transcript: there is no per-subagent transcript path. PAN registers its Copilot hooks with camelCase event names in .github/hooks/pan.json, which is what selects this payload format. No live Copilot payload has been captured on this machine; replace this fixture with a captured one when a probe runs (GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true).",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id",
+    "{{PROJECT_DIR}}": "absolute path of the project",
+    "{{TRANSCRIPT_PATH}}": "absolute path of Copilot's session transcript (not a Claude JSONL file)",
+    "{{AGENT_ID}}": "the host's per-spawn agent id"
+  },
+  "notes": "agentType is a classification, so its value 'custom' is illustrative: the reference does not enumerate the values. agentName holds the name PAN's agent files carry (pan-executor here). The test pins what the loggers do with this shape: they record the agent's name, they find no per-agent transcript and so book no parent-slice tokens, and they capture no tool failures."
+}
