@@ -596,6 +596,27 @@ function resolveAgentTranscript(data) {
   }
 }
 
+// Host-internal agents (measured 2026-09-28). Claude Code runs helper agents of its own:
+// the compaction summariser, and one at almost every turn end of an interactive session.
+// It fires SubagentStop for them with an `agent_id`, an EMPTY `agent_type`, and an
+// `agent_transcript_path` it never writes. That shape was captured from a real `/compact`
+// on Claude Code 2.1.280 (tests/fixtures/hooks/subagent-stop-internal-claude.json). Both
+// loggers booked each as an `unknown` zero-token spawn: 181 rows in three field projects
+// in eleven days, skewing optimize learn's agent stats and the ledger's spawn counts.
+// The host documents `agent_type` as present whenever a hook fires inside a subagent, so
+// a named instance with no type and no transcript is not a spawn anyone asked for, and
+// nothing is recorded. A NAMED spawn whose file is late or missing keeps its zero-token
+// row (N17/N25); a payload with no agent instance at all keeps the parent-slice path.
+// Identical in pan-cost-logger.js and pan-trace-logger.js (tests/trace-logger.test.cjs
+// pins the copies).
+function isHostInternalAgent(data, agentTranscript) {
+  if (!data || typeof data !== 'object' || agentTranscript) return false;
+  const typed = [data.agent_type, data.subagent_type].some((v) => typeof v === 'string' && v.trim() !== '');
+  if (typed) return false;
+  return (typeof data.agent_id === 'string' && AGENT_ID_SAFE.test(data.agent_id))
+    || (typeof data.agent_transcript_path === 'string' && data.agent_transcript_path !== '');
+}
+
 // Slice ceilings — a sum over one subagent's conversation, so above a single
 // call's PLAUSIBLE_MAX; cache_read and output mirror cost.cjs isSuspectRecord's
 // absolute limits, input is a hook-only sanity ceiling (same values as
@@ -928,6 +949,7 @@ function buildTraceEvents(data, sessionId, cwd) {
   // `transcript` for a slice of the shared parent transcript (the fallback when
   // the host names no agent), `usage-fallback` for the payload's own counters.
   const agentTranscript = resolveAgentTranscript(data);
+  if (isHostInternalAgent(data, agentTranscript)) return []; // the host's own helper, not a spawn
   // A payload without an agent type still names it in the host's meta file.
   if (agent === 'unknown' && agentTranscript) agent = agentTypeFromMeta(agentTranscript) || agent;
   const parentPath = typeof data.transcript_path === 'string' && data.transcript_path ? data.transcript_path : null;
@@ -1201,6 +1223,10 @@ if (require.main === module) {
       // we don't create .planning/ optimization + trace artifacts in them. The tree
       // must already exist — see hasPlanningTree (field sweep 2026-09-17).
       if (!hasPlanningTree(cwd)) return;
+      // A host-internal helper agent records nothing, so it must not mint the day's
+      // session either (buildTraceEvents repeats the check for direct callers).
+      const normalized = normalizeHookPayload(data);
+      if (isHostInternalAgent(normalized, resolveAgentTranscript(normalized))) return;
       // In a PAN project, ensure a session exists — creates a day-scoped
       // auto-session if needed.
       const sessionId = ensureSessionId(cwd);
@@ -1215,6 +1241,7 @@ if (require.main === module) {
 module.exports = {
   deferToClaudeRegistration,
   normalizeHookPayload,
+  isHostInternalAgent,
   buildTraceEvents,
   appendTraceEvents,
   resolveAgentTranscript,

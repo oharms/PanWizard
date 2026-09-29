@@ -75,6 +75,12 @@ fixed, or why. ADR-0049; spec `docs/specs/evidence_loop_featureai.md`.
   plugin install --json`. Each was checked against the official docs; one claimed
   control (`OTEL_LOG_TOOL_DETAILS`) was not found and is not documented.
 
+### Fixed — Claude Code's own helper agents were booked as `unknown` spawns
+
+Claude Code fires `SubagentStop` for helper agents of its own: the compaction summariser, and one at almost every turn end of an interactive session. Their payload carries an `agent_id`, an empty `agent_type`, and an `agent_transcript_path` it never writes (a real `/compact` payload was captured on Claude Code 2.1.280 for the fixture).
+
+The cost and trace loggers booked each one as an `unknown` zero-token spawn: 181 rows in three field projects in eleven days, which skewed spawn counts and `optimize learn`'s agent stats. Both loggers now record nothing for an agent instance that has no type and no transcript, and the trace logger no longer mints a session for one. A named spawn whose file is missing, and a payload with no agent instance at all, are recorded as before. Rows written before this fix stay in the ledgers.
+
 ### Fixed — `/pan:review-deep` never saw the reviewer's findings
 
 `/pan:review-deep` read `.planning/phases/<N>/review.md`. Nothing wrote that file (the

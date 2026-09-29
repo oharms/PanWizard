@@ -559,6 +559,27 @@ function resolveAgentTranscript(data) {
   }
 }
 
+// Host-internal agents (measured 2026-09-28). Claude Code runs helper agents of its own:
+// the compaction summariser, and one at almost every turn end of an interactive session.
+// It fires SubagentStop for them with an `agent_id`, an EMPTY `agent_type`, and an
+// `agent_transcript_path` it never writes. That shape was captured from a real `/compact`
+// on Claude Code 2.1.280 (tests/fixtures/hooks/subagent-stop-internal-claude.json). Both
+// loggers booked each as an `unknown` zero-token spawn: 181 rows in three field projects
+// in eleven days, skewing optimize learn's agent stats and the ledger's spawn counts.
+// The host documents `agent_type` as present whenever a hook fires inside a subagent, so
+// a named instance with no type and no transcript is not a spawn anyone asked for, and
+// nothing is recorded. A NAMED spawn whose file is late or missing keeps its zero-token
+// row (N17/N25); a payload with no agent instance at all keeps the parent-slice path.
+// Identical in pan-cost-logger.js and pan-trace-logger.js (tests/trace-logger.test.cjs
+// pins the copies).
+function isHostInternalAgent(data, agentTranscript) {
+  if (!data || typeof data !== 'object' || agentTranscript) return false;
+  const typed = [data.agent_type, data.subagent_type].some((v) => typeof v === 'string' && v.trim() !== '');
+  if (typed) return false;
+  return (typeof data.agent_id === 'string' && AGENT_ID_SAFE.test(data.agent_id))
+    || (typeof data.agent_transcript_path === 'string' && data.agent_transcript_path !== '');
+}
+
 // A slice is a SUM over one subagent's conversation, so its ceiling sits above a
 // single call's (PLAUSIBLE_MAX): a long agent legitimately re-reads its cached
 // context on every turn. The cache_read and output ceilings are the absolute
@@ -637,6 +658,7 @@ function buildCostRecord(data, cwd) {
   // a value dropped to 0 by a plausibility guard so a guarded zero is
   // distinguishable from a genuine zero-token run.
   const agentTranscript = resolveAgentTranscript(data);
+  if (isHostInternalAgent(data, agentTranscript)) return null; // the host's own helper, not a spawn
   const parentPath = typeof data.transcript_path === 'string' && data.transcript_path ? data.transcript_path : null;
   // The host NAMED an agent (a bare id, or an explicit agent transcript path) but
   // its file is not there — not flushed yet, or a host that sends ids without
@@ -1027,4 +1049,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { deferToClaudeRegistration, normalizeHookPayload, buildCostRecord, appendRecord, readUsageFromTranscript, addCacheTtlSplit, resolveAgentTranscript, readCursor, writeCursor, isPanProject, hasPlanningTree, readCommandFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };
+module.exports = { deferToClaudeRegistration, normalizeHookPayload, isHostInternalAgent, buildCostRecord, appendRecord, readUsageFromTranscript, addCacheTtlSplit, resolveAgentTranscript, readCursor, writeCursor, isPanProject, hasPlanningTree, readCommandFromTranscript, isSessionStale, PAN_RUNTIME_DIRS, METRICS_DIR, TOKENS_FILE, CURSOR_FILE, SLICE_MAX, MAX_CURSOR_KEYS };

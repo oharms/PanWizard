@@ -31,7 +31,9 @@ describe('pan-cost-logger — never scaffolds a planning tree', () => {
   afterEach(() => { fs.rmSync(bare, { recursive: true, force: true }); });
 
   const fire = () => spawnSync(process.execPath, [COST_HOOK], {
-    cwd: bare, input: JSON.stringify({ hook_event_name: 'SubagentStop', cwd: bare, agent_id: 'a1', session_id: 's1', usage: { input_tokens: 10, output_tokens: 5 } }), encoding: 'utf-8',
+    // A spawned subagent names its type; an id with neither a type nor a transcript is the host's
+    // own helper agent, which records nothing by design (isHostInternalAgent) — not this gate's subject.
+    cwd: bare, input: JSON.stringify({ hook_event_name: 'SubagentStop', cwd: bare, agent_id: 'a1', agent_type: 'pan-executor', session_id: 's1', usage: { input_tokens: 10, output_tokens: 5 } }), encoding: 'utf-8',
   });
 
   test('an install marker alone buys no write: no .planning/, and the gate says why', () => {
@@ -1421,5 +1423,53 @@ describe('pan-cost-logger — per-agent transcript attribution', () => {
     assert.equal(keys.length, MAX_CURSOR_KEYS);
     assert.equal(kept[files[0]], undefined, 'the oldest key is evicted');
     assert.equal(kept[files[files.length - 1]], MAX_CURSOR_KEYS + 40, 'the newest key survives with its value');
+  });
+});
+
+// ── Host-internal helper agents book no cost row (2026-09-28) ───────────────
+// The payload shape was captured from a real `/compact` (fixture subagent-stop-internal-claude.json):
+// an agent_id, an EMPTY agent_type, and an agent_transcript_path the host never writes.
+// The ledger booked each as an `unknown` zero-token spawn. A named spawn with a missing
+// file keeps its zero-token row (N17/N25). pan-trace-logger.js carries the same rule,
+// and its suite pins the two copies byte for byte.
+describe('pan-cost-logger — host-internal helper agents', () => {
+  const FIX = path.join(__dirname, 'fixtures', 'hooks');
+  const fill = (v, map) => (typeof v === 'string' ? v.replace(/\{\{[A-Z_]+\}\}/g, (m) => (m in map ? map[m] : m))
+    : Array.isArray(v) ? v.map((x) => fill(x, map))
+      : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x, map)])) : v);
+  const SESSION = 'c0ffee00-0000-4000-8000-00000000beef';
+  const HELPER = 'a0000000000beef00';
+  let project;
+  function seed() {
+    project = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pan-internal-cost-')));
+    fs.mkdirSync(path.join(project, '.planning'), { recursive: true });
+    const tdir = path.join(project, 'transcripts');
+    fs.mkdirSync(path.join(tdir, SESSION, 'subagents'), { recursive: true });
+    const parent = path.join(tdir, `${SESSION}.jsonl`);
+    fs.writeFileSync(parent, JSON.stringify({ type: 'assistant', sessionId: SESSION, message: { id: 'p1', usage: { input_tokens: 900, output_tokens: 90 } } }) + '\n');
+    return fill(JSON.parse(fs.readFileSync(path.join(FIX, 'subagent-stop-internal-claude.json'), 'utf8')), {
+      '{{SESSION_ID}}': SESSION, '{{TRANSCRIPT_PATH}}': parent, '{{PROJECT_DIR}}': project,
+      '{{SCRATCHPAD_DIR}}': path.join(project, 'scratch'), '{{AGENT_ID}}': HELPER,
+      '{{AGENT_TRANSCRIPT_PATH}}': path.join(tdir, SESSION, 'subagents', `agent-${HELPER}.jsonl`),
+    });
+  }
+  afterEach(() => { if (project) cleanup(project); project = null; });
+  const ledger = () => path.join(project, '.planning', METRICS_DIR, TOKENS_FILE);
+
+  test('the captured helper payload builds no cost row', () => {
+    assert.equal(buildCostRecord(seed(), project), null);
+  });
+
+  test('run as the host runs it, the hook appends nothing to the ledger', () => {
+    const payload = seed();
+    const r = spawnSync(process.execPath, [COST_HOOK], { cwd: project, input: JSON.stringify(payload), encoding: 'utf-8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(ledger()), false, 'no row, and none of the parent session\'s 900 input tokens booked to anyone');
+  });
+
+  test('boundary: a NAMED spawn with the same missing file keeps its zero-token row', () => {
+    const rec = buildCostRecord({ ...seed(), agent_type: 'pan-executor' }, project);
+    assert.ok(rec);
+    assert.deepEqual([rec.agent, rec.token_source, rec.input_tokens, rec.output_tokens], ['pan-executor', 'agent-transcript-missing', 0, 0]);
   });
 });
