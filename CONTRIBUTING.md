@@ -92,7 +92,7 @@ PanWizard/
 
 | File | Purpose |
 |------|---------|
-| `bin/install.js` | Main installer — detects runtime, copies files |
+| `bin/install.js` | Main installer — installs the runtimes named by flags (or picked at a prompt), copies files |
 | `pan-wizard-core/bin/pan-tools.cjs` | CLI bridge — commands/agents call this for state, config, commits |
 | `pan-wizard-core/bin/lib/config.cjs` | Config CRUD (dot-notation get/set, ensure-section), standards catalog |
 | `pan-wizard-core/bin/lib/state.cjs` | State management (load, save, phase tracking) |
@@ -116,7 +116,7 @@ node --test tests/phase.test.cjs
 node scripts/run-tests.cjs tests
 ```
 
-Tests use `node:test` and `node:assert` (no external test framework). All modules are CommonJS (`.cjs`).
+Tests use `node:test` and `node:assert` (no external test framework), and the suite is CommonJS (`.cjs`). The exception is the opt-in VS Code e2e harness in `tests/e2e/` (`npm run test:vscode`): Playwright, in ESM `.mjs` files.
 
 ### What the suite must cover — the code decides, not the tests
 
@@ -171,7 +171,7 @@ were written the other way round and had to be corrected once the behaviour was 
 
 ## Code Style
 
-- CommonJS modules (`.cjs` extension, `require()`/`module.exports`)
+- CommonJS modules (`require()`/`module.exports`; `.cjs` for core modules, `.js` for hooks and `bin/install.js`)
 - Zero runtime dependencies — only `node:` built-in modules
 - Meaningful variable names
 - Comments for complex logic only
@@ -194,7 +194,7 @@ Agents should:
 - Have a single, focused responsibility
 - Read only the context they need (project.md, plan.md, etc.)
 - Write structured output (summary.md, verification.md, etc.)
-- Never modify state directly — return results to the orchestrator
+- Leave state changes to the orchestrator unless the role owns them (`pan-roadmapper` writes the first state.md, `pan-executor` advances it through `pan-tools state …`); return everything else as results
 
 ## Documentation
 

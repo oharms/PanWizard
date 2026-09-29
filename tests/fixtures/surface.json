@@ -202,6 +202,7 @@
     "state add-blocker",
     "state add-decision",
     "state advance-plan",
+    "state compact",
     "state get",
     "state json",
     "state load",

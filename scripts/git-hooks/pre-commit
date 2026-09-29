@@ -10,7 +10,8 @@
 # Or with a symlink (Unix / Git Bash):
 #   ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
 #
-# Bypass for an emergency (creates a paper trail in the commit log):
+# Bypass for an emergency (the hook only prints that the scan was skipped;
+# nothing is recorded in the commit):
 #   SKIP_GITLEAKS=1 git commit -m "..."
 #
 # Exit codes:

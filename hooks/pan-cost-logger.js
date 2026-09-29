@@ -146,9 +146,11 @@ const CURSOR_FILE = '.cost-cursor.json';
 // the per-invocation `event_sig` discriminator; v4 added `agent_id` and the
 // `agent-transcript` token source. Kept as a literal in each hook —
 // they are standalone zero-dep scripts that can't import from pan-wizard-core, so
-// the two hooks must stay in sync by hand. No constant in pan-wizard-core mirrors
-// it: the readers there take a row field by field rather than switching on its
-// version, so an added field is additive for them.
+// each hook's copy is kept by hand (in lockstep through v4; the trace logger's events
+// have since moved to 5 on their own). cost-rebuild.cjs in
+// pan-wizard-core mirrors it for the rows it rebuilds; the readers there take a row
+// field by field rather than switching on its version, so an added field is additive
+// for them.
 const SCHEMA_V = 4;
 
 // Reverse-map a resolved model id to its cost tier so the "By tier" dashboard
@@ -777,13 +779,14 @@ function buildCostRecord(data, cwd) {
   // Backfill command/phase from the active trace session when the payload omits
   // them (real SubagentStop payloads carry neither); tier is derived from the model.
   const sessionMeta = readActiveSessionMeta(cwd);
-  // The trace session only exists while the optimizer runs, so the parent transcript is
-  // the fallback that makes command attribution work outside focus mode — see
+  // The trace logger's day-scoped auto-session names no command (only a session opened
+  // by `optimize trace init` or focus mode does), so the parent transcript is the
+  // fallback that makes command attribution work in ordinary use — see
   // readCommandFromTranscript.
   const command = data.command || sessionMeta.command || readCommandFromTranscript(data.transcript_path) || null;
-  // The trace session is only present while the optimizer is running (off by
-  // default), so state.md is the fallback that makes phase attribution work in
-  // ordinary use instead of only under tracing.
+  // The day-scoped auto-session names no phase either, so state.md is the fallback
+  // that makes phase attribution work in ordinary use, not only in a session that
+  // was opened with one.
   const phase = data.phase || sessionMeta.phase || readCurrentPhase(cwd) || null;
 
   const record = {

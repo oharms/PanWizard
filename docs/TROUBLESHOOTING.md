@@ -58,7 +58,7 @@ must_haves: []
 2. Run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structure <path-to-plan>` for detailed validation output
 3. Check that `autonomous` and the task types are consistent -- an autonomous plan must not contain any `type="checkpoint:*"` tasks
 
-**Fix:** Correct the frontmatter to match the schema. Use `/pan:health` to validate all plans in the project at once.
+**Fix:** Correct the frontmatter to match the schema, then re-run `verify plan-structure` on the plan. `pan-tools validate consistency` checks every plan at once, but only for a missing `wave` and gaps in plan numbering; `/pan:health` does not check plan frontmatter.
 
 ### Task XML structure errors
 
@@ -67,7 +67,7 @@ must_haves: []
 **Required task structure:**
 
 ```xml
-<task id="1" type="auto">
+<task type="auto">
   <name>Task name</name>
   <action>What to do</action>
   <verify>How to verify it worked</verify>
@@ -102,7 +102,7 @@ must_haves: []
 
 **Diagnostic steps:**
 
-1. Open `.planning/roadmap.md` and review the wave assignments for the affected phase
+1. Review the `wave` field in the frontmatter of each plan in the affected phase — `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase-plan-index N` lists the phase's plans grouped by wave (roadmap.md lists the plans, not their waves)
 2. Check each plan's `depends_on` frontmatter field -- missing dependencies cause this issue
 3. Look for shared file references across plans in the same wave using the `<files>` elements
 
@@ -286,7 +286,7 @@ must_haves: []
 
 ### PAN says the planning tree belongs to another tool
 
-**Symptom:** `/pan:health` (or `pan-tools validate health`) reports `E006: planning tree belongs to gsd-core: …` with status `broken` and no other errors; `pan-tools hygiene scan` raises a single `foreign-planning-tree` warning, and `hygiene clean --apply` reports the legacy-filename fix as `refused`; `/pan:new-project` stops with `planning tree belongs to gsd-core`.
+**Symptom:** `/pan:health` (or `pan-tools validate health`) reports `E006: planning tree belongs to gsd-core: …` with status `broken` and no other errors; `pan-tools hygiene scan` raises a single `foreign-planning-tree` warning, and `hygiene clean --apply` lists that warning as manual (`fixable: 0`) and renames nothing; `/pan:new-project` stops with `planning tree belongs to gsd-core`.
 
 **Root cause:** the project's `.planning/` was written by another tool. gsd-core (the continuation of Get Shit Done) also uses `.planning/`, with `STATE.md`, `ROADMAP.md`, `PROJECT.md` and `REQUIREMENTS.md` in uppercase — exactly the filenames PAN used before v2.2 — so without this check PAN read the tree as a legacy PAN layout: hygiene would have renamed the other tool's state, health called it broken, and `new-project` would have scaffolded PAN files into it. PAN now recognises the tree from markers it never writes itself (`HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or gsd-core's flat dotted `config.json` keys such as `"workflow.discuss_mode"`) and refuses to touch it. This is deliberate, not corruption.
 
@@ -302,7 +302,7 @@ must_haves: []
 
 ### Planning commits commit nothing (I005)
 
-**Symptom:** `pan-tools commit` reports success for planning docs, but `git status` never shows them, and `/pan:health` reports `I005: .planning/ is ignored by git while commit_docs is true`.
+**Symptom:** `pan-tools commit` exits 0 for planning docs but reports `committed: false` with `reason: "skipped_gitignored"`, `git status` never shows them, and `/pan:health` reports `I005: .planning/ is ignored by git while commit_docs is true`.
 
 **Root cause:** `.planning/` is listed in `.gitignore`. planning-with-files adds that entry by default, so a project that uses both tools ends up with PAN committing into an ignored directory.
 
@@ -761,7 +761,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Root cause:** Claude Code decides the prompt-cache lifetime per request bucket. The main conversation can get the one-hour lifetime on a subscription; **everything else — subagents, workflows, forks — gets five minutes** unless you say otherwise. Every PAN agent is a subagent, so a phase whose agents are spaced more than five minutes apart re-caches the same planning context each time. ADR-0044 measured that block as the bulk of PAN's token traffic.
 
-**Fix:** Set `subagentPromptCacheTtl` to `"1h"` in a Claude Code settings file (Claude Code `2.1.242` or later). Weigh it first: one-hour cache writes bill at twice the base input rate against 1.25× for five-minute writes, so the longer lifetime pays off once a block is read at least twice inside the hour — true for a phase run, false for a single quick agent. To see which lifetime a session is using, `/usage` shows a `Prompt cache (main)` line with the hit ratio and, on recent builds, the likely cause of the last miss. On PAN's side, `pan-tools context-budget` reports the block's size under `cache.status` and, under `cache.ttl`, how many cache writes in the ledger followed an idle gap of five to sixty minutes (only the five-minute writes, on rows that record the cache-lifetime split; `cache.ttl.basis` says whether the count is `measured`, `mixed` or `inferred`) — the misses the one-hour lifetime would have avoided — recommending the setting only when that recurs; `pan-tools hygiene scan` raises the same recommendation as a `cache-context` finding — `info`, or `warn` once the re-written tokens reach `TTL_WARN_TOKENS` in `context-budget.cjs`.
+**Fix:** Set `subagentPromptCacheTtl` to `"1h"` in a Claude Code settings file (Claude Code `2.1.242` or later). Weigh it first: one-hour cache writes bill at twice the base input rate against 1.25× for five-minute writes, so the longer lifetime pays off once a block is read at least twice inside the hour — true for a phase run, false for a single quick agent. To see which lifetime a session is using, `/usage` shows a `Prompt cache (main)` line with the hit ratio and, on recent builds, the likely cause of the last miss. On PAN's side, `pan-tools context-budget` reports the block's size under `cache.total_tokens` and its classification (`ok`, `warn`, `critical` or `absent`) under `cache.status` and, under `cache.ttl`, how many cache writes in the ledger followed an idle gap of five to sixty minutes (only the five-minute writes, on rows that record the cache-lifetime split; `cache.ttl.basis` says whether the count is `measured`, `mixed` or `inferred`) — the misses the one-hour lifetime would have avoided — recommending the setting only when that recurs; `pan-tools hygiene scan` raises the same recommendation as a `cache-context` finding — `info`, or `warn` once the re-written tokens reach `TTL_WARN_TOKENS` in `context-budget.cjs`.
 
 ### A headless `claude -p` run sees no PAN commands, agents or hooks
 
@@ -878,7 +878,7 @@ Quick reference for diagnosing PAN issues at various levels. The `~/.claude/pan-
 
 | Command | What it checks |
 |---------|---------------|
-| `/pan:health` | Validates ROADMAP/disk consistency, plan numbering, state integrity |
+| `/pan:health` | Validates ROADMAP/disk consistency, phase directory naming, state integrity |
 | `/pan:health --repair` | Same as above but auto-fixes what it can |
 | `/pan:progress` | Shows current state, phase progress, identifies what to do next |
 | `/pan:assumptions N` | Surfaces hidden assumptions about phase N |
@@ -1038,4 +1038,4 @@ Options:
 - **Append explicit records** for calls you care about: `pan-tools cost append --agent X --model <model-id> --input-tokens N --output-tokens N`. The aggregator merges hook-sourced and caller-sourced records.
 - **Reconcile from provider billing.** The hook is directional — use the provider's API (Anthropic console, etc.) for exact monthly totals.
 
-Records with zero tokens still indicate that an agent ran — they're not useless, just incomplete.
+Records with zero tokens still indicate that an agent ran — they're not useless, just incomplete. The exception is in older ledgers: a zero-token row with no agent name may be one of Claude Code's own helper agents, which PAN now records nothing for (see [Host-internal helper agents](HOOKS.md#host-internal-helper-agents)).

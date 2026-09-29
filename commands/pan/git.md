@@ -13,7 +13,7 @@ allowed-tools:
 ---
 
 <objective>
-Phase-aware git workflow with safety guardrails built in. Every subcommand that modifies history runs safety checks. Rollback uses PAN snapshot tags created by exec-phase.
+Phase-aware git workflow with safety guardrails built in. Every subcommand that modifies history runs safety checks. Rollback uses PAN snapshot tags (`pan-rollback-*`), which `pan-tools rollback-snapshot <phase>` creates; no workflow creates them for you.
 
 Works with any git repository — PAN installation not required.
 </objective>
@@ -185,7 +185,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git rollback --tag pan-rollback
 ```
 
 **Rollback workflow:**
-1. Lists all `pan-rollback-*` tags (created by exec-phase before wave execution)
+1. Lists all `pan-rollback-*` tags (created with `pan-tools rollback-snapshot <phase>`)
 2. Verifies working tree is clean (blocks on dirty tree unless `--dry-run`)
 3. Runs `git reset --hard <tag>`
 

@@ -151,6 +151,7 @@ verification.md (layout from `templates/verification-report.md`) includes:
 - Stub inventory (if any found)
 - Wiring chain validation
 - Gap analysis with suggested fixes
+- Unrequested work: changes no plan asked for, found with `pan-tools verify scope` (recorded, never blocking)
 - Overall score (N/M must-haves verified)
 
 ---
@@ -166,7 +167,8 @@ PAN creates granular, per-task commits during execution -- not bulk commits per 
 | Event | Commit? | Type |
 |-------|---------|------|
 | Project initialization (project.md, roadmap.md) | Yes | planning-docs commit (`pan-tools commit`) |
-| Plan / research / discovery creation | No | -- (no shipped commit stages plan.md or research.md; the plan-completion commit stages summary.md, state.md, roadmap.md, requirements.md) |
+| Plan creation (plan.md files, roadmap.md) | Yes | `docs({phase}): create phase plan`, by pan-planner |
+| Phase research / discovery creation | Optional | the phase researcher may commit research.md (`docs({phase}): research phase domain`); nothing commits discovery.md |
 | Task completion | Yes | `feat/fix/test(phase-plan)` |
 | Plan completion (summary.md metadata) | Yes | `docs(phase-plan)` |
 | Handoff created (`/pan:pause`) | Yes | planning-docs commit (WIP state preserved) |
@@ -299,7 +301,7 @@ PAN supports three git branching strategies for project organization.
 
 ### Merge at Completion
 
-When completing a phase or milestone:
+PAN does not merge these branches itself: exec-phase leaves merging to you, and `/pan:milestone-done` tags the release without merging. Your options when a phase or milestone completes:
 - **Squash:** Clean single commit on target branch
 - **Merge:** Preserve full commit history
 - **Delete without merging:** `git branch -D` — the branch work is discarded
@@ -446,7 +448,7 @@ After completing a workflow step, PAN always presents a "Next Up" block telling 
 
 ## Reference File Index
 
-PAN's agents load knowledge from reference files at runtime using `@`-syntax. These files live in `pan-wizard-core/references/`.
+PAN's agents and workflows load knowledge from reference files at runtime, by path and mostly with `@`-syntax. These files live in `pan-wizard-core/references/`.
 
 | File | Topic | Relevance |
 |------|-------|-----------|
@@ -455,6 +457,7 @@ PAN's agents load knowledge from reference files at runtime using `@`-syntax. Th
 | `tdd.md` | Test-driven development cycle, when to apply | High |
 | `verification-patterns.md` | Stub detection, wiring checks, verification scripts | High |
 | `handoff-decisions.md` | Decisions-trace schema for planner/executor/verifier handoff | High |
+| `verdict-contract.md` | The `pan-verdict` block that ends every plan-checker, reviewer and design-checker report | High |
 | `design-methodology.md` | Design-phase methodology (architecture, ADR, threat-lite), shared by pan-designer and focus-design | Medium |
 | `git-integration.md` | Commit strategy, per-task commits, recovery | High |
 | `model-profiles.md` | Agent model selection by profile | High |
@@ -467,7 +470,7 @@ PAN's agents load knowledge from reference files at runtime using `@`-syntax. Th
 | `decimal-phase-calculation.md` | Emergency phase insertion numbering | Low |
 | `phase-argument-parsing.md` | Phase argument normalization | Low |
 
-Agents reference these files with `@`-syntax in their markdown definitions. For example, the executor agent references `references/checkpoints.md` in its checkpoint protocol and `references/handoff-decisions.md` when writing its implementation decisions.
+Agents reference these files by path in their markdown definitions, some with `@`-syntax and some as a plain path they are told to read. For example, the executor agent references `references/checkpoints.md` in its checkpoint protocol and `references/handoff-decisions.md` when writing its implementation decisions.
 
 ---
 

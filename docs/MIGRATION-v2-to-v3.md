@@ -165,12 +165,12 @@ The installer:
 ```bash
 # Check version
 cat .claude/pan-wizard-core/VERSION
-# Should show the v3.5 version
+# Should show the version you installed (v3.5 or later)
 
 # Smoke-test a new command
-node .claude/pan-wizard-core/bin/pan-tools.cjs cost report --format table
+node .claude/pan-wizard-core/bin/pan-tools.cjs cost report --format table --raw
 
-# Smoke-test focus system still works (prints the command list — no side effects)
+# Smoke-test the CLI still loads (prints usage and the command list, exits 1 — no side effects)
 node .claude/pan-wizard-core/bin/pan-tools.cjs
 ```
 
@@ -201,7 +201,7 @@ Your `.planning/` data survives the uninstall. New directories (`metrics/`, `bus
 
 ### Partial rollback (keep v3.5 but disable specific features)
 
-- **Disable auto cost logging:** remove the SubagentStop entry from `.claude/settings.json`
+- **Disable auto cost logging:** remove the `pan-cost-logger.js` entry under `SubagentStop` in `.claude/settings.json` (the `pan-trace-logger.js` entry beside it is the trace logger); re-running the installer adds it back
 - **Disable `--hierarchical`:** simply don't pass the flag; there's no global setting
 - **Disable `--deep-review`:** same — flag-controlled
 - **Stop using a specific command:** just don't invoke it; no uninstall needed
@@ -228,12 +228,13 @@ No. `/pan:focus-*` commands are identical. They may opportunistically integrate 
 
 ### Does `/pan:cost` see historical data?
 
-No — the log is append-only from the moment you upgrade. Historical cost data must come from your provider's billing API (Anthropic console, etc.). Going forward, the auto hook captures every sub-agent spawn.
+Partly. The hook appends from the moment you upgrade, and on Claude Code `pan-tools cost rebuild` (a dry run; `--apply` writes) also rebuilds rows from the session transcripts Claude Code still keeps. Anything older must come from your provider's billing API (Anthropic console, etc.). Going forward, the hook records each sub-agent spawn on the runtimes where it runs (Claude Code, Codex, Copilot CLI).
 
 ### Can I use Spec B v2 features on runtimes other than Claude Code?
 
 Partially:
-- `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:what-if`, `/pan:review-deep`: **yes** on all 5 runtimes (`/pan:cost` has data only where the cost logger runs — Claude Code, Codex, Copilot CLI). Agent quality varies with model capability.
+- `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:review-deep`: **yes** on all 5 runtimes (`/pan:cost` has data only where the cost logger runs — Claude Code, Codex, Copilot CLI). Agent quality varies with model capability.
+- `/pan:what-if`: full on Claude Code; partial on the other four — the worktree and report layers work everywhere git does, and spawning the counterfactual agent depends on the runtime's task support.
 - `/pan:preview phases` (single-shot whole-repo pass): the fast path needs a model with a 1M-context window; smaller-context models skip the cross-reference bonus and rely on the data-layer output alone.
 - `/pan:mcp-bridge`: runs on all five runtimes as a cache reader (the host runtime populates the cache); Claude Code is the primary target.
 - `/pan:exec-phase --hierarchical`: Claude Code only — it needs native sub-agent spawning, which is a runtime limit rather than a model one. Elsewhere the flag is a no-op that warns and falls back to flat exec.

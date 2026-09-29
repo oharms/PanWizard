@@ -4,7 +4,7 @@ This directory holds AI-derived behavioral patterns extracted from real PAN
 Wizard sessions via the **self-improvement loop** (v3.7.0+, see
 [ADR-0026](../../docs/decisions/ADR-0026-self-improvement-loop.md)).
 
-Patterns are produced by running `pan-tools learn promote --pattern <id>` over
+Patterns are promoted by hand with `pan-tools learn promote` (see Lifecycle) from
 harvested experiment data. They are **advisory** — orchestrators weight them
 against current context, not as hard rules.
 
@@ -46,9 +46,10 @@ patterns:
 
 ## Lifecycle
 
-1. **Promote** — `pan-tools learn promote --pattern <id> --scope universal --topic <name>` appends a pattern to the topic file (creates the file if absent).
-2. **Unpromote** — `pan-tools learn unpromote --pattern <id> --topic <name>` removes a pattern (for rollback).
+1. **Promote** — `pan-tools learn promote --pattern <id> --scope universal --topic <name> --summary <text> --rule <text>` appends a pattern to the topic file (creates the file if absent); `--evidence`, `--applies-in` and `--source-experiments` fill in the rest of the entry.
+2. **Unpromote** — `pan-tools learn unpromote --pattern <id> --scope <universal|internal> --topic <name>` removes a pattern (for rollback) and deletes the topic file once it holds none.
 3. **List** — `pan-tools learn list-promoted` shows the inventory across both tiers.
+4. **Index** — `pan-tools learn build-index` regenerates `index.json`, the topic index `pan-tools learn topics-for --agent <name>` reads; promote and unpromote do not update it.
 
 ## Why two tiers
 
@@ -58,13 +59,15 @@ apply when the project *is* PAN. Examples:
 - **PAN-internal**: "Always commit individually, never `git add -A`" (because of source repo's pre-commit hooks)
 - **Universal**: "Run the full test suite before marking a phase complete"
 
-The promote step uses a heuristic filter on file paths in the pattern's
-evidence. References to `pan-wizard-core/`, `bin/install.js`, `commands/pan/*`
-suggest `internal` scope. The human running `promote` makes the final call.
+The promote step warns when a universal-scope pattern reads like a prompt
+fragment rather than a structural pattern (P-RES-007), and `pan-tools learn lint`
+warns when a universal pattern's heading or Rule names PAN-internal terms such as
+`pan-wizard-core` or `pan-tools`, a candidate for `internal` scope. The human
+running `promote` makes the final call.
 
 ## Maintenance
 
 These files are **AI-managed**. Direct human edits create drift between
-the frontmatter `pattern_ids` list and the body content. For human-authored
+the frontmatter `patterns` list and the body content. For human-authored
 behavioral content, use `references/` instead — that's the canonical
 hand-authored channel (e.g., `references/guardrails.md` shipped in v3.6.0).

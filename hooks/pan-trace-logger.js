@@ -64,8 +64,8 @@ const crypto = require('crypto');
  * Which planning tree this hook acts on.
  *
  * Mirrors pan-wizard-core/bin/lib/planning-root.cjs, which hooks cannot require
- * (they are standalone and run inside the host runtime). All PAN hooks carry an
- * identical copy — if the CLI is pointed at a track while a hook still writes to
+ * (they are standalone and run inside the host runtime). Every PAN hook that
+ * reads the planning tree carries an identical copy — if the CLI is pointed at a track while a hook still writes to
  * `.planning/`, that tree's telemetry lands in the wrong place.
  *
  * Env only — a hook gets no argv. A value that escapes the project root is
@@ -389,10 +389,11 @@ const MAX_SEEN_TRANSCRIPTS = 16;
 //   • `model` and `phase` came out null in those recorded rows — the payload
 //     carried neither; `usage` is absent entirely in headless mode
 //     (docs/HOOKS.md, P-1805).
-//   • No recorded payload in this repo carries an `agent_id` or any other
-//     per-invocation id; the hook tests inject one as a stand-in.
-// So for two CONCURRENT SAME-TYPE siblings no varying payload field is confirmed
-// on any host: where the host supplies one, both spawns are admitted; where it
+//   • Claude Code 2.1.280 sends `agent_id`, a per-spawn id (captured 2026-09-29 in
+//     tests/fixtures/hooks/subagent-stop-claude.json); no other host's payload has
+//     been captured with one.
+// So for two CONCURRENT SAME-TYPE siblings a varying payload field is confirmed only
+// on Claude Code: where the host supplies one, both spawns are admitted; where it
 // supplies none the payloads are the same bytes, hence indistinguishable from a
 // re-fire, and the second stays suppressed.
 //
@@ -1038,8 +1039,9 @@ function buildTraceEvents(data, sessionId, cwd) {
   // path otherwise bypasses).
   const sessionMeta = cwd ? readSessionMetaById(cwd, sessionId) : {};
   const phase = data.phase || sessionMeta.phase || null;
-  // Outside focus mode the trace session carries no command; the parent transcript
-  // names it instead (see readCommandFromTranscript).
+  // The day-scoped auto-session names no command (only a session opened by
+  // `optimize trace init` or focus mode does); the parent transcript names it
+  // instead (see readCommandFromTranscript).
   const command = data.command || sessionMeta.command || readCommandFromTranscript(data.transcript_path) || null;
 
   const events = [];

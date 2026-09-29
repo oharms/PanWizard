@@ -26,7 +26,7 @@ Do not duplicate filesystem-derived counts here. `CLAUDE.md` remains the single 
 
 ### P0: Release Gate Hardening — DONE
 
-> **Status:** shipped. `scripts/release-check.js` runs as `npm run release:check` and as `prepublishOnly`, and the tag-triggered release workflow reruns it before publishing. The gate has since grown past this list: `doc-lint counts` over `docs/`, the doc↔code link graph, a zero-runtime-dependency assertion inside the pack gate, and both distribution bundles with a stale-`dist/` digest check (`2026-09-10`). The flow is documented under "Release Process" in [DEVELOPMENT.md](DEVELOPMENT.md). Original task list retained.
+> **Status:** shipped. `scripts/release-check.js` runs as `npm run release:check` and as `prepublishOnly`, and the tag-triggered release workflow reruns it before publishing. The gate has since grown past this list: `doc-lint counts` over `docs/`, the doc↔code link graph, a zero-runtime-dependency assertion inside the pack gate, both distribution bundles with a stale-`dist/` digest check (`2026-09-10`), and a coverage gate that fails when a dispatcher arm never ran, overall line or function coverage drops below its floor, or a module group drops below its line floor (skipped on Node < 22). The flow is documented under "Release Process" in [DEVELOPMENT.md](DEVELOPMENT.md). Original task list retained.
 
 Current issue: `prepublishOnly` only runs the hook build step. That is too light for a CLI installer that ships commands, agents, workflows, hooks, runtime adapters, and generated install layouts.
 
@@ -50,7 +50,7 @@ Acceptance criteria:
 
 ### P0: Installer Manifest Verification — partially DONE
 
-> **Status:** per-file write failures in the installer's copy paths are collected as warnings instead of swallowed, `verifyInstalled()` checks each required install directory after the copy, and `pan-tools validate deployment` verifies an install against its manifest after the fact, and `verifyInstall()` has unit tests for a missing or file-less manifest. Not verified against this list: a regression test that simulates a copy or write failure mid-install. Original task list retained.
+> **Status:** per-file write failures in the installer's copy paths are collected as warnings instead of swallowed, `verifyInstalled()` checks each required install directory after the copy, and `pan-tools validate deployment` verifies an install against its manifest after the fact, and `verifyInstall()` has unit tests for missing and 0-byte tracked files, a missing or empty dispatcher, and a missing or file-less manifest. Still open: a regression test that makes a copy or write fail mid-install and checks the installer reports it. Original task list retained.
 
 Current issue: parts of `bin/install.js` swallow copy/write errors. Some later checks prove that directories exist, but not that every expected file landed correctly.
 
@@ -137,7 +137,7 @@ Remaining (open):
 
 ### P2: Hook Build Naming and Dependency Cleanup — DONE
 
-> **Status:** copy-only chosen. `build:hooks` copies `hooks/*.js` to `hooks/dist/`; ARCHITECTURE, DEVELOPMENT, HOOKS and CONTRIBUTING all say so; no bundler remains in `devDependencies` (only the VS Code e2e harness).
+> **Status:** copy-only chosen. `build:hooks` copies the hooks listed in `HOOKS_TO_COPY` (`scripts/build-hooks.js`) to `hooks/dist/`; ARCHITECTURE, DEVELOPMENT, HOOKS and CONTRIBUTING all say so; no bundler remains in `devDependencies` (only the VS Code e2e harness).
 
 Current issue: docs and dependencies imply hooks are compiled with esbuild, but the build script currently copies pure Node.js files.
 
@@ -156,7 +156,7 @@ Acceptance criteria:
 
 ### P2: Package Documentation Policy — open (policy implicit)
 
-> **Status:** the `files` allowlist in `package.json` ships `bin`, `commands`, `agents`, `pan-wizard-core` (minus internal learnings), `hooks/dist`, `scripts`, `assets` and `pan-zcode`; `docs/` is not in the package and the README's Documentation table links to GitHub. That is the de-facto policy; making it explicit in the README remains open. `tests/package-contract.test.cjs` now pins the allowlist, so a change to it is a deliberate one.
+> **Status:** the `files` allowlist in `package.json` ships `bin`, `commands`, `agents`, `pan-wizard-core` (minus internal learnings), `hooks/dist`, `scripts`, `assets` and `pan-zcode`; `docs/` is not in the package and the README's Documentation table links to `docs/` by relative path, which resolves on GitHub but not in an installed package. That is the de-facto policy; making it explicit in the README remains open. `tests/package-contract.test.cjs` now asserts that `files` is an explicit allowlist that keeps `dist`, `harness`, `marketplace` and `tests` out of the package; the rest of the list is not pinned.
 
 Current issue: the npm package includes `README.md` automatically, but not the full `docs/` directory. That may be intentional, but the policy should be explicit.
 

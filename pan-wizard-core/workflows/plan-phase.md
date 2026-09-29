@@ -222,7 +222,7 @@ In that case, log a `decision` trace event (`type: "decision", category: "skip-r
 
 This is a workflow-level optimization — the planner still produces a plan, just without per-phase research.md. Phase 2+ phases with substantive build work still go through full research.
 
-**P-1602 phase_record_compact (v3.7.5+):** When `workflow.phase_record_compact: true` AND the lightweight-phase bypass above triggers, also skip per-phase context.md creation (step 4) and emit a single combined `${PHASE_NUM}-record.md` after planning containing: goal, locked decisions (from project-level context), plan summary, must_haves. Reduces 4-file phase output (context, research, plan, summary) to a 2-file output (record, plan) for trivial phases. Off by default — opt-in via `pan-tools config-set workflow.phase_record_compact true`. Substantive phases (>1 plan or non-trivial change_class) still produce full per-phase artifacts regardless of this flag.
+**P-1602 phase_record_compact (v3.7.5+):** When `workflow.phase_record_compact: true` AND the lightweight-phase bypass above triggers, also skip per-phase context.md creation (step 4) and emit a single combined `${PHASE_NUM}-record.md` after planning containing: goal, locked decisions (from project-level context), plan summary, must_haves. Reduces the planning output (context, research, plan) to a record and a plan for trivial phases; execution still writes the plan's summary. Off by default — opt-in via `pan-tools config-set workflow.phase_record_compact true`. Substantive phases (>1 plan or non-trivial change_class) still produce full per-phase artifacts regardless of this flag.
 
 **If `has_research` is true (from init) AND no `--research` flag:** Use existing, skip to step 6.
 

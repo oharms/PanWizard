@@ -46,7 +46,7 @@ Run after `/pan:exec-phase 07` completes. It reads the review that exec-phase's 
 /pan:exec-phase 07 --deep-review
 ```
 
-Runs the normal exec → reviewer pipeline, then auto-invokes this command. Recommended for phases touching auth, payment, PII, migrations, or public APIs.
+Runs the normal exec → reviewer pipeline, then runs this command's process inline, before the verifier. Recommended for phases touching auth, payment, PII, migrations, or public APIs.
 
 ### Integrated with focus-exec
 

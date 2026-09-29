@@ -93,7 +93,7 @@ You see real-time progress as files are created and tests are run.
 
 PAN re-runs goal-backward verification with a test-suite gate and writes
 `.planning/phases/01-{name}/01-verification.md`. If it reports `gaps_found`,
-run `/pan:plan-phase 1 --gaps` to plan the fixes and execute that plan as usual.
+run `/pan:plan-phase 1 --gaps` to plan the fixes, then `/pan:exec-phase 1 --gaps-only` to execute them.
 Manual acceptance testing (for example `doto add 'Buy milk' --priority high`
 followed by `doto list`) is yours to run; `/pan:verify-phase` does not walk you
 through it.
@@ -202,7 +202,7 @@ You: The task list shows due dates in UTC. They should display in the
 ```
 
 PAN reads the file, identifies the formatting call, applies the fix, and
-runs existing tests. No research phase, no plan document -- just a focused
+runs existing tests. No research phase, plan checker or verifier (the test run is the check) -- a short plan and summary go to `.planning/quick/` -- just a focused
 change with verification.
 
 ```text
@@ -249,7 +249,7 @@ Phase 1: Core CRUD             [complete]
 Phase 2: Filtering & Tags      [in progress]
   - discuss-phase              [complete]
   - plan-phase                 [complete]
-  - exec-phase                 [partial -- wave 2 of 3 finished]
+  - exec-phase                 [partial -- 2 of 3 plans have summaries]
   - verify-phase               [pending]
 Phase 3: Packaging & Docs      [pending]
 
@@ -464,23 +464,19 @@ Created:
                                 Packaging & Polish
   .planning/config.json      -- default configuration
 
-Review the generated files. If anything needs adjustment, edit directly
-then use /pan:discuss-phase 1 to refine interactively.
+AUTO-ADVANCING → DISCUSS PHASE 1
+(runs /pan:discuss-phase 1 --auto, which chains plan → execute for phase 1)
 ```
 
-### Continue with normal workflow
+### Continue with the next phase
 
-From here the workflow is identical to the interactive path:
+`--auto` does not stop at the roadmap: `/pan:new-project` sets `workflow.auto_advance: true` and runs `/pan:discuss-phase 1 --auto`, which chains planning, execution and verification of phase 1 and then prints the next command. Continue from there:
 
 ```text
-/pan:discuss-phase 1     # refine any implementation details
-/pan:plan-phase 1 --auto # auto mode works here too -- skips discussion,
-                         # uses PRD decisions directly
-/pan:exec-phase 1
-/pan:verify-phase 1
+/pan:discuss-phase 2 --auto   # the next phase, chained the same way
 ```
 
-The `--auto` flag on `discuss-phase` and `plan-phase` tells PAN to make
+The `--auto` flag on `discuss-phase` and `plan-phase` chains each into the next step and persists `workflow.auto_advance: true`; it also tells PAN to make
 reasonable decisions from context rather than asking. Useful when your PRD
 is detailed enough to answer implementation questions.
 
@@ -497,7 +493,7 @@ is detailed enough to answer implementation questions.
 | Start of day | `progress` > `resume` |
 | End of day | `pause` |
 | New version cycle | `milestone-done` > `milestone-new` |
-| Automated from PRD | `new-project --auto @prd.md` > `plan --auto` > `execute` > `verify` |
+| Automated from PRD | `new-project --auto @prd.md` (chains `discuss-phase 1 --auto` > `plan-phase` > `exec-phase`) > `discuss-phase 2 --auto` |
 
 ---
 
@@ -515,7 +511,7 @@ The data layer scans `07-01-plan.md`, `07-02-plan.md`, etc., extracts file paths
 
 - **Files likely touched** — `src/db/migrations.js`, `src/models/User.js`, `tests/migrations.test.cjs`
 - **Tests at risk** — 3 test files reference migration schemas
-- **Risk signals** — `drop: true`, `migrate: true` → risk score 7/10
+- **Risk signals** — `drop: true`, `migrate: true`, `rename: true` → risk score 7/10
 - **Bottom line** — "Run in a feature branch with a rollback plan. Migration reverse is not documented in plan.md."
 
 If risk ≥ 7 or auth keywords hit, review the plan before `/pan:exec-phase`. Combine with `--deep-review` for auth/payment phases.
@@ -528,7 +524,7 @@ Phase 4 adds JWT authentication. Run exec-phase with deep-review enabled:
 /pan:exec-phase 04 --deep-review
 ```
 
-After the normal pipeline (plan → executors → reviewer → verifier), the command auto-invokes `/pan:review-deep 04` (the reviews directory takes the phase argument verbatim, so pass it zero-padded):
+Right after the normal review, before the verifier, exec-phase runs the `/pan:review-deep` process inline (its reports go under `.planning/reviews/04/`, named with the phase directory's number, so padding the argument is not needed); on `review_required` or `block` it stops before verification:
 
 1. **pan-hardener** (OWASP + STRIDE) writes `.planning/reviews/04/hardener.md`. Looks for missing authorization checks, credential storage weaknesses, session management gaps.
 2. **pan-meta-reviewer** reads both reviewer + hardener, writes `.planning/reviews/04/meta.md`. Flags what either missed, disputes overstated severities.
@@ -546,17 +542,17 @@ After shipping a milestone, capture accumulated lessons for onboarding:
 /pan:knowledge playbook
 ```
 
-The playbook command reads `.planning/memory/*.md` — every lesson that `pan-planner`, `pan-verifier`, `pan-reviewer`, and other agents wrote during the milestone — and clusters entries into categories (Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps / General). Output at `.planning/playbook.md`:
+The playbook command reads `.planning/memory/*.md` — every lesson that `pan-planner`, `pan-verifier`, `pan-reviewer`, and other agents still keep in their memory files (the playbook is not scoped to one milestone) — and clusters entries into categories (Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps / General). Output at `.planning/playbook.md`:
 
 ```markdown
 ## Conventions
 - 2026-04-10: Prefer bulk Postgres writes over per-row commits _— from `pan-planner`_
 
 ## Gotchas
-- 2026-04-12: Async iterators finalize on throw; wrap in try/finally _— from `pan-verifier`_
+- 2026-04-12: Careful: async iterators finalize on throw; wrap in try/finally _— from `pan-verifier`_
 
 ## Decisions
 - 2026-04-15: Chose Redis over Memcached — Redis AOF gives durability at our write rate _— from `pan-planner`_
 ```
 
-New team members run `/pan:knowledge ask "what should I know before editing the cache layer?"` and get grounded answers citing the playbook plus relevant ADRs.
+New team members run `/pan:knowledge ask "what should I know before editing the cache layer?"` and get grounded answers citing the agents' memory files (the source the playbook is built from) plus relevant ADRs.

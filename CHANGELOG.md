@@ -34,7 +34,7 @@ fixed, or why. ADR-0049; spec `docs/specs/evidence_loop_featureai.md`.
   - exec-phase, plan-phase and design-phase save each judge's report in the phase
     directory, record it, and branch on the verdict it prints. The previous
     grep/heading reads stay as fallbacks.
-  - They record a deferral whenever a phase moves on with findings open: warnings
+  - They record a deferral when a phase moves on past a judge's warnings or failure: warnings
     accepted at review, "continue anyway", "force proceed", design caveats.
   - `/pan:milestone-audit` takes its tech debt from `findings debt`, the deferred
     findings with their reasons plus the ones nobody disposed.
@@ -57,7 +57,7 @@ fixed, or why. ADR-0049; spec `docs/specs/evidence_loop_featureai.md`.
   - First real run on 2026-09-28: a subagent's failing `npm test` was captured from
     its own transcript through the installed hook.
 - **`optimize learn` reads the new signal.** The analysis adds `tool_error_patterns`,
-  ranked by the spawns and sessions they recur in, and `verdict_stats` per judge.
+  ranked by the spawns they recur in (sessions are counted too), and `verdict_stats` per judge.
   Suggestions come only from failures that recur. `optimize learn --sessions <n>`
   pools the last n sessions.
 - **`contract: "1.0"`** on `state`, `state json`, `progress` and the `pan://state` /
@@ -109,7 +109,7 @@ verification on `review_required` or `block`.
 appended every memory entry and note again, and nothing could be undone. Each apply
 now gets an `apply_id` with per-action records, and an action an earlier apply wrote
 is skipped. `pan-tools optimize revert <apply_id>` (or `--last`) undoes one apply byte
-for byte, CRLF files included. It refuses a file edited since the apply, and a file a
+for byte, CRLF files included (a file whose line endings are mixed comes back all CRLF). It refuses a file edited since the apply, and a file a
 later apply also wrote.
 
 ### Fixed — Copilot spawns were booked as `unknown` with no session
@@ -136,13 +136,31 @@ tested against whatever the last manual build left. The harness now runs
 (`persistSession: true`). The default `--no-session-persistence` means the host writes
 no transcripts, so no harness model run had ever exercised a hook that reads them.
 
-### Decided — the cost and trace loggers stay synchronous (market item M16)
+### Decided — the cost and trace loggers stay synchronous on Claude Code (market item M16)
 
-Claude Code supports `async: true` on command hooks, but the two loggers share a
+Claude Code supports `async: true` on command hooks, but each of the two loggers keeps a
 read-modify-write cursor file. Overlapping asynchronous runs could lose each other's
 updates, and a lost cursor entry re-reads a transcript from the start and counts its
 tokens twice. The update check already hands `SessionStart` back at once. Recorded in
 `docs/HOOKS.md`.
+
+### Fixed — the `state` subcommand list left out `compact`, and a harness scenario sent a command that does not exist
+
+`pan-tools state compact` worked and was documented, but the list of state subcommands the dispatcher prints for an unknown one left it out. `suggest.cjs` builds its did-you-mean index from those lists and `scripts/test-surface.cjs` builds the surface registry from them, so both missed it. The list now names it, and `tests/dispatcher-arms.test.cjs` checks every group's list against the subcommands its arm dispatches.
+
+The `pause-resume` harness scenario sent `/pan:resume-project`, which no command defines (`resume-project` is the workflow `/pan:resume` loads), so its paid step would have been refused before it reached the model. It now sends `/pan:resume`, and a tier-0 test checks that every scenario's `/pan:` prompt names a command in `commands/pan/`.
+
+### Documented — the docs checked against this branch's code
+
+A full doc audit brought the docs in line with the code on this branch. Auditors read each doc against the code, and verifiers then checked every fix against the code before it stayed. The main corrections:
+
+- **Setup and config.** `brave_search` starts `true` only in a config `config-ensure-section` creates, not in the one `/pan:new-project` writes, and `/pan:settings` asks about neither `commit_docs` nor Brave. `/pan:new-project --auto` chains discuss, plan and execute for phase 1 instead of stopping at the roadmap. No workflow creates rollback tags. `/pan:update` passes no runtime flag, so the README now tells other runtimes to re-run the installer.
+- **Agents.** Codex maps `effort` to its native `model_reasoning_effort`; model tiering takes effect where a workflow passes the resolved tier as a spawn's `model`; memory lessons reach the executors, not the planner; the planner commits its plans; `/pan:map-codebase` runs a single agent in single-shot mode.
+- **The evidence loop.** The `findings` verbs, `optimize revert`, `verify scope`, the verdict contract and the judges' saved reports now appear in ARCHITECTURE, INTERNALS, AGENTS and DEVELOPMENT. A `fixed` disposition reopens when the finding is reported again, and auto-fix acts per phase.
+- **Reference.** CLI-REFERENCE names `websearch`, the `branching_strategy` values `none`, `phase` and `milestone`, case-insensitive `state update` fields, the cost cursor `hygiene clean` keeps, and the real commit-blocked error. HOOKS says when the loggers fall back to state.md and what the `v` and `source` fields are for. README calls `/pan:hud` a snapshot, adds `npm run build:hooks` to the development install, and lists what a local install writes outside the runtime directory.
+- **Repo rules.** CLAUDE.md no longer says `.gitignore` blocks every self-install artifact (the installer guard is what keeps them out), and says the manifest hashes the files PAN copies in, not the configs it merges.
+
+The generated skills docs were regenerated, stale comments in `cost.cjs` and the hooks were corrected, and ARCHITECTURE's module table lost a line-count column that the counts rule kept empty.
 
 ## [3.31.0] - 2026-09-26
 

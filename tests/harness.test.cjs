@@ -496,3 +496,28 @@ describe('live-gate-gemini: isolated trust, a contrast pair, and a measurement t
     assert.notDeepEqual(verdict(GEMINI_BROKEN), []);
   });
 });
+
+describe('harness scenarios send only commands that exist', () => {
+  // Found by the 2026-09-29 doc audit: pause-resume sent /pan:resume-project, which no
+  // command defines (resume-project is the workflow /pan:resume loads), so its paid step
+  // would have been refused before it reached the model. Model-free, so tier 0 catches it.
+  test('every model step that sends a /pan: command sends one commands/pan/ defines', () => {
+    // The file name is the command: commands/pan/<name>.md is invoked as /pan:<name>.
+    // Several files carry a bare `name:` in their frontmatter, so that field is not it.
+    const names = new Set(fs.readdirSync(path.join(ROOT, 'commands', 'pan'))
+      .filter((x) => x.endsWith('.md')).map((x) => x.slice(0, -3)));
+    const bad = [];
+    let checked = 0;
+    for (const s of loadScenarios(path.join(ROOT, 'harness', 'scenarios'))) {
+      (s.steps || []).forEach((st, i) => {
+        if (st.kind !== 'model' || typeof st.prompt !== 'string') return;
+        const m = /^\s*\/pan:([a-z0-9-]+)/.exec(st.prompt);
+        if (!m) return;
+        checked++;
+        if (!names.has(m[1])) bad.push(`${s.id} step ${i + 1}: /pan:${m[1]}`);
+      });
+    }
+    assert.ok(names.has('resume') && checked >= 3, `expected command names and /pan: prompts, found ${names.size} and ${checked}`);
+    assert.deepEqual(bad, []);
+  });
+});

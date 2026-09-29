@@ -1185,7 +1185,7 @@ Task(
 
 ---
 
-### /pan:design-phase (77 lines)
+### /pan:design-phase (85 lines)
 
 ```markdown
 ---
@@ -1248,6 +1248,14 @@ ELSE (default):
    - If it finds gaps (iteration 1) → `pan-designer` revises (address genuine gaps only), re-check.
    - If it finds gaps (iteration 2) → final revision, record remaining gaps as caveats.
    - **Max 2 revision iterations** (design → check → revise → check → final) — the same guardrail `plan-phase` uses with `pan-plan-checker`.
+   - **Record each check.** Save the checker's returned text verbatim to `{phase_dir}/{padded_phase}-design-check.md` with the Write tool. Record it and branch on the verdict it prints (`PASS` or `GAPS`):
+     ```bash
+     node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "{phase}" --agent pan-design-checker --file "{phase_dir}/{padded_phase}-design-check.md" --raw
+     ```
+     A re-check is the next attempt and closes the gaps it no longer reports. When the final iteration still has gaps, record them as the caveats they are before writing the design:
+     ```bash
+     node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "{phase}" --agent pan-design-checker --open --as deferred --reason "design caveat after 2 revision iterations"
+     ```
 5. **Write** `{phase}-design.md` to the phase directory and commit via `pan-tools commit`.
 6. **Present** results + next step (`/pan:plan-phase` — which will consume this design.md).
 </process>
@@ -1455,7 +1463,7 @@ Phase: $ARGUMENTS
 - `--skip-tests` — Skip automatic test generation after execution completes.
 - `--skip-review` — Skip automatic code review after execution completes.
 - `--fast` — Skip both test generation and code review (implies `--skip-tests --skip-review`).
-- `--deep-review` (v3.4+) — After the normal reviewer step, also run `/pan:review-deep <phase>` (security audit via pan-hardener + cross-check via pan-meta-reviewer). Produces `.planning/reviews/<N>/deep-review.md`. Recommended for phases touching auth, payment, PII, migrations, or public APIs. Costs roughly 3× a normal review.
+- `--deep-review` — After the normal code review, run the deep review inline: the `/pan:review-deep` process, a security audit by pan-hardener plus a cross-check by pan-meta-reviewer, merged into `.planning/reviews/<N>/deep-review.md`. It builds on the normal review, so it is skipped with `--skip-review` or `--fast`. Recommended for phases touching auth, payment, PII, migrations, or public APIs. Costs roughly 3× a normal review.
 - `--hierarchical` (v3.4+, Claude Code only — needs native sub-agent spawning) — Spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in sequence. `pan-conductor` runs on the reasoning tier under the default profile, which inherits the model you launched with (the `budget` profile drops it to mid). Bounded by safety harness: max 2 nesting levels, 12 spawns per phase, budget ceiling, `.planning/orchestration/abort` kill-switch. On runtimes that cannot spawn nested agents, this flag is a no-op with a warning and falls back to flat exec. Use only for large phases (≥4 autonomous plans) where wall-clock reduction justifies the ~20-30% orchestration tax.
 
 Context files are resolved inside the workflow via `pan-tools init execute-phase` and per-subagent `<files_to_read>` blocks.
@@ -5868,7 +5876,7 @@ allowed-tools:
 ---
 
 <objective>
-Phase-aware git workflow with safety guardrails built in. Every subcommand that modifies history runs safety checks. Rollback uses PAN snapshot tags created by exec-phase.
+Phase-aware git workflow with safety guardrails built in. Every subcommand that modifies history runs safety checks. Rollback uses PAN snapshot tags (`pan-rollback-*`), which `pan-tools rollback-snapshot <phase>` creates; no workflow creates them for you.
 
 Works with any git repository — PAN installation not required.
 </objective>
@@ -6040,7 +6048,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git rollback --tag pan-rollback
 ```
 
 **Rollback workflow:**
-1. Lists all `pan-rollback-*` tags (created by exec-phase before wave execution)
+1. Lists all `pan-rollback-*` tags (created with `pan-tools rollback-snapshot <phase>`)
 2. Verifies working tree is clean (blocks on dirty tree unless `--dry-run`)
 3. Runs `git reset --hard <tag>`
 
@@ -6504,7 +6512,7 @@ before starting a `discuss` session. Session turns are not auto-encrypted.
 
 ---
 
-### /pan:learn (75 lines)
+### /pan:learn (77 lines)
 
 ```markdown
 ---
@@ -6527,12 +6535,14 @@ Analyze the most recent trace session and generate an optimization report.
 ```
 /pan:learn
 /pan:learn --session <session-id>
+/pan:learn --sessions 3
 /pan:learn --experiment <slug>
 /pan:learn --apply
 ```
 
 **Flags:**
 - `--session <id>` — analyze a specific session instead of the most recent
+- `--sessions <n>` — pool the last n sessions into one analysis, so recommendations rest on failures that recur across runs
 - `--experiment <slug>` *(v3.7.0+, W3)* — analyze a harvested experiment instead of the current project's traces. Reads from `<source-repo>/experiments/<slug>/.planning/optimization/` and writes the report to `<source-repo>/experiments/<slug>/learnings/report-<timestamp>.md`. Used by the self-improvement loop. Run `/pan:experiment harvest <slug>` first.
 - `--apply` — automatically apply safe optimizations after generating the report (equivalent to running `/pan:optimize apply` immediately after)
 
@@ -7442,7 +7452,7 @@ Preserve all workflow gates (validation, approvals, commits, routing).
 
 ---
 
-### /pan:optimize (99 lines)
+### /pan:optimize (111 lines)
 
 ```markdown
 ---
@@ -7466,6 +7476,8 @@ Manage the circular optimization loop: apply recommendations, view stats, list r
 ```
 /pan:optimize apply
 /pan:optimize apply --report <filename>
+/pan:optimize revert <apply_id>
+/pan:optimize revert --last
 /pan:optimize list
 /pan:optimize stats
 /pan:optimize trace init [--description "what you're building"]
@@ -7489,7 +7501,17 @@ Requires human review (never auto-applied):
 - Workflow step additions
 - Structural changes to commands
 
-After applying, the report lists what was applied and what still needs review.
+After applying, the report lists what was applied and what still needs review, plus the `apply_id` that undoes it. Every apply is recorded action by action in `.planning/optimization/applied.jsonl`: the path, whether the file was created or appended to, the exact text, and a hash of the file after the write. Applying the same report a second time writes nothing: each action names the apply that already wrote it.
+
+### revert
+Undo one apply exactly: delete the memory files it created and cut the text it appended (`revert --last` for the newest).
+
+Revert never destroys work someone did since:
+- It refuses a file whose content changed after the apply. The comparison ignores line endings, so a CRLF checkout still matches.
+- It refuses a file that a later apply also wrote. Revert that later apply first.
+- It says which files it refused, and why.
+
+A CRLF file comes back CRLF. Applies logged before apply records existed cannot be reverted. After a revert, the same report can be applied again.
 
 ### list
 List all optimization reports in `.planning/optimization/reports/`, most recent first.
@@ -7499,7 +7521,7 @@ Show cumulative optimization statistics:
 - Total trace sessions run
 - Total events traced
 - Total errors/gaps/redundancies seen
-- Total optimizations applied across all runs
+- Total optimizations applied across all runs, the apply runs, the reverted runs, and the last `apply_id`
 - Current active trace session (if any)
 
 ### trace init
@@ -8810,7 +8832,7 @@ Consolidates Spec B v1's X-4 (self-review) + X-12 (harden) into a single command
 /pan:review-deep 07
 ```
 
-Run after `/pan:exec-phase 07` completes. Requires `pan-reviewer` to have already written its review to `.planning/phases/07/review.md` (exec-phase does this automatically).
+Run after `/pan:exec-phase 07` completes. It reads the review that exec-phase's code-review step saved in the phase directory (`.planning/phases/07-<slug>/07-review.md`). The reviewer is read-only, so it is exec-phase that writes the review there.
 
 ### Integrated with exec-phase
 
@@ -8818,7 +8840,7 @@ Run after `/pan:exec-phase 07` completes. Requires `pan-reviewer` to have alread
 /pan:exec-phase 07 --deep-review
 ```
 
-Runs the normal exec → reviewer pipeline, then auto-invokes this command. Recommended for phases touching auth, payment, PII, migrations, or public APIs.
+Runs the normal exec → reviewer pipeline, then runs this command's process inline, before the verifier. Recommended for phases touching auth, payment, PII, migrations, or public APIs.
 
 ### Integrated with focus-exec
 
@@ -8832,7 +8854,7 @@ Per-item deep review during focus campaigns. Useful for high-stakes batches.
 
 <process>
 
-1. **Load reviewer output** — read `.planning/phases/<N>/review.md` written by the earlier `pan-reviewer` step. If missing, warn and offer to run `pan-reviewer` first.
+1. **Load reviewer output.** Resolve the phase with `pan-tools find-phase <N>`, then read `{directory}/{phase_number}-review.md`, which exec-phase's code-review step wrote. If it is missing, warn and offer to run `pan-reviewer` first. Its findings come from the report's closing `pan-verdict` block.
 
 2. **Spawn pan-hardener** (parallel-safe with step 3 isolation below, but recommended sequential for audit clarity):
    - Prompt includes: `<files_to_read>` with phase plan + diff + reviewer output; `<output_path>` = `.planning/reviews/<N>/hardener.md`; `<framework_scope>` block reminding of OWASP/STRIDE coverage.
@@ -8845,7 +8867,7 @@ Per-item deep review during focus campaigns. Useful for high-stakes batches.
 4. **Merge** — call:
    ```
    pan-tools review-deep merge <N> \
-     --reviewer-file .planning/phases/<N>/review.md \
+     --reviewer-file {directory}/{phase_number}-review.md \
      --hardener-file .planning/reviews/<N>/hardener.md \
      --meta-file .planning/reviews/<N>/meta.md
    ```
@@ -8871,7 +8893,7 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 
 <output_files>
 
-- `.planning/phases/<N>/review.md` — pan-reviewer output (written earlier by exec-phase)
+- `{phase_dir}/{phase_number}-review.md` — pan-reviewer output (written by exec-phase's code-review step)
 - `.planning/reviews/<N>/hardener.md` — pan-hardener output (new)
 - `.planning/reviews/<N>/meta.md` — pan-meta-reviewer output (new)
 - `.planning/reviews/<N>/deep-review.md` — merged consolidated report (final deliverable)

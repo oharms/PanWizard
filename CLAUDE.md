@@ -59,8 +59,8 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | References (`pan-wizard-core/references/*.md`) | 17 |
 | Unit test files (`tests/*.test.cjs`) | 165 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 4841 |
-| Total test suites | 1037 |
+| Total tests (npm run test:all) | 4843 |
+| Total test suites | 1038 |
 | Hooks (`hooks/*.js`) | 7 |
 | Specs (`docs/specs/*.md`) | 52 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
@@ -77,7 +77,7 @@ These are a snapshot of the **current working tree**, not of any released tag �
 - NEVER create `.claude/pan-wizard-core/`, `.claude/pan-file-manifest.json`, or `.claude/package.json` in this repo
 - NEVER copy source files into `.codex/`, `.gemini/`, `.opencode/`, or `.github/` (Copilot's project dir) within this repo
 - The installer has a hard guard (`PAN_SOURCE_ROOT` check in `bin/install.js` — search for the constant) that refuses to run from the source directory
-- `.gitignore` blocks all self-install artifacts from being committed
+- `.gitignore` blocks most self-install artifacts, not all: depending on the runtime, a local install would also write `AGENTS.md`, `.mcp.json`, `.agents/skills/` (and `.agents/pan-wizard-core/` under `--unified-skills`), `.claude/workflows/pan-*.js` and `.github/mcp.json`, none of them ignored, and edit the tracked `CLAUDE.md` and `.claude/settings.json` — the installer guard is what keeps them out
 
 ## Testing PAN installations
 
@@ -124,7 +124,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 ### Source code (shipped by installer)
 
 - `bin/install.js` — Installer entry point
-- `bin/install-lib.cjs` — Installer functions, free of filesystem writes (`verifyInstall()`/`dirDigest()` only read; the merge helpers `stripPanHookEntries()`, `mergeCodexHooksConfig()` and `mergeMcpRegistration()` edit the object they are given)
+- `bin/install-lib.cjs` — Installer functions, free of filesystem writes (`verifyInstall()`/`dirDigest()` only read; the merge and strip helpers `stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()` and `stripMcpRegistration()` edit the object they are given)
 - `pan-wizard-core/bin/pan-tools.cjs` — CLI dispatcher
 - `pan-wizard-core/bin/lib/*.cjs` — Core CJS modules
 - `pan-wizard-core/workflows/*.md` — Multi-step workflow definitions
@@ -160,7 +160,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `scripts/deprecate-old-versions.js` — release housekeeping: after a successful publish, deprecates every stable release outside the newest-3 window plus any superseded prerelease. Dry-run by default; **never unpublishes** (a test asserts the script has no unpublish path)
 - `scripts/test-surface.cjs` — derives the shipped surface from the code (verbs, subcommands, dispatcher arms, installer flags, hook × runtime, MCP tools/resources, config keys, content dirs) into `tests/fixtures/surface.json`; `--check` fails on drift, `--map` shows which test names each row, `--scaffold <dir>` writes a todo stub per unreferenced row. `tests/surface-map.test.cjs` enforces it with `tests/fixtures/surface-allowlist.json` (every entry needs a reason)
 - `scripts/coverage-gate.cjs` — runs the suite under Node's own coverage (`node --test --experimental-test-coverage`, Node 22+) and fails when a dispatcher `case` arm never executed or a module group drops below the floors in `tests/fixtures/coverage-policy.json`. Release-check Gate 9; advisory CI step on the Node 22 jobs. `npm run test:coverage`
-- `scripts/mutation-probe.cjs` — **report-only** (`npm run test:mutate`): breaks the code on purpose inside a throwaway `git worktree` and reports which mutations the suite failed to notice. Answers what coverage cannot — not "did the line run" but "would a test fail if it were wrong". Sampled and seeded (`--max`, `--seed`, `--target`); targets the hooks, the cost reader and the dispatcher. Never a gate: release-check and CI do not run it, and `tests/mutation-probe.test.cjs` asserts they do not
+- `scripts/mutation-probe.cjs` — **report-only** (`npm run test:mutate`): breaks the code on purpose inside a throwaway `git worktree` and reports which mutations the suite failed to notice. Answers what coverage cannot — not "did the line run" but "would a test fail if it were wrong". Sampled and seeded (`--max`, `--seed`, `--target`); targets the cost and trace logger hooks, `cost.cjs`, `cost-rebuild.cjs` and the dispatcher. Never a gate: release-check and CI do not run it, and `tests/mutation-probe.test.cjs` asserts they do not
 - `scripts/test-quality-lint.cjs` — the assertion shapes that passed while the feature was broken (OR-shaped liveness asserts, in-process `cmd*` calls that exit the process, `assert(true)`, length-only CLI asserts, bare platform returns, tight wall-clock bounds, real-HOME reads, committed todos, OR-of-bare-property existence asserts), applied to the suite by `tests/test-quality.test.cjs` with `tests/fixtures/test-quality-allowlist.json`
 - `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
 - `scripts/build-agent-plugin.js` — emits the vendor-neutral **Agent Plugins** bundle to `dist/pan-agent-plugin/` (ADR-0045) for Copilot CLI, Codex, Cursor, Kiro. `.agents/plugins/marketplace.json` (Codex) and `.github/plugin/marketplace.json` (Copilot) point at it
@@ -169,7 +169,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 ### Key design patterns
 
 - **CommonJS (.cjs)** for all core modules — required for Claude Code compatibility
-- **Pure functions** in `install-lib.cjs` — no filesystem writes — two read-only helpers (`verifyInstall()`, `dirDigest()`) read the filesystem, and the merge helpers (`stripPanHookEntries()`, `mergeCodexHooksConfig()`, `mergeMcpRegistration()`) edit the object they are given; fully testable
+- **Pure functions** in `install-lib.cjs` — no filesystem writes — two read-only helpers (`verifyInstall()`, `dirDigest()`) read the filesystem, and the merge and strip helpers (`stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()`, `stripMcpRegistration()`) edit the object they are given; fully testable
 - **Runtime-agnostic** commands and agents — no PAN-specific hardcoding in shipped content
 - **Path normalization** via `toPosix()` — cross-platform path handling
-- **Manifest-based tracking** — `pan-file-manifest.json` tracks all installed files
+- **Manifest-based tracking** — `pan-file-manifest.json` hashes the PAN files the installer copies in (the runtime's own core — not the shared `.agents/pan-wizard-core/` of a `--unified-skills` install — commands or skills, agents, hook scripts, native workflows), not the config files it writes or merges into

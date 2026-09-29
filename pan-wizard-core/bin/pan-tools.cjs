@@ -414,7 +414,7 @@ async function main() {
       } else if (subcommand === 'load' || !subcommand) {
         state.cmdStateLoad(cwd, raw);
       } else {
-        error(`Unknown state subcommand: ${subcommand}. Available: json, update, get, patch, advance-plan, record-metric, update-progress, add-decision, add-blocker, resolve-blocker, record-session, load, snapshot`);
+        error(`Unknown state subcommand: ${subcommand}. Available: json, update, get, patch, compact, advance-plan, record-metric, update-progress, add-decision, add-blocker, resolve-blocker, record-session, load, snapshot`);
       }
       break;
     }
