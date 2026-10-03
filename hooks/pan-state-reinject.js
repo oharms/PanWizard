@@ -24,7 +24,8 @@
 // (Gemini PreCompress and Copilot preCompact are advisory). So there the block
 // arrives in two steps:
 //   --mark            on PreCompress / preCompact: when a PAN phase is in flight,
-//                     leave a per-session marker in the OS temp directory;
+//                     leave a per-session marker in the per-user hook directory
+//                     under the OS temp directory (0700, written 0600);
 //   --inject <host>   on the next tool result (Gemini AfterTool, Copilot
 //                     postToolUse): consume the marker and return the block once,
 //                     in that host's output shape. With no marker it prints nothing.
@@ -157,18 +158,48 @@ function sessionIdOf(payload) {
   return '';
 }
 
-/** One marker per (session, project), named by a hash so neither leaks into a file name. */
-function markerPath(sessionId, projectDir, tmpRoot = os.tmpdir()) {
-  const key = crypto.createHash('sha256').update(`${sessionId}\u0000${path.resolve(projectDir)}`).digest('hex').slice(0, 32);
-  return path.join(tmpRoot, 'pan-state-reinject', `${key}.json`);
+/** The per-user hook directory's name: the stop guard's and the context monitor's too. */
+function hookDirName() {
+  const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
+  return `pan-hooks-${uid}`;
 }
 
+// Per-user hook state directory inside tmpdir, created 0700 — the same directory
+// and the same checks as hookStateDir() in pan-stop-guard.js (hooks are standalone
+// files and cannot require one another). Null when the directory is not provably
+// ours: on a shared host another user must not be able to plant a marker that
+// injects, or a symlink the marker is written through (M60).
+function hookStateDir() {
+  const dir = path.join(os.tmpdir(), hookDirName());
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const st = fs.lstatSync(dir);
+    if (st.isSymbolicLink()) return null;
+    // POSIX-only ownership and mode checks: Windows fakes mode bits (N15).
+    if (typeof process.getuid === 'function') {
+      if (st.uid !== process.getuid()) return null;
+      if ((st.mode & 0o077) !== 0) return null;
+    }
+    return dir;
+  } catch { return null; }
+}
+
+/** One marker per (session, project), named by a hash so neither leaks into a file name. Pure. */
+function markerName(sessionId, projectDir) {
+  const key = crypto.createHash('sha256').update(`${sessionId}\u0000${path.resolve(projectDir)}`).digest('hex').slice(0, 32);
+  return `state-reinject-${key}.json`;
+}
+
+// This hook's files in the shared directory: markers, and one a crash left mid-take.
+const MARKER_FILE_RE = /^state-reinject-[0-9a-f]{32}\.json(?:\.\d+\.taken)?$/;
+
 function writeMarker(file, now = Date.now()) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify({ at: now }));
-  // Sweep markers no session came back for. Best effort.
+  fs.writeFileSync(file, JSON.stringify({ at: now }), { mode: 0o600 });
+  // Sweep markers no session came back for — only this hook's: the directory
+  // holds the other hooks' state too. Best effort.
   try {
     for (const name of fs.readdirSync(path.dirname(file))) {
+      if (!MARKER_FILE_RE.test(name)) continue;
       const p = path.join(path.dirname(file), name);
       try { if (now - fs.statSync(p).mtimeMs > MARKER_TTL_MS) fs.unlinkSync(p); } catch { /* raced */ }
     }
@@ -227,11 +258,14 @@ function main() {
         }
       } else {
         const sid = sessionIdOf(payload);
-        if (!sid) { process.exit(0); return; }
-        const file = markerPath(sid, projectDir);
+        // An unknown host leaves the marker for a host that can use it.
+        if (!sid || (mode === 'inject' && !injectOutput(host, ''))) { process.exit(0); return; }
+        const dir = hookStateDir();
+        if (!dir) { process.exit(0); return; }
+        const file = path.join(dir, markerName(sid, projectDir));
         if (mode === 'mark') {
           if (contextFor(projectDir)) writeMarker(file);
-        } else if (injectOutput(host, '') && takeMarker(file)) {
+        } else if (takeMarker(file)) {
           // Re-read now: the position after the compaction, not before it.
           const context = contextFor(projectDir);
           if (context) process.stdout.write(JSON.stringify(injectOutput(host, context)));
@@ -246,4 +280,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildReinjectContext, UNTICKED_PHASE_RE, markerPath, sessionIdOf, injectOutput, MARKER_TTL_MS };
+module.exports = { buildReinjectContext, UNTICKED_PHASE_RE, markerName, hookDirName, sessionIdOf, injectOutput, MARKER_TTL_MS };

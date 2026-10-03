@@ -238,10 +238,10 @@ One `SubagentStop` can reach the hooks more than once. A project with **both** a
 
 **Gemini CLI and Copilot CLI (market-ideas M33):** neither starts the session again after a compaction — Gemini's `SessionStart` sources are `startup`, `resume` and `clear`, Copilot's `startup`, `resume` and `new` — and the event each fires before one cannot add context (Gemini's `PreCompress` is advisory, Copilot's `preCompact` notification-only). So the hook runs in two steps:
 
-1. `--mark` on `PreCompress` / `preCompact`: when a phase is in flight, it leaves a marker for this session and project under `<os-tmpdir>/pan-state-reinject/`, named by a hash of the two so neither leaks into a file name.
+1. `--mark` on `PreCompress` / `preCompact`: when a phase is in flight, it leaves a marker for this session and project, `state-reinject-<hash>.json`, named by a hash of the two so neither leaks into a file name. It goes in the per-user `0700` directory the stop guard and the context monitor use, `<os-tmpdir>/pan-hooks-<uid>/`, and is written `0600`. When that directory is not provably the user's (a link; on POSIX, another owner or group or other access) the hook writes nothing.
 2. `--inject gemini` on `AfterTool` (every tool, no matcher) / `--inject copilot` on `postToolUse`: if the session has a fresh marker, it consumes it, reads the planning tree again (the position after the compaction, not before it) and returns the block once — `hookSpecificOutput.additionalContext` on Gemini, a top-level `additionalContext` on Copilot. Both hosts append it to that tool's result. With no marker it prints nothing; what every other tool call pays is one Node start and a rename that fails.
 
-A tool result is the first point after a compaction where both hosts take added context, and it also reaches an autonomous `-p` run that never sees another prompt. The marker is renamed before it is read, so two hook runs racing on one tool result cannot both inject; one no session came back for expires after six hours and is swept by the next `--mark`. In a project with both a Claude and a Copilot install, Copilot also runs Claude's registration of this script, but that one is the `SessionStart` mode, which a Copilot start never matches, so the hook needs none of the other Copilot hooks' deferral to the Claude copy.
+A tool result is the first point after a compaction where both hosts take added context, and it also reaches an autonomous `-p` run that never sees another prompt. The marker is renamed before it is read, so two hook runs racing on one tool result cannot both inject; one no session came back for expires after six hours and is swept by the next `--mark`, which removes only this hook's files from the shared directory. In a project with both a Claude and a Copilot install, Copilot also runs Claude's registration of this script, but that one is the `SessionStart` mode, which a Copilot start never matches, so the hook needs none of the other Copilot hooks' deferral to the Claude copy.
 
 Checked live on Copilot CLI 1.0.88 (`2026-10-03`): a manual `/compact` fired `preCompact` and left the marker, and the first tool call after it returned the block, which Copilot appended to the tool result as "Additional guidance from postToolUse hooks" and the model quoted back. Not yet checked live on Gemini CLI, whose test session could not sign in; the Gemini half rests on the v0.61.0 hooks reference and the unit tests.
 
@@ -312,7 +312,7 @@ State Re-inject (pan-state-reinject.js, SessionStart)
 Before a compaction (Gemini PreCompress, Copilot preCompact)
     |
     v
-State Re-inject --mark  → <os-tmpdir>/pan-state-reinject/<session+project hash>.json
+State Re-inject --mark  → <os-tmpdir>/pan-hooks-<uid>/state-reinject-<session+project hash>.json
     ^ consumes (once)
     |
 State Re-inject --inject (Gemini AfterTool, Copilot postToolUse)
