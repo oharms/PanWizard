@@ -5,9 +5,9 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.33.0] - 2026-10-03
 
-The second `/market-ideas` run (`2026-10-03`, queue `docs/specs/market-ideas-2026-10.md`, items M19–M34). Peers shipped fixes for gaps PAN had: a skipped test gate counted as a pass, auto mode took a decision's first option, free text broke planning tables, and dependents of a failed plan ran anyway.
+The second `/market-ideas` run (`2026-10-03`, queue `docs/specs/market-ideas-2026-10.md`, items M19–M34). Peers shipped fixes for gaps PAN had: a skipped test gate counted as a pass, auto mode took a decision's first option, free text broke planning tables, and dependents of a failed plan ran anyway. It also fixes what Claude Code 2.1.288 surfaced: PAN's MCP tools were invisible on the `2026-07-28` protocol, and Claude Code's prompt audit found paths, flags and tool grants in PAN's own prompts that could not work.
 
 ### Fixed
 
