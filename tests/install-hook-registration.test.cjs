@@ -82,9 +82,23 @@ function allHandlers(config, runtime) {
 
 /** The file a `node <path>` command names, resolved against the project root. */
 function hookFileOf(projectDir, command) {
-  const m = /^node\s+(\S+)$/.exec(String(command));
-  assert.ok(m, `a registered command should be "node <path>", got: ${command}`);
+  const m = /^node\s+(\S+)(?:\s+--[a-z]+(?:\s+[a-z]+)?)?$/.exec(String(command));
+  assert.ok(m, `a registered command should be "node <path> [--mode [host]]", got: ${command}`);
   return path.resolve(projectDir, m[1]);
+}
+
+/**
+ * The arguments a row's command carries: pan-state-reinject runs as `--mark` on the
+ * pre-compaction event and `--inject <host>` on the tool-result event where no start
+ * event follows a compaction (Gemini, Copilot; market-ideas M33). Every other row runs
+ * its script bare.
+ */
+function argsFor(row) {
+  const spec = lib.HOOK_EVENT_MAP[row.runtime];
+  if (row.hook !== 'pan-state-reinject.js' || !spec) return '';
+  if (row.event === spec.compactMark) return ' --mark';
+  if (row.event === spec.compactInject) return ` --inject ${row.runtime}`;
+  return '';
 }
 
 describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
@@ -113,10 +127,12 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
     // claude: SessionStart + PostToolUse + 2 x SubagentStop + Stop + statusline;
     // plus the compact SessionStart re-injection (M10);
     // codex: the four event rows + Stop (M14) + compact SessionStart (M10);
-    // copilot: the four + agentStop (M14) + statusline; gemini (R29): SessionStart +
-    // AfterAgent only — Gemini has no event the context monitor, the loggers or the
-    // re-injection could run on, and no statusline command.
-    assert.equal(ROWS.length, 21, `expected 21 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
+    // copilot: the four + agentStop (M14) + statusline, plus the re-injection's
+    // preCompact marker and postToolUse inject (M33); gemini (R29): SessionStart +
+    // AfterAgent, plus the re-injection's PreCompress marker and AfterTool inject (M33)
+    // — Gemini has no event the context monitor or the loggers could run on, and no
+    // statusline command.
+    assert.equal(ROWS.length, 25, `expected 25 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
     for (const runtime of WITH_HOOKS) {
       const spec = lib.HOOK_EVENT_MAP[runtime];
       assert.ok(spec.sessionStart, `${runtime}: every hook runtime runs the update check at session start`);
@@ -149,7 +165,7 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
       assert.equal(mine.length, 1,
         `${row.runtime}: ${marker} should be registered exactly once on ${row.event}, found ${mine.length} among [${handlers.map((h) => h.command).join(' | ')}]`);
       assert.equal(mine[0].type, 'command', `${row.runtime}: ${row.hook} must be a command hook`);
-      assert.equal(mine[0].command, `node ${RUNTIME_DIR[row.runtime]}/hooks/${row.hook}`,
+      assert.equal(mine[0].command, `node ${RUNTIME_DIR[row.runtime]}/hooks/${row.hook}${argsFor(row)}`,
         `${row.runtime}: a local install registers the hook by project-relative path into its own dir`);
       const file = hookFileOf(projectDir, mine[0].command);
       assert.equal(fs.existsSync(file), true,

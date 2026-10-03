@@ -61,7 +61,11 @@ function extractCopilotHookCommands(config) {
  * e.g., "node .claude/hooks/pan-check-update.js" → "pan-check-update.js"
  */
 function extractHookFilename(command) {
-  const parts = command.split(/[\\/]/);
+  // The script is the token after `node`; plain arguments may follow it
+  // (pan-state-reinject's `--mark` and `--inject <host>`, market-ideas M33).
+  const m = /^node\s+(?:"([^"]+)"|(\S+))/.exec(command);
+  const script = m ? (m[1] || m[2]) : command;
+  const parts = script.split(/[\\/]/);
   return parts[parts.length - 1];
 }
 

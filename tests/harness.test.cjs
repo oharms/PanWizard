@@ -548,3 +548,73 @@ describe('harness seeds: each seed\'s own test script runs green on this Node', 
     });
   }
 });
+
+// ─── live-gate-codex isolation and model-free discovery (market-ideas M31) ────
+// The gate ran `codex plugin marketplace add` with no CODEX_HOME, so it registered
+// the dev marketplace in the user's real ~/.codex/config.toml. Every codex step now
+// runs under a scratch home that scratch-home.cjs creates (Codex refuses a home that
+// does not exist), and the discovery steps ask Codex, without a model, what it loaded.
+
+// Real lines from Codex CLI 0.157.1 (2026-10-03), paths shortened.
+const CODEX_MCP_ENABLED = 'Name  Command  Args  Env  Cwd  Status   Auth\npan   node     C:/x/plugins/cache/pan-wizard-local/pan-wizard/3.32.0/pan-wizard-core/mcp/server.cjs  PLUGIN_DATA=*****, PLUGIN_ROOT=*****  C:/x  enabled  Unsupported\n';
+const CODEX_MCP_DISABLED = CODEX_MCP_ENABLED.replace('enabled  Unsupported', 'disabled  Unsupported');
+const CODEX_PLUGIN_LIST = 'PLUGIN                         STATUS              VERSION  SOURCE\npan-wizard@pan-wizard-local    installed, enabled  3.32.0   C:/repo/dist/pan-agent-plugin\n';
+
+describe('harness scratch-home.cjs creates a CLI home and refuses the real one', () => {
+  const script = path.join(ROOT, 'harness', 'scripts', 'scratch-home.cjs');
+  const { spawnSync } = require('child_process');
+  const run = (args, env) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { ...process.env, ...env } });
+
+  test('creates the directory and reports it', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-scratchhome-'));
+    try {
+      const r = run([path.join(base, 'codex-home')]);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.equal(JSON.parse(r.stdout).home, path.join(base, 'codex-home'));
+      assert.ok(fs.statSync(path.join(base, 'codex-home')).isDirectory());
+    } finally { cleanup(base); }
+  });
+
+  test('refuses the real home and its dot-directories, and allows a temp directory under it', () => {
+    // The "real" home is simulated through HOME/USERPROFILE, so the user's is never touched.
+    const fakeReal = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-scratchhome-real-'));
+    try {
+      for (const target of [fakeReal, path.join(fakeReal, '.codex'), path.join(fakeReal, '.codex', 'sub')]) {
+        const r = run([target], { HOME: fakeReal, USERPROFILE: fakeReal });
+        assert.equal(r.status, 1, target);
+        assert.match(JSON.parse(r.stdout).error, /refusing/);
+      }
+      assert.equal(fs.existsSync(path.join(fakeReal, '.codex')), false, 'nothing was created');
+      const ok = run([path.join(fakeReal, 'AppData', 'Local', 'Temp', 'h')], { HOME: fakeReal, USERPROFILE: fakeReal });
+      assert.equal(ok.status, 0, 'a temp directory inside the home (Windows os.tmpdir()) is allowed');
+      assert.equal(run([]).status, 1, 'no argument is a usage error');
+    } finally { cleanup(fakeReal); }
+  });
+});
+
+describe('live-gate-codex: a scratch CODEX_HOME and discovery without a model', () => {
+  const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'live-gate-codex');
+  const codexSteps = s.steps.filter((st) => st.kind === 'cli' && st.bin === 'codex');
+  const step = (...args) => codexSteps.find((st) => args.every((a, i) => st.args[i] === a));
+
+  test('every codex call runs under CODEX_HOME inside <other>, created before the first call', () => {
+    assert.ok(codexSteps.length >= 6, 'marketplace add/list, plugin add/list, mcp list, prompt input');
+    const home = codexSteps[0].env && codexSteps[0].env.CODEX_HOME;
+    assert.match(String(home), /^<other>\//);
+    for (const st of codexSteps) assert.equal(st.env && st.env.CODEX_HOME, home, JSON.stringify(st.args));
+    const mk = s.steps.findIndex((st) => st.kind === 'sh' && st.script === 'scratch-home.cjs');
+    assert.ok(mk > -1 && mk < s.steps.indexOf(codexSteps[0]), 'the scratch home is created first');
+    assert.deepEqual(s.steps[mk].args, [home]);
+  });
+
+  test('the discovery expectations pass on Codex\'s real output and fail when the server or plugin is not live', () => {
+    const verdict = (st, stdout) => check(st.expect, { code: 0, stdout, stderr: '' }, os.tmpdir());
+    assert.deepEqual(verdict(step('mcp', 'list'), CODEX_MCP_ENABLED), []);
+    assert.notDeepEqual(verdict(step('mcp', 'list'), CODEX_MCP_DISABLED), [], 'a disabled pan server must fail the gate');
+    assert.notDeepEqual(verdict(step('mcp', 'list'), 'Name  Command\n'), [], 'no pan server must fail the gate');
+    assert.deepEqual(verdict(step('plugin', 'list'), CODEX_PLUGIN_LIST), []);
+    assert.notDeepEqual(verdict(step('plugin', 'list'), CODEX_PLUGIN_LIST.replace('installed, enabled', 'available')), []);
+    assert.ok(step('debug', 'prompt-input').expect.some((e) => /pan-wizard:pan-help/.test(e)), 'the skill catalog is checked');
+    assert.ok(step('plugin', 'add').expect.includes('json:pluginId=pan-wizard@pan-wizard-local'));
+  });
+});

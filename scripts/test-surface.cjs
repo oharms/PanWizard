@@ -69,6 +69,10 @@ const EVENT_HOOKS = Object.freeze({
   subagentStop: ['pan-cost-logger.js', 'pan-trace-logger.js'],
   stop: ['pan-stop-guard.js'],
   compact: ['pan-state-reinject.js'],
+  // Gemini and Copilot (market-ideas M33): the marker before a compaction, and the
+  // block on the next tool result — the same script in two modes.
+  compactMark: ['pan-state-reinject.js'],
+  compactInject: ['pan-state-reinject.js'],
 });
 
 // ─── Parsers (pure) ─────────────────────────────────────────────────────────

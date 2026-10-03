@@ -103,6 +103,102 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
   };
 }
 
+// What PAN reads beyond the keys buildConfigDefaults writes (market-ideas M26). The
+// rest of the known set is derived from the defaults, so a new default is known the
+// day it is added. Each entry has a reader: loadConfig's flat aliases and alias
+// sections (`planning.*`, `git.*`), the stop guard (`mode`, `workflow.stop_guard`),
+// the roadmapper and new-project (`depth`), memory-optimize (`memory`), and the
+// workflows that config-get `workflow.auto_advance`. tests/config-keys in
+// tests/config.test.cjs pins this list against the keys shipped code and prose use.
+const CONFIG_KEYS_BEYOND_DEFAULTS = Object.freeze({
+  top: Object.freeze(['research', 'plan_checker', 'verifier', 'nyquist_validation', 'mode', 'depth', 'planning', 'git',
+    'focus', 'model_overrides', 'effort_overrides', 'cost', 'cache', 'build', 'verification', 'concurrency', 'memory']),
+  sections: Object.freeze({
+    workflow: Object.freeze(['auto_advance', 'stop_guard']),
+    planning: Object.freeze(['commit_docs', 'search_gitignored']),
+    git: Object.freeze(['branching_strategy', 'phase_branch_template', 'milestone_branch_template']),
+  }),
+});
+// Sections whose keys are the user's own (model ids, agent names, file lists,
+// commands), so nothing below them is checked.
+const OPEN_CONFIG_SECTIONS = Object.freeze(['focus', 'model_overrides', 'effort_overrides', 'cost', 'cache', 'build', 'verification', 'concurrency', 'memory']);
+
+/** The known top-level keys, and the known keys one level inside each closed section. */
+function knownConfigKeys() {
+  const defaults = buildConfigDefaults(false, {});
+  const top = new Set([...Object.keys(defaults), ...CONFIG_KEYS_BEYOND_DEFAULTS.top]);
+  const sections = new Map();
+  for (const [k, v] of Object.entries(defaults)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) sections.set(k, new Set(Object.keys(v)));
+  }
+  for (const [k, list] of Object.entries(CONFIG_KEYS_BEYOND_DEFAULTS.sections)) {
+    sections.set(k, new Set([...(sections.get(k) || []), ...list]));
+  }
+  for (const k of OPEN_CONFIG_SECTIONS) sections.delete(k);
+  return { top, sections };
+}
+
+/**
+ * Whether PAN reads a dot-notation key path: the top-level key is known, and inside a
+ * closed section so is the second segment. Deeper segments are not checked.
+ * @param {string} keyPath
+ * @returns {boolean}
+ */
+function isKnownConfigPath(keyPath) {
+  const [head, sub] = String(keyPath).split('.');
+  const { top, sections } = knownConfigKeys();
+  if (!top.has(head)) return false;
+  return sub === undefined || !sections.has(head) || sections.get(head).has(sub);
+}
+
+/**
+ * The key paths in a parsed config.json that PAN does not read (market-ideas M26):
+ * unknown top-level keys, and unknown keys one level inside a closed section.
+ * @param {Object} config
+ * @returns {string[]}
+ */
+function unknownConfigKeys(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return [];
+  const { top, sections } = knownConfigKeys();
+  const unknown = [];
+  for (const [k, v] of Object.entries(config)) {
+    if (!top.has(k)) { unknown.push(k); continue; }
+    const known = sections.get(k);
+    if (!known || !v || typeof v !== 'object' || Array.isArray(v)) continue;
+    for (const sub of Object.keys(v)) if (!known.has(sub)) unknown.push(`${k}.${sub}`);
+  }
+  return unknown;
+}
+
+/** The known key path nearest an unknown one (edit distance 2 or less), or null. */
+function nearestConfigKey(keyPath) {
+  const { top, sections } = knownConfigKeys();
+  const candidates = [...top];
+  for (const [k, subs] of sections) for (const s of subs) candidates.push(`${k}.${s}`);
+  const want = String(keyPath).split('.').slice(0, 2).join('.');
+  let best = null;
+  let bestD = 3;
+  for (const c of candidates) {
+    const d = editDistance(want, c);
+    if (d < bestD) { best = c; bestD = d; }
+  }
+  return best;
+}
+
+function editDistance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return row[b.length];
+}
+
 function cmdConfigEnsureSection(cwd, raw) {
   const configPath = path.join(planningPath(cwd), CONFIG_FILE);
 
@@ -216,6 +312,14 @@ function cmdConfigSet(cwd, keyPath, value, raw) {
   try {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
     const result = { updated: true, key: keyPath, value: parsedValue };
+    // A key PAN does not read is still written (a newer PAN, or the user's own
+    // note, may want it), but never silently: a typo used to look like a setting
+    // that took effect (market-ideas M26).
+    if (!isKnownConfigPath(keyPath)) {
+      const near = nearestConfigKey(keyPath);
+      result.warning = `unknown config key "${keyPath}": PAN does not read it` + (near ? `; did you mean "${near}"?` : '');
+      process.stderr.write(`pan-tools: ${result.warning}\n`);
+    }
     output(result, raw, `${keyPath}=${parsedValue}`);
   } catch (err) {
     // Config file could not be written — disk full, permissions, etc.
@@ -664,6 +768,12 @@ function cmdStandardsTools(cwd, standardId, raw) {
 
 module.exports = {
   buildConfigDefaults,
+  CONFIG_KEYS_BEYOND_DEFAULTS,
+  OPEN_CONFIG_SECTIONS,
+  knownConfigKeys,
+  isKnownConfigPath,
+  unknownConfigKeys,
+  nearestConfigKey,
   cmdConfigEnsureSection,
   cmdConfigSet,
   cmdConfigGet,

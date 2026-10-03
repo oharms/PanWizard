@@ -10,8 +10,13 @@ Template for `.planning/phases/XX-name/{phase_num}-verification.md` — phase go
 ---
 phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
+verified_commit: <sha> # git rev-parse HEAD before writing this file; `pan-tools verify stale` compares against it
 status: passed | gaps_found | human_needed
 score: N/M must-haves verified
+test_gate: passed | failed | skipped
+not_checked: # Only for checks that could not run, with why — a skipped test gate is one
+  - check: "tests"
+    reason: "no test script in package.json"
 unrequested: # Only when the scope check (`pan-tools verify scope <phase>`) found work no plan asked for
   - path: "src/admin/panel.tsx"
     what: "An admin panel no plan or requirement asked for"

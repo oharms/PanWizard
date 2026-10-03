@@ -57,6 +57,8 @@ const EVENT_HOOKS = Object.freeze({
   postToolUse: ['pan-context-monitor.js'],
   subagentStop: ['pan-cost-logger.js', 'pan-trace-logger.js'],
   compact: ['pan-state-reinject.js'],
+  compactMark: ['pan-state-reinject.js'],
+  compactInject: ['pan-state-reinject.js'],
 });
 
 /**
@@ -667,7 +669,9 @@ describe('hook × runtime registration — the matrix this file must cover', () 
     // settings.json` while its events live in `.github/hooks/pan.json`, so the walk
     // covers the whole config directory rather than a per-runtime file list.
     for (const runtime of Object.keys(RUNTIME_DIR)) {
-      const claimed = REGISTERED.filter((row) => row.runtime === runtime).map((row) => row.hook).sort();
+      // A hook may hold two rows on one runtime (pan-state-reinject's marker and inject
+      // modes on Gemini and Copilot, M33); the install walk sees each file once.
+      const claimed = [...new Set(REGISTERED.filter((row) => row.runtime === runtime).map((row) => row.hook))].sort();
       const actual = registeredHooks(path.join(installs.get(runtime), RUNTIME_DIR[runtime]));
       assert.deepEqual(actual, claimed, `the ${runtime} install registers ${JSON.stringify(actual)}, the registry claims ${JSON.stringify(claimed)}`);
     }

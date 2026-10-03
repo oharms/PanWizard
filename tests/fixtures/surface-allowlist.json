@@ -56,10 +56,6 @@
     "reason": "default written, never named by a test — P2 config-defaults test"
   },
   {
-    "id": "config:routing.complexity_thresholds.upgrade_min",
-    "reason": "default written, never named by a test — P2 config-defaults test"
-  },
-  {
     "id": "config:search_gitignored",
     "reason": "default written, never named by a test — P2 config-defaults test"
   },

@@ -919,7 +919,7 @@ When `workflow.auto_advance: true` in config:
 | Checkpoint | Behavior |
 |------------|----------|
 | `checkpoint:human-verify` | Auto-approved (skips visual verification) |
-| `checkpoint:decision` | Auto-selects first option |
+| `checkpoint:decision` | Takes the option the task's `auto_select` names; stops for you when it has none |
 | `checkpoint:human-action` | Still stops (auth gates cannot be automated) |
 
 ### Bot-army campaigns (`/pan:army`)

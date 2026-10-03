@@ -57,12 +57,12 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 165 |
+| Unit test files (`tests/*.test.cjs`) | 167 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 4847 |
-| Total test suites | 1039 |
+| Total tests (npm run test:all) | 4954 |
+| Total test suites | 1062 |
 | Hooks (`hooks/*.js`) | 7 |
-| Specs (`docs/specs/*.md`) | 52 |
+| Specs (`docs/specs/*.md`) | 53 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
 
 These are a snapshot of the **current working tree**, not of any released tag — a branch mid-audit carries files `main` does not (test files especially). They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
@@ -124,7 +124,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 ### Source code (shipped by installer)
 
 - `bin/install.js` — Installer entry point
-- `bin/install-lib.cjs` — Installer functions, free of filesystem writes (`verifyInstall()`/`dirDigest()` only read; the merge and strip helpers `stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()` and `stripMcpRegistration()` edit the object they are given)
+- `bin/install-lib.cjs` — Installer functions, free of filesystem writes (`verifyInstall()`/`verifyHookEntrypoints()`/`dirDigest()` only read; the merge and strip helpers `stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()` and `stripMcpRegistration()` edit the object they are given)
 - `pan-wizard-core/bin/pan-tools.cjs` — CLI dispatcher
 - `pan-wizard-core/bin/lib/*.cjs` — Core CJS modules
 - `pan-wizard-core/workflows/*.md` — Multi-step workflow definitions
@@ -169,7 +169,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 ### Key design patterns
 
 - **CommonJS (.cjs)** for all core modules — required for Claude Code compatibility
-- **Pure functions** in `install-lib.cjs` — no filesystem writes — two read-only helpers (`verifyInstall()`, `dirDigest()`) read the filesystem, and the merge and strip helpers (`stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()`, `stripMcpRegistration()`) edit the object they are given; fully testable
+- **Pure functions** in `install-lib.cjs` — no filesystem writes — the read-only helpers (`verifyInstall()`, `verifyHookEntrypoints()`, `dirDigest()`) read the filesystem, and the merge and strip helpers (`stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()`, `stripMcpRegistration()`) edit the object they are given; fully testable
 - **Runtime-agnostic** commands and agents — no PAN-specific hardcoding in shipped content
 - **Path normalization** via `toPosix()` — cross-platform path handling
 - **Manifest-based tracking** — `pan-file-manifest.json` hashes the PAN files the installer copies in (the runtime's own core — not the shared `.agents/pan-wizard-core/` of a `--unified-skills` install — commands or skills, agents, hook scripts, native workflows), not the config files it writes or merges into

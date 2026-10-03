@@ -229,7 +229,7 @@ For full automation-first patterns, server lifecycle, CLI handling:
 **Auto-mode checkpoint behavior** (when `AUTO_CFG` is `"true"`):
 
 - **checkpoint:human-verify** → Auto-approve. Log `⚡ Auto-approved: [what-built]`. Continue to next task.
-- **checkpoint:decision** → Auto-select first option (planners front-load the recommended choice). Log `⚡ Auto-selected: [option name]`. Continue to next task.
+- **checkpoint:decision** → If the task carries `auto_select="<option id>"`, take that option. Log `⚡ Auto-selected: [option name] (auto_select)`. Continue to next task. **Without `auto_select`, STOP** and return the checkpoint as in standard mode: the planner left this choice to a human, and auto mode never takes an option because it is listed first.
 - **checkpoint:human-action** → STOP normally. Auth gates cannot be automated — return structured checkpoint message using checkpoint_return_format.
 
 **Standard checkpoint behavior** (when `AUTO_CFG` is not `"true"`):

@@ -1,18 +1,32 @@
 {
   "id": "live-gate-codex",
   "tier": 0,
-  "description": "Register this checkout's repo-scoped marketplace with Codex CLI and confirm it is listed.",
-  "why": "Plan item 4d/4f's gate for Codex. The marketplace shape and CLI commands come from the Codex plugin reference (read 2026-09-10); first run live 2026-09-26 on Codex CLI 0.157.1, where both CLI steps passed. SKIPPED with reason when the CLI is absent.",
+  "description": "Register this checkout's repo-scoped marketplace with Codex CLI in a scratch home, install the plugin, and confirm without a model that Codex loaded PAN's MCP server and skills.",
+  "why": "Plan item 4d/4f's gate for Codex, deepened by market-ideas M31 (2026-10-03): the steps after the marketplace ask Codex what it loaded, the shape the Agent Plugins conformance CI uses (install, then MCP status) plus the skill catalog Codex renders into a prompt, all model-free. Every codex step runs with CODEX_HOME at a scratch home under <other>: until 2026-10-03 this gate set none and registered the dev marketplace in the user's real ~/.codex/config.toml. First run live 2026-09-26 on Codex CLI 0.157.1; the discovery steps were measured on the same build on 2026-10-03. SKIPPED with reason when the CLI is absent.",
   "seed": "empty",
   "install": null,
   "requires": { "cli": "codex" },
-  "budget": { "maxUsd": 0, "maxMinutes": 8, "maxStepMinutes": 4 },
+  "budget": { "maxUsd": 0, "maxMinutes": 10, "maxStepMinutes": 4 },
   "steps": [
     { "kind": "build", "script": "build-agent-plugin.js", "out": "<repo>/dist/pan-agent-plugin", "expect": ["exit:0"],
       "why": "The repo's .agents/plugins/marketplace.json points at ./dist/pan-agent-plugin, so the bundle must exist there before Codex can resolve the entry." },
-    { "kind": "cli", "bin": "codex", "args": ["plugin", "marketplace", "add", "<repo>"], "expect": ["exit:0"],
+    { "kind": "sh", "script": "scratch-home.cjs", "args": ["<other>/codex-home"], "expect": ["exit:0", "json:home"],
+      "why": "Codex refuses a CODEX_HOME that does not exist yet (\"failed to resolve CODEX_HOME\"), so the scratch home is created first. The script refuses the real home and its dot-directories." },
+    { "kind": "cli", "bin": "codex", "args": ["plugin", "marketplace", "add", "<repo>"], "env": { "CODEX_HOME": "<other>/codex-home" }, "expect": ["exit:0"],
       "why": "Codex reference: `codex plugin marketplace add <source>`; a local repo path is an accepted source. Its stderr on failure is the evidence to adjust from." },
-    { "kind": "cli", "bin": "codex", "args": ["plugin", "marketplace", "list"], "expect": ["exit:0", "stdout~pan-wizard-local"],
-      "why": "The marketplace registered under the name in .agents/plugins/marketplace.json." }
+    { "kind": "cli", "bin": "codex", "args": ["plugin", "marketplace", "list"], "env": { "CODEX_HOME": "<other>/codex-home" }, "expect": ["exit:0", "stdout~pan-wizard-local"],
+      "why": "The marketplace registered under the name in .agents/plugins/marketplace.json." },
+    { "kind": "cli", "bin": "codex", "args": ["plugin", "add", "pan-wizard@pan-wizard-local", "--json"], "env": { "CODEX_HOME": "<other>/codex-home" },
+      "expect": ["exit:0", "json:pluginId=pan-wizard@pan-wizard-local", "json:installedPath"],
+      "why": "The install the conformance CI starts from: Codex copies the bundle into its plugin cache and reports where." },
+    { "kind": "cli", "bin": "codex", "args": ["plugin", "list"], "env": { "CODEX_HOME": "<other>/codex-home" },
+      "expect": ["exit:0", "stdout~pan-wizard@pan-wizard-local\\s+installed, enabled"],
+      "why": "Codex's own view of the plugin after the install." },
+    { "kind": "cli", "bin": "codex", "args": ["mcp", "list"], "env": { "CODEX_HOME": "<other>/codex-home" },
+      "expect": ["exit:0", "stdout~pan\\s+node\\s.*\\benabled\\b"],
+      "why": "The bundle's mcp.json reached Codex: the `pan` server is configured and enabled, read without starting a session or calling a model." },
+    { "kind": "cli", "bin": "codex", "args": ["debug", "prompt-input"], "env": { "CODEX_HOME": "<other>/codex-home" },
+      "expect": ["exit:0", "stdout~pan-wizard:pan-help"],
+      "why": "The skill catalog Codex renders into a model's prompt lists PAN's skills under the plugin's namespace. `debug prompt-input` builds the prompt without sending it, so no login and no model." }
   ]
 }

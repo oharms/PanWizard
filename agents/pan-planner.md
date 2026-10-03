@@ -187,7 +187,7 @@ Every task has four required fields:
 |------|---------|----------|
 | `auto` | Everything Claude can do independently | Fully autonomous |
 | `checkpoint:human-verify` | Visual/functional verification | Pauses for user |
-| `checkpoint:decision` | Implementation choices | Pauses for user |
+| `checkpoint:decision` | Implementation choices | Pauses for user; in auto mode takes `auto_select` if the task names one |
 | `checkpoint:human-action` | Truly unavoidable manual steps (rare) | Pauses for user |
 
 **Automation-first rule:** If Claude CAN do it via CLI/API, Claude MUST do it. Checkpoints verify AFTER automation, not replace it.
@@ -227,6 +227,15 @@ This prevents the "scavenger hunt" anti-pattern where executors explore the code
 | "Set up the database" | "Add User and Project models to schema.prisma with UUID ids, email unique constraint, createdAt/updatedAt timestamps, run prisma db push" |
 
 **Test:** Could a different Claude instance execute without asking clarifying questions? If not, add specificity.
+
+## Decisions, Not Code
+
+A plan records the decisions an executor needs; it does not write the code for them. Specific means decided, not implemented.
+
+- **Put in the plan:** names, signatures and types the task introduces, values and limits (15-min expiry, 3-50 chars), library choices with the reason, the assertions the tests must make, and the verify command.
+- **Leave out:** function bodies, complete files, and any code block longer than a signature, a type or a short config snippet. `verify plan-structure` warns on a code block in an `<action>` over 20 lines.
+- **Planning is not building.** Write only plan files. Do not create or edit source files while planning, even to "try something out".
+- **Proportion check before you finish:** if a plan is longer than the code it describes would be, or holds code an executor could paste unchanged, cut it back to the decisions.
 
 ## TDD Detection
 
@@ -716,7 +725,7 @@ Human makes implementation choice affecting direction.
 Use for: Technology selection, architecture decisions, design choices.
 
 ```xml
-<task type="checkpoint:decision" gate="blocking">
+<task type="checkpoint:decision" gate="blocking" auto_select="option-a">
   <decision>[What's being decided]</decision>
   <context>[Why this matters]</context>
   <options>
@@ -729,6 +738,8 @@ Use for: Technology selection, architecture decisions, design choices.
   <resume-signal>Select: option-a, option-b, or ...</resume-signal>
 </task>
 ```
+
+`auto_select` is the option auto mode takes, and only that. Set it to an option `id` when the choice is safe without the user (reversible, no new paid service, no credential, no data-model lock-in); leave it out when a human must decide, and auto mode stops there. Option order never decides anything.
 
 **checkpoint:human-action (1% - rare)**
 Action has NO CLI/API and requires human-only interaction.
@@ -1202,8 +1213,10 @@ STRUCTURE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structu
 Returns JSON: `{ valid, errors, warnings, task_count, tasks }`
 
 **If errors exist:** Fix before committing:
-- Missing `<name>` in task → add name element
-- Missing `<action>` → add action element
+- Missing `<name>` in an auto task → add name element
+- Missing `<action>` in an auto task → add action element
+- A checkpoint missing its own elements (`<decision>` + `<options>`, `<what-built>` + `<how-to-verify>`, or `<action>`) → add them; checkpoints need no `<name>`/`<files>`/`<verify>`/`<done>`
+- `auto_select` names no option → name a real option `id`, or drop `auto_select` so a human decides
 - Checkpoint/autonomous mismatch → update `autonomous: false`
 </step>
 

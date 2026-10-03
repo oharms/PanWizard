@@ -136,6 +136,10 @@ TEST_TOTAL: ${TEST_COUNT}
 TEST_PASSED: ${TEST_PASS}
 TEST_FAILED: ${TEST_FAIL}
 ```
+   Write `test_gate: ${TEST_GATE_STATUS}` into the verification.md frontmatter. When it is
+   `skipped`, also add a `not_checked` entry (`check: "tests"`, `reason: "no test script in
+   package.json"`). The recorder reads both: a pass whose tests never ran is recorded as a
+   pass with tests not checked, never as a plain pass.
 
 **If test gate FAILED:** Continue verification (gather full picture) but set overall status to `gaps_found` regardless of goal-backward results. Include test failures as gaps in the report.
 </step>
@@ -284,7 +288,7 @@ Format each as: Test Name → What to do → Expected result → Why can't verif
 </step>
 
 <step name="determine_status">
-**passed:** All truths VERIFIED, all artifacts pass levels 1-3, all key links WIRED, no blocker anti-patterns, AND test gate passed or skipped.
+**passed:** All truths VERIFIED, all artifacts pass levels 1-3, all key links WIRED, no blocker anti-patterns, AND test gate passed or skipped. A skipped gate is listed in `not_checked` with its reason, and the report to the user says the tests did not run.
 
 **gaps_found:** Any truth FAILED, artifact MISSING/STUB, key link NOT_WIRED, blocker found, OR test gate FAILED (test regressions detected).
 
@@ -306,9 +310,10 @@ If gaps_found:
 <step name="create_report">
 ```bash
 REPORT_PATH="$PHASE_DIR/${PHASE_NUM}-verification.md"
+VERIFIED_COMMIT=$(git rev-parse HEAD 2>/dev/null)
 ```
 
-Fill template sections: frontmatter (phase/timestamp/status/score), **test gate results** (status/total/passed/failed), goal achievement, artifact table, wiring table, requirements coverage, anti-patterns, human verification, gaps summary, fix plans (if gaps_found), metadata.
+Fill template sections: frontmatter (phase/timestamp/`verified_commit: ${VERIFIED_COMMIT}`/status/score/`test_gate`), **test gate results** (status/total/passed/failed), goal achievement, artifact table, wiring table, requirements coverage, anti-patterns, human verification, gaps summary, fix plans (if gaps_found), metadata.
 
 See ~/.claude/pan-wizard-core/templates/verification-report.md for complete template.
 </step>

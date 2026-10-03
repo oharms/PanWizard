@@ -438,7 +438,7 @@ function convertClaudeCommandToCodexSkill(content, skillName) {
   description = toSingleLine(description);
   const shortDescription = description.length > 180 ? `${description.slice(0, 177)}...` : description;
   const adapter = getCodexSkillAdapterHeader(skillName);
-  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nlicense: ${yamlQuote(SKILL_LICENSE)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
 }
 
 /**
@@ -474,6 +474,12 @@ ${note ? `\n${note}\n` : ''}</pan_skill_adapter>`;
  * for environment requirements (max 500 chars). Kept short and factual: these
  * are the two things a host cannot infer and that every PAN skill depends on.
  */
+// The Agent Skills `license` field: optional in the spec, and GitHub's validator
+// (`gh skill publish --dry-run`) warns on every skill without it (market-ideas M30).
+// Read from package.json so the skills always carry the package's own licence.
+const SKILL_LICENSE = (() => {
+  try { return require('../package.json').license || 'MIT'; } catch { return 'MIT'; }
+})();
 const SKILL_COMPATIBILITY = 'Requires Node.js (skills invoke the bundled pan-tools CLI) and a project with a .planning/ directory, created by /pan-new-project or /pan-map-codebase.';
 
 function convertClaudeCommandToUnifiedSkill(content, skillName, opts = {}) {
@@ -500,7 +506,7 @@ function convertClaudeCommandToUnifiedSkill(content, skillName, opts = {}) {
   // Deliberately NOT emitting `allowed-tools`: it is marked experimental in the
   // spec, and ADR-0028's frontmatter rule is that anything unverified stays out
   // until a live per-runtime check confirms no parser rejects it.
-  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\ncompatibility: ${yamlQuote(SKILL_COMPATIBILITY)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nlicense: ${yamlQuote(SKILL_LICENSE)}\ncompatibility: ${yamlQuote(SKILL_COMPATIBILITY)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
 }
 
 // ─── Unified-skill content rewrites (extracted from bin/install.js, 2026-09) ──
@@ -707,6 +713,65 @@ function agentPluginSkillAdapterNote(kind = 'skill') {
 - \`${AGENT_PLUGIN_RUNTIME_HOME_TOKEN}\` is your runtime's user-level configuration directory (for example \`~/.claude\`, \`~/.codex\`, \`~/.gemini\`, \`~/.config/opencode\`, \`~/.copilot\`) and \`${AGENT_PLUGIN_RUNTIME_DIR_TOKEN}\` its project-level directory (\`.claude\`, \`.codex\`, \`.gemini\`, \`.opencode\`, \`.github\`). Substitute the one that applies to the runtime you are.`;
 }
 
+// ─── Agent Plugin skills over Codex's prompt cut (market-ideas S8) ──────────
+// Codex injects at most the first 8,000 bytes of a skill that came from an Agent
+// Plugin (codex-rs/ext/skills/src/render.rs `MAX_SKILL_PROMPT_BYTES`, host_prompt.rs).
+// Measured on Codex CLI 0.157.1 on 2026-10-03: a 56,540-byte PAN skill reached the
+// model as its first 8,000 bytes, cut mid-sentence; the same skill from an install's
+// .agents/skills/ arrived whole, so only the bundle is affected. A bundle skill over
+// the cut ships as a short SKILL.md that keeps its frontmatter and adapter block and
+// points at the full instructions in references/instructions.md, the Agent Skills
+// directory for files a skill loads on demand.
+const AGENT_PLUGIN_SKILL_MAX_BYTES = 8000;
+const AGENT_PLUGIN_SKILL_REFERENCE = 'references/instructions.md';
+const SKILL_SUMMARY_MIN_CHARS = 40;
+
+/**
+ * Split a converted bundle skill that is longer than Codex loads into a pointer
+ * SKILL.md and a reference file. Pure. A skill within the limit comes back as is.
+ * @param {string} skillMd - the unified converter's output (frontmatter + adapter + body)
+ * @param {string} skillName
+ * @param {number} [maxBytes]
+ * @returns {{skill: string, reference: string|null}}
+ */
+function splitOversizedSkill(skillMd, skillName, maxBytes = AGENT_PLUGIN_SKILL_MAX_BYTES) {
+  if (Buffer.byteLength(skillMd, 'utf8') <= maxBytes) return { skill: skillMd, reference: null };
+  const close = '</pan_skill_adapter>';
+  const end = skillMd.indexOf(close);
+  if (end === -1) throw new Error(`splitOversizedSkill: ${skillName} has no adapter block to keep`);
+  const head = skillMd.slice(0, end + close.length);
+  const body = skillMd.slice(end + close.length).replace(/^\s+/, '');
+  const pointer = (summary) => [
+    head,
+    '',
+    '## Instructions',
+    '',
+    `This skill's full instructions are in \`${AGENT_PLUGIN_SKILL_REFERENCE}\`, in the same directory as this SKILL.md: they are longer than some runtimes load into a prompt. Before you do anything else, read that file in full with your file-reading tool, then follow it exactly. It is the complete procedure, and nothing on this page replaces it.`,
+    ...(summary ? ['', '## What this skill does', '', summary] : []),
+    '',
+  ].join('\n');
+  // The command's own <objective> is the summary, else its first plain prose
+  // paragraph; trimmed at word boundaries until the page fits, and dropped when
+  // too little of it would be left.
+  let summary = ((body.match(/<objective>\s*([\s\S]*?)\s*<\/objective>/) || [])[1] || '').trim();
+  if (!summary) {
+    summary = body.split(/\n\s*\n/).map((p) => p.trim())
+      .find((p) => p.length >= SKILL_SUMMARY_MIN_CHARS && !/^[#<`|>\-*]/.test(p) && !/^\d+\./.test(p)) || '';
+  }
+  let skill = pointer(summary);
+  while (summary && Buffer.byteLength(skill, 'utf8') > maxBytes) {
+    summary = summary.slice(0, Math.floor(summary.length * 0.8)).replace(/\s+\S*$/, '');
+    if (summary.length < SKILL_SUMMARY_MIN_CHARS) summary = '';
+    else summary += ' …';
+    skill = pointer(summary);
+  }
+  if (Buffer.byteLength(skill, 'utf8') > maxBytes) {
+    throw new Error(`splitOversizedSkill: ${skillName}'s frontmatter and adapter alone exceed ${maxBytes} bytes`);
+  }
+  const reference = `# ${skillName}: full instructions\n\nRead from \`${skillName}/SKILL.md\`, whose adapter block defines \`${AGENT_PLUGIN_ROOT_TOKEN}\`, \`{{PAN_ARGS}}\` and the runtime-directory tokens used below.\n\n${body}`;
+  return { skill, reference };
+}
+
 /** Generate Copilot CLI skill adapter header */
 function getCopilotSkillAdapterHeader(skillName) {
   const invocation = `/pan-${skillName.replace(/^pan-/, '')}`;
@@ -743,7 +808,7 @@ function convertClaudeCommandToCopilotSkill(content, skillName) {
   description = toSingleLine(description);
   const shortDescription = description.length > 180 ? `${description.slice(0, 177)}...` : description;
   const adapter = getCopilotSkillAdapterHeader(skillName);
-  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nlicense: ${yamlQuote(SKILL_LICENSE)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
 }
 
 /** Claude agent → Copilot .agent.md */
@@ -837,6 +902,31 @@ function convertClaudeToCopilotAgent(content, opts = {}) {
 }
 
 // ─── Attribution Processing ─────────────────────────────────────────────────
+
+/**
+ * The commit attribution Claude Code's settings ask for, in processAttribution's
+ * terms: undefined keeps PAN's default `Co-Authored-By` line, null removes it, a
+ * string replaces it. Claude Code's settings reference (read 2026-10-03):
+ * `attribution: false` hides all attribution (2.1.281 and later); an empty
+ * `attribution.commit` hides the commit trailer and a non-empty one replaces it; once
+ * `commit` or `pr` is set the deprecated `includeCoAuthoredBy` is ignored, and before
+ * that `includeCoAuthoredBy: false` still hides the trailer. Until 2026-10-03 PAN
+ * read only `attribution.commit`, so `false` (an explicit request to hide) kept the
+ * default line.
+ * @param {object|null} settings - a parsed Claude settings.json
+ * @returns {string|null|undefined}
+ */
+function commitAttributionFromSettings(settings) {
+  const s = settings && typeof settings === 'object' ? settings : {};
+  const a = s.attribution;
+  if (a === false) return null;
+  if (a && typeof a === 'object') {
+    if (typeof a.commit === 'string') return a.commit === '' ? null : a.commit;
+    if (a.pr !== undefined) return undefined; // attribution set: includeCoAuthoredBy no longer applies
+  }
+  if (s.includeCoAuthoredBy === false) return null;
+  return undefined;
+}
 
 /**
  * Process Co-Authored-By lines based on attribution setting.
@@ -1042,16 +1132,25 @@ function stripThinkingFrontmatter(content, runtime) {
  * @param {Object} commands
  * @param {string} commands.updateCheckCommand   - node invocation for pan-check-update.js
  * @param {string} commands.contextMonitorCommand - node invocation for pan-context-monitor.js
+ * @param {string} [commands.stateReinjectMarkCommand]   - pan-state-reinject.js `--mark` (preCompact)
+ * @param {string} [commands.stateReinjectInjectCommand] - pan-state-reinject.js `--inject copilot` (postToolUse)
  * @returns {Object} A `.github/hooks/pan.json` config object
  */
 function buildCopilotHooksConfig(commands) {
-  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand } = commands || {};
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand,
+    stateReinjectMarkCommand, stateReinjectInjectCommand } = commands || {};
   const config = { version: 1, hooks: {} };
   if (updateCheckCommand) {
     config.hooks.sessionStart = [{ type: 'command', command: updateCheckCommand }];
   }
-  if (contextMonitorCommand) {
-    config.hooks.postToolUse = [{ type: 'command', command: contextMonitorCommand }];
+  const postToolUse = [];
+  if (contextMonitorCommand) postToolUse.push({ type: 'command', command: contextMonitorCommand });
+  // State re-injection after a compaction (M33): preCompact leaves the marker, the
+  // next postToolUse returns the block once (hooks/pan-state-reinject.js).
+  if (stateReinjectInjectCommand) postToolUse.push({ type: 'command', command: stateReinjectInjectCommand });
+  if (postToolUse.length > 0) config.hooks.postToolUse = postToolUse;
+  if (stateReinjectMarkCommand) {
+    config.hooks.preCompact = [{ type: 'command', command: stateReinjectMarkCommand }];
   }
   // subagentStop is Copilot's SubagentStop equivalent (verified docs.github.com
   // 2026-06) — carries the cost + trace loggers, same as Claude and Codex (Gemini registers neither).
@@ -1107,15 +1206,20 @@ function buildCopilotHooksConfig(commands) {
  * `compact` is where the state re-injection hook registers (M10): SessionStart with
  * the `compact` matcher (HOOK_SLOT_MATCHERS), the one event after a compaction whose
  * `hookSpecificOutput.additionalContext` reaches the model on Claude Code and Codex —
- * both hosts' PostCompact discard it (hooks references, read 2026-09-26). Gemini's
- * PreCompress fires before the summary and Copilot's preCompact is notification-only,
- * so neither gets it.
+ * both hosts' PostCompact discard it (hooks references, read 2026-09-26).
+ *
+ * `compactMark` / `compactInject` (market-ideas M33) carry it where no start event
+ * follows a compaction. Gemini's PreCompress and Copilot's preCompact are advisory,
+ * so the hook runs in two steps: a marker before the compaction, the block on the
+ * next tool result, the first point after it where both hosts take added context
+ * (gemini-cli v0.61.0 docs/hooks/reference.md; Copilot hooks reference; read
+ * 2026-10-03, and live on Copilot CLI 1.0.88 the same day).
  */
 const HOOK_EVENT_MAP = Object.freeze({
-  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart' },
-  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null },
-  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart' },
-  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null },
+  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null, compactMark: 'PreCompress', compactInject: 'AfterTool' },
+  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null, compactMark: 'preCompact', compactInject: 'postToolUse' },
   opencode: null,
 });
 
@@ -1140,14 +1244,16 @@ const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-context-monit
  *
  * @param {object} hooks - settings.hooks
  * @param {string[]} hookNames - script basenames without `.js` (e.g. 'pan-stop-guard')
- * @param {string|null} [keepEvent] - the event the hook now belongs to, left alone
+ * @param {string|string[]|null} [keepEvent] - the event (or events: a hook such as
+ *   pan-state-reinject registers under two on Gemini) the hook now belongs to, left alone
  * @returns {string[]}
  */
 function stripPanHookEntries(hooks, hookNames, keepEvent = null) {
   const touched = [];
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return touched;
+  const keep = new Set([].concat(keepEvent || []));
   for (const event of Object.keys(hooks)) {
-    if (event === keepEvent || !Array.isArray(hooks[event])) continue;
+    if (keep.has(event) || !Array.isArray(hooks[event])) continue;
     const before = hooks[event].length;
     hooks[event] = hooks[event].filter(entry => !(entry && Array.isArray(entry.hooks)
       && entry.hooks.some(h => h && typeof h.command === 'string' && hookNames.some(n => h.command.includes(n)))));
@@ -1717,6 +1823,49 @@ function verifyInstall(configDir, manifest) {
   }
 
   return { ok: missing.length === 0 && empty.length === 0, missing, empty, warnings };
+}
+
+/**
+ * The script a PAN hook command runs, as written in the command: `node "<path>"`
+ * (global installs, buildHookCommand) or `node <dir>/hooks/<hook>.js` (local
+ * installs, relative to the project root). Null for any other command shape.
+ * @param {string} command
+ * @returns {string|null}
+ */
+function hookCommandScript(command) {
+  // Plain arguments may follow the script (`--mark`, `--inject gemini`, M33).
+  const m = /^node\s+(?:"([^"]+)"|([^\s"]+))(?:\s+[^\s"]+)*$/.exec(String(command || '').trim());
+  return m ? (m[1] || m[2]) : null;
+}
+
+/**
+ * Check that every hook command an install is about to register runs a script
+ * that exists and has content (market-ideas M24). Read-only: nothing is executed
+ * or written. A dev install from a clone without `npm run build:hooks` copied no
+ * hook scripts and registered every hook anyway, so each session event ran a
+ * missing file. A relative script resolves against `projectRoot`, the directory a
+ * local install's hook commands run from.
+ *
+ * @param {string[]} commands - the hook commands to register
+ * @param {string} projectRoot
+ * @returns {{ok: boolean, missing: string[]}} each missing entry names the script and why
+ */
+function verifyHookEntrypoints(commands, projectRoot) {
+  const missing = [];
+  for (const command of commands) {
+    const script = hookCommandScript(command);
+    if (!script) {
+      missing.push(`${command} (not a "node <script>" command)`);
+      continue;
+    }
+    const abs = path_v.isAbsolute(script) ? script : path_v.join(projectRoot, script);
+    try {
+      if (fs_v.statSync(abs).size === 0) missing.push(`${script} (empty)`);
+    } catch {
+      missing.push(`${script} (missing)`);
+    }
+  }
+  return { ok: missing.length === 0, missing };
 }
 
 // ─── Claude Code plugin packaging (2026-06) ─────────────────────────────────
@@ -2353,6 +2502,7 @@ module.exports = {
   convertClaudeToCopilotAgent,
   // Attribution
   processAttribution,
+  commitAttributionFromSettings,
   // JSONC
   parseJsonc,
   // Opus 4.7 capabilities
@@ -2392,6 +2542,9 @@ module.exports = {
   buildAgentPluginManifest,
   buildAgentPluginMcpConfig,
   agentPluginSkillAdapterNote,
+  AGENT_PLUGIN_SKILL_MAX_BYTES,
+  AGENT_PLUGIN_SKILL_REFERENCE,
+  splitOversizedSkill,
   buildCopilotPluginHooksConfig,
   COPILOT_PLUGIN_NAMESPACE,
   buildPluginManifest,
@@ -2400,6 +2553,8 @@ module.exports = {
   buildPluginSelfTestCommand,
   // Install verification (v3.7.10)
   verifyInstall,
+  hookCommandScript,
+  verifyHookEntrypoints,
   // AGENTS.md universal rules layer (ADR-0028 Phase 3)
   buildAgentsMdSection,
   upsertAgentsMdSection,

@@ -227,7 +227,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
 | `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
 | `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A re-verification auto-fixes the findings it no longer reports, a regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
-| `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. Re-exported through verify.cjs. |
+| `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. Re-exported through verify.cjs. |
 
 ---
 
@@ -444,6 +444,8 @@ Quick reference of all CLI commands grouped by category.
 | 205 | `findings debt` | Evidence loop | findings.cjs |
 | 206 | `verify scope` | Verification | verify-scope.cjs |
 | 207 | `optimize revert` | Optimization | optimize.cjs |
+| 208 | `verify stale` | Verification | verify-scope.cjs |
+| 209 | `version` | Utility | commands.cjs |
 
 ---
 
@@ -967,6 +969,7 @@ Index all plans within a phase, grouped by wave, with completion status. Used by
 
 ```bash
 pan-tools phase-plan-index 5
+pan-tools phase-plan-index 5 --failed 05-01,05-02
 ```
 
 **JSON output:**
@@ -980,6 +983,7 @@ pan-tools phase-plan-index 5
       "autonomous": true,
       "objective": "Set up database schema",
       "files_modified": ["src/db/schema.ts"],
+      "depends_on": [],
       "task_count": 3,
       "has_summary": true
     }
@@ -989,6 +993,8 @@ pan-tools phase-plan-index 5
   "has_checkpoints": false
 }
 ```
+
+**`--failed <ids>`** (comma-separated plan ids) adds `failed` and `blocked`. `blocked` is `[{id, blocked_by[]}]`: every unfinished plan whose `depends_on` reaches a failed plan, directly or through another blocked plan, with the failed plans behind it. A `depends_on` entry may be the full id (`05-01`) or the plan number (`01`). `/pan:exec-phase` uses it after a failed plan, so continuing never runs a plan whose dependency failed.
 
 **Note:** Plans within the same wave can execute in parallel (via parallel agents). Plans in wave 2 depend on wave 1 completion.
 
@@ -1280,6 +1286,7 @@ pan-tools validate health --links
 | I003 | info | The tree runs the focus model or an orchestration campaign, so the phase-model checks (E002–E004, W001, W002, W005–W007, I001, I002, the state-consistency and verification gates) do not apply | No |
 | I004 | info | Another tool shares the planning tree (planning-with-files markers: `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories such as `sessions/`). PAN leaves its files alone and keeps checking its own | No |
 | I005 | info | The planning tree is ignored by git while `commit_docs` is true, so planning commits commit nothing. planning-with-files adds `.planning/` to `.gitignore` by default. Fix: remove the entry, or set `commit_docs` to false | No |
+| I006 | info | `config.json` holds keys PAN does not read, usually a typo. The fix names the nearest known key. Fix: correct the spelling or remove the key | No |
 | STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `REQUIREMENTS.md` has unchecked boxes | Yes |
 | STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
@@ -1362,7 +1369,7 @@ pan-tools validate deployment [--raw]
 
 Commands for verifying plan structure, phase completeness, file references, git commits, and build artifacts. Used by the pan-verifier and pan-plan-checker agents.
 
-**Exit code:** these verdict commands exit `0` whether the verdict passes or fails (exit `1` comes only from an unreadable input — `File not found` for `plan-structure`/`references`/`artifacts`/`key-links`, `Phase not found` or an unreadable phase directory for `phase-completeness` — and from usage errors; `verify-summary` reports a missing summary as `passed: false` at exit `0`) — gate on the `valid`/`passed` field, not the exit code. `verify reconcile` and `verify stubs --gate` are the exceptions and set the code explicitly; `verify scope` exits `1` for a missing or unknown phase.
+**Exit code:** these verdict commands exit `0` whether the verdict passes or fails (exit `1` comes only from an unreadable input — `File not found` for `plan-structure`/`references`/`artifacts`/`key-links`, `Phase not found` or an unreadable phase directory for `phase-completeness` — and from usage errors; `verify-summary` reports a missing summary as `passed: false` at exit `0`) — gate on the `valid`/`passed` field, not the exit code. `verify reconcile` and `verify stubs --gate` are the exceptions and set the code explicitly; `verify scope` and `verify stale` exit `1` for a missing or unknown phase.
 
 ### `verify-summary <path> [--check-count N]`
 
@@ -1411,13 +1418,16 @@ pan-tools verify plan-structure .planning/phases/05-setup/05-01-plan.md [--raw]
   "warnings": ["Task 'setup' missing <verify>"],
   "task_count": 3,
   "tasks": [
-    { "name": "setup", "hasFiles": true, "hasAction": true, "hasVerify": false, "hasDone": true }
+    { "name": "setup", "type": "auto", "hasFiles": true, "hasAction": true, "hasVerify": false, "hasDone": true },
+    { "name": "Select session storage", "type": "checkpoint:decision", "auto_select": "cookie" }
   ],
   "frontmatter_fields": ["phase", "plan", "type", "wave", "depends_on", "files_modified", "autonomous", "must_haves"]
 }
 ```
 
 **Required frontmatter:** `phase`, `plan`, `type`, `wave`, `depends_on`, `files_modified`, `autonomous`, `must_haves`.
+
+**Tasks.** An auto task needs `<name>` and `<action>` (errors) and should have `<verify>`, `<done>` and `<files>` (warnings). A checkpoint is checked against its own shape instead: `checkpoint:human-verify` needs `<what-built>` and `<how-to-verify>`, `checkpoint:decision` needs `<decision>` and `<options>` with at least one `<option id="…">`, and `checkpoint:human-action` needs `<action>`. A decision's optional `auto_select` must name one of its option ids (error), and a decision without it is a warning, because auto mode stops there for a human (market item M22). A fenced code block of more than 20 lines in an auto task's `<action>` is a warning: a plan records decisions, not implementation (M32).
 
 **`--raw` output:** `valid` or `invalid`.
 
@@ -1568,6 +1578,17 @@ pan-tools verify scope 3 --raw    # the candidate count
 ```
 
 Works without git (summaries only; `git: false`). Exits 1 without a phase or for an unknown one.
+
+### `verify stale <phase>`
+
+Whether a phase's verification still describes the code (market item M27). The verifier records the commit it checked as `verified_commit` in verification.md. Any file the phase covers that changed since that commit makes the verification stale, whether the change is committed or not. The covered files are the plans' `files_modified` and the summaries' `key-files`, minus the planning tree, lockfiles and PAN's runtime directories.
+
+```bash
+pan-tools verify stale 3          # {phase, state, verified_commit, verification, changed_since[], reason?}
+pan-tools verify stale 3 --raw    # fresh | stale | unverified | unknown
+```
+
+`state` is `fresh`, `stale`, `unverified` (no verification file) or `unknown`. `unknown` comes with a `reason`: the verification records no `verified_commit`, the commit is no longer in the repository (rebased or squashed), the phase declares no files, or git is unavailable. `progress json` adds `verification` to each verified phase (and `changed_since_verification` when it is stale), and `progress table` marks a stale phase `Complete (verification stale)`. Exits 1 without a phase or for an unknown one.
 
 ### `verify stubs [--gate]`
 
@@ -2086,11 +2107,26 @@ pan-tools config-set parallelization true [--raw]
 
 **`--raw` output:** `key=value` string.
 
+**Unknown keys.** A key path PAN does not read is still written, but the output gains a `warning` (also printed to stderr) naming it and the nearest known key: `unknown config key "workflow.auto_advnace": PAN does not read it; did you mean "workflow.auto_advance"?`. PAN checks the top-level key and, inside a known section such as `workflow` or `routing`, the key one level down. Sections that hold your own names (`model_overrides`, `effort_overrides`, `cost`, `cache`, `build`, `verification`, `concurrency`, `focus`, `memory`) are not checked below the top. `validate health` reports the same keys as `I006`.
+
 ---
 
 ## 16. Utility Commands
 
 Standalone utility commands used across workflows.
+
+### `version [--check]`
+
+The version of the PAN core that is running and where it lives (market item M29). An install reads its `pan-wizard-core/VERSION`; a source checkout reads `package.json`.
+
+```bash
+pan-tools version                 # {version, core, install_dir, node}
+pan-tools version --raw           # the version
+pan-tools version --check         # … plus update: {state, latest, checked_at, cache}
+pan-tools version --check --raw   # e.g. "3.31.0 (available, npm latest 3.32.0)"
+```
+
+`--check` reads the result the update-check hook last cached (`<runtime home>/cache/pan-update-check.json`) and never touches the network, so it is instant and works offline. `state` is `available`, `current`, `ahead` (this core is newer than npm's latest, such as a prerelease or a source checkout), `offline` (the last check could not reach npm) or `unchecked` (no check has run yet). The cache comes from this install's runtime home (`~/.copilot` for a `.github` install, `~/.config/opencode` for `.opencode`), else the newest any runtime wrote.
 
 ### `resolve-model <agent-type>`
 
@@ -3946,7 +3982,8 @@ pan-tools findings debt [--milestone v1.1] [--raw]
 ```
 
 **`findings record`** takes exactly one of `--file`, `--text` or `--stdin`, plus `--phase` and optionally `--agent`.
-- **Input.** It reads the last `pan-verdict` block; without one, it reads a verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`). It prints `{contract, recorded, duplicate, verdict_id, agent, verdict, outcome, source_kind, attempt, phase, findings, new, auto_fixed, reopened, warnings}`, plus `ledger` when it wrote a verdict. `--raw` prints the judge's own verdict word (`gaps_found`, `NEEDS_FIXES`, `issues_found`, `GAPS` …), or the outcome when there is none.
+- **Input.** It reads the last `pan-verdict` block; without one, it reads a verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`, `test_gate`, `not_checked`). It prints `{contract, recorded, duplicate, verdict_id, agent, verdict, outcome, not_checked, source_kind, attempt, phase, findings, new, auto_fixed, reopened, warnings}`, plus `ledger` when it wrote a verdict.
+- **What was not checked.** `not_checked` lists `{check, reason}` for each check the judge could not run. A verification with `test_gate: skipped` always carries a `tests` entry, so a pass whose tests never ran is never recorded as a plain pass. The warnings name a verification that does not record `test_gate` (`test_gate_unrecorded`) and a failed gate under a passed status (`test_gate_failed_under_pass`). `--raw` prints the judge's own verdict word (`gaps_found`, `NEEDS_FIXES`, `issues_found`, `GAPS` …), or the outcome when there is none.
 - **Exit codes.** A failed verdict is data: exit 0. An unreadable input exits 1 with `{error, reason}`, for example `no_verdict`, `invalid_json`, `unsupported_contract` or `phase_not_found`. That is what a workflow's `||` fallback runs on.
 - **Idempotency and attempts.** Recording the same artifact twice is a no-op that returns the first verdict. Each new verdict from an agent on a phase is the next `attempt`.
 - **Automatic status changes.** The agent's earlier open findings on that phase that the new verdict no longer reports become `fixed`, except `human` and `unrequested` ones. A `fixed` finding reported again is open again.

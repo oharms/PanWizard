@@ -900,3 +900,105 @@ describe('config — phase_reports gate (M2)', () => {
     assert.match(getR.output, /true/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unknown config keys (market-ideas M26)
+// config-set stored any key path, so a typo (`workflow.auto_advnace`) looked like a
+// setting that took effect while PAN kept reading the default. The known set is the
+// defaults plus CONFIG_KEYS_BEYOND_DEFAULTS; the drift pins at the end keep that list
+// honest against what the shipped code and prose actually read and write.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('config keys — known, unknown and nearest (M26)', () => {
+  const C = require('../pan-wizard-core/bin/lib/config.cjs');
+
+  test('defaults, aliases, deep keys and open sections are known', () => {
+    for (const k of ['model_profile', 'workflow.auto_advance', 'workflow.stop_guard', 'workflow.phase_reports', 'routing.max_escalations',
+      'planning.commit_docs', 'git.branching_strategy', 'mode', 'depth', 'memory.auto_optimize',
+      'cost.rates.my-model.input', 'model_overrides.pan-planner', 'routing.complexity_thresholds.upgrade_min']) {
+      assert.equal(C.isKnownConfigPath(k), true, k);
+    }
+  });
+
+  test('a typo at either checked level is unknown', () => {
+    for (const k of ['model-profile', 'worfklow', 'worfklow.research', 'workflow.auto_advnace', 'budget.enforced', 'git.strategy']) {
+      assert.equal(C.isKnownConfigPath(k), false, k);
+    }
+  });
+
+  test('unknownConfigKeys lists the unknown paths and nothing in a config PAN writes itself', () => {
+    assert.deepEqual(C.unknownConfigKeys(C.buildConfigDefaults(true, {})), [], 'the defaults are all known');
+    // The shape new-project and settings write (workflows/new-project.md, settings.md).
+    const written = { mode: 'yolo', depth: 'standard', parallelization: true, commit_docs: true, model_profile: 'balanced',
+      branching_strategy: 'none', routing: { strategy: 'static' },
+      workflow: { research: true, plan_check: true, verifier: true, auto_advance: true, nyquist_validation: false } };
+    assert.deepEqual(C.unknownConfigKeys(written), []);
+    assert.deepEqual(C.unknownConfigKeys({ ...written, worfklow: {}, workflow: { auto_advnace: true }, cost: { anything: 1 } }).sort(),
+      ['worfklow', 'workflow.auto_advnace']);
+    assert.deepEqual(C.unknownConfigKeys(null), []);
+    assert.deepEqual(C.unknownConfigKeys({ parallelization: { enabled: true } }), [], 'a scalar default given as an object is not checked below');
+  });
+
+  test('nearestConfigKey suggests a close known key, and nothing for a far one', () => {
+    assert.equal(C.nearestConfigKey('workflow.auto_advnace'), 'workflow.auto_advance');
+    assert.equal(C.nearestConfigKey('model-profile'), 'model_profile');
+    assert.equal(C.nearestConfigKey('telemetry.endpoint'), null);
+  });
+
+  test('every key the shipped prose reads or sets with config-get/config-set is known', () => {
+    const ROOT = path.join(__dirname, '..');
+    const dirs = ['commands/pan', 'agents', 'pan-wizard-core/workflows', 'pan-wizard-core/references'];
+    const keys = new Set();
+    for (const d of dirs) {
+      for (const f of fs.readdirSync(path.join(ROOT, d)).filter((x) => x.endsWith('.md'))) {
+        const text = fs.readFileSync(path.join(ROOT, d, f), 'utf8');
+        for (const m of text.matchAll(/config-(?:get|set) ([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_-]*)*)/g)) keys.add(m[1]);
+      }
+    }
+    assert.ok(keys.has('workflow.auto_advance'), 'non-vacuity: the auto-advance key is read in prose');
+    const unknown = [...keys].filter((k) => !C.isKnownConfigPath(k) && k !== 'if');
+    assert.deepEqual(unknown, [], 'a key the prose uses must be known, or config-set would warn on PAN\'s own instructions');
+  });
+
+  test('the keys the hooks read are known', () => {
+    const guard = fs.readFileSync(path.join(__dirname, '..', 'hooks', 'pan-stop-guard.js'), 'utf8');
+    assert.ok(/config\.mode/.test(guard) && /wf\.stop_guard/.test(guard), 'the stop guard still reads mode and workflow.stop_guard');
+    for (const k of ['mode', 'workflow.stop_guard', 'workflow.auto_advance', 'execution.error_pattern_learning']) assert.equal(C.isKnownConfigPath(k), true, k);
+  });
+});
+
+describe('config-set and health name unknown keys (M26)', () => {
+  let tmpDir;
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    runPanTools('config-ensure-section', tmpDir);
+  });
+  afterEach(() => cleanup(tmpDir));
+
+  test('config-set writes an unknown key but says so, with the nearest known key', () => {
+    const r = runPanTools('config-set workflow.auto_advnace true', tmpDir);
+    assert.ok(r.success, r.error);
+    const out = JSON.parse(r.output);
+    assert.equal(out.updated, true);
+    assert.match(out.warning, /unknown config key "workflow\.auto_advnace".*did you mean "workflow\.auto_advance"/);
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf8'));
+    assert.equal(cfg.workflow.auto_advnace, true, 'the value is still written');
+  });
+
+  test('config-set of a known key carries no warning', () => {
+    const out = JSON.parse(runPanTools('config-set workflow.auto_advance true', tmpDir).output);
+    assert.equal(out.warning, undefined);
+  });
+
+  test('validate health reports unknown keys as I006 info, and a clean config has none', () => {
+    const clean = JSON.parse(runPanTools('validate health', tmpDir).output);
+    assert.ok(![...(clean.info || []), ...(clean.warnings || [])].some((i) => i.code === 'I006'), 'the defaults raise no I006');
+    const p = path.join(tmpDir, '.planning', 'config.json');
+    fs.writeFileSync(p, JSON.stringify({ ...JSON.parse(fs.readFileSync(p, 'utf8')), worfklow: { research: true } }));
+    const h = JSON.parse(runPanTools('validate health', tmpDir).output);
+    const i006 = (h.info || []).find((i) => i.code === 'I006');
+    assert.ok(i006, JSON.stringify(h.info));
+    assert.match(i006.message, /worfklow/);
+    assert.match(i006.fix, /worfklow → workflow\?/);
+  });
+});

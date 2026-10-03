@@ -351,10 +351,10 @@ must_haves: []
 | Checkpoint type | Auto behavior |
 |----------------|--------------|
 | `checkpoint:human-verify` | Auto-approved (assumes verification passes) |
-| `checkpoint:decision` | Auto-selects the first option |
+| `checkpoint:decision` | Takes the option named by the task's `auto_select`; **pauses when the task has none** |
 | `checkpoint:human-action` | **Cannot be automated -- always pauses** |
 
-**Root cause:** The checkpoint is a `checkpoint:human-action` type, which requires a real human action that cannot be simulated. Common examples: logging into a third-party service, entering a 2FA code, adding an API key, clicking a confirmation email link.
+**Root cause:** The checkpoint is a `checkpoint:human-action` type, which requires a real human action that cannot be simulated. Common examples: logging into a third-party service, entering a 2FA code, adding an API key, clicking a confirmation email link. Or it is a `checkpoint:decision` whose task has no `auto_select`: the planner left that choice to you, and auto mode never picks an option because it is listed first. To let a run continue unattended past a low-stakes decision, add `auto_select="<option id>"` to the task in the plan.
 
 **Fix:** Perform the requested action and confirm completion. There is no way to auto-advance through human-action checkpoints because they require interaction with external systems.
 
@@ -783,9 +783,9 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Symptom:** Agents ignore the rules PAN adds to the project (for example they do not know where `.planning/` lives), in a project where the rules file exists.
 
-**Root cause:** PAN writes its rules into a marker-fenced section of `AGENTS.md` and adds an `@AGENTS.md` import to `CLAUDE.md`, so Claude Code loads them either way. Since `2.1.277` Claude Code also reads `AGENTS.md` directly, but only when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working directory or above, and not on Bedrock, Vertex or Foundry. So the rules go missing when the `@AGENTS.md` import has been removed from `CLAUDE.md` while a `CLAUDE.md` still exists, or when the project instructions setting in `/config` is limited to `CLAUDE.md` files.
+**Root cause:** PAN writes its rules into a marker-fenced section of `AGENTS.md` and adds an `@AGENTS.md` import to `CLAUDE.md`, so Claude Code loads them either way. Since `2.1.277` Claude Code also reads `AGENTS.md` directly, but by default only when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working directory or above. Before `2.1.281`, some sessions (Amazon Bedrock, or telemetry disabled) read `CLAUDE.md` files only; from `2.1.281` that no longer depends on the provider. Disabling the built-in `agents-md` plugin turns direct reading off. So the rules go missing when the `@AGENTS.md` import has been removed from `CLAUDE.md` while a `CLAUDE.md` still exists, when the project instructions setting in `/config` is limited to `CLAUDE.md` files, or when the `agents-md` plugin is disabled.
 
-**Fix:** Restore the import (re-running the installer does it), or set the project instructions setting back to its default, which reads `CLAUDE.md` or `AGENTS.md`.
+**Fix:** Restore the import (re-running the installer does it). Or set the project instructions setting back to its default, `claude-md-or-agents-md`, or to `claude-md-and-agents-md`, which loads both and never reads an imported `AGENTS.md` twice. Re-enable the `agents-md` plugin in `/plugin` if it was disabled.
 
 ### `/skill-doctor` lists most PAN skills as unused
 

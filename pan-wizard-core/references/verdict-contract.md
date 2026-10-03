@@ -26,6 +26,7 @@ A judging agent ends its report with one fenced `pan-verdict` block. The block i
 | `verdict` | yes | your own verdict word (table below) |
 | `outcome` | yes | `pass`, `fail` or `needs_human` |
 | `findings` | yes (may be empty) | a list of `{class, severity, where, summary}` |
+| `not_checked` | when a check could not run | a list of `{check, reason}`: a check you were asked to make and could not run, and why (no test script, no browser, a file you could not read). Never fold it into `pass`: a verdict with entries here says what it did not see |
 
 | Agent | `verdict` → `outcome` |
 |---|---|
@@ -33,7 +34,7 @@ A judging agent ends its report with one fenced `pan-verdict` block. The block i
 | pan-reviewer | `PASS` → `pass` · `PASS_WITH_WARNINGS` → `pass` · `NEEDS_FIXES` → `fail` |
 | pan-design-checker | `PASS` → `pass` · `GAPS` → `fail` |
 
-The verifier does not emit this block. Its verification.md frontmatter (`status`, `gaps`, `human_verification`, `unrequested`) is its machine contract, and the recorder reads that directly.
+The verifier does not emit this block. Its verification.md frontmatter (`status`, `gaps`, `human_verification`, `unrequested`, `test_gate`, `not_checked`) is its machine contract, and the recorder reads that directly. `test_gate` is `passed`, `failed` or `skipped`. A skipped gate is recorded as a `tests` entry in `not_checked` even when the list leaves it out, and a verification that does not record `test_gate` at all is recorded with a `test_gate_unrecorded` warning.
 
 ## `class`: what kind of finding
 

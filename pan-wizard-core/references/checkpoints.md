@@ -8,7 +8,7 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 2. **Claude sets up the verification environment** - Start dev servers, seed databases, configure env vars
 3. **User only does what requires human judgment** - Visual checks, UX evaluation, "does this feel right?"
 4. **Secrets come from user, automation comes from Claude** - Ask for API keys, then Claude uses them via CLI
-5. **Auto-mode bypasses verification/decision checkpoints** — When `workflow.auto_advance` is true in config: human-verify auto-approves, decision auto-selects first option, human-action still stops (auth gates cannot be automated)
+5. **Auto-mode bypasses verification checkpoints, and decisions only where the planner named a default** — When `workflow.auto_advance` is true in config: human-verify auto-approves; a decision with `auto_select="<option id>"` takes that option, and a decision without it stops for a human (auto mode never takes an option because it is listed first); human-action still stops (auth gates cannot be automated)
 </overview>
 
 <checkpoint_types>
@@ -105,7 +105,7 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
 
 **Structure:**
 ```xml
-<task type="checkpoint:decision" gate="blocking">
+<task type="checkpoint:decision" gate="blocking" auto_select="option-a">
   <decision>[What's being decided]</decision>
   <context>[Why this decision matters]</context>
   <options>
@@ -123,6 +123,8 @@ Plans execute autonomously. Checkpoints formalize interaction points where human
   <resume-signal>[How to indicate choice]</resume-signal>
 </task>
 ```
+
+**`auto_select` (optional)** names the option auto mode takes. Set it only when the choice is safe to make without the user: reversible, no new paid service, no credential, no data-model lock-in. It must name an `id` from this checkpoint's options; `verify plan-structure` fails one that names no option. Leave it out when a human must choose, and auto mode stops at this checkpoint. The examples below omit it: picking a vendor or a database is the user's call.
 
 **Example: Auth Provider Selection**
 ```xml

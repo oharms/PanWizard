@@ -97,12 +97,18 @@
     "cmdSummaryExtract:function",
     "cmdTodoComplete:function",
     "cmdVerifyPathExists:function",
+    "cmdVersion:function",
     "cmdWebsearch:function",
+    "panVersionInfo:function",
     "readErrorPatterns:function",
+    "readUpdateCache:function",
     "runCommitSafetyChecks:function",
-    "shouldSkipTests:function"
+    "shouldSkipTests:function",
+    "updateState:function"
   ],
   "config.cjs": [
+    "CONFIG_KEYS_BEYOND_DEFAULTS:object",
+    "OPEN_CONFIG_SECTIONS:object",
     "buildConfigDefaults:function",
     "cmdConfigEnsureSection:function",
     "cmdConfigGet:function",
@@ -115,8 +121,12 @@
     "cmdStandardsStatus:function",
     "cmdStandardsTools:function",
     "detectStandardsFromContent:function",
+    "isKnownConfigPath:function",
+    "knownConfigKeys:function",
+    "nearestConfigKey:function",
     "parseStandardsFile:function",
-    "renderStandardsMd:function"
+    "renderStandardsMd:function",
+    "unknownConfigKeys:function"
   ],
   "constants.cjs": [
     "ARCHIVE_DIR_RE:object",
@@ -266,6 +276,7 @@
     "error:function",
     "escalateTier:function",
     "escapeRegex:function",
+    "escapeTableCell:function",
     "estimateCostMultiplier:function",
     "execGit:function",
     "extractMilestoneName:function",
@@ -691,6 +702,7 @@
     "stripVolatile:function"
   ],
   "phase.cjs": [
+    "blockedPlans:function",
     "classifyPlanTier:function",
     "cmdFindPhase:function",
     "cmdPhaseAdd:function",
@@ -897,7 +909,10 @@
   "verify-scope.cjs": [
     "LOCKFILES:object",
     "cmdVerifyScope:function",
-    "scopePhase:function"
+    "cmdVerifyStale:function",
+    "coveredFiles:function",
+    "scopePhase:function",
+    "verificationFreshness:function"
   ],
   "verify.cjs": [
     "calculateDriftScore:function",
@@ -920,6 +935,7 @@
     "cmdVerifyReconcile:function",
     "cmdVerifyReferences:function",
     "cmdVerifyScope:function",
+    "cmdVerifyStale:function",
     "cmdVerifyStubs:function",
     "cmdVerifySummary:function",
     "collectVerificationStats:function",
@@ -933,7 +949,8 @@
     "scopePhase:function",
     "syncRequirementCheckboxes:function",
     "syncRoadmapPlanCheckboxes:function",
-    "validateRuntimeInstall:function"
+    "validateRuntimeInstall:function",
+    "verificationFreshness:function"
   ],
   "whatif.cjs": [
     "BRANCH_PREFIX:string",

@@ -12,7 +12,7 @@ PAN ships a small set of built-in Claude Code hooks that enhance the development
 | `pan-cost-logger.js` (v3.4+) | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
 | `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
 | `pan-stop-guard.js` (v3.24+) | `Stop` (Gemini CLI: `AfterAgent`; Copilot CLI: `agentStop`) | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), no failure/gaps/blocker recorded in `state.md`, roadmap phases unbuilt — and tells the agent to continue the chain (P-1809/P-1810/P-1812). |
-| `pan-state-reinject.js` | `SessionStart`, matcher `compact` (Claude Code, Codex) | After a context compaction, hands the model the phase, plan, status and stop point from `.planning/state.md` as `additionalContext`, so a summarised session resumes the work in flight instead of re-planning it. Silent without a current phase and an unbuilt roadmap phase; never writes a file. |
+| `pan-state-reinject.js` | `SessionStart`, matcher `compact` (Claude Code, Codex); `PreCompress` + `AfterTool` (Gemini CLI); `preCompact` + `postToolUse` (Copilot CLI) | After a context compaction, hands the model the phase, plan, status and stop point from `.planning/state.md` as `additionalContext`, so a summarised session resumes the work in flight instead of re-planning it. Silent without a current phase and an unbuilt roadmap phase; never writes into the project. |
 
 ### pan-statusline.js
 
@@ -232,15 +232,24 @@ One `SubagentStop` can reach the hooks more than once. A project with **both** a
 
 ### pan-state-reinject.js (market-ideas M10)
 
-**Runtime support:** Claude Code (`SessionStart` with the `compact` matcher, in `settings.json` and the Claude plugin's `hooks/hooks.json`) and Codex (the same, in `.codex/hooks.json`, synchronous). Not registered for Gemini CLI, Copilot CLI or OpenCode: Gemini's `PreCompress` fires before the summary exists and Copilot's `preCompact` is notification-only, so neither can put text in front of the resumed model.
+**Runtime support:** Claude Code (`SessionStart` with the `compact` matcher, in `settings.json` and the Claude plugin's `hooks/hooks.json`) and Codex (the same, in `.codex/hooks.json`, synchronous); Gemini CLI (`PreCompress` and `AfterTool` in `settings.json`) and Copilot CLI (`preCompact` and `postToolUse` in `.github/hooks/pan.json`) in two steps, below. Not registered for OpenCode, and not in the Agent Plugins bundle's Copilot `hooks/hooks.json`.
 
 **Why `SessionStart` and not `PostCompact`:** both hosts document `PostCompact`, and both discard its output — Claude Code lists it under "no decision control", and Codex's `PostCompact` output schema has no `additionalContext`. What each host does after a compaction is start the session again with `source: "compact"` and honour `hookSpecificOutput.additionalContext` from `SessionStart` hooks that match it. The hook also checks `source` itself, so a registration without the matcher stays silent on every other start.
 
+**Gemini CLI and Copilot CLI (market-ideas M33):** neither starts the session again after a compaction — Gemini's `SessionStart` sources are `startup`, `resume` and `clear`, Copilot's `startup`, `resume` and `new` — and the event each fires before one cannot add context (Gemini's `PreCompress` is advisory, Copilot's `preCompact` notification-only). So the hook runs in two steps:
+
+1. `--mark` on `PreCompress` / `preCompact`: when a phase is in flight, it leaves a marker for this session and project, `state-reinject-<hash>.json`, named by a hash of the two so neither leaks into a file name. It goes in the per-user `0700` directory the stop guard and the context monitor use, `<os-tmpdir>/pan-hooks-<uid>/`, and is written `0600`. When that directory is not provably the user's (a link; on POSIX, another owner or group or other access) the hook writes nothing.
+2. `--inject gemini` on `AfterTool` (every tool, no matcher) / `--inject copilot` on `postToolUse`: if the session has a fresh marker, it consumes it, reads the planning tree again (the position after the compaction, not before it) and returns the block once — `hookSpecificOutput.additionalContext` on Gemini, a top-level `additionalContext` on Copilot. Both hosts append it to that tool's result. With no marker it prints nothing; what every other tool call pays is one Node start and a rename that fails.
+
+A tool result is the first point after a compaction where both hosts take added context, and it also reaches an autonomous `-p` run that never sees another prompt. The marker is renamed before it is read, so two hook runs racing on one tool result cannot both inject; one no session came back for expires after six hours and is swept by the next `--mark`, which removes only this hook's files from the shared directory. In a project with both a Claude and a Copilot install, Copilot also runs Claude's registration of this script, but that one is the `SessionStart` mode, which a Copilot start never matches, so the hook needs none of the other Copilot hooks' deferral to the Claude copy.
+
+Checked live on Copilot CLI 1.0.88 (`2026-10-03`): a manual `/compact` fired `preCompact` and left the marker, and the first tool call after it returned the block, which Copilot appended to the tool result as "Additional guidance from postToolUse hooks" and the model quoted back. Not yet checked live on Gemini CLI, whose test session could not sign in; the Gemini half rests on the v0.61.0 hooks reference and the unit tests.
+
 **What it injects:** a short block — current phase and name, plan `N of M`, status, the `Stopped At` line (or the last activity when there is none), the resume file, and the first unticked roadmap phase — followed by an instruction to re-read `state.md` and the current plan before the next step. Each field is truncated on its own and the block stays under 2,000 characters, well inside the host's 10,000-character limit. Template placeholders (`[X]`) and `None` are not treated as values.
 
-**When it is silent:** no `state.md`, no `Current Phase`, no `roadmap.md`, or every roadmap phase already ticked. It reads the planning tree the payload's `cwd` names (honouring `PAN_PLANNING_DIR`/`PAN_TRACK` like every PAN hook that reads the planning tree) and writes nothing — the field sweep found hooks that scaffolded `.planning/` in projects that never ran PAN, and this one cannot.
+**When it is silent:** no `state.md`, no `Current Phase`, no `roadmap.md`, or every roadmap phase already ticked. It reads the planning tree the payload's `cwd` names (honouring `PAN_PLANNING_DIR`/`PAN_TRACK` like every PAN hook that reads the planning tree) and writes nothing into the project — the field sweep found hooks that scaffolded `.planning/` in projects that never ran PAN, and this one cannot. The Gemini and Copilot marker is the only file it writes, and it lives in the OS temp directory.
 
-**Failure posture:** fail-open — malformed stdin or an unreadable file exits 0 with no output.
+**Failure posture:** fail-open — malformed stdin, a payload without a session id (the marker modes), or an unreadable file exits 0 with no output.
 
 ### pan-stop-guard.js (v3.24+, P-1809)
 
@@ -299,6 +308,15 @@ Session restarts after a compaction (Claude Code / Codex SessionStart, matcher c
     v
 State Re-inject (pan-state-reinject.js, SessionStart)
     | reads .planning/state.md + roadmap.md → additionalContext
+
+Before a compaction (Gemini PreCompress, Copilot preCompact)
+    |
+    v
+State Re-inject --mark  → <os-tmpdir>/pan-hooks-<uid>/state-reinject-<session+project hash>.json
+    ^ consumes (once)
+    |
+State Re-inject --inject (Gemini AfterTool, Copilot postToolUse)
+    | reads .planning/state.md + roadmap.md → additionalContext on that tool result
 
 Session stop (Claude Code / Codex Stop, Copilot agentStop, Gemini AfterAgent)
     |
@@ -419,9 +437,9 @@ The build script (`scripts/build-hooks.js`) simply copies files — no bundling 
 | Runtime | Hooks supported | Notes |
 |---------|----------------|-------|
 | Claude Code | Yes | Full support via settings.json hook registration, including the state re-injection on `SessionStart` with the `compact` matcher |
-| Copilot CLI | Yes | `.github/hooks/pan.json` (version 1 schema: sessionStart, postToolUse, subagentStop, agentStop). Copilot also runs the hooks in the project's `.claude/settings.json`, so in a project with both installs the Copilot copy of each hook steps aside for the Claude registration and each runs once. Headless (`copilot -p`) Copilot loads repository hooks only in a trusted folder, or with `COPILOT_ALLOW_ALL=true` or `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` — see TROUBLESHOOTING |
+| Copilot CLI | Yes | `.github/hooks/pan.json` (version 1 schema: sessionStart, postToolUse, preCompact, subagentStop, agentStop — the state re-injection's two steps on `preCompact` and `postToolUse`). Copilot also runs the hooks in the project's `.claude/settings.json`, so in a project with both installs the Copilot copy of each hook steps aside for the Claude registration and each runs once. Headless (`copilot -p`) Copilot loads repository hooks only in a trusted folder, or with `COPILOT_ALLOW_ALL=true` or `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` — see TROUBLESHOOTING |
 | OpenCode | No | PAN registers no hooks there; OpenCode's plugin API (`.opencode/plugins/*.js`) is not used yet |
-| Gemini CLI | Partly | settings.json, in Gemini's own event names: `SessionStart` runs the update check and `AfterAgent` the stop guard. No context monitor (no Gemini hook payload or setting carries context-window usage, and Gemini has no statusline command) and no cost or trace logger (no subagent-completion event) or state re-injection (`PreCompress` fires before the summary exists). Until `2026-09-23` PAN wrote Claude's names here — `PostToolUse`, `SubagentStop`, `Stop` — which Gemini skips, with an "Invalid hook event name" warning, whenever it loads the settings |
+| Gemini CLI | Partly | settings.json, in Gemini's own event names: `SessionStart` runs the update check, `AfterAgent` the stop guard, and `PreCompress` and `AfterTool` the state re-injection's two steps. No context monitor (no Gemini hook payload or setting carries context-window usage, and Gemini has no statusline command) and no cost or trace logger (no subagent-completion event). Until `2026-09-23` PAN wrote Claude's names here — `PostToolUse`, `SubagentStop`, `Stop` — which Gemini skips, with an "Invalid hook event name" warning, whenever it loads the settings |
 | Codex | Yes | `.codex/hooks.json` since 2026-06 (Claude-compatible PascalCase events; loads once the project is trusted). PAN registers these hooks there — update check, context monitor, cost and trace loggers, the stop guard on `Stop`, and the state re-injection on `SessionStart` with the `compact` matcher; the observers (update check, cost and trace loggers) carry `async: true` (Codex CLI 0.148+) while the context monitor, the stop guard and the re-injection stay synchronous, because an async handler's output is deferred to a later turn and it cannot block. Codex runs a non-managed hook only after you trust it, and records that trust against a hash of the hook, so a new or changed PAN hook is skipped until you review it in `/hooks` — see TROUBLESHOOTING. No statusline, and the context monitor reads only the bridge file `pan-statusline.js` writes, so on Codex it finds none and never warns |
 
 PAN registers hooks on Claude Code, Gemini CLI, Codex, and Copilot CLI. It registers none on OpenCode, whose plugin API it does not use yet.

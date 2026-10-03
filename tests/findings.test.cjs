@@ -151,6 +151,29 @@ describe('findings — recording a verdict', () => {
   });
 });
 
+describe('findings — a pass that did not check everything (M23)', () => {
+  const skippedGate = verification({ status: 'passed' }).replace('status: passed', 'status: passed\ntest_gate: skipped');
+
+  test('the record, the ledger row and the trace carry what was not checked', () => {
+    const r = F.recordVerdict(dir, { phase: '3', text: skippedGate });
+    assert.equal(r.recorded, true);
+    assert.equal(r.outcome, 'pass');
+    assert.deepEqual(r.not_checked, [{ check: 'tests', reason: 'the test gate was skipped' }]);
+    const row = ledgerRows().find(x => x.kind === 'verdict');
+    assert.deepEqual(row.not_checked, [{ check: 'tests', reason: 'the test gate was skipped' }]);
+    const ev = traceEvents().find(e => e.category === 'verdict_passed');
+    assert.ok(ev, 'the pass is traced');
+    assert.deepEqual(ev.context.not_checked, ['tests']);
+  });
+
+  test('a pass that checked everything keeps a lean ledger row', () => {
+    const ran = verification({ status: 'passed' }).replace('status: passed', 'status: passed\ntest_gate: passed');
+    const r = F.recordVerdict(dir, { phase: '3', text: ran });
+    assert.deepEqual(r.not_checked, []);
+    assert.equal('not_checked' in ledgerRows().find(x => x.kind === 'verdict'), false);
+  });
+});
+
 describe('findings — trace events from a record', () => {
   test('a failed verdict logs error/verdict_failed; a retry after a failure logs correction/verdict_retry', () => {
     F.recordVerdict(dir, { phase: '03', text: verification({ gaps: [GAP_LOGIN] }) });

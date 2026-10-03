@@ -611,9 +611,16 @@ async function main() {
         verify.cmdVerifyStubs(cwd, { gate: args.includes('--gate') }, raw);
       } else if (subcommand === 'scope') {
         verify.cmdVerifyScope(cwd, args[2], raw);
+      } else if (subcommand === 'stale') {
+        verify.cmdVerifyStale(cwd, args[2], raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale');
       }
+      break;
+    }
+
+    case 'version': {
+      commands.cmdVersion(cwd, { check: args.includes('--check') }, raw);
       break;
     }
 
@@ -844,7 +851,8 @@ async function main() {
     }
 
     case 'phase-plan-index': {
-      phase.cmdPhasePlanIndex(cwd, args[1], raw);
+      const failedIdx = args.indexOf('--failed');
+      phase.cmdPhasePlanIndex(cwd, args[1], raw, { failed: failedIdx !== -1 ? args[failedIdx + 1] : null });
       break;
     }
 

@@ -1398,3 +1398,77 @@ describe('estimate-cost command', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// version [--check] (market-ideas M29)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('version command (M29)', () => {
+  const { execFileSync } = require('child_process');
+  const os = require('os');
+  const { updateState, readUpdateCache } = require('../pan-wizard-core/bin/lib/commands.cjs');
+  const { installInto, TOOLS_PATH } = require('./helpers.cjs');
+  const pkgVersion = require('../package.json').version;
+
+  test('the source checkout reports the package version and where the core is', () => {
+    const out = JSON.parse(runPanTools('version').output);
+    assert.strictEqual(out.version, pkgVersion);
+    assert.match(out.core, /pan-wizard-core$/);
+    assert.match(out.node, /^v\d+/);
+    assert.strictEqual(runPanTools('version --raw').output, pkgVersion);
+  });
+
+  test('an installed core reports its VERSION file and its install directory', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-version-'));
+    try {
+      assert.ok(installInto(dir, ['--codex', '--local']).success);
+      const tools = path.join(dir, '.codex', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+      const out = JSON.parse(execFileSync(process.execPath, [tools, 'version'], { cwd: dir, encoding: 'utf8' }));
+      assert.strictEqual(out.version, fs.readFileSync(path.join(dir, '.codex', 'pan-wizard-core', 'VERSION'), 'utf8').trim());
+      assert.strictEqual(out.install_dir, '.codex');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('--check never touches the network: with no cache it says unchecked and exits 0', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-version-home-'));
+    try {
+      const out = JSON.parse(execFileSync(process.execPath, [TOOLS_PATH, 'version', '--check'],
+        { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } }));
+      assert.deepStrictEqual(out.update, { state: 'unchecked', latest: null, checked_at: null, cache: null });
+    } finally {
+      cleanup(home);
+    }
+  });
+
+  test('updateState: offline, available, current and ahead from a cache record', () => {
+    const rec = (latest) => ({ file: 'c.json', data: { latest, checked: 1791030410 } });
+    assert.strictEqual(updateState('3.32.0', rec('unknown')).state, 'offline');
+    assert.strictEqual(updateState('3.31.0', rec('3.32.0')).state, 'available');
+    assert.strictEqual(updateState('3.32.0', rec('3.32.0')).state, 'current');
+    const ahead = updateState('3.33.0', rec('3.32.0'));
+    assert.strictEqual(ahead.state, 'ahead');
+    assert.strictEqual(ahead.checked_at, new Date(1791030410 * 1000).toISOString());
+  });
+
+  test('readUpdateCache prefers the cache of this install\'s runtime, else the newest', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-version-cache-'));
+    try {
+      const write = (segs, latest, checked) => {
+        fs.mkdirSync(path.join(home, ...segs, 'cache'), { recursive: true });
+        fs.writeFileSync(path.join(home, ...segs, 'cache', 'pan-update-check.json'), JSON.stringify({ latest, checked }));
+      };
+      write(['.claude'], '3.30.0', 100);
+      write(['.copilot'], '3.31.0', 300);
+      write(['.config', 'opencode'], '3.29.0', 200);
+      assert.strictEqual(readUpdateCache(home, '.claude').data.latest, '3.30.0');
+      assert.strictEqual(readUpdateCache(home, '.github').data.latest, '3.31.0', 'a local Copilot install reads the global Copilot cache');
+      assert.strictEqual(readUpdateCache(home, '.opencode').data.latest, '3.29.0');
+      assert.strictEqual(readUpdateCache(home, 'PanWizard').data.latest, '3.31.0', 'unknown install dir: the newest check');
+      assert.strictEqual(readUpdateCache(path.join(home, 'nobody'), '.claude'), null);
+    } finally {
+      cleanup(home);
+    }
+  });
+});

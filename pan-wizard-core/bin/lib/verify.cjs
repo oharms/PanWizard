@@ -16,13 +16,14 @@ const {
 } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, fileAccessible, detectPlanningModel } = require('./utils.cjs');
 const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
+const { unknownConfigKeys, nearestConfigKey } = require('./config.cjs');
 // Drift detection lives in verify-drift.cjs; re-exported below so consumers of
 // verify.cjs are unaffected by the decomposition.
 const { runDriftCheck, parseConventionRules, checkFileConventions, calculateDriftScore, getChangedFiles, cmdDriftCheck } = require('./verify-drift.cjs');
 const { collectVerificationStats, countRoadmapPhases, groupGapPatterns, cmdRetro } = require('./verify-retro.cjs');
 const { detectInstalledRuntimes, validateRuntimeInstall, cmdValidateDeployment } = require('./verify-deploy.cjs');
 const { cmdPreflight, cmdDepsValidate } = require('./verify-preflight.cjs');
-const { scopePhase, cmdVerifyScope } = require('./verify-scope.cjs');
+const { scopePhase, cmdVerifyScope, verificationFreshness, cmdVerifyStale } = require('./verify-scope.cjs');
 const { planningRootRel } = require('./planning-root.cjs');
 
 /**
@@ -116,6 +117,56 @@ function cmdVerifySummary(cwd, summaryPath, checkFileCount, raw) {
   }, raw, passed ? 'passed' : 'failed');
 }
 
+// Longer than a signature, a type or a short config snippet: an implementation body.
+const MAX_ACTION_CODE_LINES = 20;
+
+/** The line count of the longest fenced code block in a piece of markdown (0 if none). */
+function longestFencedBlock(text) {
+  let longest = 0;
+  for (const m of String(text).matchAll(/(^|\n)[ \t]*(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n[ \t]*\2[ \t]*(?=\n|$)/g)) {
+    longest = Math.max(longest, m[3].split('\n').length);
+  }
+  return longest;
+}
+
+// The elements each checkpoint type needs (references/checkpoints.md).
+const CHECKPOINT_REQUIRED = {
+  'checkpoint:human-verify': ['what-built', 'how-to-verify'],
+  'checkpoint:decision': ['decision', 'options'],
+  'checkpoint:human-action': ['action'],
+};
+
+/**
+ * Check one checkpoint task against its type's shape. A decision checkpoint may
+ * carry `auto_select="<option id>"`: the option auto mode takes. Without one, auto
+ * mode stops for a human instead of taking whichever option is listed first
+ * (market-ideas M22), and an `auto_select` naming no option is an error.
+ * @returns {{name: string, type: string, auto_select?: string|null}} the task entry
+ */
+function checkCheckpointTask(type, attrs, body, errors, warnings) {
+  const keyText = (body.match(/<(?:decision|what-built|action)>([\s\S]*?)<\/(?:decision|what-built|action)>/) || [])[1];
+  const label = keyText ? keyText.trim().replace(/\s+/g, ' ').slice(0, 80) : `unnamed ${type}`;
+  const required = CHECKPOINT_REQUIRED[type];
+  if (!required) {
+    errors.push(`Task '${label}' has unknown checkpoint type '${type}'`);
+    return { name: label, type };
+  }
+  for (const el of required) {
+    if (!body.includes(`<${el}>`)) errors.push(`Checkpoint '${label}' missing <${el}>`);
+  }
+  if (type !== 'checkpoint:decision') return { name: label, type };
+
+  const optionIds = [...body.matchAll(/<option\b[^>]*\bid=["']([^"']+)["']/g)].map(m => m[1]);
+  if (optionIds.length === 0) errors.push(`Decision checkpoint '${label}' has no <option id="...">`);
+  const autoMatch = attrs.match(/\bauto_select=["']([^"']*)["']/);
+  if (!autoMatch) {
+    warnings.push(`Decision checkpoint '${label}' has no auto_select: auto mode stops here for a human`);
+  } else if (!optionIds.includes(autoMatch[1])) {
+    errors.push(`Decision checkpoint '${label}' auto_select="${autoMatch[1]}" names no option (options: ${optionIds.join(', ') || 'none'})`);
+  }
+  return { name: label, type, auto_select: autoMatch ? autoMatch[1] : null };
+}
+
 /**
  * Validate a plan.md structure: required frontmatter, task elements, and consistency.
  * @param {string} cwd - Working directory path
@@ -139,14 +190,24 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
     if (fm[field] === undefined) errors.push(`Missing required frontmatter field: ${field}`);
   }
 
-  // Parse XML <task> elements and validate each has required sub-elements:
-  // <name> (required), <action> (required), <verify> (recommended),
-  // <done> (recommended), <files> (recommended)
-  const taskPattern = /<task[^>]*>([\s\S]*?)<\/task>/g;
+  // Parse XML <task> elements. An auto task needs <name> and <action> and should
+  // have <verify>, <done> and <files>. A checkpoint task has its own shape
+  // (references/checkpoints.md) and is checked against that instead: until
+  // 2026-10-03 every checkpoint failed the auto-task checks, and the `<task[^>]*>`
+  // pattern also matched the `<tasks>` wrapper, so a decision's first option name
+  // was read as the task's name. `\b` keeps the wrapper out.
+  const taskPattern = /<task\b([^>]*)>([\s\S]*?)<\/task>/g;
   const tasks = [];
   let taskMatch;
   while ((taskMatch = taskPattern.exec(content)) !== null) {
-    const taskContent = taskMatch[1];
+    const attrs = taskMatch[1];
+    const taskContent = taskMatch[2];
+    const typeMatch = attrs.match(/\btype=["']?([\w:-]+)/);
+    const taskType = typeMatch ? typeMatch[1] : 'auto';
+    if (taskType.startsWith('checkpoint:')) {
+      tasks.push(checkCheckpointTask(taskType, attrs, taskContent, errors, warnings));
+      continue;
+    }
     const nameMatch = taskContent.match(/<name>([\s\S]*?)<\/name>/);
     const taskName = nameMatch ? nameMatch[1].trim() : 'unnamed';
     const hasFiles = /<files>/.test(taskContent);
@@ -156,11 +217,19 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
 
     if (!nameMatch) errors.push('Task missing <name> element');
     if (!hasAction) errors.push(`Task '${taskName}' missing <action>`);
+    // Decisions, not code (market-ideas M32): an <action> names signatures, values,
+    // assertions and the verify command. A long fenced block there is an
+    // implementation body the planner wrote for the executor.
+    const actionText = (taskContent.match(/<action>([\s\S]*?)<\/action>/) || [])[1] || '';
+    const longest = longestFencedBlock(actionText);
+    if (longest > MAX_ACTION_CODE_LINES) {
+      warnings.push(`Task '${taskName}' embeds a ${longest}-line code block in <action>: a plan records decisions (signatures, values, assertions, the verify command), not implementation`);
+    }
     if (!hasVerify) warnings.push(`Task '${taskName}' missing <verify>`);
     if (!hasDone) warnings.push(`Task '${taskName}' missing <done>`);
     if (!hasFiles) warnings.push(`Task '${taskName}' missing <files>`);
 
-    tasks.push({ name: taskName, hasFiles, hasAction, hasVerify, hasDone });
+    tasks.push({ name: taskName, type: taskType, hasFiles, hasAction, hasVerify, hasDone });
   }
 
   if (tasks.length === 0) warnings.push('No <task> elements found');
@@ -855,6 +924,15 @@ function checkConfigFile(cwd, addIssue, repairs) {
     const validProfiles = ['quality', 'balanced', 'budget'];
     if (parsed.model_profile && !validProfiles.includes(parsed.model_profile)) {
       addIssue('warning', 'W004', `${CONFIG_FILE}: invalid model_profile "${parsed.model_profile}"`, `Valid values: ${validProfiles.join(', ')}`);
+    }
+    // I006 (market-ideas M26): keys PAN does not read. Info, not a warning: the key
+    // may be the user's own note or meant for a newer PAN, but a typo must not pass
+    // as a setting that took effect.
+    const unknown = unknownConfigKeys(parsed);
+    if (unknown.length) {
+      const hints = unknown.map((k) => { const n = nearestConfigKey(k); return n ? `${k} → ${n}?` : k; });
+      addIssue('info', 'I006', `${CONFIG_FILE}: PAN does not read ${unknown.length === 1 ? 'this key' : 'these keys'}: ${unknown.join(', ')}`,
+        `Check the spelling (${hints.join('; ')}), or remove the key. pan-tools config-set names an unknown key when you set it.`);
     }
   } catch (err) {
     // JSON parse failed -- config is corrupt and should be reset
@@ -1558,6 +1636,8 @@ module.exports = {
   cmdVerifyStubs,
   scopePhase,
   cmdVerifyScope,
+  verificationFreshness,
+  cmdVerifyStale,
   cmdValidateConsistency,
   cmdValidateHealth,
   cmdPreflight,

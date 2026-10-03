@@ -10,6 +10,8 @@ const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, planningR
 const { estimateTokens } = require('./context-budget.cjs');
 const { collectPhaseSummaries, readErrorPatterns, appendErrorPattern, appendSessionSummary, parseLearnings, formatLearningEntry, cmdLearningsExtract, cmdLearningsList, cmdLearningsPrune } = require('./commands-learnings.cjs');
 const { planningRootRel } = require('./planning-root.cjs');
+const { verificationFreshness } = require('./verify-scope.cjs');
+const { isVerificationFile } = require('./constants.cjs');
 
 /**
  * Generate a URL-safe slug from text by lowercasing and replacing non-alphanumeric chars.
@@ -631,6 +633,7 @@ function cmdProgressRender(cwd, format, raw) {
   const milestone = getMilestoneInfo(cwd);
 
   const phases = [];
+  const verifiedPhases = []; // indexes into phases[] of phases with a verification file
   let totalPlans = 0;
   let totalSummaries = 0;
 
@@ -661,10 +664,23 @@ function cmdProgressRender(cwd, format, raw) {
       else if (summaryCount > 0) status = 'In Progress';
       else status = 'Planned';
 
+      if (phaseFiles.some(isVerificationFile)) verifiedPhases.push(phases.length);
       phases.push({ number: phaseNum, name: phaseName, plans: planCount, summaries: summaryCount, status });
     }
   } catch {
     // Phases directory does not exist or is unreadable; return empty progress
+  }
+
+  // A verified phase whose covered files changed since the verified commit is
+  // stale (market-ideas M27). Not for the bar or the health score: the statusline
+  // calls the bar, which never shows it, and each check costs a git call.
+  if (format !== 'bar' && format !== 'health') {
+    for (const i of verifiedPhases) {
+      const f = verificationFreshness(cwd, phases[i].number);
+      if (f.error) continue;
+      phases[i].verification = f.state;
+      if (f.state === 'stale') phases[i].changed_since_verification = f.changed_since;
+    }
   }
 
   const percent = totalPlans > 0 ? Math.min(100, Math.round((totalSummaries / totalPlans) * 100)) : 0;
@@ -682,7 +698,7 @@ function cmdProgressRender(cwd, format, raw) {
     rendered += '| Phase | Name | Plans | Status |\n';
     rendered += '|-------|------|-------|--------|\n';
     for (const phase of phases) {
-      rendered += `| ${phase.number} | ${phase.name} | ${phase.summaries}/${phase.plans} | ${phase.status} |\n`;
+      rendered += `| ${phase.number} | ${phase.name} | ${phase.summaries}/${phase.plans} | ${phase.status}${phase.verification === 'stale' ? ' (verification stale)' : ''} |\n`;
     }
     output({ rendered }, raw, rendered);
   } else if (format === 'bar') {
@@ -1027,9 +1043,85 @@ function shouldSkipTests(files) {
   return files.every(f => /\.md$/i.test(f));
 }
 
+// ─── version (market-ideas M29) ──────────────────────────────────────────────
+// The version of the PAN core that is running, where it lives, and, with --check,
+// the update state the SessionStart update check last recorded. Reads only local
+// files: the check itself (`npm view`, up to 10 s) stays in the hook's background
+// child, so `version --check` never waits on the network and never throws offline.
+
+// Where each install directory's update-check hook writes its cache: the hook's
+// `join(homeDir, '.claude', 'cache')` is rewritten to the runtime's GLOBAL config dir
+// (getConfigDirFromHome(runtime, true) in the installer).
+const UPDATE_CACHE_HOME_DIR = {
+  '.claude': ['.claude'], '.codex': ['.codex'], '.gemini': ['.gemini'],
+  '.opencode': ['.config', 'opencode'], opencode: ['.config', 'opencode'],
+  '.github': ['.copilot'], '.copilot': ['.copilot'],
+};
+
+/** The running core's version, its directory, and the install directory holding it. */
+function panVersionInfo(coreDir = path.resolve(__dirname, '..', '..')) {
+  let version = null;
+  // VERSION is written by the installer; a source checkout has the package.json instead.
+  try { version = fs.readFileSync(path.join(coreDir, 'VERSION'), 'utf8').trim() || null; } catch { /* not an install */ }
+  if (!version) {
+    try { version = JSON.parse(fs.readFileSync(path.join(coreDir, '..', 'package.json'), 'utf8')).version || null; } catch { /* neither */ }
+  }
+  return { version, core: toPosix(coreDir), install_dir: path.basename(path.dirname(coreDir)) };
+}
+
+/** The update-check cache for this install's runtime, else the newest one any runtime wrote. */
+function readUpdateCache(homeDir, installDir) {
+  const read = (segments) => {
+    const file = path.join(homeDir, ...segments, 'cache', 'pan-update-check.json');
+    try { return { file: toPosix(file), data: JSON.parse(fs.readFileSync(file, 'utf8')) }; } catch { return null; }
+  };
+  const own = UPDATE_CACHE_HOME_DIR[installDir] ? read(UPDATE_CACHE_HOME_DIR[installDir]) : null;
+  if (own) return own;
+  const seen = new Set();
+  const all = [];
+  for (const segs of Object.values(UPDATE_CACHE_HOME_DIR)) {
+    const key = segs.join('/');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const c = read(segs);
+    if (c) all.push(c);
+  }
+  all.sort((a, b) => (Number(b.data.checked) || 0) - (Number(a.data.checked) || 0));
+  return all[0] || null;
+}
+
+/**
+ * The update state from a cache record: `unchecked` (no check has run), `offline`
+ * (the last check could not reach npm), `available`, `current`, or `ahead` (this
+ * core is newer than npm's latest, e.g. a prerelease or a source checkout).
+ */
+function updateState(version, cache) {
+  if (!cache) return { state: 'unchecked', latest: null, checked_at: null, cache: null };
+  const checkedAt = Number(cache.data.checked) ? new Date(Number(cache.data.checked) * 1000).toISOString() : null;
+  const latest = cache.data.latest && cache.data.latest !== 'unknown' ? String(cache.data.latest) : null;
+  if (!latest) return { state: 'offline', latest: null, checked_at: checkedAt, cache: cache.file };
+  const { compareVersions } = require('./hygiene.cjs');
+  const cmp = version ? compareVersions(version, latest) : -1;
+  return { state: cmp < 0 ? 'available' : cmp > 0 ? 'ahead' : 'current', latest, checked_at: checkedAt, cache: cache.file };
+}
+
+function cmdVersion(_cwd, opts, raw) {
+  const info = panVersionInfo();
+  const result = { version: info.version, core: info.core, install_dir: info.install_dir, node: process.version };
+  if (opts.check) result.update = updateState(info.version, readUpdateCache(require('os').homedir(), info.install_dir));
+  const text = opts.check
+    ? `${info.version || 'unknown'} (${result.update.state}${result.update.latest ? `, npm latest ${result.update.latest}` : ''})`
+    : String(info.version || 'unknown');
+  output(result, raw, text);
+}
+
 // ---- Error patterns, session history, learnings — extracted to commands-learnings.cjs (re-exported below)
 
 module.exports = {
+  cmdVersion,
+  panVersionInfo,
+  readUpdateCache,
+  updateState,
   cmdGenerateSlug,
   cmdCurrentTimestamp,
   cmdListTodos,

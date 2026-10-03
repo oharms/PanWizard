@@ -484,6 +484,39 @@ describe('processAttribution', () => {
   });
 });
 
+// ─── commitAttributionFromSettings (reality-check hand-off H1, 2026-10-03) ──
+// Claude Code 2.1.281 accepts `"attribution": false` to hide all attribution, and
+// still honours the deprecated `includeCoAuthoredBy: false` until `attribution`
+// sets `commit` or `pr`. PAN read only `attribution.commit`, so both explicit
+// requests to hide kept PAN's default line.
+
+describe('commitAttributionFromSettings', () => {
+  const resolve = lib.commitAttributionFromSettings;
+
+  test('attribution: false hides it (null)', () => {
+    assert.equal(resolve({ attribution: false }), null);
+    assert.equal(resolve({ attribution: false, includeCoAuthoredBy: true }), null);
+  });
+
+  test('attribution.commit: empty hides, a string replaces', () => {
+    assert.equal(resolve({ attribution: { commit: '' } }), null);
+    assert.equal(resolve({ attribution: { commit: 'Generated with AI' } }), 'Generated with AI');
+  });
+
+  test('includeCoAuthoredBy: false hides it until attribution sets commit or pr', () => {
+    assert.equal(resolve({ includeCoAuthoredBy: false }), null);
+    assert.equal(resolve({ includeCoAuthoredBy: false, attribution: { pr: '' } }), undefined, 'pr set: the deprecated key no longer applies');
+    assert.equal(resolve({ includeCoAuthoredBy: false, attribution: { commit: 'X' } }), 'X');
+    assert.equal(resolve({ includeCoAuthoredBy: false, attribution: { sessionUrl: false } }), null, 'neither commit nor pr set: it still applies');
+  });
+
+  test('unset, true, or unusable settings keep the default (undefined)', () => {
+    for (const s of [{}, { includeCoAuthoredBy: true }, { attribution: { sessionUrl: false } }, null, 'nonsense']) {
+      assert.equal(resolve(s), undefined, JSON.stringify(s));
+    }
+  });
+});
+
 // ─── parseJsonc ─────────────────────────────────────────────────────────────
 
 describe('parseJsonc', () => {
@@ -1711,8 +1744,30 @@ describe('HOOK_EVENT_MAP', () => {
   test('Gemini uses its own vocabulary: AfterAgent for the stop guard, nothing for the monitor or loggers (R29)', () => {
     assert.deepEqual(
       { ...lib.HOOK_EVENT_MAP.gemini },
-      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null });
+      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null,
+        compactMark: 'PreCompress', compactInject: 'AfterTool' });
     assert.equal(lib.HOOK_EVENT_MAP.claude.stop, 'Stop', 'Claude keeps its Stop event for the guard');
+  });
+
+  test('state re-injection in two steps only where no start event follows a compaction (M33)', () => {
+    // Claude and Codex re-inject on SessionStart with the `compact` matcher; Gemini and
+    // Copilot mark before the compaction and inject on the next tool result.
+    for (const rt of ['claude', 'codex']) {
+      assert.equal(lib.HOOK_EVENT_MAP[rt].compact, 'SessionStart', rt);
+      assert.equal(lib.HOOK_EVENT_MAP[rt].compactMark, null, rt);
+      assert.equal(lib.HOOK_EVENT_MAP[rt].compactInject, null, rt);
+    }
+    assert.deepEqual([lib.HOOK_EVENT_MAP.copilot.compactMark, lib.HOOK_EVENT_MAP.copilot.compactInject], ['preCompact', 'postToolUse']);
+    const config = lib.buildCopilotHooksConfig({ contextMonitorCommand: 'node m.js', stateReinjectMarkCommand: 'node r.js --mark', stateReinjectInjectCommand: 'node r.js --inject copilot' });
+    assert.deepEqual(config.hooks.preCompact, [{ type: 'command', command: 'node r.js --mark' }]);
+    assert.deepEqual(config.hooks.postToolUse.map((h) => h.command), ['node m.js', 'node r.js --inject copilot'], 'the monitor first, then the re-injection');
+  });
+
+  test('stripPanHookEntries keeps every event in a keep list (a hook registered under two events)', () => {
+    const entry = (c) => [{ hooks: [{ type: 'command', command: c }] }];
+    const hooks = { PreCompress: entry('node r/pan-state-reinject.js --mark'), AfterTool: entry('node r/pan-state-reinject.js --inject gemini'), SessionStart: entry('node r/pan-state-reinject.js') };
+    assert.deepEqual(lib.stripPanHookEntries(hooks, ['pan-state-reinject'], ['PreCompress', 'AfterTool']), ['SessionStart']);
+    assert.deepEqual(Object.keys(hooks).sort(), ['AfterTool', 'PreCompress']);
   });
 
   test('stripPanHookEntries removes a hook from every event but the one it belongs to', () => {
@@ -1758,4 +1813,91 @@ describe('CLAUDE.md @AGENTS.md bridge', () => {
     assert.ok(removed.includes('# x'));
     assert.ok(!removed.includes('@AGENTS.md'));
   });
+});
+
+// ─── verifyHookEntrypoints (market-ideas M24) ───────────────────────────────
+// An install registered every hook even when it had copied none: from a source
+// checkout without `npm run build:hooks`, hooks/dist is absent, the copy step was
+// skipped, and each session event then ran a script that was not there.
+
+describe('hookCommandScript', () => {
+  test('reads the script from both command shapes the installer writes', () => {
+    assert.equal(lib.hookCommandScript('node .claude/hooks/pan-check-update.js'), '.claude/hooks/pan-check-update.js');
+    assert.equal(lib.hookCommandScript(lib.buildHookCommand('C:\\Users\\me\\.claude', 'pan-stop-guard.js')), 'C:/Users/me/.claude/hooks/pan-stop-guard.js');
+    assert.equal(lib.hookCommandScript('node "/home/me/my configs/.codex/hooks/pan-cost-logger.js"'), '/home/me/my configs/.codex/hooks/pan-cost-logger.js');
+  });
+
+  test('plain arguments after the script are allowed (M33: --mark, --inject <host>)', () => {
+    assert.equal(lib.hookCommandScript('node .gemini/hooks/pan-state-reinject.js --inject gemini'), '.gemini/hooks/pan-state-reinject.js');
+    assert.equal(lib.hookCommandScript('node "C:/x y/hooks/pan-state-reinject.js" --mark'), 'C:/x y/hooks/pan-state-reinject.js');
+  });
+
+  test('anything else is not a script command', () => {
+    for (const c of ['', 'python hook.py', 'node', 'node a.js "quoted arg"', null]) assert.equal(lib.hookCommandScript(c), null, String(c));
+  });
+});
+
+describe('verifyHookEntrypoints', () => {
+  const fs = require('fs');
+
+  test('passes when every script is there, relative or absolute', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-hookentry-'));
+    try {
+      fs.mkdirSync(path.join(root, '.claude', 'hooks'), { recursive: true });
+      fs.writeFileSync(path.join(root, '.claude', 'hooks', 'pan-a.js'), '// a\n');
+      const abs = lib.buildHookCommand(path.join(root, '.claude'), 'pan-a.js');
+      assert.deepEqual(lib.verifyHookEntrypoints(['node .claude/hooks/pan-a.js', abs], root), { ok: true, missing: [] });
+    } finally {
+      cleanup(root);
+    }
+  });
+
+  test('names a missing script, an empty one and a command it cannot read', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-hookentry-'));
+    try {
+      fs.mkdirSync(path.join(root, '.codex', 'hooks'), { recursive: true });
+      fs.writeFileSync(path.join(root, '.codex', 'hooks', 'pan-empty.js'), '');
+      const r = lib.verifyHookEntrypoints(['node .codex/hooks/pan-gone.js', 'node .codex/hooks/pan-empty.js', 'bash x.sh'], root);
+      assert.equal(r.ok, false);
+      assert.deepEqual(r.missing, ['.codex/hooks/pan-gone.js (missing)', '.codex/hooks/pan-empty.js (empty)', 'bash x.sh (not a "node <script>" command)']);
+    } finally {
+      cleanup(root);
+    }
+  });
+});
+
+describe('an install that copied no hook scripts registers none (M24)', () => {
+  const fs = require('fs');
+  const { spawnSync } = require('child_process');
+  const ROOT = path.join(__dirname, '..');
+
+  // A source tree like a clone that never ran `npm run build:hooks`: everything the
+  // installer reads, except hooks/dist.
+  function sourceWithoutBuiltHooks() {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-src-nohooks-'));
+    for (const d of ['bin', 'agents', 'commands', 'pan-wizard-core']) fs.cpSync(path.join(ROOT, d), path.join(src, d), { recursive: true });
+    for (const f of ['package.json', 'CHANGELOG.md']) fs.copyFileSync(path.join(ROOT, f), path.join(src, f));
+    return src;
+  }
+
+  for (const [flag, dir, config] of [['--claude', '.claude', 'settings.json'], ['--codex', '.codex', 'hooks.json']]) {
+    test(`${flag}: the install fails and writes no hook registration`, () => {
+      const src = sourceWithoutBuiltHooks();
+      const project = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-proj-nohooks-'));
+      try {
+        assert.equal(fs.existsSync(path.join(src, 'hooks', 'dist')), false, 'precondition: no built hooks');
+        const r = spawnSync(process.execPath, [path.join(src, 'bin', 'install.js'), flag, '--local'], { cwd: project, encoding: 'utf8' });
+        assert.equal(r.status, 1, `expected exit 1\n${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /Hook verification FAILED/);
+        assert.match(r.stderr, /hooks[\\/]pan-check-update\.js \(missing\)/);
+        assert.match(r.stderr, /npm run build:hooks/);
+        const cfgPath = path.join(project, dir, config);
+        const cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : '';
+        assert.ok(!/pan-check-update/.test(cfg), `${dir}/${config} must not register a hook whose script is missing`);
+      } finally {
+        cleanup(src);
+        cleanup(project);
+      }
+    });
+  }
 });
