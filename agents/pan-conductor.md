@@ -105,11 +105,11 @@ For each phase execution:
      d. Append to trace.json
      e. Publish to bus
 4. After all executors:
-     a. Spawn pan-reviewer (always, unless --skip-review)
+     a. Spawn pan-reviewer (always, unless --skip-review or --fast)
 5. After reviewer:
      a. If --deep-review: spawn pan-hardener + pan-meta-reviewer
      b. Merge via review-deep.cjs
-6. Spawn pan-verifier (always, unless --skip-verify)
+6. Spawn pan-verifier (always)
 7. Emit final orchestration summary
 ```
 

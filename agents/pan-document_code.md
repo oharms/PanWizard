@@ -30,7 +30,7 @@ You run in one of two modes depending on what the orchestrator determined in Sta
 - The full repository context fits in your window
 - The orchestrator picks this mode on repo size alone; it is only viable when the model you are running on has a 1M-context window. If the repo clearly will not fit in your window, say so and fall back per the truncation rule below rather than reading blindly
 - You were spawned once with NO focus area restriction
-- Read all relevant files in parallel, then write ALL six codebase documents (stack.md, architecture.md, conventions.md, testing.md, integrations.md, concerns.md, relationships.md, best-practices.md, structure.md) in a single invocation
+- Read all relevant files in parallel, then write ALL codebase documents (stack.md, architecture.md, conventions.md, testing.md, integrations.md, concerns.md, relationships.md, best-practices.md, structure.md) in a single invocation
 - Advantage: coherent cross-file reasoning — no stitching artifacts, no contradictory version claims, no missed cross-references
 - Emit reads in parallel (single turn, multiple Read tool calls); serialize writes
 
@@ -955,7 +955,7 @@ Top 3 improvements ranked by impact:
 - Absolute file paths with usernames
 
 **TOGAF alignment:**
-Templates include TOGAF architecture domain sections (Business, Application, Data, Technology). Fill these sections based on what you discover. If a TOGAF section is not applicable, write "Not applicable" and move on.
+The TOGAF architecture domain sections are in the full templates at `~/.claude/pan-wizard-core/templates/codebase/`, not in the inline templates above: Business and Application Architecture in `architecture.md`, Data Architecture in `integrations.md`, Technology Architecture in `stack.md`. For each of those documents, read its full template and write from it; it adds the domain sections, and their diagrams, to the inline structure. Fill these sections based on what you discover. If a TOGAF section is not applicable, write "Not applicable" and move on.
 </diagram_guidelines>
 
 <critical_rules>

@@ -26,7 +26,7 @@ Before verifying, discover project context:
 1. List available skills (subdirectories)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during verification
-4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
+4. Skip the full `AGENTS.md` inside a skill directory (100KB+ context cost). The project's own `AGENTS.md`, which `./CLAUDE.md` may import, is project instructions — read it.
 5. Apply skill rules when scanning for anti-patterns and verifying quality
 
 This ensures project-specific patterns, conventions, and best practices are applied during verification.
@@ -73,8 +73,10 @@ Set `is_re_verification = false`, proceed with Step 0b.
 If the current phase number > 1, check that the previous phase was verified:
 
 ```bash
-PREV_PHASE=$((PHASE_NUM - 1))
-ls .planning/phase-${PREV_PHASE}*/*-verification.md 2>/dev/null
+# 10# reads a zero-padded number like 08 as decimal (bash would read it as octal)
+PREV_PHASE=$((10#${PHASE_NUM%%[!0-9]*} - 1))
+PREV_DIR=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "$PREV_PHASE" --raw 2>/dev/null)
+[ -n "$PREV_DIR" ] && ls "$PREV_DIR"/*-verification.md 2>/dev/null
 ```
 
 **If previous phase has no verification.md:**
@@ -101,12 +103,12 @@ Extract phase goal from roadmap.md — this is the outcome to verify, not the ta
 
 ## Step 1c: Repo-Norms-First Verification (P-RES-005)
 
-If `.planning/codebase/CONVENTIONS.md` exists (created by `/pan:map-codebase`), read it as a FIRST-CLASS verification input — not just advisory context. The empirical motivation: a 33K-PR audit of agent-generated PRs (arXiv:2601.15195, Jan 2026) found that the dominant rejection cause was **fit-against-repo-norms violation**, not buggy code. Code that compiles and tests still gets rejected when it ignores naming conventions, file organization, framework idioms, or prior-PR patterns.
+If `.planning/codebase/conventions.md` exists (created by `/pan:map-codebase`), read it as a FIRST-CLASS verification input — not just advisory context. The empirical motivation: a 33K-PR audit of agent-generated PRs (arXiv:2601.15195, Jan 2026) found that the dominant rejection cause was **fit-against-repo-norms violation**, not buggy code. Code that compiles and tests still gets rejected when it ignores naming conventions, file organization, framework idioms, or prior-PR patterns.
 
 ```bash
 # Read codebase conventions and structure if available
-[ -f .planning/codebase/CONVENTIONS.md ] && cat .planning/codebase/CONVENTIONS.md
-[ -f .planning/codebase/STRUCTURE.md ] && cat .planning/codebase/STRUCTURE.md
+[ -f .planning/codebase/conventions.md ] && cat .planning/codebase/conventions.md
+[ -f .planning/codebase/structure.md ] && cat .planning/codebase/structure.md
 ```
 
 **How to use this in verification:**
@@ -115,11 +117,11 @@ If `.planning/codebase/CONVENTIONS.md` exists (created by `/pan:map-codebase`), 
 
 2. **File organization:** check new files landed in the directory the conventions doc names for that concern. Auth code in `lib/auth/` not `src/auth/` if conventions said `lib/`.
 
-3. **Framework idioms:** if CONVENTIONS.md names "we use X over Y because Z", check the executor didn't import Y. Generic correctness isn't enough — local idiom-fit matters.
+3. **Framework idioms:** if conventions.md names "we use X over Y because Z", check the executor didn't import Y. Generic correctness isn't enough — local idiom-fit matters.
 
-4. **Test patterns:** test files should match the testing patterns described in CONVENTIONS.md (test file naming, fixture organization, assertion style).
+4. **Test patterns:** test files should match the testing patterns described in conventions.md (test file naming, fixture organization, assertion style).
 
-If CONVENTIONS.md does not exist, skip this step silently. This is brownfield-only signal. The verifier should NEVER invent conventions — only enforce ones that are explicitly documented.
+If conventions.md does not exist, skip this step silently. This is brownfield-only signal. The verifier should NEVER invent conventions — only enforce ones that are explicitly documented.
 
 ## Step 1b: Read the Reasoning Trace (P-RES-003)
 

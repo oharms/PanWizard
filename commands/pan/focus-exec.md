@@ -1,7 +1,7 @@
 ---
 name: focus-exec
 group: Focus
-description: Automated batch execution pipeline with 6 stages, 9 behavioral rules, 3 execution tiers
+description: Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
 allowed-tools:
   - Read
   - Write

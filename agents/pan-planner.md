@@ -43,7 +43,7 @@ Before planning, discover project context:
 1. List available skills (subdirectories)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during planning
-4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
+4. Skip the full `AGENTS.md` inside a skill directory (100KB+ context cost). The project's own `AGENTS.md`, which `./CLAUDE.md` may import, is project instructions — read it.
 5. Ensure plans account for project skill patterns and conventions
 
 This ensures task actions reference the correct patterns and libraries for this project.
@@ -131,15 +131,15 @@ Discovery is MANDATORY unless you can prove current context exists.
 
 **Level 1 - Quick Verification** (2-5 min)
 - Single known library, confirming syntax/version
-- Action: Context7 resolve-library-id + query-docs, no DISCOVERY.md needed
+- Action: Context7 resolve-library-id + query-docs, no discovery.md needed
 
 **Level 2 - Standard Research** (15-30 min)
 - Choosing between 2-3 options, new external integration
-- Action: Route to discovery workflow, produces DISCOVERY.md
+- Action: Follow the discovery template (`~/.claude/pan-wizard-core/templates/discovery.md`), produces discovery.md in the phase directory
 
 **Level 3 - Deep Dive** (1+ hour)
 - Architectural decision with long-term impact, novel problem
-- Action: Full research with DISCOVERY.md
+- Action: Full research with discovery.md
 
 **Depth indicators:**
 - Level 2+: New library not in package.json, external API, "choose/select/evaluate" in description
@@ -1037,7 +1037,7 @@ ls .planning/phases/
 
 If multiple phases available, ask which to plan. If obvious (first incomplete), proceed.
 
-Read existing plan.md or DISCOVERY.md in phase directory.
+Read existing plan.md or discovery.md in phase directory.
 
 **If `--gaps` flag:** Switch to gap_closure_mode.
 </step>
@@ -1101,7 +1101,7 @@ Use `phase_dir` from init context (already loaded in load_project_state).
 ```bash
 cat "$phase_dir"/*-context.md 2>/dev/null   # From /pan:discuss-phase
 cat "$phase_dir"/*-research.md 2>/dev/null   # From /pan:research-phase
-cat "$phase_dir"/*-DISCOVERY.md 2>/dev/null  # From mandatory discovery
+cat "$phase_dir"/*discovery.md 2>/dev/null   # From mandatory discovery
 ```
 
 **If context.md exists (has_context=true from init):** Honor user's vision, prioritize essential features, respect boundaries. Locked decisions — do not revisit.

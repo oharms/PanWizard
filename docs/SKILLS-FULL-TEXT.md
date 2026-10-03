@@ -107,9 +107,9 @@ The army is the campaign-scale sibling of `/pan:exec-phase --hierarchical` (one 
 
 **Reading the Model-tier column.** These are PAN *tiers*, not model names. `reasoning` resolves to `inherit` — the model you launched with — while `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic).
 
-**Reading the Access column.** The backticked values on the tier-1 rows are the `access` labels `squad list` reports; tier 0 and tier 2 carry PAN's own. They are role contracts the conductor's prompt assigns when it delegates, not a sandbox: `squads.cjs` says of itself that it "modifies no agent and changes no execution path", so a label can differ from what an agent may actually do — expect that, since several `read-only` squad members hold `Write` to emit planning or verification artifacts. The binding grant is each agent's own `tools:` frontmatter (`grep '^tools:' agents/*.md`), and Mission Control's includes `Write` and `Bash`: routing rather than coding is how it is instructed to behave, not something the runtime prevents. The rail those grants do enforce is delegation depth — `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another (today, `pan-conductor`), so a squad agent cannot fan out further.
+**Reading the Access column.** The backticked values on the tier-1 rows are the `access` labels `squad list` reports; tier 0 and tier 2 carry PAN's own. They are role contracts the conductor's prompt assigns when it delegates, not a sandbox: `squads.cjs` says of itself that it "modifies no agent and changes no execution path", so a label can differ from what an agent may actually do — expect that, since several `read-only` squad members hold `Write` to emit planning or verification artifacts. The binding grant is each agent's own `tools:` frontmatter (`grep '^tools:' ~/.claude/agents/*.md`), and Mission Control's includes `Write` and `Bash`: routing rather than coding is how it is instructed to behave, not something the runtime prevents. The rail those grants do enforce is delegation depth — `grep -l '^tools:.*Task' ~/.claude/agents/*.md` names every agent able to spawn another (today, `pan-conductor`), so a squad agent cannot fan out further.
 
-**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not what resolves an agent's model; that comes from the active `model_profile` (`quality` and `balanced` are `reasoning` for every agent, and `budget` is the only profile that down-tiers), plus any `model:` pin in an agent's own frontmatter. So the `mid` on the Quality and Release rows does not describe what those agents run under the default profile — under `quality` and `balanced` they resolve `reasoning` like everything else. The tier-1 values above are the squad groupings; the tier-0 and tier-2 values are per-agent profile tiers. **`budget` resolves per agent, not per row:** it sends some workers to `fast` and others to `mid`, so no single value is true of the Tier 2 row — `MODEL_PROFILES` in `pan-wizard-core/bin/lib/core.cjs` is the table, and it is the one to read rather than a tier written into a doc. For the agents that pin a model outright, `grep -l '^model: opus' agents/*.md` lists them — the pin applies on Claude Code only, since the installer strips it for the other runtimes.
+**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not what resolves an agent's model; that comes from the active `model_profile` (`quality` and `balanced` are `reasoning` for every agent, and `budget` is the only profile that down-tiers), plus any `model:` pin in an agent's own frontmatter. So the `mid` on the Quality and Release rows does not describe what those agents run under the default profile — under `quality` and `balanced` they resolve `reasoning` like everything else. The tier-1 values above are the squad groupings; the tier-0 and tier-2 values are per-agent profile tiers. **`budget` resolves per agent, not per row:** it sends some workers to `fast` and others to `mid`, so no single value is true of the Tier 2 row — `MODEL_PROFILES` in `~/.claude/pan-wizard-core/bin/lib/core.cjs` is the table, and it is the one to read rather than a tier written into a doc. For the agents that pin a model outright, `grep -l '^model: opus' ~/.claude/agents/*.md` lists them — the pin applies on Claude Code only, since the installer strips it for the other runtimes.
 
 ---
 
@@ -1594,7 +1594,7 @@ allowed-tools:
 
 - Building production user features. Use `/pan:new-project` and `/pan:exec-phase` directly.
 - Validating a single-file change. The experiment loop is heavy — use `npm test` and `/pan:quick`.
-- Inside the PAN source repo. The command **refuses** to scaffold experiments inside `d:\PanWizard\` (or wherever the source is cloned). The experiment root defaults to `~/pan-experiments/`.
+- Inside the PAN source repo. The command **refuses** to scaffold experiments inside PAN's source repository, wherever it is cloned. The experiment root defaults to `~/pan-experiments/`.
 
 ---
 
@@ -1770,7 +1770,7 @@ pan-tools experiment manifest md-lint
 
 ## Safety guards
 
-- **Never inside source repo.** `newExperiment` refuses to write to `d:\PanWizard\` (or wherever the PAN source is). Mirrors `bin/install.js` `PAN_SOURCE_ROOT` guard.
+- **Never inside source repo.** `newExperiment` refuses to write inside PAN's source repository, wherever it is cloned. Mirrors `bin/install.js` `PAN_SOURCE_ROOT` guard.
 - **No clobber.** Refuses to scaffold over an existing experiment folder of the same slug.
 - **Slug validation.** Lowercase + digits + hyphens, max 40 chars. Rejects uppercase, spaces, special characters.
 - **Idea path validation.** Errors if the `--idea` file doesn't exist.
@@ -1790,7 +1790,7 @@ Works in all 5 runtimes (Claude / Codex / Gemini / OpenCode / Copilot). The W2 e
 
 ---
 
-### /pan:focus-auto (688 lines)
+### /pan:focus-auto (692 lines)
 
 ```markdown
 ---
@@ -1883,7 +1883,8 @@ Wait for the user's reply before proceeding. Do not guess or pick a default cate
 
 ```
 /pan:focus-auto [--source scan|backlog] [--category CAT] [--mode MODE] [--budget N]
-                [--max-cycles N] [--total-budget N] [--continue] [--stop] [--status]
+                [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F]
+                [--continue] [--stop] [--status]
                 [--dry-run] [--deep-review]
                 [--parallel-research] [--parallel-verify] [--clean-seal]
 ```
@@ -1919,6 +1920,7 @@ Wait for the user's reply before proceeding. Do not guess or pick a default cate
 | optimize | P1-P4 | balanced | 50 |
 | prompts | P0-P6 | balanced | 100 |
 | security | P0-P2 | bugfix | 40 |
+| distill | P1-P5 | balanced | 50 |
 
 ## Backlog source (`--source backlog`, ADR-0031)
 
@@ -1957,7 +1959,8 @@ The proven shape is **parallel read-only research → exactly ONE serial impleme
    - Skip to Phase 2 (Main Loop)
 4. If no `--category` was provided, you already displayed the menu in FIRST ACTION above. Use SELECTED_CATEGORY from the user's reply.
 5. Initialize new run using the category from step 4:
-   - Run `pan-tools focus auto --category <SELECTED_CATEGORY> [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--dry-run]`
+   - Run `pan-tools focus auto --category <SELECTED_CATEGORY> [--source scan|backlog] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal] [--dry-run]`,
+     passing on every one of these flags the user gave: the tooling reads each of them, and a flag left off here never takes effect
    - If `--dry-run`: display the plan, STOP
    - Record the run state
 
@@ -2147,6 +2150,7 @@ Check the response for stop conditions:
 - `diminishing_returns`: Optimize only — cycle efficiency < 30% of previous cycle — go to Phase 3
 - `prompts_complete`: Prompts only — all prompts in document executed — go to Phase 3
 - `security_complete`: Security only — scan found no HIGH/CRITICAL items remaining — go to Phase 3
+- `distill_complete`: Distill only — scan found no bloat findings remaining — go to Phase 3
 - `deep_review_block`: `--deep-review` only — critical pattern detected in changed files — go to Phase 3 with warning
 - `null`: Continue to next cycle
 
@@ -2213,7 +2217,7 @@ Then continue immediately to the next cycle (back to Step 2.1).
 | Layer | Mechanism | Action |
 |-------|-----------|--------|
 | Per-cycle budget | `--budget N` per cycle | Limits single-cycle damage |
-| Cumulative budget | `--total-budget N` | Prevents runaway spending |
+| Cumulative budget | `--total-budget N` | Advisory by default (tracked and surfaced); stops the run only when enforced (`--enforce-budget` / config `budget.enforce`) |
 | Verify reserve | `--verify-reserve F` | Holds back a budget fraction so the final re-verification isn't starved — stops new work early under enforcement (`budget_reserve_reached`) and spends the reserve on the clean re-verify in Phase 3 |
 | Iteration limit | `--max-cycles N` | Hard stop on loop count |
 | Regression circuit breaker | tests_after < tests_before | Immediate stop, status=stopped |
@@ -2329,12 +2333,12 @@ Three passes per cycle:
 
 | OWASP | Grep pattern | Priority |
 |-------|-------------|---------|
-| A03 Injection | `eval(`, `execSync(`, `` `SELECT.*\${ ``, `child_process.exec(` | P0 |
-| A02 Crypto | `createHash\(['"]md5\|sha1`, `Math\.random\(\)` near auth/token | P0 |
+| A05 Injection | `eval(`, `execSync(`, `` `SELECT.*\${ ``, `child_process.exec(` | P0 |
+| A04 Crypto | `createHash\(['"]md5\|sha1`, `Math\.random\(\)` near auth/token | P0 |
 | A01 Access | Route without auth middleware, IDOR (raw `req.params.id` to DB) | P1 |
-| A05 Misconfig | `origin:\s*['"]?\*`, `Access-Control-Allow-Origin: \*`, stack in response | P1 |
+| A02 Misconfig | `origin:\s*['"]?\*`, `Access-Control-Allow-Origin: \*`, stack in response | P1 |
 | A07 Auth | No session expiry, credentials in URL params | P1 |
-| A04 Design | Missing rate-limit on auth/payment endpoints | P2 |
+| A06 Design | Missing rate-limit on auth/payment endpoints | P2 |
 | A09 Logging | Security events (`login`, `payment`, `admin`) with no log call nearby | P2 |
 
 **Pass 2 — Structural check (always runs):**
@@ -2464,7 +2468,7 @@ This prevents the campaign from burning budget on items that will predictably fa
 - Continue after a test regression — a test count decrease means code was broken; continuing compounds the damage
 - Expand scope beyond what the scan found — scope creep in an autonomous loop compounds unpredictably across cycles
 - Run more cycles than --max-cycles — the limit exists to cap total cost and prevent runaway loops
-- Spend more points than --total-budget — the budget cap is the user's cost control mechanism
+- Spend more points than --total-budget when the budget is enforced (`--enforce-budget` or config `budget.enforce: true`) — the enforced cap is the user's cost control mechanism
 - Skip recording cycle results via --update — unrecorded cycles break resume, status, and stop-condition checks
 - Change test expectations to match broken code — this hides bugs instead of fixing them
 - Use `git add -A` or `git add .` — bulk staging can accidentally commit secrets, build artifacts, or unrelated changes
@@ -2486,7 +2490,7 @@ This prevents the campaign from burning budget on items that will predictably fa
 
 ---
 
-### /pan:focus-design (1116 lines)
+### /pan:focus-design (1118 lines)
 
 ```markdown
 ---
@@ -3563,6 +3567,8 @@ Output a complete summary with:
 ---
 
 ## NEVER DO
+
+These rules and ALWAYS DO below apply to the phases your mode actually runs. Anything the Mode + Phase Matrix or a modifier skips (a whole phase, or the parts a lite phase leaves out) is not a violation.
 
 - Design without proving the problem exists (Phase 0 demand evidence is mandatory)
 - Skip competitive research — must be best-of-breed
@@ -4687,7 +4693,7 @@ When root docs and sub-docs disagree:
 ---
 name: focus-exec
 group: Focus
-description: Automated batch execution pipeline with 6 stages, 9 behavioral rules, 3 execution tiers
+description: Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
 allowed-tools:
   - Read
   - Write
@@ -5448,7 +5454,7 @@ Ready for `/pan:focus-exec`.
 
 ---
 
-### /pan:focus-scan (290 lines)
+### /pan:focus-scan (285 lines)
 
 ```markdown
 ---
@@ -5526,10 +5532,7 @@ Read these files to establish baseline:
 
 **Project Structure:**
 - All core modules in the project's source directories
-- All command definitions
-- All agent definitions
-- All workflow definitions
-- All hook source files
+- The project's own command, agent, workflow and hook definitions, if it has any (never PAN's, which the Project Scope Boundary excludes)
 
 **Planning State:**
 - `.planning/state.md` — Current state
@@ -5548,9 +5551,7 @@ In: source directories, hooks, tests
 Cross-reference found issues with documented items — flag any UNDOCUMENTED issues as new findings.
 
 ### 0.3 Check Test Results
-```bash
-npm test 2>&1
-```
+Run the project's test suite: the commands in `.planning/config.json → verification` when set, otherwise the test command discovered from `package.json` scripts, `Makefile`, or project docs.
 Record: total tests, passing, failing, suites.
 
 ### 0.4 Baseline Snapshot Table
@@ -6731,7 +6732,7 @@ Analyze existing codebase using parallel pan-document_code agents to produce str
 
 Each mapper agent explores a focus area and **writes documents directly** to `.planning/codebase/`. The orchestrator only receives confirmations, keeping context usage minimal.
 
-Output: .planning/codebase/ folder with 7 structured documents about the codebase state.
+Output: .planning/codebase/ folder with structured documents about the codebase state.
 </objective>
 
 <execution_context>
@@ -6775,7 +6776,7 @@ The CLI returns `{mode, total_tokens, file_count, languages}`:
 
 Record the chosen mode + telemetry in the final `.planning/codebase/overview.md` so future runs can reason about drift.
 
-**The mode is decided by repo size alone** — `estimate-size` compares the token estimate to `--threshold` and applies no model check. So single-shot only pays off when the model you launched with actually has a 1M-context window (the default Opus and current Sonnet-class models do; legacy 200K-context models do not). On a 200K-context model, pass a threshold that matches your real window (e.g. `--threshold 150000`) so anything larger resolves to `sharded` instead of overflowing a single agent.
+**The mode is decided by repo size alone** — `estimate-size` compares the token estimate to `--threshold` and applies no model check. So single-shot only pays off when the model you launched with actually has a 1M-context window. On a model with a smaller window, pass a threshold that matches your real window (e.g. `--threshold 150000`) so anything larger resolves to `sharded` instead of overflowing a single agent.
 </stage_0_ingest_mode>
 
 <tool_priority>
@@ -6813,14 +6814,14 @@ The orchestrator loads context in layers — NOT everything upfront. Mapper agen
    - Agent 5: relationships focus → writes relationships.md
    - Agent 6: practices focus → writes best-practices.md
 4. Wait for agents to complete, collect confirmations (NOT document contents)
-5. Verify all 9 documents exist with line counts
+5. Verify all documents exist with line counts
 6. Commit codebase map
 7. Offer next steps (typically: /pan:new-project or /pan:plan-phase)
 </process>
 
 <success_criteria>
 - [ ] .planning/codebase/ directory created
-- [ ] All 7 codebase documents written by mapper agents
+- [ ] All codebase documents written by mapper agents
 - [ ] Documents follow template structure
 - [ ] Parallel agents completed without errors
 - [ ] User knows next steps
@@ -6933,7 +6934,7 @@ Normally the host runtime writes this file. The CLI path exists for test fixture
 
 <workflow>
 
-**New to a project with MCP tools?** Run `/pan:mcp-bridge list` to see what's available. If empty, check the host runtime's MCP config — each runtime keeps it somewhere different: Claude Code in `settings.json` under its config dir, OpenCode in `opencode.json`, Copilot in `.github/mcp.json`, Codex in its own config, Gemini in its settings file.
+**New to a project with MCP tools?** Run `/pan:mcp-bridge list` to see what's available. If empty, check the host runtime's MCP config — each runtime keeps it somewhere different: Claude Code in `.mcp.json` at the project root (project scope) or `~/.claude.json` (user and local scopes), OpenCode in `opencode.json`, Copilot in `.github/mcp.json`, Codex in its own config, Gemini in its settings file.
 
 **Planning a phase that might touch external systems?** Run `/pan:mcp-bridge recommend <phase>` to get a ranked shortlist. Copy relevant tool names into the phase plan's "External tools" section so the executor knows to invoke them.
 
@@ -7084,7 +7085,7 @@ Identify completed milestones, show a dry-run summary, and archive on confirmati
 
 ---
 
-### /pan:milestone-done (147 lines)
+### /pan:milestone-done (146 lines)
 
 ```markdown
 ---
@@ -7123,7 +7124,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
 **User input:**
 
-- Version: {{version}} (e.g., "1.0", "1.1", "2.0")
+- Version: $ARGUMENTS (e.g., "1.0", "1.1", "2.0"); `{{version}}` below stands for this value
   </context>
 
 <process>
@@ -7226,7 +7227,6 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
 <critical_rules>
 
-- **Load workflow first:** Read milestone-done.md before executing
 - **Verify completion:** All phases must have summary.md files
 - **User confirmation:** Wait for approval at verification gates
 - **Archive before deleting:** Always create archive files before updating/deleting originals
@@ -7841,7 +7841,7 @@ Generate unit and E2E tests for a completed phase, using its summary.md, context
 
 Analyzes implementation files, classifies them into TDD (unit), E2E (browser), or Skip categories, presents a test plan for user approval, then generates tests following RED-GREEN conventions.
 
-Output: Test files committed with message `test(phase-{N}): add unit and E2E tests from add-tests command`
+Output: Test files committed with message `test(phase-{N}): add unit and E2E tests from phase-tests command`
 </objective>
 
 <execution_context>
@@ -7856,7 +7856,7 @@ Phase: $ARGUMENTS
 </context>
 
 <process>
-Execute the add-tests workflow from @~/.claude/pan-wizard-core/workflows/phase-tests.md end-to-end.
+Execute the phase-tests workflow from @~/.claude/pan-wizard-core/workflows/phase-tests.md end-to-end.
 Preserve all workflow gates (classification approval, test plan approval, RED-GREEN verification, gap reporting).
 </process>
 ```
@@ -8154,7 +8154,7 @@ allowed-tools:
 <objective>
 Switch the model profile used by PAN agents. Controls which Claude model each agent uses, balancing quality vs token spend.
 
-Routes to the set-profile workflow which handles:
+Routes to the profile workflow which handles:
 - Argument validation (quality/balanced/budget)
 - Downgrade confirmation (quality → balanced → budget requires 'yes')
 - Config file creation if missing
@@ -8167,7 +8167,7 @@ Routes to the set-profile workflow which handles:
 </execution_context>
 
 <process>
-**Follow the set-profile workflow** from `@~/.claude/pan-wizard-core/workflows/profile.md`.
+**Follow the profile workflow** from `@~/.claude/pan-wizard-core/workflows/profile.md`.
 
 The workflow handles all logic including:
 1. Profile argument validation
@@ -8438,7 +8438,7 @@ pan-tools report all        [--open]
 
 ---
 
-### /pan:research-phase (190 lines)
+### /pan:research-phase (188 lines)
 
 ```markdown
 ---
@@ -8498,11 +8498,9 @@ PHASE_INFO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase 
 
 ## 2. Check Existing Research
 
-```bash
-ls .planning/phases/${PHASE}-*/research.md 2>/dev/null
-```
+Use `has_research` and `research_path` from INIT.
 
-**If exists:** Offer: 1) Update research, 2) View existing, 3) Skip. Wait for response.
+**If exists:** Offer: 1) Update research, 2) View existing (`research_path`), 3) Skip. Wait for response.
 
 **If doesn't exist:** Continue.
 
@@ -8905,19 +8903,19 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 
 | Runtime | hardener | meta-reviewer | merge |
 |---------|----------|---------------|-------|
-| Claude Code | Full, thinking enabled (6000/4000 budget) | Full | Full |
+| Claude Code | Full; reasoning depth from the agent's `effort:` frontmatter | Full | Full |
 | OpenCode | Prose "think step-by-step" preamble substitutes for thinking | Same | Full (runtime-agnostic CLI) |
 | Gemini | Same | Same | Full |
 | Codex | Same | Same | Full |
 | Copilot | Same | Same | Full |
 
-The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability — an Opus-class model with extended thinking produces the richest findings.
+The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability.
 
 </runtime_compatibility>
 
 <calibration_note>
 
-Deep review is opt-in for a reason: it costs roughly 3× a normal review (hardener + meta + merge adds two agent spawns per phase). Use it for high-stakes phases, not every phase. `--deep-review` gating by phase tags is a v3.4 candidate enhancement.
+Deep review is opt-in for a reason: it costs roughly 3× a normal review (hardener + meta + merge adds two agent spawns per phase). Use it for high-stakes phases, not every phase.
 
 </calibration_note>
 ```
@@ -8988,7 +8986,7 @@ allowed-tools:
 <objective>
 Capture an idea, task, or issue that surfaces during a PAN session as a structured todo for later work.
 
-Routes to the add-todo workflow which handles:
+Routes to the todo-add workflow which handles:
 - Directory structure creation
 - Content extraction from arguments or conversation
 - Area inference from file paths
@@ -9009,7 +9007,7 @@ State is resolved in-workflow via `init todos` and targeted reads.
 </context>
 
 <process>
-**Follow the add-todo workflow** from `@~/.claude/pan-wizard-core/workflows/todo-add.md`.
+**Follow the todo-add workflow** from `@~/.claude/pan-wizard-core/workflows/todo-add.md`.
 
 The workflow handles all logic including:
 1. Directory ensuring
@@ -9044,7 +9042,7 @@ allowed-tools:
 <objective>
 List all pending todos, allow selection, load full context for the selected todo, and route to appropriate action.
 
-Routes to the check-todos workflow which handles:
+Routes to the todo-check workflow which handles:
 - Todo counting and listing with area filtering
 - Interactive selection with full context loading
 - Roadmap correlation checking
@@ -9063,7 +9061,7 @@ Todo state and roadmap correlation are loaded in-workflow using `init todos` and
 </context>
 
 <process>
-**Follow the check-todos workflow** from `@~/.claude/pan-wizard-core/workflows/todo-check.md`.
+**Follow the todo-check workflow** from `@~/.claude/pan-wizard-core/workflows/todo-check.md`.
 
 The workflow handles all logic including:
 1. Todo existence checking

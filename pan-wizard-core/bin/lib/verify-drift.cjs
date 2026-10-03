@@ -13,14 +13,24 @@ const {
 const { planningPath } = require('./utils.cjs');
 
 /**
- * Parse convention rules from CONVENTIONS.md markdown content.
+ * The codebase map's conventions document. map-codebase writes `conventions.md`;
+ * a map from an older PAN, or one written by hand, may be `CONVENTIONS.md`. Only a
+ * case-sensitive filesystem tells the two apart, which is why reading the uppercase
+ * name alone found nothing on Linux (prompt audit, market-ideas M34).
+ */
+function readConventions(cwd) {
+  const dir = path.join(planningPath(cwd), 'codebase');
+  return safeReadFile(path.join(dir, 'conventions.md')) || safeReadFile(path.join(dir, 'CONVENTIONS.md'));
+}
+
+/**
+ * Parse convention rules from the conventions document's markdown content.
  * Extracts anti-pattern rules from prose containing "instead of", "not", "never".
  * Run drift check internally and return result object (no output).
  * Used by cmdValidateHealth --drift.
  */
 function runDriftCheck(cwd) {
-  const conventionsPath = path.join(planningPath(cwd), 'codebase', 'CONVENTIONS.md');
-  const conventionsContent = safeReadFile(conventionsPath);
+  const conventionsContent = readConventions(cwd);
   const claudeMdContent = safeReadFile(path.join(cwd, 'CLAUDE.md'));
   const combined = [conventionsContent, claudeMdContent].filter(Boolean).join('\n');
   const rules = parseConventionRules(combined || null);
@@ -198,8 +208,7 @@ function cmdDriftCheck(cwd, raw, args) {
   }
 
   // Load convention rules
-  const conventionsPath = path.join(planningPath(cwd), 'codebase', 'CONVENTIONS.md');
-  const conventionsContent = safeReadFile(conventionsPath);
+  const conventionsContent = readConventions(cwd);
   const claudeMdContent = safeReadFile(path.join(cwd, 'CLAUDE.md'));
   const combined = [conventionsContent, claudeMdContent].filter(Boolean).join('\n');
   const rules = parseConventionRules(combined || null);

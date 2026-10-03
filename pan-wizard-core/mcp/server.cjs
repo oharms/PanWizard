@@ -50,6 +50,15 @@ const META_SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo';
 // claim to speak a version we don't. Newest first (the `server/discover` order).
 const SUPPORTED_VERSIONS_LIST = [MODERN_PROTOCOL_VERSION, '2025-06-18', '2025-03-26', '2024-11-05'];
 const SUPPORTED_PROTOCOL_VERSIONS = new Set(SUPPORTED_VERSIONS_LIST);
+// The `CacheableResult` fields a modern result MUST carry where its type extends
+// that interface: DiscoverResult, ListToolsResult, ListResourcesResult and
+// ReadResourceResult (schema/2026-07-28/schema.ts). Claude Code 2.1.288 drops a
+// list without them, so the server showed as connected with no tools and no
+// resources (live check H2, 2026-10-03). The registry is fixed for the life of the
+// process, so its lists are public and long-lived; a resource is the project's
+// state at the moment it is read, so a read is private and stale at once.
+const REGISTRY_CACHE = Object.freeze({ ttlMs: 3600000, cacheScope: 'public' });
+const READ_CACHE = Object.freeze({ ttlMs: 0, cacheScope: 'private' });
 /**
  * The version the server reports in `initialize` / `server/discover`. Read from the
  * package.json two levels up: the repository root in the source tree, the runtime
@@ -320,12 +329,13 @@ function createServer(opts = {}) {
         { supported: SUPPORTED_VERSIONS_LIST, requested: requestedVersion });
     }
 
-    // Modern results MUST carry a `resultType`; legacy results MUST NOT change
-    // shape (clients treat an absent resultType as "complete"). Stamp it only on
+    // Modern results MUST carry a `resultType`, a cacheable one its caching fields,
+    // and each SHOULD name the server in `_meta`; legacy results MUST NOT change
+    // shape (clients treat an absent resultType as "complete"). Stamp them only on
     // the modern path.
-    const reply = (result) => rpcResult(id,
+    const reply = (result, cache) => rpcResult(id,
       isModern && result && typeof result === 'object' && result.resultType === undefined
-        ? { resultType: 'complete', ...result }
+        ? { resultType: 'complete', ...cache, ...result, _meta: { ...result._meta, [META_SERVER_INFO_KEY]: SERVER_INFO } }
         : result);
 
     switch (method) {
@@ -339,8 +349,7 @@ function createServer(opts = {}) {
           supportedVersions: SUPPORTED_VERSIONS_LIST,
           capabilities: { tools: {}, resources: {} },
           instructions: 'PAN Wizard engine bridge: planning, verification, and orchestration tools backed by the pan-tools CLI. All tools are read-only except the gated pan_confirm_merge.',
-          ttlMs: 3600000,
-          cacheScope: 'public',
+          ...REGISTRY_CACHE,
           _meta: { [META_SERVER_INFO_KEY]: SERVER_INFO },
         });
       case 'initialize': {
@@ -354,9 +363,9 @@ function createServer(opts = {}) {
       case 'ping':
         return reply({});
       case 'tools/list':
-        return reply({ tools: reg.TOOLS.map(toMcpTool) });
+        return reply({ tools: reg.TOOLS.map(toMcpTool) }, REGISTRY_CACHE);
       case 'resources/list':
-        return reply({ resources: reg.RESOURCES.map(toMcpResource) });
+        return reply({ resources: reg.RESOURCES.map(toMcpResource) }, REGISTRY_CACHE);
       case 'tools/call': {
         const out = callTool(params && params.name, params && params.arguments);
         return out.error ? rpcError(id, out.error.code, out.error.message) : reply(out.result);
@@ -364,7 +373,7 @@ function createServer(opts = {}) {
       case 'resources/read': {
         const out = readResource(params && params.uri);
         if (out.unknown) return rpcError(id, -32602, `Unknown resource: ${params && params.uri}`);
-        return out.error ? rpcError(id, out.error.code, out.error.message) : reply(out.result);
+        return out.error ? rpcError(id, out.error.code, out.error.message) : reply(out.result, READ_CACHE);
       }
       default:
         return rpcError(id, -32601, `Method not found: ${method}`);

@@ -111,18 +111,18 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 
 | Runtime | hardener | meta-reviewer | merge |
 |---------|----------|---------------|-------|
-| Claude Code | Full, thinking enabled (6000/4000 budget) | Full | Full |
+| Claude Code | Full; reasoning depth from the agent's `effort:` frontmatter | Full | Full |
 | OpenCode | Prose "think step-by-step" preamble substitutes for thinking | Same | Full (runtime-agnostic CLI) |
 | Gemini | Same | Same | Full |
 | Codex | Same | Same | Full |
 | Copilot | Same | Same | Full |
 
-The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability — an Opus-class model with extended thinking produces the richest findings.
+The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability.
 
 </runtime_compatibility>
 
 <calibration_note>
 
-Deep review is opt-in for a reason: it costs roughly 3× a normal review (hardener + meta + merge adds two agent spawns per phase). Use it for high-stakes phases, not every phase. `--deep-review` gating by phase tags is a v3.4 candidate enhancement.
+Deep review is opt-in for a reason: it costs roughly 3× a normal review (hardener + meta + merge adds two agent spawns per phase). Use it for high-stakes phases, not every phase.
 
 </calibration_note>

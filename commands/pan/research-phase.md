@@ -55,11 +55,9 @@ PHASE_INFO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase 
 
 ## 2. Check Existing Research
 
-```bash
-ls .planning/phases/${PHASE}-*/research.md 2>/dev/null
-```
+Use `has_research` and `research_path` from INIT.
 
-**If exists:** Offer: 1) Update research, 2) View existing, 3) Skip. Wait for response.
+**If exists:** Offer: 1) Update research, 2) View existing (`research_path`), 3) Skip. Wait for response.
 
 **If doesn't exist:** Continue.
 

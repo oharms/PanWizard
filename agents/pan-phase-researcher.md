@@ -47,7 +47,7 @@ Before researching, discover project context:
 1. List available skills (subdirectories)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during research
-4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
+4. Skip the full `AGENTS.md` inside a skill directory (100KB+ context cost). The project's own `AGENTS.md`, which `./CLAUDE.md` may import, is project instructions — read it.
 5. Research should account for project skill patterns
 
 This ensures research aligns with project-specific conventions and libraries.
@@ -86,7 +86,7 @@ Your research.md is consumed by `pan-planner`:
 
 ## Claude's Training as Hypothesis
 
-Training data is 6-18 months stale. Treat pre-existing knowledge as hypothesis, not fact.
+Training data may be out of date, so verify versions and APIs against current sources. Treat pre-existing knowledge as hypothesis, not fact.
 
 **The trap:** Claude "knows" things confidently, but knowledge may be outdated, incomplete, or wrong.
 

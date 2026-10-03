@@ -1,7 +1,7 @@
 ---
 name: pan-meta-reviewer
 description: Reviews the reviewer + hardener output. Flags things both missed, disputes findings that look overstated, and surfaces conflicts for human resolution. Spawned by /pan:review-deep.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, Write
 color: magenta
 effort: medium
 model: opus
@@ -42,7 +42,7 @@ Think through, in order:
 
 <output_contract>
 
-Write to the path provided in your prompt. Structure:
+Write to the path provided in your prompt. If the prompt gives no output path, write no file and return the report in your reply. Structure:
 
 ```markdown
 ---

@@ -32,7 +32,7 @@ allowed-tools:
 
 - Building production user features. Use `/pan:new-project` and `/pan:exec-phase` directly.
 - Validating a single-file change. The experiment loop is heavy — use `npm test` and `/pan:quick`.
-- Inside the PAN source repo. The command **refuses** to scaffold experiments inside `d:\PanWizard\` (or wherever the source is cloned). The experiment root defaults to `~/pan-experiments/`.
+- Inside the PAN source repo. The command **refuses** to scaffold experiments inside PAN's source repository, wherever it is cloned. The experiment root defaults to `~/pan-experiments/`.
 
 ---
 
@@ -208,7 +208,7 @@ pan-tools experiment manifest md-lint
 
 ## Safety guards
 
-- **Never inside source repo.** `newExperiment` refuses to write to `d:\PanWizard\` (or wherever the PAN source is). Mirrors `bin/install.js` `PAN_SOURCE_ROOT` guard.
+- **Never inside source repo.** `newExperiment` refuses to write inside PAN's source repository, wherever it is cloned. Mirrors `bin/install.js` `PAN_SOURCE_ROOT` guard.
 - **No clobber.** Refuses to scaffold over an existing experiment folder of the same slug.
 - **Slug validation.** Lowercase + digits + hyphens, max 40 chars. Rejects uppercase, spaces, special characters.
 - **Idea path validation.** Errors if the `--idea` file doesn't exist.

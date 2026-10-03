@@ -207,16 +207,18 @@ const STANDARDS_CATALOG = {
     level: 'foundational',
     url: 'https://owasp.org/www-project-top-ten/',
     checklist: [
-      'A01: Broken Access Control — verify authorization checks on all endpoints',
-      'A02: Cryptographic Failures — verify sensitive data encryption at rest and in transit',
-      'A03: Injection — verify input validation and parameterized queries',
-      'A04: Insecure Design — verify threat modeling and secure design patterns',
-      'A05: Security Misconfiguration — verify default credentials removed, headers set',
-      'A06: Vulnerable Components — verify dependency scanning, no known CVEs',
+      // The 2025 list (top10.owasp.org): until 2026-10-03 this held the 2021 list
+      // under the 2025 name (prompt audit, market-ideas M34). SSRF is now part of A01.
+      'A01: Broken Access Control — verify authorization checks on all endpoints, and allowlists for server-side requests (SSRF)',
+      'A02: Security Misconfiguration — verify default credentials removed, headers set',
+      'A03: Software Supply Chain Failures — verify dependency scanning, no known CVEs, pinned and verified packages and build tooling',
+      'A04: Cryptographic Failures — verify sensitive data encryption at rest and in transit',
+      'A05: Injection — verify input validation and parameterized queries',
+      'A06: Insecure Design — verify threat modeling and secure design patterns',
       'A07: Authentication Failures — verify MFA support, session management, credential storage',
-      'A08: Software and Data Integrity — verify CI/CD pipeline integrity, signed updates',
-      'A09: Logging and Monitoring — verify security events logged, alerts configured',
-      'A10: SSRF — verify server-side request validation, allowlists',
+      'A08: Software or Data Integrity Failures — verify CI/CD pipeline integrity, signed updates',
+      'A09: Security Logging and Alerting Failures — verify security events logged, alerts configured',
+      'A10: Mishandling of Exceptional Conditions — verify errors fail closed, are handled, and release resources',
     ],
   },
   'owasp-asvs-l1': {

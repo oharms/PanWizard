@@ -12,7 +12,7 @@ allowed-tools:
 <objective>
 Switch the model profile used by PAN agents. Controls which Claude model each agent uses, balancing quality vs token spend.
 
-Routes to the set-profile workflow which handles:
+Routes to the profile workflow which handles:
 - Argument validation (quality/balanced/budget)
 - Downgrade confirmation (quality → balanced → budget requires 'yes')
 - Config file creation if missing
@@ -25,7 +25,7 @@ Routes to the set-profile workflow which handles:
 </execution_context>
 
 <process>
-**Follow the set-profile workflow** from `@~/.claude/pan-wizard-core/workflows/profile.md`.
+**Follow the profile workflow** from `@~/.claude/pan-wizard-core/workflows/profile.md`.
 
 The workflow handles all logic including:
 1. Profile argument validation
