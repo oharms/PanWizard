@@ -73,10 +73,7 @@ Read these files to establish baseline:
 
 **Project Structure:**
 - All core modules in the project's source directories
-- All command definitions
-- All agent definitions
-- All workflow definitions
-- All hook source files
+- The project's own command, agent, workflow and hook definitions, if it has any (never PAN's, which the Project Scope Boundary excludes)
 
 **Planning State:**
 - `.planning/state.md` — Current state
@@ -95,9 +92,7 @@ In: source directories, hooks, tests
 Cross-reference found issues with documented items — flag any UNDOCUMENTED issues as new findings.
 
 ### 0.3 Check Test Results
-```bash
-npm test 2>&1
-```
+Run the project's test suite: the commands in `.planning/config.json → verification` when set, otherwise the test command discovered from `package.json` scripts, `Makefile`, or project docs.
 Record: total tests, passing, failing, suites.
 
 ### 0.4 Baseline Snapshot Table

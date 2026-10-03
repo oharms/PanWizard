@@ -23,11 +23,12 @@ Your files feed the roadmap:
 
 | File | How Roadmap Uses It |
 |------|---------------------|
-| `summary.md` | Phase structure recommendations, ordering rationale |
 | `stack.md` | Technology decisions for the project |
 | `features.md` | What to build in each phase |
 | `architecture.md` | System structure, component boundaries |
 | `pitfalls.md` | What phases need deeper research flags |
+
+The roadmapper reads them through `summary.md`, which pan-research-synthesizer writes from these files once every researcher has finished. You don't write it.
 
 **Be comprehensive but opinionated.** "Use X because Y" not "Options are X, Y, Z."
 </role>
@@ -177,58 +178,6 @@ Never present LOW confidence findings as authoritative.
 <output_formats>
 
 All files → `.planning/research/`
-
-## summary.md
-
-```markdown
-# Research Summary: [Project Name]
-
-**Domain:** [type of product]
-**Researched:** [date]
-**Overall confidence:** [HIGH/MEDIUM/LOW]
-
-## Executive Summary
-
-[3-4 paragraphs synthesizing all findings]
-
-## Key Findings
-
-**Stack:** [one-liner from stack.md]
-**Architecture:** [one-liner from architecture.md]
-**Critical pitfall:** [most important from pitfalls.md]
-
-## Implications for Roadmap
-
-Based on research, suggested phase structure:
-
-1. **[Phase name]** - [rationale]
-   - Addresses: [features from features.md]
-   - Avoids: [pitfall from pitfalls.md]
-
-2. **[Phase name]** - [rationale]
-   ...
-
-**Phase ordering rationale:**
-- [Why this order based on dependencies]
-
-**Research flags for phases:**
-- Phase [X]: Likely needs deeper research (reason)
-- Phase [Y]: Standard patterns, unlikely to need research
-
-## Confidence Assessment
-
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Stack | [level] | [reason] |
-| Features | [level] | [reason] |
-| Architecture | [level] | [reason] |
-| Pitfalls | [level] | [reason] |
-
-## Gaps to Address
-
-- [Areas where research was inconclusive]
-- [Topics needing phase-specific research later]
-```
 
 ## stack.md
 
@@ -550,14 +499,12 @@ Run pre-submission checklist (see verification_protocol).
 
 ## Step 5: Write Output Files
 
-In `.planning/research/`:
-1. **summary.md** — Always
-2. **stack.md** — Always
-3. **features.md** — Always
-4. **architecture.md** — If patterns discovered
-5. **pitfalls.md** — Always
-6. **comparison.md** — If comparison mode
-7. **feasibility.md** — If feasibility mode
+In `.planning/research/`, write only the file your prompt's `<output>` block names:
+1. **stack.md**, **features.md**, **architecture.md** or **pitfalls.md** — the dimension you were spawned for
+2. **comparison.md** — If comparison mode
+3. **feasibility.md** — If feasibility mode
+
+The other researchers write the other dimensions in parallel, and pan-research-synthesizer writes `summary.md` after they all finish. Writing either would overwrite their work.
 
 ## Step 6: Return Structured Result
 
@@ -584,11 +531,7 @@ In `.planning/research/`:
 
 | File | Purpose |
 |------|---------|
-| .planning/research/summary.md | Executive summary with roadmap implications |
-| .planning/research/stack.md | Technology recommendations |
-| .planning/research/features.md | Feature landscape |
-| .planning/research/architecture.md | Architecture patterns |
-| .planning/research/pitfalls.md | Domain pitfalls |
+| .planning/research/{file}.md | {dimension}: {what it covers} |
 
 ### Confidence Assessment
 
@@ -644,7 +587,7 @@ Research is complete when:
 - [ ] Source hierarchy followed (Context7 → Official → WebSearch)
 - [ ] All findings have confidence levels
 - [ ] Output files created in `.planning/research/`
-- [ ] summary.md includes roadmap implications
+- [ ] Roadmap implications included in the structured return
 - [ ] Files written (DO NOT commit — orchestrator handles this)
 - [ ] Structured return provided to orchestrator
 

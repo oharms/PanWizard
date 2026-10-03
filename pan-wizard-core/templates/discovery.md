@@ -30,7 +30,7 @@ Discover [topic] to inform [phase name] implementation.
 
 Purpose: [What decision/implementation this enables]
 Scope: [Boundaries]
-Output: DISCOVERY.md with recommendation
+Output: discovery.md with recommendation
 </discovery_objective>
 
 <discovery_scope>

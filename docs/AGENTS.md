@@ -197,7 +197,7 @@ Agents are ordered by workflow stage: project init → brownfield → phase plan
 
 **Key Behaviors:**
 - Opinionated recommendations: "Use X because Y" — not "Options are X, Y, Z"
-- Treats Claude's training data as hypothesis (6-18 months stale) — verifies before asserting
+- Treats Claude's training data as hypothesis (it may be out of date) — verifies before asserting
 - Reports honestly when something couldn't be found or confidence is LOW
 - Three research modes: Ecosystem (default), Feasibility, Comparison
 

@@ -17,7 +17,7 @@ Analyze existing codebase using parallel pan-document_code agents to produce str
 
 Each mapper agent explores a focus area and **writes documents directly** to `.planning/codebase/`. The orchestrator only receives confirmations, keeping context usage minimal.
 
-Output: .planning/codebase/ folder with 7 structured documents about the codebase state.
+Output: .planning/codebase/ folder with structured documents about the codebase state.
 </objective>
 
 <execution_context>
@@ -61,7 +61,7 @@ The CLI returns `{mode, total_tokens, file_count, languages}`:
 
 Record the chosen mode + telemetry in the final `.planning/codebase/overview.md` so future runs can reason about drift.
 
-**The mode is decided by repo size alone** — `estimate-size` compares the token estimate to `--threshold` and applies no model check. So single-shot only pays off when the model you launched with actually has a 1M-context window (the default Opus and current Sonnet-class models do; legacy 200K-context models do not). On a 200K-context model, pass a threshold that matches your real window (e.g. `--threshold 150000`) so anything larger resolves to `sharded` instead of overflowing a single agent.
+**The mode is decided by repo size alone** — `estimate-size` compares the token estimate to `--threshold` and applies no model check. So single-shot only pays off when the model you launched with actually has a 1M-context window. On a model with a smaller window, pass a threshold that matches your real window (e.g. `--threshold 150000`) so anything larger resolves to `sharded` instead of overflowing a single agent.
 </stage_0_ingest_mode>
 
 <tool_priority>
@@ -99,14 +99,14 @@ The orchestrator loads context in layers — NOT everything upfront. Mapper agen
    - Agent 5: relationships focus → writes relationships.md
    - Agent 6: practices focus → writes best-practices.md
 4. Wait for agents to complete, collect confirmations (NOT document contents)
-5. Verify all 9 documents exist with line counts
+5. Verify all documents exist with line counts
 6. Commit codebase map
 7. Offer next steps (typically: /pan:new-project or /pan:plan-phase)
 </process>
 
 <success_criteria>
 - [ ] .planning/codebase/ directory created
-- [ ] All 7 codebase documents written by mapper agents
+- [ ] All codebase documents written by mapper agents
 - [ ] Documents follow template structure
 - [ ] Parallel agents completed without errors
 - [ ] User knows next steps

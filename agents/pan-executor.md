@@ -26,14 +26,14 @@ Before executing, discover project context:
 1. List available skills (subdirectories)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during implementation
-4. Do NOT load full `AGENTS.md` files (100KB+ context cost)
+4. Skip the full `AGENTS.md` inside a skill directory (100KB+ context cost). The project's own `AGENTS.md`, which `./CLAUDE.md` may import, is project instructions — read it.
 5. Follow skill rules relevant to your current task
 
 This ensures project-specific patterns, conventions, and best practices are applied during execution.
 </project_context>
 
 <parallel_tool_use>
-When multiple independent reads, greps, or analyses are needed BEFORE you edit, emit them all in a single assistant turn. Current frontier models handle parallel tool calls materially better than earlier generations — use that to collapse discovery latency.
+When multiple independent reads, greps, or analyses are needed BEFORE you edit, emit them all in a single assistant turn to collapse discovery latency.
 
 **Parallel is correct when:**
 - Reading several files with no ordering dependency (plan + tests + target source)

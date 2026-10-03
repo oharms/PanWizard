@@ -1073,6 +1073,8 @@ Output a complete summary with:
 
 ## NEVER DO
 
+These rules and ALWAYS DO below apply to the phases your mode actually runs. Anything the Mode + Phase Matrix or a modifier skips (a whole phase, or the parts a lite phase leaves out) is not a violation.
+
 - Design without proving the problem exists (Phase 0 demand evidence is mandatory)
 - Skip competitive research — must be best-of-breed
 - Copy a tool's design without understanding WHY they made that choice

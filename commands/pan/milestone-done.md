@@ -34,7 +34,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
 **User input:**
 
-- Version: {{version}} (e.g., "1.0", "1.1", "2.0")
+- Version: $ARGUMENTS (e.g., "1.0", "1.1", "2.0"); `{{version}}` below stands for this value
   </context>
 
 <process>
@@ -137,7 +137,6 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
 <critical_rules>
 
-- **Load workflow first:** Read milestone-done.md before executing
 - **Verify completion:** All phases must have summary.md files
 - **User confirmation:** Wait for approval at verification gates
 - **Archive before deleting:** Always create archive files before updating/deleting originals

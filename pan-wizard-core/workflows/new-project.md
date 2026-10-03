@@ -985,7 +985,7 @@ Use AskUserQuestion:
   - .planning/roadmap.md (Current roadmap to revise)
   </files_to_read>
 
-  Update the roadmap based on feedback. Edit files in place.
+  Update the roadmap based on feedback: rewrite each changed file with one Write.
   Return ROADMAP REVISED with changes made.
   </revision>
   ", subagent_type="pan-roadmapper", model="{roadmapper_model}", description="Revise roadmap")

@@ -144,7 +144,7 @@ Research how to implement a phase (standalone - usually use /pan:plan-phase inst
 
 **Tools:** Read, Bash, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 190
+**Lines:** 188
 
 #### /pan:verify-phase
 
@@ -253,7 +253,7 @@ Remove a future phase from roadmap and renumber subsequent phases
 | `/pan:focus-design` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs | Strategic 10-phase feature investigation, design, and specification pipeline |
 | `/pan:focus-doc-audit` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch | Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality |
 | `/pan:focus-drift-walking` | Read, Write, Edit, Bash, Grep, Glob, Agent | Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories |
-| `/pan:focus-exec` | Read, Write, Edit, Bash, Grep, Glob, Agent | Automated batch execution pipeline with 6 stages, 9 behavioral rules, 3 execution tiers |
+| `/pan:focus-exec` | Read, Write, Edit, Bash, Grep, Glob, Agent | Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers |
 | `/pan:focus-plan` | Read, Write, Edit, Bash, Grep, Glob | Create capacity-budgeted work batch with spec coverage verification and 4 execution modes |
 | `/pan:focus-scan` | Read, Bash, Grep, Glob | Deep-dive strategic work scan with prioritized items and Reality Score filtering |
 | `/pan:focus-sync` | Read, Bash, Grep, Glob, Edit, Write | Synchronize documentation after changes — check staleness and update counts |
@@ -268,7 +268,7 @@ Continuous scan-plan-exec loop with purpose-driven categories and a layered safe
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Focus  
-**Lines:** 688
+**Lines:** 692
 
 #### /pan:focus-design
 
@@ -280,7 +280,7 @@ Strategic 10-phase feature investigation, design, and specification pipeline
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs  
 **Group:** Focus  
-**Lines:** 1116
+**Lines:** 1118
 
 #### /pan:focus-doc-audit
 
@@ -308,7 +308,7 @@ Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair ac
 
 #### /pan:focus-exec
 
-Automated batch execution pipeline with 6 stages, 9 behavioral rules, 3 execution tiers
+Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
 
 ```
 /pan:focus-exec
@@ -340,7 +340,7 @@ Deep-dive strategic work scan with prioritized items and Reality Score filtering
 
 **Tools:** Read, Bash, Grep, Glob  
 **Group:** Focus  
-**Lines:** 290
+**Lines:** 285
 
 #### /pan:focus-sync
 
@@ -400,7 +400,7 @@ Archive completed milestone and prepare for next version
 
 **Tools:** Read, Write, Bash  
 **Group:** Milestone  
-**Lines:** 147
+**Lines:** 146
 
 #### /pan:milestone-gaps
 

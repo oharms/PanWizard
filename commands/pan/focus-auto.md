@@ -88,7 +88,8 @@ Wait for the user's reply before proceeding. Do not guess or pick a default cate
 
 ```
 /pan:focus-auto [--source scan|backlog] [--category CAT] [--mode MODE] [--budget N]
-                [--max-cycles N] [--total-budget N] [--continue] [--stop] [--status]
+                [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F]
+                [--continue] [--stop] [--status]
                 [--dry-run] [--deep-review]
                 [--parallel-research] [--parallel-verify] [--clean-seal]
 ```
@@ -124,6 +125,7 @@ Wait for the user's reply before proceeding. Do not guess or pick a default cate
 | optimize | P1-P4 | balanced | 50 |
 | prompts | P0-P6 | balanced | 100 |
 | security | P0-P2 | bugfix | 40 |
+| distill | P1-P5 | balanced | 50 |
 
 ## Backlog source (`--source backlog`, ADR-0031)
 
@@ -162,7 +164,8 @@ The proven shape is **parallel read-only research → exactly ONE serial impleme
    - Skip to Phase 2 (Main Loop)
 4. If no `--category` was provided, you already displayed the menu in FIRST ACTION above. Use SELECTED_CATEGORY from the user's reply.
 5. Initialize new run using the category from step 4:
-   - Run `pan-tools focus auto --category <SELECTED_CATEGORY> [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--dry-run]`
+   - Run `pan-tools focus auto --category <SELECTED_CATEGORY> [--source scan|backlog] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal] [--dry-run]`,
+     passing on every one of these flags the user gave: the tooling reads each of them, and a flag left off here never takes effect
    - If `--dry-run`: display the plan, STOP
    - Record the run state
 
@@ -352,6 +355,7 @@ Check the response for stop conditions:
 - `diminishing_returns`: Optimize only — cycle efficiency < 30% of previous cycle — go to Phase 3
 - `prompts_complete`: Prompts only — all prompts in document executed — go to Phase 3
 - `security_complete`: Security only — scan found no HIGH/CRITICAL items remaining — go to Phase 3
+- `distill_complete`: Distill only — scan found no bloat findings remaining — go to Phase 3
 - `deep_review_block`: `--deep-review` only — critical pattern detected in changed files — go to Phase 3 with warning
 - `null`: Continue to next cycle
 
@@ -418,7 +422,7 @@ Then continue immediately to the next cycle (back to Step 2.1).
 | Layer | Mechanism | Action |
 |-------|-----------|--------|
 | Per-cycle budget | `--budget N` per cycle | Limits single-cycle damage |
-| Cumulative budget | `--total-budget N` | Prevents runaway spending |
+| Cumulative budget | `--total-budget N` | Advisory by default (tracked and surfaced); stops the run only when enforced (`--enforce-budget` / config `budget.enforce`) |
 | Verify reserve | `--verify-reserve F` | Holds back a budget fraction so the final re-verification isn't starved — stops new work early under enforcement (`budget_reserve_reached`) and spends the reserve on the clean re-verify in Phase 3 |
 | Iteration limit | `--max-cycles N` | Hard stop on loop count |
 | Regression circuit breaker | tests_after < tests_before | Immediate stop, status=stopped |
@@ -534,12 +538,12 @@ Three passes per cycle:
 
 | OWASP | Grep pattern | Priority |
 |-------|-------------|---------|
-| A03 Injection | `eval(`, `execSync(`, `` `SELECT.*\${ ``, `child_process.exec(` | P0 |
-| A02 Crypto | `createHash\(['"]md5\|sha1`, `Math\.random\(\)` near auth/token | P0 |
+| A05 Injection | `eval(`, `execSync(`, `` `SELECT.*\${ ``, `child_process.exec(` | P0 |
+| A04 Crypto | `createHash\(['"]md5\|sha1`, `Math\.random\(\)` near auth/token | P0 |
 | A01 Access | Route without auth middleware, IDOR (raw `req.params.id` to DB) | P1 |
-| A05 Misconfig | `origin:\s*['"]?\*`, `Access-Control-Allow-Origin: \*`, stack in response | P1 |
+| A02 Misconfig | `origin:\s*['"]?\*`, `Access-Control-Allow-Origin: \*`, stack in response | P1 |
 | A07 Auth | No session expiry, credentials in URL params | P1 |
-| A04 Design | Missing rate-limit on auth/payment endpoints | P2 |
+| A06 Design | Missing rate-limit on auth/payment endpoints | P2 |
 | A09 Logging | Security events (`login`, `payment`, `admin`) with no log call nearby | P2 |
 
 **Pass 2 — Structural check (always runs):**
@@ -669,7 +673,7 @@ This prevents the campaign from burning budget on items that will predictably fa
 - Continue after a test regression — a test count decrease means code was broken; continuing compounds the damage
 - Expand scope beyond what the scan found — scope creep in an autonomous loop compounds unpredictably across cycles
 - Run more cycles than --max-cycles — the limit exists to cap total cost and prevent runaway loops
-- Spend more points than --total-budget — the budget cap is the user's cost control mechanism
+- Spend more points than --total-budget when the budget is enforced (`--enforce-budget` or config `budget.enforce: true`) — the enforced cap is the user's cost control mechanism
 - Skip recording cycle results via --update — unrecorded cycles break resume, status, and stop-condition checks
 - Change test expectations to match broken code — this hides bugs instead of fixing them
 - Use `git add -A` or `git add .` — bulk staging can accidentally commit secrets, build artifacts, or unrelated changes

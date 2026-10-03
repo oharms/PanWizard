@@ -13,7 +13,7 @@ allowed-tools:
 <objective>
 Capture an idea, task, or issue that surfaces during a PAN session as a structured todo for later work.
 
-Routes to the add-todo workflow which handles:
+Routes to the todo-add workflow which handles:
 - Directory structure creation
 - Content extraction from arguments or conversation
 - Area inference from file paths
@@ -34,7 +34,7 @@ State is resolved in-workflow via `init todos` and targeted reads.
 </context>
 
 <process>
-**Follow the add-todo workflow** from `@~/.claude/pan-wizard-core/workflows/todo-add.md`.
+**Follow the todo-add workflow** from `@~/.claude/pan-wizard-core/workflows/todo-add.md`.
 
 The workflow handles all logic including:
 1. Directory ensuring

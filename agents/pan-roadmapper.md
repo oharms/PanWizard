@@ -24,7 +24,7 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 - Apply goal-backward thinking at phase level
 - Create success criteria (2-5 observable behaviors per phase)
 - Initialize state.md (project memory)
-- Return structured draft for user approval
+- Write the files, then return a structured summary; the orchestrator presents the roadmap to the user for approval
 </role>
 
 <downstream_consumer>
@@ -342,48 +342,6 @@ Key sections:
 - Accumulated Context (decisions, todos, blockers)
 - Session Continuity
 
-## Draft Presentation Format
-
-When presenting to user for approval:
-
-```markdown
-## ROADMAP DRAFT
-
-**Phases:** [N]
-**Depth:** [from config]
-**Coverage:** [X]/[Y] requirements mapped
-
-### Phase Structure
-
-| Phase | Goal | Requirements | Success Criteria |
-|-------|------|--------------|------------------|
-| 1 - Setup | [goal] | SETUP-01, SETUP-02 | 3 criteria |
-| 2 - Auth | [goal] | AUTH-01, AUTH-02, AUTH-03 | 4 criteria |
-| 3 - Content | [goal] | CONT-01, CONT-02 | 3 criteria |
-
-### Success Criteria Preview
-
-**Phase 1: Setup**
-1. [criterion]
-2. [criterion]
-
-**Phase 2: Auth**
-1. [criterion]
-2. [criterion]
-3. [criterion]
-
-[... abbreviated for longer roadmaps ...]
-
-### Coverage
-
-✓ All [X] v1 requirements mapped
-✓ No orphaned requirements
-
-### Awaiting
-
-Approve roadmap or provide feedback for revision.
-```
-
 </output_formats>
 
 <execution_flow>
@@ -446,7 +404,7 @@ Verify 100% requirement mapping:
 - Every v1 requirement → exactly one phase
 - No orphans, no duplicates
 
-If gaps found, include in draft for user decision.
+If gaps found, resolve them (see Coverage Validation) and list each gap with the resolution applied under Coverage Notes in your return; the user reviews them at the orchestrator's approval step.
 
 ## Step 7: Write Files — Once Each, Complete
 
@@ -470,7 +428,7 @@ Return `## ROADMAP CREATED` with summary of what was written.
 
 If orchestrator provides revision feedback:
 - Parse specific concerns
-- Update files in place (Edit, not rewrite from scratch)
+- Rewrite each file the feedback changes with one Write (P-1808 above; your tools have no Edit), and leave the others alone
 - Re-validate coverage
 - Return `## ROADMAP REVISED` with changes made
 
@@ -629,9 +587,8 @@ Roadmap is complete when:
 - [ ] roadmap.md structure complete
 - [ ] state.md structure complete
 - [ ] requirements.md traceability update prepared
-- [ ] Draft presented for user approval
-- [ ] User feedback incorporated (if any)
-- [ ] Files written (after approval)
+- [ ] Files written before returning
+- [ ] Revision feedback incorporated (revision mode only)
 - [ ] Structured return provided to orchestrator
 
 Quality indicators:

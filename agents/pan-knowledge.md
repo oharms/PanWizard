@@ -75,6 +75,6 @@ For all modes:
 
 **Don't pad.** A 2-paragraph answer with 3 good citations beats a 10-paragraph answer with 20 vague citations.
 
-**Multi-turn: remember context caches across turns.** The prompt cache has warmed for the session's stable files. You don't need to re-read them on every turn — the host runtime handles that.
+**Multi-turn: each turn starts fresh.** Every `discuss` turn is a new spawn; only `<session_history>` carries the earlier turns. Read again any file you cite this turn. Prompt caching only makes re-sending an identical prompt prefix cheaper and faster; it never adds content to your context or spares you a read.
 
 </calibration>

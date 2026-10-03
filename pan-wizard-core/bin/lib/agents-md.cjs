@@ -29,7 +29,10 @@ function buildAgentsMdSection() {
     'This project uses PAN Wizard for structured, phase-based planning and execution.',
     '',
     '- `.planning/` is PAN\'s state directory (state.md, roadmap.md, phase directories). Treat it as the source of truth for planning state and modify it through PAN commands, not by hand.',
-    '- PAN commands install as `pan-*` skills/commands (for example `/pan-help`, `/pan-new-project`, `/pan-exec-phase`). Start with `/pan-help`.',
+    // One section serves every runtime in the project, so it names each one's form
+    // (the README's list); `/pan-help` alone sent Claude Code users to a command
+    // that does not exist there (prompt audit, market-ideas M34).
+    '- PAN\'s commands are named per runtime: `/pan:help`, `/pan:new-project`, `/pan:exec-phase` in Claude Code and Gemini CLI; `/pan-help` and so on in OpenCode, Copilot CLI and unified-skills Claude installs; `$pan-help` in Codex. Start with the help command.',
     '- The `pan-tools` dispatcher backs every command; it lives under `pan-wizard-core/` inside the runtime\'s config directory (or `.agents/` for unified installs).',
     PAN_AGENTS_END,
   ].join('\n');

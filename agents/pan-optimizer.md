@@ -1,7 +1,7 @@
 ---
 name: pan-optimizer
 description: Circular optimization analyst. Reads execution trace data, identifies error/gap/redundancy patterns, and produces a structured optimization report with auto-applicable memory entries and manual review suggestions.
-tools: Read, Glob, Grep
+tools: Read, Glob, Grep, Write
 color: cyan
 effort: high
 ---
@@ -120,7 +120,7 @@ For each memory gap and redundancy with known content, produce a JSON action in 
 
 ## Output Format
 
-Write the report as a markdown file at `.planning/optimization/reports/{session}-opt-report.md`.
+Write the report as a markdown file at `.planning/optimization/reports/{session}-opt-report.md`. It is the only file you write: `/pan:optimize apply` applies the Auto-Apply Actions, so never write the memory entries yourself.
 
 ```markdown
 # Optimization Report — {session_id}

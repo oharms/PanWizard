@@ -1380,6 +1380,15 @@ describe('AGENTS.md section builders', () => {
     assert.ok(section.includes('/pan-help'));
   });
 
+  test("section names each runtime's command form, not only the flat one (prompt audit, M34)", () => {
+    // Claude Code reads this section through CLAUDE.md's @AGENTS.md import, and
+    // there PAN's commands are /pan:<name>; `/pan-help` alone named a command
+    // Claude Code does not have.
+    assert.match(section, /`\/pan:help`[^\n]*Claude Code/);
+    assert.match(section, /`\$pan-help` in Codex/);
+    assert.doesNotMatch(section, /Start with `\/pan-help`/);
+  });
+
   test('upsert creates content when file is absent', () => {
     const out = lib.upsertAgentsMdSection(null, section);
     assert.equal(out, section + '\n');

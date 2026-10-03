@@ -276,20 +276,23 @@ describe('drift-check command', () => {
     assert.match(result.error, /^Error: threshold must be 0\.0-1\.0$/);
   });
 
-  test('loads conventions from CONVENTIONS.md', () => {
-    // Create a conventions file
-    const convDir = path.join(tmpDir, '.planning', 'codebase');
-    fs.mkdirSync(convDir, { recursive: true });
-    fs.writeFileSync(path.join(convDir, 'CONVENTIONS.md'), '- Never use `setTimeout`\n');
-    fs.writeFileSync(path.join(tmpDir, 'timer.js'), 'setTimeout(() => {}, 100);\n');
+  // map-codebase writes `conventions.md`; the check read only `CONVENTIONS.md`, which
+  // a case-sensitive filesystem (Linux CI) never matched (prompt audit, M34).
+  for (const name of ['conventions.md', 'CONVENTIONS.md']) {
+    test(`loads conventions from ${name}`, () => {
+      const convDir = path.join(tmpDir, '.planning', 'codebase');
+      fs.mkdirSync(convDir, { recursive: true });
+      fs.writeFileSync(path.join(convDir, name), '- Never use `setTimeout`\n');
+      fs.writeFileSync(path.join(tmpDir, 'timer.js'), 'setTimeout(() => {}, 100);\n');
 
-    const result = runPanTools('drift-check --files timer.js', tmpDir);
-    assert.ok(result.success, result.error);
-    const data = JSON.parse(result.output);
-    // Should detect setTimeout via custom convention rule
-    const timeoutViolation = data.violations.find(v => v.rule.includes('settimeout'));
-    assert.ok(timeoutViolation, 'should detect setTimeout from conventions');
-  });
+      const result = runPanTools('drift-check --files timer.js', tmpDir);
+      assert.ok(result.success, result.error);
+      const data = JSON.parse(result.output);
+      // Should detect setTimeout via custom convention rule
+      const timeoutViolation = data.violations.find(v => v.rule.includes('settimeout'));
+      assert.ok(timeoutViolation, `should detect setTimeout from ${name}`);
+    });
+  }
 
   test('skips binary files', () => {
     fs.writeFileSync(path.join(tmpDir, 'image.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));

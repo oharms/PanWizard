@@ -13,7 +13,7 @@ allowed-tools:
 <objective>
 List all pending todos, allow selection, load full context for the selected todo, and route to appropriate action.
 
-Routes to the check-todos workflow which handles:
+Routes to the todo-check workflow which handles:
 - Todo counting and listing with area filtering
 - Interactive selection with full context loading
 - Roadmap correlation checking
@@ -32,7 +32,7 @@ Todo state and roadmap correlation are loaded in-workflow using `init todos` and
 </context>
 
 <process>
-**Follow the check-todos workflow** from `@~/.claude/pan-wizard-core/workflows/todo-check.md`.
+**Follow the todo-check workflow** from `@~/.claude/pan-wizard-core/workflows/todo-check.md`.
 
 The workflow handles all logic including:
 1. Todo existence checking

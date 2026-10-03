@@ -243,6 +243,55 @@ describe('pan-zcode MCP dual-era (2026-07-28 stateless spec)', () => {
     assert.equal(r.result.tools.length, reg.TOOLS.length);
   });
 
+  // 2026-07-28 `CacheableResult`: Claude Code 2.1.288 dropped PAN's lists without
+  // these fields — connected, with no tools and no resources (live check H2, 2026-10-03).
+  test('every modern result whose 2026-07-28 type is cacheable carries ttlMs and cacheScope', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([], '{"state":"ok"}') });
+    const calls = [
+      ['server/discover', {}],
+      ['tools/list', {}],
+      ['resources/list', {}],
+      ['resources/read', { uri: 'pan://state' }],
+    ];
+    for (const [method, extra] of calls) {
+      const r = s.handle({ jsonrpc: '2.0', id: 10, method, params: { ...meta(MODERN_PROTOCOL_VERSION), ...extra } });
+      assert.ok(r.result, `${method}: ${JSON.stringify(r.error)}`);
+      assert.ok(Number.isInteger(r.result.ttlMs) && r.result.ttlMs >= 0, `${method} needs a ttlMs`);
+      assert.ok(['public', 'private'].includes(r.result.cacheScope), `${method} needs a cacheScope`);
+    }
+  });
+
+  test('the registry lists are public and long-lived; a resource read is private and stale at once', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([], '{"state":"ok"}') });
+    const call = (method, extra = {}) => s.handle({ jsonrpc: '2.0', id: 11, method, params: { ...meta(MODERN_PROTOCOL_VERSION), ...extra } }).result;
+    for (const method of ['tools/list', 'resources/list']) {
+      assert.equal(call(method).cacheScope, 'public', `${method}: the registry is the same for every caller`);
+      assert.ok(call(method).ttlMs > 0, `${method}: the registry is fixed for the life of the process`);
+    }
+    const read = call('resources/read', { uri: 'pan://state' });
+    assert.equal(read.cacheScope, 'private', 'project state is not for a shared cache');
+    assert.equal(read.ttlMs, 0, 'project state changes under the client');
+  });
+
+  test('every modern result names the server in _meta; a tool call is not a cacheable result', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([], '{"model":"sonnet"}') });
+    const r = s.handle({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { ...meta(MODERN_PROTOCOL_VERSION), name: 'pan_resolve_model', arguments: { agent: 'pan-planner' } } });
+    assert.equal(r.result.resultType, 'complete');
+    assert.equal(r.result._meta['io.modelcontextprotocol/serverInfo'].name, 'pan-mcp');
+    assert.equal(r.result.ttlMs, undefined);
+    assert.equal(r.result.cacheScope, undefined);
+  });
+
+  test('legacy results gain none of the modern fields', () => {
+    const s = createServer({ spawnImpl: fakeSpawn([], '{"state":"ok"}') });
+    for (const [method, params] of [['tools/list', undefined], ['resources/list', undefined], ['resources/read', { uri: 'pan://state' }]]) {
+      const r = s.handle({ jsonrpc: '2.0', id: 13, method, params });
+      for (const k of ['resultType', 'ttlMs', 'cacheScope', '_meta']) {
+        assert.equal(r.result[k], undefined, `legacy ${method} must not carry ${k}`);
+      }
+    }
+  });
+
   test('an unsupported modern version → UnsupportedProtocolVersionError (-32022) listing what we support', () => {
     const s = createServer({ spawnImpl: fakeSpawn([]) });
     const r = s.handle({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: meta('1900-01-01') });
