@@ -160,7 +160,10 @@ function recordVerdict(cwd, input) {
 
   const { rows } = readLedger(cwd);
   const fold = foldFindings(rows);
-  const base = { contract: V.VERDICT_CONTRACT, agent, verdict: verdict.verdict, outcome: verdict.outcome, source_kind: parsed.source_kind, warnings: parsed.warnings };
+  // `not_checked` (M23): what the judge could not run. A pass with entries here is a
+  // pass over less than the whole phase, and the record says so.
+  const notChecked = verdict.not_checked || [];
+  const base = { contract: V.VERDICT_CONTRACT, agent, verdict: verdict.verdict, outcome: verdict.outcome, not_checked: notChecked, source_kind: parsed.source_kind, warnings: parsed.warnings };
 
   const dup = fold.verdicts.find((r) => r.record_sig === recordSig && r.agent === agent && samePhase(r.phase, phase));
   if (dup) {
@@ -204,6 +207,7 @@ function recordVerdict(cwd, input) {
     v: LEDGER_V, kind: 'verdict', ts, verdict_id: verdictId, record_sig: recordSig, phase, milestone, agent,
     verdict: verdict.verdict, outcome: verdict.outcome, attempt, source, finding_ids: ids,
     by_severity: bySeverity, by_class: byClass, warnings: parsed.warnings,
+    ...(notChecked.length ? { not_checked: notChecked } : {}),
   });
   appendRows(cwd, [...findingRows, ...newRows, ...autoFixRows]);
 
@@ -216,7 +220,7 @@ function recordVerdict(cwd, input) {
     phase,
     description: `${agent} ${verdict.verdict || verdict.outcome} on phase ${phase} (attempt ${attempt}, ${ids.length} finding${ids.length === 1 ? '' : 's'})`,
     impact: verdict.outcome === 'fail' ? (serious ? 'major' : 'minor') : 'minor',
-    context: { agent, phase, verdict: verdict.verdict, attempt, findings: ids.length, by_severity: bySeverity, by_class: byClass, verdict_id: verdictId },
+    context: { agent, phase, verdict: verdict.verdict, attempt, findings: ids.length, by_severity: bySeverity, by_class: byClass, verdict_id: verdictId, not_checked: notChecked.map((n) => n.check) },
   });
   if (previous && previous.outcome === 'fail') {
     traceEvent(cwd, {

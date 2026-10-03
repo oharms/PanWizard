@@ -498,6 +498,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 - Does NOT trust summary.md claims — verifies actual code
 - Goal-backward: starts from what must be TRUE, not what was DONE
 - Re-verification mode: if previous verification.md exists, focuses on previously failed items
+- Runs the project's test suite as a gate (verify-phase's `run_test_suite`) and records `test_gate: passed | failed | skipped`; a gate it could not run goes in `not_checked` with the reason, so a pass never hides missing tests
 - Structures `gaps`, `human_verification` and `unrequested` (work no plan asked for, found with `pan-tools verify scope`) in YAML frontmatter; `/pan:plan-phase --gaps` consumes the gaps, and `pan-tools findings record` reads those keys and `status` into the findings ledger — the verifier's machine contract, in place of a `pan-verdict` block
 - Identifies items requiring human verification (visual appearance, UX, real-time behavior, external services)
 - Scans for anti-patterns: TODOs, FIXMEs, empty implementations, dead code

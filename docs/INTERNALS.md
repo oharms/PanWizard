@@ -56,7 +56,7 @@ When the executor hits an authentication error (not a code bug), it creates a dy
 
 With `workflow.auto_advance: true` in config.json:
 - `human-verify` -- Auto-approved (assumes pass)
-- `decision` -- First option auto-selected
+- `decision` -- Takes the option the plan's `auto_select` names; with no `auto_select`, stops for a human (never the first option by position)
 - `human-action` -- Still requires human (cannot be automated)
 
 ---

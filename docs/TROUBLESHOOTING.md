@@ -351,10 +351,10 @@ must_haves: []
 | Checkpoint type | Auto behavior |
 |----------------|--------------|
 | `checkpoint:human-verify` | Auto-approved (assumes verification passes) |
-| `checkpoint:decision` | Auto-selects the first option |
+| `checkpoint:decision` | Takes the option named by the task's `auto_select`; **pauses when the task has none** |
 | `checkpoint:human-action` | **Cannot be automated -- always pauses** |
 
-**Root cause:** The checkpoint is a `checkpoint:human-action` type, which requires a real human action that cannot be simulated. Common examples: logging into a third-party service, entering a 2FA code, adding an API key, clicking a confirmation email link.
+**Root cause:** The checkpoint is a `checkpoint:human-action` type, which requires a real human action that cannot be simulated. Common examples: logging into a third-party service, entering a 2FA code, adding an API key, clicking a confirmation email link. Or it is a `checkpoint:decision` whose task has no `auto_select`: the planner left that choice to you, and auto mode never picks an option because it is listed first. To let a run continue unattended past a low-stakes decision, add `auto_select="<option id>"` to the task in the plan.
 
 **Fix:** Perform the requested action and confirm completion. There is no way to auto-advance through human-action checkpoints because they require interaction with external systems.
 

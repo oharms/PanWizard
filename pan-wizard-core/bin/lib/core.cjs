@@ -39,8 +39,13 @@ const { planningPath, planningRel } = require('./utils.cjs');
 // budget-profile project on Codex or OpenCode was told to spawn a model called
 // "mid" (reality check R28).
 //   - openai: Codex's subagent docs (learn.chatgpt.com/docs/agent-configuration/
-//     subagents, read 2026-09-23): "start with gpt-6-sol. Use gpt-6-luna when you
-//     want a faster, lower-cost option". gpt-6-astra is the flagship above both.
+//     subagents, re-read 2026-10-03) now start demanding agents on gpt-6.1-sol "when
+//     your signed-in account or workspace has access", and keep gpt-6-luna as the
+//     "faster, lower-cost option". The mid tier stays gpt-6-sol: GPT-6.1 Sol's launch
+//     keeps it off on Enterprise and Edu until an administrator enables it
+//     (learn.chatgpt.com/docs/models, read 2026-10-03), so pinning it would hand
+//     those users a model they cannot run. The inherit tier runs Codex's own
+//     default, which is gpt-6.1-sol where available. gpt-6-astra is the flagship.
 //   - google: the newest stable Flash and Flash-Lite on ai.google.dev's models page
 //     (read 2026-09-23). The 2.5 family these rows used is "not deprecated" but
 //     limited to users who have used it before, so a new project may not reach it.
@@ -58,12 +63,14 @@ const PROVIDER_MODELS = {
 // packages/web/src/content/docs/models.mdx and models.dev/api.json, both read
 // 2026-09-26; every id below exists there under that provider). Same tiers as
 // PROVIDER_MODELS, provider-qualified; `default` is Anthropic as it is there.
-// Reality check R41.
+// Reality check R41. The Anthropic mid tier follows the `sonnet` alias, which
+// resolves to Sonnet 5.5 on the Anthropic API from Claude Code 2.1.284;
+// models.dev lists `anthropic/claude-sonnet-5-5` (api.json, read 2026-10-03).
 const OPENCODE_MODELS = {
-  anthropic: { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5', fast: 'anthropic/claude-haiku-4-5' },
-  openai:    { reasoning: 'inherit', mid: 'openai/gpt-6-sol',          fast: 'openai/gpt-6-luna' },
-  google:    { reasoning: 'inherit', mid: 'google/gemini-3.8-flash',   fast: 'google/gemini-3.5-flash-lite' },
-  default:   { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5', fast: 'anthropic/claude-haiku-4-5' },
+  anthropic: { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5-5', fast: 'anthropic/claude-haiku-4-5' },
+  openai:    { reasoning: 'inherit', mid: 'openai/gpt-6-sol',            fast: 'openai/gpt-6-luna' },
+  google:    { reasoning: 'inherit', mid: 'google/gemini-3.8-flash',     fast: 'google/gemini-3.5-flash-lite' },
+  default:   { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5-5', fast: 'anthropic/claude-haiku-4-5' },
 };
 
 /**
@@ -550,6 +557,18 @@ function execGit(cwd, args) {
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Make free text safe for one markdown table cell: escape backslashes and pipes,
+ * and fold every run of line breaks into one space. A raw `|` splits the row into
+ * an extra column, and state.md's tables are appended to for the life of a
+ * project, so one bad row breaks every later read of the table (market-ideas M21).
+ * @param {*} value - Cell text; null and undefined become ''
+ * @returns {string}
+ */
+function escapeTableCell(value) {
+  return String(value ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
 }
 
 /**
@@ -1454,6 +1473,7 @@ module.exports = {
   isGitRepo,
   execGit,
   escapeRegex,
+  escapeTableCell,
   normalizePhaseName,
   comparePhaseNum,
   searchPhaseInDir,

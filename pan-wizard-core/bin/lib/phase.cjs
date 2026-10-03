@@ -239,7 +239,7 @@ function cmdFindPhase(cwd, phase, raw) {
  * @param {boolean} raw - If true, output raw value instead of JSON
  * @returns {void}
  */
-function cmdPhasePlanIndex(cwd, phase, raw) {
+function cmdPhasePlanIndex(cwd, phase, raw, opts = {}) {
   if (!phase) {
     error('phase required for phase-plan-index');
   }
@@ -280,7 +280,52 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
 
   const { plans, waves, incomplete, hasCheckpoints } = buildPlanIndex(phaseDir, planFiles, summaryFiles);
 
-  output({ phase: normalized, plans, waves, incomplete, has_checkpoints: hasCheckpoints }, raw);
+  const result = { phase: normalized, plans, waves, incomplete, has_checkpoints: hasCheckpoints };
+  // `--failed <ids>` (market-ideas M28): the plans that must not run after those
+  // failed, because a dependency, direct or transitive, is among them.
+  if (opts.failed) {
+    const failed = String(opts.failed).split(',').map((s) => s.trim()).filter(Boolean);
+    result.failed = failed;
+    result.blocked = blockedPlans(plans, failed);
+  }
+  output(result, raw);
+}
+
+/** Whether a `depends_on` entry names this plan: its full id ("03-02") or its plan number ("02", "2"). */
+function dependencyNames(dep, planId) {
+  const d = String(dep).trim();
+  if (d === planId) return true;
+  const own = planId.split('-').pop();
+  const strip = (s) => s.replace(/^0+(?=\d)/, '');
+  return /^\d+$/.test(d) && /^\d+$/.test(own) && strip(d) === strip(own);
+}
+
+/**
+ * The plans that must not run because a plan they depend on failed (market-ideas
+ * M28). Transitive: a plan waiting on a blocked plan is blocked too. Plans that
+ * already have a summary are done and never blocked.
+ * @param {Array<{id: string, depends_on: string[], has_summary: boolean}>} plans
+ * @param {string[]} failedIds
+ * @returns {Array<{id: string, blocked_by: string[]}>} in plan order; blocked_by names the failed plans
+ */
+function blockedPlans(plans, failedIds) {
+  const failed = new Set(failedIds);
+  const blockedBy = new Map(); // plan id → Set of failed ids behind it
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const p of plans) {
+      if (p.has_summary || failed.has(p.id)) continue;
+      const roots = blockedBy.get(p.id) || new Set();
+      const before = roots.size;
+      for (const dep of p.depends_on || []) {
+        for (const f of failed) if (dependencyNames(dep, f)) roots.add(f);
+        for (const [b, bRoots] of blockedBy) if (dependencyNames(dep, b)) for (const r of bRoots) roots.add(r);
+      }
+      if (roots.size > before) { blockedBy.set(p.id, roots); changed = true; }
+    }
+  }
+  return plans.filter((p) => blockedBy.has(p.id)).map((p) => ({ id: p.id, blocked_by: [...blockedBy.get(p.id)].sort() }));
 }
 
 /**
@@ -339,10 +384,14 @@ function buildPlanIndex(phaseDir, planFiles, summaryFiles) {
     const hasSummary = completedPlanIds.has(planId);
     if (!hasSummary) incomplete.push(planId);
 
+    const rawDeps = frontmatter.depends_on || frontmatter['depends-on'];
+    const dependsOn = (Array.isArray(rawDeps) ? rawDeps : (rawDeps ? [rawDeps] : [])).map(String).filter((d) => d.trim());
+
     plans.push({
       id: planId, wave, autonomous,
       objective,
       files_modified: filesModified,
+      depends_on: dependsOn,
       task_count: taskCount,
       has_summary: hasSummary,
     });
@@ -930,6 +979,7 @@ module.exports = {
   cmdPhaseNextDecimal,
   cmdFindPhase,
   cmdPhasePlanIndex,
+  blockedPlans,
   cmdPhaseAdd,
   cmdPhaseInsert,
   cmdPhaseRemove,

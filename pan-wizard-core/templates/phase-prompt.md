@@ -79,7 +79,8 @@ Output: [What artifacts will be created]
 <!-- For checkpoint task examples and patterns, see @~/.claude/pan-wizard-core/references/checkpoints.md -->
 <!-- Key rule: Claude starts dev server BEFORE human-verify checkpoints. User only visits URLs. -->
 
-<task type="checkpoint:decision" gate="blocking">
+<task type="checkpoint:decision" gate="blocking" auto_select="option-a">
+  <!-- auto_select: the option auto mode takes. Omit it when a human must choose. -->
   <decision>[What needs deciding]</decision>
   <context>[Why this decision matters]</context>
   <options>

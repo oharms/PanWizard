@@ -5,6 +5,33 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The second `/market-ideas` run (`2026-10-03`, queue `docs/specs/market-ideas-2026-10.md`, items M19–M32). Peers shipped fixes for gaps PAN had: a skipped test gate counted as a pass, auto mode took a decision's first option, free text broke planning tables, and dependents of a failed plan ran anyway.
+
+### Fixed
+
+- **A phase could pass with no tests run (M23).** exec-phase spawned the verifier with a prompt that never mentioned the test suite, and `pan-verifier` had no test step. The `run_test_suite` gate lived only in `verify-phase.md`, so on the main execution path a phase passed without its tests ever running. The verifier now runs the gate (its own Step 8b, and exec-phase's prompt points at the protocol) and records `test_gate: passed | failed | skipped` in its frontmatter. A gate that did not run goes in `not_checked` with the reason, and exec-phase reports "passed — not checked: tests". `findings record` carries `not_checked` into the record, the ledger row and the trace; it adds the `tests` entry itself from `test_gate: skipped`, drops a copied-over template entry under a gate that ran, and warns on `test_gate_unrecorded` and `test_gate_failed_under_pass`. The `pan-verdict` contract gains an optional `not_checked` list for every judge.
+- **Auto mode took whichever decision option was listed first (M22).** A `checkpoint:decision` may now name `auto_select="<option id>"`. Auto mode takes that option, and stops for a human when the task names none. `verify plan-structure` fails an `auto_select` that names no option and warns on a decision without one. The same change fixes `verify plan-structure` itself: it validated every checkpoint as an auto task, so each documented checkpoint shape was reported invalid, and its task pattern matched the `<tasks>` wrapper, so a decision's first option name was read as the task's name. Checkpoints are now checked against their own elements.
+- **A `|` in free text broke planning tables (M21).** `/pan:quick` pasted the raw task description into state.md's "Quick Tasks Completed" table; one pipe split the row and the table stopped parsing for every later read. `init quick` now returns `description_cell`, escaped by the new `escapeTableCell()`, and the workflow writes that. `state record-metric` escapes its cells, and review-deep uses the same helper. A lint test fails any shipped table-row template that substitutes a placeholder outside the engine-computed fields.
+- **An install that copied no hooks registered them anyway (M24).** From a source checkout without `npm run build:hooks`, the hook copy was skipped and every hook was still registered, so each session event ran a missing file. `verifyHookEntrypoints()` checks every hook command's script before any runtime config is written; a miss exits 1 with the fix.
+- **`live-gate-codex` wrote into the user's real `~/.codex/config.toml` (M31).** It ran `codex plugin marketplace add` with no `CODEX_HOME`. Every codex step now runs under a scratch home that `harness/scripts/scratch-home.cjs` creates and refuses to place in the real home or a CLI's dot-directory. A marketplace entry `pan-wizard-local` an earlier run left in a real config is removed with `codex plugin marketplace remove pan-wizard-local`.
+- **Codex's default model was unpriced (M19, M20).** Codex 0.159.1 made `gpt-6.1-sol` its default; its row is read from OpenAI's pricing page on `2026-10-03` (GPT-6 Sol's prices, cached input at 0.05×). Claude Code 2.1.284 points `sonnet` at Sonnet 5.5, which now has its own row, and OpenCode's Anthropic mid tier is `anthropic/claude-sonnet-5-5`. Codex's mid tier stays `gpt-6-sol`: GPT-6.1 Sol is off on Enterprise and Edu until an administrator enables it.
+
+### Added
+
+- **`pan-tools verify stale <phase>` (M27).** The verifier records `verified_commit`; a file the phase covers (plans' `files_modified`, summaries' `key-files`) that changed since then, committed or not, makes the verification `stale`. `progress json` marks each verified phase and `progress table` shows `Complete (verification stale)`.
+- **`pan-tools phase-plan-index --failed <ids>` (M28).** The index carries each plan's `depends_on`, and `--failed` lists the plans blocked by a failed one, transitively. exec-phase skips and names them instead of running plans whose dependency failed.
+- **Unknown config keys are named (M26).** `config-set` still writes a key PAN does not read, but warns with the nearest known key (`workflow.auto_advnace` → `workflow.auto_advance`), and `validate health` reports them as `I006`. The known set is derived from the config defaults plus one list of what PAN reads beyond them, pinned by a test against the keys the shipped code and prose use.
+- **`pan-tools version [--check]` (M29).** The running core's version and location; `--check` adds the update state (`available`, `current`, `ahead`, `offline`, `unchecked`) from the update check's cache, without touching the network.
+- **Emitted skills carry `license` (M30),** read from `package.json`, in all three skill converters. A test runs GitHub's Agent Skills validator (`gh skill publish --dry-run`) over the bundle's, a Codex install's and a Copilot install's skills, and skips without the GitHub CLI.
+- **Model-free discovery in the live gates (M31).** `live-gate-codex` installs the plugin and asks Codex what it loaded: `plugin list`, the `pan` MCP server in `mcp list`, PAN's skills in `debug prompt-input`. `live-gate-opencode` checks `opencode agent list`.
+- **Plans record decisions, not code (M32).** The planner names signatures, values, assertions and the verify command instead of implementation bodies, and writes no source files while planning. `verify plan-structure` warns on a code block over 20 lines in a task's `<action>`, and the plan checker flags it under Scope Sanity.
+
+### Measured
+
+- **Codex cuts Agent Plugin skills at 8,000 bytes (M25).** Confirmed live on Codex CLI 0.157.1 with a capture-only mock provider (no model, no login). A plugin skill of 56,540 bytes reached the model as its first 8,000 bytes, cut mid-sentence, with a "was truncated" warning; a 3,188-byte plugin skill arrived whole. PAN's `--codex` install (`.agents/skills/`) is not affected: a 54,677-byte skill arrived whole. The bundle's long skills need progressive-disclosure bodies (queue S8).
+
 ## [3.32.0] - 2026-09-29
 
 ### Added — the evidence loop: judges' verdicts on the record, failures the optimiser can learn from

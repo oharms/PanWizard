@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const { safeReadFile, execGit, findPhaseInternal, toPosix, output, escapeRegex } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
-const { isPlanFile, isSummaryFile } = require('./constants.cjs');
+const { isPlanFile, isSummaryFile, isVerificationFile } = require('./constants.cjs');
 const { planningRel } = require('./utils.cjs');
 
 const LOCKFILES = new Set([
@@ -153,4 +153,71 @@ function cmdVerifyScope(cwd, phase, raw) {
   output(r, raw, r.error ? undefined : String(r.candidates.length));
 }
 
-module.exports = { scopePhase, cmdVerifyScope, LOCKFILES };
+// ─── Stale verification (market-ideas M27) ───────────────────────────────────
+// A verification describes the code at one commit. Until 2026-10-03 nothing tied it
+// to that commit, so a phase edited after it passed still read as verified. The
+// verifier now records `verified_commit`; any file the phase covers that changed
+// since then, committed or not, makes the verification stale.
+
+const SHA_RE = /^[0-9a-f]{7,40}$/i;
+
+/**
+ * The files a phase's verification covered: the plans' declared `files_modified` and
+ * the summaries' `key-files`, minus the planning tree, lockfiles and PAN's runtime
+ * directories. No git log scan, so `progress` can afford it for every phase.
+ */
+function coveredFiles(cwd, info) {
+  const dir = path.join(cwd, info.directory);
+  const files = new Set();
+  for (const f of info.plans.filter(isPlanFile)) {
+    const fm = extractFrontmatter(safeReadFile(path.join(dir, f)) || '');
+    for (const p of asList(fm.files_modified || fm['files-modified'])) files.add(normalisePath(p));
+  }
+  for (const f of info.summaries.filter(isSummaryFile)) {
+    const fm = extractFrontmatter(safeReadFile(path.join(dir, f)) || '');
+    const kf = fm['key-files'] || fm.key_files || {};
+    for (const p of [...asList(kf.created), ...asList(kf.modified)]) files.add(normalisePath(p));
+  }
+  const planningPrefix = normalisePath(planningRel());
+  return [...files].filter((f) => f && !exclusionReason(f, planningPrefix)).sort();
+}
+
+/**
+ * Whether a phase's verification still describes the code.
+ * @param {string} cwd
+ * @param {string} phase
+ * @param {Object} [info] - findPhaseInternal's result, when the caller already has it
+ * @returns {Object} `{phase, state, verified_commit, verification, changed_since, reason?}` or `{error, reason}`.
+ *   state: `fresh` · `stale` (covered files changed since the verified commit) ·
+ *   `unverified` (no verification file) · `unknown` (no usable verified_commit, or no git)
+ */
+function verificationFreshness(cwd, phase, info) {
+  info = info || findPhaseInternal(cwd, phase);
+  if (!info) return { error: 'phase_not_found', reason: `no phase directory for phase ${phase}` };
+  const dir = path.join(cwd, info.directory);
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch { /* unreadable: no verification */ }
+  const verification = names.filter(isVerificationFile).sort().pop() || null;
+  const base = { phase: info.phase_number, state: 'unverified', verified_commit: null, verification: verification ? toPosix(path.join(info.directory, verification)) : null, changed_since: [] };
+  if (!verification) return base;
+  const fm = extractFrontmatter(safeReadFile(path.join(dir, verification)) || '');
+  const sha = String(fm.verified_commit || '').trim();
+  if (!SHA_RE.test(sha)) return { ...base, state: 'unknown', reason: 'the verification records no verified_commit' };
+  const known = execGit(cwd, ['cat-file', '-e', `${sha}^{commit}`]);
+  if (known.exitCode !== 0) return { ...base, state: 'unknown', verified_commit: sha, reason: 'the verified commit is not in this repository (rebased, squashed, or no git)' };
+  const covered = coveredFiles(cwd, info);
+  if (!covered.length) return { ...base, state: 'unknown', verified_commit: sha, reason: 'the phase declares no files to compare' };
+  // Against the working tree, not HEAD: an uncommitted edit makes the pass stale too.
+  const diff = execGit(cwd, ['-c', 'core.quotepath=off', 'diff', '--name-only', '--relative', sha, '--', ...covered]);
+  if (diff.exitCode !== 0) return { ...base, state: 'unknown', verified_commit: sha, reason: 'git diff failed' };
+  const changed = diff.stdout.split('\n').map(normalisePath).filter(Boolean).sort();
+  return { ...base, state: changed.length ? 'stale' : 'fresh', verified_commit: sha, changed_since: changed };
+}
+
+function cmdVerifyStale(cwd, phase, raw) {
+  if (!phase) { output({ error: 'phase_required', reason: 'Usage: verify stale <phase>' }, raw); return; }
+  const r = verificationFreshness(cwd, phase);
+  output(r, raw, r.error ? undefined : r.state);
+}
+
+module.exports = { scopePhase, cmdVerifyScope, verificationFreshness, cmdVerifyStale, coveredFiles, LOCKFILES };

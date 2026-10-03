@@ -438,7 +438,7 @@ function convertClaudeCommandToCodexSkill(content, skillName) {
   description = toSingleLine(description);
   const shortDescription = description.length > 180 ? `${description.slice(0, 177)}...` : description;
   const adapter = getCodexSkillAdapterHeader(skillName);
-  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nlicense: ${yamlQuote(SKILL_LICENSE)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
 }
 
 /**
@@ -474,6 +474,12 @@ ${note ? `\n${note}\n` : ''}</pan_skill_adapter>`;
  * for environment requirements (max 500 chars). Kept short and factual: these
  * are the two things a host cannot infer and that every PAN skill depends on.
  */
+// The Agent Skills `license` field: optional in the spec, and GitHub's validator
+// (`gh skill publish --dry-run`) warns on every skill without it (market-ideas M30).
+// Read from package.json so the skills always carry the package's own licence.
+const SKILL_LICENSE = (() => {
+  try { return require('../package.json').license || 'MIT'; } catch { return 'MIT'; }
+})();
 const SKILL_COMPATIBILITY = 'Requires Node.js (skills invoke the bundled pan-tools CLI) and a project with a .planning/ directory, created by /pan-new-project or /pan-map-codebase.';
 
 function convertClaudeCommandToUnifiedSkill(content, skillName, opts = {}) {
@@ -500,7 +506,7 @@ function convertClaudeCommandToUnifiedSkill(content, skillName, opts = {}) {
   // Deliberately NOT emitting `allowed-tools`: it is marked experimental in the
   // spec, and ADR-0028's frontmatter rule is that anything unverified stays out
   // until a live per-runtime check confirms no parser rejects it.
-  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\ncompatibility: ${yamlQuote(SKILL_COMPATIBILITY)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nlicense: ${yamlQuote(SKILL_LICENSE)}\ncompatibility: ${yamlQuote(SKILL_COMPATIBILITY)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
 }
 
 // ─── Unified-skill content rewrites (extracted from bin/install.js, 2026-09) ──
@@ -743,7 +749,7 @@ function convertClaudeCommandToCopilotSkill(content, skillName) {
   description = toSingleLine(description);
   const shortDescription = description.length > 180 ? `${description.slice(0, 177)}...` : description;
   const adapter = getCopilotSkillAdapterHeader(skillName);
-  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
+  return `---\nname: ${yamlQuote(skillName)}\ndescription: ${yamlQuote(description)}\nlicense: ${yamlQuote(SKILL_LICENSE)}\nmetadata:\n  short-description: ${yamlQuote(shortDescription)}\n---\n\n${adapter}\n\n${body.trimStart()}`;
 }
 
 /** Claude agent → Copilot .agent.md */
@@ -1719,6 +1725,48 @@ function verifyInstall(configDir, manifest) {
   return { ok: missing.length === 0 && empty.length === 0, missing, empty, warnings };
 }
 
+/**
+ * The script a PAN hook command runs, as written in the command: `node "<path>"`
+ * (global installs, buildHookCommand) or `node <dir>/hooks/<hook>.js` (local
+ * installs, relative to the project root). Null for any other command shape.
+ * @param {string} command
+ * @returns {string|null}
+ */
+function hookCommandScript(command) {
+  const m = /^node\s+(?:"([^"]+)"|(\S+))$/.exec(String(command || '').trim());
+  return m ? (m[1] || m[2]) : null;
+}
+
+/**
+ * Check that every hook command an install is about to register runs a script
+ * that exists and has content (market-ideas M24). Read-only: nothing is executed
+ * or written. A dev install from a clone without `npm run build:hooks` copied no
+ * hook scripts and registered every hook anyway, so each session event ran a
+ * missing file. A relative script resolves against `projectRoot`, the directory a
+ * local install's hook commands run from.
+ *
+ * @param {string[]} commands - the hook commands to register
+ * @param {string} projectRoot
+ * @returns {{ok: boolean, missing: string[]}} each missing entry names the script and why
+ */
+function verifyHookEntrypoints(commands, projectRoot) {
+  const missing = [];
+  for (const command of commands) {
+    const script = hookCommandScript(command);
+    if (!script) {
+      missing.push(`${command} (not a "node <script>" command)`);
+      continue;
+    }
+    const abs = path_v.isAbsolute(script) ? script : path_v.join(projectRoot, script);
+    try {
+      if (fs_v.statSync(abs).size === 0) missing.push(`${script} (empty)`);
+    } catch {
+      missing.push(`${script} (missing)`);
+    }
+  }
+  return { ok: missing.length === 0, missing };
+}
+
 // ─── Claude Code plugin packaging (2026-06) ─────────────────────────────────
 
 /**
@@ -2400,6 +2448,8 @@ module.exports = {
   buildPluginSelfTestCommand,
   // Install verification (v3.7.10)
   verifyInstall,
+  hookCommandScript,
+  verifyHookEntrypoints,
   // AGENTS.md universal rules layer (ADR-0028 Phase 3)
   buildAgentsMdSection,
   upsertAgentsMdSection,

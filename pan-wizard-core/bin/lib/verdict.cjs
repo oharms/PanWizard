@@ -40,7 +40,9 @@ const KNOWN_VERDICTS = Object.freeze({
   'pan-design-checker': Object.freeze({ PASS: 'pass', GAPS: 'fail' }),
 });
 
-const LIMITS = Object.freeze({ findings: 100, where: 200, summary: 300, verdict: 40, score: 40 });
+const LIMITS = Object.freeze({ findings: 100, where: 200, summary: 300, verdict: 40, score: 40, not_checked: 20, check: 80 });
+// What the verifier's test gate can report (verify-phase.md, run_test_suite).
+const TEST_GATE_VALUES = Object.freeze(['passed', 'failed', 'skipped']);
 const AGENT_RE = /^[a-z][a-z0-9-]{0,63}$/;
 const OPEN_FENCE_RE = /^[ \t]*(`{3,}|~{3,})[ \t]*pan-verdict[ \t]*$/;
 const CLOSE_FENCE_RE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/;
@@ -195,7 +197,32 @@ function validateVerdict(obj, opts = {}) {
     findings.push({ class: cls, severity, where, summary });
   });
 
-  return { ok: true, verdict: { contract, agent, outcome, verdict, phase, score, findings }, warnings };
+  const notChecked = normaliseNotChecked(obj.not_checked, warnings);
+  return { ok: true, verdict: { contract, agent, outcome, verdict, phase, score, findings, not_checked: notChecked }, warnings };
+}
+
+/**
+ * The checks a judge could not run, each `{check, reason}` (market-ideas M23).
+ * A verdict that carries them says what it did not see: a `pass` with tests that
+ * never ran is recorded as exactly that, never as a plain pass. Accepts bare
+ * strings as checks with no reason; drops entries with no check.
+ */
+function normaliseNotChecked(value, warnings) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) {
+    warnings.push('not_checked_not_an_array');
+    return [];
+  }
+  const out = [];
+  for (const entry of value.slice(0, LIMITS.not_checked)) {
+    const obj = typeof entry === 'string' ? { check: entry } : (entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : null);
+    const check = obj ? truncate(cleanText(obj.check ?? obj.gate ?? ''), LIMITS.check) : '';
+    if (!check) continue;
+    const reason = obj.reason == null || cleanText(obj.reason) === '' ? null : truncate(cleanText(obj.reason), LIMITS.summary);
+    out.push({ check, reason });
+  }
+  if (value.length > LIMITS.not_checked) warnings.push(`not_checked_truncated: ${value.length} reported, ${LIMITS.not_checked} kept`);
+  return out;
 }
 
 // ─── verification.md frontmatter adapter ─────────────────────────────────────
@@ -354,7 +381,23 @@ function verdictFromVerificationFrontmatter(text, agent = 'pan-verifier') {
     const summary = what || (path ? `unrequested change to ${path}` : '');
     if (summary) findings.push({ class: 'unrequested', severity: 'low', where: path, summary });
   }
-  return { contract: VERDICT_CONTRACT, agent, verdict: status, outcome, findings };
+  // The test gate (M23). `not_checked` lists what the verifier could not run; a
+  // `test_gate: skipped` with no tests entry there still counts as one, so a model
+  // that records the gate but forgets the list cannot turn it into a plain pass.
+  let notChecked = listOfMappings(yaml, 'not_checked').map((n) => ({ check: n.check || n.gate || '', reason: n.reason || null }));
+  const testGateRaw = frontmatterScalar(yaml, 'test_gate');
+  const testGate = testGateRaw ? String(testGateRaw).toLowerCase() : null;
+  const isTests = (n) => /test/i.test(String(n.check));
+  let contradicted = false;
+  if (testGate === 'skipped' && !notChecked.some(isTests)) {
+    notChecked.push({ check: 'tests', reason: frontmatterScalar(yaml, 'test_gate_reason') || 'the test gate was skipped' });
+  } else if ((testGate === 'passed' || testGate === 'failed') && notChecked.some(isTests)) {
+    // The gate ran, so a `tests` entry is the template's example copied over: the
+    // recorded gate is the measurement, and the entry goes.
+    notChecked = notChecked.filter((n) => !isTests(n));
+    contradicted = true;
+  }
+  return { contract: VERDICT_CONTRACT, agent, verdict: status, outcome, findings, not_checked: notChecked, test_gate: testGate, not_checked_contradicted: contradicted };
 }
 
 /**
@@ -383,7 +426,14 @@ function parseVerdictText(text, opts = {}) {
       return { ok: false, error: 'unknown_status', reason: `verification status "${adapted.verdict}" is not passed, gaps_found or human_needed` };
     }
     const r = validateVerdict(adapted, opts);
-    return r.ok ? { ...r, source_kind: 'frontmatter' } : r;
+    if (!r.ok) return r;
+    // Say when the verification does not record its test gate, or records a failed
+    // gate under a pass: both make "passed" claim more than the verifier checked.
+    if (!adapted.test_gate) r.warnings.push('test_gate_unrecorded: the verification does not say whether the test suite ran');
+    else if (!TEST_GATE_VALUES.includes(adapted.test_gate)) r.warnings.push(`test_gate_unknown: "${adapted.test_gate}" is not passed, failed or skipped`);
+    else if (adapted.test_gate === 'failed' && adapted.outcome === 'pass') r.warnings.push('test_gate_failed_under_pass: the test gate failed but the status is passed');
+    if (adapted.not_checked_contradicted) r.warnings.push(`not_checked_contradicted: test_gate is ${adapted.test_gate}, so the not_checked tests entry was dropped`);
+    return { ...r, source_kind: 'frontmatter' };
   }
   return { ok: false, error: 'no_verdict', reason: 'no pan-verdict block and no verification frontmatter status' };
 }

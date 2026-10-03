@@ -49,6 +49,21 @@
         "stdout~pan"
       ],
       "why": "The measurement: OpenCode enumerates the servers it loaded for this workspace. If the subcommand does not exist on this build, its stderr is the evidence to adjust from — either outcome is information."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode",
+      "args": [
+        "agent",
+        "list"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~pan-planner \\(",
+        "stdout~pan-executor \\(",
+        "stdout~pan-verifier \\("
+      ],
+      "why": "Market-ideas M31 (2026-10-03): OpenCode lists the agents it loaded from .opencode/agents/, the model-free discovery check wshobson/agents runs in CI. Measured on OpenCode 1.18.32: PAN's agents list as `pan-<name> (all)`."
     }
   ]
 }

@@ -41,6 +41,7 @@ describe('verdict — parsing the pan-verdict block', () => {
     assert.deepEqual(r.verdict, {
       contract: '1.0', agent: 'pan-reviewer', outcome: 'fail', verdict: 'NEEDS_FIXES', phase: '03', score: null,
       findings: [{ class: 'defect', severity: 'high', where: 'src/utils/parser.ts:42', summary: 'parse() drops the final token' }],
+      not_checked: [],
     });
   });
 
@@ -253,6 +254,65 @@ describe('verdict — verification.md frontmatter adapter', () => {
   test('frontmatter without a status is not a verdict', () => {
     assert.equal(v.verdictFromVerificationFrontmatter('---\nphase: 03\n---\n'), null);
     assert.equal(v.verdictFromVerificationFrontmatter('no frontmatter'), null);
+  });
+});
+
+// A gate that did not run is never a plain pass (market-ideas M23). The verifier
+// records its test gate; a skipped gate travels with the verdict as `not_checked`.
+describe('verdict — what a judge could not check (M23)', () => {
+  const fm = (lines) => ['---', 'status: passed', ...lines, '---', ''].join('\n');
+
+  test('test_gate: skipped becomes a tests entry even when not_checked leaves it out', () => {
+    const r = v.parseVerdictText(fm(['test_gate: skipped']));
+    assert.equal(r.verdict.outcome, 'pass');
+    assert.deepEqual(r.verdict.not_checked, [{ check: 'tests', reason: 'the test gate was skipped' }]);
+    assert.ok(!r.warnings.some(w => w.startsWith('test_gate')), r.warnings.join('\n'));
+  });
+
+  test('an explicit not_checked entry keeps its reason and is not doubled', () => {
+    const r = v.parseVerdictText(fm(['test_gate: skipped', 'not_checked:', '  - check: "tests"', '    reason: "no test script in package.json"',
+      '  - check: "browser flows"', '    reason: "no browser on the runner"']));
+    assert.deepEqual(r.verdict.not_checked, [
+      { check: 'tests', reason: 'no test script in package.json' },
+      { check: 'browser flows', reason: 'no browser on the runner' },
+    ]);
+  });
+
+  test('a tests entry under a gate that ran is the template example copied over: dropped, with a warning', () => {
+    const r = v.parseVerdictText(fm(['test_gate: passed', 'not_checked:', '  - check: "tests"', '    reason: "no test script in package.json"']));
+    assert.deepEqual(r.verdict.not_checked, []);
+    assert.ok(r.warnings.some(w => w.startsWith('not_checked_contradicted')), r.warnings.join('\n'));
+  });
+
+  test('a verification that does not record its test gate is flagged', () => {
+    const r = v.parseVerdictText(fm([]));
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.verdict.not_checked, []);
+    assert.ok(r.warnings.some(w => w.startsWith('test_gate_unrecorded')), r.warnings.join('\n'));
+  });
+
+  test('a failed test gate under a passed status is flagged, and an unknown gate value too', () => {
+    assert.ok(v.parseVerdictText(fm(['test_gate: failed'])).warnings.some(w => w.startsWith('test_gate_failed_under_pass')));
+    assert.ok(v.parseVerdictText(fm(['test_gate: maybe'])).warnings.some(w => w.startsWith('test_gate_unknown')));
+  });
+
+  test('a pan-verdict block\'s not_checked is normalised: strings, objects, junk', () => {
+    const r = v.parseVerdictText(report({ ...REVIEW, not_checked: ['lint', { check: 'types', reason: 'tsc missing' }, { reason: 'no check named' }, 7] }));
+    assert.deepEqual(r.verdict.not_checked, [{ check: 'lint', reason: null }, { check: 'types', reason: 'tsc missing' }]);
+    const bad = v.parseVerdictText(report({ ...REVIEW, not_checked: 'lint' }));
+    assert.deepEqual(bad.verdict.not_checked, []);
+    assert.ok(bad.warnings.includes('not_checked_not_an_array'));
+    assert.deepEqual(v.parseVerdictText(report(REVIEW)).verdict.not_checked, [], 'a block without the field has none');
+  });
+
+  test('the shipped template\'s example, with the gate skipped, reads as a pass with tests not checked', () => {
+    const fs = require('fs');
+    const tpl = fs.readFileSync(require('path').join(__dirname, '..', 'pan-wizard-core', 'templates', 'verification-report.md'), 'utf-8').replace(/\r\n/g, '\n');
+    const example = tpl.slice(tpl.indexOf('```markdown\n') + '```markdown\n'.length)
+      .replace('passed | gaps_found | human_needed', 'passed').replace('passed | failed | skipped', 'skipped');
+    const r = v.parseVerdictText(example);
+    assert.equal(r.verdict.outcome, 'pass');
+    assert.deepEqual(r.verdict.not_checked, [{ check: 'tests', reason: 'no test script in package.json' }]);
   });
 });
 

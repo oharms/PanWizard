@@ -91,6 +91,12 @@ const DEFAULT_RATES = {
   // 2026-08-31 was made permanent and the scheduled rise to $3/$15 cancelled.
   // Lesson: never write down a pre-announced price — this row carried the future
   // rate for a month and over-billed by half.
+  // Sonnet 5.5 (claude-sonnet-5-5): the same prices as Sonnet 5 — $2/$10, 5-minute
+  // writes $2.50, 1-hour $4, hits $0.20 (pricing page, read 2026-10-03). Claude Code
+  // 2.1.284 points the `sonnet` alias at it on the Anthropic API (model-config, read
+  // 2026-10-03). The family prefix already priced it at Sonnet 5's identical row; its
+  // own row means a later price change to either model cannot misprice the other.
+  'claude-sonnet-5-5':  { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50, cache_write_1h: 4.0 },
   'claude-sonnet-5':    { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50, cache_write_1h: 4.0 },
   'claude-sonnet-4-6':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75, cache_write_1h: 6.0 },
   // Sonnet 4.5 (dated id claude-sonnet-4-5-20250929): $3/$15/$0.30/$3.75 (R7).
@@ -105,10 +111,14 @@ const DEFAULT_RATES = {
   // as plain input. Until 2026-09-22 this block said "no separate write charge" for
   // every row, which had stopped being true — Terra and Luna writes were a fifth
   // low (R27). Longest-prefix match lets each tier key win over a shorter one.
-  // GPT-6: Astra is the flagship; Sol and Luna were released 2026-09-22. Codex's
-  // config docs use gpt-6-sol as the default model and gpt-6-luna for lower-cost
-  // subagents (learn.chatgpt.com/docs/config-file/config-basic, /agent-configuration/subagents).
+  // GPT-6: Astra is the flagship; Sol and Luna were released 2026-09-22. GPT-6.1 Sol
+  // is Codex's default model from 0.159.1 (2026-09-29): `model = "gpt-6.1-sol"` in
+  // config-basic, and the subagent docs' starting model for demanding agents, with
+  // gpt-6-luna for lower-cost ones (learn.chatgpt.com/docs/config-file/config-basic,
+  // /agent-configuration/subagents, both read 2026-10-03). Its row was read from the
+  // pricing page on 2026-10-03: GPT-6 Sol's prices, except cached input at 0.05×.
   'gpt-6-astra':        { input: 10.0, output: 50.0, cache_read: 1.0,  cache_write: 12.5 },
+  'gpt-6.1-sol':        { input: 2.0,  output: 10.0, cache_read: 0.1,  cache_write: 2.5 },
   'gpt-6-sol':          { input: 2.0,  output: 10.0, cache_read: 0.2,  cache_write: 2.5 },
   'gpt-6-luna':         { input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125 },
   // GPT-5.6. The bare `gpt-5.6` id is an alias that "routes requests to GPT-5.6 Sol"

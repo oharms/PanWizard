@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadConfig, getMilestoneInfo, escapeRegex, safeReadFile, output, error } = require('./core.cjs');
+const { loadConfig, getMilestoneInfo, escapeRegex, escapeTableCell, safeReadFile, output, error } = require('./core.cjs');
 const { extractFrontmatter, reconstructFrontmatter } = require('./frontmatter.cjs');
 const { withFileLock, writeFileAtomic } = require('./lock.cjs');
 const {
@@ -300,7 +300,8 @@ function cmdStateRecordMetric(cwd, options, raw) {
 
   if (metricsMatch) {
     let tableBody = metricsMatch[2].trimEnd();
-    const newRow = `| Phase ${phase} P${plan} | ${duration} | ${tasks || '-'} tasks | ${files || '-'} files |`;
+    const cell = escapeTableCell;
+    const newRow = `| Phase ${cell(phase)} P${cell(plan)} | ${cell(duration)} | ${cell(tasks || '-')} tasks | ${cell(files || '-')} files |`;
 
     if (tableBody.trim() === '' || tableBody.includes('None yet')) {
       tableBody = newRow;

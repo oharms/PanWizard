@@ -46,7 +46,7 @@ If `$FULL_MODE`:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init quick "$DESCRIPTION")
 ```
 
-Parse JSON for: `planner_model`, `executor_model`, `checker_model`, `verifier_model`, `commit_docs`, `next_num`, `slug`, `date`, `timestamp`, `quick_dir`, `task_dir`, `roadmap_exists`, `planning_exists`.
+Parse JSON for: `planner_model`, `executor_model`, `checker_model`, `verifier_model`, `commit_docs`, `next_num`, `slug`, `description_cell`, `date`, `timestamp`, `quick_dir`, `task_dir`, `roadmap_exists`, `planning_exists`.
 
 **If `roadmap_exists` is false:** Error — Quick mode requires an active project with roadmap.md. Run `/pan:new-project` first.
 
@@ -365,23 +365,23 @@ Insert after `### Blockers/Concerns` section:
 
 **7c. Append new row to table:**
 
-Use `date` from init:
+Use `date` and `description_cell` from init. Write `description_cell` exactly as init returned it, never `$DESCRIPTION`: init escapes `|` and folds line breaks, and a raw `|` in a description would split the row into an extra column and break the table for every later read.
 
 **If `$FULL_MODE` (or table has Status column):**
 ```markdown
-| ${next_num} | ${DESCRIPTION} | ${date} | ${commit_hash} | ${VERIFICATION_STATUS} | [${next_num}-${slug}](./quick/${next_num}-${slug}/) |
+| ${next_num} | ${description_cell} | ${date} | ${commit_hash} | ${VERIFICATION_STATUS} | [${next_num}-${slug}](./quick/${next_num}-${slug}/) |
 ```
 
 **If NOT `$FULL_MODE` (and table has no Status column):**
 ```markdown
-| ${next_num} | ${DESCRIPTION} | ${date} | ${commit_hash} | [${next_num}-${slug}](./quick/${next_num}-${slug}/) |
+| ${next_num} | ${description_cell} | ${date} | ${commit_hash} | [${next_num}-${slug}](./quick/${next_num}-${slug}/) |
 ```
 
 **7d. Update "Last activity" line:**
 
-Use `date` from init:
+Use `date` and `description_cell` from init (one line, whatever the description held):
 ```
-Last activity: ${date} - Completed quick task ${next_num}: ${DESCRIPTION}
+Last activity: ${date} - Completed quick task ${next_num}: ${description_cell}
 ```
 
 Use Edit tool to make these changes atomically

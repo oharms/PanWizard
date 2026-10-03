@@ -481,11 +481,17 @@ Unrequested work never changes the status on its own; a phase can pass with it. 
 **Why human:** {Why can't verify programmatically}
 ```
 
+## Step 8b: Run the Test Gate
+
+Run the project's test suite exactly as the verify-phase protocol's `run_test_suite` step says (`~/.claude/pan-wizard-core/workflows/verify-phase.md`): detect a test script first, then run it and judge the exit code before any count. Record the result in the frontmatter as `test_gate: passed | failed | skipped`. `skipped` is only for a project with no test script; a suite that exists and did not run is `failed`.
+
+A gate you could not run goes in `not_checked` with the reason, e.g. `- check: "tests"` / `reason: "no test script in package.json"`. If the orchestrator already ran the suite and gave you the result, record that result rather than running it again.
+
 ## Step 9: Determine Overall Status
 
-**Status: passed** — All truths VERIFIED, all artifacts pass levels 1-3, all key links WIRED, no blocker anti-patterns.
+**Status: passed** — All truths VERIFIED, all artifacts pass levels 1-3, all key links WIRED, no blocker anti-patterns, and the test gate passed or was skipped. A skipped gate stays visible: it is listed in `not_checked`, so the pass says what it did not check.
 
-**Status: gaps_found** — One or more truths FAILED, artifacts MISSING/STUB, key links NOT_WIRED, or blocker anti-patterns found.
+**Status: gaps_found** — One or more truths FAILED, artifacts MISSING/STUB, key links NOT_WIRED, blocker anti-patterns found, or the test gate FAILED.
 
 **Status: human_needed** — All automated checks pass but items flagged for human verification.
 
@@ -523,14 +529,21 @@ gaps:
 
 **ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.
 
+Record `verified_commit` from `git rev-parse HEAD` before you write the file. It ties the verdict to the code you checked: `pan-tools verify stale <phase>` and `pan-tools progress` compare the phase's files against it, and a file changed since then marks this verification stale.
+
 Create `.planning/phases/{phase_dir}/{phase_num}-verification.md`:
 
 ```markdown
 ---
 phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
+verified_commit: <sha> # `git rev-parse HEAD` before you write this file: the code you verified
 status: passed | gaps_found | human_needed
 score: N/M must-haves verified
+test_gate: passed | failed | skipped # Step 8b
+not_checked: # Only for checks that could not run — never count them as passed
+  - check: "tests"
+    reason: "no test script in package.json"
 re_verification: # Only if previous verification.md existed
   previous_status: gaps_found
   previous_score: 2/5

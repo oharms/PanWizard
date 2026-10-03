@@ -256,7 +256,11 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    **Known Claude Code bug (classifyHandoffIfNeeded):** If an agent reports "failed" with error containing `classifyHandoffIfNeeded is not defined`, this is a Claude Code runtime bug — not a PAN or agent issue. The error fires in the completion handler AFTER all tool calls finish. In this case: run the same spot-checks as step 4 (summary.md exists, git commits present, no Self-Check: FAILED). If spot-checks PASS → treat as **successful**. If spot-checks FAIL → treat as real failure below.
 
-   For real failures: report which plan failed → ask "Continue?" or "Stop?" → if continue, dependent plans may also fail. If stop, partial completion report.
+   For real failures: report which plan failed → ask "Continue?" or "Stop?". If stop, partial completion report. If continue, never run a plan that depends on a failed one; ask the engine which plans are blocked:
+   ```bash
+   BLOCKED=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase-plan-index "${PHASE_NUMBER}" --failed "${FAILED_PLAN_IDS}")
+   ```
+   `${FAILED_PLAN_IDS}` is the comma-separated ids of every plan that failed so far. `blocked` lists each unfinished plan whose `depends_on` reaches a failed plan, directly or through another blocked plan, with the failed plans behind it. Do not spawn those plans in this or any later wave. Name them in the wave report and the final summary ("Skipped 03-03 and 03-04: they depend on 03-01, which failed"), and run every other plan as planned. The same applies after "Continue with remaining waves?" in step 4.
 
 6. **Execute checkpoint plans between waves** — see `<checkpoint_handling>`.
 
@@ -275,7 +279,7 @@ AUTO_CFG=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.
 
 When executor returns a checkpoint AND `AUTO_CFG` is `"true"`:
 - **human-verify** → Auto-spawn continuation agent with `{user_response}` = `"approved"`. Log `⚡ Auto-approved checkpoint`.
-- **decision** → Auto-spawn continuation agent with `{user_response}` = first option from checkpoint details. Log `⚡ Auto-selected: [option]`.
+- **decision** → The executor already took the plan's `auto_select` option when the task had one, so a decision that comes back has none: present it to the user (standard flow below). If a returned decision's task does carry `auto_select` in the plan file, auto-spawn the continuation agent with `{user_response}` = that option id and log `⚡ Auto-selected: [option] (auto_select)`. Never answer with an option because it is listed first.
 - **human-action** → Present to user (existing behavior below). Auth gates cannot be automated.
 
 **Standard flow (not auto-mode, or human-action type):**
@@ -567,6 +571,7 @@ Phase goal: {goal from roadmap.md}
 Phase requirement IDs: {phase_req_ids}
 Check must_haves against actual codebase.
 Cross-reference requirement IDs from PLAN frontmatter against requirements.md — every ID MUST be accounted for.
+Run the project's test suite as the test gate (the run_test_suite step of @~/.claude/pan-wizard-core/workflows/verify-phase.md) and record test_gate in the frontmatter.
 Create verification.md.",
   subagent_type="pan-verifier",
   model="{verifier_model}"
@@ -585,7 +590,7 @@ VERIF_STATUS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record 
 
 | Status | Action |
 |--------|--------|
-| `passed` | → update_roadmap |
+| `passed` | → update_roadmap. If the verification frontmatter has `test_gate: skipped` or a `not_checked` list, say so when you report the phase: "passed — not checked: tests (no test script)". A pass never hides what it did not check |
 | `human_needed` | Present items for human testing, get approval or feedback |
 | `gaps_found` | Present gap summary, offer `/pan:plan-phase {phase} --gaps` |
 

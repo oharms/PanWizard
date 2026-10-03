@@ -240,6 +240,7 @@ issue:
 - Plan with 15+ file modifications
 - Single task with 10+ files
 - Complex work (auth, payments) crammed into one plan
+- **Code instead of decisions:** a task `<action>` holding an implementation body (a function, a whole file) rather than names, signatures, values, assertions and the verify command. `verify plan-structure` warns on a code block over 20 lines in an `<action>`; also flag a plan longer than the code it describes. Severity: warning; the executor writes the code
 
 **Example issue:**
 ```yaml
@@ -561,13 +562,16 @@ for plan in "$PHASE_DIR"/*-plan.md; do
 done
 ```
 
-Parse JSON result: `{ valid, errors, warnings, task_count, tasks: [{name, hasFiles, hasAction, hasVerify, hasDone}], frontmatter_fields }`
+Parse JSON result: `{ valid, errors, warnings, task_count, tasks: [{name, type, hasFiles, hasAction, hasVerify, hasDone}], frontmatter_fields }`. A checkpoint task's entry is `{name, type}`, plus `auto_select` on a decision.
 
 Map errors/warnings to verification dimensions:
 - Missing frontmatter field → `task_completeness` or `must_haves_derivation`
 - Task missing elements → `task_completeness`
 - Wave/depends_on inconsistency → `dependency_correctness`
 - Checkpoint/autonomous mismatch → `task_completeness`
+- Decision `auto_select` names no option (error) → `task_completeness`, blocker
+- Decision without `auto_select` (warning) → no issue by itself: auto mode stops there for a human. Raise it as a warning only when the decision is reversible and low-stakes, so a default would let an unattended run continue
+- Task embeds a long code block in `<action>` (warning) → `scope_sanity`, warning: plans record decisions, not code
 
 ## Step 3: Parse must_haves
 

@@ -10,7 +10,7 @@
 pan-wizard/
   bin/
     install.js                # Interactive installer (npx pan-wizard entry point)
-    install-lib.cjs           # Installer functions — no filesystem writes (verifyInstall()/dirDigest() read the filesystem; the merge and strip helpers stripPanHookEntries()/mergeCodexHooksConfig()/removeCodexPanHooks()/mergeMcpRegistration()/stripMcpRegistration() edit the object they are given): converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
+    install-lib.cjs           # Installer functions — no filesystem writes (verifyInstall()/verifyHookEntrypoints()/dirDigest() read the filesystem; the merge and strip helpers stripPanHookEntries()/mergeCodexHooksConfig()/removeCodexPanHooks()/mergeMcpRegistration()/stripMcpRegistration() edit the object they are given): converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
   package.json                # Zero runtime deps; devDependencies are the VS Code e2e harness only
   commands/pan/               # Command .md files (Claude Code format; converted per runtime at install)
   agents/                     # Agent .md files (specialized AI roles)

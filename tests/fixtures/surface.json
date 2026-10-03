@@ -227,6 +227,7 @@
     "verify reconcile",
     "verify references",
     "verify scope",
+    "verify stale",
     "verify stubs",
     "whatif cleanup",
     "whatif prepare",
@@ -314,6 +315,7 @@
     "verify",
     "verify-path-exists",
     "verify-summary",
+    "version",
     "websearch",
     "whatif",
     "worktree"

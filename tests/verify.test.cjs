@@ -451,6 +451,96 @@ describe('verify plan-structure command', () => {
     assert.strictEqual(output.task_count, 1);
     assert.strictEqual(output.errors.length, 0);
   });
+
+  // ── Checkpoint tasks (market-ideas M22) ──────────────────────────────────────
+  // Auto mode used to take a decision's FIRST option, so safety depended on the
+  // order the planner listed options in. A decision now names its default with
+  // `auto_select`, or auto mode stops for a human. These plans use the documented
+  // shapes from references/checkpoints.md, inside the `<tasks>` wrapper real plans
+  // have — until 2026-10-03 the checker validated checkpoints as auto tasks and
+  // read the wrapper as the first task.
+  const checkpointPlan = (decisionAttrs, extra = '') => [
+    '---', 'phase: 01', 'plan: 01', 'type: execute', 'wave: 1', 'depends_on: []',
+    'files_modified: [src/auth.ts]', 'autonomous: false', 'must_haves:', '  truths: []', '---',
+    '<tasks>',
+    '<task type="auto">', '  <name>Build login form</name>', '  <files>src/login.tsx</files>',
+    '  <action>Create the form</action>', '  <verify>npm test</verify>', '  <done>Form renders</done>', '</task>',
+    `<task type="checkpoint:decision" gate="blocking"${decisionAttrs}>`,
+    '  <decision>Select session storage</decision>', '  <context>Sessions need a store.</context>',
+    '  <options>',
+    '    <option id="cookie"><name>Signed cookie</name><pros>No server state</pros><cons>Size cap</cons></option>',
+    '    <option id="redis"><name>Redis</name><pros>Revocable</pros><cons>New service</cons></option>',
+    '  </options>',
+    '  <resume-signal>Select: cookie or redis</resume-signal>',
+    '</task>',
+    extra,
+    '</tasks>',
+  ].join('\n');
+
+  const checkPlan = (content) => {
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-setup');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-01-plan.md'), content);
+    const result = runPanTools('verify plan-structure .planning/phases/01-setup/01-01-plan.md', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    return JSON.parse(result.output);
+  };
+
+  test('a decision whose auto_select names one of its options is valid', () => {
+    const out = checkPlan(checkpointPlan(' auto_select="cookie"'));
+    assert.deepEqual(out.errors, []);
+    assert.ok(!out.warnings.some(w => w.includes('auto_select')), out.warnings.join('\n'));
+    const decision = out.tasks.find(t => t.type === 'checkpoint:decision');
+    assert.equal(decision.auto_select, 'cookie');
+    assert.equal(decision.name, 'Select session storage');
+  });
+
+  test('an auto_select that names no option fails the plan', () => {
+    const out = checkPlan(checkpointPlan(' auto_select="postgres"'));
+    assert.equal(out.valid, false);
+    assert.ok(out.errors.some(e => e.includes('auto_select="postgres" names no option') && e.includes('cookie, redis')), out.errors.join('\n'));
+  });
+
+  test('a decision without auto_select is valid but warns that auto mode will stop there', () => {
+    const out = checkPlan(checkpointPlan(''));
+    assert.equal(out.valid, true, out.errors.join('\n'));
+    assert.ok(out.warnings.some(w => w.includes('no auto_select') && w.includes('stops here for a human')), out.warnings.join('\n'));
+    assert.equal(out.tasks.find(t => t.type === 'checkpoint:decision').auto_select, null);
+  });
+
+  test('checkpoints are checked against their own shape, not the auto-task one, and the <tasks> wrapper is not a task', () => {
+    const verify = ['<task type="checkpoint:human-verify" gate="blocking">',
+      '  <what-built>Login page at /login</what-built>', '  <how-to-verify>Visit /login</how-to-verify>', '</task>'].join('\n');
+    const out = checkPlan(checkpointPlan(' auto_select="cookie"', verify));
+    assert.deepEqual(out.errors, []);
+    assert.ok(!out.warnings.some(w => /missing <(files|verify|done)>/.test(w)), out.warnings.join('\n'));
+    assert.deepEqual(out.tasks.map(t => [t.name, t.type]), [
+      ['Build login form', 'auto'],
+      ['Select session storage', 'checkpoint:decision'],
+      ['Login page at /login', 'checkpoint:human-verify'],
+    ]);
+  });
+
+  test('a checkpoint missing its own elements is reported by name', () => {
+    const broken = ['<task type="checkpoint:human-verify" gate="blocking">',
+      '  <what-built>Dashboard</what-built>', '</task>'].join('\n');
+    const out = checkPlan(checkpointPlan(' auto_select="cookie"', broken));
+    assert.equal(out.valid, false);
+    assert.ok(out.errors.includes("Checkpoint 'Dashboard' missing <how-to-verify>"), out.errors.join('\n'));
+  });
+
+  test('no shipped prose still tells auto mode to take the first option', () => {
+    const ROOT = path.join(__dirname, '..');
+    const files = ['agents/pan-executor.md', 'agents/pan-planner.md', 'pan-wizard-core/workflows/exec-phase.md',
+      'pan-wizard-core/references/checkpoints.md', 'docs/USER-GUIDE.md', 'docs/TROUBLESHOOTING.md', 'docs/INTERNALS.md'];
+    for (const rel of files) {
+      const text = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+      assert.ok(!/auto-?selects? (the )?first option|first option (auto-selected|from checkpoint details)/i.test(text), `${rel} still describes first-option auto-select`);
+    }
+    for (const rel of ['agents/pan-executor.md', 'pan-wizard-core/workflows/exec-phase.md', 'pan-wizard-core/references/checkpoints.md']) {
+      assert.ok(fs.readFileSync(path.join(ROOT, rel), 'utf8').includes('auto_select'), `${rel} must describe auto_select`);
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1082,3 +1172,57 @@ describe('validate deployment command', () => {
 // progress command
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plans record decisions, not code (market-ideas M32)
+// Superpowers v6.4.2 found its planner implementing whole features while planning.
+// PAN's planner had no rule against it; `verify plan-structure` now warns on an
+// implementation body in a task's <action>, and the planner and checker carry the rule.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('verify plan-structure — decisions, not code (M32)', () => {
+  let tmpDir;
+  beforeEach(() => { tmpDir = createTempProject(); });
+  afterEach(() => { cleanup(tmpDir); });
+
+  const FENCE = '`'.repeat(3);
+  const planWith = (action, extra = '') => [
+    '---', 'phase: 01', 'plan: 01', 'type: execute', 'wave: 1', 'depends_on: []', 'files_modified: [src/parse.ts]',
+    'autonomous: true', 'must_haves:', '  truths: []', '---', extra, '<tasks>', '<task type="auto">', '<name>Build the parser</name>',
+    '<files>src/parse.ts</files>', `<action>${action}</action>`, '<verify>npm test</verify>', '<done>parse() returns tokens</done>', '</task>', '</tasks>',
+  ].join('\n');
+  const check = (content) => {
+    const dir = path.join(tmpDir, '.planning', 'phases', '01-parse');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '01-01-plan.md'), content);
+    return JSON.parse(runPanTools('verify plan-structure .planning/phases/01-parse/01-01-plan.md', tmpDir).output);
+  };
+  const body = Array.from({ length: 24 }, (_, i) => `  const t${i} = next();`).join('\n');
+
+  test('an implementation body in <action> is a warning that names the size', () => {
+    const out = check(planWith(`Create parse().\n${FENCE}ts\nexport function parse(src: string): Token[] {\n${body}\n}\n${FENCE}\n`));
+    assert.strictEqual(out.valid, true, 'a warning, not an error');
+    assert.ok(out.warnings.some((w) => /embeds a 26-line code block in <action>/.test(w) && /decisions/.test(w)), out.warnings.join('\n'));
+  });
+
+  test('a signature, a type or a short snippet is a decision and passes', () => {
+    const out = check(planWith(`Create parse() with this signature:\n${FENCE}ts\nexport function parse(src: string): Token[]\n${FENCE}\nRejects input over 1 MB with RangeError.`));
+    assert.ok(!out.warnings.some((w) => /code block/.test(w)), out.warnings.join('\n'));
+  });
+
+  test('a long block outside the <action> (an interfaces section) is not the planner writing the code', () => {
+    const iface = `<interfaces>\n${FENCE}ts\n${body}\n${FENCE}\n</interfaces>`;
+    const out = check(planWith('Implement parse() against the interface above.', iface));
+    assert.ok(!out.warnings.some((w) => /code block/.test(w)), out.warnings.join('\n'));
+  });
+
+  test('the planner and the checker carry the rule', () => {
+    const root = path.join(__dirname, '..');
+    const planner = fs.readFileSync(path.join(root, 'agents', 'pan-planner.md'), 'utf8');
+    assert.match(planner, /## Decisions, Not Code/);
+    assert.match(planner, /Planning is not building/);
+    const checker = fs.readFileSync(path.join(root, 'agents', 'pan-plan-checker.md'), 'utf8');
+    assert.match(checker, /Code instead of decisions/);
+    assert.match(checker, /long code block in `<action>`.*scope_sanity/);
+  });
+});

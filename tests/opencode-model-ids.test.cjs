@@ -113,7 +113,7 @@ describe('an installed OpenCode copy resolves provider-qualified ids end to end'
   test('OpenCode\'s configured model picks the provider', () => {
     fs.writeFileSync(path.join(dir, 'opencode.json'), JSON.stringify({ model: 'anthropic/claude-opus-5-5' }));
     try {
-      assert.equal(resolve('pan-executor'), 'anthropic/claude-sonnet-5');
+      assert.equal(resolve('pan-executor'), 'anthropic/claude-sonnet-5-5');
     } finally {
       fs.rmSync(path.join(dir, 'opencode.json'));
     }

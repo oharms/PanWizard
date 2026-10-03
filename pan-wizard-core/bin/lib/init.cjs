@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, normalizePhaseName, toPosix, output, error, scanPendingTodos, isGitRepo, execGit } = require('./core.cjs');
+const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, normalizePhaseName, toPosix, output, error, scanPendingTodos, isGitRepo, execGit, escapeTableCell } = require('./core.cjs');
 const { PHASES_DIR, CODEBASE_DIR, QUICK_DIR, MILESTONES_DIR, STATE_FILE, ROADMAP_FILE, CONFIG_FILE, PROJECT_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isResearchFile, isContextFile, isVerificationFile, PLAN_SUFFIX, SUMMARY_SUFFIX, CONTEXT_SUFFIX, RESEARCH_SUFFIX, VERIFICATION_SUFFIX, UAT_SUFFIX, MAX_SLUG_LENGTH } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, hasBraveSearchKey, parsePhaseDir, planningRel } = require('./utils.cjs');
 const { classifyPlanTier } = require('./phase.cjs');
@@ -445,6 +445,10 @@ function cmdInitQuick(cwd, description, raw) {
     next_num: nextNum,
     slug: slug,
     description: description || null,
+    // The description as one markdown table cell (pipes escaped, line breaks
+    // folded). The workflow writes this, never the raw text, into state.md's
+    // "Quick Tasks Completed" table, where a raw `|` would break the table.
+    description_cell: description ? escapeTableCell(description) : null,
 
     // Timestamps
     date: now.toISOString().split('T')[0],

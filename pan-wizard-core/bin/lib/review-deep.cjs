@@ -19,7 +19,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error, safeReadFile, toPosix } = require('./core.cjs');
+const { output, error, safeReadFile, toPosix, escapeTableCell } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
 const { publish } = require('./bus.cjs');
 const { findVerdictBlocks, validateVerdict } = require('./verdict.cjs');
@@ -235,7 +235,7 @@ function writeDeepReview(cwd, phaseNum, payload, opts) {
       const loc = f.file ? `\`${f.file}${f.line ? `:${f.line}` : ''}\`` : '—';
       // Neutralize markdown-table-breaking chars: escape pipes and flatten any
       // newlines so a finding description can't corrupt the table structure.
-      const desc = String(f.description).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
+      const desc = escapeTableCell(f.description);
       lines.push(`| ${f.severity} | ${f.source} | ${f.category} | ${desc} | ${loc} |`);
     }
     lines.push('');

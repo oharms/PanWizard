@@ -1759,3 +1759,85 @@ describe('CLAUDE.md @AGENTS.md bridge', () => {
     assert.ok(!removed.includes('@AGENTS.md'));
   });
 });
+
+// ─── verifyHookEntrypoints (market-ideas M24) ───────────────────────────────
+// An install registered every hook even when it had copied none: from a source
+// checkout without `npm run build:hooks`, hooks/dist is absent, the copy step was
+// skipped, and each session event then ran a script that was not there.
+
+describe('hookCommandScript', () => {
+  test('reads the script from both command shapes the installer writes', () => {
+    assert.equal(lib.hookCommandScript('node .claude/hooks/pan-check-update.js'), '.claude/hooks/pan-check-update.js');
+    assert.equal(lib.hookCommandScript(lib.buildHookCommand('C:\\Users\\me\\.claude', 'pan-stop-guard.js')), 'C:/Users/me/.claude/hooks/pan-stop-guard.js');
+    assert.equal(lib.hookCommandScript('node "/home/me/my configs/.codex/hooks/pan-cost-logger.js"'), '/home/me/my configs/.codex/hooks/pan-cost-logger.js');
+  });
+
+  test('anything else is not a script command', () => {
+    for (const c of ['', 'python hook.py', 'node', 'node a.js --flag', null]) assert.equal(lib.hookCommandScript(c), null, String(c));
+  });
+});
+
+describe('verifyHookEntrypoints', () => {
+  const fs = require('fs');
+
+  test('passes when every script is there, relative or absolute', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-hookentry-'));
+    try {
+      fs.mkdirSync(path.join(root, '.claude', 'hooks'), { recursive: true });
+      fs.writeFileSync(path.join(root, '.claude', 'hooks', 'pan-a.js'), '// a\n');
+      const abs = lib.buildHookCommand(path.join(root, '.claude'), 'pan-a.js');
+      assert.deepEqual(lib.verifyHookEntrypoints(['node .claude/hooks/pan-a.js', abs], root), { ok: true, missing: [] });
+    } finally {
+      cleanup(root);
+    }
+  });
+
+  test('names a missing script, an empty one and a command it cannot read', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-hookentry-'));
+    try {
+      fs.mkdirSync(path.join(root, '.codex', 'hooks'), { recursive: true });
+      fs.writeFileSync(path.join(root, '.codex', 'hooks', 'pan-empty.js'), '');
+      const r = lib.verifyHookEntrypoints(['node .codex/hooks/pan-gone.js', 'node .codex/hooks/pan-empty.js', 'bash x.sh'], root);
+      assert.equal(r.ok, false);
+      assert.deepEqual(r.missing, ['.codex/hooks/pan-gone.js (missing)', '.codex/hooks/pan-empty.js (empty)', 'bash x.sh (not a "node <script>" command)']);
+    } finally {
+      cleanup(root);
+    }
+  });
+});
+
+describe('an install that copied no hook scripts registers none (M24)', () => {
+  const fs = require('fs');
+  const { spawnSync } = require('child_process');
+  const ROOT = path.join(__dirname, '..');
+
+  // A source tree like a clone that never ran `npm run build:hooks`: everything the
+  // installer reads, except hooks/dist.
+  function sourceWithoutBuiltHooks() {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-src-nohooks-'));
+    for (const d of ['bin', 'agents', 'commands', 'pan-wizard-core']) fs.cpSync(path.join(ROOT, d), path.join(src, d), { recursive: true });
+    for (const f of ['package.json', 'CHANGELOG.md']) fs.copyFileSync(path.join(ROOT, f), path.join(src, f));
+    return src;
+  }
+
+  for (const [flag, dir, config] of [['--claude', '.claude', 'settings.json'], ['--codex', '.codex', 'hooks.json']]) {
+    test(`${flag}: the install fails and writes no hook registration`, () => {
+      const src = sourceWithoutBuiltHooks();
+      const project = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-proj-nohooks-'));
+      try {
+        assert.equal(fs.existsSync(path.join(src, 'hooks', 'dist')), false, 'precondition: no built hooks');
+        const r = spawnSync(process.execPath, [path.join(src, 'bin', 'install.js'), flag, '--local'], { cwd: project, encoding: 'utf8' });
+        assert.equal(r.status, 1, `expected exit 1\n${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /Hook verification FAILED/);
+        assert.match(r.stderr, /hooks[\\/]pan-check-update\.js \(missing\)/);
+        assert.match(r.stderr, /npm run build:hooks/);
+        const cfgPath = path.join(project, dir, config);
+        const cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : '';
+        assert.ok(!/pan-check-update/.test(cfg), `${dir}/${config} must not register a hook whose script is missing`);
+      } finally {
+        cleanup(src);
+        cleanup(project);
+      }
+    });
+  }
+});

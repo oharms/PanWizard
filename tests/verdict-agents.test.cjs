@@ -119,3 +119,26 @@ describe('pan-verdict examples after conversion for each runtime', () => {
     });
   }
 });
+
+// The verifier's test gate (market-ideas M23). exec-phase spawned pan-verifier with a
+// prompt that never mentioned the test suite, and the agent's own steps had none, so
+// on the main execution path a phase could pass without its tests ever running.
+describe('the verifier runs and records the test gate on every path', () => {
+  const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf-8');
+
+  test('exec-phase tells the verifier to run the test gate', () => {
+    const exec = read('pan-wizard-core/workflows/exec-phase.md');
+    const step = exec.slice(exec.indexOf('<step name="verify_phase_goal">'));
+    const prompt = step.slice(0, step.indexOf('subagent_type="pan-verifier"'));
+    assert.ok(/run_test_suite/.test(prompt) && /verify-phase\.md/.test(prompt), 'the verifier prompt names the run_test_suite step of verify-phase.md');
+    assert.ok(/test_gate/.test(prompt), 'the verifier prompt asks for test_gate in the frontmatter');
+  });
+
+  test('the agent has its own test-gate step and the frontmatter fields the recorder reads', () => {
+    const agent = read('agents/pan-verifier.md');
+    assert.ok(/## Step 8b: Run the Test Gate/.test(agent), 'pan-verifier carries the test-gate step');
+    assert.ok(/^test_gate: passed \| failed \| skipped/m.test(agent), 'the frontmatter template records test_gate');
+    assert.ok(/^not_checked:/m.test(agent), 'the frontmatter template carries not_checked');
+    assert.ok(read('pan-wizard-core/workflows/verify-phase.md').includes('test_gate: ${TEST_GATE_STATUS}'), 'verify-phase writes the gate into the frontmatter');
+  });
+});

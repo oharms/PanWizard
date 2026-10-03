@@ -1837,3 +1837,79 @@ describe('phase complete auto-commit', () => {
 // milestone complete command
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dependency-ready dispatch (market-ideas M28)
+// After a failed plan, exec-phase asked "Continue?" and then ran every remaining
+// plan, including the ones that depend on the failed plan. The index now carries
+// each plan's depends_on, and --failed names the plans that must not run.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('phase-plan-index --failed: plans blocked by a failed dependency (M28)', () => {
+  let tmpDir;
+  const PHASE = () => path.join(tmpDir, '.planning', 'phases', '03-api');
+  function plan(id, wave, dependsOn) {
+    fs.writeFileSync(path.join(PHASE(), `03-${id}-plan.md`),
+      `---\nphase: 03\nplan: ${id}\nwave: ${wave}\ndepends_on: ${dependsOn}\nfiles_modified: []\nautonomous: true\n---\n\n<task><name>t</name></task>\n`);
+  }
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    fs.mkdirSync(PHASE(), { recursive: true });
+    plan('01', 1, '[]');
+    plan('02', 1, '[]');
+    plan('03', 2, '["03-01"]');
+    plan('04', 3, '["03"]'); // the plan-number form, naming 03-03
+    plan('05', 2, '["03-02"]');
+    fs.writeFileSync(path.join(PHASE(), '03-02-summary.md'), '---\nphase: 03\n---\n');
+  });
+  afterEach(() => cleanup(tmpDir));
+
+  test('the index carries each plan\'s depends_on', () => {
+    const out = JSON.parse(runPanTools('phase-plan-index 03', tmpDir).output);
+    assert.deepStrictEqual(out.plans.map((p) => [p.id, p.depends_on]),
+      [['03-01', []], ['03-02', []], ['03-03', ['03-01']], ['03-04', ['03']], ['03-05', ['03-02']]]);
+    assert.strictEqual('blocked' in out, false, 'without --failed nothing is blocked');
+  });
+
+  test('a failed plan blocks its dependents, transitively, and names the root failure', () => {
+    const out = JSON.parse(runPanTools('phase-plan-index 03 --failed 03-01', tmpDir).output);
+    assert.deepStrictEqual(out.failed, ['03-01']);
+    assert.deepStrictEqual(out.blocked, [
+      { id: '03-03', blocked_by: ['03-01'] },
+      { id: '03-04', blocked_by: ['03-01'] },
+    ]);
+  });
+
+  test('a finished plan is never blocked, and a plan whose dependencies are fine still runs', () => {
+    const out = JSON.parse(runPanTools('phase-plan-index 03 --failed 03-02', tmpDir).output);
+    assert.deepStrictEqual(out.blocked, [{ id: '03-05', blocked_by: ['03-02'] }], '03-05 waits on 03-02 — failed in this run although a summary exists');
+    const none = JSON.parse(runPanTools('phase-plan-index 03 --failed 03-04', tmpDir).output);
+    assert.deepStrictEqual(none.blocked, [], 'nothing depends on 03-04');
+  });
+
+  test('blockedPlans: several failures, a cycle and unknown dependencies terminate', () => {
+    const { blockedPlans } = require('../pan-wizard-core/bin/lib/phase.cjs');
+    const plans = [
+      { id: '05-01', depends_on: [], has_summary: false },
+      { id: '05-02', depends_on: [], has_summary: false },
+      { id: '05-03', depends_on: ['05-01', '05-02'], has_summary: false },
+      { id: '05-04', depends_on: ['05-05'], has_summary: false },
+      { id: '05-05', depends_on: ['05-04', '05-03'], has_summary: false },
+      { id: '05-06', depends_on: ['09-99'], has_summary: false },
+    ];
+    assert.deepStrictEqual(blockedPlans(plans, ['05-01', '05-02']), [
+      { id: '05-03', blocked_by: ['05-01', '05-02'] },
+      { id: '05-04', blocked_by: ['05-01', '05-02'] },
+      { id: '05-05', blocked_by: ['05-01', '05-02'] },
+    ]);
+    assert.deepStrictEqual(blockedPlans(plans, []), []);
+  });
+
+  test('exec-phase skips the blocked plans instead of running them', () => {
+    const exec = fs.readFileSync(path.join(__dirname, '..', 'pan-wizard-core', 'workflows', 'exec-phase.md'), 'utf8');
+    assert.match(exec, /phase-plan-index "\$\{PHASE_NUMBER\}" --failed "\$\{FAILED_PLAN_IDS\}"/);
+    assert.match(exec, /Do not spawn those plans/);
+    assert.ok(!/dependent plans may also fail/.test(exec), 'the old "they may also fail" instruction is gone');
+  });
+});

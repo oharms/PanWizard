@@ -2745,6 +2745,24 @@ function install(isGlobal, runtime = 'claude') {
     ? buildHookCommand(targetDir, 'pan-state-reinject.js')
     : 'node ' + dirName + '/hooks/pan-state-reinject.js';
 
+  // Every hook command about to be registered must run a script that is there
+  // (market-ideas M24). The copy above skips the hooks when hooks/dist is absent (a
+  // source checkout without `npm run build:hooks`), and every hook was registered
+  // anyway, so each session event then ran a missing file. Fail before writing any
+  // runtime config. OpenCode registers no hooks.
+  if (!isOpencode) {
+    const entrypoints = lib.verifyHookEntrypoints([
+      updateCheckCommand, contextMonitorCommand, statuslineCommand, costLoggerCommand,
+      traceLoggerCommand, stopGuardCommand, stateReinjectCommand,
+    ], process.cwd());
+    if (!entrypoints.ok) {
+      console.error(`\n  ${red}✖ Hook verification FAILED — these hook commands would run a script that is not there:${reset}`);
+      for (const m of entrypoints.missing) console.error(`    - ${m}`);
+      console.error(`\n  No hooks were registered. In a source checkout, run ${cyan}npm run build:hooks${reset} first, then re-run the installer.\n`);
+      process.exit(1);
+    }
+  }
+
   if (isCodex) {
     // Codex hooks (2026-06): Claude-compatible PascalCase events in the shared
     // .codex/hooks.json — merge PAN entries non-destructively (foreign hooks
