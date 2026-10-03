@@ -436,6 +436,18 @@
     },
     {
       "runtime": "copilot",
+      "hook": "pan-state-reinject.js",
+      "event": "preCompact",
+      "surface": "hooks/pan.json"
+    },
+    {
+      "runtime": "copilot",
+      "hook": "pan-state-reinject.js",
+      "event": "postToolUse",
+      "surface": "hooks/pan.json"
+    },
+    {
+      "runtime": "copilot",
       "hook": "pan-statusline.js",
       "event": "statusLine",
       "surface": "copilot/settings.json"
@@ -456,6 +468,18 @@
       "runtime": "gemini",
       "hook": "pan-check-update.js",
       "event": "SessionStart",
+      "surface": "settings.json"
+    },
+    {
+      "runtime": "gemini",
+      "hook": "pan-state-reinject.js",
+      "event": "PreCompress",
+      "surface": "settings.json"
+    },
+    {
+      "runtime": "gemini",
+      "hook": "pan-state-reinject.js",
+      "event": "AfterTool",
       "surface": "settings.json"
     },
     {

@@ -1132,16 +1132,25 @@ function stripThinkingFrontmatter(content, runtime) {
  * @param {Object} commands
  * @param {string} commands.updateCheckCommand   - node invocation for pan-check-update.js
  * @param {string} commands.contextMonitorCommand - node invocation for pan-context-monitor.js
+ * @param {string} [commands.stateReinjectMarkCommand]   - pan-state-reinject.js `--mark` (preCompact)
+ * @param {string} [commands.stateReinjectInjectCommand] - pan-state-reinject.js `--inject copilot` (postToolUse)
  * @returns {Object} A `.github/hooks/pan.json` config object
  */
 function buildCopilotHooksConfig(commands) {
-  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand } = commands || {};
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand,
+    stateReinjectMarkCommand, stateReinjectInjectCommand } = commands || {};
   const config = { version: 1, hooks: {} };
   if (updateCheckCommand) {
     config.hooks.sessionStart = [{ type: 'command', command: updateCheckCommand }];
   }
-  if (contextMonitorCommand) {
-    config.hooks.postToolUse = [{ type: 'command', command: contextMonitorCommand }];
+  const postToolUse = [];
+  if (contextMonitorCommand) postToolUse.push({ type: 'command', command: contextMonitorCommand });
+  // State re-injection after a compaction (M33): preCompact leaves the marker, the
+  // next postToolUse returns the block once (hooks/pan-state-reinject.js).
+  if (stateReinjectInjectCommand) postToolUse.push({ type: 'command', command: stateReinjectInjectCommand });
+  if (postToolUse.length > 0) config.hooks.postToolUse = postToolUse;
+  if (stateReinjectMarkCommand) {
+    config.hooks.preCompact = [{ type: 'command', command: stateReinjectMarkCommand }];
   }
   // subagentStop is Copilot's SubagentStop equivalent (verified docs.github.com
   // 2026-06) — carries the cost + trace loggers, same as Claude and Codex (Gemini registers neither).
@@ -1197,15 +1206,20 @@ function buildCopilotHooksConfig(commands) {
  * `compact` is where the state re-injection hook registers (M10): SessionStart with
  * the `compact` matcher (HOOK_SLOT_MATCHERS), the one event after a compaction whose
  * `hookSpecificOutput.additionalContext` reaches the model on Claude Code and Codex —
- * both hosts' PostCompact discard it (hooks references, read 2026-09-26). Gemini's
- * PreCompress fires before the summary and Copilot's preCompact is notification-only,
- * so neither gets it.
+ * both hosts' PostCompact discard it (hooks references, read 2026-09-26).
+ *
+ * `compactMark` / `compactInject` (market-ideas M33) carry it where no start event
+ * follows a compaction. Gemini's PreCompress and Copilot's preCompact are advisory,
+ * so the hook runs in two steps: a marker before the compaction, the block on the
+ * next tool result, the first point after it where both hosts take added context
+ * (gemini-cli v0.61.0 docs/hooks/reference.md; Copilot hooks reference; read
+ * 2026-10-03, and live on Copilot CLI 1.0.88 the same day).
  */
 const HOOK_EVENT_MAP = Object.freeze({
-  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart' },
-  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null },
-  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart' },
-  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null },
+  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null, compactMark: 'PreCompress', compactInject: 'AfterTool' },
+  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null, compactMark: 'preCompact', compactInject: 'postToolUse' },
   opencode: null,
 });
 
@@ -1230,14 +1244,16 @@ const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-context-monit
  *
  * @param {object} hooks - settings.hooks
  * @param {string[]} hookNames - script basenames without `.js` (e.g. 'pan-stop-guard')
- * @param {string|null} [keepEvent] - the event the hook now belongs to, left alone
+ * @param {string|string[]|null} [keepEvent] - the event (or events: a hook such as
+ *   pan-state-reinject registers under two on Gemini) the hook now belongs to, left alone
  * @returns {string[]}
  */
 function stripPanHookEntries(hooks, hookNames, keepEvent = null) {
   const touched = [];
   if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return touched;
+  const keep = new Set([].concat(keepEvent || []));
   for (const event of Object.keys(hooks)) {
-    if (event === keepEvent || !Array.isArray(hooks[event])) continue;
+    if (keep.has(event) || !Array.isArray(hooks[event])) continue;
     const before = hooks[event].length;
     hooks[event] = hooks[event].filter(entry => !(entry && Array.isArray(entry.hooks)
       && entry.hooks.some(h => h && typeof h.command === 'string' && hookNames.some(n => h.command.includes(n)))));
@@ -1817,7 +1833,8 @@ function verifyInstall(configDir, manifest) {
  * @returns {string|null}
  */
 function hookCommandScript(command) {
-  const m = /^node\s+(?:"([^"]+)"|(\S+))$/.exec(String(command || '').trim());
+  // Plain arguments may follow the script (`--mark`, `--inject gemini`, M33).
+  const m = /^node\s+(?:"([^"]+)"|([^\s"]+))(?:\s+[^\s"]+)*$/.exec(String(command || '').trim());
   return m ? (m[1] || m[2]) : null;
 }
 

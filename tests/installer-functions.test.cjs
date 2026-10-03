@@ -1744,8 +1744,30 @@ describe('HOOK_EVENT_MAP', () => {
   test('Gemini uses its own vocabulary: AfterAgent for the stop guard, nothing for the monitor or loggers (R29)', () => {
     assert.deepEqual(
       { ...lib.HOOK_EVENT_MAP.gemini },
-      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null });
+      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null,
+        compactMark: 'PreCompress', compactInject: 'AfterTool' });
     assert.equal(lib.HOOK_EVENT_MAP.claude.stop, 'Stop', 'Claude keeps its Stop event for the guard');
+  });
+
+  test('state re-injection in two steps only where no start event follows a compaction (M33)', () => {
+    // Claude and Codex re-inject on SessionStart with the `compact` matcher; Gemini and
+    // Copilot mark before the compaction and inject on the next tool result.
+    for (const rt of ['claude', 'codex']) {
+      assert.equal(lib.HOOK_EVENT_MAP[rt].compact, 'SessionStart', rt);
+      assert.equal(lib.HOOK_EVENT_MAP[rt].compactMark, null, rt);
+      assert.equal(lib.HOOK_EVENT_MAP[rt].compactInject, null, rt);
+    }
+    assert.deepEqual([lib.HOOK_EVENT_MAP.copilot.compactMark, lib.HOOK_EVENT_MAP.copilot.compactInject], ['preCompact', 'postToolUse']);
+    const config = lib.buildCopilotHooksConfig({ contextMonitorCommand: 'node m.js', stateReinjectMarkCommand: 'node r.js --mark', stateReinjectInjectCommand: 'node r.js --inject copilot' });
+    assert.deepEqual(config.hooks.preCompact, [{ type: 'command', command: 'node r.js --mark' }]);
+    assert.deepEqual(config.hooks.postToolUse.map((h) => h.command), ['node m.js', 'node r.js --inject copilot'], 'the monitor first, then the re-injection');
+  });
+
+  test('stripPanHookEntries keeps every event in a keep list (a hook registered under two events)', () => {
+    const entry = (c) => [{ hooks: [{ type: 'command', command: c }] }];
+    const hooks = { PreCompress: entry('node r/pan-state-reinject.js --mark'), AfterTool: entry('node r/pan-state-reinject.js --inject gemini'), SessionStart: entry('node r/pan-state-reinject.js') };
+    assert.deepEqual(lib.stripPanHookEntries(hooks, ['pan-state-reinject'], ['PreCompress', 'AfterTool']), ['SessionStart']);
+    assert.deepEqual(Object.keys(hooks).sort(), ['AfterTool', 'PreCompress']);
   });
 
   test('stripPanHookEntries removes a hook from every event but the one it belongs to', () => {
@@ -1805,8 +1827,13 @@ describe('hookCommandScript', () => {
     assert.equal(lib.hookCommandScript('node "/home/me/my configs/.codex/hooks/pan-cost-logger.js"'), '/home/me/my configs/.codex/hooks/pan-cost-logger.js');
   });
 
+  test('plain arguments after the script are allowed (M33: --mark, --inject <host>)', () => {
+    assert.equal(lib.hookCommandScript('node .gemini/hooks/pan-state-reinject.js --inject gemini'), '.gemini/hooks/pan-state-reinject.js');
+    assert.equal(lib.hookCommandScript('node "C:/x y/hooks/pan-state-reinject.js" --mark'), 'C:/x y/hooks/pan-state-reinject.js');
+  });
+
   test('anything else is not a script command', () => {
-    for (const c of ['', 'python hook.py', 'node', 'node a.js --flag', null]) assert.equal(lib.hookCommandScript(c), null, String(c));
+    for (const c of ['', 'python hook.py', 'node', 'node a.js "quoted arg"', null]) assert.equal(lib.hookCommandScript(c), null, String(c));
   });
 });
 

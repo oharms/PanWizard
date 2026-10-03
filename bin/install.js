@@ -2739,6 +2739,10 @@ function install(isGlobal, runtime = 'claude') {
   const stateReinjectCommand = isGlobal
     ? buildHookCommand(targetDir, 'pan-state-reinject.js')
     : 'node ' + dirName + '/hooks/pan-state-reinject.js';
+  // Gemini and Copilot (M33): a marker before the compaction, the block on the next
+  // tool result. The inject mode names the host, whose output shapes differ.
+  const stateReinjectMarkCommand = `${stateReinjectCommand} --mark`;
+  const stateReinjectInjectCommand = `${stateReinjectCommand} --inject ${isCopilot ? 'copilot' : 'gemini'}`;
 
   // Every hook command about to be registered must run a script that is there
   // (market-ideas M24). The copy above skips the hooks when hooks/dist is absent (a
@@ -2748,7 +2752,7 @@ function install(isGlobal, runtime = 'claude') {
   if (!isOpencode) {
     const entrypoints = lib.verifyHookEntrypoints([
       updateCheckCommand, contextMonitorCommand, statuslineCommand, costLoggerCommand,
-      traceLoggerCommand, stopGuardCommand, stateReinjectCommand,
+      traceLoggerCommand, stopGuardCommand, stateReinjectCommand, stateReinjectMarkCommand, stateReinjectInjectCommand,
     ], process.cwd());
     if (!entrypoints.ok) {
       console.error(`\n  ${red}✖ Hook verification FAILED — these hook commands would run a script that is not there:${reset}`);
@@ -2786,12 +2790,12 @@ function install(isGlobal, runtime = 'claude') {
   // from any legacy config.json registration.
   if (isCopilot) {
     const hooksConfigPath = path.join(targetDir, 'hooks', 'pan.json');
-    const hooksConfig = buildCopilotHooksConfig({ updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand });
+    const hooksConfig = buildCopilotHooksConfig({ updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectMarkCommand, stateReinjectInjectCommand });
     try {
       fs.mkdirSync(path.dirname(hooksConfigPath), { recursive: true });
       fs.writeFileSync(hooksConfigPath, JSON.stringify(hooksConfig, null, 2) + '\n');
       // Same as the Codex case: a global Copilot install writes to ~/.copilot/, not .github/.
-      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, context monitor, cost + trace loggers, stop guard)`);
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, context monitor, cost + trace loggers, stop guard, state re-injection)`);
     } catch (e) {
       console.error(`  ${yellow}✗${reset} Failed to write Copilot hooks config: ${e.message}`);
     }
@@ -2885,19 +2889,27 @@ function install(isGlobal, runtime = 'claude') {
       { slot: 'subagentStop', hook: 'pan-trace-logger', command: traceLoggerCommand, label: 'trace logger hook' },
       { slot: 'stop', hook: 'pan-stop-guard', command: stopGuardCommand, label: 'auto-advance stop guard hook' },
       { slot: 'compact', hook: 'pan-state-reinject', command: stateReinjectCommand, label: 'state re-injection hook (after compaction)' },
+      // Gemini (M33): no start event follows a compaction, so a marker before it and
+      // the block on the next tool result.
+      { slot: 'compactMark', hook: 'pan-state-reinject', command: stateReinjectMarkCommand, label: 'state re-injection marker (before compaction)' },
+      { slot: 'compactInject', hook: 'pan-state-reinject', command: stateReinjectInjectCommand, label: 'state re-injection (first tool result after compaction)' },
     ];
+    // Every event a hook registers under on this runtime: a hook may have more than
+    // one (pan-state-reinject on Gemini), and the upgrade sweep must leave all of them.
+    const eventsOf = (hook) => registrations.filter((x) => x.hook === hook).map((x) => events[x.slot]).filter(Boolean);
     const unsupported = [];
     for (const r of registrations) {
       const event = events[r.slot] || null;
       // Upgrade path: an entry for this hook under any other event is dead (a key
       // the runtime does not have) or a stale duplicate. Keyed on the script, so a
       // hook that moved event is cleaned wherever an older install put it.
-      const removedFrom = lib.stripPanHookEntries(settings.hooks, [r.hook], event);
+      const keep = eventsOf(r.hook);
+      const removedFrom = lib.stripPanHookEntries(settings.hooks, [r.hook], keep);
       if (removedFrom.length > 0) {
-        console.log(`  ${green}✓${reset} Removed the ${r.label} from ${removedFrom.join(', ')}${event ? '' : ` (${runtime} has no event for it)`}`);
+        console.log(`  ${green}✓${reset} Removed the ${r.label} from ${removedFrom.join(', ')}${keep.length ? '' : ` (${runtime} has no event for it)`}`);
       }
       if (!event) {
-        unsupported.push(r.hook);
+        if (keep.length === 0 && !unsupported.includes(r.hook)) unsupported.push(r.hook);
         continue;
       }
       if (!Array.isArray(settings.hooks[event])) {
@@ -2916,7 +2928,7 @@ function install(isGlobal, runtime = 'claude') {
       delete settings.hooks;
     }
     if (isGemini && unsupported.length > 0) {
-      console.log(`  ${dim}ℹ Gemini CLI has no context-window metric for hooks, no subagent-completion event and no post-compaction event that adds context, so ${unsupported.join(', ')} ${unsupported.length === 1 ? 'is' : 'are'} not registered there${reset}`);
+      console.log(`  ${dim}ℹ Gemini CLI has no context-window metric for hooks and no subagent-completion event, so ${unsupported.join(', ')} ${unsupported.length === 1 ? 'is' : 'are'} not registered there${reset}`);
     }
   }
 

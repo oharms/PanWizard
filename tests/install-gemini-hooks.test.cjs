@@ -19,6 +19,9 @@
  *     re-prompts on a block exactly like Claude's Stop) runs the stop guard;
  *   - the context monitor and the two loggers are NOT registered — no Gemini hook
  *     payload carries context usage, and there is no subagent-completion event;
+ *   - state re-injection after a compaction (market-ideas M33) is two steps, because
+ *     no Gemini start event follows a compaction: PreCompress runs the hook with
+ *     `--mark`, and AfterTool (every tool, no matcher) runs it with `--inject gemini`;
  *   - no statusLine block (Gemini CLI has no statusline command);
  *   - an upgrade over an older install removes the dead keys it left.
  * Every event key is also checked against the vocabulary fixture by
@@ -53,8 +56,8 @@ function commandsFor(settings, event) {
 
 /** The hook file a registered command names, resolved against the project root. */
 function resolveHookFile(projectDir, command) {
-  const m = /^node\s+(\S+)$/.exec(command);
-  assert.ok(m, `a registered command should be "node <path>", got: ${command}`);
+  const m = /^node\s+(\S+)(?:\s+--[a-z]+(?:\s+[a-z]+)?)?$/.exec(command);
+  assert.ok(m, `a registered command should be "node <path> [--mode [host]]", got: ${command}`);
   return path.resolve(projectDir, m[1]);
 }
 
@@ -103,15 +106,24 @@ describe('Gemini hook registration after a local --gemini install', () => {
     assert.equal(fs.existsSync(resolveHookFile(projectDir, commands[0])), true, 'the registered stop guard must exist');
   });
 
-  test('exactly the two supported events are written — no Claude-named key Gemini would skip', () => {
-    assert.deepEqual(Object.keys(settings.hooks).sort(), ['AfterAgent', 'SessionStart']);
+  test('exactly the four supported events are written — no Claude-named key Gemini would skip', () => {
+    assert.deepEqual(Object.keys(settings.hooks).sort(), ['AfterAgent', 'AfterTool', 'PreCompress', 'SessionStart']);
     for (const dead of ['PostToolUse', 'SubagentStop', 'Stop']) {
       assert.equal(settings.hooks[dead], undefined, `${dead} is not a Gemini event and must not be written`);
     }
   });
 
+  test('state re-injection: PreCompress leaves the marker, AfterTool on every tool returns the block (M33)', () => {
+    assert.equal(EVENTS.compactMark, 'PreCompress');
+    assert.equal(EVENTS.compactInject, 'AfterTool');
+    assert.deepEqual(commandsFor(settings, 'PreCompress'), [`node ${GEMINI_DIR}/hooks/pan-state-reinject.js --mark`]);
+    assert.deepEqual(commandsFor(settings, 'AfterTool'), [`node ${GEMINI_DIR}/hooks/pan-state-reinject.js --inject gemini`]);
+    assert.equal(settings.hooks.AfterTool[0].matcher, undefined, 'no matcher: the first tool result after a compaction, whatever the tool');
+    assert.match(output, /Configured state re-injection marker \(before compaction\)/);
+  });
+
   test('the installer says which hooks Gemini cannot run, instead of claiming it configured them', () => {
-    assert.match(output, /Gemini CLI has no context-window metric for hooks, no subagent-completion event and no post-compaction event that adds context, so pan-context-monitor, pan-cost-logger, pan-trace-logger, pan-state-reinject are not registered there/);
+    assert.match(output, /Gemini CLI has no context-window metric for hooks and no subagent-completion event, so pan-context-monitor, pan-cost-logger, pan-trace-logger are not registered there/);
     assert.doesNotMatch(output, /Configured context window monitor hook/);
     assert.doesNotMatch(output, /Configured cost logger hook/);
   });
@@ -133,7 +145,7 @@ describe('Gemini hook registration after a local --gemini install', () => {
 
   test('every registered command in the file points at a PAN hook file that exists', () => {
     const all = Object.keys(settings.hooks).flatMap((event) => commandsFor(settings, event));
-    assert.equal(all.length, 2, `expected the two Gemini registrations, got ${all.length}`);
+    assert.equal(all.length, 4, `expected the four Gemini registrations, got ${all.length}`);
     for (const command of all) {
       assert.equal(fs.existsSync(resolveHookFile(projectDir, command)), true, `dead hook registration: ${command}`);
       assert.ok(path.basename(resolveHookFile(projectDir, command)).startsWith('pan-'),
