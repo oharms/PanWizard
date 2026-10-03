@@ -28,9 +28,13 @@ The second `/market-ideas` run (`2026-10-03`, queue `docs/specs/market-ideas-202
 - **Model-free discovery in the live gates (M31).** `live-gate-codex` installs the plugin and asks Codex what it loaded: `plugin list`, the `pan` MCP server in `mcp list`, PAN's skills in `debug prompt-input`. `live-gate-opencode` checks `opencode agent list`.
 - **Plans record decisions, not code (M32).** The planner names signatures, values, assertions and the verify command instead of implementation bodies, and writes no source files while planning. `verify plan-structure` warns on a code block over 20 lines in a task's `<action>`, and the plan checker flags it under Scope Sanity.
 
+### Changed
+
+- **The Agent Plugins bundle's long skills fit Codex's prompt cut (S8, ADR-0045 D9).** A skill longer than 8,000 bytes now ships as a short `SKILL.md`: its frontmatter, its adapter block, a pointer to `references/instructions.md` in the same directory, and a summary. The full instructions move to that file. Short skills are unchanged, and installs are not affected. `splitOversizedSkill()` runs after the one skills compiler, and a test rebuilds every skill to assert each is the compiler's output whole or exactly its split. Re-probed live on Codex 0.157.1 without a model: the 3,116-byte `pan-focus-design` page arrived whole, with no truncation warning and the reference installed beside it. GitHub's validator now passes the bundle with no long-body warnings.
+
 ### Measured
 
-- **Codex cuts Agent Plugin skills at 8,000 bytes (M25).** Confirmed live on Codex CLI 0.157.1 with a capture-only mock provider (no model, no login). A plugin skill of 56,540 bytes reached the model as its first 8,000 bytes, cut mid-sentence, with a "was truncated" warning; a 3,188-byte plugin skill arrived whole. PAN's `--codex` install (`.agents/skills/`) is not affected: a 54,677-byte skill arrived whole. The bundle's long skills need progressive-disclosure bodies (queue S8).
+- **Codex cuts Agent Plugin skills at 8,000 bytes (M25).** Confirmed live on Codex CLI 0.157.1 with a capture-only mock provider (no model, no login). A plugin skill of 56,540 bytes reached the model as its first 8,000 bytes, cut mid-sentence, with a "was truncated" warning; a 3,188-byte plugin skill arrived whole. PAN's `--codex` install (`.agents/skills/`) is not affected: a 54,677-byte skill arrived whole. The bundle's long skills are now split (S8, above).
 
 ## [3.32.0] - 2026-09-29
 

@@ -5,7 +5,9 @@
  *
  *   plugin.json                   closed-schema manifest ($schema + name + metadata)
  *   skills/pan-<name>/SKILL.md    every PAN command as an Agent Skill, from the
- *                                 ONE unified-skills compiler (ADR-0028)
+ *                                 ONE unified-skills compiler (ADR-0028); a skill
+ *                                 over Codex's 8,000-byte plugin cut is a pointer
+ *                                 page plus references/instructions.md (S8)
  *   mcp.json                      the bundled bridge, launched as
  *                                 `node ${PLUGIN_ROOT}/pan-wizard-core/mcp/server.cjs`
  *   pan-wizard-core/              dispatcher + modules + workflows + templates +
@@ -74,9 +76,14 @@ function assertSafeToReplace(dir) {
   throw new Error(`build-agent-plugin: refusing to replace ${dir} — it is non-empty and does not look like a previous bundle build (no Agent Plugins plugin.json)`);
 }
 
-/** commands/pan/**.md → skills/pan-<name>/SKILL.md, mirroring the installer's recursion. */
+/**
+ * commands/pan/**.md → skills/pan-<name>/SKILL.md, mirroring the installer's recursion.
+ * A skill longer than Codex loads from a plugin (8,000 bytes) is split: a pointer
+ * SKILL.md plus references/instructions.md (lib.splitOversizedSkill, market-ideas S8).
+ */
 function emitSkills(srcDir, skillsDir, prefix) {
   let count = 0;
+  let split = 0;
   (function recurse(currentSrc, currentPrefix) {
     for (const entry of fs.readdirSync(currentSrc, { withFileTypes: true })) {
       const srcPath = path.join(currentSrc, entry.name);
@@ -88,11 +95,18 @@ function emitSkills(srcDir, skillsDir, prefix) {
       let content = fs.readFileSync(srcPath, 'utf8');
       content = lib.rewriteUnifiedSkillCommandContent(content, REWRITE);
       content = lib.convertClaudeCommandToUnifiedSkill(content, skillName, { adapterNote: lib.agentPluginSkillAdapterNote() });
-      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), content);
+      const { skill, reference } = lib.splitOversizedSkill(content, skillName);
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skill);
+      if (reference) {
+        const refPath = path.join(skillDir, ...lib.AGENT_PLUGIN_SKILL_REFERENCE.split('/'));
+        fs.mkdirSync(path.dirname(refPath), { recursive: true });
+        fs.writeFileSync(refPath, reference);
+        split++;
+      }
       count++;
     }
   })(srcDir, prefix);
-  return count;
+  return { count, split };
 }
 
 /** pan-wizard-core → bundle, markdown rewritten, everything else verbatim. */
@@ -214,7 +228,7 @@ function main() {
   const copilotAgents = emitCopilotNamespace(path.join(ROOT, 'agents'), path.join(OUT, lib.COPILOT_PLUGIN_NAMESPACE));
 
   console.log('PAN Agent Plugins bundle built at', path.relative(ROOT, OUT) || OUT);
-  console.log('  skills:', skills);
+  console.log('  skills:', skills.count, `(${skills.split} as a short SKILL.md + ${lib.AGENT_PLUGIN_SKILL_REFERENCE})`);
   console.log('  agent reference copies:', agents);
   console.log('  hook scripts:', hookScripts.length);
   console.log(`  ${lib.COPILOT_PLUGIN_NAMESPACE}/agents:`, copilotAgents);

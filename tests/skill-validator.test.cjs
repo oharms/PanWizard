@@ -25,7 +25,11 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { buildAgentPluginInto, installInto, cleanup } = require('./helpers.cjs');
 
-const ACCEPTED = [/recommended max: \d+ for efficient context/, /not a git repository/];
+// "not a git repository": the validation copy is not one. A long body is accepted
+// only in an install's skills, which load whole; the Agent Plugins bundle splits every
+// long skill into a pointer page and references/instructions.md (market-ideas S8).
+const NOT_A_REPO = /not a git repository/;
+const LONG_BODY = /recommended max: \d+ for efficient context/;
 
 function ghSkillAvailable() {
   const r = spawnSync('gh', ['skill', 'publish', '--help'], { encoding: 'utf8', timeout: 30000 });
@@ -33,7 +37,7 @@ function ghSkillAvailable() {
 }
 
 /** Copy a tree of `<name>/SKILL.md` directories to `<tmp>/skills/` and validate it. */
-function validate(skillsDir) {
+function validate(skillsDir, accepted) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ghskill-'));
   try {
     fs.cpSync(skillsDir, path.join(root, 'skills'), { recursive: true });
@@ -44,7 +48,7 @@ function validate(skillsDir) {
       status: r.status,
       count,
       errors: lines.filter((l) => l.startsWith('error')),
-      unexpected: lines.filter((l) => l.startsWith('warning') && !ACCEPTED.some((re) => re.test(l))),
+      unexpected: lines.filter((l) => l.startsWith('warning') && !accepted.some((re) => re.test(l))),
       license: lines.filter((l) => /license/.test(l)),
     };
   } finally {
@@ -67,13 +71,13 @@ describe('every emitted skill passes GitHub\'s Agent Skills validator (M30)', { 
   });
   after(() => { cleanup(bundle); cleanup(codex); cleanup(copilot); });
 
-  for (const [label, dir] of [
-    ['the Agent Plugins bundle (unified converter)', () => path.join(bundle, 'skills')],
-    ['a Codex install (.agents/skills)', () => path.join(codex, '.agents', 'skills')],
-    ['a Copilot install (.github/skills)', () => path.join(copilot, '.github', 'skills')],
+  for (const [label, dir, accepted] of [
+    ['the Agent Plugins bundle (unified converter; long skills split, so no long body)', () => path.join(bundle, 'skills'), [NOT_A_REPO]],
+    ['a Codex install (.agents/skills)', () => path.join(codex, '.agents', 'skills'), [NOT_A_REPO, LONG_BODY]],
+    ['a Copilot install (.github/skills)', () => path.join(copilot, '.github', 'skills'), [NOT_A_REPO, LONG_BODY]],
   ]) {
     test(label, () => {
-      const r = validate(dir());
+      const r = validate(dir(), accepted);
       assert.ok(r.count > 0, 'non-vacuity: the tree holds skills');
       assert.equal(r.status, 0, `the validator failed:\n${[...r.errors, ...r.unexpected].join('\n')}`);
       assert.deepEqual(r.errors, []);

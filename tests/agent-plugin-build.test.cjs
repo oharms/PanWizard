@@ -324,3 +324,108 @@ describe('Agent Plugins bundle: pure builders and rewrites', () => {
     assert.ok(!out.includes('Co-Authored-By'), 'attribution null removes the trailer');
   });
 });
+
+// ─── Skills within Codex's plugin prompt cut (market-ideas S8) ───────────────
+// Codex injects at most the first 8,000 bytes of a skill that came from an Agent
+// Plugin; measured live on 2026-10-03, a 56,540-byte PAN skill reached the model cut
+// mid-sentence. A bundle skill over the cut is a pointer SKILL.md plus
+// references/instructions.md. These cases pin the bundle against a fresh conversion
+// with the builder's own settings, so a split can never lose or alter a line.
+
+describe('Agent Plugins bundle: every skill fits Codex\'s plugin prompt cut (S8)', () => {
+  const OUT = buildAgentPluginInto();
+  after(() => cleanup(OUT));
+  const skillsDir = path.join(OUT, 'skills');
+  // The builder's rewrite settings (scripts/build-agent-plugin.js REWRITE): a drift
+  // here fails the equivalence check below, which is the point.
+  const REWRITE = {
+    corePrefix: `${lib.AGENT_PLUGIN_ROOT_TOKEN}/`,
+    pathPrefix: `${lib.AGENT_PLUGIN_RUNTIME_HOME_TOKEN}/`,
+    projectDirPrefix: `${lib.AGENT_PLUGIN_RUNTIME_DIR_TOKEN}/`,
+    attribution: undefined,
+  };
+  function sources(dir = path.join(ROOT, 'commands', 'pan'), prefix = 'pan', acc = new Map()) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) sources(path.join(dir, e.name), `${prefix}-${e.name}`, acc);
+      else if (e.name.endsWith('.md')) acc.set(`${prefix}-${e.name.replace(/\.md$/, '')}`, path.join(dir, e.name));
+    }
+    return acc;
+  }
+  const fresh = (name, file) => lib.convertClaudeCommandToUnifiedSkill(
+    lib.rewriteUnifiedSkillCommandContent(fs.readFileSync(file, 'utf8'), REWRITE), name, { adapterNote: lib.agentPluginSkillAdapterNote() });
+
+  test('no bundled SKILL.md is longer than the cut', () => {
+    const over = fs.readdirSync(skillsDir)
+      .map((d) => [d, fs.statSync(path.join(skillsDir, d, 'SKILL.md')).size])
+      .filter(([, size]) => size > lib.AGENT_PLUGIN_SKILL_MAX_BYTES);
+    assert.deepEqual(over, []);
+  });
+
+  test('each skill is its fresh conversion, whole when it fits, split exactly when it does not', () => {
+    const src = sources();
+    assert.equal(src.size, fs.readdirSync(skillsDir).length, 'one skill per command');
+    let split = 0;
+    for (const [name, file] of src) {
+      const full = fresh(name, file);
+      const expected = lib.splitOversizedSkill(full, name);
+      const dir = path.join(skillsDir, name);
+      assert.equal(fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8'), expected.skill, `${name}: SKILL.md`);
+      const ref = path.join(dir, ...lib.AGENT_PLUGIN_SKILL_REFERENCE.split('/'));
+      if (expected.reference) {
+        split++;
+        assert.equal(fs.readFileSync(ref, 'utf8'), expected.reference, `${name}: reference`);
+      } else {
+        assert.equal(fs.existsSync(ref), false, `${name}: a skill within the cut has no reference file`);
+      }
+    }
+    assert.ok(split > 0, 'non-vacuity: some commands are longer than the cut');
+    assert.ok(fs.existsSync(path.join(skillsDir, 'pan-focus-design', 'references', 'instructions.md')), 'the skill measured on 2026-10-03 is split');
+  });
+
+  test('a split skill keeps its frontmatter and adapter, points at the reference, and the reference holds the whole body', () => {
+    const name = 'pan-focus-design';
+    const full = fresh(name, sources().get(name));
+    const skill = fs.readFileSync(path.join(skillsDir, name, 'SKILL.md'), 'utf8');
+    const reference = fs.readFileSync(path.join(skillsDir, name, 'references', 'instructions.md'), 'utf8');
+    const headEnd = full.indexOf('</pan_skill_adapter>') + '</pan_skill_adapter>'.length;
+    assert.ok(skill.startsWith(full.slice(0, headEnd)), 'frontmatter and adapter block verbatim');
+    assert.match(skill, /full instructions are in `references\/instructions\.md`/);
+    assert.match(skill, /read that file in full/);
+    assert.ok(reference.endsWith(full.slice(headEnd).replace(/^\s+/, '')), 'the reference ends with the whole converted body');
+  });
+});
+
+describe('splitOversizedSkill (S8)', () => {
+  const head = '---\nname: "pan-x"\ndescription: "X"\n---\n\n<pan_skill_adapter>\nadapter\n</pan_skill_adapter>';
+  const page = (body) => `${head}\n\n${body}`;
+
+  test('a skill within the limit comes back unchanged with no reference', () => {
+    const s = page('<objective>\nDo x.\n</objective>\nshort');
+    assert.deepEqual(lib.splitOversizedSkill(s, 'pan-x', 8000), { skill: s, reference: null });
+  });
+
+  test('a long skill becomes a pointer page with the objective as its summary; the body moves to the reference', () => {
+    const body = `<objective>\nPlan and build the thing.\n</objective>\n\n${'step\n'.repeat(2000)}`;
+    const r = lib.splitOversizedSkill(page(body), 'pan-x', 1000);
+    assert.ok(Buffer.byteLength(r.skill) <= 1000, `${Buffer.byteLength(r.skill)} bytes`);
+    assert.ok(r.skill.startsWith(head));
+    assert.match(r.skill, /## What this skill does\n\nPlan and build the thing\./);
+    assert.ok(r.reference.startsWith('# pan-x: full instructions'));
+    assert.ok(r.reference.endsWith(body), 'the body is carried whole');
+  });
+
+  test('without an objective the first plain paragraph is the summary; a long summary is trimmed to fit', () => {
+    const prose = 'This command surveys the project and ranks the work it finds by evidence and by cost to fix.';
+    const r = lib.splitOversizedSkill(page(`# Title\n\n${prose}\n\n${'x\n'.repeat(3000)}`), 'pan-x', 1000);
+    assert.match(r.skill, /This command surveys the project/);
+    const long = 'word '.repeat(400);
+    const t = lib.splitOversizedSkill(page(`<objective>\n${long}\n</objective>\n${'x\n'.repeat(3000)}`), 'pan-x', 900);
+    assert.ok(Buffer.byteLength(t.skill) <= 900);
+    assert.match(t.skill, /word …\n$/, 'trimmed at a word boundary and marked');
+  });
+
+  test('a skill with no adapter block, or an adapter alone over the limit, is refused', () => {
+    assert.throws(() => lib.splitOversizedSkill('x'.repeat(9000), 'pan-x', 8000), /no adapter block/);
+    assert.throws(() => lib.splitOversizedSkill(page('y'.repeat(500)), 'pan-x', 20), /exceed 20 bytes/);
+  });
+});

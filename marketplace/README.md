@@ -162,10 +162,18 @@ Two marketplace files in the repository (`.agents/plugins/` and `.github/plugin/
 - `.github/plugin/marketplace.json` — Copilot: `copilot plugin marketplace add`
   with this repository, then install `pan-wizard` from the plugin browser.
 
-Both reference the build output, so build first. What has run live so far: the
-bundle installs on Copilot CLI from a local path (harness `live-gate-copilot`),
-and Codex CLI 0.157.1 accepts this repository as a marketplace and lists it as
-`pan-wizard-local` (harness `live-gate-codex`, 2026-09-26). Installing the plugin
-inside a Codex session, and anything on Antigravity (no CLI on the machine that
-built them), has not — so treat the vendor directories as conformance-tested, not
-field-verified, beyond those two gates.
+Both reference the build output, so build first. What has run live so far:
+- The bundle installs on Copilot CLI from a local path (harness `live-gate-copilot`).
+- Codex CLI 0.157.1 accepts this repository as a marketplace (harness
+  `live-gate-codex`), and since 2026-10-03 the gate also installs the plugin and
+  asks Codex, without a model, what it loaded: the plugin, the `pan` MCP server
+  and PAN's skills.
+
+Codex loads at most the first 8,000 bytes of a skill that comes from a plugin. The
+builder therefore ships each longer skill as a short `SKILL.md` that points at
+`references/instructions.md` in the same directory (ADR-0045 D9). Re-probed live,
+the pointer page reaches the model whole.
+
+Anything on Antigravity (no CLI on the machine that built the bundle) has not run,
+so treat the vendor directories as conformance-tested rather than field-verified
+beyond those gates.

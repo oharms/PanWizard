@@ -713,6 +713,65 @@ function agentPluginSkillAdapterNote(kind = 'skill') {
 - \`${AGENT_PLUGIN_RUNTIME_HOME_TOKEN}\` is your runtime's user-level configuration directory (for example \`~/.claude\`, \`~/.codex\`, \`~/.gemini\`, \`~/.config/opencode\`, \`~/.copilot\`) and \`${AGENT_PLUGIN_RUNTIME_DIR_TOKEN}\` its project-level directory (\`.claude\`, \`.codex\`, \`.gemini\`, \`.opencode\`, \`.github\`). Substitute the one that applies to the runtime you are.`;
 }
 
+// ─── Agent Plugin skills over Codex's prompt cut (market-ideas S8) ──────────
+// Codex injects at most the first 8,000 bytes of a skill that came from an Agent
+// Plugin (codex-rs/ext/skills/src/render.rs `MAX_SKILL_PROMPT_BYTES`, host_prompt.rs).
+// Measured on Codex CLI 0.157.1 on 2026-10-03: a 56,540-byte PAN skill reached the
+// model as its first 8,000 bytes, cut mid-sentence; the same skill from an install's
+// .agents/skills/ arrived whole, so only the bundle is affected. A bundle skill over
+// the cut ships as a short SKILL.md that keeps its frontmatter and adapter block and
+// points at the full instructions in references/instructions.md, the Agent Skills
+// directory for files a skill loads on demand.
+const AGENT_PLUGIN_SKILL_MAX_BYTES = 8000;
+const AGENT_PLUGIN_SKILL_REFERENCE = 'references/instructions.md';
+const SKILL_SUMMARY_MIN_CHARS = 40;
+
+/**
+ * Split a converted bundle skill that is longer than Codex loads into a pointer
+ * SKILL.md and a reference file. Pure. A skill within the limit comes back as is.
+ * @param {string} skillMd - the unified converter's output (frontmatter + adapter + body)
+ * @param {string} skillName
+ * @param {number} [maxBytes]
+ * @returns {{skill: string, reference: string|null}}
+ */
+function splitOversizedSkill(skillMd, skillName, maxBytes = AGENT_PLUGIN_SKILL_MAX_BYTES) {
+  if (Buffer.byteLength(skillMd, 'utf8') <= maxBytes) return { skill: skillMd, reference: null };
+  const close = '</pan_skill_adapter>';
+  const end = skillMd.indexOf(close);
+  if (end === -1) throw new Error(`splitOversizedSkill: ${skillName} has no adapter block to keep`);
+  const head = skillMd.slice(0, end + close.length);
+  const body = skillMd.slice(end + close.length).replace(/^\s+/, '');
+  const pointer = (summary) => [
+    head,
+    '',
+    '## Instructions',
+    '',
+    `This skill's full instructions are in \`${AGENT_PLUGIN_SKILL_REFERENCE}\`, in the same directory as this SKILL.md: they are longer than some runtimes load into a prompt. Before you do anything else, read that file in full with your file-reading tool, then follow it exactly. It is the complete procedure, and nothing on this page replaces it.`,
+    ...(summary ? ['', '## What this skill does', '', summary] : []),
+    '',
+  ].join('\n');
+  // The command's own <objective> is the summary, else its first plain prose
+  // paragraph; trimmed at word boundaries until the page fits, and dropped when
+  // too little of it would be left.
+  let summary = ((body.match(/<objective>\s*([\s\S]*?)\s*<\/objective>/) || [])[1] || '').trim();
+  if (!summary) {
+    summary = body.split(/\n\s*\n/).map((p) => p.trim())
+      .find((p) => p.length >= SKILL_SUMMARY_MIN_CHARS && !/^[#<`|>\-*]/.test(p) && !/^\d+\./.test(p)) || '';
+  }
+  let skill = pointer(summary);
+  while (summary && Buffer.byteLength(skill, 'utf8') > maxBytes) {
+    summary = summary.slice(0, Math.floor(summary.length * 0.8)).replace(/\s+\S*$/, '');
+    if (summary.length < SKILL_SUMMARY_MIN_CHARS) summary = '';
+    else summary += ' …';
+    skill = pointer(summary);
+  }
+  if (Buffer.byteLength(skill, 'utf8') > maxBytes) {
+    throw new Error(`splitOversizedSkill: ${skillName}'s frontmatter and adapter alone exceed ${maxBytes} bytes`);
+  }
+  const reference = `# ${skillName}: full instructions\n\nRead from \`${skillName}/SKILL.md\`, whose adapter block defines \`${AGENT_PLUGIN_ROOT_TOKEN}\`, \`{{PAN_ARGS}}\` and the runtime-directory tokens used below.\n\n${body}`;
+  return { skill, reference };
+}
+
 /** Generate Copilot CLI skill adapter header */
 function getCopilotSkillAdapterHeader(skillName) {
   const invocation = `/pan-${skillName.replace(/^pan-/, '')}`;
@@ -2440,6 +2499,9 @@ module.exports = {
   buildAgentPluginManifest,
   buildAgentPluginMcpConfig,
   agentPluginSkillAdapterNote,
+  AGENT_PLUGIN_SKILL_MAX_BYTES,
+  AGENT_PLUGIN_SKILL_REFERENCE,
+  splitOversizedSkill,
   buildCopilotPluginHooksConfig,
   COPILOT_PLUGIN_NAMESPACE,
   buildPluginManifest,
