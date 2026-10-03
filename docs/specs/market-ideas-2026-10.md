@@ -104,6 +104,12 @@ Verdicts: **ADOPT** take as found · **ADAPT** take in PAN's idiom · **WATCH** 
 | H8 | Live checks now possible on this machine: `omitClaudeMd` (MI-040), Gemini subagents on by default (MI-051), Codex `agents/openai.yaml` (MI-052), Copilot field spelling (MI-024) | this machine's CLIs | MI-022: documented is not observed |
 | H9 | This machine runs Claude Code `2.1.280`; `stable` is `2.1.285`, `latest` `2.1.288` | npm dist-tags | User action (`claude update`): unblocks H2, H3 and M34 |
 
+**Hand-off outcomes (`2026-10-03`, same session, before any `/reality-check` run):**
+
+- **H1 fixed.** `commitAttributionFromSettings()` reads `attribution: false` and the deprecated `includeCoAuthoredBy: false` as the settings reference defines them. No shipped file carries a `Co-Authored-By` line today, so installed content does not change yet. A separate mismatch was found on the way and left open: Claude's `attribution.commit` is the whole trailer text, while `processAttribution` writes a custom string after `Co-Authored-By:`.
+- **H5 fixed** in TROUBLESHOOTING, from the memory docs read that day.
+- **Still open:** H2, H3 and H9 wait on `claude update`; H4 and H8 need live probes; H6 and H7 need no change in PAN.
+
 ## Priority classes
 
 From `/superplan`: **P0 BROKEN** · **P1 WRONG** (silent incorrect output, false docs) · **P2 STABILITY** · **P3 MISSING TESTS** · **P4 FEATURE GAPS** (runtime coverage, distribution) · **P5 NEW FEATURES** · **P6 DOCUMENTATION** · **P7 POLISH**. Sizes XS 1 · S 2 · M 4 · L 10 · XL 20.

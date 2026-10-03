@@ -30,6 +30,8 @@ The second `/market-ideas` run (`2026-10-03`, queue `docs/specs/market-ideas-202
 
 ### Changed
 
+- **Claude Code's attribution settings are read as documented (reality-check hand-off H1).** `"attribution": false` (Claude Code 2.1.281) and the deprecated `includeCoAuthoredBy: false` now mean "hide attribution" to the installer, as they do to Claude Code; it used to read only `attribution.commit`. No shipped file carries a `Co-Authored-By` line today, so nothing installed changes yet. `commitAttributionFromSettings()` in install-lib.
+- **TROUBLESHOOTING: when Claude Code reads AGENTS.md (H5).** Since 2.1.281 it no longer depends on the provider (Bedrock, Vertex, Foundry); the built-in `agents-md` plugin and the project-instructions setting decide.
 - **The Agent Plugins bundle's long skills fit Codex's prompt cut (S8, ADR-0045 D9).** A skill longer than 8,000 bytes now ships as a short `SKILL.md`: its frontmatter, its adapter block, a pointer to `references/instructions.md` in the same directory, and a summary. The full instructions move to that file. Short skills are unchanged, and installs are not affected. `splitOversizedSkill()` runs after the one skills compiler, and a test rebuilds every skill to assert each is the compiler's output whole or exactly its split. Re-probed live on Codex 0.157.1 without a model: the 3,116-byte `pan-focus-design` page arrived whole, with no truncation warning and the reference installed beside it. GitHub's validator now passes the bundle with no long-body warnings.
 
 ### Measured

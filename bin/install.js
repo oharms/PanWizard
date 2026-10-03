@@ -364,15 +364,10 @@ function getCommitAttribution(runtime) {
       result = settings.attribution.commit;
     }
   } else if (runtime === 'claude') {
-    // Claude Code
+    // Claude Code: `attribution: false`, `attribution.commit` and the deprecated
+    // `includeCoAuthoredBy`, resolved in the documented order (install-lib).
     const settings = readSettings(path.join(getGlobalDir('claude', explicitConfigDir), 'settings.json')) || {}; // unusable file = no info (read-only probe)
-    if (!settings.attribution || settings.attribution.commit === undefined) {
-      result = undefined;
-    } else if (settings.attribution.commit === '') {
-      result = null;
-    } else {
-      result = settings.attribution.commit;
-    }
+    result = lib.commitAttributionFromSettings(settings);
   } else if (runtime === 'copilot') {
     // Copilot CLI: user-editable settings live in settings.json; config.json is
     // legacy (auto-migrated by the CLI, now internal state) — fall back for old installs

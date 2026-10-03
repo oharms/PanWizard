@@ -904,6 +904,31 @@ function convertClaudeToCopilotAgent(content, opts = {}) {
 // ─── Attribution Processing ─────────────────────────────────────────────────
 
 /**
+ * The commit attribution Claude Code's settings ask for, in processAttribution's
+ * terms: undefined keeps PAN's default `Co-Authored-By` line, null removes it, a
+ * string replaces it. Claude Code's settings reference (read 2026-10-03):
+ * `attribution: false` hides all attribution (2.1.281 and later); an empty
+ * `attribution.commit` hides the commit trailer and a non-empty one replaces it; once
+ * `commit` or `pr` is set the deprecated `includeCoAuthoredBy` is ignored, and before
+ * that `includeCoAuthoredBy: false` still hides the trailer. Until 2026-10-03 PAN
+ * read only `attribution.commit`, so `false` (an explicit request to hide) kept the
+ * default line.
+ * @param {object|null} settings - a parsed Claude settings.json
+ * @returns {string|null|undefined}
+ */
+function commitAttributionFromSettings(settings) {
+  const s = settings && typeof settings === 'object' ? settings : {};
+  const a = s.attribution;
+  if (a === false) return null;
+  if (a && typeof a === 'object') {
+    if (typeof a.commit === 'string') return a.commit === '' ? null : a.commit;
+    if (a.pr !== undefined) return undefined; // attribution set: includeCoAuthoredBy no longer applies
+  }
+  if (s.includeCoAuthoredBy === false) return null;
+  return undefined;
+}
+
+/**
  * Process Co-Authored-By lines based on attribution setting.
  * @param {string} content - File content
  * @param {null|undefined|string} attribution - null=remove, undefined=keep, string=replace
@@ -2460,6 +2485,7 @@ module.exports = {
   convertClaudeToCopilotAgent,
   // Attribution
   processAttribution,
+  commitAttributionFromSettings,
   // JSONC
   parseJsonc,
   // Opus 4.7 capabilities

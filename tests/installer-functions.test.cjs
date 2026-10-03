@@ -484,6 +484,39 @@ describe('processAttribution', () => {
   });
 });
 
+// ─── commitAttributionFromSettings (reality-check hand-off H1, 2026-10-03) ──
+// Claude Code 2.1.281 accepts `"attribution": false` to hide all attribution, and
+// still honours the deprecated `includeCoAuthoredBy: false` until `attribution`
+// sets `commit` or `pr`. PAN read only `attribution.commit`, so both explicit
+// requests to hide kept PAN's default line.
+
+describe('commitAttributionFromSettings', () => {
+  const resolve = lib.commitAttributionFromSettings;
+
+  test('attribution: false hides it (null)', () => {
+    assert.equal(resolve({ attribution: false }), null);
+    assert.equal(resolve({ attribution: false, includeCoAuthoredBy: true }), null);
+  });
+
+  test('attribution.commit: empty hides, a string replaces', () => {
+    assert.equal(resolve({ attribution: { commit: '' } }), null);
+    assert.equal(resolve({ attribution: { commit: 'Generated with AI' } }), 'Generated with AI');
+  });
+
+  test('includeCoAuthoredBy: false hides it until attribution sets commit or pr', () => {
+    assert.equal(resolve({ includeCoAuthoredBy: false }), null);
+    assert.equal(resolve({ includeCoAuthoredBy: false, attribution: { pr: '' } }), undefined, 'pr set: the deprecated key no longer applies');
+    assert.equal(resolve({ includeCoAuthoredBy: false, attribution: { commit: 'X' } }), 'X');
+    assert.equal(resolve({ includeCoAuthoredBy: false, attribution: { sessionUrl: false } }), null, 'neither commit nor pr set: it still applies');
+  });
+
+  test('unset, true, or unusable settings keep the default (undefined)', () => {
+    for (const s of [{}, { includeCoAuthoredBy: true }, { attribution: { sessionUrl: false } }, null, 'nonsense']) {
+      assert.equal(resolve(s), undefined, JSON.stringify(s));
+    }
+  });
+});
+
 // ─── parseJsonc ─────────────────────────────────────────────────────────────
 
 describe('parseJsonc', () => {
