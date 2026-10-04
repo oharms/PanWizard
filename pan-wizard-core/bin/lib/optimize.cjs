@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, escapeRegex, execGit } = require('./core.cjs');
+const { output, escapeRegex, execGit, toLf } = require('./core.cjs');
 const { planningPath, planningRel } = require('./utils.cjs');
 
 // ─── Storage layout ──────────────────────────────────────────────────────────
@@ -1366,7 +1366,8 @@ function classifyPatternKind(pattern) {
  * always written by us — no general YAML dependency needed).
  */
 function readTopicFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8');
+  // LF: an install committed with core.autocrlf=true holds these files as CRLF.
+  const content = toLf(fs.readFileSync(filePath, 'utf-8'));
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!fmMatch) {
     return { frontmatter: { topic: '', patterns: [] }, body: content, _raw: content };

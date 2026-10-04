@@ -17,7 +17,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, safeReadFile } = require('./core.cjs');
+const { output, safeReadFile, toLf, dominantEol, withEol } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
 const { writeStateMd } = require('./state.cjs');
 const { readMemory, parseEntries, listMemoryAgents, compactMemory, DEFAULT_MAX_ENTRIES, MEMORY_DIR } = require('./memory.cjs');
@@ -167,7 +167,11 @@ function reconcileBullets(lines, keepN, archived, quarantined) {
  */
 function optimizeStateContent(content, opts = {}) {
   const keepN = Number.isFinite(opts.keep) && opts.keep > 0 ? opts.keep : DEFAULT_KEEP;
-  const sections = parseSections(content);
+  // Work on LF and hand the file back in its own ending. On CRLF input
+  // headingText's `(.*)$` could not cross the trailing '\r', so no heading
+  // matched APPEND_HEAVY and every Windows project read as already lean.
+  const eol = dominantEol(content);
+  const sections = parseSections(toLf(content));
   const archived = [];
   const quarantined = [];
   const sectionsTouched = [];
@@ -184,7 +188,7 @@ function optimizeStateContent(content, opts = {}) {
     }
   }
 
-  return { content: changed ? joinSections(sections) : content, changed, archived, quarantined, sectionsTouched };
+  return { content: changed ? withEol(joinSections(sections), eol) : content, changed, archived, quarantined, sectionsTouched };
 }
 
 // ─── Command ────────────────────────────────────────────────────────────────

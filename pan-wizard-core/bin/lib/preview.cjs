@@ -20,6 +20,7 @@ const {
   findPhaseInternal,
   getRoadmapPhaseInternal,
   toPosix,
+  toLf,
 } = require('./core.cjs');
 const {
   ROADMAP_FILE,
@@ -210,7 +211,8 @@ function buildPhaseDependencyGraph(cwd) {
     let files = [];
     try { files = fs.readdirSync(fullDir).filter(isPlanFile); } catch { continue; }
 
-    const phaseText = files.map(f => safeReadFile(path.join(fullDir, f)) || '').join('\n');
+    // LF, so the frontmatter match below also finds a CRLF plan's depends_on.
+    const phaseText = toLf(files.map(f => safeReadFile(path.join(fullDir, f)) || '').join('\n'));
 
     // Explicit via frontmatter. Parse depends_on as freeform string (either
     // inline `[phase:1, phase:2]`, or block-list). Extract all digit runs.

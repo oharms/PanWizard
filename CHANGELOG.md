@@ -5,6 +5,21 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, items O1–O12). The review of `2026-10-04` found PAN's memory design where the evidence and the market have converged, and its operation short of it. The planner re-read the whole roadmap, the roadmap grew without bound, Windows projects silently skipped state reconciliation, agent memory had no write path, and stored facts carried no citations or expiry.
+
+### Fixed
+
+- **On Windows projects, PAN's memory tools and three planning parsers silently did nothing (O1).** A Windows working tree (`core.autocrlf=true`) holds `.planning/` with CRLF line endings; every Windows field project measured was CRLF throughout. Several parsers matched `\n` only:
+  - `memory optimize` and the automatic reconcile reported every `state.md` as lean, so its Decisions list grew without bound. One client's file was 35 KB, and 10 KB once reconciled.
+  - `parseMustHavesBlock` returned no must-haves, so `verify reconcile` trusted a verdict it should have checked.
+  - `frontmatter set` and `merge` stacked a second frontmatter block instead of replacing the first.
+  - The phase-dependency preview missed `depends_on`, and both learnings readers saw no patterns.
+  - `state compact` reported savings that were only line endings.
+
+  All of them now parse on LF and write back in the file's own ending, through `toLf`, `dominantEol` and `withEol` in `core.cjs`. `tests/crlf-parity.test.cjs` runs every planning-file parser on LF and CRLF copies of the same fixtures.
+
 ## [3.33.0] - 2026-10-03
 
 The second `/market-ideas` run (`2026-10-03`, queue `docs/specs/market-ideas-2026-10.md`, items M19–M34). Peers shipped fixes for gaps PAN had: a skipped test gate counted as a pass, auto mode took a decision's first option, free text broke planning tables, and dependents of a failed plan ran anyway. It also fixes what Claude Code 2.1.288 surfaced: PAN's MCP tools were invisible on the `2026-07-28` protocol, and Claude Code's prompt audit found paths, flags and tool grants in PAN's own prompts that could not work.

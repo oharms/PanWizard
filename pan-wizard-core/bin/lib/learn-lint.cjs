@@ -45,7 +45,9 @@ function getLearningsDir(sourceRoot, scope) {
 }
 
 function readTopicFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8');
+  // LF: an install committed with core.autocrlf=true holds these files as CRLF,
+  // and the LF-only match below then read every topic as having no patterns.
+  const content = fs.readFileSync(filePath, 'utf-8').replace(/^﻿/, '').replace(/\r\n/g, '\n');
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!fmMatch) return { frontmatter: { patterns: [] }, body: content };
   const fmText = fmMatch[1];

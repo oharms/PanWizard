@@ -273,6 +273,7 @@
     "buildCachedContext:function",
     "comparePhaseNum:function",
     "detectProvider:function",
+    "dominantEol:function",
     "error:function",
     "escalateTier:function",
     "escapeRegex:function",
@@ -305,8 +306,10 @@
     "scanSourceTodos:function",
     "searchPhaseInDir:function",
     "selectCurrentMilestone:function",
+    "toLf:function",
     "toPosix:function",
-    "verbose:function"
+    "verbose:function",
+    "withEol:function"
   ],
   "cost-rebuild.cjs": [
     "MAIN_THREAD_AGENT:string",

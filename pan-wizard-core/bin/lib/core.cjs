@@ -389,6 +389,32 @@ function safeReadFile(filePath) {
   }
 }
 
+// ─── Line endings ───────────────────────────────────────────────────────────
+// A Windows working tree (core.autocrlf=true) holds planning files with CRLF
+// endings, and a parser written for '\n' finds nothing in them without saying so:
+// on 2026-10-04 every Windows field project measured was CRLF throughout, and the
+// memory optimizer, the must-haves parser and `frontmatter set` had all been
+// silently no-op (or worse) there. Parse on LF; write back in the file's own ending.
+
+/** LF text: CRLF → LF and a leading BOM dropped. */
+function toLf(text) {
+  return String(text == null ? '' : text).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+}
+
+/** The ending a text mostly uses: '\r\n' when its CRLF lines outnumber its bare LF ones. */
+function dominantEol(text) {
+  const s = String(text == null ? '' : text);
+  const crlf = (s.match(/\r\n/g) || []).length;
+  const lf = (s.match(/\n/g) || []).length - crlf;
+  return crlf > lf ? '\r\n' : '\n';
+}
+
+/** LF text given back in the ending `eol` names. */
+function withEol(text, eol) {
+  const s = String(text == null ? '' : text);
+  return eol === '\r\n' ? s.replace(/\r?\n/g, '\r\n') : s;
+}
+
 /**
  * Load project config from .planning/config.json, merging with defaults.
  * Handles nested config sections (planning.*, workflow.*, git.*) and flat keys.
@@ -1468,6 +1494,9 @@ module.exports = {
   error,
   verbose,
   safeReadFile,
+  toLf,
+  dominantEol,
+  withEol,
   loadConfig,
   isGitIgnored,
   isGitRepo,

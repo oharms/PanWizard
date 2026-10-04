@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, output, error, escapeRegex } = require('./core.cjs');
+const { safeReadFile, output, error, escapeRegex, toLf, dominantEol, withEol } = require('./core.cjs');
 const { FIELD_VALUE_RE, PRIORITY_LEVELS, EFFORT_SIZES } = require('./constants.cjs');
 
 // --- Inline array rendering thresholds -------------------------------------------
@@ -201,11 +201,16 @@ function quoteIfNeeded(value) {
  */
 function spliceFrontmatter(content, newObj) {
   const yamlStr = reconstructFrontmatter(newObj);
-  const match = content.match(/^---\n[\s\S]+?\n---/);
+  // Match on LF and give the file back in its own ending. The LF-only match
+  // missed the block in a CRLF file, so `frontmatter set` and `merge` stacked a
+  // second frontmatter on top of the first instead of replacing it.
+  const eol = dominantEol(content);
+  const text = toLf(content);
+  const match = text.match(/^---\n[\s\S]+?\n---/);
   if (match) {
-    return `---\n${yamlStr}\n---` + content.slice(match[0].length);
+    return withEol(`---\n${yamlStr}\n---` + text.slice(match[0].length), eol);
   }
-  return `---\n${yamlStr}\n---\n\n` + content;
+  return withEol(`---\n${yamlStr}\n---\n\n` + text, eol);
 }
 
 /**
@@ -227,8 +232,10 @@ function spliceFrontmatter(content, newObj) {
  * @returns {Array} Parsed array of block items (objects or strings)
  */
 function parseMustHavesBlock(content, blockName) {
-  // Extract raw YAML between --- delimiters
-  const fmMatch = content.match(/^---\n([\s\S]+?)\n---/);
+  // Extract raw YAML between --- delimiters. On LF: a CRLF plan (every Windows
+  // field project) matched nothing here, so its must_haves read as empty and the
+  // reconcile gate below trusted the verdict again, as it did before the indent fix.
+  const fmMatch = toLf(content).match(/^---\n([\s\S]+?)\n---/);
   if (!fmMatch) return [];
 
   const yaml = fmMatch[1];
