@@ -3,6 +3,7 @@
     "PAN_AGENTS_BEGIN:string",
     "PAN_AGENTS_END:string",
     "buildAgentsMdSection:function",
+    "buildClaudeMdBridge:function",
     "ensureClaudeMdImport:function",
     "removeAgentsMdSection:function",
     "removeClaudeMdImport:function",

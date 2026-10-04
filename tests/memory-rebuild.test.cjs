@@ -93,6 +93,18 @@ describe('memory rebuild — command (dispatcher)', () => {
     assert.ok(fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf-8').includes('@AGENTS.md'), 'bridge written');
   });
 
+  test('an older bridge gains the compact instructions on apply, with no directive warning (O8)', () => {
+    fs.mkdirSync(path.join(cwd, '.claude'));
+    fs.writeFileSync(path.join(cwd, 'CLAUDE.md'), '# Project\n\n<!-- BEGIN PAN WIZARD -->\n@AGENTS.md\n<!-- END PAN WIZARD -->\n');
+    const dry = run();
+    assert.equal(dry.rebuilt.find((t) => t.file === 'CLAUDE.md').action !== 'unchanged', true, 'the dry run reports the upgrade');
+    const applied = run('--apply');
+    const text = fs.readFileSync(path.join(cwd, 'CLAUDE.md'), 'utf-8');
+    assert.match(text, /^# Project\n\n<!-- BEGIN PAN WIZARD -->\n@AGENTS\.md\n\n# Compact instructions\n/);
+    assert.deepEqual(applied.directive_warnings.filter((w) => w.file === 'CLAUDE.md'), []);
+    assert.equal(run().rebuilt.find((t) => t.file === 'CLAUDE.md').action, 'unchanged', 'converged');
+  });
+
   test('state.md frontmatter is re-derived from the body on apply', () => {
     fs.writeFileSync(path.join(cwd, '.planning', 'state.md'), '# State\n\n## Current Position\n**Status:** active\n');
     run('--apply');

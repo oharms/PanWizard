@@ -1821,6 +1821,30 @@ describe('CLAUDE.md @AGENTS.md bridge', () => {
     const removed = lib.removeClaudeMdImport(withBridge);
     assert.ok(removed.includes('# x'));
     assert.ok(!removed.includes('@AGENTS.md'));
+    assert.ok(!removed.includes('Compact instructions'), 'the compact section goes with the block');
+  });
+
+  // Memory optimisation O8: Claude Code reads a "Compact instructions" section in the
+  // project-root CLAUDE.md when it summarises a conversation.
+  test('the block tells the compaction summary what PAN work needs to resume', () => {
+    const out = lib.ensureClaudeMdImport(null);
+    assert.match(out, /^<!-- BEGIN PAN WIZARD -->\n@AGENTS\.md\n\n# Compact instructions\n/);
+    assert.match(out, /the current phase and plan, and the task in progress with its stopping point \(`\.planning\/state\.md` records them; keep that path\)/);
+    assert.match(out, /decisions made in this session/);
+    assert.match(out, /Leave out file contents and command output/);
+    const { isSuspiciousDirective } = require('../pan-wizard-core/bin/lib/memory-optimize.cjs');
+    for (const line of out.split('\n')) assert.equal(isSuspiciousDirective(line), false, `memory rebuild would flag: ${line}`);
+  });
+
+  test('an older PAN bridge is brought up to date in place; user content and line endings survive', () => {
+    const old = '# Mine\r\n\r\nrules\r\n\r\n<!-- BEGIN PAN WIZARD -->\r\n@AGENTS.md\r\n<!-- END PAN WIZARD -->\r\n\r\n## After\r\n';
+    const out = lib.ensureClaudeMdImport(old);
+    assert.ok(out.startsWith('# Mine\r\n\r\nrules\r\n\r\n<!-- BEGIN PAN WIZARD -->\r\n@AGENTS.md\r\n\r\n# Compact instructions\r\n'));
+    assert.ok(out.endsWith('<!-- END PAN WIZARD -->\r\n\r\n## After\r\n'));
+    assert.doesNotMatch(out.replace(/\r\n/g, ''), /\n/, 'no bare LF');
+    assert.equal(lib.ensureClaudeMdImport(out), out, 'idempotent once upgraded');
+    const foreign = '<!-- BEGIN PAN WIZARD -->\n## something else\n<!-- END PAN WIZARD -->\n';
+    assert.equal(lib.ensureClaudeMdImport(foreign), foreign, 'a PAN block that is not the bridge is left alone');
   });
 });
 
