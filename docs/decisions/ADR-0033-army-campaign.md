@@ -3,6 +3,8 @@
 ## Status
 Accepted — 2026-06-12. Second slice of "PAN as a bot army" (after ADR-0032 squads). Adds the campaign command that drives the squads, the branch-per-agent build substrate, the Release agent, and the conductor's campaign mode. Builds on the existing `pan-conductor` safety harness (ADR-0024 hierarchical exec) and the focus-auto loop (ADR-0015/0031).
 
+> **Amended 2026-10-04: the learn step no longer writes agent memory.** PAN's workflows stopped loading agent memory into agents (ADR-0036, amended): the harness found no behavioural effect from a recorded lesson. A `retro --write-memory` in the learn step would write patterns no agent reads. The learn step now runs `/pan:retro` (and `/pan:learn` when traces exist). Mission Control carries the recurring patterns into the next mission's plan itself, and proposes any pattern that should outlast the campaign to the human at the merge gate, as a line for the project's instructions.
+
 ## Context
 
 ADR-0032 turned PAN's agents into four squads but left them inert. The bot-army model needs an orchestration that actually runs a whole-project goal through them: a coordinator that plans and delegates (never codes), squads that own lifecycle roles, parallel builders that don't collide, adversarial quality, and a human-gated path to production — looping until the goal ships, bounded by a hard harness.

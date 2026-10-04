@@ -1,9 +1,11 @@
 // Cited, verified, expiring agent memory (memory optimisation O4 — the Copilot Memory
-// pattern), and memory loaded only from agent logs. An entry may cite the code it
-// rests on; `memory select` leaves out an entry whose evidence is gone or that went
-// unused past the expiry window, `--mark-used` refreshes it, and `memory prune`
-// archives what is no longer injected. PAN's own archives in `.planning/memory/`
-// (the ADR-0040 quarantine, the state archive) are never loaded as memory.
+// pattern), read only from agent logs. An entry may cite the code it rests on;
+// `memory select` leaves out an entry whose evidence is gone or that went unused past
+// the expiry window, `--mark-used` refreshes it, and `memory prune` archives what it
+// no longer returns. PAN's own archives in `.planning/memory/` (the ADR-0040
+// quarantine, the state archive) are never read as memory. Since 2026-10-04 no
+// workflow hands the store to an agent (ADR-0036, amended); the last block below
+// keeps it that way.
 
 'use strict';
 
@@ -231,16 +233,40 @@ describe('hygiene reports and prunes memory that is no longer injected', () => {
   });
 });
 
-describe('the prompts load memory through memory select', () => {
+describe('no shipped prompt hands agent memory to an agent, or writes it on its own (ADR-0036, amended 2026-10-04)', () => {
+  // The harness runs of 2026-10-04 (memory-lesson-chain, memory-convention-chain and
+  // their controls) found no behavioural effect from a recorded lesson within two
+  // phases: state.md, the summaries and the code already carried what it said. So
+  // exec-phase and plan-phase stopped loading agent memory, exec-phase's
+  // record_lessons step went, army stopped passing `retro --write-memory`, and the
+  // optimizer proposes notes. These rules keep the layer from creeping back.
   const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+  const prompts = () => ['agents', 'commands/pan', 'pan-wizard-core/workflows', 'pan-wizard-core/references', 'pan-wizard-core/templates']
+    .flatMap((d) => walk(path.join(ROOT, d)).filter((f) => f.endsWith('.md')))
+    .map((f) => [path.relative(ROOT, f).split(path.sep).join('/'), fs.readFileSync(f, 'utf8')]);
+  const offenders = (re) => prompts().filter(([, text]) => re.test(text)).map(([rel]) => rel);
 
-  test('exec-phase never reads a memory file whole and marks what it injects', () => {
-    const wf = read('pan-wizard-core/workflows/exec-phase.md');
-    const step = wf.slice(wf.indexOf('<step name="load_phase_memory">'), wf.indexOf('</step>', wf.indexOf('<step name="load_phase_memory">')));
-    assert.doesNotMatch(step, /ls \.planning\/memory|read every file whole|fall back to reading that file whole/);
-    assert.match(step, /memory select <agent> --all --mark-used --raw/);
-    assert.match(step, /memory select <agent> --cue "[^"]+" --mark-used --raw/);
-    assert.match(step, /quarantine\.md/);
+  test('the scan reaches the prompts that used to load and write memory', () => {
+    const scanned = prompts().map(([rel]) => rel);
+    for (const rel of ['pan-wizard-core/workflows/exec-phase.md', 'pan-wizard-core/workflows/plan-phase.md', 'commands/pan/army.md', 'agents/pan-conductor.md', 'agents/pan-optimizer.md', 'pan-wizard-core/workflows/learn.md']) {
+      assert.ok(scanned.includes(rel), rel);
+    }
+  });
+
+  test('no prompt loads agent memory into an agent', () => {
+    assert.deepEqual(offenders(/<project_memory>|\bmemory (select|read)\b|load_phase_memory|MEMORY_RULES|PLANNER_MEMORY/), []);
+  });
+
+  test('no prompt writes agent memory on its own', () => {
+    assert.deepEqual(offenders(/pan-tools(\.cjs)? memory (record|append)\b|record_lessons|(\/pan:retro|verify retro)\s+--write-memory|"type": "memory(_entry|_append)?"/), []);
+  });
+
+  test('the prompts that keep the store say agents do not load it', () => {
+    assert.match(read('commands/pan/retro.md'), /`--write-memory`[^\n]*not loaded into agents/);
+    assert.match(read('agents/pan-conductor.md'), /PAN does not load agent memory into agents/);
+    assert.match(read('pan-wizard-core/workflows/optimize.md'), /PAN's workflows do not load `\.planning\/memory\/` into agents/);
   });
 
   test('no shipped prompt globs the memory folder for an agent to read', () => {

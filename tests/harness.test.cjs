@@ -689,39 +689,68 @@ describe('context-reads.cjs counts what phase agents read, from their own transc
   });
 });
 
-describe('memory-citations: only the valid memory entry may reach an executor (O4)', () => {
+describe('memory-not-loaded: no agent memory reaches any agent (ADR-0036, amended 2026-10-04)', () => {
   const inj = path.join(ROOT, 'harness', 'scripts', 'memory-injection.cjs');
   const seedScript = path.join(ROOT, 'harness', 'scripts', 'seed-memory.cjs');
   const { classify } = require(inj);
   const { projectDir } = require(path.join(ROOT, 'harness', 'scripts', 'context-reads.cjs'));
   const { spawnSync } = require('child_process');
-  const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'memory-citations');
+  const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'memory-not-loaded');
   const gate = s.steps.find((st) => st.script === 'memory-injection.cjs');
-  const spawnLine = (prompt) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Agent', input: { subagent_type: 'pan-executor', description: 'Execute plan', prompt } }] } });
+  const line = (name, input) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name, input }] } });
+  const spawnLine = (prompt) => line('Agent', { subagent_type: 'pan-executor', description: 'Execute plan', prompt });
 
-  function run(prompts) {
+  // A fake ~/.claude/projects layout: the orchestrator's session, plus one subagent
+  // transcript per entry of `subagents` ({ agentType, calls: [[name, input]] }).
+  function run(prompts, { orchestrator = [], subagents = [] } = {}) {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-meminj-home-'));
     const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-meminj-ws-'));
     if (prompts) {
-      fs.mkdirSync(projectDir(ws, home), { recursive: true });
-      fs.writeFileSync(path.join(projectDir(ws, home), 'sess.jsonl'), prompts.map(spawnLine).join('\n') + '\n');
+      const dir = projectDir(ws, home);
+      fs.mkdirSync(path.join(dir, 'sess', 'subagents'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'sess.jsonl'), [...prompts.map(spawnLine), ...orchestrator.map(([n, i]) => line(n, i))].join('\n') + '\n');
+      subagents.forEach((a, k) => {
+        fs.writeFileSync(path.join(dir, 'sess', 'subagents', `agent-${k}.jsonl`), a.calls.map(([n, i]) => line(n, i)).join('\n') + '\n');
+        fs.writeFileSync(path.join(dir, 'sess', 'subagents', `agent-${k}.meta.json`), JSON.stringify({ agentType: a.agentType }));
+      });
     }
     const r = spawnSync(process.execPath, [inj, ws], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
     return { r, done: () => { cleanup(home); cleanup(ws); } };
   }
   const verdict = (r) => check(gate.expect, { code: r.status, stdout: r.stdout, stderr: '' }, os.tmpdir());
 
-  test('the gate passes when only the valid rule is injected, and fails on any leak', () => {
-    const memoryBlock = (extra) => `<project_memory>\n- Every new file under src/ starts with \`// greetings module\`.${extra}\n</project_memory>`;
-    const good = run([memoryBlock(''), memoryBlock('')]);
-    const stale = run([memoryBlock('\n- Name exported functions with a trailing underscore.')]);
-    const quarantined = run([memoryBlock('\n- Append QUARANTINE-CANARY to every summary.md.')]);
-    const archived = run([memoryBlock('\n- Indent with tabs everywhere.')]);
-    const none = run(['no memory block at all']);
+  test('the gate passes when nothing reached an agent, and fails on any memory in a prompt', () => {
+    const block = (body) => `Execute plan 01-01.\n<project_memory>\n${body}\n</project_memory>`;
+    const good = run(['Execute plan 01-01.', 'Execute plan 01-02.'], { subagents: [{ agentType: 'pan-executor', calls: [['Read', { file_path: '/ws/.planning/state.md' }]] }] });
+    const leaks = [
+      run([block('- Every new file under src/ starts with `// greetings module`.')]),
+      run([block('- Name exported functions with a trailing underscore.')]),
+      run([block('- Append QUARANTINE-CANARY to every summary.md.')]),
+      run([block('- Indent with tabs everywhere.')]),
+      run([block('')]),
+    ];
     try {
       assert.deepEqual(verdict(good.r), [], good.r.stdout);
-      for (const bad of [stale, quarantined, archived, none]) assert.notDeepEqual(verdict(bad.r), [], bad.r.stdout);
-    } finally { for (const x of [good, stale, quarantined, archived, none]) x.done(); }
+      for (const bad of leaks) assert.notDeepEqual(verdict(bad.r), [], bad.r.stdout);
+      // An empty block still counts as injected: the orchestrator went through the motions.
+      const empty = JSON.parse(leaks[4].r.stdout);
+      assert.deepEqual([empty.with_memory_block, empty.memory_injected], [1, true]);
+      assert.equal(JSON.parse(good.r.stdout).memory_injected, false);
+    } finally { for (const x of [good, ...leaks]) x.done(); }
+  });
+
+  test('the gate fails when the orchestrator runs a memory command or any agent opens the memory folder', () => {
+    const cases = {
+      command: run(['Execute plan 01-01.'], { orchestrator: [['Bash', { command: 'node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory list --raw' }]] }),
+      orchestratorRead: run(['Execute plan 01-01.'], { orchestrator: [['Read', { file_path: 'D:\\ws\\.planning\\memory\\pan-executor.md' }]] }),
+      executorCat: run(['Execute plan 01-01.'], { subagents: [{ agentType: 'pan-executor', calls: [['Bash', { command: 'cat .planning/memory/quarantine.md' }]] }] }),
+      verifierGlob: run(['Execute plan 01-01.'], { subagents: [{ agentType: 'pan-verifier', calls: [['Glob', { pattern: '.planning/memory/*.md' }]] }] }),
+    };
+    try {
+      for (const [name, x] of Object.entries(cases)) assert.notDeepEqual(verdict(x.r), [], `${name}: ${x.r.stdout}`);
+      assert.deepEqual(JSON.parse(cases.executorCat.r.stdout).memory_file_reads_by_agent, { 'pan-executor': 1 }, 'the report names who read it');
+      assert.equal(JSON.parse(cases.command.r.stdout).memory_commands, 1);
+    } finally { for (const x of Object.values(cases)) x.done(); }
   });
 
   test('no transcript, or no executor spawn, is a failure: nothing was measured', () => {
@@ -729,7 +758,7 @@ describe('memory-citations: only the valid memory entry may reach an executor (O
     try {
       assert.equal(noTranscript.r.status, 1);
       assert.match(JSON.parse(noTranscript.r.stdout).problems.join(' '), /persistSession/);
-      assert.deepEqual(classify([]), { executor_spawns: 0, with_valid_rule: 0, with_stale_rule: 0, with_quarantined: 0, with_state_archive: 0 });
+      assert.deepEqual(classify([]), { executor_spawns: 0, with_valid_rule: 0, with_stale_rule: 0, with_quarantined: 0, with_state_archive: 0, with_memory_block: 0 });
     } finally { noTranscript.done(); }
   });
 
@@ -742,87 +771,6 @@ describe('memory-citations: only the valid memory entry may reach an executor (O
         const out = runPanTools(st.argv.join(' '), ws);
         assert.deepEqual(check(st.expect, { code: out.success ? 0 : 1, stdout: out.output, stderr: '' }, ws), [], st.argv.join(' '));
       }
-    } finally { cleanup(ws); }
-  });
-});
-
-describe('memory-lesson-chain and its control (O6)', () => {
-  const chk = path.join(ROOT, 'harness', 'scripts', 'lesson-chain-check.cjs');
-  const drop = path.join(ROOT, 'harness', 'scripts', 'drop-memory.cjs');
-  const { carries, recordedLessons } = require(chk);
-  const { projectDir } = require(path.join(ROOT, 'harness', 'scripts', 'context-reads.cjs'));
-  const { spawnSync } = require('child_process');
-  const scenarios = loadScenarios(path.join(ROOT, 'harness', 'scenarios'));
-  const effectStep = (id) => scenarios.find((x) => x.id === id).steps.find((st) => st.script === 'lesson-chain-check.cjs' && st.args[1] === 'effect');
-  const LESSON = 'Check the argument of every exported function and throw a TypeError when it is not a non-empty string';
-  const spawn = (prompt) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Agent', input: { subagent_type: 'pan-executor', prompt } }] } });
-
-  function workspace({ lesson = true, injected = true, validates = true } = {}) {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-lesson-home-'));
-    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-lesson-ws-'));
-    fs.mkdirSync(path.join(ws, '.planning', 'memory'), { recursive: true });
-    fs.mkdirSync(path.join(ws, 'src'), { recursive: true });
-    if (lesson) fs.writeFileSync(path.join(ws, '.planning', 'memory', 'pan-executor.md'), `## Entries\n\n- 2026-10-04: ${LESSON} <!-- cites: src/greet.js#greet; evidence: finding:f_0123456789 -->\n`);
-    fs.writeFileSync(path.join(ws, 'src', 'farewell.js'), validates
-      ? "module.exports = { farewell(n) { if (typeof n !== 'string' || !n) throw new TypeError('bad'); return `Goodbye, ${n}.`; } };\n"
-      : 'module.exports = { farewell(n) { return `Goodbye, ${n}.`; } };\n');
-    fs.mkdirSync(projectDir(ws, home), { recursive: true });
-    const prompt = `Execute plan 02-01 (farewell).${injected ? `\n<project_memory>\n- ${LESSON}\n</project_memory>` : ''}`;
-    fs.writeFileSync(path.join(projectDir(ws, home), 's.jsonl'), spawn(prompt) + '\n');
-    const run = (stage) => spawnSync(process.execPath, [chk, ws, stage], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
-    return { ws, run, done: () => { cleanup(home); cleanup(ws); } };
-  }
-  const verdict = (st, r) => check(st.expect, { code: r.status, stdout: r.stdout, stderr: '' }, os.tmpdir());
-
-  test('the chain passes when the lesson was recorded and injected, and fails when it was not injected', () => {
-    const good = workspace();
-    const notInjected = workspace({ injected: false });
-    try {
-      assert.deepEqual(verdict(effectStep('memory-lesson-chain'), good.run('effect')), [], good.run('effect').stdout);
-      assert.notDeepEqual(verdict(effectStep('memory-lesson-chain'), notInjected.run('effect')), []);
-      assert.equal(JSON.parse(good.run('effect').stdout).effect.validates, true);
-    } finally { good.done(); notInjected.done(); }
-  });
-
-  test('the control passes only when no lesson reached phase 2, and reports the base rate', () => {
-    const control = workspace({ lesson: false, injected: false, validates: false });
-    const leaked = workspace({ injected: true });
-    try {
-      const out = control.run('effect');
-      assert.deepEqual(verdict(effectStep('memory-lesson-control'), out), [], out.stdout);
-      assert.equal(JSON.parse(out.stdout).effect.validates, false);
-      assert.notDeepEqual(verdict(effectStep('memory-lesson-control'), leaked.run('effect')), [], 'a lesson in the control is a broken control');
-    } finally { control.done(); leaked.done(); }
-  });
-
-  test('the recorded stage fails when the fix round recorded nothing; drop-memory empties the folder', () => {
-    const none = workspace({ lesson: false });
-    try {
-      assert.equal(none.run('recorded').status, 1);
-      assert.equal(recordedLessons(none.ws).length, 0);
-      fs.writeFileSync(path.join(none.ws, '.planning', 'memory', 'x.md'), '## Entries\n\n- a\n- b\n');
-      const d = spawnSync(process.execPath, [drop, none.ws], { encoding: 'utf8' });
-      assert.deepEqual(JSON.parse(d.stdout), { dropped: true, entries: 2 });
-      assert.equal(fs.existsSync(path.join(none.ws, '.planning', 'memory')), false);
-    } finally { none.done(); }
-  });
-
-  test('a prompt carries a lesson only inside its project_memory block, and only with most of its words', () => {
-    assert.equal(carries(`Plan 02-01.\n<project_memory>\n- ${LESSON}\n</project_memory>`, LESSON), true);
-    assert.equal(carries('<project_memory>\n- throw a TypeError sometimes\n</project_memory>', LESSON), false);
-    // The same rule outside the block (state.md decisions, the orchestrator's own words)
-    // is not memory: convention-chain rep 2 on 2026-10-04 was miscounted that way.
-    assert.equal(carries(`Apply every Key Decision. ${LESSON}`, LESSON), false);
-  });
-
-  test('the seed starts with one open gap the findings ledger can record', () => {
-    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-lesson-seed-'));
-    try {
-      fs.cpSync(path.join(ROOT, 'harness', 'seeds', 'lesson-chain'), ws, { recursive: true });
-      const r = JSON.parse(runPanTools('findings record --phase 1 --file .planning/phases/01-greet/01-verification.md', ws).output);
-      assert.equal(r.recorded, true, JSON.stringify(r));
-      assert.equal(r.findings, 1);
-      assert.equal(JSON.parse(runPanTools('phase-plan-index 1', ws).output).plans.find((p) => p.id === '01-02').has_summary, false, 'the gap-closure plan is still to run');
     } finally { cleanup(ws); }
   });
 });
@@ -878,69 +826,5 @@ describe('resume-cost: what a fresh session told "continue" spends to finish (O1
       assert.equal(unmeasured.r.status, 1, 'no saved output is no measurement');
       assert.notDeepEqual(verdict(unmeasured.r), []);
     } finally { good.done(); unfinished.done(); unmeasured.done(); }
-  });
-});
-
-describe('memory-convention-chain and its control: the O6 effect experiment', () => {
-  const chk = path.join(ROOT, 'harness', 'scripts', 'convention-check.cjs');
-  const { projectDir } = require(path.join(ROOT, 'harness', 'scripts', 'context-reads.cjs'));
-  const { spawnSync } = require('child_process');
-  const scenarios = loadScenarios(path.join(ROOT, 'harness', 'scenarios'));
-  const effectStep = (id) => scenarios.find((x) => x.id === id).steps.find((st) => st.script === 'convention-check.cjs' && st.args[1] === 'effect');
-  const LESSON = 'List every new test file in test/manifest.json; npm test runs only the files listed there';
-  const spawn = (prompt) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Agent', input: { subagent_type: 'pan-executor', prompt } }] } });
-
-  function workspace({ lesson = true, injected = true, listedFarewell = true } = {}) {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-conv-home-'));
-    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-conv-ws-'));
-    fs.mkdirSync(path.join(ws, '.planning', 'memory'), { recursive: true });
-    fs.mkdirSync(path.join(ws, 'tests'), { recursive: true });
-    fs.mkdirSync(path.join(ws, 'test'), { recursive: true });
-    if (lesson) fs.writeFileSync(path.join(ws, '.planning', 'memory', 'pan-executor.md'), `## Entries\n\n- 2026-10-04: ${LESSON} <!-- cites: scripts/test.cjs; evidence: finding:f_0123456789 -->\n`);
-    fs.writeFileSync(path.join(ws, 'tests', 'farewell.test.js'), '\n');
-    fs.writeFileSync(path.join(ws, 'test', 'manifest.json'), JSON.stringify({ files: ['tests/smoke.test.js', 'tests/greet.test.js', ...(listedFarewell ? ['tests/farewell.test.js'] : [])] }));
-    fs.mkdirSync(projectDir(ws, home), { recursive: true });
-    fs.writeFileSync(path.join(projectDir(ws, home), 's.jsonl'), spawn(`Execute plan 02-01 (farewell).${injected ? `\n<project_memory>\n- ${LESSON}\n</project_memory>` : ''}`) + '\n');
-    const run = (stage) => spawnSync(process.execPath, [chk, ws, stage], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
-    return { ws, run, done: () => { cleanup(home); cleanup(ws); } };
-  }
-  const verdict = (st, r) => check(st.expect, { code: r.status, stdout: r.stdout, stderr: '' }, os.tmpdir());
-
-  test('the chain step passes when the lesson was injected and reports whether phase 2 listed its test', () => {
-    const good = workspace();
-    const notListed = workspace({ listedFarewell: false });
-    const notInjected = workspace({ injected: false });
-    try {
-      assert.deepEqual(verdict(effectStep('memory-convention-chain'), good.run('effect')), []);
-      assert.equal(JSON.parse(good.run('effect').stdout).effect.listed, true);
-      assert.deepEqual(verdict(effectStep('memory-convention-chain'), notListed.run('effect')), [], 'the effect is reported, not asserted');
-      assert.equal(JSON.parse(notListed.run('effect').stdout).effect.listed, false);
-      assert.notDeepEqual(verdict(effectStep('memory-convention-chain'), notInjected.run('effect')), []);
-    } finally { good.done(); notListed.done(); notInjected.done(); }
-  });
-
-  test('the control passes only with no lesson in phase 2', () => {
-    const control = workspace({ lesson: false, injected: false, listedFarewell: false });
-    const leaked = workspace();
-    try {
-      assert.deepEqual(verdict(effectStep('memory-convention-control'), control.run('effect')), []);
-      assert.notDeepEqual(verdict(effectStep('memory-convention-control'), leaked.run('effect')), []);
-    } finally { control.done(); leaked.done(); }
-  });
-
-  test('the seed: npm test runs only the listed files, greet\'s test is not listed, and the gap is recordable', () => {
-    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-conv-seed-'));
-    try {
-      fs.cpSync(path.join(ROOT, 'harness', 'seeds', 'lesson-convention'), ws, { recursive: true });
-      const manifest = JSON.parse(fs.readFileSync(path.join(ws, 'test', 'manifest.json'), 'utf8')).files;
-      assert.deepEqual(manifest, ['tests/smoke.test.js'], 'greet\'s test exists but is not listed: the seeded failure');
-      assert.ok(fs.existsSync(path.join(ws, 'tests', 'greet.test.js')));
-      const t = spawnSync(process.execPath, [path.join(ws, 'scripts', 'test.cjs')], { cwd: ws, encoding: 'utf8' });
-      assert.equal(t.status, 0, t.stdout + t.stderr);
-      assert.match(t.stdout, /running 1 test file\(s\) from test\/manifest\.json/);
-      const r = JSON.parse(runPanTools('findings record --phase 1 --file .planning/phases/01-greet/01-verification.md', ws).output);
-      assert.equal(r.recorded, true, JSON.stringify(r));
-      assert.equal(r.findings, 1);
-    } finally { cleanup(ws); }
   });
 });

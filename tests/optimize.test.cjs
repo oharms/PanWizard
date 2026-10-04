@@ -822,7 +822,10 @@ describe('deriveActionsFromAnalysis', () => {
     const actions = deriveActionsFromAnalysis(analysis);
     assert.ok(actions.length > 0);
     assert.equal(actions[0].type, 'note');
-    assert.ok(actions[0].description.includes('Memory miss'));
+    assert.equal(actions[0].description, 'Missing knowledge: express_middleware');
+    // A suggestion for a person, aimed where the agents read: nothing loads `.planning/memory/`.
+    assert.doesNotMatch(JSON.stringify(actions), /\.planning\/memory|memory entry/);
+    assert.match(actions[0].target, /CLAUDE\.md or AGENTS\.md/);
   });
 
   test('generates note actions from gap_patterns', () => {

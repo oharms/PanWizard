@@ -108,7 +108,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
   Phase 3  EXECUTE  — Build squad: one army/<task> worktree per agent (parallel); Architecture/Quality research in parallel (read-only)
   Phase 4  REVIEW   — Quality squad on the built tree: reviewer + hardener + meta → verdict ladder; a block is a hard gate
   Phase 5  INTEGRATE— Release squad: prepare squash-merge → CI/verification → ALWAYS-ASK human approval → tag → deploy hand-off
-  Phase 6  LEARN    — summaries return to Mission Control; retro/learn writes patterns to memory (this is "Dreaming")
+  Phase 6  LEARN    — summaries return to Mission Control; retro/learn patterns go into the next mission's plan (this is "Dreaming")
   → loop to Phase 2 until a stop condition; --clean-seal once at the end
 ```
 
@@ -138,7 +138,7 @@ Spawn `pan-release`. It prepares the squash-merge, runs the configured `verifica
 **Phase report (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the mission's self-contained per-phase HTML report **in the built tree, before staging the squash-merge** — `pan-tools report phase <N>` — so the report rides along in the merge as a phase deliverable. **Never run `report index` inside a squad worktree:** the timeline index is a single shared file that aggregates *all* phases, so a worktree would see only its own phase and concurrent squads would race on it. The index is a single-writer, post-merge concern (Phase 6). Never opens a browser.
 
 ### Phase 6 — Learn (Dreaming)
-Squad summaries return to Mission Control. Run `/pan:retro --write-memory` (and `/pan:learn` if traces exist) so recurring patterns persist into agent memory for the next mission. Strike the landed item; update loop-state. For a scheduled campaign, also `pan-tools campaign record-run --items <n> --points <p>` so the next-due time and the day's spend advance.
+Squad summaries return to Mission Control. Run `/pan:retro` (and `/pan:learn` if traces exist) and carry the recurring patterns into the next mission yourself: name them in the plan you hand the Architecture squad. Agent memory does not do this, because PAN does not load it into agents. A pattern that should outlast the campaign goes to the human at the merge gate as a proposed line for the project's instructions. Strike the landed item; update loop-state. For a scheduled campaign, also `pan-tools campaign record-run --items <n> --points <p>` so the next-due time and the day's spend advance.
 
 **Rebuild the timeline index (single writer).** When `workflow.phase_reports.enabled` and `workflow.phase_reports.index` are `true`, Mission Control — and *only* Mission Control, on the integration branch after the merge has landed — rebuilds the project index once against the now-merged set of phases: `pan-tools report index`, then commit it (the commit honors `commit_docs`). Doing this post-merge from the single conductor is what keeps `report-index.html` consistent while builds run in parallel worktrees.
 
@@ -184,7 +184,7 @@ The campaign is complete when ANY holds: `--max-cycles` reached · backlog empty
 - Plan on the session model Mission Control inherits, delegate over the Agent toolset, keep each squad's return a tight summary.
 - One worktree per Build agent; parallel research/verify; serial human-gated integrate.
 - Check the abort file + spawn/budget caps before every spawn.
-- Finish with the clean-build seal; write learnings back to memory.
+- Finish with the clean-build seal; carry the learnings into the next mission's plan.
 
 ## Examples
 ```

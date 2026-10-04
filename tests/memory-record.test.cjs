@@ -3,8 +3,13 @@
 // had entries). The research and the market agree on what pays: lessons from observed
 // failures, with the correction, its evidence and a citation, never raw traces and
 // never what the code already says. These tests pin every rule of the gate, the use
-// telemetry, and the two writers that go through it: exec-phase's record_lessons step
-// and the optimizer's `memory_entry` action.
+// telemetry, and `optimize apply` on an older report's `memory_entry` action.
+//
+// No workflow writes through the gate any more. The harness runs of 2026-10-04 found
+// no behavioural effect from a recorded lesson, so PAN stopped loading agent memory
+// into agents and stopped the automatic writers (ADR-0036, amended): exec-phase's
+// record_lessons step is gone and the optimizer proposes notes. The command stays for
+// anyone recording a lesson by hand; memory-citations.test.cjs keeps the prompts clean.
 
 'use strict';
 
@@ -103,13 +108,15 @@ describe('the gate', () => {
   });
 });
 
-describe('after the gate: injection and use telemetry', () => {
-  test('a recorded lesson is injected, and each day it is injected counts as a use', () => {
+describe('after the gate: use telemetry', () => {
+  test('a recorded lesson is selected, and each day it is marked used counts as a use', () => {
     record();
+    const before = JSON.parse(runPanTools('memory list', dir).output).usage;
+    assert.deepEqual(before, { entries: 1, with_evidence: 1, cited: 1, used: 0, never_used: 1 });
     const sel = selectMemory(dir, 'pan-executor', { all: true, markUsed: true });
     assert.equal(sel.selected.length, 1);
     const usage = JSON.parse(runPanTools('memory list', dir).output).usage;
-    assert.deepEqual(usage, { entries: 1, with_evidence: 1, cited: 1, injected: 1, never_injected: 0 });
+    assert.deepEqual(usage, { entries: 1, with_evidence: 1, cited: 1, used: 1, never_used: 0 });
     assert.equal(parseEntryMeta(readMemory(dir, 'pan-executor').entries[0]).uses, 1);
   });
 
@@ -126,7 +133,7 @@ describe('after the gate: injection and use telemetry', () => {
   });
 });
 
-describe('the optimizer writes lessons through the gate', () => {
+describe('an older report\'s memory actions go through the gate and say they are not loaded', () => {
   function report(actions, name = 'sess-7-opt-report.md') {
     const p = path.join(dir, '.planning', 'optimization', 'reports', name);
     fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -142,6 +149,7 @@ describe('the optimizer writes lessons through the gate', () => {
   test('a memory_entry is recorded with the report\'s trace session as evidence, and reverts cleanly', () => {
     const r = applyReportRecommendations(dir, report([ENTRY]));
     assert.equal(r.applied.length, 1, JSON.stringify(r.skipped));
+    assert.match(r.applied[0].warning, /PAN's workflows do not load into agents/, 'the apply says the entry reaches no agent');
     assert.equal(parseEntryMeta(readMemory(dir, 'pan-executor').entries[0]).evidence, 'trace:sess-7');
     const back = revertApply(dir, 'last');
     assert.equal(back.status, 'reverted', JSON.stringify(back));
@@ -155,38 +163,33 @@ describe('the optimizer writes lessons through the gate', () => {
     assert.match(n.skipped[0].reason, /trace session the report came from/);
   });
 
-  test('a legacy memory action still writes, and warns that a topic file is never loaded', () => {
-    const r = applyReportRecommendations(dir, report([{ type: 'memory', path: '.planning/memory/express.md', content: '# Express\n\nUse helmet\n' }]));
-    assert.match(r.applied[0].warning, /not loaded as memory/);
+  test('every legacy memory action still writes, and warns that agents never load it', () => {
+    // An agent log with an `## Entries` list got no warning before 2026-10-04, because
+    // exec-phase loaded those. Nothing loads any file in the folder now.
+    fs.mkdirSync(path.join(dir, '.planning', 'memory'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.planning', 'memory', 'pan-planner.md'), '---\nagent: pan-planner\n---\n\n## Entries\n');
+    const r = applyReportRecommendations(dir, report([
+      { type: 'memory', path: '.planning/memory/express.md', content: '# Express\n\nUse helmet\n' },
+      { type: 'memory_append', path: '.planning/memory/pan-planner.md', content: '- 2026-10-04: Plan the guard with the function' },
+    ]));
+    assert.equal(r.applied.length, 2, JSON.stringify(r.skipped));
+    for (const a of r.applied) assert.match(a.warning, /stored in \.planning\/memory\/, which PAN's workflows do not load into agents/);
+  });
+
+  test('a note outside the memory folder carries no warning', () => {
+    const r = applyReportRecommendations(dir, report([{ type: 'note', description: 'Lesson', target: 'CLAUDE.md', content: 'Run npm run test:all' }]));
+    assert.equal(r.applied.length, 1);
+    assert.equal(r.applied[0].warning, undefined);
   });
 });
 
-describe('the writers in the prompts', () => {
+describe('the optimizer proposes notes for a person, never memory', () => {
   const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-  test('exec-phase records lessons after a passing fix round, through memory record, from fixed findings', () => {
-    const wf = read('pan-wizard-core/workflows/exec-phase.md');
-    assert.match(wf, /\| `passed` \| → record_lessons when this run was `--gaps-only`, then update_roadmap\./);
-    const step = wf.slice(wf.indexOf('<step name="record_lessons">'), wf.indexOf('<step name="update_roadmap">'));
-    assert.match(step, /findings list --phase "\$\{PHASE_NUMBER\}" --status fixed/);
-    assert.match(step, /memory record <pan-planner\|pan-executor> --finding <id> --lesson "<the correction>" --cites "<path\[#symbol\]>"/);
-    assert.match(step, /`pan-planner` when the plan left out work a requirement or success criterion asked for/, 'a planning lesson goes to the planner');
-  });
-
-  test('planning lessons reach the planner and the checker; executors do not get the planner\'s log', () => {
-    // Found by the memory-lesson-chain harness run on 2026-10-04: the fix round recorded a
-    // planning lesson, and PAN injected memory only into executors, so no planner saw it.
-    const pp = read('pan-wizard-core/workflows/plan-phase.md');
-    assert.match(pp, /## 7\.5\. Load the Planner's Memory[\s\S]*memory select pan-planner --cue "[^"]+" --mark-used --raw/);
-    const planner = pp.slice(pp.indexOf('## 8. Spawn pan-planner Agent'), pp.indexOf('## 9. Handle Planner Return'));
-    const checker = pp.slice(pp.indexOf('## 10. Spawn pan-plan-checker Agent'), pp.indexOf('## 11. Handle Checker Return'));
-    for (const [name, block] of [['planner', planner], ['checker', checker]]) assert.match(block, /<project_memory>\n\{PLANNER_MEMORY/, name);
-    const wf = read('pan-wizard-core/workflows/exec-phase.md');
-    const load = wf.slice(wf.indexOf('<step name="load_phase_memory">'), wf.indexOf('</step>', wf.indexOf('<step name="load_phase_memory">')));
-    assert.match(load, /every agent log except the planner's \(`pan-planner`\)/);
-  });
-  test('the optimizer proposes memory_entry actions, never topic files', () => {
+  test('its example actions are notes with a target, and it names the memory actions only to forbid them', () => {
     const p = read('agents/pan-optimizer.md');
-    assert.match(p, /"type": "memory_entry"/);
-    assert.doesNotMatch(p, /"type": "memory",|"type": "memory_append"/);
+    assert.doesNotMatch(p, /"type": "memory_entry"|"type": "memory",|"type": "memory_append"/);
+    assert.match(p, /"type": "note",\s*\n\s*"description": "Lesson for executors[^"]*",\s*\n\s*"target": "CLAUDE\.md \(project instructions, outside PAN's section\)"/);
+    assert.match(p, /\*\*Do not propose `memory_entry`, `memory` or `memory_append` actions\.\*\*/);
+    assert.doesNotMatch(p, /memory (read|list)\b/, 'it no longer reads the store');
   });
 });

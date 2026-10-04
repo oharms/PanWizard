@@ -1385,7 +1385,6 @@ Codes emitted only under the corresponding flag:
 |------|----------|------|-------------|------------|
 | TESTS_FAIL | error | `--full` | Test run exited non-zero | No |
 | BUILD_FAIL | error | `--full` | Build exited non-zero | No |
-| MEM_BUDGET | warning / info | `--full` | Per-agent memory injection over budget (warning at `critical`, info at `warning`) | No |
 | DRIFT_HIGH | warning | `--drift` | Convention drift verdict is `high` | No |
 | DRIFT_MEDIUM | info | `--drift` | Convention drift verdict is `medium` | No |
 | LINKS_ERR | warning | `--links` | Link graph has broken refs or uncovered backlink contracts | No |
@@ -3322,7 +3321,7 @@ pan-tools retro [--write-memory] [--max N] [--raw]
 ```
 
 **Flags:**
-- `--write-memory` — append top-N gap patterns as lessons to `pan-planner` memory; write a verifier lesson when first-try rate < 60% over ≥3 runs.
+- `--write-memory` — append top-N gap patterns as lessons to `pan-planner` memory; write a verifier lesson when first-try rate < 60% over ≥3 runs. The entries are stored for `/pan:knowledge`; no workflow loads them into agents or passes this flag (ADR-0036, amended `2026-10-04`).
 - `--max N` — cap lessons written to memory (default 3, range 1–10).
 
 **JSON output:**
@@ -3394,7 +3393,7 @@ Agent name must match `^[a-zA-Z0-9_-]+$` (blocks path traversal), and may not be
 
 ### `memory list`
 
-List the agent logs in `.planning/memory/` and their entry counts — the files memory is loaded from. Every other `.md` file there is under `not_loaded` with the reason. PAN's own archives are never memory: `quarantine.md` holds directives PAN refused to follow (ADR-0040), and `state-archive.md` is old state. A file with no `## Entries` list cannot be checked or expired, so it is not loaded either.
+List the agent logs in `.planning/memory/` and their entry counts — the files `memory select` reads. No workflow loads them into agents (ADR-0036, amended `2026-10-04`). Every other `.md` file there is under `not_loaded` with the reason. PAN's own archives are never memory: `quarantine.md` holds directives PAN refused to follow (ADR-0040), and `state-archive.md` is old state. A file with no `## Entries` list cannot be checked or expired, so it is not loaded either.
 
 ```bash
 pan-tools memory list [--raw]
@@ -3405,11 +3404,11 @@ pan-tools memory list [--raw]
 {
   "agents": [ {"agent": "pan-planner", "entries": 12}, {"agent": "pan-verifier", "entries": 4} ],
   "not_loaded": [ {"file": "quarantine.md", "reason": "PAN archive, never loaded as memory"}, {"file": "notes.md", "reason": "no `## Entries` list"} ],
-  "usage": { "entries": 16, "with_evidence": 3, "cited": 5, "injected": 12, "never_injected": 4 }
+  "usage": { "entries": 16, "with_evidence": 3, "cited": 5, "used": 12, "never_used": 4 }
 }
 ```
 
-`usage` is the memory layer's telemetry across the agent logs. It counts entries that carry evidence of the failure they came from (`memory record`), entries that cite code, and entries ever injected. `memory select --mark-used` counts each day an entry is injected (`uses` on its line). An entry never injected is memory nobody reads.
+`usage` is the memory layer's telemetry across the agent logs. It counts entries that carry evidence of the failure they came from (`memory record`), entries that cite code, and entries ever used. `memory select --mark-used` counts each day an entry is selected that way (`uses` on its line). An entry never used is memory nobody reads.
 
 ### `memory compact <agent> [max]`
 
@@ -3426,7 +3425,7 @@ pan-tools memory compact <agent> 50
 
 ### `memory select <agent> [--cue <text>] [--token-budget N] [--recency-floor N] [--all] [--mark-used] [--days N]`
 
-Return the agent's memory entries to load into a spawn. This is how exec-phase loads memory; it never reads a memory file whole.
+Return an agent's valid memory entries, for someone who hands them to an agent. No workflow does since `2026-10-04`: exec-phase and plan-phase stopped loading agent memory after the harness found no behavioural effect from it (ADR-0036, amended).
 
 **Only valid entries are candidates.** An entry is left out, and reported, when:
 - **`stale`:** one of its citations no longer holds — the file is gone, or the symbol no longer appears in it.
@@ -3461,7 +3460,7 @@ The gated write path for agent memory. A lesson is recorded only from an observe
 - **The lesson:** one line of 20–300 characters that says the correction, what to do next time. It may not repeat the finding, carry an HTML comment, or read as a directive to bypass the process (ADR-0040).
 - **Once:** a finding gets one lesson, and a lesson already in the log is not recorded again.
 
-A refusal is reported as `{ "recorded": false, "reason": "…" }` with exit 0: it is the gate working. A missing agent or two pieces of evidence is a usage error. A recorded lesson logs a `memory_recorded` trace event. exec-phase's `record_lessons` step calls this after a fix round passes, and `optimize apply` calls it for a `memory_entry` action.
+A refusal is reported as `{ "recorded": false, "reason": "…" }` with exit 0: it is the gate working. A missing agent or two pieces of evidence is a usage error. A recorded lesson logs a `memory_recorded` trace event. No workflow calls it since `2026-10-04` (exec-phase's `record_lessons` step was retired with the memory injection). `optimize apply` uses it for an older report's `memory_entry` action.
 
 ```bash
 pan-tools memory record pan-executor --finding f_3c9a1e07b2 \
@@ -3471,7 +3470,7 @@ pan-tools memory record pan-executor --finding f_3c9a1e07b2 \
 
 ### `memory prune [<agent>] [--apply] [--days N]`
 
-Archive the entries memory no longer injects: stale and expired ones, as `memory select` judges them. Covers one agent's log, or every agent log when no agent is given. The entries go to `.planning/memory/archive/<agent>.md`, each with the reason. Nothing is deleted: to restore an entry, move its line back under `## Entries`.
+Archive the entries `memory select` no longer returns: stale and expired ones, as it judges them. Covers one agent's log, or every agent log when no agent is given. The entries go to `.planning/memory/archive/<agent>.md`, each with the reason. Nothing is deleted: to restore an entry, move its line back under `## Entries`.
 
 **Safety:** the archive is written first, and only then are those bullet lines taken out of the log, so an interruption can duplicate an entry but never lose one. Everything else in the log is left as it was, line endings included. Dry run by default.
 
@@ -3485,7 +3484,7 @@ pan-tools memory prune --days 0 --apply      # stale only, no expiry
 
 ### `memory budget`
 
-Report the total token footprint of all agent memory files against the project's typical per-call **prompt** size (`median_prompt_tokens` — the median of `input + cache_read + cache_write` over the ledger's trustworthy rows), so you can see how much of a spawn's context memory is consuming. Under prompt caching the uncached `input` alone is tens of tokens, which is why the denominator is the whole prompt. Read-only.
+Report the total token footprint of all agent memory files against the project's typical per-call **prompt** size (`median_prompt_tokens` — the median of `input + cache_read + cache_write` over the ledger's trustworthy rows): what the whole store would add to an agent's prompt if it were handed to one. No workflow hands it over since `2026-10-04`, and `validate health --full` no longer reports it. Under prompt caching the uncached `input` alone is tens of tokens, which is why the denominator is the whole prompt. Read-only.
 
 ```bash
 pan-tools memory budget [--raw]
@@ -4075,7 +4074,7 @@ pan-tools optimize trace reconcile [--session <id> | --all]   # rewrite session.
 pan-tools optimize trace end [--session <id>]
 pan-tools optimize learn [--session <id>]           # analyse events → report
 pan-tools optimize learn --sessions <n>             # pool the last n sessions into one analysis
-pan-tools optimize apply [--report <path>]          # write auto-applicable findings to memory; prints the apply_id
+pan-tools optimize apply [--report <path>]          # record the report's suggestions in suggestions.md; prints the apply_id
 pan-tools optimize revert <apply_id> | --last       # undo one apply exactly
 pan-tools optimize list                             # reports on disk
 pan-tools optimize stats

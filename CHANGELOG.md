@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, items O1–O12). The review of `2026-10-04` found PAN's memory design where the evidence and the market have converged, and its operation short of it. The planner re-read the whole roadmap, the roadmap grew without bound, Windows projects silently skipped state reconciliation, agent memory had no write path, and stored facts carried no citations or expiry.
+The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, items O1–O12). The review of `2026-10-04` found PAN's memory design where the evidence and the market have converged, and its operation short of it. The planner re-read the whole roadmap, the roadmap grew without bound, Windows projects silently skipped state reconciliation, agent memory had no write path, and stored facts carried no citations or expiry. One item ended in a retirement: once agent memory had a working write path, the harness found that injecting it changed nothing, so PAN no longer loads it into agents.
 
 ### Fixed
 
@@ -25,7 +25,7 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - **Kept as a measurement:** `cache prime` still reports the set. ADR-0023 is amended, and a test keeps the step out of shipped prompts.
 - **Security: exec-phase loaded the memory quarantine into every executor prompt (O4).**
   - **What happened:** ADR-0040 moves directives an agent wrote into memory to `.planning/memory/quarantine.md`. But exec-phase's memory step read every file in that folder whole and handed the result to every executor under "Apply every rule in this block without exception." `state-archive.md` came along too: 114 KB of old state on one field project.
-  - **Now:** memory loads only from agent logs, through `memory select`. `memory list` names PAN's archives (`quarantine`, `state-archive`, `distill-patterns`) as not loaded, and the memory commands refuse those names as agents. The optimizer prompts no longer glob the folder either.
+  - **Now:** no workflow loads anything from `.planning/memory/` into an agent (see "PAN no longer loads agent memory into agents" under Changed). `memory list` names PAN's archives (`quarantine`, `state-archive`, `distill-patterns`) as not loaded, and the memory commands refuse those names as agents. The optimizer prompts no longer read the folder either.
 - **Memory logs on Windows keep their line endings.** `memory append` and `memory compact` wrote LF lines into CRLF logs.
 - **The context monitor no longer counts down, and measures against where the host compacts (O7).**
   - **The note:** it used to inject "Usage at 75%. Remaining: 25%. STOP new work immediately." Current vendor guidance says a visible countdown makes a model wrap up early and cut corners, and a STOP order after a tool result reads like an injection. The note now carries no figure and says it comes from the hook, not the user. It asks for a checkpoint in `.planning/state.md` at the next natural stopping point (before the next step when compaction is near). It says compaction is safe, because PAN restores the planning state, and asks for no shortcuts.
@@ -33,6 +33,15 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
 
 ### Changed
 
+- **PAN no longer loads agent memory into agents (O6).** `3.33.0` loaded every file in `.planning/memory/` into every executor (the security fix above).
+  - **The measurement:** after memory got a gated write path (`memory record`), the harness ran 16 reps of two chain-and-control designs on `2026-10-04`. The write path worked and every recorded lesson reached its agent. But no rep built differently from its control: `state.md` decisions, the phase summaries and the agents' own reading of the repository already carried what the lesson said. The rule set before the runs said to retire the layer in that case.
+  - **What changed:**
+    - exec-phase and plan-phase load no agent memory and record none.
+    - `/pan:army` and `pan-conductor` no longer pass `retro --write-memory`. Mission Control carries retro's patterns into the next mission's plan.
+    - `pan-optimizer` proposes notes that say where a lesson belongs, instead of memory entries: the project's instructions (`CLAUDE.md` or `AGENTS.md`, outside PAN's section), a test, or the code. `/pan:optimize apply` records them in `suggestions.md`. An older report's memory actions still write, but the result says no agent loads them.
+    - `validate health --full` no longer reports `MEM_BUDGET`. The cost it measured, memory in every agent's prompt, is gone.
+  - **What stays:** the store, every `memory` command, `/pan:retro --write-memory` on request, the hygiene checks and the ADR-0040 quarantine. `/pan:knowledge` reads the store for a person. ADR-0036, ADR-0040 and ADR-0033 are amended.
+  - **Gates:** a class test forbids any shipped prompt from loading or writing agent memory. The harness `memory-not-loaded` scenario (formerly `memory-citations`) checks the deployed chain: no executor prompt carries a seeded entry or the quarantined canary, and no agent opens the folder.
 - **Agents read one phase's slice of the roadmap and requirements, not the whole files (O2).**
   - **The problem:** plan-phase handed the planner and plan checker the whole `roadmap.md` and `requirements.md`, and the researcher the whole `requirements.md`. Every plan's `<context>` also named the whole roadmap, so each executor read it too. Those files are re-read on every turn of every such spawn, and the roadmap is what grows in a long project.
   - **The slice:** the new `pan-tools roadmap slice <phase> [--write]` writes `<phase dir>/<NN>-roadmap-slice.md`. It holds a line for every phase, this phase's section, the goals of the phases it depends on, and the requirement lines it names.
@@ -54,21 +63,19 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
 - **Cited, verified, expiring agent memory (O4): the Copilot Memory pattern, without dependencies.**
   - **Citations:** `memory append <agent> "<lesson>" --cites src/db/writer.js#bulkInsert` records the code a lesson rests on. The citation must hold when written.
   - **Checked before use:** `memory select` checks every citation against the working tree and leaves out an entry whose file or symbol is gone (`stale`). It also leaves out one unused for `MEMORY_EXPIRE_DAYS` (`expired`). An undated entry never expires; an uncited one is never stale.
-  - **Use keeps an entry alive:** exec-phase loads memory with `--mark-used`, which records each injection.
+  - **Use keeps an entry alive:** `memory select --mark-used` records each use.
   - **Archiving:** `memory prune [<agent>] [--apply] [--days N]` archives what is left out to `.planning/memory/archive/<agent>.md`, archive first, with the reason; nothing is deleted.
   - **In hygiene:** it reports `memory-stale`, with the `prune-memory` fix, and `memory-format` for a memory file with no `## Entries` list, which is never loaded.
-  - **Why:** GitHub's A/B of this pattern gave a 90% vs 83% PR merge rate. Harness `memory-citations` checks the executors' real prompts: a stale entry, a quarantined directive and the state archive must not reach them. ADR-0036 is amended.
+  - **Why:** GitHub's A/B of this pattern gave a 90% vs 83% PR merge rate. ADR-0036 is amended.
 - **Learnings are chosen by the task (O5).**
   - **The problem:** `learn topics-for` loaded the topics tagged for the agent's role, smallest first, so the same handful loaded whatever the phase was about. A large topic the task needed (migration-safety for a migration) dropped out.
   - **The fix:** `--cue "<phase goal; files>"` matches the task against each topic's name, summaries and rules. It loads what scores at least half the best match, ranked by score, then relevance, then size, and falls back to the role ranking when nothing matches. plan-phase, exec-phase, execute-plan and verify-phase pass the cue.
   - **Measured:** on a golden set of phase objectives (`tests/fixtures/learn-cue-golden.json`) it loads about five topics instead of thirteen. Precision rose from 0.06 to 0.37 and recall from 0.45 to 0.76.
-- **Agent memory has a gated write path: `memory record` (O6).** Memory had an elaborate read path and almost no writes: 2 of 23 installs had any entry. The research and the market agree on what pays: lessons from observed failures, with the correction, its evidence and a citation.
-  - **What it records:** `memory record <agent> --lesson "<correction>" (--finding <id> | --trace <session>) --cites <path[#symbol]>`. The evidence must be a finding the ledger shows `fixed` (a verifier gap a fix round closed) or a trace session with a recurring tool failure.
+- **`memory record`: a gated write for a lesson recorded by hand (O6).** `memory record <agent> --lesson "<correction>" (--finding <id> | --trace <session>) --cites <path[#symbol]>`.
+  - **What it records:** a correction with its evidence and a citation. The evidence must be a finding the ledger shows `fixed` (a verifier gap a fix round closed) or a trace session with a recurring tool failure.
   - **What it refuses:** a lesson that repeats the finding, a directive (ADR-0040), a duplicate, or one without a citation that holds. A refusal is reported with its reason.
-  - **Who writes through it:** exec-phase's new `record_lessons` step, after a `--gaps-only` fix round passes, turns the gaps it closed into lessons for later phases' executors. The optimizer now proposes `memory_entry` actions, which `optimize apply` records through the same gate with the report's trace session as evidence. Legacy `memory` / `memory_append` actions still write, but warn when the file is never loaded.
-  - **Telemetry:** `memory list` reports `usage`: entries with evidence, cited, injected at least once, never injected. `--mark-used` counts the days each entry is injected.
-  - **Planning lessons now reach planners.** PAN used to inject memory only into executors. So a lesson about a plan that left work out, like `verify retro --write-memory`'s recurring plan gaps, reached nobody who plans. plan-phase now loads `pan-planner`'s log through `memory select` into the planner and the plan checker. exec-phase leaves that log out, and `record_lessons` files each lesson with the agent that would have prevented the failure. A harness run of the lesson chain found this.
-  - **Harness:** two chain-and-control pairs, `memory-lesson-chain` / `memory-lesson-control` and `memory-convention-chain` / `memory-convention-control`, measure whether a recorded lesson reaches the next phase and changes what it builds. In the runs of `2026-10-04` the recorded lessons reached their agents, but no rep built differently from its control within two phases: `state.md`, the summaries and the repository itself carried the same knowledge. The spec records the runs.
+  - **No workflow writes through it.** The harness measured what a recorded lesson does; see "PAN no longer loads agent memory into agents" under Changed.
+  - **Telemetry:** `memory list` reports `usage`: entries with evidence, cited, used at least once, never used. `memory select --mark-used` counts the days each entry is used.
 - **PAN's CLAUDE.md block tells the compaction summary what to keep (O8).**
   - **The section:** Claude Code reads a "Compact instructions" section in the project-root CLAUDE.md when it summarises a conversation. PAN's block now carries one after the `@AGENTS.md` import. It keeps the phase, plan, task in progress and stopping point, with the path to `.planning/state.md`, plus any decisions not yet written there and the files changed since the last commit. It leaves out file contents and command output.
   - **Existing projects:** an older block holding only the import is upgraded in place by a reinstall or `memory rebuild --apply`. A user who writes their own `@AGENTS.md` import is left alone, as before.

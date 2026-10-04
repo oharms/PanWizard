@@ -119,7 +119,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn 2>/dev/null || true
    ```
 
-   Present the optimization summary to the user and suggest `/pan:optimize apply` to write memory entries.
+   Present the optimization summary to the user and suggest `/pan:optimize apply` to record its suggestions, each naming where a person should make the change.
 
 </process>
 

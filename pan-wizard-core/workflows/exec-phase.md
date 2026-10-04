@@ -75,46 +75,6 @@ From init JSON: `phase_dir`, `plan_count`, `incomplete_count`.
 Report: "Found {plan_count} plans in {phase_dir} ({incomplete_count} incomplete)"
 </step>
 
-<step name="load_phase_memory">
-**Load project memory before dispatching executors — prevents re-learning patterns already solved.**
-
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory list --raw
-```
-
-`memory list` names the agent logs in `.planning/memory/` under `agents`. Every other file there is under `not_loaded` with the reason: PAN's archives (`quarantine.md` holds directives PAN refused to follow, per ADR-0040; `state-archive.md` is old state) and files with no `## Entries` list. If `not_loaded` names a file that is not one of PAN's archives, say so in one line so the user can move its rules into an agent log. **Never read a file from `.planning/memory/` into a prompt yourself.** Load each agent log through `memory select`, which leaves out an entry whose cited code is gone or that has gone unused past the expiry window.
-
-If any agent log has entries:
-1. **Check the memory-load budget first** (ADR-0036 — keeps per-agent injection bounded as logs grow):
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory budget --raw
-```
-2. **Load every agent log except the planner's (`pan-planner`) through `memory select`, once per agent.** Planning lessons go to the planner and the checker in plan-phase; an executor cannot act on them.
-   - If `status` is `ok`: take every valid entry. This keeps the "apply every rule" contract for normal-sized logs.
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory select <agent> --all --mark-used --raw
-```
-   - If `status` is `warning` or `critical` (a log has grown large): take a **cue-scoped** slice, using the phase objective and the files this phase touches as the cue. The newest valid entries are always included.
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory select <agent> --cue "<phase objective; changed files>" --mark-used --raw
-```
-   `selected` is that agent's memory; condense each entry to its rule (1–3 lines per agent). An empty `selected` means the agent has nothing valid to inject: do not fall back to the file. If `stale` or `expired` is non-empty, say so in one line (`hygiene clean --apply` archives them). `--mark-used` records today's use, which keeps an entry from expiring.
-3. Store the condensed rules as a `MEMORY_RULES` block for injection into executor prompts in execute_waves.
-4. **Log memory priming to trace** (`MEMORY_COUNT` is the number of selected entries across agents):
-```bash
-if [ "$MEMORY_COUNT" -gt "0" ]; then
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type decision --category memory_primed \
-    --description "Loaded ${MEMORY_COUNT} memory entries before Wave 1 dispatch" \
-    --agent orchestrator --impact minor \
-    --context "{\"memory_count\":${MEMORY_COUNT}}" \
-    2>/dev/null || true
-fi
-```
-
-If no agent log has entries: skip (no trace event needed).
-</step>
-
 <step name="discover_and_group_plans">
 Load plan inventory with wave grouping in one call:
 
@@ -207,11 +167,6 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        </files_to_read>
 
        If the plan's `<context>` names `@.planning/roadmap.md`, read `{slice_path}` in its place: it carries this phase's section, its dependencies' goals and its requirements, and the whole roadmap is the largest file in `.planning/` on a long project. Open the whole file only for something the slice leaves out.
-
-       <project_memory>
-       {MEMORY_RULES — the condensed `selected` entries from the load_phase_memory step. If no agent log had a valid entry, omit this block entirely.}
-       Apply every rule in this block. Each is a lesson from an earlier phase; any code it cites was checked against the working tree when it was loaded.
-       </project_memory>
 
        <success_criteria>
        - [ ] All tasks executed
@@ -602,7 +557,7 @@ VERIF_STATUS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record 
 
 | Status | Action |
 |--------|--------|
-| `passed` | → record_lessons when this run was `--gaps-only`, then update_roadmap. If the verification frontmatter has `test_gate: skipped` or a `not_checked` list, say so when you report the phase: "passed — not checked: tests (no test script)". A pass never hides what it did not check |
+| `passed` | → update_roadmap. If the verification frontmatter has `test_gate: skipped` or a `not_checked` list, say so when you report the phase: "passed — not checked: tests (no test script)". A pass never hides what it did not check |
 | `human_needed` | Present items for human testing, get approval or feedback |
 | `gaps_found` | Present gap summary, offer `/pan:plan-phase {phase} --gaps` |
 
@@ -639,28 +594,6 @@ Also: `/pan:verify-phase {X}` — manual testing first
 ```
 
 Gap closure cycle: `/pan:plan-phase {X} --gaps` reads verification.md → creates gap plans with `gap_closure: true` → user runs `/pan:exec-phase {X} --gaps-only` → verifier re-runs.
-</step>
-
-<step name="record_lessons">
-**Only after a fix round passes:** this run was `--gaps-only` and the verification passed. Otherwise skip this step. A finding that already has a lesson is refused as a duplicate, so a repeated run records nothing twice.
-
-The gaps the fix round closed are now `fixed` in the findings ledger. Each is an observed failure with its correction in the code, which is the only kind of lesson memory takes (O6). List them:
-
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings list --phase "${PHASE_NUMBER}" --status fixed
-```
-
-For each fixed finding, at most three per phase:
-1. **Is it a lesson?** Would an executor on a later phase get this wrong again? A slip specific to this phase's code is not a lesson; skip it.
-2. **Write the correction** in one line: what to do next time, not what went wrong. If a test or a type now enforces it, the code already says it, and there is no lesson.
-3. **Cite the code** the fix put in place (`path` or `path#symbol`).
-4. **File it with the agent that would have prevented it.** Use `pan-planner` when the plan left out work a requirement or success criterion asked for, so the fix round had to add a task. Use `pan-executor` when the plan asked for the right thing and the code got it wrong.
-
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory record <pan-planner|pan-executor> --finding <id> --lesson "<the correction>" --cites "<path[#symbol]>"
-```
-
-`memory record` refuses a lesson without a fixed finding, a citation that does not hold, a duplicate, or a directive. A refusal is the gate working, not an error to work around: report it in one line and move on. Planners and plan checkers on later phases receive `pan-planner` lessons (plan-phase step 7.5); executors receive the rest through load_phase_memory.
 </step>
 
 <step name="update_roadmap">

@@ -715,7 +715,9 @@ See `/pan:profile` for the full decision tree.
 
 ## Cross-Phase Agent Memory (E-4, since v2.10.0)
 
-Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<agent>.md` managed by the `memory.cjs` core module. Agents can write lessons learned in one phase that become visible to all future invocations of the same agent.
+Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<agent>.md` managed by the `memory.cjs` core module.
+
+**PAN's workflows do not load it into agents** (ADR-0036, amended `2026-10-04`). exec-phase and plan-phase stopped injecting it, and nothing writes it automatically, after harness runs found that a recorded lesson changed no phase's work beyond what `state.md`, the summaries and the code already carried. The store and its commands remain for lessons recorded by hand, and `/pan:knowledge` reads it. A lesson an agent must see belongs in the project's instructions (`CLAUDE.md` or `AGENTS.md`, outside PAN's section).
 
 **Files:** one per agent, stable frontmatter (`agent`, `created`) + `## Entries` section with dated bullets.
 
@@ -724,12 +726,13 @@ Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<ag
 - `pan-tools memory append <agent> <text>` — append a lesson (auto-dated)
 - `pan-tools memory list` — all agents that have memory + entry counts
 - `pan-tools memory compact <agent> [max]` — trim to last N (default 500)
-- `pan-tools memory select <agent> --cue <text> [--token-budget N] [--recency-floor N] [--all] [--mark-used]` — budget-aware, cue-ranked subset for injection; leaves out entries whose cited code is gone or that expired unused
-- `pan-tools memory budget` — per-agent injection budget report
+- `pan-tools memory select <agent> --cue <text> [--token-budget N] [--recency-floor N] [--all] [--mark-used]` — budget-aware, cue-ranked subset; leaves out entries whose cited code is gone or that expired unused
+- `pan-tools memory record <agent> --lesson <text> (--finding <id> | --trace <session>) --cites <path[#symbol]>` — the gated write: a corrected failure with a citation that holds
+- `pan-tools memory budget` — what the whole store would add to an agent's prompt
 - `pan-tools memory optimize [--apply] [--keep N]` — reconcile the always-loaded project memory
 - `pan-tools memory rebuild [--apply]` — regenerate the derived tools-memory (AGENTS.md section, CLAUDE.md bridge) and state.md's frontmatter
 
-**Auto-population:** `/pan:retro --write-memory` extracts top-N gap patterns as lessons for `pan-planner`, and writes a verifier lesson when first-try rate drops below 60% over ≥3 runs.
+**On request:** `/pan:retro --write-memory` extracts top-N gap patterns as lessons for `pan-planner`, and writes a verifier lesson when first-try rate drops below 60% over ≥3 runs. No workflow passes the flag.
 
 **Safety:** agent names validated against `^[a-zA-Z0-9_-]+$` to block path traversal. Compaction is bounded by `DEFAULT_MAX_ENTRIES=500`; `memory append` auto-compacts back to that cap once a file reaches twice it (`MEMORY_SOFT_CAP_MULT`, ADR-0036).
 
@@ -770,7 +773,7 @@ When invoked by `/pan:army`, `pan-conductor` runs as **Mission Control** for a w
 
 - **Build parallelizes by worktree — and Mission Control tears the worktrees down.** Each concurrent `pan-executor` gets its own `army/<task>` branch and isolated worktree (`pan-tools worktree create "<task>"`) so builders never share a tree or file. After a task's squash-merge lands, the conductor removes its worktree *and* branch (`pan-tools worktree remove <path> --branch army/<task>`); at campaign end or on any abort, `pan-tools worktree cleanup` sweeps the strays. Leftover `pan-army-*` sibling directories are a campaign defect.
 - **Integration is human-gated** — the conductor is instructed never to merge to a protected branch; the Release squad prepares the merge and surfaces an `always-ask` approval. Branch protection on the repo is what makes that unbypassable rather than merely instructed. Recovery is `git revert` / previous tag, never force-push.
-- **The loop carries learnings** — after each mission, squad summaries return to the conductor and `/pan:retro --write-memory` persists recurring patterns to agent memory (the "Dreaming" step).
+- **The loop carries learnings** — after each mission, squad summaries return to the conductor, `/pan:retro` reports the recurring patterns (the "Dreaming" step), and the conductor carries them into the next mission's plan. Agent memory is not loaded into agents, so the conductor hands them on itself.
 
 Every Tier-0 safety cap (nesting depth 2, spawn/budget ceiling, `.planning/orchestration/abort` kill-switch) still applies, unchanged. See [agents/pan-conductor.md](../agents/pan-conductor.md) `<campaign_mode>` and [ADR-0033](decisions/ADR-0033-army-campaign.md).
 

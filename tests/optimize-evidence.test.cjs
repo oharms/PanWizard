@@ -54,7 +54,9 @@ describe('analysis — tool failures ranked by recurrence', () => {
     const notes = actions.filter((x) => /Recurring tool failure/.test(x.description));
     assert.equal(notes.length, 1, 'the Bash failure (2 spawns) — not the one-off Read');
     assert.match(notes[0].content, /failed with "npm error Test failed\." in 2 spawns across 2 session\(s\)/);
-    assert.equal(notes[0].target, '.planning/memory/');
+    // The lesson goes where the agents read it; nothing loads `.planning/memory/` (ADR-0036).
+    assert.match(notes[0].content, /where pan-executor reads it: the project's instructions \(CLAUDE\.md or AGENTS\.md, outside PAN's section\)\.$/);
+    assert.equal(notes[0].target, "the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section)");
   });
 });
 

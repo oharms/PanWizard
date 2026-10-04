@@ -179,7 +179,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
   Phase 3  EXECUTE  — Build squad: one army/<task> worktree per agent (parallel); Architecture/Quality research in parallel (read-only)
   Phase 4  REVIEW   — Quality squad on the built tree: reviewer + hardener + meta → verdict ladder; a block is a hard gate
   Phase 5  INTEGRATE— Release squad: prepare squash-merge → CI/verification → ALWAYS-ASK human approval → tag → deploy hand-off
-  Phase 6  LEARN    — summaries return to Mission Control; retro/learn writes patterns to memory (this is "Dreaming")
+  Phase 6  LEARN    — summaries return to Mission Control; retro/learn patterns go into the next mission's plan (this is "Dreaming")
   → loop to Phase 2 until a stop condition; --clean-seal once at the end
 ```
 
@@ -209,7 +209,7 @@ Spawn `pan-release`. It prepares the squash-merge, runs the configured `verifica
 **Phase report (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the mission's self-contained per-phase HTML report **in the built tree, before staging the squash-merge** — `pan-tools report phase <N>` — so the report rides along in the merge as a phase deliverable. **Never run `report index` inside a squad worktree:** the timeline index is a single shared file that aggregates *all* phases, so a worktree would see only its own phase and concurrent squads would race on it. The index is a single-writer, post-merge concern (Phase 6). Never opens a browser.
 
 ### Phase 6 — Learn (Dreaming)
-Squad summaries return to Mission Control. Run `/pan:retro --write-memory` (and `/pan:learn` if traces exist) so recurring patterns persist into agent memory for the next mission. Strike the landed item; update loop-state. For a scheduled campaign, also `pan-tools campaign record-run --items <n> --points <p>` so the next-due time and the day's spend advance.
+Squad summaries return to Mission Control. Run `/pan:retro` (and `/pan:learn` if traces exist) and carry the recurring patterns into the next mission yourself: name them in the plan you hand the Architecture squad. Agent memory does not do this, because PAN does not load it into agents. A pattern that should outlast the campaign goes to the human at the merge gate as a proposed line for the project's instructions. Strike the landed item; update loop-state. For a scheduled campaign, also `pan-tools campaign record-run --items <n> --points <p>` so the next-due time and the day's spend advance.
 
 **Rebuild the timeline index (single writer).** When `workflow.phase_reports.enabled` and `workflow.phase_reports.index` are `true`, Mission Control — and *only* Mission Control, on the integration branch after the merge has landed — rebuilds the project index once against the now-merged set of phases: `pan-tools report index`, then commit it (the commit honors `commit_docs`). Doing this post-merge from the single conductor is what keeps `report-index.html` consistent while builds run in parallel worktrees.
 
@@ -255,7 +255,7 @@ The campaign is complete when ANY holds: `--max-cycles` reached · backlog empty
 - Plan on the session model Mission Control inherits, delegate over the Agent toolset, keep each squad's return a tight summary.
 - One worktree per Build agent; parallel research/verify; serial human-gated integrate.
 - Check the abort file + spawn/budget caps before every spawn.
-- Finish with the clean-build seal; write learnings back to memory.
+- Finish with the clean-build seal; carry the learnings into the next mission's plan.
 
 ## Examples
 ```
@@ -6499,7 +6499,7 @@ before starting a `discuss` session. Session turns are not auto-encrypted.
 
 ---
 
-### /pan:learn (77 lines)
+### /pan:learn (79 lines)
 
 ```markdown
 ---
@@ -6531,7 +6531,7 @@ Analyze the most recent trace session and generate an optimization report.
 - `--session <id>` — analyze a specific session instead of the most recent
 - `--sessions <n>` — pool the last n sessions into one analysis, so recommendations rest on failures that recur across runs
 - `--experiment <slug>` *(v3.7.0+, W3)* — analyze a harvested experiment instead of the current project's traces. Reads from `<source-repo>/experiments/<slug>/.planning/optimization/` and writes the report to `<source-repo>/experiments/<slug>/learnings/report-<timestamp>.md`. Used by the self-improvement loop. Run `/pan:experiment harvest <slug>` first.
-- `--apply` — automatically apply safe optimizations after generating the report (equivalent to running `/pan:optimize apply` immediately after)
+- `--apply` — record the report's suggestions right after generating it (equivalent to running `/pan:optimize apply` immediately after)
 
 **What it does:**
 
@@ -6551,19 +6551,21 @@ Analyze the most recent trace session and generate an optimization report.
 - Tool failures and correction loops (error events)
 - Topics the model had to infer without context (gap events)
 - Repeated research on the same topic (redundancy events)
-- Memory cache misses (memory_miss events)
+- Missing knowledge an agent logged (memory_miss events)
 - Unexpected outcomes (surprise events)
 
 **Output:**
 
 The optimization report in `.planning/optimization/reports/` contains:
 - Ranked error patterns with fix recommendations
-- Memory gap findings with ready-to-apply memory entry content
+- Lessons the agents lacked, each with where it belongs: the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test, or a comment at the cited code
 - Redundancy analysis with token waste estimates
 - Prompt improvement suggestions (require human review before applying)
 - Workflow gap suggestions (require human review)
-- An `## Auto-Apply Actions` JSON block for `/pan:optimize apply`
+- An `## Auto-Apply Actions` JSON block, which `/pan:optimize apply` records in `.planning/optimization/suggestions.md`
 - A circular optimization score (0–100)
+
+Nothing in the report reaches an agent until a person writes it where the agents read. PAN's workflows do not load `.planning/memory/` into agents.
 
 **Example:**
 ```
@@ -6571,8 +6573,8 @@ The optimization report in `.planning/optimization/reports/` contains:
 → Session sess_20260421T180000: 47 events (8 errors, 12 gaps, 3 redundancies)
 → Report: .planning/optimization/reports/sess_20260421T180000-opt-report.md
 → Optimization score: 72/100
-→ Top finding: M1 — Express middleware order missing from memory (5 misses)
-→ Auto-applicable: 3 memory entries
+→ Top finding: L1 — Express middleware order inferred 5 times (belongs in CLAUDE.md)
+→ Lessons: 3
 → Needs review: 2 prompt improvements, 1 workflow gap
 ```
 
@@ -7195,7 +7197,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn 2>/dev/null || true
    ```
 
-   Present the optimization summary to the user and suggest `/pan:optimize apply` to write memory entries.
+   Present the optimization summary to the user and suggest `/pan:optimize apply` to record its suggestions, each naming where a person should make the change.
 
 </process>
 
@@ -7438,13 +7440,13 @@ Preserve all workflow gates (validation, approvals, commits, routing).
 
 ---
 
-### /pan:optimize (111 lines)
+### /pan:optimize (112 lines)
 
 ```markdown
 ---
 name: pan:optimize
 group: Self-Improvement
-description: Manage the circular optimization loop — apply recommendations, view stats, list reports, manage trace sessions
+description: Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions
 allowed-tools:
   - Read
   - Write
@@ -7456,7 +7458,7 @@ allowed-tools:
 
 # /pan:optimize
 
-Manage the circular optimization loop: apply recommendations, view stats, list reports.
+Manage the circular optimization loop: record a report's suggestions, view stats, list reports.
 
 **Usage:**
 ```
@@ -7475,14 +7477,15 @@ Manage the circular optimization loop: apply recommendations, view stats, list r
 **Subcommands:**
 
 ### apply
-Apply safe optimizations from the most recent (or specified) optimization report.
+Record the suggestions from the most recent (or specified) optimization report.
 
-Auto-applied automatically:
-- Memory entries (`memory_entry`), each recorded through `pan-tools memory record`: it needs a lesson, a citation that holds and this report's trace session as its evidence, and a refused entry is listed under skipped with the reason. Legacy `memory` / `memory_append` actions still write their file, and the result warns when a file in `.planning/memory/` has no `## Entries` list, because such a file is never loaded
-- Suggestions appended to `.planning/optimization/suggestions.md`
+Recorded automatically:
+- Suggestions appended to `.planning/optimization/suggestions.md`: lessons, prompt changes and workflow changes, each naming where it belongs
 - Config notes appended to `.planning/optimization/config-suggestions.md`
+- An older report's memory actions (`memory_entry`, `memory`, `memory_append`) still write to `.planning/memory/`, a `memory_entry` only if it passes the checks of the `memory record` command. The result warns that PAN's workflows do not load that folder into agents
 
-Requires human review (never auto-applied):
+A person makes every change the suggestions describe (never auto-applied):
+- Lessons, written into the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test, or a comment at the cited code
 - Agent prompt changes
 - Workflow step additions
 - Structural changes to commands
@@ -7490,7 +7493,7 @@ Requires human review (never auto-applied):
 After applying, the report lists what was applied and what still needs review, plus the `apply_id` that undoes it. Every apply is recorded action by action in `.planning/optimization/applied.jsonl`: the path, whether the file was created or appended to, the exact text, and a hash of the file after the write. Applying the same report a second time writes nothing: each action names the apply that already wrote it.
 
 ### revert
-Undo one apply exactly: delete the memory files it created and cut the text it appended (`revert --last` for the newest).
+Undo one apply exactly: delete the files it created and cut the text it appended (`revert --last` for the newest).
 
 Revert never destroys work someone did since:
 - It refuses a file whose content changed after the apply. The comparison ignores line endings, so a CRLF checkout still matches.
@@ -7541,15 +7544,15 @@ List all trace sessions, most recent first.
 │         ↓                                          │
 │  /pan:learn           ← analyze + report           │
 │         ↓                                          │
-│  /pan:optimize apply  ← write memory entries       │
+│  /pan:optimize apply  ← record suggestions         │
 │         ↓                                          │
-│  Next run is smarter  ← memory populated           │
+│  You make the changes ← instructions, tests, code  │
 │         ↑                                          │
 │         └──────────────────────────────────────────┘
 └─────────────────────────────────────────────────────┘
 ```
 
-Each iteration improves the model's context: fewer memory misses, fewer repeated errors, better decisions.
+Each iteration puts what the last run lacked where the next run's agents read it: fewer repeated errors and gaps.
 
 **See also:** `/pan:learn`, `/pan:exec-phase`
 ```
@@ -8741,7 +8744,7 @@ Analyze completed milestone work to identify process improvement opportunities.
 
 Examines roadmap phases (planned vs completed, gap closures), verification results (pass rates, common gaps), and estimation accuracy. Output guides future planning improvements.
 
-This is a reflection command — **read-only by default**: with no flags it does not modify any files. Passing `--write-memory` (as `/pan:army` does) is the one exception — it appends recurring-pattern entries to agent memory so they persist into the next mission.
+This is a reflection command — **read-only by default**: with no flags it does not modify any files. Passing `--write-memory` is the one exception: it appends recurring-pattern entries to the agent logs in `.planning/memory/`, which `/pan:knowledge` reads. PAN's workflows do not load those logs into agents, so a pattern meant to change the next plan goes into that plan's brief or the project's instructions.
 </objective>
 
 <execution_context>
@@ -8752,7 +8755,7 @@ This is a reflection command — **read-only by default**: with no flags it does
 No arguments required. Operates on the current `.planning/` directory.
 
 **Flags:**
-- `--write-memory` — after analysis, append recurring-pattern entries to agent memory (used by `/pan:army`). Without this flag the command is strictly read-only.
+- `--write-memory` — after analysis, append recurring-pattern entries to the agent logs in `.planning/memory/` (stored for `/pan:knowledge`, not loaded into agents). Without this flag the command is strictly read-only.
 
 The retro command is typically run after `/pan:milestone-done` to reflect on the milestone before starting the next one.
 </context>

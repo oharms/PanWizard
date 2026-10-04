@@ -762,7 +762,7 @@ Generate a self-contained HTML report for one phase, or a project-level timeline
 |-------|-------|-------------|
 | `/pan:experiment` | Read, Write, Edit, Bash, Grep, Glob, Agent | Manage external experiments — scaffold, run, harvest, promote findings back to PAN |
 | `/pan:learn` | Read, Bash, Glob, Grep, Task | Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports |
-| `/pan:optimize` | Read, Write, Edit, Bash, Glob, Grep | Manage the circular optimization loop — apply recommendations, view stats, list reports, manage trace sessions |
+| `/pan:optimize` | Read, Write, Edit, Bash, Glob, Grep | Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions |
 
 #### /pan:experiment
 
@@ -786,11 +786,11 @@ Analyze trace sessions or harvested experiments via pan-optimizer; generate rank
 
 **Tools:** Read, Bash, Glob, Grep, Task  
 **Group:** Self-Improvement  
-**Lines:** 77
+**Lines:** 79
 
 #### /pan:optimize
 
-Manage the circular optimization loop — apply recommendations, view stats, list reports, manage trace sessions
+Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions
 
 ```
 /pan:optimize
@@ -798,7 +798,7 @@ Manage the circular optimization loop — apply recommendations, view stats, lis
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep  
 **Group:** Self-Improvement  
-**Lines:** 111
+**Lines:** 112
 
 ---
 

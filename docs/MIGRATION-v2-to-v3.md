@@ -67,7 +67,7 @@ The following are auto-created on first use. **None of them conflict with existi
 | `.planning/bridge/` | `pan-tools bridge cache` + host runtime | MCP tool discovery cache |
 | `.planning/counterfactuals/` | `/pan:what-if` | Counterfactual comparison reports |
 | `.planning/conversations/` | `/pan:knowledge discuss` | Multi-turn session state per phase |
-| `.planning/memory/` | `/pan:retro --write-memory` (v2.10+), agent workflows | Cross-phase agent memory (also a v2.10 addition) |
+| `.planning/memory/` | `/pan:retro --write-memory` (v2.10+), `pan-tools memory append` / `record`, `memory optimize` (its quarantine and state archive) | Agent memory store (also a v2.10 addition); no workflow loads it into agents |
 | `.planning/architecture/` | `/pan:preview phases` | Generated dependency graph |
 | `.planning/orchestration/` | `/pan:exec-phase --hierarchical` | Conductor trace + abort kill-switch |
 | `.planning/reviews/` | `/pan:review-deep` | Consolidated deep-review reports |

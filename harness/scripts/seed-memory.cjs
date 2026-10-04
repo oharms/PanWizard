@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * Harness `sh` step: give a workspace project memory that must NOT all reach an
- * executor (memory optimisation O4). Writes into `.planning/memory/`:
+ * Harness `sh` step: give a workspace a project memory store that no agent may read
+ * (memory-not-loaded; ADR-0036, amended 2026-10-04: PAN's workflows load none of
+ * it). Writes into `.planning/memory/`:
  *
  *   pan-executor.md    one valid entry citing package.json#scripts, and one stale
  *                      entry citing a file that does not exist

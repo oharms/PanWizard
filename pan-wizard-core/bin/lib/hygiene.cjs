@@ -227,8 +227,8 @@ function checkTmpOrphans(cwd, now = Date.now()) {
 
 /**
  * H-4: per-agent memory logs — past the entry cap (compaction never ran), holding
- * entries memory no longer injects (O4: cited code gone, or unused past the expiry
- * window), and files in the folder that are not loaded as memory at all.
+ * entries `memory select` no longer returns (O4: cited code gone, or unused past the
+ * expiry window), and files in the folder that are not read as memory at all.
  */
 function checkMemoryLogs(cwd) {
   const findings = [];
@@ -247,18 +247,18 @@ function checkMemoryLogs(cwd) {
     if (stale.length) {
       const gone = stale.filter(x => x.reason.startsWith('cited code gone')).length;
       findings.push(mkFinding('memory-stale', 'warn', rel,
-        `${stale.length} entr${stale.length === 1 ? 'y is' : 'ies are'} no longer injected `
+        `${stale.length} entr${stale.length === 1 ? 'y is' : 'ies are'} stale or expired `
         + `(${gone} cite code that is gone, ${stale.length - gone} unused for ${prune.expire_days} days) — `
         + '`memory prune` archives them',
         { action: 'prune-memory', agent: a.agent }));
     }
   }
-  // A file in the folder with no `## Entries` list is never loaded (PAN's own
-  // archives aside): say so rather than let it look like memory.
+  // A file in the folder with no `## Entries` list is never read as memory (PAN's
+  // own archives aside): say so rather than let it look like memory.
   for (const n of listMemoryAgents(cwd).not_loaded || []) {
     if (RESERVED_MEMORY_NAMES.includes(n.file.slice(0, -3).toLowerCase())) continue;
     findings.push(mkFinding('memory-format', 'info', planningRel('memory', n.file),
-      `${n.reason}, so it is not loaded as memory — move the rules that still hold into an agent log with \`memory append <agent> "<rule>" --cites <path>\``,
+      `${n.reason}, so \`memory select\` and \`/pan:knowledge\` do not read it as memory — move the rules that still hold into an agent log with \`memory append <agent> "<rule>" --cites <path>\``,
       null));
   }
   return { findings };

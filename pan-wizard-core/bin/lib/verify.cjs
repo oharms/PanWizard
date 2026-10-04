@@ -1461,7 +1461,6 @@ function cmdValidateHealth(cwd, options, raw) {
   // Check 10 (optional): full validation — run tests and build
   let testStatus;
   let buildStatus;
-  let memoryBudget;
   if (options.full) {
     testStatus = runFullTestCheck(cwd);
     buildStatus = runFullBuildCheck(cwd);
@@ -1471,14 +1470,9 @@ function cmdValidateHealth(cwd, options, raw) {
     if (buildStatus.pass === false) {
       addIssue('error', 'BUILD_FAIL', `Build failed (exit code ${buildStatus.exitCode})`, 'Fix build errors');
     }
-    // Memory-load budget (ADR-0036 acceptance signal): keep per-agent memory
-    // injection bounded as logs grow. Read-only, non-blocking.
-    memoryBudget = require('./memory.cjs').memoryLoadBudget(cwd);
-    if (memoryBudget.status === 'critical') {
-      addIssue('warning', 'MEM_BUDGET', memoryBudget.advisory, "Run 'pan-tools memory compact <agent>' or scope injection with 'memory select'");
-    } else if (memoryBudget.status === 'warning') {
-      addIssue('info', 'MEM_BUDGET', memoryBudget.advisory, "Run 'pan-tools memory compact <agent>' or scope injection with 'memory select'");
-    }
+    // No memory-load check: PAN's workflows no longer load agent memory into
+    // agents (ADR-0036, amended 2026-10-04), so its size costs no agent context.
+    // `pan-tools memory budget` still sizes the store on request.
   }
 
   // Check 11 (optional): drift analysis
@@ -1539,7 +1533,6 @@ function cmdValidateHealth(cwd, options, raw) {
   if (options.full) {
     result.test_status = testStatus;
     result.build_status = buildStatus;
-    result.memory_budget = memoryBudget;
   }
   if (options.drift) {
     result.drift_status = driftResult;

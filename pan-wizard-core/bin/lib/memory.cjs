@@ -1,9 +1,15 @@
 /**
- * Memory — cross-phase agent memory layer
+ * Memory — the agent memory store
  *
  * Each agent has an append-only memory log at `.planning/memory/<agent>.md`.
- * Agents read their memory at start of each invocation and append lessons
- * learned at end. Compaction keeps file size bounded.
+ * Compaction keeps file size bounded.
+ *
+ * PAN's workflows do not load this store into agents (ADR-0036, amended
+ * `2026-10-04`). The harness found that a recorded lesson changed no phase's work
+ * beyond what state.md, the summaries and the code already carried, so exec-phase
+ * and plan-phase stopped injecting it and nothing writes to it automatically. The
+ * store, these commands and hygiene remain for anyone who records lessons by hand;
+ * `/pan:knowledge` reads it.
  *
  * File format: a markdown file with a stable YAML frontmatter header and
  * an append-only "## Entries" section containing one bullet per entry:
@@ -26,7 +32,7 @@
  * `cites` names the code the lesson rests on (`path` or `path#symbol`, relative to
  * the project root). `memory select` checks every citation against the working
  * tree and leaves out an entry whose evidence is gone. `used` is the last day the
- * entry was injected (`memory select --mark-used`). An entry not used for
+ * entry was selected with `memory select --mark-used`. An entry not used for
  * MEMORY_EXPIRE_DAYS is left out too, and `memory prune` archives both kinds to
  * `.planning/memory/archive/<agent>.md`, never deleting.
  *
@@ -83,7 +89,7 @@ const ENTRY_DATE_RE = /^(\d{4}-\d{2}-\d{2}):\s*/;
 /**
  * An entry's parts: `{ date, text, cites: string[], evidence, used, uses }`.
  * `evidence` is the observed failure a recorded lesson came from (`finding:f_…` or
- * `trace:<session>`, O6); `uses` counts the days it was injected.
+ * `trace:<session>`, O6); `uses` counts the days it was selected with `--mark-used`.
  */
 function parseEntryMeta(entry) {
   const s = String(entry == null ? '' : entry);
@@ -147,7 +153,7 @@ function daysSince(isoDate, now) {
 }
 
 /**
- * Whether an entry may be injected: `valid`, `expired` (not used for `expireDays`;
+ * Whether `memory select` returns an entry: `valid`, `expired` (not used for `expireDays`;
  * checked first, it needs no file reads) or `stale` (a citation no longer holds).
  * An undated entry never expires; an uncited one is never stale.
  */
@@ -231,7 +237,7 @@ function citeList(cites) {
  * Append a single entry to an agent's memory log. Creates file+dir if absent.
  * Entries are prefixed with today's date automatically unless already prefixed.
  * `opts.cites` attaches citations; each must hold in the working tree now, since a
- * lesson whose evidence is already missing would never be injected.
+ * lesson whose evidence is already missing would never be selected.
  * @param {string} cwd - Project root
  * @param {string} agent - Agent name
  * @param {string} entry - Single-line lesson (newlines will be collapsed)
@@ -411,7 +417,7 @@ function estMemoryTokens(str) {
 /**
  * Select a cue-relevant, recency-floored, token-budgeted slice of an agent's
  * memory instead of the whole log (ADR-0036 FW-2) — distill-and-select on the
- * memory axis, so per-agent memory injection can't flood context.
+ * memory axis, so whoever hands an agent its memory cannot flood its context.
  *
  * Always keeps the newest `recencyFloor` entries (recall never returns empty on
  * a non-empty log); fills the remaining budget by cue relevance, falling back to
@@ -504,7 +510,7 @@ function markEntriesUsed(cwd, agent, indexes, day) {
     const meta = parseEntryMeta(lines[li].replace(/^-\s+/, ''));
     if (meta.used === day) continue;
     meta.used = day;
-    meta.uses = (meta.uses || 0) + 1; // days injected: the use telemetry O6 asked for
+    meta.uses = (meta.uses || 0) + 1; // days selected: the use telemetry O6 asked for
     lines[li] = `- ${formatEntry(meta)}`;
     changed++;
   }
@@ -595,7 +601,7 @@ function recordLesson(cwd, agent, opts = {}) {
 }
 
 /**
- * Archive the entries memory no longer injects — stale (cited code gone) and
+ * Archive the entries `memory select` no longer returns — stale (cited code gone) and
  * expired (unused for `days`) — from one agent's log or all of them. The archive
  * at `.planning/memory/archive/<agent>.md` is written FIRST, then only those
  * bullet lines leave the log, so an interruption can duplicate and never lose.
@@ -660,17 +666,18 @@ function pruneMemory(cwd, agent, opts = {}) {
 }
 
 /**
- * Memory-load telemetry gate (ADR-0036 acceptance signal). Estimates the tokens
- * of memory that would be injected whole (every agent log) and compares to the
- * median per-agent PROMPT from the trustworthy cost ledger (suspect records
- * quarantined). Read-only, non-blocking; degrades to an absolute-token check
- * when the ledger is thin.
+ * Memory-load telemetry (ADR-0036 acceptance signal). Estimates the tokens the
+ * whole store would add to an agent that was handed every agent log, and compares
+ * them to the median per-agent PROMPT from the trustworthy cost ledger (suspect
+ * records quarantined). Read-only, non-blocking; degrades to an absolute-token
+ * check when the ledger is thin. PAN's workflows no longer hand memory to agents
+ * (`2026-10-04`), so this sizes the store for someone who would.
  *
  * The prompt is `input + cache_read + cache_write`, not `input` alone: under prompt
  * caching the uncached remainder is tens of tokens, so dividing by it reported 1.8k
  * of memory as 8,940% of a "median agent input" and called it critical (field sweep
- * 2026-09-17). Memory is injected into the whole prompt, so the whole prompt is what
- * it must be measured against.
+ * 2026-09-17). Memory handed to an agent joins the whole prompt, so the whole
+ * prompt is what it must be measured against.
  *
  * @returns {{memory_tokens, agents, median_prompt_tokens, fraction, status, advisory}}
  */
@@ -701,9 +708,9 @@ function memoryLoadBudget(cwd, opts = {}) {
   else if (memoryTokens >= warnT || (fraction != null && fraction >= maxFrac)) status = 'warning';
   const advisory = status === 'ok'
     ? 'Memory-load within budget.'
-    : `Memory injection is ~${memoryTokens} tokens across ${agents.length} agent log(s)` +
+    : `Agent memory is ~${memoryTokens} tokens across ${agents.length} agent log(s)` +
       (fraction != null ? ` (~${Math.round(fraction * 100)}% of a median agent prompt)` : '') +
-      `. Bound it with cue-scoped 'memory select' or trim with 'memory compact <agent>'.`;
+      `. PAN's workflows do not load it into agents; to hand some of it to one, use cue-scoped 'memory select', and trim it with 'memory compact <agent>' or 'memory prune'.`;
   return { memory_tokens: memoryTokens, agents: agents.length, median_prompt_tokens: median, fraction, status, advisory };
 }
 
@@ -724,11 +731,11 @@ function cmdMemoryAppend(cwd, agent, entry, raw, opts = {}) {
 
 /**
  * Use telemetry across the agent logs (O6): how many entries carry evidence of the
- * failure they came from, cite code, and were ever injected (`uses`, counted by
- * `memory select --mark-used`). An entry never injected is memory nobody reads.
+ * failure they came from, cite code, and were ever used (`uses`, counted by
+ * `memory select --mark-used`). An entry never used is memory nobody reads.
  */
 function memoryUsage(cwd, agents) {
-  const u = { entries: 0, with_evidence: 0, cited: 0, injected: 0, never_injected: 0 };
+  const u = { entries: 0, with_evidence: 0, cited: 0, used: 0, never_used: 0 };
   for (const a of agents) {
     const mem = readMemory(cwd, a.agent);
     for (const e of mem ? mem.entries : []) {
@@ -736,8 +743,8 @@ function memoryUsage(cwd, agents) {
       u.entries++;
       if (m.evidence) u.with_evidence++;
       if (m.cites.length) u.cited++;
-      if (m.uses > 0 || m.used) u.injected++;
-      else u.never_injected++;
+      if (m.uses > 0 || m.used) u.used++;
+      else u.never_used++;
     }
   }
   return u;

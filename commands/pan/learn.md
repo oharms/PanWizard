@@ -27,7 +27,7 @@ Analyze the most recent trace session and generate an optimization report.
 - `--session <id>` — analyze a specific session instead of the most recent
 - `--sessions <n>` — pool the last n sessions into one analysis, so recommendations rest on failures that recur across runs
 - `--experiment <slug>` *(v3.7.0+, W3)* — analyze a harvested experiment instead of the current project's traces. Reads from `<source-repo>/experiments/<slug>/.planning/optimization/` and writes the report to `<source-repo>/experiments/<slug>/learnings/report-<timestamp>.md`. Used by the self-improvement loop. Run `/pan:experiment harvest <slug>` first.
-- `--apply` — automatically apply safe optimizations after generating the report (equivalent to running `/pan:optimize apply` immediately after)
+- `--apply` — record the report's suggestions right after generating it (equivalent to running `/pan:optimize apply` immediately after)
 
 **What it does:**
 
@@ -47,19 +47,21 @@ Analyze the most recent trace session and generate an optimization report.
 - Tool failures and correction loops (error events)
 - Topics the model had to infer without context (gap events)
 - Repeated research on the same topic (redundancy events)
-- Memory cache misses (memory_miss events)
+- Missing knowledge an agent logged (memory_miss events)
 - Unexpected outcomes (surprise events)
 
 **Output:**
 
 The optimization report in `.planning/optimization/reports/` contains:
 - Ranked error patterns with fix recommendations
-- Memory gap findings with ready-to-apply memory entry content
+- Lessons the agents lacked, each with where it belongs: the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test, or a comment at the cited code
 - Redundancy analysis with token waste estimates
 - Prompt improvement suggestions (require human review before applying)
 - Workflow gap suggestions (require human review)
-- An `## Auto-Apply Actions` JSON block for `/pan:optimize apply`
+- An `## Auto-Apply Actions` JSON block, which `/pan:optimize apply` records in `.planning/optimization/suggestions.md`
 - A circular optimization score (0–100)
+
+Nothing in the report reaches an agent until a person writes it where the agents read. PAN's workflows do not load `.planning/memory/` into agents.
 
 **Example:**
 ```
@@ -67,8 +69,8 @@ The optimization report in `.planning/optimization/reports/` contains:
 → Session sess_20260421T180000: 47 events (8 errors, 12 gaps, 3 redundancies)
 → Report: .planning/optimization/reports/sess_20260421T180000-opt-report.md
 → Optimization score: 72/100
-→ Top finding: M1 — Express middleware order missing from memory (5 misses)
-→ Auto-applicable: 3 memory entries
+→ Top finding: L1 — Express middleware order inferred 5 times (belongs in CLAUDE.md)
+→ Lessons: 3
 → Needs review: 2 prompt improvements, 1 workflow gap
 ```
 

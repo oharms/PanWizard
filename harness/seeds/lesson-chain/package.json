@@ -1,9 +1,0 @@
-{
-  "name": "lesson-chain-seed",
-  "version": "0.1.0",
-  "private": true,
-  "description": "PAN Harness seed for the memory lesson chain: phase 1 has a verified gap and a gap-closure plan, phase 2 is planned.",
-  "scripts": {
-    "test": "node --test"
-  }
-}

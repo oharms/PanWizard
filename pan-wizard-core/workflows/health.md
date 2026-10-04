@@ -176,7 +176,6 @@ Flag-gated codes:
 |------|----------|------|-------------|------------|
 | TESTS_FAIL | error | --full | Test run exited non-zero | No |
 | BUILD_FAIL | error | --full | Build exited non-zero | No |
-| MEM_BUDGET | warning / info | --full | Memory injection over budget | No |
 | DRIFT_HIGH | warning | --drift | Drift verdict is high | No |
 | DRIFT_MEDIUM | info | --drift | Drift verdict is medium | No |
 | LINKS_ERR | warning | --links | Link graph has errors | No |

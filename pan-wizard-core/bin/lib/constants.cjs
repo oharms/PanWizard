@@ -576,14 +576,14 @@ const TOTAL_BUDGET_MIN = 5;
 const TOTAL_BUDGET_MAX = 5000;
 
 // Memory read/budget (ADR-0036 FW-2/FW-3): distill-and-select on the memory axis.
-const MEMORY_SELECT_BUDGET_TOKENS = 2000; // per-agent cap for cue-scoped memory injection
+const MEMORY_SELECT_BUDGET_TOKENS = 2000; // per-agent cap for a cue-scoped `memory select`
 const MEMORY_RECENCY_FLOOR = 5;           // always keep this many newest entries (recall never empty)
 const MEMORY_SOFT_CAP_MULT = 2;           // soft auto-compaction trigger = DEFAULT_MAX_ENTRIES × this
 const MEMORY_LOAD_WARN_TOKENS = 4000;     // memory-budget telemetry: warn threshold (absolute tokens)
 const MEMORY_LOAD_CRIT_TOKENS = 8000;     // memory-budget telemetry: critical threshold (absolute tokens)
 const MEMORY_LOAD_MAX_FRACTION = 0.15;    // memory-budget telemetry: max fraction of median agent input
 // Cited, verified, expiring memory (memory optimisation O4; the Copilot Memory
-// pattern). An entry not used for this many days is no longer injected and
+// pattern). An entry not used for this many days is no longer selected and
 // `memory prune` archives it; `memory select --mark-used` refreshes it.
 const MEMORY_EXPIRE_DAYS = 60;
 const MEMORY_CITED_FILE_MAX_BYTES = 2 * 1024 * 1024; // larger cited files: existence is the evidence
