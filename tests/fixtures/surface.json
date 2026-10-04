@@ -186,6 +186,7 @@
     "review-deep analyze",
     "review-deep merge",
     "roadmap analyze",
+    "roadmap compact",
     "roadmap get-phase",
     "roadmap slice",
     "roadmap update-plan-progress",

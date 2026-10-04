@@ -28,6 +28,15 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - **Who reads it:** plan-phase, research-phase and exec-phase write the slice, and those agents read it instead. The plan template names it in `<context>`, and an executor given an older plan reads the slice in place of the whole roadmap. The planner no longer prints the roadmap to find its phase, and it edits only its phase's section.
   - **Measured on field projects:** the slice is 75–98% smaller than the two files. A 54-phase project went from ~144k tokens to ~3.4k.
   - **Requirement ids are read by shape** (`CAT-01`), so a `**Requirements**:` line written as prose yields its ids instead of being taken for one.
+  - **One more whole-roadmap import removed:** `/pan:phase-tests` no longer imports the whole roadmap into the session, which its workflow never used.
+
+### Added
+
+- **`pan-tools roadmap compact [--apply] [--keep N]` bounds the roadmap the way `state compact` bounds state.md (O3).** A roadmap only ever grew: one 54-phase field project's reached 476 KB, about 121k tokens. A dry run there would move 40 shipped phases and leave ~39k.
+  - **What moves:** shipped phases' sections go to `roadmap-history.md`. The current phase and the two most recently shipped phases stay.
+  - **What stays:** a stub with the heading, goal, dependencies and requirements, so `roadmap get-phase`, slices and `roadmap analyze` still read it.
+  - **Safety:** the history is written first; it is dry-run by default and declines when nothing would shrink. A trailing progress table or a milestone's `</details>` never moves with a section.
+  - **In hygiene:** the `cache-context` check offers it as the `compact-roadmap` fix, `hygiene clean --apply` runs it, and its wording now says who reads which file whole. ADR-0044 is amended.
 
 ## [3.33.0] - 2026-10-03
 

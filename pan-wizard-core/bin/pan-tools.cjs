@@ -692,8 +692,13 @@ async function main() {
       } else if (subcommand === 'slice') {
         if (!args[2]) error('roadmap slice requires a phase number');
         roadmap.cmdRoadmapSlice(cwd, args[2], { write: args.includes('--write') }, raw);
+      } else if (subcommand === 'compact') {
+        const keepIdx = args.indexOf('--keep');
+        const keep = keepIdx !== -1 ? Number(args[keepIdx + 1]) : undefined;
+        if (keepIdx !== -1 && !(Number.isInteger(keep) && keep >= 0)) error('roadmap compact --keep needs a whole number of phases (0 or more)');
+        require('./lib/roadmap-compact.cjs').cmdRoadmapCompact(cwd, { apply: args.includes('--apply'), keep }, raw);
       } else {
-        error('Unknown roadmap subcommand. Available: get-phase, analyze, update-plan-progress, slice');
+        error('Unknown roadmap subcommand. Available: get-phase, analyze, update-plan-progress, slice, compact');
       }
       break;
     }

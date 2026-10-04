@@ -30,7 +30,8 @@ Output: Test files committed with message `test(phase-{N}): add unit and E2E tes
 Phase: $ARGUMENTS
 
 @.planning/state.md
-@.planning/roadmap.md
+
+This phase's goal and requirements, if the workflow needs them: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice $ARGUMENTS --raw` (the whole roadmap.md only for something it leaves out).
 </context>
 
 <process>

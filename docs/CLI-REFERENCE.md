@@ -447,6 +447,7 @@ Quick reference of all CLI commands grouped by category.
 | 208 | `verify stale` | Verification | verify-scope.cjs |
 | 209 | `version` | Utility | commands.cjs |
 | 210 | `roadmap slice` | Roadmap | roadmap.cjs |
+| 211 | `roadmap compact` | Roadmap | roadmap-compact.cjs |
 
 ---
 
@@ -1161,6 +1162,46 @@ pan-tools roadmap slice 5 --write    # write <phase dir>/05-roadmap-slice.md
 - A run that would produce the same slice does not rewrite the file, and a CRLF checkout of it keeps CRLF.
 
 **Not found:** `found: false` when roadmap.md has no section for the phase.
+
+---
+
+### `roadmap compact [--apply] [--keep N]`
+
+Moves shipped phases' detail out of roadmap.md into `roadmap-history.md`, the way `state compact` bounds state.md. A roadmap only ever grows; one 54-phase field project's reached 476 KB.
+
+**What moves:** a phase whose checklist line is ticked, unless it is the current phase in state.md or one of the `--keep` most recently shipped phases (default 2). The current phase never takes one of those slots.
+
+**What stays:** a stub with the heading and the `**Goal**`, `**Depends on**` and `**Requirements**` lines, plus a pointer to the history. Goal lookups (`roadmap get-phase`), the dependency goals in a `roadmap slice`, and `roadmap analyze` read the stub as before.
+
+**Safety:**
+- **Nothing is lost.** The history is written before roadmap.md, so an interrupted run can duplicate a section but never lose one.
+- **No double moves.** A section already compacted is never compacted again.
+- **No growth.** A compaction that would not shrink the file is declined.
+- **Boundaries hold.** A section ends at the next heading at its level or above, or at a `<details>` boundary, so a trailing progress table or a milestone's `</details>` stays where it is.
+- **Line endings are kept.** The file is parsed on LF and written back in its own ending.
+
+Dry run by default. `hygiene scan` offers it as the `compact-roadmap` fix when there is something to move, and `hygiene clean --apply` runs it.
+
+```bash
+pan-tools roadmap compact                # what would move
+pan-tools roadmap compact --apply        # move it
+pan-tools roadmap compact --apply --keep 0
+```
+
+**JSON output (abridged):**
+```json
+{
+  "found": true,
+  "history_path": ".planning/roadmap-history.md",
+  "keep": 2,
+  "current_phase": "5",
+  "archivable": [{ "phase": "1", "title": "Base", "bytes": 1412, "archive": true, "reason": "shipped" }],
+  "tokens_before": 120951,
+  "tokens_after": 38683,
+  "applied": false,
+  "dry_run": true
+}
+```
 
 ---
 

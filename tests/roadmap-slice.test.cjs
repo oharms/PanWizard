@@ -218,4 +218,15 @@ describe('the prompts read the slice, not the whole files', () => {
   test('the planner never prints the whole roadmap to find its phase', () => {
     assert.doesNotMatch(read('agents/pan-planner.md'), /cat \.planning\/roadmap\.md/);
   });
+
+  test('no shipped prompt @-imports the whole roadmap (a command import inlines it into the session)', () => {
+    const dirs = ['commands/pan', 'agents', 'pan-wizard-core/workflows', 'pan-wizard-core/templates'];
+    const offenders = [];
+    for (const dir of dirs) {
+      for (const f of fs.readdirSync(path.join(ROOT, dir)).filter((n) => n.endsWith('.md'))) {
+        if (/^@\.planning\/roadmap\.md\s*$/m.test(read(`${dir}/${f}`))) offenders.push(`${dir}/${f}`);
+      }
+    }
+    assert.deepEqual(offenders, []);
+  });
 });

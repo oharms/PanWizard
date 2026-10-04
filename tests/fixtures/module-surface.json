@@ -766,6 +766,14 @@
     "parseReviewFindings:function",
     "writeDeepReview:function"
   ],
+  "roadmap-compact.cjs": [
+    "ROADMAP_COMPACT_KEEP:number",
+    "ROADMAP_HISTORY_FILE:string",
+    "cmdRoadmapCompact:function",
+    "compactRoadmap:function",
+    "planRoadmapCompaction:function",
+    "roadmapCompactionAvailable:function"
+  ],
   "roadmap.cjs": [
     "ROADMAP_SLICE_SUFFIX:string",
     "buildRoadmapSlice:function",

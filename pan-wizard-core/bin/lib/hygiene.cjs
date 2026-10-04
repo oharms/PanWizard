@@ -40,6 +40,8 @@ const {
   HYGIENE_TMP_AGE_MS,
   CHARS_PER_TOKEN,
   STATE_FILE,
+  ROADMAP_FILE,
+  REQUIREMENTS_FILE,
 } = require('./constants.cjs');
 const { planningPath, planningRel, detectPlanningModel } = require('./utils.cjs');
 const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
@@ -429,7 +431,8 @@ function checkCachedContext(cwd) {
     findings.push(mkFinding('cache-context', severity, planningRel(),
       `cached context block is ~${fmtTokens(blockTokens)} tokens across ${cached.blocks.length} file(s) `
       + `(warn ${fmtTokens(CACHE_BLOCK_WARN_TOKENS)}, critical ${fmtTokens(CACHE_BLOCK_CRIT_TOKENS)}) — `
-      + 're-read on every agent call, so this is the project\'s largest recurring cost',
+      + 'state.md is re-read on every agent call; roadmap.md and requirements.md whole by the roadmapper and milestone work '
+      + '(phase agents read `roadmap slice`)',
       null));
   }
 
@@ -437,6 +440,27 @@ function checkCachedContext(cwd) {
     const tokens = Math.ceil((b.content || '').length / CHARS_PER_TOKEN);
     if (tokens < CACHE_FILE_WARN_TOKENS) continue;
     const isState = String(b.path).endsWith(STATE_FILE);
+    const isRoadmap = String(b.path).endsWith(ROADMAP_FILE);
+    const isRequirements = String(b.path).endsWith(REQUIREMENTS_FILE);
+
+    // The roadmap and requirements are read whole only by the roadmapper and the
+    // milestone workflows now; phase agents get `roadmap slice` (O2). A roadmap
+    // with shipped phases past the most recent ones can be compacted (O3).
+    if (isRoadmap || isRequirements) {
+      let fix = null;
+      let detail = `~${fmtTokens(tokens)} tokens, read whole by the roadmapper and milestone work (phase agents read \`roadmap slice\`)`;
+      if (isRoadmap) {
+        const archivable = roadmapCompactionAvailable(cwd);
+        if (archivable > 0) {
+          fix = { action: 'compact-roadmap' };
+          detail += ` — ${archivable} shipped phase section(s) can move to roadmap-history.md (\`roadmap compact\`)`;
+        }
+      } else {
+        detail += ' — a shipped milestone\'s requirements move out when the milestone is completed';
+      }
+      findings.push(mkFinding('cache-context', 'warn', b.path, detail, fix));
+      continue;
+    }
 
     // A finding may only advertise `auto-fixable` when running the fix would
     // actually change something. state.md stays over the threshold once its
@@ -489,6 +513,12 @@ function stateCompactionAvailable(cwd) {
   } catch {
     return 0;
   }
+}
+
+/** Same rule for roadmap.md: offer `compact-roadmap` only when it would archive something. */
+function roadmapCompactionAvailable(cwd) {
+  // Lazy for the same reason as state-compact: keep hygiene off a load-time cycle.
+  return require('./roadmap-compact.cjs').roadmapCompactionAvailable(cwd);
 }
 
 /** H-7: fragment .planning — artifacts present but no project spine. Report-only. */
@@ -663,6 +693,16 @@ function applyFix(cwd, finding) {
         return {
           applied: true,
           detail: `archived ${r.archived.length} section(s) to ${r.history_path} — saves ~${r.tokens_saved_per_call} tokens per agent call`,
+        };
+      }
+      case 'compact-roadmap': {
+        const { compactRoadmap } = require('./roadmap-compact.cjs');
+        const r = compactRoadmap(cwd, { apply: true });
+        if (!r.found) return { applied: false, detail: 'roadmap.md not found' };
+        if (!r.applied) return { applied: false, detail: 'no shipped phase past the most recent ones' };
+        return {
+          applied: true,
+          detail: `archived ${r.archived.length} shipped phase section(s) to ${r.history_path} — roadmap.md ~${r.tokens_before - r.tokens_after} tokens smaller`,
         };
       }
       case 'quarantine-ledger': {
