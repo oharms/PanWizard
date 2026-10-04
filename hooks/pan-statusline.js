@@ -61,10 +61,16 @@ function buildStatuslineOutput(data, deps) {
         } catch { secure = false; }
         if (secure) {
           const bridgePath = pathMod.join(bridgeSubdir, `claude-ctx-${session}.json`);
+          // Token counts and the model id let the context monitor measure against
+          // the window the host compacts at, not the model window (O7).
+          const cw = data.context_window || {};
           fsMod.writeFileSync(bridgePath, JSON.stringify({
             session_id: session,
             remaining_percentage: remaining,
             used_pct: used,
+            ...(Number.isFinite(cw.total_input_tokens) ? { total_input_tokens: cw.total_input_tokens } : {}),
+            ...(Number.isFinite(cw.context_window_size) ? { context_window_size: cw.context_window_size } : {}),
+            ...(data.model && data.model.id ? { model_id: data.model.id } : {}),
             timestamp: Math.floor(Date.now() / 1000),
           }));
         }

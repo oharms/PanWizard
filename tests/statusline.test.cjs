@@ -226,6 +226,20 @@ describe('pan-statusline ↔ pan-context-monitor bridge (N24: pins the N15 win32
       assert.equal(metrics.session_id, session);
       assert.equal(metrics.remaining_percentage, 30);
 
+      // (b2) With token counts from the host, the bridge carries what the monitor
+      // needs to measure against the compaction point, not the model window (O7).
+      const session2 = `${session}-tokens`;
+      buildStatuslineOutput({
+        model: { display_name: 'x', id: 'claude-x' },
+        workspace: { current_dir: scratch },
+        session_id: session2,
+        context_window: { remaining_percentage: 60, total_input_tokens: 400000, context_window_size: 1000000 },
+      }, { fs: fsReal, path: pathReal, homeDir: scratch, tmpDir: scratch });
+      const m2 = JSON.parse(fsReal.readFileSync(pathReal.join(dir, `claude-ctx-${session2}.json`), 'utf8'));
+      assert.deepEqual([m2.total_input_tokens, m2.context_window_size, m2.model_id], [400000, 1000000, 'claude-x']);
+      const d2 = buildContextWarning(m2, null, Math.floor(Date.now() / 1000), { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' } });
+      assert.deepEqual([d2.action, d2.level, d2.basis], ['emit', 'critical', 'compact-window']);
+
       // (c) The bridged metrics drive the monitor's decision logic end-to-end:
       // 30% remaining is inside the WARNING band.
       const decision = buildContextWarning(metrics, null, Math.floor(Date.now() / 1000));

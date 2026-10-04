@@ -43,16 +43,29 @@ The bridge file enables the context monitor to read metrics without coupling to 
 
 **What it does:**
 1. Reads the bridge file written by the statusline hook
-2. Checks remaining context percentage against thresholds
-3. If low, injects a warning as `additionalContext` that the agent sees
+2. Works out how much room is left before the host compacts the session
+3. If little is left, injects a note as `additionalContext` that the agent sees
 
-**Thresholds:**
+**What it measures against.** Claude Code's percentages are against the full model window, but the host compacts earlier. When the bridge carries token counts, the room left is measured against the point the host compacts at:
+- **The window:** `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then `autoCompactWindow` in settings (per model under `modelSettings`, then for every model; local, then project, then user settings), then the model's default (about 967K on a native 1M window).
+- **The trigger:** `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` lowers the trigger to a percentage of that window.
+- **No compaction:** with `DISABLE_AUTO_COMPACT=1` or `autoCompactEnabled: false` the host never compacts, so the model window applies.
 
-| Level | Remaining | Agent behavior |
+**What it says — no countdown.** The note carries no figure. Vendor guidance is that a visible remaining-context number makes a model wrap up early and cut corners, and a STOP order after a tool result reads like an injection. So the note:
+- says it comes from the hook, not the user;
+- asks for a checkpoint in `.planning/state.md` (`/pan:pause` writes it);
+- says compaction is safe, because PAN restores the planning state afterwards;
+- asks for no shortcuts.
+
+**Thresholds** (of the room before compaction):
+
+| Level | Room left | The note asks for |
 |-------|-----------|---------------|
-| Normal | > 35% | No warning |
-| WARNING | <= 35% | Wrap up current task, avoid starting new complex work |
-| CRITICAL | <= 25% | Stop immediately, save state via `/pan:pause` |
+| Normal | > 35% | No note |
+| WARNING | <= 35% | A checkpoint at the next natural stopping point, then carry on at full quality |
+| CRITICAL | <= 25% | A checkpoint before the next step, then finish the current task properly |
+
+**Headless runs:** `claude -p` renders no status line, so no bridge file is written and the monitor stays silent there (checked `2026-10-04`).
 
 **Debounce logic:**
 - First warning fires immediately

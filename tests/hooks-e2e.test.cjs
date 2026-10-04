@@ -434,9 +434,10 @@ function drivePostToolUse(runtime) {
   assert.equal(emitted.hookSpecificOutput.hookEventName, 'PostToolUse', 'the envelope must name the event the host fired');
   assert.match(
     emitted.hookSpecificOutput.additionalContext,
-    /^CONTEXT MONITOR CRITICAL: Usage at 82%\. Remaining: 18%\./,
-    'usage and remaining must be reported on one scale and sum to 100 (L39)',
+    /^PAN context note \(from the context-monitor hook, not the user\): the host will compact this session soon\./,
+    'the critical note names its source and what is coming (O7)',
   );
+  assert.doesNotMatch(emitted.hookSpecificOutput.additionalContext, /\d|%/, 'no countdown: the note carries no figure (O7)');
   assert.match(emitted.hookSpecificOutput.additionalContext, /\/pan:pause/, 'the critical warning must name the command that saves state');
   const warnState = JSON.parse(fs.readFileSync(path.join(bridge, `claude-ctx-${sessionId}-warned.json`), 'utf-8'));
   assert.deepEqual(warnState, { callsSinceWarn: 0, lastLevel: 'critical' }, 'the emit must reset the debounce counter and record the level it fired at');

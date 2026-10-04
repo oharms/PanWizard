@@ -7,12 +7,25 @@
 // How it works:
 // 1. The statusline hook writes metrics to <os tmpdir>/pan-hooks-<uid>/claude-ctx-{session_id}.json
 // 2. This hook reads those metrics after each tool use
-// 3. When remaining context drops below thresholds, it injects a warning
-//    as additionalContext, which the agent sees in its conversation
+// 3. When the room left before the host compacts drops below thresholds, it
+//    injects a note as additionalContext, which the agent sees in its conversation
 //
-// Thresholds:
-//   WARNING  (remaining <= 35%): Agent should wrap up current task
-//   CRITICAL (remaining <= 25%): Agent should stop immediately and save state
+// What it measures (O7). Claude Code's percentages are against the full model
+// window, but the host compacts earlier: at the auto-compact window
+// (CLAUDE_CODE_AUTO_COMPACT_WINDOW, then `autoCompactWindow` in settings, per model
+// or for all), at about 967K on a 1M model by default, and at a percentage of that
+// with CLAUDE_AUTOCOMPACT_PCT_OVERRIDE. With token counts on the bridge, the room
+// left is measured against that point; without them, against the model window.
+//
+// What it says (O7). No countdown: vendor guidance is that a visible remaining-
+// context figure makes a model wrap up early and cut corners, and a note after a
+// tool result that orders it to STOP reads like an injection. The note asks for a
+// checkpoint in state.md at the next natural stopping point, says compaction is
+// safe because PAN restores the state, and asks for no shortcuts.
+//
+// Thresholds (of the room before compaction):
+//   WARNING  (left <= 35%): checkpoint at the next natural stopping point
+//   CRITICAL (left <= 25%): checkpoint before the next step
 //
 // Debounce: 5 tool uses between warnings to avoid spam
 // Severity escalation bypasses debounce (WARNING -> CRITICAL fires immediately)
@@ -92,23 +105,75 @@ function bridgeDir() {
   } catch { return null; }
 }
 
-const WARNING_THRESHOLD = 35;  // remaining_percentage <= 35%
-const CRITICAL_THRESHOLD = 25; // remaining_percentage <= 25%
+const WARNING_THRESHOLD = 35;  // room left before compaction <= 35%
+const CRITICAL_THRESHOLD = 25; // room left before compaction <= 25%
 const STALE_SECONDS = 60;      // ignore metrics older than 60s
 const DEBOUNCE_CALLS = 5;      // min tool uses between warnings
+const MIN_COMPACT_WINDOW = 100000;
+const MAX_COMPACT_WINDOW = 1000000;
+const ONE_M_DEFAULT_TRIGGER = 967000; // a native 1M window compacts at about 967K by default
+
+/**
+ * The token count at which the host compacts this session, or null when it does
+ * not compact. Pure over its inputs.
+ *   modelWindow — context_window_size from the statusline
+ *   modelId     — the model id, for `modelSettings.<id>.autoCompactWindow`
+ *   env         — the environment (CLAUDE_CODE_AUTO_COMPACT_WINDOW,
+ *                 CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, DISABLE_AUTO_COMPACT)
+ *   settings    — settings objects, highest precedence first (local, project, user)
+ */
+function compactTrigger({ modelWindow, modelId, env = {}, settings = [] }) {
+  if (!Number.isFinite(modelWindow) || modelWindow <= 0) return null;
+  if (env.DISABLE_AUTO_COMPACT === '1') return null;
+  for (const s of settings) if (s && s.autoCompactEnabled === false) return null;
+  const clamp = (n) => Math.min(modelWindow, Math.max(MIN_COMPACT_WINDOW, Math.min(MAX_COMPACT_WINDOW, n)));
+  let window = null;
+  if (/^\d+$/.test(String(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || ''))) {
+    window = clamp(Number(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW));
+  } else {
+    for (const s of settings) {
+      if (!s || typeof s !== 'object') continue;
+      const perModel = modelId && s.modelSettings && s.modelSettings[modelId] ? s.modelSettings[modelId].autoCompactWindow : undefined;
+      const v = perModel !== undefined ? perModel : s.autoCompactWindow;
+      if (v === 'auto') break; // the tuned default, below
+      if (Number.isFinite(v)) { window = clamp(v); break; }
+    }
+  }
+  if (window == null) window = modelWindow >= MAX_COMPACT_WINDOW ? Math.min(modelWindow, ONE_M_DEFAULT_TRIGGER) : modelWindow;
+  const pct = Number(env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE);
+  if (Number.isInteger(pct) && pct >= 1 && pct < 100) window = Math.floor(window * pct / 100);
+  return window;
+}
+
+/**
+ * The room left before compaction, as a percentage, and what it was measured
+ * against. Falls back to the model window's remaining_percentage when the bridge
+ * carries no token counts or the host does not compact.
+ */
+function roomLeft(metrics, opts = {}) {
+  const used = Number(metrics.total_input_tokens);
+  const trigger = Number.isFinite(used)
+    ? compactTrigger({ modelWindow: Number(metrics.context_window_size), modelId: metrics.model_id, env: opts.env || {}, settings: opts.settings || [] })
+    : null;
+  if (trigger) return { remaining: Math.max(0, Math.min(100, ((trigger - used) / trigger) * 100)), basis: 'compact-window' };
+  const r = Number(metrics.remaining_percentage);
+  return { remaining: r, basis: 'model-window' };
+}
 
 // Pure decision function (exported for tests).
 //
-//   metrics    — { remaining_percentage, used_pct?, timestamp? } from the bridge
+//   metrics    — { remaining_percentage, total_input_tokens?, context_window_size?,
+//                  model_id?, timestamp? } from the bridge
 //   warnState  — { callsSinceWarn, lastLevel } from the prior warn file, or null
 //                on the first warning (no file yet / corrupt file)
 //   nowSeconds — current unix time in seconds
+//   opts       — { env, settings } for the compaction point (see compactTrigger)
 //
 // Returns one of:
 //   { action: 'exit' }                                   — nothing to do
 //   { action: 'debounce', warnState }                    — persist counter, no warn
-//   { action: 'emit', level, warnState, message }        — persist + emit warning
-function buildContextWarning(metrics, warnState, nowSeconds) {
+//   { action: 'emit', level, warnState, message, basis } — persist + emit the note
+function buildContextWarning(metrics, warnState, nowSeconds, opts = {}) {
   if (!metrics || typeof metrics !== 'object') return { action: 'exit' };
 
   // Ignore stale metrics (statusline stopped updating — e.g. session ended).
@@ -116,7 +181,7 @@ function buildContextWarning(metrics, warnState, nowSeconds) {
     return { action: 'exit' };
   }
 
-  const remaining = Number(metrics.remaining_percentage);
+  const { remaining, basis } = roomLeft(metrics, opts);
   if (!Number.isFinite(remaining)) return { action: 'exit' };
 
   // No warning needed
@@ -140,31 +205,39 @@ function buildContextWarning(metrics, warnState, nowSeconds) {
     };
   }
 
-  // L39: report Usage and Remaining on the SAME scale so they are internally
-  // consistent (sum to 100). The bridge's used_pct is the statusline's
-  // 80%-rescaled figure (80% real usage displays as 100%); pairing it with the
-  // raw remaining produced self-contradictory numbers like
-  // "Usage at 94%. Remaining: 25%". Derive used from remaining instead.
-  const rem = Math.round(remaining);
-  const used = 100 - rem;
-
-  let message;
-  if (isCritical) {
-    message = `CONTEXT MONITOR CRITICAL: Usage at ${used}%. Remaining: ${rem}%. ` +
-      'STOP new work immediately. Save state NOW and inform the user that context is nearly exhausted. ' +
-      'If using PAN, run /pan:pause to save execution state.';
-  } else {
-    message = `CONTEXT MONITOR WARNING: Usage at ${used}%. Remaining: ${rem}%. ` +
-      'Begin wrapping up current task. Do not start new complex work. ' +
-      'If using PAN, consider /pan:pause to save state.';
-  }
+  // No figures (O7): a countdown makes a model wrap up early, and a percentage is
+  // the thing it would count down. The note names the checkpoint, says compaction
+  // is safe, and asks for no shortcuts.
+  const message = isCritical
+    ? 'PAN context note (from the context-monitor hook, not the user): the host will compact this session soon. ' +
+      'Before your next step, make sure .planning/state.md records where you are — the phase, the plan and task, and what comes next; /pan:pause writes it. ' +
+      'Then carry on with the current task as normal. After compaction PAN restores the planning state, so finish the task properly rather than quickly.'
+    : 'PAN context note (from the context-monitor hook, not the user): this session\'s context is filling up. ' +
+      'At your next natural stopping point, such as a finished task or a commit, make sure .planning/state.md records where you are; /pan:pause writes it. ' +
+      'Nothing needs to stop: the host compacts on its own and PAN restores the planning state afterwards, so keep working at full quality, with no shortcuts and no skipped verification.';
 
   return {
     action: 'emit',
     level: currentLevel,
     warnState: { callsSinceWarn: 0, lastLevel: currentLevel },
     message,
+    basis,
   };
+}
+
+/** Claude Code's settings for a project, highest precedence first: local, project, user. */
+function readClaudeSettings(projectDir, homeDir = os.homedir()) {
+  // Assembled, not a literal: the installer rewrites quoted .claude literals in hook
+  // copies, and these are Claude Code's own settings (only it writes the bridge).
+  const dir = ['.', 'claude'].join('');
+  const files = [];
+  if (typeof projectDir === 'string' && projectDir) files.push(path.join(projectDir, dir, 'settings.local.json'), path.join(projectDir, dir, 'settings.json'));
+  if (homeDir) files.push(path.join(homeDir, dir, 'settings.json'));
+  const out = [];
+  for (const f of files) {
+    try { out.push(JSON.parse(fs.readFileSync(f, 'utf8'))); } catch { /* absent or unreadable */ }
+  }
+  return out;
 }
 
 function main() {
@@ -205,7 +278,10 @@ function main() {
         warnData = null;
       }
 
-      const decision = buildContextWarning(metrics, warnData, now);
+      const decision = buildContextWarning(metrics, warnData, now, {
+        env: process.env,
+        settings: Number.isFinite(Number(metrics.total_input_tokens)) ? readClaudeSettings(data.cwd || process.cwd()) : [],
+      });
 
       if (decision.action === 'exit') {
         process.exit(0);
@@ -241,6 +317,9 @@ if (require.main === module) {
 module.exports = {
   deferToClaudeRegistration,
   buildContextWarning,
+  compactTrigger,
+  roomLeft,
+  readClaudeSettings,
   bridgeDir,
   WARNING_THRESHOLD,
   CRITICAL_THRESHOLD,
