@@ -125,6 +125,70 @@ The work is ordered by the size of the lever (F9) and by risk. Correctness comes
 - **O7 and O8** reduce the two ways compaction loses PAN's position.
 - **O4, O5 and O6** improve what little memory PAN injects; O6 proves its effect or retires it.
 
+## Results — `2026-10-04`, branch `feat/memory-optimization-2026-10`
+
+Every item was built, with tests that fail when its rule is undone, and every rule was revert-proofed one at a time. The harness gates ran against packed builds of the branch. Spend on paid checks this run: the harness reps listed below and three short live probes (under $0.30 together).
+
+| ID | Status | What landed | Gate result |
+|---|---|---|---|
+| O1 | DONE — `6f6e198` | Every planning-file parser reads on LF and writes back in the file's own line ending (`toLf`, `dominantEol`, `withEol`). | CRLF-parity test over every parser fails before the fix. Field dry run: the forecasting client's state.md goes 35,424 → 10,484 bytes. |
+| O2 | DONE — `79667bb`, `49b8425`, `86aa9c2`, `8c3e848` | `roadmap slice <phase> [--write]`. The planner, checker, researcher, executor and verifier read it instead of the whole roadmap.md and requirements.md. Two prompts that still loaded the whole set were found and fixed along the way: the "prime the cache" step (ADR-0023 amended) and the verifier (found by the harness). | Field slices are 75–98% smaller. Harness `markdown-exec-phase-chain` PASSED with zero whole-file reads by phase agents, counted from their own transcripts (`context-reads.cjs`). `plan-phase-checker-loop`: the researcher and checker read only the slice in all three reps, and the planner in two. In the third, the planner's roadmap edit read the seed's 30-line roadmap whole after `wc -l` showed it tiny, so the seed now carries a long project's roadmap (see O2-final below). |
+| O3 | DONE — `fc29af6`, `49b8425` | `roadmap compact [--apply] [--keep N]` moves shipped phases to `roadmap-history.md` and leaves a stub. `get-phase`, `report phase` and slices read a compacted phase back from the history. hygiene offers `compact-roadmap`. | Dry run on the 54-phase project: 40 sections move, ~121k → ~39k tokens. 17 rules revert-proofed. **Requirements:** no compactor of its own. No field project has shipped a milestone through PAN, phase agents now read only their requirement lines, and `/pan:milestone-done` already archives a shipped milestone's requirements. |
+| O4 | DONE — `86aa9c2` | Cited, verified, expiring entries (`--cites`, `memory select` drops stale and expired entries, `--mark-used`, `memory prune`, hygiene `memory-stale`); `learn promote --cites` with lint L-007. **Security fix found on the way:** exec-phase loaded every file in `.planning/memory/`, the ADR-0040 quarantine and a 114 KB state archive included, into every executor prompt. Memory now loads only from agent logs. | 18 rules revert-proofed. Harness `memory-citations` PASSED: only the valid cited entry reached the executors; the stale entry, the quarantined directive and the state archive did not; the entry's use was recorded. |
+| O5 | DONE — `fc28b6b` | `learn topics-for --cue`: topics matched to the task, keeping those scoring at least half the best match. The four workflows that load learnings pass the cue. | Golden set of 18 labelled objectives: precision 0.06 → 0.37, recall 0.45 → 0.76, ~13 → ~4.7 topics loaded. |
+| O6 | BUILT; effect not shown — `e41cb55`, `f00655b` | `memory record`, the gated write path (a fixed finding or a trace session as evidence, a citation that holds, no directive, no duplicate). exec-phase `record_lessons` after a passing fix round, filed with the agent that would have prevented the failure. The planner and the checker now receive `pan-planner`'s lessons. The optimizer's `memory_entry` action; `uses` telemetry and `memory list` usage. | 12 + 5 rules revert-proofed. Harness, 16 reps: the write path and routing work; no behavioural effect over the controls. **Retire-or-keep is the owner's decision** (see O6 below). |
+| O7 | DONE — `610b054` | The context note carries no figure and asks for a checkpoint. The room left is measured against the auto-compact point (env, settings per model and for all, the 1M default, the percentage override). | Unit and e2e tests. **Harness A/B not run:** `claude -p` renders no status line (checked with a `statusLine` command that never ran), so no bridge file is written and the monitor is silent in headless runs. Follow-up below. |
+| O8 | DONE — `c4580f3` | A "Compact instructions" section in PAN's CLAUDE.md block. An old bridge is upgraded in place. Codex `compact_prompt` deliberately left out: it replaces the built-in prompt and the default provider ignores it. | Live `/compact` per arm with a PostCompact hook: the summary with the section followed it (no code blocks, 24% shorter); the one without carried two code blocks; both kept phase, plan and stopping point in a session that short. |
+| O9 | CONFIRMED, documented — `b570895` | Copilot loads PAN's section twice in a dual Claude + Copilot project. No project-side layout fixes it: Copilot dedupes only identical files, and Claude Code needs the import. TROUBLESHOOTING gives the user-side fix (`/instructions`). | `copilot instruction list --json` on 1.0.91 lists AGENTS.md and CLAUDE.md as two enabled sources; recorded 1.0.88 sessions show the section twice (~630 bytes per request). A test keeps PAN from adding a third copy. |
+| O10 | DONE — `b560fd5` | hygiene `host-memory`, read-only: Claude Code's MEMORY.md against its 200-line / 25 KB load limit, and index lines that hold content. MI-010 unchanged. | Fake-home unit tests; 8 rules revert-proofed. Field scan flagged two client indexes for content-heavy lines; none over the limit. |
+| O11 | DONE — `7995acd`, `fddae65` | Harness `resume-cost`: the seed stopped halfway, a fresh session told only "continue", turns and cost read from the step's own record. | Baseline, 2 reps: finished both times in 12 and 17 turns, $0.44 and $0.62, 67 s and 98 s. |
+| O12 | DONE — `1e23b86` | An OpenCode plugin (`.opencode/plugins/pan-wizard.js`, CommonJS `{ id, server }`) pushes PAN's position onto the compaction prompt. Installed, manifest-tracked and uninstalled for OpenCode only. | OpenCode 1.18.32, no model call: `debug config` lists it (now a `live-gate-opencode` step); an instrumented copy showed OpenCode importing it and calling `server()`, which returned the compaction hook. |
+
+### Harness runs (`d:\pantesting\harness-runs\`, all against packed builds of the branch)
+
+| Run | Scenario × reps | Result | Notes |
+|---|---|---|---|
+| `run-20261004-115435-7Q1od0` | `plan-phase-checker-loop` ×2, `markdown-exec-phase-chain` ×2 | 0 / 4 on their checks; the chains themselves worked | First O2 gate. The planner's reps failed only on a `phases list` assertion that never matched (the scenario had never been run). The exec chain's reps found the verifier and an executor reading the whole files, which led to the O2 follow-up. $11.46 |
+| `run-20261004-123606-yj08Rs` | `markdown-exec-phase-chain`, `memory-citations`, `plan-phase-checker-loop` ×1 | 2 / 3 | The exec chain read zero whole files after the fix. The O4 gate passed. The planner read the 30-line seed roadmap whole once, which led to the grown seed. $8.42 |
+| `run-20261004-130834-iwUDhB` | `plan-phase-checker-loop` ×2 (grown seed), `resume-cost` ×2 | 3 / 4 | **O2-final:** on a long project's roadmap, the researcher, planner and checker read only the slice in both reps. **O11 baseline:** a fresh session told only "continue" finished the half-done phase both times, in 12 and 17 turns, $0.44 and $0.62, 67 s and 98 s. Rep 1 failed its measurement step on a script bug (it read claude's JSON instead of the harness step record), since fixed and re-measured from the record. $7.88 |
+| `run-20261004-130155-pAwKuq` | `memory-lesson-chain` ×2, `memory-lesson-control` ×2 | 4 / 4 | O6 mechanism, below. $12.83 |
+| `run-20261004-133439-25lZk5` | `memory-convention-chain` ×2, `memory-convention-control` ×2 | 4 / 4 | O6 effect, below. $11.37 |
+
+### O6 — what the lesson-chain runs showed
+
+The four runs use the same seed and the same fix round (the gap: `greet` does not reject a bad name). They split by arm only at phase 2.
+
+- **The gate is used with judgement.** In both chain reps the orchestrator recorded one lesson through `memory record`, with `evidence: finding:` and a citation. Both lessons were conditional: "when a requirement says a function rejects bad input, build the guard and its tests in the same plan". In both control reps it recorded none, and said why. The gap was a planning slip: no plan was assigned REQ-02, so the executor was not at fault, and a general "validate arguments" rule would push phase 2 into work its requirement does not ask for. That is the admission rule ("not a phase-specific slip; not what the code already says") working as written.
+- **Injection works.** Both recorded lessons reached phase 2's executor prompt, read from the orchestrator's transcript.
+- **No behavioural effect, and none was possible in this design.** Phase 2 has no validation requirement, so the conditional lesson correctly did not apply. `farewell` validated in 0 of 2 chain reps and 0 of 2 control reps. The seed tests what the write path does, not what a lesson is worth.
+- **A real gap it exposed, now fixed (`f00655b`).** PAN injected memory only into executors, so the planning lessons the fix round naturally produces, and `verify retro`'s recurring plan gaps, reached no planner. plan-phase now gives `pan-planner`'s log to the planner and the plan checker. `record_lessons` files each lesson with the agent that would have prevented the failure.
+
+**The effect experiment** (`memory-convention-chain` / `-control`, run `run-20261004-133439-25lZk5`, 4 / 4, $11.37) uses a project quirk. `npm test` runs only the test files `test/manifest.json` lists. Phase 1 wrote a test and never listed it, and phase 2's plan never mentions the manifest. The measurement is whether phase 2 lists its new test, with and without the lesson.
+
+| Rep | Lesson recorded by the fix round | Lesson in phase 2's executor `<project_memory>` | Phase 2 listed its test |
+|---|---|---|---|
+| chain 1 | yes, filed for `pan-planner` | no (a planning lesson; phase 2 came pre-planned) | yes |
+| chain 2 | yes, filed for `pan-planner` | no | yes |
+| control 1 | yes, then removed with `.planning/memory/` | no | yes |
+| control 2 | yes, then removed | no | yes |
+
+The transcripts say how phase 2 knew without memory:
+- The orchestrator ran the `npm test` baseline, saw "running 2 test file(s) from test/manifest.json", and told its executor to check that the new test actually runs.
+- The executors read `scripts/test.cjs` and the manifest themselves.
+- One executor `cat`-ed the planner's memory file on its own. The "never read a memory file into a prompt" rule binds the orchestrator, not the subagents it spawns.
+
+The lesson was also something the code already says (the runner states the rule), which the admission rule forbids recording. The gate cannot judge that.
+
+**Verdict on O6.** The write path works: 6 of 8 fix rounds recorded a lesson through the gate, the other 2 declined with a correct reason, and every recorded lesson was routed to the right agent once routing existed. Recorded lessons reach their agents.
+
+**What the runs did not show** is any behavioural effect: 8 reps of phase 2 across two designs, and every control behaved the same without memory. Within a two-phase horizon, PAN's other channels already carry what a fix round learns: `state.md` decisions, summaries, the orchestrator's own prompt, and executors that read the repository.
+
+That meets this queue's own rule ("if two reps show no effect, retire the layer"). But the layer's claimed value is the long horizon, after `memory optimize` and `state compact` have moved a decision out of `state.md`, and no run tested that. **Retiring or keeping the agent-memory layer is left to the owner.** Two options:
+1. **Retire the injection.** Drop the memory load steps in exec-phase and plan-phase and the `record_lessons` step. Keep the store, the CLI and hygiene.
+2. **Keep the layer as built.** It is now gated, verified, expiring and routed. Decide on one long-horizon run: a lesson recorded in phase 1, `state.md` compacted, measured in phase 4.
+
+**Follow-up out of scope here:** make the context monitor read context size from the session transcript when no status-line bridge exists, so the note reaches headless runs (O7's harness gate depends on it).
+
 ## On watch
 
 - **Codebase-map overviews as agent input.** The ETH study found repository overviews don't help, while developer-written specifics do. The verifier reads `conventions.md` (specifics) and `structure.md` (an overview). Measure in the harness before dropping either.
