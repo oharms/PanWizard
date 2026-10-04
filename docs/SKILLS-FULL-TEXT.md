@@ -173,7 +173,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 
 ```
 /pan:army
-  Phase 0  MUSTER   — squad list + roster validate · cache prime · baseline · loop-state · abort-file clear
+  Phase 0  MUSTER   — squad list + roster validate · baseline · loop-state · abort-file clear
   Phase 1  PLAN     — Mission Control (session model, xhigh effort) decomposes the goal into dependency-ordered missions
   Phase 2  DELEGATE — pick the next item (focus-auto --source) · route to the owning squad over the Agent toolset
   Phase 3  EXECUTE  — Build squad: one army/<task> worktree per agent (parallel); Architecture/Quality research in parallel (read-only)
@@ -186,7 +186,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 ### Phase 0 — Muster (once)
 1. **Onboarding gate (existing projects).** Run `pan-tools init new-project` to detect state. If `is_brownfield` (existing code) and `needs_codebase_map` (no `.planning/codebase/`), the army cannot plan blind — STOP and route through onboarding first: `/pan:map-codebase` (Architecture squad's `pan-document_code` maps the existing system into `.planning/codebase/`), then `/pan:new-project` to build `roadmap.md` + `requirements.md` *against the existing system*. Re-run `/pan:army` once a backlog exists. If a codebase map + roadmap already exist, continue.
 2. `pan-tools squad list` and validate the roster is healthy.
-3. Prime the cache; capture baseline (`git status` clean of project source; tests green or STOP). On a brownfield repo, the baseline is the current `main` — every `army/<task>` branch forks from it, so the existing code is never edited in place.
+3. Capture the baseline (`git status` clean of project source; tests green or STOP). On a brownfield repo, the baseline is the current `main` — every `army/<task>` branch forks from it, so the existing code is never edited in place.
 4. Ensure `.planning/orchestration/` exists; clear any stale `abort` file; init loop-state.
 5. `--dry-run` → print the plan + per-squad delegation and STOP.
 
@@ -1397,7 +1397,7 @@ Generate 3-4 **phase-specific** gray areas, not generic categories.
 
 ---
 
-### /pan:exec-phase (152 lines)
+### /pan:exec-phase (139 lines)
 
 ```markdown
 ---
@@ -1488,19 +1488,6 @@ Each execution stage has a restricted set of appropriate actions. Using the wron
 - Wave verification: NO Edit/Write — you are checking work, not doing more work
 - Wave commit: git operations only — all code changes must be done before committing
 </action_gating>
-
-<cache_priming>
-**Before Discovery, prime the prompt cache once per invocation.** All subagents spawned within the next 5 minutes will hit the cache instead of re-sending the full context.
-
-Run once:
-```
-pan-tools cache prime --summary
-```
-
-This returns `{blocks: [{path, bytes, cache}], total_bytes, sha}` for the cacheable set (project.md, requirements.md, roadmap.md, state.md, standards.md). The `sha` is stable across identical inputs, so repeated calls within the phase hit cached reads.
-
-When spawning subagents for wave execution, include the cacheable block paths in each agent's system-context so a host runtime that supports prompt caching (Claude Code does) can mark them `cache_control: ephemeral`. Where prompt caching is unavailable, this step is a no-op — nothing breaks, just no savings.
-</cache_priming>
 
 <process>
 Execute the execute-phase workflow from @~/.claude/pan-wizard-core/workflows/exec-phase.md end-to-end.
@@ -4687,7 +4674,7 @@ When root docs and sub-docs disagree:
 
 ---
 
-### /pan:focus-exec (458 lines)
+### /pan:focus-exec (457 lines)
 
 ```markdown
 ---
@@ -4902,8 +4889,7 @@ This catches emergent interactions: 5 "add try-catch" fixes might reveal the mod
 1. **Check Project Status** — git status, recent commits
 2. **Test Baseline** — run test suite, record current counts
 3. **Create rollback snapshot** — git tag for safety
-4. **Prime prompt cache** — `pan-tools cache prime --summary` (once; all sub-agents in the next 5 min hit cached context)
-5. **Report** — Output session start summary
+4. **Report** — Output session start summary
 
 **Circular optimization — init trace:**
 ```bash
@@ -6447,7 +6433,7 @@ Consolidates Spec B v1's X-3 converse + X-6 teach + X-10 explain into one comman
 ```
 
 **Flow:**
-1. `pan-tools knowledge playbook` reads all agents' memory (`.planning/memory/*.md`), clusters entries by category, writes `.planning/playbook.md` directly.
+1. `pan-tools knowledge playbook` reads every agent log that `memory list` names in `.planning/memory/`, clusters entries by category, writes `.planning/playbook.md` directly.
 2. Optionally spawn `pan-knowledge` with `<mode>playbook</mode>` to polish (dedupe contradictions, consolidate similar entries). Skip the polish step if the draft looks clean.
 
 **Output:** `.planning/playbook.md` — team-readable summary of accumulated lessons.
@@ -7492,7 +7478,7 @@ Manage the circular optimization loop: apply recommendations, view stats, list r
 Apply safe optimizations from the most recent (or specified) optimization report.
 
 Auto-applied automatically:
-- New memory entries (`.planning/memory/*.md`) — skipped if file already exists
+- Memory entries (`memory_entry`), each recorded through `pan-tools memory record`: it needs a lesson, a citation that holds and this report's trace session as its evidence, and a refused entry is listed under skipped with the reason. Legacy `memory` / `memory_append` actions still write their file, and the result warns when a file in `.planning/memory/` has no `## Entries` list, because such a file is never loaded
 - Suggestions appended to `.planning/optimization/suggestions.md`
 - Config notes appended to `.planning/optimization/config-suggestions.md`
 
@@ -7817,7 +7803,7 @@ Run: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs context-budget --raw`
 
 ---
 
-### /pan:phase-tests (39 lines)
+### /pan:phase-tests (40 lines)
 
 ```markdown
 ---
@@ -7852,7 +7838,8 @@ Output: Test files committed with message `test(phase-{N}): add unit and E2E tes
 Phase: $ARGUMENTS
 
 @.planning/state.md
-@.planning/roadmap.md
+
+This phase's goal and requirements, if the workflow needs them: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice $ARGUMENTS --raw` (the whole roadmap.md only for something it leaves out).
 </context>
 
 <process>
@@ -7864,7 +7851,7 @@ Preserve all workflow gates (classification approval, test plan approval, RED-GR
 
 ---
 
-### /pan:plan-phase (143 lines)
+### /pan:plan-phase (132 lines)
 
 ```markdown
 ---
@@ -7994,17 +7981,6 @@ ELSE:
   → Max 2 revision iterations
 ```
 </routing_decision_tree>
-
-<cache_priming>
-**Before spawning research + planner agents, prime the prompt cache.** All sub-agents spawned within the next 5 minutes hit cached context instead of re-reading project.md / requirements.md / roadmap.md / state.md / standards.md.
-
-Run once per invocation:
-```
-pan-tools cache prime --summary
-```
-
-Returns `{blocks: [{path, bytes, cache}], total_bytes, sha}`. On a host runtime that supports prompt caching (Claude Code does), the host translates these block references into `cache_control: ephemeral`. Where prompt caching is unavailable this is a no-op — nothing breaks.
-</cache_priming>
 
 <process>
 Execute the plan-phase workflow from @~/.claude/pan-wizard-core/workflows/plan-phase.md end-to-end.
@@ -8438,7 +8414,7 @@ pan-tools report all        [--open]
 
 ---
 
-### /pan:research-phase (188 lines)
+### /pan:research-phase (191 lines)
 
 ```markdown
 ---
@@ -8506,8 +8482,11 @@ Use `has_research` and `research_path` from INIT.
 
 ## 3. Gather Phase Context
 
-Use paths from INIT (do not inline file contents in orchestrator context):
-- `requirements_path`
+Write this phase's roadmap slice (its section, its dependencies' goals and its requirement lines), then use paths from INIT (do not inline file contents in orchestrator context):
+```bash
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${phase_number}" --write --raw)
+```
+- `slice_path` (from the command above; `requirements_path` if it is empty)
 - `context_path`
 - `state_path`
 
@@ -8541,7 +8520,7 @@ Mode: ecosystem
 </objective>
 
 <files_to_read>
-- {requirements_path} (Requirements)
+- {slice_path} (This phase's roadmap and requirements)
 - {context_path} (Phase context from discuss-phase, if exists)
 - {state_path} (Prior project decisions and blockers)
 </files_to_read>
@@ -9124,7 +9103,7 @@ The workflow handles all logic including:
 
 ---
 
-### /pan:verify-phase (91 lines)
+### /pan:verify-phase (80 lines)
 
 ```markdown
 ---
@@ -9202,17 +9181,6 @@ After initial verification of each requirement:
 5. Report only final scores after this review cycle
 This prevents premature FAIL verdicts from incomplete investigation.
 </reflexion_loop>
-
-<cache_priming>
-**Before the verifier agent runs**, prime the prompt cache once. The verifier reads project.md / requirements.md / roadmap.md every run; caching avoids ~15-50K input tokens per invocation.
-
-Run once:
-```
-pan-tools cache prime --summary
-```
-
-See [plan-phase.md](plan-phase.md) or [exec-phase.md](exec-phase.md) for the full explanation. No-op on non-Claude runtimes.
-</cache_priming>
 
 <process>
 Execute the verify-phase workflow from @~/.claude/pan-wizard-core/workflows/verify-phase.md end-to-end.

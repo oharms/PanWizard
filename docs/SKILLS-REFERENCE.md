@@ -120,7 +120,7 @@ Execute all plans in a phase with wave-based parallelization
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion  
 **Group:** Phase Lifecycle  
-**Lines:** 152
+**Lines:** 139
 
 #### /pan:plan-phase
 
@@ -132,7 +132,7 @@ Create detailed phase plan (plan.md) with verification loop
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__*  
 **Group:** Phase Lifecycle  
-**Lines:** 143
+**Lines:** 132
 
 #### /pan:research-phase
 
@@ -144,7 +144,7 @@ Research how to implement a phase (standalone - usually use /pan:plan-phase inst
 
 **Tools:** Read, Bash, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 188
+**Lines:** 191
 
 #### /pan:verify-phase
 
@@ -156,7 +156,7 @@ Re-run goal-backward verification of a phase with a test-suite gate and list its
 
 **Tools:** Read, Bash, Glob, Grep, Edit, Write, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 91
+**Lines:** 80
 
 ---
 
@@ -229,7 +229,7 @@ Generate tests for a completed phase based on UAT criteria and implementation
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep, Task, AskUserQuestion  
 **Group:** Phase Management  
-**Lines:** 39
+**Lines:** 40
 
 #### /pan:remove-phase
 
@@ -316,7 +316,7 @@ Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution 
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Focus  
-**Lines:** 458
+**Lines:** 457
 
 #### /pan:focus-plan
 
