@@ -203,3 +203,43 @@ describe('doc-lint counts — drift-prone count detector', () => {
     }
   });
 });
+
+describe('no markdown file holds a second copy of itself', () => {
+  // On 2026-10-04 docs/CLI-REFERENCE.md was found doubled. A scripted edit passed
+  // String.replace a replacement holding the regex `^[a-zA-Z0-9_-]+$`, and its "$`"
+  // pattern pasted everything before the match into the middle of the file, glued to
+  // the line it landed on. It went through five commits because no gate looked. The
+  // pasted text always starts at the top of the file, so the file's opening appearing
+  // a second time is the tell; a repeated whole title line is not (the paste lands
+  // mid-line).
+  const ROOT = path.join(__dirname, '..');
+  const HEAD = 160;
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+  const pastedCopies = (files) => files.flatMap((f) => {
+    const text = fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
+    if (text.length < HEAD * 2) return [];
+    const at = text.indexOf(text.slice(0, HEAD), HEAD);
+    return at === -1 ? [] : [`${path.basename(f)} repeats its opening at offset ${at}`];
+  });
+
+  test('no doc, command, agent, workflow, reference or template repeats its opening', () => {
+    const files = ['docs', 'commands/pan', 'agents', 'pan-wizard-core/workflows', 'pan-wizard-core/references', 'pan-wizard-core/templates', 'harness']
+      .flatMap((d) => walk(path.join(ROOT, d)).filter((f) => f.endsWith('.md')));
+    assert.ok(files.some((f) => f.endsWith('CLI-REFERENCE.md')), 'the scan reaches the file that was doubled');
+    assert.deepEqual(pastedCopies(files), []);
+  });
+
+  test('the check catches the "$`" paste', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'doc-dup-'));
+    try {
+      const f = path.join(tmp, 'ref.md');
+      const doc = `# Reference\n\n${'An introduction that runs long enough to be a real opening. '.repeat(4)}\n\n## memory append\n\nAgent name must match MARK (blocks path traversal).\n`;
+      fs.writeFileSync(f, doc.replace('MARK', '`^[a-z]+$`'));
+      assert.match(fs.readFileSync(f, 'utf8'), /\+# Reference/, 'the trap: the prefix lands glued to the line');
+      assert.equal(pastedCopies([f]).length, 1);
+      fs.writeFileSync(f, doc.replace('MARK', () => '`^[a-z]+$`'));
+      assert.deepEqual(pastedCopies([f]), [], 'a replacer function inserts the text as written');
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  });
+});
