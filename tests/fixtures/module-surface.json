@@ -507,6 +507,7 @@
     "RUNTIME_DIRS:object",
     "checkCachedContext:function",
     "checkCostLedger:function",
+    "checkHostMemory:function",
     "checkLegacyUppercase:function",
     "checkMemoryLogs:function",
     "checkPlanningFragment:function",
@@ -518,6 +519,7 @@
     "cmdHygieneClean:function",
     "cmdHygieneScan:function",
     "compareVersions:function",
+    "hostMemoryDir:function",
     "scanHygiene:function"
   ],
   "init.cjs": [

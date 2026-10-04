@@ -264,6 +264,92 @@ function checkMemoryLogs(cwd) {
   return { findings };
 }
 
+// ─── Host memory (memory optimisation O10) ───────────────────────────────────
+//
+// Cross-session memory accumulates in the host, not in PAN (F7): Claude Code's auto
+// memory keeps an index, MEMORY.md, and loads only its first 200 lines or 25 KB at
+// the start of every session. PAN does not own that store (MI-010) and never writes
+// it; it reads the index and reports what the host will silently cut, and index
+// lines that hold content where a one-line pointer belongs.
+
+const HOST_INDEX_MAX_LINES = 200;
+const HOST_INDEX_MAX_BYTES = 25000;      // "25KB": the smaller reading, so a warning is never late
+const HOST_INDEX_LINE_MAX_CHARS = 300;   // a pointer line is ~100–150 characters
+
+/** The directory Claude Code keys a project's auto memory by: the git repository root, the main one for a worktree. */
+function hostMemoryProjectRoot(cwd) {
+  let dir = path.resolve(cwd);
+  for (;;) {
+    const dotGit = path.join(dir, '.git');
+    let st = null;
+    try { st = fs.statSync(dotGit); } catch { /* keep walking */ }
+    if (st && st.isDirectory()) return dir;
+    if (st && st.isFile()) {
+      // A worktree: `.git` is a file naming <main>/.git/worktrees/<name>.
+      const m = (safeReadFile(dotGit) || '').match(/^gitdir:\s*(.+?)\s*$/m);
+      if (m) {
+        const gitdir = path.resolve(dir, m[1]);
+        const i = gitdir.split(path.sep).lastIndexOf('.git');
+        if (i > 0 && gitdir.split(path.sep)[i + 1] === 'worktrees') return gitdir.split(path.sep).slice(0, i).join(path.sep);
+      }
+      return dir;
+    }
+    const up = path.dirname(dir);
+    if (up === dir) return path.resolve(cwd);
+    dir = up;
+  }
+}
+
+/** Claude Code's auto-memory directory for a project, and how it was found. */
+function hostMemoryDir(cwd, homeDir) {
+  const claudeDir = '.claude';
+  for (const f of [path.join(cwd, claudeDir, 'settings.local.json'), path.join(cwd, claudeDir, 'settings.json'), path.join(homeDir, claudeDir, 'settings.json')]) {
+    let s = null;
+    try { s = JSON.parse(safeReadFile(f) || 'null'); } catch { /* unreadable settings */ }
+    if (s && typeof s.autoMemoryDirectory === 'string' && s.autoMemoryDirectory.trim()) {
+      const v = s.autoMemoryDirectory.trim();
+      return { dir: path.resolve(v.startsWith('~/') ? path.join(homeDir, v.slice(2)) : v), display: v, source: 'autoMemoryDirectory' };
+    }
+  }
+  const key = hostMemoryProjectRoot(cwd).replace(/[^A-Za-z0-9]/g, '-');
+  return { dir: path.join(homeDir, claudeDir, 'projects', key, 'memory'), display: `~/${claudeDir}/projects/${key}/memory`, source: 'default' };
+}
+
+/**
+ * H-11: Claude Code's auto-memory index. Read-only; never fixable by PAN.
+ * @param {string} cwd
+ * @param {{homeDir?: string}} [opts]
+ */
+function checkHostMemory(cwd, opts = {}) {
+  const findings = [];
+  const home = opts.homeDir || require('os').homedir();
+  const loc = hostMemoryDir(cwd, home);
+  const text = safeReadFile(path.join(loc.dir, 'MEMORY.md'));
+  if (text == null) return { findings, host_memory: { dir: loc.display, index: false } };
+  const lines = text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n');
+  const bytes = Buffer.byteLength(text, 'utf8');
+  const rel = `${loc.display}/MEMORY.md`;
+  const overLines = lines.length > HOST_INDEX_MAX_LINES;
+  const overBytes = bytes > HOST_INDEX_MAX_BYTES;
+  if (overLines || overBytes) {
+    findings.push(mkFinding('host-memory', 'warn', rel,
+      `Claude Code's memory index is ${lines.length} lines / ${(bytes / 1024).toFixed(1)} KB; it loads only the first ${HOST_INDEX_MAX_LINES} lines or 25 KB at session start, so the rest is never seen. `
+      + 'Keep one line per memory there and move detail into topic files (PAN does not edit this store)',
+      null));
+  } else if (lines.length >= HOST_INDEX_MAX_LINES * 0.9 || bytes >= HOST_INDEX_MAX_BYTES * 0.9) {
+    findings.push(mkFinding('host-memory', 'info', rel,
+      `Claude Code's memory index is ${lines.length} lines / ${(bytes / 1024).toFixed(1)} KB, near the ${HOST_INDEX_MAX_LINES}-line / 25 KB load limit`,
+      null));
+  }
+  const long = lines.filter(l => l.length > HOST_INDEX_LINE_MAX_CHARS);
+  if (long.length) {
+    findings.push(mkFinding('host-memory', 'info', rel,
+      `${long.length} index line${long.length === 1 ? ' holds' : 's hold'} content instead of a pointer (longest ${Math.max(...long.map(l => l.length))} characters; a pointer is one short line to a topic file)`,
+      null));
+  }
+  return { findings, host_memory: { dir: loc.display, source: loc.source, index: true, lines: lines.length, bytes, long_lines: long.length } };
+}
+
 /**
  * Thousands separator that does not depend on the host locale. `toLocaleString()`
  * emits a narrow no-break space in some locales and a comma in others, which
@@ -625,9 +711,11 @@ function scanHygiene(cwd, opts) {
   // matter how many trees we sweep, or a four-track repo reports the same
   // drift four times.
   const version = checkVersionAlignment(cwd);
+  // The host's memory index is one per project too, whatever the tracks.
+  const host = checkHostMemory(cwd, { homeDir: opts?.homeDir });
   const roots = planningRoots(cwd, { allTracks: !!opts?.allTracks });
 
-  const findings = [...version.findings];
+  const findings = [...version.findings, ...host.findings];
   const scanned = [];
   let planningExists = false;
 
@@ -654,6 +742,7 @@ function scanHygiene(cwd, opts) {
   return {
     findings,
     installs: version.installs,
+    host_memory: host.host_memory,
     latest_version: version.latest_version,
     planning_exists: planningExists,
     // What was actually looked at. Present in every scan, not just --all-tracks:
@@ -901,6 +990,8 @@ module.exports = {
   checkLegacyUppercase,
   checkTmpOrphans,
   checkMemoryLogs,
+  checkHostMemory,
+  hostMemoryDir,
   checkCostLedger,
   checkStaleTraces,
   checkStaleReports,
