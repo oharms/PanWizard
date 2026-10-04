@@ -22,7 +22,7 @@ Then verify each level against the actual codebase.
 @~/.claude/pan-wizard-core/references/guardrails.md
 @~/.claude/pan-wizard-core/templates/verification-report.md
 
-> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent verifier --token-budget 5000 --raw` to load only the topics tagged relevant for verification at the configured budget. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
+> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent verifier --cue "<phase goal; the files it touches>" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for verification. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
 </required_reading>
 
 ## Re-Read Checkpoints

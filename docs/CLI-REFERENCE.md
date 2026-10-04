@@ -7321,9 +7321,16 @@ Validate the learnings store integrity. Checks: L-001 duplicate IDs across files
 
 Generate `pan-wizard-core/learnings/index.json` with topic→agent-relevance map, byte/token-est sizes, and pattern lists. Curated `RELEVANCE` table assigns `high|medium|low` per `(topic, agent_role)` for `planner / executor / verifier / reviewer`. Read by `topics-for`. Module: `learn-index.cjs`.
 
-### `learn topics-for --agent <role> [--min-relevance high|medium|low] [--token-budget N]`
+### `learn topics-for --agent <role> [--cue <text>] [--min-relevance high|medium|low] [--token-budget N]`
 
-Query the index for topics relevant to an agent role within a token budget. Returns `{selected: [...], dropped: [...], total_tokens}`. Used by workflow files (`plan-phase.md`, `exec-phase.md`, `verify-phase.md`, `execute-plan.md`) to load only relevant patterns instead of skim-the-folder — addresses the P-RES-002 distractor-density anti-pattern. Default budget 5000 tokens, default min-relevance medium.
+Query the index for the topics to load within a token budget. It returns `{mode, selected: [...], dropped: [...], total_tokens}`. The workflow files (`plan-phase.md`, `exec-phase.md`, `verify-phase.md`, `execute-plan.md`) use it to load only relevant patterns instead of skimming the folder, which addresses the P-RES-002 distractor-density anti-pattern. Default budget 5000 tokens.
+
+**`--cue` (mode `cue`)** is the task: the phase goal or plan objective, and the files it touches. The workflows pass it.
+- **Matching:** the cue's words are matched against each topic's name (counting double) and its patterns' summaries and rules. Common words are ignored, and a word meets its own inflections.
+- **What loads:** every topic scoring at least half the best match is a candidate, whatever its role relevance. Candidates are ranked by score, then relevance, then size; each selected topic carries its `cue_score`.
+- **Golden set:** on `tests/fixtures/learn-cue-golden.json` this loads about five topics per task, against thirteen for the role ranking, with precision 0.37 vs 0.06 and recall 0.76 vs 0.45.
+
+**Without a cue, or when nothing matches it (mode `role`):** topics tagged relevant for the role at `--min-relevance` (default medium), smallest first. A large topic the task needs can drop out that way, which is why the workflows pass the cue.
 
 ---
 

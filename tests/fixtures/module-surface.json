@@ -556,7 +556,9 @@
     "buildIndex:function",
     "cmdBuildIndex:function",
     "cmdTopicsFor:function",
+    "cueTerms:function",
     "readIndex:function",
+    "topicTermsFromStore:function",
     "topicsForAgent:function",
     "writeIndex:function"
   ],

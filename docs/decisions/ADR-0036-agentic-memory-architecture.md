@@ -10,6 +10,8 @@ Accepted — 2026-07-02. Records a memory-design *principle* PAN already largely
 > - **Only valid entries are candidates.** An entry may cite the code it rests on (`<!-- cites: path#symbol -->`). It is left out when that evidence is gone (`stale`) or when it has gone unused for `MEMORY_EXPIRE_DAYS` (`expired`).
 > - **Use keeps an entry alive.** `--mark-used` records each injection, so an entry stays only while it is used. `memory prune` archives what is left out to `memory/archive/`; nothing is deleted.
 > - **Why.** This is the Copilot Memory pattern: citations checked before use, and expiry when unused. GitHub's A/B gave a 90% vs 83% PR merge rate (p < 0.00001), the one outcome A/B in the market scan (`docs/specs/memory-optimization-2026-10.md`). It stays inside this ADR's principle: deterministic, file-based, no store.
+>
+> **Amended 2026-10-04 (O5): shipped learnings are selected by cue too.** `learn topics-for --cue` matches the task against each topic, where it used to rank by role tag and fill smallest first. On a labelled golden set it loads about five topics instead of thirteen, and lifts precision from 0.06 to 0.37 and recall from 0.45 to 0.76. That is this ADR's "distill-and-select" applied to the last layer that was still selected by size.
 
 Trigger: *"New agentic memory framework uses 118K tokens per query. LangMem burns through 3.26M."* (VentureBeat, 2026-06-26), reporting **MRAgent** from National University of Singapore.
 

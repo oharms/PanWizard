@@ -1612,9 +1612,13 @@ async function main() {
         if (!agent) { error('learn topics-for requires --agent <name>'); }
         const minRelevance = getArgValue(args, '--min-relevance', 'medium');
         const tokenBudget = parseInt(getArgValue(args, '--token-budget', '5000'), 10);
-        const result = learnIndex.cmdTopicsFor(sourceRoot, { agent, minRelevance, tokenBudget });
+        const cue = getArgValue(args, '--cue') || undefined;
+        const result = learnIndex.cmdTopicsFor(sourceRoot, { agent, minRelevance, tokenBudget, cue });
         if (raw) {
-          const lines = [`Topics for "${agent}" (min ${minRelevance}, budget ${tokenBudget}):`, ``];
+          const head = result.mode === 'cue'
+            ? `Topics for "${agent}" matching the cue (budget ${tokenBudget}):`
+            : `Topics for "${agent}" (min ${minRelevance}, budget ${tokenBudget})${cue ? ' — nothing matched the cue, so by role' : ''}:`;
+          const lines = [head, ``];
           for (const t of result.selected) {
             lines.push(`  [${t.relevance.padEnd(6)}] ${t.scope}/${t.name.padEnd(22)} ${t.tokens.toString().padStart(5)}t   ${t.patterns.join(', ')}`);
           }

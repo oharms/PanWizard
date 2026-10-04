@@ -55,6 +55,10 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - **Archiving:** `memory prune [<agent>] [--apply] [--days N]` archives what is left out to `.planning/memory/archive/<agent>.md`, archive first, with the reason; nothing is deleted.
   - **In hygiene:** it reports `memory-stale`, with the `prune-memory` fix, and `memory-format` for a memory file with no `## Entries` list, which is never loaded.
   - **Why:** GitHub's A/B of this pattern gave a 90% vs 83% PR merge rate. Harness `memory-citations` checks the executors' real prompts: a stale entry, a quarantined directive and the state archive must not reach them. ADR-0036 is amended.
+- **Learnings are chosen by the task (O5).**
+  - **The problem:** `learn topics-for` loaded the topics tagged for the agent's role, smallest first, so the same handful loaded whatever the phase was about. A large topic the task needed (migration-safety for a migration) dropped out.
+  - **The fix:** `--cue "<phase goal; files>"` matches the task against each topic's name, summaries and rules. It loads what scores at least half the best match, ranked by score, then relevance, then size, and falls back to the role ranking when nothing matches. plan-phase, exec-phase, execute-plan and verify-phase pass the cue.
+  - **Measured:** on a golden set of phase objectives (`tests/fixtures/learn-cue-golden.json`) it loads about five topics instead of thirteen. Precision rose from 0.06 to 0.37 and recall from 0.45 to 0.76.
 
 ## [3.33.0] - 2026-10-03
 

@@ -825,7 +825,7 @@ The installer (`bin/install.js`) explicitly strips `learnings/internal/` from ea
 | `pan-tools learn list-promoted` | Inventory of all patterns across both scopes |
 | `pan-tools learn lint [--strict]` | Integrity checks (L-001..L-006); exits non-zero on errors |
 | `pan-tools learn build-index` | Generate/refresh `learnings/index.json` |
-| `pan-tools learn topics-for --agent <role>` | Budget-aware topic selection for an agent |
+| `pan-tools learn topics-for --agent <role> [--cue <task>]` | Budget-aware topic selection for an agent; with `--cue`, the topics that match the task |
 
 **Subcommands of `/pan:experiment`:**
 

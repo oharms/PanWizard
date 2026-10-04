@@ -1,0 +1,25 @@
+{
+  "_comment": "Golden set for `learn topics-for --cue` (memory optimisation O5). Each case is a phase objective as a roadmap would state it, and the shipped universal topics a person would want loaded for it, labelled from the topic names and pattern summaries before the cue ranking was written. tests/learn-cue.test.cjs scores the cue ranking against the size-greedy role ranking on precision and recall. Add cases; do not relabel one to make a ranking pass.",
+  "role": "executor",
+  "token_budget": 5000,
+  "cases": [
+    { "objective": "Add a database migration that renames the orders.total column and backfills the new amount column for existing rows", "expected": ["migration-safety", "schema-design", "idempotency"] },
+    { "objective": "Stream the 2 GB access log, parse each JSON line and aggregate counts per status code", "expected": ["streaming-io", "parser-design", "io-patterns"] },
+    { "objective": "Run independent build tasks in parallel with a dependency graph, a concurrency cap and retries", "expected": ["dag-scheduler", "concurrency", "idempotency"] },
+    { "objective": "Write the settings file safely so a crash mid-write never leaves it corrupted", "expected": ["atomic-state", "concurrency"] },
+    { "objective": "Add a CLI command that reads JSON from stdin and prints one record per line for piping into other tools", "expected": ["pipe-friendly-cli", "io-patterns", "output-conventions", "composition"] },
+    { "objective": "Fix slug generation for names with emoji and accented characters", "expected": ["unicode"] },
+    { "objective": "Add role-based access control to the REST endpoints and hide records another tenant cannot read", "expected": ["service-security"] },
+    { "objective": "Store the third-party API tokens without leaking them into logs or commits", "expected": ["secret-handling"] },
+    { "objective": "Expose the project's tools to coding agents through an MCP server", "expected": ["mcp-security"] },
+    { "objective": "Return validation errors from the config loader with the path of the field that failed", "expected": ["error-paths", "error-handling"] },
+    { "objective": "Copy uploaded images and PDFs into the storage folder without corrupting them", "expected": ["binary-io"] },
+    { "objective": "Make the nightly import resumable so a rerun after a failure skips the rows it already imported", "expected": ["idempotency", "atomic-state"] },
+    { "objective": "Add tests that round-trip the CSV export through the importer", "expected": ["invariants", "test-patterns", "test-strategy"] },
+    { "objective": "Track down test failures that only happen in CI when the suite runs in parallel", "expected": ["flaky-triage", "test-patterns"] },
+    { "objective": "Compute percentiles and normalised scores for the metrics dashboard", "expected": ["numeric-edge-cases"] },
+    { "objective": "Turn the ignore-file patterns such as **/node_modules into matcher rules", "expected": ["glob-semantics"] },
+    { "objective": "Remove the demo data fallback from the live dashboard and show an empty state when the API returns nothing", "expected": ["live-path-honesty"] },
+    { "objective": "Wrap the external ffmpeg command and detect when a conversion actually failed", "expected": ["external-tool-truth"] }
+  ]
+}

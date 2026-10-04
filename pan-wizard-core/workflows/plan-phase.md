@@ -8,7 +8,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 @~/.claude/pan-wizard-core/references/ui-brand.md
 @~/.claude/pan-wizard-core/references/guardrails.md
 
-> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent planner --token-budget 5000 --raw` to load only the topics tagged relevant for planning at the configured budget. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
+> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent planner --cue "<phase goal; the files it touches>" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for planning. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
 </required_reading>
 
 ## Phase 0 — Clarify Phase Scope (recommended)

@@ -9,7 +9,7 @@ Read config.json for planning behavior settings.
 @~/.claude/pan-wizard-core/references/git-integration.md
 @~/.claude/pan-wizard-core/references/guardrails.md
 
-> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent executor --token-budget 5000 --raw` to load only the topics tagged relevant for execution at the configured budget. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
+> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent executor --cue "<plan objective; the files it modifies>" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for execution. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
 </required_reading>
 
 ## Re-Read Checkpoints
