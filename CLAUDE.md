@@ -62,7 +62,7 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Total tests (npm run test:all) | 4973 |
 | Total test suites | 1066 |
 | Hooks (`hooks/*.js`) | 7 |
-| Specs (`docs/specs/*.md`) | 53 |
+| Specs (`docs/specs/*.md`) | 54 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
 
 These are a snapshot of the **current working tree**, not of any released tag — a branch mid-audit carries files `main` does not (test files especially). They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
