@@ -15,11 +15,8 @@ Template for spawning pan-planner agent. The agent contains all planning experti
 **Project State:**
 @.planning/state.md
 
-**Roadmap:**
-@.planning/roadmap.md
-
-**Requirements (if exists):**
-@.planning/requirements.md
+**This phase's roadmap and requirements** (`pan-tools roadmap slice {phase_number} --write`; the whole roadmap.md and requirements.md only for something it leaves out):
+@.planning/phases/{phase_dir}/{phase_num}-roadmap-slice.md
 
 **Phase Context (if exists):**
 @.planning/phases/{phase_dir}/{phase_num}-context.md

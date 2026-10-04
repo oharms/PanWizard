@@ -78,6 +78,14 @@ PHASE_INFO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase 
 
 **If `found` is false:** Error with available phases. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from JSON.
 
+## 3.1. Write the Phase's Roadmap Slice
+
+```bash
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${PHASE}" --write --raw)
+```
+
+`SLICE_PATH` (`{slice_path}` below) is what this phase needs from roadmap.md and requirements.md: a line for every phase, this phase's section, the goals of the phases it depends on, and its requirement lines. The researcher, planner and checker read it instead of the whole files, which a long project re-read on every turn of every spawn. Plans name it in their `<context>` too, so executors read it rather than the whole roadmap. **If `SLICE_PATH` is empty** (no roadmap section, or no phase directory yet), list `{roadmap_path}` and `{requirements_path}` wherever `{slice_path}` appears below.
+
 ## 3.5. Handle PRD Express Path
 
 **Skip if:** No `--prd` flag in arguments.
@@ -253,7 +261,7 @@ Answer: "What do I need to know to PLAN this phase well?"
 
 <files_to_read>
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
-- {requirements_path} (Project requirements)
+- {slice_path} (This phase's roadmap and requirements)
 - {state_path} (Project decisions and history)
 </files_to_read>
 
@@ -351,8 +359,7 @@ Planner prompt:
 
 <files_to_read>
 - {state_path} (Project State)
-- {roadmap_path} (Roadmap)
-- {requirements_path} (Requirements)
+- {slice_path} (This phase's roadmap and requirements — read the whole roadmap.md or requirements.md only for something it leaves out)
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
 - {research_path} (Technical Research)
 - {verification_path} (Verification Gaps - if --gaps)
@@ -419,8 +426,7 @@ Checker prompt:
 
 <files_to_read>
 - {PHASE_DIR}/*-plan.md (Plans to verify)
-- {roadmap_path} (Roadmap)
-- {requirements_path} (Requirements)
+- {slice_path} (This phase's roadmap and requirements — read the whole roadmap.md or requirements.md only for something it leaves out)
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
 - {research_path} (Technical Research — includes Validation Architecture)
 </files_to_read>

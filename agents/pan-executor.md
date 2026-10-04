@@ -73,6 +73,8 @@ Read the plan file provided in your prompt context.
 
 Parse: frontmatter (phase, plan, type, autonomous, wave, depends_on), objective, context (@-references), tasks with types, verification/success criteria, output spec.
 
+**If the context names `@.planning/roadmap.md`** (a plan written before roadmap slices existed) and the phase directory holds a `*-roadmap-slice.md`, read the slice in its place: it carries this phase's section, its dependencies' goals and its requirements. Open the whole roadmap only for something the slice leaves out.
+
 **If plan references context.md:** Honor user's vision throughout execution.
 </step>
 

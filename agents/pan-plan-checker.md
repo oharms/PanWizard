@@ -99,8 +99,8 @@ Same methodology (goal-backward), different timing, different subject matter.
 **Question:** Does every phase requirement have task(s) addressing it?
 
 **Process:**
-1. Extract phase goal from roadmap.md
-2. Extract requirement IDs from roadmap.md `**Requirements:**` line for this phase (strip brackets if present)
+1. Extract the phase goal from this phase's section of the roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`; the whole roadmap.md only if the slice is missing)
+2. Extract requirement IDs from that section's `**Requirements:**` line (strip brackets if present)
 3. Verify each requirement ID appears in at least one plan's `requirements` frontmatter field
 4. For each requirement, find covering task(s) in the plan that claims it
 5. Flag requirements with no coverage or missing from all plans' `requirements` fields
@@ -864,7 +864,7 @@ End it with one finding per listed issue:
 
 Plan verification complete when:
 
-- [ ] Phase goal extracted from roadmap.md
+- [ ] Phase goal extracted from the roadmap slice
 - [ ] All plan.md files in phase directory loaded
 - [ ] must_haves parsed from each plan frontmatter
 - [ ] Requirement coverage checked (all requirements have tasks)

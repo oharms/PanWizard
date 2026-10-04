@@ -63,8 +63,11 @@ Use `has_research` and `research_path` from INIT.
 
 ## 3. Gather Phase Context
 
-Use paths from INIT (do not inline file contents in orchestrator context):
-- `requirements_path`
+Write this phase's roadmap slice (its section, its dependencies' goals and its requirement lines), then use paths from INIT (do not inline file contents in orchestrator context):
+```bash
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${phase_number}" --write --raw)
+```
+- `slice_path` (from the command above; `requirements_path` if it is empty)
 - `context_path`
 - `state_path`
 
@@ -98,7 +101,7 @@ Mode: ecosystem
 </objective>
 
 <files_to_read>
-- {requirements_path} (Requirements)
+- {slice_path} (This phase's roadmap and requirements)
 - {context_path} (Phase context from discuss-phase, if exists)
 - {state_path} (Prior project decisions and blockers)
 </files_to_read>

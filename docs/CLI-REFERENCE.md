@@ -446,6 +446,7 @@ Quick reference of all CLI commands grouped by category.
 | 207 | `optimize revert` | Optimization | optimize.cjs |
 | 208 | `verify stale` | Verification | verify-scope.cjs |
 | 209 | `version` | Utility | commands.cjs |
+| 210 | `roadmap slice` | Roadmap | roadmap.cjs |
 
 ---
 
@@ -1118,6 +1119,48 @@ pan-tools roadmap update-plan-progress 5 [--raw]
 ```
 
 **`--raw` output:** `3/3 Complete` (plus ` (progress table not updated)` when no table row was rewritten).
+
+---
+
+### `roadmap slice <phase> [--write]`
+
+The slice is what work on one phase needs from roadmap.md and requirements.md:
+- **Every phase:** one line each, taken from the roadmap's checklist (any box mark), with this phase marked.
+- **This phase:** its section.
+- **Dependencies:** the goals of the phases it depends on.
+- **Its requirements:** the requirement lines it names, with their detail lines and their traceability rows under the table header.
+
+plan-phase, research-phase and exec-phase write it. The researcher, planner, plan checker and executors read it in place of the whole files, which a long project otherwise re-reads on every turn of every spawn. On a 54-phase field project that was ~146k tokens down to ~3k. Plans name the slice in their `<context>`; an executor given an older plan that names `@.planning/roadmap.md` reads the slice instead.
+
+Requirement ids are taken by shape — a `CAT-01`-style token anywhere on the `**Requirements**:` line, or a comma-separated item that is a single token carrying a digit. So a line written as prose still yields its ids.
+
+```bash
+pan-tools roadmap slice 5            # the slice and its sizes
+pan-tools roadmap slice 5 --write    # write <phase dir>/05-roadmap-slice.md
+```
+
+**JSON output:**
+```json
+{
+  "found": true,
+  "phase_number": "5",
+  "phase_name": "Payments",
+  "requirement_ids": ["PAY-01", "PAY-02"],
+  "missing_requirement_ids": [],
+  "depends_on": ["4"],
+  "tokens": 812,
+  "whole_tokens": 9650,
+  "smaller_pct": 92,
+  "content": "# Roadmap slice — Phase 5: Payments\n…"
+}
+```
+
+**With `--write`:**
+- Drops `content` and adds `written`, `changed` and `path`.
+- `--raw` prints the path. It prints nothing when nothing was written (no phase directory yet), and the workflows then fall back to the whole files.
+- A run that would produce the same slice does not rewrite the file, and a CRLF checkout of it keeps CRLF.
+
+**Not found:** `found: false` when roadmap.md has no section for the phase.
 
 ---
 

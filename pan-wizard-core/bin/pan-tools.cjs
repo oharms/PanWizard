@@ -689,8 +689,11 @@ async function main() {
       } else if (subcommand === 'update-plan-progress') {
         if (!args[2]) error('roadmap update-plan-progress requires a phase number');
         roadmap.cmdRoadmapUpdatePlanProgress(cwd, args[2], raw);
+      } else if (subcommand === 'slice') {
+        if (!args[2]) error('roadmap slice requires a phase number');
+        roadmap.cmdRoadmapSlice(cwd, args[2], { write: args.includes('--write') }, raw);
       } else {
-        error('Unknown roadmap subcommand. Available: get-phase, analyze, update-plan-progress');
+        error('Unknown roadmap subcommand. Available: get-phase, analyze, update-plan-progress, slice');
       }
       break;
     }

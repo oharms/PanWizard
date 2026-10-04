@@ -5,8 +5,8 @@
 const fs = require('fs');
 const path = require('path');
 const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isContextFile, isResearchFile, PHASE_HEADER_RE, getPlanId, getSummaryId } = require('./constants.cjs');
-const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus } = require('./utils.cjs');
-const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal } = require('./core.cjs');
+const { planningPath, planningRel, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus } = require('./utils.cjs');
+const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal, safeReadFile, toLf, dominantEol, withEol } = require('./core.cjs');
 
 /**
  * Extract a single phase section from roadmap.md including goal and success criteria.
@@ -530,14 +530,209 @@ function syncRequirementCheckboxes(cwd, requirementIds) {
   return { updated: checked > 0, checked, total: requirementIds.length };
 }
 
+// ─── Phase slice (memory optimisation O2) ────────────────────────────────────
+//
+// What work on ONE phase needs from roadmap.md and requirements.md: a one-line
+// index of every phase, this phase's section, the goals of the phases it depends
+// on, and the requirement lines it names. The planner, the plan checker, the
+// researcher, the executors (through the plan's <context>) and the verifier read
+// this instead of the whole files. Measured on the field installs (2026-10-04):
+// 89–98% smaller; a 54-phase project went from ~146k tokens to ~3k, and those
+// whole files had been re-read on every turn of every spawn that listed them.
+
+const ROADMAP_SLICE_SUFFIX = '-roadmap-slice.md';
+
+/** Phase numbers compare without zero padding: "03" and "3" are one phase. */
+const unpadPhase = (n) => String(n).trim().replace(/^0+(?=\d)/, '');
+
+/**
+ * Requirement ids on a phase section's `**Requirements**:` line. Taken by shape,
+ * not by splitting on commas: field roadmaps write prose there ("none of its own;
+ * pulled forward from Phase 45 (`CI-01`)…", "seeding (replace …), TEST-01 (…)").
+ * An id is a `CAT-01`-style token anywhere on the line, or a comma-separated item
+ * that is a single token carrying a digit (`R1`, `REQ001`).
+ */
+function phaseRequirementIds(section) {
+  const m = String(section || '').match(/^\*\*Requirements\*\*:[^\S\n]*([^\n]*)$/m)
+    || String(section || '').match(/^\*\*Requirements:\*\*[^\S\n]*([^\n]*)$/m);
+  if (!m) return [];
+  const line = m[1].replace(/[[\]`]/g, ' ');
+  const shaped = line.match(/\b[A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+[A-Za-z]?\b/g) || [];
+  const tokens = line.split(',').map(s => s.trim()).filter(s => /^[A-Za-z][A-Za-z0-9._-]*\d[A-Za-z0-9._-]*$/.test(s));
+  return [...new Set([...shaped, ...tokens])];
+}
+
+/** Phase numbers on a section's `**Depends on**:` line ("Phase 2, Phase 2.1" → ['2', '2.1']). */
+function phaseDependencies(section) {
+  const m = String(section || '').match(/(?:\*\*Depends on:\*\*|\*\*Depends on\*\*:)\s*([^\n]+)/i);
+  if (!m) return [];
+  return [...new Set([...m[1].matchAll(/\bPhase\s+(\d+[A-Z]?(?:\.\d+)*)/gi)].map(x => unpadPhase(x[1])))];
+}
+
+/** A phase's section in roadmap.md content, or null. Mirrors getRoadmapPhaseInternal. */
+function roadmapPhaseSection(content, phaseNum) {
+  const escaped = escapeRegex(unpadPhase(phaseNum));
+  const header = content.match(new RegExp(`#{2,4}\\s*Phase\\s+0*${escaped}:\\s*([^\\n]+)`, 'i'));
+  if (!header) return null;
+  const rest = content.slice(header.index);
+  const next = rest.match(/\n#{2,4}\s+Phase\s+\d/i);
+  const section = content.slice(header.index, next ? header.index + next.index : content.length).trim();
+  return { name: header[1].trim(), section };
+}
+
+/** Lines of requirements.md that name one of `ids`, each with its indented continuation. */
+function requirementLines(requirements, ids) {
+  const lines = String(requirements || '').split('\n');
+  const pick = new Set();
+  const found = new Set();
+  const patterns = ids.map(id => ({ id, re: new RegExp(`(^|[^A-Za-z0-9_-])${escapeRegex(id)}(?![A-Za-z0-9_-])`) }));
+  lines.forEach((line, i) => {
+    const hits = patterns.filter(p => p.re.test(line));
+    if (!hits.length) return;
+    for (const h of hits) found.add(h.id);
+    pick.add(i);
+    // A list item keeps its detail: the lines after it indented deeper than it.
+    if (/^\s*[-*]\s/.test(line)) {
+      const indent = line.length - line.trimStart().length;
+      for (let j = i + 1; j < lines.length; j++) {
+        const l = lines[j];
+        if (!l.trim() || l.length - l.trimStart().length <= indent) break;
+        pick.add(j);
+      }
+    }
+  });
+  // A picked table row keeps its table's header and separator, so it still reads as a table.
+  for (const i of [...pick]) {
+    if (!/^\s*\|/.test(lines[i])) continue;
+    let top = i;
+    while (top > 0 && /^\s*\|/.test(lines[top - 1])) top--;
+    if (top < i) pick.add(top);
+    if (top + 1 < i && /^\s*\|[\s:|-]+\|\s*$/.test(lines[top + 1])) pick.add(top + 1);
+  }
+  return { lines: [...pick].sort((a, b) => a - b).map(i => lines[i]), missing: ids.filter(id => !found.has(id)) };
+}
+
+/**
+ * Pure: the slice of `roadmap` and `requirements` for one phase.
+ * @param {{roadmap: string, requirements: string|null, phase: string, planningRel?: string}} args
+ * @returns {{found: boolean, phase_number: string, phase_name?: string, content?: string,
+ *   requirement_ids?: string[], missing_requirement_ids?: string[], depends_on?: string[],
+ *   tokens?: number, whole_tokens?: number}}
+ */
+function buildRoadmapSlice({ roadmap, requirements, phase, planningRel = '.planning' }) {
+  const rm = toLf(roadmap);
+  const req = requirements == null ? null : toLf(requirements);
+  const target = roadmapPhaseSection(rm, phase);
+  if (!target) return { found: false, phase_number: String(phase) };
+
+  const num = unpadPhase(phase);
+  const phases = enumerateRoadmapPhases(rm);
+  // Any one-character box: roadmaps mark work in flight `[~]` or `[-]` as well as `[ ]` / `[x]`.
+  const checklist = rm.split('\n').filter(l => /^\s*-\s*\[[^\]]\]\s*\*\*Phase\s+\d/i.test(l)).map(l => l.trim());
+  const thisLine = new RegExp(`\\*\\*Phase\\s+0*${escapeRegex(num)}\\s*:`, 'i');
+  const index = (checklist.length ? checklist : phases.map(p => `- Phase ${p.number}: ${p.name}`))
+    .map(l => (thisLine.test(l) || new RegExp(`^- Phase 0*${escapeRegex(num)}:`).test(l) ? `${l}  ← this phase` : l));
+
+  const deps = phaseDependencies(target.section);
+  const depLines = deps.map(d => {
+    const p = phases.find(x => unpadPhase(x.number) === d);
+    return p ? `- **Phase ${p.number}: ${p.name}** — ${p.goal || 'no goal line in roadmap.md'}` : `- **Phase ${d}** — not found in roadmap.md`;
+  });
+
+  const ids = phaseRequirementIds(target.section);
+  let reqBody;
+  let missing = [];
+  if (req == null) reqBody = `_There is no \`${planningRel}/requirements.md\`._`;
+  else if (!ids.length) reqBody = '_The roadmap names no requirement ids for this phase._';
+  else {
+    const r = requirementLines(req, ids);
+    missing = r.missing;
+    reqBody = (r.lines.length ? r.lines.join('\n') : '') + (missing.length ? `${r.lines.length ? '\n\n' : ''}_Not found in requirements.md: ${missing.join(', ')}._` : '');
+  }
+
+  const content = [
+    `# Roadmap slice — Phase ${num}: ${target.name}`,
+    '',
+    `Generated by \`pan-tools roadmap slice ${num}\` from \`${planningRel}/roadmap.md\` and \`${planningRel}/requirements.md\`. It holds what work on this phase needs from those files; read the whole files only for something it leaves out.`,
+    '',
+    '## Every phase',
+    '',
+    ...index,
+    '',
+    '## This phase',
+    '',
+    target.section,
+    '',
+    '## Phases it depends on',
+    '',
+    ...(depLines.length ? depLines : ['_None._']),
+    '',
+    '## Its requirements',
+    '',
+    reqBody,
+    '',
+  ].join('\n');
+
+  return {
+    found: true,
+    phase_number: num,
+    phase_name: target.name,
+    requirement_ids: ids,
+    missing_requirement_ids: missing,
+    depends_on: deps,
+    content,
+    tokens: Math.ceil(content.length / 4),
+    whole_tokens: Math.ceil((rm.length + (req || '').length) / 4),
+  };
+}
+
+/**
+ * `roadmap slice <phase> [--write]` — the phase's slice; `--write` puts it at
+ * `<phase dir>/<NN>-roadmap-slice.md` (the path the plan template's <context> names)
+ * and prints the path and sizes.
+ */
+function cmdRoadmapSlice(cwd, phase, opts, raw) {
+  const roadmap = safeReadFile(path.join(planningPath(cwd), ROADMAP_FILE));
+  if (roadmap == null) { output({ found: false, error: 'roadmap.md not found' }, raw, ''); return; }
+  const requirements = safeReadFile(path.join(planningPath(cwd), REQUIREMENTS_FILE));
+  const slice = buildRoadmapSlice({ roadmap, requirements, phase, planningRel: planningRel() });
+  if (!slice.found) { output(slice, raw, ''); return; }
+  const summary = {
+    found: true, phase_number: slice.phase_number, phase_name: slice.phase_name,
+    requirement_ids: slice.requirement_ids, missing_requirement_ids: slice.missing_requirement_ids,
+    depends_on: slice.depends_on, tokens: slice.tokens, whole_tokens: slice.whole_tokens,
+    smaller_pct: slice.whole_tokens ? Math.round(100 * (1 - slice.tokens / slice.whole_tokens)) : 0,
+  };
+  if (!opts || !opts.write) { output({ ...summary, content: slice.content }, raw, slice.content); return; }
+
+  const dir = findPhaseInternal(cwd, phase);
+  if (!dir || !dir.directory) {
+    output({ ...summary, written: false, reason: 'no phase directory yet — create it first, or read the whole files' }, raw, '');
+    return;
+  }
+  const rel = `${dir.directory}/${normalizePhaseName(phase)}${ROADMAP_SLICE_SUFFIX}`;
+  const abs = path.join(cwd, rel);
+  // Same bytes in the file's own line ending, and no write when nothing changed,
+  // so regenerating at each workflow start leaves git alone.
+  const existing = safeReadFile(abs);
+  const next = withEol(slice.content, existing == null ? '\n' : dominantEol(existing));
+  if (existing !== next) fs.writeFileSync(abs, next, 'utf-8');
+  output({ ...summary, written: true, changed: existing !== next, path: rel }, raw, rel);
+}
+
 module.exports = {
   cmdRoadmapGetPhase,
   cmdRoadmapAnalyze,
   cmdRoadmapUpdatePlanProgress,
+  cmdRoadmapSlice,
   syncRequirementCheckboxes,
   // Exported for testability
   enumerateRoadmapPhases,
   enrichPhaseWithDiskStatus,
   extractMilestones,
   computeRoadmapStats,
+  buildRoadmapSlice,
+  phaseRequirementIds,
+  phaseDependencies,
+  ROADMAP_SLICE_SUFFIX,
 };

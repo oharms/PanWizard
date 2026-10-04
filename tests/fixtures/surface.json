@@ -187,6 +187,7 @@
     "review-deep merge",
     "roadmap analyze",
     "roadmap get-phase",
+    "roadmap slice",
     "roadmap update-plan-progress",
     "skills align",
     "skills index",

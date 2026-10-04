@@ -36,6 +36,9 @@ If exists: Offer update/view/skip options.
 ```bash
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE}")
 # Extract: phase_dir, padded_phase, phase_number, state_path, requirements_path, context_path
+
+# This phase's roadmap and requirements, written into the phase directory
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${PHASE}" --write --raw)
 ```
 
 ## Step 4: Spawn Researcher
@@ -48,7 +51,7 @@ Research implementation approach for Phase {phase}: {name}
 
 <files_to_read>
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
-- {requirements_path} (Project requirements)
+- {slice_path} (This phase's roadmap and requirements; if SLICE_PATH is empty, {requirements_path} instead)
 - {state_path} (Project decisions and history)
 </files_to_read>
 

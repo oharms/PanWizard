@@ -20,6 +20,15 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
 
   All of them now parse on LF and write back in the file's own ending, through `toLf`, `dominantEol` and `withEol` in `core.cjs`. `tests/crlf-parity.test.cjs` runs every planning-file parser on LF and CRLF copies of the same fixtures.
 
+### Changed
+
+- **Agents read one phase's slice of the roadmap and requirements, not the whole files (O2).**
+  - **The problem:** plan-phase handed the planner and plan checker the whole `roadmap.md` and `requirements.md`, and the researcher the whole `requirements.md`. Every plan's `<context>` also named the whole roadmap, so each executor read it too. Those files are re-read on every turn of every such spawn, and the roadmap is what grows in a long project.
+  - **The slice:** the new `pan-tools roadmap slice <phase> [--write]` writes `<phase dir>/<NN>-roadmap-slice.md`. It holds a line for every phase, this phase's section, the goals of the phases it depends on, and the requirement lines it names.
+  - **Who reads it:** plan-phase, research-phase and exec-phase write the slice, and those agents read it instead. The plan template names it in `<context>`, and an executor given an older plan reads the slice in place of the whole roadmap. The planner no longer prints the roadmap to find its phase, and it edits only its phase's section.
+  - **Measured on field projects:** the slice is 75–98% smaller than the two files. A 54-phase project went from ~144k tokens to ~3.4k.
+  - **Requirement ids are read by shape** (`CAT-01`), so a `**Requirements**:` line written as prose yields its ids instead of being taken for one.
+
 ## [3.33.0] - 2026-10-03
 
 The second `/market-ideas` run (`2026-10-03`, queue `docs/specs/market-ideas-2026-10.md`, items M19–M34). Peers shipped fixes for gaps PAN had: a skipped test gate counted as a pass, auto mode took a decision's first option, free text broke planning tables, and dependents of a failed plan ran anyway. It also fixes what Claude Code 2.1.288 surfaced: PAN's MCP tools were invisible on the `2026-07-28` protocol, and Claude Code's prompt audit found paths, flags and tool grants in PAN's own prompts that could not work.

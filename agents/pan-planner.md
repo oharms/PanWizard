@@ -460,7 +460,7 @@ Output: [Artifacts created]
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/XX-name/{phase}-roadmap-slice.md
 @.planning/state.md
 
 # Only reference prior plan SUMMARYs if genuinely needed
@@ -608,10 +608,10 @@ Only include what Claude literally cannot do.
 ## The Process
 
 **Step 0: Extract Requirement IDs**
-Read roadmap.md `**Requirements:**` line for this phase. Strip brackets if present (e.g., `[AUTH-01, AUTH-02]` → `AUTH-01, AUTH-02`). Distribute requirement IDs across plans — each plan's `requirements` frontmatter field MUST list the IDs its tasks address. **CRITICAL:** Every requirement ID MUST appear in at least one plan. Plans with an empty `requirements` field are invalid.
+Read the `**Requirements:**` line in this phase's section of your roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`). Strip brackets if present (e.g., `[AUTH-01, AUTH-02]` → `AUTH-01, AUTH-02`). Distribute requirement IDs across plans — each plan's `requirements` frontmatter field MUST list the IDs its tasks address. **CRITICAL:** Every requirement ID MUST appear in at least one plan. Plans with an empty `requirements` field are invalid.
 
 **Step 1: State the Goal**
-Take phase goal from roadmap.md. Must be outcome-shaped, not task-shaped.
+Take the phase goal from the same section of the slice. Must be outcome-shaped, not task-shaped.
 - Good: "Working chat interface" (outcome)
 - Bad: "Build chat components" (task)
 
@@ -1030,12 +1030,12 @@ If exists, load relevant documents by phase type:
 </step>
 
 <step name="identify_phase">
+The phase to plan is in your prompt, and its roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`) lists every phase in one line each. Do not read the whole roadmap.md: on a long project it is the largest file in `.planning/`, and the slice holds what planning this phase needs from it.
 ```bash
-cat .planning/roadmap.md
 ls .planning/phases/
 ```
 
-If multiple phases available, ask which to plan. If obvious (first incomplete), proceed.
+If no phase was given and several are open, ask which to plan. If obvious (first incomplete), proceed.
 
 Read existing plan.md or discovery.md in phase directory.
 
@@ -1223,8 +1223,8 @@ Returns JSON: `{ valid, errors, warnings, task_count, tasks }`
 <step name="update_roadmap">
 Update roadmap.md to finalize phase placeholders:
 
-1. Read `.planning/roadmap.md`
-2. Find phase entry (`### Phase {N}:`)
+1. Find this phase's heading line (`### Phase {N}:`) with a search, then read only that section — from the heading to the next `Phase` heading — not the whole file
+2. Edit inside that section
 3. Update placeholders:
 
 **Goal** (only if placeholder):
@@ -1246,7 +1246,7 @@ Plans:
 
 <step name="git_commit">
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs($PHASE): create phase plan" --files .planning/phases/$PHASE-*/$PHASE-*-plan.md .planning/roadmap.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs($PHASE): create phase plan" --files .planning/phases/$PHASE-*/$PHASE-*-plan.md .planning/phases/$PHASE-*/$PHASE-roadmap-slice.md .planning/roadmap.md
 ```
 </step>
 

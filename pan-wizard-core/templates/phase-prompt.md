@@ -46,7 +46,7 @@ Output: [What artifacts will be created]
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/XX-name/{phase}-roadmap-slice.md
 @.planning/state.md
 
 # Only reference prior plan SUMMARYs if genuinely needed:
@@ -210,7 +210,7 @@ Wave 3 runs after Waves 1 and 2. Pauses at checkpoint, orchestrator presents to 
 ```markdown
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/XX-name/{phase}-roadmap-slice.md
 @.planning/state.md
 
 # Only include SUMMARY refs if genuinely needed:
@@ -317,7 +317,7 @@ Output: User model, API endpoints, and UI components.
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/03-features/03-roadmap-slice.md
 @.planning/state.md
 </context>
 
@@ -382,7 +382,7 @@ Output: Working dashboard component.
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/03-features/03-roadmap-slice.md
 @.planning/phases/03-features/03-01-summary.md
 @.planning/phases/03-features/03-02-summary.md
 </context>

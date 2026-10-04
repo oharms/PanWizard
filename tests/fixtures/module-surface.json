@@ -767,13 +767,18 @@
     "writeDeepReview:function"
   ],
   "roadmap.cjs": [
+    "ROADMAP_SLICE_SUFFIX:string",
+    "buildRoadmapSlice:function",
     "cmdRoadmapAnalyze:function",
     "cmdRoadmapGetPhase:function",
+    "cmdRoadmapSlice:function",
     "cmdRoadmapUpdatePlanProgress:function",
     "computeRoadmapStats:function",
     "enrichPhaseWithDiskStatus:function",
     "enumerateRoadmapPhases:function",
     "extractMilestones:function",
+    "phaseDependencies:function",
+    "phaseRequirementIds:function",
     "syncRequirementCheckboxes:function"
   ],
   "runner.cjs": [

@@ -49,6 +49,11 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace init \
   --command "exec-phase" \
   --phase "${PHASE_ARG}" 2>/dev/null || true
 ```
+
+**The phase's roadmap slice** — what executing this phase needs from roadmap.md and requirements.md (a line per phase, this phase's section, its dependencies' goals, its requirement lines). Plans name it in their `<context>`; this writes it for plans made before it existed:
+```bash
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${phase_number}" --write --raw)
+```
 </step>
 
 <step name="handle_branching">
@@ -196,6 +201,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        - ./CLAUDE.md (Project instructions, if exists — follow project-specific guidelines and coding conventions)
        - .agents/skills/ (Project skills, if exists — list skills, read SKILL.md for each, follow relevant rules during implementation)
        </files_to_read>
+
+       If the plan's `<context>` names `@.planning/roadmap.md`, read `{slice_path}` in its place: it carries this phase's section, its dependencies' goals and its requirements, and the whole roadmap is the largest file in `.planning/` on a long project. Open the whole file only for something the slice leaves out.
 
        <project_memory>
        {MEMORY_RULES — insert condensed content of all .planning/memory/*.md files read in load_phase_memory step. If no memory files exist, omit this block entirely.}
