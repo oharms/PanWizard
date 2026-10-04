@@ -823,3 +823,56 @@ describe('memory-lesson-chain and its control (O6)', () => {
     } finally { cleanup(ws); }
   });
 });
+
+describe('resume-cost: what a fresh session told "continue" spends to finish (O11)', () => {
+  const { spawnSync } = require('child_process');
+  const seedScript = path.join(ROOT, 'harness', 'scripts', 'seed-midphase.cjs');
+  const costScript = path.join(ROOT, 'harness', 'scripts', 'resume-cost.cjs');
+  const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'resume-cost');
+  const gate = s.steps.find((st) => st.script === 'resume-cost.cjs');
+
+  test('the seed stops halfway: 01-01 done and recorded, 01-02 next', () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-midphase-'));
+    try {
+      fs.cpSync(path.join(ROOT, 'harness', 'seeds', 'two-plan-phase'), ws, { recursive: true });
+      const r = spawnSync(process.execPath, [seedScript, ws], { encoding: 'utf8' });
+      assert.equal(r.status, 0, r.stdout);
+      const state = fs.readFileSync(path.join(ws, '.planning', 'state.md'), 'utf8');
+      assert.match(state, /\*\*Current Plan:\*\* 02/);
+      assert.match(state, /\*\*Stopped At:\*\* Completed 01-01-plan\.md; 01-02-plan\.md .* is next/);
+      assert.ok(fs.existsSync(path.join(ws, '.planning', 'phases', '01-greetings', '01-01-summary.md')));
+      assert.equal(fs.existsSync(path.join(ws, '.planning', 'phases', '01-greetings', '01-02-summary.md')), false);
+      assert.equal(JSON.parse(runPanTools('phase-plan-index 1', ws).output).plans.find((p) => p.id === '01-01').has_summary, true);
+    } finally { cleanup(ws); }
+  });
+
+  function runLayout({ saved = true, finished = true } = {}) {
+    const run = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-resume-run-'));
+    const ws = path.join(run, 'ws', 'resume-cost-1');
+    fs.mkdirSync(path.join(ws, '.planning', 'phases', '01-greetings'), { recursive: true });
+    fs.mkdirSync(path.join(ws, 'src'), { recursive: true });
+    if (finished) {
+      fs.writeFileSync(path.join(ws, '.planning', 'phases', '01-greetings', '01-02-summary.md'), '# s\n');
+      fs.writeFileSync(path.join(ws, 'src', 'farewell.js'), '\n');
+    }
+    fs.mkdirSync(path.join(run, 'steps'), { recursive: true });
+    if (saved) fs.writeFileSync(path.join(run, 'steps', 'resume-cost-1-1.json'), JSON.stringify({ num_turns: 14, total_cost_usd: 1.23456, duration_ms: 90000 }));
+    const r = spawnSync(process.execPath, [costScript, ws, '1'], { encoding: 'utf8' });
+    return { r, done: () => cleanup(run) };
+  }
+  const verdict = (r) => check(gate.expect, { code: r.status, stdout: r.stdout, stderr: '' }, os.tmpdir());
+
+  test('a finished resume passes the gate with its turns and cost; an unfinished or unmeasured one fails it', () => {
+    const good = runLayout();
+    const unfinished = runLayout({ finished: false });
+    const unmeasured = runLayout({ saved: false });
+    try {
+      assert.deepEqual(verdict(good.r), [], good.r.stdout);
+      const j = JSON.parse(good.r.stdout);
+      assert.deepEqual([j.turns, j.cost_usd, j.duration_ms], [14, 1.235, 90000]);
+      assert.notDeepEqual(verdict(unfinished.r), []);
+      assert.equal(unmeasured.r.status, 1, 'no saved output is no measurement');
+      assert.notDeepEqual(verdict(unmeasured.r), []);
+    } finally { good.done(); unfinished.done(); unmeasured.done(); }
+  });
+});
