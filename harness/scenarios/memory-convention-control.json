@@ -1,0 +1,95 @@
+{
+  "id": "memory-convention-control",
+  "tier": 2,
+  "description": "The control for memory-convention-chain: the same seed and fix round, then .planning/memory/ is removed before phase 2 runs. Reports whether phase 2 lists its test in test/manifest.json anyway.",
+  "why": "Memory optimisation O6. Without a control, phase 2 listing its test could be the model reading the manifest or imitating the fix round, not the lesson. Everything here matches the chain except that no lesson can reach phase 2.",
+  "seed": "lesson-convention",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 10,
+    "maxMinutes": 60,
+    "maxStepMinutes": 40
+  },
+  "steps": [
+    {
+      "kind": "pan",
+      "argv": [
+        "findings",
+        "record",
+        "--phase",
+        "1",
+        "--file",
+        ".planning/phases/01-greet/01-verification.md"
+      ],
+      "expect": [
+        "exit:0",
+        "json:recorded=true",
+        "json:findings=1"
+      ],
+      "why": "Same starting ledger as the chain."
+    },
+    {
+      "kind": "model",
+      "prompt": "/pan:exec-phase 1 --gaps-only --skip-tests",
+      "expect": [
+        "exit:0",
+        "file:.planning/phases/01-greet/01-02-summary.md"
+      ],
+      "why": "Same fix round as the chain."
+    },
+    {
+      "kind": "sh",
+      "script": "drop-memory.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:dropped=true"
+      ],
+      "why": "The one difference: no memory reaches phase 2."
+    },
+    {
+      "kind": "model",
+      "prompt": "/pan:exec-phase 2 --skip-tests",
+      "persistSession": true,
+      "expect": [
+        "exit:0",
+        "file:tests/farewell.test.js"
+      ],
+      "why": "The next phase, without the lesson."
+    },
+    {
+      "kind": "sh",
+      "script": "convention-check.cjs",
+      "args": [
+        "<ws>",
+        "effect"
+      ],
+      "expect": [
+        "exit:0",
+        "json:lesson_injected=false",
+        "json:effect.manifest",
+        "json:problems"
+      ],
+      "why": "No lesson was injected; `effect.listed` here is the base rate the chain is compared with."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Working code: the seed's tests pass after both phases."
+    }
+  ]
+}

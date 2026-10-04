@@ -877,3 +877,67 @@ describe('resume-cost: what a fresh session told "continue" spends to finish (O1
     } finally { good.done(); unfinished.done(); unmeasured.done(); }
   });
 });
+
+describe('memory-convention-chain and its control: the O6 effect experiment', () => {
+  const chk = path.join(ROOT, 'harness', 'scripts', 'convention-check.cjs');
+  const { projectDir } = require(path.join(ROOT, 'harness', 'scripts', 'context-reads.cjs'));
+  const { spawnSync } = require('child_process');
+  const scenarios = loadScenarios(path.join(ROOT, 'harness', 'scenarios'));
+  const effectStep = (id) => scenarios.find((x) => x.id === id).steps.find((st) => st.script === 'convention-check.cjs' && st.args[1] === 'effect');
+  const LESSON = 'List every new test file in test/manifest.json; npm test runs only the files listed there';
+  const spawn = (prompt) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Agent', input: { subagent_type: 'pan-executor', prompt } }] } });
+
+  function workspace({ lesson = true, injected = true, listedFarewell = true } = {}) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-conv-home-'));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-conv-ws-'));
+    fs.mkdirSync(path.join(ws, '.planning', 'memory'), { recursive: true });
+    fs.mkdirSync(path.join(ws, 'tests'), { recursive: true });
+    fs.mkdirSync(path.join(ws, 'test'), { recursive: true });
+    if (lesson) fs.writeFileSync(path.join(ws, '.planning', 'memory', 'pan-executor.md'), `## Entries\n\n- 2026-10-04: ${LESSON} <!-- cites: scripts/test.cjs; evidence: finding:f_0123456789 -->\n`);
+    fs.writeFileSync(path.join(ws, 'tests', 'farewell.test.js'), '\n');
+    fs.writeFileSync(path.join(ws, 'test', 'manifest.json'), JSON.stringify({ files: ['tests/smoke.test.js', 'tests/greet.test.js', ...(listedFarewell ? ['tests/farewell.test.js'] : [])] }));
+    fs.mkdirSync(projectDir(ws, home), { recursive: true });
+    fs.writeFileSync(path.join(projectDir(ws, home), 's.jsonl'), spawn(`Execute plan 02-01 (farewell).${injected ? `\n<project_memory>\n- ${LESSON}\n</project_memory>` : ''}`) + '\n');
+    const run = (stage) => spawnSync(process.execPath, [chk, ws, stage], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
+    return { ws, run, done: () => { cleanup(home); cleanup(ws); } };
+  }
+  const verdict = (st, r) => check(st.expect, { code: r.status, stdout: r.stdout, stderr: '' }, os.tmpdir());
+
+  test('the chain step passes when the lesson was injected and reports whether phase 2 listed its test', () => {
+    const good = workspace();
+    const notListed = workspace({ listedFarewell: false });
+    const notInjected = workspace({ injected: false });
+    try {
+      assert.deepEqual(verdict(effectStep('memory-convention-chain'), good.run('effect')), []);
+      assert.equal(JSON.parse(good.run('effect').stdout).effect.listed, true);
+      assert.deepEqual(verdict(effectStep('memory-convention-chain'), notListed.run('effect')), [], 'the effect is reported, not asserted');
+      assert.equal(JSON.parse(notListed.run('effect').stdout).effect.listed, false);
+      assert.notDeepEqual(verdict(effectStep('memory-convention-chain'), notInjected.run('effect')), []);
+    } finally { good.done(); notListed.done(); notInjected.done(); }
+  });
+
+  test('the control passes only with no lesson in phase 2', () => {
+    const control = workspace({ lesson: false, injected: false, listedFarewell: false });
+    const leaked = workspace();
+    try {
+      assert.deepEqual(verdict(effectStep('memory-convention-control'), control.run('effect')), []);
+      assert.notDeepEqual(verdict(effectStep('memory-convention-control'), leaked.run('effect')), []);
+    } finally { control.done(); leaked.done(); }
+  });
+
+  test('the seed: npm test runs only the listed files, greet\'s test is not listed, and the gap is recordable', () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-conv-seed-'));
+    try {
+      fs.cpSync(path.join(ROOT, 'harness', 'seeds', 'lesson-convention'), ws, { recursive: true });
+      const manifest = JSON.parse(fs.readFileSync(path.join(ws, 'test', 'manifest.json'), 'utf8')).files;
+      assert.deepEqual(manifest, ['tests/smoke.test.js'], 'greet\'s test exists but is not listed: the seeded failure');
+      assert.ok(fs.existsSync(path.join(ws, 'tests', 'greet.test.js')));
+      const t = spawnSync(process.execPath, [path.join(ws, 'scripts', 'test.cjs')], { cwd: ws, encoding: 'utf8' });
+      assert.equal(t.status, 0, t.stdout + t.stderr);
+      assert.match(t.stdout, /running 1 test file\(s\) from test\/manifest\.json/);
+      const r = JSON.parse(runPanTools('findings record --phase 1 --file .planning/phases/01-greet/01-verification.md', ws).output);
+      assert.equal(r.recorded, true, JSON.stringify(r));
+      assert.equal(r.findings, 1);
+    } finally { cleanup(ws); }
+  });
+});

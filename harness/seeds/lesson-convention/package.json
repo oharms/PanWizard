@@ -1,0 +1,9 @@
+{
+  "name": "lesson-convention-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PAN Harness seed for the memory effect experiment: npm test runs only the test files test/manifest.json lists.",
+  "scripts": {
+    "test": "node scripts/test.cjs"
+  }
+}
