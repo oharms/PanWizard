@@ -545,7 +545,7 @@ PAN runs autonomous experiments in isolated folders, harvests the resulting tele
 
 - `learnings/universal/<topic>.md` — patterns that ship to every install (atomic-state, concurrency, idempotency, secret-handling, test-patterns, …). Loaded by planner / executor / verifier agents during their work.
 - `learnings/internal/<topic>.md` — PAN-development patterns; source-only (stripped at install).
-- `learnings/index.json` — topic→agent-relevance map. Workflows call `pan-tools learn topics-for --agent <role> --token-budget N` to load only relevant patterns instead of skim-everything (avoids the distractor-density anti-pattern).
+- `learnings/index.json` — topic→agent-relevance map. Workflows call `pan-tools learn topics-for --agent <role> --cue "<the task>" --token-budget N` to load only the topics that match the task (falling back to the role's tagged topics when none does) instead of skim-everything (avoids the distractor-density anti-pattern).
 - `pan-tools learn lint` — integrity check (duplicate IDs, dangling refs, scope leaks). Wired into `/check`.
 
 ### Atomic Git Commits
@@ -660,7 +660,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:debug [desc]` | Systematic debugging with persistent state |
 | `/pan:quick [--full]` | Execute ad-hoc task with PAN guarantees (`--full` adds plan-checking and verification) |
 | `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` fixes the issues it marks repairable |
-| `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs); `--apply` executes the safe fixes — poisoned ledgers are quarantined by rename (only the newest quarantine copy is kept), and settled `state.md` history is archived rather than dropped |
+| `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat and stale or expired memory entries, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs) and Claude Code's own memory index (reported, never edited); `--apply` executes the safe fixes — poisoned ledgers are quarantined by rename (only the newest quarantine copy is kept), and settled `state.md` history, shipped roadmap phases and stale memory entries are archived rather than dropped |
 | `/pan:links [--strict]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027) |
 | `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase based on UAT criteria |
 | `/pan:milestone-cleanup` | Archive accumulated phase directories from completed milestones |

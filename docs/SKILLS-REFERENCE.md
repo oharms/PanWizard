@@ -528,7 +528,7 @@ Resume work from previous session with full context restoration
 | `/pan:debug` | Read, Bash, Task, AskUserQuestion | Systematic debugging with persistent state across context resets |
 | `/pan:health` | Read, Bash, Write, AskUserQuestion | Diagnose planning directory health and optionally repair issues |
 | `/pan:help` | *(none)* | Show available PAN commands and usage guide |
-| `/pan:hygiene` | Read, Bash, AskUserQuestion | Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat, poisoned ledgers, trace debris) and apply safe cleanups |
+| `/pan:hygiene` | Read, Bash, AskUserQuestion | Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat and stale entries, poisoned ledgers, trace debris, oversized planning files) and apply safe cleanups |
 | `/pan:patches` | Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion | Reapply local modifications after a PAN update |
 | `/pan:settings` | Read, Write, Bash, AskUserQuestion | Configure PAN workflow toggles and model profile |
 | `/pan:todo-add` | Read, Write, Bash, AskUserQuestion | Capture idea or task as todo from current conversation context |
@@ -585,7 +585,7 @@ Show available PAN commands and usage guide
 
 #### /pan:hygiene
 
-Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat, poisoned ledgers, trace debris) and apply safe cleanups
+Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat and stale entries, poisoned ledgers, trace debris, oversized planning files) and apply safe cleanups
 
 ```
 /pan:hygiene [--apply] [--trace-age-days N] [--all-tracks] [--track <name>]
@@ -593,7 +593,7 @@ Scan the project for PAN version drift and stale artifacts (legacy filenames, me
 
 **Tools:** Read, Bash, AskUserQuestion  
 **Group:** System  
-**Lines:** 75
+**Lines:** 82
 
 #### /pan:patches
 

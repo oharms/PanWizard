@@ -1,7 +1,7 @@
 ---
 name: pan:hygiene
 group: System
-description: Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat, poisoned ledgers, trace debris) and apply safe cleanups
+description: Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat and stale entries, poisoned ledgers, trace debris, oversized planning files) and apply safe cleanups
 argument-hint: "[--apply] [--trace-age-days N] [--all-tracks] [--track <name>]"
 allowed-tools:
   - Read
@@ -9,7 +9,14 @@ allowed-tools:
   - AskUserQuestion
 ---
 <objective>
-Keep a PAN-managed project aligned with the latest PAN version and free of accumulated history debris. Detects: outdated runtime installs (per-runtime manifest version vs latest), legacy uppercase planning filenames, orphaned atomic-write .tmp files, per-agent memory logs past the compaction cap, cost ledgers poisoned by pre-v3.12.4 telemetry, stale optimization trace sessions, and stray fragment `.planning/` directories.
+Keep a PAN-managed project aligned with the latest PAN version and free of accumulated history debris. Detects:
+- outdated runtime installs (per-runtime manifest version vs latest);
+- legacy uppercase planning filenames and orphaned atomic-write .tmp files;
+- per-agent memory logs past the compaction cap (`memory-bloat`), memory entries whose cited code is gone or that went unused past the expiry window (`memory-stale`), and files in `.planning/memory/` that are not read as memory (`memory-format`);
+- planning files every agent call re-reads past their budget (`cache-context`): state.md and roadmap.md, whose settled history can be archived;
+- cost ledgers poisoned by pre-v3.12.4 telemetry, stale optimization trace sessions and reports, and stray fragment `.planning/` directories;
+- a planning tree another tool writes into too (`shared-planning-tree`) or owns (`foreign-planning-tree`);
+- Claude Code's own memory index past or near its load limit, or holding content where a one-line pointer belongs (`host-memory`). PAN only reports this one: it never writes the host's memory.
 </objective>
 
 <process>
@@ -58,11 +65,11 @@ Then ask the user (AskUserQuestion, header "Apply fixes", options: "Apply safe f
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs hygiene clean --all-tracks --apply
 ```
 
-Safe fixes are: lowercase renames of legacy planning filenames, deletion of aged .tmp orphans, memory-log compaction, poisoned-ledger quarantine (rename in place — never deleted), pruning of trace sessions **and optimization reports** past retention (newest 5 of each always kept), and **state.md compaction** (`compact-state`) — settled history is archived to `state-history.md` so it stops being re-read into every agent call. Nothing is deleted by any of these: the ledger is renamed, and state history is written to the archive before state.md is rewritten. Each fix is applied inside its own tree's scope, so a track's debris is cleaned in that track. Pass through `--trace-age-days N` and any `--track <name>` if provided.
+Safe fixes are: lowercase renames of legacy planning filenames, deletion of aged .tmp orphans, memory-log compaction, **memory pruning** (`prune-memory`: stale and expired entries move to `.planning/memory/archive/<agent>.md`), poisoned-ledger quarantine (rename in place — never deleted), pruning of trace sessions **and optimization reports** past retention (newest 5 of each always kept), **state.md compaction** (`compact-state`) — settled history is archived to `state-history.md` so it stops being re-read into every agent call — and **roadmap compaction** (`compact-roadmap`): shipped phases' sections move to `roadmap-history.md`, leaving a stub that `roadmap get-phase` reads back through. None of these deletes anything you wrote: the ledger is renamed, and each archive is written before the file it came from is rewritten. Each fix is applied inside its own tree's scope, so a track's debris is cleaned in that track. Pass through `--trace-age-days N` and any `--track <name>` if provided.
 
 ## 4. Report
 
-Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the per-call token cost it represents — that block is re-read on **every** agent call, so it is the project's largest recurring expense. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.
+Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the per-call token cost it represents — that block is re-read on **every** agent call, so it is the project's largest recurring expense. If a `host-memory` finding appeared, name the index and the lines it flags so the user can tidy them: Claude Code loads only the head of that index, and PAN never edits it. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.
 
 </process>
 

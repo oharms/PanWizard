@@ -101,11 +101,11 @@ Yes. Each task gets its own atomic commit immediately after completion. Commit m
 
 ### What happens when context runs out?
 
-On Claude Code and Copilot CLI (the runtimes where PAN installs the statusline that feeds it), PAN has a built-in context window monitor:
-- At **35% remaining**: WARNING — the agent wraps up current work
-- At **25% remaining**: CRITICAL — the agent saves state via `/pan:pause`
+The host compacts the session on its own before the window fills, and PAN restores the planning position afterwards (on Claude Code, Codex, Gemini CLI and OpenCode). Before that, PAN's context monitor tells the agent compaction is coming. It reads PAN's status line on Claude Code and Copilot CLI, and on Claude Code also the session transcript where no status line runs (headless `claude -p`). It measures the room left before the host compacts, not before the window is full:
+- At **35% of that room left**: a note asking for a checkpoint in `.planning/state.md` at the next natural stopping point
+- At **25% left**: the same, before the next step
 
-Between sessions, use `/pan:resume` to restore full context.
+The note carries no countdown and asks the agent to keep working at full quality: compaction is safe, because the state is restored afterwards. Between sessions, use `/pan:resume` to restore full context.
 
 ### Can I skip steps in the workflow?
 
@@ -191,7 +191,7 @@ Yes — the other direction. `/pan:mcp-bridge` is PAN as an MCP *client*, discov
 
 ### How does the circular optimization loop work?
 
-`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to write the auto-applicable findings as memory entries. Next session, those memory entries get loaded into executor context (W2 fix), so PAN avoids repeating the same mistakes. `/pan:plan-phase`, `/pan:design-phase`, `/pan:exec-phase` and `/pan:verify-phase` also record each judge's verdict with `pan-tools findings record`, which logs `verdict_passed`, `verdict_failed` or `verdict_needs_human` (and `verdict_retry` after a failed attempt) to the trace, so the optimizer can track real quality signal — not just "tasks completed."
+`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to record its suggestions in `.planning/optimization/suggestions.md`. Each names where it belongs: the project's instructions (`CLAUDE.md` or `AGENTS.md`, outside PAN's section), a test, or the code. Once a person puts it there, the next session's agents read it. PAN's workflows do not load agent memory into agents (ADR-0036, amended `2026-10-04`). `/pan:plan-phase`, `/pan:design-phase`, `/pan:exec-phase` and `/pan:verify-phase` also record each judge's verdict with `pan-tools findings record`, which logs `verdict_passed`, `verdict_failed` or `verdict_needs_human` (and `verdict_retry` after a failed attempt) to the trace, so the optimizer can track real quality signal — not just "tasks completed."
 
 ### What does `/pan:focus-auto --category distill` do?
 

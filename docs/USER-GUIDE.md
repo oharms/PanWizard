@@ -116,7 +116,7 @@ Shows your overall project status and tells you what to do next — plan the nex
 
 PAN emits all of these unconditionally. They pay off in full on Claude Code with a frontier reasoning model (Opus, for example); elsewhere they degrade rather than error, as described below the list:
 
-- **Prompt caching** — project.md, requirements.md, roadmap.md, state.md, standards.md are cached across agent calls in a phase. Expect 40-60% input-token savings on multi-wave execution. Requires a model/runtime that supports prompt caching.
+- **Prompt caching** — the host caches each agent's prompt prefix by itself; nothing PAN runs can mark another agent's prompt for caching. What PAN controls is how much every agent re-reads: phase agents read their phase's roadmap slice instead of the whole roadmap and requirements, and `state compact` and `roadmap compact` keep the always-read planning files small (`/pan:hygiene` flags them when they grow). Requires a model/runtime that supports prompt caching.
 - **Effort-tuned reasoning** — every agent declares an `effort:` level (`AGENT_BASE_EFFORT` in `core.cjs`): the plan and design checkers, planner, designer, debugger and conductor run at `xhigh`, execution, verification, release, the hardener, the roadmapper and the remaining specialists (optimizer, previewer, counterfactual, integration checker, experiment runner) at `high`, research, knowledge, the distiller and the reviewer/meta-reviewer at `medium`, and the mechanical `pan-document_code` pass at `low`. Catches logic gaps earlier where it matters most.
 - **Single-shot map-codebase** — repos that fit the single-shot threshold (≤700K tokens, measured by `pan-tools codebase estimate-size`) map in a single agent instead of several parallel ones. Mode is chosen by repo size alone; holding a repo that large in one pass needs a model with a 1M-context window, so on smaller-context models prefer the sharded path (the command's hard-coded `estimate-size --threshold 700000` call decides the mode; lower that threshold in the command to force `sharded`).
 - **How a lesson reaches the next phase** — through what the phase agents already read: `.planning/state.md` (its decisions), the phase summaries, the code and its tests, and the project's own instructions (`CLAUDE.md` or `AGENTS.md`, outside PAN's section). A lesson that should hold for the rest of the project belongs in those instructions, or in a test that fails when it is broken.
@@ -380,7 +380,7 @@ off by default; turn it on for phases where planning test coverage up front matt
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
 | `/pan:learn` | Analyze the most recent trace session, generate optimization report | After a phase or campaign — "what can PAN learn?" |
-| `/pan:optimize {apply\|revert\|list\|stats\|trace}` | Apply optimizer recommendations, undo an apply, list reports, view stats, manage trace sessions | Persist learnings into memory for future sessions |
+| `/pan:optimize {apply\|revert\|list\|stats\|trace}` | Apply optimizer recommendations, undo an apply, list reports, view stats, manage trace sessions | Record the report's suggestions, each naming where a person should make the fix |
 | `/pan:git <subcommand>` | Phase-aware git workflow with safety guardrails (commit/branch/push/status/log/stash/diff/rollback/tag/sync) | Day-to-day git ops with branch-name conventions and safety checks |
 
 ### Operations (Pre-Flight, Dashboard, Learnings, Dependencies)
@@ -813,7 +813,7 @@ pan-tools learn build-index --raw
 
 - `pan-wizard-core/learnings/universal/` — ships to all 5 runtimes; consumed by user-project workflows. Includes patterns like atomic-state, concurrency, idempotency, secret-handling, test-patterns.
 - `pan-wizard-core/learnings/internal/` — source-only; PAN-development patterns that should NOT leak to user installs.
-- `pan-wizard-core/learnings/index.json` — generated topic→agent-relevance map. Workflows query it via `pan-tools learn topics-for --agent <role> --token-budget N` to load only relevant patterns instead of skim-everything (avoids the distractor-density anti-pattern from external research).
+- `pan-wizard-core/learnings/index.json` — generated topic→agent-relevance map. Workflows query it via `pan-tools learn topics-for --agent <role> --cue "<the task>" --token-budget N` to load only the topics that match the task, falling back to the role's tagged topics when none does, instead of skim-everything (avoids the distractor-density anti-pattern from external research).
 
 The installer (`bin/install.js`) explicitly strips `learnings/internal/` from each install dir. A negative test in `tests/scenarios/learnings-installed.test.cjs` enforces this.
 
@@ -1295,13 +1295,13 @@ Codex and Copilot CLI use a "skills" format rather than slash commands. Each com
 | Hooks: update check, context monitor, cost + trace loggers | Yes | No | Update check only (Gemini has no context metric or subagent event for the others) | Yes | Yes |
 | Statusline (the context bridge the monitor reads) | Yes | No | No (Gemini CLI has no statusline command) | No | Yes |
 | Stop guard (auto-advance boundary) | Yes | No | Yes | Yes | Yes |
-| State re-injection after context compaction | Yes | No | No | Yes | No |
+| State re-injection after context compaction | Yes | Yes (a plugin adds PAN's position to the compaction prompt) | Yes (two steps: `PreCompress` marks, `AfterTool` injects) | Yes | No |
 | Model profiles | Yes | Yes | Yes | Yes | Yes |
 | Wave-based parallel execution | Yes | Depends on runtime | Depends on runtime | Yes | Yes |
 | Hierarchical exec + bot-army campaigns (`/pan:army`) | Yes | No (flat fallback) | No (flat fallback) | No (flat fallback) | No (flat fallback) |
 | `--dangerously-skip-permissions` | Yes | N/A | N/A | N/A | N/A |
 
-Hooks are supported by Claude Code, Gemini CLI, Codex (since June 2026, via `.codex/hooks.json` with Claude-compatible event names), and Copilot CLI. OpenCode does not currently support hooks. On Gemini CLI PAN registers only the update check (`SessionStart`) and the stop guard (`AfterAgent`, Gemini's end-of-turn event): Gemini exposes no context-window usage to hooks and has no subagent-completion event, so the context monitor and the cost and trace loggers do not run there. Two trust gates can keep registered hooks from running: headless Copilot (`copilot -p`) loads repository hooks only in a trusted folder (see [Troubleshooting](TROUBLESHOOTING.md#pans-hooks-do-not-run-under-copilot--p)), and Codex skips a new or changed hook until you trust it in `/hooks` — repeat that after a PAN upgrade that changes the hooks.
+Hooks are supported by Claude Code, Gemini CLI, Codex (since June 2026, via `.codex/hooks.json` with Claude-compatible event names), and Copilot CLI. OpenCode runs no command hooks; instead PAN installs one OpenCode plugin, `.opencode/plugins/pan-wizard.js`, which adds PAN's position to the compaction prompt. On Gemini CLI PAN registers the update check (`SessionStart`), the stop guard (`AfterAgent`, Gemini's end-of-turn event) and the state re-injection's two steps (`PreCompress` and `AfterTool`). Gemini exposes no context-window usage to hooks and has no subagent-completion event, so the context monitor and the cost and trace loggers do not run there. Two trust gates can keep registered hooks from running: headless Copilot (`copilot -p`) loads repository hooks only in a trusted folder (see [Troubleshooting](TROUBLESHOOTING.md#pans-hooks-do-not-run-under-copilot--p)), and Codex skips a new or changed hook until you trust it in `/hooks` — repeat that after a PAN upgrade that changes the hooks.
 
 **Copilot CLI interaction handling:** Copilot CLI has no structured input controls (no checkboxes, radio buttons, or multi-select). PAN Wizard's install-time converter automatically rewrites `AskUserQuestion` blocks into numbered text menus with clear selection instructions. Single-select questions show "Type a number or label to choose", multi-select shows "Type the numbers you want, separated by commas (e.g., 1,3)". This runs transparently during installation — no user configuration needed.
 
@@ -1317,6 +1317,9 @@ For reference, here is what PAN creates in your project:
   requirements.md         # Scoped v1/v2 requirements with IDs
   roadmap.md              # Phase breakdown with status tracking
   state.md                # Decisions, blockers, session memory
+  state-history.md        # Settled state history, archived by state compact
+  roadmap-history.md      # Shipped phases' full sections, archived by roadmap compact
+  memory/                 # Agent memory logs (recorded by hand; no workflow loads them), archive/, quarantine.md
   config.json             # Workflow configuration
   milestones.md           # Index of completed milestones
   milestones/             # Per-version archives (v{version}-roadmap.md, v{version}-requirements.md) from /pan:milestone-done
@@ -1336,6 +1339,7 @@ For reference, here is what PAN creates in your project:
       XX-YY-summary.md    # Execution outcomes and decisions
       XX-context.md       # Your implementation preferences
       XX-research.md      # Ecosystem research findings
+      XX-roadmap-slice.md # This phase's roadmap and requirements lines, read by phase agents
       XX-validation.md    # Test coverage mapping (Nyquist layer)
       XX-verification.md  # Post-execution verification results
       XX-uat.md           # User acceptance testing results
@@ -1352,6 +1356,9 @@ For reference, here is what PAN creates in your project:
 | `requirements.md` | `/pan:new-project` | Scoped requirements (v1/v2/out-of-scope) with unique IDs for traceability. | No limit |
 | `roadmap.md` | `/pan:new-project` | Phase breakdown with status (pending/active/complete). The single source of truth for progress. | No limit |
 | `state.md` | `/pan:new-project` | Decisions made, blockers, cross-session memory. Updated after each phase. | Keep under 200 lines |
+| `state-history.md` | `pan-tools state compact --apply` (or `/pan:hygiene --apply`) | Settled state history moved out of state.md, so it stops being re-read on every agent call. | Append-only archive |
+| `roadmap-history.md` | `pan-tools roadmap compact --apply` (or `/pan:hygiene --apply`) | Shipped phases' full sections; roadmap.md keeps a stub, and `roadmap get-phase` reads the full section back from here. | Append-only archive |
+| `memory/` | `memory append` / `memory record`, `/pan:retro --write-memory`, `memory optimize` | Agent memory logs, their `archive/`, and PAN's archives (`quarantine.md`, `state-archive.md`). No workflow loads them into agents; `/pan:knowledge` reads the logs. | `/pan:hygiene` reports stale entries |
 | `config.json` | `/pan:new-project` | Workflow configuration (mode, depth, profile, toggles). See [Configuration Reference](#configuration-reference). | Auto-managed |
 | `milestones.md` + `milestones/` | `/pan:milestone-done` | Index of completed milestones with dates and summaries, plus the per-version `v{version}-roadmap.md` / `v{version}-requirements.md` archives. | Append-only |
 | `patterns.md` | `appendErrorPattern()` | Error patterns (PAT-NNN) for cross-session learning. | Append-only, auto-increment |
@@ -1360,6 +1367,7 @@ For reference, here is what PAN creates in your project:
 | `codebase/` | `/pan:map-codebase` | Brownfield analysis — the codebase-map documents (`stack.md`, `integrations.md`, `architecture.md`, `structure.md`, `conventions.md`, `testing.md`, `concerns.md`, `relationships.md`, `best-practices.md`). | Read-only after creation |
 | `XX-context.md` | `/pan:discuss-phase` | Your implementation preferences for a phase. Feeds into research and planning. | Keep under 300 lines |
 | `XX-research.md` | `/pan:plan-phase` | Ecosystem research for a phase (libraries, patterns, pitfalls). | Read-only after creation |
+| `XX-roadmap-slice.md` | `/pan:plan-phase`, `/pan:research-phase`, `/pan:exec-phase`, `/pan:verify-phase` | The phase's section of roadmap.md, its dependencies' goals and its requirement lines; the researcher, planner, checker, executors and verifier read it instead of the whole files. | Rewritten when it changes |
 | `XX-YY-plan.md` | `/pan:plan-phase` | Atomic execution plan with XML-structured tasks, verification steps. | 2-3 tasks per plan |
 | `XX-validation.md` | `/pan:plan-phase` | Test coverage mapping — which tests verify which requirements. | Auto-generated |
 | `XX-YY-summary.md` | `/pan:exec-phase` | What was built, files changed, decisions made during execution. | Auto-generated |

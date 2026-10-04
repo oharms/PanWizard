@@ -99,6 +99,19 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - **Safety:** it is inert outside PAN work in flight, never writes, and fails open. It is tracked in the manifest and removed on uninstall, which leaves your own plugins.
   - **Checked on OpenCode `1.18.32` (no model call):** `opencode debug config` lists it, and an instrumented copy showed OpenCode importing the CommonJS module and calling `server()`, which returned the compaction hook.
 
+### Docs
+
+- **A pre-publish pass over every doc these changes touch:**
+  - `/pan:hygiene` (the command and its README row) lists every check and fix the scan runs. That includes the memory, roadmap and host-memory checks above, and two older planning-tree checks it never named.
+  - The FAQ, USER-GUIDE and TROUBLESHOOTING describe the context note as it now works: measured against compaction, no countdown, headless runs covered.
+  - They also describe the optimize loop as suggestions a person applies, not memory that agents load.
+  - The planning-file reference lists `roadmap-history.md`, `state-history.md`, the phase's roadmap slice and `.planning/memory/`.
+  - The CLI reference documents `learn topics-for` with its cue and `learn promote` with `--cites`.
+  - The harness README names the scenarios the docs refer to.
+- **Corrected from `3.33.0`:**
+  - The USER-GUIDE runtime table and ARCHITECTURE said Gemini CLI has no state re-injection after compaction. It has had the two-step one since `3.33.0`: `PreCompress` marks, then `AfterTool` injects.
+  - The USER-GUIDE caching bullet promised savings from the cache-priming step this release removes.
+
 ## [3.33.0] - 2026-10-03
 
 The second `/market-ideas` run (`2026-10-03`, queue `docs/specs/market-ideas-2026-10.md`, items M19–M34). Peers shipped fixes for gaps PAN had: a skipped test gate counted as a pass, auto mode took a decision's first option, free text broke planning tables, and dependents of a failed plan ran anyway. It also fixes what Claude Code 2.1.288 surfaced: PAN's MCP tools were invisible on the `2026-07-28` protocol, and Claude Code's prompt audit found paths, flags and tool grants in PAN's own prompts that could not work.

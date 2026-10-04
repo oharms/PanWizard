@@ -1,6 +1,6 @@
 # pan-tools.cjs CLI Reference
 
-Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Every shipped command and agent ultimately invokes pan-tools for state management, verification, scaffolding, context gathering, prompt-cache priming, cross-phase memory, model-capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree, MCP bridge), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`, `runner`) plus vendored markdown linter (`doc-lint`).
+Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Every shipped command and agent ultimately invokes pan-tools for state management, verification, scaffolding, context gathering, prompt-cache measurement, cross-phase memory, model-capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree, MCP bridge), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`, `runner`) plus vendored markdown linter (`doc-lint`).
 
 ```bash
 node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
@@ -3516,7 +3516,7 @@ pan-tools memory optimize --apply --keep 20
 
 ### `memory rebuild [--apply]`
 
-Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI reads `GEMINI.md` by default and PAN does not point it at `AGENTS.md`), PAN's block in `CLAUDE.md` (only when the Claude runtime is installed): the `@AGENTS.md` import and a `# Compact instructions` section that tells Claude Code's compaction summary what PAN work needs to resume. An older block holding only the import is brought up to date in place. and state.md's YAML frontmatter (re-derived from the body, keeping recorded values the body does not restate; a state.md with more than one front-matter block is reported as `action: "refused"` and left as it is). User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
+Regenerate PAN's *derived* tools-memory as an idempotent projection from source: the marker-fenced PAN section in `AGENTS.md` (read natively by Codex, OpenCode and Copilot CLI; Claude Code reads it through the `CLAUDE.md` bridge below; Gemini CLI reads `GEMINI.md` by default and PAN does not point it at `AGENTS.md`), PAN's block in `CLAUDE.md` (only when the Claude runtime is installed): the `@AGENTS.md` import and a `# Compact instructions` section that tells Claude Code's compaction summary what PAN work needs to resume. An older block holding only the import is brought up to date in place. It also re-derives state.md's YAML frontmatter from the body, keeping recorded values the body does not restate; a state.md with more than one front-matter block is reported as `action: "refused"` and left as it is. User content outside PAN's markers is never touched. Refuses to run inside the PAN source repository.
 
 Dry-run by default; pass `--apply` to write. A second run changes nothing.
 
@@ -3941,9 +3941,9 @@ Copy `.planning/idea.md`, `experiment.json`, `state.md`, `run-state.json`, `agen
 
 Remove the experiment. Default is a soft prune — the experiment folder is archive-renamed (preserved, not deleted). With `--hard`, the folder is permanently deleted.
 
-### `learn promote --pattern <id> --scope <s> --topic <t> --summary <text> --rule <text> [--evidence] [--applies-in] [--source-experiments csv] [--source-root <path>]`
+### `learn promote --pattern <id> --scope <s> --topic <t> --summary <text> --rule <text> [--evidence] [--applies-in] [--source-experiments csv] [--cites <path[#symbol]>,...] [--source-root <path>]`
 
-Append a promoted pattern into `pan-wizard-core/learnings/{scope}/{topic}.md`. Scope is `universal` (ships to installs) or `internal` (source-only, stripped at install). Refuses duplicate IDs within the same topic file. When `--scope universal` is used, classifies the rule via `classifyPatternKind()` and attaches a `warning` to the result if the rule looks prompt-fragment-shaped (per P-RES-007). Returns `{promoted_to, pattern_id, scope, topic, promoted_at, warning?}`.
+Append a promoted pattern into `pan-wizard-core/learnings/{scope}/{topic}.md`. Scope is `universal` (ships to installs) or `internal` (source-only, stripped at install). Refuses duplicate IDs within the same topic file. When `--scope universal` is used, classifies the rule via `classifyPatternKind()` and attaches a `warning` to the result if the rule looks prompt-fragment-shaped (per P-RES-007). `--cites` names the code the pattern rests on, relative to the source root (`path` or `path#symbol`); each citation must hold when promoted, is stored with the pattern, and `learn lint` keeps checking it (L-007). Returns `{promoted_to, pattern_id, scope, topic, promoted_at, warning?}`.
 
 ### `learn unpromote --pattern <id> --scope <s> --topic <t>`
 

@@ -122,6 +122,9 @@ The full set lives in `harness/scenarios/` (`ls harness/scenarios`); this table 
 | `unified-skills-discovery` | 1 | Claude Code, asked headlessly, names the unified `pan-` skills — ADR-0028's default-on gate, measured on the `.claude/skills/` copy since R32 |
 | `plan-phase-checker-loop` | 2 | Research → plan → checker loop on an unplanned phase |
 | `quick-mode` | 2 | `/pan:quick` end to end on the two-plan seed (quick mode needs a roadmap) |
+| `memory-not-loaded` | 2 | `/pan:exec-phase` with a seeded agent memory store (a valid cited entry, a stale one, a quarantined directive, an archived state): no executor prompt carries any of it, the orchestrator runs no memory command, and nothing the run writes follows a seeded entry. An agent opening the folder on its own is reported, not failed (ADR-0036 and ADR-0040, amended) |
+| `resume-cost` | 2 | The two-plan seed stopped halfway; a fresh session told only "continue" finishes it. Records turns, cost and time from the step's own record — the baseline for resume work |
+| `context-note-headless` | 2 | A `claude -p` session with a 100K compaction window reads past the context monitor's line: PAN's note must be recorded before the host compacts, with no status-line bridge present (the transcript fallback) |
 | `uat-diagnose-native` | 2 | `/pan-diagnose-issues` on a phase with one failed UAT truth and the matching real defect |
 | `evidence-loop` | 0 | The evidence loop through a deployed Claude install, model-free: the installed trace hook captures failing tool calls from a subagent transcript, the installed engine records verdicts and a deferral, `optimize learn` sees both, and `optimize revert` undoes an apply byte for byte (ADR-0049) |
 | `tool-error-capture` | 1 | A real subagent's failing `npm test` is recorded by the installed trace hook as an `error/tool_error` event read from that subagent's own transcript; the model step sets `persistSession: true` |

@@ -695,9 +695,9 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 ### Context window exhausted mid-phase
 
-**Symptom:** Claude becomes less coherent, loses track of the current task, or starts repeating itself. The context monitor (if installed) shows CRITICAL warning.
+**Symptom:** Claude becomes less coherent, loses track of the current task, or starts repeating itself. The context monitor (if installed) has given the agent PAN's context note: the host will compact the session soon.
 
-**Why this happens:** The main session accumulates context from every command you run. PAN subagents (executors, verifiers) each get a fresh context window, but the orchestrating session does not reset automatically.
+**Why this happens:** The main session accumulates context from every command you run. PAN subagents (executors, verifiers) each get a fresh context window, but the orchestrating session does not reset until the host compacts it. After a compaction PAN re-injects the planning position, but a long session can still lose detail on the way there.
 
 **Immediate recovery:**
 
