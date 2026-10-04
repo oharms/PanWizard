@@ -2,8 +2,9 @@
 'use strict';
 /**
  * Harness `sh` step: what it cost a fresh session to resume and finish (memory
- * optimisation O11). Reads the model step's saved `claude -p` output from the run's
- * steps/ folder — `<run>/steps/<scenario>-<rep>-<step>.json`, beside `<run>/ws/` —
+ * optimisation O11). Reads the model step's record from the run's steps/ folder —
+ * `<run>/steps/<scenario>-<rep>-<step>.json`, beside `<run>/ws/`, written by
+ * persistStepOutput() in harness/src/run.cjs as `{ turns, costUsd, durationMs, … }` —
  * and the workspace, and prints JSON:
  *
  *   { turns, cost_usd, duration_ms, completed, missing[], problems[] }
@@ -30,10 +31,15 @@ function measure(ws, step) {
   if (!out) problems.push(`no saved output for model step ${step}`);
   const need = ['.planning/phases/01-greetings/01-02-summary.md', 'src/farewell.js'];
   const missing = need.filter((rel) => !fs.existsSync(path.join(ws, rel)));
+  // The harness's step record (persistStepOutput), not claude's own JSON: the first
+  // version read num_turns / total_cost_usd and measured nothing (2026-10-04).
+  const num = (v) => (Number.isFinite(v) ? v : null);
+  const turns = out ? num(out.turns) : null;
+  const cost = out ? num(out.costUsd) : null;
   return {
-    turns: out && Number.isFinite(out.num_turns) ? out.num_turns : null,
-    cost_usd: out && Number.isFinite(out.total_cost_usd) ? Math.round(out.total_cost_usd * 1000) / 1000 : null,
-    duration_ms: out && Number.isFinite(out.duration_ms) ? out.duration_ms : null,
+    turns,
+    cost_usd: cost == null ? null : Math.round(cost * 1000) / 1000,
+    duration_ms: out ? num(out.durationMs) : null,
     completed: missing.length === 0,
     missing,
     problems,

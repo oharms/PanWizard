@@ -856,7 +856,8 @@ describe('resume-cost: what a fresh session told "continue" spends to finish (O1
       fs.writeFileSync(path.join(ws, 'src', 'farewell.js'), '\n');
     }
     fs.mkdirSync(path.join(run, 'steps'), { recursive: true });
-    if (saved) fs.writeFileSync(path.join(run, 'steps', 'resume-cost-1-1.json'), JSON.stringify({ num_turns: 14, total_cost_usd: 1.23456, duration_ms: 90000 }));
+    // The record harness/src/run.cjs persistStepOutput() writes (shape taken from a real run's steps/ file).
+    if (saved) fs.writeFileSync(path.join(run, 'steps', 'resume-cost-1-1.json'), JSON.stringify({ scenario: 'resume-cost', rep: 1, step: 1, code: 0, costUsd: 1.23456, turns: 14, durationMs: 90000, budgetStopped: false, refused: false, stdout: 'done', stderr: '' }));
     const r = spawnSync(process.execPath, [costScript, ws, '1'], { encoding: 'utf8' });
     return { r, done: () => cleanup(run) };
   }
