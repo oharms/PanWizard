@@ -21,9 +21,11 @@
       "prompt": "/pan:plan-phase 1",
       "expect": [
         "exit:0",
-        "glob:.planning/phases/01-greetings/01-*-plan.md"
+        "glob:.planning/phases/01-greetings/01-*-plan.md",
+        "glob:.planning/phases/01-greetings/01-roadmap-slice.md"
       ],
-      "why": "The planner's output is the plan files; the checker's approval is what lets the workflow exit cleanly. Research is not asserted: the workflow may skip per-phase research for a first phase."
+      "why": "The planner's output is the plan files; the checker's approval is what lets the workflow exit cleanly. Research is not asserted: the workflow may skip per-phase research for a first phase. The step persists its session so the next step can read what each agent opened, and the slice is the file plan-phase writes before it spawns anyone (O2).",
+      "persistSession": true
     },
     {
       "kind": "pan",
@@ -36,6 +38,20 @@
         "json:phases"
       ],
       "why": "The engine still reads the tree the agents wrote — a plan file that breaks frontmatter parsing would show here, not in the file glob."
+    },
+    {
+      "kind": "sh",
+      "script": "context-reads.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:phase_agent_whole_reads=0",
+        "json:plans_naming_whole_roadmap=0",
+        "json:problems"
+      ],
+      "why": "Memory optimisation O2: the researcher, planner and checker read the phase's roadmap slice, not the whole roadmap.md and requirements.md, and no plan names the whole roadmap in its <context>. Counted from the agents' own transcripts: a Read with no limit, or a shell command that prints the file, is a whole read. The planner edits its own section of roadmap.md after a targeted read, which is allowed."
     }
   ]
 }

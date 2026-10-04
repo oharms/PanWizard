@@ -618,3 +618,71 @@ describe('live-gate-codex: a scratch CODEX_HOME and discovery without a model', 
     assert.ok(step('plugin', 'add').expect.includes('json:pluginId=pan-wizard@pan-wizard-local'));
   });
 });
+
+describe('context-reads.cjs counts what phase agents read, from their own transcripts (O2)', () => {
+  const script = path.join(ROOT, 'harness', 'scripts', 'context-reads.cjs');
+  const { classifyReads, toolCalls, projectDir } = require(script);
+  const { spawnSync } = require('child_process');
+  // One assistant line per tool call, in the shape Claude Code writes to subagents/agent-<id>.jsonl.
+  const line = (name, input) => JSON.stringify({ type: 'assistant', isSidechain: true, agentId: 'a1', message: { content: [{ type: 'tool_use', name, input }] } });
+
+  test('a Read with no limit, or a shell print, is a whole read; a Read with a limit or a grep is targeted', () => {
+    const c = classifyReads(toolCalls([
+      line('Read', { file_path: 'D:\\ws\\.planning\\roadmap.md' }),
+      line('Read', { file_path: '/ws/.planning/roadmap.md', offset: 40, limit: 30 }),
+      line('Read', { file_path: '/ws/.planning/phases/01-x/01-roadmap-slice.md' }),
+      line('Read', { file_path: '/ws/.planning/requirements.md' }),
+      line('PowerShell', { command: 'Get-Content .planning\\roadmap.md' }),
+      line('Bash', { command: 'grep -n "Phase 1:" .planning/roadmap.md' }),
+      line('Bash', { command: 'cat .planning/phases/01-x/01-roadmap-slice.md' }),
+      '{"torn',
+      JSON.stringify({ type: 'user', message: { content: 'text' } }),
+    ]));
+    assert.deepEqual(c, { whole_roadmap: 2, whole_requirements: 1, section_roadmap: 2, slice: 2 });
+  });
+
+  function fixture({ reads, slice = true, planContext = '@.planning/phases/01-x/01-roadmap-slice.md' }) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxreads-home-'));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxreads-ws-'));
+    const phase = path.join(ws, '.planning', 'phases', '01-x');
+    fs.mkdirSync(phase, { recursive: true });
+    if (slice) fs.writeFileSync(path.join(phase, '01-roadmap-slice.md'), '# slice\n');
+    fs.writeFileSync(path.join(phase, '01-01-plan.md'), `<context>\n${planContext}\n</context>\n`);
+    if (reads) {
+      const sub = path.join(projectDir(ws, home), 'sess-1', 'subagents');
+      fs.mkdirSync(sub, { recursive: true });
+      fs.writeFileSync(path.join(sub, 'agent-a1.meta.json'), JSON.stringify({ agentType: 'pan-planner' }));
+      fs.writeFileSync(path.join(sub, 'agent-a1.jsonl'), reads.map(([n, i]) => line(n, i)).join('\n') + '\n');
+    }
+    const r = spawnSync(process.execPath, [script, ws], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
+    return { r, out: JSON.parse(r.stdout), done: () => { cleanup(home); cleanup(ws); } };
+  }
+  const lastStep = (id) => loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === id).steps.filter((st) => st.script === 'context-reads.cjs')[0];
+
+  test('a planner that read the slice passes both scenarios\' checks; one that read the whole roadmap fails them', () => {
+    const good = fixture({ reads: [['Read', { file_path: '/ws/.planning/phases/01-x/01-roadmap-slice.md' }], ['Read', { file_path: '/ws/.planning/roadmap.md', offset: 10, limit: 20 }]] });
+    const bad = fixture({ reads: [['Read', { file_path: '/ws/.planning/roadmap.md' }]], planContext: '@.planning/roadmap.md' });
+    try {
+      assert.equal(good.r.status, 0, good.r.stderr);
+      assert.deepEqual(good.out.by_agent['pan-planner'], { spawns: 1, whole_roadmap: 0, whole_requirements: 0, section_roadmap: 1, slice: 1 });
+      for (const id of ['plan-phase-checker-loop', 'markdown-exec-phase-chain']) {
+        const st = lastStep(id);
+        assert.deepEqual(check(st.expect, { code: good.r.status, stdout: good.r.stdout, stderr: '' }, os.tmpdir()), [], id);
+        assert.notDeepEqual(check(st.expect, { code: bad.r.status, stdout: bad.r.stdout, stderr: '' }, os.tmpdir()), [], `${id} must fail on a whole read`);
+      }
+      assert.equal(bad.out.phase_agent_whole_reads, 1);
+      assert.equal(bad.out.plans_naming_whole_roadmap, 1);
+    } finally { good.done(); bad.done(); }
+  });
+
+  test('nothing to measure is a failure, never a pass: no transcript (persistence off), or no slice written', () => {
+    const none = fixture({ reads: null });
+    const noSlice = fixture({ reads: [['Read', { file_path: '/ws/.planning/phases/01-x/01-roadmap-slice.md' }]], slice: false });
+    try {
+      assert.equal(none.r.status, 1);
+      assert.match(none.out.problems.join(' '), /persistSession/);
+      assert.equal(noSlice.r.status, 1);
+      assert.match(noSlice.out.problems.join(' '), /roadmap slice --write/);
+    } finally { none.done(); noSlice.done(); }
+  });
+});

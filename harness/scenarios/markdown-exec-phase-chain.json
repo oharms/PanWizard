@@ -8,10 +8,12 @@
   "requires": { "cli": "claude" },
   "budget": { "maxUsd": 8, "maxMinutes": 45, "maxStepMinutes": 40 },
   "steps": [
-    { "kind": "model", "prompt": "/pan:exec-phase 1 --skip-tests",
+    { "kind": "model", "prompt": "/pan:exec-phase 1 --skip-tests", "persistSession": true,
       "expect": ["exit:0", "file:.planning/phases/01-greetings/01-01-summary.md", "file:.planning/phases/01-greetings/01-02-summary.md", "file:src/greet.js", "file:src/farewell.js", "file:src/index.js"],
-      "why": "Identical outcome assertions to the native run, minus the verification file (the markdown path hands verification to the transition step, which this seed disarms with auto_advance:false)." },
+      "why": "Identical outcome assertions to the native run, minus the verification file (the markdown path hands verification to the transition step, which this seed disarms with auto_advance:false). The session persists so the last step can read what each executor opened." },
     { "kind": "sh", "script": "seed-tests.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:passed=true"],
-      "why": "Working code, not files that look right." }
+      "why": "Working code, not files that look right." },
+    { "kind": "sh", "script": "context-reads.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:phase_agent_whole_reads=0", "json:problems"],
+      "why": "Memory optimisation O2: exec-phase writes the phase's roadmap slice, and the seed's plans still name `@.planning/roadmap.md` in their <context>, as plans written before slices do. An executor must read the slice in its place. Counted from the executors' own transcripts." }
   ]
 }
