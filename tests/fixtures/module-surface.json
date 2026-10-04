@@ -598,6 +598,7 @@
     "DIRECTIVE_PATTERNS:object",
     "PLACEHOLDER:object",
     "QUARANTINE_FILE:string",
+    "QUARANTINE_HEADER:string",
     "STATE_ARCHIVE_FILE:string",
     "autoOptimizeEnabled:function",
     "cmdMemoryOptimize:function",

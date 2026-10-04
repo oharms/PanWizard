@@ -343,5 +343,5 @@ function maybeAutoOptimizeMemory(cwd, opts = {}) {
 module.exports = {
   optimizeStateContent, reconcileBullets, parseSections, joinSections, cmdMemoryOptimize,
   maybeAutoOptimizeMemory, autoOptimizeEnabled, isSuspiciousDirective,
-  APPEND_HEAVY, PLACEHOLDER, DIRECTIVE_PATTERNS, DEFAULT_KEEP, STATE_ARCHIVE_FILE, QUARANTINE_FILE,
+  APPEND_HEAVY, PLACEHOLDER, DIRECTIVE_PATTERNS, DEFAULT_KEEP, STATE_ARCHIVE_FILE, QUARANTINE_FILE, QUARANTINE_HEADER,
 };
