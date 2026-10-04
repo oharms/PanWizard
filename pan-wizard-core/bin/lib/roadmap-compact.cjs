@@ -5,7 +5,7 @@
  *
  * roadmap.md only grows: every phase adds a detail section (goal, success criteria,
  * plan list, notes) and nothing ever takes one away. A 54-phase field project's
- * roadmap reached 476 KB, about 119k tokens. Phase agents now read a slice of it
+ * roadmap reached 476 KB, about 121k tokens. Phase agents now read a slice of it
  * (`roadmap slice`, O2), but the roadmapper, the milestone workflows and people
  * still read it whole. This bounds it the way `state compact` bounds state.md
  * (ADR-0044).
@@ -16,9 +16,11 @@
  *   2. Only a shipped phase moves: its checklist line is ticked, it is not the
  *      current phase in state.md, and it is not one of the `keep` most recently
  *      shipped phases (default 2), which the next phase's planning may lean on.
- *   3. A stub stays: the heading and the Goal, Depends on and Requirements lines,
- *      so goal lookups, the dependency goals in a slice and `roadmap analyze` still
- *      read the phase.
+ *   3. A stub stays: the heading, the Goal, Depends on and Requirements lines and
+ *      any `<!-- model_tier: … -->` override, so goal lookups, the dependency goals
+ *      in a slice and `roadmap analyze` still read the phase. Readers that need the
+ *      rest (`roadmap get-phase`, `phase report`, a slice of that phase) find the
+ *      stub and read the section from roadmap-history.md.
  *   4. A section already compacted is never compacted again.
  *   5. Dry-run by default; `--apply` writes. Declines when nothing would shrink.
  *   6. Parsed on LF and written back in the file's own line ending.
@@ -36,14 +38,17 @@ const ROADMAP_COMPACT_KEEP = 2;
 const STUB_MARK = '_Shipped; the full section is in [roadmap-history.md]';
 
 const PHASE_HEADING_RE = /^(#{2,4})\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*(.+?)\s*$/;
-const KEPT_LINE_RE = /^\*\*(Goal|Depends on|Requirements)(?::\*\*|\*\*:)/i;
+const KEPT_LINE_RE = /^(?:\*\*(Goal|Depends on|Requirements)(?::\*\*|\*\*:)|<!--\s*(model_tier):)/i;
+/** The line each compaction writes into the history ahead of the sections it moved. */
+const HISTORY_BATCH_MARK = `<!-- compacted from ${ROADMAP_FILE} on `;
 const unpad = (n) => String(n).replace(/^0+(?=\d)/, '');
 
 /**
  * The phase detail sections of roadmap.md (LF text): each runs from its heading to
- * the next heading at its level or above, or to an HTML block boundary such as a
- * milestone's `</details>`, so a trailing progress table never rides along.
- * Trailing blank lines stay outside the section.
+ * the next phase heading or the next heading at its level or above, or to an HTML
+ * block boundary such as a milestone's `</details>`, so a trailing progress table
+ * never rides along. In roadmap-history.md a section also ends at the next
+ * compaction's batch line. Trailing blank lines stay outside the section.
  */
 function phaseSections(lines) {
   const out = [];
@@ -54,8 +59,9 @@ function phaseSections(lines) {
     let end = i + 1;
     for (; end < lines.length; end++) {
       const h = lines[end].match(/^(#{1,6})\s/);
-      if (h && h[1].length <= level) break;
+      if (h && (h[1].length <= level || PHASE_HEADING_RE.test(lines[end]))) break;
       if (/^\s*<\/?details\b/i.test(lines[end])) break;
+      if (lines[end].startsWith(HISTORY_BATCH_MARK)) break;
     }
     let last = end;
     while (last > i + 1 && !lines[last - 1].trim()) last--;
@@ -87,7 +93,8 @@ function stubFor(sectionLines, stamp) {
   const seen = new Set();
   for (const l of sectionLines.slice(1)) {
     const m = l.match(KEPT_LINE_RE);
-    if (m && !seen.has(m[1].toLowerCase())) { seen.add(m[1].toLowerCase()); kept.push(l); }
+    const key = m && (m[1] || m[2]).toLowerCase();
+    if (m && !seen.has(key)) { seen.add(key); kept.push(l); }
   }
   return [sectionLines[0], ...kept, '', `${STUB_MARK}(${ROADMAP_HISTORY_FILE}) (compacted ${stamp})._`];
 }
@@ -192,11 +199,41 @@ function compactRoadmap(cwd, opts = {}) {
     if (e.code !== 'EEXIST') throw e;
   }
   const histEol = dominantEol(safeReadFile(historyPath) || '');
-  fs.appendFileSync(historyPath, withEol(`\n\n<!-- compacted from ${ROADMAP_FILE} on ${plan.stamp} -->\n${plan.archivedText}\n`, histEol), 'utf-8');
+  fs.appendFileSync(historyPath, withEol(`\n\n${HISTORY_BATCH_MARK}${plan.stamp} -->\n${plan.archivedText}\n`, histEol), 'utf-8');
 
   // 2. Only now shorten roadmap.md.
   fs.writeFileSync(roadmapPath, plan.content, 'utf-8');
   return { ...result, applied: true, dry_run: false, archived: plan.archivable.map(v => v.phase) };
+}
+
+/** True when a phase section (LF or CRLF text) is a compaction stub. */
+function isCompactedSection(section) {
+  return String(section || '').split('\n').some(l => l.trimStart().startsWith(STUB_MARK));
+}
+
+/**
+ * A compacted phase's full section from roadmap-history.md text, or null. The last
+ * copy wins: each compaction appends.
+ */
+function archivedPhaseSection(historyText, phase) {
+  if (!historyText) return null;
+  const want = unpad(phase);
+  const lines = toLf(historyText).split('\n');
+  let hit = null;
+  for (const s of phaseSections(lines)) if (s.number === want) hit = s;
+  return hit ? lines.slice(hit.start, hit.end).join('\n') : null;
+}
+
+/**
+ * For a reader that found a stub where a phase's section should be: the full
+ * section from roadmap-history.md. Returns null when `section` is not a stub, so
+ * the history is read only for a compacted phase.
+ * @returns {{section: string|null, compacted: true, history_path: string, history_found: boolean}|null}
+ */
+function compactedPhaseSection(cwd, phase, section) {
+  if (!isCompactedSection(section)) return null;
+  const full = archivedPhaseSection(safeReadFile(planningPath(cwd, ROADMAP_HISTORY_FILE)), phase);
+  return { section: full, compacted: true, history_path: planningRel(ROADMAP_HISTORY_FILE), history_found: full != null };
 }
 
 /** How many sections a compaction would archive now — hygiene offers the fix only then. */
@@ -220,6 +257,9 @@ function cmdRoadmapCompact(cwd, opts, raw) {
 module.exports = {
   ROADMAP_HISTORY_FILE,
   ROADMAP_COMPACT_KEEP,
+  isCompactedSection,
+  archivedPhaseSection,
+  compactedPhaseSection,
   planRoadmapCompaction,
   compactRoadmap,
   roadmapCompactionAvailable,

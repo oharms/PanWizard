@@ -769,8 +769,11 @@
   "roadmap-compact.cjs": [
     "ROADMAP_COMPACT_KEEP:number",
     "ROADMAP_HISTORY_FILE:string",
+    "archivedPhaseSection:function",
     "cmdRoadmapCompact:function",
     "compactRoadmap:function",
+    "compactedPhaseSection:function",
+    "isCompactedSection:function",
     "planRoadmapCompaction:function",
     "roadmapCompactionAvailable:function"
   ],

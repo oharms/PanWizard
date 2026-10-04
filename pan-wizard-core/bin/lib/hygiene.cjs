@@ -456,7 +456,7 @@ function checkCachedContext(cwd) {
           detail += ` — ${archivable} shipped phase section(s) can move to roadmap-history.md (\`roadmap compact\`)`;
         }
       } else {
-        detail += ' — a shipped milestone\'s requirements move out when the milestone is completed';
+        detail += ' — `/pan:milestone-done` archives a shipped milestone\'s requirements to `milestones/` and starts the next milestone\'s file fresh';
       }
       findings.push(mkFinding('cache-context', 'warn', b.path, detail, fix));
       continue;

@@ -65,7 +65,12 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
       ? headerIndex + nextHeaderMatch.index
       : content.length;
 
-    const section = content.slice(headerIndex, sectionEnd).trim();
+    let section = content.slice(headerIndex, sectionEnd).trim();
+
+    // A phase moved out by `roadmap compact` leaves a stub here; its success
+    // criteria and the rest of its section are in roadmap-history.md.
+    const compacted = require('./roadmap-compact.cjs').compactedPhaseSection(cwd, phaseNum, section);
+    if (compacted && compacted.section) section = compacted.section;
 
     // Extract goal if present
     const goalMatch = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
@@ -85,6 +90,7 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
         goal,
         success_criteria,
         section,
+        ...(compacted ? { compacted: true, history_path: compacted.history_path, history_found: compacted.history_found } : {}),
       },
       raw,
       section
@@ -614,16 +620,24 @@ function requirementLines(requirements, ids) {
 
 /**
  * Pure: the slice of `roadmap` and `requirements` for one phase.
- * @param {{roadmap: string, requirements: string|null, phase: string, planningRel?: string}} args
+ * `history` (roadmap-history.md text, or a function returning it) is consulted only
+ * when the phase's section is a `roadmap compact` stub, to put its full section back.
+ * @param {{roadmap: string, requirements: string|null, phase: string, planningRel?: string,
+ *   history?: string|null|(() => string|null)}} args
  * @returns {{found: boolean, phase_number: string, phase_name?: string, content?: string,
  *   requirement_ids?: string[], missing_requirement_ids?: string[], depends_on?: string[],
  *   tokens?: number, whole_tokens?: number}}
  */
-function buildRoadmapSlice({ roadmap, requirements, phase, planningRel = '.planning' }) {
+function buildRoadmapSlice({ roadmap, requirements, phase, planningRel = '.planning', history = null }) {
   const rm = toLf(roadmap);
   const req = requirements == null ? null : toLf(requirements);
   const target = roadmapPhaseSection(rm, phase);
   if (!target) return { found: false, phase_number: String(phase) };
+  const { isCompactedSection, archivedPhaseSection } = require('./roadmap-compact.cjs');
+  if (isCompactedSection(target.section)) {
+    const full = archivedPhaseSection(typeof history === 'function' ? history() : history, phase);
+    if (full) target.section = full;
+  }
 
   const num = unpadPhase(phase);
   const phases = enumerateRoadmapPhases(rm);
@@ -695,7 +709,8 @@ function cmdRoadmapSlice(cwd, phase, opts, raw) {
   const roadmap = safeReadFile(path.join(planningPath(cwd), ROADMAP_FILE));
   if (roadmap == null) { output({ found: false, error: 'roadmap.md not found' }, raw, ''); return; }
   const requirements = safeReadFile(path.join(planningPath(cwd), REQUIREMENTS_FILE));
-  const slice = buildRoadmapSlice({ roadmap, requirements, phase, planningRel: planningRel() });
+  const history = () => safeReadFile(path.join(planningPath(cwd), require('./roadmap-compact.cjs').ROADMAP_HISTORY_FILE));
+  const slice = buildRoadmapSlice({ roadmap, requirements, phase, planningRel: planningRel(), history });
   if (!slice.found) { output(slice, raw, ''); return; }
   const summary = {
     found: true, phase_number: slice.phase_number, phase_name: slice.phase_name,

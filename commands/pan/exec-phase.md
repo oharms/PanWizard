@@ -87,19 +87,6 @@ Each execution stage has a restricted set of appropriate actions. Using the wron
 - Wave commit: git operations only — all code changes must be done before committing
 </action_gating>
 
-<cache_priming>
-**Before Discovery, prime the prompt cache once per invocation.** All subagents spawned within the next 5 minutes will hit the cache instead of re-sending the full context.
-
-Run once:
-```
-pan-tools cache prime --summary
-```
-
-This returns `{blocks: [{path, bytes, cache}], total_bytes, sha}` for the cacheable set (project.md, requirements.md, roadmap.md, state.md, standards.md). The `sha` is stable across identical inputs, so repeated calls within the phase hit cached reads.
-
-When spawning subagents for wave execution, include the cacheable block paths in each agent's system-context so a host runtime that supports prompt caching (Claude Code does) can mark them `cache_control: ephemeral`. Where prompt caching is unavailable, this step is a no-op — nothing breaks, just no savings.
-</cache_priming>
-
 <process>
 Execute the execute-phase workflow from @~/.claude/pan-wizard-core/workflows/exec-phase.md end-to-end.
 Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).

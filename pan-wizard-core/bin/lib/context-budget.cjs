@@ -267,8 +267,8 @@ function cmdContextBudget(cwd, raw) {
     }
   }
 
-  // E-8: cache metrics — surface how much of the total context would be
-  // served from prompt cache when Opus 4.7 cache_control is active.
+  // E-8: cache metrics — how much of the total context is the stable set that
+  // agents re-read, which the host serves from its prompt cache when it can.
   const { buildCachedContext } = require('./core.cjs');
   let cache = null;
   try {

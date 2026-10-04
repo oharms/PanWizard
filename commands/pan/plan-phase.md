@@ -126,17 +126,6 @@ ELSE:
 ```
 </routing_decision_tree>
 
-<cache_priming>
-**Before spawning research + planner agents, prime the prompt cache.** All sub-agents spawned within the next 5 minutes hit cached context instead of re-reading project.md / requirements.md / roadmap.md / state.md / standards.md.
-
-Run once per invocation:
-```
-pan-tools cache prime --summary
-```
-
-Returns `{blocks: [{path, bytes, cache}], total_bytes, sha}`. On a host runtime that supports prompt caching (Claude Code does), the host translates these block references into `cache_control: ephemeral`. Where prompt caching is unavailable this is a no-op — nothing breaks.
-</cache_priming>
-
 <process>
 Execute the plan-phase workflow from @~/.claude/pan-wizard-core/workflows/plan-phase.md end-to-end.
 Preserve all workflow gates (validation, research, planning, verification loop, routing).

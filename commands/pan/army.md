@@ -102,7 +102,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 
 ```
 /pan:army
-  Phase 0  MUSTER   — squad list + roster validate · cache prime · baseline · loop-state · abort-file clear
+  Phase 0  MUSTER   — squad list + roster validate · baseline · loop-state · abort-file clear
   Phase 1  PLAN     — Mission Control (session model, xhigh effort) decomposes the goal into dependency-ordered missions
   Phase 2  DELEGATE — pick the next item (focus-auto --source) · route to the owning squad over the Agent toolset
   Phase 3  EXECUTE  — Build squad: one army/<task> worktree per agent (parallel); Architecture/Quality research in parallel (read-only)
@@ -115,7 +115,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 ### Phase 0 — Muster (once)
 1. **Onboarding gate (existing projects).** Run `pan-tools init new-project` to detect state. If `is_brownfield` (existing code) and `needs_codebase_map` (no `.planning/codebase/`), the army cannot plan blind — STOP and route through onboarding first: `/pan:map-codebase` (Architecture squad's `pan-document_code` maps the existing system into `.planning/codebase/`), then `/pan:new-project` to build `roadmap.md` + `requirements.md` *against the existing system*. Re-run `/pan:army` once a backlog exists. If a codebase map + roadmap already exist, continue.
 2. `pan-tools squad list` and validate the roster is healthy.
-3. Prime the cache; capture baseline (`git status` clean of project source; tests green or STOP). On a brownfield repo, the baseline is the current `main` — every `army/<task>` branch forks from it, so the existing code is never edited in place.
+3. Capture the baseline (`git status` clean of project source; tests green or STOP). On a brownfield repo, the baseline is the current `main` — every `army/<task>` branch forks from it, so the existing code is never edited in place.
 4. Ensure `.planning/orchestration/` exists; clear any stale `abort` file; init loop-state.
 5. `--dry-run` → print the plan + per-squad delegation and STOP.
 

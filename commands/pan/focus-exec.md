@@ -210,8 +210,7 @@ This catches emergent interactions: 5 "add try-catch" fixes might reveal the mod
 1. **Check Project Status** — git status, recent commits
 2. **Test Baseline** — run test suite, record current counts
 3. **Create rollback snapshot** — git tag for safety
-4. **Prime prompt cache** — `pan-tools cache prime --summary` (once; all sub-agents in the next 5 min hit cached context)
-5. **Report** — Output session start summary
+4. **Report** — Output session start summary
 
 **Circular optimization — init trace:**
 ```bash

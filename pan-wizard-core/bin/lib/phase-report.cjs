@@ -103,7 +103,10 @@ function extractPhaseGoal(cwd, phaseNumber) {
   const rest = content.slice(start + 1);
   const nextH = rest.match(/\n#{2,4}\s+Phase\s+\d/i);
   const end = nextH ? start + 1 + nextH.index : content.length;
-  const section = content.slice(start, end);
+  let section = content.slice(start, end);
+  // A phase moved out by `roadmap compact` keeps a stub; its criteria are in the history.
+  const compacted = require('./roadmap-compact.cjs').compactedPhaseSection(cwd, phaseNumber, section);
+  if (compacted && compacted.section) section = compacted.section;
   const gm = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
   const objective = gm ? gm[1].trim() : null;
   const cm = section.match(/\*\*Success Criteria\*\*[^\n]*:\s*\n((?:\s*\d+\.\s*[^\n]+\n?)+)/i);

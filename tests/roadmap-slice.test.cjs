@@ -229,4 +229,18 @@ describe('the prompts read the slice, not the whole files', () => {
     }
     assert.deepEqual(offenders, []);
   });
+
+  test('no shipped prompt "primes the cache" by handing subagents the whole planning set (ADR-0023, amended)', () => {
+    // The old <cache_priming> step told the orchestrator to put project, requirements,
+    // roadmap, state and standards in every executor's context, and claimed a CLI call
+    // could mark another agent's prompt for caching. It could not; it only loaded more.
+    const dirs = ['commands/pan', 'agents', 'pan-wizard-core/workflows', 'pan-wizard-core/templates', 'pan-wizard-core/references'];
+    const offenders = [];
+    for (const dir of dirs) {
+      for (const f of fs.readdirSync(path.join(ROOT, dir)).filter((n) => n.endsWith('.md'))) {
+        if (/<cache_priming>|cache prime|cache_control|prime (the )?(prompt )?cache/i.test(read(`${dir}/${f}`))) offenders.push(`${dir}/${f}`);
+      }
+    }
+    assert.deepEqual(offenders, []);
+  });
 });

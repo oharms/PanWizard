@@ -19,6 +19,10 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - `state compact` reported savings that were only line endings.
 
   All of them now parse on LF and write back in the file's own ending, through `toLf`, `dominantEol` and `withEol` in `core.cjs`. `tests/crlf-parity.test.cjs` runs every planning-file parser on LF and CRLF copies of the same fixtures.
+- **The "prime the prompt cache" step is gone from plan-phase, exec-phase, verify-phase, focus-exec and army.**
+  - **It primed nothing.** The step ran `cache prime --summary` and said every subagent spawned in the next five minutes would hit the cache. A command's output cannot mark another agent's prompt for caching; the host caches each agent's prompt prefix by itself.
+  - **It loaded more.** exec-phase also told the orchestrator to put the whole cacheable set, roadmap and requirements included, in every executor's context. That undid the slices below.
+  - **Kept as a measurement:** `cache prime` still reports the set. ADR-0023 is amended, and a test keeps the step out of shipped prompts.
 
 ### Changed
 
@@ -34,7 +38,8 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
 
 - **`pan-tools roadmap compact [--apply] [--keep N]` bounds the roadmap the way `state compact` bounds state.md (O3).** A roadmap only ever grew: one 54-phase field project's reached 476 KB, about 121k tokens. A dry run there would move 40 shipped phases and leave ~39k.
   - **What moves:** shipped phases' sections go to `roadmap-history.md`. The current phase and the two most recently shipped phases stay.
-  - **What stays:** a stub with the heading, goal, dependencies and requirements, so `roadmap get-phase`, slices and `roadmap analyze` still read it.
+  - **What stays:** a stub with the heading, goal, dependencies, requirements and any `model_tier` override, so `roadmap analyze` and the model resolver still read it.
+  - **Nothing goes missing for a reader:** `roadmap get-phase`, `report phase` and a slice of a compacted phase find the stub and read its full section and success criteria from the history. Re-verifying an old phase still has its contract.
   - **Safety:** the history is written first; it is dry-run by default and declines when nothing would shrink. A trailing progress table or a milestone's `</details>` never moves with a section.
   - **In hygiene:** the `cache-context` check offers it as the `compact-roadmap` fix, `hygiene clean --apply` runs it, and its wording now says who reads which file whole. ADR-0044 is amended.
 

@@ -1053,6 +1053,8 @@ pan-tools roadmap get-phase 5 [--raw]
 
 **`--raw` output:** The full markdown section text.
 
+**A compacted phase** (one `roadmap compact` moved out) leaves a stub in roadmap.md. For it, `get-phase` returns the full section and its success criteria from `roadmap-history.md`, and adds `"compacted": true`, `"history_path"` and `"history_found"`. If the history file is gone, you get the stub's goal and `"history_found": false`. `roadmap slice` and `report phase` read a compacted phase the same way.
+
 ---
 
 ### `roadmap analyze`
@@ -1171,13 +1173,13 @@ Moves shipped phases' detail out of roadmap.md into `roadmap-history.md`, the wa
 
 **What moves:** a phase whose checklist line is ticked, unless it is the current phase in state.md or one of the `--keep` most recently shipped phases (default 2). The current phase never takes one of those slots.
 
-**What stays:** a stub with the heading and the `**Goal**`, `**Depends on**` and `**Requirements**` lines, plus a pointer to the history. Goal lookups (`roadmap get-phase`), the dependency goals in a `roadmap slice`, and `roadmap analyze` read the stub as before.
+**What stays:** a stub with the heading, the `**Goal**`, `**Depends on**` and `**Requirements**` lines and any `<!-- model_tier: … -->` override, plus a pointer to the history. `roadmap analyze` and the dependency goals in a `roadmap slice` read the stub as before. Readers that need the rest (`roadmap get-phase`, `report phase`, a slice of that phase) find the stub and read the full section from the history.
 
 **Safety:**
 - **Nothing is lost.** The history is written before roadmap.md, so an interrupted run can duplicate a section but never lose one.
 - **No double moves.** A section already compacted is never compacted again.
 - **No growth.** A compaction that would not shrink the file is declined.
-- **Boundaries hold.** A section ends at the next heading at its level or above, or at a `<details>` boundary, so a trailing progress table or a milestone's `</details>` stays where it is.
+- **Boundaries hold.** A section ends at the next phase heading, the next heading at its level or above, or a `<details>` boundary, so a trailing progress table or a milestone's `</details>` stays where it is.
 - **Line endings are kept.** The file is parsed on LF and written back in its own ending.
 
 Dry run by default. `hygiene scan` offers it as the `compact-roadmap` fix when there is something to move, and `hygiene clean --apply` runs it.
@@ -3485,7 +3487,9 @@ pan-tools memory rebuild --apply     # regenerate AGENTS.md / CLAUDE.md / state.
 
 ### `cache prime [--summary]`
 
-Build an ordered, cache-eligible context block list from stable `.planning/` files (project.md, requirements.md, roadmap.md, state.md, standards.md), plus any planning-root-relative paths listed in `config.json` → `cache.extra_files` (appended after the built-ins so existing cache keys stay stable). Commands call this once per invocation to prime the prompt cache; sub-agents spawned within the provider's prompt-cache lifetime hit cached reads (see `context-budget` → `cache.ttl`).
+Build an ordered, cache-eligible context block list from stable `.planning/` files (project.md, requirements.md, roadmap.md, state.md, standards.md), plus any planning-root-relative paths listed in `config.json` → `cache.extra_files` (appended after the built-ins so existing cache keys stay stable).
+
+It is a measurement and primes nothing. The host caches each agent's prompt prefix by itself, and a command's output cannot mark another agent's prompt for caching. The shipped commands used to call it on the belief that it did; they no longer do (ADR-0023, amended). To see how much every agent re-reads, use `context-budget` or `hygiene scan`.
 
 **Module:** `core.cjs` (wrapper in dispatcher)
 

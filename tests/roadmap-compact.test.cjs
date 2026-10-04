@@ -14,7 +14,10 @@ const path = require('path');
 const { runPanTools } = require('./helpers.cjs');
 
 const ROOT = path.join(__dirname, '..');
-const { planRoadmapCompaction, compactRoadmap } = require(path.join(ROOT, 'pan-wizard-core', 'bin', 'lib', 'roadmap-compact.cjs'));
+const LIB = path.join(ROOT, 'pan-wizard-core', 'bin', 'lib');
+const { planRoadmapCompaction, compactRoadmap, archivedPhaseSection } = require(path.join(LIB, 'roadmap-compact.cjs'));
+const { getRoadmapPhaseInternal, getPhaseModelTier } = require(path.join(LIB, 'core.cjs'));
+const { extractPhaseGoal } = require(path.join(LIB, 'phase-report.cjs'));
 
 const detail = (n, name, goal, deps, reqs) => [
   `### Phase ${n}: ${name}`,
@@ -117,6 +120,22 @@ describe('planRoadmapCompaction', () => {
     assert.equal(p.content, tiny);
   });
 
+  test('the stub keeps a model_tier override', () => {
+    const tiered = ROADMAP.replace('**Goal**: users can sign in', '**Goal**: users can sign in\n<!-- model_tier: fast -->');
+    const p = planRoadmapCompaction(tiered, { current: '5', now: Date.UTC(2026, 9, 4) });
+    assert.match(p.content, /### Phase 2: Auth\n\*\*Goal\*\*: users can sign in\n<!-- model_tier: fast -->\n\*\*Depends on\*\*/);
+  });
+
+  test('a deeper phase heading ends the section above it', () => {
+    const nested = ['- [x] **Phase 1: A** — a', '- [x] **Phase 2: B** — b', '- [ ] **Phase 3: C** — c', '',
+      ...detail(1, 'A', 'first', null, 'A-01'), ...detail(2, 'B', 'second', 'Phase 1', 'B-01').map((l) => l.replace(/^### /, '#### ')), '',
+      ...detail(3, 'C', 'third', 'Phase 2', 'C-01'), ''].join('\n');
+    const p = planRoadmapCompaction(nested, { keep: 0, current: '3' });
+    assert.deepEqual(archived(p), ['1', '2']);
+    assert.equal((p.archivedText.match(/#### Phase 2: B/g) || []).length, 1, 'phase 1 did not swallow phase 2, so it is archived once');
+    assert.match(p.content, /#### Phase 2: B\n\*\*Goal\*\*: second/);
+  });
+
   test('a CRLF roadmap compacts the same way and stays CRLF', () => {
     const crlf = planRoadmapCompaction(ROADMAP.replace(/\n/g, '\r\n'), { current: '5', now: Date.UTC(2026, 9, 4) });
     assert.deepEqual(archived(crlf), ['1', '2']);
@@ -161,13 +180,60 @@ describe('roadmap compact on a project', () => {
     assert.equal(JSON.parse(runPanTools('roadmap analyze', d).output).phases.length, 6);
   });
 
-  test('a later compaction appends to the history', () => {
+  test('a later compaction appends to the history, and each archived section ends at the next batch line', () => {
     const d = project();
     runPanTools('roadmap compact --apply', d);
     runPanTools('roadmap compact --apply --keep 0', d);
     const h = fs.readFileSync(hist(d), 'utf8');
     assert.equal((h.match(/<!-- compacted from roadmap\.md on /g) || []).length, 2);
     assert.match(h, /### Phase 4: Refunds/);
+    const two = archivedPhaseSection(h, '2');
+    assert.match(two, /^### Phase 2: Auth[\s\S]*Auth decisions/);
+    assert.doesNotMatch(two, /compacted from/);
+  });
+
+  test('a compacted phase is still found whole: get-phase, slices and the phase report read it from the history', () => {
+    const d = project();
+    runPanTools('roadmap compact --apply', d);
+    assert.match(rm(d), /### Phase 1: Base\n\*\*Goal\*\*: a running skeleton\n\*\*Requirements\*\*: BASE-01\n\n_Shipped;/, 'phase 1 is a stub in roadmap.md');
+
+    const got = JSON.parse(runPanTools('roadmap get-phase 1', d).output);
+    assert.equal(got.compacted, true);
+    assert.equal(got.history_found, true);
+    assert.equal(got.history_path, '.planning/roadmap-history.md');
+    assert.equal(got.success_criteria.length, 10);
+    assert.match(got.success_criteria[9], /^Base criterion 10,/);
+    assert.match(runPanTools('roadmap get-phase 1 --raw', d).output, /Base criterion 10,[\s\S]*Base decisions/);
+
+    assert.match(runPanTools('roadmap slice 1 --raw', d).output, /## This phase\n\n### Phase 1: Base[\s\S]*Base criterion 10,/);
+    assert.equal(extractPhaseGoal(d, '1').success_criteria.length, 8, 'the report shows the first eight');
+    const internal = getRoadmapPhaseInternal(d, '01');
+    assert.equal(internal.compacted, true);
+    assert.match(internal.section, /Base criterion 10,/);
+
+    // A phase still in roadmap.md is read there, and says nothing about the history.
+    const live = JSON.parse(runPanTools('roadmap get-phase 3', d).output);
+    assert.equal(live.compacted, undefined);
+    assert.equal(live.success_criteria.length, 10);
+  });
+
+  test('a compacted phase keeps its model_tier override for the model resolver', () => {
+    const d = project(ROADMAP.replace('**Goal**: a running skeleton', '**Goal**: a running skeleton\n<!-- model_tier: fast -->'));
+    runPanTools('roadmap compact --apply', d);
+    fs.rmSync(hist(d));
+    assert.equal(getPhaseModelTier(d, '1'), 'fast', 'read from the stub with no history to fall back on');
+  });
+
+  test('without the history file, get-phase answers from the stub and says the history is missing', () => {
+    const d = project();
+    runPanTools('roadmap compact --apply', d);
+    fs.rmSync(hist(d));
+    const got = JSON.parse(runPanTools('roadmap get-phase 2', d).output);
+    assert.equal(got.found, true);
+    assert.equal(got.goal, 'users can sign in');
+    assert.equal(got.compacted, true);
+    assert.equal(got.history_found, false);
+    assert.deepEqual(got.success_criteria, []);
   });
 
   test('history is written before roadmap.md: a failed rewrite can duplicate, never lose', () => {

@@ -74,17 +74,6 @@ After initial verification of each requirement:
 This prevents premature FAIL verdicts from incomplete investigation.
 </reflexion_loop>
 
-<cache_priming>
-**Before the verifier agent runs**, prime the prompt cache once. The verifier reads project.md / requirements.md / roadmap.md every run; caching avoids ~15-50K input tokens per invocation.
-
-Run once:
-```
-pan-tools cache prime --summary
-```
-
-See [plan-phase.md](plan-phase.md) or [exec-phase.md](exec-phase.md) for the full explanation. No-op on non-Claude runtimes.
-</cache_priming>
-
 <process>
 Execute the verify-phase workflow from @~/.claude/pan-wizard-core/workflows/verify-phase.md end-to-end.
 Preserve all workflow gates (the test-suite gate, the truth/artifact/wiring checks, status determination, the verification report).

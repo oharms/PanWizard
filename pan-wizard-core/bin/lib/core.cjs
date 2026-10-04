@@ -811,7 +811,11 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
     const restOfContent = content.slice(headerIndex);
     const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+Phase\s+\d/i);
     const sectionEnd = nextHeaderMatch ? headerIndex + nextHeaderMatch.index : content.length;
-    const section = content.slice(headerIndex, sectionEnd).trim();
+    let section = content.slice(headerIndex, sectionEnd).trim();
+    // A phase moved out by `roadmap compact` leaves a stub; the full section
+    // (and any model_tier override with it) is in roadmap-history.md.
+    const compacted = require('./roadmap-compact.cjs').compactedPhaseSection(cwd, unpadded, section);
+    if (compacted && compacted.section) section = compacted.section;
 
     const goalMatch = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
     const goal = goalMatch ? goalMatch[1].trim() : null;
@@ -822,6 +826,7 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
       phase_name: phaseName,
       goal,
       section,
+      ...(compacted ? { compacted: true } : {}),
     };
   } catch {
     return null;
@@ -1388,8 +1393,9 @@ function scanPendingTodos(cwd, area) {
  *
  * Reads files from .planning/ that are stable across agent calls within a phase
  * (project.md, requirements.md, roadmap.md, state.md, standards.md). Each block
- * is tagged `cache: true` so the host runtime (or installer) can translate to
- * the appropriate per-runtime caching syntax (Anthropic cache_control, etc.).
+ * is tagged `cache: true`. Nothing translates that tag into a cache marker: the
+ * host caches each agent's prompt prefix by itself, so this list is what PAN
+ * measures (context-budget, hygiene's cache-context check), not what it primes.
  *
  * Files that don't exist are skipped silently. The order matches the file list
  * in constants.cjs to keep prompt prefixes byte-stable across calls (which is
