@@ -168,7 +168,21 @@ describe('the writers in the prompts', () => {
     assert.match(wf, /\| `passed` \| → record_lessons when this run was `--gaps-only`, then update_roadmap\./);
     const step = wf.slice(wf.indexOf('<step name="record_lessons">'), wf.indexOf('<step name="update_roadmap">'));
     assert.match(step, /findings list --phase "\$\{PHASE_NUMBER\}" --status fixed/);
-    assert.match(step, /memory record pan-executor --finding <id> --lesson "<the correction>" --cites "<path\[#symbol\]>"/);
+    assert.match(step, /memory record <pan-planner\|pan-executor> --finding <id> --lesson "<the correction>" --cites "<path\[#symbol\]>"/);
+    assert.match(step, /`pan-planner` when the plan left out work a requirement or success criterion asked for/, 'a planning lesson goes to the planner');
+  });
+
+  test('planning lessons reach the planner and the checker; executors do not get the planner\'s log', () => {
+    // Found by the memory-lesson-chain harness run on 2026-10-04: the fix round recorded a
+    // planning lesson, and PAN injected memory only into executors, so no planner saw it.
+    const pp = read('pan-wizard-core/workflows/plan-phase.md');
+    assert.match(pp, /## 7\.5\. Load the Planner's Memory[\s\S]*memory select pan-planner --cue "[^"]+" --mark-used --raw/);
+    const planner = pp.slice(pp.indexOf('## 8. Spawn pan-planner Agent'), pp.indexOf('## 9. Handle Planner Return'));
+    const checker = pp.slice(pp.indexOf('## 10. Spawn pan-plan-checker Agent'), pp.indexOf('## 11. Handle Checker Return'));
+    for (const [name, block] of [['planner', planner], ['checker', checker]]) assert.match(block, /<project_memory>\n\{PLANNER_MEMORY/, name);
+    const wf = read('pan-wizard-core/workflows/exec-phase.md');
+    const load = wf.slice(wf.indexOf('<step name="load_phase_memory">'), wf.indexOf('</step>', wf.indexOf('<step name="load_phase_memory">')));
+    assert.match(load, /every agent log except the planner's \(`pan-planner`\)/);
   });
   test('the optimizer proposes memory_entry actions, never topic files', () => {
     const p = read('agents/pan-optimizer.md');

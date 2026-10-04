@@ -89,7 +89,7 @@ If any agent log has entries:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory budget --raw
 ```
-2. **Load every agent log through `memory select`, once per agent:**
+2. **Load every agent log except the planner's (`pan-planner`) through `memory select`, once per agent.** Planning lessons go to the planner and the checker in plan-phase; an executor cannot act on them.
    - If `status` is `ok`: take every valid entry. This keeps the "apply every rule" contract for normal-sized logs.
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory select <agent> --all --mark-used --raw
@@ -654,12 +654,13 @@ For each fixed finding, at most three per phase:
 1. **Is it a lesson?** Would an executor on a later phase get this wrong again? A slip specific to this phase's code is not a lesson; skip it.
 2. **Write the correction** in one line: what to do next time, not what went wrong. If a test or a type now enforces it, the code already says it, and there is no lesson.
 3. **Cite the code** the fix put in place (`path` or `path#symbol`).
+4. **File it with the agent that would have prevented it.** Use `pan-planner` when the plan left out work a requirement or success criterion asked for, so the fix round had to add a task. Use `pan-executor` when the plan asked for the right thing and the code got it wrong.
 
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory record pan-executor --finding <id> --lesson "<the correction>" --cites "<path[#symbol]>"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory record <pan-planner|pan-executor> --finding <id> --lesson "<the correction>" --cites "<path[#symbol]>"
 ```
 
-`memory record` refuses a lesson without a fixed finding, a citation that does not hold, a duplicate, or a directive. A refusal is the gate working, not an error to work around: report it in one line and move on. Executors on later phases receive recorded lessons through load_phase_memory.
+`memory record` refuses a lesson without a fixed finding, a citation that does not hold, a duplicate, or a directive. A refusal is the gate working, not an error to work around: report it in one line and move on. Planners and plan checkers on later phases receive `pan-planner` lessons (plan-phase step 7.5); executors receive the rest through load_phase_memory.
 </step>
 
 <step name="update_roadmap">

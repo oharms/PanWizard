@@ -339,6 +339,16 @@ UAT_PATH=$(echo "$INIT" | jq -r '.uat_path // empty')
 CONTEXT_PATH=$(echo "$INIT" | jq -r '.context_path // empty')
 ```
 
+## 7.5. Load the Planner's Memory
+
+Lessons from earlier phases that concern planning are in the planner's agent log, `pan-planner`. Two writers put them there. `memory record` files one after a fix round closed a gap that a plan left out (exec-phase `record_lessons`). `verify retro --write-memory` files the plan gaps that recur. Load them through `memory select`, never by reading the file:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory select pan-planner --cue "<phase goal; the files it touches>" --mark-used --raw
+```
+
+`selected` holds the valid entries: an entry whose cited code is gone, or that has gone unused past the expiry window, is left out. Condense each to its rule as `PLANNER_MEMORY`. An empty `selected` means there is nothing to pass: leave the block out below.
+
 ## 8. Spawn pan-planner Agent
 
 Display banner:
@@ -370,6 +380,11 @@ Planner prompt:
 
 **Project instructions:** Read ./CLAUDE.md if exists — follow project-specific guidelines
 **Project skills:** Check .agents/skills/ directory (if exists) — read SKILL.md files, plans should account for project skill rules
+
+<project_memory>
+{PLANNER_MEMORY — the condensed `selected` entries from step 7.5; omit this block when there are none.}
+These are lessons from earlier phases' plans. Each one corrected a failure, and any code it cites was checked against the working tree when it was loaded. Plan so they do not happen again.
+</project_memory>
 </planning_context>
 
 <downstream_consumer>
@@ -435,6 +450,11 @@ Checker prompt:
 
 **Project instructions:** Read ./CLAUDE.md if exists — verify plans honor project guidelines
 **Project skills:** Check .agents/skills/ directory (if exists) — verify plans account for project skill rules
+
+<project_memory>
+{PLANNER_MEMORY — the same block the planner got; omit it when there are none.}
+A plan that repeats one of these earlier failures is an issue to report.
+</project_memory>
 </verification_context>
 
 <expected_output>
