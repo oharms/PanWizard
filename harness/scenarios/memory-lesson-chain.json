@@ -1,0 +1,27 @@
+{
+  "id": "memory-lesson-chain",
+  "tier": 2,
+  "description": "Agent memory's write path, end to end: a fix round closes a verified gap, record_lessons turns it into a lesson through memory record, and phase 2's executors receive it. Reports whether phase 2's code shows the lesson (the effect); memory-lesson-control is the same run without the memory.",
+  "why": "Memory optimisation O6: agent memory had a read path and almost no writes (F4). This proves the gated write path works in the shipped flow, and measures whether a lesson changes the next phase's behaviour. Run --repeat 2 beside memory-lesson-control: if two reps show no effect over the control, the layer is retired and the reason recorded (docs/specs/memory-optimization-2026-10.md).",
+  "seed": "lesson-chain",
+  "install": ["--claude"],
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 10, "maxMinutes": 60, "maxStepMinutes": 40 },
+  "steps": [
+    { "kind": "pan", "argv": ["findings", "record", "--phase", "1", "--file", ".planning/phases/01-greet/01-verification.md"],
+      "expect": ["exit:0", "json:recorded=true", "json:findings=1"],
+      "why": "The ledger holds the open gap, as exec-phase would have recorded it when the verification ran." },
+    { "kind": "model", "prompt": "/pan:exec-phase 1 --gaps-only --skip-tests",
+      "expect": ["exit:0", "file:.planning/phases/01-greet/01-02-summary.md"],
+      "why": "The fix round: the gap-closure plan runs, the verifier re-checks, the gap is auto-fixed in the ledger, and record_lessons runs." },
+    { "kind": "sh", "script": "lesson-chain-check.cjs", "args": ["<ws>", "recorded"], "expect": ["exit:0", "json:recorded_ok=true", "json:problems"],
+      "why": "A lesson with `evidence: finding:` is in memory: the gated write path ran in the shipped flow." },
+    { "kind": "model", "prompt": "/pan:exec-phase 2 --skip-tests", "persistSession": true,
+      "expect": ["exit:0", "file:src/farewell.js"],
+      "why": "The next phase. Its session persists so the check can read what each executor was given." },
+    { "kind": "sh", "script": "lesson-chain-check.cjs", "args": ["<ws>", "effect"], "expect": ["exit:0", "json:lesson_injected=true", "json:effect.cases", "json:problems"],
+      "why": "The lesson reached phase 2's executors. `effect.validates` is the measurement compared with the control; it is reported, not asserted." },
+    { "kind": "sh", "script": "seed-tests.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:passed=true"],
+      "why": "Working code: the seed's tests pass after both phases." }
+  ]
+}

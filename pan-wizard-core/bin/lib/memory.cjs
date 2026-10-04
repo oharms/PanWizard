@@ -77,22 +77,29 @@ function validateAgentName(agent) {
 
 // ─── Entry metadata: citations and last use (O4) ────────────────────────────
 
-const ENTRY_META_RE = /\s*<!--\s*((?:cites|used)\s*:[^>]*?)\s*-->\s*$/i;
+const ENTRY_META_RE = /\s*<!--\s*((?:cites|evidence|used|uses)\s*:[^>]*?)\s*-->\s*$/i;
 const ENTRY_DATE_RE = /^(\d{4}-\d{2}-\d{2}):\s*/;
 
-/** An entry's parts: `{ date, text, cites: string[], used }`. */
+/**
+ * An entry's parts: `{ date, text, cites: string[], evidence, used, uses }`.
+ * `evidence` is the observed failure a recorded lesson came from (`finding:f_…` or
+ * `trace:<session>`, O6); `uses` counts the days it was injected.
+ */
 function parseEntryMeta(entry) {
   const s = String(entry == null ? '' : entry);
   const m = s.match(ENTRY_META_RE);
   const body = m ? s.slice(0, m.index) : s;
   const d = body.match(ENTRY_DATE_RE);
-  const meta = { date: d ? d[1] : null, text: d ? body.slice(d[0].length) : body, cites: [], used: null };
+  const meta = { date: d ? d[1] : null, text: d ? body.slice(d[0].length) : body, cites: [], evidence: null, used: null, uses: 0 };
   if (m) {
     for (const field of m[1].split(';')) {
-      const kv = field.match(/^\s*(cites|used)\s*:\s*(.*?)\s*$/i);
+      const kv = field.match(/^\s*(cites|evidence|used|uses)\s*:\s*(.*?)\s*$/i);
       if (!kv) continue;
-      if (kv[1].toLowerCase() === 'cites') meta.cites = kv[2].split(',').map(c => c.trim()).filter(Boolean);
-      else if (/^\d{4}-\d{2}-\d{2}$/.test(kv[2])) meta.used = kv[2];
+      const key = kv[1].toLowerCase();
+      if (key === 'cites') meta.cites = kv[2].split(',').map(c => c.trim()).filter(Boolean);
+      else if (key === 'evidence') meta.evidence = kv[2] || null;
+      else if (key === 'used') { if (/^\d{4}-\d{2}-\d{2}$/.test(kv[2])) meta.used = kv[2]; }
+      else if (/^\d+$/.test(kv[2])) meta.uses = Number(kv[2]);
     }
   }
   return meta;
@@ -102,7 +109,9 @@ function parseEntryMeta(entry) {
 function formatEntry(meta) {
   const fields = [];
   if (meta.cites && meta.cites.length) fields.push(`cites: ${meta.cites.join(', ')}`);
+  if (meta.evidence) fields.push(`evidence: ${meta.evidence}`);
   if (meta.used) fields.push(`used: ${meta.used}`);
+  if (meta.uses) fields.push(`uses: ${meta.uses}`);
   const head = meta.date ? `${meta.date}: ${meta.text}` : meta.text;
   return fields.length ? `${head} <!-- ${fields.join('; ')} -->` : head;
 }
@@ -495,11 +504,94 @@ function markEntriesUsed(cwd, agent, indexes, day) {
     const meta = parseEntryMeta(lines[li].replace(/^-\s+/, ''));
     if (meta.used === day) continue;
     meta.used = day;
+    meta.uses = (meta.uses || 0) + 1; // days injected: the use telemetry O6 asked for
     lines[li] = `- ${formatEntry(meta)}`;
     changed++;
   }
   if (changed) fs.writeFileSync(file, withEol(lines.join('\n'), dominantEol(raw)), 'utf-8');
   return changed;
+}
+
+// ─── The gated write path (O6) ───────────────────────────────────────────────
+
+const LESSON_MIN_CHARS = 20;
+const LESSON_MAX_CHARS = 300;
+const TRACE_SESSION_RE = /^[A-Za-z0-9._-]{1,120}$/;
+const sameText = (a, b) => String(a || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === String(b || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * Record a lesson in an agent's memory — the gated write path (memory
+ * optimisation O6). The market and the research agree on what makes agent memory
+ * pay: lessons from observed failures, carrying the correction and its evidence,
+ * never raw traces and never what the code already says. So a lesson is recorded
+ * only:
+ *   - from evidence of a corrected failure: `finding` (a finding in the ledger whose
+ *     status is `fixed`: a verifier gap a fix round closed) or `trace` (a trace
+ *     session, where the optimizer saw a recurring tool failure);
+ *   - with at least one citation that holds (O4), the code the correction lives in;
+ *   - as one line of 20–300 characters that says the correction, not the finding;
+ *   - when it is not a directive to bypass the process (ADR-0040);
+ *   - once: one lesson per finding, and never a lesson already in the log.
+ * A refusal is `{recorded: false, reason}`; bad input is `{error}`.
+ * @param {string} cwd
+ * @param {string} agent
+ * @param {{lesson: string, finding?: string, trace?: string, cites?: string|string[]}} opts
+ */
+function recordLesson(cwd, agent, opts = {}) {
+  const err = validateAgentName(agent);
+  if (err) return { error: err };
+  if (opts.finding && opts.trace) return { error: 'give one piece of evidence: --finding <id> or --trace <session>' };
+  const lesson = String(opts.lesson || '').replace(/\s+/g, ' ').trim();
+  const refuse = (reason, extra = {}) => ({ recorded: false, agent, reason, ...extra });
+  if (lesson.length < LESSON_MIN_CHARS) return refuse(`a lesson needs at least ${LESSON_MIN_CHARS} characters: write the correction, not a label`);
+  if (lesson.length > LESSON_MAX_CHARS) return refuse(`a lesson is one rule of at most ${LESSON_MAX_CHARS} characters`);
+  if (/<!--|-->/.test(lesson)) return refuse('a lesson may not carry an HTML comment');
+  if (require('./memory-optimize.cjs').isSuspiciousDirective(lesson)) {
+    return refuse('it reads as a directive to override or bypass the process (ADR-0040), so it is not recorded');
+  }
+
+  let evidence;
+  if (opts.finding) {
+    const f = require('./findings.cjs').listFindings(cwd, {}).findings.find(x => x.id === opts.finding);
+    if (!f) return refuse(`no finding ${opts.finding} in the findings ledger`);
+    if (f.status !== 'fixed') return refuse(`finding ${opts.finding} is ${f.status}, not fixed: a lesson comes from a failure that was corrected`);
+    if (sameText(lesson, f.summary)) return refuse('the lesson repeats the finding: write the correction, what to do next time');
+    evidence = `finding:${f.id}`;
+  } else if (opts.trace) {
+    if (!TRACE_SESSION_RE.test(opts.trace)) return refuse(`not a trace session id: ${opts.trace}`);
+    try { fs.statSync(planningPath(cwd, 'optimization', 'traces', opts.trace, 'trace.jsonl')); } catch {
+      return refuse(`no trace session ${opts.trace} under ${planningRel('optimization', 'traces')}/`);
+    }
+    evidence = `trace:${opts.trace}`;
+  } else {
+    return refuse('a lesson needs evidence of the failure it corrects: --finding <id> (a fixed finding) or --trace <session>');
+  }
+
+  const cites = citeList(opts.cites);
+  if (!cites.length) return refuse('a lesson needs --cites <path[#symbol]>: the code the correction lives in');
+  for (const c of cites) {
+    const problem = citationProblem(cwd, c);
+    if (problem) return refuse(`citation ${c}: ${problem}`);
+  }
+
+  const mem = readMemory(cwd, agent);
+  for (const e of mem ? mem.entries : []) {
+    const m = parseEntryMeta(e);
+    if (evidence.startsWith('finding:') && m.evidence === evidence) return refuse(`${evidence} already has a lesson: ${m.text}`, { duplicate: true });
+    if (sameText(m.text, lesson)) return refuse('the same lesson is already in the log', { duplicate: true });
+  }
+
+  const entry = formatEntry({ date: today(), text: lesson, cites, evidence });
+  const r = appendMemory(cwd, agent, entry);
+  if (r.error) return r;
+  try {
+    require('./optimize.cjs').logTraceEvent(cwd, {
+      type: 'decision', category: 'memory_recorded', agent: 'orchestrator', impact: 'minor',
+      description: `lesson recorded for ${agent} from ${evidence}`,
+      context: { agent, evidence, cites },
+    });
+  } catch { /* telemetry is best effort */ }
+  return { recorded: true, agent, evidence, entry, file: planningRel(MEMORY_DIR, `${agent}.md`), count: r.count };
 }
 
 /**
@@ -630,8 +722,30 @@ function cmdMemoryAppend(cwd, agent, entry, raw, opts = {}) {
   output(appendMemory(cwd, agent, entry, opts), raw);
 }
 
+/**
+ * Use telemetry across the agent logs (O6): how many entries carry evidence of the
+ * failure they came from, cite code, and were ever injected (`uses`, counted by
+ * `memory select --mark-used`). An entry never injected is memory nobody reads.
+ */
+function memoryUsage(cwd, agents) {
+  const u = { entries: 0, with_evidence: 0, cited: 0, injected: 0, never_injected: 0 };
+  for (const a of agents) {
+    const mem = readMemory(cwd, a.agent);
+    for (const e of mem ? mem.entries : []) {
+      const m = parseEntryMeta(e);
+      u.entries++;
+      if (m.evidence) u.with_evidence++;
+      if (m.cites.length) u.cited++;
+      if (m.uses > 0 || m.used) u.injected++;
+      else u.never_injected++;
+    }
+  }
+  return u;
+}
+
 function cmdMemoryList(cwd, raw) {
-  output(listMemoryAgents(cwd), raw);
+  const l = listMemoryAgents(cwd);
+  output({ ...l, usage: memoryUsage(cwd, l.agents) }, raw);
 }
 
 function cmdMemoryCompact(cwd, agent, maxEntries, raw) {
@@ -643,6 +757,15 @@ function cmdMemoryCompact(cwd, agent, maxEntries, raw) {
 function cmdMemorySelect(cwd, agent, opts, raw) {
   if (!agent) { error('Usage: memory select <agent> [--cue <text>] [--token-budget N] [--recency-floor N] [--all] [--mark-used] [--days N]'); }
   output(selectMemory(cwd, agent, opts || {}), raw);
+}
+
+/** `memory record <agent> --lesson <text> (--finding <id> | --trace <session>) --cites <path[#symbol]>,...` */
+function cmdMemoryRecord(cwd, agent, opts, raw) {
+  if (!agent) { error('Usage: memory record <agent> --lesson "<correction>" (--finding <id> | --trace <session>) --cites <path[#symbol]>,...'); }
+  const r = recordLesson(cwd, agent, opts || {});
+  if (r.error) { error(r.error); }
+  // A refusal is the gate working, reported as data (exit 0) with the reason.
+  output(r, raw, r.recorded ? `recorded for ${r.agent} from ${r.evidence}` : `not recorded: ${r.reason}`);
 }
 
 /** `memory prune [<agent>] [--apply] [--days N]` */
@@ -668,6 +791,7 @@ module.exports = {
   listMemoryAgents,
   selectMemory,
   pruneMemory,
+  recordLesson,
   memoryLoadBudget,
   scoreEntry,
   parseEntries,
@@ -682,6 +806,7 @@ module.exports = {
   cmdMemoryCompact,
   cmdMemorySelect,
   cmdMemoryPrune,
+  cmdMemoryRecord,
   cmdMemoryBudget,
   MEMORY_DIR,
   MEMORY_ARCHIVE_DIR,

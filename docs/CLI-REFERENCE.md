@@ -434,6 +434,7 @@ Quick reference of all CLI commands grouped by category.
 | 195 | `memory select` | Memory | memory.cjs |
 | 196 | `memory budget` | Memory | memory.cjs |
 | 212 | `memory prune` | Memory | memory.cjs |
+| 213 | `memory record` | Memory | memory.cjs |
 | 197 | `doc-lint counts` | Linting | doc-lint.cjs |
 | 198 | `doc-lint flags` | Linting | doc-lint.cjs |
 | 199 | `state compact` | State Progression | state-compact.cjs |
@@ -6783,9 +6784,12 @@ pan-tools memory list [--raw]
 ```json
 {
   "agents": [ {"agent": "pan-planner", "entries": 12}, {"agent": "pan-verifier", "entries": 4} ],
-  "not_loaded": [ {"file": "quarantine.md", "reason": "PAN archive, never loaded as memory"}, {"file": "notes.md", "reason": "no `## Entries` list"} ]
+  "not_loaded": [ {"file": "quarantine.md", "reason": "PAN archive, never loaded as memory"}, {"file": "notes.md", "reason": "no `## Entries` list"} ],
+  "usage": { "entries": 16, "with_evidence": 3, "cited": 5, "injected": 12, "never_injected": 4 }
 }
 ```
+
+`usage` is the memory layer's telemetry across the agent logs. It counts entries that carry evidence of the failure they came from (`memory record`), entries that cite code, and entries ever injected. `memory select --mark-used` counts each day an entry is injected (`uses` on its line). An entry never injected is memory nobody reads.
 
 ### `memory compact <agent> [max]`
 
@@ -6826,6 +6830,23 @@ pan-tools memory select pan-executor --all --mark-used --raw
   "expired": [{ "entry": "2026-06-01: An old lesson", "last_used": "2026-06-01" }],
   "total_tokens": 14, "dropped": 0, "marked_used": 1
 }
+```
+
+### `memory record <agent> --lesson "<correction>" (--finding <id> | --trace <session>) --cites <path[#symbol]>,...`
+
+The gated write path for agent memory. A lesson is recorded only from an observed failure that was corrected, with the correction, its evidence and a citation:
+
+- **Evidence, one of:** `--finding <id>`, a finding in `.planning/findings.jsonl` whose status is `fixed` (a verifier gap a fix round closed); or `--trace <session>`, a trace session under `.planning/optimization/traces/` (the optimizer's recurring tool failures). The entry stores it as `evidence: finding:f_…` or `evidence: trace:<session>`.
+- **Citations:** `--cites`, at least one, each holding now (see `memory append`).
+- **The lesson:** one line of 20–300 characters that says the correction, what to do next time. It may not repeat the finding, carry an HTML comment, or read as a directive to bypass the process (ADR-0040).
+- **Once:** a finding gets one lesson, and a lesson already in the log is not recorded again.
+
+A refusal is reported as `{ "recorded": false, "reason": "…" }` with exit 0: it is the gate working. A missing agent or two pieces of evidence is a usage error. A recorded lesson logs a `memory_recorded` trace event. exec-phase's `record_lessons` step calls this after a fix round passes, and `optimize apply` calls it for a `memory_entry` action.
+
+```bash
+pan-tools memory record pan-executor --finding f_3c9a1e07b2 \
+  --lesson "Give every token type an explicit expiry constant and test the expiry path" \
+  --cites src/session.js#SESSION_TTL_MS
 ```
 
 ### `memory prune [<agent>] [--apply] [--days N]`

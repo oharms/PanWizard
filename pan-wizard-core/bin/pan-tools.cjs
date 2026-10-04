@@ -1065,6 +1065,13 @@ async function main() {
           markUsed: args.includes('--mark-used'),
           expireDays: getArgValue(args, '--days'),
         }, raw);
+      } else if (subcommand === 'record') {
+        memory.cmdMemoryRecord(cwd, args[2] && !args[2].startsWith('--') ? args[2] : null, {
+          lesson: getArgValue(args, '--lesson'),
+          finding: getArgValue(args, '--finding'),
+          trace: getArgValue(args, '--trace'),
+          cites: getArgValue(args, '--cites'),
+        }, raw);
       } else if (subcommand === 'prune') {
         const daysArg = getArgValue(args, '--days');
         if (daysArg !== null && !/^\d+$/.test(daysArg)) error('memory prune --days needs a whole number of days (0 turns expiry off)');
@@ -1083,7 +1090,7 @@ async function main() {
           apply: args.includes('--apply'),
         }, raw);
       } else {
-        error('Unknown memory subcommand. Available: read, append, list, compact, select, prune, budget, optimize, rebuild');
+        error('Unknown memory subcommand. Available: read, append, list, compact, select, record, prune, budget, optimize, rebuild');
       }
       break;
     }

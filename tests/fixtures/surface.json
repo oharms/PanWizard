@@ -162,6 +162,7 @@
     "memory prune",
     "memory read",
     "memory rebuild",
+    "memory record",
     "memory select",
     "milestone complete",
     "models check",

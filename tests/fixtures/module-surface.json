@@ -627,6 +627,7 @@
     "cmdMemoryList:function",
     "cmdMemoryPrune:function",
     "cmdMemoryRead:function",
+    "cmdMemoryRecord:function",
     "cmdMemorySelect:function",
     "compactMemory:function",
     "entryStatus:function",
@@ -637,6 +638,7 @@
     "parseEntryMeta:function",
     "pruneMemory:function",
     "readMemory:function",
+    "recordLesson:function",
     "scoreEntry:function",
     "selectMemory:function",
     "validateAgentName:function"

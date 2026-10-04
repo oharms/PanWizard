@@ -59,7 +59,7 @@ Scan `trace.jsonl` for events. Look for:
 For each finding, classify:
 - **Type**: error_pattern | gap | memory_gap | redundancy | prompt_weakness | workflow_gap
 - **Impact**: critical (blocks progress) | major (wastes >20% tokens) | minor (inconvenience) | trivial
-- **Auto-applicable**: memory entries are auto-applicable; prompt/workflow changes need human review
+- **Auto-applicable**: `memory_entry` actions are auto-applicable (`memory record` gates them); prompt/workflow changes need human review
 - **Frequency**: how many times this pattern appeared
 
 ### Step 4: Generate recommendations
@@ -93,21 +93,16 @@ Produce ranked recommendations in these categories:
 
 ### Step 5: Derive Auto-Apply Actions
 
-For each memory gap and redundancy with known content, produce a JSON action in the `## Auto-Apply Actions` block:
+For each lesson the trace earns (see "Recurrence before memory" above), produce a `memory_entry` action in the `## Auto-Apply Actions` block. Everything else is a `note`.
 
 ```json
 [
   {
-    "type": "memory",
-    "path": ".planning/memory/topic-name.md",
-    "description": "Cache X because it was a memory miss N times",
-    "content": "# Topic Name\n\n[content derived from trace events and your knowledge]\n"
-  },
-  {
-    "type": "memory_append",
-    "path": ".planning/memory/existing-file.md",
-    "description": "Append new finding to existing memory",
-    "content": "\n## New Section\n[content]\n"
+    "type": "memory_entry",
+    "agent": "pan-executor",
+    "lesson": "Run the suite with npm run test:all; npm test skips the scenario tests",
+    "cites": ["package.json#test:all"],
+    "description": "pan-executor ran the wrong test script in 3 spawns across 2 sessions"
   },
   {
     "type": "note",
@@ -117,6 +112,13 @@ For each memory gap and redundancy with known content, produce a JSON action in 
   }
 ]
 ```
+
+**What a `memory_entry` must carry.** `/pan:optimize apply` records it through `pan-tools memory record`, which refuses it unless:
+- **`lesson`** is the correction in one line of 20–300 characters: what to do, not what went wrong, and not what the code already says;
+- **`cites`** names the code the correction lives in (`path` or `path#symbol`), and each citation still holds;
+- **`agent`** is the agent log it belongs in (`pan-executor` for most execution lessons).
+
+The evidence is this report's trace session. Do not propose `memory` or `memory_append` actions: a topic file in `.planning/memory/` is never loaded as memory.
 
 ## Output Format
 
@@ -207,10 +209,11 @@ The following actions will be applied automatically by `/pan:optimize apply`:
 ```json
 [
   {
-    "type": "memory",
-    "path": ".planning/memory/{file}.md",
-    "description": "{why this entry is being created}",
-    "content": "{full file content}"
+    "type": "memory_entry",
+    "agent": "{agent log, e.g. pan-executor}",
+    "lesson": "{the correction, one line}",
+    "cites": ["{path or path#symbol}"],
+    "description": "{the recurring failure it comes from}"
   }
 ]
 ```

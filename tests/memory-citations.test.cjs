@@ -29,7 +29,7 @@ describe('entry metadata: cites and last use', () => {
   test('parse and format are inverses, and an entry without metadata is untouched', () => {
     const e = '2026-10-01: Batch inserts through the writer <!-- cites: src/db.js#bulkInsert, src/x.js; used: 2026-10-03 -->';
     const m = parseEntryMeta(e);
-    assert.deepEqual(m, { date: '2026-10-01', text: 'Batch inserts through the writer', cites: ['src/db.js#bulkInsert', 'src/x.js'], used: '2026-10-03' });
+    assert.deepEqual(m, { date: '2026-10-01', text: 'Batch inserts through the writer', cites: ['src/db.js#bulkInsert', 'src/x.js'], evidence: null, used: '2026-10-03', uses: 0 });
     assert.equal(formatEntry(m), e);
     assert.equal(formatEntry(parseEntryMeta('2026-10-01: plain lesson')), '2026-10-01: plain lesson');
     assert.equal(formatEntry({ ...parseEntryMeta('2026-10-01: plain lesson'), used: '2026-10-02' }), '2026-10-01: plain lesson <!-- used: 2026-10-02 -->');
@@ -97,7 +97,7 @@ describe('memory select injects only valid entries', () => {
     const r = selectMemory(tmp, 'pan-executor', { all: true, markUsed: true, now: NOW });
     assert.equal(r.marked_used, 1);
     const after = fs.readFileSync(memPath(tmp, 'pan-executor'), 'utf8');
-    assert.match(after, new RegExp(`- ${day(-20)}: kept and used <!-- used: ${day(0)} -->\\r\\n`));
+    assert.match(after, new RegExp(`- ${day(-20)}: kept and used <!-- used: ${day(0)}; uses: 1 -->\\r\\n`));
     assert.match(after, /- \S+: stale <!-- cites: nope\.js -->\r\n/, 'a left-out entry is not marked');
     assert.doesNotMatch(after.replace(/\r\n/g, ''), /\n/, 'no bare LF');
     assert.equal(selectMemory(tmp, 'pan-executor', { all: true, markUsed: true, now: NOW }).marked_used, 0, 'marking twice on one day writes nothing');

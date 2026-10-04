@@ -602,7 +602,7 @@ VERIF_STATUS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record 
 
 | Status | Action |
 |--------|--------|
-| `passed` | → update_roadmap. If the verification frontmatter has `test_gate: skipped` or a `not_checked` list, say so when you report the phase: "passed — not checked: tests (no test script)". A pass never hides what it did not check |
+| `passed` | → record_lessons when this run was `--gaps-only`, then update_roadmap. If the verification frontmatter has `test_gate: skipped` or a `not_checked` list, say so when you report the phase: "passed — not checked: tests (no test script)". A pass never hides what it did not check |
 | `human_needed` | Present items for human testing, get approval or feedback |
 | `gaps_found` | Present gap summary, offer `/pan:plan-phase {phase} --gaps` |
 
@@ -639,6 +639,27 @@ Also: `/pan:verify-phase {X}` — manual testing first
 ```
 
 Gap closure cycle: `/pan:plan-phase {X} --gaps` reads verification.md → creates gap plans with `gap_closure: true` → user runs `/pan:exec-phase {X} --gaps-only` → verifier re-runs.
+</step>
+
+<step name="record_lessons">
+**Only after a fix round passes:** this run was `--gaps-only` and the verification passed. Otherwise skip this step. A finding that already has a lesson is refused as a duplicate, so a repeated run records nothing twice.
+
+The gaps the fix round closed are now `fixed` in the findings ledger. Each is an observed failure with its correction in the code, which is the only kind of lesson memory takes (O6). List them:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings list --phase "${PHASE_NUMBER}" --status fixed
+```
+
+For each fixed finding, at most three per phase:
+1. **Is it a lesson?** Would an executor on a later phase get this wrong again? A slip specific to this phase's code is not a lesson; skip it.
+2. **Write the correction** in one line: what to do next time, not what went wrong. If a test or a type now enforces it, the code already says it, and there is no lesson.
+3. **Cite the code** the fix put in place (`path` or `path#symbol`).
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory record pan-executor --finding <id> --lesson "<the correction>" --cites "<path[#symbol]>"
+```
+
+`memory record` refuses a lesson without a fixed finding, a citation that does not hold, a duplicate, or a directive. A refusal is the gate working, not an error to work around: report it in one line and move on. Executors on later phases receive recorded lessons through load_phase_memory.
 </step>
 
 <step name="update_roadmap">

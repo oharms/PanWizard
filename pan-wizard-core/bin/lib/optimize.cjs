@@ -793,6 +793,27 @@ function revertedIndices(rows) {
   return out;
 }
 
+/** The trace session a report belongs to, from its name (`<session>-opt-report.md`, `<session>-analysis.json`). */
+function reportSessionId(reportPath) {
+  const m = path.basename(String(reportPath || '')).match(/^(.+?)-(?:opt-report\.md|analysis\.json)$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * A legacy `memory` / `memory_append` action writes the file it names. Since O4,
+ * memory loads only from agent logs with a `## Entries` list, so a topic file there
+ * is written but never injected: say so in the result rather than let the apply
+ * look like it taught anyone anything.
+ */
+function notLoadedWarning(cwd, relPath) {
+  const abs = path.resolve(cwd, relPath || '');
+  if (path.dirname(abs) !== path.resolve(planningPath(cwd), 'memory')) return {};
+  let text = '';
+  try { text = fs.readFileSync(abs, 'utf-8'); } catch { return {}; }
+  if (/^##\s+Entries\s*$/m.test(text) && !require('./memory.cjs').RESERVED_MEMORY_NAMES.includes(path.basename(abs, '.md').toLowerCase())) return {};
+  return { warning: 'not loaded as memory: memory loads only agent logs with a `## Entries` list (O4). Propose a memory_entry, which `memory record` checks, instead' };
+}
+
 function applyReportRecommendations(cwd, reportPath) {
   let reportContent;
   try {
@@ -867,11 +888,28 @@ function applyReportRecommendations(cwd, reportPath) {
           fs.mkdirSync(path.dirname(memPath), { recursive: true });
           fs.writeFileSync(memPath, action.content, 'utf-8');
           records.push({ i, type: action.type, path: rel(memPath), kind: 'created', sha256_after: normalisedHash(fs.readFileSync(memPath, 'utf-8')), action_sig: actionSig(action) });
-          applied.push({ action, result: `Written to ${action.path}` });
+          applied.push({ action, result: `Written to ${action.path}`, ...notLoadedWarning(cwd, action.path) });
         }
       } else if (action.type === 'memory_append') {
         appendRecorded(path.join(cwd, action.path), '\n' + action.content, action, i);
-        applied.push({ action, result: `Appended to ${action.path}` });
+        applied.push({ action, result: `Appended to ${action.path}`, ...notLoadedWarning(cwd, action.path) });
+      } else if (action.type === 'memory_entry') {
+        // The gated write path (O6): a lesson the optimizer drew from this report's
+        // trace session, recorded only if it carries citations that hold and passes
+        // `memory record`'s other rules. Recorded as created/appended so revert works.
+        const session = reportSessionId(reportPath);
+        if (!session) { skipped.push({ action, reason: 'a memory entry needs the trace session the report came from, and this report\'s name does not carry one' }); return; }
+        const { recordLesson } = require('./memory.cjs');
+        const logPath = path.join(planningPath(cwd), 'memory', `${String(action.agent || '')}.md`);
+        let before = null;
+        try { before = fs.readFileSync(logPath, 'utf-8'); } catch { /* a new log */ }
+        const r = recordLesson(cwd, String(action.agent || ''), { lesson: action.lesson, trace: session, cites: action.cites });
+        if (r.error || !r.recorded) { skipped.push({ action, reason: r.error || `memory record refused it: ${r.reason}` }); return; }
+        const after = fs.readFileSync(logPath, 'utf-8');
+        records.push(before === null
+          ? { i, type: action.type, path: rel(logPath), kind: 'created', sha256_after: normalisedHash(after), action_sig: actionSig(action) }
+          : { i, type: action.type, path: rel(logPath), kind: 'appended', text: toLf(after).slice(toLf(before).length), sha256_after: normalisedHash(after), action_sig: actionSig(action) });
+        applied.push({ action, result: `Recorded for ${r.agent} from ${r.evidence}` });
       } else if (action.type === 'note') {
         // Write a human-readable suggestion note
         const entry = `\n## ${new Date().toISOString()}: ${action.description || 'Suggestion'}\n\n${action.content || action.suggestion || ''}\n\n**Target:** ${action.target || 'unspecified'}\n`;

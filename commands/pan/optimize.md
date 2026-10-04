@@ -35,7 +35,7 @@ Manage the circular optimization loop: apply recommendations, view stats, list r
 Apply safe optimizations from the most recent (or specified) optimization report.
 
 Auto-applied automatically:
-- New memory entries (`.planning/memory/*.md`) — skipped if file already exists
+- Memory entries (`memory_entry`), each recorded through `pan-tools memory record`: it needs a lesson, a citation that holds and this report's trace session as its evidence, and a refused entry is listed under skipped with the reason. Legacy `memory` / `memory_append` actions still write their file, and the result warns when a file in `.planning/memory/` has no `## Entries` list, because such a file is never loaded
 - Suggestions appended to `.planning/optimization/suggestions.md`
 - Config notes appended to `.planning/optimization/config-suggestions.md`
 
