@@ -915,12 +915,23 @@ describe('context-note-headless: the context note reaches a session with no stat
     } finally { for (const x of [good, silent, bridged]) x.done(); }
   });
 
+  test('a note that only arrives after the host compacted fails the gate', () => {
+    const boundary = { type: 'system', subtype: 'compact_boundary', content: 'Conversation compacted', compactMetadata: { trigger: 'auto', preTokens: 67032 } };
+    const late = run([call(54371), call(67032), boundary, call(48158), note(CRITICAL)]);
+    const timely = run([call(54371), note(CRITICAL), call(67032), boundary, call(48158)]);
+    try {
+      assert.equal(JSON.parse(late.r.stdout).noted_before_compaction, false);
+      assert.notDeepEqual(verdict(late.r), [], late.r.stdout);
+      assert.deepEqual(verdict(timely.r), [], timely.r.stdout);
+    } finally { late.done(); timely.done(); }
+  });
+
   test('no transcript is a failure: nothing was measured', () => {
     const none = run(null);
     try {
       assert.equal(none.r.status, 1);
       assert.match(JSON.parse(none.r.stdout).problems.join(' '), /persistSession/);
-      assert.deepEqual(scan(['', 'not json']), { levels: [], max: 0 });
+      assert.deepEqual(scan(['', 'not json']), { levels: [], max: 0, beforeCompaction: false });
     } finally { none.done(); }
   });
 

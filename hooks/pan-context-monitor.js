@@ -22,11 +22,12 @@
 // 2026-10-04). Only a bounded tail of the file is read.
 //
 // What it measures (O7). Claude Code's percentages are against the full model
-// window, but the host compacts earlier: at the auto-compact window
+// window, but the host compacts earlier: about 33K short of the auto-compact window
 // (CLAUDE_CODE_AUTO_COMPACT_WINDOW, then `autoCompactWindow` in settings, per model
-// or for all), at about 967K on a 1M model by default, and at a percentage of that
-// with CLAUDE_AUTOCOMPACT_PCT_OVERRIDE. With token counts on the bridge, the room
-// left is measured against that point; without them, against the model window.
+// or for all, else the model window) — about 967K on a 1M model by default — or at
+// CLAUDE_AUTOCOMPACT_PCT_OVERRIDE's share of the window when that is lower. With
+// token counts, the room left is measured against that point; without them,
+// against the model window.
 //
 // What it says (O7). No countdown: vendor guidance is that a visible remaining-
 // context figure makes a model wrap up early and cut corners, and a note after a
@@ -122,7 +123,12 @@ const STALE_SECONDS = 60;      // ignore metrics older than 60s
 const DEBOUNCE_CALLS = 5;      // min tool uses between warnings
 const MIN_COMPACT_WINDOW = 100000;
 const MAX_COMPACT_WINDOW = 1000000;
-const ONE_M_DEFAULT_TRIGGER = 967000; // a native 1M window compacts at about 967K by default
+// The host compacts this far short of its window, whatever the window: about 967K on
+// a native 1M window (code.claude.com/docs/en/model-config), and on 2026-10-04 a 100K
+// autoCompactWindow compacted after a call that measured 67,032 tokens and not after
+// one that measured 54,371 (harness context-note-headless). A margin proportional to
+// the window would have put that compaction at ~96.7K.
+const COMPACT_MARGIN = 33000;
 const STANDARD_WINDOW = 200000;
 const TRANSCRIPT_TAIL_BYTES = 256 * 1024;      // the first read from the end of the transcript
 const TRANSCRIPT_MAX_BYTES = 4 * 1024 * 1024;  // never read more than this of it
@@ -130,7 +136,8 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/; // session and agent ids n
 
 /**
  * The token count at which the host compacts this session, or null when it does
- * not compact. Pure over its inputs.
+ * not compact: the compaction window less COMPACT_MARGIN, or the percentage
+ * override's share of the window when that is lower. Pure over its inputs.
  *   modelWindow — context_window_size from the statusline
  *   modelId     — the model id, for `modelSettings.<id>.autoCompactWindow`
  *   env         — the environment (CLAUDE_CODE_AUTO_COMPACT_WINDOW,
@@ -154,10 +161,11 @@ function compactTrigger({ modelWindow, modelId, env = {}, settings = [] }) {
       if (Number.isFinite(v)) { window = clamp(v); break; }
     }
   }
-  if (window == null) window = modelWindow >= MAX_COMPACT_WINDOW ? Math.min(modelWindow, ONE_M_DEFAULT_TRIGGER) : modelWindow;
+  if (window == null) window = Math.min(modelWindow, MAX_COMPACT_WINDOW);
+  let trigger = window - COMPACT_MARGIN;
   const pct = Number(env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE);
-  if (Number.isInteger(pct) && pct >= 1 && pct < 100) window = Math.floor(window * pct / 100);
-  return window;
+  if (Number.isInteger(pct) && pct >= 1 && pct < 100) trigger = Math.min(trigger, Math.floor(window * pct / 100));
+  return trigger;
 }
 
 /**

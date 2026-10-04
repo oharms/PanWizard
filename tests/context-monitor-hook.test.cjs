@@ -155,19 +155,30 @@ describe('pan-context-monitor — no countdown (O7)', () => {
 
 describe('pan-context-monitor — measured against where the host compacts (O7)', () => {
   test('the compaction point: env, then per-model setting, then the all-model setting, then the default', () => {
-    assert.equal(compactTrigger({ modelWindow: 200000 }), 200000, 'a 200K model compacts at its limit');
+    assert.equal(compactTrigger({ modelWindow: 200000 }), 167000, 'a 200K model compacts 33K short of its limit');
     assert.equal(compactTrigger({ modelWindow: 1000000 }), 967000, 'a native 1M window compacts at about 967K');
-    assert.equal(compactTrigger({ modelWindow: 1000000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' } }), 500000);
-    assert.equal(compactTrigger({ modelWindow: 200000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' } }), 200000, 'capped at the model window');
+    assert.equal(compactTrigger({ modelWindow: 1000000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' } }), 467000);
+    assert.equal(compactTrigger({ modelWindow: 200000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' } }), 167000, 'capped at the model window');
     assert.equal(compactTrigger({ modelWindow: 1000000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500k' } }), 967000, 'only a plain integer counts');
-    assert.equal(compactTrigger({ modelWindow: 1000000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '50000' } }), 100000, 'clamped to the 100K minimum');
+    assert.equal(compactTrigger({ modelWindow: 1000000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '50000' } }), 67000, 'clamped to the 100K minimum');
     const settings = [{ autoCompactWindow: 400000, modelSettings: { 'claude-x': { autoCompactWindow: 300000 } } }, { autoCompactWindow: 800000 }];
-    assert.equal(compactTrigger({ modelWindow: 1000000, modelId: 'claude-x', settings }), 300000, 'the per-model window wins in its file');
-    assert.equal(compactTrigger({ modelWindow: 1000000, modelId: 'claude-y', settings }), 400000, 'the higher-precedence file wins');
+    assert.equal(compactTrigger({ modelWindow: 1000000, modelId: 'claude-x', settings }), 267000, 'the per-model window wins in its file');
+    assert.equal(compactTrigger({ modelWindow: 1000000, modelId: 'claude-y', settings }), 367000, 'the higher-precedence file wins');
     assert.equal(compactTrigger({ modelWindow: 1000000, settings: [{ autoCompactWindow: 'auto' }, { autoCompactWindow: 800000 }] }), 967000, '"auto" is the tuned default');
     assert.equal(compactTrigger({ modelWindow: 1000000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '600000', CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' } }), 300000);
     assert.equal(compactTrigger({ modelWindow: 1000000, env: { DISABLE_AUTO_COMPACT: '1' } }), null);
     assert.equal(compactTrigger({ modelWindow: 1000000, settings: [{ autoCompactEnabled: false }] }), null);
+  });
+
+  test('the host compacts a fixed margin short of the window, as measured: the 1M default and a 100K window', () => {
+    // Docs: a native 1M window compacts at about 967K. Harness context-note-headless,
+    // 2026-10-04: with autoCompactWindow 100000 the host compacted after a call that
+    // measured 67,032 tokens and not after one that measured 54,371. A margin
+    // proportional to the window would have put that compaction near 96.7K.
+    assert.equal(compactTrigger({ modelWindow: 1000000 }), 967000);
+    const trigger = compactTrigger({ modelWindow: 1000000, settings: [{ autoCompactWindow: 100000 }] });
+    assert.ok(trigger > 54371 && trigger <= 67032, `the measured bracket holds the trigger (${trigger})`);
+    assert.equal(compactTrigger({ modelWindow: 1000000, env: { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '99' } }), 967000, 'a percentage above the margin leaves it');
   });
 
   test('a session half through its model window but near its compaction point gets the critical note', () => {
@@ -356,9 +367,11 @@ describe('pan-context-monitor — metrics from the transcript, and the note they
   });
 
   test('the compaction window settings apply as they do with the bridge', () => {
-    const d = withTranscript(mainRecords({ cacheRead: 70000 - 15746 }), (file) =>
+    const decide = (used) => withTranscript(mainRecords({ cacheRead: used - 15746 }), (file) =>
       buildContextWarning(metricsFromTranscript(file, { env: {} }), null, NOW, { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '100000' }, settings: [] }));
-    assert.deepEqual([d.action, d.level], ['emit', 'warning'], '70K of a 100K window: 30% left');
+    assert.equal(decide(40000).action, 'exit', '40K against a 100K window compacting at 67K: 40% left');
+    assert.deepEqual([decide(45000).action, decide(45000).level], ['emit', 'warning'], '45K: about 33% left');
+    assert.equal(decide(54371).level, 'critical', 'the measured call one before the compaction: about 19% left');
   });
 
   test('a window that cannot be known says nothing rather than guess', () => {

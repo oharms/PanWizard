@@ -13,7 +13,7 @@
     { "kind": "model", "prompt": "Read notes/reference-1.md with the Read tool. Then read notes/reference-2.md with the Read tool. Then read notes/reference-3.md with the Read tool. Then run `echo done` with the Bash tool. Then reply with the single word DONE.", "persistSession": true,
       "expect": ["exit:0"],
       "why": "A short headless session whose reads take the context past 65K. Its session persists so the next step can read what the hooks injected." },
-    { "kind": "sh", "script": "context-note-check.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:noted=true", "json:bridge_present=false", "json:max_context_tokens", "json:problems"],
-      "why": "The gate: the transcript records PAN's context note as hook context, and no status-line bridge existed for the session, so the transcript fallback produced it." }
+    { "kind": "sh", "script": "context-note-check.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:noted=true", "json:noted_before_compaction=true", "json:bridge_present=false", "json:max_context_tokens", "json:problems"],
+      "why": "The gate: the transcript records PAN's context note as hook context before the host compacts, and no status-line bridge existed for the session, so the transcript fallback produced it. The first run (2026-10-04) also showed where the host compacts a 100K window: after a call measuring 67,032 tokens, 33K short of the window, as on the 1M default." }
   ]
 }

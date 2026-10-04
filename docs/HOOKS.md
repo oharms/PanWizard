@@ -46,9 +46,9 @@ The bridge file enables the context monitor to read metrics without coupling to 
 2. Works out how much room is left before the host compacts the session
 3. If little is left, injects a note as `additionalContext` that the agent sees
 
-**What it measures against.** Claude Code's percentages are against the full model window, but the host compacts earlier. When the bridge carries token counts, the room left is measured against the point the host compacts at:
-- **The window:** `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then `autoCompactWindow` in settings (per model under `modelSettings`, then for every model; local, then project, then user settings), then the model's default (about 967K on a native 1M window).
-- **The trigger:** `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` lowers the trigger to a percentage of that window.
+**What it measures against.** Claude Code's percentages are against the full model window, but the host compacts earlier. With token counts, from the bridge or the transcript, the room left is measured against the point the host compacts at:
+- **The window:** `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then `autoCompactWindow` in settings (per model under `modelSettings`, then for every model; local, then project, then user settings), then the model window.
+- **The trigger:** the host compacts about 33K tokens short of that window, whatever its size. That gives the documented ~967K on a native 1M window. On `2026-10-04` a 100K window compacted after a call that measured 67,032 tokens, and not after one that measured 54,371 (harness `context-note-headless`). `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` lowers the trigger to its percentage of the window when that is lower.
 - **No compaction:** with `DISABLE_AUTO_COMPACT=1` or `autoCompactEnabled: false` the host never compacts, so the model window applies.
 
 **What it says — no countdown.** The note carries no figure. Vendor guidance is that a visible remaining-context number makes a model wrap up early and cut corners, and a STOP order after a tool result reads like an injection. So the note:

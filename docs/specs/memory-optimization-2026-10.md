@@ -154,6 +154,7 @@ Every item was built, with tests that fail when its rule is undone, and every ru
 | `run-20261004-130155-pAwKuq` | `memory-lesson-chain` ×2, `memory-lesson-control` ×2 | 4 / 4 | O6 mechanism, below. $12.83 |
 | `run-20261004-133439-25lZk5` | `memory-convention-chain` ×2, `memory-convention-control` ×2 | 4 / 4 | O6 effect, below. $11.37 |
 | `run-20261004-173408-7PFC09` | `memory-not-loaded` ×1 (the retirement, built from `7430625`) | 0 / 1 as run; passes re-measured | No executor prompt carried memory, the orchestrator ran no memory command, and nothing the run wrote followed a seeded entry. It failed one expectation: no agent may open the folder. The orchestrator had listed `.planning/` on its own and run `head` on every memory file, the quarantine included. It obeyed none of them. The counter had also counted a `git reset -- .planning/memory` as a read. The gate now asserts what PAN controls and what would do harm (no seeded marker in anything the run wrote). It reports reads per agent without failing on them, and judges each segment of a shell command. Re-measured on the same workspace and transcripts: passes, with one read reported. $2.19 |
+| `run-20261004-181357-v3GL7Y` | `context-note-headless` ×1 (built from `fb9faac`) | 1 / 1 | O7's gate. A `claude -p` session on Opus 5.5 with a 100K compaction window read three files. Its calls measured 41.7K, 54.4K and 67.0K tokens. After the third, the transcript recorded PAN's warning note with no bridge for the session, and the host compacted right after. That located the compaction point: 33K short of the window, as on the 1M default, where O7 had assumed the window itself. With the margin, the same calls give the critical note one call earlier. $0.62 |
 
 The four O6 scenarios, their scripts and their seeds were retired with the step they measured (`506d1fb`; last present at `715d83e`). `memory-citations` became `memory-not-loaded`.
 
@@ -206,7 +207,7 @@ That meets this queue's own rule ("if two reps show no effect, retire the layer"
 - A subagent's payload names the main transcript and carries `agent_id`; the subagent's records are in `<session>/subagents/agent-<id>.jsonl`.
 - A hook's `additionalContext` is recorded as a `hook_additional_context` attachment.
 
-21 rules were mutated: 20 were caught, and the 21st (dropping a tail's partial first line) is an equivalent mutant on well-formed JSONL. Harness `context-note-headless` gives a `claude -p` session a 100K compaction window and reads past 65K, then checks the transcript for the note with no bridge present.
+21 rules were mutated: 20 were caught, and the 21st (dropping a tail's partial first line) is an equivalent mutant on well-formed JSONL. Harness `context-note-headless` gives a `claude -p` session a 100K compaction window and reads past the warning line, then checks that the transcript recorded the note before the host compacted, with no bridge present. Its first run located the compaction point at 33K short of the window, and the monitor now measures against that.
 
 ## On watch
 
