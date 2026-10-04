@@ -15,6 +15,12 @@ const {
   compactTrigger,
   roomLeft,
   readClaudeSettings,
+  lastContextFromLines,
+  contextFromTranscript,
+  parseModelId,
+  modelWindowFor,
+  metricsFromTranscript,
+  transcriptForPayload,
   WARNING_THRESHOLD,
   CRITICAL_THRESHOLD,
   STALE_SECONDS,
@@ -192,5 +198,197 @@ describe('pan-context-monitor — measured against where the host compacts (O7)'
       }
       assert.deepEqual(readClaudeSettings(proj, home).map((x) => x.autoCompactWindow), [100000, 200000, 300000]);
     } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
+});
+
+// ─── Without the status line: the transcript ─────────────────────────────────
+// `claude -p` never runs the status line, so the bridge is missing in headless runs.
+// Fixture records are shaped from Claude Code 2.1.288 transcripts captured on
+// 2026-10-04 (tests/fixtures/hooks/context-transcript-claude.meta.json).
+
+const path = require('path');
+const os = require('os');
+const HOOK_FIXTURES = path.join(__dirname, 'fixtures', 'hooks');
+const TRANSCRIPTS = JSON.parse(fs.readFileSync(path.join(HOOK_FIXTURES, 'context-transcript-claude.json'), 'utf8'));
+const jsonl = (records) => records.map((r) => JSON.stringify(r)).join('\n') + '\n';
+const linesOf = (records) => jsonl(records).split('\n');
+const MAIN_USED = 2 + 28519 + 15744; // the captured call: input + cache-read + cache-write
+
+/** The fixture's main-thread records, the assistant record's model and usage set. */
+function mainRecords({ model = 'claude-sonnet-5-5', cacheRead = 28519 } = {}) {
+  const recs = JSON.parse(JSON.stringify(TRANSCRIPTS.main));
+  const a = recs.find((r) => r.type === 'assistant');
+  a.message.model = model;
+  a.message.usage.cache_read_input_tokens = cacheRead;
+  return recs;
+}
+function withTranscript(records, fn) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctx-tx-'));
+  try {
+    const file = path.join(dir, 's.jsonl');
+    fs.writeFileSync(file, typeof records === 'string' ? records : jsonl(records));
+    return fn(file);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+describe('pan-context-monitor — the newest call in the transcript', () => {
+  test('the newest assistant record\'s input + cache-read + cache-write is the context; output is left out', () => {
+    assert.deepEqual(lastContextFromLines(linesOf(mainRecords())), { found: true, used: MAIN_USED, model: 'claude-sonnet-5-5' });
+  });
+
+  test('a later assistant record wins over an earlier one', () => {
+    const recs = mainRecords();
+    const later = JSON.parse(JSON.stringify(recs.find((r) => r.type === 'assistant')));
+    later.message.usage.cache_read_input_tokens = 100000;
+    assert.equal(lastContextFromLines(linesOf([...recs, later])).used, 2 + 100000 + 15744);
+  });
+
+  test('a record with no usage, or a zero one, is passed over', () => {
+    const synthetic = { type: 'assistant', isSidechain: false, message: { model: '<synthetic>', role: 'assistant', content: [], usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } };
+    const bare = { type: 'assistant', isSidechain: false, message: { role: 'assistant', content: [] } };
+    assert.equal(lastContextFromLines(linesOf([...mainRecords(), synthetic, bare])).used, MAIN_USED);
+  });
+
+  test('in the main transcript a sidechain record is not the session\'s context; in a subagent\'s own file it is', () => {
+    const side = JSON.parse(JSON.stringify(TRANSCRIPTS.agent[1]));
+    assert.equal(lastContextFromLines(linesOf([...mainRecords(), side])).used, MAIN_USED);
+    assert.equal(lastContextFromLines(linesOf(TRANSCRIPTS.agent), { skipSidechain: false }).used, 2 + 34105);
+    assert.deepEqual(lastContextFromLines(linesOf(TRANSCRIPTS.agent)), { found: false });
+  });
+
+  test('a compaction boundary after the newest call means nothing has measured the context yet', () => {
+    assert.deepEqual(lastContextFromLines(linesOf([...mainRecords(), TRANSCRIPTS.compact_boundary])), { found: false, compacted: true });
+    const next = mainRecords().filter((r) => r.type === 'assistant');
+    assert.equal(lastContextFromLines(linesOf([...mainRecords(), TRANSCRIPTS.compact_boundary, ...next])).found, true, 'the first call after compaction measures again');
+  });
+
+  test('lines with no assistant record, and torn lines, find nothing', () => {
+    assert.deepEqual(lastContextFromLines(['', '{"type":"assistant"', 'not json', JSON.stringify(TRANSCRIPTS.main[0])]), { found: false });
+  });
+});
+
+describe('pan-context-monitor — reading the transcript file', () => {
+  test('reads further back when a large tool result hides the newest assistant record, but never past the cap', () => {
+    const big = { type: 'user', isSidechain: false, message: { role: 'user', content: [{ type: 'tool_result', content: 'x'.repeat(20000) }] } };
+    withTranscript([...mainRecords(), big], (file) => {
+      assert.equal(contextFromTranscript(file, { tailBytes: 1024, maxBytes: 1024 * 1024 }).used, MAIN_USED);
+      assert.equal(contextFromTranscript(file, { tailBytes: 1024, maxBytes: 4096 }), null);
+    });
+  });
+
+  test('a tail that starts inside a record drops the partial line and widens until the record is whole', () => {
+    const recs = mainRecords();
+    const tailOfLast = jsonl([recs[recs.length - 1]]).length;
+    withTranscript(recs, (file) => {
+      assert.equal(contextFromTranscript(file, { tailBytes: tailOfLast + 200, maxBytes: fs.statSync(file).size }).used, MAIN_USED);
+    });
+  });
+
+  test('a compaction boundary stops the search: no older call is reported as the current context', () => {
+    const big = { type: 'user', isSidechain: false, message: { role: 'user', content: [{ type: 'tool_result', content: 'x'.repeat(5000) }] } };
+    withTranscript([...mainRecords(), TRANSCRIPTS.compact_boundary, big], (file) => {
+      assert.equal(contextFromTranscript(file, { tailBytes: 512 }), null);
+    });
+  });
+
+  test('a missing transcript or a bad path is null, never a throw', () => {
+    assert.equal(contextFromTranscript(path.join(os.tmpdir(), `pan-no-such-transcript-${process.pid}.jsonl`)), null);
+    assert.equal(contextFromTranscript(undefined), null);
+    assert.equal(contextFromTranscript(os.tmpdir()), null, 'a directory is not a transcript');
+  });
+});
+
+describe('pan-context-monitor — the model window from the model id (code.claude.com/docs/en/model-config, read 2026-10-04)', () => {
+  test('native 1M on the Anthropic API: Fable 5.x, Sonnet 5 and later, Opus 4.7 and later', () => {
+    for (const id of ['claude-fable-5-1', 'claude-fable-5', 'claude-sonnet-5', 'claude-sonnet-5-5', 'claude-opus-4-7', 'claude-opus-4-8', 'claude-opus-5-5']) {
+      assert.equal(modelWindowFor(id), 1000000, id);
+    }
+  });
+
+  test('200K: Haiku, Opus 4.6 and Sonnet 4.6 and older, and the 3.x models', () => {
+    for (const id of ['claude-haiku-4-5-20251001', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-opus-4-1-20250805', 'claude-3-5-sonnet-20241022']) {
+      assert.equal(modelWindowFor(id), 200000, id);
+    }
+    assert.equal(parseModelId('claude-sonnet-4-20250514').minor, 0, 'a date suffix is not a minor version');
+  });
+
+  test('a configured [1m] variant opens 1M for the models that need it, and never for Haiku', () => {
+    assert.equal(modelWindowFor('claude-opus-4-6', { settings: [{ model: 'opus[1m]' }] }), 1000000);
+    assert.equal(modelWindowFor('claude-sonnet-4-6', { env: { ANTHROPIC_MODEL: 'claude-sonnet-4-6[1m]' } }), 1000000);
+    assert.equal(modelWindowFor('claude-haiku-4-5', { settings: [{ model: 'sonnet[1m]' }] }), 200000);
+  });
+
+  test('CLAUDE_CODE_DISABLE_1M_CONTEXT=1 holds every model to 200K', () => {
+    assert.equal(modelWindowFor('claude-opus-5-5', { env: { CLAUDE_CODE_DISABLE_1M_CONTEXT: '1' } }), 200000);
+  });
+
+  test('on a third-party provider a native-1M model\'s window is unknown; a 200K model is 200K anywhere', () => {
+    assert.equal(modelWindowFor('claude-opus-5-5', { env: { CLAUDE_CODE_USE_BEDROCK: '1' } }), null);
+    assert.equal(modelWindowFor('us.anthropic.claude-opus-4-7-v1:0'), null);
+    assert.equal(modelWindowFor('claude-opus-4-7@20260101'), null);
+    assert.equal(modelWindowFor('us.anthropic.claude-haiku-4-5-v1:0'), 200000);
+  });
+
+  test('a context already past 200K can only be a 1M window; an unknown model is null', () => {
+    assert.equal(modelWindowFor('us.anthropic.claude-opus-4-7-v1:0', { used: 250000 }), 1000000);
+    assert.equal(modelWindowFor('gpt-5'), null);
+    assert.equal(modelWindowFor(null), null);
+  });
+});
+
+describe('pan-context-monitor — metrics from the transcript, and the note they lead to', () => {
+  test('the bridge\'s shape: tokens in context, the window, the model, and the model-window share', () => {
+    withTranscript(mainRecords(), (file) => assert.deepEqual(metricsFromTranscript(file), {
+      total_input_tokens: MAIN_USED,
+      context_window_size: 1000000,
+      model_id: 'claude-sonnet-5-5',
+      remaining_percentage: 100 - (MAIN_USED / 1000000) * 100,
+      source: 'transcript',
+    }));
+  });
+
+  test('a 1M session is measured against the ~967K compaction point', () => {
+    const decide = (cacheRead) => withTranscript(mainRecords({ cacheRead }), (file) => buildContextWarning(metricsFromTranscript(file), null, NOW, { env: {}, settings: [] }));
+    assert.equal(decide(300000).action, 'exit', 'about 66% left: no note');
+    const warn = decide(700000 - 15746);
+    assert.deepEqual([warn.action, warn.level, warn.basis], ['emit', 'warning', 'compact-window'], '700K of 967K: about 28% left');
+    assert.equal(decide(760000 - 15746).level, 'critical', '760K of 967K: about 21% left');
+  });
+
+  test('the compaction window settings apply as they do with the bridge', () => {
+    const d = withTranscript(mainRecords({ cacheRead: 70000 - 15746 }), (file) =>
+      buildContextWarning(metricsFromTranscript(file, { env: {} }), null, NOW, { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '100000' }, settings: [] }));
+    assert.deepEqual([d.action, d.level], ['emit', 'warning'], '70K of a 100K window: 30% left');
+  });
+
+  test('a window that cannot be known says nothing rather than guess', () => {
+    withTranscript(mainRecords({ model: 'gpt-5' }), (file) => assert.equal(metricsFromTranscript(file), null));
+    withTranscript(mainRecords({ model: 'claude-opus-5-5' }), (file) => assert.equal(metricsFromTranscript(file, { env: { CLAUDE_CODE_USE_VERTEX: '1' } }), null));
+  });
+});
+
+describe('pan-context-monitor — which transcript measures the call', () => {
+  const fill = (name, map) => JSON.parse(fs.readFileSync(path.join(HOOK_FIXTURES, name), 'utf8')
+    .replace(/\{\{[A-Z_]+\}\}/g, (m) => JSON.stringify(map[m] || m).slice(1, -1)));
+  const dir = path.join(os.tmpdir(), 'pan-ctx-payload');
+  const map = { '{{SESSION_ID}}': 'sess-0001', '{{TRANSCRIPT_PATH}}': path.join(dir, 'sess-0001.jsonl'), '{{PROJECT_DIR}}': dir, '{{SCRATCHPAD_DIR}}': dir, '{{AGENT_ID}}': 'a22d4bd17ed377380' };
+
+  test('a main-thread call is measured against the transcript the payload names', () => {
+    assert.deepEqual(transcriptForPayload(fill('post-tool-use-claude.json', map)), { file: map['{{TRANSCRIPT_PATH}}'], subagent: false });
+  });
+
+  test('a subagent\'s call names the MAIN transcript; its own file is derived from the session and agent ids', () => {
+    const payload = fill('post-tool-use-subagent-claude.json', map);
+    assert.equal(payload.transcript_path, map['{{TRANSCRIPT_PATH}}'], 'the captured shape: the main file even inside a subagent');
+    assert.deepEqual(transcriptForPayload(payload), { file: path.join(dir, 'sess-0001', 'subagents', 'agent-a22d4bd17ed377380.jsonl'), subagent: true });
+    assert.deepEqual(transcriptForPayload({ ...payload, agent_transcript_path: '/elsewhere/agent.jsonl' }), { file: '/elsewhere/agent.jsonl', subagent: true }, 'a host that sends the path wins');
+  });
+
+  test('ids that are not safe in a path measure nothing', () => {
+    const payload = fill('post-tool-use-subagent-claude.json', map);
+    assert.equal(transcriptForPayload({ ...payload, agent_id: '../../etc' }), null);
+    assert.equal(transcriptForPayload({ ...payload, session_id: '../sess' }), null);
+    assert.equal(transcriptForPayload({ ...payload, agent_id: 42 }), null);
+    assert.equal(transcriptForPayload({ session_id: 'sess-0001' }), null, 'no transcript at all');
   });
 });

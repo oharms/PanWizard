@@ -560,7 +560,7 @@ The shipped hooks (copied to `hooks/dist/` by `npm run build:hooks` — pure Nod
 | Hook | Event Type | Function |
 |------|-----------|----------|
 | `pan-statusline.js` | statusLine | Writes context metrics to a bridge file for display |
-| `pan-context-monitor.js` | PostToolUse | Reads bridge file, injects warnings when context is low (WARNING at ≤35%, CRITICAL at ≤25%) |
+| `pan-context-monitor.js` | PostToolUse | Reads the bridge file, or the session transcript when no fresh bridge exists (headless `claude -p`, a status line that is not PAN's; a subagent's call reads the subagent's own transcript), and injects a note when the room left before the host compacts is ≤35% (WARNING) or ≤25% (CRITICAL) |
 | `pan-check-update.js` | SessionStart | Background check for PAN updates with caching |
 | `pan-cost-logger.js` (v3.4+) | SubagentStop | Appends subagent cost record to `.planning/metrics/tokens.jsonl` (consumed by `/pan:cost`) |
 | `pan-trace-logger.js` (v3.5+) | SubagentStop | Appends decision/redundancy events, plus redacted `error`/`tool_error` events for the failed tool calls in a subagent's own transcript (Claude Code), to `.planning/optimization/traces/<session>/trace.jsonl` (consumed by `/pan:learn`, `/pan:optimize`); auto-creates day-scoped trace session |

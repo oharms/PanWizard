@@ -865,3 +865,75 @@ describe('resume-cost: what a fresh session told "continue" spends to finish (O1
     } finally { good.done(); unfinished.done(); unmeasured.done(); }
   });
 });
+
+describe('context-note-headless: the context note reaches a session with no status line (O7)', () => {
+  const { spawnSync } = require('child_process');
+  const chk = path.join(ROOT, 'harness', 'scripts', 'context-note-check.cjs');
+  const fill = path.join(ROOT, 'harness', 'scripts', 'fill-context.cjs');
+  const { scan, NOTE } = require(chk);
+  const { projectDir } = require(path.join(ROOT, 'harness', 'scripts', 'context-reads.cjs'));
+  const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'context-note-headless');
+  const gate = s.steps.find((st) => st.script === 'context-note-check.cjs');
+  // The attachment shape Claude Code 2.1.288 writes for a PostToolUse hook's
+  // additionalContext (tests/fixtures/hooks/context-transcript-claude.json).
+  const note = (text) => ({ type: 'attachment', isSidechain: false, attachment: { type: 'hook_additional_context', content: [text], hookName: 'PostToolUse:Bash', hookEvent: 'PostToolUse' } });
+  const call = (cacheRead) => ({ type: 'assistant', isSidechain: false, message: { model: 'claude-sonnet-5-5', usage: { input_tokens: 2, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: 0, output_tokens: 10 } } });
+  const CRITICAL = `${NOTE}): the host will compact this session soon. Before your next step, make sure .planning/state.md records where you are.`;
+  const WARNING = `${NOTE}): this session's context is filling up.`;
+
+  function run(records, { bridge = false } = {}) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxnote-home-'));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxnote-tmp-'));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxnote-ws-'));
+    const sid = 'sess-ctxnote-0001';
+    if (records) {
+      fs.mkdirSync(projectDir(ws, home), { recursive: true });
+      fs.writeFileSync(path.join(projectDir(ws, home), `${sid}.jsonl`), records.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    }
+    const env = { ...process.env, HOME: home, USERPROFILE: home, TMPDIR: tmp, TEMP: tmp, TMP: tmp };
+    if (bridge) {
+      const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
+      fs.mkdirSync(path.join(tmp, `pan-hooks-${uid}`), { recursive: true });
+      fs.writeFileSync(path.join(tmp, `pan-hooks-${uid}`, `claude-ctx-${sid}.json`), '{}');
+    }
+    const r = spawnSync(process.execPath, [chk, ws], { encoding: 'utf8', env });
+    return { r, done: () => { cleanup(home); cleanup(tmp); cleanup(ws); } };
+  }
+  const verdict = (r) => check(gate.expect, { code: r.status, stdout: r.stdout, stderr: '' }, os.tmpdir());
+
+  test('the gate passes on a recorded note with no bridge, and fails without a note or with a bridge', () => {
+    const good = run([call(50000), call(70000), note(WARNING), call(76000), note(CRITICAL)]);
+    const silent = run([call(50000), call(70000), note('(some other hook context)')]);
+    const bridged = run([call(70000), note(CRITICAL)], { bridge: true });
+    try {
+      assert.deepEqual(verdict(good.r), [], good.r.stdout);
+      const j = JSON.parse(good.r.stdout);
+      assert.deepEqual([j.notes, j.levels, j.max_context_tokens, j.bridge_present], [2, ['warning', 'critical'], 76002, false]);
+      assert.notDeepEqual(verdict(silent.r), [], 'another hook\'s context is not PAN\'s note');
+      assert.equal(JSON.parse(silent.r.stdout).max_context_tokens, 70002, 'a miss says how far the context got');
+      assert.notDeepEqual(verdict(bridged.r), [], 'with a bridge the note may have come from the status line');
+    } finally { for (const x of [good, silent, bridged]) x.done(); }
+  });
+
+  test('no transcript is a failure: nothing was measured', () => {
+    const none = run(null);
+    try {
+      assert.equal(none.r.status, 1);
+      assert.match(JSON.parse(none.r.stdout).problems.join(' '), /persistSession/);
+      assert.deepEqual(scan(['', 'not json']), { levels: [], max: 0 });
+    } finally { none.done(); }
+  });
+
+  test('the fill step sets the 100K window beside the install\'s settings and writes the three notes files', () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxfill-'));
+    try {
+      fs.mkdirSync(path.join(ws, '.claude'), { recursive: true });
+      fs.writeFileSync(path.join(ws, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { allow: ['Bash(echo:*)'] } }));
+      const r = spawnSync(process.execPath, [fill, ws], { encoding: 'utf8' });
+      const step = s.steps.find((st) => st.script === 'fill-context.cjs');
+      assert.deepEqual(check(step.expect, { code: r.status, stdout: r.stdout, stderr: '' }, ws), [], r.stdout);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(ws, '.claude', 'settings.local.json'), 'utf8')), { permissions: { allow: ['Bash(echo:*)'] }, autoCompactWindow: 100000 });
+      for (const n of [1, 2, 3]) assert.ok(fs.statSync(path.join(ws, 'notes', `reference-${n}.md`)).size > 20000, `reference-${n}.md`);
+    } finally { cleanup(ws); }
+  });
+});

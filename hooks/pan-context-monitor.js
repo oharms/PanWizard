@@ -1,14 +1,25 @@
 #!/usr/bin/env node
 // Context Monitor - PostToolUse hook
-// Reads context metrics from the statusline bridge file and injects
-// warnings when context usage is high. This makes the AGENT aware of
-// context limits (the statusline only shows the user).
+// Works out how full the agent's context is and injects a note when the host
+// will compact it soon. This makes the AGENT aware of context limits (the
+// statusline only shows the user).
 //
 // How it works:
 // 1. The statusline hook writes metrics to <os tmpdir>/pan-hooks-<uid>/claude-ctx-{session_id}.json
 // 2. This hook reads those metrics after each tool use
 // 3. When the room left before the host compacts drops below thresholds, it
 //    injects a note as additionalContext, which the agent sees in its conversation
+//
+// Without the status line. `claude -p` never runs the status line (checked
+// 2026-10-04), and a user may run their own, so the bridge is often missing. Then
+// the hook reads the session transcript the payload names: the newest assistant
+// record carries the usage of the API call that issued this tool call, and its
+// input + cache-read + cache-write tokens are what the status line reports as
+// `total_input_tokens` (code.claude.com/docs/en/statusline). The model id on that
+// record gives the window. A tool call inside a subagent is measured against the
+// subagent's own transcript, never the main session's: the payload carries
+// `agent_id` and still names the MAIN transcript (Claude Code 2.1.288, captured
+// 2026-10-04). Only a bounded tail of the file is read.
 //
 // What it measures (O7). Claude Code's percentages are against the full model
 // window, but the host compacts earlier: at the auto-compact window
@@ -112,6 +123,10 @@ const DEBOUNCE_CALLS = 5;      // min tool uses between warnings
 const MIN_COMPACT_WINDOW = 100000;
 const MAX_COMPACT_WINDOW = 1000000;
 const ONE_M_DEFAULT_TRIGGER = 967000; // a native 1M window compacts at about 967K by default
+const STANDARD_WINDOW = 200000;
+const TRANSCRIPT_TAIL_BYTES = 256 * 1024;      // the first read from the end of the transcript
+const TRANSCRIPT_MAX_BYTES = 4 * 1024 * 1024;  // never read more than this of it
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/; // session and agent ids name files
 
 /**
  * The token count at which the host compacts this session, or null when it does
@@ -160,10 +175,174 @@ function roomLeft(metrics, opts = {}) {
   return { remaining: r, basis: 'model-window' };
 }
 
+// ─── Without the status line: the transcript ─────────────────────────────────
+
+/**
+ * Pure: the context of the newest API call in a transcript's lines, scanning back
+ * from the end. Returns `{ found: true, used, model }`, `{ found: false, compacted:
+ * true }` when a compaction boundary comes first (the context was just rebuilt and
+ * no call has measured it yet), or `{ found: false }` when these lines hold no
+ * assistant record, so the caller can read further back.
+ *
+ * `used` is input + cache-read + cache-write tokens, the status line's
+ * `total_input_tokens`. Output tokens are left out, as its `used_percentage` leaves
+ * them out. A record with no usage (a synthetic or error record) is skipped. In the
+ * main transcript a sidechain record (an older host's subagent turn) is skipped; in
+ * a subagent's own transcript every record is a sidechain one.
+ */
+function lastContextFromLines(lines, { skipSidechain = true } = {}) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line || (!line.includes('"assistant"') && !line.includes('"compact_boundary"'))) continue;
+    let e;
+    try { e = JSON.parse(line); } catch { continue; }
+    if (!e || typeof e !== 'object') continue;
+    if (e.type === 'system' && e.subtype === 'compact_boundary') return { found: false, compacted: true };
+    if (e.type !== 'assistant' || (skipSidechain && e.isSidechain === true)) continue;
+    const u = e.message && e.message.usage;
+    if (!u || typeof u !== 'object') continue;
+    const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+    const used = n(u.input_tokens) + n(u.cache_read_input_tokens) + n(u.cache_creation_input_tokens);
+    if (used <= 0) continue;
+    return { found: true, used, model: typeof e.message.model === 'string' ? e.message.model : null };
+  }
+  return { found: false };
+}
+
+/**
+ * The last `bytes` of a file as text, without the partial line the cut starts in.
+ * Defensive only: in well-formed JSONL a line's tail never parses as an object (a
+ * nested object is always followed by its parent's closing brace), so keeping the
+ * fragment would change nothing; dropping it keeps a fragment from ever being read.
+ */
+function readTail(file, bytes) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const start = Math.max(0, size - bytes);
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    let text = buf.toString('utf8');
+    if (start > 0) {
+      const nl = text.indexOf('\n');
+      text = nl === -1 ? '' : text.slice(nl + 1);
+    }
+    return { text, whole: start === 0 };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * The context of the newest API call in a transcript file, or null. Reads the
+ * tail, and further back (up to TRANSCRIPT_MAX_BYTES) only while a large tool
+ * result hides the last assistant record. Fails open: any error is null.
+ */
+function contextFromTranscript(file, { skipSidechain = true, tailBytes = TRANSCRIPT_TAIL_BYTES, maxBytes = TRANSCRIPT_MAX_BYTES } = {}) {
+  if (typeof file !== 'string' || !file) return null;
+  let bytes = tailBytes;
+  for (;;) {
+    let tail;
+    try { tail = readTail(file, bytes); } catch { return null; }
+    const r = lastContextFromLines(tail.text.split('\n'), { skipSidechain });
+    if (r.found) return { used: r.used, model: r.model };
+    if (r.compacted || tail.whole || bytes >= maxBytes) return null;
+    bytes = Math.min(bytes * 4, maxBytes);
+  }
+}
+
+/**
+ * Pure: a Claude model id's family and version, or null. Accepts the API ids
+ * (`claude-opus-5-5`, `claude-haiku-4-5-20251001`, `claude-3-5-sonnet-20241022`)
+ * and marks the forms a third-party provider gives them (`us.anthropic.claude-…-v1:0`
+ * on Bedrock, `claude-…@date` on Google Cloud).
+ */
+function parseModelId(id) {
+  if (typeof id !== 'string' || !id) return null;
+  const s = id.toLowerCase().trim().replace(/\[1m\]$/, '');
+  const thirdParty = /(^|\.)anthropic\.|@|-v\d+(:\d+)?$|^arn:/.test(s);
+  let m = s.match(/claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?!\d)/);
+  if (m) return { family: m[1], major: Number(m[2]), minor: m[3] === undefined ? 0 : Number(m[3]), thirdParty };
+  m = s.match(/claude-(\d+)(?:-(\d{1,2}))?-(opus|sonnet|haiku)/);
+  if (m) return { family: m[3], major: Number(m[1]), minor: m[2] === undefined ? 0 : Number(m[2]), thirdParty };
+  return null;
+}
+
+/**
+ * Pure: the context window of the model that wrote a transcript record, or null
+ * when it cannot be known — then the hook says nothing rather than guess. From
+ * code.claude.com/docs/en/model-config (read 2026-10-04):
+ *   - On the Anthropic API, Fable 5.x, Sonnet 5 and later and Opus 4.7 and later
+ *     run a native 1M window. On Bedrock, Google Cloud and Foundry some of them run
+ *     200K, so there the window is unknown.
+ *   - Opus 4.6 and Sonnet 4.6 (and older) run 200K unless their `[1m]` variant is
+ *     configured; Haiku runs 200K.
+ *   - CLAUDE_CODE_DISABLE_1M_CONTEXT=1 holds every model to 200K.
+ *   - A context already past 200K can only be in a 1M window.
+ */
+function modelWindowFor(modelId, { env = {}, settings = [], used = 0 } = {}) {
+  if (used > STANDARD_WINDOW) return MAX_COMPACT_WINDOW;
+  if (env.CLAUDE_CODE_DISABLE_1M_CONTEXT === '1') return STANDARD_WINDOW;
+  const m = parseModelId(modelId);
+  if (!m) return null;
+  const native1m = m.family === 'fable'
+    || (m.family === 'sonnet' && m.major >= 5)
+    || (m.family === 'opus' && (m.major > 4 || (m.major === 4 && m.minor >= 7)));
+  if (native1m) {
+    const thirdParty = m.thirdParty || ['CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY']
+      .some((k) => env[k] === '1' || env[k] === 'true');
+    return thirdParty ? null : MAX_COMPACT_WINDOW;
+  }
+  if (m.family === 'haiku') return STANDARD_WINDOW;
+  const extended = [env.ANTHROPIC_MODEL, ...settings.map((s) => (s && typeof s === 'object' ? s.model : undefined))]
+    .some((v) => typeof v === 'string' && /\[1m\]\s*$/i.test(v));
+  return extended ? MAX_COMPACT_WINDOW : STANDARD_WINDOW;
+}
+
+/**
+ * Metrics shaped like the bridge's, from a transcript: the tokens in context, the
+ * model window and the model id. Null when the transcript, its usage or the window
+ * cannot be known.
+ */
+function metricsFromTranscript(file, { env = {}, settings = [], skipSidechain = true, tailBytes, maxBytes } = {}) {
+  const ctx = contextFromTranscript(file, { skipSidechain, tailBytes, maxBytes });
+  if (!ctx) return null;
+  const window = modelWindowFor(ctx.model, { env, settings, used: ctx.used });
+  if (!window) return null;
+  return {
+    total_input_tokens: ctx.used,
+    context_window_size: window,
+    ...(ctx.model ? { model_id: ctx.model } : {}),
+    remaining_percentage: Math.max(0, 100 - (ctx.used / window) * 100),
+    source: 'transcript',
+  };
+}
+
+/**
+ * Pure over the payload: which transcript measures this tool call. A call inside
+ * a subagent carries `agent_id`; the payload's `transcript_path` is still the main
+ * session's, and the subagent's own file is `<dir>/<session>/subagents/agent-<id>.jsonl`
+ * (an `agent_transcript_path`, where a host sends one, wins). Null when the ids are
+ * not safe to put in a path.
+ */
+function transcriptForPayload(data) {
+  if (!data || typeof data !== 'object') return null;
+  const agentId = data.agent_id;
+  if (agentId === undefined || agentId === null || agentId === '') {
+    return typeof data.transcript_path === 'string' && data.transcript_path ? { file: data.transcript_path, subagent: false } : null;
+  }
+  if (typeof agentId !== 'string' || !SAFE_ID.test(agentId)) return null;
+  if (typeof data.agent_transcript_path === 'string' && data.agent_transcript_path) return { file: data.agent_transcript_path, subagent: true };
+  if (typeof data.transcript_path !== 'string' || !data.transcript_path) return null;
+  if (typeof data.session_id !== 'string' || !SAFE_ID.test(data.session_id)) return null;
+  return { file: path.join(path.dirname(data.transcript_path), data.session_id, 'subagents', `agent-${agentId}.jsonl`), subagent: true };
+}
+
 // Pure decision function (exported for tests).
 //
 //   metrics    — { remaining_percentage, total_input_tokens?, context_window_size?,
-//                  model_id?, timestamp? } from the bridge
+//                  model_id?, timestamp? } from the bridge, or the same shape from
+//                  metricsFromTranscript (no timestamp: measured now)
 //   warnState  — { callsSinceWarn, lastLevel } from the prior warn file, or null
 //                on the first warning (no file yet / corrupt file)
 //   nowSeconds — current unix time in seconds
@@ -250,27 +429,37 @@ function main() {
       if (deferToClaudeRegistration(data.cwd || process.cwd())) process.exit(0);
       const sessionId = data.session_id;
 
-      if (!sessionId) {
+      if (typeof sessionId !== 'string' || !SAFE_ID.test(sessionId)) {
         process.exit(0);
       }
 
       const tmpDir = bridgeDir();
       if (!tmpDir) process.exit(0); // insecure/unavailable bridge dir — fail closed (M60)
-      const metricsPath = path.join(tmpDir, `claude-ctx-${sessionId}.json`);
-
-      // Read metrics directly; absence (subagent/fresh session) or a corrupt
-      // file just means "nothing to warn about" — exit silently. No
-      // existsSync-then-read gap.
-      let metrics;
-      try {
-        metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf8'));
-      } catch {
-        process.exit(0);
-      }
       const now = Math.floor(Date.now() / 1000);
+      const settings = readClaudeSettings(data.cwd || process.cwd());
+      const source = transcriptForPayload(data);
+      const subagent = !!(source && source.subagent) || (data.agent_id !== undefined && data.agent_id !== null && data.agent_id !== '');
+
+      // The bridge is the main session's context (the status line renders the main
+      // thread), so only a main-thread call reads it, and only while it is fresh.
+      // Absence or a corrupt file falls through to the transcript. No
+      // existsSync-then-read gap.
+      let metrics = null;
+      if (!subagent) {
+        try {
+          const bridge = JSON.parse(fs.readFileSync(path.join(tmpDir, `claude-ctx-${sessionId}.json`), 'utf8'));
+          if (bridge && typeof bridge === 'object' && !(bridge.timestamp != null && (now - bridge.timestamp) > STALE_SECONDS)) metrics = bridge;
+        } catch { /* no bridge: no status line, or not PAN's */ }
+      }
+      if (!metrics && source) {
+        metrics = metricsFromTranscript(source.file, { env: process.env, settings, skipSidechain: !source.subagent });
+      }
+      if (!metrics) process.exit(0);
 
       // Load prior warn state (null when no file / corrupt → treated as first warn).
-      const warnPath = path.join(tmpDir, `claude-ctx-${sessionId}-warned.json`);
+      // A subagent debounces on its own: its context is not the main session's.
+      const warnKey = source && source.subagent ? `${sessionId}-${data.agent_id}` : sessionId;
+      const warnPath = path.join(tmpDir, `claude-ctx-${warnKey}-warned.json`);
       let warnData = null;
       try {
         warnData = JSON.parse(fs.readFileSync(warnPath, 'utf8'));
@@ -280,7 +469,7 @@ function main() {
 
       const decision = buildContextWarning(metrics, warnData, now, {
         env: process.env,
-        settings: Number.isFinite(Number(metrics.total_input_tokens)) ? readClaudeSettings(data.cwd || process.cwd()) : [],
+        settings: Number.isFinite(Number(metrics.total_input_tokens)) ? settings : [],
       });
 
       if (decision.action === 'exit') {
@@ -321,6 +510,12 @@ module.exports = {
   roomLeft,
   readClaudeSettings,
   bridgeDir,
+  lastContextFromLines,
+  contextFromTranscript,
+  parseModelId,
+  modelWindowFor,
+  metricsFromTranscript,
+  transcriptForPayload,
   WARNING_THRESHOLD,
   CRITICAL_THRESHOLD,
   STALE_SECONDS,

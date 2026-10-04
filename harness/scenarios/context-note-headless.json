@@ -1,0 +1,19 @@
+{
+  "id": "context-note-headless",
+  "tier": 2,
+  "description": "In a headless `claude -p` session, where no status line runs, fill the context past the context monitor's warning line and assert PAN's context note reaches the session, measured from the transcript.",
+  "why": "Memory optimisation O7 follow-up. `claude -p` never runs the status line (checked 2026-10-04), so the bridge file the monitor read was never written and the note never fired in headless and autonomous runs. The monitor now reads the session transcript when there is no bridge. This is O7's missing harness gate: the note must arrive with no bridge for the session. The workspace sets autoCompactWindow to 100000, the smallest Claude Code accepts, so the note's line is 65K tokens of context and the run stays cheap.",
+  "seed": "two-plan-phase",
+  "install": ["--claude"],
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 3, "maxMinutes": 15, "maxStepMinutes": 12 },
+  "steps": [
+    { "kind": "sh", "script": "fill-context.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:autoCompactWindow=100000", "json:written.2=notes/reference-3.md"],
+      "why": "A 100K compaction window for the host and the monitor alike, and three notes files of about 8K tokens each to read." },
+    { "kind": "model", "prompt": "Read notes/reference-1.md with the Read tool. Then read notes/reference-2.md with the Read tool. Then read notes/reference-3.md with the Read tool. Then run `echo done` with the Bash tool. Then reply with the single word DONE.", "persistSession": true,
+      "expect": ["exit:0"],
+      "why": "A short headless session whose reads take the context past 65K. Its session persists so the next step can read what the hooks injected." },
+    { "kind": "sh", "script": "context-note-check.cjs", "args": ["<ws>"], "expect": ["exit:0", "json:noted=true", "json:bridge_present=false", "json:max_context_tokens", "json:problems"],
+      "why": "The gate: the transcript records PAN's context note as hook context, and no status-line bridge existed for the session, so the transcript fallback produced it." }
+  ]
+}

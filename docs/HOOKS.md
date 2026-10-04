@@ -7,7 +7,7 @@ PAN ships a small set of built-in Claude Code hooks that enhance the development
 | Hook | Event Type | Purpose |
 |------|-----------|---------|
 | `pan-statusline.js` | `statusLine` | Displays context window usage in the status bar and writes metrics to a bridge file |
-| `pan-context-monitor.js` | `PostToolUse` | Reads the bridge file and injects warnings into agent context when usage is high |
+| `pan-context-monitor.js` | `PostToolUse` | Reads the bridge file, or the session transcript when there is none, and injects a note into the agent's context when the host will compact it soon |
 | `pan-check-update.js` | `SessionStart` | Checks for PAN updates in the background, caches result |
 | `pan-cost-logger.js` (v3.4+) | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
 | `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
@@ -42,7 +42,7 @@ The bridge file enables the context monitor to read metrics without coupling to 
 **Event:** `PostToolUse` (runs after every tool call)
 
 **What it does:**
-1. Reads the bridge file written by the statusline hook
+1. Reads the bridge file written by the statusline hook, or, when there is no fresh bridge, the session transcript (below)
 2. Works out how much room is left before the host compacts the session
 3. If little is left, injects a note as `additionalContext` that the agent sees
 
@@ -65,7 +65,14 @@ The bridge file enables the context monitor to read metrics without coupling to 
 | WARNING | <= 35% | A checkpoint at the next natural stopping point, then carry on at full quality |
 | CRITICAL | <= 25% | A checkpoint before the next step, then finish the current task properly |
 
-**Headless runs:** `claude -p` renders no status line, so no bridge file is written and the monitor stays silent there (checked `2026-10-04`).
+**Without the status line.** `claude -p` renders no status line (checked `2026-10-04`), and a user may run a status line of their own, so often there is no bridge. Then the monitor reads the transcript the payload names:
+- **The tokens in context:** the newest assistant record's `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. That record issued the tool call the hook runs after, and the sum is what the status line reports as `context_window.total_input_tokens`. Only the tail of the file is read, and further back only while a large tool result hides the record (at most 4 MB).
+- **After a compaction:** a `compact_boundary` record after the newest call means the context was just rebuilt, so there is no note until the next call measures it.
+- **The window:** from the model id on that record, by the rules of Claude Code's model-config page. On the Anthropic API, the models it lists with a native 1M window get 1M; the hook keeps that list in `modelWindowFor()`. Opus and Sonnet models without a native 1M window have 200K unless their `[1m]` variant is configured (`model` in settings, or `ANTHROPIC_MODEL`), and Haiku has 200K. `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` means 200K everywhere. A context past 200K can only be a 1M window. On Bedrock, Google Cloud or Foundry a native-1M model's window is unknown, and an unknown window gives no note rather than a guess.
+- **Subagents:** a tool call inside a subagent carries `agent_id`, and its payload still names the main transcript. The monitor measures the subagent's own file, `<session>/subagents/agent-<id>.jsonl`, and never the main session's bridge, and it debounces each subagent apart.
+- **Codex and Copilot:** their transcripts have other shapes, so without a bridge the monitor stays silent there, as before.
+
+A fresh bridge still wins for a main-thread call: it is the status line's own reading. The harness scenario `context-note-headless` checks the fallback in a real `claude -p` session.
 
 **Debounce logic:**
 - First warning fires immediately
@@ -75,8 +82,8 @@ The bridge file enables the context monitor to read metrics without coupling to 
 **Safety:**
 - Wrapped in try/catch — exits silently on error
 - Never blocks tool execution
-- Stale metrics (>60s old) are ignored
-- Missing bridge files handled gracefully (subagents, fresh sessions)
+- Stale bridge metrics (>60s old) fall through to the transcript
+- A missing bridge, transcript or model window means no note, never an error
 
 ### pan-check-update.js
 
@@ -304,9 +311,10 @@ Statusline Hook (pan-statusline.js)
     | writes
     v
 <os-tmpdir>/pan-hooks-<uid>/claude-ctx-{session_id}.json  (bridge file — not literally /tmp)
-    ^ reads
+    ^ reads (main thread, while fresh)
     |
-Context Monitor (pan-context-monitor.js, PostToolUse)
+Context Monitor (pan-context-monitor.js, PostToolUse)  --- reads, without a fresh bridge --->  the session transcript
+    |                                                                                      (a subagent's own file for its calls)
     | injects
     v
 additionalContext → Agent sees warning → /pan:pause
