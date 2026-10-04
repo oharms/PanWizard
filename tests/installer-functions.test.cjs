@@ -1836,6 +1836,16 @@ describe('CLAUDE.md @AGENTS.md bridge', () => {
     for (const line of out.split('\n')) assert.equal(isSuspiciousDirective(line), false, `memory rebuild would flag: ${line}`);
   });
 
+  test('the CLAUDE.md block imports the rules and never repeats them (O9)', () => {
+    // Copilot CLI reads AGENTS.md and CLAUDE.md as two sources and expands the import,
+    // so PAN's section already arrives twice there (docs/TROUBLESHOOTING.md). Text from
+    // the section copied into CLAUDE.md would be a third copy.
+    const bridge = lib.ensureClaudeMdImport(null);
+    const ruleLines = lib.buildAgentsMdSection().split('\n').filter((l) => l.trim() && !l.startsWith('<!--'));
+    for (const l of ruleLines) assert.equal(bridge.includes(l), false, `CLAUDE.md repeats: ${l}`);
+    assert.equal((bridge.match(/^@AGENTS\.md$/gm) || []).length, 1);
+  });
+
   test('an older PAN bridge is brought up to date in place; user content and line endings survive', () => {
     const old = '# Mine\r\n\r\nrules\r\n\r\n<!-- BEGIN PAN WIZARD -->\r\n@AGENTS.md\r\n<!-- END PAN WIZARD -->\r\n\r\n## After\r\n';
     const out = lib.ensureClaudeMdImport(old);

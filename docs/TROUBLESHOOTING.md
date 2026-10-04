@@ -787,6 +787,18 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Fix:** Restore the import (re-running the installer does it). Or set the project instructions setting back to its default, `claude-md-or-agents-md`, or to `claude-md-and-agents-md`, which loads both and never reads an imported `AGENTS.md` twice. Re-enable the `agents-md` plugin in `/plugin` if it was disabled.
 
+### Copilot CLI loads PAN's rules twice in a project that also has Claude Code
+
+**Symptom:** In a project with both the Claude Code and the Copilot CLI install, Copilot's system message carries PAN's rules section ("## PAN Wizard") twice. That is about 630 bytes repeated on every request, plus the compact instructions in `CLAUDE.md`, which only Claude Code uses.
+
+**Root cause:** Copilot CLI reads `AGENTS.md` and `CLAUDE.md` as two separate repository instruction sources, both enabled by default (`copilot instruction list --json`, checked on `1.0.91`). Since `1.0.66` it also expands the `@AGENTS.md` import inside `CLAUDE.md`. So PAN's section arrives once from `AGENTS.md` and once through the import. Recorded sessions on `1.0.88` show both copies. Copilot removes duplicate instruction files only when their content is identical, and these two files differ. Its `already-loaded` skip applies only within one file's import tree.
+
+**Why PAN does not change the files:** Claude Code needs the import. It reads `AGENTS.md` directly only when no `CLAUDE.md` exists, so dropping the import loses the rules there. Making the two files identical would hold only in a project where neither carries anything but PAN's block.
+
+**Fix:** In Copilot, run `/instructions` and turn off the source you do not need:
+- **`CLAUDE.md` holds only PAN's block:** turn it off. Copilot still reads PAN's section from `AGENTS.md`.
+- **`CLAUDE.md` holds your own rules too:** turn off `AGENTS.md` instead. Copilot then gets PAN's section through the import.
+
 ### `/skill-doctor` lists most PAN skills as unused
 
 **Symptom:** Claude Code's `/skill-doctor` reports many `pan-*` skills loaded but never invoked, with a context cost beside each.
