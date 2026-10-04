@@ -520,6 +520,7 @@ module.exports = {
   findUnreferencedExports,
   SAFETY_TIERS,
   DEFAULT_BLOAT_THRESHOLD,
+  PATTERNS_FILE,
   MAX_FUNCTION_LOC,
   MAX_PARAM_COUNT,
   MAX_NESTING_DEPTH,

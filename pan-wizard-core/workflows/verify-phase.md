@@ -47,14 +47,15 @@ INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE_A
 
 Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `has_plans`, `plan_count`.
 
-Then load phase details and list plans/summaries:
+Then load phase details, write the phase's roadmap slice, and list plans/summaries:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${phase_number}"
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${phase_number}" --write --raw)
 grep -E "^\|[^|]*\| *Phase +${phase_number} " .planning/requirements.md 2>/dev/null
 ls "$phase_dir"/*-summary.md "$phase_dir"/*-plan.md 2>/dev/null
 ```
 
-Extract **phase goal** from roadmap.md (the outcome to verify, not tasks) and **requirements** from requirements.md if it exists.
+Extract the **phase goal** and success criteria from `get-phase` (the outcome to verify, not tasks), and the phase's **requirements** from `$SLICE_PATH` (its `## Its requirements` lines). Do not read roadmap.md or requirements.md whole: on a long project they are the largest files in `.planning/`, and the slice carries what verification needs from them. If `SLICE_PATH` is empty, grep requirements.md for the phase's IDs instead.
 </step>
 
 <step name="check_prior_verification">

@@ -4,6 +4,13 @@
 
 Accepted — 2026-07-02. Records a memory-design *principle* PAN already largely follows, classifies PAN's three memory layers against it, and — as of v3.13.0 — implements the bounded-memory follow-ups (FW-2 `selectMemory`, the acceptance-signal telemetry gate, soft auto-compaction, and a minimal FW-1). Repo-only: `docs/` is not in `package.json` `files`, so this decision doc is not shipped to installs. (Two factual errors about `context-budget.cjs` in the original draft were corrected after an e2e review — see the corrected text below.)
 
+> **Amended 2026-10-04 (memory optimisation O4): selection now checks evidence and age.**
+>
+> - **The whole-file default is gone.** It applied whenever the memory budget was `ok`, so `selectMemory` rarely ran. exec-phase now loads every agent log through `memory select`: `--all` when the budget is `ok`, the cue-scoped slice otherwise.
+> - **Only valid entries are candidates.** An entry may cite the code it rests on (`<!-- cites: path#symbol -->`). It is left out when that evidence is gone (`stale`) or when it has gone unused for `MEMORY_EXPIRE_DAYS` (`expired`).
+> - **Use keeps an entry alive.** `--mark-used` records each injection, so an entry stays only while it is used. `memory prune` archives what is left out to `memory/archive/`; nothing is deleted.
+> - **Why.** This is the Copilot Memory pattern: citations checked before use, and expiry when unused. GitHub's A/B gave a 90% vs 83% PR merge rate (p < 0.00001), the one outcome A/B in the market scan (`docs/specs/memory-optimization-2026-10.md`). It stays inside this ADR's principle: deterministic, file-based, no store.
+
 Trigger: *"New agentic memory framework uses 118K tokens per query. LangMem burns through 3.26M."* (VentureBeat, 2026-06-26), reporting **MRAgent** from National University of Singapore.
 
 ## Context

@@ -79,25 +79,29 @@ Report: "Found {plan_count} plans in {phase_dir} ({incomplete_count} incomplete)
 **Load project memory before dispatching executors — prevents re-learning patterns already solved.**
 
 ```bash
-ls .planning/memory/*.md 2>/dev/null
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory list --raw
 ```
 
-If `.planning/memory/` exists and contains `.md` files:
+`memory list` names the agent logs in `.planning/memory/` under `agents`. Every other file there is under `not_loaded` with the reason: PAN's archives (`quarantine.md` holds directives PAN refused to follow, per ADR-0040; `state-archive.md` is old state) and files with no `## Entries` list. If `not_loaded` names a file that is not one of PAN's archives, say so in one line so the user can move its rules into an agent log. **Never read a file from `.planning/memory/` into a prompt yourself.** Load each agent log through `memory select`, which leaves out an entry whose cited code is gone or that has gone unused past the expiry window.
+
+If any agent log has entries:
 1. **Check the memory-load budget first** (ADR-0036 — keeps per-agent injection bounded as logs grow):
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory budget --raw
 ```
-2. **Load, size-gated — whole-file is the default:**
-   - If `status` is `ok`: **read every file whole** (Read tool) and condense each entry to its rule(s) — 1–3 lines per file. This preserves the "apply every rule" contract for normal-sized logs.
-   - If `status` is `warning` or `critical` (a log has grown large): load a **cue-scoped** slice per agent instead of the whole log, using the phase objective + the files this phase touches as the cue:
+2. **Load every agent log through `memory select`, once per agent:**
+   - If `status` is `ok`: take every valid entry. This keeps the "apply every rule" contract for normal-sized logs.
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory select <agent> --cue "<phase objective; changed files>" --raw
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory select <agent> --all --mark-used --raw
 ```
-     Run once per agent that has a memory file. The returned `selected` entries are already recency-floored and token-budgeted (the newest lessons are always included). If `selected` is empty for an agent, **fall back to reading that file whole** — never silently drop an agent's memory.
-3. Store the condensed rules as a `MEMORY_RULES` block for injection into executor prompts in execute_waves.
-4. **Log memory priming to trace:**
+   - If `status` is `warning` or `critical` (a log has grown large): take a **cue-scoped** slice, using the phase objective and the files this phase touches as the cue. The newest valid entries are always included.
 ```bash
-MEMORY_COUNT=$(ls .planning/memory/*.md 2>/dev/null | wc -l | tr -d ' ')
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory select <agent> --cue "<phase objective; changed files>" --mark-used --raw
+```
+   `selected` is that agent's memory; condense each entry to its rule (1–3 lines per agent). An empty `selected` means the agent has nothing valid to inject: do not fall back to the file. If `stale` or `expired` is non-empty, say so in one line (`hygiene clean --apply` archives them). `--mark-used` records today's use, which keeps an entry from expiring.
+3. Store the condensed rules as a `MEMORY_RULES` block for injection into executor prompts in execute_waves.
+4. **Log memory priming to trace** (`MEMORY_COUNT` is the number of selected entries across agents):
+```bash
 if [ "$MEMORY_COUNT" -gt "0" ]; then
   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
     --type decision --category memory_primed \
@@ -108,7 +112,7 @@ if [ "$MEMORY_COUNT" -gt "0" ]; then
 fi
 ```
 
-If no memory files exist: skip (no trace event needed).
+If no agent log has entries: skip (no trace event needed).
 </step>
 
 <step name="discover_and_group_plans">
@@ -205,8 +209,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        If the plan's `<context>` names `@.planning/roadmap.md`, read `{slice_path}` in its place: it carries this phase's section, its dependencies' goals and its requirements, and the whole roadmap is the largest file in `.planning/` on a long project. Open the whole file only for something the slice leaves out.
 
        <project_memory>
-       {MEMORY_RULES — insert condensed content of all .planning/memory/*.md files read in load_phase_memory step. If no memory files exist, omit this block entirely.}
-       Apply every rule in this block without exception. These are lessons from previous phases that the reviewer has already verified.
+       {MEMORY_RULES — the condensed `selected` entries from the load_phase_memory step. If no agent log had a valid entry, omit this block entirely.}
+       Apply every rule in this block. Each is a lesson from an earlier phase; any code it cites was checked against the working tree when it was loaded.
        </project_memory>
 
        <success_criteria>
@@ -576,8 +580,9 @@ Task(
 Phase directory: {phase_dir}
 Phase goal: {goal from roadmap.md}
 Phase requirement IDs: {phase_req_ids}
+Roadmap slice: {slice_path} — this phase's section, its dependencies' goals and its requirement lines. Read it instead of roadmap.md and requirements.md.
 Check must_haves against actual codebase.
-Cross-reference requirement IDs from PLAN frontmatter against requirements.md — every ID MUST be accounted for.
+Cross-reference requirement IDs from PLAN frontmatter against the slice's requirement lines — every ID MUST be accounted for.
 Run the project's test suite as the test gate (the run_test_suite step of @~/.claude/pan-wizard-core/workflows/verify-phase.md) and record test_gate in the frontmatter.
 Create verification.md.",
   subagent_type="pan-verifier",

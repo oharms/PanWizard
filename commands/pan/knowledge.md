@@ -66,7 +66,7 @@ Consolidates Spec B v1's X-3 converse + X-6 teach + X-10 explain into one comman
 ```
 
 **Flow:**
-1. `pan-tools knowledge playbook` reads all agents' memory (`.planning/memory/*.md`), clusters entries by category, writes `.planning/playbook.md` directly.
+1. `pan-tools knowledge playbook` reads every agent log that `memory list` names in `.planning/memory/`, clusters entries by category, writes `.planning/playbook.md` directly.
 2. Optionally spawn `pan-knowledge` with `<mode>playbook</mode>` to polish (dedupe contradictions, consolidate similar entries). Skip the polish step if the draft looks clean.
 
 **Output:** `.planning/playbook.md` — team-readable summary of accumulated lessons.

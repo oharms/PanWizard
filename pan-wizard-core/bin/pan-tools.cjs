@@ -1046,7 +1046,12 @@ async function main() {
       if (subcommand === 'read') {
         memory.cmdMemoryRead(cwd, args[2], raw);
       } else if (subcommand === 'append') {
-        memory.cmdMemoryAppend(cwd, args[2], args.slice(3).join(' '), raw);
+        // `--cites <path[#symbol]>,...` is taken out before the entry words are joined.
+        const rest = args.slice(3);
+        const ci = rest.indexOf('--cites');
+        const cites = ci === -1 ? undefined : rest[ci + 1];
+        if (ci !== -1) rest.splice(ci, 2);
+        memory.cmdMemoryAppend(cwd, args[2], rest.join(' '), raw, { cites });
       } else if (subcommand === 'list') {
         memory.cmdMemoryList(cwd, raw);
       } else if (subcommand === 'compact') {
@@ -1056,7 +1061,15 @@ async function main() {
           cue: getArgValue(args, '--cue'),
           tokenBudget: getArgValue(args, '--token-budget'),
           recencyFloor: getArgValue(args, '--recency-floor'),
+          all: args.includes('--all'),
+          markUsed: args.includes('--mark-used'),
+          expireDays: getArgValue(args, '--days'),
         }, raw);
+      } else if (subcommand === 'prune') {
+        const daysArg = getArgValue(args, '--days');
+        if (daysArg !== null && !/^\d+$/.test(daysArg)) error('memory prune --days needs a whole number of days (0 turns expiry off)');
+        const target = args[2] && !args[2].startsWith('--') ? args[2] : null;
+        memory.cmdMemoryPrune(cwd, target, { apply: args.includes('--apply'), days: daysArg === null ? undefined : Number(daysArg) }, raw);
       } else if (subcommand === 'budget') {
         memory.cmdMemoryBudget(cwd, raw);
       } else if (subcommand === 'optimize') {
@@ -1070,7 +1083,7 @@ async function main() {
           apply: args.includes('--apply'),
         }, raw);
       } else {
-        error('Unknown memory subcommand. Available: read, append, list, compact, select, budget, optimize, rebuild');
+        error('Unknown memory subcommand. Available: read, append, list, compact, select, prune, budget, optimize, rebuild');
       }
       break;
     }
@@ -1547,9 +1560,11 @@ async function main() {
           ? sourceExpsCsv.split(',').map(s => s.trim()).filter(Boolean)
           : [];
         const sourceRoot = getArgValue(args, '--source-root') || learnLint.resolveLearningsRoot();
+        const citesCsv = getArgValue(args, '--cites') || '';
+        const cites = citesCsv ? citesCsv.split(',').map(s => s.trim()).filter(Boolean) : [];
 
         const result = optimize.promotePattern(
-          { id: patternId, summary, evidence, rule, applies_in: appliesIn, source_experiments: sourceExperiments },
+          { id: patternId, summary, evidence, rule, applies_in: appliesIn, source_experiments: sourceExperiments, ...(cites.length ? { cites } : {}) },
           { scope, topic, sourceRoot }
         );
         output(result, raw);

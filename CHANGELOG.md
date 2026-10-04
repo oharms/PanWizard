@@ -23,6 +23,10 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - **It primed nothing.** The step ran `cache prime --summary` and said every subagent spawned in the next five minutes would hit the cache. A command's output cannot mark another agent's prompt for caching; the host caches each agent's prompt prefix by itself.
   - **It loaded more.** exec-phase also told the orchestrator to put the whole cacheable set, roadmap and requirements included, in every executor's context. That undid the slices below.
   - **Kept as a measurement:** `cache prime` still reports the set. ADR-0023 is amended, and a test keeps the step out of shipped prompts.
+- **Security: exec-phase loaded the memory quarantine into every executor prompt (O4).**
+  - **What happened:** ADR-0040 moves directives an agent wrote into memory to `.planning/memory/quarantine.md`. But exec-phase's memory step read every file in that folder whole and handed the result to every executor under "Apply every rule in this block without exception." `state-archive.md` came along too: 114 KB of old state on one field project.
+  - **Now:** memory loads only from agent logs, through `memory select`. `memory list` names PAN's archives (`quarantine`, `state-archive`, `distill-patterns`) as not loaded, and the memory commands refuse those names as agents. The optimizer prompts no longer glob the folder either.
+- **Memory logs on Windows keep their line endings.** `memory append` and `memory compact` wrote LF lines into CRLF logs.
 
 ### Changed
 
@@ -33,6 +37,8 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - **Measured on field projects:** the slice is 75–98% smaller than the two files. A 54-phase project went from ~144k tokens to ~3.4k.
   - **Requirement ids are read by shape** (`CAT-01`), so a `**Requirements**:` line written as prose yields its ids instead of being taken for one.
   - **One more whole-roadmap import removed:** `/pan:phase-tests` no longer imports the whole roadmap into the session, which its workflow never used.
+  - **The verifier works from the slice too.** It reads `roadmap get-phase` for the goal and success criteria and the slice for its requirement lines. This covers both `/pan:verify-phase` and the verifier exec-phase spawns. An executor whose `requirements mark-complete` or `update-plan-progress` changes nothing now notes it in its summary instead of reading both files whole to repair it.
+  - **How this was found:** a harness run of `markdown-exec-phase-chain` on `2026-10-04` counted four whole-file reads in the agents' own transcripts. The scenarios now fail on any such read (`harness/scripts/context-reads.cjs`).
 
 ### Added
 
@@ -42,6 +48,13 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - **Nothing goes missing for a reader:** `roadmap get-phase`, `report phase` and a slice of a compacted phase find the stub and read its full section and success criteria from the history. Re-verifying an old phase still has its contract.
   - **Safety:** the history is written first; it is dry-run by default and declines when nothing would shrink. A trailing progress table or a milestone's `</details>` never moves with a section.
   - **In hygiene:** the `cache-context` check offers it as the `compact-roadmap` fix, `hygiene clean --apply` runs it, and its wording now says who reads which file whole. ADR-0044 is amended.
+- **Cited, verified, expiring agent memory (O4): the Copilot Memory pattern, without dependencies.**
+  - **Citations:** `memory append <agent> "<lesson>" --cites src/db/writer.js#bulkInsert` records the code a lesson rests on. The citation must hold when written.
+  - **Checked before use:** `memory select` checks every citation against the working tree and leaves out an entry whose file or symbol is gone (`stale`). It also leaves out one unused for `MEMORY_EXPIRE_DAYS` (`expired`). An undated entry never expires; an uncited one is never stale.
+  - **Use keeps an entry alive:** exec-phase loads memory with `--mark-used`, which records each injection.
+  - **Archiving:** `memory prune [<agent>] [--apply] [--days N]` archives what is left out to `.planning/memory/archive/<agent>.md`, archive first, with the reason; nothing is deleted.
+  - **In hygiene:** it reports `memory-stale`, with the `prune-memory` fix, and `memory-format` for a memory file with no `## Entries` list, which is never loaded.
+  - **Why:** GitHub's A/B of this pattern gave a 90% vs 83% PR merge rate. Harness `memory-citations` checks the executors' real prompts: a stale entry, a quarantined directive and the state archive must not reach them. ADR-0036 is amended.
 
 ## [3.33.0] - 2026-10-03
 

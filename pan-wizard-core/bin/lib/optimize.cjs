@@ -1286,6 +1286,14 @@ function validatePromoteInputs(pattern, opts) {
   if (!pattern.id) return 'pattern.id is required';
   if (!pattern.summary) return 'pattern.summary is required';
   if (!pattern.rule) return 'pattern.rule is required';
+  // A citation names the code the pattern rests on, relative to the tree that
+  // holds the store; it must hold now, and learn lint L-007 keeps checking it.
+  if (pattern.cites !== undefined && !Array.isArray(pattern.cites)) return 'pattern.cites must be a list';
+  const { citationProblem } = require('./memory.cjs');
+  for (const c of pattern.cites || []) {
+    const problem = citationProblem(opts.sourceRoot, c);
+    if (problem) return `citation ${c}: ${problem}`;
+  }
   return null;
 }
 
@@ -1430,6 +1438,13 @@ function serializeTopicFile(topic, patterns, body) {
     fm += `    promoted_at: ${p.promoted_at || ts}\n`;
     const srcExps = Array.isArray(p.source_experiments) ? p.source_experiments : [];
     fm += `    source_experiments: [${srcExps.join(', ')}]\n`;
+    // Optional fields survive a re-serialisation: promoting into an existing topic
+    // rewrites every pattern's frontmatter, and dropping these lost the supersession
+    // learn lint L-005 reads, and the citations L-007 checks.
+    const cites = Array.isArray(p.cites) ? p.cites : [];
+    if (cites.length) fm += `    cites: [${cites.join(', ')}]\n`;
+    if (p.superseded_by) fm += `    superseded_by: ${p.superseded_by}\n`;
+    if (p.superseded_id) fm += `    superseded_id: ${p.superseded_id}\n`;
   }
   return `---\n${fm}---\n${body}`;
 }
@@ -1520,6 +1535,7 @@ function promotePattern(pattern, opts) {
     summary: pattern.summary,
     promoted_at: promotedAt,
     source_experiments: pattern.source_experiments || [],
+    ...(pattern.cites && pattern.cites.length ? { cites: pattern.cites } : {}),
   });
 
   const serialized = serializeTopicFile(topic, frontmatter.patterns, body);

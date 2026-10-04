@@ -99,7 +99,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM"
 grep -E "^\|[^|]*\| *Phase +$PHASE_NUM " .planning/requirements.md 2>/dev/null
 ```
 
-Extract phase goal from roadmap.md — this is the outcome to verify, not the tasks.
+Extract the phase goal from the `get-phase` output — this is the outcome to verify, not the tasks. If your prompt names a roadmap slice, read it for the phase's requirement lines. Do not read roadmap.md or requirements.md whole: `get-phase`, the slice and the greps here carry what verification needs.
 
 ## Step 1c: Repo-Norms-First Verification (P-RES-005)
 
@@ -354,7 +354,7 @@ Collect ALL requirement IDs declared across plans for this phase.
 **6b. Cross-reference against requirements.md:**
 
 For each requirement ID from plans:
-1. Find its full description in requirements.md (`**REQ-ID**: description`)
+1. Find its full description (`**REQ-ID**: description`) in the slice's `## Its requirements`, or with `grep -n "REQ-ID" .planning/requirements.md` when there is no slice or the ID is missing from it
 2. Map to supporting truths/artifacts verified in Steps 3-5
 3. Determine status:
    - ✓ SATISFIED: Implementation evidence found that fulfills the requirement

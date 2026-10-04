@@ -30,14 +30,16 @@
     {
       "kind": "pan",
       "argv": [
-        "phases",
-        "list"
+        "phase-plan-index",
+        "1"
       ],
       "expect": [
         "exit:0",
-        "json:phases"
+        "json:plans.0.id",
+        "json:plans.0.objective",
+        "json:waves.1"
       ],
-      "why": "The engine still reads the tree the agents wrote — a plan file that breaks frontmatter parsing would show here, not in the file glob."
+      "why": "The engine reads the plans the agents wrote: phase-plan-index parses each plan's frontmatter and objective into waves, so a plan file that breaks parsing shows here, not in the file glob. (Until 2026-10-04 this step ran `phases list` and expected a `phases` key that command has never returned; the scenario had not been run before.)"
     },
     {
       "kind": "sh",

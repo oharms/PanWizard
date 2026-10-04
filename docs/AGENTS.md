@@ -724,7 +724,7 @@ Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<ag
 - `pan-tools memory append <agent> <text>` — append a lesson (auto-dated)
 - `pan-tools memory list` — all agents that have memory + entry counts
 - `pan-tools memory compact <agent> [max]` — trim to last N (default 500)
-- `pan-tools memory select <agent> --cue <text> [--token-budget N] [--recency-floor N]` — budget-aware, cue-ranked subset for injection
+- `pan-tools memory select <agent> --cue <text> [--token-budget N] [--recency-floor N] [--all] [--mark-used]` — budget-aware, cue-ranked subset for injection; leaves out entries whose cited code is gone or that expired unused
 - `pan-tools memory budget` — per-agent injection budget report
 - `pan-tools memory optimize [--apply] [--keep N]` — reconcile the always-loaded project memory
 - `pan-tools memory rebuild [--apply]` — regenerate the derived tools-memory (AGENTS.md section, CLAUDE.md bridge) and state.md's frontmatter

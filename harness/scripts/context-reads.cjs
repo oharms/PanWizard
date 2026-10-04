@@ -58,8 +58,9 @@ function classifyReads(calls) {
       else if (REQUIREMENTS_RE.test(p) && whole) c.whole_requirements++;
     } else if (name === 'Bash' || name === 'PowerShell') {
       const cmd = String(input.command || '');
-      if (SLICE_RE.test(cmd) && SHELL_PRINT_RE.test(cmd)) { c.slice++; continue; }
       const prints = SHELL_PRINT_RE.test(cmd);
+      // One command can print the slice and a whole file too (`cat slice.md requirements.md`).
+      if (SLICE_RE.test(cmd) && prints) c.slice++;
       if (ROADMAP_RE.test(cmd)) prints ? c.whole_roadmap++ : c.section_roadmap++;
       if (REQUIREMENTS_RE.test(cmd) && prints) c.whole_requirements++;
     }

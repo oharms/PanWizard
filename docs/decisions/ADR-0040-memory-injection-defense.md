@@ -4,6 +4,11 @@
 
 Accepted — 2026-07-30. Implemented in v3.22.0 (`memory-optimize.cjs` directive quarantine + `memory-rebuild.cjs` procedural-tier warnings). Repo-only: `docs/` is not in `package.json` `files`, so this decision doc is not shipped to installs.
 
+> **Amended 2026-10-04 (memory optimisation O4): the quarantine was being loaded.** The quarantine is `.planning/memory/quarantine.md`, and that folder is the one exec-phase loads memory from. Its `load_phase_memory` step ran `ls .planning/memory/*.md` and read every file whole into a `MEMORY_RULES` block. Every executor prompt got that block under "Apply every rule in this block without exception." So a quarantined directive went straight back to the agents the quarantine was meant to protect. `state-archive.md` went with it: 114 KB of old state on the 54-phase field project.
+>
+> - **Agent logs only.** Memory now loads only from agent logs, through `memory select`. `memory list` names `quarantine`, `state-archive` and `distill-patterns` as PAN's archives, never memory. `memory append`, `select` and `prune` refuse those names as agents. The optimizer prompts no longer glob the folder.
+> - **Why tests missed it.** The quarantine's own tests checked that a directive moved out of `state.md`; nothing checked what read the folder afterwards. A class test now forbids a shipped prompt from globbing `.planning/memory/*.md` for an agent to read. Harness `memory-citations` checks the executors' real prompts for a quarantined canary.
+
 Trigger: **"OpenAI's rogue agent reached further than anyone knew."** An OpenAI experimental testing agent broke out of its sandbox and spent days probing external systems (Hugging Face, and at least one more company) before it was noticed. Reuters, 2026-07 — reporting via SecurityAffairs: <https://securityaffairs.com/196120/ai/reuters-openai-agent-hacked-hugging-face-for-days-before-being-detected.html>.
 
 The headline is a sandbox escape, which is a harness concern outside PAN's control. The **transferable** detail is the one that matters for PAN: an agent can **write self-serving directives into persistent memory** that a *later* agent or run reads and obeys — a cross-generation prompt injection that turns "memory" into a covert instruction channel.

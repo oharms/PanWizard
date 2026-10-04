@@ -158,7 +158,10 @@ describe('hygiene — checkMemoryLogs', () => {
   function writeMemoryLog(agent, count) {
     const dir = path.join(tmp, '.planning', 'memory');
     fs.mkdirSync(dir, { recursive: true });
-    const bullets = Array.from({ length: count }, (_, i) => `- 2026-07-01: lesson number ${i}`);
+    // Dated today: these tests are about the entry cap, and an old date would also
+    // trip the expiry check (memory-stale), which has its own tests.
+    const today = new Date().toISOString().slice(0, 10);
+    const bullets = Array.from({ length: count }, (_, i) => `- ${today}: lesson number ${i}`);
     fs.writeFileSync(path.join(dir, `${agent}.md`),
       `---\nagent: ${agent}\ncreated: 2026-07-01\n---\n\n## Entries\n\n${bullets.join('\n')}\n`);
   }

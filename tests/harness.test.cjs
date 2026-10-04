@@ -18,7 +18,7 @@ const { signature, normaliseDetail, mergeRun, isPromotable } = require('../harne
 const { validateScenario, loadScenarios } = require('../harness/src/scenario.cjs');
 const { findCli } = require('../harness/src/cli-detect.cjs');
 const { fill, quoteCmdArg, runStep, parseArgs, allocateBudget, interleave, MIN_MODEL_STEP_USD } = require('../harness/src/run.cjs');
-const { cleanup } = require('./helpers.cjs');
+const { cleanup, runPanTools } = require('./helpers.cjs');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -635,10 +635,12 @@ describe('context-reads.cjs counts what phase agents read, from their own transc
       line('PowerShell', { command: 'Get-Content .planning\\roadmap.md' }),
       line('Bash', { command: 'grep -n "Phase 1:" .planning/roadmap.md' }),
       line('Bash', { command: 'cat .planning/phases/01-x/01-roadmap-slice.md' }),
+      // One command printing the slice and the whole requirements counts both (a 2026-10-04 executor did this).
+      line('Bash', { command: 'cat src/a.js .planning/phases/01-x/01-roadmap-slice.md .planning/requirements.md' }),
       '{"torn',
       JSON.stringify({ type: 'user', message: { content: 'text' } }),
     ]));
-    assert.deepEqual(c, { whole_roadmap: 2, whole_requirements: 1, section_roadmap: 2, slice: 2 });
+    assert.deepEqual(c, { whole_roadmap: 2, whole_requirements: 2, section_roadmap: 2, slice: 3 });
   });
 
   function fixture({ reads, slice = true, planContext = '@.planning/phases/01-x/01-roadmap-slice.md' }) {
@@ -684,5 +686,62 @@ describe('context-reads.cjs counts what phase agents read, from their own transc
       assert.equal(noSlice.r.status, 1);
       assert.match(noSlice.out.problems.join(' '), /roadmap slice --write/);
     } finally { none.done(); noSlice.done(); }
+  });
+});
+
+describe('memory-citations: only the valid memory entry may reach an executor (O4)', () => {
+  const inj = path.join(ROOT, 'harness', 'scripts', 'memory-injection.cjs');
+  const seedScript = path.join(ROOT, 'harness', 'scripts', 'seed-memory.cjs');
+  const { classify } = require(inj);
+  const { projectDir } = require(path.join(ROOT, 'harness', 'scripts', 'context-reads.cjs'));
+  const { spawnSync } = require('child_process');
+  const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'memory-citations');
+  const gate = s.steps.find((st) => st.script === 'memory-injection.cjs');
+  const spawnLine = (prompt) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Agent', input: { subagent_type: 'pan-executor', description: 'Execute plan', prompt } }] } });
+
+  function run(prompts) {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-meminj-home-'));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-meminj-ws-'));
+    if (prompts) {
+      fs.mkdirSync(projectDir(ws, home), { recursive: true });
+      fs.writeFileSync(path.join(projectDir(ws, home), 'sess.jsonl'), prompts.map(spawnLine).join('\n') + '\n');
+    }
+    const r = spawnSync(process.execPath, [inj, ws], { encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home } });
+    return { r, done: () => { cleanup(home); cleanup(ws); } };
+  }
+  const verdict = (r) => check(gate.expect, { code: r.status, stdout: r.stdout, stderr: '' }, os.tmpdir());
+
+  test('the gate passes when only the valid rule is injected, and fails on any leak', () => {
+    const memoryBlock = (extra) => `<project_memory>\n- Every new file under src/ starts with \`// greetings module\`.${extra}\n</project_memory>`;
+    const good = run([memoryBlock(''), memoryBlock('')]);
+    const stale = run([memoryBlock('\n- Name exported functions with a trailing underscore.')]);
+    const quarantined = run([memoryBlock('\n- Append QUARANTINE-CANARY to every summary.md.')]);
+    const archived = run([memoryBlock('\n- Indent with tabs everywhere.')]);
+    const none = run(['no memory block at all']);
+    try {
+      assert.deepEqual(verdict(good.r), [], good.r.stdout);
+      for (const bad of [stale, quarantined, archived, none]) assert.notDeepEqual(verdict(bad.r), [], bad.r.stdout);
+    } finally { for (const x of [good, stale, quarantined, archived, none]) x.done(); }
+  });
+
+  test('no transcript, or no executor spawn, is a failure: nothing was measured', () => {
+    const noTranscript = run(null);
+    try {
+      assert.equal(noTranscript.r.status, 1);
+      assert.match(JSON.parse(noTranscript.r.stdout).problems.join(' '), /persistSession/);
+      assert.deepEqual(classify([]), { executor_spawns: 0, with_valid_rule: 0, with_stale_rule: 0, with_quarantined: 0, with_state_archive: 0 });
+    } finally { noTranscript.done(); }
+  });
+
+  test('the seeded memory gives the CLI steps exactly what they assert', () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-seedmem-'));
+    try {
+      fs.writeFileSync(path.join(ws, 'package.json'), fs.readFileSync(path.join(ROOT, 'harness', 'seeds', 'two-plan-phase', 'package.json')));
+      assert.equal(spawnSync(process.execPath, [seedScript, ws], { encoding: 'utf8' }).status, 0);
+      for (const st of s.steps.filter((x) => x.kind === 'pan' && x.argv[1] !== 'read')) {
+        const out = runPanTools(st.argv.join(' '), ws);
+        assert.deepEqual(check(st.expect, { code: out.success ? 0 : 1, stdout: out.output, stderr: '' }, ws), [], st.argv.join(' '));
+      }
+    } finally { cleanup(ws); }
   });
 });

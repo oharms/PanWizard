@@ -582,6 +582,11 @@ const MEMORY_SOFT_CAP_MULT = 2;           // soft auto-compaction trigger = DEFA
 const MEMORY_LOAD_WARN_TOKENS = 4000;     // memory-budget telemetry: warn threshold (absolute tokens)
 const MEMORY_LOAD_CRIT_TOKENS = 8000;     // memory-budget telemetry: critical threshold (absolute tokens)
 const MEMORY_LOAD_MAX_FRACTION = 0.15;    // memory-budget telemetry: max fraction of median agent input
+// Cited, verified, expiring memory (memory optimisation O4; the Copilot Memory
+// pattern). An entry not used for this many days is no longer injected and
+// `memory prune` archives it; `memory select --mark-used` refreshes it.
+const MEMORY_EXPIRE_DAYS = 60;
+const MEMORY_CITED_FILE_MAX_BYTES = 2 * 1024 * 1024; // larger cited files: existence is the evidence
 
 // Cached prompt context (ADR-0044). The files in CACHEABLE_CONTEXT_FILES are
 // re-read into EVERY agent call, so their combined size is the single largest
@@ -862,6 +867,8 @@ module.exports = {
   MEMORY_LOAD_WARN_TOKENS,
   MEMORY_LOAD_CRIT_TOKENS,
   MEMORY_LOAD_MAX_FRACTION,
+  MEMORY_EXPIRE_DAYS,
+  MEMORY_CITED_FILE_MAX_BYTES,
   // Hygiene
   CACHE_BLOCK_WARN_TOKENS,
   CACHE_BLOCK_CRIT_TOKENS,

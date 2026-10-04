@@ -330,7 +330,7 @@ describe('memory — listMemoryAgents', () => {
   afterEach(() => { cleanup(tmpDir); });
 
   test('empty when no memory dir', () => {
-    assert.deepEqual(listMemoryAgents(tmpDir), { agents: [] });
+    assert.deepEqual(listMemoryAgents(tmpDir), { agents: [], not_loaded: [] });
   });
 
   test('lists agents with entry counts', () => {

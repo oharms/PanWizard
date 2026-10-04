@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-07T13:36:47.532Z",
+  "generated_at": "2026-10-04T10:14:05.059Z",
   "topics": [
     {
       "name": "experiment-runner",
@@ -14,8 +14,8 @@
         "P-EXP-005",
         "P-NPRS-005"
       ],
-      "size_bytes": 8889,
-      "size_tokens_est": 2223,
+      "size_bytes": 8956,
+      "size_tokens_est": 2239,
       "agent_relevance": {
         "planner": "low",
         "executor": "low",
@@ -804,7 +804,7 @@
   "totals": {
     "topics": 47,
     "patterns": 93,
-    "size_bytes": 150126,
-    "size_tokens_est": 37549
+    "size_bytes": 150193,
+    "size_tokens_est": 37565
   }
 }

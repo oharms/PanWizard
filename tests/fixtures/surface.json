@@ -159,6 +159,7 @@
     "memory compact",
     "memory list",
     "memory optimize",
+    "memory prune",
     "memory read",
     "memory rebuild",
     "memory select",

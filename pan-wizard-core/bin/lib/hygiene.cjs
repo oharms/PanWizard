@@ -45,7 +45,7 @@ const {
 } = require('./constants.cjs');
 const { planningPath, planningRel, detectPlanningModel } = require('./utils.cjs');
 const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
-const { listMemoryAgents, readMemory, compactMemory } = require('./memory.cjs');
+const { listMemoryAgents, readMemory, compactMemory, pruneMemory, RESERVED_MEMORY_NAMES } = require('./memory.cjs');
 const { readRecords, isSuspectRecord, METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
 const { assessCacheTtl } = require('./context-budget.cjs');
 const { planningRootRel, planningRoots, withPlanningRoot, describePlanningRoot, TRACKS_DIR } = require('./planning-root.cjs');
@@ -225,18 +225,41 @@ function checkTmpOrphans(cwd, now = Date.now()) {
   return { findings };
 }
 
-/** H-4: per-agent memory logs past the entry cap (compaction never ran). */
+/**
+ * H-4: per-agent memory logs — past the entry cap (compaction never ran), holding
+ * entries memory no longer injects (O4: cited code gone, or unused past the expiry
+ * window), and files in the folder that are not loaded as memory at all.
+ */
 function checkMemoryLogs(cwd) {
   const findings = [];
   const { agents } = listMemoryAgents(cwd);
   for (const a of agents) {
     const mem = readMemory(cwd, a.agent);
     if (!mem || !Array.isArray(mem.entries)) continue;
-    if (mem.entries.length <= MEMORY_ENTRY_CAP) continue;
-    findings.push(mkFinding('memory-bloat', 'warn',
-      planningRel('memory', `${a.agent}.md`),
-      `${mem.entries.length} entries exceeds cap ${MEMORY_ENTRY_CAP} — whole-file reads flood context`,
-      { action: 'compact-memory', agent: a.agent }));
+    const rel = planningRel('memory', `${a.agent}.md`);
+    if (mem.entries.length > MEMORY_ENTRY_CAP) {
+      findings.push(mkFinding('memory-bloat', 'warn', rel,
+        `${mem.entries.length} entries exceeds cap ${MEMORY_ENTRY_CAP} — compaction keeps the newest`,
+        { action: 'compact-memory', agent: a.agent }));
+    }
+    const prune = pruneMemory(cwd, a.agent);
+    const stale = prune.agents ? prune.agents[0].archive : [];
+    if (stale.length) {
+      const gone = stale.filter(x => x.reason.startsWith('cited code gone')).length;
+      findings.push(mkFinding('memory-stale', 'warn', rel,
+        `${stale.length} entr${stale.length === 1 ? 'y is' : 'ies are'} no longer injected `
+        + `(${gone} cite code that is gone, ${stale.length - gone} unused for ${prune.expire_days} days) — `
+        + '`memory prune` archives them',
+        { action: 'prune-memory', agent: a.agent }));
+    }
+  }
+  // A file in the folder with no `## Entries` list is never loaded (PAN's own
+  // archives aside): say so rather than let it look like memory.
+  for (const n of listMemoryAgents(cwd).not_loaded || []) {
+    if (RESERVED_MEMORY_NAMES.includes(n.file.slice(0, -3).toLowerCase())) continue;
+    findings.push(mkFinding('memory-format', 'info', planningRel('memory', n.file),
+      `${n.reason}, so it is not loaded as memory — move the rules that still hold into an agent log with \`memory append <agent> "<rule>" --cites <path>\``,
+      null));
   }
   return { findings };
 }
@@ -682,6 +705,12 @@ function applyFix(cwd, finding) {
         const r = compactMemory(cwd, fix.agent);
         if (r.error) return { applied: false, detail: r.error };
         return { applied: true, detail: `compacted to ${r.kept ?? r.entries ?? 'cap'} entries` };
+      }
+      case 'prune-memory': {
+        const r = pruneMemory(cwd, fix.agent, { apply: true });
+        if (r.error) return { applied: false, detail: r.error };
+        if (!r.applied) return { applied: false, detail: 'nothing stale or expired any more' };
+        return { applied: true, detail: `archived ${r.archivable} entr${r.archivable === 1 ? 'y' : 'ies'} to ${r.archive_dir}/` };
       }
       case 'compact-state': {
         // Required lazily: state-compact pulls in state.cjs, which pulls in core

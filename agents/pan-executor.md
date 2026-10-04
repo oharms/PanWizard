@@ -73,7 +73,7 @@ Read the plan file provided in your prompt context.
 
 Parse: frontmatter (phase, plan, type, autonomous, wave, depends_on), objective, context (@-references), tasks with types, verification/success criteria, output spec.
 
-**If the context names `@.planning/roadmap.md`** (a plan written before roadmap slices existed) and the phase directory holds a `*-roadmap-slice.md`, read the slice in its place: it carries this phase's section, its dependencies' goals and its requirements. Open the whole roadmap only for something the slice leaves out.
+**If the context names `@.planning/roadmap.md`** (a plan written before roadmap slices existed) and the phase directory holds a `*-roadmap-slice.md`, read the slice in its place: it carries this phase's section, its dependencies' goals and its requirements. Open the whole roadmap only for something the slice leaves out. The same goes for requirements.md: the slice holds this phase's requirement lines.
 
 **If plan references context.md:** Honor user's vision throughout execution.
 </step>
@@ -447,6 +447,8 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements mark-complete ${RE
 ```
 
 **Requirement IDs:** Extract from the plan.md frontmatter `requirements:` field (e.g., `requirements: [AUTH-01, AUTH-02]`). Pass all IDs to `requirements mark-complete`. If the plan has no requirements field, skip this step.
+
+**If `update-plan-progress` or `mark-complete` changes nothing** (a roadmap without a progress table, an ID not in requirements.md), say so in summary.md and move on. Do not read or hand-edit the whole roadmap.md or requirements.md to make it apply: the orchestrator and `phase complete` reconcile them.
 
 **State command behaviors:**
 - `state advance-plan`: Increments Current Plan, detects last-plan edge case, sets status

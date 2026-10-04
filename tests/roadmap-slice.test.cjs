@@ -215,6 +215,20 @@ describe('the prompts read the slice, not the whole files', () => {
     assert.match(read('agents/pan-executor.md'), /names `@\.planning\/roadmap\.md`[\s\S]{0,200}read the slice in its place/);
   });
 
+  test('the verifier works from get-phase and the slice, and an executor does not repair a no-op by hand', () => {
+    // Found by harness markdown-exec-phase-chain on 2026-10-04: the verifier cat'ed
+    // roadmap.md and requirements.md whole, and an executor read both to debug a
+    // `mark-complete` that changed nothing.
+    const vp = read('pan-wizard-core/workflows/verify-phase.md');
+    assert.match(vp, /roadmap slice "\$\{phase_number\}" --write --raw/);
+    assert.doesNotMatch(vp, /Extract \*\*phase goal\*\* from roadmap\.md/);
+    assert.match(read('pan-wizard-core/workflows/exec-phase.md'), /Roadmap slice: \{slice_path\}[^\n]*Read it instead of roadmap\.md and requirements\.md\.\nCheck must_haves[^\n]*\nCross-reference requirement IDs from PLAN frontmatter against the slice's requirement lines/);
+    const verifier = read('agents/pan-verifier.md');
+    assert.doesNotMatch(verifier, /Extract phase goal from roadmap\.md|Find its full description in requirements\.md/);
+    assert.match(verifier, /Do not read roadmap\.md or requirements\.md whole/);
+    assert.match(read('agents/pan-executor.md'), /changes nothing[\s\S]{0,200}Do not read or hand-edit the whole roadmap\.md or requirements\.md/);
+  });
+
   test('the planner never prints the whole roadmap to find its phase', () => {
     assert.doesNotMatch(read('agents/pan-planner.md'), /cat \.planning\/roadmap\.md/);
   });

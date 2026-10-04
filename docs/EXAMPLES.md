@@ -542,7 +542,7 @@ After shipping a milestone, capture accumulated lessons for onboarding:
 /pan:knowledge playbook
 ```
 
-The playbook command reads `.planning/memory/*.md` — every lesson that `pan-planner`, `pan-verifier`, `pan-reviewer`, and other agents still keep in their memory files (the playbook is not scoped to one milestone) — and clusters entries into categories (Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps / General). Output at `.planning/playbook.md`:
+The playbook command reads every agent log in `.planning/memory/` (`memory list`) — every lesson that `pan-planner`, `pan-verifier`, `pan-reviewer`, and other agents still keep in their memory files (the playbook is not scoped to one milestone) — and clusters entries into categories (Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps / General). Output at `.planning/playbook.md`:
 
 ```markdown
 ## Conventions
