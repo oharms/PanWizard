@@ -1244,6 +1244,16 @@ function uninstall(isGlobal, runtime = 'claude') {
     }
   }
 
+  // 4a'. Remove the OpenCode plugin (O12); the plugins directory goes too when
+  // nothing else is in it.
+  const opencodePlugin = path.join(targetDir, 'plugins', OPENCODE_PLUGIN_FILE);
+  if (fs.existsSync(opencodePlugin)) {
+    try { fs.unlinkSync(opencodePlugin); } catch {}
+    try { fs.rmdirSync(path.dirname(opencodePlugin)); } catch { /* not empty: the user's own plugins stay */ }
+    removedCount++;
+    console.log(`  ${green}✓${reset} Removed the PAN plugin`);
+  }
+
   // 4b. Codex: strip PAN entries from the shared .codex/hooks.json (foreign
   // hook registrations are preserved; the file is deleted only when nothing
   // but PAN content remained).
@@ -1842,6 +1852,8 @@ const PATCHES_DIR_NAME = 'pan-local-patches';
 // the patches tree stays self-contained.
 const EXTERNAL_PATCHES_SUBDIR = '_external';
 const MANIFEST_NAME = 'pan-file-manifest.json';
+// PAN's OpenCode plugin, installed as <opencode dir>/plugins/pan-wizard.js (O12).
+const OPENCODE_PLUGIN_FILE = 'pan-wizard.js';
 
 /**
  * Compute SHA256 hash of file contents
@@ -1962,6 +1974,11 @@ function writeManifest(configDir, runtime = 'claude', isGlobal = false) {
         manifest.files['workflows/' + file] = fileHash(path.join(workflowsDir, file));
       }
     }
+  }
+  // The OpenCode plugin (O12)
+  const opencodePlugin = path.join(configDir, 'plugins', OPENCODE_PLUGIN_FILE);
+  if (isOpencode && fs.existsSync(opencodePlugin)) {
+    manifest.files[`plugins/${OPENCODE_PLUGIN_FILE}`] = fileHash(opencodePlugin);
   }
 
   try {
@@ -2636,6 +2653,21 @@ function install(isGlobal, runtime = 'claude') {
       console.log(`  ${green}✓${reset} Installed ${scripts.length} native workflows to workflows/`);
     } catch (e) {
       pushInstallWarning('nativeWorkflows', 'workflows/pan-*', e);
+    }
+  }
+
+  // OpenCode plugin (memory optimisation O12). OpenCode runs no command hooks, but a
+  // plugin can add to the prompt it compacts a session with; PAN's keeps the phase
+  // in flight through a compaction, as hooks/pan-state-reinject.js does on the other
+  // hosts. CommonJS, beside the package.json written above.
+  if (isOpencode) {
+    try {
+      const pluginsDir = path.join(targetDir, 'plugins');
+      fs.mkdirSync(pluginsDir, { recursive: true });
+      fs.copyFileSync(path.join(src, 'pan-wizard-core', 'opencode', OPENCODE_PLUGIN_FILE), path.join(pluginsDir, OPENCODE_PLUGIN_FILE));
+      console.log(`  ${green}✓${reset} Installed the PAN plugin to plugins/ (keeps PAN's position through compaction)`);
+    } catch (e) {
+      pushInstallWarning('opencodePlugin', `plugins/${OPENCODE_PLUGIN_FILE}`, e);
     }
   }
 

@@ -245,7 +245,7 @@ One `SubagentStop` can reach the hooks more than once. A project with **both** a
 
 ### pan-state-reinject.js (market-ideas M10)
 
-**Runtime support:** Claude Code (`SessionStart` with the `compact` matcher, in `settings.json` and the Claude plugin's `hooks/hooks.json`) and Codex (the same, in `.codex/hooks.json`, synchronous); Gemini CLI (`PreCompress` and `AfterTool` in `settings.json`) and Copilot CLI (`preCompact` and `postToolUse` in `.github/hooks/pan.json`) in two steps, below. Not registered for OpenCode, and not in the Agent Plugins bundle's Copilot `hooks/hooks.json`.
+**Runtime support:** Claude Code (`SessionStart` with the `compact` matcher, in `settings.json` and the Claude plugin's `hooks/hooks.json`) and Codex (the same, in `.codex/hooks.json`, synchronous); Gemini CLI (`PreCompress` and `AfterTool` in `settings.json`) and Copilot CLI (`preCompact` and `postToolUse` in `.github/hooks/pan.json`) in two steps, below. Not in the Agent Plugins bundle's Copilot `hooks/hooks.json`. OpenCode runs no hooks; PAN's OpenCode plugin carries the same position into its compaction instead (next section).
 
 **Why `SessionStart` and not `PostCompact`:** both hosts document `PostCompact`, and both discard its output — Claude Code lists it under "no decision control", and Codex's `PostCompact` output schema has no `additionalContext`. What each host does after a compaction is start the session again with `source: "compact"` and honour `hookSpecificOutput.additionalContext` from `SessionStart` hooks that match it. The hook also checks `source` itself, so a registration without the matcher stays silent on every other start.
 
@@ -263,6 +263,21 @@ Checked live on Copilot CLI 1.0.88 (`2026-10-03`): a manual `/compact` fired `pr
 **When it is silent:** no `state.md`, no `Current Phase`, no `roadmap.md`, or every roadmap phase already ticked. It reads the planning tree the payload's `cwd` names (honouring `PAN_PLANNING_DIR`/`PAN_TRACK` like every PAN hook that reads the planning tree) and writes nothing into the project — the field sweep found hooks that scaffolded `.planning/` in projects that never ran PAN, and this one cannot. The Gemini and Copilot marker is the only file it writes, and it lives in the OS temp directory.
 
 **Failure posture:** fail-open — malformed stdin, a payload without a session id (the marker modes), or an unreadable file exits 0 with no output.
+
+
+### The OpenCode plugin: pan-wizard.js (memory optimisation O12)
+
+**Where:** `<opencode config dir>/plugins/pan-wizard.js`, written by a local or global OpenCode install from `pan-wizard-core/opencode/pan-wizard.js`. It is tracked in the manifest and removed on uninstall, which keeps any plugins of your own. It is CommonJS and sits beside the `{"type":"commonjs"}` `package.json` PAN writes there. It exports the plugin module shape `{ id: "pan-wizard", server }`.
+
+**What it does:** OpenCode runs no command hooks, so `pan-state-reinject.js` cannot run there. A plugin's `experimental.session.compacting` hook fires before OpenCode writes a session's continuation summary, and strings pushed onto `output.context` go into that prompt. The plugin pushes the same position the hook gives the other hosts: phase, plan, status, stopping point, and first unbuilt phase. It reads them from the planning tree on disk, honours `PAN_PLANNING_DIR` / `PAN_TRACK`, and asks for `state.md` to be re-read after the compaction.
+
+**Safety:** it is inert without a current phase and an unbuilt roadmap phase. It never writes, and fails open: an error adds nothing and never breaks a compaction.
+
+**Checked on OpenCode `1.18.32` (`2026-10-04`, no model call):**
+- `opencode debug config` lists the plugin, and `live-gate-opencode` repeats that check.
+- An instrumented copy showed OpenCode importing the module, calling `server()` with the project directory, and receiving the compaction hook.
+
+The hook's behaviour inside a real compaction is pinned by `tests/opencode-plugin.test.cjs`.
 
 ### pan-stop-guard.js (v3.24+, P-1809)
 
@@ -451,11 +466,11 @@ The build script (`scripts/build-hooks.js`) simply copies files — no bundling 
 |---------|----------------|-------|
 | Claude Code | Yes | Full support via settings.json hook registration, including the state re-injection on `SessionStart` with the `compact` matcher |
 | Copilot CLI | Yes | `.github/hooks/pan.json` (version 1 schema: sessionStart, postToolUse, preCompact, subagentStop, agentStop — the state re-injection's two steps on `preCompact` and `postToolUse`). Copilot also runs the hooks in the project's `.claude/settings.json`, so in a project with both installs the Copilot copy of each hook steps aside for the Claude registration and each runs once. Headless (`copilot -p`) Copilot loads repository hooks only in a trusted folder, or with `COPILOT_ALLOW_ALL=true` or `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` — see TROUBLESHOOTING |
-| OpenCode | No | PAN registers no hooks there; OpenCode's plugin API (`.opencode/plugins/*.js`) is not used yet |
+| OpenCode | No (one plugin) | PAN registers no hooks there. Its plugin, `.opencode/plugins/pan-wizard.js`, adds PAN's position to the compaction prompt |
 | Gemini CLI | Partly | settings.json, in Gemini's own event names: `SessionStart` runs the update check, `AfterAgent` the stop guard, and `PreCompress` and `AfterTool` the state re-injection's two steps. No context monitor (no Gemini hook payload or setting carries context-window usage, and Gemini has no statusline command) and no cost or trace logger (no subagent-completion event). Until `2026-09-23` PAN wrote Claude's names here — `PostToolUse`, `SubagentStop`, `Stop` — which Gemini skips, with an "Invalid hook event name" warning, whenever it loads the settings |
 | Codex | Yes | `.codex/hooks.json` since 2026-06 (Claude-compatible PascalCase events; loads once the project is trusted). PAN registers these hooks there — update check, context monitor, cost and trace loggers, the stop guard on `Stop`, and the state re-injection on `SessionStart` with the `compact` matcher; the observers (update check, cost and trace loggers) carry `async: true` (Codex CLI 0.148+) while the context monitor, the stop guard and the re-injection stay synchronous, because an async handler's output is deferred to a later turn and it cannot block. Codex runs a non-managed hook only after you trust it, and records that trust against a hash of the hook, so a new or changed PAN hook is skipped until you review it in `/hooks` — see TROUBLESHOOTING. No statusline, and the context monitor reads only the bridge file `pan-statusline.js` writes, so on Codex it finds none and never warns |
 
-PAN registers hooks on Claude Code, Gemini CLI, Codex, and Copilot CLI. It registers none on OpenCode, whose plugin API it does not use yet.
+PAN registers hooks on Claude Code, Gemini CLI, Codex, and Copilot CLI. It registers none on OpenCode, where one PAN plugin keeps the phase in flight through a compaction.
 
 ## Developing Custom Hooks
 

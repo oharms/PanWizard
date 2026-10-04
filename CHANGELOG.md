@@ -74,6 +74,10 @@ The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, item
   - **The check:** the new `host-memory` check finds the store the way Claude Code does: `autoMemoryDirectory`, else the git root, with a worktree sharing its main repository's store. It reports an index past or near that limit, and index lines that hold content where a one-line pointer belongs.
   - **Read-only:** PAN never writes the store, and MI-010 stands.
   - **Field scan:** it flagged two client indexes holding content (28 lines up to 1,447 characters, and 4 lines up to 3,509). None was over the load limit.
+- **OpenCode keeps PAN's position through a compaction (O12).** OpenCode was the last host without PAN's state re-injection: it runs no command hooks.
+  - **The plugin:** an OpenCode install now writes one plugin, `.opencode/plugins/pan-wizard.js`. Its `experimental.session.compacting` hook pushes the position the other hosts get from `pan-state-reinject.js` onto the compaction prompt's context: phase, plan, status, stopping point and first unbuilt phase. A test pins it to the hook's output.
+  - **Safety:** it is inert outside PAN work in flight, never writes, and fails open. It is tracked in the manifest and removed on uninstall, which leaves your own plugins.
+  - **Checked on OpenCode `1.18.32` (no model call):** `opencode debug config` lists it, and an instrumented copy showed OpenCode importing the CommonJS module and calling `server()`, which returned the compaction hook.
 - **A harness baseline for resume cost (O11).** The new `resume-cost` scenario stops the two-plan seed halfway through its phase and gives a fresh session only the word "continue". It records the turns, cost and time to find its place and finish, read from the step's own output. This is the planning-with-files protocol, and the baseline the other memory changes are measured against.
 - **Learnings are chosen by the task (O5).**
   - **The problem:** `learn topics-for` loaded the topics tagged for the agent's role, smallest first, so the same handful loaded whatever the phase was about. A large topic the task needed (migration-safety for a migration) dropped out.
