@@ -43,11 +43,22 @@ function recordedLessons(ws) {
   return out;
 }
 
-/** A prompt carries a lesson when it holds at least half the lesson's content words. */
+/**
+ * A prompt carries a lesson as memory when its `<project_memory>` block holds at
+ * least half the lesson's content words. Only that block counts: the same rule can
+ * reach an executor through state.md's decisions or the orchestrator's own words, and
+ * matching the whole prompt credited memory with that (convention-chain rep 2,
+ * 2026-10-04: no memory block at all, and a match on the rest of the prompt).
+ */
+function memoryBlock(prompt) {
+  const m = String(prompt).match(/<project_memory>([\s\S]*?)<\/project_memory>/);
+  return m ? m[1] : '';
+}
+
 function carries(prompt, lesson) {
   const want = words(lesson);
   if (!want.size) return false;
-  const have = words(prompt);
+  const have = words(memoryBlock(prompt));
   let hit = 0;
   for (const w of want) if (have.has(w)) hit++;
   return hit / want.size >= 0.5;
@@ -96,4 +107,4 @@ if (require.main === module) {
   process.exit(ok ? 0 : 1);
 }
 
-module.exports = { recordedLessons, carries, farewellRejects, measure };
+module.exports = { recordedLessons, carries, memoryBlock, farewellRejects, measure };

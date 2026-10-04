@@ -807,9 +807,12 @@ describe('memory-lesson-chain and its control (O6)', () => {
     } finally { none.done(); }
   });
 
-  test('a prompt carries a lesson only with most of its words', () => {
-    assert.equal(carries(`Rules: ${LESSON}`, LESSON), true);
-    assert.equal(carries('Rules: throw a TypeError sometimes', LESSON), false);
+  test('a prompt carries a lesson only inside its project_memory block, and only with most of its words', () => {
+    assert.equal(carries(`Plan 02-01.\n<project_memory>\n- ${LESSON}\n</project_memory>`, LESSON), true);
+    assert.equal(carries('<project_memory>\n- throw a TypeError sometimes\n</project_memory>', LESSON), false);
+    // The same rule outside the block (state.md decisions, the orchestrator's own words)
+    // is not memory: convention-chain rep 2 on 2026-10-04 was miscounted that way.
+    assert.equal(carries(`Apply every Key Decision. ${LESSON}`, LESSON), false);
   });
 
   test('the seed starts with one open gap the findings ledger can record', () => {
