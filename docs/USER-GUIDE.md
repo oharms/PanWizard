@@ -1175,8 +1175,8 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 
 ### Context Monitor Warnings Not Showing
 
-**Cause:** Hooks not installed, bridge file stale, or a runtime with no PAN statusline (Gemini CLI, Codex, OpenCode — see [Feature Availability](#feature-availability)).
-**Fix:** Re-run `npx pan-wizard` to reinstall hooks. Check `.claude/settings.json` (local install) or `~/.claude/settings.json` (global) for hook registration. The statusline hook must be running for the context monitor to work (they communicate via `<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`).
+**Cause:** Hooks not installed, the session not yet near its compaction point (the note comes only when about a third of the room before compaction is left), or a runtime the monitor cannot measure. Gemini CLI and OpenCode run no context monitor; on Codex and Copilot CLI there is no PAN status line and the monitor does not read their transcripts (see [Feature Availability](#feature-availability)).
+**Fix:** Re-run `npx pan-wizard` to reinstall hooks. Check `.claude/settings.json` (local install) or `~/.claude/settings.json` (global) for hook registration. On Claude Code the monitor reads PAN's status line bridge (`<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`) when it is fresh, and the session transcript otherwise, so headless `claude -p` runs are covered. A native-1M model on Bedrock, Google Cloud or Foundry gives no note, because its window cannot be known from the transcript.
 
 ### Wrong Model Being Used for Agents
 
