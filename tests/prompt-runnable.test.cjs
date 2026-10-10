@@ -123,6 +123,12 @@ describe('/pan:update reads its runtime and scope from its own install path', ()
     if (!BASH_OK) return t.skip(NO_BASH);
     withFakeHome((home) => {
       const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-update-glob-'));
+      // OpenCode's global directory follows XDG_CONFIG_HOME (set on GitHub's Ubuntu
+      // runners) and OPENCODE_CONFIG_DIR before ~/.config: pin it inside the fake home.
+      const savedEnv = { XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME, OPENCODE_CONFIG_DIR: process.env.OPENCODE_CONFIG_DIR, OPENCODE_CONFIG: process.env.OPENCODE_CONFIG };
+      process.env.XDG_CONFIG_HOME = path.join(home, '.config');
+      delete process.env.OPENCODE_CONFIG_DIR;
+      delete process.env.OPENCODE_CONFIG;
       try {
         const r = installInto(proj, ['--opencode', '--copilot', '--global']);
         assert.ok(r.success, `global install failed: ${r.error}`);
@@ -140,6 +146,7 @@ describe('/pan:update reads its runtime and scope from its own install path', ()
         assert.deepEqual(flags.map((l) => l.slice(1)).sort(), [['--copilot', 'GLOBAL'], ['--opencode', 'GLOBAL']]);
         for (const l of flags) assert.equal(l[0], VERSION);
       } finally {
+        for (const [k, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
         cleanup(proj);
       }
     });

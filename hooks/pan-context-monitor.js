@@ -224,7 +224,9 @@ function lastContextFromLines(lines, { skipSidechain = true } = {}) {
  * fragment would change nothing; dropping it keeps a fragment from ever being read.
  */
 function readTail(file, bytes) {
-  const fd = fs.openSync(file, 'r');
+  // Read-only; the owner-only mode never applies to an open for reading, but keeps the
+  // call in the form PAN's temp-dir rule requires (the path may be under the temp dir).
+  const fd = fs.openSync(file, 'r', 0o600);
   try {
     const size = fs.fstatSync(fd).size;
     const start = Math.max(0, size - bytes);

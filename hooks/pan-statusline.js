@@ -73,7 +73,7 @@ function buildStatuslineOutput(data, deps) {
           ...(fiveHour ? { five_hour: fiveHour } : {}),
           ...(sevenDay ? { seven_day: sevenDay } : {}),
           timestamp: Math.floor(Date.now() / 1000),
-        }));
+        }), { mode: 0o600 });
       }
     } catch { /* best-effort */ }
   }
@@ -103,7 +103,7 @@ function buildStatuslineOutput(data, deps) {
             ...(Number.isFinite(cw.context_window_size) ? { context_window_size: cw.context_window_size } : {}),
             ...(data.model && data.model.id ? { model_id: data.model.id } : {}),
             timestamp: Math.floor(Date.now() / 1000),
-          }));
+          }), { mode: 0o600 });
         }
       } catch { /* bridge is best-effort */ }
     }

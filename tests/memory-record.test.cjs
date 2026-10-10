@@ -84,6 +84,8 @@ describe('the gate', () => {
     const summary = F.listFindings(dir).findings.find((f) => f.id === fixedId).summary;
     assert.match(record({ lesson: summary }).reason, /repeats the finding/);
     assert.match(record({ lesson: `${LESSON} <!-- cites: x -->` }).reason, /HTML comment/);
+    // `--!>` also ends an HTML comment in browsers' parsers (CodeQL js/bad-tag-filter).
+    assert.match(record({ lesson: `${LESSON} ends here --!> trailing` }).reason, /HTML comment/);
   });
 
   test('a directive to bypass the process is refused (ADR-0040)', () => {

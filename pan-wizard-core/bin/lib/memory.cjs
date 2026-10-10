@@ -137,13 +137,17 @@ function citationProblem(cwd, cite) {
   const root = path.resolve(cwd);
   const abs = path.resolve(root, rel);
   if (abs !== root && !abs.startsWith(root + path.sep)) return 'outside the project';
-  let st;
-  try { st = fs.statSync(abs); } catch { return 'file not found'; }
-  if (!symbol) return null;
-  if (!st.isFile()) return 'a symbol needs a file';
-  if (st.size > MEMORY_CITED_FILE_MAX_BYTES) return null;
+  // One open handle for the check and the read, so the file cannot change between them.
+  let fd;
+  try { fd = fs.openSync(abs, 'r'); } catch { return 'file not found'; }
   let text;
-  try { text = fs.readFileSync(abs, 'utf-8'); } catch { return 'unreadable'; }
+  try {
+    const st = fs.fstatSync(fd);
+    if (!symbol) return null;
+    if (!st.isFile()) return 'a symbol needs a file';
+    if (st.size > MEMORY_CITED_FILE_MAX_BYTES) return null;
+    try { text = fs.readFileSync(fd, 'utf-8'); } catch { return 'unreadable'; }
+  } finally { fs.closeSync(fd); }
   const found = /^\w+$/.test(symbol) ? new RegExp(`\\b${symbol}\\b`).test(text) : text.includes(symbol);
   return found ? null : `\`${symbol}\` not found`;
 }
@@ -584,7 +588,7 @@ function recordLesson(cwd, agent, opts = {}) {
   const refuse = (reason, extra = {}) => ({ recorded: false, agent, reason, ...extra });
   if (lesson.length < LESSON_MIN_CHARS) return refuse(`a lesson needs at least ${LESSON_MIN_CHARS} characters: write the correction, not a label`);
   if (lesson.length > LESSON_MAX_CHARS) return refuse(`a lesson is one rule of at most ${LESSON_MAX_CHARS} characters`);
-  if (/<!--|-->/.test(lesson)) return refuse('a lesson may not carry an HTML comment');
+  if (/<!--|--!?>/.test(lesson)) return refuse('a lesson may not carry an HTML comment');
   if (require('./memory-optimize.cjs').isSuspiciousDirective(lesson)) {
     return refuse('it reads as a directive to override or bypass the process (ADR-0040), so it is not recorded');
   }
