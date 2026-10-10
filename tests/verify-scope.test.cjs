@@ -90,17 +90,31 @@ describe('verify scope — from the phase\'s plan commits', () => {
   });
 
   test('lockfiles, the planning tree and PAN runtime directories are excluded with a reason', () => {
-    commit('feat(03-01): add login', ['src/login.ts', 'package-lock.json', '.claude/settings.json', '.github/copilot-instructions.md']);
+    commit('feat(03-01): add login', ['src/login.ts', 'package-lock.json', '.claude/settings.json', '.github/hooks/pan.json']);
     commit('docs(03-01): complete login plan', ['.planning/phases/03-auth/03-01-summary.md']);
     const r = scopePhase(dir, '3');
     assert.deepEqual(r.candidates, []);
     const reasons = Object.fromEntries(r.excluded.map((e) => [e.path, e.reason]));
     assert.deepEqual(reasons, {
       '.claude/settings.json': 'PAN runtime directory',
-      '.github/copilot-instructions.md': 'PAN runtime directory',
+      '.github/hooks/pan.json': 'PAN runtime directory',
       '.planning/phases/03-auth/03-01-summary.md': 'planning tree',
       'package-lock.json': 'lockfile',
     });
+  });
+
+  test('what a Copilot install writes under .github/ is PAN\'s; the project\'s own .github files are not', () => {
+    const pan = ['.github/hooks/pan-statusline.js', '.github/hooks/pan.json', '.github/pan-file-manifest.json', '.github/package.json',
+      '.github/agents/pan-planner.agent.md', '.github/skills/pan-quick/SKILL.md', '.github/pan-wizard-core/VERSION',
+      '.github/pan-local-patches/backup-meta.json'];
+    // The project's own files, and the two PAN merges into rather than owns.
+    const project = ['.github/agents/team-reviewer.agent.md', '.github/copilot-instructions.md', '.github/copilot/settings.json',
+      '.github/hooks/project-hooks.json', '.github/mcp.json', '.github/prompts/release.prompt.md', '.github/skills/deploy/SKILL.md', '.github/workflows/ci.yml'];
+    commit('feat(03-01): add login', ['src/login.ts', ...pan, ...project]);
+    const r = scopePhase(dir, '3');
+    assert.deepEqual(r.candidates.map((c) => c.path), project);
+    const reasons = Object.fromEntries(r.excluded.map((e) => [e.path, e.reason]));
+    for (const p of pan) assert.equal(reasons[p], 'PAN runtime directory', p);
   });
 
   test('a test for a declared file is marked test_for_declared; an unrelated test is not', () => {

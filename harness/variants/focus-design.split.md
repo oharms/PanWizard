@@ -2,6 +2,7 @@
 name: focus-design
 group: Focus
 description: Strategic 10-phase feature investigation, design, and specification pipeline
+argument-hint: "<feature description> [--full | --internal | --outward | --spike] [--gate] [--audit] [--mvp]"
 allowed-tools:
   - Read
   - Write
@@ -31,7 +32,7 @@ Research, design, and specify a new feature with strategic analysis. $ARGUMENTS
 This command investigates and designs features for the **host project** — NOT for PAN Wizard itself.
 
 **NEVER investigate, design for, or reference these PAN infrastructure directories as part of the project:**
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/` — PAN runtime directories
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
 - `.planning/` — PAN planning state (read for context, but don't treat as project source code)
 - Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within those directories
 
@@ -148,7 +149,7 @@ Use case: Quick prototyping, time-boxed exploration, "should we even try this?"
 
 **Modifiers (layer on top of any mode):**
 - `--gate` — Pause after Phase 3 (Strategy) for user review before proceeding to design
-- `--audit` — Add Phase 2.5 reality check of existing implementation (not available with `--spike`)
+- `--audit` — Add Phase 2.5 reality check of existing implementation (not available with `--internal` or `--spike`, which skip Phase 2.5)
 - `--mvp` — Stop after generating the v0 (MVP) task list — skip v1/v2 layers
 
 ### Scope Calibration (Auto-Detection)
@@ -227,6 +228,8 @@ Output a complete summary with:
 ---
 
 ## NEVER DO
+
+These rules and ALWAYS DO below apply to the phases your mode actually runs. Anything the Mode + Phase Matrix or a modifier skips (a whole phase, or the parts a lite phase leaves out) is not a violation.
 
 - Design without proving the problem exists (Phase 0 demand evidence is mandatory)
 - Skip competitive research — must be best-of-breed

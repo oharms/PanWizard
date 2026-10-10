@@ -33,7 +33,7 @@ For each finding:
 1. **Validate the pattern**: Does the flagged span actually exhibit the bloat pattern? If the matcher had a false positive, mark `confidence: 0` and skip.
 
 2. **Classify safety tier** (refine the matcher's initial tier):
-   - **safe** (auto-applicable): The rewrite cannot change observable behavior. Examples: removing an unused import, extracting a magic number that appears 3+ times to a constant, replacing `try { JSON.parse(literal) } catch` where the literal is constant.
+   - **safe** (auto-applicable): The rewrite cannot change observable behavior. Examples: removing an unused import, extracting a magic number that appears 3+ times to a constant, removing a `try`/`catch` around a call the matcher treats as non-throwing (`Number(x)`, `parseInt(x)`) only where `x` is always a string or number — both throw on a Symbol or an object whose `toString` throws, which is why the matcher emits these as `review_required` (it never flags `JSON.parse`, whose guard is load-bearing).
    - **review_required** (human-gate): The rewrite preserves behavior under all known invariants but the invariants must be checked by a human. Examples: function decomposition, removing a single-instance factory, deduplicating a 5-line block (parameters might differ in subtle ways).
    - **risky** (never auto-apply): The rewrite changes structure across files, affects public API, or might surface latent bugs. Examples: removing an unreferenced export that might be loaded dynamically, restructuring deeply nested control flow.
 
@@ -57,8 +57,8 @@ Return a JSON object:
       "validated": true,
       "tier": "safe" | "review_required" | "risky",
       "confidence": 0.95,
-      "rewrite": "diff --git a/src/foo.js b/src/foo.js\n@@ -42,4 +42,1 @@\n-try {\n-  return JSON.parse(literal);\n-} catch (e) { return null; }\n+return JSON.parse(literal);",
-      "rationale": "JSON.parse on a constant literal does not throw; try/catch is dead code"
+      "rewrite": "diff --git a/src/foo.js b/src/foo.js\n@@ -42,4 +42,1 @@\n-try {\n-  return parseInt(raw, 10);\n-} catch (e) { return null; }\n+return parseInt(raw, 10);",
+      "rationale": "raw is always a string at this call site and parseInt does not throw on a string; the try/catch around it is dead code"
     }
   ],
   "summary": {

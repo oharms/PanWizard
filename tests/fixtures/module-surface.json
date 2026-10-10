@@ -105,6 +105,7 @@
     "readUpdateCache:function",
     "runCommitSafetyChecks:function",
     "shouldSkipTests:function",
+    "summaryOneLiner:function",
     "updateState:function"
   ],
   "config.cjs": [
@@ -217,6 +218,7 @@
     "REQUIREMENTS_FILE:string",
     "RESEARCH_SUFFIX:string",
     "ROADMAP_FILE:string",
+    "ROADMAP_SLICE_SUFFIX:string",
     "SESSION_HISTORY_FILE:string",
     "SIMPLE_FILE_THRESHOLD:number",
     "SIMPLE_TASK_THRESHOLD:number",
@@ -330,6 +332,8 @@
   ],
   "cost.cjs": [
     "DEFAULT_RATES:object",
+    "HOST_LIMITS_FILE:string",
+    "LONG_PROMPT_THRESHOLD:number",
     "METRICS_DIR:string",
     "RATES_VERIFIED_AT:string",
     "TOKENS_FILE:string",
@@ -338,6 +342,7 @@
     "checkRatesStaleness:function",
     "cmdCostAppend:function",
     "cmdCostClear:function",
+    "cmdCostLimits:function",
     "cmdCostReport:function",
     "cmdModelsCheck:function",
     "computeCost:function",
@@ -347,10 +352,12 @@
     "loadManagedModelPricing:function",
     "managedSettingsDir:function",
     "ratesFromModelPricing:function",
+    "readHostLimits:function",
     "readRecords:function",
     "renderChart:function",
     "renderTable:function",
-    "resolveRate:function"
+    "resolveRate:function",
+    "weeklyLimitStop:function"
   ],
   "distill.cjs": [
     "DEFAULT_BLOAT_THRESHOLD:number",
@@ -549,6 +556,7 @@
     "cmdKnowledgeAsk:function",
     "cmdKnowledgeDiscuss:function",
     "cmdKnowledgePlaybook:function",
+    "isMemoryArchive:function",
     "loadSession:function",
     "scoreRelevance:function",
     "writePlaybook:function"
@@ -702,6 +710,7 @@
     "cmdPhaseRemove:function",
     "collectDirsToRenumber:function",
     "removePhaseFromDisk:function",
+    "removePhaseSection:function",
     "renamePhaseDir:function",
     "renumberDecimalPhases:function",
     "renumberIntegerPhases:function",
@@ -809,6 +818,7 @@
     "extractMilestones:function",
     "phaseDependencies:function",
     "phaseRequirementIds:function",
+    "roadmapRequirementIds:function",
     "syncRequirementCheckboxes:function"
   ],
   "runner.cjs": [
@@ -850,6 +860,7 @@
     "splitSections:function"
   ],
   "state.cjs": [
+    "activeBlockersFromState:function",
     "cmdDashboard:function",
     "cmdStateAddBlocker:function",
     "cmdStateAddDecision:function",

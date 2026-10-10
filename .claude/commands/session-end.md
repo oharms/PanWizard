@@ -7,11 +7,11 @@ description: End a PAN Wizard development session by verifying state and preserv
 ## Current State
 
 ### Uncommitted Changes
-!`cd d:\PanWizard && git status --short 2>$null`
-!`cd d:\PanWizard && git diff --stat 2>$null | Select-Object -Last 5`
+!`git -C D:/PanWizard status --short`
+!`git -C D:/PanWizard diff --stat --stat-count=4`
 
 ### Commits This Session
-!`cd d:\PanWizard && git log --oneline --since="8 hours ago" 2>$null | Select-Object -First 10`
+!`git -C D:/PanWizard log --oneline --since="8 hours ago" -n 10`
 
 ---
 
@@ -98,6 +98,13 @@ Test-Path d:\PanWizard\.claude\pan-wizard-core
 Test-Path d:\PanWizard\.claude\pan-file-manifest.json
 Test-Path d:\PanWizard\.codex
 Test-Path d:\PanWizard\.gemini
+Test-Path d:\PanWizard\.opencode
+Test-Path d:\PanWizard\AGENTS.md
+Test-Path d:\PanWizard\.mcp.json
+Test-Path d:\PanWizard\.agents\skills
+Test-Path d:\PanWizard\.claude\workflows\pan-*.js
+Test-Path d:\PanWizard\.github\mcp.json
+Test-Path d:\PanWizard\.github\copilot
 ```
 
 If any return True, clean them up before committing.

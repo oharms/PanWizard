@@ -863,13 +863,21 @@ function applyReportRecommendations(cwd, reportPath) {
   const resolvedCwd = path.resolve(cwd);
   actions.forEach((action, i) => {
     try {
-      // Containment: action.path on memory writes is report/agent-authored and
-      // must stay inside the project. A `../` (or absolute) path otherwise
-      // escapes and writes anywhere the process can (M23, ADR audit 2026-08).
+      // Containment: action.path on memory writes is report/agent-authored. A `../`
+      // (or absolute) path escaped the project (M23, ADR audit 2026-08), and a path
+      // inside it reached any file: a report's `memory_append` to CLAUDE.md made
+      // agent-written text a standing instruction with no review (ADR-0040), and
+      // `/pan:learn --apply` runs this on the optimizer's own report. A memory action
+      // writes memory: `.planning/memory/` and nothing else.
       if (action.type === 'memory' || action.type === 'memory_append') {
         const abs = path.resolve(cwd, action.path || '');
+        const memoryDir = path.resolve(planningPath(cwd), 'memory');
         if (abs !== resolvedCwd && !abs.startsWith(resolvedCwd + path.sep)) {
           skipped.push({ action, reason: 'path escapes project root — skipped' });
+          return;
+        }
+        if (!abs.startsWith(memoryDir + path.sep)) {
+          skipped.push({ action, reason: 'a memory action writes only into .planning/memory/ — skipped; make a change to the project\'s instructions yourself' });
           return;
         }
       }

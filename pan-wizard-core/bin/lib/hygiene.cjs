@@ -518,17 +518,18 @@ function checkCachedContext(cwd) {
   try { cached = buildCachedContext(cwd); } catch { return { findings }; }
   if (!cached || !Array.isArray(cached.blocks)) return { findings };
 
-  // An empty block is not "small" — it means this project gets NO prompt
-  // caching at all, which is worth saying out loud rather than reporting as a
-  // healthy zero. But only for a tree that HAS planning content: a freshly
-  // scaffolded `.planning/phases/` has nothing to cache yet, and reporting that
-  // as a finding is noise on every new project. The signal is "you have
-  // planning docs and none of them are cached", not "you have no docs".
+  // An empty block is not "small" — it means this check measures nothing, which
+  // is worth saying rather than reporting a healthy zero. (PAN primes no cache,
+  // ADR-0023 amended: the host caches each prompt prefix by itself, so this is
+  // about measurement, not about caching.) But only for a tree that HAS planning
+  // content: a freshly scaffolded `.planning/phases/` has nothing to measure yet,
+  // and reporting that is noise on every new project.
   if (cached.blocks.length === 0) {
     if (planningDocCount(cwd) > 0) {
       findings.push(mkFinding('cache-context', 'info', planningRel(),
-        'planning docs exist but none are cacheable — every agent call re-sends its context uncached. '
-        + 'Add project.md/standards.md, or list stable docs under config.json cache.extra_files',
+        'planning docs exist but none of the stable files this check measures (project.md, requirements.md, '
+        + 'roadmap.md, state.md, standards.md), so it has nothing to read. List stable docs under config.json '
+        + 'cache.extra_files to measure them',
         null));
     }
     return { findings };

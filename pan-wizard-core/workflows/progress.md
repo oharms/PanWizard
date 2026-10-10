@@ -29,9 +29,9 @@ Exit.
 
 If missing state.md: suggest `/pan:new-project`.
 
-**If roadmap.md missing but project.md exists:**
+**If `.planning/requirements.md` is missing but roadmap.md and project.md exist:**
 
-This means a milestone was completed and archived. Go to **Route F** (between milestones).
+This means a milestone was completed and archived (`/pan:milestone-done` deletes requirements.md and keeps roadmap.md with the milestone collapsed). Go to **Route F** (between milestones).
 
 If missing both roadmap.md and project.md: suggest `/pan:new-project`.
 </step>
@@ -109,12 +109,10 @@ Plan [M] of [phase-total]: [status]
 CONTEXT: [✓ if has_context | - if not]
 
 ## Key Decisions Made
-- [extract from $STATE.decisions[]]
-- [e.g. jq -r '.decisions[].decision' from state-snapshot]
+- [extract from $STATE.decisions[]: each entry's summary]
 
 ## Blockers/Concerns
 - [extract from $STATE.blockers[]]
-- [e.g. jq -r '.blockers[].text' from state-snapshot]
 
 ## Pending Todos
 - [count] pending — /pan:todo-check to review
@@ -280,7 +278,7 @@ State: "Current phase is {X}. Milestone has {N} phases (highest: {Y})."
 
 **Route C: Phase complete, more phases remain**
 
-Read roadmap.md to get the next phase's name and goal.
+Take the next phase's name and goal from `$ROADMAP` (`roadmap analyze` lists every phase's `name` and `goal`).
 
 ```
 ---
@@ -333,7 +331,7 @@ All {N} phases finished!
 
 ---
 
-**Route F: Between milestones (roadmap.md missing, project.md exists)**
+**Route F: Between milestones (requirements.md missing, roadmap.md and project.md exist)**
 
 A milestone was completed and archived. Ready to start the next milestone cycle.
 

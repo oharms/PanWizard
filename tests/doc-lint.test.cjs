@@ -159,6 +159,43 @@ describe('doc-lint counts — drift-prone count detector', () => {
     }
   });
 
+  test('flags a hook count (CLAUDE.md tracks hooks; "5 runtimes" stays a stable identity)', () => {
+    // "5 hooks" was exempt as a stable identity long after a sixth and seventh hook
+    // shipped, so a doc could state a wrong hook count and pass.
+    const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-doclint-hooks-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'README.md'), 'PAN registers 5 hooks on all 5 runtimes.\n');
+      const { spawnSync } = require('child_process');
+      const tools = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+      const r = spawnSync('node', [tools, 'doc-lint', 'counts', tmp, '--raw'], {
+        encoding: 'utf-8',
+        shell: process.platform === 'win32',
+      });
+      assert.equal(r.status, 1, `expected exit 1 (violations), got ${r.status}\n${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout || '', /5 hooks/);
+      assert.doesNotMatch(r.stdout || '', /5 runtimes/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('a file where a directory is expected is refused cleanly, never with a stack trace', () => {
+    const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-doclint-file-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'README.md'), '# doc\n');
+      const { spawnSync } = require('child_process');
+      const tools = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+      for (const args of [['doc-lint', 'README.md'], ['doc-lint', 'counts', 'README.md'], ['doc-lint', 'flags', '--doc-dir', 'README.md']]) {
+        const r = spawnSync('node', [tools, ...args], { cwd: tmp, encoding: 'utf-8' });
+        assert.equal(r.status, 1, `${args.join(' ')}: expected exit 1, got ${r.status}`);
+        assert.match(r.stderr, /not a directory/, `${args.join(' ')}: ${r.stderr}`);
+        assert.doesNotMatch(r.stderr, /\n\s+at\s+\S+/, `${args.join(' ')} leaked a stack trace`);
+      }
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test('does NOT flag version numbers like "v3.5 module"', () => {
     const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-doclint-version-'));
     try {

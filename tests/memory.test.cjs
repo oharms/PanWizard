@@ -287,6 +287,19 @@ describe('memory — compactMemory', () => {
     assert.ok(mem.entries[2].includes('entry 9'));
   });
 
+  test('archives the entries it drops, as memory prune does', () => {
+    // Compaction rewrote the log without the oldest entries and kept no copy, so a
+    // lesson someone recorded was simply gone; hygiene's prompt promises otherwise.
+    for (let i = 0; i < 5; i++) appendMemory(tmpDir, 'pan-planner', `lesson ${i}`);
+    const res = compactMemory(tmpDir, 'pan-planner', 2);
+    assert.equal(res.removed, 3);
+    assert.equal(res.archived, 3);
+    const archive = fs.readFileSync(path.join(tmpDir, '.planning', 'memory', 'archive', 'pan-planner.md'), 'utf-8');
+    for (let i = 0; i < 3; i++) assert.match(archive, new RegExp(`lesson ${i}\\b`));
+    assert.doesNotMatch(archive, /lesson 4/, 'kept entries stay in the log only');
+    assert.match(archive, /compacted: past the 2-entry cap/);
+  });
+
   test('preserves frontmatter header after compaction', () => {
     for (let i = 0; i < 5; i++) appendMemory(tmpDir, 'pan-planner', `e${i}`);
     compactMemory(tmpDir, 'pan-planner', 2);
@@ -382,5 +395,14 @@ describe('memory — CLI dispatch', () => {
     const json = JSON.parse(r.output);
     assert.equal(json.exists, false);
     assert.deepEqual(json.entries, []);
+  });
+
+  test('memory read refuses one of PAN\'s archives, as append and select do', () => {
+    // It answered `exists: false` for state-archive while the file sat right there.
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'memory'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'memory', 'state-archive.md'), '# State archive\n\n- settled history\n');
+    const r = runPanTools('memory read state-archive', tmpDir);
+    assert.equal(r.success, false, 'a refusal must exit non-zero');
+    assert.match(JSON.parse(r.output).error, /one of PAN's archives/);
   });
 });

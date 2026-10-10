@@ -2,6 +2,7 @@
 name: experiment
 group: Self-Improvement
 description: Manage external experiments — scaffold, run, harvest, promote findings back to PAN
+argument-hint: "new <slug> --idea <path> [--runtime r] [--root path] [--budget n] | list [--root path] | manifest <slug> | run <slug> [--timeout sec] [--prompt text] | status <slug> | stop <slug> | harvest <slug> [--source-root path] [--force] | prune <slug> [--hard]"
 allowed-tools:
   - Read
   - Write
@@ -47,7 +48,7 @@ Scaffold a new experiment folder. Creates:
 ├── .planning/
 │   ├── idea.md              ← copied from --idea path
 │   └── experiment.json      ← manifest (slug, runtime, created_at, etc.)
-└── .claude/ (or .codex/, .gemini/, .opencode/, .github/)   ← PAN install for chosen runtime
+└── .claude/ (or .codex/, .gemini/, .opencode/, .github/)   ← PAN install for chosen runtime — only when pan-tools runs from a source checkout (beside `bin/install.js`); the installed copy skips it and records `installer_skipped` in experiment.json
 ```
 
 **Flags:**
@@ -57,7 +58,7 @@ Scaffold a new experiment folder. Creates:
 | `--idea <path>` | required | Path to the idea.md doc; copied into the experiment |
 | `--runtime <r>` | `claude` | Which AI coding runtime to install: claude / codex / gemini / opencode / copilot |
 | `--root <path>` | `~/pan-experiments/` | Override the experiment root directory |
-| `--budget <pts>` | `80` | Optional budget cap (saved to manifest, enforced by W2 runner) |
+| `--budget <pts>` | none | Optional budget cap, saved to the manifest (the runner does not enforce it) |
 | `--skip-installer` | `false` | Don't run the PAN installer (dev-only) |
 
 **Slug rules:** lowercase letters, digits, hyphens. Max 40 chars. No leading/trailing hyphen.
@@ -73,7 +74,7 @@ Enumerate all experiments under the root. Returns `{ experiments: [...], count }
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--root <path>` | `~/pan-experiments/` | Override the root |
-| `--raw` | `false` | Human-readable output instead of JSON |
+| `--raw` | `false` | No effect: `list` always prints JSON |
 
 ### `/pan:experiment manifest <slug>`
 
@@ -98,12 +99,12 @@ Spawn the external AI runtime against the experiment folder. **Synchronous** —
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--timeout <sec>` | `3600` (60 min) | Hard timeout in seconds; runner sends SIGTERM at deadline |
-| `--prompt <text>` | `/pan:new-project --auto @.planning/idea.md` | Prompt passed to the external runtime |
+| `--prompt <text>` | `/pan:new-project --auto @.planning/idea.md` — the Claude Code / Gemini form; pass the runtime's own for Codex (`$pan-new-project …`) or OpenCode (`/pan-new-project …`) | Prompt passed to the external runtime |
 | `--root <path>` | `~/pan-experiments/` | Override the experiment root |
 
-**Returns:** `{ status: "done"\|"failed", stop_reason: "success"\|"error"\|"timeout"\|"manual", exit_code, elapsed_ms, started_at, ended_at }`. Run-state is also persisted to `<experiment>/.planning/run-state.json`.
+**Returns:** `{ experiment_id, status: "done"\|"incomplete"\|"failed", stop_reason: "success"\|"incomplete"\|"error"\|"timeout", exit_code, elapsed_ms, started_at, ended_at }` — `incomplete` is an exit 0 whose state.md does not show the milestone completed. Run-state is also persisted to `<experiment>/.planning/run-state.json`.
 
-**Runtime support:** claude / codex / gemini / opencode (via `RUNTIME_RUNNERS` adapter map in `runner.cjs`). GitHub Copilot CLI is **unsupported** for the `run` subcommand — no documented headless prompt mode. Copilot users can still scaffold and harvest manually.
+**Runtime support:** claude / codex / gemini / opencode (via `RUNTIME_RUNNERS` adapter map in `runner.cjs`). GitHub Copilot CLI is **unsupported** for the `run` subcommand — the runner has no Copilot adapter yet (`copilot -p` does run a prompt headless). Copilot users can still scaffold and harvest manually.
 
 **Billing note (Claude runtime):** headless `claude -p` runs bill against the **Claude Agent SDK credit pool** — a monthly allotment separate from your interactive subscription limits (Anthropic split the two effective June 15, 2026). Experiment runs do not consume interactive-session quota, but heavy experimentation can exhaust the SDK pool independently. Note: the CLI `experiment run` does not capture a metrics envelope — the `billing_pool: "agent_sdk"` tagging is produced only via the runner module's capture-metrics API, not from the command line, so CLI run-state has no `metrics` key to reconcile against.
 
@@ -140,7 +141,7 @@ A `harvest.json` manifest is written at the destination capturing source path, t
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--root <path>` | `~/pan-experiments/` | Override the experiment root |
-| `--source-root <path>` | PAN source repo | Override harvest destination |
+| `--source-root <path>` | the root of the PAN copy running pan-tools: a source checkout, or the runtime's config dir (e.g. `.claude/`) for an installed copy | Override harvest destination |
 | `--force` | `false` | Overwrite an existing harvest at the destination |
 
 **Returns:** `{ experiment_id, harvest_path, harvested_paths: [...], total_bytes, harvested_at, pan_version }`. On conflict without `--force`, returns `{ error }`.
@@ -222,4 +223,4 @@ pan-tools experiment manifest md-lint
 
 ## Runtime support
 
-Works in all 5 runtimes (Claude / Codex / Gemini / OpenCode / Copilot). The W2 external runner (subprocess invocation of the external session) supports Claude / Codex / Gemini / OpenCode; GitHub Copilot CLI lacks a headless prompt mode and is opt-out for the `run` subcommand.
+Works in all 5 runtimes (Claude / Codex / Gemini / OpenCode / Copilot). The W2 external runner (subprocess invocation of the external session) supports Claude / Codex / Gemini / OpenCode; GitHub Copilot CLI has no runner adapter yet and is opt-out for the `run` subcommand.

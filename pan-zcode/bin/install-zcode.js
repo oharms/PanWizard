@@ -38,7 +38,7 @@ PAN-Z bridges PAN's engine to ZCode over MCP. Finish setup inside ZCode:
 
 1. **Register the MCP server.** Add the contents of \`pan-mcp.json\` to ZCode's MCP
    configuration (Settings → MCP), or point ZCode's MCP config at this file. This
-   exposes the \`pan_*\` tools (state, plan, verify, report, next-action, merge gate).
+   exposes the \`pan_*\` tools (roadmap analysis, phase lookup and previews, model resolution, phase report, next-action, merge gate) and the \`pan://\` resources (state, phases, progress, health, links, cost, findings).
 
 2. **Import the subagents.** The \`agents/\` folder holds PAN agents in ZCode subagent
    form. Prefer ZCode's **Import from Claude Code** / Settings → Subagents to register

@@ -81,6 +81,19 @@ describe('init commands', () => {
     assert.strictEqual(entry.name, 'hotfix');
   });
 
+  test('padded_phase pads a decimal phase the way its directory is named (2.1 → 02.1)', () => {
+    // padStart(2, '0') left "2.1" alone, so a workflow that created the directory as
+    // `${padded_phase}-${phase_slug}` made `2.1-hot-fix`, which find-phase never finds.
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'),
+      '# Roadmap\n\n### Phase 2: Base\n**Goal:** g\n\n### Phase 2.1: Hot fix\n**Goal:** h\n');
+    for (const verb of ['init phase-op 2.1', 'init plan-phase 2.1']) {
+      const r = runPanTools(verb, tmpDir);
+      assert.ok(r.success, `${verb}: ${r.error}`);
+      assert.strictEqual(JSON.parse(r.output).padded_phase, '02.1', verb);
+    }
+    assert.strictEqual(JSON.parse(runPanTools('init phase-op 2', tmpDir).output).padded_phase, '02');
+  });
+
   test('init phase-op returns core and optional phase file paths', () => {
     const phaseDir = path.join(tmpDir, '.planning', 'phases', '03-api');
     fs.mkdirSync(phaseDir, { recursive: true });
@@ -128,6 +141,19 @@ describe('init commands', () => {
 
     const output = JSON.parse(result.output);
     assert.strictEqual(output.phase_req_ids, 'CP-01, CP-02, CP-03');
+  });
+
+  test('init plan-phase reads the roadmap template\'s `**Requirements:**` form too', () => {
+    // templates/roadmap.md writes the colon inside the bold; only `**Requirements**:`
+    // was read, so a template-shaped roadmap gave phase_req_ids null to the planner.
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '03-api'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.planning', 'roadmap.md'),
+      `# Roadmap\n\n### Phase 3: API\n**Goal:** Build API\n**Requirements:** [CP-01, CP-02]\n**Plans:** 0 plans\n`
+    );
+    const result = runPanTools('init execute-phase 03', tmpDir);
+    assert.ok(result.success, result.error);
+    assert.strictEqual(JSON.parse(result.output).phase_req_ids, 'CP-01, CP-02');
   });
 
   test('init plan-phase strips brackets from phase_req_ids', () => {

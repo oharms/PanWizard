@@ -147,4 +147,16 @@ describe('optimize learn --sessions <n> pools the last n sessions', () => {
       assert.match(JSON.parse(r.output).error, /--sessions must be a whole number/);
     }
   });
+
+  test('the bare `learn` alias takes the same flags (its guard refused them as subcommands)', () => {
+    const pooled = runPanTools('learn --sessions 2', dir);
+    assert.equal(pooled.success, true, pooled.error);
+    assert.deepEqual(JSON.parse(pooled.output).pooled_sessions, ['sess_mid', 'sess_new']);
+    const one = runPanTools('learn --session sess_old', dir);
+    assert.equal(one.success, true, one.error);
+    assert.equal(JSON.parse(one.output).session_id, 'sess_old');
+    const typo = runPanTools('learn promotee', dir);
+    assert.equal(typo.success, false);
+    assert.match(typo.error, /Unknown learn subcommand/);
+  });
 });

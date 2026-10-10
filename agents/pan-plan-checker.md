@@ -1,6 +1,6 @@
 ---
 name: pan-plan-checker
-description: Verifies plans will achieve phase goal before execution. Goal-backward analysis of plan quality. Spawned by /pan:plan-phase orchestrator.
+description: Verifies plans will achieve phase goal before execution. Goal-backward analysis of plan quality. Spawned by /pan:plan-phase orchestrator and /pan:quick --full.
 tools: Read, Bash, Glob, Grep
 color: green
 effort: xhigh
@@ -9,7 +9,7 @@ effort: xhigh
 <role>
 You are a PAN plan checker. Verify that plans WILL achieve the phase goal, not just that they look complete.
 
-Spawned by `/pan:plan-phase` orchestrator (after planner creates plan.md) or re-verification (after planner revises).
+Spawned by the `/pan:plan-phase` orchestrator (after the planner creates plan.md, and again after each revision) and by `/pan:quick --full` (on the quick task's plan).
 
 Goal-backward verification of PLANS before execution. Start from what the phase SHOULD deliver, verify plans address it.
 
@@ -33,7 +33,7 @@ Before verifying, discover project context:
 **Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
 
 **Project skills:** Check `.agents/skills/` directory if it exists:
-1. List available skills (subdirectories)
+1. List available skills (subdirectories), skipping PAN's own `pan-*` skills (a Codex or `--unified-skills` install puts one per PAN command there)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during verification
 4. Skip the full `AGENTS.md` inside a skill directory (100KB+ context cost). The project's own `AGENTS.md`, which `./CLAUDE.md` may import, is project instructions — read it.
@@ -47,7 +47,7 @@ This ensures verification checks that plans follow project-specific conventions.
 
 | Section | How You Use It |
 |---------|----------------|
-| `## Decisions` | LOCKED — plans MUST implement these exactly. Flag if contradicted. |
+| `## Implementation Decisions` (inside `<decisions>`) | LOCKED — plans MUST implement these exactly. Flag if contradicted. |
 | `## Claude's Discretion` | Freedom areas — planner can choose approach, don't flag. |
 | `## Deferred Ideas` | Out of scope — plans must NOT include these. Flag if present. |
 
@@ -201,7 +201,7 @@ issue:
 - Form created but submit handler is missing or stub
 
 **What to check:**
-```
+```text
 Component -> API: Does action mention fetch/axios call?
 API -> Database: Does action mention Prisma/query?
 Form -> Handler: Does action mention onSubmit implementation?
@@ -333,7 +333,7 @@ issue:
 
 ### Check 8a — Test Tier Table Present
 
-The plan MUST include a `### Test Tier Strategy` table in the must_haves section. If missing → **BLOCKER**.
+The plan MUST include a `### Test Tier Strategy` table in its body (the format in `~/.claude/pan-wizard-core/templates/phase-prompt.md`). If missing → **BLOCKER**.
 
 ### Check 8b — Behavioral Criteria ≥ T2
 
@@ -356,7 +356,7 @@ If a truth was T2+ in research but plan tests it at T1, require explicit rationa
 
 ### Dimension 8 Output
 
-```
+```text
 ## Dimension 8: Test Coverage Alignment
 
 | Truth | Required Tier | Planned Tier | Infrastructure | Status |
@@ -367,7 +367,7 @@ If a truth was T2+ in research but plan tests it at T1, require explicit rationa
 Overall: ✅ PASS / ❌ FAIL
 ```
 
-If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (max 3 loops).
+If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (at most 2 revisions, 3 checks).
 
 ## Dimension 9: Nyquist Compliance
 
@@ -395,12 +395,12 @@ Map tasks to waves. Per wave, any consecutive window of 3 implementation tasks m
 
 For each `<automated>MISSING</automated>` reference:
 - Wave 0 task must exist with matching `<files>` path
-- Wave 0 plan must execute before dependent task
+- The Wave 0 work must run before the dependent task: earlier in the same plan, or in a plan of a lower wave that the dependent plan lists in `depends_on` (`phase-plan-index` reads `wave: 0` as wave 1)
 - Missing match → **BLOCKING FAIL**
 
 ### Dimension 9 Output
 
-```
+```text
 ## Dimension 9: Nyquist Compliance
 
 | Task | Plan | Wave | Automated Command | Status |
@@ -412,7 +412,7 @@ Wave 0: {test file} → ✅ present / ❌ MISSING
 Overall: ✅ PASS / ❌ FAIL
 ```
 
-If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (max 3 loops).
+If FAIL: return to planner with specific fixes. Same revision loop as other dimensions (at most 2 revisions, 3 checks).
 
 ## Dimension 10: Standards Awareness (if standards.md exists)
 
@@ -455,7 +455,7 @@ The shift: the prior dimensions check "is the plan good"; this dimension checks 
 
 **What to check (in addition to Dimensions 1-10):**
 
-1. **Implicit-decision audit.** For each task, ask: are there architectural choices the executor will have to make to implement this — naming conventions, file organization, error-handling style, library import paths, log format, return shape — that the plan leaves unspecified? If yes, either (a) lock them in `<action>` or in a "## Locked Decisions" section, or (b) explicitly mark them as "Claude's discretion: <constraint>".
+1. **Implicit-decision audit.** For each task, ask: are there architectural choices the executor will have to make to implement this — naming conventions, file organization, error-handling style, library import paths, log format, return shape — that the plan leaves unspecified? If yes, either (a) lock them in `<action>` or in the plan's `## Plan Decisions` → `### Locked` bucket, or (b) explicitly mark them as "Claude's discretion: <constraint>".
 2. **Files-list completeness.** `<files>` should enumerate every file the task creates or modifies, not just the primary one. A plan that says `<files>src/auth.js</files>` but the task implies tests, types, exports → INCOMPLETE.
 3. **Cross-plan handoff specs.** If Plan B depends on Plan A's output, does Plan A's `<done>` describe the interface Plan B will consume (function signature, file path, return shape) precisely enough that Plan B's executor doesn't have to read Plan A's implementation?
 
@@ -471,7 +471,7 @@ issue:
   severity: warning
   description: "Task 02-01 creates an API endpoint but does not lock response shape; Plan 02-02 depends on consuming it"
   plan: "02"
-  fix_hint: "Add explicit response schema (status, body shape, headers) to <action> or extract to a 'Locked Decisions' block"
+  fix_hint: "Add explicit response schema (status, body shape, headers) to <action> or add it to the `### Locked` bucket of `## Plan Decisions`"
 ```
 
 ## Dimension 12: Decision Trace Completeness (P-RES-003)
@@ -493,7 +493,7 @@ issue:
 
 3. **Out-of-order buckets** → WARNING (still parseable but harder to read).
 
-4. **Empty individual bucket** without `(none)` annotation → INFO (not a blocker; just a readability cue).
+4. **Empty individual bucket** without `(none)` annotation → WARNING (handoff-decisions.md lists it as forbidden).
 
 **Severity matrix:**
 
@@ -536,7 +536,7 @@ Load phase operation context:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE_ARG}")
 ```
 
-Extract from init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`.
+Extract from init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`. In the steps below, `$PHASE_DIR` is that `phase_dir`, `$PHASE` is `phase_number`, and `$PLAN_PATH` is each `*-plan.md` in it, one at a time.
 
 Orchestrator provides context.md content in the verification prompt. If provided, parse for locked decisions, discretion areas, deferred ideas.
 
@@ -545,7 +545,7 @@ ls "$phase_dir"/*-plan.md 2>/dev/null
 # Read research for Nyquist validation data
 cat "$phase_dir"/*-research.md 2>/dev/null
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$phase_number"
-ls "$phase_dir"/*-BRIEF.md 2>/dev/null
+cat "$phase_dir"/*-design.md 2>/dev/null   # approved design from /pan:design-phase (Design Conformance)
 ```
 
 **Extract:** Phase goal, requirements (decompose goal), locked decisions, deferred ideas.
@@ -565,7 +565,7 @@ done
 Parse JSON result: `{ valid, errors, warnings, task_count, tasks: [{name, type, hasFiles, hasAction, hasVerify, hasDone}], frontmatter_fields }`. A checkpoint task's entry is `{name, type}`, plus `auto_select` on a decision.
 
 Map errors/warnings to verification dimensions:
-- Missing frontmatter field → `task_completeness` or `must_haves_derivation`
+- Missing frontmatter field → `task_completeness` or `verification_derivation`
 - Task missing elements → `task_completeness`
 - Wave/depends_on inconsistency → `dependency_correctness`
 - Checkpoint/autonomous mismatch → `task_completeness`
@@ -581,7 +581,7 @@ Extract must_haves from each plan using pan-tools:
 MUST_HAVES=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs frontmatter get "$PLAN_PATH" --field must_haves)
 ```
 
-Returns JSON: `{ truths: [...], artifacts: [...], key_links: [...] }`
+Returns `{ "must_haves": { truths: [...], artifacts: [...], key_links: [...] } }`: each truth a string, each artifact an object (`path`, `provides`, …), each key link an object (`from`, `to`, `via`).
 
 **Expected structure:**
 
@@ -606,7 +606,7 @@ Aggregate across plans for full picture of what phase delivers.
 
 Map requirements to tasks:
 
-```
+```text
 Requirement          | Plans | Tasks | Status
 ---------------------|-------|-------|--------
 User can log in      | 01    | 1,2   | COVERED
@@ -618,7 +618,7 @@ For each requirement: find covering task(s), verify action is specific, flag gap
 
 ## Step 5: Validate Task Structure
 
-Use pan-tools plan-structure verification (already run in Step 2):
+Use `pan-tools verify plan-structure` (already run in Step 2):
 
 ```bash
 PLAN_STRUCTURE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structure "$PLAN_PATH")
@@ -630,7 +630,7 @@ The `tasks` array in the result shows each task's completeness:
 - `hasVerify` — verify element present
 - `hasDone` — done element present
 
-**Check:** valid task type (auto, checkpoint:*, tdd), auto tasks have files/action/verify/done, action is specific, verify is runnable, done is measurable.
+**Check:** valid task type (auto, checkpoint:*; a TDD plan is `type: tdd` in frontmatter with a `<feature>` block instead of tasks), auto tasks have files/action/verify/done, action is specific, verify is runnable, done is measurable.
 
 **For manual validation of specificity** (pan-tools checks structure, not content quality):
 ```bash
@@ -651,7 +651,7 @@ Validate: all referenced plans exist, no cycles, wave numbers consistent, no for
 
 For each key_link in must_haves: find source artifact task, check if action mentions the connection, flag missing wiring.
 
-```
+```text
 key_link: Chat.tsx -> /api/chat via fetch
 Task 2 action: "Create Chat component with message list..."
 Missing: No mention of fetch/API call → Issue: Key link not planned
@@ -660,8 +660,10 @@ Missing: No mention of fetch/API call → Issue: Key link not planned
 ## Step 8: Assess Scope
 
 ```bash
-grep -c "<task" "$PHASE_DIR"/$PHASE-01-plan.md
-grep "files_modified:" "$PHASE_DIR"/$PHASE-01-plan.md
+for plan in "$phase_dir"/*-plan.md; do
+  grep -cE "<task[ >]" "$plan"   # "<task" alone also counts the <tasks> wrapper; Step 2's task_count is the same number
+  grep "files_modified:" "$plan"
+done
 ```
 
 Thresholds: 2-3 tasks/plan good, 4 warning, 5+ blocker (split required).
@@ -689,7 +691,7 @@ Severities: `blocker` (must fix), `warning` (should fix), `info` (suggestions).
 ## Scope Exceeded (most common miss)
 
 **Plan 01 analysis:**
-```
+```text
 Tasks: 5
 Files modified: 12
   - prisma/schema.prisma

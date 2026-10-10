@@ -34,7 +34,7 @@ This creates `.planning/config.json` with defaults if missing and loads current 
 Detect if this is a downgrade and confirm with user:
 
 ```
-TIER_MAP = { "quality": 3, "balanced": 2, "budget": 1 }
+TIER_MAP = { "quality": 2, "balanced": 2, "budget": 1 }   # quality and balanced resolve every agent to the same tier and effort
 current_profile = config.model_profile OR "balanced"
 new_profile = $ARGUMENTS.profile
 
@@ -86,7 +86,7 @@ Display confirmation with model table and cost estimate for selected profile:
 
 Agents will now use:
 
-[Show table from MODEL_PROFILES in pan-tools.cjs for selected profile]
+[Show table from MODEL_PROFILES in ~/.claude/pan-wizard-core/bin/lib/core.cjs for selected profile]
 
 Example (`budget` — the only profile that steps agents below the reasoning
 tier; `quality` and `balanced` put every agent on `reasoning`):

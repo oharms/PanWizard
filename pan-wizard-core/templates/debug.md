@@ -8,7 +8,7 @@ Template for `.planning/debug/[slug].md` — active debug session tracking.
 
 ```markdown
 ---
-status: gathering | investigating | fixing | verifying | awaiting_human_verify | resolved
+status: gathering | investigating | diagnosed | fixing | verifying | awaiting_human_verify | resolved
 trigger: "[verbatim user input]"
 created: [ISO timestamp]
 updated: [ISO timestamp]
@@ -30,6 +30,14 @@ actual: [what actually happens]
 errors: [error messages if any]
 reproduction: [how to trigger]
 started: [when it broke / always broken]
+
+## Reproduction
+<!-- Written before the first hypothesis; OVERWRITE only to shrink it -->
+
+command: [one command you have RUN that fails on the reported symptom, or "none"]
+fails_with: [the output that shows the symptom, secrets redacted]
+deterministic: [yes / rate N of M runs for a flaky bug]
+tried: [only when command is "none": what you tried and why it cannot be built]
 
 ## Eliminated
 <!-- APPEND only - prevents re-investigating after /clear -->
@@ -76,6 +84,12 @@ files_changed: []
 - IMMUTABLE after gathering complete
 - Reference point for what we're trying to fix
 - Fields: expected, actual, errors, reproduction, started
+
+**Reproduction:**
+- Written before the first hypothesis: one command, already run, that fails on the reported symptom
+- OVERWRITE only to shrink it; the fix is verified when this command passes
+- `command: none` needs `tried:` (what was attempted and why it could not be built)
+- Fields: command, fails_with, deterministic, tried
 
 **Eliminated:**
 - APPEND only - never remove entries

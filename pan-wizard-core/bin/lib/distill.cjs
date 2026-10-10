@@ -21,8 +21,10 @@ const SCANNABLE_EXTS = ['.js', '.cjs', '.mjs', '.ts', '.tsx', '.jsx', '.py'];
 
 // ─── Pass 1: Deterministic static analysis ───────────────────────────────────
 
-// Calls that genuinely CANNOT throw when given any single argument, so a
-// try/catch wrapping only such a call is truly phantom (dead catch clause).
+// Calls the matcher treats as non-throwing: none of them throws on a string or a
+// number, so a try/catch wrapping only such a call is usually phantom. Number, String,
+// parseInt and parseFloat do throw on an object whose toString throws (all but String
+// on a Symbol too), which is why findPhantomTryCatch tiers it review_required.
 // Deliberately EXCLUDES throwing calls — JSON.parse (SyntaxError on bad input),
 // JSON.stringify (TypeError on circular refs / BigInt), new RegExp, fs.*Sync,
 // etc. — because their try/catch is load-bearing and must not be flagged for
@@ -431,7 +433,7 @@ function writePatternsMemory(cwd, findings, opts) {
   const lines = [
     '---',
     'name: distill-patterns',
-    'description: Cross-session memory of AI-bloat patterns detected and resolved',
+    'description: Cross-session memory of AI-bloat patterns detected (it records detections, not fixes)',
     'type: project',
     '---',
     '',

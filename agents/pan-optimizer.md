@@ -117,7 +117,7 @@ Each recommendation becomes a `note` action in the `## Auto-Apply Actions` block
 
 Write the report as a markdown file at `.planning/optimization/reports/{session}-opt-report.md`. It is the only file you write: `/pan:optimize apply` records the Auto-Apply Actions, so never write `suggestions.md` or a project file yourself.
 
-```markdown
+````markdown
 # Optimization Report — {session_id}
 
 **Date:** {YYYY-MM-DD}
@@ -231,7 +231,7 @@ Write the report as a markdown file at `.planning/optimization/reports/{session}
 Once a person applies these suggestions, expect:
 - {Improvement 1}: {expected effect}
 - {Improvement 2}: {expected effect}
-```
+````
 
 ## Important Rules
 

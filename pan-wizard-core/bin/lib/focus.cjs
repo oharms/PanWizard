@@ -22,6 +22,7 @@ const {
 const { extractFrontmatter, extractPriorityEffort } = require('./frontmatter.cjs');
 const { enumerateRoadmapPhases } = require('./roadmap.cjs');
 const { readErrorPatterns } = require('./commands.cjs');
+const { weeklyLimitStop } = require('./cost.cjs');
 const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel } = require('./utils.cjs');
 
 // ─── Scan helpers ───────────────────────────────────────────────────────────
@@ -302,10 +303,13 @@ function allocateBudget(items, budget, mode) {
   } else if (mode === 'features') {
     const { picked: mPicked, used: mUsed } = allocatePass(items, budget, { maxPriority: 0, minPriority: 0, track: 'mandatory' });
     addToBatch(mPicked);
-    const featureBudget = Math.floor(budget * FEATURE_RATIO);
+    // The feature/stability split shares what the P0 pass left: splitting the
+    // whole budget again let a batch reach nearly twice the budget.
+    const rest = budget - mUsed;
+    const featureBudget = Math.floor(rest * FEATURE_RATIO);
     const { picked: fPicked, used: fUsed } = allocatePass(items, featureBudget, { minPriority: 3, maxPriority: 5, track: 'feature', exclude: batchIds });
     addToBatch(fPicked);
-    const { picked: sPicked, used: sUsed } = allocatePass(items, budget - featureBudget, { minPriority: 1, maxPriority: 2, track: 'stability', exclude: batchIds });
+    const { picked: sPicked, used: sUsed } = allocatePass(items, rest - featureBudget, { minPriority: 1, maxPriority: 2, track: 'stability', exclude: batchIds });
     addToBatch(sPicked);
     allocated = mUsed + fUsed + sUsed;
   } else {
@@ -920,9 +924,14 @@ function focusAutoUpdate(cwd, raw, getVal) {
   run.totals.tests_current = cycle.tests_after;
   run.status = AUTORUN_STATUSES.IN_PROGRESS;
 
-  const stopReason = determineStopReason(cycle, run);
+  // The host's 7-day usage window (Claude Code subscriptions, read from what PAN's
+  // status line last saw): past cost.weekly_limit_stop_pct the run stops resumable,
+  // so the rest of the window stays the user's. No fresh reading never stops it.
+  const weekly = weeklyLimitStop(cwd);
+  cycle.weekly_limit_used_pct = weekly.seven_day_used_pct;
+  const stopReason = determineStopReason(cycle, run) || (weekly.stop ? 'weekly_limit' : null);
   if (stopReason) {
-    run.status = stopReason === 'regression' ? AUTORUN_STATUSES.STOPPED : AUTORUN_STATUSES.COMPLETED;
+    run.status = stopReason === 'regression' || stopReason === 'weekly_limit' ? AUTORUN_STATUSES.STOPPED : AUTORUN_STATUSES.COMPLETED;
     run.stop_reason = stopReason;
   }
 

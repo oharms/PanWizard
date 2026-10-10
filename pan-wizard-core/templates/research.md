@@ -8,7 +8,7 @@ Template for `.planning/phases/XX-name/{phase_num}-research.md` - comprehensive 
 
 ## File Template
 
-```markdown
+~~~markdown
 # Phase [X]: [Name] - Research
 
 **Researched:** [date]
@@ -21,7 +21,7 @@ Template for `.planning/phases/XX-name/{phase_num}-research.md` - comprehensive 
 **CRITICAL:** If context.md exists from /pan:discuss-phase, copy locked decisions here verbatim. These MUST be honored by the planner.
 
 ### Locked Decisions
-[Copy from context.md `## Decisions` section - these are NON-NEGOTIABLE]
+[Copy from context.md `## Implementation Decisions` section (inside `<decisions>`) - these are NON-NEGOTIABLE]
 - [Decision 1]
 - [Decision 2]
 
@@ -242,13 +242,13 @@ Things that couldn't be fully resolved:
 *Phase: XX-name*
 *Research completed: [date]*
 *Ready for planning: [yes/no]*
-```
+~~~
 
 ---
 
 ## Good Example
 
-```markdown
+~~~markdown
 # Phase 3: 3D City Driving - Research
 
 **Researched:** 2025-01-20
@@ -516,7 +516,7 @@ function useVehicleControls(rigidBodyRef) {
 *Phase: 03-city-driving*
 *Research completed: 2025-01-20*
 *Ready for planning: yes*
-```
+~~~
 
 ---
 

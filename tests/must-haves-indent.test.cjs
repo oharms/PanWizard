@@ -172,3 +172,42 @@ describe('verify reconcile actually gates on a plan in PAN\'s own format', () =>
     assert.equal(code, 0, 'no declared must_haves is not a contradiction');
   });
 });
+
+describe('must_haves values are YAML scalars: a double-quoted pattern unescapes', () => {
+  // templates/phase-prompt.md and agents/pan-planner.md show
+  // `pattern: "prisma\.message\.(find|create)"`. The parser kept the raw `\.`, so
+  // `verify key-links` built a regex that never matched and reconcile then called an
+  // honest pass a contradiction.
+  test('the shipped example pattern matches the call it names', () => {
+    const plan = [
+      '---', 'must_haves:', '  key_links:',
+      '    - from: "src/api.ts"', '      to: "src/db.ts"', '      via: "prisma"',
+      '      pattern: "prisma\\\\.message\\\\.(find|create)"',
+      "    - from: 'src/a.ts'", "      to: 'it''s.ts'",
+      '---', '',
+    ].join('\n');
+    const links = parseMustHavesBlock(plan, 'key_links');
+    assert.equal(links[0].pattern, 'prisma\\.message\\.(find|create)');
+    assert.ok(new RegExp(links[0].pattern).test('await prisma.message.findMany()'));
+    assert.equal(links[1].to, "it's.ts");
+  });
+
+  test('an inline `exports: ["GET", "POST"]` is a list each export is checked against', () => {
+    // The plan template writes exports inline. Read whole it was one string (every
+    // export "missing"); before that it was dropped (none checked).
+    const dir = path.join(proj, '.planning', 'phases', '07-api');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
+    const planPath = path.join(dir, '07-01-plan.md');
+    fs.writeFileSync(planPath, ['---', 'must_haves:', '  artifacts:', '    - path: "src/route.ts"', '      exports: ["GET", "POST"]', '---', ''].join('\n'));
+    fs.writeFileSync(path.join(proj, 'src', 'route.ts'), 'export function GET() {}\nexport function POST() {}\n');
+    const both = JSON.parse(pan(['verify', 'artifacts', planPath]).out);
+    assert.equal(both.all_passed, true, JSON.stringify(both));
+    fs.writeFileSync(path.join(proj, 'src', 'route.ts'), 'export function GET() {}\n');
+    const missing = JSON.parse(pan(['verify', 'artifacts', planPath]).out);
+    assert.deepEqual(missing.artifacts[0].issues, ['Missing export: POST']);
+    // frontmatter set rewrites the block; the list must come back as a list.
+    pan(['frontmatter', 'set', planPath, '--field', 'wave', '--value', '2']);
+    assert.deepEqual(parseMustHavesBlock(fs.readFileSync(planPath, 'utf8'), 'artifacts')[0].exports, ['GET', 'POST']);
+  });
+});

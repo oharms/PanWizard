@@ -2,7 +2,7 @@
 name: pan:research-phase
 group: Phase Lifecycle
 description: Research how to implement a phase (standalone - usually use /pan:plan-phase instead)
-argument-hint: "[phase]"
+argument-hint: "<phase>"
 allowed-tools:
   - Read
   - Bash
@@ -38,7 +38,7 @@ Normalize phase input in step 1 before any directory lookups.
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "$ARGUMENTS")
 ```
 
-Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `state_path`, `requirements_path`, `context_path`, `research_path`.
+Extract from init JSON: `phase_dir`, `padded_phase`, `phase_slug`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `state_path`, `requirements_path`, `context_path`, `research_path`. `phase_dir` is null when the phase is in the roadmap but has no directory yet: create it (`mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"`) and use that path as `phase_dir`, as discuss-phase does.
 
 Resolve researcher model:
 ```bash
@@ -75,7 +75,7 @@ Present summary with phase description and what files the researcher will load.
 
 ## 4. Spawn pan-phase-researcher Agent
 
-Research modes: ecosystem (default), feasibility, implementation, comparison.
+Research mode: the prompt below names `ecosystem`; pan-phase-researcher defines no modes, so treat it as context, not a switch.
 
 ```markdown
 <research_type>
@@ -131,7 +131,7 @@ Before declaring complete, verify:
 </quality_gate>
 
 <output>
-Write to: .planning/phases/${PHASE}-{slug}/${PHASE}-research.md
+Write to: {phase_dir}/{padded_phase}-research.md
 </output>
 ```
 
@@ -148,9 +148,7 @@ Task(
 
 **`## RESEARCH COMPLETE`:** Display summary, offer: Plan phase, Dig deeper, Review full, Done.
 
-**`## CHECKPOINT REACHED`:** Present to user, get response, spawn continuation.
-
-**`## RESEARCH INCONCLUSIVE`:** Show what was attempted, offer: Add context, Try different mode, Manual.
+**`## RESEARCH BLOCKED`:** Show the blocker and what was attempted, offer: Provide context (then spawn a continuation, step 6), Skip research, Abort.
 
 ## 6. Spawn Continuation Agent
 
@@ -161,7 +159,7 @@ Continue research for Phase {phase_number}: {phase_name}
 
 <prior_state>
 <files_to_read>
-- .planning/phases/${PHASE}-{slug}/${PHASE}-research.md (Existing research)
+- {phase_dir}/{padded_phase}-research.md (Existing research)
 </files_to_read>
 </prior_state>
 

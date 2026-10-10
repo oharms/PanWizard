@@ -324,6 +324,10 @@ describe('findings — CLI', () => {
     const json = JSON.parse(run('findings debt --milestone v1.0').output);
     assert.equal(json.contract, '1.0');
     assert.equal(json.phases[0].open[0].class, 'missing');
+    // milestone-audit passes its version without the `v` (its report is
+    // `v{version}-milestone-audit.md`); the ledger stores `v1.0`. That found nothing.
+    assert.equal(JSON.parse(run('findings debt --milestone 1.0').output).open_count, 1);
+    assert.equal(JSON.parse(run('findings list --milestone 1.0').output).counts.total, 1);
   });
 
   test('an unknown findings subcommand names the available ones', () => {

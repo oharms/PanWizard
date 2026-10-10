@@ -8,7 +8,7 @@ Template for `.planning/phases/XX-name/{phase_num}-uat.md` — persistent UAT se
 
 ```markdown
 ---
-status: testing | complete | diagnosed
+status: testing | complete | diagnosed | resolved
 phase: XX-name
 source: [list of summary.md files tested]
 started: [ISO timestamp]
@@ -74,7 +74,7 @@ skipped: [N]
 <section_rules>
 
 **Frontmatter:**
-- `status`: OVERWRITE - "testing" or "complete"
+- `status`: OVERWRITE - "testing", "complete", "diagnosed" (after diagnosis) or "resolved" (exec-phase closes the gaps)
 - `phase`: IMMUTABLE - set on creation
 - `source`: IMMUTABLE - SUMMARY files being tested
 - `started`: IMMUTABLE - set on creation
@@ -106,7 +106,7 @@ skipped: [N]
 
 **After testing complete (status: complete), if gaps exist:**
 
-1. User runs diagnosis (from verify-phase offer or manually)
+1. User runs diagnosis (on Claude Code, the native `/pan-diagnose-issues <phase>`; no `/pan:` command or verify-phase step runs it)
 2. diagnose-issues workflow spawns parallel debug agents
 3. Each agent investigates one gap, returns root cause
 4. uat.md Gaps section updated with diagnosis:

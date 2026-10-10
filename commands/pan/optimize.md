@@ -2,6 +2,7 @@
 name: pan:optimize
 group: Self-Improvement
 description: Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions
+argument-hint: "apply [--report <file>] | revert <apply_id> | revert --last | list | stats | trace init|end|current|list"
 allowed-tools:
   - Read
   - Write
@@ -64,12 +65,12 @@ List all optimization reports in `.planning/optimization/reports/`, most recent 
 Show cumulative optimization statistics:
 - Total trace sessions run
 - Total events traced
-- Total errors/gaps/redundancies seen
+- Total errors seen (`total_errors_traced`; gaps and redundancies are not totalled)
 - Total optimizations applied across all runs, the apply runs, the reverted runs, and the last `apply_id`
 - Current active trace session (if any)
 
 ### trace init
-Start a new trace session before running a build. The hook fires automatically on SubagentStop, but calling `trace init` first lets you attach a description to the session.
+Start a trace session before running a build — or join the active one: `trace init` reuses an unended session started within the last hour (`reused: true`, keeping that session's description) instead of opening a new one. The hook fires automatically on SubagentStop, but calling `trace init` first lets you attach a description to a new session.
 
 ```
 /pan:optimize trace init --description "building express web server"
@@ -81,7 +82,7 @@ Start a new trace session before running a build. The hook fires automatically o
 Finalize the current trace session (writes summary stats to session.json).
 
 ### trace current
-Show the active trace session ID and event count.
+Show the active trace session ID (`optimize trace current` returns only `session_id` and `active`; `trace list` carries each session's event count).
 
 ### trace list
 List all trace sessions, most recent first.

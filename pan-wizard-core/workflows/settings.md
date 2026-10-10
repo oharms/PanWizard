@@ -24,7 +24,7 @@ Creates `.planning/config.json` with defaults if missing and loads current confi
 cat .planning/config.json
 ```
 
-Parse current values (default to `true` if not present):
+Parse current values (when a key is absent, use PAN's default: `true` for research, plan_check and verifier; `false` for nyquist_validation):
 - `workflow.research` — spawn researcher during plan-phase
 - `workflow.plan_check` — spawn plan checker during plan-phase
 - `workflow.verifier` — spawn verifier during execute-phase
@@ -110,7 +110,7 @@ AskUserQuestion([
     multiSelect: false,
     options: [
       { label: "Static (Recommended)", description: "Profile assigns fixed tiers to each agent. Predictable and simple." },
-      { label: "Complexity", description: "Adjust tiers up/down based on task complexity (file count, requirements, architecture). Saves tokens on simple phases." }
+      { label: "Complexity", description: "Adjust tiers by task complexity, only where a model is resolved with the task passed (resolve-model --metadata); the *_model values workflows pass are not, so it changes nothing there" }
     ]
   }
 ])
@@ -118,27 +118,18 @@ AskUserQuestion([
 </step>
 
 <step name="update_config">
-Merge new settings into existing config.json:
+Write each answer with `config-set`, which keeps every other key in the `workflow` and `routing` objects:
 
-```json
-{
-  ...existing_config,
-  "model_profile": "quality" | "balanced" | "budget",
-  "workflow": {
-    "research": true/false,
-    "plan_check": true/false,
-    "verifier": true/false,
-    "auto_advance": true/false,
-    "nyquist_validation": true/false
-  },
-  "branching_strategy": "none" | "phase" | "milestone",
-  "routing": {
-    "strategy": "static" | "complexity"
-  }
-}
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set model_profile <quality|balanced|budget>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.research <true|false>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.plan_check <true|false>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.verifier <true|false>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advance <true|false>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.nyquist_validation <true|false>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set branching_strategy <none|phase|milestone>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set routing.strategy <static|complexity>
 ```
-
-Write updated config to `.planning/config.json`.
 </step>
 
 <step name="save_as_defaults">
@@ -179,7 +170,8 @@ Write `~/.pan-wizard/defaults.json` with:
     "verifier": <current>,
     "auto_advance": <current>,
     "nyquist_validation": <current>
-  }
+  },
+  "routing": { "strategy": <current> }
 }
 ```
 </step>
@@ -218,8 +210,8 @@ Quick commands:
 
 <success_criteria>
 - [ ] Current config read
-- [ ] User presented with 7 settings (profile + 5 workflow toggles + git branching)
-- [ ] Config updated with model_profile, workflow, and git sections
+- [ ] User presented with the settings above (model profile, workflow toggles, git branching, routing strategy)
+- [ ] Config updated with model_profile, workflow, branching_strategy and routing
 - [ ] User offered to save as global defaults (~/.pan-wizard/defaults.json)
 - [ ] Changes confirmed to user
 </success_criteria>

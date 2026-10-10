@@ -27,8 +27,11 @@ const LOCKFILES = new Set([
 ]);
 // PAN's own installed trees: a phase commit that touches them is PAN bookkeeping,
 // never the project's scope (pan-reviewer skips them for the same reason).
-const PAN_OWNED_PREFIXES = ['.claude/', '.codex/', '.gemini/', '.opencode/', '.agents/', '.github/pan-wizard-core/', '.github/agents/', '.github/prompts/', '.github/skills/'];
-const PAN_OWNED_FILES = new Set(['.github/copilot-instructions.md', '.github/hooks/pan.json']);
+// A Copilot install shares `.github/` with the project: only what the installer writes as
+// its own is listed, so the project's workflows, hooks and Copilot instructions stay in scope,
+// and so do the files PAN merges into (`mcp.json`, `copilot/settings.json`).
+const PAN_OWNED_PREFIXES = ['.claude/', '.codex/', '.gemini/', '.opencode/', '.agents/', '.github/pan-wizard-core/', '.github/pan-local-patches/', '.github/agents/pan-', '.github/skills/pan-', '.github/hooks/pan-'];
+const PAN_OWNED_FILES = new Set(['.github/hooks/pan.json', '.github/package.json', '.github/pan-file-manifest.json']);
 const TEST_PATH_RE = /(^|\/)(tests?|__tests__|specs?)\//i;
 const TEST_FILE_RE = /\.(test|spec)\.[a-z0-9]+$/i;
 const COMMIT_SCAN_LIMIT = 2000;

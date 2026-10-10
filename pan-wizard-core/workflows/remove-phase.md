@@ -102,7 +102,7 @@ Extract from result: `removed`, `directory_deleted`, `renamed_directories`, `ren
 Stage and commit the removal:
 
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "chore: remove phase {target} ({original-phase-name})" --files .planning/
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "chore: remove phase {target} ({original-phase-name})" --files .planning/ --force
 ```
 
 The commit message preserves the historical record of what was removed.

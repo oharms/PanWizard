@@ -28,5 +28,5 @@ Roadmap and state are resolved in-workflow via `init phase-op` and targeted read
 
 <process>
 Execute the remove-phase workflow from @~/.claude/pan-wizard-core/workflows/remove-phase.md end-to-end.
-Preserve all validation gates (future phase check, work check), renumbering logic, and commit.
+Preserve all validation gates (future phase check, work check), renumbering logic, and commit. The removal deletes tracked files, so commit with `--force` once the user has confirmed it: without it `pan-tools commit` refuses any pending deletion (`deleted_files_detected`).
 </process>

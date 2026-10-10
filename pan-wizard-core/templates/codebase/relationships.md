@@ -8,7 +8,7 @@ Template for `.planning/codebase/relationships.md` - maps module dependencies an
 
 ## File Template
 
-```markdown
+~~~markdown
 # Module Relationships
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -90,7 +90,7 @@ Imports that cross architectural boundaries:
 
 *Relationship analysis: [date]*
 *Update when module structure changes*
-```
+~~~
 
 <guidelines>
 **What belongs in relationships.md:**

@@ -305,6 +305,18 @@ describe('template fill plan command', () => {
     assert.ok(content.includes('## Success Criteria'), 'should contain Success Criteria section');
   });
 
+  test('the plan\'s <context> names the phase\'s roadmap slice, not the whole roadmap (O2)', () => {
+    // template fill plan wrote `@.planning/roadmap.md` after the planner, the plan
+    // template and exec-phase had moved to the slice, so a plan built from it handed
+    // its executor the largest file in .planning/.
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-setup'), { recursive: true });
+    const result = runPanTools('template fill plan --phase 1', tmpDir);
+    assert.ok(result.success, result.error);
+    const content = fs.readFileSync(path.join(tmpDir, JSON.parse(result.output).path), 'utf-8');
+    assert.ok(content.includes('@.planning/phases/01-setup/01-roadmap-slice.md\n'), content.slice(0, 400));
+    assert.ok(!content.includes('@.planning/roadmap.md'));
+  });
+
   test('custom --type tdd and --wave 2 are reflected in frontmatter', () => {
     const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-setup');
     fs.mkdirSync(phaseDir, { recursive: true });

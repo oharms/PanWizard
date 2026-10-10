@@ -1,10 +1,10 @@
 # Architecture Research Template
 
-Template for `.planning/research/ARCHITECTURE.md` — system structure patterns for the project domain.
+Template for `.planning/research/architecture.md` — system structure patterns for the project domain.
 
 <template>
 
-```markdown
+~~~markdown
 # Architecture Research
 
 **Domain:** [domain type]
@@ -170,7 +170,7 @@ src/
 ---
 *Architecture research for: [domain]*
 *Researched: [date]*
-```
+~~~
 
 </template>
 

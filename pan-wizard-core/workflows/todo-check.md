@@ -127,7 +127,7 @@ Use AskUserQuestion:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs todo complete "[filename]"
 ```
-This moves it to `.planning/todos/completed/` with a `completed:` date — the directory `init todos` and `/pan:progress` count.
+This moves it out of `.planning/todos/pending/` (the directory `init todos` and `/pan:progress` count) into `.planning/todos/completed/` with a `completed:` date.
 Update state.md todo count. Present problem/solution context. Begin work or ask how to proceed.
 
 **Add to phase plan:**

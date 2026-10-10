@@ -77,7 +77,9 @@ function rewriteContent(content) {
     .replace(/~\/\.claude\/agents\//g, `${CONTENT_PREFIX}agents/`)
     .replace(/\.\/\.claude\/agents\//g, `${CONTENT_PREFIX}agents/`)
     .replace(/~\/\.claude\//g, CONTENT_PREFIX)
-    .replace(/\.\/\.claude\//g, CONTENT_PREFIX);
+    .replace(/\.\/\.claude\//g, CONTENT_PREFIX)
+    // No `pan-tools` bin is on PATH under a plugin either: invoke it via node.
+    .replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${CONTENT_PREFIX}pan-wizard-core/bin/pan-tools.cjs`);
 }
 
 function copyTree(srcDir, destDir, transformMd) {

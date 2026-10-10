@@ -2,7 +2,7 @@
 name: pan:assumptions
 group: Phase Management
 description: Surface Claude's assumptions about a phase approach before planning
-argument-hint: "[phase]"
+argument-hint: "<phase>"
 allowed-tools:
   - Read
   - Bash
@@ -70,7 +70,7 @@ GOOD: "Assumption: The project uses Express for routing — Evidence: require('e
    - Surface assumptions about: technical approach, implementation order, scope, risks, dependencies
    - Present assumptions clearly with file:line references where applicable
    - Prompt "What do you think?"
-5. Gather feedback and offer next steps
+6. Gather feedback and offer next steps
 </process>
 
 <success_criteria>

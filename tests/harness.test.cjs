@@ -834,9 +834,9 @@ describe('resume-cost: what a fresh session told "continue" spends to finish (O1
     } finally { cleanup(ws); }
   });
 
-  function runLayout({ saved = true, finished = true } = {}) {
+  function runLayout({ saved = true, finished = true, wsName = 'resume-cost-1' } = {}) {
     const run = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-resume-run-'));
-    const ws = path.join(run, 'ws', 'resume-cost-1');
+    const ws = path.join(run, 'ws', wsName);
     fs.mkdirSync(path.join(ws, '.planning', 'phases', '01-greetings'), { recursive: true });
     fs.mkdirSync(path.join(ws, 'src'), { recursive: true });
     if (finished) {
@@ -863,6 +863,17 @@ describe('resume-cost: what a fresh session told "continue" spends to finish (O1
       assert.equal(unmeasured.r.status, 1, 'no saved output is no measurement');
       assert.notDeepEqual(verdict(unmeasured.r), []);
     } finally { good.done(); unfinished.done(); unmeasured.done(); }
+  });
+
+  test('a single-rep run finds its record too: ws/resume-cost holds steps/resume-cost-1-1.json', () => {
+    // Without --repeat the workspace has no rep suffix, but persistStepOutput always
+    // writes one; the lookup read `resume-cost-1.json` and measured nothing.
+    const single = runLayout({ wsName: 'resume-cost' });
+    try {
+      assert.equal(single.r.status, 0, single.r.stdout);
+      assert.deepEqual(verdict(single.r), [], single.r.stdout);
+      assert.equal(JSON.parse(single.r.stdout).turns, 14);
+    } finally { single.done(); }
   });
 });
 
@@ -946,5 +957,64 @@ describe('context-note-headless: the context note reaches a session with no stat
       assert.deepEqual(JSON.parse(fs.readFileSync(path.join(ws, '.claude', 'settings.local.json'), 'utf8')), { permissions: { allow: ['Bash(echo:*)'] }, autoCompactWindow: 100000 });
       for (const n of [1, 2, 3]) assert.ok(fs.statSync(path.join(ws, 'notes', `reference-${n}.md`)).size > 20000, `reference-${n}.md`);
     } finally { cleanup(ws); }
+  });
+});
+
+// The focus-design A/B (R21) measures one change: Phases 0-9 moved out of the command into a
+// reference the agent must Read. Doc fixes to the shipped command reached neither variant file,
+// so the arms differed in more than the split. Both files must track the command verbatim.
+describe('harness focus-design A/B variant tracks the shipped command', () => {
+  const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
+  const cmd = read('commands/pan/focus-design.md');
+  const split = read('harness/variants/focus-design.split.md');
+  const proc = read('harness/variants/focus-design-procedure.md');
+  const P0 = '## Phase 0:';
+  const P10 = '## Phase 10:';
+
+  test('the procedure file is the command\'s Phases 0-9, verbatim', () => {
+    assert.ok(cmd.includes(P0) && cmd.includes(P10), 'the command still has Phase 0 and Phase 10 headings');
+    assert.equal(proc.slice(proc.indexOf(P0)).trim(), cmd.slice(cmd.indexOf(P0), cmd.indexOf(P10)).trim());
+  });
+
+  test('the split command equals the command outside Phases 0-9', () => {
+    const head = '## Phases 0–9: The Procedure';
+    assert.ok(split.includes(head), 'the split keeps its pointer section');
+    assert.equal(split.slice(0, split.indexOf(head)), cmd.slice(0, cmd.indexOf(P0)), 'everything before Phase 0 matches');
+    assert.equal(split.slice(split.indexOf(P10)), cmd.slice(cmd.indexOf(P10)), 'Phase 10 onward matches');
+  });
+});
+
+// MI-104: model steps can name a host CLI. Only Claude Code has an output parser; the
+// other hosts' argv comes from their own --help, and their steps are refused until a
+// captured run gives a parser for their JSON and usage (a step whose cost cannot be read
+// cannot be held to --max-usd, ADR-0047 D2).
+describe('harness model steps take a runtime', () => {
+  const { modelArgsFor, MODEL_RUNTIMES, runModelStep } = require('../harness/src/model.cjs');
+  const scen = (step) => ({ id: 'x', tier: 1, description: 'd', why: 'w', seed: 'empty', install: null, budget: {}, steps: [{ kind: 'model', prompt: 'p', expect: ['exit:0'], why: 'w', ...step }] });
+
+  test('a model step may name one of the five hosts, and nothing else', () => {
+    assert.deepEqual(Object.keys(MODEL_RUNTIMES).sort(), ['claude', 'codex', 'copilot', 'gemini', 'opencode']);
+    for (const rt of Object.keys(MODEL_RUNTIMES)) assert.deepEqual(validateScenario(scen({ runtime: rt })), [], rt);
+    assert.ok(validateScenario(scen({ runtime: 'cursor' })).some((e) => /runtime is only for model steps/.test(e)));
+    const fsStep = { id: 'x', tier: 0, description: 'd', why: 'w', seed: 'empty', install: null, budget: {}, steps: [{ kind: 'fs', expect: ['exit:0'], why: 'w', runtime: 'codex' }] };
+    assert.ok(validateScenario(fsStep).some((e) => /runtime is only for model steps/.test(e)));
+  });
+
+  test('each host\'s argv is what its --help documents', () => {
+    assert.deepEqual(modelArgsFor('codex', 'ignored'), ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '-']);
+    assert.deepEqual(modelArgsFor('copilot', 'do it'), ['-p', 'do it', '--output-format', 'json', '--allow-all-tools', '--allow-all-paths']);
+    assert.deepEqual(modelArgsFor('gemini', 'do it'), ['-p', 'do it', '-o', 'json', '--approval-mode', 'yolo']);
+    assert.deepEqual(modelArgsFor('opencode', 'do it'), ['run', '--format', 'json', 'do it']);
+    assert.equal(modelArgsFor('cursor', 'x'), null);
+  });
+
+  test('a host with no output parser is refused before anything runs', () => {
+    for (const rt of ['codex', 'copilot', 'gemini', 'opencode']) {
+      const r = runModelStep(os.tmpdir(), 'p', { maxUsd: 1, runtime: rt });
+      assert.equal(r.refused, true, rt);
+      assert.equal(r.costUsd, 0);
+      assert.match(r.stderr, new RegExp(`no output parser for ${rt}`));
+    }
+    assert.match(runModelStep(os.tmpdir(), 'p', { maxUsd: 1, runtime: 'cursor' }).stderr, /unknown model-step runtime/);
   });
 });

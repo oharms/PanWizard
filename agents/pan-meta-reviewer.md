@@ -2,7 +2,7 @@
 name: pan-meta-reviewer
 description: Reviews the reviewer + hardener output. Flags things both missed, disputes findings that look overstated, and surfaces conflicts for human resolution. Spawned by /pan:review-deep.
 tools: Read, Grep, Glob, Bash, Write
-color: magenta
+color: pink
 effort: medium
 model: opus
 ---
@@ -29,7 +29,7 @@ Think through, in order:
 
 1. **Load both reports fully.** Don't meta-review one while skimming the other.
 2. **Coverage check.** Did the reviewer cover every file in the diff? Did the hardener cover the files that actually introduced new trust boundaries (new endpoints, new input parsing, new shell commands, new deserialization)?
-3. **Severity check.** For each finding, ask: "Would I pick this severity?" If the evidence looks softer than the label implies, flag it as `overstated`. If the evidence looks worse, flag it as `underrated`. Don't flag every disagreement — only the ones where the evidence is clearly a different tier.
+3. **Severity check.** For each finding, ask: "Would I pick this severity?" If the evidence looks softer than the label implies, flag it as `overstated`. If the evidence looks worse, flag it as `underrated`. Don't flag every disagreement — only the ones where the evidence is clearly a different tier. The reviewer's design-smell baseline ("possible <smell>") is a judgement call by definition: dispute or drop one where the project's own code endorses the pattern, never raise one above INFO.
 4. **Pattern check.** Look for classes of issue neither reviewer covered:
    - Concurrency / race conditions (neither reviewer specializes here)
    - Tests that got added but don't actually exercise the new code path
@@ -70,7 +70,7 @@ generated: <ISO timestamp>
 
 **Examples:**
 
-```
+```text
 - **[HIGH] concurrency** — Two handlers modify the same in-memory cache without locking. File: `src/cache.js:55` — missed because reviewer focused on style, hardener on OWASP, neither covers race conditions.
 
 - **[INFO] dispute** — Hardener rated this CRITICAL; it is overstated because the endpoint requires admin JWT (A01 already mitigated). File: `src/routes/admin.js:12` — downgrade to INFO.

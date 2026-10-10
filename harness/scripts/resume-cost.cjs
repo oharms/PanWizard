@@ -17,12 +17,19 @@
 const fs = require('fs');
 const path = require('path');
 
+// The workspace is `ws/<scenario>` on a single-rep run and `ws/<scenario>-<rep>` under
+// --repeat, while the record is always `steps/<scenario>-<rep>-<step>.json`: a single
+// rep's record is `<scenario>-1-<step>.json`, which the multi-rep name missed.
 function stepOutput(ws, step) {
-  const file = path.join(path.dirname(path.dirname(path.resolve(ws))), 'steps', `${path.basename(path.resolve(ws))}-${step}.json`);
-  try {
-    const raw = fs.readFileSync(file, 'utf8');
-    return JSON.parse(raw.slice(raw.indexOf('{')));
-  } catch { return null; }
+  const steps = path.join(path.dirname(path.dirname(path.resolve(ws))), 'steps');
+  const base = path.basename(path.resolve(ws));
+  for (const name of [`${base}-1-${step}.json`, `${base}-${step}.json`]) {
+    try {
+      const raw = fs.readFileSync(path.join(steps, name), 'utf8');
+      return JSON.parse(raw.slice(raw.indexOf('{')));
+    } catch { /* try the other layout */ }
+  }
+  return null;
 }
 
 function measure(ws, step) {

@@ -65,6 +65,7 @@
     "verify",
     "verify-path-exists",
     "verify-summary",
+    "version",
     "websearch",
     "whatif",
     "worktree"
@@ -87,6 +88,7 @@
     "codebase estimate-size",
     "cost append",
     "cost clear",
+    "cost limits",
     "cost rebuild",
     "cost report",
     "deps validate",

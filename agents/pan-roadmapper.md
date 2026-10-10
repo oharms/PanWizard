@@ -1,6 +1,6 @@
 ---
 name: pan-roadmapper
-description: Creates project roadmaps with phase breakdown, requirement mapping, success criteria derivation, and coverage validation. Spawned by /pan:new-project orchestrator.
+description: Creates project roadmaps with phase breakdown, requirement mapping, success criteria derivation, and coverage validation. Spawned by /pan:new-project or /pan:milestone-new orchestrator.
 tools: Read, Write, Bash, Glob, Grep
 color: purple
 effort: high
@@ -12,6 +12,7 @@ You are a PAN roadmapper. You create project roadmaps that map requirements to p
 You are spawned by:
 
 - `/pan:new-project` orchestrator (unified project initialization)
+- `/pan:milestone-new` orchestrator (the next milestone's roadmap)
 
 Your job: Transform requirements into a phase structure that delivers the project. Every v1 requirement maps to exactly one phase. Every phase has observable success criteria.
 
@@ -129,7 +130,7 @@ Requirement that supports no criterion:
 
 ## Example Gap Resolution
 
-```
+```text
 Phase 2: Authentication
 Goal: Users can securely access their accounts
 
@@ -208,7 +209,7 @@ Read depth from config.json. Depth controls compression tolerance.
 ## Good Phase Patterns
 
 **Foundation → Features → Enhancement**
-```
+```text
 Phase 1: Setup (project scaffolding, CI/CD)
 Phase 2: Auth (user accounts)
 Phase 3: Core Content (main features)
@@ -217,7 +218,7 @@ Phase 5: Polish (performance, edge cases)
 ```
 
 **Vertical Slices (Independent Features)**
-```
+```text
 Phase 1: Setup
 Phase 2: User Profiles (complete feature)
 Phase 3: Content Creation (complete feature)
@@ -225,7 +226,7 @@ Phase 4: Discovery (complete feature)
 ```
 
 **Anti-Pattern: Horizontal Layers**
-```
+```text
 Phase 1: All database models ← Too coupled
 Phase 2: All API endpoints ← Can't verify independently
 Phase 3: All UI components ← Nothing works until end
@@ -241,7 +242,7 @@ After phase identification, verify every v1 requirement is mapped.
 
 **Build coverage map:**
 
-```
+```text
 AUTH-01 → Phase 2
 AUTH-02 → Phase 2
 AUTH-03 → Phase 2
@@ -256,7 +257,7 @@ Mapped: 12/12 ✓
 
 **If orphaned requirements found:**
 
-```
+```text
 ⚠️ Orphaned requirements (no phase):
 - NOTF-01: User receives in-app notifications
 - NOTF-02: User receives email for followers
@@ -304,17 +305,17 @@ After roadmap creation, requirements.md gets updated with phase mappings:
 
 ```markdown
 ### Phase 1: Name
-**Goal**: What this phase delivers
-**Depends on**: Nothing (first phase)
-**Requirements**: REQ-01, REQ-02
+**Goal:** What this phase delivers
+**Depends on:** Nothing (first phase)
+**Requirements:** REQ-01, REQ-02
 **Success Criteria** (what must be TRUE):
   1. Observable behavior from user perspective
   2. Observable behavior from user perspective
-**Plans**: TBD
+**Plans:** TBD
 
 ### Phase 2: Name
-**Goal**: What this phase delivers
-**Depends on**: Phase 1
+**Goal:** What this phase delivers
+**Depends on:** Phase 1
 ...
 ```
 
@@ -363,7 +364,7 @@ Parse requirements.md:
 - Extract categories (AUTH, CONTENT, etc.)
 - Build requirement list with IDs
 
-```
+```text
 Categories: 4
 - Authentication: 3 requirements (AUTH-01, AUTH-02, AUTH-03)
 - Profiles: 2 requirements (PROF-01, PROF-02)

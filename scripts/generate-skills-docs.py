@@ -222,6 +222,13 @@ def get_version() -> str:
 # SKILLS-FULL-TEXT.md generator
 # ---------------------------------------------------------------------------
 
+def wrapper_fence(content: str) -> str:
+    """A backtick fence longer than any fence inside the content, so the skill's own
+    code blocks cannot close the block that wraps it."""
+    longest = max((len(m.group(1)) for m in re.finditer(r"^ {0,3}(`{3,})", content, re.M)), default=0)
+    return "`" * max(3, longest + 1)
+
+
 def generate_full_text(shipped: list[Skill], dev: list[Skill], version: str) -> str:
     """Generate the complete full-text document."""
     lines = []
@@ -247,9 +254,10 @@ def generate_full_text(shipped: list[Skill], dev: list[Skill], version: str) -> 
         w("")
         w(f"### {skill.command} ({skill.line_count} lines)")
         w("")
-        w("```markdown")
+        fence = wrapper_fence(skill.content)
+        w(f"{fence}markdown")
         w(skill.content.rstrip())
-        w("```")
+        w(fence)
         w("")
 
     w("")
@@ -265,9 +273,10 @@ def generate_full_text(shipped: list[Skill], dev: list[Skill], version: str) -> 
         w("")
         w(f"### {skill.command} ({skill.line_count} lines)")
         w("")
-        w("```markdown")
+        fence = wrapper_fence(skill.content)
+        w(f"{fence}markdown")
         w(skill.content.rstrip())
-        w("```")
+        w(fence)
         w("")
 
     return "\n".join(lines)

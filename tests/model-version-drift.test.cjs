@@ -388,23 +388,10 @@ const ALLOWLIST = [
     snippet: '`{ "claude-opus-4-8": { "input"',
     reason: '(a) `cost.rates` override example in the config table — the model ID is the JSON KEY the user writes to override a rate. A generic placeholder would not show the key shape.',
   },
-  {
-    file: 'docs/HOOKS.md',
-    snippet: '"model": "claude-opus-4-7"',
-    reason: '(a) sample hook payload — shows the shape of the `model` field the runtime emits; a real ID makes the example readable.',
-  },
-  // (b) true historical provenance ----------------------------------------
-  {
-    file: 'CONTRIBUTORS.md',
-    // Bullet shape, so a version bump in the attribution keeps working.
-    re: /^- \*\*Claude Opus [\d.]+\*\* \(Anthropic/i,
-    reason: '(b) AI-contributor attribution — the model version that actually co-authored the commits is the historical fact being recorded, exactly like a human contributor\'s name. It tells the reader nothing about what they need to run PAN.',
-  },
-  {
-    file: 'CONTRIBUTORS.md',
-    snippet: 'Opus 4.7 integration',
-    reason: '(b) ancestor-project history — "introduced … Opus 4.7 integration (extended thinking, prompt caching, cross-phase agent memory in v2.10)" records what was built in v2.10 and for which model. Provenance, not a requirement.',
-  },
+  // (b) true historical provenance: none left. CONTRIBUTORS.md credited one model
+  // version with "all human commits", which the public history's trailers contradict
+  // (they name several), so it now credits Claude without a version (doc audit
+  // 2026-10-05). A future provenance line that must name a version goes here.
   // Model-specific SAFETY behavior ----------------------------------------
   // Not a capability gate: the cyber-classifier refusal is a property of one
   // named model. There is no capability phrasing for it, and hedging it into
@@ -632,7 +619,7 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
     }
     // Root-level live docs.
     assert.ok(targets.includes('README.md'), 'README.md must be scanned');
-    assert.ok(targets.includes('CONTRIBUTORS.md'), 'CONTRIBUTORS.md must be scanned (its version-pinned attribution is allowlisted, not ignored)');
+    assert.ok(targets.includes('CONTRIBUTORS.md'), 'CONTRIBUTORS.md must be scanned (a version-pinned attribution there needs an allowlist entry, not an exclusion)');
     assert.ok(targets.includes('pan-zcode/README.md'), 'pan-zcode/README.md is shipped by package.json `files` and must be scanned');
     assert.ok(targets.includes('pan-zcode/KNOWN-BETA-RISKS.md'), 'pan-zcode/KNOWN-BETA-RISKS.md must be scanned');
     // Exclusions must actually exclude.

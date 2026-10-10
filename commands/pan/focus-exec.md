@@ -2,6 +2,7 @@
 name: focus-exec
 group: Focus
 description: Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
+argument-hint: "[--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--dry-run] [--no-commit] [--continue] [--deep-review]"
 allowed-tools:
   - Read
   - Write
@@ -85,7 +86,7 @@ Each stage has a restricted set of appropriate actions. Using the wrong tool at 
 This command executes work on the **host project's source code** — not on PAN Wizard's own infrastructure.
 
 **Do not read, modify, or fix files in these PAN directories:**
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/` — PAN runtime directories
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
 - Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
 
 **These directories are PAN's own tooling installed into the project.** If a batch item targets a PAN infrastructure file, SKIP it with reason "PAN infrastructure — out of scope." Never modify PAN's agents, commands, core modules, or dispatcher as part of project work.
@@ -116,7 +117,7 @@ HARD STOP conditions (do not proceed to next stage):
 - `--dry-run` — Run Stages 1-2 only (show what WOULD be executed)
 - `--no-commit` — Skip the commit step in Stage 6
 - `--continue` — Resume a previously interrupted execution
-- `--deep-review` (v3.4+) — After each high-stakes item's execution, run `/pan:review-deep` for that item (pan-hardener + pan-meta-reviewer security + cross-check). Slows the campaign by roughly 3× per item that triggers the deep pass; use for batches touching auth/payment/migrations.
+- `--deep-review` (v3.4+) — After each high-stakes item's execution, run the deep pass on that item's changed files: spawn pan-hardener (`<output_path>` `.planning/reviews/<item-id>/hardener.md`), then pan-meta-reviewer on its report (`.planning/reviews/<item-id>/meta.md`), and merge with `pan-tools review-deep merge <item-id> --hardener-file … --meta-file …` (no first-pass review, so no `--reviewer-file`; `/pan:review-deep` itself needs a phase). Slows the campaign by roughly 3× per item that triggers the deep pass; use for batches touching auth/payment/migrations.
 
 ---
 
@@ -161,7 +162,7 @@ Every code change must be tested before moving to the next item.
 Test cadence by tier:
 - **MICRO (XS/S):** Run specific test after implementing. Batch up to 3 independent items before smoke.
 - **STANDARD (M):** Full test suite after each item.
-- **FULL (L/XL):** Build hooks + full test suite after each item.
+- **FULL (L/XL):** The project's build step (if it has one) + full test suite after each item.
 
 ### Rule 4: Don't Invent — Follow the Plan
 Implement exactly what the batch says. Do not:
@@ -285,7 +286,7 @@ Display the execution batch to user, then continue automatically.
 3. DESIGN — outline approach before coding
 4. STATE INTENT — "I will modify [files]. Risk: [what could break]"
 5. IMPLEMENT in logical chunks
-6. BUILD — build hooks if hooks changed
+6. BUILD — run the project's build step if the item changed what it builds
 7. TEST — full test suite
 8. CONFIRM — all pass -> DONE | fail -> investigate (15 min max) -> REVERT -> FAILED
 ```

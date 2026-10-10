@@ -52,7 +52,7 @@ The CLI handles:
 - Calculating next phase number (max + 1)
 - Generating slug from description
 - Creating the phase directory (`.planning/phases/{NN}-{slug}/`)
-- Inserting the phase entry into roadmap.md with Goal, Depends on, and Plans sections
+- Inserting the phase into roadmap.md: its checklist line, and a section with Goal, Requirements, Depends on and Plans lines
 
 Extract from result: `phase_number`, `padded`, `name`, `slug`, `directory`.
 </step>

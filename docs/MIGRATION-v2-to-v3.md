@@ -29,7 +29,7 @@ That's it. Your project keeps working. You now have access to several new comman
 | `/pan:what-if` | v3.3 | Counterfactual phase replay in isolated git worktree |
 | `/pan:mcp-bridge` | v3.3 | Discover available MCP tools + recommend for a phase |
 | `/pan:learn` | v3.5 | Analyze trace events, generate optimization report |
-| `/pan:optimize` | v3.5 | Apply optimizer recommendations, manage trace sessions, view stats |
+| `/pan:optimize` | v3.5 | Record an optimizer report's suggestions (`apply`), undo them (`revert`), manage trace sessions, view stats |
 | `/pan:git` | v3.5 | Phase-aware git workflow with safety guardrails (multiple subcommands) |
 
 All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/pan:exec-phase`, `/pan:verify-phase`, etc.) is unchanged.
@@ -64,17 +64,18 @@ The following are auto-created on first use. **None of them conflict with existi
 |------|-----------|---------|
 | `.planning/metrics/` | cost hook + `/pan:cost append` | Token usage log (`tokens.jsonl`) |
 | `.planning/bus/` | `pan-tools bus publish` + agent audit trails | Message channels (one file per channel) |
-| `.planning/bridge/` | `pan-tools bridge cache` + host runtime | MCP tool discovery cache |
+| `.planning/bridge/` | `pan-tools bridge cache --servers` (no host or hook writes it) | MCP tool discovery cache |
 | `.planning/counterfactuals/` | `/pan:what-if` | Counterfactual comparison reports |
 | `.planning/conversations/` | `/pan:knowledge discuss` | Multi-turn session state per phase |
 | `.planning/memory/` | `/pan:retro --write-memory` (v2.10+), `pan-tools memory append` / `record`, `memory optimize` (its quarantine and state archive) | Agent memory store (also a v2.10 addition); no workflow loads it into agents |
 | `.planning/architecture/` | `/pan:preview phases` | Generated dependency graph |
 | `.planning/orchestration/` | `/pan:exec-phase --hierarchical` | Conductor trace + abort kill-switch |
 | `.planning/reviews/` | `/pan:review-deep` | Consolidated deep-review reports |
+| `.planning/optimization/` | `pan-trace-logger.js` hook + `/pan:learn` + `/pan:optimize` | Trace sessions, optimization reports, recorded suggestions and the apply log |
 
 New top-level files: `.planning/playbook.md` (from `/pan:knowledge playbook`), `.planning/milestones/preview-*.md` (from `/pan:preview milestone`).
 
-If you ever want to reset: these directories are safe to delete — they rebuild on next use. If you've been logging cost for billing reconciliation, back up `.planning/metrics/tokens.jsonl` before deleting.
+If you ever want to reset: these directories rebuild on next use, but deleting one loses what it holds — `optimize revert` undoes an apply from `.planning/optimization/applied.jsonl`, and see the note on `.planning/memory/` under Rollback. If you've been logging cost for billing reconciliation, back up `.planning/metrics/tokens.jsonl` before deleting.
 
 ### New hook registration
 
@@ -97,17 +98,17 @@ The installer adds `SubagentStop` entries for `pan-cost-logger.js` and `pan-trac
 }
 ```
 
-The hook is non-blocking and is registered on Claude Code, Codex and Copilot CLI; Gemini CLI (no subagent-completion event) and OpenCode (no PAN hooks) get no cost logger. Today's installer also writes the trace-logger and stop-guard entries described above, plus a `SessionStart` entry with the `compact` matcher for `pan-state-reinject.js`; nothing else in settings.json changes.
+The hook is non-blocking and is registered on Claude Code, Codex and Copilot CLI; Gemini CLI (no subagent-completion event) and OpenCode (no command hooks; its plugin only adds compaction context) get no cost logger. Today's installer also writes the trace-logger and stop-guard entries described above, plus a `SessionStart` entry with the `compact` matcher for `pan-state-reinject.js`; nothing else in settings.json changes.
 
 ### Shipped hooks
 
-- `pan-statusline.js` (unchanged)
-- `pan-context-monitor.js` (unchanged)
+- `pan-statusline.js` (Claude Code and Copilot CLI; Gemini CLI has no statusline command)
+- `pan-context-monitor.js` (reads the session transcript when no status line runs, as in headless `claude -p`; not registered on Gemini CLI, which gives hooks no context metric)
 - `pan-check-update.js` (unchanged)
 - `pan-cost-logger.js` (new in v3.4)
 - `pan-trace-logger.js` (new in v3.5 — circular optimization tracing)
 - `pan-stop-guard.js` (Stop hook — `AfterAgent` on Gemini CLI — added in v3.24; blocks the auto-advance boundary drop once)
-- `pan-state-reinject.js` (`SessionStart` hook with the `compact` matcher, Claude Code and Codex only; after a context compaction it re-injects the current phase and plan from `.planning/state.md`)
+- `pan-state-reinject.js` (after a context compaction it re-injects the current phase and plan from `.planning/state.md`. Claude Code and Codex run it as a `SessionStart` hook with the `compact` matcher. Gemini CLI and Copilot CLI run it in two steps: a marker before the compaction, the block on the next tool result. OpenCode runs no command hooks; its install writes the `.opencode/plugins/pan-wizard.js` plugin, which adds the same position to the compaction prompt)
 
 ### New core modules
 
@@ -190,7 +191,7 @@ Every v3.x feature is additive. Rollback options:
 
 ### Full rollback (uninstall)
 
-Rolling back means uninstalling PAN — there is no public v2.x to reinstall. The public release history begins at v3.13.1; v2.x was never published, so its artifacts are not publicly available.
+Rolling back means uninstalling PAN. v2.10.0, the usual starting point, was never published to npm (the registry's only v2.x builds are 2.8.1, 2.9.0 and 2.9.1, older than it), and the public repository's tags begin at v3.13.1.
 
 ```bash
 # Uninstall PAN entirely
@@ -214,7 +215,7 @@ Safe to delete if you don't use the features:
 rm -rf .planning/metrics .planning/bus .planning/bridge .planning/counterfactuals .planning/conversations .planning/orchestration .planning/reviews .planning/architecture
 ```
 
-(Don't delete `.planning/memory/` without understanding — it has cross-phase lessons written by the retro command since v2.10.)
+(Don't delete `.planning/memory/` without understanding — it holds any lessons recorded with `/pan:retro --write-memory` (since v2.10), `memory append` or `memory record`, plus the ADR-0040 quarantine, the state archive `memory optimize` writes, and the patterns `distill report` records for `/pan:focus-auto`'s distill category.)
 
 ## FAQ
 
@@ -233,10 +234,10 @@ Partly. The hook appends from the moment you upgrade, and on Claude Code `pan-to
 ### Can I use Spec B v2 features on runtimes other than Claude Code?
 
 Partially:
-- `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:review-deep`: **yes** on all 5 runtimes (`/pan:cost` has data only where the cost logger runs — Claude Code, Codex, Copilot CLI). Agent quality varies with model capability.
+- `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:review-deep`: **yes** on all 5 runtimes (`/pan:cost` records spawns automatically only where the cost logger runs — Claude Code, Codex, Copilot CLI; elsewhere `pan-tools cost append` or an external script adds them). Agent quality varies with model capability.
 - `/pan:what-if`: full on Claude Code; partial on the other four — the worktree and report layers work everywhere git does, and spawning the counterfactual agent depends on the runtime's task support.
 - `/pan:preview phases` (single-shot whole-repo pass): the fast path needs a model with a 1M-context window; smaller-context models skip the cross-reference bonus and rely on the data-layer output alone.
-- `/pan:mcp-bridge`: runs on all five runtimes as a cache reader (the host runtime populates the cache); Claude Code is the primary target.
+- `/pan:mcp-bridge`: runs on all five runtimes as a cache reader (only `/pan:mcp-bridge cache --servers` populates the cache); Claude Code is the primary target.
 - `/pan:exec-phase --hierarchical`: Claude Code only — it needs native sub-agent spawning, which is a runtime limit rather than a model one. Elsewhere the flag is a no-op that warns and falls back to flat exec.
 
 ### What if I want to skip v3.0-v3.4 and go straight to v3.5?

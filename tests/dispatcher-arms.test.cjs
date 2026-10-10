@@ -153,9 +153,13 @@ describe('dispatcher arms — an unknown verb is refused by the top-level usage 
       const help = runPanTools('--help', tmp);
       const helpText = `${help.output}\n${help.error}`;
       assert.match(helpText, /Commands:/, `--help lost its usage line: ${helpText.slice(0, 200)}`);
-      for (const verb of ['state', 'cost', 'validate']) {
-        assert.ok(helpText.includes(verb), `--help omits the shipped verb ${verb}`);
-      }
+      // Every top-level arm, not a sample: `version` was dispatched but missing, so
+      // `--help` hid it and the unknown-command suggester never offered it.
+      const src = fs.readFileSync(path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs'), 'utf8');
+      const listed = (helpText.split('Commands: ')[1] || '').split('\n')[0].split(',').map((s) => s.trim());
+      const arms = [...new Set([...src.slice(src.indexOf('switch (command)')).matchAll(/^ {4}case '([a-z0-9-]+)':/gm)].map((m) => m[1]))];
+      assert.ok(arms.length > 10, 'the top-level switch was not found');
+      assert.deepEqual(arms.filter((a) => !listed.includes(a)), [], '--help omits dispatched commands');
     } finally {
       cleanup(tmp);
     }

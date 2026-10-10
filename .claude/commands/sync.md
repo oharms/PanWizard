@@ -47,7 +47,7 @@ package.json                                       ← Version number
 2. **Compare against docs** — find discrepancies:
    - CLAUDE.md test count matches reality?
    - README.md install instructions work?
-   - CLI-REFERENCE.md flags match `install.js` code?
+   - README.md installer flags match `install.js`? CLI-REFERENCE.md flags match `pan-tools.cjs`?
    - CHANGELOG.md has entry for current version?
 
 3. **Fix discrepancies** — update docs to match code

@@ -2,6 +2,7 @@
 name: pan:learn
 group: Self-Improvement
 description: Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports
+argument-hint: "[--session <id> | --sessions <n> | --experiment <slug>] [--apply]"
 allowed-tools:
   - Read
   - Bash
@@ -26,7 +27,7 @@ Analyze the most recent trace session and generate an optimization report.
 **Flags:**
 - `--session <id>` — analyze a specific session instead of the most recent
 - `--sessions <n>` — pool the last n sessions into one analysis, so recommendations rest on failures that recur across runs
-- `--experiment <slug>` *(v3.7.0+, W3)* — analyze a harvested experiment instead of the current project's traces. Reads from `<source-repo>/experiments/<slug>/.planning/optimization/` and writes the report to `<source-repo>/experiments/<slug>/learnings/report-<timestamp>.md`. Used by the self-improvement loop. Run `/pan:experiment harvest <slug>` first.
+- `--experiment <slug>` *(v3.7.0+, W3)* — analyze a harvested experiment instead of the current project's traces: the workflow runs its `pan-tools` steps with `--cwd` set to the harvest folder (the `harvest_path` `/pan:experiment harvest <slug>` printed, `<source-repo>/experiments/<slug>/` by default), so the analysis and the optimizer's report land in that folder's `.planning/optimization/reports/`. Used by the self-improvement loop. Run `/pan:experiment harvest <slug>` first.
 - `--apply` — record the report's suggestions right after generating it (equivalent to running `/pan:optimize apply` immediately after)
 
 **What it does:**

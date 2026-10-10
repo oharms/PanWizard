@@ -299,7 +299,7 @@ How to verify:
   4. Mobile (375px): Sidebar hidden, hamburger menu appears
 
 ────────────────────────────────────────────────────────
-→ YOUR ACTION: Type "approved" or describe issues
+→ Type "approved" or describe issues
 ────────────────────────────────────────────────────────
 ```
 
@@ -330,7 +330,7 @@ Options:
      Cons: More setup work, DIY security updates
 
 ────────────────────────────────────────────────────────
-→ YOUR ACTION: Select supabase, clerk, or nextauth
+→ Select: supabase / clerk / nextauth
 ────────────────────────────────────────────────────────
 ```
 
@@ -354,7 +354,7 @@ What you need to do:
 I'll verify: vercel whoami returns your account
 
 ────────────────────────────────────────────────────────
-→ YOUR ACTION: Type "done" when authenticated
+→ Type "done" when authenticated
 ────────────────────────────────────────────────────────
 ```
 </execution_protocol>

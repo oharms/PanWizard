@@ -2,6 +2,7 @@
 name: pan:links
 group: Validation
 description: Validate the doc-code link graph — inline wiki-style refs, source-comment anchors, and require-code-mention contracts (ADR-0027, v3.8.0+)
+argument-hint: "[--strict] [--doc-root <path>]... [--source-root <path>]... [--raw]"
 allowed-tools:
   - Bash
   - Read
@@ -10,7 +11,7 @@ allowed-tools:
 
 # /pan:links
 
-Validate the doc-code link graph. Walks `docs/`, `pan-wizard-core/`, `commands/`, and `agents/` for inline `[[<id>]]` references and `// @pan: <id>` source-comment anchors. Reports broken refs, stale anchors, and uncovered backlink contracts.
+Validate the doc-code link graph. Walks `docs/`, `commands/`, `agents/` and `pan-wizard-core/`'s workflows, templates, references and learnings for inline `[[<id>]]` references, and `pan-wizard-core/`, `bin/`, `hooks/` and `scripts/` for `// @pan: <id>` source-comment anchors. Reports broken refs, stale anchors, and uncovered backlink contracts.
 
 > **User projects:** the default roots (`docs/`, `pan-wizard-core/`, `commands/`, `agents/`) are the **PAN source-repo** layout. A typical user project has none of these, so a bare `/pan:links` scans almost nothing and reports a hollow `pass`. In a user project you **must** point it at your own layout with `--doc-root` / `--source-root` (both repeatable), e.g. `/pan:links --doc-root docs --source-root src`. Treat any run where `doc_files_scanned` (or `source_files_scanned`) is `0` as a **warning that the roots are misconfigured**, not a clean pass.
 
@@ -27,6 +28,8 @@ Validate the doc-code link graph. Walks `docs/`, `pan-wizard-core/`, `commands/`
 - `--doc-root <path>` — override default doc roots. Repeatable.
 - `--source-root <path>` — override default source roots. Repeatable.
 - `--raw` — human-readable output instead of JSON.
+
+**Run:** `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs links validate [--strict] [--doc-root <path>]... [--source-root <path>]... [--raw]` (`validate` may be left out when a flag comes first).
 
 **What it does:**
 

@@ -365,7 +365,8 @@ function cmdConfigGet(cwd, keyPath, raw) {
     error(`Key not found: ${keyPath}`);
   }
 
-  output(current, raw, String(current));
+  // An object or array prints as JSON under --raw: String() gave "[object Object]".
+  output(current, raw, current !== null && typeof current === 'object' ? JSON.stringify(current) : String(current));
 }
 
 // ─── Standards commands ─────────────────────────────────────────────────────

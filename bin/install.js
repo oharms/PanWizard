@@ -445,6 +445,8 @@ function copyFlattenedCommands(srcDir, destDir, prefix, pathPrefix, runtime) {
       content = content.replace(globalClaudeRegex, pathPrefix);
       content = content.replace(localClaudeRegex, `./${getDirName(runtime)}/`);
       content = content.replace(opencodeDirRegex, pathPrefix);
+      // As in copyWithPathReplacement: no `pan-tools` bin is on PATH.
+      content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`);
       content = processAttribution(content, getCommitAttribution(runtime));
       content = convertClaudeToOpencodeFrontmatter(content);
 
@@ -504,6 +506,7 @@ function copyCommandsAsCodexSkills(srcDir, skillsDir, prefix, pathPrefix, runtim
       content = content.replace(globalClaudeRegex, pathPrefix);
       content = content.replace(localClaudeRegex, `./${getDirName(runtime)}/`);
       content = content.replace(codexDirRegex, pathPrefix);
+      content = lib.rewriteAgentFileRefs(content, runtime, pathPrefix);
       // Codex executes commands literally; no `pan-tools` bin on PATH.
       const panToolsPath = `${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`;
       content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${panToolsPath}`);
@@ -821,6 +824,7 @@ function copyCommandsAsCopilotSkills(srcDir, skillsDir, prefix, pathPrefix, runt
       const localClaudeRegex = /\.\/\.claude\//g;
       content = content.replace(globalClaudeRegex, pathPrefix);
       content = content.replace(localClaudeRegex, `./${getDirName(runtime)}/`);
+      content = lib.rewriteAgentFileRefs(content, runtime, pathPrefix);
       // Copilot CLI executes commands literally; there's no `pan-tools` bin on PATH.
       // Replace bare `pan-tools` invocations with the explicit node + .cjs path.
       const panToolsPath = `${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`;
@@ -876,6 +880,11 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime, isCommand
         const localClaudeRegex = /\.\/\.claude\//g;
         content = content.replace(globalClaudeRegex, pathPrefix);
         content = content.replace(localClaudeRegex, `./${dirName}/`);
+        // No runtime puts a `pan-tools` bin on PATH: invoke it via node, as the Codex
+        // and Copilot converters already did. A bare `pan-tools <verb>` in an installed
+        // Claude, Gemini or OpenCode command or workflow was a call that could not run.
+        content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`);
+        content = lib.rewriteAgentFileRefs(content, runtime, pathPrefix);
         content = processAttribution(content, getCommitAttribution(runtime));
 
         // Convert frontmatter for opencode compatibility
@@ -2265,7 +2274,9 @@ function install(isGlobal, runtime = 'claude') {
       // last; the per-runtime core remains for agents/hooks.
       const sharedCoreDest = path.join(agentsRoot, 'pan-wizard-core');
       copySharedCore(path.join(src, 'pan-wizard-core'), sharedCoreDest, corePrefix, pathPrefix, runtime);
-      try { fs.writeFileSync(path.join(sharedCoreDest, 'VERSION'), pkg.version); } catch { /* non-fatal */ }
+      // With its newline, as the per-runtime core writes it: `/pan:update` cats the file
+      // and prints the runtime flag next, which glued onto a bare version.
+      try { fs.writeFileSync(path.join(sharedCoreDest, 'VERSION'), pkg.version + '\n'); } catch { /* non-fatal */ }
 
       // Canonical agent-definition reference copies (ADR-0028 agent-ref
       // canonicalization): shared content references these instead of the
@@ -2468,6 +2479,9 @@ function install(isGlobal, runtime = 'claude') {
           // Always replace ~/.claude/ as it is the source of truth in the repo
           const dirRegex = /~\/\.claude\//g;
           content = content.replace(dirRegex, pathPrefix);
+          // As in copyWithPathReplacement: no `pan-tools` bin is on PATH.
+          content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`);
+          content = lib.rewriteAgentFileRefs(content, runtime, pathPrefix);
           content = processAttribution(content, getCommitAttribution(runtime));
           // Codex custom agents are standalone TOML files (2026-06 format);
           // markdown in .codex/agents/ is not recognized. Handle before

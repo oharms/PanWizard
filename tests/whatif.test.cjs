@@ -234,6 +234,23 @@ describe('whatif — worktree lifecycle (integration)', () => {
     assert.equal(fs.existsSync(wt.worktree_path), false);
   });
 
+  test('a repeat of the same phase and scenario gets its own worktree', (t) => {
+    // The timestamp was cut to ten-minute resolution, so a second run within that
+    // window failed: "a branch named 'pan-whatif/…T00-4' already exists".
+    if (!tmpDir) { t.skip('git unavailable'); return; }
+    const a = createWorktree(tmpDir, '07', 'Try SQLite');
+    if (a.error) { t.skip(a.error); return; }
+    const b = createWorktree(tmpDir, '07', 'Try SQLite');
+    try {
+      assert.equal(b.error, undefined, `the second run failed: ${b.error}`);
+      assert.notEqual(a.branch, b.branch);
+      assert.notEqual(a.worktree_path, b.worktree_path);
+    } finally {
+      cleanupWorktree(tmpDir, a.worktree_path, a.branch, { force: true });
+      if (!b.error) cleanupWorktree(tmpDir, b.worktree_path, b.branch, { force: true });
+    }
+  });
+
   test('createWorktree errors on non-git directory', () => {
     const nonGit = createTempProject();
     try {

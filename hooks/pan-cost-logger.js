@@ -655,6 +655,7 @@ function buildCostRecord(data, cwd) {
   let cacheWrite = 0;
   // { h1, m5 } when the source carried the cache-write lifetime split (M13).
   let ttlSplit = null;
+  let longPrompt = null;
   let durationMs = null;
   // token_source records WHICH path produced the counts: `agent-transcript` (the
   // subagent's own conversation file — see resolveAgentTranscript), `transcript`
@@ -717,6 +718,9 @@ function buildCostRecord(data, cwd) {
     if (typeof fromTranscript.cache_write_1h_tokens === 'number' && rawCw <= SLICE_MAX.cache_write) {
       ttlSplit = { h1: fromTranscript.cache_write_1h_tokens, m5: fromTranscript.cache_write_5m_tokens || 0 };
     }
+    // The long-prompt part of the slice, kept only when nothing was clamped (a clamped
+    // total no longer contains it).
+    if (fromTranscript.long_prompt && !clamped) longPrompt = fromTranscript.long_prompt;
     durationMs = durationFromSpan(fromTranscript.first_ts, fromTranscript.last_ts); // as measured — see SLICE_MAX
     if (!model) model = fromTranscript.model;
     if (fromTranscript.lineCount > since) {
@@ -809,6 +813,8 @@ function buildCostRecord(data, cwd) {
     cache_write_tokens: cacheWrite,
     // The lifetime split of cache_write_tokens, present only when measured (M13).
     ...(ttlSplit ? { cache_write_1h_tokens: ttlSplit.h1, cache_write_5m_tokens: ttlSplit.m5 } : {}),
+    // Tokens of the requests whose prompt was over LONG_PROMPT_THRESHOLD, when any were.
+    ...(longPrompt ? { long_prompt: longPrompt } : {}),
     cost_usd: null,
     duration_ms: durationMs,
     phase,
@@ -938,6 +944,7 @@ function readUsageFromTranscript(transcriptPath, sessionId, sinceLine = 0) {
     totals.cache_read_input_tokens += extractNumber(usage, 'cache_read_input_tokens');
     totals.cache_creation_input_tokens += extractNumber(usage, 'cache_creation_input_tokens');
     addCacheTtlSplit(totals, usage);
+    addLongPrompt(totals, usage);
   }
   totals.lineCount = seen;
   return totals;
@@ -956,6 +963,29 @@ function addCacheTtlSplit(totals, usage) {
   if (!cc || typeof cc !== 'object') return;
   totals.cache_write_1h_tokens = (totals.cache_write_1h_tokens || 0) + extractNumber(cc, 'ephemeral_1h_input_tokens');
   totals.cache_write_5m_tokens = (totals.cache_write_5m_tokens || 0) + extractNumber(cc, 'ephemeral_5m_input_tokens');
+}
+
+// Haiku 5.5 bills a request whose prompt (input plus cache reads and writes) is over
+// this many tokens at higher rates, request by request. A row sums many requests, so
+// the tokens of those over it are kept apart as `long_prompt`, and the read side
+// (lib/cost.cjs computeCost) prices them at the model's long rate. A copy of
+// LONG_PROMPT_THRESHOLD in lib/cost.cjs: hooks require nothing from lib, and
+// tests/cost-long-prompt.test.cjs pins the two equal.
+const LONG_PROMPT_THRESHOLD = 100000;
+
+/** Add one request's usage to `totals.long_prompt` when its prompt is over the threshold. */
+function addLongPrompt(totals, usage) {
+  const inp = extractNumber(usage, 'input_tokens');
+  const cr = extractNumber(usage, 'cache_read_input_tokens');
+  const cw = extractNumber(usage, 'cache_creation_input_tokens');
+  if (inp + cr + cw <= LONG_PROMPT_THRESHOLD) return;
+  const lp = totals.long_prompt || (totals.long_prompt = { above: LONG_PROMPT_THRESHOLD, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cache_write_1h_tokens: 0 });
+  lp.input_tokens += inp;
+  lp.output_tokens += extractNumber(usage, 'output_tokens');
+  lp.cache_read_tokens += cr;
+  lp.cache_write_tokens += cw;
+  const cc = usage && usage.cache_creation;
+  if (cc && typeof cc === 'object') lp.cache_write_1h_tokens += extractNumber(cc, 'ephemeral_1h_input_tokens');
 }
 
 /**

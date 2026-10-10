@@ -2,7 +2,7 @@
 name: pan:health
 group: System
 description: Diagnose planning directory health and optionally repair issues
-argument-hint: "[--repair]"
+argument-hint: "[--repair] [--standards] [--full] [--drift] [--links]"
 allowed-tools:
   - Read
   - Bash
@@ -19,5 +19,5 @@ Validate `.planning/` directory integrity and report actionable issues. Checks f
 
 <process>
 Execute the health workflow from @~/.claude/pan-wizard-core/workflows/health.md end-to-end.
-Parse --repair flag from arguments and pass to workflow.
+Pass the arguments to the workflow, which forwards `--repair`, `--standards`, `--full`, `--drift` and `--links` to `validate health`.
 </process>

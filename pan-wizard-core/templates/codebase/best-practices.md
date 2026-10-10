@@ -8,7 +8,7 @@ Template for `.planning/codebase/best-practices.md` - assesses coding practices 
 
 ## File Template
 
-```markdown
+~~~markdown
 # Best Practices Assessment
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -98,7 +98,7 @@ Top 3 improvements ranked by impact:
 
 *Best practices assessment: [date]*
 *Update after significant codebase changes*
-```
+~~~
 
 <guidelines>
 **What belongs in best-practices.md:**

@@ -40,7 +40,7 @@ The golden rule: **Claude automates everything possible, checkpoints verify outc
 Before presenting a `human-verify` checkpoint, the executor:
 1. Starts the dev server automatically
 2. Runs build/compile steps
-3. Navigates to the right URL
+3. Checks the URL it will hand you responds (`curl`)
 4. Checks for runtime errors
 5. THEN asks you to verify visually
 
@@ -187,7 +187,7 @@ PAN creates granular, per-task commits during execution -- not bulk commits per 
 feat(04-01): Add user authentication middleware
 test(04-01): Add auth middleware test suite
 fix(04-02): Handle expired JWT tokens in refresh flow
-docs(04-02): Add SUMMARY with execution metrics
+docs(04-02): complete refresh-token plan
 ```
 
 ### Why Per-Task Commits?
@@ -207,11 +207,13 @@ PAN uses three profiles to control which model tier each agent type uses. Tiers 
 
 ### Tier Mapping
 
-| Tier | Anthropic | OpenAI | Google | Default |
-|------|-----------|--------|--------|---------|
-| `reasoning` | inherit (Opus) | inherit | inherit | inherit |
-| `mid` | Sonnet | gpt-6-sol | gemini-3.8-flash | Sonnet |
-| `fast` | Haiku | gpt-6-luna | gemini-3.5-flash-lite | Haiku |
+| Tier | Resolves to |
+|------|-------------|
+| `reasoning` | `inherit` on every provider: the model the session was launched with |
+| `mid` | the provider's mid-size model (Anthropic and the default: the `sonnet` alias) |
+| `fast` | the provider's smallest, fastest model (Anthropic and the default: the `haiku` alias) |
+
+The OpenAI and Google model ids live in `PROVIDER_MODELS` in `core.cjs`; read them there rather than from a copy here.
 
 Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) are supported for backward compatibility. On an OpenCode install the mid and fast tiers resolve to provider-qualified `provider/model` ids (`OPENCODE_MODELS` in `core.cjs`), the only form OpenCode accepts.
 
@@ -244,7 +246,7 @@ Model resolution follows a priority chain:
 
 ### Routing Strategies
 
-- **static** (default): Profile assigns fixed tiers. No runtime adjustment.
+- **static** (default): Profile assigns the tiers; no complexity scoring. Capability hints and failure escalation (steps 5–6 above) still apply when the caller passes them.
 - **complexity**: Scores task metadata (fileCount, waveCount, requirementCount, isArchitectural) and adjusts tier ±1 level. Configurable thresholds: `downgrade_max` (default 2), `upgrade_min` (default 6).
 
 ### Cost Multipliers
@@ -296,7 +298,7 @@ PAN supports three git branching strategies for project organization.
 | Variable | Resolves to | Example |
 |----------|------------|---------|
 | `{phase}` | Zero-padded phase number | `01`, `02.1` |
-| `{slug}` | Phase name as slug | `setup-auth` |
+| `{slug}` | Phase name as slug (in the milestone template, the milestone name) | `setup-auth` |
 | `{milestone}` | Milestone version | `v0.2.0` |
 
 ### Merge at Completion

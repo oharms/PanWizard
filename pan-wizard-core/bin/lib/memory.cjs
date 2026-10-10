@@ -318,7 +318,31 @@ function buildHeader(agent) {
 }
 
 /**
- * Trim a memory file to the last N entries. Preserves frontmatter header.
+ * Append a block to `.planning/memory/archive/<agent>.md`, creating it with its
+ * preamble. Callers write the archive BEFORE they rewrite the log, so an entry is
+ * never in neither place.
+ * @param {string} cwd - Project root
+ * @param {string} agent - Agent name (already validated)
+ * @param {string} block - Bullet block to append (LF)
+ * @returns {string} The archive's absolute path
+ */
+function appendToMemoryArchive(cwd, agent, block) {
+  fs.mkdirSync(path.join(memoryDir(cwd), MEMORY_ARCHIVE_DIR), { recursive: true });
+  const archivePath = path.join(memoryDir(cwd), MEMORY_ARCHIVE_DIR, `${agent}.md`);
+  const preamble = `# Archived memory: ${agent}\n\nEntries moved out of \`${planningRel(MEMORY_DIR, `${agent}.md`)}\` by \`memory prune\` (their cited code was gone, or they went unused for the expiry window) or by compaction (past the log's entry cap). To restore one, move its line back under \`## Entries\` there.\n`;
+  try {
+    fs.writeFileSync(archivePath, preamble, { flag: 'wx', encoding: 'utf-8' });
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+  }
+  fs.appendFileSync(archivePath, withEol(block, dominantEol(fs.readFileSync(archivePath, 'utf-8'))), 'utf-8');
+  return archivePath;
+}
+
+/**
+ * Trim a memory file to the last N entries. Preserves frontmatter header. The
+ * entries it drops go to the agent's archive first, as `memory prune` does: they
+ * may be lessons a person recorded, and compaction used to discard them.
  * @param {string} cwd - Project root
  * @param {string} agent - Agent name
  * @param {number} maxEntries - Keep this many most-recent entries
@@ -346,8 +370,17 @@ function compactMemory(cwd, agent, maxEntries = DEFAULT_MAX_ENTRIES) {
   }
 
   const keep = entries.slice(-max);
-  const removed = entries.length - keep.length;
+  const dropped = entries.slice(0, entries.length - keep.length);
+  const removed = dropped.length;
 
+  // 1. The archive first.
+  try {
+    appendToMemoryArchive(cwd, agent, `\n<!-- compacted on ${isoDay(new Date())} -->\n`
+      + dropped.map(e => `- ${e}\n  - compacted: past the ${max}-entry cap`).join('\n') + '\n');
+  } catch (e) {
+    return { error: `Failed to archive the compacted entries: ${e.message}` };
+  }
+  // 2. Only then rewrite the log.
   const headerMatch = raw.match(/^---[\s\S]*?---/);
   const header = headerMatch ? headerMatch[0] : buildHeader(agent);
   const body = '\n\n## Entries\n\n' + keep.map(e => `- ${e}`).join('\n') + '\n';
@@ -356,7 +389,7 @@ function compactMemory(cwd, agent, maxEntries = DEFAULT_MAX_ENTRIES) {
   } catch (e) {
     return { error: `Failed to write memory file: ${e.message}` };
   }
-  return { compacted: true, kept: keep.length, removed };
+  return { compacted: true, kept: keep.length, removed, archived: removed, archive: planningRel(MEMORY_DIR, MEMORY_ARCHIVE_DIR, `${agent}.md`) };
 }
 
 /**
@@ -647,15 +680,7 @@ function pruneMemory(cwd, agent, opts = {}) {
   for (const a of agents) {
     if (!a.archive.length) continue;
     // 1. The archive first.
-    const archivePath = path.join(memoryDir(cwd), MEMORY_ARCHIVE_DIR, `${a.agent}.md`);
-    const preamble = `# Archived memory: ${a.agent}\n\nEntries \`memory prune\` moved out of \`${planningRel(MEMORY_DIR, `${a.agent}.md`)}\`: their cited code was gone, or they went unused for the expiry window. To restore one, move its line back under \`## Entries\` there.\n`;
-    try {
-      fs.writeFileSync(archivePath, preamble, { flag: 'wx', encoding: 'utf-8' });
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw e;
-    }
-    const block = `\n<!-- pruned on ${day} -->\n` + a.archive.map(x => `- ${x.entry}\n  - pruned: ${x.reason}`).join('\n') + '\n';
-    fs.appendFileSync(archivePath, withEol(block, dominantEol(fs.readFileSync(archivePath, 'utf-8'))), 'utf-8');
+    appendToMemoryArchive(cwd, a.agent, `\n<!-- pruned on ${day} -->\n` + a.archive.map(x => `- ${x.entry}\n  - pruned: ${x.reason}`).join('\n') + '\n');
     // 2. Only then take those bullet lines out of the log.
     const lines = toLf(a.raw).split('\n');
     const at = entryLineIndexes(lines);
@@ -718,6 +743,10 @@ function memoryLoadBudget(cwd, opts = {}) {
 
 function cmdMemoryRead(cwd, agent, raw) {
   if (!agent) { error('Usage: memory read <agent>'); }
+  // An archive or invalid name is refused, as append, select and prune refuse it:
+  // answering `exists: false` hid that state-archive.md was right there.
+  const refused = validateAgentName(agent);
+  if (refused) { output({ agent, error: refused }, raw); return; }
   const result = readMemory(cwd, agent);
   if (!result) { output({ agent, entries: [], exists: false }, raw); return; }
   output({ agent, entries: result.entries, exists: true }, raw);

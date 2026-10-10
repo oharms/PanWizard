@@ -2,7 +2,7 @@
 name: pan:cost
 group: Observability
 description: Show token usage and estimated cost across PAN commands and agents
-argument-hint: "[report|append|clear|rebuild] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]"
+argument-hint: "[report|append|clear|rebuild|limits] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]"
 allowed-tools:
   - Read
   - Bash
@@ -13,7 +13,7 @@ Report token usage and estimated cost across all PAN invocations in this project
 
 Reads `.planning/metrics/tokens.jsonl` — an append-only log where each line is one call (agent or command) with token counts and model. Cost is computed from a built-in rate table (overridable via `.planning/config.json` → `cost.rates`).
 
-Default output is JSON for piping. Use `--format table` for human-readable tables or `--format chart` for an ASCII bar chart of daily spend.
+Default output is JSON for piping. Use `--format table` for human-readable tables or `--format chart` for an ASCII bar chart of daily spend; both print text, with or without `--raw`.
 </objective>
 
 <execution_context>
@@ -33,7 +33,7 @@ pan-tools cost report [--format json|table|chart] [--since YYYY-MM-DD] [--until 
 **Flags:**
 - `--format` — `json` (default, for tools) | `table` (aligned text columns) | `chart` (per-day ASCII bars).
 - `--since` — ISO date lower bound (inclusive). Records without `ts` always pass.
-- `--until` — ISO date upper bound (inclusive).
+- `--until` — ISO upper bound (inclusive): a bare date covers that whole day.
 
 **JSON output shape:**
 ```json
@@ -80,6 +80,10 @@ Delete the cost log. Useful at the start of a billing cycle.
 ```
 pan-tools cost clear
 ```
+
+### `limits`
+
+`pan-tools cost limits` shows Claude Code's 5-hour and 7-day usage windows as the status line last saw them, and whether the 7-day one has reached `cost.weekly_limit_stop_pct` (default 90%), where `/pan:focus-auto` and `/pan:army` stop. Interactive Claude Code sessions on a subscription only: headless runs and other runtimes have no reading.
 
 ### `rebuild`
 
@@ -134,7 +138,7 @@ If `.planning/metrics/tokens.jsonl` is empty, `/pan:cost` returns zero totals �
 | Runtime | Support |
 |---------|---------|
 | Claude Code | Full — data format + aggregation + all output formats |
-| OpenCode | Full aggregator; PAN registers no hooks on OpenCode, so records come from `pan-tools cost append` or an external script |
+| OpenCode | Full aggregator; PAN's only OpenCode hook is its plugin's compaction hook (`plugins/pan-wizard.js`), so cost records come from `pan-tools cost append` or an external script |
 | Gemini | Full aggregator; PAN registers no cost hook on Gemini CLI (no subagent-completion event), so records come from `pan-tools cost append` or an external script |
 | Codex | Full — `pan-cost-logger` registered on `SubagentStop` in `.codex/hooks.json` |
 | Copilot CLI | Full aggregator; `pan-cost-logger` registered on `subagentStop` in `.github/hooks/pan.json` (token counts depend on what the payload carries) |

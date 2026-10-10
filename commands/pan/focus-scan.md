@@ -2,8 +2,10 @@
 name: focus-scan
 group: Focus
 description: Deep-dive strategic work scan with prioritized items and Reality Score filtering
+argument-hint: "[--focus <area>] [--quick] [--refresh] [--lean]"
 allowed-tools:
   - Read
+  - Write
   - Bash
   - Grep
   - Glob
@@ -22,13 +24,13 @@ Survey the project for prioritized work items with evidence-based scoring. $ARGU
 This command scans the **host project's source code** for work items — not PAN Wizard's own infrastructure.
 
 **Exclude these directories from scanning:**
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/` — PAN runtime directories
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
 - `.planning/` — PAN planning state (read for context, but never report PAN planning files as "issues")
 - Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
 
 **These directories are PAN's own tooling installed into the project.** Do not report TODO/FIXME items found in PAN files. Do not flag PAN files as lacking test coverage. Do not suggest improvements to PAN's agents, commands, or core modules.
 
-If a scan finding points to a file inside `.claude/`, `.github/`, `.opencode/`, `.gemini/`, or `.codex/` — DROP IT. It is not the project's responsibility.
+If a scan finding points to a file in one of the PAN paths listed above — DROP IT. It is not the project's responsibility.
 
 ---
 
@@ -235,7 +237,7 @@ Gather items from:
 ## Phase 5: Scan Assembly
 
 ### 5.1 Output
-Return JSON via `pan-tools focus scan` with all items, or write to `.planning/focus/` for persistence.
+Write the scan to `.planning/focus/scan-<YYYY-MM-DD>.md`, where `/pan:focus-plan` builds from it and `/pan:focus-exec` updates it (Stage 5.2). `pan-tools focus scan` does not take these items: it lists only incomplete roadmap phases that have a directory, pending todos and `.planning/patterns.md` entries.
 
 ### 5.2 Document Structure
 

@@ -15,7 +15,7 @@ Interactive configuration of PAN workflow agents and model profile via multi-que
 Routes to the settings workflow which handles:
 - Config existence ensuring
 - Current settings reading and parsing
-- Interactive 5-question prompt (model, research, plan_check, verifier, branching)
+- Interactive multi-question prompt (model profile, research, plan_check, verifier, auto_advance, nyquist_validation, branching strategy, routing strategy)
 - Config merging and writing
 - Confirmation display with quick command references
 </objective>

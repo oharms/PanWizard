@@ -300,6 +300,23 @@ function formatLearningEntry(learning) {
 }
 
 /**
+ * A summary's `key-files` as one list. The summary templates write `{created, modified}`;
+ * older summaries carry a flat list. Only the flat list was read, so summaries PAN writes
+ * gave no co-change learnings, and one beside a flat-list summary crashed on `.includes`.
+ * @param {Object} fm - Summary frontmatter
+ * @returns {string[]}
+ */
+function keyFileList(fm) {
+  const kf = fm['key-files'] || fm.key_files;
+  if (Array.isArray(kf)) return kf.map(String);
+  if (kf && typeof kf === 'object') {
+    const list = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
+    return [...new Set([...list(kf.created), ...list(kf.modified)].map(String))];
+  }
+  return [];
+}
+
+/**
  * Extract learnings from session summaries and error patterns.
  * Reads session history + error patterns, extracts file co-change patterns
  * and error resolutions, writes to .planning/learnings.md.
@@ -347,7 +364,7 @@ function cmdLearningsExtract(cwd, raw) {
   const fileCoChanges = new Map(); // file -> Set of co-changed files
 
   for (const { frontmatter } of summaries) {
-    const keyFiles = Array.isArray(frontmatter['key-files']) ? frontmatter['key-files'] : [];
+    const keyFiles = keyFileList(frontmatter);
     if (keyFiles.length < 2) continue;
     for (const file of keyFiles) {
       if (!fileCoChanges.has(file)) fileCoChanges.set(file, new Set());
@@ -368,7 +385,7 @@ function cmdLearningsExtract(cwd, raw) {
       // Count co-occurrences
       let count = 0;
       for (const { frontmatter } of summaries) {
-        const kf = frontmatter['key-files'] || [];
+        const kf = keyFileList(frontmatter);
         if (kf.includes(file) && kf.includes(coFile)) count++;
       }
       if (count < 2) continue;

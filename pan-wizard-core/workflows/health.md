@@ -11,13 +11,13 @@ Read all files referenced by the invoking prompt's execution_context before star
 <step name="parse_args">
 **Parse arguments:**
 
-Check if `--repair` flag is present in the command arguments.
+Check which of `--repair`, `--standards`, `--full`, `--drift` and `--links` are present in the command arguments; `validate health` reads all five.
 
 ```
-REPAIR_FLAG=""
-if arguments contain "--repair"; then
-  REPAIR_FLAG="--repair"
-fi
+HEALTH_FLAGS=""
+for flag in --repair --standards --full --drift --links; do
+  if arguments contain "$flag"; then HEALTH_FLAGS="$HEALTH_FLAGS $flag"; fi
+done
 ```
 </step>
 
@@ -25,7 +25,7 @@ fi
 **Run health validation:**
 
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs validate health $REPAIR_FLAG
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs validate health $HEALTH_FLAGS
 ```
 
 Parse JSON output:
@@ -84,7 +84,7 @@ Errors: N | Warnings: N | Info: N
 ```
 ## Errors
 
-- [E001] config.json: JSON parse error at line 5
+- [E005] config.json: JSON parse error - <parser message>
   Fix: Run /pan:health --repair to reset to defaults
 
 - [E002] project.md not found
@@ -95,7 +95,7 @@ Errors: N | Warnings: N | Info: N
 ```
 ## Warnings
 
-- [W001] state.md references phase 5, but only phases 1-3 exist
+- [W002] state.md references phase 5, but only phases 01, 02, 03 exist
   Fix: Run /pan:health --repair to regenerate
 
 - [W005] Phase directory "1-setup" doesn't follow NN-name format
@@ -165,8 +165,8 @@ Report final status.
 | I003 | info | Focus-model or campaign tree — the phase-model checks do not apply | No |
 | I004 | info | planning-with-files shares the tree — PAN leaves its files alone | No |
 | I005 | info | The planning tree is gitignored while commit_docs is true — planning commits commit nothing | No |
-| I006 | info | config.json holds keys PAN does not read (usually a typo); the fix names the nearest known key | No |
-| STATE_REQ_DRIFT | warning | state.md complete but REQUIREMENTS.md has unchecked boxes | Yes |
+| I006 | info | config.json holds keys PAN's code does not read (usually a typo); the fix names the nearest known key. It also lists `gates` and `safety` from templates/config.json: the `custom`-mode conditions in transition.md and execute-plan.md read `gates`; nothing reads `safety` (transition.md asks before skipping plans in every mode) | No |
+| STATE_REQ_DRIFT | warning | state.md complete but requirements.md has unchecked boxes | Yes |
 | STATE_ROADMAP_DRIFT | warning | state.md complete but roadmap.md has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record | No |
 
@@ -196,7 +196,9 @@ or behind the current position warns.
 |--------|--------|------|
 | createConfig | Create config.json with defaults | None |
 | resetConfig | Delete + recreate config.json | Loses custom settings |
-| regenerateState | Create state.md from ROADMAP structure | Loses session history |
+| regenerateState | Back up state.md to `state.md.bak-<timestamp>`, then create state.md from ROADMAP structure | Session history only in the backup |
+| syncRequirements | Tick requirements.md boxes when state.md says every plan is done (STATE_REQ_DRIFT) | Edits requirements.md checkboxes |
+| syncRoadmap | Tick roadmap.md plan boxes when state.md says every plan is done (STATE_ROADMAP_DRIFT) | Edits roadmap.md checkboxes |
 
 **Not repairable (too risky):**
 - project.md, roadmap.md content

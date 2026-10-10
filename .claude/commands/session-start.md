@@ -7,9 +7,9 @@ description: Start a PAN Wizard development session by loading project context a
 ## Project Context Loading...
 
 ### Current State
-!`cd d:\PanWizard && git log --oneline -1 --format="%H %ci" 2>$null`
-!`cd d:\PanWizard && git branch --show-current 2>$null`
-!`cd d:\PanWizard && git status --short 2>$null`
+!`git -C D:/PanWizard log --oneline -1 --format="%H %ci"`
+!`git -C D:/PanWizard branch --show-current`
+!`git -C D:/PanWizard status --short`
 
 ---
 

@@ -3,7 +3,7 @@ Orchestrate parallel codebase mapper agents to analyze codebase and produce stru
 
 Each agent has fresh context, explores a specific focus area, and **writes documents directly**. The orchestrator only receives confirmation + line counts, then writes a summary.
 
-Output: .planning/codebase/ folder with 9 structured documents about the codebase state.
+Output: .planning/codebase/ folder with structured documents about the codebase state.
 </purpose>
 
 <philosophy>
@@ -109,7 +109,7 @@ Use Task tool with `subagent_type="pan-document_code"`, `model="{mapper_model}"`
 **CRITICAL:** Use the dedicated `pan-document_code` agent, NOT `Explore`. The mapper agent writes documents directly.
 
 **CRITICAL: Project Scope Boundary — include this line in EVERY agent prompt:**
-> SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure directories: .claude/, .github/copilot-instructions.md, .opencode/, .gemini/, .codex/, .planning/
+> SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure paths: .claude/, .opencode/, .gemini/, .codex/, .agents/, .planning/, and the Copilot runtime paths PAN installs into under .github/ (agents/, skills/, hooks/, copilot/, pan-wizard-core/, pan-local-patches/, mcp.json, package.json, pan-file-manifest.json)
 
 **Agent 1: Tech Focus**
 
@@ -120,7 +120,7 @@ Task(
   run_in_background=true,
   description="Map codebase tech stack",
   prompt="Focus: tech
-SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure directories: .claude/, .github/copilot-instructions.md, .opencode/, .gemini/, .codex/, .planning/
+SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure paths: .claude/, .opencode/, .gemini/, .codex/, .agents/, .planning/, and the Copilot runtime paths PAN installs into under .github/ (agents/, skills/, hooks/, copilot/, pan-wizard-core/, pan-local-patches/, mcp.json, package.json, pan-file-manifest.json)
 
 Analyze this codebase for technology stack and external integrations.
 
@@ -142,7 +142,7 @@ Task(
   run_in_background=true,
   description="Map codebase architecture",
   prompt="Focus: arch
-SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure directories: .claude/, .github/copilot-instructions.md, .opencode/, .gemini/, .codex/, .planning/
+SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure paths: .claude/, .opencode/, .gemini/, .codex/, .agents/, .planning/, and the Copilot runtime paths PAN installs into under .github/ (agents/, skills/, hooks/, copilot/, pan-wizard-core/, pan-local-patches/, mcp.json, package.json, pan-file-manifest.json)
 
 Analyze this codebase architecture and directory structure.
 
@@ -164,7 +164,7 @@ Task(
   run_in_background=true,
   description="Map codebase conventions",
   prompt="Focus: quality
-SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure directories: .claude/, .github/copilot-instructions.md, .opencode/, .gemini/, .codex/, .planning/
+SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure paths: .claude/, .opencode/, .gemini/, .codex/, .agents/, .planning/, and the Copilot runtime paths PAN installs into under .github/ (agents/, skills/, hooks/, copilot/, pan-wizard-core/, pan-local-patches/, mcp.json, package.json, pan-file-manifest.json)
 
 Analyze this codebase for coding conventions and testing patterns.
 
@@ -185,7 +185,7 @@ Task(
   run_in_background=true,
   description="Map codebase concerns",
   prompt="Focus: concerns
-SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure directories: .claude/, .github/copilot-instructions.md, .opencode/, .gemini/, .codex/, .planning/
+SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure paths: .claude/, .opencode/, .gemini/, .codex/, .agents/, .planning/, and the Copilot runtime paths PAN installs into under .github/ (agents/, skills/, hooks/, copilot/, pan-wizard-core/, pan-local-patches/, mcp.json, package.json, pan-file-manifest.json)
 
 Analyze this codebase for technical debt, known issues, and areas of concern.
 
@@ -206,7 +206,7 @@ Task(
   run_in_background=true,
   description="Map module relationships",
   prompt="Focus: relationships
-SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure directories: .claude/, .github/copilot-instructions.md, .opencode/, .gemini/, .codex/, .planning/
+SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure paths: .claude/, .opencode/, .gemini/, .codex/, .agents/, .planning/, and the Copilot runtime paths PAN installs into under .github/ (agents/, skills/, hooks/, copilot/, pan-wizard-core/, pan-local-patches/, mcp.json, package.json, pan-file-manifest.json)
 
 Analyze module dependencies using pre-computed import analysis.
 
@@ -230,7 +230,7 @@ Task(
   run_in_background=true,
   description="Map best practices",
   prompt="Focus: practices
-SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure directories: .claude/, .github/copilot-instructions.md, .opencode/, .gemini/, .codex/, .planning/
+SCOPE: Only analyze project source code. EXCLUDE these PAN infrastructure paths: .claude/, .opencode/, .gemini/, .codex/, .agents/, .planning/, and the Copilot runtime paths PAN installs into under .github/ (agents/, skills/, hooks/, copilot/, pan-wizard-core/, pan-local-patches/, mcp.json, package.json, pan-file-manifest.json)
 
 Assess codebase best practices using pre-computed analysis.
 
@@ -284,7 +284,7 @@ wc -l .planning/codebase/*.md
 ```
 
 **Verification checklist:**
-- All 9 documents exist (lowercase filenames)
+- All codebase documents the mapper prompts list exist (lowercase filenames)
 - No empty documents (each should have >20 lines)
 
 If any documents missing or empty, note which agents may have failed.
@@ -395,7 +395,7 @@ End workflow.
 - Relationships agent receives pre-computed import/dependency data
 - Practices agent receives pre-computed language and best-practices data
 - Read agent output files to collect confirmations
-- All 9 codebase documents exist (lowercase filenames)
+- All codebase documents the mapper prompts list exist (lowercase filenames)
 - Clear completion summary with line counts
 - User offered clear next steps in PAN style
 </success_criteria>

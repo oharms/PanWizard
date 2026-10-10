@@ -38,17 +38,17 @@ README.md, docs/*.md ← MUST NOT embed numeric counts at all
 CHANGELOG.md     ← historical record (frozen-in-time, never update past entries)
 ```
 
-- [ ] `package.json` version matches CLAUDE.md header and CHANGELOG.md latest entry
+- [ ] `package.json` version matches CHANGELOG.md's latest released entry (CLAUDE.md and README.md carry no version number; CLAUDE.md points at `package.json`)
 - [ ] CLAUDE.md "Counts" table reflects current filesystem state. Refresh via the snippet at the top of CLAUDE.md.
 - [ ] **No other doc embeds a count.** If you find a numeric count in README.md, docs/*.md, or comments, **delete the number** (replace with qualitative phrasing like "specialized agents", "extensive command set", "the shipped commands"). Do NOT chase the drift across files.
 
 **Stable identities are still allowed** in any doc:
 - "5 target runtimes" (claude/codex/gemini/opencode/copilot — fundamental design, doesn't drift)
-- "6 hooks" (named individually: check-update / context-monitor / statusline / cost-logger / trace-logger / stop-guard)
+- The hooks named individually (check-update / context-monitor / statusline / cost-logger / trace-logger / stop-guard / state-reinject) — names only; the hook count lives in CLAUDE.md's counts table
 - Specific file paths (e.g., `bin/install.js`, `agents/pan-planner.md`)
 - Architecture layer numbers ("Layer 1", "Layer 2") — these are labels, not counts
 
-**Drift-prone counts** (NEVER embed in any doc except CLAUDE.md): tests, suites, test files, commands, agents, modules, workflows, templates, references, specs, ADRs, install.js LOC, install-lib.cjs export count, dispatcher subcommand count, dispatch path count.
+**Drift-prone counts** (NEVER embed in any doc except CLAUDE.md): tests, suites, test files, commands, agents, modules, workflows, templates, references, specs, ADRs, hooks, install.js LOC, install-lib.cjs export count, dispatcher subcommand count, dispatch path count.
 
 ### 2. Code Reference Accuracy
 - [ ] File paths mentioned in docs actually exist in workspace
@@ -65,10 +65,10 @@ CHANGELOG.md     ← historical record (frozen-in-time, never update past entrie
 - [ ] External URLs are accessible (if --deep, fetch and check status)
 
 ### 4. Cross-Document Consistency
-- [ ] Version number identical in: package.json, CLAUDE.md, README.md, CHANGELOG.md
+- [ ] Version number: package.json and CHANGELOG.md's latest release heading agree (CLAUDE.md and README.md carry none)
 - [ ] Counts appear ONLY in CLAUDE.md — any drift-prone count in another doc is a violation (delete it, don't sync it)
 - [ ] Runtime list (5 runtimes) consistent across: CLAUDE.md, README.md, USER-GUIDE.md, install.js
-- [ ] CLI flag names consistent between: install.js arg parser, CLI-REFERENCE.md, README.md
+- [ ] Installer flag names consistent between install.js's arg parser and README.md's install section; `pan-tools` flag names between pan-tools.cjs and CLI-REFERENCE.md
 
 ### 5. Structural Validity
 - [ ] Tables properly formatted (columns align, no missing pipes)
@@ -98,7 +98,7 @@ The most important check: does the document's **prose actually describe what the
 **What to verify:**
 - [ ] **Architecture descriptions match code** — if doc says "16 core CJS modules", count them
 - [ ] **Installer behavior claims** — if doc says "--all installs 5 runtimes", read the install code
-- [ ] **Hook behavior descriptions** — if doc says hooks fire on SessionStart, verify in settings.json schema
+- [ ] **Hook behavior descriptions** — if doc says hooks fire on SessionStart, verify in `HOOK_EVENT_MAP` (bin/install-lib.cjs), which sets each runtime's hook events
 - [ ] **Command descriptions** — spot-check 5 command docs against their actual implementations
 - [ ] **Agent tool access claims** — if AGENTS.md says pan-reviewer has "Read, Grep, Glob, Bash", verify the agent markdown
 - [ ] **Model profile table** — verify MODEL_PROFILES in core.cjs matches what docs/AGENTS.md shows
@@ -153,7 +153,7 @@ echo "References: $(ls pan-wizard-core/references/*.md | wc -l)"
 echo "Specs: $(ls docs/specs/*.md | wc -l)"
 echo "ADRs: $(ls docs/decisions/ADR-*.md | wc -l)"
 echo "Test files: $(ls tests/*.test.cjs tests/scenarios/*.test.cjs | wc -l)"
-echo "Hooks: $(ls hooks/dist/*.js 2>/dev/null | wc -l)"
+echo "Hooks: $(ls hooks/*.js | wc -l)"
 
 # Dispatcher subcommands (approximate)
 grep -c "case '" pan-wizard-core/bin/pan-tools.cjs
@@ -166,7 +166,7 @@ For each target document:
 2. **Scan for forbidden numeric counts** — find any number that looks like a tests/commands/agents/modules/workflows/templates/refs/specs/ADRs count.
    - In `CLAUDE.md`: cross-check against filesystem; refresh if drifted.
    - In **any other doc**: this is a violation of the count-SSoT rule. **Delete the number** (replace with qualitative phrasing or remove entirely). Do NOT update it.
-3. **Extract all version references** — patterns like `3.7.0`, `v3.X`. Only `CLAUDE.md` and `CHANGELOG.md` should carry a version; CHANGELOG entries are frozen-in-time.
+3. **Extract all version references** — patterns like `3.7.0`, `v3.X`. Only `package.json` and `CHANGELOG.md` should carry a version (CLAUDE.md points at `package.json`); CHANGELOG entries are frozen-in-time.
 4. **Extract all file paths** — verify each exists
 5. **Extract all CLI examples** — verify flags exist in argument parsers
 
@@ -201,7 +201,7 @@ Use this format:
 - CLAUDE.md counts table: refreshed / drifted (refresh in CLAUDE.md only)
 
 ### CLAUDE.md (Score: XX%)
-✅ Version 3.7.X matches package.json
+✅ Version row points at package.json (CLAUDE.md carries no version number)
 ✅ Counts table values match filesystem (or drift list with refresh)
 ⚠️ Test count says 1972 but actual is 1976
 ❌ Claims "31 workflow definitions" but actual count is 30
@@ -219,7 +219,7 @@ Use this format:
 
 ### Step 5: Auto-Fix (if --fix)
 For issues that can be auto-fixed:
-- **In CLAUDE.md only:** refresh the counts table to match filesystem; bump version reference to match `package.json`.
+- **In CLAUDE.md only:** refresh the counts table to match filesystem (its Version row points at `package.json`, so there is no version number to bump).
 - **In every other doc:** if a numeric count is found, **delete the number** (replace with qualitative phrasing). Never propagate a number into a non-CLAUDE.md doc.
 - Fix internal link case sensitivity.
 
@@ -247,8 +247,8 @@ Report what was fixed and what requires manual attention.
 
 1. **Count-SSoT violations (v3.7.9+)** — Counts are only allowed in `CLAUDE.md`. If you find a numeric count of tests/commands/agents/modules/etc. in any other doc, **delete the number** rather than chasing the drift. The count-SSoT rule was introduced after a single audit cycle found 39 stale numbers across 9 docs.
 2. **CLAUDE.md counts table drift** — The one place numbers are allowed will still drift. Refresh from filesystem when needed (snippet at top of CLAUDE.md regenerates the values).
-3. **Stale installer flag docs** — New CLI flags added to install.js but not documented in CLI-REFERENCE.md or README.md.
-4. **Runtime-specific claims** — "Hooks supported by all runtimes" but actually only Claude/Gemini/Copilot support hooks.
+3. **Stale installer flag docs** — New CLI flags added to install.js but not documented in README.md (CLI-REFERENCE.md covers `pan-tools` only).
+4. **Runtime-specific claims** — "Hooks supported by all runtimes" but actually OpenCode has none (it gets the `plugins/pan-wizard.js` plugin instead); Claude Code, Codex, Gemini and Copilot get hooks.
 5. **Model profile table drift** — MODEL_PROFILES in core.cjs changes but `docs/AGENTS.md` model profiles table goes stale. (The model profile table is qualitative metadata, not a count, so it's allowed in AGENTS.md.)
 6. **Dead internal links** — File renames (especially the lowercase migration) leave orphan links in docs.
 7. **Workflow step accuracy** — Workflows reference tools or agents that have been renamed or restructured.

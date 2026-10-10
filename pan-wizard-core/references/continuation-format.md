@@ -191,7 +191,7 @@ Extract: `**Phase 2: Authentication** — JWT login flow with refresh tokens`
 
 ```markdown
 Plans:
-- [ ] 02-03: Add refresh token rotation
+- [ ] 02-03-plan.md — Add refresh token rotation
 ```
 
 Or from plan.md `<objective>`:
@@ -240,10 +240,10 @@ Sounds like an afterthought. Use "Also available:" instead.
 
 ### Don't: Fenced code blocks for commands
 
-```
+~~~
 ```
 /pan:plan-phase 3
 ```
-```
+~~~
 
 Fenced blocks inside templates create nesting ambiguity. Use inline backticks instead.

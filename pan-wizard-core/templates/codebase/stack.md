@@ -8,7 +8,7 @@ Template for `.planning/codebase/stack.md` - captures the technology foundation.
 
 ## File Template
 
-```markdown
+~~~markdown
 # Technology Stack
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -92,7 +92,7 @@ graph TD
 
 *Stack analysis: [date]*
 *Update after major dependency changes*
-```
+~~~
 
 <good_examples>
 ```markdown

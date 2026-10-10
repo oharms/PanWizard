@@ -19,7 +19,7 @@ Create executable phase prompts (plan.md files) for a roadmap phase with integra
 
 **Default flow:** Research (if needed) → Plan → Verify → Done
 
-**Design input (ADR-0042):** if `{phase}-design.md` exists (from `/pan:design-phase`, verified by `pan-design-checker`), it is an authoritative upstream input — `pan-planner` implements its approved architecture/decisions and `pan-plan-checker` verifies conformance (Design Conformance dimension). It is optional: a phase without a design.md plans exactly as before.
+**Design input (ADR-0042):** if `{phase}-design.md` exists (from `/pan:design-phase`, verified by `pan-design-checker`), it is an authoritative upstream input — `pan-planner` implements its approved architecture/decisions and `pan-plan-checker` verifies conformance (Design Conformance dimension). It is optional: a phase without a design.md plans exactly as before. The plan-phase workflow does not list it in the planner's or checker's `<files_to_read>`, so they use it only when they find it in the phase directory themselves.
 
 **Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn pan-planner, verify with pan-plan-checker, iterate until pass or max iterations, present results.
 </objective>
@@ -38,6 +38,7 @@ Phase number: $ARGUMENTS (optional — auto-detects next unplanned phase if omit
 - `--gaps` — Gap closure mode (reads verification.md, skips research)
 - `--skip-verify` — Skip verification loop
 - `--prd <file>` — Use a PRD/acceptance criteria file instead of discuss-phase. Parses requirements into context.md automatically. Skips discuss-phase entirely.
+- `--auto` — Autonomous mode: sets `workflow.auto_advance` and asks nothing (with no context.md it plans from the project-level research, requirements and idea.md); after planning it runs `/pan:exec-phase N --auto --no-transition` and, once the phase completes, prints `Next: /pan:discuss-phase <next phase> --auto` and stops.
 
 Normalize phase input in step 2 before any directory lookups.
 </context>
@@ -48,7 +49,7 @@ During the plan-checker verification iteration:
 2. For each identified gap: verify it is a genuine gap by re-reading the relevant requirement
 3. Do not blindly accept all critiques — some may be false positives from missing context
 4. Revise the plan to address genuine gaps only
-5. Maximum 2 revision iterations (plan → check → revise → check → final)
+5. At most 2 revisions: the workflow checks up to three times (plan → check → revise → check → revise → check); after the third check the user chooses force proceed, guidance or abandon
 This prevents over-revision while ensuring real gaps are closed.
 </reflexion_loop>
 
@@ -57,7 +58,7 @@ Planning is complete when ALL conditions are met:
 1. At least one plan.md file created in the phase directory
 2. Plan-checker passed (or max 2 revision iterations exhausted with final approval)
 3. Each plan contains: objective, task breakdown with estimates, dependency ordering, and key file links
-4. Research.md exists (unless --skip-research was used)
+4. Research.md exists, unless research was skipped (`--skip-research`, `--gaps`, `workflow.research: false`, or the single-plan lightweight-phase bypass)
 5. User presented with results and next-step options
 
 Planning FAILS if: phase not found in roadmap, or planner agent returns empty/malformed output after retries.
@@ -67,7 +68,7 @@ Planning FAILS if: phase not found in roadmap, or planner agent returns empty/ma
 Avoid these planning anti-patterns:
 ```
 BAD:  Plan has 25 tasks for a single phase → too granular, executor loses context
-GOOD: 5-8 tasks per plan, each with clear scope and testable outcome
+GOOD: 2-3 tasks per plan, each with clear scope and testable outcome (more work means more plans)
 
 BAD:  Task says "Implement the feature" with no file links or acceptance criteria
       → Executor guesses at scope, misses edge cases
@@ -92,7 +93,7 @@ IF --gaps flag is set:
 ELSE IF --prd <file> flag is set:
   → SKIP discuss-phase entirely
   → PARSE PRD file into context.md
-  → SKIP research (PRD provides requirements)
+  → RUN research as usual (step 3.5 writes context.md from the PRD, then continues to step 5)
   → PLAN from parsed requirements
   → VERIFY (unless --skip-verify)
 
@@ -120,9 +121,9 @@ IF --skip-verify:
 ELSE:
   → Spawn pan-plan-checker
   → IF checker PASSES: done
-  → IF checker finds gaps (iteration 1): revise plan, re-check
-  → IF checker finds gaps (iteration 2): final revision, present with caveats
-  → Max 2 revision iterations
+  → IF checker finds gaps (check 1 or 2): revise plan, re-check
+  → IF checker finds gaps (check 3): stop revising; the user chooses force proceed (open issues recorded as deferred), guidance and retry, or abandon
+  → Max 2 revisions, so at most 3 checks
 ```
 </routing_decision_tree>
 

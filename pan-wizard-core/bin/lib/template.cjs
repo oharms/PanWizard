@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  PHASES_DIR, PLAN_SUFFIX, SUMMARY_SUFFIX, VERIFICATION_SUFFIX,
+  PHASES_DIR, PLAN_SUFFIX, SUMMARY_SUFFIX, VERIFICATION_SUFFIX, ROADMAP_SLICE_SUFFIX,
   SIMPLE_TASK_THRESHOLD, SIMPLE_FILE_THRESHOLD, COMPLEX_TASK_THRESHOLD, COMPLEX_FILE_THRESHOLD,
 } = require('./constants.cjs');
 const { planningPath, phasesPath } = require('./utils.cjs');
@@ -86,7 +86,7 @@ function cmdTemplateSelect(cwd, planPath, raw) {
  * @param {string} phaseName - Human-readable phase name
  * @param {string} phaseSlug - Phase slug for directory naming
  * @param {string} phaseNum - Raw phase number from options
- * @param {Object} options - Additional options (type, wave, fields)
+ * @param {Object} options - Additional options (type, wave, fields, slicePath)
  * @returns {{frontmatter: Object, body: string, fileName: string}}
  */
 function generatePlanTemplate(phaseId, planId, phaseName, phaseSlug, phaseNum, options) {
@@ -94,6 +94,10 @@ function generatePlanTemplate(phaseId, planId, phaseName, phaseSlug, phaseNum, o
   const wave = parseInt(options.wave, 10) || 1;
   const fields = options.fields || {};
   const padded = phaseId.split('-')[0]; // e.g., "01" from "01-setup-auth"
+  // The <context> names the phase's roadmap slice, as templates/phase-prompt.md
+  // does (O2): `@.planning/roadmap.md` handed every executor the whole roadmap.
+  // cmdTemplateFill passes the phase's real directory.
+  const slicePath = options.slicePath || `.planning/phases/${phaseId}/${padded}${ROADMAP_SLICE_SUFFIX}`;
 
   const frontmatter = {
     phase: phaseId,
@@ -121,7 +125,7 @@ function generatePlanTemplate(phaseId, planId, phaseName, phaseSlug, phaseNum, o
     '',
     '## Context',
     '@.planning/project.md',
-    '@.planning/roadmap.md',
+    `@${slicePath}`,
     '@.planning/state.md',
     '',
     '## Tasks',
@@ -286,7 +290,10 @@ function cmdTemplateFill(cwd, templateType, options, raw) {
       generated = generateSummaryTemplate(phaseId, planNum, phaseName, options.phase, fields);
       break;
     case 'plan':
-      generated = generatePlanTemplate(phaseId, planNum, phaseName, phaseSlug, options.phase, options);
+      generated = generatePlanTemplate(phaseId, planNum, phaseName, phaseSlug, options.phase, {
+        ...options,
+        slicePath: toPosix(path.join(phaseInfo.directory, `${padded}${ROADMAP_SLICE_SUFFIX}`)),
+      });
       break;
     case 'verification':
       generated = generateVerificationTemplate(phaseId, phaseName, options.phase, fields);

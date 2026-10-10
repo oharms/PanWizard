@@ -151,7 +151,7 @@ never a migration>
 | Installer / per-runtime (`bin/install-lib.cjs`) | what each of the five runtimes gets, or "none" |
 | Commands / agents / workflows (markdown) | … |
 | Hooks / MCP | … |
-| Tests | unit + scenario, each shown to FAIL on the pre-change tree; `node scripts/test-surface.cjs` to refresh `surface.json`; the dispatcher-arms contract and coverage gate see the new arm |
+| Tests | unit + scenario, each shown to FAIL on the pre-change tree; `node scripts/test-surface.cjs --write` to refresh `surface.json`; the dispatcher-arms contract and coverage gate see the new arm |
 | Harness | a tier-0 scenario if the behaviour shows only in a deployed install |
 | Docs / ADR | `docs/CLI-REFERENCE.md`, no counts; an ADR when it is a decision someone could later reverse |
 
@@ -210,7 +210,7 @@ cd D:/PanWizard && node --test tests/doc-lint.test.cjs tests/model-version-drift
 cd D:/PanWizard && git status --porcelain
 ```
 
-Red means a count leaked or a link broke — fix the doc, not the test. Then print a ≤ 10-line summary: counts, the
+These tests cannot see the files this command writes: the count lint skips every path with a `specs` segment, the model-name lint excludes `docs/specs`, and `tests/links.test.cjs` runs the `links` module on temp fixtures — so check counts and links in the new files by eye. Red means something else in the tree broke — fix the doc, not the test. Then print a ≤ 10-line summary: counts, the
 recommendations in priority order, links to the files.
 
 Then ONE popup (AskUserQuestion, multiSelect) listing the ADD/ENHANCE write-ups, asking which to file into
@@ -233,4 +233,4 @@ Do not commit unless asked (`/commit`).
 - Everything in `docs/specs/investigations/` is hand-written; `scripts/generate-skills-docs.py` does not own it.
   Editing *this command* does mean re-running that generator (`python scripts/generate-skills-docs.py`).
 - Bash traps on record: heredocs choke on long content — write files with the Write tool; prefix commands with
-  `cd D:/PanWizard &&`; this checkout is CRLF, so anchored `sed` edits silently no-op.
+  `cd D:/PanWizard &&`; some working-tree files are CRLF (`git ls-files --eol | grep w/crlf` lists them; most are LF), and an anchored `sed` edit silently no-ops on those.

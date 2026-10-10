@@ -13,7 +13,7 @@ Installation testing goes to `d:\pantesting`.
 
 **Flags:**
 - `--focus <area>` — Weight items toward an area (e.g., `--focus installer`, `--focus commands`, `--focus testing`)
-- `--quick` — Skip competitive analysis (Phase 2)
+- `--quick` — No effect: this plan has no competitive-analysis phase (Phase 2 is item collection)
 - `--lean` — Only include actionable items (drop low-priority)
 
 ---

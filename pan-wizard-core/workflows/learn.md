@@ -27,11 +27,13 @@ Use the most recent session unless `--session <id>` was specified.
 
 If `--session <id>` was specified, use that session ID.
 
+If `--experiment <slug>` was specified, set `EXP` to the harvest folder (the `harvest_path` `/pan:experiment harvest <slug>` printed, `<source-repo>/experiments/<slug>/` by default), add `--cwd "$EXP"` to every `pan-tools` call in this workflow, and read and write every `.planning/optimization/` path below under `$EXP/`.
+
 ## Step 2 — Generate local analysis
 
 Run:
 ```
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn [--session <id> | --sessions <n>]
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn [--session <id> | --sessions <n>]   # with no active session, pass --session <id> for the session Step 1 chose: a bare call errors "No trace session active"
 ```
 
 This produces `.planning/optimization/reports/{session}-analysis.json`. With `--sessions <n>` it pools the last n sessions into `pooled-<n>-{session}-analysis.json`: a recommendation should explain failures that recur across runs, not one run's accident.
@@ -50,7 +52,7 @@ Read the output and note:
 
 Spawn the `pan-optimizer` agent with this instruction:
 
-> Read the analysis at `.planning/optimization/reports/{session}-analysis.json` and the raw trace at `.planning/optimization/traces/{session}/trace.jsonl`. Produce a full optimization report at `.planning/optimization/reports/{session}-opt-report.md` following the format in your agent definition.
+> Read the analysis at `{analysis_path}` (the path `optimize learn` printed: `{session}-analysis.json`, or `pooled-<n>-{session}-analysis.json` with `--sessions`) and the raw trace at `.planning/optimization/traces/{session}/trace.jsonl`. Produce a full optimization report at `.planning/optimization/reports/{session}-opt-report.md` following the format in your agent definition.
 
 Wait for the agent to complete. It will write the report to `.planning/optimization/reports/`.
 

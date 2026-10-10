@@ -34,7 +34,7 @@ Before scaffolding or coding anything, confirm with the user:
 
 **Do NOT proceed** until the user has answered. Do not assume, research, or fill in blanks yourself. The user's intent drives everything — skipping this step leads to wasted scaffolding and mis-aligned implementation.
 
-Save answers to `.planning/requirements.md` (or update if exists). Confirm with the user before scaffolding.
+Ask these after Step 1's checks (Step 1 runs before any user interaction) and carry the answers into project.md (Step 4); requirements.md is written in Step 7 from its template. Confirm with the user before scaffolding.
 
 > **Auto mode exception:** If `--auto` is set with a provided idea document (see `<auto_mode>` below), the document IS the Phase 0 answer. Read it carefully and extract problem / success / scope / constraints from its contents.
 
@@ -46,7 +46,7 @@ Check if `--auto` flag is present in $ARGUMENTS.
 **If auto mode:**
 - Skip brownfield mapping offer (assume greenfield)
 - Skip deep questioning (extract context from provided document)
-- Config: YOLO mode is implicit (skip that question), but ask depth/git/agents FIRST (Step 2a)
+- Config: YOLO mode is implicit; depth, git and agents take their defaults (or idea.md frontmatter overrides) silently in Step 2a — no questions
 - After config: run Steps 6-9 automatically with smart defaults:
   - Research: Always yes
   - Requirements: Include all table stakes + features from provided document
@@ -92,7 +92,7 @@ git init
 
 ## 2. Brownfield Offer
 
-**If auto mode:** Skip to Step 4 (assume greenfield, synthesize project.md from provided document).
+**If auto mode:** Skip to Step 2a (assume greenfield); Step 2a applies the config defaults and continues at Step 4, which synthesizes project.md from the provided document.
 
 **If `needs_codebase_map` is true** (from init — existing code detected but no codebase map):
 
@@ -1016,7 +1016,7 @@ Parse JSON for `project_types` and `recommendations` arrays.
 **If auto mode (P-1601 v3.7.5):** Auto-select ONLY `priority: "high"` recommendations. These are recommendations from explicitly-detected non-general project types (e.g., a recognized `web` or `ai` project). For `general` fallback projects with no explicit type signal, **skip auto-selection entirely** — leave `standards.md` absent rather than impose unrelated standards.
 
 ```bash
-HIGH_IDS=$(echo "$RECOMMEND" | jq -r '.recommendations[] | select(.priority=="high") | .id')
+HIGH_IDS=$(printf '%s' "$RECOMMEND" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log((JSON.parse(s).recommendations||[]).filter(r=>r.priority==='high').map(r=>r.id).join('\n')))")
 if [ -n "$HIGH_IDS" ]; then
   for id in $HIGH_IDS; do
     node ~/.claude/pan-wizard-core/bin/pan-tools.cjs standards select "$id"
@@ -1036,10 +1036,10 @@ Present recommendations:
 
 Based on your project type ([types]), these standards are recommended:
 
-| Standard | Category | Why |
+| Standard | Priority | Why |
 |----------|----------|-----|
-| [name] | [category] | [description] |
-| [name] | [category] | [description] |
+| [name] | [priority] | [reason] |
+| [name] | [priority] | [reason] |
 ```
 
 Use AskUserQuestion:
@@ -1047,7 +1047,7 @@ Use AskUserQuestion:
 - question: "Which standards would you like to apply? (advisory — guides agents, doesn't block)"
 - multiSelect: true
 - options: (from recommendations, max 4)
-  - "[standard name]" — [description]
+  - "[standard name]" — [reason]
 
 For each selected standard:
 ```bash
@@ -1110,7 +1110,7 @@ Present completion summary:
 ╚══════════════════════════════════════════╝
 ```
 
-Exit skill and invoke SlashCommand("/pan:discuss-phase 1 --auto")
+Spawn discuss-phase for Phase 1 as a Task subagent, exactly as transition.md Route A does for a phase with no context.md (discuss-phase.md as execution_context, `ARGUMENTS='1 --auto'`); do not call SlashCommand.
 
 **If interactive mode:**
 

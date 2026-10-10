@@ -28,7 +28,7 @@
 2. {Another lesson}
 
 ### Cost Observations
-- Model mix: {X}% opus, {Y}% sonnet, {Z}% haiku
+- Model mix: {X}% reasoning tier, {Y}% mid, {Z}% fast
 - Sessions: {count}
 - Notable: {efficiency observation}
 

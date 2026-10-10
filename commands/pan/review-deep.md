@@ -54,7 +54,7 @@ Runs the normal exec → reviewer pipeline, then runs this command's process inl
 /pan:focus-exec --deep-review
 ```
 
-Per-item deep review during focus campaigns. Useful for high-stakes batches.
+Per-item deep review during focus campaigns: focus-exec runs the hardener and meta-reviewer on the item's changed files and merges them under the item's id (`review-deep merge <item-id>` with no `--reviewer-file`), since an item has no phase or first-pass review. Useful for high-stakes batches.
 
 </invocation_modes>
 
@@ -67,7 +67,7 @@ Per-item deep review during focus campaigns. Useful for high-stakes batches.
    - Agent writes its findings to the output path, returns confirmation.
 
 3. **Spawn pan-meta-reviewer**:
-   - Prompt includes: `<files_to_read>` with both reviewer.md AND hardener.md (and representative diff snippets); `<output_path>` = `.planning/reviews/<N>/meta.md`.
+   - Prompt includes: `<files_to_read>` with both `{directory}/{phase_number}-review.md` AND `.planning/reviews/<N>/hardener.md` (and representative diff snippets); `<output_path>` = `.planning/reviews/<N>/meta.md`.
    - Agent reads both first-pass reports, identifies missed patterns, disputes overstated severities, writes to output path.
 
 4. **Merge** — call:
@@ -87,13 +87,13 @@ Per-item deep review during focus campaigns. Useful for high-stakes batches.
 
 | Verdict | Meaning | Action |
 |---------|---------|--------|
-| `ok` | No findings at any severity | Merge freely |
-| `ok_with_minor` | Only low/info findings | Merge with noted follow-ups |
+| `ok` | No findings, or info findings only | Merge freely |
+| `ok_with_minor` | Only low findings (info alone gives `ok`) | Merge with noted follow-ups |
 | `fix_before_merge` | Medium findings present | Fix or document before merge |
 | `review_required` | High findings present | Human sign-off required |
 | `block` | At least one critical | Do not merge |
 
-Verdict is driven by the highest-severity finding across all three sources. Meta-reviewer disputes can downgrade severity on specific findings but don't change the headline verdict — the merger trusts the consensus of the explicit severity labels.
+Verdict is driven by the highest-severity finding across all three sources. Meta-reviewer disputes are listed in the conflict table but change no severity, so they never lower the headline verdict; the meta-reviewer's own findings count toward it like the other two sources'.
 
 </verdict_semantics>
 
@@ -114,8 +114,8 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 | Claude Code | Full; reasoning depth from the agent's `effort:` frontmatter | Full | Full |
 | OpenCode | Prose "think step-by-step" preamble substitutes for thinking | Same | Full (runtime-agnostic CLI) |
 | Gemini | Same | Same | Full |
-| Codex | Same | Same | Full |
-| Copilot | Same | Same | Full |
+| Codex | Native — `effort:` becomes the agent TOML's `model_reasoning_effort` | Same | Full |
+| Copilot | Prose "think step-by-step" preamble, as on OpenCode | Same | Full |
 
 The merger CLI (`pan-tools review-deep merge`) is pure Node.js and works identically across runtimes. Only the *quality* of the hardener and meta-reviewer outputs varies with model capability.
 

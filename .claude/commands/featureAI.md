@@ -5,7 +5,7 @@ Research, design, and specify a new PAN Wizard feature: $ARGUMENTS
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. Feature design work happens here.
-The feature must work across all 5 runtimes (claude, codex, gemini, opencode, github).
+The feature must work across all 5 runtimes (claude, codex, gemini, opencode, copilot).
 
 ---
 

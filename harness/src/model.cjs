@@ -54,10 +54,47 @@ function modelArgs(ws, { maxUsd, pluginDir, strictMcp = true, persistSession = f
   return args;
 }
 
+/**
+ * The hosts a model step can name with `runtime` (MI-104: PAN's behaviour measured on
+ * every host CLI, not Claude Code alone). `claude` is the measured path above. Each
+ * other host carries only what its CLI's own --help states (read 2026-10-10: codex-cli
+ * 0.157.1, GitHub Copilot CLI 1.0.91, Gemini CLI 0.61.0, OpenCode 1.18.32) and no output
+ * parser: what each prints in JSON mode, and where its usage sits, has to be captured
+ * from a real run before a parser is written (documented is not observed, ADR-0028).
+ * Until a host has `parse`, its model steps are refused: ADR-0047 D2 caps spend, and a
+ * step whose cost cannot be read cannot be capped.
+ *   promptVia: 'stdin' | 'arg' — how the prompt reaches the CLI.
+ */
+const MODEL_RUNTIMES = {
+  claude: { bin: 'claude', promptVia: 'stdin', parse: true },
+  // `codex exec -` reads the prompt from stdin; --json streams JSONL events.
+  codex: { bin: 'codex', promptVia: 'stdin', args: () => ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '-'] },
+  // `-p` takes the prompt as an argument; --output-format json is JSONL.
+  copilot: { bin: 'copilot', promptVia: 'arg', args: (p) => ['-p', p, '--output-format', 'json', '--allow-all-tools', '--allow-all-paths'] },
+  // `-p` runs headless; -o json; --approval-mode yolo auto-approves tools.
+  gemini: { bin: 'gemini', promptVia: 'arg', args: (p) => ['-p', p, '-o', 'json', '--approval-mode', 'yolo'] },
+  // `run <message..>` with --format json (raw JSON events).
+  opencode: { bin: 'opencode', promptVia: 'arg', args: (p) => ['run', '--format', 'json', p] },
+};
+
+/** The argv for a non-Claude model step, or null for an unknown host. Pure. */
+function modelArgsFor(runtime, prompt) {
+  const rt = MODEL_RUNTIMES[runtime];
+  if (!rt || !rt.args) return null;
+  return rt.args(prompt);
+}
+
 function runModelStep(ws, prompt, opts) {
   const { maxUsd, timeoutMs = 20 * 60000 } = opts;
   if (!(typeof maxUsd === 'number' && maxUsd > 0)) {
     return { code: 2, stdout: '', stderr: 'refused: model steps require an explicit --max-usd', costUsd: 0, refused: true };
+  }
+  const runtime = opts.runtime || 'claude';
+  if (!MODEL_RUNTIMES[runtime]) {
+    return { code: 2, stdout: '', stderr: `refused: unknown model-step runtime "${runtime}"`, costUsd: 0, refused: true };
+  }
+  if (!MODEL_RUNTIMES[runtime].parse) {
+    return { code: 2, stdout: '', stderr: `refused: no output parser for ${runtime} yet — its JSON and usage fields must be captured from a real run first, or the --max-usd cap could not be enforced (MI-104)`, costUsd: 0, refused: true };
   }
   const args = modelArgs(ws, opts);
   const r = spawnSync('claude', args, {
@@ -80,4 +117,4 @@ function runModelStep(ws, prompt, opts) {
   };
 }
 
-module.exports = { runModelStep, modelEnv, modelArgs };
+module.exports = { runModelStep, modelEnv, modelArgs, modelArgsFor, MODEL_RUNTIMES };

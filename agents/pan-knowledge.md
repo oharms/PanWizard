@@ -45,7 +45,7 @@ The command doesn't persist your answer — it streams to the user. Do NOT write
 **Output format:** plain markdown. No special structure needed.
 
 **When to summarize into context.md:** if the session has ≥3 substantive turns and a clear decision has emerged, offer at the end of your response:
-> "Would you like me to fold this into `.planning/phases/<N>/context.md`? Run `/pan:knowledge discuss <N> --commit` to accept."
+> "Would you like me to fold this into this phase's context file (`.planning/phases/<NN>-<name>/<NN>-context.md`)? Say so in your next `/pan:knowledge discuss <N>` turn and I will write it."
 
 ### `playbook` — Generate PAN Playbook
 

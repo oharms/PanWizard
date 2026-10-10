@@ -397,6 +397,22 @@ describe('pan-context-monitor — which transcript measures the call', () => {
     assert.deepEqual(transcriptForPayload({ ...payload, agent_transcript_path: '/elsewhere/agent.jsonl' }), { file: '/elsewhere/agent.jsonl', subagent: true }, 'a host that sends the path wins');
   });
 
+  test('a Workflow-tool subagent is found one level down, under the run that spawned it', () => {
+    // PAN's native workflow scripts spawn through the Workflow tool, whose agents are
+    // written to subagents/workflows/<run>/ (pan-cost-logger.js resolveAgentTranscript).
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctx-wf-'));
+    try {
+      const nested = path.join(root, 'sess-0001', 'subagents', 'workflows', 'wf_0001', 'agent-a22d4bd17ed377380.jsonl');
+      fs.mkdirSync(path.dirname(nested), { recursive: true });
+      fs.writeFileSync(nested, '\n');
+      const payload = fill('post-tool-use-subagent-claude.json', { ...map, '{{TRANSCRIPT_PATH}}': path.join(root, 'sess-0001.jsonl') });
+      assert.deepEqual(transcriptForPayload(payload), { file: nested, subagent: true });
+      const direct = path.join(root, 'sess-0001', 'subagents', 'agent-a22d4bd17ed377380.jsonl');
+      fs.writeFileSync(direct, '\n');
+      assert.deepEqual(transcriptForPayload(payload), { file: direct, subagent: true }, 'the direct file wins when both exist');
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   test('ids that are not safe in a path measure nothing', () => {
     const payload = fill('post-tool-use-subagent-claude.json', map);
     assert.equal(transcriptForPayload({ ...payload, agent_id: '../../etc' }), null);

@@ -13,9 +13,9 @@ The git log should read like a changelog of what shipped, not a diary of plannin
 
 | Event                   | Commit? | Why                                              |
 | ----------------------- | ------- | ------------------------------------------------ |
-| BRIEF + ROADMAP created | YES     | Project initialization                           |
-| plan.md created         | NO      | Intermediate - commit with plan completion       |
-| research.md created     | NO      | Intermediate                                     |
+| project.md + roadmap.md created | YES     | Project initialization                           |
+| plan.md created         | YES     | pan-planner: `docs({phase}): create phase plan`  |
+| research.md created     | OPTIONAL | phase researcher: `docs({phase}): research phase domain` |
 | discovery.md created    | NO      | Intermediate                                     |
 | **Task completed**      | YES     | Atomic unit of work (1 commit per task)         |
 | **Plan completed**      | YES     | Metadata commit (SUMMARY + STATE + ROADMAP)     |
@@ -40,7 +40,7 @@ If NO_GIT: Run `git init` silently. PAN projects always get their own repo.
 ```
 docs: initialize [project-name] ([N] phases)
 
-[One-liner from PROJECT.md]
+[One-liner from project.md]
 
 Phases:
 1. [phase-name]: [goal]
@@ -205,8 +205,6 @@ Each plan produces 2-4 commits (tasks + metadata). Clear, granular, bisectable.
 <anti_patterns>
 
 **Still don't commit (intermediate artifacts):**
-- plan.md creation (commit with plan completion)
-- research.md (intermediate)
 - discovery.md (intermediate)
 - Minor planning tweaks
 - "Fixed typo in roadmap"

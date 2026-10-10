@@ -8,7 +8,7 @@ Template for `.planning/codebase/structure.md` - captures physical file organiza
 
 ## File Template
 
-```markdown
+~~~markdown
 # Codebase Structure
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -125,10 +125,10 @@ graph TD
 
 *Structure analysis: [date]*
 *Update when directory structure changes*
-```
+~~~
 
 <good_examples>
-```markdown
+~~~markdown
 # Codebase Structure
 
 **Analysis Date:** 2025-01-20
@@ -255,7 +255,7 @@ pan-wizard-core/
 
 *Structure analysis: 2025-01-20*
 *Update when directory structure changes*
-```
+~~~
 </good_examples>
 
 <guidelines>

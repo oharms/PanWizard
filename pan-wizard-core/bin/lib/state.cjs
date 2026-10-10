@@ -294,22 +294,22 @@ function cmdStateRecordMetric(cwd, options, raw) {
     return;
   }
 
-  // Find Performance Metrics section and its table
-  const metricsPattern = /(##\s*Performance Metrics[\s\S]*?\n\|[^\n]+\n\|[-|\s]+\n)([\s\S]*?)(?=\n##|\n$|$)/i;
+  // The Performance Metrics section's first table: its rows only, then an optional
+  // "None yet" line. Taking the rest of the section as the table body put every row
+  // below the template's "Recent Trend" and footer lines, outside the table. The
+  // separator is matched on one line: `[-|\s]+` ran on into a `| - | - |` row.
+  const metricsPattern = /(##\s*Performance Metrics[\s\S]*?\n\|[^\n]+\n\|[-|: \t]+\r?\n)((?:\|[^\n]*(?:\n|$))*)((?:[^\S\n]*None yet\.?[^\S\n]*(?:\n|$))?)/i;
   const metricsMatch = content.match(metricsPattern);
 
   if (metricsMatch) {
-    let tableBody = metricsMatch[2].trimEnd();
     const cell = escapeTableCell;
     const newRow = `| Phase ${cell(phase)} P${cell(plan)} | ${cell(duration)} | ${cell(tasks || '-')} tasks | ${cell(files || '-')} files |`;
+    // A template placeholder row (`| - | - | - | - |`, `| None yet | | | |`) gives way.
+    const isPlaceholder = (row) => /None yet/i.test(row) || row.split('|').slice(1, -1).every((c) => /^\s*-?\s*$/.test(c));
+    const rows = metricsMatch[2].split('\n').map((r) => r.replace(/\r$/, '')).filter((r) => r.trim() && !isPlaceholder(r));
+    rows.push(newRow);
 
-    if (tableBody.trim() === '' || tableBody.includes('None yet')) {
-      tableBody = newRow;
-    } else {
-      tableBody = tableBody + '\n' + newRow;
-    }
-
-    content = content.replace(metricsPattern, (_match, header) => `${header}${tableBody}\n`);
+    content = content.replace(metricsPattern, (_match, header) => `${header}${rows.join('\n')}\n`);
     writeStateMd(statePath, content, cwd);
     output({ recorded: true, phase, plan, duration }, raw, 'true');
   } else {
@@ -432,7 +432,8 @@ function cmdStateAddBlocker(cwd, text, raw) {
 
   if (match) {
     let sectionBody = match[2];
-    sectionBody = sectionBody.replace(/None\.?\s*\n?/gi, '').replace(/None yet\.?\s*\n?/gi, '');
+    // "None yet" first: stripping "None" first left a stray "yet." on the template.
+    sectionBody = sectionBody.replace(/None yet\.?\s*\n?/gi, '').replace(/None\.?\s*\n?/gi, '');
     sectionBody = sectionBody.trimEnd() + '\n' + entry + '\n';
     content = content.replace(sectionPattern, (_match, header) => `${header}${sectionBody}`);
     writeStateMd(statePath, content, cwd);
@@ -538,14 +539,23 @@ function cmdStateRecordSession(cwd, options, raw) {
 // --- Snapshot Parsers --------------------------------------------------------
 
 /**
- * Parse the Decisions Made table from state.md content.
- * Extracts rows from a markdown table under the "## Decisions Made" heading,
- * splitting each row into phase, summary, and rationale cells.
+ * Parse the decisions from state.md content: the `- [Phase N]: summary — rationale`
+ * bullets `state add-decision` appends under `### Decisions` (the template's
+ * heading), or else an older "## Decisions Made" table. Reading only the table
+ * left `decisions` empty on every state.md PAN itself writes.
  * @param {string} content - Full state.md content
  * @returns {Array<{phase: string, summary: string, rationale: string}>}
  */
 function parseDecisionsFromState(content) {
   const decisions = [];
+  const section = content.match(/###?\s*(?:Decisions|Decisions Made|Accumulated.*Decisions)\s*\n([\s\S]*?)(?=\n###?|\n##[^#]|$)/i);
+  for (const line of section ? section[1].split('\n') : []) {
+    const m = line.match(/^-\s+\[Phase\s+([^\]]*)\]:\s*(.+?)\s*$/i);
+    if (!m) continue;
+    const [summary, ...rest] = m[2].split(' — ');
+    decisions.push({ phase: m[1].trim(), summary: summary.trim(), rationale: rest.join(' — ').trim() });
+  }
+  if (decisions.length > 0) return decisions;
   // Match the decisions table body after header row and separator row
   const decisionsMatch = content.match(/##\s*Decisions Made[\s\S]*?\n\|[^\n]+\n\|[-|\s]+\n([\s\S]*?)(?=\n##|\n$|$)/i);
   if (decisionsMatch) {
@@ -567,14 +577,15 @@ function parseDecisionsFromState(content) {
 
 /**
  * Parse the Blockers section from state.md content.
- * Extracts bullet-point items (lines starting with "- ") from under
- * the "## Blockers" heading.
+ * Extracts bullet-point items (lines starting with "- ") from under the heading
+ * `state add-blocker` writes to: `### Blockers/Concerns` in the template, or
+ * `Blockers` / `Concerns`. Matching only "## Blockers" left the list empty.
  * @param {string} content - Full state.md content
  * @returns {string[]} Array of blocker text strings
  */
 function parseBlockersFromState(content) {
   const blockers = [];
-  const blockersMatch = content.match(/##\s*Blockers\s*\n([\s\S]*?)(?=\n##|$)/i);
+  const blockersMatch = content.match(/###?\s*(?:Blockers|Blockers\/Concerns|Concerns)\s*\n([\s\S]*?)(?=\n###?|\n##[^#]|$)/i);
   if (blockersMatch) {
     const blockersSection = blockersMatch[1];
     const items = blockersSection.match(/^-\s+(.+)$/gm) || [];
@@ -583,6 +594,18 @@ function parseBlockersFromState(content) {
     }
   }
   return blockers;
+}
+
+/**
+ * The blockers that are still open: the section's bullets minus a "None" placeholder.
+ * `preflight` and `dashboard` read a `## Blockers` heading of their own, which the
+ * state template never writes (it writes `### Blockers/Concerns`, where
+ * `state add-blocker` puts its bullets), so both reported no blockers with one open.
+ * @param {string} content - Full state.md content
+ * @returns {string[]}
+ */
+function activeBlockersFromState(content) {
+  return parseBlockersFromState(content).filter((b) => b && !/^none(\s+yet)?\.?$/i.test(b));
 }
 
 /**
@@ -1029,17 +1052,8 @@ function cmdDashboard(cwd, raw) {
     lastActivity = stateExtractField(stateContent, 'Last Activity');
     lastActivityDesc = stateExtractField(stateContent, 'Last Activity Description');
 
-    // Parse blockers
-    const blockersMatch = stateContent.match(/##\s*Blockers\s*\n([\s\S]*?)(?=\n##|$)/i);
-    if (blockersMatch) {
-      const items = blockersMatch[1].match(/^-\s+(.+)$/gm) || [];
-      for (const item of items) {
-        const text = item.replace(/^-\s+/, '').trim();
-        if (text && !/^none$/i.test(text)) {
-          activeBlockers.push(text);
-        }
-      }
-    }
+    // Parse blockers (the template's `### Blockers/Concerns`, or a legacy `## Blockers`)
+    activeBlockers.push(...activeBlockersFromState(stateContent));
     blockerCount = activeBlockers.length;
   }
 
@@ -1111,6 +1125,7 @@ function cmdDashboard(cwd, raw) {
 
 module.exports = {
   readStateSafe: safeReadFile,
+  activeBlockersFromState,
   stateExtractField,
   stateReplaceField,
   writeStateMd,

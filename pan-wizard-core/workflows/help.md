@@ -119,7 +119,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **Reality Score:** Every P3-P6 item gets scored: `RS = (User Value + Time Criticality + Risk Reduction) / Job Size`. Items below RS 3.0 get deferred, below 1.5 get dropped.
 
-**Output:** `.planning/superplan_<date>.md` — the prioritized work list that `/pan:focus-plan` reads.
+**Output:** the prioritized work list, returned by `pan-tools focus scan` as JSON (`/pan:focus-plan` collects the items again itself).
 
 **Flags:**
 - `--quick` — skip strategic analysis and validation phases
@@ -136,10 +136,10 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 **Modes:**
 | Mode | Budget | Strategy |
 |------|--------|----------|
-| `bugfix` | 40 pts | P0→P1→smallest-first, no features |
+| `bugfix` | 40 pts | One pass over P0→P4 in priority order, smallest first within a priority (P5–P6 excluded; no item-type filter) |
 | `balanced` | 50 pts | 60% stability / 40% features (default) |
 | `features` | 50 pts | 80% features, P0 crashes still mandatory |
-| `full` | 60 pts | All priorities equally weighted |
+| `full` | 60 pts | One pass over every priority in priority order (P0 first, smallest first within a priority) |
 
 **Point system:** XS=1, S=2, M=4, L=10, XL=20 points.
 
@@ -183,8 +183,8 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **Flags:**
 - `--readme` — check README only
-- `--commands` — verify command files match implementations
-- `--agents` — verify agent files
+- `--docs` — verify documentation matches implementations
+- `--arch` — verify architecture docs match actual structure
 - `--all` — full sync + auto-fix
 
 ### Standalone: `/pan:focus-design <description>`
@@ -336,7 +336,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **`/pan:new-project`** — One command: deep questioning → optional domain research (4 parallel agents) → requirements → roadmap. Creates `.planning/` with project.md, roadmap.md, state.md, config.json, requirements.md.
 
-**`/pan:map-codebase`** — Analyze existing codebase before `/pan:new-project`. Creates `.planning/codebase/` with 7 documents (stack, architecture, structure, conventions, testing, integrations, concerns).
+**`/pan:map-codebase`** — Analyze existing codebase before `/pan:new-project`. Creates `.planning/codebase/` with its codebase documents (stack, architecture, structure, conventions, testing, integrations, concerns, relationships, best-practices).
 
 **`/pan:discuss-phase <N>`** — Capture your vision for a phase before planning. Creates context.md.
 
@@ -394,7 +394,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **Planning config** (`.planning/config.json`):
 - `commit_docs: true` — commit planning artifacts to git (set `false` + add `.planning/` to `.gitignore` for private planning)
-- `search_gitignored: false` — add `--no-ignore` to ripgrep when `.planning/` is gitignored
+- `search_gitignored: false` — reserved: read by `loadConfig` and reported by `init map-codebase`, but no workflow or agent acts on it (to search a gitignored `.planning/`, add `--no-ignore` to `rg` yourself)
 
 ---
 
@@ -409,10 +409,9 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 ├── config.json           # Workflow & gate configuration
 ├── focus/                # Focus batch files
 │   └── batch-YYYY-MM-DD.json
-├── superplan_*.md        # Focus scan output
 ├── todos/
 │   ├── pending/          # Todos waiting
-│   └── done/             # Completed todos
+│   └── completed/        # Completed todos
 ├── debug/                # Active debug sessions
 │   └── resolved/         # Archived resolved issues
 ├── milestones/           # Archived milestones

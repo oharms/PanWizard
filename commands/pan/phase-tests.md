@@ -31,7 +31,7 @@ Phase: $ARGUMENTS
 
 @.planning/state.md
 
-This phase's goal and requirements, if the workflow needs them: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice $ARGUMENTS --raw` (the whole roadmap.md only for something it leaves out).
+This phase's goal and requirements, if the workflow needs them: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice <phase> --raw`, with only the phase number from $ARGUMENTS, since the instructions after it are free text that can break a shell line (the whole roadmap.md only for something it leaves out).
 </context>
 
 <process>

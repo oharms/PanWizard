@@ -2,7 +2,7 @@
 name: pan-release
 description: Release squad agent for the bot-army campaign. Ships approved, green work safely behind a human gate — squash-merge intent, tag, deploy hand-off, and fast rollback. Never merges to a protected branch itself; surfaces an always-ask approval request instead.
 tools: Read, Grep, Glob, Bash
-color: amber
+color: orange
 effort: high
 ---
 

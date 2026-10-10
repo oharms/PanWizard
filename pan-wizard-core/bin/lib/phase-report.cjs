@@ -96,7 +96,10 @@ function resolvePhase(cwd, phaseNumber) {
 function extractPhaseGoal(cwd, phaseNumber) {
   const content = safeReadFile(path.join(planningPath(cwd), ROADMAP_FILE));
   if (!content) return { objective: null, success_criteria: [] };
-  const re = new RegExp('#{2,4}\\s*Phase\\s+' + escapeRegex(String(phaseNumber)) + ':\\s*([^\\n]+)', 'i');
+  // Padded or not: the number comes from the zero-padded phase directory ("02"),
+  // while PAN writes `### Phase 2:` headings, so the report found no goal.
+  const unpadded = String(phaseNumber).trim().replace(/^0+(?=\d)/, '');
+  const re = new RegExp('#{2,4}\\s*Phase\\s+0*' + escapeRegex(unpadded) + ':\\s*([^\\n]+)', 'i');
   const m = content.match(re);
   if (!m) return { objective: null, success_criteria: [] };
   const start = m.index;

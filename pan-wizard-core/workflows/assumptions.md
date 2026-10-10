@@ -24,7 +24,7 @@ Exit workflow.
 Validate phase exists in roadmap:
 
 ```bash
-cat .planning/roadmap.md | grep -i "Phase ${PHASE}"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${PHASE}"   # found, phase_name, goal, success_criteria, section
 ```
 
 **If phase not found:**

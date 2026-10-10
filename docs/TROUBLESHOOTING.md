@@ -20,6 +20,7 @@ This guide covers root causes, diagnostic steps, and recovery procedures for sce
 - [Context and Sessions](#context-and-sessions)
 - [Cross-Platform Issues](#cross-platform-issues)
 - [Diagnostic Commands](#diagnostic-commands)
+- [Spec B v2 Troubleshooting (v3.0-v3.4)](#spec-b-v2-troubleshooting-v30-v34)
 
 ---
 
@@ -48,9 +49,7 @@ must_haves: []
 
 - Missing `wave` field (added in v0.1.0)
 - `autonomous: true` but plan contains checkpoint tasks
-- Phase number not zero-padded (use `"01"` not `"1"`)
-- Plan number as integer instead of string (use `"01"` not `1`)
-- Missing quotes around numeric values in YAML
+- Note: `verify plan-structure` checks that each field is present, not its format, so an unpadded phase number or an unquoted plan number does not cause this error
 
 **Diagnostic steps:**
 
@@ -146,7 +145,7 @@ must_haves: []
 
 1. Read the checkpoint description carefully -- it explains what was found, the proposed change, why it is needed, the impact, and alternatives
 2. Approve the change to let the executor continue with expanded scope
-3. Reject the change to defer it -- the task is logged in `deferred-items.md` in the phase directory
+3. Answer "defer" to leave the change out -- the executor tracks it as a `[Rule 4 - Architectural]` deviation in the plan's summary.md (`deferred-items.md` holds only the out-of-scope issues executors log there)
 4. If you need to discuss further, use `/pan:discuss-phase N` to explore alternatives
 
 **Prevention:** Run `/pan:discuss-phase N` before planning to surface architectural decisions early. Write a context.md for the phase that captures your preferences.
@@ -162,6 +161,8 @@ must_haves: []
 | Rule 1 | Code does not work (wrong logic, null pointers, type errors) | Up to 3 attempts | Query returns wrong data |
 | Rule 2 | Missing critical functionality (error handling, validation, security) | Up to 3 attempts | No input validation on API |
 | Rule 3 | Blocking issues (missing deps, broken imports, build errors) | Up to 3 attempts | Missing npm package |
+
+The limit is per task: three auto-fix attempts in all, whichever of Rules 1-3 they fall under.
 
 **Diagnostic steps:**
 
@@ -185,7 +186,7 @@ must_haves: []
 **Diagnostic steps:**
 
 1. Check each summary.md in the phase directory for "Deferred Issues" sections
-2. Check `deferred-items.md` for the consolidated list
+2. Check `deferred-items.md` for the out-of-scope issues executors logged there; the issues they gave up on are only in each summary.md
 3. Run `/pan:verify-phase N` -- the verifier checks the phase goal against the codebase and produces a gap analysis (it does not read `deferred-items.md`, so check that separately)
 
 **Recovery:**
@@ -234,8 +235,8 @@ must_haves: []
 
 1. **Auto-repair:** Run `/pan:health --repair` to fix consistency issues automatically
 2. **Manual fix:** Edit `.planning/state.md` directly -- ensure fields use `**Field:** value` format and the YAML frontmatter matches
-3. **Reconstruct from disk:** Delete state.md and run `/pan:health --repair` (or `/pan:resume`, which offers to reconstruct it) -- `/pan:progress` does not regenerate state.md; with it missing it points you at `/pan:new-project`
-4. **Full reset:** restore `.planning/roadmap.md` from git (or recreate it with `/pan:milestone-new`), delete `.planning/state.md`, then run `/pan:health --repair` to regenerate state.md from the roadmap. `/pan:new-project` refuses to run while `project.md` exists — delete that too only for a true from-scratch reset
+3. **Reconstruct from disk:** Delete state.md and run `/pan:resume`, which offers to rebuild it from project.md, roadmap.md and the phase summaries (`/pan:health --repair` writes only a minimal scaffold whose current phase reads `(determining...)`) -- `/pan:progress` does not regenerate state.md; with it missing it points you at `/pan:new-project`
+4. **Full reset:** restore `.planning/roadmap.md` from git (or recreate it with `/pan:milestone-new`), delete `.planning/state.md`, then run `/pan:resume` to rebuild state.md from the roadmap (`/pan:health --repair` writes only a minimal scaffold: the roadmap's milestone, `Current phase: (determining...)`, `Status: Resuming`). `/pan:new-project` refuses to run while `project.md` exists — delete that too only for a true from-scratch reset
 
 ### config.json will not parse
 
@@ -258,7 +259,7 @@ must_haves: []
 **Fix:**
 
 1. Correct the JSON syntax error
-2. If the file is badly corrupted, delete it and run `/pan:health --repair` (or `pan-tools config-ensure-section`) to recreate it with defaults -- other commands fall back to in-memory defaults and write nothing
+2. If the file is badly corrupted, delete it and run `/pan:health --repair` (or `pan-tools config-ensure-section`) to recreate it with defaults -- other commands fall back to in-memory defaults, and `config-set` writes a config.json holding only the key it sets
 3. Then use `/pan:settings` to reconfigure your preferences
 
 ### .planning/ directory missing or inaccessible
@@ -281,7 +282,7 @@ must_haves: []
 **Fix:**
 
 - For permission issues: adjust permissions so your user has read/write access to `.planning/` and all subdirectories
-- For missing directory: run `/pan:new-project` to reinitialize (if `.planning/project.md` still exists it refuses to run and points you at `/pan:progress`; `/pan:resume` also picks the project back up)
+- For missing directory: run `/pan:new-project` to reinitialize; `/pan:resume` routes there too when `.planning/` does not exist
 - For wrong working directory: navigate to the project root before running PAN commands
 
 ### PAN says the planning tree belongs to another tool
@@ -320,7 +321,7 @@ must_haves: []
 2. Compare against roadmap.md phase listing
 3. Run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase N --raw` to see what PAN resolves
 
-**Fix:** Do not rename phase directories manually. Use `/pan:insert-phase` and `/pan:remove-phase` to manage phase structure. If directories are already mismatched, `/pan:health --repair` only rewrites state.md as a minimal scaffold from roadmap.md (after a timestamped `.bak-` backup) and does not touch phase directories; fix the directory names by hand.
+**Fix:** Do not rename phase directories manually. Use `/pan:insert-phase` and `/pan:remove-phase` to manage phase structure. If directories are already mismatched, `/pan:health --repair` never touches phase directories: what it rewrites is state.md as a minimal scaffold (after a timestamped `.bak-` backup), a missing or unparseable config.json, and requirement and roadmap plan checkboxes left unticked after state records every plan complete; fix the directory names by hand.
 
 ---
 
@@ -451,7 +452,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 ### summary.md self-check shows failure
 
-**Symptom:** A summary.md file contains `## Self-Check: FAILED` at the bottom, or the verifier flags the self-check failure.
+**Symptom:** A summary.md file contains `## Self-Check: FAILED` at the bottom, or `/pan:exec-phase`'s end-of-wave spot-check reports the plan as failed and asks whether to retry it.
 
 **What it means:** After completing all tasks, the executor ran its own self-check -- verifying that files it claimed to create actually exist and that commits it claimed to make are in the git log. One or more of these checks failed.
 
@@ -478,7 +479,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 **Fix:**
 
 1. Review each flagged item and determine if it is a true gap or a false positive
-2. For false positives, you can safely ignore them -- they do not block phase completion
+2. A false positive the verifier lists only as a warning leaves its status alone, but one it counts as a gap (a STUB artifact, a NOT_WIRED link) sets `status: gaps_found`, and on `gaps_found` `/pan:exec-phase` does not mark the phase complete: it offers gap closure and skips auto-advance (a `human_needed` verdict completes the phase once you approve the listed items)
 3. Use `/pan:verify-phase N` which performs its own final check and distinguishes critical gaps from acceptable state
 4. If the verifier is consistently too aggressive, consider disabling it for prototyping phases: `workflow.verifier: false` in `/pan:settings`
 
@@ -522,7 +523,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Fix (prevent future commits):**
 
-1. Set `commit_docs: false` in `.planning/config.json` via `/pan:settings`
+1. Set `commit_docs: false` in `.planning/config.json` with `pan-tools config-set commit_docs false` (`/pan:settings` has no `commit_docs` question)
 2. Add `.planning/` to your `.gitignore`
 
 **Fix (remove from history):**
@@ -588,7 +589,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Common causes of higher-than-expected usage:**
 
-- Plan checker rejection loop (up to 3 iterations = 3x planning cost)
+- Plan checker rejection loop (the planner runs up to 3 times, the first plan and at most 2 revisions = up to 3x planning cost)
 - Executor auto-fix loops (each Rule 1-3 attempt costs additional tokens)
 - Plans with too many tasks (4+ tasks per plan increases per-plan cost)
 - Staying on the default profile for high-volume work `budget` would have absorbed
@@ -621,7 +622,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 So if the symptom is "an agent ran on a weaker model", the profile to look at is `budget`; moving between `balanced` and `quality` will not change it.
 
-**Override precedence:** Per-agent override (`model_overrides`) > per-phase roadmap model tier > profile default > hardcoded `mid`
+**Override precedence:** Per-agent override (`model_overrides`) > per-phase roadmap model tier (read only by `resolve-model --metadata`, which no workflow passes) > profile default > hardcoded `mid`
 
 **Diagnostic steps:**
 
@@ -629,7 +630,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 2. Check `model_overrides` in the same file for per-agent overrides
 3. Run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model <agent-type> --raw` to see what model PAN would actually use
 
-**Fix:** Adjust `model_overrides` in config to force a specific model for a specific agent:
+**Fix:** Adjust `model_overrides` in config to pin a specific agent to a tier. The values are tiers, not model ids: `opus` or `reasoning` resolves to `inherit`, the session's own model; `sonnet` or `mid` and `haiku` or `fast` to the provider's mid and fast models; any other value, a full model id included, falls back to the mid tier. `resolve-model <agent> --raw` shows the result:
 
 ```json
 {
@@ -661,11 +662,11 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 ### Per-agent `effort:` appears to have no effect
 
-**Symptom:** PAN's agents carry an `effort:` level in their frontmatter (from `AGENT_BASE_EFFORT`, `effort_overrides`, or the `budget` profile's step-down), but every agent runs at the session's effort regardless.
+**Symptom:** PAN's agents carry an `effort:` level in their frontmatter (the shipped base level, which `AGENT_BASE_EFFORT` mirrors), but every agent runs at the session's effort regardless. `effort_overrides` and the `budget` profile's step-down change only the `effort` that `resolve-model` reports, never the frontmatter.
 
 **Root cause:** Claude Code before `2.1.267` ignored `effort:` frontmatter on custom commands, skills and subagents whenever the model had a pinned default effort. PAN emitted the field correctly the whole time; the runtime did not read it.
 
-**Fix:** Update Claude Code (`claude --version` to check) — nothing changes on PAN's side. On the other runtimes PAN never relied on the field: their agent files carry an effort-scaled prose preamble instead, which is unaffected.
+**Fix:** Update Claude Code (`claude --version` to check) — nothing changes on PAN's side. On OpenCode, Gemini CLI and Copilot CLI PAN never relied on the field: their agent files carry an effort-scaled prose preamble instead, which is unaffected. Codex agents carry the level as Codex's own `model_reasoning_effort`.
 
 **Also check `maxEffortLevel`.** Claude Code `2.1.267` added a `maxEffortLevel` setting (top-level, or per model under `modelSettings`). A managed or user value there clamps every `effort:` PAN emits, so an agent that seems to ignore its frontmatter on a current build may be capped rather than ignored. `claude config get maxEffortLevel` (or the settings file) shows whether one is set.
 
@@ -685,7 +686,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Symptom:** After updating Claude Code, a PAN phase uses noticeably more of the plan's allowance, or the cost report's model column moves from a Sonnet-tier id to an Opus-tier one.
 
-**Root cause:** Claude Code `2.1.280` changed the default model on the Pro and Team Standard plans from Sonnet to the newest Opus-tier model, matching the other plans. PAN's `quality` and `balanced` profiles run every agent on the session's own model (`inherit`), so a change of default moves every agent at once — nothing in PAN changed.
+**Root cause:** Claude Code `2.1.280` changed the default model on the Pro and Team Standard plans from Sonnet to the newest Opus-tier model, matching the other plans. PAN's `quality` and `balanced` profiles resolve every agent to the session's own model (`inherit`), so a change of default moves those agents at once — nothing in PAN changed. The exception is an agent spawned with no model, as `/pan:army` spawns them: it runs on its own `model:` pin where its file has one (the reviewer-class agents pin `opus`).
 
 **Fix:** Choose the session model yourself with `/model`, or switch PAN to the `budget` profile (planning and execution on the mid tier, verification and research on the fast tier), or pin individual agents with `model_overrides` in `.planning/config.json`.
 
@@ -703,7 +704,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 1. Run `/pan:pause` -- this saves progress to a `.continue-here.md` handoff document
 2. Start a new Claude Code session
-3. Run `/pan:resume` -- this restores context from state.md, roadmap.md, recent summary.md files, and `.continue-here.md`
+3. Run `/pan:resume` -- this restores context from state.md, project.md and `.continue-here.md`, and flags plans that have no summary.md yet
 
 **Prevention strategies:**
 
@@ -721,9 +722,9 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 | Source | Content | Always loaded |
 |--------|---------|--------------|
 | state.md | Current phase, plan, status, decisions | Yes |
-| roadmap.md | Project overview, phase list, progress | Yes |
+| roadmap.md | The next phase's goal; the phase list when it rebuilds a missing state.md | Only when routing to plan the next phase, or rebuilding state.md |
 | .continue-here.md | Handoff notes from pause | If exists |
-| Recent summary.md | Latest completed plan details | Latest 1-2 |
+| summary.md files | Which plans have none yet (incomplete work); decisions and concerns when it rebuilds state.md | Checked for, not read, unless rebuilding state.md |
 | project.md | Project brief | Yes |
 
 **What is NOT restored:**
@@ -789,7 +790,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 ### Copilot CLI loads PAN's rules twice in a project that also has Claude Code
 
-**Symptom:** In a project with both the Claude Code and the Copilot CLI install, Copilot's system message carries PAN's rules section ("## PAN Wizard") twice. That is about 630 bytes repeated on every request, plus the compact instructions in `CLAUDE.md`, which only Claude Code uses.
+**Symptom:** In a project with both the Claude Code and the Copilot CLI install, Copilot's system message carries PAN's rules section ("## PAN Wizard") twice. That is PAN's whole section repeated on every request, plus the compact instructions in `CLAUDE.md`, which only Claude Code uses.
 
 **Root cause:** Copilot CLI reads `AGENTS.md` and `CLAUDE.md` as two separate repository instruction sources, both enabled by default (`copilot instruction list --json`, checked on `1.0.91`). Since `1.0.66` it also expands the `@AGENTS.md` import inside `CLAUDE.md`. So PAN's section arrives once from `AGENTS.md` and once through the import. Recorded sessions on `1.0.88` show both copies. Copilot removes duplicate instruction files only when their content is identical, and these two files differ. Its `already-loaded` skip applies only within one file's import tree.
 
@@ -841,7 +842,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Fix:**
 
-- PAN uses file-based input for commands containing `$` signs -- this avoids shell expansion
+- Put content containing `$` in a file and pass the file rather than an inline argument -- this avoids shell expansion (`/pan:focus-exec` gives its agents the same advice)
 - In context.md and plan code examples, use fenced code blocks (the executor reads them as literal text)
 - In custom hooks or scripts, use single quotes to prevent expansion: `'${literal}'`
 - Escape dollar signs with backslash when shell expansion is unavoidable: `\${escaped}`
@@ -876,7 +877,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Fix:**
 
-- Enable long paths in Windows: `git config --system core.longpaths true`
+- Enable long paths in git: `git config --system core.longpaths true`
 - Or enable via Group Policy: Computer Configuration > Administrative Templates > System > Filesystem > Enable Win32 long paths
 - Use shorter project directory names when possible
 
@@ -967,7 +968,7 @@ git worktree remove --force <worktree-path>
 git branch -D pan-whatif/<phase>-<slug>-<ts>
 ```
 
-The worktree path + branch name are printed by `whatif prepare` and logged to the counterfactual report. Check `git worktree list` if you can't find the path.
+The worktree path and branch name are in the JSON `whatif prepare` prints (`worktree.worktree_path`, `worktree.branch`); the counterfactual report does not record them. Check `git worktree list` if you can't find the path.
 
 Common causes:
 - Editor has files open in the worktree (close them first)
@@ -976,7 +977,7 @@ Common causes:
 
 ### `/pan:army` left `pan-army-*` directories or `army/*` branches behind
 
-Army worktrees are created as **siblings of the project directory** (`../pan-army-<task>/`), each on an `army/<task>` branch. A completed or aborted campaign should leave none — Phase 5 removes each task's worktree and branch after its squash-merge lands. If any remain (a campaign aborted mid-flight, or predates the teardown), sweep them:
+Army worktrees are created as **siblings of the project directory** (`../pan-army-<slug>/`, the task name slugified), each on an `army/<slug>` branch. A completed or aborted campaign should leave none — Phase 5 removes each task's worktree and branch after its squash-merge lands. If any remain (a campaign aborted mid-flight, or predates the teardown), sweep them:
 
 ```bash
 pan-tools worktree cleanup            # safe sweep — see what it keeps and why
@@ -985,14 +986,14 @@ pan-tools worktree cleanup --force    # also discard dirty worktrees + unintegra
 
 The default sweep is deliberately cautious: it **keeps** any worktree with uncommitted changes and any branch whose commits are not reachable from your current branch — that branch may be the only copy of aborted work — and prints the exact command to remove each kept item. Read the `kept` list before reaching for `--force`. Two things to know:
 
-- A **squash-merged** branch never looks merged to git, so it shows up as "not reachable" even though its work landed — if the merge is in, deleting it is correct (`git branch -D army/<task>`, or `--force`).
+- A **squash-merged** branch never looks merged to git, so it shows up as "not reachable" even though its work landed — if the merge is in, deleting it is correct (`git branch -D army/<slug>`, or `--force`).
 - The sweep only ever touches the `army/` namespace and `pan-army-*` worktrees; your own worktrees and branches are never candidates.
 
 Manual recovery, if the sweep itself is blocked (same causes as the what-if section above):
 
 ```bash
-git worktree remove --force ../pan-army-<task>
-git branch -D army/<task>
+git worktree remove --force ../pan-army-<slug>
+git branch -D army/<slug>
 git worktree prune
 ```
 
@@ -1000,8 +1001,7 @@ git worktree prune
 
 The MCP tool cache at `.planning/bridge/available-tools.json` isn't populated. Causes:
 
-- **Host runtime hasn't discovered MCP servers yet.** PAN reads the cache; it doesn't probe MCP servers directly. Check `.mcp.json` at the project root (where PAN registers its own server) or run `claude mcp list`.
-- **Not on Claude Code.** MCP is Claude-first. Other runtimes report empty.
+- **Nothing has written the cache.** PAN reads it and never probes MCP servers itself, and inside PAN only `pan-tools bridge cache` writes it, so the list stays empty on any runtime until something seeds it. To see the servers the runtime itself has, check `.mcp.json` at the project root (where PAN registers its own server) or run `claude mcp list`.
 - **Testing without MCP setup.** Seed the cache manually with `pan-tools bridge cache --runtime claude --servers '[{"name":"test","tools":[{"name":"test.x","description":"test"}]}]'`.
 
 This is expected behavior — `bridge list` is designed to report cleanly when no tools are available.
@@ -1039,11 +1039,11 @@ Since Codex CLI `0.154.0` (released `2026-09-09`), a live session picks up newly
 Expected when:
 - You're not on Claude Code — the flag needs native sub-agent spawning, which the other runtimes don't support cleanly
 
-The flag degrades to flat exec in that case. There is **no model gate**: `pan-conductor` carries no `model:` frontmatter, so it runs on whatever model you launched the session with (the `budget` profile's advisory tiering is the only thing that would nominate a cheaper one, and it does not block the flag). So "wrong model" is never the reason — if you're on Claude Code with a multi-plan phase and still getting flat exec, the fallback is prose-driven — no deterministic guard exists in code, so check the runtime and the flag's conditions in `commands/pan/exec-phase.md`.
+The flag degrades to flat exec in that case. There is **no model gate**: `pan-conductor` carries no `model:` frontmatter, so it runs on whatever model you launched the session with (the `budget` profile's advisory tiering is the only thing that would nominate a cheaper one, and it does not block the flag). So "wrong model" is never the reason. On Claude Code the command's `<process>` sends every `--hierarchical` run to `pan-conductor`, whatever the phase's plan count; that routing is prose the orchestrator follows, not a code guard, so a flat run there means the orchestrator did not follow `commands/pan/exec-phase.md`.
 
 ### Cost log records have `input_tokens: 0` and `cost_usd: null`
 
-The SubagentStop hook reads the subagent's own transcript when the payload carries an `agent_id` (`token_source: "agent-transcript"`); without one it sums the slice of the parent session transcript since the previous SubagentStop (`token_source: "transcript"`), and the payload's `usage` block is only a fallback. Zeros mean no transcript was available (headless `claude -p` on a host without agent ids), a parallel sibling already consumed the shared slice, or the host named an agent whose transcript file was not there yet (`token_source: "agent-transcript-missing"`) — the record's `token_source` field says which path ran. Since v3.29 a row with no tokens and no model is an unmeasured spawn: `cost report` excludes it from `calls` and counts it under `totals.empty_excluded` rather than as an unknown-cost call. Rows written by 3.28 and earlier from the parent slice can carry a whole session's usage; `cost report` quarantines those as `suspect_excluded` when they exceed 500M cache-read or 10M output tokens, span more than six hours, or (untimed rows only) show cache reads dwarfing input and output — a timed parent-slice row under those limits is counted, attributed to the subagent that happened to stop — and `hygiene scan` names the ledger poisoned when the quarantined rows dominate it.
+The SubagentStop hook reads the subagent's own transcript when the payload carries an `agent_id` (`token_source: "agent-transcript"`); without one it sums the slice of the parent session transcript since the previous SubagentStop (`token_source: "transcript"`), and the payload's `usage` block is only a fallback. Zeros mean the payload named no transcript and carried no `usage` (`token_source: "usage-fallback"`), a parallel sibling already consumed the shared parent slice (`"transcript"`), the host named an agent whose transcript file was not there yet (`"agent-transcript-missing"`), or a plausibility guard dropped an implausible value (`clamped: true`) — the record's `token_source` and `clamped` fields say which. `cost_usd: null` on its own is normal: every hook row carries it, and the report prices the row when it runs. Since v3.29 a row with no tokens and no model is an unmeasured spawn: `cost report` excludes it from `calls` and counts it under `totals.empty_excluded` rather than as an unknown-cost call. Rows written by 3.28 and earlier from the parent slice can carry a whole session's usage; `cost report` quarantines those as `suspect_excluded` when they exceed 500M cache-read or 10M output tokens, span more than six hours, or (untimed rows only) show cache reads dwarfing input and output — a timed parent-slice row under those limits is counted, attributed to the subagent that happened to stop — and `hygiene scan` names the ledger poisoned when the quarantined rows dominate it.
 
 Options:
 - **Upgrade Claude Code** if its SubagentStop payload carries no `agent_id` (the row's `agent_id` is `null`): the hook needs it to read the subagent's own transcript, and the payload's `usage` block is only the last resort.

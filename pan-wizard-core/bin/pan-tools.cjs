@@ -187,6 +187,35 @@
 
 const fs = require('fs');
 const path = require('path');
+
+// Compile cache (Node 22.1+; a no-op before): V8 reuses the compiled code of pan-tools
+// and its modules across processes, which workflows start many times per phase — a
+// `version` call went from 100 to 75 ms median (measured 2026-10-10, bare node 44 ms).
+// The cache sits in the per-user 0700 directory the hooks already use, never Node's
+// default under the shared system temp directory, where another user could plant
+// compiled code. A directory that is a symlink, not ours, or open to group or other
+// disables it. NODE_COMPILE_CACHE, when set, is Node's own choice and wins; any failure
+// runs without a cache.
+function enableCompileCache() {
+  try {
+    const mod = require('module');
+    if (typeof mod.enableCompileCache !== 'function' || process.env.NODE_COMPILE_CACHE) return;
+    const os = require('os');
+    const uid = typeof process.getuid === 'function' ? process.getuid() : (process.env.USERNAME || 'win');
+    const parent = path.join(os.tmpdir(), `pan-hooks-${uid}`);
+    const dir = path.join(parent, 'compile-cache');
+    for (const d of [parent, dir]) {
+      fs.mkdirSync(d, { recursive: true, mode: 0o700 });
+      const st = fs.lstatSync(d);
+      if (st.isSymbolicLink()) return;
+      // POSIX only: Windows reports synthetic mode bits.
+      if (typeof process.getuid === 'function' && (st.uid !== process.getuid() || (st.mode & 0o077) !== 0)) return;
+    }
+    mod.enableCompileCache(dir);
+  } catch { /* best effort: run uncached */ }
+}
+enableCompileCache();
+
 const { error, output, buildCachedContext } = require('./lib/core.cjs');
 const state = require('./lib/state.cjs');
 const phase = require('./lib/phase.cjs');
@@ -333,7 +362,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -538,9 +567,16 @@ async function main() {
       const force = args.includes('--force');
       const failOnError = args.includes('--fail-on-error');
       const message = args[1] && !args[1].startsWith('--') ? args[1] : null;
-      // Parse --files flag (collect args after --files, stopping at other flags)
+      // Parse --files flag: collect args after --files, stopping at the next flag. A
+      // filter here took every later bare argument, so `--files f --type docs` staged `docs`.
       const filesIndex = args.indexOf('--files');
-      const files = filesIndex !== -1 ? args.slice(filesIndex + 1).filter(a => !a.startsWith('--')) : [];
+      const files = [];
+      if (filesIndex !== -1) {
+        for (const a of args.slice(filesIndex + 1)) {
+          if (a.startsWith('--')) break;
+          files.push(a);
+        }
+      }
       const commitType = getArgValue(args, '--type');
       commands.cmdCommit(cwd, message, files, raw, amend, { type: commitType, force, failOnError });
       break;
@@ -1145,7 +1181,14 @@ async function main() {
     case 'knowledge': {
       const subcommand = args[1];
       if (subcommand === 'ask') {
-        const question = args.slice(2).filter(a => !a.startsWith('--')).join(' ');
+        // The question is every word after `ask` that is neither a flag nor a flag's
+        // value: `--recall-cue "session tokens" --max-sources 3` used to join it.
+        const words = [];
+        for (let i = 2; i < args.length; i++) {
+          if (args[i] === '--max-sources' || args[i] === '--recall-cue') { i++; continue; }
+          if (!args[i].startsWith('--')) words.push(args[i]);
+        }
+        const question = words.join(' ');
         const maxSources = getArgValue(args, '--max-sources');
         knowledge.cmdKnowledgeAsk(cwd, question, {
           max_sources: maxSources ? Number(maxSources) : undefined,
@@ -1277,7 +1320,8 @@ async function main() {
 
     case 'cost': {
       const subcommand = args[1];
-      if (subcommand === 'report' || !subcommand) {
+      // `report` is the default, so a leading flag (`cost --format chart`) means report, as for `links`.
+      if (subcommand === 'report' || !subcommand || subcommand.startsWith('--')) {
         const format = getArgValue(args, '--format', 'json');
         const since = getArgValue(args, '--since');
         const until = getArgValue(args, '--until');
@@ -1304,8 +1348,10 @@ async function main() {
           mainThread: !args.includes('--no-main-thread'),
           claudeDir: getArgValue(args, '--claude-dir'),
         }, raw);
+      } else if (subcommand === 'limits') {
+        cost.cmdCostLimits(cwd, raw);
       } else {
-        error('Unknown cost subcommand. Available: report, append, clear, rebuild');
+        error('Unknown cost subcommand. Available: report, append, clear, rebuild, limits');
       }
       break;
     }
@@ -1358,7 +1404,7 @@ async function main() {
         campaign.cmdCampaignSchedule(cwd, {
           goal: getArgValue(args, '--goal'),
           source: getArgValue(args, '--source'),
-          cadence: getArgValue(args, '--cadence', 'daily'),
+          cadence: getArgValue(args, '--cadence'),
           daily_budget: budget != null ? Number(budget) : undefined,
           enabled: args.includes('--disable') ? false : undefined,
           paused: args.includes('--pause') ? true : (args.includes('--resume') ? false : undefined),
@@ -1680,18 +1726,24 @@ async function main() {
       // and to the suggestion index that is now parsed from those strings.
       // Publishing it fixes the error AND feeds the suggester, with no second
       // list to maintain.
-      if (subcommand) {
+      //
+      // A flag is not a subcommand: `learn --session <id>` and `learn --sessions N`
+      // take the alias with `optimize learn`'s flags (the guard used to refuse both).
+      if (subcommand && !subcommand.startsWith('--')) {
         error('Unknown learn subcommand. Available: promote, unpromote, list-promoted, build-index, topics-for, lint');
       }
       optimize.cmdOptimizeLearn(cwd, {
         sessionId: getArgValue(args, '--session'),
+        sessions: getArgValue(args, '--sessions'),
       }, raw);
       break;
     }
 
     case 'links': {
       const subcommand = args[1];
-      if (subcommand === 'validate' || !subcommand) {
+      // `validate` is the default, flags and all: `links --strict` used to be refused
+      // as an unknown subcommand while bare `links` validated.
+      if (subcommand === 'validate' || !subcommand || subcommand.startsWith('--')) {
         const collectMulti = (flag) => {
           const vals = [];
           for (let i = 0; i < args.length; i++) {

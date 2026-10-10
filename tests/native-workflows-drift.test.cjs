@@ -56,6 +56,35 @@ describe('native workflows: the emitted set', () => {
     assert.equal(new Set(names).size, names.length, 'script names must be unique');
   });
 
+  test('a command a script names exists: /pan-<x> only for a native workflow, /pan:<x> for a markdown command', () => {
+    // The scripts told users to "run /pan-exec-phase" and "/pan-plan-phase --gaps";
+    // a standard Claude Code install has those as /pan:exec-phase and /pan:plan-phase
+    // (/pan-<x> exists only for the native scripts themselves).
+    const native = new Set(scripts.map((s) => s.name.replace(/\.js$/, '')));
+    const commands = new Set(fs.readdirSync(path.join(__dirname, '..', 'commands', 'pan')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)));
+    for (const s of scripts) {
+      // A slash command follows whitespace or punctuation, never a path character
+      // (`bin/pan-tools.cjs`, `.claude/pan-wizard-core` are paths).
+      for (const [, name] of s.content.matchAll(/(?<![\w.~-])\/(pan-[a-z-]+)/g)) {
+        assert.ok(native.has(name), `${s.name} names /${name}, which is no native workflow (a markdown command is /pan:<name>)`);
+      }
+      for (const [, name] of s.content.matchAll(/(?<![\w.~-])\/pan:([a-z-]+)/g)) {
+        assert.ok(commands.has(name), `${s.name} names /pan:${name}, which is no shipped command`);
+      }
+    }
+  });
+
+  test('pan-diagnose-issues records gaps the way pan-planner --gaps reads them', () => {
+    // The record step put the debug session in `artifacts`, asked for no `missing` or
+    // `debug_session`, and never set `status: diagnosed`; pan-planner's --gaps mode finds
+    // UAT gaps only in a diagnosed file, so a native diagnosis was invisible to it.
+    const s = scripts.find((x) => x.name === 'pan-diagnose-issues.js');
+    assert.ok(s, 'pan-diagnose-issues.js is emitted');
+    assert.match(s.content, /set the frontmatter status to diagnosed/);
+    assert.match(s.content, /missing \(the suggested fix direction\)/);
+    assert.match(s.content, /debug_session \(the debug session path\)/);
+  });
+
   test('meta.name equals the file stem (that is what /<name> resolves to)', () => {
     for (const s of scripts) {
       const m = s.content.match(/^\s*name: '([^']+)',$/m);

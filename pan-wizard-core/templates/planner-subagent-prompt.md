@@ -59,6 +59,7 @@ Before returning PLANNING COMPLETE:
 | `{phase_number}` | From roadmap/arguments | `5` or `2.1` |
 | `{phase_dir}` | Phase directory name | `05-user-profiles` |
 | `{phase}` | Phase prefix | `05` |
+| `{phase_num}` | Padded phase number in file names | `05` |
 | `{standard \| gap_closure}` | Mode flag | `standard` |
 
 ---

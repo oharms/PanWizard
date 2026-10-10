@@ -105,10 +105,13 @@ Use `/pan:profile <profile>` to see estimated cost differences before switching.
 Model resolution follows this priority chain:
 
 ```
-1. Per-agent override (model_overrides in config.json)     ← highest priority
-2. Per-phase override (<!-- model_tier: X --> in roadmap)
-3. Complexity routing (if strategy = "complexity")
-4. Profile lookup (MODEL_PROFILES[agent][profile])          ← lowest priority
+1. Per-agent override (model_overrides in config.json)     ← highest priority; used as-is
+2. Per-phase override (<!-- model_tier: X --> in roadmap)   ← used as-is
+3. Profile lookup (MODEL_PROFILES[agent][profile])          ← the base tier
+4. Complexity routing (if strategy = "complexity")          ← moves that tier ±1
+5. Capability hints (context_estimate / needs_thinking / cache_warm)
+6. Failure escalation (attempt > 1, capped by routing.max_escalations)
+7. Provider resolution (tier → model id)
 ```
 
 ### Provider Detection
@@ -117,8 +120,9 @@ PAN auto-detects the LLM provider to map tiers to the right model names:
 
 1. **Explicit config** — `routing.provider` in config.json (if not `"auto"`)
 2. **Environment variable** — `PAN_PROVIDER` env var
-3. **Runtime directory** — `.claude/` → Anthropic, `.codex/` → OpenAI, `.gemini/` → Google, `.opencode/` → OpenAI, `.github/` → default (first match wins)
-4. **Fallback** — Default provider map (Anthropic-style names)
+3. **OpenCode's configured model** — on an OpenCode install, the provider prefix (anthropic, openai or google) of `model` in `opencode.json` or `.opencode/opencode.json`
+4. **Runtime directory** — `.claude/` → Anthropic, `.codex/` → OpenAI, `.gemini/` → Google, `.opencode/` → OpenAI, `.github/` → default (first match wins)
+5. **Fallback** — Default provider map (Anthropic-style names)
 
 ---
 
@@ -136,7 +140,7 @@ Set in `.planning/config.json` under the `routing` section:
 }
 ```
 
-Every agent always gets the tier assigned by its profile. Predictable and simple.
+Every agent gets the tier its profile assigns, with no complexity scoring; only capability hints and failure escalation (steps 5–6 above) can still move it, when the caller passes them. Predictable and simple.
 
 ### Complexity
 
@@ -232,6 +236,7 @@ Full routing config in `.planning/config.json`:
 | `routing.cascade_quality_gate` | `true`, `false` | `true` | Reserved for future cascade routing |
 | `routing.complexity_thresholds.downgrade_max` | number | `2` | Max complexity score to downgrade tier |
 | `routing.complexity_thresholds.upgrade_min` | number | `6` | Min complexity score to upgrade tier |
+| `routing.max_escalations` | integer | `1` | How many tiers a retry may climb (failure escalation) |
 
 ---
 
@@ -243,12 +248,12 @@ Runtime: `/pan:profile <profile>`
 
 | Direction | Example | Behavior |
 |-----------|---------|----------|
-| Downgrade | quality → balanced | Confirmation required |
+| Same tier | quality → balanced | Proceeds silently (both resolve every agent to the reasoning tier) |
 | Downgrade | balanced → budget | Confirmation required |
 | Upgrade | budget → balanced | Proceeds silently |
 | Same | balanced → balanced | Proceeds silently |
 
-**Tier Order:** `quality` (3) > `balanced` (2) > `budget` (1)
+**Tier Order:** `quality` = `balanced` (2) > `budget` (1)
 
 ---
 

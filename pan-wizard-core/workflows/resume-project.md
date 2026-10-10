@@ -252,12 +252,10 @@ Before proceeding to routed workflow, update session continuity:
 
 Update state.md:
 
-```markdown
-## Session Continuity
-
-Last session: [now]
-Stopped at: Session resumed, proceeding to [action]
-Resume file: [updated if applicable]
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state record-session \
+  --stopped-at "Session resumed, proceeding to [action]" \
+  --resume-file "[updated if applicable, else None]"
 ```
 
 This ensures if session ends unexpectedly, next resume knows the state.

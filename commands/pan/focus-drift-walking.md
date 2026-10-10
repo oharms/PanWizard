@@ -2,6 +2,7 @@
 name: focus-drift-walking
 group: Focus
 description: Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories
+argument-hint: "[--create] [--audit] [--repair] [--report] [--dir <path>] [--depth N] [--severity critical|high|medium|low|info] [--format markdown|json|checklist] [--quick]"
 allowed-tools:
   - Read
   - Write
@@ -27,7 +28,7 @@ Walk every directory in the project, detect drift between documentation and code
 This command walks the **host project's directories and documentation** — NOT PAN Wizard's own infrastructure.
 
 **ALWAYS EXCLUDE these directories from walking:**
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/` — PAN runtime directories
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
 - `.planning/` — PAN planning state (read for context, never report as drift)
 - Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
 - Build output directories: `build/`, `dist/`, `out/`, `target/`, `bin/`, `obj/`, `node_modules/`, `.git/`, `__pycache__/`, `.next/`, `.nuxt/`
@@ -49,7 +50,7 @@ When `/pan:focus-drift-walking` is invoked, execute ALL phases for the selected 
 - `--report` — Dry run: detect and report drift without modifying anything
 - `--dir <path>` — Target a specific directory subtree only
 - `--depth <n>` — Limit walk depth (default: unlimited)
-- `--severity <level>` — Filter report: `critical`, `warning`, `info` (default: all)
+- `--severity <level>` — Filter report: `critical`, `high`, `medium`, `low`, `info` (default: all)
 - `--format <type>` — Output format: `markdown` (default), `json`, `checklist`
 - `--quick` — Skip Phase 4 (deep semantic analysis) and Phase 7 (cross-project sync)
 
@@ -503,7 +504,7 @@ When root docs and sub-docs disagree:
 
 - Walk build output directories (`build/`, `dist/`, `node_modules/`, `target/`, `obj/`, `__pycache__/`, `.git/`)
 - Report PAN infrastructure files as project drift
-- Auto-fix purpose statements, architecture descriptions, or conventions without `--repair`
+- Auto-fix purpose statements, architecture descriptions, conventions, dependency directions or build commands — even `--repair` only flags these (Phase 6.2)
 - Create documentation for trivial directories (< 3 source files)
 - Include secrets, credentials, or API keys in any generated documentation
 - Guess at file contents — always read and verify

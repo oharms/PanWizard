@@ -91,7 +91,7 @@ Initialize a new project with deep context gathering and project.md
 Design a roadmap phase before planning — architecture, ADR, threat-lite, machine-checkable criteria — verified by an independent checker
 
 ```
-/pan:design-phase [phase] [--spike] [--skip-design] [--redesign]
+/pan:design-phase <phase> [--spike] [--skip-design] [--redesign]
 ```
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__*  
@@ -108,19 +108,19 @@ Gather phase context through adaptive questioning before planning
 
 **Tools:** Read, Write, Bash, Glob, Grep, AskUserQuestion, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 84
+**Lines:** 86
 
 #### /pan:exec-phase
 
 Execute all plans in a phase with wave-based parallelization
 
 ```
-/pan:exec-phase <phase-number> [--gaps-only] [--skip-tests] [--skip-review] [--fast]
+/pan:exec-phase <phase-number> [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]
 ```
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion  
 **Group:** Phase Lifecycle  
-**Lines:** 139
+**Lines:** 136
 
 #### /pan:plan-phase
 
@@ -132,19 +132,19 @@ Create detailed phase plan (plan.md) with verification loop
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__*  
 **Group:** Phase Lifecycle  
-**Lines:** 132
+**Lines:** 133
 
 #### /pan:research-phase
 
 Research how to implement a phase (standalone - usually use /pan:plan-phase instead)
 
 ```
-/pan:research-phase [phase]
+/pan:research-phase <phase>
 ```
 
 **Tools:** Read, Bash, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 191
+**Lines:** 189
 
 #### /pan:verify-phase
 
@@ -188,7 +188,7 @@ Add phase to end of current milestone in roadmap
 Surface Claude's assumptions about a phase approach before planning
 
 ```
-/pan:assumptions [phase]
+/pan:assumptions <phase>
 ```
 
 **Tools:** Read, Bash, Grep, Glob  
@@ -255,7 +255,7 @@ Remove a future phase from roadmap and renumber subsequent phases
 | `/pan:focus-drift-walking` | Read, Write, Edit, Bash, Grep, Glob, Agent | Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories |
 | `/pan:focus-exec` | Read, Write, Edit, Bash, Grep, Glob, Agent | Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers |
 | `/pan:focus-plan` | Read, Write, Edit, Bash, Grep, Glob | Create capacity-budgeted work batch with spec coverage verification and 4 execution modes |
-| `/pan:focus-scan` | Read, Bash, Grep, Glob | Deep-dive strategic work scan with prioritized items and Reality Score filtering |
+| `/pan:focus-scan` | Read, Write, Bash, Grep, Glob | Deep-dive strategic work scan with prioritized items and Reality Score filtering |
 | `/pan:focus-sync` | Read, Bash, Grep, Glob, Edit, Write | Synchronize documentation after changes — check staleness and update counts |
 
 #### /pan:focus-auto
@@ -263,96 +263,96 @@ Remove a future phase from roadmap and renumber subsequent phases
 Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness
 
 ```
-/pan:focus-auto
+/pan:focus-auto [--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Focus  
-**Lines:** 692
+**Lines:** 694
 
 #### /pan:focus-design
 
 Strategic 10-phase feature investigation, design, and specification pipeline
 
 ```
-/pan:focus-design
+/pan:focus-design <feature description> [--full | --internal | --outward | --spike] [--gate] [--audit] [--mvp]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs  
 **Group:** Focus  
-**Lines:** 1118
+**Lines:** 1119
 
 #### /pan:focus-doc-audit
 
 Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality
 
 ```
-/pan:focus-doc-audit
+/pan:focus-doc-audit [file|directory] [--deep] [--links] [--fix] [--all] [--score-only] [--min-score N] [--format markdown|json|checklist]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch  
 **Group:** Focus  
-**Lines:** 530
+**Lines:** 531
 
 #### /pan:focus-drift-walking
 
 Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories
 
 ```
-/pan:focus-drift-walking
+/pan:focus-drift-walking [--create] [--audit] [--repair] [--report] [--dir <path>] [--depth N] [--severity critical|high|medium|low|info] [--format markdown|json|checklist] [--quick]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Focus  
-**Lines:** 525
+**Lines:** 526
 
 #### /pan:focus-exec
 
 Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
 
 ```
-/pan:focus-exec
+/pan:focus-exec [--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--dry-run] [--no-commit] [--continue] [--deep-review]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Focus  
-**Lines:** 457
+**Lines:** 458
 
 #### /pan:focus-plan
 
 Create capacity-budgeted work batch with spec coverage verification and 4 execution modes
 
 ```
-/pan:focus-plan
+/pan:focus-plan [--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--lean] [--no-spec-check]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob  
 **Group:** Focus  
-**Lines:** 293
+**Lines:** 294
 
 #### /pan:focus-scan
 
 Deep-dive strategic work scan with prioritized items and Reality Score filtering
 
 ```
-/pan:focus-scan
+/pan:focus-scan [--focus <area>] [--quick] [--refresh] [--lean]
 ```
 
-**Tools:** Read, Bash, Grep, Glob  
+**Tools:** Read, Write, Bash, Grep, Glob  
 **Group:** Focus  
-**Lines:** 285
+**Lines:** 287
 
 #### /pan:focus-sync
 
 Synchronize documentation after changes — check staleness and update counts
 
 ```
-/pan:focus-sync
+/pan:focus-sync [--readme | --docs | --arch | --all]
 ```
 
 **Tools:** Read, Bash, Grep, Glob, Edit, Write  
 **Group:** Focus  
-**Lines:** 104
+**Lines:** 105
 
 ---
 
@@ -400,7 +400,7 @@ Archive completed milestone and prepare for next version
 
 **Tools:** Read, Write, Bash  
 **Group:** Milestone  
-**Lines:** 146
+**Lines:** 149
 
 #### /pan:milestone-gaps
 
@@ -439,12 +439,12 @@ Start a new milestone cycle — update project.md and route to requirements
 Milestone retrospective — analyze estimation accuracy, verification patterns, and common gaps
 
 ```
-/pan:retro
+/pan:retro [--write-memory] [--max N]
 ```
 
 **Tools:** Read, Bash, Glob, Grep  
 **Group:** Milestone Lifecycle  
-**Lines:** 36
+**Lines:** 38
 
 ---
 
@@ -499,7 +499,7 @@ Check project progress, show context, and route to next action (execute or plan)
 Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents
 
 ```
-/pan:quick [--full]
+/pan:quick [--full] [description]
 ```
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion  
@@ -516,7 +516,7 @@ Resume work from previous session with full context restoration
 
 **Tools:** Read, Bash, Write, AskUserQuestion, SlashCommand  
 **Group:** Session & Progress  
-**Lines:** 101
+**Lines:** 99
 
 ---
 
@@ -545,7 +545,7 @@ Audit a PAN Wizard deployment — verify installation integrity, project health,
 
 **Tools:** Read, Bash, Write, Glob, Grep, AskUserQuestion  
 **Group:** System  
-**Lines:** 387
+**Lines:** 386
 
 #### /pan:debug
 
@@ -557,14 +557,14 @@ Systematic debugging with persistent state across context resets
 
 **Tools:** Read, Bash, Task, AskUserQuestion  
 **Group:** System  
-**Lines:** 237
+**Lines:** 240
 
 #### /pan:health
 
 Diagnose planning directory health and optionally repair issues
 
 ```
-/pan:health [--repair]
+/pan:health [--repair] [--standards] [--full] [--drift] [--links]
 ```
 
 **Tools:** Read, Bash, Write, AskUserQuestion  
@@ -605,7 +605,7 @@ Reapply local modifications after a PAN update
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion  
 **Group:** System  
-**Lines:** 119
+**Lines:** 115
 
 #### /pan:settings
 
@@ -688,12 +688,12 @@ Join the PAN Discord community
 Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
 
 ```
-/pan:army
+/pan:army <goal> [--source scan|backlog] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--squads a,b,c] [--no-build-worktrees] [--push] [--clean-seal] [--schedule <cadence>] [--daily-budget N] [--dry-run] [--continue] [--stop] [--status]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, Task  
 **Group:** Army  
-**Lines:** 196
+**Lines:** 200
 
 ---
 
@@ -711,12 +711,12 @@ Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a
 Show token usage and estimated cost across PAN commands and agents
 
 ```
-/pan:cost [report|append|clear|rebuild] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]
+/pan:cost [report|append|clear|rebuild|limits] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 144
+**Lines:** 148
 
 #### /pan:dashboard
 
@@ -740,14 +740,14 @@ Generate a single-page, self-contained HTML dashboard of the bot army and the pr
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 92
+**Lines:** 93
 
 #### /pan:report
 
 Generate a self-contained HTML report for one phase, or a project-level timeline index linking every phase report
 
 ```
-/pan:report phase <N> | index [--bundle] | all [--out <file>] [--open] [--stdout]
+/pan:report phase <N> [--out <file>] [--open] [--stdout] | index [--out <file>] [--open] [--stdout] [--bundle] | all [--open]
 ```
 
 **Tools:** Read, Bash  
@@ -769,36 +769,36 @@ Generate a self-contained HTML report for one phase, or a project-level timeline
 Manage external experiments — scaffold, run, harvest, promote findings back to PAN
 
 ```
-/pan:experiment
+/pan:experiment new <slug> --idea <path> [--runtime r] [--root path] [--budget n] | list [--root path] | manifest <slug> | run <slug> [--timeout sec] [--prompt text] | status <slug> | stop <slug> | harvest <slug> [--source-root path] [--force] | prune <slug> [--hard]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Self-Improvement  
-**Lines:** 225
+**Lines:** 226
 
 #### /pan:learn
 
 Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports
 
 ```
-/pan:learn
+/pan:learn [--session <id> | --sessions <n> | --experiment <slug>] [--apply]
 ```
 
 **Tools:** Read, Bash, Glob, Grep, Task  
 **Group:** Self-Improvement  
-**Lines:** 79
+**Lines:** 80
 
 #### /pan:optimize
 
 Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions
 
 ```
-/pan:optimize
+/pan:optimize apply [--report <file>] | revert <apply_id> | revert --last | list | stats | trace init|end|current|list
 ```
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep  
 **Group:** Self-Improvement  
-**Lines:** 112
+**Lines:** 113
 
 ---
 
@@ -853,12 +853,12 @@ Grounded Q&A, multi-turn design discussion, and playbook generation. Three modes
 Validate the doc-code link graph — inline wiki-style refs, source-comment anchors, and require-code-mention contracts (ADR-0027, v3.8.0+)
 
 ```
-/pan:links
+/pan:links [--strict] [--doc-root <path>]... [--source-root <path>]... [--raw]
 ```
 
 **Tools:** Bash, Read, Grep  
 **Group:** Validation  
-**Lines:** 104
+**Lines:** 107
 
 ---
 
@@ -873,7 +873,7 @@ Validate the doc-code link graph — inline wiki-style refs, source-comment anch
 Discover available MCP tools and recommend which ones apply to a phase. Discovery-only; auto-invocation deferred.
 
 ```
-/pan:mcp-bridge list | recommend <phase> | cache [--servers <json>] [--runtime <name>]
+/pan:mcp-bridge list | recommend <phase> [--max N] [--min-score N] | cache [--servers <json>] [--runtime <name>]
 ```
 
 **Tools:** Read, Bash, Write  
@@ -954,7 +954,7 @@ These exist only in the PAN source repository (`.claude/commands/`) and are NOT 
 
 /execplan — Execute Work Plan Items
 
-**Lines:** 124
+**Lines:** 125
 
 #### /featureAI
 
@@ -1077,13 +1077,13 @@ Full reality check of PAN Wizard — claims vs code vs deployed installs, market
 
 /build - Build PAN Wizard Hooks
 
-**Lines:** 47
+**Lines:** 48
 
 #### /commit
 
 /commit - Create Git Commit with Safety Checks
 
-**Lines:** 99
+**Lines:** 100
 
 #### /run
 
@@ -1104,7 +1104,7 @@ Full reality check of PAN Wizard — claims vs code vs deployed installs, market
 
 End a PAN Wizard development session by verifying state and preserving context
 
-**Lines:** 103
+**Lines:** 110
 
 #### /session-start
 
@@ -1159,7 +1159,7 @@ Which tools each shipped skill can use:
 | focus-drift-walking | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
 | focus-exec | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
 | focus-plan | x | x | x | x | x | x |  |  |  |  |  |  |  |  |
-| focus-scan | x |  |  | x | x | x |  |  |  |  |  |  |  |  |
+| focus-scan | x | x |  | x | x | x |  |  |  |  |  |  |  |  |
 | focus-sync | x | x | x | x | x | x |  |  |  |  |  |  |  |  |
 | git | x | x | x | x | x | x |  |  |  |  |  |  |  |  |
 | health | x | x |  | x |  |  |  |  |  | x |  |  |  |  |

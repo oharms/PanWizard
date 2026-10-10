@@ -38,7 +38,8 @@ const { getExperimentManifest, PAN_EXPERIMENTS_ROOT_DEFAULT } = require('./exper
  * shell: 'win32' — they default to direct spawn, which suits test mocks like
  * `node -e '...'` that are resolvable directly. P-102 fix (v3.7.1).
  *
- * GitHub Copilot CLI has no documented headless prompt mode, so it's null.
+ * GitHub Copilot CLI is null: no adapter is written yet, although `copilot -p`
+ * runs a prompt headless (the PAN Harness drives it that way).
  */
 // P-1302 fix (v3.7.2): autonomous claude/gemini runs default to non-interactive
 // permissions. Without these flags, the CLI prompts for tool approval, which

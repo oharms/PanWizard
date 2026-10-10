@@ -73,6 +73,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+// The CLI the block reason tells the agent to run. Installs and the plugin put the
+// core beside hooks/; no `pan-tools` bin is on PATH.
+const PAN_TOOLS = `node "${path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs').split(path.sep).join('/')}"`;
+
 // ─── R39: one run per hook when Claude and Copilot share a project ───────────
 // Copilot CLI also runs the hooks in a repository's .claude/settings.json and
 // .claude/settings.local.json. Measured 2026-09-26 (Copilot CLI 1.0.88, repository
@@ -205,8 +209,9 @@ function buildStopDecision({ stopHookActive, config, stateContent, roadmapConten
       `Continue the chain now: if the current phase is finished, follow transition.md's ` +
       `offer_next_phase Route A and spawn Phase ${nextPhase} as a Task subagent ` +
       `(plan-phase orchestrator, ARGUMENTS='${nextPhase} --auto'); if the current phase is ` +
-      `mid-flight, resume it instead. If the user explicitly asked to stop, first run: ` +
-      `pan-tools config-set workflow.auto_advance false — then stop. ` +
+      `mid-flight, resume it instead. If the user explicitly asked to stop, first run ` +
+      `\`${PAN_TOOLS} config-set workflow.auto_advance false\` (under mode: yolo, which arms this ` +
+      `guard by itself, set \`workflow.stop_guard false\` the same way instead) — then stop. ` +
       `(Disable this guard permanently with workflow.stop_guard: false.)`
   };
 }

@@ -46,6 +46,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
    - Look for `.planning/v{{version}}-milestone-audit.md`
    - If missing or stale: recommend `/pan:milestone-audit` first
    - If audit status is `gaps_found`: recommend `/pan:milestone-gaps` first
+   - If audit status is `tech_debt`: present the debt; proceed on the user's say-so (it becomes accepted debt), or recommend `/pan:milestone-gaps` for a cleanup phase
    - If audit status is `passed`: proceed to step 1
 
    ```markdown
@@ -87,6 +88,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
    - Create `.planning/milestones/v{{version}}-roadmap.md`
    - Extract full phase details from roadmap.md
    - Fill milestone-archive.md template
+   - Add this milestone's entry to `.planning/milestones.md` from @~/.claude/pan-wizard-core/templates/milestone.md (create the file with that template's header if it does not exist)
    - Update roadmap.md to one-line summary with link
 
 5. **Archive requirements:**
@@ -104,7 +106,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
 7. **Commit and tag:**
 
-   - Stage: milestones.md, project.md, roadmap.md, state.md, archive files
+   - Stage: milestones.md, project.md, roadmap.md, state.md, archive files, and the deleted requirements.md, and commit with `--force` (the user confirmed the milestone in step 1): `pan-tools commit` refuses any pending deletion, staged or not (`deleted_files_detected`), unless git pairs it with the archive as a rename
    - Commit: `chore: archive v{{version}} milestone`
    - Tag: `git tag -a v{{version}} -m "[milestone summary]"`
    - Ask about pushing tag
@@ -116,7 +118,8 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
    ```bash
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace end 2>/dev/null || true
-   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn 2>/dev/null || true
+   # trace end cleared the active-session pointer, so pool the recent sessions
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn --sessions 5 2>/dev/null || true
    ```
 
    Present the optimization summary to the user and suggest `/pan:optimize apply` to record its suggestions, each naming where a person should make the change.

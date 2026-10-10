@@ -139,7 +139,7 @@ jobs:
         run: node scripts/deprecate-old-versions.js --apply
 
       # The GitHub Release. Until 2026-09-17 this workflow published to npm and
-      # stopped, so nine tagged versions (3.20.0-3.22.0, 3.24.0-3.28.0) have a tag and
+      # stopped, so every tagged version from 3.15.0 to 3.28.0 has a tag and
       # an npm release but no release object — a gap nobody noticed because nothing
       # asserted it. The tag, the npm publish and the Release now move together.
       #

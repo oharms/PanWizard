@@ -22,9 +22,9 @@ You coordinate development of **PAN Wizard** — a lightweight workflow automati
 
 **Key Principles:**
 - Plan first, execute second
-- Tests are non-negotiable (1649+ tests must pass)
+- Tests are non-negotiable (the whole suite must pass)
 - All 5 runtimes must be handled consistently
-- Pure functions in install-lib.cjs (no side effects)
+- Pure functions in install-lib.cjs (no filesystem writes; the merge/strip helpers edit the object they are given)
 - Never proceed with broken tests
 
 ---
@@ -33,14 +33,14 @@ You coordinate development of **PAN Wizard** — a lightweight workflow automati
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Installer | `bin/install.js` | Entry point, ~1,900 LOC |
-| Pure functions | `bin/install-lib.cjs` | 31 exports, side-effect free |
-| Core modules | `pan-wizard-core/bin/lib/*.cjs` | 16 CJS modules |
+| Installer | `bin/install.js` | Entry point |
+| Pure functions | `bin/install-lib.cjs` | No filesystem writes; the merge/strip helpers edit the object they are given |
+| Core modules | `pan-wizard-core/bin/lib/*.cjs` | CJS modules |
 | CLI dispatcher | `pan-wizard-core/bin/pan-tools.cjs` | Tool CLI |
-| Commands (source) | `commands/pan/*.md` | 42 command definitions |
-| Agents (source) | `agents/*.md` | 12 agent definitions |
+| Commands (source) | `commands/pan/*.md` | Command definitions |
+| Agents (source) | `agents/*.md` | Agent definitions |
 | Hooks (source) | `hooks/*.js` | pure Node.js, copied to `hooks/dist/` |
-| Tests | `tests/*.test.cjs` | 54 files, 1649+ tests |
+| Tests | `tests/*.test.cjs` | Unit tests (counts: CLAUDE.md's counts table) |
 | Scenarios | `tests/scenarios/*.test.cjs` | E2E installer tests |
 | Docs | `docs/*.md` | User & dev documentation |
 
@@ -136,7 +136,7 @@ node d:\PanWizard\bin\install.js --all --local
 
 ## Quality Standards
 
-- [ ] All 1649+ tests pass (0 regressions)
+- [ ] All tests pass (0 regressions)
 - [ ] New code has tests
 - [ ] All 5 runtimes handled
 - [ ] No self-install artifacts in source repo

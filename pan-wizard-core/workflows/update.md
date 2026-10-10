@@ -24,19 +24,32 @@ case "$VERSION_FILE" in
   ./*) SCOPE="LOCAL" ;;
   *)   SCOPE="GLOBAL" ;;
 esac
+# The same templated path names the runtime: the installer rewrites ~/.claude/ to
+# this runtime's own directory. With no runtime flag the installer installs Claude
+# Code only, so the flag must be passed.
+case "$VERSION_FILE" in
+  *.codex/*)  RUNTIME="--codex" ;;
+  *.gemini/*) RUNTIME="--gemini" ;;
+  *opencode/*) RUNTIME="--opencode" ;;
+  *.github/*|*.copilot/*) RUNTIME="--copilot" ;;
+  *)          RUNTIME="--claude" ;;
+esac
 
 if [ -f "$VERSION_FILE" ] && [ -f "$MARKER_FILE" ] && grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$VERSION_FILE"; then
   cat "$VERSION_FILE"
+  echo "$RUNTIME"
   echo "$SCOPE"
 else
   echo "UNKNOWN"
+  echo "$RUNTIME"
+  echo "$SCOPE"
 fi
 ```
 
-Parse output (there is ONE install; scope is derived from the shape of the single templated prefix):
-- If last line is "LOCAL": this install is local-scoped (templated prefix is `./`-relative); installed version is first line; use `--local`
-- If last line is "GLOBAL": this install is global-scoped (templated prefix is an absolute path); installed version is first line; use `--global`
-- If "UNKNOWN": the VERSION/marker files are missing or invalid; proceed to install step (treat as version 0.0.0)
+Parse output (there is ONE install; scope and runtime are derived from the single templated prefix). The output is three lines: the installed version (or `UNKNOWN`), the runtime flag (`--claude`, `--codex`, `--gemini`, `--opencode` or `--copilot`) and the scope. Remember the runtime flag: the install step writes it into its command.
+- If last line is "LOCAL": this install is local-scoped (templated prefix is `./`-relative); use `--local`
+- If last line is "GLOBAL": this install is global-scoped (templated prefix is an absolute path); use `--global`
+- If the first line is "UNKNOWN": the VERSION/marker files are missing or invalid; proceed to install step (treat as version 0.0.0) — the runtime and scope lines still apply
 
 **If VERSION file missing:**
 ```
@@ -63,7 +76,7 @@ npm view pan-wizard version 2>/dev/null
 ```
 Couldn't check for updates (offline or npm unavailable).
 
-To update manually: `npx pan-wizard --global`
+To update manually: `npx -y pan-wizard@latest {runtime_flag} --global` (`--local` for a local install), with the runtime flag and scope step 1 printed
 ```
 
 Exit.
@@ -155,28 +168,23 @@ Run the update using the install type detected in step 1:
 
 **If LOCAL install:**
 ```bash
-npx -y pan-wizard@latest --local
-```
-
-**If GLOBAL install (or unknown):**
-```bash
-npx -y pan-wizard@latest --global
-```
-
-Capture output. If install fails, show error and exit.
-
-Clear the update cache so statusline indicator disappears:
-
-**If LOCAL install:**
-```bash
-rm -f ~/.claude/cache/pan-update-check.json
+npx -y pan-wizard@latest {runtime_flag} --local
 ```
 
 **If GLOBAL install:**
 ```bash
-rm -f ~/.claude/cache/pan-update-check.json
+npx -y pan-wizard@latest {runtime_flag} --global
 ```
-(Paths are templated at install time for runtime compatibility)
+
+`{runtime_flag}` is the runtime line step 1 printed: write the flag itself into the command. A variable set in step 1's shell call is gone in this one (each Bash call starts a new shell), and an empty `""` argument in its place installs Claude Code only. A `--config-dir` or `--unified-skills` install is not recognised from its path: for those, re-run the installer with your original flags instead.
+
+Capture output. If install fails, show error and exit.
+
+Clear the update cache so the statusline indicator disappears. The update-check hook keeps it under your home directory for every install, local or global, in the runtime's own config directory: `.claude` (Claude Code), `.codex` (Codex), `.gemini` (Gemini CLI) or `.copilot` (Copilot CLI); OpenCode runs no update-check hook, so there is nothing to clear there:
+
+```bash
+rm -f "$HOME/<config dir from the list above>/cache/pan-update-check.json"
+```
 </step>
 
 <step name="display_result">

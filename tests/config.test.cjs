@@ -191,6 +191,17 @@ describe('config-set command', () => {
     assert.strictEqual(getValue, 'quality', 'config-get should return the value set by config-set');
   });
 
+  test('config-get --raw prints an object as JSON, a scalar as itself', () => {
+    // String() printed "[object Object]" for a section such as `workflow`.
+    runPanTools('config-ensure-section', tmpDir);
+    const section = runPanTools('config-get workflow --raw', tmpDir);
+    assert.ok(section.success, section.error);
+    assert.equal(typeof JSON.parse(section.output).verifier, 'boolean');
+    const scalar = runPanTools('config-get workflow.verifier --raw', tmpDir);
+    assert.ok(scalar.success, scalar.error);
+    assert.match(scalar.output, /^(true|false)$/);
+  });
+
   test('sets a nested key using dot-notation and creates intermediate objects', () => {
     runPanTools('config-ensure-section', tmpDir);
 

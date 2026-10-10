@@ -19,6 +19,7 @@ key-decisions:
   - "Decision 1"
 patterns-established:
   - "Pattern 1: description"
+requirements-completed: []
 duration: Xmin
 completed: YYYY-MM-DD
 ---

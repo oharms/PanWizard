@@ -60,7 +60,7 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 ```
 
 **What it does:**
-1. `pan-tools preview milestone` returns `{phases_total, completed, remaining, avg_phase_duration_days, eta_date, confidence_pct, bottleneck, sample_size}`.
+1. `pan-tools preview milestone` returns `{current_milestone, phases_total, phases_completed, phases_remaining, avg_phase_duration_days, velocity_phases_per_week, eta_date, confidence_pct, bottleneck, sample_size}`.
 2. Spawn `pan-previewer` with `mode: milestone`.
 3. Agent writes `.planning/milestones/preview-<today>.md` with ETA + confidence + bottleneck + caveats + bottom line.
 

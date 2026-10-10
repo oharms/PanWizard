@@ -44,11 +44,21 @@ const DEFAULT_SCHEMA_PATH = path.join(
  *   calls it must pass its verdict as output()'s 4th argument; a bare
  *   process.exit() after an output() call is unreachable.
  */
+/**
+ * A missing path or a file where a directory is expected ends in error(), not in the
+ * stack trace walkMarkdownFiles' throw used to print (`doc-lint counts README.md`).
+ * @param {string} targetDir
+ */
+function requireDirectory(targetDir) {
+  let stat = null;
+  try { stat = fs.statSync(targetDir); } catch { /* absent */ }
+  if (!stat) error(`directory not found: ${targetDir}`);
+  if (!stat.isDirectory()) error(`not a directory: ${targetDir} — doc-lint scans a directory of markdown files`);
+}
+
 function cmdDocLint(cwd, dir, opts = {}) {
   const targetDir = path.isAbsolute(dir) ? dir : path.join(cwd, dir);
-  if (!fs.existsSync(targetDir)) {
-    error(`directory not found: ${targetDir}`);
-  }
+  requireDirectory(targetDir);
 
   const schemaPath = opts.schema
     ? (path.isAbsolute(opts.schema) ? opts.schema : path.join(cwd, opts.schema))
@@ -209,7 +219,6 @@ function isCountAllowed(relativePath) {
 // Things that LOOK like counts but are stable identities (allowed everywhere):
 const STABLE_IDENTITIES = [
   /\b5\s+(target\s+)?runtimes\b/i,                          // 5 target runtimes
-  /\b5\s+hooks\b/i,                                          // 5 hooks (named individually)
   /\bLAYER\s+\d+\b/,                                         // architecture layer labels
   /\b5\s+(parallel\s+)?(researchers?|research\s+)/i,         // 5 parallel researchers
   /\b6\s+(parallel\s+)?agents\b/i,                           // 6 parallel agents (codebase mapper)
@@ -218,9 +227,17 @@ const STABLE_IDENTITIES = [
   /\bthree\s+phases\b|\bfour\s+phases\b/i,                   // generic phase counts in narrative
 ];
 
-function isStableIdentity(matchText, surrounding) {
+function isStableIdentity(matchText, surrounding, matchIndex = 0) {
   for (const re of STABLE_IDENTITIES) {
-    if (re.test(matchText) || re.test(surrounding)) return true;
+    if (re.test(matchText)) return true;
+    // Only an identity that overlaps the count excuses it ("LAYER 6 modules"). One
+    // elsewhere on the line excused every count there: "52 commands on all 5 runtimes".
+    const all = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+    let s;
+    while ((s = all.exec(surrounding)) !== null) {
+      if (s.index < matchIndex + matchText.length && matchIndex < s.index + s[0].length) return true;
+      if (s[0].length === 0) all.lastIndex++;
+    }
   }
   return false;
 }
@@ -233,9 +250,7 @@ function isStableIdentity(matchText, surrounding) {
  */
 function cmdDocLintCounts(cwd, dir, opts = {}) {
   const targetDir = path.isAbsolute(dir) ? dir : path.join(cwd, dir);
-  if (!fs.existsSync(targetDir)) {
-    error(`directory not found: ${targetDir}`);
-  }
+  requireDirectory(targetDir);
 
   const exclude = opts.exclude || [];
   const files = walkMarkdownFiles(targetDir, { exclude });
@@ -260,8 +275,8 @@ function cmdDocLintCounts(cwd, dir, opts = {}) {
         re.lastIndex = 0; // reset for /g
         let m;
         while ((m = re.exec(line)) !== null) {
-          // Skip if this whole line is in a stable-identity surrounding
-          if (isStableIdentity(m[0], line)) continue;
+          // Skip a count that is part of a stable identity
+          if (isStableIdentity(m[0], line, m.index)) continue;
           violations.push({
             file: file.relativePath,
             line: i + 1,
@@ -363,6 +378,10 @@ function scanDocFlags(cwd, opts = {}) {
 }
 
 function cmdDocLintFlags(cwd, opts = {}, raw) {
+  for (const d of opts.docDirs || []) {
+    const abs = path.isAbsolute(d) ? d : path.join(cwd, d);
+    if (fs.existsSync(abs)) requireDirectory(abs);
+  }
   const r = scanDocFlags(cwd, opts);
   if (raw) {
     if (r.violation_count === 0) {

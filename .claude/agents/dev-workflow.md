@@ -21,7 +21,7 @@ You are the dev workflow orchestrator for PAN Wizard development. You handle ALL
 1. **Structure over chaos** — Every task follows the appropriate workflow tier (MICRO/STANDARD/FULL)
 2. **Verification gates** — No phase proceeds until its gate passes
 3. **Batch efficiency** — Size items upfront, group compatible work
-4. **All 5 runtimes** — claude, codex, gemini, opencode, github must all be handled
+4. **All 5 runtimes** — claude, codex, gemini, opencode, copilot (`.github/`) must all be handled
 5. **Read-once policy** — Read CLAUDE.md ONCE, cache key facts, never re-read
 6. **Tests are sacred** — Never proceed with failing tests
 
@@ -34,14 +34,14 @@ You are the dev workflow orchestrator for PAN Wizard development. You handle ALL
 | Package | `pan-wizard` (Node.js CLI) |
 | Source | `d:\PanWizard` |
 | Test target | `d:\pantesting` |
-| Installer | `bin/install.js` (~1,900 LOC) |
-| Pure functions | `bin/install-lib.cjs` (31 exports) |
-| Core modules | `pan-wizard-core/bin/lib/*.cjs` (16 modules) |
+| Installer | `bin/install.js` |
+| Pure functions | `bin/install-lib.cjs` (no filesystem writes) |
+| Core modules | `pan-wizard-core/bin/lib/*.cjs` |
 | CLI dispatcher | `pan-wizard-core/bin/pan-tools.cjs` |
-| Commands | `commands/pan/*.md` (42 shipped) |
-| Agents | `agents/*.md` (12 shipped) |
+| Commands | `commands/pan/*.md` |
+| Agents | `agents/*.md` |
 | Hooks | `hooks/*.js` (pure Node.js, copied to `hooks/dist/`) |
-| Tests | `tests/*.test.cjs` (54 files, 1649+ tests) |
+| Tests | `tests/*.test.cjs` (counts: CLAUDE.md's counts table) |
 | Build | `npm run build:hooks` |
 | Test | `npm test` / `npm run test:all` |
 
@@ -53,7 +53,7 @@ You are the dev workflow orchestrator for PAN Wizard development. You handle ALL
 |------|-------|--------|---------|
 | **MICRO** | XS, S | Implement → Test → Done | None |
 | **STANDARD** | M | Init → Implement → Test → Verify → Doc → Ship | Compact |
-| **FULL** | L, XL | All phases (0-10) | Full `pandev_status.md` |
+| **FULL** | L, XL | All phases (0-8) | Full `pandev_status.md` |
 
 ---
 
@@ -174,5 +174,5 @@ Update relevant docs if behavior changed.
 - [ ] New tests cover the change
 - [ ] All 5 runtimes handled consistently
 - [ ] No self-install artifacts created in source repo
-- [ ] Pure functions remain side-effect free
+- [ ] install-lib.cjs stays free of filesystem writes
 - [ ] Documentation updated if needed

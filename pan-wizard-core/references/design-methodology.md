@@ -2,7 +2,7 @@
 
 Single source of truth for how PAN designs a change **before** it is planned or
 executed. Cited by `pan-designer` (main flow, via `/pan:design-phase`) and by
-`focus-design` (the `/featureAI` feature pipeline). Both flows use the *same*
+`/pan:focus-design` (the feature investigation and design pipeline). Both flows use the *same*
 method at different **depth tiers** so design quality can't drift between them.
 
 This reference defines: the depth tiers, what each tier must produce, and the

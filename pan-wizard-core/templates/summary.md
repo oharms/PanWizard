@@ -38,8 +38,10 @@ patterns-established:
   - "Pattern 1: description"
   - "Pattern 2: description"
 
-requirements-completed: []  # REQUIRED — Copy ALL requirement IDs from this plan's `requirements` frontmatter field.
-test-tiers: []  # Optional — Test tiers exercised in this plan: [unit, integration, e2e, visual]
+# requirements-completed: REQUIRED — copy ALL requirement IDs from this plan's `requirements` frontmatter field
+requirements-completed: []
+# test-tiers: optional — the test tiers this plan exercised (unit, integration, e2e, visual)
+test-tiers: []
 
 # Metrics
 duration: Xmin
@@ -78,6 +80,20 @@ _Note: TDD tasks may have multiple commits (test → feat → refactor)_
 ## Files Created/Modified
 - `path/to/file.ts` - What it does
 - `path/to/another.ts` - What it does
+
+## Implementation Decisions
+<!-- Schema: @~/.claude/pan-wizard-core/references/handoff-decisions.md -->
+
+### Taken (within plan's discretion)
+- DT-1: Chose [option] for O-N. Reason: [rationale].
+
+### Deviations (from plan; must explain)
+- DV-1: Plan said [X]; I did [Y]. Reason: [rationale]. Verification: [how I confirmed Y is acceptable].
+
+### Open questions for verifier
+- Q-1: [question]. Why it matters: [stake].
+
+<!-- If none: replace ALL three buckets with "No deviations or open questions — implementation followed plan exactly." -->
 
 ## Decisions Made
 [Key decisions with brief rationale, or "None - followed plan as specified"]

@@ -9,7 +9,7 @@
 
 **When to use:** Always. Even for a single item, quickly size it to choose the right workflow tier.
 
-### Quick Mode (`/panmonty --quick`)
+### Quick Mode (ask for it in the request — there is no `/panmonty` command)
 
 **For trivial XS/S tasks, skip the full workflow entirely:**
 
@@ -68,7 +68,7 @@ For STANDARD and FULL tier items, further narrow the phase list based on what's 
 - Only `.md` files → DOCS_ONLY
 - Only `tests/` files → TESTS_ONLY
 - `pan-wizard-core/bin/lib/*.cjs` files → LIB_CHANGE
-- `hooks/src/*.js` files → HOOK_CHANGE
+- `hooks/*.js` files → HOOK_CHANGE
 - Unsure or cross-cutting → FULL_FEATURE
 
 ### Step -1.3: Batch & Sequence
@@ -128,11 +128,11 @@ When multiple items complete in a session:
     - **📋 CACHE EXTRACTION (Read-Once Policy):** Store these key facts in the status file header:
       ```
       ## Cached Facts
-      - VERSION: 0.1.0
+      - VERSION: <from package.json>
       - TEST_CMD: npm test
       - BUILD_CMD: npm run build:hooks
-      - TEST_BASELINE: 123 tests, 24 suites, 0 failures
-      - HOOKS: 3 (pan-check-update, pan-context-monitor, pan-statusline)
+      - TEST_BASELINE: <tests, suites, failures from npm test>
+      - HOOKS: <the scripts in hooks/*.js>
       ```
     - **⚠️ DO NOT re-read these in later phases.** Use cached facts above instead.
 - [ ] **Step 0.3:** **MEMORY BANK FRESHNESS CHECK:**
@@ -193,11 +193,11 @@ When multiple items complete in a session:
 | **CLI Router** | `pan-wizard-core/bin/` | `pan-tools.cjs` |
 | **Core Library** | `pan-wizard-core/bin/lib/` | `core.cjs`, `config.cjs`, `frontmatter.cjs`, `template.cjs` |
 | **Domain Modules** | `pan-wizard-core/bin/lib/` | `commands.cjs`, `init.cjs`, `milestone.cjs`, `phase.cjs`, `roadmap.cjs`, `state.cjs`, `verify.cjs` |
-| **Commands** | `commands/pan/` | 31 `.md` command files |
+| **Commands** | `commands/pan/` | `.md` command files |
 | **Agents** | `agents/` | Agent definition `.md` files |
 | **Workflows** | `pan-wizard-core/workflows/` | Workflow orchestration `.md` files |
-| **Hooks** | `hooks/src/` → `hooks/dist/` | 3 compiled hooks |
-| **Tests** | `tests/` | 7 `.test.cjs` files |
+| **Hooks** | `hooks/*.js` → `hooks/dist/` | Pure Node.js hooks, copied (no compile step) |
+| **Tests** | `tests/` | `.test.cjs` files |
 
 ### Steps
 
@@ -256,7 +256,7 @@ When multiple items complete in a session:
     - *If Failure:* Fix regression → Repeat Step 1.
 
 - [ ] **Step 5.1:** Enter Loop.
-- [ ] **Step 5.2:** **GATE:** New Feature Tests PASS and Full Suite PASS (123+ tests, 0 failures).
+- [ ] **Step 5.2:** **GATE:** New Feature Tests PASS and Full Suite PASS (0 failures).
 
 ---
 
@@ -270,7 +270,7 @@ When multiple items complete in a session:
 | **DOCS_ONLY** | `*.md`, `commands/pan/*.md` | Skip tests |
 | **TESTS_ONLY** | `tests/*.test.cjs` | Run changed tests only |
 | **LIB_CHANGE** | `pan-wizard-core/bin/lib/*.cjs` | Full `npm test` |
-| **HOOK_CHANGE** | `hooks/src/*.js` | Build hooks + `npm test` |
+| **HOOK_CHANGE** | `hooks/*.js` | Build hooks + `npm test` |
 | **FULL_FEATURE** | Multiple layers | Build + Full `npm test` |
 
 ### Steps
@@ -375,10 +375,10 @@ For XS/S items, skip the status file entirely. Just:
 **Start Date:** [YYYY-MM-DD]
 
 ## Cached Facts
-- VERSION: 0.1.0
+- VERSION: [from package.json]
 - TEST_CMD: npm test
 - BUILD_CMD: npm run build:hooks
-- TEST_BASELINE: 123 tests, 24 suites
+- TEST_BASELINE: [tests, suites from npm test]
 
 ## Phase Progress
 [−1:✅ 0:✅ 3:🔵 4:⬜ 5:⬜ 8:⬜ 10:⬜]
@@ -414,10 +414,10 @@ For XS/S items, skip the status file entirely. Just:
 **Start Date:** [YYYY-MM-DD]
 
 ## Cached Facts
-- VERSION: 0.1.0
+- VERSION: [from package.json]
 - TEST_CMD: npm test
 - BUILD_CMD: npm run build:hooks
-- TEST_BASELINE: 123 tests, 24 suites
+- TEST_BASELINE: [tests, suites from npm test]
 
 ## Phase Progress
 [−1:✅ 0:✅ 1:⬜ 2:⬜ 3:⬜ 4:⬜ 5:⬜ 6:⬜ 7:⬜ 8:⬜ 9:⬜ 10:⬜]

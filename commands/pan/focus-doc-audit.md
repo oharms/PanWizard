@@ -2,6 +2,7 @@
 name: focus-doc-audit
 group: Focus
 description: Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality
+argument-hint: "[file|directory] [--deep] [--links] [--fix] [--all] [--score-only] [--min-score N] [--format markdown|json|checklist]"
 allowed-tools:
   - Read
   - Write
@@ -28,7 +29,7 @@ Audit project documentation for accuracy, freshness, broken links, structural qu
 This command audits the **host project's documentation** — NOT PAN Wizard's own infrastructure files.
 
 **NEVER audit, modify, or report issues in these PAN directories:**
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/` — PAN runtime directories
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
 - `.planning/` — PAN planning state (read for context, never audit as project docs)
 - Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
 
@@ -316,7 +317,7 @@ For all audited documents, extract overlapping claims and check for contradictio
 When documents disagree, determine which is correct:
 
 ```
-Config files > README > CLAUDE.md > docs/ > CHANGELOG > inline comments
+Config files > README > CLAUDE.md > inline comments > docs/ > CHANGELOG
 ```
 
 The document closer to code is more likely correct.
@@ -499,7 +500,7 @@ Score = (Accuracy × 0.25) + (Freshness × 0.15) + (Completeness × 0.15) +
 | Actionability | 82% | INSTALL.md (70%) | CONTRIBUTING.md (95%) |
 | Readability | 88% | — | — |
 
-**Recommended priority:** Fix docs/API.md (Grade F) → Fix CONTRIBUTING.md (Grade C) → Update INSTALL.md freshness
+**Recommended priority:** Fix docs/API.md (Grade D) → Fix CONTRIBUTING.md (Grade C) → Update INSTALL.md freshness
 ```
 
 ---

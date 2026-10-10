@@ -2,7 +2,7 @@
 name: pan:retro
 group: Milestone Lifecycle
 description: Milestone retrospective — analyze estimation accuracy, verification patterns, and common gaps
-argument-hint: ""
+argument-hint: "[--write-memory] [--max N]"
 allowed-tools:
   - Read
   - Bash
@@ -24,8 +24,10 @@ This is a reflection command — **read-only by default**: with no flags it does
 <context>
 No arguments required. Operates on the current `.planning/` directory.
 
+Flags: $ARGUMENTS
+
 **Flags:**
-- `--write-memory` — after analysis, append recurring-pattern entries to the agent logs in `.planning/memory/` (stored for `/pan:knowledge`, not loaded into agents). Without this flag the command is strictly read-only.
+- `--write-memory` — after analysis, append recurring-pattern entries to the agent logs in `.planning/memory/` (stored for `/pan:knowledge`, not loaded into agents). `--max N` caps the planner lessons (default 3). Without `--write-memory` the command is strictly read-only.
 
 The retro command is typically run after `/pan:milestone-done` to reflect on the milestone before starting the next one.
 </context>

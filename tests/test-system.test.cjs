@@ -26,8 +26,8 @@ describe('test system — surface extractor', () => {
   test('--check semantics: an added subcommand or arm in the dispatcher shows up as registry drift', () => {
     const committed = extractSurface(ROOT);
     const src = fs.readFileSync(path.join(ROOT, SOURCES.dispatcher), 'utf8')
-      .replace("error('Unknown cost subcommand. Available: report, append, clear, rebuild');",
-        "error('Unknown cost subcommand. Available: report, append, clear, rebuild, frobnicate');")
+      .replace("error('Unknown cost subcommand. Available: report, append, clear, rebuild, limits');",
+        "error('Unknown cost subcommand. Available: report, append, clear, rebuild, limits, frobnicate');")
       .replace("case 'cost': {", "case 'frob': {\n      break;\n    }\n    case 'cost': {");
     const fresh = extractSurface(ROOT, { [SOURCES.dispatcher]: src });
     const d = diffSurface(committed, fresh);

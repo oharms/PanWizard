@@ -327,11 +327,14 @@ function metricsFromTranscript(file, { env = {}, settings = [], skipSidechain = 
 }
 
 /**
- * Pure over the payload: which transcript measures this tool call. A call inside
- * a subagent carries `agent_id`; the payload's `transcript_path` is still the main
- * session's, and the subagent's own file is `<dir>/<session>/subagents/agent-<id>.jsonl`
- * (an `agent_transcript_path`, where a host sends one, wins). Null when the ids are
- * not safe to put in a path.
+ * Which transcript measures this tool call. A call inside a subagent carries
+ * `agent_id`; the payload's `transcript_path` is still the main session's, and the
+ * subagent's own file is `<dir>/<session>/subagents/agent-<id>.jsonl` (an
+ * `agent_transcript_path`, where a host sends one, wins). A subagent the Workflow
+ * tool spawned (PAN's native `/pan-*` workflow scripts) is written one level down,
+ * under the run that spawned it: `subagents/workflows/<run>/agent-<id>.jsonl`, found
+ * the way pan-cost-logger.js resolveAgentTranscript finds it. The directory is read
+ * only for that search. Null when the ids are not safe to put in a path.
  */
 function transcriptForPayload(data) {
   if (!data || typeof data !== 'object') return null;
@@ -343,7 +346,19 @@ function transcriptForPayload(data) {
   if (typeof data.agent_transcript_path === 'string' && data.agent_transcript_path) return { file: data.agent_transcript_path, subagent: true };
   if (typeof data.transcript_path !== 'string' || !data.transcript_path) return null;
   if (typeof data.session_id !== 'string' || !SAFE_ID.test(data.session_id)) return null;
-  return { file: path.join(path.dirname(data.transcript_path), data.session_id, 'subagents', `agent-${agentId}.jsonl`), subagent: true };
+  const base = path.dirname(data.transcript_path);
+  const subagentsDir = path.join(base, data.session_id, 'subagents');
+  const direct = path.join(subagentsDir, `agent-${agentId}.jsonl`);
+  if (!fs.existsSync(direct)) {
+    const resolvedBase = path.resolve(base);
+    let runs = [];
+    try { runs = fs.readdirSync(path.join(subagentsDir, 'workflows')); } catch { /* no workflow runs */ }
+    for (const run of runs) {
+      const nested = path.join(subagentsDir, 'workflows', run, `agent-${agentId}.jsonl`);
+      if (path.resolve(nested).startsWith(resolvedBase + path.sep) && fs.existsSync(nested)) return { file: nested, subagent: true };
+    }
+  }
+  return { file: direct, subagent: true };
 }
 
 // Pure decision function (exported for tests).

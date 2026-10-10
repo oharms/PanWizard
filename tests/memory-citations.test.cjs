@@ -278,6 +278,17 @@ describe('no shipped prompt hands agent memory to an agent, or writes it on its 
     }
     assert.deepEqual(offenders, []);
   });
+
+  test('no native workflow script hands the memory folder to an agent', () => {
+    // pan-exec-waves told every executor to read each .planning/memory/*.md and
+    // "apply every rule without exception" after the markdown workflows stopped:
+    // that is the ADR-0040 quarantine too. The scripts are code, so the scan above
+    // never reached them.
+    const lib = require('../bin/install-lib.cjs');
+    const scripts = lib.buildNativeWorkflowScripts();
+    assert.ok(scripts.some((s) => s.name === 'pan-exec-waves.js'), 'the scan reaches pan-exec-waves');
+    assert.deepEqual(scripts.filter((s) => /\.planning\/memory/.test(s.content)).map((s) => s.name), []);
+  });
 });
 
 describe('promoted learnings may cite code, and learn lint keeps checking it (L-007)', () => {

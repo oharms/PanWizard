@@ -35,7 +35,7 @@ ls .planning/debug/*.md 2>/dev/null | grep -v resolved | head -5
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load)
 ```
 
-Extract `commit_docs` from init JSON. Resolve debugger model:
+Extract `config.commit_docs` from the JSON (`state load` nests it under `config`). Resolve debugger model:
 ```bash
 DEBUGGER_MODEL=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-debugger --raw)
 ```
@@ -125,7 +125,10 @@ Task(
 
 ## 4. Handle Agent Return
 
-**If `## ROOT CAUSE FOUND`:**
+**If `## DEBUG COMPLETE`** (the success return for `goal: find_and_fix`, after the user confirmed the fix at the `human-verify` checkpoint):
+- Display the root cause, the fix, its verification and the commit; the session file is now `.planning/debug/resolved/{slug}.md`
+
+**If `## ROOT CAUSE FOUND`** (returned only for `goal: find_root_cause_only`, which this command does not pass):
 - Display root cause and evidence summary
 - Offer options:
   - "Fix now" - spawn fix subagent
@@ -148,7 +151,7 @@ Task(
   - "Add more context" - gather more symptoms, spawn again
 
 <debug_handoff_schema>
-Debug session files (`.planning/debug/{slug}.md`) MUST contain structured state for cross-agent handoff:
+Debug session files (`.planning/debug/{slug}.md`) follow pan-debugger's own structure (agents/pan-debugger.md, "File Structure"): frontmatter `status: gathering | investigating | diagnosed | fixing | verifying | awaiting_human_verify | resolved`, then Current Focus, Symptoms, Reproduction, Eliminated, Evidence and Resolution. The YAML below names the facts a handoff needs; its field names and status values are not the file's:
 
 ```yaml
 # Required sections in debug session file
@@ -182,7 +185,7 @@ fix:                                 # Populated when applied
   tests_added: ["{test paths}"]
 ```
 
-**Why structured:** Each continuation agent starts with 0 context. Without structured state, it re-reads the entire investigation log and may re-test eliminated hypotheses. With structured state, it reads `hypotheses_tested` (skip these), checks `hypotheses_remaining` (do these next), and picks up exactly where the previous agent stopped.
+**Why structured:** Each continuation agent starts with 0 context. Without structured state, it re-reads the entire investigation log and may re-test eliminated hypotheses. With structured state, it skips the hypotheses under Eliminated, starts from Current Focus `next_action`, and picks up exactly where the previous agent stopped.
 </debug_handoff_schema>
 
 ## 5. Spawn Continuation Agent (After Checkpoint)
@@ -210,9 +213,9 @@ goal: find_and_fix
 </mode>
 
 <handoff_instructions>
-1. Parse the debug file's structured sections (symptoms, investigation, root_cause, fix)
-2. Do NOT re-test hypotheses marked "eliminated" — they are dead ends
-3. Start from hypotheses_remaining or the checkpoint's next action
+1. Parse the debug file's sections (frontmatter status, Current Focus, Symptoms, Reproduction, Eliminated, Evidence, Resolution — the format in templates/debug.md)
+2. Do NOT re-test hypotheses listed under Eliminated — they are dead ends
+3. Start from Current Focus `next_action` or the checkpoint's next action
 4. Update the debug file's structured sections as you progress
 </handoff_instructions>
 ```

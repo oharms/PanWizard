@@ -59,7 +59,7 @@ The CLI returns `{mode, total_tokens, file_count, languages}`:
 - **`mode: "single-shot"`** — repo is small enough (≤700K tokens) for one agent with a 1M-context window to ingest the whole thing. Spawn a single `pan-document_code` agent with the full repo in context. This avoids the 6-way stitching artifacts of sharded mode (contradictory version claims, duplicated mentions, missed cross-file references).
 - **`mode: "sharded"`** — repo exceeds 700K tokens. Fall back to the default 6-way parallel sharding (tech, arch, quality, concerns, relationships, practices). Each shard is mapped by its own agent in its own context window, so no single agent has to hold the whole repo.
 
-Record the chosen mode + telemetry in the final `.planning/codebase/overview.md` so future runs can reason about drift.
+Record the chosen mode + telemetry in a `.planning/codebase/overview.md` you write yourself. The map-codebase workflow has no single-shot branch — it always spawns the sharded mappers and writes no overview.md — so in `single-shot` mode spawn the one agent in place of its spawn step.
 
 **The mode is decided by repo size alone** — `estimate-size` compares the token estimate to `--threshold` and applies no model check. So single-shot only pays off when the model you launched with actually has a 1M-context window. On a model with a smaller window, pass a threshold that matches your real window (e.g. `--threshold 150000`) so anything larger resolves to `sharded` instead of overflowing a single agent.
 </stage_0_ingest_mode>

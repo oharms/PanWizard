@@ -58,20 +58,21 @@ Update Active requirements section and "Last updated" footer.
 ```markdown
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: [today] — Milestone v[X.Y] started
+**Current Phase:** Not started (defining requirements)
+**Current Plan:** —
+**Status:** Defining requirements
+**Last Activity:** [today]
+**Last Activity Description:** Milestone v[X.Y] started
 ```
 
 Keep Accumulated Context section from previous milestone.
 
 ## 6. Cleanup and Commit
 
-Delete MILESTONE-context.md if exists (consumed).
+Delete MILESTONE-context.md if exists (consumed). If git tracks it, add its path to `--files` so the deletion is committed (`--force` confirms it; a tracked deletion blocks the commit otherwise):
 
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: start milestone v[X.Y] [Name]" --files .planning/project.md .planning/state.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: start milestone v[X.Y] [Name]" --files .planning/project.md .planning/state.md [path of the deleted MILESTONE-context.md, if git tracked it] --force
 ```
 
 ## 7. Load Context and Resolve Models

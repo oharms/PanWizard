@@ -316,7 +316,7 @@ grep -E "^$VAR_NAME=" .env .env.local 2>/dev/null
 **Substantive check:**
 ```bash
 # Variable has actual value (not placeholder)
-grep -E "^$VAR_NAME=.+" .env .env.local 2>/dev/null | grep -v "your-.*-here|xxx|placeholder|TODO" -i
+grep -E "^$VAR_NAME=.+" .env .env.local 2>/dev/null | grep -viE "your-.*-here|xxx|placeholder|TODO"
 
 # Value looks valid for type:
 # - URLs should start with http
@@ -336,7 +336,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3000  # Still pointing to localhost in prod
 **Wiring check:**
 ```bash
 # Variable is actually used in code
-grep -r "process\.env\.$VAR_NAME|env\.$VAR_NAME" src/ --include="*.ts" --include="*.tsx"
+grep -rE "process\.env\.$VAR_NAME|env\.$VAR_NAME" src/ --include="*.ts" --include="*.tsx"
 
 # Variable is in validation schema (if using zod/etc for env)
 grep -E "$VAR_NAME" src/env.ts src/env.mjs 2>/dev/null
@@ -530,7 +530,7 @@ check_exists() {
 # 2. Check for stub patterns
 check_stubs() {
   local file="$1"
-  local stubs=$(grep -c -E "TODO|FIXME|placeholder|not implemented" "$file" 2>/dev/null || echo 0)
+  local stubs=$(grep -c -E "TODO|FIXME|placeholder|not implemented" "$file" 2>/dev/null); stubs=${stubs:-0}
   [ "$stubs" -gt 0 ] && echo "STUB_PATTERNS: $stubs in $file"
 }
 
@@ -547,7 +547,7 @@ check_substantive() {
   local min_lines="$2"
   local pattern="$3"
   local lines=$(wc -l < "$file" 2>/dev/null || echo 0)
-  local has_pattern=$(grep -c -E "$pattern" "$file" 2>/dev/null || echo 0)
+  local has_pattern=$(grep -c -E "$pattern" "$file" 2>/dev/null); has_pattern=${has_pattern:-0}
   [ "$lines" -ge "$min_lines" ] && [ "$has_pattern" -gt 0 ] && echo "SUBSTANTIVE: $file" || echo "THIN: $file ($lines lines, $has_pattern matches)"
 }
 ```
@@ -652,7 +652,7 @@ Fixture the wrong-shape case explicitly: feed the loader `[]`, `null`, `{}`, and
 
 **Implication for the agents:** `pan-plan-checker`, `pan-verifier`, `pan-reviewer`, `pan-meta-reviewer`, `pan-hardener` should each periodically audit their own prose-vs-mechanical check ratio. If a dimension is 100% prose, ask whether the role earns its compute or whether the structural reset (fresh context, forced re-reading of plan/code) is doing the real work.
 
-**Source:** `pan-wizard-core/learnings/internal/external-research.md` P-RES-006 (S2R / RLVR, ACL 2025).
+**Source:** P-RES-006 (S2R / RLVR, ACL 2025), recorded in PAN's source-only internal learnings.
 
 ---
 

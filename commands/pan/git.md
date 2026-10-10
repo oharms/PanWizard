@@ -15,7 +15,7 @@ allowed-tools:
 <objective>
 Phase-aware git workflow with safety guardrails built in. Every subcommand that modifies history runs safety checks. Rollback uses PAN snapshot tags (`pan-rollback-*`), which `pan-tools rollback-snapshot <phase>` creates; no workflow creates them for you.
 
-Works with any git repository — PAN installation not required.
+Works with any git repository — no PAN project (`.planning/`) needed, only the installed `pan-tools.cjs`.
 </objective>
 
 <subcommands>
@@ -59,19 +59,19 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git commit \
 ```
 
 **Options:**
-- `--type` — `feat | fix | docs | test | refactor | chore`
+- `--type` — `feat | fix | docs | test | refactor | perf | chore`
 - `--message` — Commit message body
 - `--all` — Stage all changes before committing
 - `--files f1 f2` — Stage specific files
 - `--amend` — Amend last commit (no message needed)
-- `--force` — Bypass deleted-file and sensitive-file blocks
+- `--force` — Bypass the deleted-file block (not the sensitive-file block)
 
 **Safety checks run automatically:**
 
 | Check | Blocks on | Override |
 |-------|-----------|---------|
-| Deleted files | Staged deletions found | `--force` |
-| Sensitive files | `.env`, `.pem`, `.key`, `secret`, `password`, `token` | `--force` |
+| Deleted files | A deletion anywhere in the repository (`git status --porcelain`, staged or not) | `--force` |
+| Sensitive files | A staged path ending `.env`, `.pem` or `.key`, or containing `credentials`, `secret`, `password` or `token` (PAN's own `.planning/metrics/tokens.jsonl` is exempt) | None: narrow `commit.sensitive_patterns` in `.planning/config.json`, or commit the file yourself |
 
 **Output:** `{committed, hash, type, safety_checks}`
 
@@ -174,14 +174,14 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git diff --staged --file src/ap
 ### rollback — Revert to PAN Snapshot
 
 ```bash
-# Rollback to latest PAN snapshot tag (requires clean working tree)
+# Rollback to the last pan-rollback-* tag in name order — the newest only among one phase's snapshots (requires clean working tree)
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git rollback
 
 # Preview — does NOT reset, shows what would happen
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git rollback --dry-run
 
 # Rollback to specific tag
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git rollback --tag pan-rollback-03-1714000000
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git rollback --tag pan-rollback-3-20260415T101500
 ```
 
 **Rollback workflow:**
@@ -219,5 +219,5 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs git sync --remote upstream --br
 </workflow>
 
 <runtime_note>
-All subcommands work with any git repository regardless of whether PAN is installed or `.planning/` exists. The only requirement is a valid git repo (`git init` or cloned).
+All subcommands work with any git repository, whether or not it holds a PAN project (`.planning/`); they run the installed `pan-tools.cjs`. The only requirement is a valid git repo (`git init` or cloned).
 </runtime_note>

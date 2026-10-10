@@ -22,6 +22,8 @@ Call pan-tools retro to gather all metrics:
 RETRO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs retro)
 ```
 
+If the user passed `--write-memory` (and `--max N`), pass them on: `pan-tools retro --write-memory [--max N]`. It is the one flag that writes, appending recurring-pattern entries to the agent logs in `.planning/memory/`, and the JSON then carries `memory.wrote`. Never add it on your own.
+
 Parse JSON for: `phases_planned`, `phases_completed`, `phases_decimal`, `estimation_accuracy_pct`, `verifications_total`, `verifications_passed_first_try`, `verifications_gaps_found`, `verifications_human_needed`, `first_try_rate_pct`, `common_gap_patterns`.
 
 **If error:** Report "No roadmap found — run /pan:new-project first."
@@ -114,7 +116,7 @@ For each top pattern, suggest a preventive action:
 </process>
 
 <constraints>
-- Read-only: this workflow does not modify any files
+- Read-only: this workflow does not modify any files, unless the user passed `--write-memory` (then `pan-tools retro` appends to the agent logs in `.planning/memory/` and nothing else changes)
 - Data-driven: all assessments backed by quantitative metrics
 - Actionable: every finding includes a concrete recommendation
 - Non-judgmental: focus on systemic patterns, not individual decisions

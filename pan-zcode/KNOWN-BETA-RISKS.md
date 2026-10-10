@@ -11,7 +11,7 @@ hard-depend on, and the go/no-go facts that can only be settled on a real ZCode 
 | # | Question | If NO → fallback (already in the design) |
 |---|----------|------------------------------------------|
 | 1 | Can a **subagent call MCP tools**? | Primary Agent makes every `pan-mcp` call and feeds results into subagent prompts. Determinism unaffected. |
-| 2 | Are **local stdio MCP calls metered** against the MCP-Calls quota? | Read verbs are MCP *resources*, not tools; batch/cache; never make a hosted z.ai MCP load-bearing. |
+| 2 | Are **local stdio MCP calls metered** against the MCP-Calls quota? | The read-only aggregators (`pan://state`, `pan://phases`, `pan://progress`, `pan://health`, `pan://links`, `pan://cost`, `pan://findings`) are MCP *resources*; reads that take an argument or fail without a roadmap (`pan_find_phase`, `pan_resolve_model`, `pan_roadmap_analyze`, `pan_preview_phases`, `pan_preview_phase`) and the per-step `pan_next_action` poll are tools, which a metered quota would count; batch/cache; never make a hosted z.ai MCP load-bearing. |
 | 3 | Exact **subagent frontmatter schema** / plugin layout / MCP config path? | Drive ZCode's own Import / Settings; treat `pan-zcode/lib/convert-agent.cjs` output as a labelled fallback, not a contract. |
 | 4 | Any **file-based / headless** way to register an MCP server, or GUI-only? | `install-zcode.js` emits a bundle + `INSTALL-ZCODE.md`; the human finishes in ZCode's UI. |
 | 5 | Any **lifecycle hook** that can hard-gate a spawn? | Enforce caps at the MCP-tool-call boundary (the orchestrator), not pre-spawn. |
@@ -21,7 +21,7 @@ hard-depend on, and the go/no-go facts that can only be settled on a real ZCode 
 - **The merge gate is not self-sufficient.** Under ZCode Full Access, a raw Bash
   `git push` bypasses `pan_confirm_merge`. Non-bypassability rests on **server-side
   branch protection**; the MCP gate is the second, in-process lock. `INSTALL-ZCODE.md`
-  mandates branch protection and "never Full Access during install."
+  mandates branch protection and "Never run the install/import step in ZCode Full Access mode."
 - **No subagent nesting.** The army flattens to one delegation layer (PAN already caps
   nesting at 2, so this is tolerable). `Task` is dropped from ported subagents.
 - **User-global subagents only.** No repo-scoped rosters or per-project model profiles.

@@ -25,6 +25,7 @@ npm run build:hooks
    - `pan-cost-logger.js`
    - `pan-trace-logger.js`
    - `pan-stop-guard.js`
+   - `pan-state-reinject.js`
 
 4. **Check timestamps** to confirm fresh build:
 

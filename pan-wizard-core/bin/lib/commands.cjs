@@ -3,7 +3,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, loadConfig, isGitIgnored, isGitRepo, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, resolveModelDetailed, resolveEffortInternal, detectProvider, resolveTierToModel, estimateCostMultiplier, MODEL_PROFILES, output, error, findPhaseInternal, scanPendingTodos, toPosix } = require('./core.cjs');
+const { safeReadFile, loadConfig, isGitIgnored, isGitRepo, execGit, normalizePhaseName, comparePhaseNum, getArchivedPhaseDirs, generateSlugInternal, getMilestoneInfo, resolveModelInternal, resolveModelDetailed, resolveEffortInternal, detectProvider, resolveTierToModel, estimateCostMultiplier, MODEL_PROFILES, output, error, findPhaseInternal, scanPendingTodos, toPosix, toLf } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { PHASES_DIR, MILESTONES_DIR, QUICK_DIR, STATE_FILE, ROADMAP_FILE, PROJECT_FILE, PATTERNS_FILE, SESSION_HISTORY_FILE, LEARNINGS_FILE, CONTEXT_SUFFIX, UAT_SUFFIX, VERIFICATION_SUFFIX, isPlanFile, isSummaryFile, ARCHIVE_DIR_RE, PHASE_DIR_RE, CONTEXT_WINDOW, WARNING_THRESHOLD, CRITICAL_THRESHOLD, VALID_COMMIT_TYPES, DEFAULT_SENSITIVE_PATTERNS, STATE_CONTRACT } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, planningRel } = require('./utils.cjs');
@@ -153,9 +153,12 @@ function buildDigest(summaries, techStack) {
       frontmatter.provides.forEach(item => phases[phaseNum].provides.add(item));
     }
 
-    // Merge affects from nested dependency-graph
+    // Merge affects from either nested dependency-graph or the flat `affects:` list the
+    // summary templates write (only the nested form was read, so `affects` stayed empty)
     if (frontmatter['dependency-graph'] && Array.isArray(frontmatter['dependency-graph'].affects)) {
       frontmatter['dependency-graph'].affects.forEach(item => phases[phaseNum].affects.add(item));
+    } else if (Array.isArray(frontmatter.affects)) {
+      frontmatter.affects.forEach(item => phases[phaseNum].affects.add(item));
     }
 
     // Merge established patterns
@@ -315,7 +318,9 @@ function runCommitSafetyChecks(cwd, config, force) {
   if (statusResult.exitCode === 0 && statusResult.stdout) {
     for (const line of statusResult.stdout.split('\n').filter(Boolean)) {
       if (line.startsWith(' D') || line.startsWith('D ') || line.startsWith('D')) {
-        const fileName = line.slice(3).trim();
+        // execGit trims stdout, so a first line of ` D gone.txt` arrives as `D gone.txt`:
+        // strip the status code by pattern, not by a fixed three-character slice
+        const fileName = line.replace(/^\s*[A-Z?!]{1,2}\s+/, '').trim();
         if (fileName) safetyChecks.deleted_files.push(fileName);
       }
     }
@@ -333,7 +338,13 @@ function runCommitSafetyChecks(cwd, config, force) {
     if (patterns.length > 0) {
       const stagedFiles = stagedResult.stdout.split('\n').filter(Boolean);
       const regexes = patterns.map(p => { try { return new RegExp(p, 'i'); } catch { return null; } }).filter(Boolean);
+      // PAN's own cost ledger matches the bare `token` pattern, which blocked every
+      // commit that staged .planning/ once the cost logger had written to it. It holds
+      // token counts, never a credential. The hook always writes the root tree's copy.
+      const { METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
+      const ownLedger = new Set([planningRel(METRICS_DIR, TOKENS_FILE), `.planning/${METRICS_DIR}/${TOKENS_FILE}`]);
       for (const f of stagedFiles) {
+        if (ownLedger.has(f)) continue;
         if (regexes.some(re => re.test(f))) safetyChecks.sensitive_files_blocked.push(f);
       }
     }
@@ -464,6 +475,22 @@ function cmdCommit(cwd, message, files, raw, amend, opts) {
 }
 
 /**
+ * A summary's one-liner: the `one-liner` frontmatter key, else the bold line under the
+ * `# Phase … Summary` title, which is where the summary templates put it (none writes
+ * the key, so reading only the key gave `one_liner: null` for every summary PAN writes).
+ * Read on LF: the body match failed on a CRLF summary.
+ * @param {string} content - Whole summary.md
+ * @returns {string|null}
+ */
+function summaryOneLiner(content) {
+  const text = toLf(String(content || ''));
+  const fm = extractFrontmatter(text);
+  if (fm['one-liner']) return fm['one-liner'];
+  const m = text.replace(/^﻿?---\n[\s\S]*?\n---\n/, '').match(/^#\s[^\n]*\n+\*\*([^\n*][^\n]*?)\*\*\s*$/m);
+  return m ? m[1].trim() : null;
+}
+
+/**
  * Extract structured data from a summary.md frontmatter with optional field filtering.
  * @param {string} cwd - Working directory path
  * @param {string} summaryPath - Relative path to the summary.md file
@@ -502,10 +529,11 @@ function cmdSummaryExtract(cwd, summaryPath, fields, raw) {
     });
   };
 
+
   // Build full result
   const fullResult = {
     path: summaryPath,
-    one_liner: frontmatter['one-liner'] || null,
+    one_liner: summaryOneLiner(content),
     key_files: frontmatter['key-files'] || [],
     tech_added: (frontmatter['tech-stack'] && frontmatter['tech-stack'].added) || [],
     patterns: frontmatter['patterns-established'] || [],
@@ -1131,6 +1159,7 @@ module.exports = {
   cmdEstimateCost,
   cmdCommit,
   cmdSummaryExtract,
+  summaryOneLiner,
   cmdWebsearch,
   cmdProgressRender,
   cmdTodoComplete,

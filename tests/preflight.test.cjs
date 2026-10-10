@@ -75,6 +75,24 @@ describe('preflight command', () => {
     assert.ok(output.blockers.some(b => b.includes('API key expired')), 'should list specific blocker');
   });
 
+  test('sees a blocker `state add-blocker` wrote into the shipped template (preflight and dashboard)', () => {
+    // Both read a `## Blockers` heading the template never writes; the template has
+    // `### Blockers/Concerns`, so an open blocker passed preflight and counted 0.
+    const tpl = fs.readFileSync(path.join(__dirname, '..', 'pan-wizard-core', 'templates', 'state.md'), 'utf-8').replace(/\r\n/g, '\n');
+    const start = tpl.indexOf('```markdown\n') + '```markdown\n'.length;
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), tpl.slice(start, tpl.indexOf('\n```', start) + 1));
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'config.json'), JSON.stringify({ model_profile: 'balanced' }));
+
+    const clean = JSON.parse(runPanTools('preflight', tmpDir).output);
+    assert.strictEqual(clean.checks.find((c) => c.name === 'no_blockers').passed, true, 'the template placeholder is no blocker');
+
+    assert.ok(runPanTools('state add-blocker --text "DB credentials missing"', tmpDir).success);
+    const pre = JSON.parse(runPanTools('preflight', tmpDir).output);
+    assert.strictEqual(pre.checks.find((c) => c.name === 'no_blockers').passed, false, 'an open blocker must fail no_blockers');
+    assert.ok(pre.blockers.some((b) => b.includes('DB credentials missing')), JSON.stringify(pre.blockers));
+    assert.strictEqual(JSON.parse(runPanTools('dashboard', tmpDir).output).blockers, 1, 'the dashboard counts it');
+  });
+
   test('ignores None placeholder in blockers section', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'state.md'),

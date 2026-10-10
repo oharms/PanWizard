@@ -533,13 +533,16 @@ describe('hygiene — cached context', () => {
     assert.ok(!/\u00a0|\u202f/.test(block.detail), 'no non-breaking space in the finding');
   });
 
-  test('planning docs with nothing cacheable is reported as no caching at all', () => {
+  test('planning docs with none of the stable files is reported as nothing to measure', () => {
+    // PAN primes no cache (ADR-0023, amended): the finding used to say every agent
+    // call re-sent its context uncached, which the host's own caching makes false.
     fs.mkdirSync(path.join(tmp, '.planning', 'research'), { recursive: true });
     fs.writeFileSync(path.join(tmp, '.planning', 'research', 'spec.md'), '# spec\n');
     const f = checkCachedContext(tmp).findings;
     assert.equal(f.length, 1);
     assert.equal(f[0].severity, 'info');
-    assert.match(f[0].detail, /none are cacheable/);
+    assert.match(f[0].detail, /nothing to read/);
+    assert.doesNotMatch(f[0].detail, /uncached/);
   });
 
   test('a bare scaffold with no docs yet is silent', () => {

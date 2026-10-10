@@ -59,7 +59,8 @@ describe('M11: unrequested work has a check, a record and a lens (EL-6)', () => 
 
   test('the verifier\'s own verification.md template carries unrequested: with path and what', () => {
     const tpl = verifier.slice(verifier.indexOf('## Create verification.md'));
-    assert.match(tpl, /\nunrequested: # Only if Step 7c found work no plan asked for\n {2}- path: "[^"]+"\n {4}what: "[^"]+"\n/);
+    // The comment sits on its own line: frontmatter.cjs keeps an inline `# …` as the key's value.
+    assert.match(tpl, /\n# unrequested: only if Step 7c found work no plan asked for\nunrequested:\n {2}- path: "[^"]+"\n {4}what: "[^"]+"\n/);
     assert.match(tpl, /### Unrequested Work/);
   });
 
@@ -104,11 +105,11 @@ describe('workflows record verdicts on the critical path and dispose what they c
 
   test('plan-phase records a force-proceed past the remaining issues as a deferral', () => {
     const s = plan.slice(plan.indexOf('**If iteration_count >= 3:**'), plan.indexOf('## 13. Present Final Status'));
-    assert.match(s, /findings dispose --phase "\$\{PHASE_NUMBER\}" --agent pan-plan-checker --open --as deferred --reason "force proceed after 3 plan revision iterations"/);
+    assert.match(s, /findings dispose --phase "\$\{PHASE_NUMBER\}" --agent pan-plan-checker --open --as deferred --reason "force proceed after 3 plan checks"/);
   });
 
   test('verify-phase records its report; design-phase records each check and defers its final caveats', () => {
-    assert.match(step(verify, 'return_to_orchestrator'), /findings record --phase "\$\{PHASE_NUMBER\}" --file "\$REPORT_PATH"/);
+    assert.match(step(verify, 'return_to_orchestrator'), /findings record --phase "\$\{phase_number\}" --file "\$REPORT_PATH"/);
     assert.match(design, /`\{phase_dir\}\/\{padded_phase\}-design-check\.md` with the Write tool/);
     assert.match(design, /findings record --phase "\{phase\}" --agent pan-design-checker --file "\{phase_dir\}\/\{padded_phase\}-design-check\.md" --raw/);
     assert.match(design, /findings dispose --phase "\{phase\}" --agent pan-design-checker --open --as deferred --reason "design caveat after 2 revision iterations"/);

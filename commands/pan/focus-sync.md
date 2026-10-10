@@ -2,6 +2,7 @@
 name: focus-sync
 group: Focus
 description: Synchronize documentation after changes — check staleness and update counts
+argument-hint: "[--readme | --docs | --arch | --all]"
 allowed-tools:
   - Read
   - Bash
@@ -24,7 +25,7 @@ Synchronize project documentation across all files. $ARGUMENTS
 This command synchronizes the **host project's documentation** — NOT PAN Wizard's own infrastructure files.
 
 **NEVER sync, modify, or report staleness in these PAN directories:**
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/` — PAN runtime directories
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
 - Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
 
 **These directories are PAN's own tooling.** Documentation sync applies to the project's README, docs, guides, and code comments — not to PAN's installed agents or command definitions.
@@ -91,7 +92,7 @@ CHANGELOG.md              <- Version history
 
 ## Report
 
-Output via `pan-tools focus sync`:
+Report in this shape (`pan-tools focus sync` itself returns only JSON — `actuals` (counts of commands, agents and modules), `stale` / `current` entries for those counts, any `--tests` / `--suites` counts, renamed `/pan:` commands and the package.json-vs-CHANGELOG version, plus `stale_count` and `needs_sync`):
 
 ```
 | Area | Status | Finding |

@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isContextFile, isResearchFile, PHASE_HEADER_RE, getPlanId, getSummaryId } = require('./constants.cjs');
+const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, ROADMAP_SLICE_SUFFIX, isPlanFile, isSummaryFile, isContextFile, isResearchFile, PHASE_HEADER_RE, getPlanId, getSummaryId } = require('./constants.cjs');
 const { planningPath, planningRel, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus } = require('./utils.cjs');
 const { escapeRegex, normalizePhaseName, output, error, findPhaseInternal, safeReadFile, toLf, dominantEol, withEol } = require('./core.cjs');
 
@@ -21,8 +21,8 @@ function cmdRoadmapGetPhase(cwd, phaseNum, raw) {
   try {
     const content = fs.readFileSync(roadmapPath, 'utf-8');
 
-    // Escape special regex chars in phase number, handle decimal
-    const escapedPhase = escapeRegex(phaseNum);
+    // Padded or not: `init` hands workflows "05", roadmaps write "Phase 5:".
+    const escapedPhase = phaseNumRe(phaseNum);
 
     // Match "## Phase X:", "### Phase X:", or "#### Phase X:" with optional name
     const phasePattern = new RegExp(
@@ -352,7 +352,7 @@ const isSeparator = (line) => /^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/.test(line);
 function updateProgressTableRow(content, phaseNum, values) {
   const eol = content.includes('\r\n') ? '\r\n' : '\n';
   const lines = content.split(/\r?\n/);
-  const phaseRe = new RegExp(`^(?:phase\\s+)?${escapeRegex(String(phaseNum))}\\.?(?=\\s|:|$)`, 'i');
+  const phaseRe = new RegExp(`^(?:phase\\s+)?${phaseNumRe(phaseNum)}\\.?(?=\\s|:|$)`, 'i');
   let reason = null;
   for (let i = 0; i + 1 < lines.length; i++) {
     if (!isTableLine(lines[i]) || !isSeparator(lines[i + 1])) continue;
@@ -383,7 +383,7 @@ function updateProgressTableRow(content, phaseNum, values) {
 /** Rewrite `**Plans:**` inside the phase's own section only. Pure. */
 function updatePhasePlansLine(content, phaseNum, text) {
   const lines = content.split(/(?<=\n)/);
-  const headRe = new RegExp(`^(#{2,4})\\s*Phase\\s+${escapeRegex(String(phaseNum))}(?=[\\s:.]|$)`, 'i');
+  const headRe = new RegExp(`^(#{2,4})\\s*Phase\\s+${phaseNumRe(phaseNum)}(?=[\\s:.]|$)`, 'i');
   const start = lines.findIndex((l) => headRe.test(l));
   if (start < 0) return { content, updated: false };
   const level = lines[start].match(headRe)[1].length;
@@ -432,7 +432,9 @@ function cmdRoadmapUpdatePlanProgress(cwd, phaseNum, raw) {
     output({ updated: false, reason: 'roadmap.md not found', error: 'roadmap_not_found', plan_count: planCount, summary_count: summaryCount }, raw, 'no roadmap');
     return;
   }
-  const phaseEscaped = escapeRegex(phaseNum);
+  // Padded or not: the executor passes init's "05" for a `Phase 5` roadmap, and
+  // every lookup below used to miss it while the result still said `updated: true`.
+  const phaseEscaped = phaseNumRe(phaseNum);
 
   // Progress table row: the Plans, Status and Completed cells, found by header.
   const table = updateProgressTableRow(roadmapContent, phaseNum, {
@@ -546,10 +548,11 @@ function syncRequirementCheckboxes(cwd, requirementIds) {
 // 89–98% smaller; a 54-phase project went from ~146k tokens to ~3k, and those
 // whole files had been re-read on every turn of every spawn that listed them.
 
-const ROADMAP_SLICE_SUFFIX = '-roadmap-slice.md';
-
 /** Phase numbers compare without zero padding: "03" and "3" are one phase. */
 const unpadPhase = (n) => String(n).trim().replace(/^0+(?=\d)/, '');
+
+/** A phase number as a regex source matching it padded or not ("05" finds `Phase 5:` and `Phase 05:`). */
+const phaseNumRe = (n) => `0*${escapeRegex(unpadPhase(n))}`;
 
 /**
  * Requirement ids on a phase section's `**Requirements**:` line. Taken by shape,
@@ -584,6 +587,26 @@ function roadmapPhaseSection(content, phaseNum) {
   const next = rest.match(/\n#{2,4}\s+Phase\s+\d/i);
   const section = content.slice(header.index, next ? header.index + next.index : content.length).trim();
   return { name: header[1].trim(), section };
+}
+
+/**
+ * The requirement ids roadmap.md names for one phase: from its own `### Phase N:`
+ * section, else from a `**Requirements:**` line under its checklist entry, before
+ * the next "Phase <n>" (the layout older roadmaps use). `phase complete` and
+ * `validate health --repair` read them here: their own search took the first
+ * Requirements line after the first "Phase N" anywhere, which on the template's
+ * layout (checklist above the sections) was phase 1's, and matched "05" to nothing.
+ */
+function roadmapRequirementIds(content, phaseNum) {
+  const text = String(content || '');
+  const sec = roadmapPhaseSection(text, phaseNum);
+  if (sec) return phaseRequirementIds(sec.section);
+  const start = text.search(new RegExp(`Phase\\s+${phaseNumRe(phaseNum)}(?![\\d.])`, 'i'));
+  if (start < 0) return [];
+  const rest = text.slice(start);
+  const next = rest.slice(1).search(/Phase\s+\d/i);
+  const span = next < 0 ? rest : rest.slice(0, next + 1);
+  return phaseRequirementIds(span.replace(/^[ \t]+(?=\*\*Requirements)/gm, ''));
 }
 
 /** Lines of requirements.md that name one of `ids`, each with its indented continuation. */
@@ -747,6 +770,7 @@ module.exports = {
   extractMilestones,
   computeRoadmapStats,
   buildRoadmapSlice,
+  roadmapRequirementIds,
   phaseRequirementIds,
   phaseDependencies,
   ROADMAP_SLICE_SUFFIX,

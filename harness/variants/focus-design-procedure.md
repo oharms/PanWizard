@@ -11,7 +11,7 @@ Loaded by `/pan:focus-design` at the start of Phase 0 (see the command's "Phases
 ### 0.1 Problem Statement
 Write a crisp, one-paragraph problem statement answering:
 - What user pain or limitation does this address?
-- Why does it matter NOW for the target users (developers using AI coding assistants)?
+- Why does it matter NOW for the project's target users (as the project's own docs describe them)?
 - What is the cost of NOT doing this?
 
 ### 0.2 Demand Evidence (MANDATORY)
@@ -216,7 +216,7 @@ Based on Phase 0.8 investigation and Phase 1 reconnaissance findings, ask 2-4 IN
 
 ## Phase 2: Competitive Intelligence
 
-**Research how the best AI workflow tools solve this problem.**
+**Research how the best tools in the feature's domain solve this problem.**
 
 ### 2.1 Deep-Dive Research (6+ Tools)
 Select competitor tools relevant to the FEATURE DOMAIN, not a fixed list. Use web search for each.
@@ -523,9 +523,9 @@ or architectural constraints from Phase 3.5]
 [How does this fit into the existing system? Include the dependency map from Phase 1.4
 and the layer violation check from Phase 3.5.2. Show which modules are touched.]
 
-```
+~~~
 [Dependency diagram or integration flow from Phase 1.4 / 3.5.6]
-```
+~~~
 
 ### Interface Contract
 [The output schema or API contract from Phase 3.5.3 — exact format, not just description.

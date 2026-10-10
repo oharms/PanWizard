@@ -62,6 +62,24 @@ describe('learnings extract command', () => {
     assert.ok(output.total >= 1, 'should have total learnings');
   });
 
+  test('reads key-files in the summary template\'s {created, modified} shape, beside a flat list', () => {
+    // Only a flat list was read, so summaries PAN writes gave no co-change learnings,
+    // and a flat-list summary beside a template-shaped one crashed on `.includes`.
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-setup');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    const shaped = (n) => `---\nphase: "01"\nkey-files:\n  created: [src/auth.ts]\n  modified: [src/app.ts]\n---\n# Phase 1 Summary ${n}\n`;
+    fs.writeFileSync(path.join(phaseDir, '01-01-summary.md'), shaped(1));
+    fs.writeFileSync(path.join(phaseDir, '01-02-summary.md'), shaped(2));
+    fs.writeFileSync(path.join(phaseDir, '01-03-summary.md'), '---\nphase: "01"\nkey-files:\n  - src/a.js\n  - src/b.js\n---\n# Summary\n');
+
+    const result = runPanTools('learnings extract', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    const output = JSON.parse(result.output);
+    assert.strictEqual(output.by_type['co-change'], 1, JSON.stringify(output));
+    const learnings = fs.readFileSync(path.join(tmpDir, '.planning', 'learnings.md'), 'utf-8');
+    assert.match(learnings, /src\/(app|auth)\.ts and src\/(app|auth)\.ts changed together 2 times/);
+  });
+
   test('deduplicates existing learnings on re-extract', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'patterns.md'),

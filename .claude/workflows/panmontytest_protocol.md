@@ -12,8 +12,8 @@
     - Fill in "Scope/Feature", "Target Files/Folders", and "Start Date".
 - [ ] **Step 0.2:** Read `.claude/commands/test.md` to ensure testing context is fresh.
     - **IMPORTANT:** Pay attention to:
-      - Current test runner: `node --test tests/*.test.cjs`
-      - Expected baseline: 123 tests, 24 suites, 0 failures
+      - Current test runner: `npm test` (`scripts/run-tests.cjs` expands `tests/*.test.cjs`, then runs `node --test`)
+      - Expected baseline: all tests passing, 0 failures (CLAUDE.md's counts table holds the current total)
       - Test framework: `node:test` + `node:assert`
 - [ ] **Step 0.3:** Check git status.
     - **GATE:** If git is dirty, ask user: "Git is dirty. Stash, Commit, or Continue anyway?"
@@ -100,7 +100,7 @@
 ## Phase 7: Documentation
 **Goal:** Update records.
 
-- [ ] **Step 7.1:** Update test counts in `.claude/commands/test.md` and `.claude/commands/quick.md`.
+- [ ] **Step 7.1:** Update the test counts in `CLAUDE.md`'s counts table, the only place counts live (`test.md` and `quick.md` carry none).
 - [ ] **Step 7.2:** Update `.claude/memory/error_patterns.md` if new pitfalls discovered.
 
 ---

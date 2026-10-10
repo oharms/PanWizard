@@ -31,10 +31,11 @@ function planningRelPath(...segments) {
 /**
  * Extract requirement IDs from a ROADMAP phase section.
  * Looks for a **Requirements**: line, strips brackets, splits by comma,
- * and returns null when absent or set to 'TBD'.
+ * and returns null when absent or set to 'TBD'. Both bold forms count: the roadmap
+ * template writes `**Requirements:**`, which this used to miss (phase_req_ids null).
  */
 function extractReqIds(roadmapPhase) {
-  const reqMatch = roadmapPhase?.section?.match(/^\*\*Requirements\*\*:[^\S\n]*([^\n]*)$/m);
+  const reqMatch = roadmapPhase?.section?.match(/^\*\*Requirements(?:\*\*:|:\*\*)[^\S\n]*([^\n]*)$/m);
   const reqExtracted = reqMatch
     ? reqMatch[1].replace(/[\[\]]/g, '').split(',').map(segment => segment.trim()).filter(Boolean).join(', ')
     : null;
@@ -246,7 +247,9 @@ function cmdInitPlanPhase(cwd, phase, raw) {
     phase_number: phaseInfo?.phase_number || roadmapPhase?.phase_number || null,
     phase_name: phaseInfo?.phase_name || roadmapPhase?.phase_name || null,
     phase_slug: phaseInfo?.phase_slug || (roadmapPhase?.phase_name ? generateSlugInternal(roadmapPhase.phase_name) : null),
-    padded_phase: (phaseInfo?.phase_number || roadmapPhase?.phase_number)?.toString().padStart(2, '0') || null,
+    // normalizePhaseName pads the integer part, as directories are named (2.1 → 02.1);
+    // padStart(2, '0') left a decimal phase unpadded.
+    padded_phase: (phaseInfo?.phase_number || roadmapPhase?.phase_number) ? normalizePhaseName(String(phaseInfo?.phase_number || roadmapPhase?.phase_number)) : null,
     phase_req_ids: phaseReqIds,
 
     // Existing artifacts
@@ -592,7 +595,7 @@ function cmdInitPhaseOp(cwd, phase, raw) {
     phase_number: phaseInfo?.phase_number || null,
     phase_name: phaseInfo?.phase_name || null,
     phase_slug: phaseInfo?.phase_slug || null,
-    padded_phase: phaseInfo?.phase_number?.padStart(2, '0') || null,
+    padded_phase: phaseInfo?.phase_number ? normalizePhaseName(String(phaseInfo.phase_number)) : null,
 
     // Existing artifacts
     has_research: phaseInfo?.has_research || false,

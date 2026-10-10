@@ -47,7 +47,8 @@ ls .planning/phases/XX-name/*-summary.md 2>/dev/null | sort
 Find first PLAN without matching SUMMARY. Decimal phases supported (`01.1-hotfix/`):
 
 ```bash
-PHASE=$(echo "$PLAN_PATH" | grep -oE '[0-9]+(\.[0-9]+)?-[0-9]+')
+PHASE=$(basename "$PLAN_PATH" | grep -oE '^[0-9]+(\.[0-9]+)?')
+PLAN=$(basename "$PLAN_PATH" | grep -oE '^[0-9]+(\.[0-9]+)?-[0-9]+' | cut -d- -f2)
 # config settings can be fetched via pan-tools config-get if needed
 ```
 
@@ -137,8 +138,8 @@ This IS the execution instructions. Follow exactly. If plan references context.m
 
 <step name="previous_phase_check">
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phases list --type summaries --raw
-# Extract the second-to-last summary from the JSON result
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phases list --type summaries
+# Extract the second-to-last summary from the JSON result's files[] (file names only, in phase order)
 ```
 If previous SUMMARY has unresolved "Issues Encountered" or "Next Phase Readiness" blockers: AskUserQuestion(header="Previous Issues", options: "Proceed anyway" | "Address first" | "Review previous").
 </step>
@@ -277,7 +278,7 @@ TASK_COMMITS+=("Task ${TASK_NUM}: ${TASK_COMMIT}")
 <step name="checkpoint_protocol">
 On `type="checkpoint:*"`: automate everything possible first. Checkpoints are for verification/decisions only.
 
-Display: `CHECKPOINT: [Type]` box → Progress {X}/{Y} → Task name → type-specific content → `YOUR ACTION: [signal]`
+Display: `CHECKPOINT: [Type]` box → Progress {X}/{Y} → Task name → type-specific content → the action prompt line `→ [signal]`
 
 | Type | Content | Resume signal |
 |------|---------|---------------|
@@ -333,7 +334,7 @@ Create `{phase}-{plan}-summary.md` at `.planning/phases/XX-name/`. Use `~/.claud
 
 **Frontmatter:** phase, plan, subsystem, tags | requires/provides/affects | tech-stack.added/patterns | key-files.created/modified | key-decisions | requirements-completed (**MUST** copy `requirements` array from plan.md frontmatter verbatim) | duration ($DURATION), completed ($PLAN_END_TIME date).
 
-Title: `# Phase [X] Plan [Y]: [Name] Summary`
+Title: `# Phase [X]: [Name] Summary` (the summary template's)
 
 One-liner SUBSTANTIVE: "JWT auth with refresh rotation using jose library" not "Authentication implemented"
 
@@ -382,7 +383,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state record-session \
   --resume-file "None"
 ```
 
-Keep state.md under 150 lines.
+Keep state.md under 100 lines (the state template's size constraint).
 </step>
 
 <step name="issues_review_gate">

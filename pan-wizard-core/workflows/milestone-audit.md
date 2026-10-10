@@ -14,7 +14,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init milestone-op)
 ```
 
-Extract from init JSON: `milestone_version`, `milestone_name`, `phase_count`, `completed_phases`, `commit_docs`.
+Extract from init JSON: `milestone_version`, `milestone_name`, `phase_count`, `completed_phases`, `commit_docs`. `{version}` below is the version without its leading `v` (the argument, else `milestone_version` with the `v` removed: `v1.0` → `1.0`), so `v{version}-milestone-audit.md` names the `v1.0-milestone-audit.md` that `/pan:milestone-done` looks for.
 
 **Also extract `planning_root` and `track`, and use `$PLANNING_ROOT` for every planning path in this workflow** — the project may hold several planning trees, and auditing the wrong one produces a confident, plausible, wrong report:
 
@@ -26,7 +26,7 @@ PLANNING_ROOT=$(printf '%s' "$INIT" | node -e "let s='';process.stdin.on('data',
 
 **Always state the resolved `planning_root` at the top of the audit report.** If `planning_root_exists` is `false`, STOP — that is a mistyped `--track`, not an empty milestone.
 
-To audit a specific tree, pass `--track <name>`. To see every tree's milestone state before choosing:
+To audit a specific tree, add `--track <name>` to every `pan-tools` call in this workflow (each call resolves its own planning root). To see every tree's milestone state before choosing:
 
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init milestone-op --all-tracks
@@ -38,12 +38,12 @@ That returns `{track_count, ambiguous_tracks, tracks[]}`, one entry per planning
 
 The init payload carries how the milestone was decided:
 
-- `milestone_basis` — `marked-current` (a `(current)` / 🚧 marker), `first-unshipped`, `last-shipped`, or `default`
+- `milestone_basis` — `marked-current` (a `(current)` / 🚧 marker), `first-unshipped`, `last-shipped`, `state` (state.md's `milestone:`), `no-milestone-heading`, or `default` (no roadmap.md)
 - `milestone_ambiguous` — **`true` means the roadmap marks more than one milestone current**
 
 **If `milestone_ambiguous` is `true`, STOP and report the planning-state error.** Do not audit. Two milestones marked current is a roadmap defect the owner must resolve; picking one silently is how an audit ends up describing a milestone that does not exist.
 
-If `milestone_basis` is `default`, there is no milestone heading in the roadmap at all — say so rather than auditing `v1.0 milestone`.
+If `milestone_basis` is `no-milestone-heading` (no milestone heading, none recorded in state.md) or `default` (no roadmap.md), say so rather than auditing `v1.0 milestone`; `state` means the version came from state.md's `milestone:`.
 
 Resolve integration checker model:
 ```bash
@@ -67,9 +67,9 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phases list
 For each phase directory, read the verification.md:
 
 ```bash
-# For each phase, use find-phase to resolve the directory (handles archived phases)
-PHASE_INFO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase 01 --raw)
-# Extract directory from JSON, then read verification.md from that directory
+# For each phase, find-phase resolves its directory under phases/ (zero-padding handled; archived milestones are not searched)
+PHASE_DIR=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase 01 --raw)
+# --raw prints the directory itself (empty when not found); read verification.md from it
 # Repeat for each phase number from roadmap.md
 ```
 
@@ -87,7 +87,7 @@ If a phase is missing verification.md, flag it as "unverified phase" — this is
 What the judges found in this milestone, and what was decided about each finding, is on record. Read it rather than reconstructing it from prose:
 
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings debt --milestone "{version}"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings debt --milestone "{version}"   # with or without the leading v
 ```
 
 - **`deferred`** findings were continued past on purpose, and each carries the reason recorded at the time. They are the milestone's tech debt: put every one in `tech_debt`, with its id and reason.
@@ -115,7 +115,7 @@ MUST map each integration finding to affected requirement IDs where applicable.
 
 Verify cross-phase wiring and E2E user flows.",
   subagent_type="pan-integration-checker",
-  model="{integration_checker_model}"
+  model="{CHECKER_MODEL}"
 )
 ```
 
@@ -145,7 +145,7 @@ For each phase's verification.md, extract the expanded requirements table:
 For each phase's summary.md, extract `requirements-completed` from YAML frontmatter:
 ```bash
 for summary in "$PLANNING_ROOT"/phases/*-*/*-summary.md; do
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$summary" --fields requirements_completed | jq -r '.requirements_completed'
+  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs frontmatter get "$summary" --field requirements-completed --raw
 done
 ```
 

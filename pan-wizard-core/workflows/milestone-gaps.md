@@ -27,15 +27,15 @@ No audit gaps found. Run `/pan:milestone-audit` first.
 
 ## 2. Prioritize Gaps
 
-Group gaps by priority from requirements.md:
+Group gaps by their audit status (requirements.md records no priority; each `gaps.requirements[]` entry carries `status`):
 
-| Priority | Action |
-|----------|--------|
-| `must` | Create phase, blocks milestone |
-| `should` | Create phase, recommended |
-| `nice` | Ask user: include or defer? |
+| Status | Action |
+|--------|--------|
+| `unsatisfied` | Create phase, blocks milestone |
+| `partial` | Create phase, recommended (the audit's FAIL gate forces `gaps_found` only for `unsatisfied` and `orphaned`) |
+| `orphaned` | Create phase, blocks milestone (the audit treats an orphaned requirement as unsatisfied) |
 
-For integration/flow gaps, infer priority from affected requirements.
+For integration/flow gaps, take the status of the requirements they affect.
 
 ## 3. Group Gaps into Phases
 
@@ -65,8 +65,7 @@ Gap: Flow "View dashboard" broken at data fetch
 Find highest existing phase:
 ```bash
 # Get sorted phase list, extract last one
-PHASES=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phases list)
-HIGHEST=$(echo "$PHASES" | jq -r '.directories[-1]')
+HIGHEST=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phases list --raw | tail -1)
 ```
 
 New phases continue from there:
@@ -94,9 +93,9 @@ Closes:
 - Flow: {flow name}
 Tasks: {count}
 
-{If nice-to-have gaps exist:}
+{If partial gaps exist:}
 
-### Deferred (nice-to-have)
+### Recommended (partial — not one of the gaps that force the audit's `gaps_found`)
 
 These gaps are optional. Include them?
 - {gap description}
@@ -111,17 +110,13 @@ Wait for user confirmation.
 
 ## 6. Update roadmap.md
 
-Add new phases to current milestone:
+Add each new phase with the CLI, which writes its checklist line (what `phase complete` ticks), its `### Phase N:` section and its directory:
 
-```markdown
-### Phase {N}: {Name}
-**Goal:** {derived from gaps being closed}
-**Requirements:** {REQ-IDs being satisfied}
-**Gap Closure:** Closes gaps from audit
-
-### Phase {N+1}: {Name}
-...
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase add "{Name}"
 ```
+
+Then edit the new section: set **Goal:** to {derived from gaps being closed}, **Requirements:** to {REQ-IDs being satisfied}, and add `**Gap Closure:** Closes gaps from audit`.
 
 ## 7. Update requirements.md Traceability Table (REQUIRED)
 
@@ -140,9 +135,7 @@ grep -c "Pending" .planning/requirements.md
 
 ## 8. Create Phase Directories
 
-```bash
-mkdir -p ".planning/phases/{NN}-{name}"
-```
+`phase add` (step 6) already created each phase's directory.
 
 ## 9. Commit Roadmap and Requirements Update
 
@@ -261,7 +254,7 @@ becomes:
 
 <success_criteria>
 - [ ] milestone-audit.md loaded and gaps parsed
-- [ ] Gaps prioritized (must/should/nice)
+- [ ] Gaps grouped by audit status (unsatisfied and orphaned block the milestone, partial is recommended)
 - [ ] Gaps grouped into logical phases
 - [ ] User confirmed phase plan
 - [ ] roadmap.md updated with new phases

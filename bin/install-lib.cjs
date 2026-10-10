@@ -564,6 +564,8 @@ function rewriteSharedCoreMarkdown(content, { corePrefix, pathPrefix, projectDir
   content = content.replace(/\.\/\.claude\/agents\//g, `${corePrefix}pan-wizard-core/agents/`);
   content = content.replace(/~\/\.claude\//g, pathPrefix);
   content = content.replace(/\.\/\.claude\//g, projectDirPrefix);
+  // No `pan-tools` bin is on PATH: invoke it via node, as the skill rewrite does.
+  content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${corePrefix}pan-wizard-core/bin/pan-tools.cjs`);
   content = processAttribution(content, attribution);
   return convertSlashCommandsToCopilotSkillMentions(content);
 }
@@ -573,9 +575,29 @@ function rewriteSharedCoreMarkdown(content, { corePrefix, pathPrefix, projectDir
  * under `<shared core>/agents/` — reading material for agents, not a runtime
  * registration (ADR-0028 agent-ref canonicalization).
  */
+/**
+ * Name the agent file this runtime actually installs. A prompt that says "read
+ * ~/.claude/agents/pan-planner.md for your role" becomes `<prefix>agents/pan-planner.md`
+ * after the prefix rewrite, but Codex installs agents as `pan-planner.toml` and Copilot
+ * as `pan-planner.agent.md`, so the spawned agent read nothing and ran with no role.
+ * Idempotent; other runtimes keep `.md`.
+ * @param {string} content
+ * @param {string} runtime - claude | codex | gemini | opencode | copilot
+ * @param {string} pathPrefix - the runtime's rewritten config-dir prefix (ends in `/`)
+ * @returns {string}
+ */
+function rewriteAgentFileRefs(content, runtime, pathPrefix) {
+  const ext = runtime === 'codex' ? '.toml' : runtime === 'copilot' ? '.agent.md' : null;
+  if (!ext || !pathPrefix) return content;
+  const prefix = pathPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return content.replace(new RegExp(`(${prefix}agents/pan-[a-z0-9_-]+)\\.md\\b`, 'g'), (_, base) => base + ext);
+}
+
 function rewriteAgentReferenceCopy(content, corePrefix) {
   content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
   content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
+  // No `pan-tools` bin is on PATH: invoke it via node, as the skill rewrite does.
+  content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${corePrefix}pan-wizard-core/bin/pan-tools.cjs`);
   return convertSlashCommandsToCopilotSkillMentions(content);
 }
 
@@ -1654,6 +1676,12 @@ function detectModelCapabilities(modelName) {
   if (n.includes('sonnet-5')) {
     return { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' };
   }
+  // Haiku 5 family (Haiku 5.5): 1M context and adaptive thinking (pricing page and
+  // Claude Code 2.1.293 changelog, read 2026-10-10). It is a forward release, so
+  // without this it took the fallback's Haiku profile, which is Haiku 4's.
+  if (n.includes('haiku-5')) {
+    return { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'fast' };
+  }
   if (n.includes('opus-4-8') || n.includes('opus-4.8')
     || n.includes('opus-4-7') || n.includes('opus-4.7')
     || n.includes('opus-4-6') || n.includes('opus-4.6')) {
@@ -1673,10 +1701,9 @@ function detectModelCapabilities(modelName) {
   if (n.includes('sonnet-4') && !isForwardRelease) {
     return { has_1m_ctx: false, has_thinking: true, has_cache: true, tier: 'mid' };
   }
-  // Haiku 4.x — fast tier, no extended thinking. Guarded for the same reason,
-  // though today it is behavior-neutral: the fallback's Haiku profile is
-  // identical to this one, so a forward Haiku release lands on the same answer
-  // either way. The guard is here so that stops being true only deliberately.
+  // Haiku 4.x — fast tier, no extended thinking. Guarded for the same reason: a
+  // Haiku release newer than 4.5 takes the fallback's modern Haiku profile, which
+  // since Haiku 5.5 has 1M context and thinking.
   if ((n.includes('haiku-4-5') || n.includes('haiku-4.5') || n.includes('haiku-4')) && !isForwardRelease) {
     return { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' };
   }
@@ -1749,7 +1776,8 @@ function detectModelCapabilities(modelName) {
     const MODERN = {
       opus: { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'reasoning' },
       sonnet: { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' },
-      haiku: { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' },
+      // Haiku 5.5 (the branch above) is the newest Haiku with known capabilities.
+      haiku: { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'fast' },
     };
     return { ...MODERN[family] };
   }
@@ -2035,11 +2063,11 @@ so the result is greppable out of the transcript.
 /**
  * Build the plugin's MCP registration (`.mcp.json` at the plugin root).
  *
- * Plugins may declare MCP servers in a plugin-root `.mcp.json`, and unlike
- * command markdown — where `${CLAUDE_PLUGIN_ROOT}` expansion is unverified and
- * is why marketplace publishing is still gated — hook and MCP *configs* are the
- * documented place the variable is substituted. So the same form
- * `buildPluginHooksConfig()` relies on is correct here.
+ * Plugins may declare MCP servers in a plugin-root `.mcp.json`. Hook and MCP
+ * *configs* are the documented place `${CLAUDE_PLUGIN_ROOT}` is substituted (it
+ * expands in plugin command markdown too: measured 2026-08-14, which lifted the
+ * marketplace-publishing gate). So the same form `buildPluginHooksConfig()` relies
+ * on is correct here.
  *
  * No `env` block: a plugin serves whatever project the session is in, so pinning
  * PAN_PROJECT_ROOT would be wrong, and the server resolves its engine from its
@@ -2097,7 +2125,7 @@ function buildNativeWorkflowScripts() {
   const reviewPipeline = `export const meta = {
   name: 'pan-review-pipeline',
   description: 'PAN deep review: reviewer + hardener fan-out, meta-reviewer merge',
-  whenToUse: 'Deterministic version of the /pan-review-deep fan-out. Pass the phase number or a description of the change set as args.',
+  whenToUse: 'Deterministic version of the /pan:review-deep fan-out. Pass the phase number or a description of the change set as args.',
   phases: [
     { title: 'Find', detail: 'reviewer + security hardener in parallel' },
     { title: 'Merge', detail: 'meta-reviewer dedupes, disputes, and issues the verdict' },
@@ -2162,7 +2190,7 @@ return merged
   const mapCodebase = `export const meta = {
   name: 'pan-map-codebase',
   description: 'PAN codebase mapping: shard fan-out per top-level area, then synthesis',
-  whenToUse: 'Deterministic version of the /pan-map-codebase shard pattern for repositories too large for a single pass.',
+  whenToUse: 'Deterministic version of the /pan:map-codebase shard pattern for repositories too large for a single pass.',
   phases: [
     { title: 'Scan', detail: 'discover top-level areas worth documenting' },
     { title: 'Map', detail: 'one documenter per area, in parallel' },
@@ -2223,7 +2251,7 @@ return { areas_mapped: maps.filter(Boolean).length, synthesis }
   const execWaves = `export const meta = {
   name: 'pan-exec-waves',
   description: 'PAN phase execution: wave-grouped executor fan-out for a checkpoint-free phase, then verification',
-  whenToUse: 'Deterministic version of the /pan-exec-phase wave dispatch. Pass the phase number as args. Refuses a phase that contains checkpoint plans (a workflow cannot pause for a human) — run /pan-exec-phase for those.',
+  whenToUse: 'Deterministic version of the /pan:exec-phase wave dispatch. Pass the phase number as args. Refuses a phase that contains checkpoint plans (a workflow cannot pause for a human) — run /pan:exec-phase for those.',
   phases: [
     { title: 'Index', detail: 'plan inventory with wave grouping, from the PAN engine' },
     { title: 'Execute', detail: 'one executor per plan; waves in order, plans within a wave in parallel' },
@@ -2249,6 +2277,7 @@ const INDEX = {
     phase_name: { type: 'string' },
     phase_dir: { type: 'string' },
     parallelization: { type: 'boolean' },
+    verifier_enabled: { type: 'boolean' },
     has_checkpoints: { type: 'boolean' },
     plans: {
       type: 'array',
@@ -2269,11 +2298,11 @@ const INDEX = {
   required: ['phase_found', 'has_checkpoints', 'plans'],
 }
 const index = await agent(
-  'Index phase ' + phaseArg + ' for execution using the ' + PAN_TOOLS + ' Run two verbs and merge their JSON: (1) init execute-phase ' + phaseArg + ' — take phase_found, phase_number, phase_name, phase_dir, parallelization; (2) phase-plan-index ' + phaseArg + ' — take has_checkpoints and plans[] (id, wave, autonomous, has_summary, objective; include each plan file path as file). Do not execute anything; return only the merged index.',
+  'Index phase ' + phaseArg + ' for execution using the ' + PAN_TOOLS + ' Run two verbs and merge their JSON: (1) init execute-phase ' + phaseArg + ' — take phase_found, phase_number, phase_name, phase_dir, parallelization, verifier_enabled; (2) phase-plan-index ' + phaseArg + ' — take has_checkpoints and plans[] (id, wave, autonomous, has_summary, objective; include each plan file path as file). Do not execute anything; return only the merged index.',
   { label: 'index', phase: 'Index', schema: INDEX })
 if (!index || !index.phase_found) return { error: 'phase ' + phaseArg + ' not found' }
 if (index.has_checkpoints) {
-  return { error: 'phase ' + phaseArg + ' contains checkpoint plans (autonomous: false). A workflow cannot pause for a human — run /pan-exec-phase ' + phaseArg + ' instead.', plans: index.plans.map(p => p.id) }
+  return { error: 'phase ' + phaseArg + ' contains checkpoint plans (autonomous: false). A workflow cannot pause for a human — run /pan:exec-phase ' + phaseArg + ' instead.', plans: index.plans.map(p => p.id) }
 }
 const pending = index.plans.filter(p => !p.has_summary)
 if (pending.length === 0) return { phase: phaseArg, done: true, message: 'every plan already has a summary — nothing to execute' }
@@ -2297,7 +2326,7 @@ const EXEC_RESULT = {
 const executorPrompt = (p) =>
   'Execute plan ' + p.id + ' of phase ' + (index.phase_number || phaseArg) + (index.phase_name ? '-' + index.phase_name : '') + '. Commit each task atomically. Create summary.md. Update state.md and roadmap.md (via roadmap update-plan-progress).\\n\\n'
   + 'Read first, in this order: ' + CORE_DOCS + '\\n\\n'
-  + 'Then read: ' + (p.file || (index.phase_dir + '/' + p.id)) + ' (the plan), .planning/state.md, .planning/config.json (if present), ./CLAUDE.md (if present — follow its conventions), .agents/skills/ (if present — follow relevant skills), and every .planning/memory/*.md (apply every rule without exception).\\n\\n'
+  + 'Then read: ' + (p.file || (index.phase_dir + '/' + p.id)) + ' (the plan), .planning/state.md, .planning/config.json (if present), ./CLAUDE.md (if present — follow its conventions), and .agents/skills/ (if present — follow relevant skills).\\n\\n'
   + 'Report plan_id, status (complete | failed | checkpoint), summary_path, the number of commits you made, and self_check (passed if your summary carries no "Self-Check: FAILED" marker).'
 const executed = []
 let halted = null
@@ -2326,7 +2355,11 @@ for (const w of waveNumbers) {
   }
 }
 if (halted) {
-  return { phase: phaseArg, halted, executed, next: 'Inspect the failed plan(s), then re-run /pan-exec-waves ' + phaseArg + ' (completed plans are skipped) or fall back to /pan-exec-phase ' + phaseArg }
+  return { phase: phaseArg, halted, executed, next: 'Inspect the failed plan(s), then re-run /pan-exec-waves ' + phaseArg + ' (completed plans are skipped) or fall back to /pan:exec-phase ' + phaseArg }
+}
+// workflow.verifier: false (/pan:settings) turns the phase verifier off, as in exec-phase.
+if (index.verifier_enabled === false) {
+  return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: null, next: 'Verification skipped: workflow.verifier is off. /pan:verify-phase ' + phaseArg + ' verifies on demand; then continue with /pan:exec-phase ' + phaseArg + ' (transition)' }
 }
 
 phase('Verify')
@@ -2344,13 +2377,13 @@ const verdict = await agent(
   'Verify phase ' + phaseArg + ' following the PAN verify-phase protocol (PAN core: workflows/verify-phase.md — ' + PAN_TOOLS + '). Check the phase goals against what the plans delivered, write the verification file the protocol prescribes, and report status (passed | gaps_found | human_needed | failed), the verification file path, any gaps, and a summary. Do not mark the phase complete or advance state — that decision stays with the user.',
   { agentType: 'pan-verifier', label: 'verify', phase: 'Verify', schema: VERIFY })
 
-return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, next: 'Review the verification, then continue with /pan-exec-phase ' + phaseArg + ' (transition) or /pan-plan-phase for the next phase' }
+return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, next: 'Review the verification, then continue with /pan:exec-phase ' + phaseArg + ' (transition) or /pan:plan-phase for the next phase' }
 `;
 
   const diagnoseIssues = `export const meta = {
   name: 'pan-diagnose-issues',
   description: 'PAN UAT diagnosis: one debugger per failed UAT truth, in parallel, then root causes written back',
-  whenToUse: 'Deterministic version of /pan-diagnose-issues. Pass the phase number as args. Investigates only — fixes come from /pan-plan-phase --gaps.',
+  whenToUse: 'Deterministic version of the diagnose-issues workflow. Pass the phase number as args. Investigates only — fixes come from /pan:plan-phase --gaps.',
   phases: [
     { title: 'Gaps', detail: 'read the phase UAT file and list the failed truths' },
     { title: 'Diagnose', detail: 'one pan-debugger per gap, in parallel, root cause only' },
@@ -2404,6 +2437,7 @@ const DIAGNOSIS = {
     issue_id: { type: 'string' },
     status: { type: 'string', enum: ['root_cause_found', 'inconclusive'] },
     root_cause: { type: 'string' },
+    reproduction: { type: 'string' },
     evidence: { type: 'array', items: { type: 'string' } },
     files: { type: 'array', items: { type: 'string' } },
     suggested_fix: { type: 'string' },
@@ -2413,9 +2447,9 @@ const DIAGNOSIS = {
   required: ['issue_id', 'status'],
 }
 const diagnoses = await parallel(gaps.map(g => () => agent(
-  'Debug issue UAT-' + g.test_num + ' for phase ' + phaseArg + ' — root cause ONLY, do not fix (fixes come from /pan-plan-phase --gaps).\\n\\n'
+  'Debug issue UAT-' + g.test_num + ' for phase ' + phaseArg + ' — root cause ONLY, do not fix (fixes come from /pan:plan-phase --gaps).\\n\\n'
   + 'Symptoms (pre-filled from UAT, treat as given): expected: ' + (g.expected || g.truth) + '. actual: ' + (g.reason || 'not recorded') + '. reproduction: test ' + g.test_num + ' in ' + found.uat_path + '. severity: ' + g.severity + '.\\n\\n'
-  + 'Follow the PAN debugger protocol: create the debug session file under .planning/debug/ named from the issue, investigate autonomously (read code, form hypotheses, test them), and report issue_id, status (root_cause_found | inconclusive), root_cause with evidence, files involved, a suggested fix direction, and the debug session path. If inconclusive, list the remaining possibilities. Also read ' + found.uat_path + ' and .planning/state.md for context.',
+  + 'Follow the PAN debugger protocol: create the debug session file under .planning/debug/ named from the issue, build and run a command that fails on the symptom before forming any hypothesis, investigate autonomously (read code, form hypotheses, test them), and report issue_id, status (root_cause_found | inconclusive), the reproduction command (or none, with what you tried), root_cause with evidence, files involved, a suggested fix direction, and the debug session path. If inconclusive, list the remaining possibilities. Also read ' + found.uat_path + ' and .planning/state.md for context.',
   { agentType: 'pan-debugger', label: 'debug:UAT-' + g.test_num, phase: 'Diagnose', schema: DIAGNOSIS })))
 const results = diagnoses.filter(Boolean)
 log(results.filter(r => r.status === 'root_cause_found').length + ' root cause(s) found, ' + results.filter(r => r.status === 'inconclusive').length + ' inconclusive')
@@ -2427,10 +2461,10 @@ const RECORDED = {
   required: ['uat_path', 'gaps_updated'],
 }
 const recorded = await agent(
-  'Update the Gaps section of ' + found.uat_path + ' with these diagnoses, following the PAN diagnose-issues protocol: for each gap add root_cause, artifacts (the debug session path), the files involved, and the suggested fix direction; mark inconclusive ones as needing manual review with their remaining possibilities. Edit in place — do not rewrite unrelated content. Report the path and how many gaps you updated.\\n\\nDiagnoses:\\n' + JSON.stringify(results, null, 2),
+  'Update the Gaps section of ' + found.uat_path + ' with these diagnoses, following the PAN diagnose-issues protocol: for each gap add root_cause, artifacts (each file involved, with its issue), missing (the suggested fix direction) and debug_session (the debug session path); mark inconclusive ones as needing manual review with their remaining possibilities. Edit the Gaps section in place and set the frontmatter status to diagnosed (the --gaps mode of pan-planner reads UAT gaps only from a diagnosed file); do not rewrite other content. Report the path and how many gaps you updated.\\n\\nDiagnoses:\\n' + JSON.stringify(results, null, 2),
   { label: 'record', phase: 'Record', schema: RECORDED })
 
-return { phase: phaseArg, uat_path: found.uat_path, gaps: gaps.length, root_causes_found: results.filter(r => r.status === 'root_cause_found').length, inconclusive: results.filter(r => r.status === 'inconclusive').length, recorded, next: 'Run /pan-plan-phase ' + phaseArg + ' --gaps to plan the fixes' }
+return { phase: phaseArg, uat_path: found.uat_path, gaps: gaps.length, root_causes_found: results.filter(r => r.status === 'root_cause_found').length, inconclusive: results.filter(r => r.status === 'inconclusive').length, recorded, next: 'Run /pan:plan-phase ' + phaseArg + ' --gaps to plan the fixes' }
 `;
 
   return [
@@ -2532,6 +2566,7 @@ module.exports = {
   rewriteUnifiedSkillCommandContent,
   rewriteSharedCoreMarkdown,
   rewriteAgentReferenceCopy,
+  rewriteAgentFileRefs,
   stripInternalLearningsTopics,
   AGENT_PLUGINS_VERSION,
   AGENT_PLUGIN_MANIFEST_SCHEMA,

@@ -118,6 +118,15 @@ describe('Agent Plugins bundle (ADR-0045): emitted tree conforms to the pinned s
   const skillsDir = path.join(OUT, 'skills');
   const coreDir = path.join(OUT, 'pan-wizard-core');
 
+  test('no markdown in the bundle calls a bare `pan-tools` (no such bin is on PATH)', () => {
+    // The agent copies and the shared core's learnings kept bare calls (doc audit
+    // 2026-10-05); skills were already rewritten to `node <root>/…/pan-tools.cjs`.
+    const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      (e.isDirectory() ? walk(path.join(dir, e.name)) : (e.name.endsWith('.md') && e.name !== 'CHANGELOG.md' ? [path.join(dir, e.name)] : [])));
+    const bare = walk(OUT).filter((f) => /\bpan-tools(?=\s+[a-z])/.test(fs.readFileSync(f, 'utf8')));
+    assert.deepEqual(bare.map((f) => path.relative(OUT, f)), []);
+  });
+
   test('non-vacuity: the bundle has skills, a core, a manifest and an mcp.json', () => {
     assert.ok(fs.existsSync(path.join(OUT, 'plugin.json')), 'plugin.json missing');
     assert.ok(fs.existsSync(path.join(OUT, 'mcp.json')), 'mcp.json missing');

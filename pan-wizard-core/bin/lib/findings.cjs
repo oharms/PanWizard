@@ -276,6 +276,13 @@ function disposeFindings(cwd, input) {
   return { contract: V.VERDICT_CONTRACT, disposition: as, disposed, skipped };
 }
 
+/**
+ * Milestone versions compare with or without the leading `v`: the ledger stores
+ * `getMilestoneInfo`'s `v1.0`, while milestone-audit names its version `1.0` (its
+ * report is `v{version}-milestone-audit.md`), so `--milestone 1.0` found no debt.
+ */
+const sameMilestone = (a, b) => String(a || '').trim().replace(/^v/i, '') === String(b || '').trim().replace(/^v/i, '');
+
 /** Findings with their folded status, filtered. */
 function listFindings(cwd, filters = {}) {
   const { rows, malformed } = readLedger(cwd);
@@ -285,7 +292,7 @@ function listFindings(cwd, filters = {}) {
   if (filters.agent) list = list.filter((f) => f.agent === filters.agent);
   if (filters.status) list = list.filter((f) => f.status === filters.status);
   if (filters.class) list = list.filter((f) => f.class === filters.class);
-  if (filters.milestone) list = list.filter((f) => f.milestone === filters.milestone);
+  if (filters.milestone) list = list.filter((f) => sameMilestone(f.milestone, filters.milestone));
   const findings = list.map(publicFinding);
   return {
     contract: V.VERDICT_CONTRACT,
@@ -306,7 +313,7 @@ function findingsDebt(cwd, opts = {}) {
   const fold = foldFindings(rows);
   const byPhase = new Map();
   for (const f of fold.findings.values()) {
-    if (milestone && f.milestone !== milestone) continue;
+    if (milestone && !sameMilestone(f.milestone, milestone)) continue;
     if (f.status !== 'deferred' && f.status !== 'open') continue;
     const key = V.comparablePhase(f.phase);
     if (!byPhase.has(key)) byPhase.set(key, { phase: f.phase, deferred: [], open: [] });

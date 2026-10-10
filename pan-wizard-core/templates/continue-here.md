@@ -74,5 +74,5 @@ Required YAML frontmatter:
 - Be specific enough that a fresh Claude instance understands immediately
 - Include WHY decisions were made, not just what
 - The `<next_action>` should be actionable without reading anything else
-- This file gets DELETED after resume - it's not permanent storage
+- It's not permanent storage, but resuming does not delete it: the transition workflow deletes a phase's handoffs once that phase is complete
 </guidelines>

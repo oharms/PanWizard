@@ -50,6 +50,8 @@ const PLAN = [
   '<objective>', 'Settle payments', '</objective>', '',
 ].join('\n');
 const LEARNINGS = ['# Learnings', '', '### LEARN-001: Bulk writes', '', '**Pattern:** prefer bulk writes', '**Source:** phase 2', ''].join('\n');
+// The summary templates' shape: the one-liner is the bold line under the title.
+const SUMMARY = ['---', 'phase: 03-payments', 'plan: 01', '---', '', '# Phase 3 Plan 01: Payments Summary', '', '**Card payments settle through one bulk write**', '', '## Accomplishments', '- settle()', ''].join('\n');
 const MEMORY = ['---', 'agent: pan-executor', 'created: 2026-01-01', '---', '', '## Entries', '', '- 2026-01-02: Prefer bulk writes for Postgres', '- 2026-01-03: Mock the clock in settle tests', ''].join('\n');
 const CONVENTIONS = ['# Conventions', '', '- Never use `setTimeout` in services', '- Use `zod` instead of `joi`', ''].join('\n');
 // A real shipped topic, so the learnings readers see the shape they read in the field.
@@ -98,6 +100,7 @@ describe('every planning-file parser answers the same on LF and CRLF', () => {
     ['frontmatter: parseMustHavesBlock (truths)', (eol) => lib('frontmatter').parseMustHavesBlock(eol(PLAN), 'truths')],
     ['frontmatter: parseMustHavesBlock (artifacts)', (eol) => lib('frontmatter').parseMustHavesBlock(eol(PLAN), 'artifacts')],
     ['learnings: parseLearnings', (eol) => lib('commands-learnings').parseLearnings(eol(LEARNINGS))],
+    ['summary-extract: summaryOneLiner', (eol) => lib('commands').summaryOneLiner(eol(SUMMARY))],
     ['drift: parseConventionRules', (eol) => lib('verify-drift').parseConventionRules(eol(CONVENTIONS))],
     ['preview: buildPhaseDependencyGraph', (eol) => inProject(eol, (d) => lib('preview').buildPhaseDependencyGraph(d))],
     ['learn lint: collectAllPatterns', (eol) => inProject(eol, (d) => lib('learn-lint').collectAllPatterns(d))],

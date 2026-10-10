@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { safeReadFile, execGit, findPhaseInternal, output, normalizePhaseName } = require('./core.cjs');
-const { readStateSafe } = require('./state.cjs');
+const { readStateSafe, activeBlockersFromState } = require('./state.cjs');
 const {
   STATE_FILE, ROADMAP_FILE, CONFIG_FILE, PATTERNS_FILE, PHASE_DIR_RE,
 } = require('./constants.cjs');
@@ -44,19 +44,10 @@ function cmdPreflight(cwd, target, raw) {
     blockers.push('state.md not found — run /pan:new-project');
   }
 
-  // Check 3: no unresolved blockers in state.md
+  // Check 3: no unresolved blockers in state.md (the template's `### Blockers/Concerns`,
+  // where `state add-blocker` writes, or a legacy `## Blockers`)
   if (stateContent) {
-    const blockersMatch = stateContent.match(/##\s*Blockers\s*\n([\s\S]*?)(?=\n##|$)/i);
-    const activeBlockers = [];
-    if (blockersMatch) {
-      const items = blockersMatch[1].match(/^-\s+(.+)$/gm) || [];
-      for (const item of items) {
-        const text = item.replace(/^-\s+/, '').trim();
-        if (text && !/^none$/i.test(text)) {
-          activeBlockers.push(text);
-        }
-      }
-    }
+    const activeBlockers = activeBlockersFromState(stateContent);
     if (activeBlockers.length === 0) {
       checks.push({ name: 'no_blockers', passed: true });
     } else {
