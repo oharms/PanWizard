@@ -10,7 +10,7 @@ allowed-tools:
 ---
 
 <objective>
-Switch the model profile used by PAN agents. Controls which Claude model each agent uses, balancing quality vs token spend.
+Switch the model profile used by PAN agents. Sets the model tier PAN's workflows pass when they spawn an agent (mapped to the detected provider's models), balancing quality vs token spend. `/pan:army` and `pan-conductor` spawn with no model, so the agents they run use their own `model:` pin, else the session model, under every profile.
 
 Routes to the profile workflow which handles:
 - Argument validation (quality/balanced/budget)
@@ -37,7 +37,7 @@ The workflow handles all logic including:
 </process>
 
 <tier_decision_tree>
-**Capability-aware routing** (shipped v2.10.0 — E-7). Even within a single profile, PAN picks a tier per-call based on three hints: context estimate, whether the task needs extended thinking, and whether prompt cache is warm.
+**Capability-aware routing** (shipped v2.10.0 — E-7). `resolveModel` can adjust the profile's tier per call from three hints — context estimate, whether the task needs extended thinking, and whether prompt cache is warm — but only when the caller passes them (`resolve-model <agent> --metadata '{…}'`). No shipped workflow, command or agent passes them, so the tree and the quick guide below describe what a caller's hints would do.
 
 The decision order `resolveModel` applies after the baseline profile pick:
 

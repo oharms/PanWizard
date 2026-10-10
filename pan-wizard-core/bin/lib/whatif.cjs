@@ -187,10 +187,12 @@ function createWorktree(cwd, phaseNum, scenario, opts) {
     return { error: 'Not a git repo — what-if requires git worktree support' };
   }
   const slug = scenarioSlug(scenario);
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const branch = `${BRANCH_PREFIX}${phaseNum}-${slug}-${ts.slice(0, 15)}`;
+  // To the millisecond: cut to `slice(0, 15)` it had ten-minute resolution, so a repeat
+  // of the same phase and scenario within ten minutes failed on an existing branch.
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 23);
+  const branch = `${BRANCH_PREFIX}${phaseNum}-${slug}-${ts}`;
   const worktreeRoot = opts?.worktree_root
-    || path.join(path.dirname(cwd), `pan-whatif-${phaseNum}-${slug}-${ts.slice(0, 15)}`);
+    || path.join(path.dirname(cwd), `pan-whatif-${phaseNum}-${slug}-${ts}`);
 
   // Base ref: current HEAD by default. Callers can override (e.g. to branch
   // off main for a clean comparison).

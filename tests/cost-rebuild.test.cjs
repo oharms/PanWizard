@@ -327,6 +327,6 @@ describe('cost-rebuild — rebuilding the ledger from transcripts', () => {
     assert.equal(rows.length, 2 + 2 + 1, 'kept rows + two S1 agents + the S3 agent');
     const unknown = runPanTools('cost frobnicate', tmp);
     assert.equal(unknown.success, false);
-    assert.match(unknown.error + unknown.output, /Available: report, append, clear, rebuild/);
+    assert.match(unknown.error + unknown.output, /Available: report, append, clear, rebuild, limits/);
   });
 });

@@ -30,8 +30,8 @@ This template is used by the milestone-done workflow to create archive files in 
 
 Plans:
 
-- [x] {{PHASE}}-01: {{PLAN_DESCRIPTION}}
-- [x] {{PHASE}}-02: {{PLAN_DESCRIPTION}}
+- [x] {{PHASE}}-01-plan.md — {{PLAN_DESCRIPTION}}
+- [x] {{PHASE}}-02-plan.md — {{PLAN_DESCRIPTION}}
       [... all plans ...]
 
 **Details:**
@@ -47,7 +47,7 @@ Plans:
 
 Plans:
 
-- [x] 02.1-01: Patch auth vulnerability
+- [x] 02.1-01-plan.md — Patch auth vulnerability
 
 **Details:**
 {{PHASE_DETAILS_FROM_ROADMAP}}
@@ -106,14 +106,14 @@ _For current project status, see .planning/roadmap.md_
 - Replace {{PLACEHOLDERS}} with actual values
 - Extract phase details from roadmap.md
 - Document decimal phases with (INSERTED) marker
-- Include key decisions from PROJECT-state.md or SUMMARY files
+- Include key decisions from project.md's Key Decisions table, state.md or the summary files
 - List issues resolved vs deferred
 - Capture technical debt for future reference
 
 **Archive location:**
 
-- Save to `.planning/milestones/v{VERSION}-{NAME}.md`
-- Example: `.planning/milestones/v1.0-mvp.md`
+- Save to `.planning/milestones/v{VERSION}-roadmap.md` (the file `/pan:milestone-done` creates)
+- Example: `.planning/milestones/v1.0-roadmap.md`
 
 **After archiving:**
 

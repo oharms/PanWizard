@@ -66,12 +66,14 @@ function writeScheduleFile(cwd, schedule) {
  * @returns {object|{error}} the written descriptor
  */
 function writeSchedule(cwd, opts, now) {
-  const cadence = opts.cadence || 'daily';
+  // An update keeps the stored cadence like every other field: `--pause` on an
+  // hourly campaign used to set it back to daily.
+  const existing = readSchedule(cwd) || {};
+  const cadence = opts.cadence || existing.cadence || 'daily';
   if (parseCadence(cadence) === null) {
     return { error: `Invalid cadence "${cadence}". Use hourly | daily | weekly | Nh | Nd.` };
   }
   const at = now || new Date();
-  const existing = readSchedule(cwd) || {};
   const schedule = {
     goal: opts.goal ?? existing.goal ?? null,
     source: opts.source ?? existing.source ?? 'backlog',

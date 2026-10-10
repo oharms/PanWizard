@@ -26,7 +26,7 @@ This is the PAN Wizard SOURCE REPOSITORY. Documentation changes go here.
 | `CONTRIBUTING.md` | Contributor guidelines |
 | `docs/USER-GUIDE.md` | End-user guide |
 | `docs/ARCHITECTURE.md` | System architecture |
-| `docs/CLI-REFERENCE.md` | CLI flag reference |
+| `docs/CLI-REFERENCE.md` | `pan-tools` CLI reference (installer flags are in `README.md`) |
 | `docs/INTERNALS.md` | Internal design docs |
 | `docs/FAQ.md` | Frequently asked questions |
 | `docs/TROUBLESHOOTING.md` | Common issues |
@@ -52,7 +52,7 @@ For each code change, check if corresponding docs need updating:
 
 | Code Change | Update |
 |-------------|--------|
-| New CLI flag in `install.js` | `docs/CLI-REFERENCE.md`, `README.md` |
+| New CLI flag in `install.js` | `README.md` (install section; `docs/CLI-REFERENCE.md` covers `pan-tools` only) |
 | New command in `commands/` | `docs/USER-GUIDE.md` |
 | New agent in `agents/` | `docs/AGENTS.md` |
 | Core lib change | `docs/INTERNALS.md`, `docs/ARCHITECTURE.md` |

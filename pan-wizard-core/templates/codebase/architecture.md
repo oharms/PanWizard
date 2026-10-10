@@ -8,7 +8,7 @@ Template for `.planning/codebase/architecture.md` - captures conceptual code org
 
 ## File Template
 
-```markdown
+~~~markdown
 # Architecture
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -129,7 +129,7 @@ sequenceDiagram
 
 *Architecture analysis: [date]*
 *Update when major patterns change*
-```
+~~~
 
 <good_examples>
 ```markdown

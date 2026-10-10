@@ -1,98 +1,13 @@
 # Context Window Monitor
 
-> **Note:** This document is superseded by [HOOKS.md](HOOKS.md), which covers all the built-in hooks including the context monitor. This file is retained for backward compatibility.
+> **Note:** This page is a short summary. [HOOKS.md](HOOKS.md#pan-context-monitorjs) is the full, maintained description of the context monitor and of every other built-in hook.
 
-A PostToolUse hook that warns the agent when context window usage is high.
+`pan-context-monitor.js` is a `PostToolUse` hook. It tells the agent when the host will compact its context soon, so the agent can make sure `.planning/state.md` records where it is first.
 
-## Problem
+- **What it measures:** the room left before the host compacts. The host compacts about 33K tokens short of its auto-compact window: `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then `autoCompactWindow` in settings, else the model window. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` lowers that point when its share of the window is lower.
+- **Where it reads it:** PAN's status line writes a bridge file, `<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`, and a main-thread call reads it while it is fresh. Without one (headless `claude -p`, or a status line that is not PAN's), the hook reads the session transcript the payload names. A call inside a subagent is measured on the subagent's own transcript.
+- **What it says:** at 35% or less of that room left, a note asking for a checkpoint in `.planning/state.md` at the next natural stopping point; at 25% or less, a checkpoint before the next step (`/pan:pause` writes it). The note carries no countdown and asks the agent to keep working at full quality, because PAN restores the planning state after the compaction.
+- **Where it runs:** Claude Code. Codex and Copilot CLI register it too but it stays silent there (on Copilot, PAN's own registration; see HOOKS.md for a project with both installs), and Gemini CLI and OpenCode do not run it (see [HOOKS.md](HOOKS.md#hook-runtime-support)).
+- **Safety:** it fails open. Any error, a missing transcript or an unknown model window means no note, and it never blocks a tool call.
 
-The statusline shows context usage to the **user**, but the **agent** has no awareness of context limits. When context runs low, the agent continues working until it hits the wall — potentially mid-task with no state saved.
-
-## How It Works
-
-1. The statusline hook writes context metrics to `<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json` (a per-user 0700 directory)
-2. After each tool use, the context monitor reads these metrics
-3. When remaining context drops below thresholds, it injects a warning as `additionalContext`
-4. The agent receives the warning in its conversation and can act accordingly
-
-## Thresholds
-
-| Level | Remaining | Agent Behavior |
-|-------|-----------|----------------|
-| Normal | > 35% | No warning |
-| WARNING | <= 35% | Wrap up current task, avoid starting new complex work |
-| CRITICAL | <= 25% | Stop immediately, save state (`/pan:pause`) |
-
-## Debounce
-
-To avoid spamming the agent with repeated warnings:
-- First warning always fires immediately
-- Subsequent warnings require 5 tool uses between them
-- Severity escalation (WARNING -> CRITICAL) bypasses debounce
-
-## Architecture
-
-```text
-Statusline Hook (pan-statusline.js)
-    | writes
-    v
-<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json
-    ^ reads
-    |
-Context Monitor (pan-context-monitor.js, PostToolUse)
-    | injects
-    v
-additionalContext -> Agent sees warning
-```
-
-The bridge file is a simple JSON object:
-
-```json
-{
-  "session_id": "abc123",
-  "remaining_percentage": 28.5,
-  "used_pct": 71,
-  "timestamp": 1708200000
-}
-```
-
-## Integration with PAN
-
-PAN's `/pan:pause` command saves execution state. The WARNING message suggests using it. The CRITICAL message instructs immediate state save.
-
-## Setup
-
-On Claude Code both hooks are automatically registered during `npx pan-wizard` installation (Gemini CLI gets neither: it has no statusline command and no hook payload carries context usage. Codex gets the monitor but no statusline, so it never warns there; Copilot CLI gets both (its statusline is experimental) and OpenCode neither — see [HOOKS.md](HOOKS.md#hook-runtime-support)):
-
-- **Statusline** (writes bridge file): Registered as `statusLine` in settings.json
-- **Context Monitor** (reads bridge file): Registered as `PostToolUse` hook in settings.json
-
-Manual registration in `~/.claude/settings.json`:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "node ~/.claude/hooks/pan-statusline.js"
-  },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node ~/.claude/hooks/pan-context-monitor.js"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-## Safety
-
-- The hook wraps everything in try/catch and exits silently on error
-- It never blocks tool execution — a broken monitor should not break the agent's workflow
-- Stale metrics (older than 60s) are ignored
-- Missing bridge files are handled gracefully (subagents, fresh sessions)
+The installer registers it; [HOOKS.md](HOOKS.md#installation) shows the `settings.json` entries it writes.

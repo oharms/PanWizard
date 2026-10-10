@@ -1,5 +1,5 @@
 <purpose>
-Create executable phase prompts (plan.md files) for a roadmap phase with integrated research and verification. Default flow: Research (if needed) -> Plan -> Verify -> Done. Orchestrates pan-phase-researcher, pan-planner, and pan-plan-checker agents with a revision loop (max 3 iterations).
+Create executable phase prompts (plan.md files) for a roadmap phase with integrated research and verification. Default flow: Research (if needed) -> Plan -> Verify -> Done. Orchestrates pan-phase-researcher, pan-planner, and pan-plan-checker agents with a revision loop (at most 2 revisions, up to 3 checks).
 </purpose>
 
 <required_reading>
@@ -8,7 +8,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 @~/.claude/pan-wizard-core/references/ui-brand.md
 @~/.claude/pan-wizard-core/references/guardrails.md
 
-> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent planner --token-budget 5000 --raw` to load only the topics tagged relevant for planning at the configured budget. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
+> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent planner --cue "<phase goal; the files it touches>" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for planning. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
 </required_reading>
 
 ## Phase 0 — Clarify Phase Scope (recommended)
@@ -19,7 +19,7 @@ Before drafting the phase plan, confirm:
 2. **What's deliberately out of scope?**
 3. **Any constraints or dependencies on other phases?**
 
-If the answers aren't already in `.planning/requirements.md` or the phase context file, ask the user. A 2-minute clarification prevents 30-minute rework downstream.
+If the answers aren't already in the phase's roadmap section and requirement lines (`pan-tools roadmap slice <phase> --raw` prints them) or the phase context file, ask the user — except with `--auto` or `workflow.auto_advance: true`, where you proceed with what the files hold (as step 4 does). A 2-minute clarification prevents 30-minute rework downstream.
 
 ## Re-Read Checkpoints
 
@@ -44,7 +44,7 @@ INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init plan-phase "$PHASE"
 
 Parse JSON for: `researcher_model`, `planner_model`, `checker_model`, `research_enabled`, `plan_checker_enabled`, `nyquist_validation_enabled`, `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `plan_count`, `planning_exists`, `roadmap_exists`, `phase_req_ids`.
 
-**File paths (for <files_to_read> blocks):** `state_path`, `roadmap_path`, `requirements_path`, `context_path`, `research_path`, `verification_path`, `uat_path`. These are null if files don't exist.
+**File paths (for <files_to_read> blocks):** `state_path`, `roadmap_path`, `requirements_path`, `context_path`, `research_path`, `verification_path`, `uat_path`. The first three are always set, even when the file is missing; the other four are absent (treat as null) when their file does not exist.
 
 **If `planning_exists` is false:** Error — run `/pan:new-project` first.
 
@@ -63,9 +63,9 @@ Extract `--prd <filepath>` from $ARGUMENTS. If present, set PRD_FILE to the file
 
 **If no phase number:** Detect next unplanned phase from roadmap.
 
-**If `phase_found` is false:** Validate phase exists in roadmap.md. If valid, create the directory using `phase_slug` and `padded_phase` from init:
+**If `phase_found` is false:** Validate phase exists in roadmap.md. If valid, create the directory (scaffold pads the number and honours the planning root) and use the path it prints as `phase_dir`:
 ```bash
-mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs scaffold phase-dir --phase "${PHASE}" --name "{phase_name}" --raw
 ```
 
 **Existing artifacts from init:** `has_research`, `has_plans`, `plan_count`.
@@ -77,6 +77,14 @@ PHASE_INFO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase 
 ```
 
 **If `found` is false:** Error with available phases. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from JSON.
+
+## 3.1. Write the Phase's Roadmap Slice
+
+```bash
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${PHASE}" --write --raw)
+```
+
+`SLICE_PATH` (`{slice_path}` below) is what this phase needs from roadmap.md and requirements.md: a line for every phase, this phase's section, the goals of the phases it depends on, and its requirement lines. The researcher, planner and checker read it instead of the whole files, which a long project re-read on every turn of every spawn. Plans name it in their `<context>` too, so executors read it rather than the whole roadmap. **If `SLICE_PATH` is empty** (no roadmap section, or no phase directory yet), list `{roadmap_path}` and `{requirements_path}` wherever `{slice_path}` appears below.
 
 ## 3.5. Handle PRD Express Path
 
@@ -214,15 +222,15 @@ If "Run discuss-phase first": Display `/pan:discuss-phase {X}` and exit workflow
 
 **P-1401 lightweight-phase bypass (v3.7.3+):** Also skip per-phase research when ALL three are true:
 
-1. The phase has only **1 plan** (read `plan_count` from init JSON)
-2. The plan's `change_class` is in `[chore, docs, feat-trivial]` (i.e., scaffolding, config, single-file feat with ≤3 tasks)
+1. The phase's roadmap section expects no more than one plan (`**Plans:** 1 plan`, or the `TBD` / `0 plans` the roadmapper and `phase add`/`insert` write before any planning); init's `plan_count` counts plans already written, which is 0 before the first planning run
+2. The phase is scaffolding, config, docs or a single-file feature with ≤3 tasks (judge from its goal; no plan field records this)
 3. Project-level `research/architecture.md`, `features.md`, `stack.md` already exist (so the planner has broad context to draw from)
 
 In that case, log a `decision` trace event (`type: "decision", category: "skip-research-trivial"`) and proceed directly to step 6 (planning). Saves ~3 commits and ~5 minutes per trivial phase. Surfaced by panloop run: Phase 1 (project setup, scaffolding only) over-ceremonialized.
 
 This is a workflow-level optimization — the planner still produces a plan, just without per-phase research.md. Phase 2+ phases with substantive build work still go through full research.
 
-**P-1602 phase_record_compact (v3.7.5+):** When `workflow.phase_record_compact: true` AND the lightweight-phase bypass above triggers, also skip per-phase context.md creation (step 4) and emit a single combined `${PHASE_NUM}-record.md` after planning containing: goal, locked decisions (from project-level context), plan summary, must_haves. Reduces the planning output (context, research, plan) to a record and a plan for trivial phases; execution still writes the plan's summary. Off by default — opt-in via `pan-tools config-set workflow.phase_record_compact true`. Substantive phases (>1 plan or non-trivial change_class) still produce full per-phase artifacts regardless of this flag.
+**P-1602 phase_record_compact (v3.7.5+):** When `workflow.phase_record_compact: true` AND the lightweight-phase bypass above triggers, also skip per-phase context.md creation (step 4) and emit a single combined `${padded_phase}-record.md` after planning containing: goal, locked decisions (from project-level context), plan summary, must_haves. Reduces the planning output (context, research, plan) to a record and a plan for trivial phases; execution still writes the plan's summary. Off by default — opt-in via `pan-tools config-set workflow.phase_record_compact true`. Substantive phases (more than one plan, or more than scaffolding, config, docs or a single-file feature) still produce full per-phase artifacts regardless of this flag.
 
 **If `has_research` is true (from init) AND no `--research` flag:** Use existing, skip to step 6.
 
@@ -240,7 +248,7 @@ Display banner:
 ### Spawn pan-phase-researcher
 
 ```bash
-PHASE_DESC=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${PHASE}" | jq -r '.section')
+PHASE_DESC=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${PHASE}" --raw)   # --raw prints the phase's section
 ```
 
 Research prompt:
@@ -253,7 +261,7 @@ Answer: "What do I need to know to PLAN this phase well?"
 
 <files_to_read>
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
-- {requirements_path} (Project requirements)
+- {slice_path} (This phase's roadmap and requirements)
 - {state_path} (Project decisions and history)
 </files_to_read>
 
@@ -266,7 +274,7 @@ Answer: "What do I need to know to PLAN this phase well?"
 </additional_context>
 
 <output>
-Write to: {phase_dir}/{phase_num}-research.md
+Write to: {phase_dir}/{padded_phase}-research.md
 </output>
 ```
 
@@ -306,7 +314,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(phase-${PHASE}): a
 **If not found (and nyquist enabled):** Display warning:
 ```
 ⚠ Nyquist validation enabled but researcher did not produce a Validation Architecture section.
-  Continuing without validation strategy. Plans may fail Dimension 8 check.
+  Continuing without validation strategy. The plan checker skips Nyquist Compliance (Dimension 9).
 ```
 
 ## 6. Check Existing Plans
@@ -319,17 +327,7 @@ ls "${PHASE_DIR}"/*-plan.md 2>/dev/null
 
 ## 7. Use Context Paths from INIT
 
-Extract from INIT JSON:
-
-```bash
-STATE_PATH=$(echo "$INIT" | jq -r '.state_path // empty')
-ROADMAP_PATH=$(echo "$INIT" | jq -r '.roadmap_path // empty')
-REQUIREMENTS_PATH=$(echo "$INIT" | jq -r '.requirements_path // empty')
-RESEARCH_PATH=$(echo "$INIT" | jq -r '.research_path // empty')
-VERIFICATION_PATH=$(echo "$INIT" | jq -r '.verification_path // empty')
-UAT_PATH=$(echo "$INIT" | jq -r '.uat_path // empty')
-CONTEXT_PATH=$(echo "$INIT" | jq -r '.context_path // empty')
-```
+`state_path`, `roadmap_path`, `requirements_path`, `research_path`, `verification_path`, `uat_path` and `context_path` come straight from the INIT JSON; fill the `{…_path}` placeholders below with them. `state_path`, `roadmap_path` and `requirements_path` are always set, even when the file is missing; the other four are absent from the JSON when their file does not exist.
 
 ## 8. Spawn pan-planner Agent
 
@@ -351,8 +349,7 @@ Planner prompt:
 
 <files_to_read>
 - {state_path} (Project State)
-- {roadmap_path} (Roadmap)
-- {requirements_path} (Requirements)
+- {slice_path} (This phase's roadmap and requirements — read the whole roadmap.md or requirements.md only for something it leaves out)
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
 - {research_path} (Technical Research)
 - {verification_path} (Verification Gaps - if --gaps)
@@ -396,8 +393,8 @@ Task(
 ## 9. Handle Planner Return
 
 - **`## PLANNING COMPLETE`:** Display plan count. If `--skip-verify` or `plan_checker_enabled` is false (from init): skip to step 13. Otherwise: step 10.
-- **`## CHECKPOINT REACHED`:** Present to user, get response, spawn continuation (step 12)
-- **`## PLANNING INCONCLUSIVE`:** Show attempts, offer: Add context / Retry / Manual
+- **`## GAP CLOSURE PLANS CREATED`:** (`--gaps` mode) Handle as `## PLANNING COMPLETE`.
+- **`## CHECKPOINT REACHED`:** Present to user, get response, spawn a fresh planner (step 8's Task) with the response added to its prompt
 
 ## 10. Spawn pan-plan-checker Agent
 
@@ -419,8 +416,7 @@ Checker prompt:
 
 <files_to_read>
 - {PHASE_DIR}/*-plan.md (Plans to verify)
-- {roadmap_path} (Roadmap)
-- {requirements_path} (Requirements)
+- {slice_path} (This phase's roadmap and requirements — read the whole roadmap.md or requirements.md only for something it leaves out)
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
 - {research_path} (Technical Research — includes Validation Architecture)
 </files_to_read>
@@ -463,7 +459,7 @@ The fallback reads the heading when the report carries no valid `pan-verdict` bl
 
 Each re-check in the revision loop overwrites the same file and is recorded again as the next attempt. The issues a revision resolved are closed by that record.
 
-## 12. Revision Loop (Max 3 Iterations)
+## 12. Revision Loop (At Most 2 Revisions, 3 Checks)
 
 Track `iteration_count` (starts at 1 after initial plan + check).
 
@@ -512,7 +508,7 @@ Offer: 1) Force proceed, 2) Provide guidance and retry, 3) Abandon
 
 **On "Force proceed":** record that planning continues past the remaining issues. Execution and the milestone audit will see them as deferred, with this reason:
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "${PHASE_NUMBER}" --agent pan-plan-checker --open --as deferred --reason "force proceed after 3 plan revision iterations"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "${PHASE_NUMBER}" --agent pan-plan-checker --open --as deferred --reason "force proceed after 3 plan checks"
 ```
 
 ## 13. Present Final Status
@@ -585,7 +581,7 @@ Task(
 
     <instructions>
     1. Read exec-phase.md from execution_context for your complete workflow
-    2. Follow ALL steps: initialize, handle_branching, validate_phase, discover_and_group_plans, execute_waves, aggregate_results, close_parent_artifacts, verify_phase_goal, update_roadmap
+    2. Follow ALL steps: initialize, handle_branching, validate_phase, discover_and_group_plans, execute_waves, checkpoint_handling, aggregate_results, generate_tests, code_review, close_parent_artifacts, verify_phase_goal, update_roadmap, offer_next
     3. The --no-transition flag means: after verification + roadmap update, STOP and return status. Do NOT run transition.md.
     4. When spawning executor agents, use subagent_type='pan-executor' with the existing @file pattern from the workflow
     5. When spawning verifier agents, use subagent_type='pan-verifier'
@@ -614,7 +610,8 @@ Task(
   Auto-advance stopped: Execution needs review.
 
   Review the output above and continue manually:
-  /pan:exec-phase ${PHASE}
+  /pan:plan-phase ${PHASE} --gaps   (verification found gaps)
+  /pan:exec-phase ${PHASE}          (execution did not finish)
   ```
 
 **If neither `--auto` nor config enabled:**

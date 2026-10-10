@@ -6,8 +6,8 @@ Manage the circular optimization loop — apply reports, check stats, control tr
 
 | Subcommand | Action |
 |------------|--------|
-| `apply` | Apply safe recommendations from most recent report |
-| `apply --report <file>` | Apply from a specific report |
+| `apply` | Record the suggestions from the most recent report |
+| `apply --report <file>` | Record them from a specific report |
 | `revert <apply_id>` / `revert --last` | Undo one apply exactly |
 | `list` | List all reports |
 | `stats` | Show cumulative stats |
@@ -40,17 +40,17 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize apply [--report <path>
 ### Step 3 — Present results
 
 Show the user:
-- **Applied** — each item that was written (memory entries, notes)
+- **Applied** — each item that was recorded (suggestions, config notes)
 - **Skipped** — items that already exist, that an earlier apply already wrote, or that had unknown types
-- **Still needs review** — prompt/workflow suggestions in `suggestions.md`
+- **Still needs a person** — every suggestion in `suggestions.md`
 - **The `apply_id`**, and how to undo the apply: `/pan:optimize revert <apply_id>`
 
-If memory entries were written, tell the user:
-> Memory entries have been added to `.planning/memory/`. They will be loaded on the next agent run, reducing future memory misses for these topics.
+If an applied item carries a `warning`, pass it on. An older report's memory actions write to `.planning/memory/`, which PAN's workflows do not load into agents.
 
 ### Step 4 — Point to manual review items
 
 If `.planning/optimization/suggestions.md` exists, tell the user to review it for:
+- Lessons (apply by writing them into the project's CLAUDE.md or AGENTS.md outside PAN's section, a test, or a comment at the cited code)
 - Agent prompt improvements (apply by editing `agents/pan-*.md`)
 - Workflow step additions (apply by editing `pan-wizard-core/workflows/*.md`)
 
@@ -125,7 +125,7 @@ Active session:         sess_... (or none)
 ```
 
 If `total_optimizations_applied` > 0, note:
-> {N} optimizations have been applied across {apply_runs} apply runs. Each applied memory entry reduces future knowledge gaps.
+> {N} suggestions have been recorded across {apply_runs} apply runs. Each helps once a person has written it where the agents read.
 
 ---
 
@@ -142,11 +142,13 @@ Every agent spawn → hook logs completion event
                           ↓
               .planning/optimization/reports/{session}-opt-report.md
                           ↓
-             /pan:optimize apply → writes memory entries
+             /pan:optimize apply → records suggestions
+                          ↓
+     A person writes each one where the agents read it
                           ↓
          Next build has better context → fewer errors/gaps
                           ↓
                   (repeat, improving each time)
 ```
 
-The key insight: each apply run populates `.planning/memory/` with cached knowledge. Future agent runs load this memory and skip the research/inference that caused gaps. The error rate trends down. The optimization score trends up.
+The key insight: a lesson changes the next run only from a place the next run's agents read: the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test that fails when it is broken, or the code itself. PAN's workflows do not load `.planning/memory/` into agents (ADR-0036, amended `2026-10-04`). In the harness, a lesson recorded there changed nothing that the project's state, summaries and code did not already carry. The report says where each suggestion belongs, and a person puts it there.

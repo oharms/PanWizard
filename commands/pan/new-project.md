@@ -12,7 +12,7 @@ allowed-tools:
 ---
 <context>
 **Flags:**
-- `--auto` — Automatic mode. After config questions, runs research → requirements → roadmap without further interaction. Expects idea document via @ reference.
+- `--auto` — Automatic mode. Asks no questions: applies the auto-mode defaults (idea.md frontmatter can override them), then runs research → requirements → roadmap without interaction. Needs an idea document — an @ reference, or the idea pasted after the flag.
 </context>
 
 <objective>
@@ -26,7 +26,7 @@ Initialize a new project through unified flow: questioning → research (optiona
 - `.planning/roadmap.md` — phase structure
 - `.planning/state.md` — project memory
 
-**After this command:** Run `/pan:plan-phase 1` to start execution.
+**After this command:** Run `/pan:discuss-phase 1` to gather context, or `/pan:plan-phase 1` to plan directly. With `--auto` the workflow continues into `/pan:discuss-phase 1 --auto` itself.
 </objective>
 
 <execution_context>
@@ -68,23 +68,23 @@ Use this decision tree to select the correct path. Evaluate conditions top-to-bo
 
 ```
 IF .planning/ already exists AND contains project.md:
-  → WARN: "Project already initialized. Use /pan:resume to continue."
+  → WARN: "Project already initialized. Use /pan:progress to continue."
   → STOP (do not overwrite existing project)
 
-ELSE IF --auto flag AND @ reference document provided:
-  → ASK config questions only (commit_docs, model_profile)
-  → SKIP interactive questioning (use the @ document as project context)
+ELSE IF --auto flag AND an idea document provided (@ reference or pasted text):
+  → ASK nothing: apply the auto-mode defaults (workflow step 2a; idea.md frontmatter can override them)
+  → SKIP interactive questioning (use the document as project context)
   → RUN research automatically
-  → GENERATE requirements from research + @ document
+  → GENERATE requirements from research + the document
   → GENERATE roadmap from requirements
   → No further interaction until complete
 
-ELSE IF --auto flag WITHOUT @ reference:
-  → ERROR: "--auto requires an @ referenced idea document"
+ELSE IF --auto flag WITHOUT an idea document:
+  → ERROR: "--auto requires an idea document" (an @ reference, or the idea pasted after the flag)
   → STOP
 
 ELSE (interactive mode — default):
-  → RUN questioning flow (5-area deep questioning)
+  → RUN questioning flow (freeform deep questioning — references/questioning.md)
   → ASK: "Should I research the domain ecosystem?" (Y/N)
     → IF Y: spawn researchers → synthesize → continue
     → IF N: skip research → continue

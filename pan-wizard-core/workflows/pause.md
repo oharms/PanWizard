@@ -91,8 +91,13 @@ timestamp=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs current-timestamp f
 </step>
 
 <step name="commit">
+Record the stopping point in state.md too: the context monitor's note sends agents here to make state.md say where they are, and after a compaction PAN re-injects state.md's Stopped At and Resume File, not the handoff file.
+
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "wip: [phase-name] paused at task [X]/[Y]" --files .planning/phases/*/.continue-here.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state record-session \
+  --stopped-at "Phase [XX] plan [P], task [X]/[Y] — next: [next_action]" \
+  --resume-file ".planning/phases/[XX-name]/.continue-here.md"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "wip: [phase-name] paused at task [X]/[Y]" --files .planning/phases/*/.continue-here.md .planning/state.md
 ```
 </step>
 

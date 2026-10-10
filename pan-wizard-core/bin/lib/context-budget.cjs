@@ -267,8 +267,8 @@ function cmdContextBudget(cwd, raw) {
     }
   }
 
-  // E-8: cache metrics — surface how much of the total context would be
-  // served from prompt cache when Opus 4.7 cache_control is active.
+  // E-8: cache metrics — how much of the total context is the stable set that
+  // agents re-read, which the host serves from its prompt cache when it can.
   const { buildCachedContext } = require('./core.cjs');
   let cache = null;
   try {
@@ -277,10 +277,10 @@ function cmdContextBudget(cwd, raw) {
     const eligiblePct = totalTokens > 0
       ? Math.round((cacheTokens / totalTokens) * 1000) / 10
       : 0;
-    // The cached block is re-read into EVERY agent call, so its size is the
-    // project's largest recurring cost. This used to be measured and reported
-    // with no threshold attached, which meant a block that had grown to ~28k
-    // tokens of mostly closed history looked exactly like a healthy one.
+    // The stable planning files; state.md among them is re-read on every agent
+    // call, the project's largest recurring cost. This used to be measured and
+    // reported with no threshold attached, which meant a block that had grown to
+    // ~28k tokens of mostly closed history looked exactly like a healthy one.
     // Classifying it is what turns the measurement into a signal.
     const { CACHE_BLOCK_WARN_TOKENS, CACHE_BLOCK_CRIT_TOKENS, CACHE_FILE_WARN_TOKENS } = require('./constants.cjs');
     const largest = cached.blocks
@@ -292,12 +292,15 @@ function cmdContextBudget(cwd, raw) {
     else if (cacheTokens >= CACHE_BLOCK_CRIT_TOKENS) cacheStatus = 'critical';
     else if (cacheTokens >= CACHE_BLOCK_WARN_TOKENS) cacheStatus = 'warn';
 
+    // PAN primes no cache (ADR-0023, amended): an absent block means nothing to
+    // measure, not that the host stops caching.
     const advice = cacheStatus === 'absent'
-      ? 'no cacheable context files — every agent call re-sends its context uncached'
+      ? 'none of the stable planning files exist yet, so there is nothing to measure'
       : cacheStatus === 'ok'
         ? null
-        : `cached context is re-read on every agent call; largest file ${largest[0].path} (~${largest[0].tokens} tokens)`
-          + (largest[0].path.endsWith('state.md') ? ' — run `pan-tools state compact`' : '');
+        : `stable planning files past the budget; largest file ${largest[0].path} (~${largest[0].tokens} tokens)`
+          + (largest[0].path.endsWith('state.md') ? ' — re-read on every agent call; run `pan-tools state compact`'
+            : largest[0].path.endsWith('roadmap.md') ? ' — read whole by the roadmapper and milestone work; run `pan-tools roadmap compact`' : '');
 
     // Lifetime signal from the ledger (suspect rows excluded — they carry
     // poisoned counters, not real writes). Absent ledger → zero rows, no advice.

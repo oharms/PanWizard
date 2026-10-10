@@ -42,7 +42,8 @@ Stop conditions are checked by `runner.cjs` automatically (timeout, exit code, k
 
 | `run-state.json` `status` | `stop_reason` | Meaning |
 |---|---|---|
-| `done` | `success` | External instance exited 0; experiment build succeeded |
+| `done` | `success` | External instance exited 0 and the experiment's state.md `status:` is `completed` |
+| `incomplete` | `incomplete` | External instance exited 0, but state.md's `status:` is not `completed` |
 | `failed` | `error` | External instance exited non-zero; report the captured stderr |
 | `failed` | `timeout` | External instance ran past the timeout; runner aborted it |
 | `failed` | `manual` | Someone called `pan-tools experiment stop <slug>` |
@@ -62,10 +63,10 @@ After the runner exits, you may also examine the experiment's own `.planning/` t
 # 1. Verify experiment exists and inspect manifest
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs experiment manifest "${SLUG}"
 
-# 2. Run the external session (blocks until done / failed / timeout)
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs experiment run "${SLUG}" \
-  --runtime "${RUNTIME}" \
-  --timeout "${TIMEOUT_MS}"
+# 2. Run the external session (blocks until done / failed / timeout).
+#    The runtime comes from the experiment's manifest. --timeout takes seconds
+#    (default 3600, one hour); pass it only to change that.
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs experiment run "${SLUG}"
 
 # 3. Read the run state
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs experiment status "${SLUG}"
@@ -89,8 +90,8 @@ After the run completes, produce a concise structured summary:
 ```markdown
 ## Experiment Run: <slug>
 
-**Status:** done | failed
-**Stop reason:** success | error | timeout | manual
+**Status:** done | incomplete | failed
+**Stop reason:** success | incomplete | error | timeout | manual
 **Elapsed:** <duration>
 **External runtime:** <claude | codex | gemini | opencode>
 

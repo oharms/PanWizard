@@ -229,6 +229,17 @@ provides:
     );
   });
 
+  test('flat affects field is read (the summary templates write it flat)', () => {
+    // Only `dependency-graph.affects` was read, so every PAN-written summary gave
+    // `affects: []` while its flat `affects:` list sat unread.
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-test');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-01-summary.md'), '---\nphase: "01"\naffects: [api-routes, auth]\n---\n');
+    const result = runPanTools('history-digest', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.deepStrictEqual(JSON.parse(result.output).phases['01'].affects.sort(), ['api-routes', 'auth']);
+  });
+
   test('inline array syntax supported', () => {
     const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-test');
     fs.mkdirSync(phaseDir, { recursive: true });
@@ -390,6 +401,18 @@ one-liner: Minimal summary
     assert.deepStrictEqual(output.patterns, [], 'patterns defaults to empty');
     assert.deepStrictEqual(output.decisions, [], 'decisions defaults to empty');
     assert.deepStrictEqual(output.requirements_completed, [], 'requirements_completed defaults to empty');
+  });
+
+  test('one_liner falls back to the bold line under the title, where the templates put it', () => {
+    // No summary template writes a `one-liner` frontmatter key, so /pan:progress's
+    // Recent Work read null for every summary PAN writes.
+    const phaseDir = path.join(tmpDir, '.planning', 'phases', '01-foundation');
+    fs.mkdirSync(phaseDir, { recursive: true });
+    fs.writeFileSync(path.join(phaseDir, '01-01-summary.md'),
+      '---\nphase: 01-foundation\nplan: 01\n---\n\n# Phase 1: Foundation Summary\n\n**JWT auth with refresh rotation using jose**\n\n## Performance\n');
+    const result = runPanTools('summary-extract .planning/phases/01-foundation/01-01-summary.md --fields one_liner', tmpDir);
+    assert.ok(result.success, result.error);
+    assert.strictEqual(JSON.parse(result.output).one_liner, 'JWT auth with refresh rotation using jose');
   });
 
   test('parses key-decisions with rationale', () => {

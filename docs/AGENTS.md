@@ -28,6 +28,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 - [Model Profiles](#model-profiles)
 - [Cross-Phase Agent Memory](#cross-phase-agent-memory-e-4-since-v2100)
 - [Hierarchical Orchestration](#hierarchical-orchestration-v34)
+- [Per-agent profile override](#per-agent-profile-override)
 - [How Agents Collaborate](#how-agents-collaborate)
 - [Parallel Execution Patterns](#parallel-execution-patterns)
 - [Agent Design Principles](#agent-design-principles)
@@ -42,15 +43,15 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | `pan-project-researcher` | Researches domain ecosystem before roadmap | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
 | `pan-research-synthesizer` | Synthesizes parallel research into summary.md | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash | purple |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Glob, Grep | purple |
-| `pan-document_code` | Analyzes existing codebase (6 focus areas, or the whole repo in one single-shot pass) | `/pan:map-codebase` (x6 parallel, or one agent in single-shot mode) | Read, Bash, Grep, Glob, Write | cyan |
+| `pan-document_code` | Analyzes existing codebase (6 focus areas, or the whole repo in one single-shot pass) | `/pan:map-codebase` (x6 parallel, or one agent in single-shot mode); native `/pan-map-codebase` script on Claude Code (one per discovered area) | Read, Bash, Grep, Glob, Write | cyan |
 | `pan-designer` | Designs a phase before planning — architecture, ADR, threat-lite; spawned by /pan:design-phase | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
 | `pan-design-checker` | Independently verifies a design before planning; spawned by /pan:design-phase and /pan:focus-design | `/pan:design-phase`, `/pan:focus-design` | Read, Bash, Glob, Grep | green |
 | `pan-phase-researcher` | Investigates how to implement a specific phase | `/pan:plan-phase`, `/pan:research-phase` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
-| `pan-planner` | Creates executable plan.md files with task breakdown | `/pan:plan-phase`, `/pan:quick` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
+| `pan-planner` | Creates executable plan.md files with task breakdown | `/pan:plan-phase`, `/pan:quick` | Read, Write, Edit, Bash, Glob, Grep, WebFetch, Context7 | green |
 | `pan-plan-checker` | Validates plans against phase goals across multiple dimensions | `/pan:plan-phase`, `/pan:quick --full` | Read, Bash, Glob, Grep | green |
-| `pan-executor` | Executes plans with atomic commits and deviation handling | `/pan:exec-phase`, `/pan:quick` | Read, Write, Edit, Bash, Grep, Glob | yellow |
-| `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase`, `/pan:quick --full` | Read, Write, Bash, Grep, Glob | green |
-| `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase` | Read, Grep, Glob, Bash | yellow |
+| `pan-executor` | Executes plans with atomic commits and deviation handling | `/pan:exec-phase`, `/pan:quick`, `/pan:army`, native `/pan-exec-waves` script (Claude Code) | Read, Write, Edit, Bash, Grep, Glob | yellow |
+| `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase` and the native `/pan-exec-waves` script on Claude Code (both skip it when `workflow.verifier` is false), `/pan:quick --full` | Read, Write, Bash, Grep, Glob | green |
+| `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase`, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash | yellow |
 | `pan-integration-checker` | Verifies cross-phase wiring and E2E flows | `/pan:milestone-audit` | Read, Bash, Grep, Glob | blue |
 | `pan-debugger` | Systematic bug investigation with persistent state | `/pan:debug`, native `/pan-diagnose-issues` script (Claude Code) | Read, Write, Edit, Bash, Grep, Glob, WebSearch | orange |
 
@@ -59,8 +60,8 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
 | `pan-previewer` | Foresight — blast radius / dependency graph / milestone ETA in one agent (3 modes) | `/pan:preview` | Read, Bash, Glob, Grep, Write | cyan |
-| `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase | `/pan:review-deep` (also `--deep-review` on exec-phase / focus-exec), `/pan:focus-auto` Pass 3 | Read, Grep, Glob, Bash | red |
-| `pan-meta-reviewer` | Reviews the reviewer + hardener output; flags missed issues, disputes overstated severities | `/pan:review-deep` (also `--deep-review` on exec-phase / focus-exec) | Read, Grep, Glob, Bash | magenta |
+| `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase | `/pan:review-deep` (also `--deep-review` on exec-phase), `/pan:focus-auto` Pass 3, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | red |
+| `pan-meta-reviewer` | Reviews the reviewer + hardener output; flags missed issues, disputes overstated severities | `/pan:review-deep` (also `--deep-review` on exec-phase), native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | pink |
 | `pan-knowledge` | Grounded Q&A / multi-turn discussion / playbook generation (3 modes) | `/pan:knowledge` | Read, Grep, Glob, Bash, Write | cyan |
 | `pan-counterfactual` | Explores alternative phase approaches in isolated git worktree | `/pan:what-if` | Read, Write, Edit, Bash, Grep, Glob | purple |
 | `pan-conductor` | Top-level orchestrator for hierarchical exec — decomposes a phase, spawns sub-agents in waves, enforces safety harness | `/pan:exec-phase --hierarchical`, `/pan:army` | Read, Write, Bash, Glob, Grep, Task | orange |
@@ -69,8 +70,8 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
-| `pan-optimizer` | Reads trace events; identifies error/gap/redundancy patterns; produces ranked optimization report with auto-apply JSON block + manual review suggestions | `/pan:learn` (`/pan:optimize apply` applies its report) | Read, Glob, Grep | cyan |
-| `pan-distiller` | Read-only LLM judgment on AI code-bloat findings — receives only flagged spans (max 50 lines context per finding); validates pattern, refines safety tier (safe/review/risky), proposes minimal diff rewrite | `/pan:focus-auto --category distill` | Read, Grep, Glob | cyan |
+| `pan-optimizer` | Reads trace events; identifies error/gap/redundancy patterns; writes a ranked optimization report whose suggestions each name where a person should make the fix | `/pan:learn` (`/pan:optimize apply` records its suggestions) | Read, Glob, Grep, Write | cyan |
+| `pan-distiller` | Read-only LLM judgment on AI code-bloat findings — receives only flagged spans (max 50 lines context per finding); validates pattern, refines safety tier (safe/review_required/risky), proposes minimal diff rewrite | `/pan:focus-auto --category distill` | Read, Grep, Glob | cyan |
 
 ### Self-Improvement Loop agents
 
@@ -82,7 +83,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
-| `pan-release` | Release squad. Ships approved, green work behind a human gate — prepares the squash-merge, runs the configured verification, surfaces an `always-ask` approval request, tags the release, and rolls back via `git revert` / previous tag. Instructed not to write code and not to merge to a protected branch itself — with `Bash` in the grant beside this cell, that is prompt discipline rather than a runtime block, so read it as the behaviour PAN asks for and branch protection as the rail that holds. | `/pan:army` (release phase) | Read, Grep, Glob, Bash | amber |
+| `pan-release` | Release squad. Ships approved, green work behind a human gate — prepares the squash-merge, runs the configured verification, surfaces an `always-ask` approval request, tags the release, and rolls back via `git revert` / previous tag. Instructed not to write code and not to merge to a protected branch itself — with `Bash` in the grant beside this cell, that is prompt discipline rather than a runtime block, so read it as the behaviour PAN asks for and branch protection as the rail that holds. | `/pan:army` (release phase) | Read, Grep, Glob, Bash | orange |
 
 ---
 
@@ -99,7 +100,7 @@ For a bot-army campaign (`/pan:army`), the agents are organized into role-scoped
 
 **The `access` column is advisory, and does not always match the tool grant.** `squads.cjs` describes itself as "a registry + resolver only — it modifies no agent and changes no execution path", so these values are the contract the conductor's prompt is written around, not a sandbox the runtime imposes. Compare them against the real grants with `grep '^tools:' agents/*.md` and expect divergence: several agents in a `read-only` squad hold `Write` because they emit planning or verification artifacts. What the grants *do* enforce is delegation depth — `grep -l '^tools:.*Task' agents/*.md` names every agent able to spawn another, so squad members cannot fan out further.
 
-**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not what resolves an agent's model; that comes from the active `model_profile` (`quality` and `balanced` are `reasoning` for every agent, and `budget` is the only profile that down-tiers), plus any `model:` pin in an agent's own frontmatter. So the `mid` on the Quality and Release rows does not describe what those agents run under the default profile — under `quality` and `balanced` they resolve `reasoning` like everything else. See [Model Profiles](#model-profiles) for the per-agent matrix.
+**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not an agent's profile tier, which is what `resolve-model` reports from the active `model_profile` (`quality` and `balanced` are `reasoning` for every agent, and `budget` is the only profile that down-tiers). `/pan:army` applies neither: its spawns pass no model, so a squad agent runs on its own `model:` pin, else the session model, under every profile. So the `mid` on the Quality and Release rows does not describe what those agents run. See [Model Profiles](#model-profiles) for the per-agent matrix.
 
 Outside the squads sit the coordinator (`pan-conductor`, Tier 0) and the worker/utility agents — `pan-document_code`, `pan-distiller` (narrow, high-volume jobs — the `budget` profile is the only one that drops them to the fast tier), plus `pan-optimizer`, `pan-knowledge`, `pan-counterfactual`, `pan-previewer` (invoked directly by their own commands, not delegated through a squad) and `pan-experiment-runner` (no shipped command spawns it — see its row above). A drift test pins squad roster ⇄ agent files ⇄ `AGENT_BASE_EFFORT`, so every shipped agent is accounted for in exactly one place.
 
@@ -137,7 +138,7 @@ Each agent `.md` file is YAML frontmatter followed by XML-tagged sections. Every
 ---
 name: pan-planner
 description: Creates executable phase plans with task breakdown...
-tools: Read, Write, Bash, Glob, Grep, WebFetch, mcp__context7__*
+tools: Read, Write, Edit, Bash, Glob, Grep, WebFetch, mcp__context7__*
 color: green
 effort: xhigh
 ---
@@ -176,7 +177,7 @@ Agents are ordered by workflow stage: project init → brownfield → phase plan
 
 **Purpose:** Answers "What does this domain ecosystem look like?" before roadmap creation. Investigates the technical landscape, standard stacks, architecture patterns, and common pitfalls for the project's domain.
 
-**Spawned by:** `/pan:new-project`, `/pan:milestone-new` (Phase 6: Research)
+**Spawned by:** `/pan:new-project`, `/pan:milestone-new` (their Research Decision step: 6 in new-project, 8 in milestone-new)
 
 **Tools:** Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7
 
@@ -193,7 +194,7 @@ Agents are ordered by workflow stage: project init → brownfield → phase plan
 | `pitfalls.md` | Critical/moderate/minor pitfalls with phase-specific warnings |
 | `comparison.md` | Created in comparison mode — quick comparison table with detailed analysis |
 | `feasibility.md` | Created in feasibility mode — verdict (YES/NO/MAYBE) with blockers |
-| `summary.md` | Written by the researcher when it runs alone; in `/pan:new-project`'s four-way parallel run each researcher is dimension-scoped and the synthesizer owns `summary.md` |
+| `summary.md` | Not written by the researcher: each researcher writes only its own dimension, and `pan-research-synthesizer` writes `summary.md` once all four finish |
 
 **Key Behaviors:**
 - Opinionated recommendations: "Use X because Y" — not "Options are X, Y, Z"
@@ -262,7 +263,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 - Goal-backward success criteria: observable user behaviors, not implementation tasks
 - Calibrates depth from `config.json`: Quick (3-5 phases), Standard (5-8), Comprehensive (8-12)
 - Prefers vertical slices over horizontal layers (better parallelization during execution)
-- Writes roadmap.md, state.md and requirements.md first (one Write per file, P-1808); the orchestrator then presents the written roadmap for approval before committing, and re-spawns the roadmapper in revision mode (Edit in place) if changes are requested
+- Writes roadmap.md, state.md and requirements.md first (one Write per file, P-1808); the orchestrator then presents the written roadmap for approval before committing, and re-spawns the roadmapper in revision mode if changes are requested; it rewrites each changed file with one Write (it has no Edit tool)
 
 **Phase Numbering:** Integers (1, 2, 3) for planned work. Decimals (2.1, 2.2) reserved for urgent insertions via `/pan:insert-phase`.
 
@@ -309,7 +310,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 **Tools:** Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7
 
 **Inputs:**
-- Phase goal and requirements from roadmap.md
+- The phase's roadmap slice (`{phase}-roadmap-slice.md`: its section, its dependencies' goals and its requirement lines)
 - `context.md` (if exists) — locked user decisions constrain research scope
 - Existing codebase (if brownfield)
 
@@ -332,19 +333,20 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 
 **Purpose:** Creates executable plan.md files with task breakdown, dependency analysis, and goal-backward verification. Plans are small enough for a single executor to implement in a fresh context window.
 
-**Spawned by:** `/pan:plan-phase` (standard, gap closure, or revision mode)
+**Spawned by:** `/pan:plan-phase` (standard, gap closure, or revision mode), `/pan:quick` (quick mode)
 
-**Tools:** Read, Write, Bash, Glob, Grep, WebFetch, Context7
+**Tools:** Read, Write, Edit, Bash, Glob, Grep, WebFetch, Context7
 
 **Inputs:**
-- `project.md`, `requirements.md`, `roadmap.md`
+- `state.md` and the phase's roadmap slice (`{phase}-roadmap-slice.md`); the whole roadmap.md or requirements.md only for something the slice leaves out
 - `context.md` (locked user decisions)
+- `{phase}-design.md` when `/pan:design-phase` produced one — the approved design the plans implement
 - `research.md` (phase-specific findings)
 - research.md's `## Validation Architecture` section (if Nyquist enabled)
 - Previous verification.md (in gap closure mode)
 
 **Outputs:**
-- `.planning/phases/XX-name/{phase}-{plan}-plan.md` — One per plan (typically 2-3 plans per phase)
+- `.planning/phases/XX-name/{phase}-{plan}-plan.md` — One per plan (the planning depth suggests 1-3, 3-5 or 5-10 plans per phase)
 
 **Plan Structure:**
 ```yaml
@@ -372,7 +374,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 - Task types: `auto` (fully automated) and `checkpoint` (pauses for user input)
 - TDD support via dedicated `type: tdd` plans (RED → GREEN → REFACTOR)
 - Gap closure mode: reads verification.md, creates fix plans for identified gaps
-- Revision mode: incorporates plan-checker feedback and revises (up to 3 iterations)
+- Revision mode: incorporates plan-checker feedback and revises (at most 2 revisions)
 
 ---
 
@@ -380,13 +382,13 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 **Purpose:** Validates that plans WILL achieve the phase goal before execution begins. Catches structural issues that would waste executor context windows.
 
-**Spawned by:** `/pan:plan-phase` (after planner creates plan.md, up to 3 revision loops)
+**Spawned by:** `/pan:plan-phase` (after planner creates plan.md; up to 3 checks, at most 2 revisions) and `/pan:quick --full` (on the quick task's plan, at most 2 iterations)
 
 **Tools:** Read, Bash, Glob, Grep (read-only — cannot modify plans)
 
 **Inputs:**
 - plan.md files created by planner
-- roadmap.md (phase goals and success criteria)
+- The phase's roadmap slice (phase goal, success criteria and requirement lines); the whole roadmap.md only if the slice is missing
 - context.md (locked decisions)
 - research.md's `## Validation Architecture` section (if Nyquist enabled)
 
@@ -417,7 +419,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 **Key Behaviors:**
 - Plans can describe intent while missing delivery — the checker catches the gap
 - Context compliance is strict: locked decisions are non-negotiable, "Claude's Discretion" items are flexible, deferred ideas must be excluded
-- Returns issues to planner for revision (up to 3 loops before escalating)
+- Returns issues to planner for revision (at most twice; issues left after the third check go to the user)
 
 ---
 
@@ -425,14 +427,14 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 **Purpose:** Executes plan.md files atomically — one task at a time, one commit per task (consecutive trivial tasks may share one), with automatic deviation handling and checkpoint protocols.
 
-**Spawned by:** `/pan:exec-phase` (wave-based), `/pan:quick`
+**Spawned by:** `/pan:exec-phase` (wave-based), `/pan:quick`, `/pan:army` (Build squad, one per worktree)
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob
 
 **Inputs:**
 - plan.md (the plan to execute)
 - `## Plan Decisions` section in plan.md — read first (P-RES-003 reasoning-trace handoff). Locked items are binding; Open items are executor's discretion; Considered+rejected items must NOT be re-argued.
-- `project.md`, `roadmap.md`, `state.md` (project context)
+- `project.md`, the phase's roadmap slice and `state.md` (project context); a plan that still names `roadmap.md` gets the slice in its place
 - `CLAUDE.md` and project-specific skills/conventions
 
 **Outputs:**
@@ -471,13 +473,13 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 **Purpose:** Verifies that a phase achieved its GOAL, not just completed its TASKS. Works backwards from what the phase should deliver and checks that it actually exists, is substantive, and is wired correctly.
 
-**Spawned by:** Verification workflow after `/pan:exec-phase`; also `/pan:quick --full`
+**Spawned by:** Verification workflow after `/pan:exec-phase` (skipped, and said so, when `workflow.verifier` is false); also `/pan:quick --full`
 
 **Tools:** Read, Write, Bash, Grep, Glob
 
 **Inputs:**
 - plan.md files (must_haves, requirements)
-- roadmap.md (phase success criteria)
+- The phase's goal and success criteria (from `roadmap get-phase`) and its requirement lines (from the roadmap slice), not the whole roadmap.md
 - summary.md files (claimed completions)
 - The actual codebase
 
@@ -532,6 +534,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 | Security Patterns | No `eval`/`Function`, no shell injection, no hardcoded secrets, path traversal prevention, no absolute paths in output, no stack traces or internal names in user-facing errors |
 | Code Quality | Function length (>50 lines flagged), nesting depth (>3 levels flagged), dead imports, duplicate code (>10 identical lines), new TODO/FIXME/HACK instances |
 | Scope (Unrequested) | Behaviour no plan task or requirement asked for — WARNING, or ERROR when it changes existing behaviour without a plan saying so; supporting code the tasks need is not a finding |
+| Design smells (baseline) | A fixed list of twelve smells from Fowler's *Refactoring* (Feature Envy, Shotgun Surgery, Speculative Generality and others), each INFO and phrased "possible …"; a project standard or established pattern that endorses one suppresses it, and none changes the verdict on its own |
 
 **Verdict Options:**
 - **PASS**: Zero errors, zero warnings
@@ -557,7 +560,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 **Inputs:**
 - summary.md files from all completed phases
 - The actual codebase
-- requirements.md (for cross-phase requirement mapping)
+- The milestone's requirement IDs, with descriptions and assigned phases, which the auditor takes from requirements.md's traceability table and passes in the prompt
 
 **Outputs:**
 - Structured report returned to milestone auditor (not a file on disk)
@@ -599,6 +602,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 |---------|----------|----------|
 | Current Focus | Overwritten on updates | Active hypothesis, test, expected result, next action |
 | Symptoms | Immutable after gathering | Expected vs actual, errors, reproduction steps |
+| Reproduction | Written before the first hypothesis; overwritten only to shrink it | A command the debugger ran that fails on the symptom (or `none`, with what was tried); the fix is verified when it passes |
 | Eliminated | Append-only | Disproven hypotheses with evidence and timestamp |
 | Evidence | Append-only | Observations with implications |
 | Resolution | Overwritten as understanding evolves | Root cause, fix, verification, files changed |
@@ -664,13 +668,13 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 **Tier mapping by provider:** Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents. Legacy names (`opus`, `sonnet`, `haiku`) still work as aliases.
 
 **Design rationale (cost reset, 2026-07):**
-- **quality + balanced both inherit** — every agent runs on the model you launched with; PAN no longer demotes agents to cheaper models by default. The exceptions are `pan-reviewer`, `pan-hardener` and `pan-meta-reviewer`, which pin `model: opus` in their own frontmatter and run on Opus under every profile on Claude Code. Context isolation, not a weaker model, keeps the main conversation clean.
+- **quality + balanced both inherit** — every agent runs on the model you launched with; PAN no longer demotes agents to cheaper models by default. The exceptions are `pan-reviewer`, `pan-hardener` and `pan-meta-reviewer`, which pin `model: opus` in their own frontmatter. On Claude Code the pin holds where a spawn passes no model (`/pan:review-deep`, `/pan:focus-auto`); `/pan:exec-phase` passes the resolved tier, so under `budget` its review spawns run on the fast tier. The installer drops the pin from the other runtimes' agent files, so there these agents inherit the session model like the rest. Context isolation, not a weaker model, keeps the main conversation clean.
 - **budget is the opt-in cheap mode** — mid for the planning, orchestration and code-writing agents, fast for research, review, verification and the utility agents; choose it explicitly for high-volume work.
-- Tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it powers `/pan:cost`; a spawn that passes no model uses the agent file's static `model:` (unset → `inherit`).
+- Tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` (unset → `inherit`).
 
 ### Reasoning effort (adaptive-thinking era, v3.9.0+)
 
-Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the within-model reasoning-depth dial on current models, consumed natively by Claude Code. Codex maps it to its native `model_reasoning_effort` field (`convertClaudeAgentToCodexToml`); OpenCode, Gemini CLI and Copilot CLI get an effort-scaled prose preamble injected by the installer (`stripThinkingFrontmatter`; legacy `thinking_budget` directives still translate via a budget→effort mapping). Profiles modulate the base: `budget` steps each agent down one level (floor `low`), and `.planning/config.json → effort_overrides` wins — see `resolveEffortInternal()` and `pan-tools resolve-model`.
+Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the within-model reasoning-depth dial on current models, consumed natively by Claude Code. Codex maps it to its native `model_reasoning_effort` field (`convertClaudeAgentToCodexToml`); OpenCode, Gemini CLI and Copilot CLI get an effort-scaled prose preamble injected by the installer (`stripThinkingFrontmatter`; legacy `thinking_budget` directives still translate via a budget→effort mapping). `pan-tools resolve-model` reports a profile-adjusted effort: `budget` steps each agent down one level (floor `low`), and `.planning/config.json → effort_overrides` wins (`resolveEffortInternal()`). No spawn applies it: an agent spawned under its own type runs at the `effort:` in its own file, and on Claude Code a `general-purpose` spawn that only reads the file (`/pan:new-project`'s researchers, `/pan:plan-phase`'s researcher and planner, `/pan:research-phase`'s researcher, `/pan:quick`'s revision planner) does not get that `effort:` at all.
 
 | Agent | effort | Rationale |
 |-------|--------|-----------|
@@ -715,21 +719,25 @@ See `/pan:profile` for the full decision tree.
 
 ## Cross-Phase Agent Memory (E-4, since v2.10.0)
 
-Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<agent>.md` managed by the `memory.cjs` core module. Agents can write lessons learned in one phase that become visible to all future invocations of the same agent.
+Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<agent>.md` managed by the `memory.cjs` core module.
+
+**PAN's workflows do not load it into agents** (ADR-0036, amended `2026-10-04`). exec-phase and plan-phase stopped injecting it, and nothing writes it automatically, after harness runs found that a recorded lesson changed no phase's work beyond what `state.md`, the summaries and the code already carried. The store and its commands remain for lessons recorded by hand, and `/pan:knowledge` reads it. A lesson an agent must see belongs in the project's instructions (`CLAUDE.md` or `AGENTS.md`, outside PAN's section).
 
 **Files:** one per agent, stable frontmatter (`agent`, `created`) + `## Entries` section with dated bullets.
 
 **CLI:**
 - `pan-tools memory read <agent>` — list entries
-- `pan-tools memory append <agent> <text>` — append a lesson (auto-dated)
-- `pan-tools memory list` — all agents that have memory + entry counts
-- `pan-tools memory compact <agent> [max]` — trim to last N (default 500)
-- `pan-tools memory select <agent> --cue <text> [--token-budget N] [--recency-floor N]` — budget-aware, cue-ranked subset for injection
-- `pan-tools memory budget` — per-agent injection budget report
+- `pan-tools memory append <agent> <text> [--cites <path[#symbol]>,...]` — append a lesson (auto-dated); each citation must hold in the working tree
+- `pan-tools memory list` — the agent logs with entry counts, the files in `.planning/memory/` that are not read as memory (`not_loaded`), and usage: entries with evidence, cited, used and never used
+- `pan-tools memory compact <agent> [max]` — trim to last N (default 500); the dropped entries go to `.planning/memory/archive/<agent>.md`
+- `pan-tools memory select <agent> [--cue <text>] [--token-budget N] [--recency-floor N] [--all] [--mark-used] [--days N]` — budget-aware, cue-ranked subset; leaves out entries whose cited code is gone or that went unused for N days (default 60); `--mark-used` records today as each selected entry's last use
+- `pan-tools memory record <agent> --lesson <text> (--finding <id> | --trace <session>) --cites <path[#symbol]>` — the gated write: a corrected failure with a citation that holds
+- `pan-tools memory budget` — what the whole store would add to an agent's prompt
+- `pan-tools memory prune [<agent>] [--apply] [--days N]` — archive the entries `memory select` leaves out (cited code gone, or unused for N days, default 60) to `.planning/memory/archive/<agent>.md`; a dry run without `--apply`
 - `pan-tools memory optimize [--apply] [--keep N]` — reconcile the always-loaded project memory
 - `pan-tools memory rebuild [--apply]` — regenerate the derived tools-memory (AGENTS.md section, CLAUDE.md bridge) and state.md's frontmatter
 
-**Auto-population:** `/pan:retro --write-memory` extracts top-N gap patterns as lessons for `pan-planner`, and writes a verifier lesson when first-try rate drops below 60% over ≥3 runs.
+**On request:** `/pan:retro --write-memory` extracts top-N gap patterns as lessons for `pan-planner`, and writes a verifier lesson when first-try rate drops below 60% over ≥3 runs. `/pan:retro` passes the flag on to `pan-tools retro` only when you give it; no workflow passes it on its own.
 
 **Safety:** agent names validated against `^[a-zA-Z0-9_-]+$` to block path traversal. Compaction is bounded by `DEFAULT_MAX_ENTRIES=500`; `memory append` auto-compacts back to that cap once a file reaches twice it (`MEMORY_SOFT_CAP_MULT`, ADR-0036).
 
@@ -745,12 +753,12 @@ Since v3.4.0, `/pan:exec-phase <N> --hierarchical` spawns `pan-conductor` as a t
 |-----|-------|-------------------|
 | Nesting depth | 2 levels (conductor → sub-agent) | Sub-agents may NOT spawn further agents |
 | Spawns per phase | 12 total | Continue without further spawning; document skipped work |
-| Points budget | From focus-auto config or default 40 | Stop when remaining < next spawn's estimate |
+| Points budget | `total_budget_points` from `pan-tools init execute-phase <N>` (config `budget.default_points`, default 50) | Stop when remaining < next spawn's estimate |
 | Abort file | `.planning/orchestration/abort` | Immediate stop, no graceful rollback |
 
 **Audit trail:** every spawn and completion is logged to `.planning/orchestration/trace.json` (authoritative) and published to the `orchestrator` bus channel (`.planning/bus/orchestrator.jsonl`) for observability.
 
-**Runtime gating:** Claude Code only — agents-spawn-agents needs native sub-agent spawning, which the other runtimes don't support cleanly. There they fall back to flat exec with a warning. The gate is purely the runtime: `pan-conductor` ships no `model:` frontmatter, so it inherits your session model, and no model check exists anywhere in the path. Details in [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md).
+**Runtime gating:** Claude Code only — agents-spawn-agents needs native sub-agent spawning, which the other runtimes don't support cleanly. There they fall back to flat exec with a warning. The gate is purely the runtime: `pan-conductor` ships no `model:` frontmatter, so it inherits your session model, and no model check exists anywhere in the path. [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md) records the original decision; its note that the flag needs a particular model and falls back silently predates the 3.23.0 correction (CHANGELOG), which found no model gate in the code.
 
 **When to use:**
 - Phases with ≥4 autonomous plans that genuinely parallelize
@@ -768,15 +776,15 @@ See [commands/pan/exec-phase.md](../commands/pan/exec-phase.md) for the flag doc
 
 When invoked by `/pan:army`, `pan-conductor` runs as **Mission Control** for a whole-project campaign rather than a single phase — same safety harness, wider scope. In this mode it delegates to **squads, not bare agents**, resolving the roster at runtime via `pan-tools squad list` / `squad show <name>`. Each mission is routed to the squad that owns its lifecycle role: Architecture (design), Build (code, read/write/bash), Quality (adversarial review), Release (`pan-release`, always-ask). Those role labels are the contract the conductor's prompt assigns — `squads.cjs` publishes them as advisory metadata and "changes no execution path", so the binding grant stays each agent's own `tools:` frontmatter.
 
-- **Build parallelizes by worktree — and Mission Control tears the worktrees down.** Each concurrent `pan-executor` gets its own `army/<task>` branch and isolated worktree (`pan-tools worktree create "<task>"`) so builders never share a tree or file. After a task's squash-merge lands, the conductor removes its worktree *and* branch (`pan-tools worktree remove <path> --branch army/<task>`); at campaign end or on any abort, `pan-tools worktree cleanup` sweeps the strays. Leftover `pan-army-*` sibling directories are a campaign defect.
+- **Build parallelizes by worktree — and Mission Control tears the worktrees down.** Each concurrent `pan-executor` gets its own `army/<slug>` branch and isolated worktree (`pan-tools worktree create "<task>"` slugifies the task name) so builders never share a tree or file. After a task's squash-merge lands, the conductor removes its worktree *and* branch (`pan-tools worktree remove <worktree_path> --branch <branch>`, the two values `worktree create` returned); at campaign end or on any abort, `pan-tools worktree cleanup` sweeps the strays. Leftover `pan-army-*` sibling directories are a campaign defect.
 - **Integration is human-gated** — the conductor is instructed never to merge to a protected branch; the Release squad prepares the merge and surfaces an `always-ask` approval. Branch protection on the repo is what makes that unbypassable rather than merely instructed. Recovery is `git revert` / previous tag, never force-push.
-- **The loop carries learnings** — after each mission, squad summaries return to the conductor and `/pan:retro --write-memory` persists recurring patterns to agent memory (the "Dreaming" step).
+- **The loop carries learnings** — after each mission, squad summaries return to the conductor, `/pan:retro` reports the recurring patterns (the "Dreaming" step), and the conductor carries them into the next mission's plan. Agent memory is not loaded into agents, so the conductor hands them on itself.
 
 Every Tier-0 safety cap (nesting depth 2, spawn/budget ceiling, `.planning/orchestration/abort` kill-switch) still applies, unchanged. See [agents/pan-conductor.md](../agents/pan-conductor.md) `<campaign_mode>` and [ADR-0033](decisions/ADR-0033-army-campaign.md).
 
 ---
 
-### Per-agent profile override
+## Per-agent profile override
 
 Override specific agents without changing the profile. Values are tiers (`reasoning`, `mid`, `fast`) or their legacy aliases (`opus`, `sonnet`, `haiku`), so `opus` below means the reasoning tier — `inherit` — and an unrecognised value falls back to `mid`:
 ```json
@@ -826,7 +834,7 @@ Verifier   ───────────────────────
   │
   ├── pan-phase-researcher (produces research.md)
   ├── pan-planner (after research)
-  └── pan-plan-checker (after planner, up to 3 revision loops)
+  └── pan-plan-checker (after planner; up to 3 checks, at most 2 revisions)
 
 /pan:exec-phase N
   │

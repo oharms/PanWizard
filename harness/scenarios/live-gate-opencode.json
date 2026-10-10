@@ -64,6 +64,19 @@
         "stdout~pan-verifier \\("
       ],
       "why": "Market-ideas M31 (2026-10-03): OpenCode lists the agents it loaded from .opencode/agents/, the model-free discovery check wshobson/agents runs in CI. Measured on OpenCode 1.18.32: PAN's agents list as `pan-<name> (all)`."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode",
+      "args": [
+        "debug",
+        "config"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~plugins/pan-wizard.js"
+      ],
+      "why": "Memory optimisation O12: OpenCode discovers PAN's plugin from .opencode/plugins/ and lists it in its resolved config. Measured 2026-10-04 on OpenCode 1.18.32, where an instrumented copy also showed OpenCode importing the CommonJS module and calling server(), which returned the experimental.session.compacting hook."
     }
   ]
 }

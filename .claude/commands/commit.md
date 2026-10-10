@@ -5,7 +5,7 @@ Create a git commit with safety checks for PAN Wizard development.
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. Commits are for source code changes only.
-NEVER commit self-install artifacts (.claude/agents/, .claude/commands/, .claude/hooks/, etc.).
+NEVER commit self-install artifacts (.claude/agents/pan-*.md, .claude/commands/pan/, .claude/hooks/, etc. — the rest of .claude/agents/ and .claude/commands/ is this repo's tracked dev tooling).
 
 ---
 
@@ -20,8 +20,9 @@ git status --porcelain | Select-String "^ D|^D "
 
 ### 1.2 Check for Self-Install Artifacts
 ```powershell
-# These should NEVER be committed — they're gitignored
-git status --porcelain | Select-String "\.claude/(agents|commands|hooks|pan-wizard-core)/|\.codex/|\.gemini/|\.opencode/|\.github/"
+# These should NEVER be committed. Most are gitignored; AGENTS.md, .mcp.json, .agents/skills/, .agents/pan-wizard-core/,
+# .claude/workflows/pan-*.js, .github/mcp.json and .github/copilot/ are not (CLAUDE.md)
+git status --porcelain | Select-String "\.claude/(commands/pan/|agents/pan-|hooks/|pan-wizard-core/|workflows/pan-)|\.codex/|\.gemini/|\.opencode/|\.agents/(skills|pan-wizard-core)/|\.github/(agents/pan-|skills/pan-|hooks/|pan-wizard-core/|copilot/|mcp\.json)|^.. (AGENTS\.md|\.mcp\.json)$"
 ```
 
 **STOP if self-install artifacts are staged.** They must not be committed.

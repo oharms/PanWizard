@@ -11,6 +11,8 @@
  *           (candidate for internal/ scope rather than universal/)
  *  - L-005: Revision marker (rN) appended in body but no supersession field
  *  - L-006: Universal-scope pattern cites an internal pattern id (dangles after install)
+ *  - L-007: A pattern's `cites` no longer holds — the cited file or symbol is gone
+ *           from the tree that holds the store (memory optimisation O4)
  *
  * These are not patterns themselves — they're integrity checks for the
  * pattern store. Wired to `pan-tools learn lint`.
@@ -45,7 +47,9 @@ function getLearningsDir(sourceRoot, scope) {
 }
 
 function readTopicFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8');
+  // LF: an install committed with core.autocrlf=true holds these files as CRLF,
+  // and the LF-only match below then read every topic as having no patterns.
+  const content = fs.readFileSync(filePath, 'utf-8').replace(/^﻿/, '').replace(/\r\n/g, '\n');
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!fmMatch) return { frontmatter: { patterns: [] }, body: content };
   const fmText = fmMatch[1];
@@ -113,6 +117,7 @@ function collectAllPatterns(sourceRoot) {
           source_experiments: Array.isArray(p.source_experiments) ? p.source_experiments : [],
           superseded_by: p.superseded_by || null,
           superseded_id: p.superseded_id || null,
+          cites: Array.isArray(p.cites) ? p.cites : [],
           body: patternBody,
         });
       }
@@ -170,7 +175,7 @@ const PATTERN_REF_RE = /\bP-(?:[A-Z]+-)?\d+(?:-r\d+)?\b/g;
  *     pattern_count, file_count, scopes
  *   }
  */
-function lintPatterns(patterns) {
+function lintPatterns(patterns, opts = {}) {
   const violations = [];
 
   const idIndex = new Map(); // id -> [{scope, topic, file}, ...]
@@ -297,6 +302,28 @@ function lintPatterns(patterns) {
     }
   }
 
+  // L-007: a citation that no longer holds. A pattern may name the code it rests
+  // on (`cites: [pan-wizard-core/bin/lib/x.cjs#symbol]`, relative to the tree
+  // holding the store). When that code is gone the pattern is stale evidence, the
+  // way a memory entry is (O4). Checked only when the caller passes the root.
+  if (opts.sourceRoot) {
+    const { citationProblem } = require('./memory.cjs');
+    for (const p of patterns) {
+      for (const c of p.cites || []) {
+        const problem = citationProblem(opts.sourceRoot, c);
+        if (!problem) continue;
+        violations.push({
+          code: 'L-007',
+          severity: 'error',
+          pattern_id: p.id,
+          file: p.file,
+          message: `Pattern "${p.id}" cites ${c}, which no longer holds (${problem}) — update the pattern or retire it`,
+          cite: c,
+        });
+      }
+    }
+  }
+
   return {
     violations,
     pattern_count: patterns.length,
@@ -316,7 +343,7 @@ function cmdLearnLint(sourceRoot, opts = {}) {
   const filtered = opts.scope
     ? all.filter(p => p.scope === opts.scope)
     : all;
-  const result = lintPatterns(filtered);
+  const result = lintPatterns(filtered, { sourceRoot });
 
   const errors = result.violations.filter(v => v.severity === 'error').length;
   const warnings = result.violations.filter(v => v.severity === 'warning').length;

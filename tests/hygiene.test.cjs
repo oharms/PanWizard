@@ -158,7 +158,10 @@ describe('hygiene — checkMemoryLogs', () => {
   function writeMemoryLog(agent, count) {
     const dir = path.join(tmp, '.planning', 'memory');
     fs.mkdirSync(dir, { recursive: true });
-    const bullets = Array.from({ length: count }, (_, i) => `- 2026-07-01: lesson number ${i}`);
+    // Dated today: these tests are about the entry cap, and an old date would also
+    // trip the expiry check (memory-stale), which has its own tests.
+    const today = new Date().toISOString().slice(0, 10);
+    const bullets = Array.from({ length: count }, (_, i) => `- ${today}: lesson number ${i}`);
     fs.writeFileSync(path.join(dir, `${agent}.md`),
       `---\nagent: ${agent}\ncreated: 2026-07-01\n---\n\n## Entries\n\n${bullets.join('\n')}\n`);
   }
@@ -530,13 +533,16 @@ describe('hygiene — cached context', () => {
     assert.ok(!/\u00a0|\u202f/.test(block.detail), 'no non-breaking space in the finding');
   });
 
-  test('planning docs with nothing cacheable is reported as no caching at all', () => {
+  test('planning docs with none of the stable files is reported as nothing to measure', () => {
+    // PAN primes no cache (ADR-0023, amended): the finding used to say every agent
+    // call re-sent its context uncached, which the host's own caching makes false.
     fs.mkdirSync(path.join(tmp, '.planning', 'research'), { recursive: true });
     fs.writeFileSync(path.join(tmp, '.planning', 'research', 'spec.md'), '# spec\n');
     const f = checkCachedContext(tmp).findings;
     assert.equal(f.length, 1);
     assert.equal(f[0].severity, 'info');
-    assert.match(f[0].detail, /none are cacheable/);
+    assert.match(f[0].detail, /nothing to read/);
+    assert.doesNotMatch(f[0].detail, /uncached/);
   });
 
   test('a bare scaffold with no docs yet is silent', () => {

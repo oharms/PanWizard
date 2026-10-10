@@ -7,7 +7,7 @@ PAN ships a small set of built-in Claude Code hooks that enhance the development
 | Hook | Event Type | Purpose |
 |------|-----------|---------|
 | `pan-statusline.js` | `statusLine` | Displays context window usage in the status bar and writes metrics to a bridge file |
-| `pan-context-monitor.js` | `PostToolUse` | Reads the bridge file and injects warnings into agent context when usage is high |
+| `pan-context-monitor.js` | `PostToolUse` | Reads the bridge file, or the session transcript when there is none, and injects a note into the agent's context when the host will compact it soon |
 | `pan-check-update.js` | `SessionStart` | Checks for PAN updates in the background, caches result |
 | `pan-cost-logger.js` (v3.4+) | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
 | `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
@@ -25,12 +25,17 @@ PAN ships a small set of built-in Claude Code hooks that enhance the development
 
 The bridge file enables the context monitor to read metrics without coupling to the statusline's execution cycle.
 
+When Claude Code's payload carries `rate_limits` (a subscription's 5-hour and 7-day usage windows), the status line also shows them (`5h 42% · 7d 81%`, red from 90%) and writes them, account-wide, to `<os-tmpdir>/pan-hooks-<uid>/claude-limits.json` (`{five_hour, seven_day, timestamp}`, each window `{used_percentage, resets_at}`). `pan-tools cost limits` reads that file, and `/pan:focus-auto` and `/pan:army` stop at `cost.weekly_limit_stop_pct`.
+
 **Bridge file format:**
 ```json
 {
   "session_id": "abc123",
   "remaining_percentage": 28.5,
-  "used_pct": 71,
+  "used_pct": 89,
+  "total_input_tokens": 143000,
+  "context_window_size": 200000,
+  "model_id": "<model id>",
   "timestamp": 1708200000
 }
 ```
@@ -42,28 +47,48 @@ The bridge file enables the context monitor to read metrics without coupling to 
 **Event:** `PostToolUse` (runs after every tool call)
 
 **What it does:**
-1. Reads the bridge file written by the statusline hook
-2. Checks remaining context percentage against thresholds
-3. If low, injects a warning as `additionalContext` that the agent sees
+1. Reads the bridge file written by the statusline hook, or, when there is no fresh bridge, the session transcript (below)
+2. Works out how much room is left before the host compacts the session
+3. If little is left, injects a note as `additionalContext` that the agent sees
 
-**Thresholds:**
+**What it measures against.** Claude Code's percentages are against the full model window, but the host compacts earlier. With token counts, from the bridge or the transcript, the room left is measured against the point the host compacts at:
+- **The window:** `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, then `autoCompactWindow` in settings — each settings file in turn, local, then project, then user, gives its per-model value under `modelSettings`, else its value for every model, and the first file that sets one wins — then the model window.
+- **The trigger:** the host compacts about 33K tokens short of that window, whatever its size. That gives the documented ~967K on a native 1M window. On `2026-10-04` a 100K window compacted after a call that measured 67,032 tokens, and not after one that measured 54,371 (harness `context-note-headless`). `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` lowers the trigger to its percentage of the window when that is lower.
+- **No compaction:** with `DISABLE_AUTO_COMPACT=1` or `autoCompactEnabled: false` the host never compacts, so the model window applies.
 
-| Level | Remaining | Agent behavior |
+**What it says — no countdown.** The note carries no figure. Vendor guidance is that a visible remaining-context number makes a model wrap up early and cut corners, and a STOP order after a tool result reads like an injection. So the note:
+- says it comes from the hook, not the user;
+- asks for a checkpoint in `.planning/state.md` (`/pan:pause` writes it);
+- says compaction is safe, because PAN restores the planning state afterwards;
+- asks for no shortcuts.
+
+**Thresholds** (of the room before compaction):
+
+| Level | Room left | The note asks for |
 |-------|-----------|---------------|
-| Normal | > 35% | No warning |
-| WARNING | <= 35% | Wrap up current task, avoid starting new complex work |
-| CRITICAL | <= 25% | Stop immediately, save state via `/pan:pause` |
+| Normal | > 35% | No note |
+| WARNING | <= 35% | A checkpoint at the next natural stopping point, then carry on at full quality |
+| CRITICAL | <= 25% | A checkpoint before the next step, then finish the current task properly |
+
+**Without the status line.** `claude -p` renders no status line (checked `2026-10-04`), and a user may run a status line of their own, so often there is no bridge. Then the monitor reads the transcript the payload names:
+- **The tokens in context:** the newest assistant record's `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. That record issued the tool call the hook runs after, and the sum is what the status line reports as `context_window.total_input_tokens`. Only the tail of the file is read, and further back only while a large tool result hides the record (at most 4 MB).
+- **After a compaction:** a `compact_boundary` record after the newest call means the context was just rebuilt, so there is no note until the next call measures it.
+- **The window:** from the model id on that record, by the rules of Claude Code's model-config page. On the Anthropic API, the models it lists with a native 1M window get 1M; the hook keeps that list in `modelWindowFor()`. Opus and Sonnet models without a native 1M window have 200K unless their `[1m]` variant is configured (`model` in settings, or `ANTHROPIC_MODEL`), and Haiku has 200K. A context past 200K can only be a 1M window, and that rule comes first. Otherwise `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` means 200K everywhere. On Bedrock, Google Cloud or Foundry a native-1M model's window is unknown, and an unknown window gives no note rather than a guess.
+- **Subagents:** a tool call inside a subagent carries `agent_id`, and its payload still names the main transcript. The monitor measures the subagent's own file and never the main session's bridge: `agent_transcript_path` when the payload carries one, else `<session>/subagents/agent-<id>.jsonl`, or for a subagent the Workflow tool spawned, `<session>/subagents/workflows/<run>/agent-<id>.jsonl`. It debounces each subagent apart.
+- **Codex and Copilot:** Codex's transcript has another shape, so without a bridge the monitor stays silent there, as before. Copilot's documented payload is camelCase (`sessionId`, `transcriptPath`) and the monitor reads only `session_id`, so PAN's own Copilot registration (`.github/hooks/pan.json`) stays silent with or without a bridge; in a project that also has the Claude Code install, that copy steps aside for the `.claude/settings.json` registration, and what Copilot passes that one has not been observed.
+
+A fresh bridge still wins for a main-thread call: it is the status line's own reading. The harness scenario `context-note-headless` checks the fallback in a real `claude -p` session.
 
 **Debounce logic:**
 - First warning fires immediately
-- Subsequent warnings require 5 tool uses between them
+- After a note, the next one comes no sooner than the fifth tool call after it (the four calls in between are silent)
 - Severity escalation (WARNING → CRITICAL) bypasses debounce
 
 **Safety:**
 - Wrapped in try/catch — exits silently on error
 - Never blocks tool execution
-- Stale metrics (>60s old) are ignored
-- Missing bridge files handled gracefully (subagents, fresh sessions)
+- Stale bridge metrics (>60s old) fall through to the transcript
+- A missing bridge, transcript or model window means no note, never an error
 
 ### pan-check-update.js
 
@@ -73,7 +98,7 @@ The bridge file enables the context monitor to read metrics without coupling to 
 1. Reads the installed PAN version from a `VERSION` file: the project's install first, then the `pan-wizard-core/VERSION` beside the hook's own copy (how a plugin install finds its version), then the global install
 2. Spawns a background process to query npm for the latest version
 3. Caches the result to `~/.claude/cache/pan-update-check.json` (on other runtimes the installer swaps in that runtime's config directory: `~/.gemini`, `~/.codex`, `~/.copilot`)
-4. The statusline reads the cached result for its update badge (on Gemini CLI and Codex, which run no PAN statusline, nothing displays it); the hook itself re-queries npm on every SessionStart, in a detached child, so the session is never blocked
+4. The statusline reads the cached result for its update badge (on Gemini CLI and Codex, which run no PAN statusline, only `pan-tools version --check` reads it); the hook itself re-queries npm on every SessionStart, in a detached child, so the session is never blocked
 
 The update check runs at each session start and doesn't block tool execution.
 
@@ -96,12 +121,14 @@ The update check runs at each session start and doesn't block tool execution.
   "agent": "pan-executor",
   "agent_id": "a15f28b4fab5c68d1",
   "command": null,
-  "model": "claude-opus-4-7",
+  "model": "claude-opus-<version>",
   "tier": "reasoning",
   "input_tokens": 5120,
   "output_tokens": 240,
   "cache_read_tokens": 8000,
   "cache_write_tokens": 500,
+  "cache_write_1h_tokens": 0,
+  "cache_write_5m_tokens": 500,
   "cost_usd": null,
   "duration_ms": 6789,
   "phase": "07",
@@ -117,12 +144,13 @@ Notes on the fields that are not self-evident:
 
 - **`v`** — ledger row schema version, a literal in each hook (`SCHEMA_V`). Rows written before it existed carry no `v`; `cost rebuild` only checks that it is present, as one sign of a hook-written row it may replace. Readers in `pan-wizard-core` take a row field by field rather than switching on the version, so added fields are additive: a mixed-shape ledger aggregates as one. `v: 4` added `agent_id` and the `agent-transcript` token source.
 - **`agent_id`** — the host's per-spawn id, `null` where the host supplies none. It is what makes the agent's own transcript addressable, and it tells two same-type siblings apart without hashing the payload.
-- **`tier`** — derived from `model` (reasoning / mid / fast), `null` for a model the hook can't classify, so `/pan:cost`'s by-tier view and the HUD tier panel are not blind on the hook path.
+- **`tier`** — derived from `model` (reasoning / mid / fast), `null` for a model the hook can't classify, so `/pan:cost`'s by-tier view is not blind on the hook path.
 - **`cache_write_1h_tokens`** / **`cache_write_5m_tokens`** — the split of `cache_write_tokens` by cache lifetime (one-hour writes bill at a higher rate than five-minute ones), read from the `usage.cache_creation` block of the transcript (or of the payload's `usage` on the fallback path). Present only when the source carried that block; dropped when the write total was clamped.
+- **`long_prompt`** — the tokens (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cache_write_1h_tokens`) of the requests in this slice whose prompt, cache reads and writes included, was over `above` (100,000) tokens. A model priced by prompt length bills those requests at its higher rates request by request, and a row sums many requests, so the read side prices this part at the model's long rate and the rest at its base rate. Present only when some request was over the threshold; dropped when any total was clamped. Transcript paths only; `cost rebuild` writes it too.
 - **`duration_ms`** — the span of this event's transcript slice, first record timestamp to last. `null` when either bound is missing, never a fabricated `0`.
 - **`token_source`** — `"agent-transcript"` when the counts came from the subagent's own transcript, `"agent-transcript-missing"` when the host named an agent whose file was not there (an unmeasured spawn: zeros, excluded from `calls` by the reader), `"transcript"` when they came from a slice of the parent session transcript (the fallback when the host names no agent), `"usage-fallback"` when there was no transcript at all and the payload's own `usage` was used instead.
 - **`clamped`** — `true` when a plausibility guard dropped a token value to `0`, on any transcript or fallback path, so a guarded zero is distinguishable from a genuine zero-token run. Until v3.29 only the `usage-fallback` path had a guard, which is why every oversum row in the field carried `clamped: false`. The span is never clamped: `duration_ms` is the measured first-to-last record span, and `cost.cjs` quarantines a parent-slice row whose span exceeds six hours (a row sliced from the agent's own transcript is exempt — it cannot carry anyone else's usage).
-- **`event_sig`** — a SHA-1 of the SubagentStop payload as delivered on stdin: this spawn's identity. A dual-registration re-fire is the same bytes and so carries the same signature; a sibling whose payload differs in any field carries a different one. It is what lets the hook count two parallel siblings as two spawns while still suppressing a re-fire of one of them. `null` if the payload could not be serialized. [Duplicate and re-fire guards](#duplicate-and-re-fire-guards) below describes how it is used.
+- **`event_sig`** — a SHA-256 of the SubagentStop payload as delivered on stdin, cut to 40 hex characters (the length of the SHA-1 it replaced): this spawn's identity. A dual-registration re-fire is the same bytes and so carries the same signature; a sibling whose payload differs in any field carries a different one. It is what lets the hook count two parallel siblings as two spawns while still suppressing a re-fire of one of them. `null` if the payload could not be serialized. [Duplicate and re-fire guards](#duplicate-and-re-fire-guards) below describes how it is used.
 
 **Integration:** records flow into the existing `cost.cjs` aggregator; they appear in `/pan:cost report` without additional configuration. The `source: "hook"` field marks automatic captures apart from `pan-tools cost append` caller-driven records, which carry no `source`: the aggregator counts both alike, and `cost rebuild` uses the field to find the rows it may replace. During a `/pan:army` campaign every squad agent fires `SubagentStop`, so this same per-spawn stream is what the `/pan:hud` dashboard aggregates into its per-squad telemetry — no army-specific instrumentation exists; the dashboard just reads `tokens.jsonl`.
 
@@ -137,7 +165,7 @@ Notes on the fields that are not self-evident:
 **Event:** `SubagentStop` (runs alongside pan-cost-logger when a Task-spawned sub-agent finishes)
 
 **What it does:**
-1. No-ops unless the directory is a PAN project — same gate as the cost logger, for the same reason
+1. No-ops unless the project already has a planning tree — same gate as the cost logger, for the same reason
 2. Parses the SubagentStop event payload on stdin, reading the same fields with the same caveats — except that it takes `phase` only from the payload or the trace session, never from state.md (so in the day-scoped auto-session it is `null` unless the payload names one), and names an untyped agent from the host's `agent-<id>.meta.json` — and attributes tokens from this event's transcript slice (it keeps its **own** cursor — the cost logger fires on the same event and the two must not consume each other's slice)
 3. Calls `ensureSessionId()` — creates a day-scoped `sess_auto_YYYYMMDD` trace session if none active, so tracing is always-on with zero setup. A day-scoped auto-session from an earlier day is finalized and rolled over; an explicit session stays sticky while in use but is rolled over the same way once it has ended or gone quiet for a day
 4. Builds these event types:
@@ -159,7 +187,7 @@ Notes on the fields that are not self-evident:
   "category": "agent_completion",
   "description": "pan-executor completed",
   "context": {
-    "model": "claude-opus-4-7",
+    "model": "claude-opus-<version>",
     "command": null,
     "agent_id": "a15f28b4fab5c68d1",
     "input_tokens": 5120,
@@ -193,19 +221,19 @@ The optimiser learns from failures. Until the evidence loop, the only failures i
 - **Redacted before it is written.** Some projects commit their traces, so the message loses bearer tokens, key/value secrets (`token=`, `password:`, `Authorization:`), known token prefixes (`sk-`, `ghp_`, `xox*-`, `AKIA…`, JWTs), long mixed letter-and-digit runs and URL query strings. The project directory becomes `.` and the home directory `~`. The message is capped at 160 characters.
 - **Only where it is attributable.** Capture runs only on the agent-transcript path. A slice of the shared parent transcript would book the session's failures to whichever spawn stopped, so that path records none. A resumed agent is sliced from its cursor, so earlier failures are not counted twice.
 - **Off switch.** `"execution": { "error_pattern_learning": false }` in `.planning/config.json` turns capture off. The key was shipped as "reserved"; this is its meaning.
-- **Not an agent verdict.** A failed call is often a normal step, such as a TDD red run or a grep with no match. `optimize learn` groups failures per agent into `tool_error_patterns`, ranked by how many spawns they recur in (then by occurrences), with the session count alongside, and the optimiser writes memory only from recurring ones.
+- **Not an agent verdict.** A failed call is often a normal step, such as a TDD red run or a grep with no match. `optimize learn` groups failures per agent into `tool_error_patterns`, ranked by how many spawns they recur in (then by occurrences), with the session count alongside, and the optimiser draws a suggestion only from recurring ones (never a memory entry).
 
 Judge verdicts (verifier, plan checker, reviewer, design checker) reach the trace another way. `pan-tools findings record`, which the workflows run to read the verdict they branch on, logs `verdict_passed`, `verdict_failed` or `verdict_needs_human`, plus `verdict_retry` when the same judge's previous verdict on that phase was a failure. That path works on every runtime, because it is a verb rather than a hook.
 
-**Integration:** events flow into the existing `optimize.cjs` analyzer; they're picked up by `/pan:learn` (single-session analysis) and `/pan:optimize` (cumulative reports + auto-apply memory entries). The circular optimization loop (trace → learn → optimize apply → next run smarter → repeat) makes PAN self-learning across cycles.
+**Integration:** events flow into the existing `optimize.cjs` analyzer; they're picked up by `/pan:learn` (one session, or the last n pooled with `--sessions <n>`) and `/pan:optimize` (cumulative stats; `apply` records a report's suggestions for a person to act on). The loop is trace → learn → optimize apply → a person writes the lesson where the agents read it → repeat; nothing in a report reaches an agent on its own.
 
-**P-1805 transcript fallback (v3.7.8+):** Same fix as `pan-cost-logger.js`, with the same later reversal: the transcript is read whenever the payload names one and `data.usage` is only the fallback when it names none. `readUsageFromTranscript()` parses the JSONL transcript at `data.transcript_path` and sums `usage` from assistant messages whose `session_id` matches the payload's (the parent session's). Trace events now carry real token counts during autonomous runs instead of zeros. There is no timing fallback: `data.usage` carries no timing, so whenever no transcript slice is read, `duration_ms` stays `null` rather than a measured or fabricated span.
+**P-1805 transcript fallback (v3.7.8+):** Same fix as `pan-cost-logger.js`, with the same later reversal: the transcript is read whenever the payload names one and `data.usage` is only the fallback when it names none. `readUsageFromTranscript()` now reads the slice described above (the subagent's own transcript when one resolves, else the parent transcript at `data.transcript_path`) and sums `usage` once per API turn, the last snapshot per `message.id`, over the records whose `sessionId` (or `session_id`), where present, matches the payload's. Trace events now carry real token counts during autonomous runs instead of zeros. There is no timing fallback: `data.usage` carries no timing, so whenever no transcript slice is read, `duration_ms` stays `null` rather than a measured or fabricated span.
 
 **Runtime support:** same surface as the cost logger — Claude via settings.json, Codex via `.codex/hooks.json`, Copilot via `.github/hooks/pan.json` (all on their SubagentStop-equivalent events; no-op on hosts that don't fire it). Not registered on Gemini CLI, for the cost logger's reason, or on OpenCode.
 
 Tool-failure capture needs a per-agent transcript, so today it works on Claude Code only. On Copilot CLI both loggers read the camelCase payload the Copilot hooks reference documents: `sessionId`, `transcriptPath`, `agentId`, and `agentName`, which is the agent's configured name and wins over `agentType`, the kind of agent. Before that, every Copilot spawn was booked as `unknown`. Copilot has one session transcript and no per-subagent file, so its rows carry the agent's name, `token_source: agent-transcript-missing`, and no captured failures. This payload shape is documented, not yet observed live; the fixture says so. Codex fires `SubagentStop`, but its per-agent transcript layout is unverified, so no capture is claimed there.
 
-**Why the loggers stay synchronous.** Claude Code's `async: true` would run a hook without blocking the session. The cost and trace loggers keep a read-modify-write cursor file shared by every stop, so overlapping asynchronous runs could lose each other's updates. A lost cursor entry makes the next stop re-read that transcript from the start and count its tokens twice. That is the defect class the per-agent attribution work fixed, so do not add `async` to these two (market item M16, declined 2026-09-28).
+**Why the loggers stay synchronous.** Claude Code's `async: true` would run a hook without blocking the session. The cost and trace loggers keep a read-modify-write cursor file shared by every stop, so overlapping asynchronous runs could lose each other's updates. A lost cursor entry makes the next stop re-read that transcript from the start and count its tokens twice. That is the defect class the per-agent attribution work fixed, so do not add `async` to these two (market item M16, declined 2026-09-28). The Codex registration does not follow this: there the installer gives both loggers `async: true` (`mergeCodexHooksConfig` in `bin/install-lib.cjs`).
 
 ### Host-internal helper agents
 
@@ -232,7 +260,7 @@ One `SubagentStop` can reach the hooks more than once. A project with **both** a
 
 ### pan-state-reinject.js (market-ideas M10)
 
-**Runtime support:** Claude Code (`SessionStart` with the `compact` matcher, in `settings.json` and the Claude plugin's `hooks/hooks.json`) and Codex (the same, in `.codex/hooks.json`, synchronous); Gemini CLI (`PreCompress` and `AfterTool` in `settings.json`) and Copilot CLI (`preCompact` and `postToolUse` in `.github/hooks/pan.json`) in two steps, below. Not registered for OpenCode, and not in the Agent Plugins bundle's Copilot `hooks/hooks.json`.
+**Runtime support:** Claude Code (`SessionStart` with the `compact` matcher, in `settings.json` and the Claude plugin's `hooks/hooks.json`) and Codex (the same, in `.codex/hooks.json`, synchronous); Gemini CLI (`PreCompress` and `AfterTool` in `settings.json`) and Copilot CLI (`preCompact` and `postToolUse` in `.github/hooks/pan.json`) in two steps, below. Not in the Agent Plugins bundle's Copilot `hooks/hooks.json`. OpenCode runs no hooks; PAN's OpenCode plugin carries the same position into its compaction instead (next section).
 
 **Why `SessionStart` and not `PostCompact`:** both hosts document `PostCompact`, and both discard its output — Claude Code lists it under "no decision control", and Codex's `PostCompact` output schema has no `additionalContext`. What each host does after a compaction is start the session again with `source: "compact"` and honour `hookSpecificOutput.additionalContext` from `SessionStart` hooks that match it. The hook also checks `source` itself, so a registration without the matcher stays silent on every other start.
 
@@ -251,6 +279,21 @@ Checked live on Copilot CLI 1.0.88 (`2026-10-03`): a manual `/compact` fired `pr
 
 **Failure posture:** fail-open — malformed stdin, a payload without a session id (the marker modes), or an unreadable file exits 0 with no output.
 
+
+### The OpenCode plugin: pan-wizard.js (memory optimisation O12)
+
+**Where:** `<opencode config dir>/plugins/pan-wizard.js`, written by a local or global OpenCode install from `pan-wizard-core/opencode/pan-wizard.js`. It is tracked in the manifest and removed on uninstall, which keeps any plugins of your own. It is CommonJS: the `{"type":"commonjs"}` `package.json` PAN writes in the config directory, one level above `plugins/`, marks it as such for a loader that honours the `type` field. It exports the plugin module shape `{ id: "pan-wizard", server }`.
+
+**What it does:** OpenCode runs no command hooks, so `pan-state-reinject.js` cannot run there. A plugin's `experimental.session.compacting` hook fires before OpenCode writes a session's continuation summary, and strings pushed onto `output.context` go into that prompt. The plugin pushes the same position the hook gives the other hosts: phase, plan, status, stopping point, and first unbuilt phase. It reads them from the planning tree on disk, honours `PAN_PLANNING_DIR` / `PAN_TRACK`, and asks for `state.md` to be re-read after the compaction.
+
+**Safety:** it is inert without a current phase and an unbuilt roadmap phase. It never writes, and fails open: an error adds nothing and never breaks a compaction.
+
+**Checked on OpenCode `1.18.32` (`2026-10-04`, no model call):**
+- `opencode debug config` lists the plugin, and `live-gate-opencode` repeats that check.
+- An instrumented copy showed OpenCode importing the module, calling `server()` with the project directory, and receiving the compaction hook.
+
+`tests/opencode-plugin.test.cjs` pins what the hook pushes onto `output.context`, calling it directly with a stand-in `output`; no real compaction runs in that test.
+
 ### pan-stop-guard.js (v3.24+, P-1809)
 
 **Runtime support:** Claude Code (`Stop` in `settings.json`, and in the Claude plugin's `hooks/hooks.json`), Codex (`Stop` in `.codex/hooks.json`, synchronous — an `async` handler cannot block), Copilot CLI (`agentStop` in `.github/hooks/pan.json`) and Gemini CLI (`AfterAgent` in `settings.json` — Gemini's end-of-turn event, which re-prompts the agent with the reason on a block exactly as Claude's `Stop` does). Codex and Copilot hand the hook `stop_hook_active` like Claude Code (Copilot keeps that one field snake_case inside its camelCase payload), accept the same `{"decision":"block","reason":…}` output, and turn a block into a continuation prompt; Copilot blocks only on that JSON form, not on exit code 2, and ends the turn itself after eight consecutive blocks. Gemini sets `stop_hook_active` only for a continuation the block started directly, not after one that used tools, so there the guard keeps its one-shot promise with a marker per session, project and target phase in the per-user `0700` hook directory; a second stop aimed at the same phase is allowed. Until `2026-09-23` PAN registered it on Gemini under `Stop`, which Gemini skips. Codex and Copilot gained it on `2026-09-26`; the Claude plugin build carried every hook but this one until the same date. Not registered for OpenCode.
@@ -263,7 +306,7 @@ Checked live on Copilot CLI 1.0.88 (`2026-10-03`): a manual `/compact` fired `pr
 2. `.planning/state.md` shows **no legitimate-stop marker** (gaps found, failed verification, a recorded blocker). This condition is deliberately inverted (P-1812): the guard originally required the status to read "Ready to plan", and one field batch produced four different phrasings for the same boundary — the only run with unbuilt phases was disarmed by wording alone. An unrecognised phrasing now **arms** the guard (fail-safe: at worst one extra continuation, bounded by the one-shot design) instead of disarming it (fail-open: silent truncation). Genuine gaps/verification/blocker stops still pass through.
 3. `.planning/roadmap.md` still has unticked `- [ ] **Phase N:` checklist lines.
 
-**Loop safety:** the host sets `stop_hook_active` on stop attempts that follow a stop-hook block, and the guard always allows those. It fires at most once per stop chain — a user who genuinely wants to stop is delayed by exactly one continuation, never trapped. To stop an armed chain deliberately, run `pan-tools config-set workflow.auto_advance false` first (the block reason says exactly this).
+**Loop safety:** the host sets `stop_hook_active` on stop attempts that follow a stop-hook block, and the guard always allows those. It fires at most once per stop chain — a user who genuinely wants to stop is delayed by exactly one continuation, never trapped. To stop an armed chain deliberately, run `pan-tools config-set workflow.auto_advance false` first (the block reason gives this command with the installed path, `node "<core>/bin/pan-tools.cjs"`, since no `pan-tools` is on PATH). That does not disarm a `mode: "yolo"` project; there, run `pan-tools config-set workflow.stop_guard false`.
 
 **Escape hatch:** `workflow.stop_guard: false` in `.planning/config.json` disables the guard without disarming auto-advance.
 
@@ -276,9 +319,10 @@ Statusline Hook (pan-statusline.js)
     | writes
     v
 <os-tmpdir>/pan-hooks-<uid>/claude-ctx-{session_id}.json  (bridge file — not literally /tmp)
-    ^ reads
+    ^ reads (main thread, while fresh)
     |
-Context Monitor (pan-context-monitor.js, PostToolUse)
+Context Monitor (pan-context-monitor.js, PostToolUse)  --- reads, without a fresh bridge --->  the session transcript
+    |                                                                                      (a subagent's own file for its calls)
     | injects
     v
 additionalContext → Agent sees warning → /pan:pause
@@ -437,12 +481,12 @@ The build script (`scripts/build-hooks.js`) simply copies files — no bundling 
 | Runtime | Hooks supported | Notes |
 |---------|----------------|-------|
 | Claude Code | Yes | Full support via settings.json hook registration, including the state re-injection on `SessionStart` with the `compact` matcher |
-| Copilot CLI | Yes | `.github/hooks/pan.json` (version 1 schema: sessionStart, postToolUse, preCompact, subagentStop, agentStop — the state re-injection's two steps on `preCompact` and `postToolUse`). Copilot also runs the hooks in the project's `.claude/settings.json`, so in a project with both installs the Copilot copy of each hook steps aside for the Claude registration and each runs once. Headless (`copilot -p`) Copilot loads repository hooks only in a trusted folder, or with `COPILOT_ALLOW_ALL=true` or `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` — see TROUBLESHOOTING |
-| OpenCode | No | PAN registers no hooks there; OpenCode's plugin API (`.opencode/plugins/*.js`) is not used yet |
+| Copilot CLI | Yes | `.github/hooks/pan.json` (version 1 schema: sessionStart, postToolUse, preCompact, subagentStop, agentStop — the state re-injection's two steps on `preCompact` and `postToolUse`). Copilot also runs the hooks in the project's `.claude/settings.json`, so in a project with both installs the Copilot copy of each hook steps aside for the Claude registration and each runs once. The state re-injection is the exception: its Claude registration is the `SessionStart` mode a Copilot start never matches, so its Copilot copy runs. Headless (`copilot -p`) Copilot loads repository hooks only in a trusted folder, or with `COPILOT_ALLOW_ALL=true` or `GITHUB_COPILOT_PROMPT_MODE_REPO_HOOKS=true` — see TROUBLESHOOTING |
+| OpenCode | No (one plugin) | PAN registers no hooks there. Its plugin, `.opencode/plugins/pan-wizard.js`, adds PAN's position to the compaction prompt |
 | Gemini CLI | Partly | settings.json, in Gemini's own event names: `SessionStart` runs the update check, `AfterAgent` the stop guard, and `PreCompress` and `AfterTool` the state re-injection's two steps. No context monitor (no Gemini hook payload or setting carries context-window usage, and Gemini has no statusline command) and no cost or trace logger (no subagent-completion event). Until `2026-09-23` PAN wrote Claude's names here — `PostToolUse`, `SubagentStop`, `Stop` — which Gemini skips, with an "Invalid hook event name" warning, whenever it loads the settings |
-| Codex | Yes | `.codex/hooks.json` since 2026-06 (Claude-compatible PascalCase events; loads once the project is trusted). PAN registers these hooks there — update check, context monitor, cost and trace loggers, the stop guard on `Stop`, and the state re-injection on `SessionStart` with the `compact` matcher; the observers (update check, cost and trace loggers) carry `async: true` (Codex CLI 0.148+) while the context monitor, the stop guard and the re-injection stay synchronous, because an async handler's output is deferred to a later turn and it cannot block. Codex runs a non-managed hook only after you trust it, and records that trust against a hash of the hook, so a new or changed PAN hook is skipped until you review it in `/hooks` — see TROUBLESHOOTING. No statusline, and the context monitor reads only the bridge file `pan-statusline.js` writes, so on Codex it finds none and never warns |
+| Codex | Yes | `.codex/hooks.json` since 2026-06 (Claude-compatible PascalCase events; loads once the project is trusted). PAN registers these hooks there — update check, context monitor, cost and trace loggers, the stop guard on `Stop`, and the state re-injection on `SessionStart` with the `compact` matcher; the observers (update check, cost and trace loggers) carry `async: true` (Codex CLI 0.148+) while the context monitor, the stop guard and the re-injection stay synchronous, because an async handler's output is deferred to a later turn and it cannot block. Codex runs a non-managed hook only after you trust it, and records that trust against a hash of the hook, so a new or changed PAN hook is skipped until you review it in `/hooks` — see TROUBLESHOOTING. No statusline, and Codex's transcript has another shape than the Claude Code records the context monitor reads, so on Codex it never warns |
 
-PAN registers hooks on Claude Code, Gemini CLI, Codex, and Copilot CLI. It registers none on OpenCode, whose plugin API it does not use yet.
+PAN registers hooks on Claude Code, Gemini CLI, Codex, and Copilot CLI. It registers none on OpenCode, where one PAN plugin keeps the phase in flight through a compaction.
 
 ## Developing Custom Hooks
 
@@ -467,7 +511,7 @@ Hooks can return JSON on stdout. For `PostToolUse`, the payload is a nested enve
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "Warning: context usage at 72%"
+    "additionalContext": "PAN context note (from the context-monitor hook, not the user): this session's context is filling up."
   }
 }
 ```

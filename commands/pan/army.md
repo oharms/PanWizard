@@ -1,6 +1,7 @@
 ---
 name: army
 group: Army
+argument-hint: "<goal> [--source scan|backlog] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--squads a,b,c] [--no-build-worktrees] [--push] [--clean-seal] [--schedule <cadence>] [--daily-budget N] [--dry-run] [--continue] [--stop] [--status]"
 description: Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
 allowed-tools:
   - Read
@@ -25,7 +26,7 @@ The army is the campaign-scale sibling of `/pan:exec-phase --hierarchical` (one 
 
 | Tier | Who | Model tier | Access |
 |------|-----|-----------|--------|
-| 0 · Mission Control | `pan-conductor` | `reasoning` (`mid` under `budget`) | delegation-first (Agent toolset) — instructed to route work, not write it |
+| 0 · Mission Control | `pan-conductor` | the session model (spawned with no `model`, so under every profile) | delegation-first (Agent toolset) — instructed to route work, not write it |
 | 1 · Architecture | design + planning agents — `squad show architecture` lists them | `reasoning` | `read-only` |
 | 1 · Build | `pan-executor` | `reasoning` | `read-write-bash` — one branch+worktree per agent |
 | 1 · Quality | adversarial review + debug agents — `squad show quality` lists them | `mid` | `read-only`, adversarial |
@@ -34,11 +35,11 @@ The army is the campaign-scale sibling of `/pan:exec-phase --hierarchical` (one 
 
 **Where each row comes from.** The tier-1 rows mirror the `squads[]` records `pan-tools squad list` prints — label, `tier`, `access` (their member names come from `squad show <name>`, since `squad list` reports only a count). The Tier 0 and Tier 2 rows are PAN's hierarchy positions: the same command names them under its `coordinator` and `workers` keys, but reports nothing else about them, so the Model-tier and Access values on those two rows are written here rather than returned by the command. Resolve the roster at runtime — never hardcode it: `pan-tools squad list` and `pan-tools squad show <name>`.
 
-**Reading the Model-tier column.** These are PAN *tiers*, not model names. `reasoning` resolves to `inherit` — the model you launched with — while `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic).
+**Reading the Model-tier column.** These are PAN *tiers*, not model names. `reasoning` resolves to `inherit` — the model you launched with — while `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). They are what `squad list` and `resolve-model` report: the army's spawns pass no model, so an agent spawned under its own type runs on its file's `model:` (the reviewer-class agents pin `opus` on Claude Code) or, without one, the session model.
 
 **Reading the Access column.** The backticked values on the tier-1 rows are the `access` labels `squad list` reports; tier 0 and tier 2 carry PAN's own. They are role contracts the conductor's prompt assigns when it delegates, not a sandbox: `squads.cjs` says of itself that it "modifies no agent and changes no execution path", so a label can differ from what an agent may actually do — expect that, since several `read-only` squad members hold `Write` to emit planning or verification artifacts. The binding grant is each agent's own `tools:` frontmatter (`grep '^tools:' ~/.claude/agents/*.md`), and Mission Control's includes `Write` and `Bash`: routing rather than coding is how it is instructed to behave, not something the runtime prevents. The rail those grants do enforce is delegation depth — `grep -l '^tools:.*Task' ~/.claude/agents/*.md` names every agent able to spawn another (today, `pan-conductor`), so a squad agent cannot fan out further.
 
-**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not what resolves an agent's model; that comes from the active `model_profile` (`quality` and `balanced` are `reasoning` for every agent, and `budget` is the only profile that down-tiers), plus any `model:` pin in an agent's own frontmatter. So the `mid` on the Quality and Release rows does not describe what those agents run under the default profile — under `quality` and `balanced` they resolve `reasoning` like everything else. The tier-1 values above are the squad groupings; the tier-0 and tier-2 values are per-agent profile tiers. **`budget` resolves per agent, not per row:** it sends some workers to `fast` and others to `mid`, so no single value is true of the Tier 2 row — `MODEL_PROFILES` in `~/.claude/pan-wizard-core/bin/lib/core.cjs` is the table, and it is the one to read rather than a tier written into a doc. For the agents that pin a model outright, `grep -l '^model: opus' ~/.claude/agents/*.md` lists them — the pin applies on Claude Code only, since the installer strips it for the other runtimes.
+**Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not an agent's profile tier, which is what `resolve-model` reports from the active `model_profile` (`quality` and `balanced` are `reasoning` for every agent, and `budget` is the only profile that down-tiers). The army applies neither: its spawns pass no model, so an agent runs on its own `model:` pin, else the session model, under every profile. So the `mid` on the Quality and Release rows does not describe what those agents run. The tier-1 values above are the squad groupings; the tier-2 value is the per-agent profile tier `resolve-model` reports. **`budget` resolves per agent, not per row:** `resolve-model` reports `fast` for some workers and `mid` for others, so no single value is true of the Tier 2 row — `MODEL_PROFILES` in `~/.claude/pan-wizard-core/bin/lib/core.cjs` is the table, and it is the one to read rather than a tier written into a doc. For the agents that pin a model outright, `grep -l '^model: opus' ~/.claude/agents/*.md` lists them — the pin applies on Claude Code only, since the installer strips it for the other runtimes.
 
 ---
 
@@ -75,6 +76,7 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 
 ```
 /pan:army "<goal>" [--source scan|backlog] [--max-cycles N] [--total-budget N]
+          [--enforce-budget] [--verify-reserve F]
           [--squads a,b,c] [--no-build-worktrees] [--push] [--clean-seal]
           [--schedule <cadence>] [--daily-budget N]
           [--dry-run] [--continue] [--stop] [--status]
@@ -102,20 +104,20 @@ Every cap the conductor enforces applies to the campaign, scaled up:
 
 ```
 /pan:army
-  Phase 0  MUSTER   — squad list + roster validate · cache prime · baseline · loop-state · abort-file clear
+  Phase 0  MUSTER   — squad list + roster validate · baseline · loop-state · abort-file clear
   Phase 1  PLAN     — Mission Control (session model, xhigh effort) decomposes the goal into dependency-ordered missions
   Phase 2  DELEGATE — pick the next item (focus-auto --source) · route to the owning squad over the Agent toolset
   Phase 3  EXECUTE  — Build squad: one army/<task> worktree per agent (parallel); Architecture/Quality research in parallel (read-only)
   Phase 4  REVIEW   — Quality squad on the built tree: reviewer + hardener + meta → verdict ladder; a block is a hard gate
   Phase 5  INTEGRATE— Release squad: prepare squash-merge → CI/verification → ALWAYS-ASK human approval → tag → deploy hand-off
-  Phase 6  LEARN    — summaries return to Mission Control; retro/learn writes patterns to memory (this is "Dreaming")
+  Phase 6  LEARN    — summaries return to Mission Control; retro/learn patterns go into the next mission's plan (this is "Dreaming")
   → loop to Phase 2 until a stop condition; --clean-seal once at the end
 ```
 
 ### Phase 0 — Muster (once)
-1. **Onboarding gate (existing projects).** Run `pan-tools init new-project` to detect state. If `is_brownfield` (existing code) and `needs_codebase_map` (no `.planning/codebase/`), the army cannot plan blind — STOP and route through onboarding first: `/pan:map-codebase` (Architecture squad's `pan-document_code` maps the existing system into `.planning/codebase/`), then `/pan:new-project` to build `roadmap.md` + `requirements.md` *against the existing system*. Re-run `/pan:army` once a backlog exists. If a codebase map + roadmap already exist, continue.
+1. **Onboarding gate (existing projects).** Run `pan-tools init new-project` to detect state. If `is_brownfield` (existing code) and `needs_codebase_map` (no `.planning/codebase/`), the army cannot plan blind — STOP and route through onboarding first: `/pan:map-codebase` (its `pan-document_code` mappers — workers in `pan-tools squad list`, not Architecture squad members — map the existing system into `.planning/codebase/`), then `/pan:new-project` to build `roadmap.md` + `requirements.md` *against the existing system* — only when `project_exists` is false: it refuses an initialized project, which needs just the map. Re-run `/pan:army` once a backlog exists. If a codebase map + roadmap already exist, continue.
 2. `pan-tools squad list` and validate the roster is healthy.
-3. Prime the cache; capture baseline (`git status` clean of project source; tests green or STOP). On a brownfield repo, the baseline is the current `main` — every `army/<task>` branch forks from it, so the existing code is never edited in place.
+3. Capture the baseline (`git status` clean of project source; tests green or STOP). On a brownfield repo, the baseline is the commit you have checked out — every `army/<task>` branch forks from it (`worktree create` bases it on `HEAD`), so the existing code is never edited in place.
 4. Ensure `.planning/orchestration/` exists; clear any stale `abort` file; init loop-state.
 5. `--dry-run` → print the plan + per-squad delegation and STOP.
 
@@ -138,7 +140,7 @@ Spawn `pan-release`. It prepares the squash-merge, runs the configured `verifica
 **Phase report (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the mission's self-contained per-phase HTML report **in the built tree, before staging the squash-merge** — `pan-tools report phase <N>` — so the report rides along in the merge as a phase deliverable. **Never run `report index` inside a squad worktree:** the timeline index is a single shared file that aggregates *all* phases, so a worktree would see only its own phase and concurrent squads would race on it. The index is a single-writer, post-merge concern (Phase 6). Never opens a browser.
 
 ### Phase 6 — Learn (Dreaming)
-Squad summaries return to Mission Control. Run `/pan:retro --write-memory` (and `/pan:learn` if traces exist) so recurring patterns persist into agent memory for the next mission. Strike the landed item; update loop-state. For a scheduled campaign, also `pan-tools campaign record-run --items <n> --points <p>` so the next-due time and the day's spend advance.
+Squad summaries return to Mission Control. Run `/pan:retro` (and `/pan:learn` if traces exist) and carry the recurring patterns into the next mission yourself: name them in the plan you hand the Architecture squad. Agent memory does not do this, because PAN does not load it into agents. A pattern that should outlast the campaign goes to the human at the merge gate as a proposed line for the project's instructions. Strike the landed item; update loop-state. For a scheduled campaign, also `pan-tools campaign record-run --items <n> --points <p>` so the next-due time and the day's spend advance.
 
 **Rebuild the timeline index (single writer).** When `workflow.phase_reports.enabled` and `workflow.phase_reports.index` are `true`, Mission Control — and *only* Mission Control, on the integration branch after the merge has landed — rebuilds the project index once against the now-merged set of phases: `pan-tools report index`, then commit it (the commit honors `commit_docs`). Doing this post-merge from the single conductor is what keeps `report-index.html` consistent while builds run in parallel worktrees.
 
@@ -161,7 +163,7 @@ Nothing under `pan-army-*` or on an `army/*` branch is a deliverable: the squash
 PAN is not a daemon — it cannot wake itself while the session is closed. `--schedule` arms a campaign and lets an external trigger drive it; the human merge gate is never relaxed.
 
 - **Arm:** `/pan:army "<goal>" --schedule daily --daily-budget 200` writes `.planning/orchestration/schedule.json` (cadence, daily budget, next-due) instead of running once.
-- **The trigger (you wire one):** a host scheduler (Claude Code routines / cron / scheduled-tasks) or a `/loop` runs `pan-tools campaign due` and, when it reports due, invokes `/pan:army --continue`. On next session open, a due campaign is surfaced as a nudge.
+- **The trigger (you wire one):** a host scheduler (Claude Code routines / cron / scheduled-tasks) or a `/loop` runs `pan-tools campaign due` and, when it reports due, invokes `/pan:army --continue`. Nothing surfaces a due campaign on its own: PAN does not wake itself, so without a trigger the campaign waits until you run `/pan:army --continue` (`pan-tools campaign due` says whether one is due).
 - **Resume (`--continue`):** read the schedule + `.planning/orchestration/` + focus-auto state. If `campaign due` is true and the day's `--daily-budget` isn't spent, run the next mission(s), then `campaign record-run` (advances next-due, accrues the day's spend). If not due or budget-spent, report next-due and STOP.
 - **Bounded spend:** point budgets (`--total-budget`, `--daily-budget`) are **advisory indicators by default** — they're tracked and surfaced, not hard stops. `--enforce-budget` (or config `budget.enforce`) makes `--total-budget` a hard stop; a scheduled campaign's `--daily-budget` pauses the day's run only when the schedule was armed with `--enforce-budget` (`campaign schedule --enforce-budget`; `--advisory-budget` turns it back off). The real bounds are `--max-cycles`, the conductor caps, the abort file, and the human merge gate at every integrate. A scheduled campaign runs the backlog down to staged, reviewed, green PRs over days.
 - **Verify reserve:** a fraction of `--total-budget` (`--verify-reserve`, default 0.15) is held back so the closing Quality re-review isn't starved. Surfaced always via `campaign status` / `focus auto --status` (`into_verify_reserve`, `new_work_budget_remaining`); under `--enforce-budget` the run stops taking on new missions early (`budget_reserve_reached`) and spends the reserve on the final `--clean-seal` verification before the last INTEGRATE.
@@ -171,7 +173,9 @@ Manage it: `pan-tools campaign status` (active/paused, spent today, next-due), `
 ---
 
 ## Completion contract
-The campaign is complete when ANY holds: `--max-cycles` reached · backlog empty · abort file present · context < 25% · a mission cannot pass Quality and can't be cleanly reverted (HARD STOP — preserve state, report). (Budget exhaustion is advisory by default — a stop condition only when `budget.enforce`/`--enforce-budget` is set; under enforcement, crossing into the verify reserve (`budget_reserve_reached`) stops new missions but the reserved points still fund the closing re-verification.) Always run `--clean-seal` (unless omitted) after the last item.
+The campaign is complete when ANY holds: `--max-cycles` reached · backlog empty · abort file present · a mission cannot pass Quality and can't be cleanly reverted (HARD STOP — preserve state, report). (Budget exhaustion is advisory by default — a stop condition only when `budget.enforce`/`--enforce-budget` is set; under enforcement, crossing into the verify reserve (`budget_reserve_reached`) stops new missions but the reserved points still fund the closing re-verification.) Before each new mission, run `pan-tools cost limits --raw`: `weekly_limit_reached` (Claude Code's 7-day usage window at `cost.weekly_limit_stop_pct`, default 90%) is a stop condition too, so the rest of the window stays the user's. Always run `--clean-seal` (unless omitted) after the last item.
+
+The context monitor's notes are not a stop condition: they give no figure and ask for a checkpoint. On the critical note, bring the mission's state in `.planning/orchestration/` up to date and carry on. After the host compacts, re-read the campaign with `pan-tools focus auto --status` and `.planning/orchestration/`: PAN's state re-injection carries state.md's position, not the campaign's.
 
 ## NEVER DO
 - Let Mission Control write code, or let a squad agent spawn further agents (depth cap).
@@ -184,7 +188,7 @@ The campaign is complete when ANY holds: `--max-cycles` reached · backlog empty
 - Plan on the session model Mission Control inherits, delegate over the Agent toolset, keep each squad's return a tight summary.
 - One worktree per Build agent; parallel research/verify; serial human-gated integrate.
 - Check the abort file + spawn/budget caps before every spawn.
-- Finish with the clean-build seal; write learnings back to memory.
+- Finish with the clean-build seal; carry the learnings into the next mission's plan.
 
 ## Examples
 ```

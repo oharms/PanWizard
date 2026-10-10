@@ -111,9 +111,23 @@ describe('verify reconcile — verdict vs mechanical signals (anti-rubber-stamp,
     return dir;
   }
 
-  // parseMustHavesBlock requires exactly 4-space block indent + 6-space items.
+  // parseMustHavesBlock reads relative indent; these fixtures keep the 4-space form.
   const planWith = (minLines) =>
     ['must_haves:', '    artifacts:', '      - path: src/charge.js', `        min_lines: ${minLines}`, '        exports: chargeCard'].join('\n');
+
+  test('every plan counts: a stub behind the second plan is caught under a passing verdict', () => {
+    // reconcile read only the first plan file, so a later plan's failing artifact
+    // passed under status "passed" — the rubber stamp this check exists to catch.
+    const body = Array.from({ length: 40 }, (_, i) => `// line ${i}`).join('\n') + '\nfunction chargeCard(){/*real*/}\nmodule.exports={chargeCard};\n';
+    const dir = scaffold('01-pay', planWith(30), 'passed', body);
+    fs.writeFileSync(path.join(dir, '02-plan.md'), '---\n' + ['must_haves:', '  artifacts:', '    - path: src/refund.js', '      min_lines: 30'].join('\n') + '\n---\n# Plan 2\n');
+    fs.writeFileSync(path.join(tmp, 'src', 'refund.js'), 'module.exports = {};\n');
+    const r = reconcilePhase(tmp, '01');
+    assert.equal(r.reconciled, false);
+    assert.equal(r.artifacts.total, 2);
+    assert.equal(r.artifacts.passed, 1);
+    assert.deepEqual(r.artifacts.artifacts.map((a) => a.plan), ['01-plan.md', '02-plan.md']);
+  });
 
   test('rubber stamp: status "passed" but the artifact is a stub -> reconciled:false with a contradiction', () => {
     scaffold('01-pay', planWith(30), 'passed', "function chargeCard(){ return {ok:true} } // 1 line stub\nmodule.exports={chargeCard};\n");

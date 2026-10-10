@@ -2,7 +2,7 @@
 name: pan:design-phase
 group: Phase Lifecycle
 description: Design a roadmap phase before planning — architecture, ADR, threat-lite, machine-checkable criteria — verified by an independent checker
-argument-hint: "[phase] [--spike] [--skip-design] [--redesign]"
+argument-hint: "<phase> [--spike] [--skip-design] [--redesign]"
 agent: pan-designer
 allowed-tools:
   - Read
@@ -57,7 +57,7 @@ ELSE (default):
    - If it PASSES → done.
    - If it finds gaps (iteration 1) → `pan-designer` revises (address genuine gaps only), re-check.
    - If it finds gaps (iteration 2) → final revision, record remaining gaps as caveats.
-   - **Max 2 revision iterations** (design → check → revise → check → final) — the same guardrail `plan-phase` uses with `pan-plan-checker`.
+   - **Max 2 revision iterations** (design → check → revise → check → final revision, not re-checked). `plan-phase` also caps its loop at 2 revisions, but checks a third time after the second.
    - **Record each check.** Save the checker's returned text verbatim to `{phase_dir}/{padded_phase}-design-check.md` with the Write tool. Record it and branch on the verdict it prints (`PASS` or `GAPS`):
      ```bash
      node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "{phase}" --agent pan-design-checker --file "{phase_dir}/{padded_phase}-design-check.md" --raw
@@ -81,5 +81,5 @@ Design FAILS if: phase not found in roadmap, or the designer returns empty/malfo
 </completion_contract>
 
 <handoff>
-`{phase}-design.md` is an **optional upstream input** to `/pan:plan-phase`, consumed by `pan-planner` exactly as `{phase}-context.md` is. `pan-plan-checker` verifies the plan conforms to it (Design Conformance dimension). A phase without a design.md still plans — the design step strengthens planning, it does not gate it.
+`{phase}-design.md` is an **optional upstream input** to `/pan:plan-phase`, consumed by `pan-planner` like `{phase}-context.md` — except that the plan-phase workflow does not list it in the planner's or checker's `<files_to_read>`, so both use it only when they find it in the phase directory. `pan-plan-checker` verifies the plan conforms to it (Design Conformance dimension). A phase without a design.md still plans — the design step strengthens planning, it does not gate it.
 </handoff>

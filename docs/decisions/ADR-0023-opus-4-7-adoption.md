@@ -3,6 +3,12 @@
 ## Status
 Accepted (shipped in v2.10.0 — 2026-04-18)
 
+> **Amended 2026-10-04 (memory optimisation, O2 follow-up): E-1's priming step is withdrawn.**
+>
+> - **It never primed anything.** `pan-tools cache prime --summary` prints the cacheable set's paths, sizes and a sha into the orchestrator's own context. A command's output cannot set `cache_control` on another agent's prompt. The host caches each agent's prompt prefix by itself, primed or not. The "40-60%" saving below was never measured. What ADR-0044 later measured was the opposite problem: cache reads were 98% of token traffic, because every agent re-read the same large files.
+> - **It also loaded more.** `exec-phase` told the orchestrator to put the cacheable set's paths in every executor's context. That is the whole roadmap and requirements, which O2 replaced with a phase's `roadmap slice`.
+> - **What changed:** the `<cache_priming>` steps are gone from `plan-phase`, `exec-phase` and `verify-phase`, and so is the matching step in `focus-exec` and `army`. `cache prime` stays as a measurement, next to `context-budget` and hygiene's `cache-context` check (ADR-0044).
+
 ## Context
 PAN Wizard's architecture (through v2.9.1) was designed around Claude 3.x assumptions: 200K context windows, no native extended thinking, no prompt caching, commands delivered as slash-command `.md` files rather than discoverable skills. Opus 4.7 (GA Q2 2026) materially changes the underlying primitives:
 

@@ -9,8 +9,8 @@ phase — context compaction may have dropped earlier sections.
 
 | Shortcut | Why it fails | Correct action |
 |----------|--------------|----------------|
-| "User's request is clear, no need to clarify" | You're guessing at intent. Phase 0 catches misunderstandings before scaffolding. | Run the Phase 0 4-question check (see `new-project.md` / `plan-phase.md`). |
-| "Phase tests passed locally, /pan:verify-phase isn't needed" | One run isn't validation. verify-phase checks state consistency, doc sync, blockers, and the full suite — not just the phase's own tests. | Always run `/pan:verify-phase` before marking a phase complete. |
+| "User's request is clear, no need to clarify" | You're guessing at intent. Phase 0 catches misunderstandings before scaffolding. | Run the Phase 0 clarification check (see `new-project.md` / `plan-phase.md`). |
+| "Phase tests passed locally, /pan:verify-phase isn't needed" | One run isn't validation. verify-phase checks the phase goal against the code (must-haves, artifacts, wiring, requirements, anti-patterns) and runs the full test suite — not just the phase's own tests. | Always run `/pan:verify-phase` before marking a phase complete. |
 | "I'll skip /pan:focus-scan and pick the next item myself" | Manual selection ignores priority/budget logic in `focus.cjs`. You'll bias toward easy items and miss higher-priority work. | Use `/pan:focus-scan` → `/pan:focus-plan` → `/pan:focus-exec`. |
 | "I'll bump the model / add a flag / refactor while I'm here" | Scope creep. The user asked for one change; surrounding cleanup belongs in a separate item. | Do only the requested change. Note unrelated cleanup as a TODO for a future focus-scan. |
 | "I'll mark this phase complete; the docs can lag behind" | Doc/state drift compounds. By the next session, the agent reads stale docs and proceeds on false assumptions. | Run the doc-sync step (update CHANGELOG/state and commit via `pan-tools commit`) before phase completion. CHANGELOG and version bumps are part of the phase, not after it. |

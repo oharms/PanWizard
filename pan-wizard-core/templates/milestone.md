@@ -51,7 +51,7 @@ If milestones.md doesn't exist, create it with header:
 - Minor bug fixes that don't constitute a release
 
 **Stats to include:**
-- Count modified files: `git diff --stat feat(XX-XX)..feat(YY-YY) | tail -1`
+- Count modified files: `FIRST=$(git log --reverse --format=%h --grep="feat(XX-XX)" | head -1); LAST=$(git log --format=%h --grep="feat(YY-YY)" | head -1); git diff --stat "${FIRST}^..${LAST}" | tail -1`
 - Count LOC: `find . -name "*.swift" -o -name "*.ts" | xargs wc -l` (or relevant extension)
 - Phase/plan/task counts from ROADMAP
 - Timeline from first phase commit to last phase commit

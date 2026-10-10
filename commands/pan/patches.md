@@ -23,12 +23,8 @@ After a PAN update wipes and reinstalls files, this command merges user's previo
 Check for local patches directory:
 
 ```bash
-# Global install (path templated at install time)
+# This install's own dir — the installer templates ~/.claude/ to it, local or global
 PATCHES_DIR=~/.claude/pan-local-patches
-# Local install fallback
-if [ ! -d "$PATCHES_DIR" ]; then
-  PATCHES_DIR=~/.claude/pan-local-patches
-fi
 ```
 
 Read `backup-meta.json` from the patches directory.
@@ -61,7 +57,7 @@ Exit.
 
 For each file in `backup-meta.json`:
 
-1. **Read the backed-up version** (user's modified copy from `pan-local-patches/`)
+1. **Read the backed-up version** (user's modified copy from `pan-local-patches/<file>`; a file listed in `backup-meta.json`'s `external_files` — a Codex skill under `../.agents/skills/` — is at `pan-local-patches/` + the path that map gives)
 2. **Read the newly installed version** (current file after update)
 3. **Compare and merge:**
 

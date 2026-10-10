@@ -41,6 +41,15 @@ Each TDD plan implements **one feature** through the full RED-GREEN-REFACTOR cyc
 phase: XX-name
 plan: NN
 type: tdd
+wave: N
+depends_on: []
+files_modified: []
+autonomous: true
+requirements: []
+must_haves:
+  truths: []
+  artifacts: []
+  key_links: []
 ---
 
 <objective>
@@ -51,7 +60,7 @@ Output: [Working, tested feature]
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/XX-name/{phase}-roadmap-slice.md
 @relevant/source/files.ts
 </context>
 

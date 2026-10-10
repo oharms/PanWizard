@@ -33,6 +33,8 @@ Extract implementation decisions that downstream agents need — researcher and 
 <context>
 Phase number: $ARGUMENTS (required)
 
+**`--auto`** (or `workflow.auto_advance: true`): no questions — the workflow writes a minimal context.md from the roadmap goal, idea.md, project.md and requirements.md, then spawns plan-phase with `--auto`; the interactive steps below are skipped.
+
 Context files are resolved in-workflow using `init phase-op` and roadmap/state tool calls.
 </context>
 

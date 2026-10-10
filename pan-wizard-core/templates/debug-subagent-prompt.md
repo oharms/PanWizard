@@ -23,7 +23,7 @@ timeline: {timeline}
 
 <mode>
 symptoms_prefilled: {true_or_false}
-goal: {find_root_cause_only | find_and_fix}
+goal: {goal}
 </mode>
 
 <debug_file>
@@ -44,7 +44,8 @@ Create: .planning/debug/{slug}.md
 | `{errors}` | From symptoms | `None in console` |
 | `{reproduction}` | From symptoms | `Open /auth page` |
 | `{timeline}` | From symptoms | `After recent deploy` |
-| `{goal}` | Orchestrator sets | `find_and_fix` |
+| `{true_or_false}` | Orchestrator sets (symptoms prefilled?) | `true` |
+| `{goal}` | Orchestrator sets: `find_root_cause_only` or `find_and_fix` | `find_and_fix` |
 | `{slug}` | Generated | `auth-screen-dark` |
 
 ---

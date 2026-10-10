@@ -61,7 +61,7 @@ describe('OPENCODE_MODELS', () => {
 describe('resolveTierToModel and detectProvider take the host into account', () => {
   test('under OpenCode every non-inherit tier is provider-qualified', () => {
     assert.equal(core.resolveTierToModel('mid', 'openai', 'opencode'), 'openai/gpt-6-sol');
-    assert.equal(core.resolveTierToModel('haiku', 'anthropic', 'opencode'), 'anthropic/claude-haiku-4-5');
+    assert.equal(core.resolveTierToModel('haiku', 'anthropic', 'opencode'), 'anthropic/claude-haiku-5-5');
     assert.equal(core.resolveTierToModel('reasoning', 'google', 'opencode'), 'inherit');
   });
 

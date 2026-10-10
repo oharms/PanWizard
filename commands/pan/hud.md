@@ -34,10 +34,10 @@ pan-tools hud [--out <file>] [--open] [--stdout]
 **JSON result shape** (default, when not `--stdout`):
 ```json
 {
-  "path": ".planning/hud.html",
+  "path": "/abs/path/to/project/.planning/hud.html",
   "bytes": 18234,
   "army_active": true,
-  "sections": ["mission", "command-stack", "campaign", "safety-harness", "worktrees", "roadmap", "telemetry", "requirements-quality", "activity"],
+  "sections": ["mission", "now-building", "command-stack", "campaign", "safety-harness", "worktrees", "roadmap", "telemetry", "requirements-quality", "activity"],
   "opened": false
 }
 ```
@@ -51,6 +51,7 @@ Panels render only when they have data — a plain (non-army) project still gets
 | Panel | What it shows | Source |
 |-------|---------------|--------|
 | **Mission banner** | Project, core value, status, version/milestone + metric cards (progress, phase, requirements, spend) | `package.json`, `project.md`, `state.md`, phase scan, cost ledger |
+| **Now building** | Current phase on a phase stepper, its pipeline stage (research → plan → execute → verify), and the army tasks in flight or the phase's plan/summary counts | phases on disk + army worktrees |
 | **Command stack** *(army)* | Mission Control over the four squads with per-squad agent drill-down (active / idle, calls, tokens) | squad registry + cost ledger |
 | **Campaign** *(army)* | Cadence, next-due, daily-budget bar, last run, run history | `schedule.json` |
 | **Safety harness** *(army)* | Merge gate, abort switch (pause), active worktrees, daily budget, concurrency | config + pause file + worktrees + schedule |

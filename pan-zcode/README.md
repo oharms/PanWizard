@@ -1,6 +1,6 @@
 # PAN-Z — a ZCode-native PAN subsystem
 
-PAN-Z gives [ZCode](https://zcode.z.ai) (z.ai's GLM-5.2 coding harness) the PAN Wizard
+PAN-Z gives [ZCode](https://zcode.z.ai) (z.ai's GLM coding harness) the PAN Wizard
 workflow — the multi-phase lifecycle, the bot-army with a human merge gate, deterministic
 state tracking — **without** cloning PAN's slash-commands or hooks (ZCode has neither).
 
@@ -14,7 +14,7 @@ ZCode through the one interface it speaks: **MCP**.
 ## How it fits
 
 ```text
-ZCode harness (GLM-5.2)          primary Agent drives everything; ported subagents fan out
+ZCode harness (GLM)              primary Agent drives everything; ported subagents fan out
         │  MCP · local stdio
 pan-wizard-core/mcp  (SHARED)    a thin, zero-dep bridge — verbs → MCP tools/resources
         │  spawn: node pan-tools.cjs <verb> --cwd <root>
@@ -28,13 +28,13 @@ registration pointing at that shared path. **Never fork a copy back under `pan-z
 protocol layer, many consumers, or the two drift the way the per-runtime command trees did
 before ADR-0028.
 
-**Scope boundary (by design):** the bridge exposes `pan-tools` verbs as MCP tools/resources and nothing more. It intentionally does **not** carry rich agent *session state* — diffs, streaming, live thread lifecycle — because MCP can't faithfully represent it (the reason OpenAI built the Codex harness as a native Rust core rather than over MCP). Keep the bridge to tool/resource exposure; the CLI's JSON contract is the tool contract. See `KNOWN-BETA-RISKS.md`.
+**Scope boundary (by design):** the bridge exposes `pan-tools` verbs as MCP tools/resources, plus the in-process `next-action` and merge-gate tools (M2), and nothing more. It intentionally does **not** carry rich agent *session state* — diffs, streaming, live thread lifecycle — because MCP can't faithfully represent it (the reason OpenAI built the Codex harness as a native Rust core rather than over MCP). Keep the bridge to tool/resource exposure; the CLI's JSON contract is the tool contract. See `KNOWN-BETA-RISKS.md`.
 
 ## Status — M1–M5 built (M0 is the human verify spike)
 
 - **M1 — bridge core.** `pan-wizard-core/mcp/tool-registry.cjs` (pure verb→tool/resource map, with a hard
   guardrail against exposing a force/reset/rebase/push verb) + `pan-wizard-core/mcp/server.cjs` (a
-  **zero-dependency** JSON-RPC 2.0 stdio MCP server; reads → resources, actions → tools with
+  **zero-dependency** JSON-RPC 2.0 stdio MCP server; read-only aggregators readable on any project → resources; reads that take an argument or fail without a roadmap, and actions → tools with
   accurate hints; shell-less `execFile` spawn; `@file:` overflow protocol; strict per-arg
   validation). **Dual-era** per the MCP 2026-07-28 stateless spec (ADR-0041): legacy clients
   use the `initialize` handshake; modern clients declare their protocol version in each
@@ -73,6 +73,6 @@ implemented.
 ## Zero dependencies
 
 Like the rest of PAN, this subsystem ships **no runtime dependencies**. The MCP protocol is
-implemented directly rather than via an SDK. If protocol drift ever makes that costly, the
-escape hatch is to vendor an MCP SDK **inside this package only**, leaving `pan-wizard-core`
-untouched.
+implemented directly, in the shared bridge under `pan-wizard-core/mcp/`, rather than via an
+SDK; `pan-zcode/` holds no protocol code of its own, so a dependency added here would not
+reach the bridge.

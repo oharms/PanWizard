@@ -4,6 +4,12 @@
 
 Accepted — 2026-08-21. Implemented across `state-compact.cjs` (new), `hygiene.cjs`, `context-budget.cjs`, `core.cjs::buildCachedContext`, and the three planning-aware hooks.
 
+> **Amended 2026-10-04 (memory optimisation O1–O3).** The memory review measured the field installs and found three gaps in this decision's reach.
+>
+> 1. **The bound never ran on Windows.** `memory optimize` and the automatic reconcile matched `\n` only. Every Windows field project's planning files are CRLF, so state.md's append-only lists were never reconciled there. One client's Decisions list held 145 entries, and the file was 35 KB where it should have been 10 KB. Every planning-file parser now reads on LF and writes back in the file's own ending (O1).
+> 2. **The largest re-read was not state.md.** The planner and plan checker were handed the whole roadmap.md and requirements.md, and every plan's `<context>` named the whole roadmap for its executors. Phase agents now read `roadmap slice <phase>`, which is 75–98% smaller on the field projects (O2). So "the cached block is re-read on every agent call" now holds for state.md only.
+> 3. **The roadmap had no compaction path.** It is what grows in a long project: 476 KB at 54 phases. `roadmap compact` (`roadmap-compact.cjs`) moves shipped phases' sections to `roadmap-history.md` under the same rules as Decision 1 below: history first, a stub left behind, dry-run by default, declined when it would not shrink. hygiene offers it as the `compact-roadmap` fix (O3).
+
 ## Context
 
 A field project reported that PAN had got slow. Its cost ledger explains why.

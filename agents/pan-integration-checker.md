@@ -69,13 +69,13 @@ For each phase, extract what it provides and what it should consume.
 # Key exports from each phase
 for summary in .planning/phases/*/*-summary.md; do
   echo "=== $summary ==="
-  grep -A 10 "Key Files\|Exports\|Provides" "$summary" 2>/dev/null
+  grep -A 6 -E "^(provides|key-files):" "$summary" 2>/dev/null   # frontmatter keys from templates/summary.md
 done
 ```
 
 **Build provides/consumes map:**
 
-```
+```text
 Phase 1 (Auth):
   provides: getCurrentUser, AuthProvider, useAuth, /api/auth/*
   consumes: nothing (foundation)

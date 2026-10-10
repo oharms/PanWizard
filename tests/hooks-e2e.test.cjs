@@ -434,12 +434,96 @@ function drivePostToolUse(runtime) {
   assert.equal(emitted.hookSpecificOutput.hookEventName, 'PostToolUse', 'the envelope must name the event the host fired');
   assert.match(
     emitted.hookSpecificOutput.additionalContext,
-    /^CONTEXT MONITOR CRITICAL: Usage at 82%\. Remaining: 18%\./,
-    'usage and remaining must be reported on one scale and sum to 100 (L39)',
+    /^PAN context note \(from the context-monitor hook, not the user\): the host will compact this session soon\./,
+    'the critical note names its source and what is coming (O7)',
   );
+  assert.doesNotMatch(emitted.hookSpecificOutput.additionalContext, /\d|%/, 'no countdown: the note carries no figure (O7)');
   assert.match(emitted.hookSpecificOutput.additionalContext, /\/pan:pause/, 'the critical warning must name the command that saves state');
   const warnState = JSON.parse(fs.readFileSync(path.join(bridge, `claude-ctx-${sessionId}-warned.json`), 'utf-8'));
   assert.deepEqual(warnState, { callsSinceWarn: 0, lastLevel: 'critical' }, 'the emit must reset the debounce counter and record the level it fired at');
+
+  driveContextFromTranscript(runtime, script, project, env, bridge);
+}
+
+/**
+ * Without the status line — `claude -p`, or a status line that is not PAN's — there is
+ * no bridge, and the monitor reads the transcript the payload names. Records and payloads
+ * are the shapes Claude Code 2.1.288 emitted on 2026-10-04 (tests/fixtures/hooks/
+ * context-transcript-claude.json, post-tool-use-subagent-claude.json). HOME is a temp
+ * dir and the compaction variables are blanked, so neither the developer's settings nor
+ * their shell moves the compaction point under the test.
+ */
+function driveContextFromTranscript(runtime, script, project, baseEnv, bridge) {
+  const home = mkTemp(`pan-ctx-home-${runtime}-`);
+  const env = {
+    ...baseEnv, HOME: home, USERPROFILE: home,
+    ...Object.fromEntries(['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', 'DISABLE_AUTO_COMPACT',
+      'CLAUDE_CODE_DISABLE_1M_CONTEXT', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'ANTHROPIC_MODEL'].map((k) => [k, ''])),
+  };
+  const jsonl = (records) => records.map((r) => JSON.stringify(r)).join('\n') + '\n';
+  // Every assistant record's context set to `used` tokens (all of it as cache reads).
+  const withUsed = (records, used) => records.map((r) => (r.type !== 'assistant' ? r : {
+    ...r, message: { ...r.message, usage: { ...r.message.usage, input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: used } },
+  }));
+  const note = (r, label) => {
+    assert.equal(r.status, 0, `${label}: the monitor must exit 0 on ${runtime}: ${r.stderr}`);
+    assert.equal(r.stderr, '', `${label}: nothing on stderr`);
+    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
+  };
+  const session = (n) => {
+    const id = `ctx-${runtime}-tx-${n}`;
+    const dir = path.join(project, 'transcripts');
+    const agentId = `a${runtime}tx${n}`;
+    fs.mkdirSync(path.join(dir, id, 'subagents'), { recursive: true });
+    const mainPath = path.join(dir, `${id}.jsonl`);
+    const agentPath = path.join(dir, id, 'subagents', `agent-${agentId}.jsonl`);
+    const map = baseMap(project, id, mainPath, agentId);
+    const tx = substitute(fixture('context-transcript-claude.json'), map);
+    return {
+      id, agentId, mainPath, agentPath,
+      writeMain: (used) => fs.writeFileSync(mainPath, jsonl(withUsed(tx.main, used)), 'utf-8'),
+      writeAgent: (used) => fs.writeFileSync(agentPath, jsonl(withUsed(tx.agent, used)), 'utf-8'),
+      mainPayload: substitute(fixture('post-tool-use-claude.json'), map),
+      agentPayload: substitute(fixture('post-tool-use-subagent-claude.json'), map),
+    };
+  };
+
+  // 760K tokens on a Sonnet 5.5 (native 1M) session: about 21% left before the ~967K
+  // compaction point, so the critical note; 300K is far from it.
+  const a = session(1);
+  a.writeMain(300000);
+  assert.equal(note(spawnHook(script, a.mainPayload, project, env), 'far from compaction'), '', 'no bridge and 300K of a 1M session: no note');
+  a.writeMain(760000);
+  assert.match(note(spawnHook(script, a.mainPayload, project, env), 'near compaction'),
+    /^PAN context note \(from the context-monitor hook, not the user\): the host will compact this session soon\./,
+    'no bridge: the transcript measured 760K of a 1M session');
+
+  // A subagent's call names the main transcript but is measured against its own.
+  a.writeAgent(40000);
+  assert.equal(note(spawnHook(script, a.agentPayload, project, env), 'small subagent'), '', 'the subagent holds 40K: no note, though the main session is near compaction');
+  a.writeAgent(760000);
+  assert.match(note(spawnHook(script, a.agentPayload, project, env), 'full subagent'), /^PAN context note /, 'the subagent\'s own context is near compaction');
+  assert.equal(fs.existsSync(path.join(bridge, `claude-ctx-${a.id}-${a.agentId}-warned.json`)), true, 'a subagent debounces apart from the main session');
+
+  // For a main-thread call a fresh bridge is the measure and wins; a stale one does not.
+  const now = Math.floor(Date.now() / 1000);
+  const fresh = session(2);
+  fresh.writeMain(760000);
+  fs.writeFileSync(path.join(bridge, `claude-ctx-${fresh.id}.json`), JSON.stringify({ session_id: fresh.id, remaining_percentage: 90, timestamp: now }), 'utf-8');
+  assert.equal(note(spawnHook(script, fresh.mainPayload, project, env), 'fresh bridge'), '', 'the status line\'s fresh reading wins over the transcript');
+  fresh.writeAgent(760000);
+  assert.match(note(spawnHook(script, fresh.agentPayload, project, env), 'subagent beside a fresh bridge'), /^PAN context note /,
+    'the bridge is the main session\'s reading: a subagent\'s call is measured against its own transcript');
+  const stale = session(3);
+  stale.writeMain(760000);
+  fs.writeFileSync(path.join(bridge, `claude-ctx-${stale.id}.json`), JSON.stringify({ session_id: stale.id, remaining_percentage: 90, timestamp: now - 600 }), 'utf-8');
+  assert.match(note(spawnHook(script, stale.mainPayload, project, env), 'stale bridge'), /^PAN context note /, 'a bridge the status line stopped updating falls through to the transcript');
+
+  // A compaction boundary after the newest call: the context was rebuilt and nothing has measured it.
+  const compacted = session(4);
+  compacted.writeMain(760000);
+  fs.appendFileSync(compacted.mainPath, JSON.stringify(substitute(fixture('context-transcript-claude.json'), baseMap(project, compacted.id, compacted.mainPath)).compact_boundary) + '\n', 'utf-8');
+  assert.equal(note(spawnHook(script, compacted.mainPayload, project, env), 'just compacted'), '', 'after a compaction boundary: no note until the next call measures');
 }
 
 function driveCostLogger(runtime) {
@@ -529,7 +613,12 @@ function driveStopGuard(runtime) {
   const decision = JSON.parse(blocked.stdout);
   assert.equal(decision.decision, 'block', 'the boundary-drop fingerprint must block the stop once');
   assert.match(decision.reason, /next: Phase 2\b/, 'the reason must name the phase the roadmap leaves unticked');
-  assert.match(decision.reason, /pan-tools config-set workflow\.auto_advance false/, 'the reason must tell the user how to stop deliberately');
+  // The stop command names the installed pan-tools by path: no runtime puts a bare
+  // `pan-tools` on PATH, so the old advice could not be run as written.
+  const stopCmd = decision.reason.match(/`node "([^"]+\/pan-tools\.cjs)" config-set workflow\.auto_advance false`/);
+  assert.ok(stopCmd, `the reason must tell the user how to stop deliberately: ${decision.reason}`);
+  assert.ok(fs.existsSync(stopCmd[1]), `the stop command must name the installed pan-tools.cjs on ${runtime}: ${stopCmd[1]}`);
+  assert.match(decision.reason, /workflow\.stop_guard false/, 'the reason must name the escape hatch that also disarms mode: yolo');
 
   // One-shot: the host sets stop_hook_active on the stop attempt that follows a block,
   // and the guard must always let that one through or the session is trapped.

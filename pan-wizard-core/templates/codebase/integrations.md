@@ -8,7 +8,7 @@ Template for `.planning/codebase/integrations.md` - captures external service de
 
 ## File Template
 
-```markdown
+~~~markdown
 # External Integrations
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -149,7 +149,7 @@ erDiagram
 
 *Integration audit: [date]*
 *Update when adding/removing external services*
-```
+~~~
 
 <good_examples>
 ```markdown
@@ -279,10 +279,10 @@ erDiagram
 
 **What does NOT belong here:**
 - Actual API keys or secrets (NEVER write these)
-- Internal architecture (that's ARCHITECTURE.md)
-- Code patterns (that's PATTERNS.md)
-- Technology choices (that's STACK.md)
-- Performance issues (that's CONCERNS.md)
+- Internal architecture (that's architecture.md)
+- Code patterns (that's conventions.md)
+- Technology choices (that's stack.md)
+- Performance issues (that's concerns.md)
 
 **When filling this template:**
 - Check .env.example or .env.template for required env vars

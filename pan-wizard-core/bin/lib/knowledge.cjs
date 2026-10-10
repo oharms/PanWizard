@@ -16,7 +16,21 @@ const fs = require('fs');
 const path = require('path');
 const { output, error, safeReadFile, toPosix, escapeRegex } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
-const { listMemoryAgents, readMemory } = require('./memory.cjs');
+const { listMemoryAgents, readMemory, RESERVED_MEMORY_NAMES } = require('./memory.cjs');
+
+/**
+ * PAN's own archives in `.planning/memory/` are never offered as sources: the
+ * quarantine holds directives PAN refused to follow (ADR-0040), the state archive
+ * is old state, and `archive/` holds the entries `memory prune` retired. Until
+ * 2026-10-05 `knowledge ask` ranked them like any other file, and a question about
+ * deploying returned the quarantine as its top source for the pan-knowledge agent.
+ */
+function isMemoryArchive(relPosix) {
+  const m = String(relPosix).match(/^\.planning\/memory\/(.+)$/);
+  if (!m) return false;
+  if (m[1] === 'archive' || m[1].startsWith('archive/')) return true;
+  return !m[1].includes('/') && RESERVED_MEMORY_NAMES.includes(m[1].replace(/\.md$/i, '').toLowerCase());
+}
 
 const CONVERSATIONS_DIR = 'conversations';
 const PLAYBOOK_FILE = 'playbook.md';
@@ -84,6 +98,7 @@ function gatherCandidates(cwd, question, recallCue) {
       try { entries = fs.readdirSync(abs); } catch { continue; }
       for (const entry of entries) {
         const entryAbs = path.join(abs, entry);
+        if (isMemoryArchive(toPosix(path.join(rel, entry)))) continue;
         let entryStat;
         try { entryStat = fs.statSync(entryAbs); } catch { continue; }
         if (entryStat.isFile() && entry.endsWith('.md')) {
@@ -359,6 +374,7 @@ module.exports = {
   cmdKnowledgeDiscuss,
   cmdKnowledgePlaybook,
   CITATION_ROOTS,
+  isMemoryArchive,
   CONVERSATIONS_DIR,
   PLAYBOOK_FILE,
   PLAYBOOK_CATEGORIES,

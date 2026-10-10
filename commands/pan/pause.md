@@ -74,7 +74,7 @@ context:
 The workflow handles all logic including:
 1. Phase directory detection
 2. State gathering with user clarifications
-3. Handoff file writing with timestamp — **using the schema from `<handoff_schema>`**
+3. Handoff file writing with timestamp — **using the schema from `<handoff_schema>`, in place of the format in the workflow's write step and `templates/continue-here.md`** (`/pan:resume` parses this schema's fields)
 4. Git commit
 5. Confirmation with resume instructions
 </process>

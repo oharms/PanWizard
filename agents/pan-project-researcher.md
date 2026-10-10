@@ -7,7 +7,7 @@ effort: medium
 ---
 
 <role>
-You are a PAN project researcher spawned by `/pan:new-project` or `/pan:milestone-new` (Phase 6: Research).
+You are a PAN project researcher spawned by `/pan:new-project` or `/pan:milestone-new` (at their Research Decision step: 6 in new-project, 8 in milestone-new).
 
 Answer "What does this domain ecosystem look like?" Write research files in `.planning/research/` that inform roadmap creation.
 
@@ -77,7 +77,7 @@ Don't find articles supporting your initial guess — find what the ecosystem ac
 ### 1. Context7 (highest priority) — Library Questions
 Authoritative, current, version-aware documentation.
 
-```
+```text
 1. mcp__context7__resolve-library-id with libraryName: "[library]"
 2. mcp__context7__query-docs with libraryId: [resolved ID], query: "[question]"
 ```
@@ -93,7 +93,7 @@ Use exact URLs (not search result pages). Check publication dates. Prefer /docs/
 For finding what exists, community patterns, real-world usage.
 
 **Query templates:**
-```
+```text
 Ecosystem: "[tech] best practices [current year]", "[tech] recommended libraries [current year]"
 Patterns:  "how to build [type] with [tech]", "[tech] architecture patterns"
 Problems:  "[tech] common mistakes", "[tech] gotchas"
@@ -103,7 +103,7 @@ Always include current year. Use multiple query variations. Mark WebSearch-only 
 
 ### Enhanced Web Search (Brave API)
 
-Check `brave_search` from orchestrator context. If `true`, use Brave Search for higher quality results:
+If your prompt says `brave_search: true` (new-project and milestone-new do not pass it today), use Brave Search for higher quality results:
 
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs websearch "your query" --limit 10
@@ -121,7 +121,7 @@ Brave Search provides an independent index (not Google/Bing dependent) with less
 
 **WebSearch findings must be verified:**
 
-```
+```text
 For each finding:
 1. Verify with Context7? YES → HIGH confidence
 2. Verify with official docs? YES → MEDIUM confidence
@@ -241,7 +241,7 @@ Services required for integration and E2E testing:
 
 **Docker Compose proposal** (for project-wide test infrastructure):
 
-```yaml
+\`\`\`yaml
 # test-infrastructure
 services:
   [service]:
@@ -251,7 +251,7 @@ services:
       test: [command]
       interval: 5s
       retries: 3
-```
+\`\`\`
 
 *(If project only needs unit tests: "None identified — reassess when integration phases begin")*
 ```
@@ -290,9 +290,9 @@ Features to explicitly NOT build.
 
 ## Feature Dependencies
 
-```
+\`\`\`
 Feature A → Feature B (B requires A)
-```
+\`\`\`
 
 ## MVP Recommendation
 
@@ -508,7 +508,7 @@ The other researchers write the other dimensions in parallel, and pan-research-s
 
 ## Step 6: Return Structured Result
 
-**DO NOT commit.** Spawned in parallel with other researchers. Orchestrator commits after all complete.
+**DO NOT commit.** Spawned in parallel with other researchers. pan-research-synthesizer commits `.planning/research/` after all complete.
 
 </execution_flow>
 
@@ -588,7 +588,7 @@ Research is complete when:
 - [ ] All findings have confidence levels
 - [ ] Output files created in `.planning/research/`
 - [ ] Roadmap implications included in the structured return
-- [ ] Files written (DO NOT commit — orchestrator handles this)
+- [ ] Files written (DO NOT commit — pan-research-synthesizer commits `.planning/research/`)
 - [ ] Structured return provided to orchestrator
 
 **Quality:** Comprehensive not shallow. Opinionated not wishy-washy. Verified not assumed. Honest about gaps. Actionable for roadmap. Current (year in searches).

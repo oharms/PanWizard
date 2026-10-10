@@ -82,19 +82,56 @@ function removeAgentsMdSection(existing) {
 }
 
 /**
- * Ensure CLAUDE.md bridges to AGENTS.md via a marker-fenced @AGENTS.md import
- * (Claude Code's documented pattern for adopting the universal rules file).
- * Idempotent; preserves all user content.
+ * PAN's block in CLAUDE.md: the @AGENTS.md import, and Claude Code's "Compact
+ * instructions" section (memory optimisation O8). Claude Code reads a section of
+ * that name in the project-root CLAUDE.md when it summarises a conversation, and
+ * re-reads CLAUDE.md from disk after compaction. The section names what the summary
+ * must keep for PAN work to resume where it stopped.
+ *
+ * Codex is deliberately left out: its `compact_prompt` replaces the built-in
+ * compaction prompt rather than adding to it, and the default OpenAI provider
+ * ignores it (read 2026-10-04), so PAN would be swapping a tuned prompt for one
+ * that may never run. PAN's state re-injection after compaction covers Codex.
+ */
+function buildClaudeMdBridge() {
+  return [
+    PAN_AGENTS_BEGIN,
+    '@AGENTS.md',
+    '',
+    '# Compact instructions',
+    '',
+    'When this conversation is compacted, keep what PAN work needs to resume where it stopped:',
+    '- the current phase and plan, and the task in progress with its stopping point (`.planning/state.md` records them; keep that path);',
+    '- decisions made in this session that `.planning/state.md` does not yet hold;',
+    '- the files changed since the last commit.',
+    'Leave out file contents and command output: they can be read again.',
+    PAN_AGENTS_END,
+  ].join('\n');
+}
+
+/**
+ * Ensure CLAUDE.md carries PAN's block: the marker-fenced @AGENTS.md import
+ * (Claude Code's documented pattern for adopting the universal rules file) and
+ * the compact instructions. Idempotent; preserves all user content. An older PAN
+ * bridge (the import alone) is replaced in place, so a reinstall or `memory
+ * rebuild` brings existing projects up to date.
  * @param {string|null} existing - Current CLAUDE.md content, or null if absent
  * @returns {string} New file content
  */
 function ensureClaudeMdImport(existing) {
-  const block = `${PAN_AGENTS_BEGIN}\n@AGENTS.md\n${PAN_AGENTS_END}`;
+  const block = buildClaudeMdBridge();
   if (!existing || !existing.trim()) {
     return block + '\n';
   }
-  if (existing.includes(PAN_AGENTS_BEGIN)) {
-    return existing; // bridge (or another PAN block) already present
+  const beginIdx = existing.indexOf(PAN_AGENTS_BEGIN);
+  const endIdx = existing.indexOf(PAN_AGENTS_END);
+  if (beginIdx !== -1) {
+    // PAN's own bridge: bring it up to date. Any other PAN block is left alone.
+    if (endIdx > beginIdx && /^@AGENTS\.md\s*$/m.test(existing.slice(beginIdx, endIdx))) {
+      const eol = existing.includes('\r\n') ? '\r\n' : '\n';
+      return existing.slice(0, beginIdx) + block.replace(/\n/g, eol) + existing.slice(endIdx + PAN_AGENTS_END.length);
+    }
+    return existing;
   }
   if (/^@AGENTS\.md\s*$/m.test(existing)) {
     return existing; // user already imports AGENTS.md themselves
@@ -118,6 +155,7 @@ module.exports = {
   buildAgentsMdSection,
   upsertAgentsMdSection,
   removeAgentsMdSection,
+  buildClaudeMdBridge,
   ensureClaudeMdImport,
   removeClaudeMdImport,
 };

@@ -19,7 +19,7 @@ This is the PAN Wizard SOURCE REPOSITORY. Tests run here; installs go to `d:\pan
 ## Execution
 
 ```powershell
-# Fast feedback — unit tests only (~30s)
+# Fast feedback — unit tests only (~1–1.5 min on Linux CI, 3–4 min on Windows CI)
 npm test
 
 # If you need everything

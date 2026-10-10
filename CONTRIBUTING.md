@@ -35,6 +35,7 @@ Thank you for your interest in contributing to PAN Wizard!
 git clone https://github.com/oharms/PanWizard.git
 cd PanWizard
 npm install
+npm run build:hooks   # hooks/dist/ is build output a clone lacks; the installer copies hooks from it
 npm test
 ```
 
@@ -45,7 +46,7 @@ run inside its own source repo (`PAN_SOURCE_ROOT` guard), so run it from a
 **separate** directory and point it at your clone:
 
 ```bash
-cd <some-test-dir>                                     # NOT the clone root
+cd <some-test-dir>                                     # outside the clone: the guard refuses its root and every subdirectory
 node <path-to-clone>/bin/install.js --claude --local   # Install to ./.claude/
 node <path-to-clone>/bin/install.js --claude --global  # Install to ~/.claude/
 ```
@@ -94,7 +95,7 @@ PanWizard/
 |------|---------|
 | `bin/install.js` | Main installer — installs the runtimes named by flags (or picked at a prompt), copies files |
 | `pan-wizard-core/bin/pan-tools.cjs` | CLI bridge — commands/agents call this for state, config, commits |
-| `pan-wizard-core/bin/lib/config.cjs` | Config CRUD (dot-notation get/set, ensure-section), standards catalog |
+| `pan-wizard-core/bin/lib/config.cjs` | Config CRUD (dot-notation get/set, ensure-section), the `standards` commands (the catalog itself is in `constants.cjs`) |
 | `pan-wizard-core/bin/lib/state.cjs` | State management (load, save, phase tracking) |
 | `pan-wizard-core/bin/lib/init.cjs` | Phase initialization (loads context for agents) |
 | `pan-wizard-core/bin/lib/verify.cjs` | Plan verification utilities |
@@ -167,6 +168,7 @@ were written the other way round and had to be corrected once the behaviour was 
 
 - Use `toPosix()` from `pan-wizard-core/bin/lib/core.cjs` for file paths (Windows backslashes break comparisons)
 - Use file-based input for shell commands containing `$` signs (avoids shell expansion)
+- Parse planning files on LF and write them back in their own line ending, with `toLf()`, `dominantEol()` and `withEol()` from `core.cjs`. A Windows checkout holds `.planning/` as CRLF; `tests/crlf-parity.test.cjs` checks the parsers
 - Test on both Windows and macOS/Linux when touching path-related code
 
 ## Code Style

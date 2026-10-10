@@ -40,10 +40,12 @@ const {
   HYGIENE_TMP_AGE_MS,
   CHARS_PER_TOKEN,
   STATE_FILE,
+  ROADMAP_FILE,
+  REQUIREMENTS_FILE,
 } = require('./constants.cjs');
 const { planningPath, planningRel, detectPlanningModel } = require('./utils.cjs');
 const { detectForeignPlanningTree } = require('./foreign-planning.cjs');
-const { listMemoryAgents, readMemory, compactMemory } = require('./memory.cjs');
+const { listMemoryAgents, readMemory, compactMemory, pruneMemory, RESERVED_MEMORY_NAMES } = require('./memory.cjs');
 const { readRecords, isSuspectRecord, METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
 const { assessCacheTtl } = require('./context-budget.cjs');
 const { planningRootRel, planningRoots, withPlanningRoot, describePlanningRoot, TRACKS_DIR } = require('./planning-root.cjs');
@@ -223,20 +225,129 @@ function checkTmpOrphans(cwd, now = Date.now()) {
   return { findings };
 }
 
-/** H-4: per-agent memory logs past the entry cap (compaction never ran). */
+/**
+ * H-4: per-agent memory logs — past the entry cap (compaction never ran), holding
+ * entries `memory select` no longer returns (O4: cited code gone, or unused past the
+ * expiry window), and files in the folder that are not read as memory at all.
+ */
 function checkMemoryLogs(cwd) {
   const findings = [];
   const { agents } = listMemoryAgents(cwd);
   for (const a of agents) {
     const mem = readMemory(cwd, a.agent);
     if (!mem || !Array.isArray(mem.entries)) continue;
-    if (mem.entries.length <= MEMORY_ENTRY_CAP) continue;
-    findings.push(mkFinding('memory-bloat', 'warn',
-      planningRel('memory', `${a.agent}.md`),
-      `${mem.entries.length} entries exceeds cap ${MEMORY_ENTRY_CAP} — whole-file reads flood context`,
-      { action: 'compact-memory', agent: a.agent }));
+    const rel = planningRel('memory', `${a.agent}.md`);
+    if (mem.entries.length > MEMORY_ENTRY_CAP) {
+      findings.push(mkFinding('memory-bloat', 'warn', rel,
+        `${mem.entries.length} entries exceeds cap ${MEMORY_ENTRY_CAP} — compaction keeps the newest`,
+        { action: 'compact-memory', agent: a.agent }));
+    }
+    const prune = pruneMemory(cwd, a.agent);
+    const stale = prune.agents ? prune.agents[0].archive : [];
+    if (stale.length) {
+      const gone = stale.filter(x => x.reason.startsWith('cited code gone')).length;
+      findings.push(mkFinding('memory-stale', 'warn', rel,
+        `${stale.length} entr${stale.length === 1 ? 'y is' : 'ies are'} stale or expired `
+        + `(${gone} cite code that is gone, ${stale.length - gone} unused for ${prune.expire_days} days) — `
+        + '`memory prune` archives them',
+        { action: 'prune-memory', agent: a.agent }));
+    }
+  }
+  // A file in the folder with no `## Entries` list is never read as memory (PAN's
+  // own archives aside): say so rather than let it look like memory.
+  for (const n of listMemoryAgents(cwd).not_loaded || []) {
+    if (RESERVED_MEMORY_NAMES.includes(n.file.slice(0, -3).toLowerCase())) continue;
+    findings.push(mkFinding('memory-format', 'info', planningRel('memory', n.file),
+      `${n.reason}, so \`memory select\` and \`/pan:knowledge\` do not read it as memory — move the rules that still hold into an agent log with \`memory append <agent> "<rule>" --cites <path>\``,
+      null));
   }
   return { findings };
+}
+
+// ─── Host memory (memory optimisation O10) ───────────────────────────────────
+//
+// Cross-session memory accumulates in the host, not in PAN (F7): Claude Code's auto
+// memory keeps an index, MEMORY.md, and loads only its first 200 lines or 25 KB at
+// the start of every session. PAN does not own that store (MI-010) and never writes
+// it; it reads the index and reports what the host will silently cut, and index
+// lines that hold content where a one-line pointer belongs.
+
+const HOST_INDEX_MAX_LINES = 200;
+const HOST_INDEX_MAX_BYTES = 25000;      // "25KB": the smaller reading, so a warning is never late
+const HOST_INDEX_LINE_MAX_CHARS = 300;   // a pointer line is ~100–150 characters
+
+/** The directory Claude Code keys a project's auto memory by: the git repository root, the main one for a worktree. */
+function hostMemoryProjectRoot(cwd) {
+  let dir = path.resolve(cwd);
+  for (;;) {
+    const dotGit = path.join(dir, '.git');
+    let st = null;
+    try { st = fs.statSync(dotGit); } catch { /* keep walking */ }
+    if (st && st.isDirectory()) return dir;
+    if (st && st.isFile()) {
+      // A worktree: `.git` is a file naming <main>/.git/worktrees/<name>.
+      const m = (safeReadFile(dotGit) || '').match(/^gitdir:\s*(.+?)\s*$/m);
+      if (m) {
+        const gitdir = path.resolve(dir, m[1]);
+        const i = gitdir.split(path.sep).lastIndexOf('.git');
+        if (i > 0 && gitdir.split(path.sep)[i + 1] === 'worktrees') return gitdir.split(path.sep).slice(0, i).join(path.sep);
+      }
+      return dir;
+    }
+    const up = path.dirname(dir);
+    if (up === dir) return path.resolve(cwd);
+    dir = up;
+  }
+}
+
+/** Claude Code's auto-memory directory for a project, and how it was found. */
+function hostMemoryDir(cwd, homeDir) {
+  const claudeDir = '.claude';
+  for (const f of [path.join(cwd, claudeDir, 'settings.local.json'), path.join(cwd, claudeDir, 'settings.json'), path.join(homeDir, claudeDir, 'settings.json')]) {
+    let s = null;
+    try { s = JSON.parse(safeReadFile(f) || 'null'); } catch { /* unreadable settings */ }
+    if (s && typeof s.autoMemoryDirectory === 'string' && s.autoMemoryDirectory.trim()) {
+      const v = s.autoMemoryDirectory.trim();
+      return { dir: path.resolve(v.startsWith('~/') ? path.join(homeDir, v.slice(2)) : v), display: v, source: 'autoMemoryDirectory' };
+    }
+  }
+  const key = hostMemoryProjectRoot(cwd).replace(/[^A-Za-z0-9]/g, '-');
+  return { dir: path.join(homeDir, claudeDir, 'projects', key, 'memory'), display: `~/${claudeDir}/projects/${key}/memory`, source: 'default' };
+}
+
+/**
+ * H-11: Claude Code's auto-memory index. Read-only; never fixable by PAN.
+ * @param {string} cwd
+ * @param {{homeDir?: string}} [opts]
+ */
+function checkHostMemory(cwd, opts = {}) {
+  const findings = [];
+  const home = opts.homeDir || require('os').homedir();
+  const loc = hostMemoryDir(cwd, home);
+  const text = safeReadFile(path.join(loc.dir, 'MEMORY.md'));
+  if (text == null) return { findings, host_memory: { dir: loc.display, index: false } };
+  const lines = text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n');
+  const bytes = Buffer.byteLength(text, 'utf8');
+  const rel = `${loc.display}/MEMORY.md`;
+  const overLines = lines.length > HOST_INDEX_MAX_LINES;
+  const overBytes = bytes > HOST_INDEX_MAX_BYTES;
+  if (overLines || overBytes) {
+    findings.push(mkFinding('host-memory', 'warn', rel,
+      `Claude Code's memory index is ${lines.length} lines / ${(bytes / 1024).toFixed(1)} KB; it loads only the first ${HOST_INDEX_MAX_LINES} lines or 25 KB at session start, so the rest is never seen. `
+      + 'Keep one line per memory there and move detail into topic files (PAN does not edit this store)',
+      null));
+  } else if (lines.length >= HOST_INDEX_MAX_LINES * 0.9 || bytes >= HOST_INDEX_MAX_BYTES * 0.9) {
+    findings.push(mkFinding('host-memory', 'info', rel,
+      `Claude Code's memory index is ${lines.length} lines / ${(bytes / 1024).toFixed(1)} KB, near the ${HOST_INDEX_MAX_LINES}-line / 25 KB load limit`,
+      null));
+  }
+  const long = lines.filter(l => l.length > HOST_INDEX_LINE_MAX_CHARS);
+  if (long.length) {
+    findings.push(mkFinding('host-memory', 'info', rel,
+      `${long.length} index line${long.length === 1 ? ' holds' : 's hold'} content instead of a pointer (longest ${Math.max(...long.map(l => l.length))} characters; a pointer is one short line to a topic file)`,
+      null));
+  }
+  return { findings, host_memory: { dir: loc.display, source: loc.source, index: true, lines: lines.length, bytes, long_lines: long.length } };
 }
 
 /**
@@ -407,17 +518,18 @@ function checkCachedContext(cwd) {
   try { cached = buildCachedContext(cwd); } catch { return { findings }; }
   if (!cached || !Array.isArray(cached.blocks)) return { findings };
 
-  // An empty block is not "small" — it means this project gets NO prompt
-  // caching at all, which is worth saying out loud rather than reporting as a
-  // healthy zero. But only for a tree that HAS planning content: a freshly
-  // scaffolded `.planning/phases/` has nothing to cache yet, and reporting that
-  // as a finding is noise on every new project. The signal is "you have
-  // planning docs and none of them are cached", not "you have no docs".
+  // An empty block is not "small" — it means this check measures nothing, which
+  // is worth saying rather than reporting a healthy zero. (PAN primes no cache,
+  // ADR-0023 amended: the host caches each prompt prefix by itself, so this is
+  // about measurement, not about caching.) But only for a tree that HAS planning
+  // content: a freshly scaffolded `.planning/phases/` has nothing to measure yet,
+  // and reporting that is noise on every new project.
   if (cached.blocks.length === 0) {
     if (planningDocCount(cwd) > 0) {
       findings.push(mkFinding('cache-context', 'info', planningRel(),
-        'planning docs exist but none are cacheable — every agent call re-sends its context uncached. '
-        + 'Add project.md/standards.md, or list stable docs under config.json cache.extra_files',
+        'planning docs exist but none of the stable files this check measures (project.md, requirements.md, '
+        + 'roadmap.md, state.md, standards.md), so it has nothing to read. List stable docs under config.json '
+        + 'cache.extra_files to measure them',
         null));
     }
     return { findings };
@@ -429,7 +541,8 @@ function checkCachedContext(cwd) {
     findings.push(mkFinding('cache-context', severity, planningRel(),
       `cached context block is ~${fmtTokens(blockTokens)} tokens across ${cached.blocks.length} file(s) `
       + `(warn ${fmtTokens(CACHE_BLOCK_WARN_TOKENS)}, critical ${fmtTokens(CACHE_BLOCK_CRIT_TOKENS)}) — `
-      + 're-read on every agent call, so this is the project\'s largest recurring cost',
+      + 'state.md is re-read on every agent call; roadmap.md and requirements.md whole by the roadmapper and milestone work '
+      + '(phase agents read `roadmap slice`)',
       null));
   }
 
@@ -437,6 +550,27 @@ function checkCachedContext(cwd) {
     const tokens = Math.ceil((b.content || '').length / CHARS_PER_TOKEN);
     if (tokens < CACHE_FILE_WARN_TOKENS) continue;
     const isState = String(b.path).endsWith(STATE_FILE);
+    const isRoadmap = String(b.path).endsWith(ROADMAP_FILE);
+    const isRequirements = String(b.path).endsWith(REQUIREMENTS_FILE);
+
+    // The roadmap and requirements are read whole only by the roadmapper and the
+    // milestone workflows now; phase agents get `roadmap slice` (O2). A roadmap
+    // with shipped phases past the most recent ones can be compacted (O3).
+    if (isRoadmap || isRequirements) {
+      let fix = null;
+      let detail = `~${fmtTokens(tokens)} tokens, read whole by the roadmapper and milestone work (phase agents read \`roadmap slice\`)`;
+      if (isRoadmap) {
+        const archivable = roadmapCompactionAvailable(cwd);
+        if (archivable > 0) {
+          fix = { action: 'compact-roadmap' };
+          detail += ` — ${archivable} shipped phase section(s) can move to roadmap-history.md (\`roadmap compact\`)`;
+        }
+      } else {
+        detail += ' — `/pan:milestone-done` archives a shipped milestone\'s requirements to `milestones/` and starts the next milestone\'s file fresh';
+      }
+      findings.push(mkFinding('cache-context', 'warn', b.path, detail, fix));
+      continue;
+    }
 
     // A finding may only advertise `auto-fixable` when running the fix would
     // actually change something. state.md stays over the threshold once its
@@ -489,6 +623,12 @@ function stateCompactionAvailable(cwd) {
   } catch {
     return 0;
   }
+}
+
+/** Same rule for roadmap.md: offer `compact-roadmap` only when it would archive something. */
+function roadmapCompactionAvailable(cwd) {
+  // Lazy for the same reason as state-compact: keep hygiene off a load-time cycle.
+  return require('./roadmap-compact.cjs').roadmapCompactionAvailable(cwd);
 }
 
 /** H-7: fragment .planning — artifacts present but no project spine. Report-only. */
@@ -572,9 +712,11 @@ function scanHygiene(cwd, opts) {
   // matter how many trees we sweep, or a four-track repo reports the same
   // drift four times.
   const version = checkVersionAlignment(cwd);
+  // The host's memory index is one per project too, whatever the tracks.
+  const host = checkHostMemory(cwd, { homeDir: opts?.homeDir });
   const roots = planningRoots(cwd, { allTracks: !!opts?.allTracks });
 
-  const findings = [...version.findings];
+  const findings = [...version.findings, ...host.findings];
   const scanned = [];
   let planningExists = false;
 
@@ -601,6 +743,7 @@ function scanHygiene(cwd, opts) {
   return {
     findings,
     installs: version.installs,
+    host_memory: host.host_memory,
     latest_version: version.latest_version,
     planning_exists: planningExists,
     // What was actually looked at. Present in every scan, not just --all-tracks:
@@ -653,6 +796,12 @@ function applyFix(cwd, finding) {
         if (r.error) return { applied: false, detail: r.error };
         return { applied: true, detail: `compacted to ${r.kept ?? r.entries ?? 'cap'} entries` };
       }
+      case 'prune-memory': {
+        const r = pruneMemory(cwd, fix.agent, { apply: true });
+        if (r.error) return { applied: false, detail: r.error };
+        if (!r.applied) return { applied: false, detail: 'nothing stale or expired any more' };
+        return { applied: true, detail: `archived ${r.archivable} entr${r.archivable === 1 ? 'y' : 'ies'} to ${r.archive_dir}/` };
+      }
       case 'compact-state': {
         // Required lazily: state-compact pulls in state.cjs, which pulls in core
         // — importing it at module load would put hygiene on that cycle.
@@ -663,6 +812,16 @@ function applyFix(cwd, finding) {
         return {
           applied: true,
           detail: `archived ${r.archived.length} section(s) to ${r.history_path} — saves ~${r.tokens_saved_per_call} tokens per agent call`,
+        };
+      }
+      case 'compact-roadmap': {
+        const { compactRoadmap } = require('./roadmap-compact.cjs');
+        const r = compactRoadmap(cwd, { apply: true });
+        if (!r.found) return { applied: false, detail: 'roadmap.md not found' };
+        if (!r.applied) return { applied: false, detail: 'no shipped phase past the most recent ones' };
+        return {
+          applied: true,
+          detail: `archived ${r.archived.length} shipped phase section(s) to ${r.history_path} — roadmap.md ~${r.tokens_before - r.tokens_after} tokens smaller`,
         };
       }
       case 'quarantine-ledger': {
@@ -832,6 +991,8 @@ module.exports = {
   checkLegacyUppercase,
   checkTmpOrphans,
   checkMemoryLogs,
+  checkHostMemory,
+  hostMemoryDir,
   checkCostLedger,
   checkStaleTraces,
   checkStaleReports,

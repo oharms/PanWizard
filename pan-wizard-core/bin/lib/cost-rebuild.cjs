@@ -39,7 +39,7 @@ const os = require('os');
 const path = require('path');
 const { output, error, loadConfig } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
-const { readRecords, computeCost, effectiveRates, isSuspectRecord, isEmptyRecord, METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
+const { readRecords, computeCost, effectiveRates, isSuspectRecord, isEmptyRecord, LONG_PROMPT_THRESHOLD, METRICS_DIR, TOKENS_FILE } = require('./cost.cjs');
 
 const SCHEMA_V = 4; // matches hooks/pan-cost-logger.js SCHEMA_V
 const MAIN_THREAD_AGENT = '(main thread)';
@@ -143,6 +143,17 @@ function sumTranscriptUsage(file) {
     if (cc && typeof cc === 'object') {
       totals.cache_write_1h_tokens = (totals.cache_write_1h_tokens || 0) + num(cc, 'ephemeral_1h_input_tokens');
       totals.cache_write_5m_tokens = (totals.cache_write_5m_tokens || 0) + num(cc, 'ephemeral_5m_input_tokens');
+    }
+    // A request whose prompt is over LONG_PROMPT_THRESHOLD bills at a model's long
+    // rate where it has one (Haiku 5.5); the same rule as the cost-logger hook.
+    const prompt = num(u, 'input_tokens') + num(u, 'cache_read_input_tokens') + num(u, 'cache_creation_input_tokens');
+    if (prompt > LONG_PROMPT_THRESHOLD) {
+      const lp = totals.long_prompt || (totals.long_prompt = { above: LONG_PROMPT_THRESHOLD, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, cache_write_1h_tokens: 0 });
+      lp.input_tokens += num(u, 'input_tokens');
+      lp.output_tokens += num(u, 'output_tokens');
+      lp.cache_read_tokens += num(u, 'cache_read_input_tokens');
+      lp.cache_write_tokens += num(u, 'cache_creation_input_tokens');
+      if (cc && typeof cc === 'object') lp.cache_write_1h_tokens += num(cc, 'ephemeral_1h_input_tokens');
     }
   }
   totals.turns = byMessage.size;
@@ -304,6 +315,7 @@ function makeRow(fields) {
     ...(typeof fields.usage.cache_write_1h_tokens === 'number'
       ? { cache_write_1h_tokens: fields.usage.cache_write_1h_tokens, cache_write_5m_tokens: fields.usage.cache_write_5m_tokens || 0 }
       : {}),
+    ...(fields.usage.long_prompt ? { long_prompt: fields.usage.long_prompt } : {}),
     cost_usd: null,
     duration_ms: fields.usage.first_ts && fields.usage.last_ts ? Date.parse(fields.usage.last_ts) - Date.parse(fields.usage.first_ts) : null,
     phase: null,

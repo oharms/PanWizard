@@ -568,6 +568,22 @@ describe('state record-metric command', () => {
     assert.ok(state.includes('8 files'), 'should contain files count');
   });
 
+  test('the row lands inside the template\'s table, not below the lines that follow it', () => {
+    // The rest of the section counted as the table body, so on the shipped template
+    // the row went below "*Updated after each plan completion*", outside the table.
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), [
+      '# Project State', '', '## Performance Metrics', '', '**By Phase:**', '',
+      '| Phase | Plans | Total | Avg/Plan |', '|-------|-------|-------|----------|', '| - | - | - | - |', '',
+      '**Recent Trend:**', '- Last 5 plans: [durations]', '', '*Updated after each plan completion*', '',
+      '## Accumulated Context', '',
+    ].join('\n'));
+    assert.ok(runPanTools('state record-metric --phase 05 --plan 01 --duration 12min --tasks 4 --files 6', tmpDir).success);
+    assert.ok(runPanTools('state record-metric --phase 05 --plan 02 --duration 9min --tasks 2 --files 3', tmpDir).success);
+    const state = fs.readFileSync(path.join(tmpDir, '.planning', 'state.md'), 'utf-8');
+    assert.match(state, /\|-------\|-------\|-------\|----------\|\n\| Phase 05 P01 \| 12min \| 4 tasks \| 6 files \|\n\| Phase 05 P02 \| 9min \| 2 tasks \| 3 files \|\n\n\*\*Recent Trend:\*\*/);
+    assert.match(state, /\*Updated after each plan completion\*\n\n## Accumulated Context/);
+  });
+
   test('replaces None yet placeholder when adding first metric', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'state.md'),
@@ -805,6 +821,25 @@ describe('state commands handle missing state.md gracefully', () => {
     assert.equal(result.success, false, 'an error payload must exit non-zero');
     const output = JSON.parse(result.output);
     assert.strictEqual(output.error, 'state.md not found');
+  });
+
+  test('state-snapshot reads the decisions and blockers PAN\'s own writers add', () => {
+    // It read a "## Decisions Made" table and a "## Blockers" heading, while the
+    // template and `state add-decision`/`add-blocker` use `### Decisions` bullets and
+    // `### Blockers/Concerns`: both lists came back empty on every PAN-written state.md.
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), [
+      '# Project State', '', '## Current Position', '', 'Phase: 2 of 3', '',
+      '## Accumulated Context', '', '### Decisions', '', 'None yet.', '',
+      '### Pending Todos', '', 'None yet.', '', '### Blockers/Concerns', '', 'None yet.', '',
+      '## Session Continuity', '', 'Last session: 2026-10-05', '',
+    ].join('\n'));
+    assert.ok(runPanTools('state add-decision --phase 2 --summary "Use SQLite" --rationale "one file"', tmpDir).success);
+    assert.ok(runPanTools('state add-blocker --text "Waiting on API keys"', tmpDir).success);
+    const snap = JSON.parse(runPanTools('state-snapshot', tmpDir).output);
+    assert.deepEqual(snap.decisions, [{ phase: '2', summary: 'Use SQLite', rationale: 'one file' }]);
+    assert.deepEqual(snap.blockers, ['Waiting on API keys']);
+    // add-blocker stripped "None" before "None yet", leaving "yet." in the section.
+    assert.doesNotMatch(fs.readFileSync(path.join(tmpDir, '.planning', 'state.md'), 'utf-8'), /^\s*yet\.\s*$/m);
   });
 
   test('state json returns error when state.md missing', () => {

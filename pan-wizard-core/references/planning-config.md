@@ -14,7 +14,7 @@ Configuration options for `.planning/` directory behavior.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `commit_docs` | `true` | Whether to commit planning artifacts to git |
-| `search_gitignored` | `false` | Add `--no-ignore` to broad rg searches |
+| `search_gitignored` | `false` | Reserved — no workflow or agent acts on it; to include `.planning/` in a broad rg search, add `--no-ignore` yourself |
 | `branching_strategy` | `"none"` | Git branching approach: `"none"`, `"phase"`, or `"milestone"` |
 | `phase_branch_template` | `"pan/phase-{phase}-{slug}"` | Branch template for phase strategy |
 | `milestone_branch_template` | `"pan/{milestone}-{slug}"` | Branch template for milestone strategy |
@@ -49,7 +49,7 @@ INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init execute-phase "1")
 # commit_docs is included in all init command outputs
 ```
 
-**Auto-detection:** If `.planning/` is gitignored, `commit_docs` is automatically `false` regardless of config.json. This prevents git errors when users have `.planning/` in `.gitignore`.
+**Gitignored planning tree:** if `.planning/` is gitignored, `pan-tools commit` and `phase complete` skip their commit (`commit` reports `reason: skipped_gitignored`, exit 0) whatever `commit_docs` says; `commit_docs` itself still reads as configured, and `/pan:health` reports the mismatch as I005.
 
 **Commit via CLI (handles checks automatically):**
 
@@ -68,8 +68,8 @@ The CLI checks `commit_docs` config and gitignore status internally — no manua
 - Direct path searches work: `rg "pattern" .planning/` finds files
 - Broad searches skip gitignored: `rg "pattern"` skips `.planning/`
 
-**When `search_gitignored: true`:**
-- Add `--no-ignore` to broad rg searches that should include `.planning/`
+**When `search_gitignored: true`:** nothing changes — no workflow or agent reads the setting.
+- To include `.planning/` in a broad rg search, add `--no-ignore` to that `rg` call yourself
 - Only needed when searching entire repo and expecting `.planning/` matches
 
 **Note:** Most PAN operations use direct file reads or explicit paths, which work regardless of gitignore status.

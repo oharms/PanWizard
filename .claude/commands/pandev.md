@@ -76,7 +76,7 @@ This is the PAN Wizard SOURCE REPOSITORY.
 ### Phase 3: Implement
 - Write code following existing patterns
 - CommonJS for core modules (.cjs)
-- Pure functions in install-lib.cjs (no side effects)
+- Pure functions in install-lib.cjs (no filesystem writes; the merge/strip helpers edit the object they are given)
 - Handle all 5 runtimes consistently
 
 ### Phase 4: Test

@@ -3,10 +3,10 @@
 A `command`-source marketplace that installs PAN as a Claude Code plugin **built
 from this checkout on demand**. No hosting, no publishing, no registry.
 
-It exists to answer the one question that has kept `dist/pan-wizard-plugin/`
-unpublished: **does `${CLAUDE_PLUGIN_ROOT}` expand inside command *markdown*?**
+It was built to answer the one question that gated publishing `dist/pan-wizard-plugin/`:
+**does `${CLAUDE_PLUGIN_ROOT}` expand inside command *markdown*?**
 It is documented as substituted in hook and MCP *configs*; for content, the measurement below (case A, 2026-08-14) says it is.
-Everything else about the plugin is already tested — this is the gap.
+Everything else about the plugin was already tested; this was the gap, and that measurement closed it.
 
 ## Requirements
 
@@ -120,9 +120,11 @@ while the session runs applies immediately unless the change would force a full
 prompt-cache re-read, in which case Claude Code holds it and asks for
 `/reload-plugins`.
 
-The marketplace above remains the path that exercises the `command` source, the
-placeholder-expansion probe, and install/uninstall — `--plugin-dir` skips all
-three, so it is a faster loop, not a substitute for the test.
+The marketplace above remains the path that exercises the `command` source and
+install/uninstall from the plugin cache — `--plugin-dir` skips both, so it is a
+faster loop, not a substitute for the test. The placeholder-expansion probe runs
+either way: the harness `plugin-agent-scope` scenario runs `/pan-plugin-selftest`
+under `--plugin-dir`.
 
 ## Plugin evals
 

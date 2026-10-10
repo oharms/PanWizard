@@ -159,6 +159,43 @@ describe('doc-lint counts — drift-prone count detector', () => {
     }
   });
 
+  test('flags a hook count (CLAUDE.md tracks hooks; "5 runtimes" stays a stable identity)', () => {
+    // "5 hooks" was exempt as a stable identity long after a sixth and seventh hook
+    // shipped, so a doc could state a wrong hook count and pass.
+    const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-doclint-hooks-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'README.md'), 'PAN registers 5 hooks on all 5 runtimes.\n');
+      const { spawnSync } = require('child_process');
+      const tools = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+      const r = spawnSync('node', [tools, 'doc-lint', 'counts', tmp, '--raw'], {
+        encoding: 'utf-8',
+        shell: process.platform === 'win32',
+      });
+      assert.equal(r.status, 1, `expected exit 1 (violations), got ${r.status}\n${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout || '', /5 hooks/);
+      assert.doesNotMatch(r.stdout || '', /5 runtimes/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('a file where a directory is expected is refused cleanly, never with a stack trace', () => {
+    const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-doclint-file-'));
+    try {
+      fs.writeFileSync(path.join(tmp, 'README.md'), '# doc\n');
+      const { spawnSync } = require('child_process');
+      const tools = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+      for (const args of [['doc-lint', 'README.md'], ['doc-lint', 'counts', 'README.md'], ['doc-lint', 'flags', '--doc-dir', 'README.md']]) {
+        const r = spawnSync('node', [tools, ...args], { cwd: tmp, encoding: 'utf-8' });
+        assert.equal(r.status, 1, `${args.join(' ')}: expected exit 1, got ${r.status}`);
+        assert.match(r.stderr, /not a directory/, `${args.join(' ')}: ${r.stderr}`);
+        assert.doesNotMatch(r.stderr, /\n\s+at\s+\S+/, `${args.join(' ')} leaked a stack trace`);
+      }
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test('does NOT flag version numbers like "v3.5 module"', () => {
     const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-doclint-version-'));
     try {
@@ -201,5 +238,45 @@ describe('doc-lint counts — drift-prone count detector', () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe('no markdown file holds a second copy of itself', () => {
+  // On 2026-10-04 docs/CLI-REFERENCE.md was found doubled. A scripted edit passed
+  // String.replace a replacement holding the regex `^[a-zA-Z0-9_-]+$`, and its "$`"
+  // pattern pasted everything before the match into the middle of the file, glued to
+  // the line it landed on. It went through five commits because no gate looked. The
+  // pasted text always starts at the top of the file, so the file's opening appearing
+  // a second time is the tell; a repeated whole title line is not (the paste lands
+  // mid-line).
+  const ROOT = path.join(__dirname, '..');
+  const HEAD = 160;
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+  const pastedCopies = (files) => files.flatMap((f) => {
+    const text = fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
+    if (text.length < HEAD * 2) return [];
+    const at = text.indexOf(text.slice(0, HEAD), HEAD);
+    return at === -1 ? [] : [`${path.basename(f)} repeats its opening at offset ${at}`];
+  });
+
+  test('no doc, command, agent, workflow, reference or template repeats its opening', () => {
+    const files = ['docs', 'commands/pan', 'agents', 'pan-wizard-core/workflows', 'pan-wizard-core/references', 'pan-wizard-core/templates', 'harness']
+      .flatMap((d) => walk(path.join(ROOT, d)).filter((f) => f.endsWith('.md')));
+    assert.ok(files.some((f) => f.endsWith('CLI-REFERENCE.md')), 'the scan reaches the file that was doubled');
+    assert.deepEqual(pastedCopies(files), []);
+  });
+
+  test('the check catches the "$`" paste', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'doc-dup-'));
+    try {
+      const f = path.join(tmp, 'ref.md');
+      const doc = `# Reference\n\n${'An introduction that runs long enough to be a real opening. '.repeat(4)}\n\n## memory append\n\nAgent name must match MARK (blocks path traversal).\n`;
+      fs.writeFileSync(f, doc.replace('MARK', '`^[a-z]+$`'));
+      assert.match(fs.readFileSync(f, 'utf8'), /\+# Reference/, 'the trap: the prefix lands glued to the line');
+      assert.equal(pastedCopies([f]).length, 1);
+      fs.writeFileSync(f, doc.replace('MARK', () => '`^[a-z]+$`'));
+      assert.deepEqual(pastedCopies([f]), [], 'a replacer function inserts the text as written');
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   });
 });

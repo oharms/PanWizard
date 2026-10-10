@@ -4,7 +4,7 @@
 
 1. `.planning/state.md`
 2. `.planning/project.md`
-3. `.planning/roadmap.md`
+3. The current phase's roadmap slice (`.planning/phases/XX-current/XX-roadmap-slice.md`) — not the whole roadmap.md (Route A takes the next phase from `phase complete` and `roadmap get-phase`)
 4. Current phase's plan files (`*-plan.md`)
 5. Current phase's summary files (`*-summary.md`)
 
@@ -152,7 +152,7 @@ If found, delete them — phase is complete, handoffs are stale.
 **Delegate roadmap.md and state.md updates to pan-tools:**
 
 ```bash
-TRANSITION=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${current_phase}")
+TRANSITION=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${current_phase}")   # skip when exec-phase invoked this workflow: its `phase complete` already ran — reuse that result
 ```
 
 The CLI handles:
@@ -358,9 +358,9 @@ Then Edit state.md (still under the P-1604 batched-write policy — fold this Ed
 **Format:**
 
 ```markdown
-Last session: [today]
-Stopped at: Phase [X] complete, ready to plan Phase [X+1]
-Resume file: None
+**Last session:** [today]
+**Stopped At:** Phase [X] complete, ready to plan Phase [X+1]
+**Resume File:** None
 ```
 
 **Step complete when:**
@@ -396,12 +396,12 @@ This returns all phases with goals, disk status, and completion info.
 
 **Route A: More phases remain in milestone**
 
-Read roadmap.md to get the next phase's name and goal.
+Take the name from `next_phase_name` (the `phase complete` result) and the goal from `roadmap get-phase "${next_phase}"`, not the whole roadmap.md.
 
 **Check if next phase has context.md:**
 
 ```bash
-ls .planning/phases/*[X+1]*/*-context.md 2>/dev/null
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${next_phase}"   # has_context is true when the next phase has a context.md
 ```
 
 **If next phase exists:**
@@ -448,8 +448,8 @@ Task(
     <instructions>
     1. Read plan-phase.md from execution_context for your complete workflow.
     2. Follow ALL steps: initialize, validate_phase, load context.md, handle research (P-1401 bypass if applicable), spawn pan-planner, optionally spawn pan-plan-checker, then auto-advance to exec-phase via Task (per plan-phase.md step 14).
-    3. After exec-phase completes and verification passes, exec-phase will return to its own auto-advance handler which spawns transition.md — that transition will spawn Phase ${NEXT_PHASE}+1 via this same pattern, recursing until milestone-done.
-    4. Do NOT use the Skill tool or /pan: commands. Do NOT exit early — let the recursion run.
+    3. plan-phase step 14 spawns exec-phase with --no-transition, so exec-phase returns without running transition.md and the chain ends there: on PHASE COMPLETE plan-phase prints `/pan:discuss-phase {next} --auto` as the next step; on GAPS FOUND it stops and reports the gaps.
+    4. Do NOT use the Skill tool or /pan: commands. Do NOT exit early — wait for the exec-phase Task to return.
     </instructions>
   ",
   subagent_type="general-purpose",
@@ -500,7 +500,7 @@ Task(
 ```
 
 **Handle next-phase Task return:**
-- **PHASE COMPLETE** (the spawned chain reached verification + roadmap update for ${NEXT_PHASE} and beyond, and either hit milestone-done or recursed further) → Done. Workflow chain finished.
+- **PHASE COMPLETE** (the spawned chain reached verification + roadmap update for ${NEXT_PHASE} and stopped at that phase's boundary; plan-phase printed `/pan:discuss-phase {next} --auto`) → Done. Workflow chain finished.
 - **GAPS FOUND / FAILED / TIMEOUT** → Display the failure, stop the recursion, return status to user. Do NOT attempt to skip ahead.
 
 </if>
@@ -574,10 +574,10 @@ Phase {X} marked complete.
 
 🎉 Milestone {version} is 100% complete — all {N} phases finished!
 
-⚡ Auto-continuing: Complete milestone and archive
+Auto-advance stops at the milestone boundary. Next: /pan:milestone-done {version}
 ```
 
-Exit skill and invoke SlashCommand("/pan:milestone-done {version}")
+Stop here and show `/pan:milestone-done {version}` as the next step: the milestone boundary ends the auto chain (auto-advance was cleared above).
 
 </if>
 

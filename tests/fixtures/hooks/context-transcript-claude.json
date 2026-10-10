@@ -1,0 +1,132 @@
+{
+  "main": [
+    {
+      "parentUuid": null,
+      "isSidechain": false,
+      "type": "user",
+      "message": { "role": "user", "content": "Run the shell command `echo main-tool`, then start one subagent." },
+      "uuid": "00000000-0000-4000-8000-000000000101",
+      "timestamp": "2026-10-04T15:48:20.000Z",
+      "userType": "external",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}",
+      "version": "2.1.288"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000101",
+      "isSidechain": false,
+      "message": {
+        "model": "claude-sonnet-5-5",
+        "id": "msg_fixture_main_0001",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_main_0001", "name": "Bash", "input": { "command": "echo main-tool", "description": "Print a marker" } }],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 15744,
+          "cache_read_input_tokens": 28519,
+          "output_tokens": 79,
+          "service_tier": "standard",
+          "cache_creation": { "ephemeral_1h_input_tokens": 15744, "ephemeral_5m_input_tokens": 0 }
+        }
+      },
+      "requestId": "req_fixture_0001",
+      "type": "assistant",
+      "uuid": "00000000-0000-4000-8000-000000000102",
+      "timestamp": "2026-10-04T15:48:27.000Z",
+      "userType": "external",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}",
+      "version": "2.1.288"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000102",
+      "isSidechain": false,
+      "type": "user",
+      "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_fixture_main_0001", "content": "main-tool" }] },
+      "uuid": "00000000-0000-4000-8000-000000000103",
+      "timestamp": "2026-10-04T15:48:28.000Z",
+      "toolUseResult": { "stdout": "main-tool", "stderr": "", "interrupted": false, "isImage": false, "noOutputExpected": false },
+      "sourceToolAssistantUUID": "00000000-0000-4000-8000-000000000102",
+      "userType": "external",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}",
+      "version": "2.1.288"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000103",
+      "isSidechain": false,
+      "attachment": {
+        "type": "hook_additional_context",
+        "content": ["(a PostToolUse hook's additionalContext)"],
+        "hookName": "PostToolUse:Bash",
+        "toolUseID": "toolu_fixture_main_0001",
+        "hookEvent": "PostToolUse"
+      },
+      "type": "attachment",
+      "uuid": "00000000-0000-4000-8000-000000000104",
+      "timestamp": "2026-10-04T15:48:28.320Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}",
+      "version": "2.1.288"
+    }
+  ],
+  "compact_boundary": {
+    "parentUuid": null,
+    "logicalParentUuid": "00000000-0000-4000-8000-000000000104",
+    "isSidechain": false,
+    "type": "system",
+    "subtype": "compact_boundary",
+    "content": "Conversation compacted",
+    "isMeta": false,
+    "timestamp": "2026-10-04T15:50:00.000Z",
+    "uuid": "00000000-0000-4000-8000-000000000105",
+    "level": "info",
+    "compactMetadata": { "trigger": "auto", "preTokens": 44344 },
+    "cwd": "{{PROJECT_DIR}}",
+    "sessionId": "{{SESSION_ID}}",
+    "version": "2.1.288"
+  },
+  "agent": [
+    {
+      "parentUuid": null,
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "type": "user",
+      "message": { "role": "user", "content": "Run `echo sub-tool` with the Bash tool and report the output." },
+      "uuid": "00000000-0000-4000-8000-000000000201",
+      "timestamp": "2026-10-04T15:48:29.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}",
+      "version": "2.1.288"
+    },
+    {
+      "parentUuid": "00000000-0000-4000-8000-000000000201",
+      "isSidechain": true,
+      "agentId": "{{AGENT_ID}}",
+      "message": {
+        "model": "claude-sonnet-5-5",
+        "id": "msg_fixture_agent_0001",
+        "type": "message",
+        "role": "assistant",
+        "content": [{ "type": "tool_use", "id": "toolu_fixture_sub_0001", "name": "Bash", "input": { "command": "echo sub-tool", "description": "Print a marker" } }],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 34105,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 82,
+          "service_tier": "standard"
+        }
+      },
+      "requestId": "req_fixture_0002",
+      "type": "assistant",
+      "uuid": "00000000-0000-4000-8000-000000000202",
+      "timestamp": "2026-10-04T15:48:31.000Z",
+      "cwd": "{{PROJECT_DIR}}",
+      "sessionId": "{{SESSION_ID}}",
+      "version": "2.1.288"
+    }
+  ]
+}

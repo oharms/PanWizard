@@ -267,6 +267,7 @@ Execute quick task ${next_num}.
 - Commit each task atomically
 - Create summary at: ${QUICK_DIR}/${next_num}-summary.md
 - Do NOT update roadmap.md (quick tasks are separate from planned phases)
+- This is not a phase: skip `init execute-phase` and the state updates (advance-plan, update-progress, record-metric, record-session, roadmap update-plan-progress, requirements mark-complete); Step 7 of this workflow records the task in state.md
 </constraints>
 ",
   subagent_type="pan-executor",
@@ -381,7 +382,8 @@ Use `date` and `description_cell` from init. Write `description_cell` exactly as
 
 Use `date` and `description_cell` from init (one line, whatever the description held):
 ```
-Last activity: ${date} - Completed quick task ${next_num}: ${description_cell}
+**Last Activity:** ${date}
+**Last Activity Description:** Completed quick task ${next_num}: ${description_cell}
 ```
 
 Use Edit tool to make these changes atomically
@@ -449,8 +451,8 @@ Ready for next task: /pan:quick
 - [ ] User provides task description
 - [ ] `--full` flag parsed from arguments when present
 - [ ] Slug generated (lowercase, hyphens, max 40 chars)
-- [ ] Next number calculated (001, 002, 003...)
-- [ ] Directory created at `.planning/quick/NNN-slug/`
+- [ ] Next number taken from init (`next_num`: 1, 2, 3...)
+- [ ] Directory created at init's `task_dir` (`.planning/quick/{next_num}-{slug}/`)
 - [ ] `${next_num}-plan.md` created by planner
 - [ ] (--full) Plan checker validates plan, revision loop capped at 2
 - [ ] `${next_num}-summary.md` created by executor

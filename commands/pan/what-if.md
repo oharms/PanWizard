@@ -56,7 +56,7 @@ If worktree creation fails (not a git repo, dirty tree blocking, etc.), abort wi
 
 ### Stage 2 — Spawn pan-counterfactual
 
-Spawn the agent with its working directory set to `worktree_path`. Prompt includes:
+Spawn the agent. A spawn cannot set its working directory — it starts in the main project — so the prompt's `<worktree_path>` is where it must work. Prompt includes:
 - `<files_to_read>` — the phase plan, any existing summary, the main project's `CLAUDE.md` so the agent understands conventions.
 - `<scenario>` — the user's scenario text verbatim.
 - `<worktree_path>` — so the agent knows the safe boundary.
@@ -69,7 +69,7 @@ The agent explores, then returns a JSON payload with `{summary, differences, rec
 Run (from main tree, NOT worktree):
 
 ```
-pan-tools whatif report <phase> "<scenario>" --comparison '<agent-json>'
+pan-tools whatif report <phase> "<scenario>" --comparison "$(cat <comparison-json-file>)"
 ```
 
 This writes `.planning/counterfactuals/<phase>-<slug>.md`. The file belongs to the main tree and survives worktree cleanup.

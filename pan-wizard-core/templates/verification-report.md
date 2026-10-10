@@ -10,16 +10,34 @@ Template for `.planning/phases/XX-name/{phase_num}-verification.md` — phase go
 ---
 phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
-verified_commit: <sha> # git rev-parse HEAD before writing this file; `pan-tools verify stale` compares against it
+# verified_commit: git rev-parse HEAD before writing this file; `pan-tools verify stale` compares against it
+verified_commit: <sha>
 status: passed | gaps_found | human_needed
 score: N/M must-haves verified
 test_gate: passed | failed | skipped
-not_checked: # Only for checks that could not run, with why — a skipped test gate is one
-  - check: "tests"
-    reason: "no test script in package.json"
-unrequested: # Only when the scope check (`pan-tools verify scope <phase>`) found work no plan asked for
-  - path: "src/admin/panel.tsx"
-    what: "An admin panel no plan or requirement asked for"
+# Only for checks that could not run, with why (a skipped test gate is one): write not_checked uncommented
+# not_checked:
+#   - check: "tests"
+#     reason: "no test script in package.json"
+# Only if status: gaps_found; read by `findings record` and /pan:plan-phase --gaps: write gaps uncommented
+# gaps:
+#   - truth: "Observable truth that failed"
+#     status: failed
+#     reason: "Why it failed"
+#     artifacts:
+#       - path: "src/path/to/file.tsx"
+#         issue: "What's wrong"
+#     missing:
+#       - "Specific thing to add/fix"
+# Only if status: human_needed: write human_verification uncommented
+# human_verification:
+#   - test: "What to do"
+#     expected: "What should happen"
+#     why_human: "Why it cannot be verified programmatically"
+# Only when the scope check (`pan-tools verify scope <phase>`) found work no plan asked for: write unrequested uncommented
+# unrequested:
+#   - path: "src/admin/panel.tsx"
+#     what: "An admin panel no plan or requirement asked for"
 ---
 
 # Phase {X}: {Name} Verification Report
@@ -212,8 +230,35 @@ Unrequested work is recorded, not blocking: the status does not change because o
 ---
 phase: 03-chat
 verified: 2025-01-15T14:30:00Z
+verified_commit: 4f2a9c1
 status: gaps_found
-score: 2/5 must-haves verified
+score: 1/5 must-haves verified
+test_gate: passed
+gaps:
+  - truth: "User can see existing messages"
+    status: failed
+    reason: "Chat.tsx renders a placeholder, not message data"
+    artifacts:
+      - path: "src/components/Chat.tsx"
+        issue: "Returns a placeholder div and fetches nothing"
+    missing:
+      - "Fetch from /api/chat and render the messages"
+  - truth: "User can send a message"
+    status: failed
+    reason: "The onSubmit handler only logs"
+    artifacts:
+      - path: "src/components/ChatInput.tsx"
+        issue: "onSubmit calls console.log, no fetch"
+    missing:
+      - "POST to /api/chat on submit"
+  - truth: "Sent message appears in list"
+    status: failed
+    reason: "No state update after send, and the API routes return hardcoded values"
+    artifacts:
+      - path: "src/app/api/chat/route.ts"
+        issue: "GET returns [], POST returns { ok: true }, no database call"
+    missing:
+      - "prisma.message.findMany and create in the route handlers, and a list refresh after send"
 ---
 
 # Phase 3: Chat Interface Verification Report

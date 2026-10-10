@@ -10,6 +10,27 @@ const os = require('os');
 const lib = require('../bin/install-lib.cjs');
 const { buildPluginInto, cleanup, withFakeHome } = require('./helpers.cjs');
 
+// ─── rewriteAgentFileRefs ───────────────────────────────────────────────────
+
+describe('rewriteAgentFileRefs', () => {
+  const role = (p) => `First, read ${p}agents/pan-planner.md for your role.`;
+  test('Codex names the .toml it installs; Copilot the .agent.md', () => {
+    assert.equal(lib.rewriteAgentFileRefs(role('./.codex/'), 'codex', './.codex/'), 'First, read ./.codex/agents/pan-planner.toml for your role.');
+    assert.equal(lib.rewriteAgentFileRefs(role('./.github/'), 'copilot', './.github/'), 'First, read ./.github/agents/pan-planner.agent.md for your role.');
+  });
+  test('a global prefix is matched literally, and a second pass changes nothing', () => {
+    const prefix = 'C:/Users/me/.copilot/';
+    const once = lib.rewriteAgentFileRefs(role(prefix), 'copilot', prefix);
+    assert.equal(once, 'First, read C:/Users/me/.copilot/agents/pan-planner.agent.md for your role.');
+    assert.equal(lib.rewriteAgentFileRefs(once, 'copilot', prefix), once);
+  });
+  test('runtimes that install markdown agents keep .md, and other paths are untouched', () => {
+    for (const rt of ['claude', 'gemini', 'opencode']) assert.equal(lib.rewriteAgentFileRefs(role('./.x/'), rt, './.x/'), role('./.x/'));
+    const other = 'see ./.codex/pan-wizard-core/agents/pan-planner.md and docs/AGENTS.md';
+    assert.equal(lib.rewriteAgentFileRefs(other, 'codex', './.codex/'), other);
+  });
+});
+
 // ─── getDirName ─────────────────────────────────────────────────────────────
 
 describe('getDirName', () => {
@@ -858,11 +879,15 @@ describe('detectModelCapabilities', () => {
       { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' });
   });
 
-  test('a future Haiku generation is fast tier, no thinking (inherits Haiku 4.5)', () => {
-    // deepEqual (not just has_thinking) — `unknown` is also thinking-less, so
-    // only tier + has_cache distinguish the fallback from the pre-fix result.
-    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-5'),
-      { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' });
+  test('Haiku 5.x has 1M context and thinking, and a future Haiku inherits that profile', () => {
+    // Haiku 5.5 (pricing page and Claude Code 2.1.293, read 2026-10-10) has a 1M
+    // window and adaptive thinking, so Haiku is no longer the thinking-less family.
+    const HAIKU_5 = { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'fast' };
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-5-5'), HAIKU_5);
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-5'), HAIKU_5);
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-6'), HAIKU_5, 'the forward fallback');
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4-5'),
+      { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' }, 'Haiku 4.5 unchanged');
   });
 
   test('a future Fable/Mythos generation resolves via its version-free branch', () => {
@@ -943,14 +968,13 @@ describe('detectModelCapabilities', () => {
       { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'mid' });
   });
 
-  test('a Haiku point release stays fast tier without thinking', () => {
-    // Haiku's legacy and modern profiles are identical, so this asserts the
-    // guard did not accidentally change the answer for the one family where
-    // forward and legacy agree.
-    const HAIKU = { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' };
-    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4-5'), HAIKU);
-    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4-9'), HAIKU);
-    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4'), HAIKU);
+  test('Haiku 4.x through 4.5 keeps its legacy profile; a newer point release takes the modern one', () => {
+    // Since Haiku 5.5 the two profiles differ (1M context, thinking), so the guard now
+    // decides the answer for Haiku as it always did for Opus and Sonnet.
+    const HAIKU_4 = { has_1m_ctx: false, has_thinking: false, has_cache: true, tier: 'fast' };
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4-5'), HAIKU_4);
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4'), HAIKU_4);
+    assert.deepEqual(lib.detectModelCapabilities('claude-haiku-4-9'), { has_1m_ctx: true, has_thinking: true, has_cache: true, tier: 'fast' });
   });
 
   test('the fallback does not touch Claude 3.x', () => {
@@ -1735,6 +1759,38 @@ describe('buildNativeWorkflowScripts', () => {
     assert.ok(review.content.includes("agentType: 'pan-hardener'"));
     assert.ok(review.content.includes("agentType: 'pan-meta-reviewer'"));
   });
+
+  test('pan-exec-waves honours workflow.verifier: off skips the verifier, on runs it', async () => {
+    // exec-phase read verifier_enabled from init and spawned the verifier anyway;
+    // /pan:settings asks "Spawn Execution Verifier?" and stores the answer there.
+    const s = scripts.find(x => x.name === 'pan-exec-waves.js');
+    const body = s.content.replace(/^export const meta/, 'const meta');
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const run = async (verifierEnabled) => {
+      const spawned = [];
+      const agent = async (prompt, opts = {}) => {
+        spawned.push(opts.agentType || opts.label);
+        if (opts.label === 'index') {
+          return { phase_found: true, phase_number: '1', phase_dir: '.planning/phases/01-a', parallelization: true,
+            verifier_enabled: verifierEnabled, has_checkpoints: false,
+            plans: [{ id: '01-01', file: '.planning/phases/01-a/01-01-plan.md', wave: 1, autonomous: true, has_summary: false }] };
+        }
+        if (opts.agentType === 'pan-executor') return { plan_id: '01-01', status: 'complete', self_check: 'passed', commits: 1 };
+        if (opts.agentType === 'pan-verifier') return { status: 'passed', summary: 'ok' };
+        return {};
+      };
+      const parallel = async (thunks) => Promise.all(thunks.map((t) => t()));
+      const result = await new AsyncFunction('args', 'agent', 'parallel', 'phase', 'log', body)('1', agent, parallel, () => {}, () => {});
+      return { spawned, result };
+    };
+    const off = await run(false);
+    assert.deepEqual(off.spawned, ['index', 'pan-executor']);
+    assert.equal(off.result.verification, null);
+    assert.match(off.result.next, /workflow\.verifier is off/);
+    const on = await run(true);
+    assert.deepEqual(on.spawned, ['index', 'pan-executor', 'pan-verifier']);
+    assert.equal(on.result.verification.status, 'passed');
+  });
 });
 
 describe('HOOK_EVENT_MAP', () => {
@@ -1821,6 +1877,40 @@ describe('CLAUDE.md @AGENTS.md bridge', () => {
     const removed = lib.removeClaudeMdImport(withBridge);
     assert.ok(removed.includes('# x'));
     assert.ok(!removed.includes('@AGENTS.md'));
+    assert.ok(!removed.includes('Compact instructions'), 'the compact section goes with the block');
+  });
+
+  // Memory optimisation O8: Claude Code reads a "Compact instructions" section in the
+  // project-root CLAUDE.md when it summarises a conversation.
+  test('the block tells the compaction summary what PAN work needs to resume', () => {
+    const out = lib.ensureClaudeMdImport(null);
+    assert.match(out, /^<!-- BEGIN PAN WIZARD -->\n@AGENTS\.md\n\n# Compact instructions\n/);
+    assert.match(out, /the current phase and plan, and the task in progress with its stopping point \(`\.planning\/state\.md` records them; keep that path\)/);
+    assert.match(out, /decisions made in this session/);
+    assert.match(out, /Leave out file contents and command output/);
+    const { isSuspiciousDirective } = require('../pan-wizard-core/bin/lib/memory-optimize.cjs');
+    for (const line of out.split('\n')) assert.equal(isSuspiciousDirective(line), false, `memory rebuild would flag: ${line}`);
+  });
+
+  test('the CLAUDE.md block imports the rules and never repeats them (O9)', () => {
+    // Copilot CLI reads AGENTS.md and CLAUDE.md as two sources and expands the import,
+    // so PAN's section already arrives twice there (docs/TROUBLESHOOTING.md). Text from
+    // the section copied into CLAUDE.md would be a third copy.
+    const bridge = lib.ensureClaudeMdImport(null);
+    const ruleLines = lib.buildAgentsMdSection().split('\n').filter((l) => l.trim() && !l.startsWith('<!--'));
+    for (const l of ruleLines) assert.equal(bridge.includes(l), false, `CLAUDE.md repeats: ${l}`);
+    assert.equal((bridge.match(/^@AGENTS\.md$/gm) || []).length, 1);
+  });
+
+  test('an older PAN bridge is brought up to date in place; user content and line endings survive', () => {
+    const old = '# Mine\r\n\r\nrules\r\n\r\n<!-- BEGIN PAN WIZARD -->\r\n@AGENTS.md\r\n<!-- END PAN WIZARD -->\r\n\r\n## After\r\n';
+    const out = lib.ensureClaudeMdImport(old);
+    assert.ok(out.startsWith('# Mine\r\n\r\nrules\r\n\r\n<!-- BEGIN PAN WIZARD -->\r\n@AGENTS.md\r\n\r\n# Compact instructions\r\n'));
+    assert.ok(out.endsWith('<!-- END PAN WIZARD -->\r\n\r\n## After\r\n'));
+    assert.doesNotMatch(out.replace(/\r\n/g, ''), /\n/, 'no bare LF');
+    assert.equal(lib.ensureClaudeMdImport(out), out, 'idempotent once upgraded');
+    const foreign = '<!-- BEGIN PAN WIZARD -->\n## something else\n<!-- END PAN WIZARD -->\n';
+    assert.equal(lib.ensureClaudeMdImport(foreign), foreign, 'a PAN block that is not the bridge is left alone');
   });
 });
 

@@ -445,6 +445,8 @@ function copyFlattenedCommands(srcDir, destDir, prefix, pathPrefix, runtime) {
       content = content.replace(globalClaudeRegex, pathPrefix);
       content = content.replace(localClaudeRegex, `./${getDirName(runtime)}/`);
       content = content.replace(opencodeDirRegex, pathPrefix);
+      // As in copyWithPathReplacement: no `pan-tools` bin is on PATH.
+      content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`);
       content = processAttribution(content, getCommitAttribution(runtime));
       content = convertClaudeToOpencodeFrontmatter(content);
 
@@ -504,6 +506,7 @@ function copyCommandsAsCodexSkills(srcDir, skillsDir, prefix, pathPrefix, runtim
       content = content.replace(globalClaudeRegex, pathPrefix);
       content = content.replace(localClaudeRegex, `./${getDirName(runtime)}/`);
       content = content.replace(codexDirRegex, pathPrefix);
+      content = lib.rewriteAgentFileRefs(content, runtime, pathPrefix);
       // Codex executes commands literally; no `pan-tools` bin on PATH.
       const panToolsPath = `${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`;
       content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${panToolsPath}`);
@@ -821,6 +824,7 @@ function copyCommandsAsCopilotSkills(srcDir, skillsDir, prefix, pathPrefix, runt
       const localClaudeRegex = /\.\/\.claude\//g;
       content = content.replace(globalClaudeRegex, pathPrefix);
       content = content.replace(localClaudeRegex, `./${getDirName(runtime)}/`);
+      content = lib.rewriteAgentFileRefs(content, runtime, pathPrefix);
       // Copilot CLI executes commands literally; there's no `pan-tools` bin on PATH.
       // Replace bare `pan-tools` invocations with the explicit node + .cjs path.
       const panToolsPath = `${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`;
@@ -876,6 +880,11 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime, isCommand
         const localClaudeRegex = /\.\/\.claude\//g;
         content = content.replace(globalClaudeRegex, pathPrefix);
         content = content.replace(localClaudeRegex, `./${dirName}/`);
+        // No runtime puts a `pan-tools` bin on PATH: invoke it via node, as the Codex
+        // and Copilot converters already did. A bare `pan-tools <verb>` in an installed
+        // Claude, Gemini or OpenCode command or workflow was a call that could not run.
+        content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`);
+        content = lib.rewriteAgentFileRefs(content, runtime, pathPrefix);
         content = processAttribution(content, getCommitAttribution(runtime));
 
         // Convert frontmatter for opencode compatibility
@@ -1242,6 +1251,16 @@ function uninstall(isGlobal, runtime = 'claude') {
       removedCount++;
       console.log(`  ${green}✓${reset} Removed ${wfCount} native workflows`);
     }
+  }
+
+  // 4a'. Remove the OpenCode plugin (O12); the plugins directory goes too when
+  // nothing else is in it.
+  const opencodePlugin = path.join(targetDir, 'plugins', OPENCODE_PLUGIN_FILE);
+  if (fs.existsSync(opencodePlugin)) {
+    try { fs.unlinkSync(opencodePlugin); } catch {}
+    try { fs.rmdirSync(path.dirname(opencodePlugin)); } catch { /* not empty: the user's own plugins stay */ }
+    removedCount++;
+    console.log(`  ${green}✓${reset} Removed the PAN plugin`);
   }
 
   // 4b. Codex: strip PAN entries from the shared .codex/hooks.json (foreign
@@ -1842,6 +1861,8 @@ const PATCHES_DIR_NAME = 'pan-local-patches';
 // the patches tree stays self-contained.
 const EXTERNAL_PATCHES_SUBDIR = '_external';
 const MANIFEST_NAME = 'pan-file-manifest.json';
+// PAN's OpenCode plugin, installed as <opencode dir>/plugins/pan-wizard.js (O12).
+const OPENCODE_PLUGIN_FILE = 'pan-wizard.js';
 
 /**
  * Compute SHA256 hash of file contents
@@ -1962,6 +1983,11 @@ function writeManifest(configDir, runtime = 'claude', isGlobal = false) {
         manifest.files['workflows/' + file] = fileHash(path.join(workflowsDir, file));
       }
     }
+  }
+  // The OpenCode plugin (O12)
+  const opencodePlugin = path.join(configDir, 'plugins', OPENCODE_PLUGIN_FILE);
+  if (isOpencode && fs.existsSync(opencodePlugin)) {
+    manifest.files[`plugins/${OPENCODE_PLUGIN_FILE}`] = fileHash(opencodePlugin);
   }
 
   try {
@@ -2248,7 +2274,9 @@ function install(isGlobal, runtime = 'claude') {
       // last; the per-runtime core remains for agents/hooks.
       const sharedCoreDest = path.join(agentsRoot, 'pan-wizard-core');
       copySharedCore(path.join(src, 'pan-wizard-core'), sharedCoreDest, corePrefix, pathPrefix, runtime);
-      try { fs.writeFileSync(path.join(sharedCoreDest, 'VERSION'), pkg.version); } catch { /* non-fatal */ }
+      // With its newline, as the per-runtime core writes it: `/pan:update` cats the file
+      // and prints the runtime flag next, which glued onto a bare version.
+      try { fs.writeFileSync(path.join(sharedCoreDest, 'VERSION'), pkg.version + '\n'); } catch { /* non-fatal */ }
 
       // Canonical agent-definition reference copies (ADR-0028 agent-ref
       // canonicalization): shared content references these instead of the
@@ -2451,6 +2479,9 @@ function install(isGlobal, runtime = 'claude') {
           // Always replace ~/.claude/ as it is the source of truth in the repo
           const dirRegex = /~\/\.claude\//g;
           content = content.replace(dirRegex, pathPrefix);
+          // As in copyWithPathReplacement: no `pan-tools` bin is on PATH.
+          content = content.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${pathPrefix}pan-wizard-core/bin/pan-tools.cjs`);
+          content = lib.rewriteAgentFileRefs(content, runtime, pathPrefix);
           content = processAttribution(content, getCommitAttribution(runtime));
           // Codex custom agents are standalone TOML files (2026-06 format);
           // markdown in .codex/agents/ is not recognized. Handle before
@@ -2636,6 +2667,21 @@ function install(isGlobal, runtime = 'claude') {
       console.log(`  ${green}✓${reset} Installed ${scripts.length} native workflows to workflows/`);
     } catch (e) {
       pushInstallWarning('nativeWorkflows', 'workflows/pan-*', e);
+    }
+  }
+
+  // OpenCode plugin (memory optimisation O12). OpenCode runs no command hooks, but a
+  // plugin can add to the prompt it compacts a session with; PAN's keeps the phase
+  // in flight through a compaction, as hooks/pan-state-reinject.js does on the other
+  // hosts. CommonJS, beside the package.json written above.
+  if (isOpencode) {
+    try {
+      const pluginsDir = path.join(targetDir, 'plugins');
+      fs.mkdirSync(pluginsDir, { recursive: true });
+      fs.copyFileSync(path.join(src, 'pan-wizard-core', 'opencode', OPENCODE_PLUGIN_FILE), path.join(pluginsDir, OPENCODE_PLUGIN_FILE));
+      console.log(`  ${green}✓${reset} Installed the PAN plugin to plugins/ (keeps PAN's position through compaction)`);
+    } catch (e) {
+      pushInstallWarning('opencodePlugin', `plugins/${OPENCODE_PLUGIN_FILE}`, e);
     }
   }
 

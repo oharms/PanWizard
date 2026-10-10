@@ -16,7 +16,7 @@ allowed-tools:
 Retrieve, refine, or consolidate project knowledge. Three modes:
 
 - **ask** — answer a natural-language question with inline citations grounded in `.planning/` + `docs/`.
-- **discuss** — multi-turn refinement of a phase's context. Session state persists across invocations; prompt caching keeps turn 3 cheap.
+- **discuss** — multi-turn refinement of a phase's context. Session state persists across invocations.
 - **playbook** — aggregate all agents' memory (E-4 layer) into `.planning/playbook.md`, organized by category (Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps).
 
 Consolidates Spec B v1's X-3 converse + X-6 teach + X-10 explain into one command.
@@ -54,10 +54,10 @@ Consolidates Spec B v1's X-3 converse + X-6 teach + X-10 explain into one comman
 2. `pan-tools knowledge discuss <phase> --subcmd append --role user --content "<topic>"` persists the user turn.
 3. Spawn `pan-knowledge` with `<mode>discuss</mode>`, session history, phase context, and the new turn.
 4. Agent responds.
-5. `pan-tools knowledge discuss <phase> --subcmd append --role agent --content "<response>" --cites "a.md,b.md"` persists the response.
-6. If after ≥3 substantive turns the agent offered to emit `context.md`, user can follow up with another `/pan:knowledge discuss <phase>` invocation or run the commit subcommand the agent suggested.
+5. Write the agent's response to a file, then `pan-tools knowledge discuss <phase> --subcmd append --role agent --content "$(cat <response-file>)" --cites "a.md,b.md"` persists it — a reply pasted between the quotes breaks the shell line at its first `"`, `$` or backtick.
+6. If after ≥3 substantive turns the agent offered to emit `context.md`, the user accepts in another `/pan:knowledge discuss <phase>` turn and the agent writes it (there is no commit subcommand).
 
-**Session persistence:** `.planning/conversations/<phase>/session.json` — array of turns with ts/role/content/cites. Multi-turn cost is dominated by cache hits on stable `.planning/` files.
+**Session persistence:** `.planning/conversations/<phase>/session.json` — `{phase, turns: [...], created, last_updated}`, each turn with ts/role/content/cites.
 
 ### `playbook`
 
@@ -66,12 +66,12 @@ Consolidates Spec B v1's X-3 converse + X-6 teach + X-10 explain into one comman
 ```
 
 **Flow:**
-1. `pan-tools knowledge playbook` reads all agents' memory (`.planning/memory/*.md`), clusters entries by category, writes `.planning/playbook.md` directly.
+1. `pan-tools knowledge playbook` reads every agent log that `memory list` names in `.planning/memory/`, clusters entries by category, writes `.planning/playbook.md` directly.
 2. Optionally spawn `pan-knowledge` with `<mode>playbook</mode>` to polish (dedupe contradictions, consolidate similar entries). Skip the polish step if the draft looks clean.
 
 **Output:** `.planning/playbook.md` — team-readable summary of accumulated lessons.
 
-**Auto-invocation:** `/pan:milestone-done` can optionally run this (flag-gated, not default). Manual invocation any time.
+**Auto-invocation:** none — no workflow runs it (`/pan:milestone-done` has no playbook step). Run it by hand any time.
 
 </modes>
 
@@ -83,7 +83,7 @@ Consolidates Spec B v1's X-3 converse + X-6 teach + X-10 explain into one comman
 
 **Bug investigation:** `/pan:knowledge ask "why did we add the retry in phase 4?"` — faster than grepping for historical context.
 
-**Before milestone-done:** run `/pan:knowledge playbook` to capture what the team learned. Gives contributors something to reference when starting the next milestone.
+**Before milestone-done:** run `/pan:knowledge playbook` to collect the lessons the agent logs hold. PAN no longer writes those logs on its own (ADR-0036, amended `2026-10-04`): they hold what someone recorded with `memory append`, `memory record` or `/pan:retro` with `--write-memory`, or an older report applied, so on a project without such entries the playbook is empty.
 
 </workflow>
 
@@ -106,8 +106,8 @@ The agent should NEVER fabricate citations. The retrieval layer's `sources` list
 
 | Runtime | ask | discuss | playbook |
 |---------|-----|---------|----------|
-| Claude Code | Full, thinking enabled | Full, prompt caching bonus | Full |
-| OpenCode | Full | Full (no cache bonus) | Full |
+| Claude Code | Full, thinking enabled | Full | Full |
+| OpenCode | Full | Full | Full |
 | Gemini | Full | Full | Full |
 | Codex | Full | Full | Full |
 | Copilot | Full | Full | Full |

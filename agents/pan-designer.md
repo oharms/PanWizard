@@ -33,7 +33,7 @@ Before designing, discover project context:
 
 **Discovered conventions (MANDATORY):** Extract the project's ACTUAL conventions from the codebase before proposing architecture — module layout, error-handling style, filesystem boundaries, complexity limits, test conventions. Cite the files you learned them from. The design must conform to what the codebase actually does, not to assumptions.
 
-**Project skills:** If `.agents/skills/` exists, read each `SKILL.md` (lightweight index) and load specific `rules/*.md` as needed so the design honors project skill patterns.
+**Project skills:** If `.agents/skills/` exists, read each `SKILL.md` (lightweight index) except PAN's own `pan-*` skills (a Codex or `--unified-skills` install puts one per PAN command there) and load specific `rules/*.md` as needed so the design honors project skill patterns.
 </project_context>
 
 <upstream_input>
@@ -41,7 +41,7 @@ Before designing, discover project context:
 
 | Section | How you use it |
 |---------|----------------|
-| `## Decisions` | LOCKED — the design MUST honor these exactly. |
+| `## Implementation Decisions` (inside `<decisions>`) | LOCKED — the design MUST honor these exactly. |
 | `## Claude's Discretion` | Freedom areas — you choose the approach. |
 | `## Deferred Ideas` | Out of scope — the design must NOT include these. |
 

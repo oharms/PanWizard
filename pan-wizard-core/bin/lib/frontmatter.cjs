@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { safeReadFile, output, error, escapeRegex } = require('./core.cjs');
+const { safeReadFile, output, error, escapeRegex, toLf, dominantEol, withEol } = require('./core.cjs');
 const { FIELD_VALUE_RE, PRIORITY_LEVELS, EFFORT_SIZES } = require('./constants.cjs');
 
 // --- Inline array rendering thresholds -------------------------------------------
@@ -169,7 +169,21 @@ function renderYamlEntry(lines, key, value, depth) {
       lines.push(`${indent}${key}:`);
       const itemIndent = '  '.repeat(depth + 1);
       for (const item of value) {
-        lines.push(`${itemIndent}- ${quoteIfNeeded(item)}`);
+        if (item && typeof item === 'object' && !Array.isArray(item)) {
+          // A list of maps (a plan's must_haves artifacts and key_links): the first
+          // key on the dash line, the rest under it. Written as a scalar, each item
+          // came out "[object Object]".
+          const entries = Object.entries(item).filter(([, v]) => v !== null && v !== undefined);
+          entries.forEach(([k, v], idx) => {
+            // An array value goes out as a flow sequence of JSON strings, which the
+            // parser reads back as an array (`exports: ["GET", "POST"]`).
+            const text = Array.isArray(v) ? `[${v.map((x) => JSON.stringify(String(x))).join(', ')}]`
+              : quoteIfNeeded(typeof v === 'object' ? JSON.stringify(v) : v);
+            lines.push(`${itemIndent}${idx === 0 ? '- ' : '  '}${k}: ${text}`);
+          });
+        } else {
+          lines.push(`${itemIndent}- ${quoteIfNeeded(item)}`);
+        }
       }
     }
   } else if (typeof value === 'object') {
@@ -201,34 +215,76 @@ function quoteIfNeeded(value) {
  */
 function spliceFrontmatter(content, newObj) {
   const yamlStr = reconstructFrontmatter(newObj);
-  const match = content.match(/^---\n[\s\S]+?\n---/);
+  // Match on LF and give the file back in its own ending. The LF-only match
+  // missed the block in a CRLF file, so `frontmatter set` and `merge` stacked a
+  // second frontmatter on top of the first instead of replacing it.
+  const eol = dominantEol(content);
+  const text = toLf(content);
+  const match = text.match(/^---\n[\s\S]+?\n---/);
   if (match) {
-    return `---\n${yamlStr}\n---` + content.slice(match[0].length);
+    return withEol(`---\n${yamlStr}\n---` + text.slice(match[0].length), eol);
   }
-  return `---\n${yamlStr}\n---\n\n` + content;
+  return withEol(`---\n${yamlStr}\n---\n\n` + text, eol);
+}
+
+/**
+ * A YAML scalar as written in a must_haves value: a double-quoted one unescapes `\\`
+ * and `\"`, a single-quoted one `''`, a plain one is taken as written. The raw `\\.`
+ * of the shipped key-link example reached `new RegExp` in `verify key-links`, so
+ * `pattern: "prisma\\.message\\.(find|create)"` never matched.
+ * @param {string} raw - The value text after `key:` (or after `- `)
+ * @returns {string}
+ */
+function yamlScalar(raw) {
+  const s = String(raw).trim();
+  // A flow sequence (`exports: ["GET", "POST"]`, as the plan template writes it) is an
+  // array of scalars: taken whole it was one string, and `verify artifacts` then
+  // reported every export missing.
+  if (s.length >= 2 && s.startsWith('[') && s.endsWith(']')) {
+    const items = [];
+    let cur = '';
+    let quote = null;
+    const inner = s.slice(1, -1);
+    for (let i = 0; i < inner.length; i++) {
+      const c = inner[i];
+      if (quote) {
+        cur += c;
+        if (c === '\\' && quote === '"' && i + 1 < inner.length) cur += inner[++i];
+        else if (c === quote) quote = null;
+      } else if (c === '"' || c === "'") { quote = c; cur += c; }
+      else if (c === ',') { items.push(cur); cur = ''; }
+      else cur += c;
+    }
+    items.push(cur);
+    return items.map((x) => yamlScalar(x)).filter((x) => x !== '');
+  }
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\(["\\])/g, '$1');
+  if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
+  return s;
 }
 
 /**
  * Parse a specific block (artifacts, key_links, truths) from must_haves in raw YAML frontmatter.
  *
- * Block structure being parsed:
- *   The must_haves section is a 3-level nested YAML structure:
- *     must_haves:           (level 1 -- 2-space indent)
- *       artifacts:          (level 2 -- 4-space indent, the blockName)
- *         - path: foo       (level 3 -- 6-space indent, list items)
- *           provides: bar   (level 3+ -- 8-space indent, continuation k-v pairs)
+ * Block structure being parsed (indents are relative, never fixed columns):
+ *     must_haves:
+ *       artifacts:          (the blockName, deeper than must_haves)
+ *         - path: foo       (list items)
+ *           provides: bar   (continuation k-v pairs, deeper than the item's dash)
  *
- *   This function finds the named block at the 4-space level, then parses
- *   its list items (at 6-space indent) and their nested key-value pairs
- *   (at 8+ space indent) into an array of objects or strings.
+ *   This function finds the named block under must_haves, then parses its list
+ *   items and their nested key-value pairs into an array of objects or strings.
+ *   Values go through yamlScalar.
  *
  * @param {string} content - Full markdown content with frontmatter
  * @param {string} blockName - Block name to extract (e.g., "artifacts", "key_links")
  * @returns {Array} Parsed array of block items (objects or strings)
  */
 function parseMustHavesBlock(content, blockName) {
-  // Extract raw YAML between --- delimiters
-  const fmMatch = content.match(/^---\n([\s\S]+?)\n---/);
+  // Extract raw YAML between --- delimiters. On LF: a CRLF plan (every Windows
+  // field project) matched nothing here, so its must_haves read as empty and the
+  // reconcile gate below trusted the verdict again, as it did before the indent fix.
+  const fmMatch = toLf(content).match(/^---\n([\s\S]+?)\n---/);
   if (!fmMatch) return [];
 
   const yaml = fmMatch[1];
@@ -290,18 +346,18 @@ function parseMustHavesBlock(content, blockName) {
 
       const body = dashMatch[2];
       // A plain string item — no `key: value` shape.
-      const kvMatch = body.match(/^(\w+):\s*"?([^"]*)"?\s*$/);
+      const kvMatch = body.match(/^(\w+):\s*(.*?)\s*$/);
       if (kvMatch) {
         currentItem = {};
-        currentItem[kvMatch[1]] = kvMatch[2];
+        currentItem[kvMatch[1]] = yamlScalar(kvMatch[2]);
       } else {
-        currentItem = body.replace(/^"|"$/g, '').trim();
+        currentItem = yamlScalar(body);
       }
     } else if (currentItem && typeof currentItem === 'object') {
       // Continuation key-value: deeper than the item's dash (properties of it)
-      const kvMatch = line.match(/^\s+(\w+):\s*"?([^"]*)"?\s*$/);
+      const kvMatch = line.match(/^\s+(\w+):\s*(.*?)\s*$/);
       if (kvMatch) {
-        const val = kvMatch[2];
+        const val = yamlScalar(kvMatch[2]);
         // Coerce pure-integer strings to numbers for convenience
         currentItem[kvMatch[1]] = /^\d+$/.test(val) ? parseInt(val, 10) : val;
       }
@@ -309,7 +365,7 @@ function parseMustHavesBlock(content, blockName) {
       // already deeper than the list-item dash (a shallower one would have been
       // treated as a new item above), so relative depth alone identifies it —
       // no fixed column.
-      const arrMatch = line.match(/^\s+-\s+"?([^"]+)"?\s*$/);
+      const arrMatch = line.match(/^\s+-\s+(.+?)\s*$/);
       if (arrMatch) {
         // Convert the most recently added key's scalar value into an array,
         // then append this item to that array
@@ -318,7 +374,7 @@ function parseMustHavesBlock(content, blockName) {
         if (lastKey && !Array.isArray(currentItem[lastKey])) {
           currentItem[lastKey] = currentItem[lastKey] ? [currentItem[lastKey]] : [];
         }
-        if (lastKey) currentItem[lastKey].push(arrMatch[1]);
+        if (lastKey) currentItem[lastKey].push(yamlScalar(arrMatch[1]));
       }
     }
   }
@@ -355,6 +411,27 @@ const FRONTMATTER_SCHEMAS = {
 };
 
 /**
+ * extractFrontmatter cannot read a list of maps: each must_haves artifact and key
+ * link came back as the string of its first line (`path: "src/x.ts`), so the plan
+ * checker and verify-phase, which read them through `frontmatter get`, got no
+ * objects. parseMustHavesBlock reads both blocks by relative indent.
+ * @param {object} fm - extractFrontmatter output
+ * @param {string} content - the file it came from
+ * @returns {object} fm, with must_haves.artifacts and .key_links as objects
+ */
+function withParsedMustHaves(fm, content) {
+  const mh = fm && fm.must_haves;
+  if (!mh || typeof mh !== 'object' || Array.isArray(mh)) return fm;
+  const fixed = { ...mh };
+  for (const block of ['artifacts', 'key_links']) {
+    if (!(block in fixed)) continue;
+    const parsed = parseMustHavesBlock(content, block);
+    if (parsed.length) fixed[block] = parsed;
+  }
+  return { ...fm, must_haves: fixed };
+}
+
+/**
  * Get frontmatter from a file, optionally filtered to a single field.
  * @param {string} cwd - Working directory path
  * @param {string} filePath - Path to the markdown file
@@ -367,7 +444,7 @@ function cmdFrontmatterGet(cwd, filePath, field, raw) {
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
   if (!content) { output({ error: 'File not found', path: filePath }, raw); return; }
-  const fm = extractFrontmatter(content);
+  const fm = withParsedMustHaves(extractFrontmatter(content), content);
   if (field) {
     const value = fm[field];
     if (value === undefined) { output({ error: 'Field not found', field }, raw); return; }
@@ -395,7 +472,9 @@ function cmdFrontmatterSet(cwd, filePath, field, value, raw) {
   } catch {
     output({ error: 'File not found', path: filePath }, raw); return;
   }
-  const fm = extractFrontmatter(content);
+  // The block is rewritten whole, so a plan's must_haves lists of maps must be read
+  // as maps: extractFrontmatter alone flattened each item to its first line.
+  const fm = withParsedMustHaves(extractFrontmatter(content), content);
   let parsedValue;
   // Attempt JSON parse so callers can pass structured values (arrays, objects);
   // fall back to raw string if the value is not valid JSON
@@ -427,7 +506,7 @@ function cmdFrontmatterMerge(cwd, filePath, data, raw) {
   } catch {
     output({ error: 'File not found', path: filePath }, raw); return;
   }
-  const fm = extractFrontmatter(content);
+  const fm = withParsedMustHaves(extractFrontmatter(content), content);
   let mergeData;
   // Parse the JSON data string; abort with error if the caller passed invalid JSON
   try { mergeData = JSON.parse(data); } catch { error('Invalid JSON for --data'); return; }

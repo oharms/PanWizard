@@ -39,7 +39,7 @@ Execute every phase that the flags leave enabled. Do NOT stop between phases. Th
 ## Doctrine (read before Phase 0 — these rules have all bitten before)
 
 1. **Counts live only in `CLAUDE.md`.** No filesystem-derived number (tests, commands, agents, modules, workflows, specs, ADRs, install file counts) goes into any doc this skill writes. State the **class and the command that enumerates it**. `tests/doc-lint.test.cjs` scans `docs/` and fails the suite on a violation. Backtick version-like dates in prose (`` `2026-07-28` `` spec) — the count lint reads "28 spec" as a count.
-2. **Model names in live docs are written by capability, not version.** `tests/model-version-drift.test.cjs` rejects version-pinned model names in `docs/` and `README.md`. Dated `docs/ECOSYSTEM-REVIEW-YYYY-MM.md` files, `docs/specs/*`, ADRs and CHANGELOG are exempt — the review doc MAY name versions; the pointers you add to evergreen docs MAY NOT.
+2. **Model names in live docs are written by capability, not version.** `tests/model-version-drift.test.cjs` rejects version-pinned model names in `docs/` and `README.md`. Dated `docs/ECOSYSTEM-REVIEW-YYYY-MM.md` files, `docs/specs/*`, ADRs, CHANGELOG and `docs/IMPROVEMENT-TODO.md` are among the exempt files — the review doc MAY name versions; the pointers you add to evergreen docs MAY NOT.
 3. **A status column is a claim, not evidence.** Every "Done", "Shipped", "Closed" inherited from an older plan is re-verified by grep or by running the thing. The August review found two MCP resources dead since their first milestone because every test injected a fake spawn; a superplan item can be marked done and still be wrong.
 4. **Primary sources only for market claims.** Official docs, changelogs, spec repos, pricing pages. Aggregators, blog posts and marketplace self-reported figures are **secondary** and flagged as such. Each external claim carries `source URL · date read`. A changelog line is a release note, **not a tested claim** — say which.
 5. **Measure the emitted artifact, not the source.** Skill body sizes are measured on `.agents/skills/*/SKILL.md` after an install (the adapter header adds tokens). MCP resources are read through the **real engine**, not the protocol layer. Installed config paths are checked on disk in `d:\pantesting`, where a dead path looks exactly like a live one until you read it.
@@ -260,7 +260,7 @@ Two tiers, because they answer different questions:
 
 - **Direct peers — spec-driven / orchestration layers** (the category PAN competes in): default roster in Appendix B. Check each one's release feed inside the window: last release date, what shipped, delivery channel (CLI, MCP, plugin, skills), which of PAN's dimensions it now touches.
 - **Host-tool natives** (the runtimes' own orchestration: Claude Code workflows/subagents/plugins, Codex plugins/hooks, Copilot agents, Gemini/Antigravity extensions): these are not competitors — they are the substrate PAN layers on, and each native feature that lands is either something PAN should **use** or something that makes a PAN feature **redundant**. Classify each.
-- **IDE/agent peers** in `docs/COMPARISON.md` (Aider, Cursor, Cline, Continue, Windsurf, Copilot, Devin): refresh only the rows that changed; these define the matrix's columns, not PAN's roadmap.
+- **IDE/agent peers** in `docs/COMPARISON.md` (Aider, Cursor, Cline, Continue, Devin Desktop (ex-Windsurf), Copilot, Devin): refresh only the rows that changed; these define the matrix's columns, not PAN's roadmap.
 
 ### 3.2 The dimension matrix
 
@@ -435,7 +435,7 @@ Method notes on record: the official Claude Code changelog has skipped version r
 
 **Host-tool natives (substrate, not competitors):** Claude Code workflows + subagents + plugins · Codex plugins + hooks · Copilot custom agents + plugins · Gemini CLI extensions / Antigravity plugins · OpenCode agents + skills.
 
-**IDE/agent peers (COMPARISON.md columns):** Aider · Cursor · Continue.dev · Cline · Windsurf · GitHub Copilot · Devin.
+**IDE/agent peers (COMPARISON.md columns):** Aider · Cursor · Continue.dev · Cline · Devin Desktop (ex-Windsurf) · GitHub Copilot · Devin.
 
 Override with `--peers a,b,c`. A peer is worth a row only if it shipped inside the window or touches a dimension where PAN's verdict could change.
 

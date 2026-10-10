@@ -8,7 +8,7 @@ Template for `.planning/phases/XX-name/{phase}-USER-SETUP.md` - human-required c
 
 ## File Template
 
-```markdown
+~~~markdown
 # Phase {X}: User Setup Required
 
 **Generated:** [YYYY-MM-DD]
@@ -55,7 +55,7 @@ Expected results:
 ---
 
 **Once all items complete:** Mark status as "Complete" at top of file.
-```
+~~~
 
 ---
 
@@ -117,7 +117,7 @@ user_setup:
 ## Service-Specific Examples
 
 <stripe_example>
-```markdown
+~~~markdown
 # Phase 10: User Setup Required
 
 **Generated:** 2025-01-14
@@ -188,11 +188,11 @@ Expected: Build passes, webhook returns 400 (signature validation working).
 ---
 
 **Once all items complete:** Mark status as "Complete" at top of file.
-```
+~~~
 </stripe_example>
 
 <supabase_example>
-```markdown
+~~~markdown
 # Phase 2: User Setup Required
 
 **Generated:** 2025-01-14
@@ -242,11 +242,11 @@ npx supabase status
 ---
 
 **Once all items complete:** Mark status as "Complete" at top of file.
-```
+~~~
 </supabase_example>
 
 <sendgrid_example>
-```markdown
+~~~markdown
 # Phase 5: User Setup Required
 
 **Generated:** 2025-01-14
@@ -297,7 +297,7 @@ curl -X POST http://localhost:3000/api/test-email \
 ---
 
 **Once all items complete:** Mark status as "Complete" at top of file.
-```
+~~~
 </sendgrid_example>
 
 ---

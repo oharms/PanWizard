@@ -28,8 +28,8 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "" --files .planning/cod
 | execute-phase | phase | `docs(phase-03): complete authentication phase` |
 | new-milestone | milestone | `docs: start milestone v1.1` |
 | remove-phase | chore | `chore: remove phase 17 (dashboard)` |
-| insert-phase | phase | `docs: insert phase 16.1 (critical fix)` |
-| add-phase | phase | `docs: add phase 07 (settings page)` |
+| insert-phase | — | no commit (the user decides when to commit) |
+| add-phase | — | no commit |
 
 ## When to Skip
 

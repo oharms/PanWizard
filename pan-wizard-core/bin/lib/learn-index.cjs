@@ -168,15 +168,102 @@ function readIndex(sourceRoot) {
   }
 }
 
+// ─── Cue ranking (memory optimisation O5) ───────────────────────────────────
+//
+// The role ranking loads the same topics whatever the task, filling the budget
+// smallest-first, so a large topic the task needs (migration-safety for a
+// migration) drops out. With a cue — the phase objective and the files it
+// touches — topics are matched to the task: the cue's words against each topic's
+// name, pattern summaries and rules. Lexical, like `memory select`'s scorer, with
+// two changes topic text needs: common words are ignored, and a word meets its
+// own inflections (plurals fold; "corrupting" meets "corrupt", "parsed" "parse").
+
+const CUE_STOPWORDS = new Set((
+  'the and for with that this from into onto over under when then than them they their there these those '
+  + 'are was were been being have has had not but all any each every per its our your you who what which '
+  + 'can could should would will shall may might must also only just very more most less such same other '
+  + 'add adds added adding make makes made making use uses used using new old get gets set sets run runs '
+  + 'fix fixes fixed one two way ways out off how why where while after before about again still both '
+  + 'file files code thing things project phase plan plans task tasks work works working change changes'
+).split(' '));
+
+/**
+ * Fold a plural: "retries" → "retry", "classes" → "class", "matches" → "match",
+ * "failures" → "failure", "cases" → "case"; "class" and "status" stay.
+ */
+function foldPlural(w) {
+  if (w.length > 4 && w.endsWith('ies')) return `${w.slice(0, -3)}y`;
+  if (w.length > 5 && w.endsWith('sses')) return w.slice(0, -2);
+  if (w.length > 4 && /(x|z|ch|sh)es$/.test(w)) return w.slice(0, -2);
+  if (w.length > 3 && w.endsWith('s') && !/(ss|us|is)$/.test(w)) return w.slice(0, -1);
+  return w;
+}
+
+/** The content words of a text (3+ letters, plurals folded, no stopwords). */
+function cueTerms(text) {
+  const out = new Set();
+  for (const w of String(text || '').toLowerCase().match(/[a-z0-9]{3,}/g) || []) {
+    const f = foldPlural(w);
+    if (!CUE_STOPWORDS.has(w) && !CUE_STOPWORDS.has(f)) out.add(f);
+  }
+  return out;
+}
+
+/** Two words meet when equal, or when the shorter (4+ letters) begins the longer, at most 3 letters apart. */
+function termsMeet(a, b) {
+  if (a === b) return true;
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  return s.length >= 4 && l.length - s.length <= 3 && l.startsWith(s);
+}
+
+function setHasTerm(set, t) {
+  if (set.has(t)) return true;
+  for (const u of set) if (termsMeet(t, u)) return true;
+  return false;
+}
+
+/**
+ * Each topic's terms from the store: its name, and its patterns' summaries and
+ * rules (not their evidence, which is long and incidental).
+ * @returns {Map<string, {name: Set<string>, text: Set<string>}>}
+ */
+function topicTermsFromStore(sourceRoot) {
+  const { extractFieldSection } = require('./learn-lint.cjs');
+  const text = new Map();
+  for (const p of collectAllPatterns(sourceRoot)) {
+    const prev = text.get(p.topic) || '';
+    text.set(p.topic, `${prev}\n${p.summary}\n${extractFieldSection(p.body, 'Rule')}`);
+  }
+  const out = new Map();
+  for (const [topic, t] of text) out.set(topic, { name: cueTerms(topic.replace(/-/g, ' ')), text: cueTerms(t) });
+  return out;
+}
+
+/** How well a topic matches the cue: 2 per cue term in its name, 1 per term in its text. */
+function cueScore(cue, terms) {
+  if (!terms) return 0;
+  let s = 0;
+  for (const t of cue) s += setHasTerm(terms.name, t) ? 2 : setHasTerm(terms.text, t) ? 1 : 0;
+  return s;
+}
+
 /**
  * Query: what topics should agent X load at this point?
+ *
+ * With `opts.cue` and `opts.topicTerms`, topics are matched to the task (mode
+ * `cue`): every topic scoring at least half the best match is a candidate
+ * whatever its role relevance, ranked by cue score, then relevance, then size;
+ * the rest are not loaded. When nothing matches, or there is no cue, the role
+ * ranking applies (mode `role`): relevance, then smallest first.
  *
  * @param {object} index - the index object
  * @param {object} opts
  * @param {string} opts.agent - 'planner' | 'executor' | 'verifier' | 'reviewer'
- * @param {string} [opts.minRelevance] - 'high' | 'medium' | 'low' (default 'medium')
+ * @param {string} [opts.minRelevance] - 'high' | 'medium' | 'low' (default 'medium'; role mode)
  * @param {number} [opts.tokenBudget] - max tokens to fit (default 5000)
- * @returns {object} { topics: [{name, scope, file, tokens, relevance}], total_tokens, dropped: [...] }
+ * @param {string} [opts.cue] - the phase objective and the files it touches
+ * @param {Map} [opts.topicTerms] - from topicTermsFromStore()
+ * @returns {object} { selected: [{name, scope, file, tokens, relevance, cue_score?}], total_tokens, dropped: [...], mode }
  */
 function topicsForAgent(index, opts) {
   const agent = opts.agent;
@@ -185,14 +272,22 @@ function topicsForAgent(index, opts) {
   const ranks = { high: 3, medium: 2, low: 1 };
   const minRank = ranks[minLevel] || 2;
 
-  const ranked = [];
-  for (const t of index.topics) {
+  const cue = cueTerms(opts.cue);
+  const scored = index.topics.map(t => {
     const rel = (t.agent_relevance || {})[agent] || 'low';
-    const rank = ranks[rel] || 1;
-    if (rank < minRank) continue;
-    ranked.push({ ...t, _relevance: rel, _rank: rank });
-  }
-  ranked.sort((a, b) => b._rank - a._rank || a.size_tokens_est - b.size_tokens_est);
+    return { ...t, _relevance: rel, _rank: ranks[rel] || 1, _cue: cue.size ? cueScore(cue, opts.topicTerms && opts.topicTerms.get(t.name)) : 0 };
+  });
+  // A topic must score at least half the best match: a single incidental shared
+  // word should not load a topic beside the ones the task is about. On the golden
+  // set (tests/fixtures/learn-cue-golden.json) this cut raised precision from
+  // 0.22 to 0.37 for a recall of 0.76 instead of 0.81.
+  const top = Math.max(0, ...scored.map(t => t._cue));
+  const matched = scored.filter(t => t._cue > 0 && t._cue >= Math.ceil(top / 2));
+  const mode = matched.length ? 'cue' : 'role';
+
+  const ranked = mode === 'cue'
+    ? matched.sort((a, b) => b._cue - a._cue || b._rank - a._rank || a.size_tokens_est - b.size_tokens_est)
+    : scored.filter(t => t._rank >= minRank).sort((a, b) => b._rank - a._rank || a.size_tokens_est - b.size_tokens_est);
 
   const selected = [];
   const dropped = [];
@@ -209,6 +304,7 @@ function topicsForAgent(index, opts) {
       tokens: t.size_tokens_est,
       relevance: t._relevance,
       patterns: t.patterns,
+      ...(mode === 'cue' ? { cue_score: t._cue } : {}),
     });
     total += t.size_tokens_est;
   }
@@ -217,6 +313,8 @@ function topicsForAgent(index, opts) {
     agent,
     min_relevance: minLevel,
     token_budget: budget,
+    mode,
+    ...(opts.cue ? { cue: opts.cue } : {}),
     selected,
     dropped,
     total_tokens: total,
@@ -237,7 +335,8 @@ function cmdBuildIndex(sourceRoot) {
 
 function cmdTopicsFor(sourceRoot, opts) {
   const index = readIndex(sourceRoot);
-  return topicsForAgent(index, opts);
+  const topicTerms = opts.cue ? topicTermsFromStore(sourceRoot) : undefined;
+  return topicsForAgent(index, { ...opts, topicTerms });
 }
 
 module.exports = {
@@ -245,6 +344,8 @@ module.exports = {
   writeIndex,
   readIndex,
   topicsForAgent,
+  topicTermsFromStore,
+  cueTerms,
   cmdBuildIndex,
   cmdTopicsFor,
   INDEX_PATH_REL,

@@ -3,6 +3,7 @@
     "PAN_AGENTS_BEGIN:string",
     "PAN_AGENTS_END:string",
     "buildAgentsMdSection:function",
+    "buildClaudeMdBridge:function",
     "ensureClaudeMdImport:function",
     "removeAgentsMdSection:function",
     "removeClaudeMdImport:function",
@@ -104,6 +105,7 @@
     "readUpdateCache:function",
     "runCommitSafetyChecks:function",
     "shouldSkipTests:function",
+    "summaryOneLiner:function",
     "updateState:function"
   ],
   "config.cjs": [
@@ -188,6 +190,8 @@
     "MAX_CYCLES_MIN:number",
     "MAX_JSON_SIZE:number",
     "MAX_SLUG_LENGTH:number",
+    "MEMORY_CITED_FILE_MAX_BYTES:number",
+    "MEMORY_EXPIRE_DAYS:number",
     "MEMORY_LOAD_CRIT_TOKENS:number",
     "MEMORY_LOAD_MAX_FRACTION:number",
     "MEMORY_LOAD_WARN_TOKENS:number",
@@ -214,6 +218,7 @@
     "REQUIREMENTS_FILE:string",
     "RESEARCH_SUFFIX:string",
     "ROADMAP_FILE:string",
+    "ROADMAP_SLICE_SUFFIX:string",
     "SESSION_HISTORY_FILE:string",
     "SIMPLE_FILE_THRESHOLD:number",
     "SIMPLE_TASK_THRESHOLD:number",
@@ -273,6 +278,7 @@
     "buildCachedContext:function",
     "comparePhaseNum:function",
     "detectProvider:function",
+    "dominantEol:function",
     "error:function",
     "escalateTier:function",
     "escapeRegex:function",
@@ -305,8 +311,10 @@
     "scanSourceTodos:function",
     "searchPhaseInDir:function",
     "selectCurrentMilestone:function",
+    "toLf:function",
     "toPosix:function",
-    "verbose:function"
+    "verbose:function",
+    "withEol:function"
   ],
   "cost-rebuild.cjs": [
     "MAIN_THREAD_AGENT:string",
@@ -324,6 +332,8 @@
   ],
   "cost.cjs": [
     "DEFAULT_RATES:object",
+    "HOST_LIMITS_FILE:string",
+    "LONG_PROMPT_THRESHOLD:number",
     "METRICS_DIR:string",
     "RATES_VERIFIED_AT:string",
     "TOKENS_FILE:string",
@@ -332,6 +342,7 @@
     "checkRatesStaleness:function",
     "cmdCostAppend:function",
     "cmdCostClear:function",
+    "cmdCostLimits:function",
     "cmdCostReport:function",
     "cmdModelsCheck:function",
     "computeCost:function",
@@ -341,10 +352,12 @@
     "loadManagedModelPricing:function",
     "managedSettingsDir:function",
     "ratesFromModelPricing:function",
+    "readHostLimits:function",
     "readRecords:function",
     "renderChart:function",
     "renderTable:function",
-    "resolveRate:function"
+    "resolveRate:function",
+    "weeklyLimitStop:function"
   ],
   "distill.cjs": [
     "DEFAULT_BLOAT_THRESHOLD:number",
@@ -352,6 +365,7 @@
     "MAX_NESTING_DEPTH:number",
     "MAX_PARAM_COUNT:number",
     "MIN_REPEATED_LINES:number",
+    "PATTERNS_FILE:string",
     "PATTERN_TTL_DAYS:number",
     "SAFETY_TIERS:object",
     "cmdDistill:function",
@@ -500,6 +514,7 @@
     "RUNTIME_DIRS:object",
     "checkCachedContext:function",
     "checkCostLedger:function",
+    "checkHostMemory:function",
     "checkLegacyUppercase:function",
     "checkMemoryLogs:function",
     "checkPlanningFragment:function",
@@ -511,6 +526,7 @@
     "cmdHygieneClean:function",
     "cmdHygieneScan:function",
     "compareVersions:function",
+    "hostMemoryDir:function",
     "scanHygiene:function"
   ],
   "init.cjs": [
@@ -540,6 +556,7 @@
     "cmdKnowledgeAsk:function",
     "cmdKnowledgeDiscuss:function",
     "cmdKnowledgePlaybook:function",
+    "isMemoryArchive:function",
     "loadSession:function",
     "scoreRelevance:function",
     "writePlaybook:function"
@@ -550,7 +567,9 @@
     "buildIndex:function",
     "cmdBuildIndex:function",
     "cmdTopicsFor:function",
+    "cueTerms:function",
     "readIndex:function",
+    "topicTermsFromStore:function",
     "topicsForAgent:function",
     "writeIndex:function"
   ],
@@ -587,6 +606,7 @@
     "DIRECTIVE_PATTERNS:object",
     "PLACEHOLDER:object",
     "QUARANTINE_FILE:string",
+    "QUARANTINE_HEADER:string",
     "STATE_ARCHIVE_FILE:string",
     "autoOptimizeEnabled:function",
     "cmdMemoryOptimize:function",
@@ -608,19 +628,29 @@
   ],
   "memory.cjs": [
     "DEFAULT_MAX_ENTRIES:number",
+    "MEMORY_ARCHIVE_DIR:string",
     "MEMORY_DIR:string",
+    "RESERVED_MEMORY_NAMES:object",
     "appendMemory:function",
+    "citationProblem:function",
     "cmdMemoryAppend:function",
     "cmdMemoryBudget:function",
     "cmdMemoryCompact:function",
     "cmdMemoryList:function",
+    "cmdMemoryPrune:function",
     "cmdMemoryRead:function",
+    "cmdMemoryRecord:function",
     "cmdMemorySelect:function",
     "compactMemory:function",
+    "entryStatus:function",
+    "formatEntry:function",
     "listMemoryAgents:function",
     "memoryLoadBudget:function",
     "parseEntries:function",
+    "parseEntryMeta:function",
+    "pruneMemory:function",
     "readMemory:function",
+    "recordLesson:function",
     "scoreEntry:function",
     "selectMemory:function",
     "validateAgentName:function"
@@ -680,6 +710,7 @@
     "cmdPhaseRemove:function",
     "collectDirsToRenumber:function",
     "removePhaseFromDisk:function",
+    "removePhaseSection:function",
     "renamePhaseDir:function",
     "renumberDecimalPhases:function",
     "renumberIntegerPhases:function",
@@ -763,14 +794,31 @@
     "parseReviewFindings:function",
     "writeDeepReview:function"
   ],
+  "roadmap-compact.cjs": [
+    "ROADMAP_COMPACT_KEEP:number",
+    "ROADMAP_HISTORY_FILE:string",
+    "archivedPhaseSection:function",
+    "cmdRoadmapCompact:function",
+    "compactRoadmap:function",
+    "compactedPhaseSection:function",
+    "isCompactedSection:function",
+    "planRoadmapCompaction:function",
+    "roadmapCompactionAvailable:function"
+  ],
   "roadmap.cjs": [
+    "ROADMAP_SLICE_SUFFIX:string",
+    "buildRoadmapSlice:function",
     "cmdRoadmapAnalyze:function",
     "cmdRoadmapGetPhase:function",
+    "cmdRoadmapSlice:function",
     "cmdRoadmapUpdatePlanProgress:function",
     "computeRoadmapStats:function",
     "enrichPhaseWithDiskStatus:function",
     "enumerateRoadmapPhases:function",
     "extractMilestones:function",
+    "phaseDependencies:function",
+    "phaseRequirementIds:function",
+    "roadmapRequirementIds:function",
     "syncRequirementCheckboxes:function"
   ],
   "runner.cjs": [
@@ -812,6 +860,7 @@
     "splitSections:function"
   ],
   "state.cjs": [
+    "activeBlockersFromState:function",
     "cmdDashboard:function",
     "cmdStateAddBlocker:function",
     "cmdStateAddDecision:function",

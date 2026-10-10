@@ -4,10 +4,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { escapeRegex, normalizePhaseName, comparePhaseNum, findPhaseInternal, getArchivedPhaseDirs, generateSlugInternal, loadConfig, output, error, toPosix, isGitRepo, execGit } = require('./core.cjs');
+const { escapeRegex, normalizePhaseName, comparePhaseNum, findPhaseInternal, getArchivedPhaseDirs, generateSlugInternal, loadConfig, output, error, toPosix, isGitRepo, isGitIgnored, execGit } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd, readStateSafe } = require('./state.cjs');
-const { enumerateRoadmapPhases } = require('./roadmap.cjs');
+const { enumerateRoadmapPhases, roadmapRequirementIds } = require('./roadmap.cjs');
 const { PHASES_DIR, ROADMAP_FILE, REQUIREMENTS_FILE, STATE_FILE, isPlanFile, isSummaryFile, getPlanId, PHASE_DIR_RE, ARCHIVE_DIR_RE } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, parsePhaseDir, fileAccessible, planningRel } = require('./utils.cjs');
 // Phase removal lives in phase-remove.cjs; re-exported below so consumers of
@@ -63,7 +63,7 @@ function cmdPhasesList(cwd, options, raw) {
     // If filtering by phase number
     if (phase) {
       const normalized = normalizePhaseName(phase);
-      const match = dirs.find(dir => dir.startsWith(normalized));
+      const match = dirs.find(dir => dir === normalized || dir.startsWith(normalized + '-'));
       if (!match) {
         output({ files: [], count: 0, phase_dir: null, error: 'Phase not found' }, raw, '');
         return;
@@ -200,7 +200,7 @@ function cmdFindPhase(cwd, phase, raw) {
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
     const dirs = entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort((left, right) => comparePhaseNum(left, right));
 
-    const match = dirs.find(dir => dir.startsWith(normalized));
+    const match = dirs.find(dir => dir === normalized || dir.startsWith(normalized + '-'));
     if (!match) {
       output(notFound, raw, '');
       return;
@@ -253,7 +253,7 @@ function cmdPhasePlanIndex(cwd, phase, raw, opts = {}) {
   try {
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
     const dirs = entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort((left, right) => comparePhaseNum(left, right));
-    const match = dirs.find(dir => dir.startsWith(normalized));
+    const match = dirs.find(dir => dir === normalized || dir.startsWith(normalized + '-'));
     if (match) {
       phaseDir = path.join(phasesDir, match);
       phaseDirName = match;
@@ -708,12 +708,10 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
   const reqPath = path.join(planningPath(cwd), REQUIREMENTS_FILE);
   try {
     const reqReadContent = fs.readFileSync(reqPath, 'utf-8');
-    const reqMatch = roadmapContent.match(
-      new RegExp(`Phase\\s+${escapeRegex(phaseNum)}[\\s\\S]*?(?:\\*\\*Requirements:\\*\\*|\\*\\*Requirements\\*\\*:)\\s*([^\\n]+)`, 'i')
-    );
-    if (!reqMatch) return;
-
-    const reqIds = reqMatch[1].replace(/[\[\]]/g, '').split(/[,\s]+/).map(id => id.trim()).filter(Boolean);
+    // The phase's own requirements, matched padded or not (roadmapRequirementIds): a
+    // bare `Phase N … Requirements` search ticked phase 1's when completing phase 5.
+    const reqIds = roadmapRequirementIds(roadmapContent, phaseNum);
+    if (reqIds.length === 0) return;
     let reqContent = reqReadContent;
 
     for (const reqId of reqIds) {
@@ -900,8 +898,12 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
     result.roadmap_updated = false;
   }
 
-  // Auto-commit .planning/ metadata unless --no-commit or not a git repo
-  const noCommit = opts && opts.noCommit;
+  // Auto-commit .planning/ metadata unless --no-commit, not a git repo, or the project
+  // keeps planning files out of git: `commit_docs: false` or a gitignored planning
+  // tree, the same rules `pan-tools commit` follows (this commit used to ignore both).
+  const noCommit = (opts && opts.noCommit)
+    || loadConfig(cwd).commit_docs === false
+    || isGitIgnored(cwd, planningRel());
   if (!noCommit && isGitRepo(cwd)) {
     const commitMsg = `docs(${normalized}): complete phase — ${phaseInfo.phase_name}`;
     execGit(cwd, ['add', planningRel() + '/']);

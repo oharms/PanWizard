@@ -174,6 +174,74 @@ function renumberIntegerPhases(phasesDir, removedInt) {
 }
 
 /**
+ * Remove one phase's section from roadmap text. The section runs from its `Phase N:` heading
+ * to the first line outside a code fence that is another phase heading, a heading at the
+ * section's own level or above (`## Progress`, a milestone group), a `</details>` that closes
+ * an enclosing block, or a collapsed milestone's `<details>` (its `<summary>` names a version
+ * or a phase range). Any other `<details>` block the section opens and closes itself is part
+ * of it. Running to the end of the file deleted `## Progress` with the last phase and the next
+ * milestone group's heading with a group's last phase; a line-blind bound stopped at a
+ * `# comment` or `## Usage` inside a fenced block.
+ * @param {string} content - roadmap.md text (LF or CRLF; line endings are kept)
+ * @param {string} phaseNum - the phase number as written in its heading
+ * @returns {string} the text without that section (unchanged when no heading matches)
+ */
+function removePhaseSection(content, phaseNum) {
+  const lines = content.split('\n');
+  const fenced = new Array(lines.length).fill(false);
+  // A fence line with an info string opens a block, even inside another (a nested example);
+  // a bare one closes the innermost block it can close. A block never closed stays unfenced.
+  for (let i = 0, stack = []; i < lines.length; i++) {
+    const f = lines[i].match(/^\s{0,3}(`{3,}|~{3,})(.*)/);
+    if (!f) continue;
+    const top = stack[stack.length - 1];
+    if (top && !f[2].trim() && f[1][0] === top.fence[0] && f[1].length >= top.fence.length) {
+      stack.pop();
+      fenced.fill(true, top.open, i + 1);
+    } else if (!top || f[2].trim()) stack.push({ fence: f[1], open: i });
+  }
+  const headRe = new RegExp(`^(#{2,4})\\s*Phase\\s+${escapeRegex(phaseNum)}\\s*:`, 'i');
+  const start = lines.findIndex((l, i) => !fenced[i] && headRe.test(l));
+  if (start === -1) return content;
+  const levelEndRe = new RegExp(`^#{1,${lines[start].match(headRe)[1].length}}\\s`);
+  const endsSection = (i) => !fenced[i] && (/^#{2,4}\s*Phase\s+\d/i.test(lines[i]) || levelEndRe.test(lines[i]));
+  const opens = (i) => !fenced[i] && /^\s*<details\b/i.test(lines[i]);
+  const closes = (i) => !fenced[i] && /^\s*<\/details\b/i.test(lines[i]);
+  const oneLine = (i) => /<\/details\s*>/i.test(lines[i]);
+  // A collapsed milestone's <summary> names its version or phase range ("v1.0 MVP (Phases 1-4)").
+  const milestone = (i) => /<summary>[^<]*\b(?:v\d+\.\d+|phases\s+\d)/i.test(`${lines[i]} ${lines[i + 1] || ''}`);
+  // A <details> closed before anything that ends the section is the section's own block.
+  const ownBlock = (at) => {
+    for (let i = at + 1, d = 0; i < lines.length; i++) {
+      if (endsSection(i)) return false;
+      if (opens(i) && !oneLine(i)) d++;
+      else if (closes(i)) { if (d === 0) return true; d--; }
+    }
+    return false;
+  };
+  let end = start + 1;
+  for (let depth = 0; end < lines.length; end++) {
+    if (endsSection(end)) break;
+    if (opens(end)) {
+      if (depth === 0 && milestone(end)) break;
+      if (oneLine(end)) continue;
+      if (depth > 0 || ownBlock(end)) { depth++; continue; }
+      break;
+    }
+    if (closes(end)) { if (depth > 0) { depth--; continue; } break; }
+  }
+  const toEof = end === lines.length;
+  lines.splice(start, end - start);
+  let out = lines.join('\n');
+  // A section that ran to the end of the file took the final line ending with it.
+  if (toEof && content.endsWith('\n')) {
+    out = out.replace(/\r$/, '');
+    if (!out.endsWith('\n')) out += content.endsWith('\r\n') ? '\r\n' : '\n';
+  }
+  return out;
+}
+
+/**
  * Rewrite roadmap.md after a phase is removed: delete the target section,
  * remove checkbox/table references, and renumber subsequent phase references.
  *
@@ -189,14 +257,8 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
     roadmapContent = fs.readFileSync(roadmapPath, 'utf-8');
   } catch { return; }
 
-  // Remove the target phase section from roadmap.md.
-  // Matches from the phase heading to the next phase heading (or end of file).
+  roadmapContent = removePhaseSection(roadmapContent, phaseNum);
   const targetEscaped = escapeRegex(phaseNum);
-  const sectionPattern = new RegExp(
-    `\\n?#{2,4}\\s*Phase\\s+${targetEscaped}\\s*:[\\s\\S]*?(?=\\n#{2,4}\\s+Phase\\s+\\d|$)`,
-    'i'
-  );
-  roadmapContent = roadmapContent.replace(sectionPattern, '');
 
   // Remove checkbox list items referencing this phase
   const checkboxPattern = new RegExp(`\\n?-\\s*\\[[ x]\\]\\s*.*Phase\\s+${targetEscaped}[:\\s][^\\n]*`, 'gi');
@@ -207,8 +269,9 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
   roadmapContent = roadmapContent.replace(tableRowPattern, '');
 
   // For integer phase removal, renumber all references to subsequent phases.
-  // Walk from highest phase number down to removedInt+1, decrementing each by 1.
-  // This avoids double-renaming (e.g. 8->7 then 7->6 would break if done ascending).
+  // Walk UP from removedInt+1, decrementing each by 1. A downward walk re-hits its
+  // own output (10->9, then that 9 and the real 9 ->8), so every later phase
+  // collapsed onto the removed number.
   if (!isDecimal) {
     const removedInt = parseInt(normalized, 10);
 
@@ -219,35 +282,35 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
     // and an unbounded lower end is how `phase remove -1234567890` turned into
     // ~1.2 billion regex passes. The loop can now never exceed maxPhase steps.
     const stopAt = Math.max(removedInt, 0);
-    for (let oldNum = maxPhase; oldNum > stopAt; oldNum--) {
+    for (let oldNum = stopAt + 1; oldNum <= maxPhase; oldNum++) {
       const newNum = oldNum - 1;
       const oldStr = String(oldNum);
       const newStr = String(newNum);
       const oldPad = oldStr.padStart(2, '0');
       const newPad = newStr.padStart(2, '0');
 
-      // Phase headings: ## Phase 18: or ### Phase 18: -> ## Phase 17:
+      // Phase headings: ## Phase 18: or ### Phase 18.1: -> ## Phase 17: / ### Phase 17.1:
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(#{2,4}\\s*Phase\\s+)${oldStr}(\\s*:)`, 'gi'),
+        new RegExp(`(#{2,4}\\s*Phase\\s+)${oldStr}((?:\\.\\d+)?\\s*:)`, 'gi'),
         `$1${newStr}$2`
       );
 
-      // Inline phase references: "Phase 18:" or "Phase 18 " -> "Phase 17:"
+      // Inline phase references: "Phase 18:", "Phase 18 " or "Phase 18.1:" -> "Phase 17..."
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(Phase\\s+)${oldStr}([:\\s])`, 'g'),
+        new RegExp(`(Phase\\s+)${oldStr}((?:\\.\\d+)?[:\\s])`, 'g'),
         `$1${newStr}$2`
       );
 
-      // Plan references in padded form: 18-01 -> 17-01
+      // Plan references in padded form: 18-01 / 18.1-01 -> 17-01 / 17.1-01, never inside a date (2026-10-01)
       roadmapContent = roadmapContent.replace(
-        new RegExp(`${oldPad}-(\\d{2})`, 'g'),
-        `${newPad}-$1`
+        new RegExp(`(?<![\\d.-])${oldPad}((?:\\.\\d+)?)-(\\d{2})(?!\\d)`, 'g'),
+        `${newPad}$1-$2`
       );
 
-      // Progress table row numbers: | 18. -> | 17.
+      // Progress table row numbers: | 18. or | 18.1. -> | 17. / | 17.1.
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(\\|\\s*)${oldStr}\\.\\s`, 'g'),
-        `$1${newStr}. `
+        new RegExp(`(\\|\\s*)${oldStr}((?:\\.\\d+)?)\\.\\s`, 'g'),
+        `$1${newStr}$2. `
       );
 
       // Depends-on references: "Depends on:** Phase 18" -> "Phase 17"
@@ -279,7 +342,7 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
   // PHASE_NUM_RE does not match — so a bad argument used to reach the renumber
   // logic and do real damage, in both cases reporting success and exiting 0:
   //   `phase remove 0`      renumbered EVERY roadmap heading down to "Phase 0"
-  //                         (the descending renumber loop runs 99..1 and re-hits
+  //                         (the renumber loop then ran down from 99 and re-hit
   //                         its own output, collapsing 3->2->1->0) and renamed
   //                         every phase directory one lower.
   //   `phase remove -1e9`   spun that same loop ~1.2 billion times, each pass
@@ -425,6 +488,7 @@ module.exports = {
   collectDirsToRenumber,
   renamePhaseDir,
   renumberIntegerPhases,
+  removePhaseSection,
   updateRoadmapAfterRemoval,
   cmdPhaseRemove,
   updateStateAfterPhaseRemoval,

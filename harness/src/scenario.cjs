@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { MODEL_RUNTIMES } = require('./model.cjs');
 
 const STEP_KINDS = new Set(['pan', 'sh', 'mcp', 'model', 'fs', 'build', 'cli']);
 const ASSERTION_RE = /^(exit:-?\d+|file:.+|absent:.+|glob:.+|count:.+=\d+|json:[^=]+(=.*)?|json!:.+|stdout~.+|stderr~.+|rpc:[^.]+\.[^=]+(=.*)?)$/;
@@ -49,6 +50,10 @@ function validateScenario(s, fileName = '<inline>') {
     if (st.kind === 'pan' && !Array.isArray(st.argv)) err(`${at}: pan steps need argv[]`);
     if (st.kind === 'mcp' && !Array.isArray(st.requests)) err(`${at}: mcp steps need requests[]`);
     if (st.kind === 'model' && typeof st.prompt !== 'string') err(`${at}: model steps need a prompt`);
+    // `runtime` picks the host CLI a model step drives (default claude; MI-104).
+    if (st.runtime !== undefined && (st.kind !== 'model' || !Object.prototype.hasOwnProperty.call(MODEL_RUNTIMES, st.runtime))) {
+      err(`${at}: runtime is only for model steps, one of ${Object.keys(MODEL_RUNTIMES).join(', ')}`);
+    }
     if (st.kind === 'build' && !/^[a-z-]+\.js$/.test(String(st.script || ''))) err(`${at}: build steps need a scripts/<name>.js`);
     if (st.kind === 'sh' && !/^[a-z-]+\.cjs$/.test(String(st.script || ''))) err(`${at}: sh steps need a harness/scripts/<name>.cjs`);
     if (st.kind === 'cli' && !/^[a-z][a-z0-9-]*$/.test(String(st.bin || ''))) err(`${at}: cli steps need a bare bin name`);

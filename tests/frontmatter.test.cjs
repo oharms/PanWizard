@@ -56,6 +56,27 @@ describe('frontmatter get command', () => {
     cleanup(tmpDir);
   });
 
+  test('--field must_haves returns artifacts and key links as objects, as plans write them', () => {
+    // The plan checker and verify-phase read must_haves this way. extractFrontmatter
+    // turned each artifact and key link into the string of its first line
+    // (`path: "src/login.ts`), so the agents got no paths to check.
+    fs.writeFileSync(path.join(tmpDir, 'plan.md'), [
+      '---', 'phase: 01-auth', 'must_haves:', '  truths:', '    - "User can log in"',
+      '  artifacts:', '    - path: "src/login.ts"', '      provides: "login form"',
+      '  key_links:', '    - from: "src/login.ts"', '      to: "/api/login"', '      via: "fetch"',
+      '---', '# Plan', '',
+    ].join('\r\n'));
+    const result = runPanTools('frontmatter get plan.md --field must_haves', tmpDir);
+    assert.ok(result.success, result.error);
+    assert.deepEqual(JSON.parse(result.output), { must_haves: {
+      truths: ['User can log in'],
+      artifacts: [{ path: 'src/login.ts', provides: 'login form' }],
+      key_links: [{ from: 'src/login.ts', to: '/api/login', via: 'fetch' }],
+    } });
+    const all = JSON.parse(runPanTools('frontmatter get plan.md', tmpDir).output);
+    assert.deepEqual(all.must_haves.artifacts, [{ path: 'src/login.ts', provides: 'login form' }]);
+  });
+
   test('returns all frontmatter fields from a file with --- delimited block', () => {
     fs.writeFileSync(
       path.join(tmpDir, 'test.md'),
@@ -160,6 +181,26 @@ describe('frontmatter set command', () => {
 
   afterEach(() => {
     cleanup(tmpDir);
+  });
+
+  test('set and merge keep a plan\'s must_haves artifacts and key links whole', () => {
+    // Both rewrite the whole block. Read through extractFrontmatter alone, each list
+    // item collapsed to its first line (`artifacts: [path: src/x.ts]`) and
+    // `verify artifacts` then found none.
+    fs.writeFileSync(path.join(tmpDir, 'plan.md'), [
+      '---', 'phase: 01-auth', 'wave: 1', 'must_haves:', '  truths:', '    - "User can log in"',
+      '  artifacts:', '    - path: "src/login.ts"', '      provides: "login form"', '      min_lines: 20',
+      '  key_links:', '    - from: "src/login.ts"', '      to: "/api/login"', '      via: "fetch"',
+      '---', '# Plan', '',
+    ].join('\n'));
+    assert.ok(runPanTools('frontmatter set plan.md --field wave --value 2', tmpDir).success);
+    assert.ok(runPanToolsDirect(['frontmatter', 'merge', 'plan.md', '--data', '{"autonomous":true}'], tmpDir).success);
+    const got = JSON.parse(runPanTools('frontmatter get plan.md', tmpDir).output);
+    assert.equal(got.wave, '2');
+    assert.deepEqual(got.must_haves.artifacts, [{ path: 'src/login.ts', provides: 'login form', min_lines: 20 }]);
+    assert.deepEqual(got.must_haves.key_links, [{ from: 'src/login.ts', to: '/api/login', via: 'fetch' }]);
+    const art = JSON.parse(runPanTools('verify artifacts plan.md', tmpDir).output);
+    assert.equal(art.total, 1);
   });
 
   test('sets a new field in existing frontmatter', () => {

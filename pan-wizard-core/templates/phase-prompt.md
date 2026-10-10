@@ -16,18 +16,18 @@ Template for `.planning/phases/XX-name/{phase}-{plan}-plan.md` - executable phas
 phase: XX-name
 plan: NN
 type: execute
-wave: N                     # Execution wave (1, 2, 3...). Pre-computed at plan time.
-depends_on: []              # Plan IDs this plan requires (e.g., ["01-01"]).
-files_modified: []          # Files this plan modifies.
-autonomous: true            # false if plan has checkpoints requiring user interaction
-requirements: []            # REQUIRED — Requirement IDs from ROADMAP this plan addresses. MUST NOT be empty.
-user_setup: []              # Human-required setup Claude cannot automate (see below)
+wave: N
+depends_on: []
+files_modified: []
+autonomous: true
+requirements: []
+user_setup: []
 
-# Goal-backward verification (derived during planning, verified after execution)
+# Goal-backward verification (derived during planning, verified after execution); the Frontmatter Fields table below explains each field
 must_haves:
-  truths: []                # Observable behaviors that must be true for goal achievement
-  artifacts: []             # Files that must exist with real implementation
-  key_links: []             # Critical connections between artifacts
+  truths: []
+  artifacts: []
+  key_links: []
 ---
 
 <objective>
@@ -46,7 +46,7 @@ Output: [What artifacts will be created]
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/XX-name/{phase}-roadmap-slice.md
 @.planning/state.md
 
 # Only reference prior plan SUMMARYs if genuinely needed:
@@ -57,6 +57,18 @@ Output: [What artifacts will be created]
 [Relevant source files:]
 @src/path/to/relevant.ts
 </context>
+
+## Plan Decisions
+<!-- Schema: @~/.claude/pan-wizard-core/references/handoff-decisions.md -->
+
+### Locked (executor MUST follow)
+- D-1: [statement]. Why: [rationale]. Source: [context.md REQ-X | research.md | architecture constraint].
+
+### Open (executor's discretion within constraints)
+- O-1: [decision space]. Constraints: [list]. Reason left open: [why planner did not lock].
+
+### Considered and rejected
+- R-1: [alternative]. Rejected because: [reason].
 
 <tasks>
 
@@ -194,7 +206,7 @@ Plan 02 in Wave 2 waits for Plan 01 in Wave 1 - genuine dependency on auth types
 wave: 3
 depends_on: ["01", "02"]
 files_modified: [src/components/Dashboard.tsx]
-autonomous: false  # Has checkpoint:human-verify
+autonomous: false
 ```
 
 Wave 3 runs after Waves 1 and 2. Pauses at checkpoint, orchestrator presents to user, resumes on approval.
@@ -210,7 +222,7 @@ Wave 3 runs after Waves 1 and 2. Pauses at checkpoint, orchestrator presents to 
 ```markdown
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/XX-name/{phase}-roadmap-slice.md
 @.planning/state.md
 
 # Only include SUMMARY refs if genuinely needed:
@@ -289,7 +301,7 @@ See `~/.claude/pan-wizard-core/references/tdd.md` for TDD plan structure.
 - Agent returns with checkpoint details + agent_id
 - Orchestrator presents to user
 - User responds
-- Orchestrator resumes agent with `resume: agent_id`
+- Orchestrator spawns a fresh continuation agent with the user's response (exec-phase: a fresh agent, not a resume)
 
 ---
 
@@ -317,7 +329,7 @@ Output: User model, API endpoints, and UI components.
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/03-features/03-roadmap-slice.md
 @.planning/state.md
 </context>
 
@@ -382,7 +394,7 @@ Output: Working dashboard component.
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/03-features/03-roadmap-slice.md
 @.planning/phases/03-features/03-01-summary.md
 @.planning/phases/03-features/03-02-summary.md
 </context>

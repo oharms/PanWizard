@@ -12,8 +12,8 @@ This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `d:\pante
 
 1. **Check platform-specific code** in `bin/install.js` and `bin/install-lib.cjs`:
    - Path separators (posix vs win32)
-   - `toPosix()` usage for cross-platform paths
-   - Symlink handling differences
+   - Forward-slash conversion (`displayPath()`, and `.replace(/\\/g, '/')` in `buildHookCommand()`); `toPosix()` lives in `pan-wizard-core/bin/lib/core.cjs`, not in the installer
+   - Symlink/junction resolution in the source-repo guard (`isInsideSourceRepo()` uses `fs.realpathSync`); the installer creates no symlinks
    - Line ending normalization
 
 2. **Run unit tests** (they use OS temp dirs, work on any platform):
@@ -41,10 +41,10 @@ This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `d:\pante
 | Runtime | Install Dir | Commands Dir | Agents Dir |
 |---------|-------------|--------------|------------|
 | Claude | `.claude/` | `commands/pan/` | `agents/` |
-| Codex | `.codex/` | `commands/pan/` | `agents/` |
-| Gemini | `.gemini/` | `commands/pan/` | `agents/` |
-| OpenCode | `.opencode/` | `commands/pan/` | `agents/` |
-| GitHub | `.github/` | `commands/pan/` | `agents/` |
+| Codex | `.codex/` | `.agents/skills/pan-*/` at the project root (not under `.codex/`) | `agents/` (`.toml`) |
+| Gemini | `.gemini/` | `commands/pan/` (`.toml`) | `agents/` |
+| OpenCode | `.opencode/` | `commands/` (flat `pan-*.md`) | `agents/` |
+| Copilot | `.github/` | `skills/pan-*/` | `agents/` (`.agent.md`) |
 
 6. **Report** any platform-specific issues found.
 
@@ -52,8 +52,8 @@ This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `d:\pante
 
 | Issue | Where to Look | Fix Pattern |
 |-------|---------------|-------------|
-| Path separators | `install-lib.cjs` | Use `toPosix()` or `path.posix` |
-| Symlinks | `install.js` | Check `fs.symlink` vs copy fallback |
+| Path separators | `install.js`, `install-lib.cjs` | Forward slashes via `displayPath()` / `.replace(/\\/g, '/')`; `toPosix()` is in `core.cjs` |
+| Symlinks | `install.js` | None created; only `isInsideSourceRepo()` resolves them (`fs.realpathSync`) |
 | Line endings | `.gitattributes` | Ensure `* text=auto` |
-| Permissions | Hooks install | Check `chmod` on non-Windows |
+| Permissions | Hooks install | No `chmod`: every hook command runs its script through `node` (`buildHookCommand()` builds `node "<path>"` for a global install; a local install registers `node <dir>/hooks/<hook>.js`) |
 | npm global | `--global` flag | Different paths per OS |

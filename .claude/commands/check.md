@@ -75,10 +75,10 @@ node d:\PanWizard\bin\install.js --copilot --local
 ```
 
 Verify each installed correctly:
-- Commands present in `commands/pan/`
-- Agents present in `agents/`
+- Commands present: `commands/pan/` for Claude (`.md`) and Gemini (`.toml`), flat `commands/pan-*.md` for OpenCode, `skills/pan-*/` for Copilot, and `.agents/skills/pan-*/` at the project root for Codex
+- Agents present in `agents/` (Codex writes `.toml`, Copilot `.agent.md`)
 - Core modules present (`pan-wizard-core/bin/`)
-- Hooks present in `hooks/`
+- Hooks present in `hooks/` for every runtime except OpenCode, which gets `plugins/pan-wizard.js` instead
 - Manifest present (`pan-file-manifest.json`)
 
 ---

@@ -23,8 +23,9 @@
  *     ]
  *   }
  *
- * Populating this file is the host runtime's responsibility (Claude Code's
- * MCP list API, etc.). This module reads the cache and reasons over it.
+ * Nothing populates this file on its own: no hook or host writes it.
+ * `bridge cache --servers <json>` (or an external script) seeds it; this module
+ * reads the cache and reasons over it.
  */
 
 const fs = require('fs');
@@ -184,7 +185,7 @@ function recommendForPhase(cwd, phaseNum, opts) {
       phase: String(phaseNum),
       runtime: cache.runtime,
       recommendations: [],
-      reason: 'no MCP tools cached — run `pan-tools bridge cache` or ensure host runtime populates .planning/bridge/available-tools.json',
+      reason: 'no MCP tools cached — seed .planning/bridge/available-tools.json with `pan-tools bridge cache --servers <json>`; no hook or host writes it',
     };
   }
 
@@ -240,8 +241,8 @@ function cmdBridgeRecommend(cwd, phaseNum, opts, raw) {
 }
 
 function cmdBridgeCache(cwd, serversJson, runtime, raw) {
-  // For scripted cache writes. Normally the host runtime writes the file,
-  // but this CLI path lets users seed it for testing or from external scripts.
+  // The cache's only writer: no hook or host runtime populates the file, so this
+  // CLI path (or an external script) is how users seed it.
   if (!serversJson) {
     // No payload — just echo the current cache path/state.
     output(listTools(cwd), raw);

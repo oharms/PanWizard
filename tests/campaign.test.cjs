@@ -48,6 +48,24 @@ describe('campaign — schedule + due', () => {
     assert.ok(c.writeSchedule(cwd, { cadence: 'nope' }, T0).error);
   });
 
+  test('an update without --cadence keeps the stored cadence', () => {
+    // `campaign schedule --pause` on an hourly campaign used to set it back to daily:
+    // the dispatcher defaulted --cadence and writeSchedule never read the stored one.
+    const { runPanTools } = require('./helpers.cjs');
+    const arm = runPanTools('campaign schedule --cadence hourly --goal ship', cwd);
+    assert.ok(arm.success, arm.error);
+    const paused = runPanTools('campaign schedule --pause', cwd);
+    assert.ok(paused.success, paused.error);
+    const s = c.readSchedule(cwd);
+    assert.equal(s.cadence, 'hourly');
+    assert.equal(s.paused, true);
+    assert.equal(s.goal, 'ship');
+    assert.equal(c.writeSchedule(cwd, { paused: false }, T0).cadence, 'hourly');
+    fs.rmSync(path.join(cwd, '.planning', 'orchestration'), { recursive: true, force: true });
+    fs.mkdirSync(path.join(cwd, '.planning', 'orchestration'), { recursive: true });
+    assert.equal(c.writeSchedule(cwd, {}, T0).cadence, 'daily', 'a first arm still defaults to daily');
+  });
+
   test('isRunDue: due at/after next_due, not before', () => {
     c.writeSchedule(cwd, { cadence: 'daily' }, T0);
     const s = c.readSchedule(cwd);

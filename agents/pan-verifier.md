@@ -23,7 +23,7 @@ Before verifying, discover project context:
 **Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
 
 **Project skills:** Check `.agents/skills/` directory if it exists:
-1. List available skills (subdirectories)
+1. List available skills (subdirectories), skipping PAN's own `pan-*` skills (a Codex or `--unified-skills` install puts one per PAN command there)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during verification
 4. Skip the full `AGENTS.md` inside a skill directory (100KB+ context cost). The project's own `AGENTS.md`, which `./CLAUDE.md` may import, is project instructions — read it.
@@ -57,7 +57,7 @@ cat "$PHASE_DIR"/*-verification.md 2>/dev/null
 **If previous verification exists with `gaps:` section → RE-VERIFICATION MODE:**
 
 1. Parse previous verification.md frontmatter
-2. Extract `must_haves` (truths, artifacts, key_links)
+2. Take `must_haves` (truths, artifacts, key_links) from the plans' frontmatter (Step 2, Option A): the verification frontmatter does not store them
 3. Extract `gaps` (items that failed)
 4. Set `is_re_verification = true`
 5. **Skip to Step 3** with optimization:
@@ -73,8 +73,9 @@ Set `is_re_verification = false`, proceed with Step 0b.
 If the current phase number > 1, check that the previous phase was verified:
 
 ```bash
-# 10# reads a zero-padded number like 08 as decimal (bash would read it as octal)
-PREV_PHASE=$((10#${PHASE_NUM%%[!0-9]*} - 1))
+# The previous phase: 2.1 → 2, 12A → 12, otherwise N-1 (10# reads a zero-padded 08 as
+# decimal; bash would read it as octal). verify-phase computes it the same way.
+case "$PHASE_NUM" in *.*) PREV_PHASE="${PHASE_NUM%%.*}" ;; *[A-Za-z]) PREV_PHASE="${PHASE_NUM%[A-Za-z]}" ;; *) PREV_PHASE=$((10#$PHASE_NUM - 1)) ;; esac
 PREV_DIR=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "$PREV_PHASE" --raw 2>/dev/null)
 [ -n "$PREV_DIR" ] && ls "$PREV_DIR"/*-verification.md 2>/dev/null
 ```
@@ -96,10 +97,10 @@ Proceed to Step 1.
 ls "$PHASE_DIR"/*-plan.md 2>/dev/null
 ls "$PHASE_DIR"/*-summary.md 2>/dev/null
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM"
-grep -E "^\|[^|]*\| *Phase +$PHASE_NUM " .planning/requirements.md 2>/dev/null
+grep -E "^\|[^|]*\| *Phase +0*${PHASE_NUM#0} " .planning/requirements.md 2>/dev/null
 ```
 
-Extract phase goal from roadmap.md — this is the outcome to verify, not the tasks.
+Extract the phase goal from the `get-phase` output — this is the outcome to verify, not the tasks. If your prompt names a roadmap slice, read it for the phase's requirement lines. Do not read roadmap.md or requirements.md whole: `get-phase`, the slice and the greps here carry what verification needs.
 
 ## Step 1c: Repo-Norms-First Verification (P-RES-005)
 
@@ -173,7 +174,7 @@ must_haves:
 If no must_haves in frontmatter, check for Success Criteria:
 
 ```bash
-PHASE_DATA=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM" --raw)
+PHASE_DATA=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE_NUM")
 ```
 
 Parse the `success_criteria` array from the JSON output. If non-empty:
@@ -272,8 +273,8 @@ Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, ver
 
 For each link:
 - `verified=true` → WIRED
-- `verified=false` with "not found" in detail → NOT_WIRED
-- `verified=false` with "Pattern not found" → PARTIAL
+- `verified=false` with detail "Source file not found" or "Target not referenced in source" → NOT_WIRED
+- `verified=false` with detail `Pattern "…" not found in source or target` → PARTIAL
 
 **Fallback patterns** (if must_haves.key_links not defined in PLAN):
 
@@ -327,7 +328,7 @@ Extract the tier table rows (T1/T2/T3/T4) and their expected coverage areas.
 
 | Check | Action | Status |
 |-------|--------|--------|
-| T1 declared | Scan for unit test files matching plan `test_pattern` | COVERED / GAP |
+| T1 declared | Scan for the unit test files the plan's `<verify>` commands run | COVERED / GAP |
 | T2 declared | Verify integration test + infrastructure (Docker/testcontainers) present | COVERED / GAP |
 | T3 declared | Verify E2E/CLI tests exist with setup instructions | COVERED / GAP |
 | T4 declared | Verify visual/Playwright tests with snapshot baseline | COVERED / GAP |
@@ -354,7 +355,7 @@ Collect ALL requirement IDs declared across plans for this phase.
 **6b. Cross-reference against requirements.md:**
 
 For each requirement ID from plans:
-1. Find its full description in requirements.md (`**REQ-ID**: description`)
+1. Find its full description (`**REQ-ID**: description`) in the slice's `## Its requirements`, or with `grep -n "REQ-ID" .planning/requirements.md` when there is no slice or the ID is missing from it
 2. Map to supporting truths/artifacts verified in Steps 3-5
 3. Determine status:
    - ✓ SATISFIED: Implementation evidence found that fulfills the requirement
@@ -364,7 +365,7 @@ For each requirement ID from plans:
 **6c. Check for orphaned requirements:**
 
 ```bash
-grep -E "Phase $PHASE_NUM" .planning/requirements.md 2>/dev/null
+grep -E "^\|[^|]*\| *Phase +0*${PHASE_NUM#0} " .planning/requirements.md 2>/dev/null
 ```
 
 If requirements.md maps additional IDs to this phase that don't appear in ANY plan's `requirements` field, flag as **ORPHANED** — these requirements were expected but no plan claimed them. ORPHANED requirements MUST appear in the verification report.
@@ -375,10 +376,10 @@ Identify files modified in this phase from summary.md key-files section, or extr
 
 ```bash
 # Option 1: Extract from SUMMARY frontmatter
-SUMMARY_FILES=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$PHASE_DIR"/*-summary.md --fields key-files)
+SUMMARY_FILES=$(for s in "$PHASE_DIR"/*-summary.md; do node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$s" --fields key_files; done)
 
 # Option 2: Verify commits exist (if commit hashes documented)
-COMMIT_HASHES=$(grep -oE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-summary.md | head -10)
+COMMIT_HASHES=$(grep -ohE "[a-f0-9]{7,40}" "$PHASE_DIR"/*-summary.md | head -10)
 if [ -n "$COMMIT_HASHES" ]; then
   COMMITS_VALID=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify commits $COMMIT_HASHES)
 fi
@@ -533,27 +534,32 @@ gaps:
 
 Record `verified_commit` from `git rev-parse HEAD` before you write the file. It ties the verdict to the code you checked: `pan-tools verify stale <phase>` and `pan-tools progress` compare the phase's files against it, and a file changed since then marks this verification stale.
 
-Create `.planning/phases/{phase_dir}/{phase_num}-verification.md`:
+Create `{phase_dir}/{phase_number}-verification.md` (`{phase_dir}` is already the full path from the project root, e.g. `.planning/phases/05-auth` or `.planning/tracks/<name>/phases/05-auth`: do not prefix it):
 
 ```markdown
 ---
 phase: XX-name
 verified: YYYY-MM-DDTHH:MM:SSZ
-verified_commit: <sha> # `git rev-parse HEAD` before you write this file: the code you verified
+# verified_commit: `git rev-parse HEAD` before you write this file: the code you verified
+verified_commit: <sha>
 status: passed | gaps_found | human_needed
 score: N/M must-haves verified
-test_gate: passed | failed | skipped # Step 8b
-not_checked: # Only for checks that could not run — never count them as passed
+# test_gate: Step 8b
+test_gate: passed | failed | skipped
+# not_checked: only for checks that could not run — never count them as passed
+not_checked:
   - check: "tests"
     reason: "no test script in package.json"
-re_verification: # Only if previous verification.md existed
+# re_verification: only if a previous verification.md existed
+re_verification:
   previous_status: gaps_found
   previous_score: 2/5
   gaps_closed:
     - "Truth that was fixed"
   gaps_remaining: []
   regressions: []
-gaps: # Only if status: gaps_found
+# gaps: only if status: gaps_found
+gaps:
   - truth: "Observable truth that failed"
     status: failed
     reason: "Why it failed"
@@ -562,11 +568,13 @@ gaps: # Only if status: gaps_found
         issue: "What's wrong"
     missing:
       - "Specific thing to add/fix"
-human_verification: # Only if status: human_needed
+# human_verification: only if status: human_needed
+human_verification:
   - test: "What to do"
     expected: "What should happen"
     why_human: "Why can't verify programmatically"
-unrequested: # Only if Step 7c found work no plan asked for
+# unrequested: only if Step 7c found work no plan asked for
+unrequested:
   - path: "src/path/to/file.tsx"
     what: "What it adds that no plan or requirement asked for"
 ---
@@ -639,7 +647,7 @@ Return with:
 
 **Status:** {passed | gaps_found | human_needed}
 **Score:** {N}/{M} must-haves verified
-**Report:** .planning/phases/{phase_dir}/{phase_num}-verification.md
+**Report:** {phase_dir}/{phase_number}-verification.md
 
 {If passed:}
 All must-haves verified. Phase goal achieved. Ready to proceed.
@@ -735,7 +743,7 @@ return <div>No messages</div>  // Always shows "no messages"
 <success_criteria>
 
 - [ ] Previous verification.md checked (Step 0)
-- [ ] If re-verification: must-haves loaded from previous, focus on failed items
+- [ ] If re-verification: must-haves taken from the plans' frontmatter, focus on the previous gaps
 - [ ] If initial: must-haves established (from frontmatter or derived)
 - [ ] All truths verified with status and evidence
 - [ ] All artifacts checked at all three levels (exists, substantive, wired)

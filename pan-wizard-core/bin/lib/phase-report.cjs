@@ -96,14 +96,20 @@ function resolvePhase(cwd, phaseNumber) {
 function extractPhaseGoal(cwd, phaseNumber) {
   const content = safeReadFile(path.join(planningPath(cwd), ROADMAP_FILE));
   if (!content) return { objective: null, success_criteria: [] };
-  const re = new RegExp('#{2,4}\\s*Phase\\s+' + escapeRegex(String(phaseNumber)) + ':\\s*([^\\n]+)', 'i');
+  // Padded or not: the number comes from the zero-padded phase directory ("02"),
+  // while PAN writes `### Phase 2:` headings, so the report found no goal.
+  const unpadded = String(phaseNumber).trim().replace(/^0+(?=\d)/, '');
+  const re = new RegExp('#{2,4}\\s*Phase\\s+0*' + escapeRegex(unpadded) + ':\\s*([^\\n]+)', 'i');
   const m = content.match(re);
   if (!m) return { objective: null, success_criteria: [] };
   const start = m.index;
   const rest = content.slice(start + 1);
   const nextH = rest.match(/\n#{2,4}\s+Phase\s+\d/i);
   const end = nextH ? start + 1 + nextH.index : content.length;
-  const section = content.slice(start, end);
+  let section = content.slice(start, end);
+  // A phase moved out by `roadmap compact` keeps a stub; its criteria are in the history.
+  const compacted = require('./roadmap-compact.cjs').compactedPhaseSection(cwd, phaseNumber, section);
+  if (compacted && compacted.section) section = compacted.section;
   const gm = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
   const objective = gm ? gm[1].trim() : null;
   const cm = section.match(/\*\*Success Criteria\*\*[^\n]*:\s*\n((?:\s*\d+\.\s*[^\n]+\n?)+)/i);

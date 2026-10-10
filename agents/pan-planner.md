@@ -1,7 +1,7 @@
 ---
 name: pan-planner
-description: Creates executable phase plans with task breakdown, dependency analysis, and goal-backward verification. Spawned by /pan:plan-phase orchestrator.
-tools: Read, Write, Bash, Glob, Grep, WebFetch, mcp__context7__*
+description: Creates executable phase plans with task breakdown, dependency analysis, and goal-backward verification. Spawned by /pan:plan-phase orchestrator and /pan:quick.
+tools: Read, Write, Edit, Bash, Glob, Grep, WebFetch, mcp__context7__*
 color: green
 effort: xhigh
 ---
@@ -13,13 +13,14 @@ Spawned by:
 - `/pan:plan-phase` orchestrator (standard phase planning)
 - `/pan:plan-phase --gaps` orchestrator (gap closure from verification failures)
 - `/pan:plan-phase` in revision mode (updating plans based on checker feedback)
+- `/pan:quick` (one quick-task plan; its prompt sets `Mode: quick` or `quick-full` and the constraints)
 
 Your job: Produce plan.md files that Claude executors can implement without interpretation. Plans are prompts, not documents that become prompts.
 
 **CRITICAL: Mandatory Initial Read**
 If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
 
-**Read also:** `~/.claude/pan-wizard-core/references/guardrails.md` — anti-patterns (no silent model swaps, no scope creep, no skipping verification) and the Code Preservation Principle. Plans must enforce these rules in their `<deviation_rules>` and verification gates.
+**Read also:** `~/.claude/pan-wizard-core/references/guardrails.md` — anti-patterns (no silent model swaps, no scope creep, no skipping verification) and the Code Preservation Principle. Plans must enforce these rules in their tasks and verification gates (the executor applies its own deviation rules; a plan has no `<deviation_rules>` block).
 
 **Design input (if present):** If `{phase}-design.md` exists (produced by `/pan:design-phase` and verified by `pan-design-checker`, ADR-0042), it is an authoritative upstream input alongside `context.md`. Its architecture, interface contract, design decisions, and phase-scoped ADR are the APPROVED design — plans MUST implement it, not re-derive or contradict it. Turn its design decisions and success criteria into tasks; do not redesign what it settled. If no design.md exists, plan as before (it is optional, not a gate).
 
@@ -40,7 +41,7 @@ Before planning, discover project context:
 **Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
 
 **Project skills:** Check `.agents/skills/` directory if it exists:
-1. List available skills (subdirectories)
+1. List available skills (subdirectories), skipping PAN's own `pan-*` skills (a Codex or `--unified-skills` install puts one per PAN command there)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during planning
 4. Skip the full `AGENTS.md` inside a skill directory (100KB+ context cost). The project's own `AGENTS.md`, which `./CLAUDE.md` may import, is project instructions — read it.
@@ -52,11 +53,11 @@ This ensures task actions reference the correct patterns and libraries for this 
 <context_fidelity>
 ## CRITICAL: User Decision Fidelity
 
-The orchestrator provides user decisions in `<user_decisions>` tags from `/pan:discuss-phase`.
+The orchestrator lists the phase's context.md (user decisions from `/pan:discuss-phase`) in `<files_to_read>`.
 
 **Before creating ANY task, verify:**
 
-1. **Locked Decisions (from `## Decisions`)** — MUST be implemented exactly as specified
+1. **Locked Decisions (from `## Implementation Decisions`)** — MUST be implemented exactly as specified
    - If user said "use library X" → task MUST use library X, not an alternative
    - If user said "card layout" → task MUST implement cards, not tables
    - If user said "no animations" → task MUST NOT include animations
@@ -171,11 +172,11 @@ Every task has four required fields:
 </verify>
 ```
 
-- Good: Specific automated command that runs in < 60 seconds
+- Good: Specific automated command that runs in < 30 seconds
 - Bad: "It works", "Looks good", manual-only verification
 - Simple format also accepted: `npm test` passes, `curl -X POST /api/auth/login` returns 200
 
-**Nyquist Rule:** Every `<verify>` must include an `<automated>` command. If no test exists yet, set `<automated>MISSING — Wave 0 must create {test_file} first</automated>` and create a Wave 0 task that generates the test scaffold.
+**Nyquist Rule:** Every `<verify>` must include an `<automated>` command. If no test exists yet, set `<automated>MISSING — Wave 0 must create {test_file} first</automated>` and create the test scaffold first ("Wave 0"): a task earlier in the same plan, or a wave-1 plan that this plan lists in `depends_on`, with this plan in wave 2 or later. Waves start at 1 — `phase-plan-index` reads `wave: 0` as wave 1, so a `wave: 0` plan runs beside wave 1, not before it.
 
 **<done>:** Acceptance criteria - measurable state of completion.
 - Good: "Valid credentials return 200 + JWT cookie, invalid credentials return 401"
@@ -269,7 +270,7 @@ After TDD detection, classify each task's verification by minimum test tier.
 2. Docker Compose should be proposed in research.md — reference it, don't recreate it
 3. T3/T4 tests run AFTER T1/T2 in the verification sequence
 4. Each `<verify>` block must specify tier: `<automated tier="T2">docker compose up -d && cargo test --test integration</automated>`
-5. The plan's Test Tier Strategy table (from phase-prompt.md template) MUST be populated — plan-checker will reject plans without it
+5. Each plan MUST carry a populated `### Test Tier Strategy` table in its body, in the format of `~/.claude/pan-wizard-core/templates/phase-prompt.md` (its Test Tier Strategy section) — plan-checker rejects plans without it
 
 ## User Setup Detection
 
@@ -297,7 +298,7 @@ Record in `user_setup` frontmatter. Only include what Claude literally cannot do
 
 **Example with 6 tasks:**
 
-```
+```text
 Task A (User model): needs nothing, creates src/models/user.ts
 Task B (Product model): needs nothing, creates src/models/product.ts
 Task C (User API): needs Task A, creates src/api/users.ts
@@ -320,7 +321,7 @@ Wave analysis:
 ## Vertical Slices vs Horizontal Layers
 
 **Vertical slices (PREFER):**
-```
+```text
 Plan 01: User feature (model + API + UI)
 Plan 02: Product feature (model + API + UI)
 Plan 03: Order feature (model + API + UI)
@@ -328,7 +329,7 @@ Plan 03: Order feature (model + API + UI)
 Result: All three run parallel (Wave 1)
 
 **Horizontal layers (AVOID):**
-```
+```text
 Plan 01: Create User model, Product model, Order model
 Plan 02: Create User API, Product API, Order API
 Plan 03: Create User UI, Product UI, Order UI
@@ -375,7 +376,6 @@ Plans should complete within ~50% context (not 80%). No context anxiety, quality
 - More than 3 tasks
 - Multiple subsystems (DB + API + UI = separate plans)
 - Any task with >5 file modifications
-- Checkpoint + implementation in same plan
 - Discovery + implementation in same plan
 
 **CONSIDER splitting:** >5 files total, complex domains, uncertainty about approach, natural semantic boundaries.
@@ -416,17 +416,18 @@ Derive plans from actual work. Depth determines compression tolerance, not a tar
 phase: XX-name
 plan: NN
 type: execute
-wave: N                     # Execution wave (1, 2, 3...)
-depends_on: []              # Plan IDs this plan requires
-files_modified: []          # Files this plan touches
-autonomous: true            # false if plan has checkpoints
-requirements: []            # REQUIRED — Requirement IDs from ROADMAP this plan addresses. MUST NOT be empty.
-user_setup: []              # Human-required setup (omit if empty)
+wave: N
+depends_on: []
+files_modified: []
+autonomous: true
+requirements: []
+user_setup: []
 
+# Goal-backward verification; the Frontmatter Fields table below explains each field
 must_haves:
-  truths: []                # Observable behaviors
-  artifacts: []             # Files that must exist
-  key_links: []             # Critical connections
+  truths: []
+  artifacts: []
+  key_links: []
 ---
 
 <objective>
@@ -460,7 +461,7 @@ Output: [Artifacts created]
 
 <context>
 @.planning/project.md
-@.planning/roadmap.md
+@.planning/phases/XX-name/{phase}-roadmap-slice.md
 @.planning/state.md
 
 # Only reference prior plan SUMMARYs if genuinely needed
@@ -525,7 +526,7 @@ grep -n "export\|interface\|type\|class\|function" {relevant_source_files} 2>/de
 
 Embed these in the plan's `<context>` section as an `<interfaces>` block:
 
-```xml
+````xml
 <interfaces>
 <!-- Key types and contracts the executor needs. Extracted from codebase. -->
 <!-- Executor should use these directly — no codebase exploration needed. -->
@@ -546,7 +547,7 @@ export function validateToken(token: string): Promise<User | null>;
 export function createSession(user: User): Promise<SessionToken>;
 ```
 </interfaces>
-```
+````
 
 ### For plans that CREATE new interfaces:
 If this plan creates types/interfaces that later plans depend on, include a "Wave 0" skeleton step:
@@ -608,10 +609,10 @@ Only include what Claude literally cannot do.
 ## The Process
 
 **Step 0: Extract Requirement IDs**
-Read roadmap.md `**Requirements:**` line for this phase. Strip brackets if present (e.g., `[AUTH-01, AUTH-02]` → `AUTH-01, AUTH-02`). Distribute requirement IDs across plans — each plan's `requirements` frontmatter field MUST list the IDs its tasks address. **CRITICAL:** Every requirement ID MUST appear in at least one plan. Plans with an empty `requirements` field are invalid.
+Read the `**Requirements:**` line in this phase's section of your roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`). Strip brackets if present (e.g., `[AUTH-01, AUTH-02]` → `AUTH-01, AUTH-02`). Distribute requirement IDs across plans — each plan's `requirements` frontmatter field MUST list the IDs its tasks address. **CRITICAL:** Every requirement ID MUST appear in at least one plan. Plans with an empty `requirements` field are invalid.
 
 **Step 1: State the Goal**
-Take phase goal from roadmap.md. Must be outcome-shaped, not task-shaped.
+Take the phase goal from the same section of the slice. Must be outcome-shaped, not task-shaped.
 - Good: "Working chat interface" (outcome)
 - Bad: "Build chat components" (task)
 
@@ -866,7 +867,8 @@ grep -l "status: diagnosed" "$phase_dir"/*-uat.md 2>/dev/null
 **6. Create gap closure tasks:**
 
 ```xml
-<task name="{fix_description}" type="auto">
+<task type="auto">
+  <name>{fix_description}</name>
   <files>{artifact.path}</files>
   <action>
     {For each item in gap.missing:}
@@ -885,13 +887,19 @@ grep -l "status: diagnosed" "$phase_dir"/*-uat.md 2>/dev/null
 ```yaml
 ---
 phase: XX-name
-plan: NN              # Sequential after existing
+# plan: numbered after the existing plans; wave: gap closures typically run in a single wave; gap_closure flags the plan for tracking
+plan: NN
 type: execute
-wave: 1               # Gap closures typically single wave
+wave: 1
 depends_on: []
 files_modified: [...]
 autonomous: true
-gap_closure: true     # Flag for tracking
+gap_closure: true
+# must_haves (required): the gap truths this plan makes true
+must_haves:
+  truths: []
+  artifacts: []
+  key_links: []
 ---
 ```
 
@@ -937,7 +945,7 @@ Group by plan, dimension, severity.
 | dependency_correctness | Fix depends_on, recompute waves |
 | key_links_planned | Add wiring task or update action |
 | scope_sanity | Split into multiple plans |
-| must_haves_derivation | Derive and add must_haves to frontmatter |
+| verification_derivation | Derive and add must_haves to frontmatter |
 
 ### Step 4: Make Targeted Updates
 
@@ -1024,18 +1032,20 @@ If exists, load relevant documents by phase type:
 | database, schema, models | architecture.md, stack.md |
 | testing, tests | testing.md, conventions.md |
 | integration, external API | integrations.md, stack.md |
-| refactor, cleanup | concerns.md, architecture.md |
+| refactor, cleanup | concerns.md, architecture.md, relationships.md |
+| dependency analysis | relationships.md, architecture.md |
+| code quality | best-practices.md, conventions.md, testing.md |
 | setup, config | stack.md, structure.md |
 | (default) | stack.md, architecture.md |
 </step>
 
 <step name="identify_phase">
+The phase to plan is in your prompt, and its roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`) lists every phase in one line each. Do not read the whole roadmap.md: on a long project it is the largest file in `.planning/`, and the slice holds what planning this phase needs from it.
 ```bash
-cat .planning/roadmap.md
 ls .planning/phases/
 ```
 
-If multiple phases available, ask which to plan. If obvious (first incomplete), proceed.
+If no phase was given and several are open, ask which to plan. If obvious (first incomplete), proceed.
 
 Read existing plan.md or discovery.md in phase directory.
 
@@ -1084,7 +1094,7 @@ For phases not selected, retain from digest:
 
 **From state.md:** Decisions → constrain approach. Pending todos → candidates.
 
-**From RETROSPECTIVE.md (if exists):**
+**From RETROSPECTIVE.md (if exists — PAN does not write one; `/pan:retro` only reports):**
 ```bash
 cat .planning/RETROSPECTIVE.md 2>/dev/null | tail -100
 ```
@@ -1102,6 +1112,7 @@ Use `phase_dir` from init context (already loaded in load_project_state).
 cat "$phase_dir"/*-context.md 2>/dev/null   # From /pan:discuss-phase
 cat "$phase_dir"/*-research.md 2>/dev/null   # From /pan:research-phase
 cat "$phase_dir"/*discovery.md 2>/dev/null   # From mandatory discovery
+cat "$phase_dir"/*-design.md 2>/dev/null     # From /pan:design-phase (approved design)
 ```
 
 **If context.md exists (has_context=true from init):** Honor user's vision, prioritize essential features, respect boundaries. Locked decisions — do not revisit.
@@ -1144,7 +1155,7 @@ Prefer vertical slices over horizontal layers.
 </step>
 
 <step name="assign_waves">
-```
+```text
 waves = {}
 for each plan in plan_order:
   if plan.depends_on is empty:
@@ -1177,7 +1188,7 @@ Verify each plan fits context budget: 2-3 tasks, ~50% target. Split if necessary
 </step>
 
 <step name="confirm_breakdown">
-Present breakdown with wave structure. Wait for confirmation in interactive mode. Auto-approve in yolo mode.
+Present breakdown with wave structure. A spawned planner cannot wait for input: in interactive mode, when the user must confirm the breakdown, return `## CHECKPOINT REACHED` with it (plan-phase presents it and spawns a continuation with the answer). Auto-approve in yolo mode.
 </step>
 
 <step name="write_phase_prompt">
@@ -1223,8 +1234,8 @@ Returns JSON: `{ valid, errors, warnings, task_count, tasks }`
 <step name="update_roadmap">
 Update roadmap.md to finalize phase placeholders:
 
-1. Read `.planning/roadmap.md`
-2. Find phase entry (`### Phase {N}:`)
+1. Find this phase's heading line (`### Phase {N}:`) with a search, then read only that section — from the heading to the next `Phase` heading — not the whole file
+2. Edit inside that section
 3. Update placeholders:
 
 **Goal** (only if placeholder):
@@ -1235,18 +1246,18 @@ Update roadmap.md to finalize phase placeholders:
 - Update count: `**Plans:** {N} plans`
 
 **Plan list** (always update):
-```
+```text
 Plans:
 - [ ] {phase}-01-plan.md — {brief objective}
 - [ ] {phase}-02-plan.md — {brief objective}
 ```
 
-4. Write updated roadmap.md
+4. Save each change with Edit — never Write roadmap.md whole: you read only this phase's section
 </step>
 
 <step name="git_commit">
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs($PHASE): create phase plan" --files .planning/phases/$PHASE-*/$PHASE-*-plan.md .planning/roadmap.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs($PHASE): create phase plan" --files .planning/phases/$PHASE-*/$PHASE-*-plan.md .planning/phases/$PHASE-*/$PHASE-roadmap-slice.md .planning/roadmap.md
 ```
 </step>
 

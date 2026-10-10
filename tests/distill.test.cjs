@@ -243,6 +243,11 @@ describe('Pass 5 — pattern memory', () => {
     const result = writePatternsMemory(cwd, findings);
     assert.equal(result.written, true);
     assert.ok(fs.existsSync(result.file));
+    // M15: an entry records that a pattern was seen, never that it was fixed, so the header
+    // must not claim the patterns were resolved.
+    const header = fs.readFileSync(result.file, 'utf8').split('---')[1];
+    assert.match(header, /description: .*detections, not fixes/);
+    assert.doesNotMatch(header, /resolved/);
   });
 
   test('readPatternsMemory parses written entries', () => {
@@ -256,7 +261,7 @@ describe('Pass 5 — pattern memory', () => {
     assert.ok(memory.patterns.some(p => p.pattern === 'phantom_try_catch'));
   });
 
-  test('detectRegressedPatterns finds re-introduced bloat', () => {
+  test('detectRegressedPatterns flags a pattern recorded in an earlier session as recurring', () => {
     cwd = createTempProject();
     writePatternsMemory(cwd, [
       { pattern: 'phantom_try_catch', file: 'src/a.js', message: 'phantom' },

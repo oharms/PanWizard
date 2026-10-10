@@ -130,7 +130,7 @@ Exit workflow.
 </step>
 
 <step name="auto_mode_bypass">
-**P-1803 fix (v3.7.8):** When `--auto` is set or `workflow.auto_advance: true`, **skip the entire question-driven discussion** and synthesize a minimal `context.md` directly from upstream artifacts. The 6 unguarded `AskUserQuestion` calls in this workflow (lines ~140, 156, 208, 261, 264, 278) all stall headless `claude -p` sessions immediately. Surfaced by the wookie autonomous build (v3.7.7): retry attempts via `/pan:discuss-phase 3 --auto` exited in 75s with $0.42 cost and zero commits before plan-phase auto-mode was patched to bypass discuss-phase entirely. This step makes discuss-phase itself auto-mode-safe, so it can be re-introduced into the auto pipeline cleanly.
+**P-1803 fix (v3.7.8):** When `--auto` is set or `workflow.auto_advance: true`, **skip the entire question-driven discussion** and synthesize a minimal `context.md` directly from upstream artifacts. The unguarded `AskUserQuestion` calls in `check_existing`, `present_gray_areas` and `discuss_areas` all stall headless `claude -p` sessions immediately. Surfaced by the wookie autonomous build (v3.7.7): retry attempts via `/pan:discuss-phase 3 --auto` exited in 75s with $0.42 cost and zero commits before plan-phase auto-mode was patched to bypass discuss-phase entirely. This step makes discuss-phase itself auto-mode-safe, so it can be re-introduced into the auto pipeline cleanly.
 
 Detect auto mode:
 
@@ -152,7 +152,7 @@ Skip the interactive flow. Generate `context.md` from the roadmap goal + idea.md
 
 2. Read inputs:
 ```bash
-ROADMAP_GOAL=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${PHASE}" --raw | sed -n '/^Goal:/,/^$/p')
+PHASE_JSON=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${PHASE}")   # JSON: goal, success_criteria, section
 IDEA_PATH=".planning/idea.md"
 PROJECT_PATH=".planning/project.md"
 REQ_PATH=".planning/requirements.md"
@@ -170,7 +170,7 @@ REQ_PATH=".planning/requirements.md"
 <domain>
 ## Phase Boundary
 
-[Goal extracted verbatim from roadmap.md]
+[The `goal` from PHASE_JSON, verbatim]
 
 </domain>
 
@@ -181,7 +181,7 @@ REQ_PATH=".planning/requirements.md"
 [For each item in idea.md "Constraints" / "Scope" / "Notes for the planner" sections that mentions Phase ${PHASE} or its domain keywords (e.g., "image pipeline" for Phase 3) — extract as a locked decision, prefixed with the domain name]
 
 ### From requirements.md
-[For each requirement marked Active that maps to Phase ${PHASE} via `requirements.md`'s phase column — list as a locked decision]
+[For each requirement the phase's slice lists under "Its requirements" (`pan-tools roadmap slice ${PHASE} --raw`) — list as a locked decision]
 
 ### Claude's Discretion
 - Implementation patterns within the constraints above (the planner decides specific libraries / file layouts / function shapes)
@@ -213,7 +213,8 @@ None — auto-mode synthesis honors the original idea.md scope.
 
 Write the file:
 ```bash
-mkdir -p "${phase_dir}"
+# phase_dir is null when the phase has no directory yet: create it (the printed path is phase_dir)
+case "{phase_dir}" in ""|null) node ~/.claude/pan-wizard-core/bin/pan-tools.cjs scaffold phase-dir --phase "${PHASE}" --name "{phase_name}" --raw ;; esac
 # Use Write tool (NOT heredoc) to create ${phase_dir}/${PADDED_PHASE}-context.md
 ```
 
@@ -278,7 +279,7 @@ If "Cancel": Exit workflow.
 <step name="analyze_phase">
 Analyze the phase to identify gray areas worth discussing.
 
-**Read the phase description from roadmap.md and determine:**
+**Read the phase's section (`roadmap get-phase "${PHASE}"`: `goal`, `success_criteria`, `section`) and determine:**
 
 1. **Domain boundary** — What capability is this phase delivering? State it clearly.
 
@@ -416,9 +417,9 @@ Create context.md capturing decisions made.
 
 Use values from init: `phase_dir`, `phase_slug`, `padded_phase`.
 
-If `phase_dir` is null (phase exists in roadmap but no directory):
+If `phase_dir` is null (phase exists in roadmap but no directory), create it and use the printed path as `phase_dir`:
 ```bash
-mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs scaffold phase-dir --phase "${PHASE}" --name "{phase_name}" --raw
 ```
 
 **File location:** `${phase_dir}/${padded_phase}-context.md`

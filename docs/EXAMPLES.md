@@ -45,13 +45,15 @@ When the conversation is complete PAN creates:
 /pan:discuss-phase 1
 ```
 
-PAN asks about implementation details specific to Phase 1: database schema
-choices, CLI framework (click vs argparse vs typer), output formatting, error
-handling style. Your answers are recorded in `.planning/phases/01-{name}/01-context.md` as decisions.
+PAN picks the gray areas of Phase 1 that would change what you get, such as
+output format, flag design and error handling, and asks about those. It does not
+ask about technical choices like the database schema or the CLI library; research
+and planning settle those unless you state a preference. Your answers are
+recorded in `.planning/phases/01-{name}/01-context.md` as decisions.
 
 ```text
-PAN: Which CLI framework do you prefer?
-You: Typer -- I want automatic --help generation and type hints.
+PAN: How should the commands and their flags look?
+You: Subcommands (doto add, doto list, doto done), each with its own --help. Use Typer.
 
 PAN: How should tasks be displayed?
 You: Rich tables for list view, plain text for single-task view.
@@ -80,8 +82,9 @@ file-by-file change descriptions, and dependency notes.
 
 PAN reads the phase's plans and groups independent plans into parallel waves. Wave 1
 might create the project skeleton and database module simultaneously. Wave 2
-builds the CLI commands that depend on both. Each wave completes and is
-verified before the next begins.
+builds the CLI commands that depend on both. Each wave completes and its summaries are
+spot-checked before the next begins; the verifier checks the phase after the last wave
+(unless `workflow.verifier` is off).
 
 You see real-time progress as files are created and tests are run.
 
@@ -242,19 +245,25 @@ PAN reads `.planning/state.md` and `.planning/roadmap.md` and prints a
 summary:
 
 ```text
-Project: doto (CLI task manager)
-Milestone: v0.2.0
+# doto
 
-Phase 1: Core CRUD             [complete]
-Phase 2: Filtering & Tags      [in progress]
-  - discuss-phase              [complete]
-  - plan-phase                 [complete]
-  - exec-phase                 [partial -- 2 of 3 plans have summaries]
-  - verify-phase               [pending]
-Phase 3: Packaging & Docs      [pending]
+**Progress:** [█████████████████░░░] 5/6 plans (83%)
+**Profile:** balanced
 
-Last activity: 2026-02-26 18:42 -- completed wave 2 (tag filtering)
-Next step: /pan:exec-phase 2   (resumes at wave 3)
+## Recent Work
+- [Phase 2, Plan 1]: tags stored with each task, `doto add --tag`
+- [Phase 2, Plan 2]: tag filtering on `doto list`
+
+## Current Position
+Phase 2 of 3: Filtering & Tags
+Plan 3 of 3: not started
+CONTEXT: ✓
+
+## ▶ Next Up
+
+**02-03: Date filtering** — date-range filtering and the `doto filter` subcommand
+
+`/pan:exec-phase 2`
 ```
 
 ### Restore full context
@@ -299,7 +308,7 @@ You are working on a side project and want to minimize token usage.
 ```
 
 This configures PAN to use cheaper models for research, planning and code-writing agents.
-The orchestrator still uses a capable model for coordination, but the
+The orchestrator keeps the model you launched the session with, but the
 parallel sub-agents use lighter ones.
 
 ### Disable optional stages
@@ -451,7 +460,7 @@ pip-installable, Python 3.10+.
 ```
 
 PAN reads the PRD, extracts goals, requirements, constraints, and technical
-decisions. Instead of asking you questions, it generates all planning
+decisions. Instead of asking you questions, it researches the domain (`.planning/research/`) and generates all planning
 artifacts directly:
 
 ```text
@@ -470,7 +479,7 @@ AUTO-ADVANCING → DISCUSS PHASE 1
 
 ### Continue with the next phase
 
-`--auto` does not stop at the roadmap: `/pan:new-project` sets `workflow.auto_advance: true` and runs `/pan:discuss-phase 1 --auto`, which chains planning, execution and verification of phase 1 and then prints the next command. Continue from there:
+`--auto` does not stop at the roadmap: `/pan:new-project` sets `workflow.auto_advance: true` and runs `/pan:discuss-phase 1 --auto`, which chains planning, execution and verification of phase 1 and then prints the next command (plan-phase runs exec-phase with `--no-transition`, so the chain ends at the phase boundary). When the session then tries to end, PAN's stop guard (Claude Code, Codex, Copilot CLI, Gemini CLI) blocks that stop once, because autonomy is armed and roadmap phases remain, and tells the agent to run the next phase; set `workflow.stop_guard: false` in `.planning/config.json` to stop at each phase instead. To continue by hand:
 
 ```text
 /pan:discuss-phase 2 --auto   # the next phase, chained the same way
@@ -486,14 +495,14 @@ is detailed enough to answer implementation questions.
 
 | Scenario | Command sequence |
 |---|---|
-| Greenfield project | `new-project` > `discuss` > `plan` > `execute` > `verify` |
-| Brownfield project | `map-codebase` > `new-project` > `discuss` > `plan` > `execute` > `verify` |
+| Greenfield project | `new-project` > `discuss-phase` > `plan-phase` > `exec-phase` > `verify-phase` |
+| Brownfield project | `map-codebase` > `new-project` > `discuss-phase` > `plan-phase` > `exec-phase` > `verify-phase` |
 | Fast bug fix | `quick` |
 | Substantial ad-hoc work | `quick --full` |
 | Start of day | `progress` > `resume` |
 | End of day | `pause` |
 | New version cycle | `milestone-done` > `milestone-new` |
-| Automated from PRD | `new-project --auto @prd.md` (chains `discuss-phase 1 --auto` > `plan-phase` > `exec-phase`) > `discuss-phase 2 --auto` |
+| Automated from PRD | `new-project --auto @prd.md` (chains discuss → plan → execute → verify for phase 1, then prints `discuss-phase 2 --auto`; the stop guard blocks one stop and tells the agent to spawn phase 2) |
 
 ---
 
@@ -542,7 +551,7 @@ After shipping a milestone, capture accumulated lessons for onboarding:
 /pan:knowledge playbook
 ```
 
-The playbook command reads `.planning/memory/*.md` — every lesson that `pan-planner`, `pan-verifier`, `pan-reviewer`, and other agents still keep in their memory files (the playbook is not scoped to one milestone) — and clusters entries into categories (Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps / General). Output at `.planning/playbook.md`:
+The playbook command reads every agent log in `.planning/memory/` (`memory list`) — the lessons someone recorded there for `pan-planner`, `pan-verifier` and other agents with `/pan:retro --write-memory`, `memory append` or `memory record` (PAN writes none on its own, so a project with none gets an empty playbook; the playbook is not scoped to one milestone) — and clusters entries into categories (Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps / General). Output at `.planning/playbook.md`:
 
 ```markdown
 ## Conventions

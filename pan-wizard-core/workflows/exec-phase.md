@@ -11,7 +11,7 @@ Read state.md before any operation to load project context.
 
 @~/.claude/pan-wizard-core/references/guardrails.md
 
-> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent executor --token-budget 5000 --raw` to load only the topics tagged relevant for execution at the configured budget. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts. Files appear here over time as `pan-tools learn promote` adds findings.
+> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent executor --cue "<phase goal; the files it touches>" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for execution. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts. Files appear here over time as `pan-tools learn promote` adds findings.
 </required_reading>
 
 ## Re-Read Checkpoints
@@ -20,7 +20,7 @@ Context compaction may have dropped earlier sections. Re-read the relevant secti
 
 | Before this step | Re-read | Why |
 |------------------|---------|-----|
-| Spawning a subagent | This workflow's `<step name="execute">` block | Wave/segment routing is easy to misremember after compaction |
+| Spawning a subagent | This workflow's `<step name="execute_waves">` block | Wave/segment routing is easy to misremember after compaction |
 | Writing code in a plan | `references/tdd.md` + plan file | Conventions and the plan's tasks drift across long sessions |
 | Committing | `references/guardrails.md` | Pre-commit shortcuts (silent model swaps, scope creep) are tempting under pressure |
 | Marking phase complete | `workflows/verify-phase.md` | Completion criteria are easy to misremember |
@@ -34,7 +34,7 @@ Load all context in one call:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init execute-phase "${PHASE_ARG}")
 ```
 
-Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`.
+Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`, `verifier_enabled`.
 
 **If `phase_found` is false:** Error — phase directory not found.
 **If `plan_count` is 0:** Error — no plans found in phase.
@@ -48,6 +48,11 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace init \
   --description "exec-phase ${PHASE_ARG}" \
   --command "exec-phase" \
   --phase "${PHASE_ARG}" 2>/dev/null || true
+```
+
+**The phase's roadmap slice** — what executing this phase needs from roadmap.md and requirements.md (a line per phase, this phase's section, its dependencies' goals, its requirement lines). Plans name it in their `<context>`; this writes it for plans made before it existed:
+```bash
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${phase_number}" --write --raw)
 ```
 </step>
 
@@ -70,42 +75,6 @@ From init JSON: `phase_dir`, `plan_count`, `incomplete_count`.
 Report: "Found {plan_count} plans in {phase_dir} ({incomplete_count} incomplete)"
 </step>
 
-<step name="load_phase_memory">
-**Load project memory before dispatching executors — prevents re-learning patterns already solved.**
-
-```bash
-ls .planning/memory/*.md 2>/dev/null
-```
-
-If `.planning/memory/` exists and contains `.md` files:
-1. **Check the memory-load budget first** (ADR-0036 — keeps per-agent injection bounded as logs grow):
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory budget --raw
-```
-2. **Load, size-gated — whole-file is the default:**
-   - If `status` is `ok`: **read every file whole** (Read tool) and condense each entry to its rule(s) — 1–3 lines per file. This preserves the "apply every rule" contract for normal-sized logs.
-   - If `status` is `warning` or `critical` (a log has grown large): load a **cue-scoped** slice per agent instead of the whole log, using the phase objective + the files this phase touches as the cue:
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory select <agent> --cue "<phase objective; changed files>" --raw
-```
-     Run once per agent that has a memory file. The returned `selected` entries are already recency-floored and token-budgeted (the newest lessons are always included). If `selected` is empty for an agent, **fall back to reading that file whole** — never silently drop an agent's memory.
-3. Store the condensed rules as a `MEMORY_RULES` block for injection into executor prompts in execute_waves.
-4. **Log memory priming to trace:**
-```bash
-MEMORY_COUNT=$(ls .planning/memory/*.md 2>/dev/null | wc -l | tr -d ' ')
-if [ "$MEMORY_COUNT" -gt "0" ]; then
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
-    --type decision --category memory_primed \
-    --description "Loaded ${MEMORY_COUNT} memory entries before Wave 1 dispatch" \
-    --agent orchestrator --impact minor \
-    --context "{\"memory_count\":${MEMORY_COUNT}}" \
-    2>/dev/null || true
-fi
-```
-
-If no memory files exist: skip (no trace event needed).
-</step>
-
 <step name="discover_and_group_plans">
 Load plan inventory with wave grouping in one call:
 
@@ -115,7 +84,7 @@ PLAN_INDEX=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase-plan-index "
 
 Parse JSON for: `phase`, `plans[]` (each with `id`, `wave`, `autonomous`, `objective`, `files_modified`, `task_count`, `has_summary`), `waves` (map of wave number → plan IDs), `incomplete`, `has_checkpoints`.
 
-**Filtering:** Skip plans where `has_summary: true`. If `--gaps-only`: also skip non-gap_closure plans. If all filtered: "No matching incomplete plans" → exit.
+**Filtering:** Skip plans where `has_summary: true`. If `--gaps-only`: also skip plans whose frontmatter lacks `gap_closure: true` (`phase-plan-index` does not report it; `frontmatter get <plan> --field gap_closure` exits 1 when it is absent). If all filtered: "No matching incomplete plans" → exit.
 
 **If `--gaps-only`:** this run is the fix round after a verification found gaps — a second attempt at work that failed once. Resolve the executor for that attempt and use it in place of `executor_model` for every spawn in this run:
 
@@ -197,10 +166,7 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        - .agents/skills/ (Project skills, if exists — list skills, read SKILL.md for each, follow relevant rules during implementation)
        </files_to_read>
 
-       <project_memory>
-       {MEMORY_RULES — insert condensed content of all .planning/memory/*.md files read in load_phase_memory step. If no memory files exist, omit this block entirely.}
-       Apply every rule in this block without exception. These are lessons from previous phases that the reviewer has already verified.
-       </project_memory>
+       If the plan's `<context>` names `@.planning/roadmap.md`, read `{slice_path}` in its place: it carries this phase's section, its dependencies' goals and its requirements, and the whole roadmap is the largest file in `.planning/` on a long project. Open the whole file only for something the slice leaves out.
 
        <success_criteria>
        - [ ] All tasks executed
@@ -525,8 +491,8 @@ fi
 
 **2. Find parent UAT file:**
 ```bash
-PARENT_INFO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "${PARENT_PHASE}" --raw)
-# Extract directory from PARENT_INFO JSON, then find UAT file in that directory
+PARENT_DIR=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs find-phase "${PARENT_PHASE}" --raw)
+# --raw prints the phase directory itself (empty when not found); find the UAT file in it
 ```
 
 **If no parent UAT found:** Skip this step (gap-closure may have been triggered by verification.md instead).
@@ -556,12 +522,14 @@ mv .planning/debug/{slug}.md .planning/debug/resolved/
 
 **6. Commit updated artifacts:**
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(phase-${PARENT_PHASE}): resolve UAT gaps and debug sessions after ${PHASE_NUMBER} gap closure" --files .planning/phases/*${PARENT_PHASE}*/*-uat.md .planning/debug/resolved/*.md
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(phase-${PARENT_PHASE}): resolve UAT gaps and debug sessions after ${PHASE_NUMBER} gap closure" --files .planning/phases/*${PARENT_PHASE}*/*-uat.md .planning/debug/
 ```
 </step>
 
 <step name="verify_phase_goal">
 Verify phase achieved its GOAL, not just completed tasks.
+
+**If `verifier_enabled` is false** (`workflow.verifier: false`, set by `/pan:settings` or at project setup): skip this step. Say "verification skipped (workflow.verifier is off)" when you report the phase, and go to update_roadmap. `/pan:verify-phase {X}` still verifies on demand.
 
 ```
 Task(
@@ -569,8 +537,9 @@ Task(
 Phase directory: {phase_dir}
 Phase goal: {goal from roadmap.md}
 Phase requirement IDs: {phase_req_ids}
+Roadmap slice: {slice_path} — this phase's section, its dependencies' goals and its requirement lines. Read it instead of roadmap.md and requirements.md.
 Check must_haves against actual codebase.
-Cross-reference requirement IDs from PLAN frontmatter against requirements.md — every ID MUST be accounted for.
+Cross-reference requirement IDs from PLAN frontmatter against the slice's requirement lines — every ID MUST be accounted for.
 Run the project's test suite as the test gate (the run_test_suite step of @~/.claude/pan-wizard-core/workflows/verify-phase.md) and record test_gate in the frontmatter.
 Create verification.md.",
   subagent_type="pan-verifier",
@@ -665,17 +634,17 @@ The report files are appended to the completion commit's `--files` list (`$REPOR
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(phase-{X}): complete phase execution" --files .planning/roadmap.md .planning/state.md .planning/requirements.md {phase_dir}/*-verification.md $REPORT_FILES
 ```
 
-**Circular optimization — finalize trace session:**
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace end 2>/dev/null || true
-```
-
-Log phase completion event:
+Log phase completion event (before the session ends: `trace end` clears the active-session pointer, and a `trace log` after it lands in a separate day-scoped `sess_auto_*` session):
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
   --type decision --category phase_complete \
-  --description "Phase ${PHASE_NUMBER} execution complete (${VERIFICATION_STATUS:-verified})" \
+  --description "Phase ${PHASE_NUMBER} execution complete (${VERIF_STATUS:-verified})" \
   --agent orchestrator --impact minor 2>/dev/null || true
+```
+
+**Circular optimization — finalize trace session:**
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace end 2>/dev/null || true
 ```
 </step>
 
@@ -690,14 +659,14 @@ Parse `--no-transition` flag from $ARGUMENTS.
 **If `--no-transition` flag present:**
 
 Execute-phase was spawned by plan-phase's auto-advance. Do NOT run transition.md.
-After verification passes and roadmap is updated, return completion status to parent:
+If verification found gaps, return `## GAPS FOUND` with the phase, score and gap summaries (plan-phase and discuss-phase stop the chain on it). After verification passes and roadmap is updated, return completion status to parent:
 
 ```
 ## PHASE COMPLETE
 
 Phase: ${PHASE_NUMBER} - ${PHASE_NAME}
 Plans: ${completed_count}/${total_count}
-Verification: {Passed | Gaps Found}
+Verification: {Passed | Skipped (workflow.verifier is off)}
 
 [Include aggregate_results output]
 ```

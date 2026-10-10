@@ -8,7 +8,7 @@ Template for `.planning/codebase/concerns.md` - captures known issues and areas 
 
 ## File Template
 
-```markdown
+~~~markdown
 # Codebase Concerns
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -132,7 +132,7 @@ quadrantChart
 
 *Concerns audit: [date]*
 *Update as issues are fixed or new ones discovered*
-```
+~~~
 
 <good_examples>
 ```markdown
@@ -321,5 +321,5 @@ quadrantChart
 - Planning refactoring work
 
 **How this gets populated:**
-Explore agents detect these during codebase mapping. Manual additions welcome for human-discovered issues. This is living documentation, not a complaint list.
+The `pan-document_code` mapper agents detect these during codebase mapping. Manual additions welcome for human-discovered issues. This is living documentation, not a complaint list.
 </guidelines>

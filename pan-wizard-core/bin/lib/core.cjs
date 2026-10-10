@@ -65,12 +65,14 @@ const PROVIDER_MODELS = {
 // PROVIDER_MODELS, provider-qualified; `default` is Anthropic as it is there.
 // Reality check R41. The Anthropic mid tier follows the `sonnet` alias, which
 // resolves to Sonnet 5.5 on the Anthropic API from Claude Code 2.1.284;
-// models.dev lists `anthropic/claude-sonnet-5-5` (api.json, read 2026-10-03).
+// models.dev lists `anthropic/claude-sonnet-5-5` (api.json, read 2026-10-03). The fast
+// tier follows the `haiku` alias, which resolves to Haiku 5.5 on the Anthropic API from
+// Claude Code 2.1.293; models.dev lists `anthropic/claude-haiku-5-5` (read 2026-10-10).
 const OPENCODE_MODELS = {
-  anthropic: { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5-5', fast: 'anthropic/claude-haiku-4-5' },
+  anthropic: { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5-5', fast: 'anthropic/claude-haiku-5-5' },
   openai:    { reasoning: 'inherit', mid: 'openai/gpt-6-sol',            fast: 'openai/gpt-6-luna' },
   google:    { reasoning: 'inherit', mid: 'google/gemini-3.8-flash',     fast: 'google/gemini-3.5-flash-lite' },
-  default:   { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5-5', fast: 'anthropic/claude-haiku-4-5' },
+  default:   { reasoning: 'inherit', mid: 'anthropic/claude-sonnet-5-5', fast: 'anthropic/claude-haiku-5-5' },
 };
 
 /**
@@ -389,6 +391,32 @@ function safeReadFile(filePath) {
   }
 }
 
+// ─── Line endings ───────────────────────────────────────────────────────────
+// A Windows working tree (core.autocrlf=true) holds planning files with CRLF
+// endings, and a parser written for '\n' finds nothing in them without saying so:
+// on 2026-10-04 every Windows field project measured was CRLF throughout, and the
+// memory optimizer, the must-haves parser and `frontmatter set` had all been
+// silently no-op (or worse) there. Parse on LF; write back in the file's own ending.
+
+/** LF text: CRLF → LF and a leading BOM dropped. */
+function toLf(text) {
+  return String(text == null ? '' : text).replace(/^﻿/, '').replace(/\r\n/g, '\n');
+}
+
+/** The ending a text mostly uses: '\r\n' when its CRLF lines outnumber its bare LF ones. */
+function dominantEol(text) {
+  const s = String(text == null ? '' : text);
+  const crlf = (s.match(/\r\n/g) || []).length;
+  const lf = (s.match(/\n/g) || []).length - crlf;
+  return crlf > lf ? '\r\n' : '\n';
+}
+
+/** LF text given back in the ending `eol` names. */
+function withEol(text, eol) {
+  const s = String(text == null ? '' : text);
+  return eol === '\r\n' ? s.replace(/\r?\n/g, '\r\n') : s;
+}
+
 /**
  * Load project config from .planning/config.json, merging with defaults.
  * Handles nested config sections (planning.*, workflow.*, git.*) and flat keys.
@@ -462,10 +490,10 @@ function loadConfig(cwd) {
       // Cost dashboard config: `cost.rates` per-model overrides (surfaced so the
       // documented override actually reaches cost.cjs — it was dropped before).
       cost: parsed.cost || {},
-      // Prompt-cache config: `cache.extra_files` lets a project add its own
-      // stable documents to the cached context block. Needed because the
-      // built-in list is the phase-model spine, so a focus-model project had
-      // an empty block and therefore no prompt caching at all.
+      // Cache config: `cache.extra_files` lets a project add its own stable
+      // documents to the block `cache prime` and the size checks measure. Needed
+      // because the built-in list is the phase-model spine, so a focus-model
+      // project had an empty block and nothing measured.
       cache: parsed.cache || {},
       // ADR-0031: project build/verification commands. null = not configured
       // (focus-auto --clean-seal then asks or skips rather than guessing).
@@ -634,7 +662,7 @@ function searchPhaseInDir(baseDir, relBase, normalized) {
   try {
     const entries = fs.readdirSync(baseDir, { withFileTypes: true });
     const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort((a, b) => comparePhaseNum(a, b));
-    const match = dirs.find(d => d.startsWith(normalized));
+    const match = dirs.find(d => d === normalized || d.startsWith(normalized + '-'));
     if (!match) return null;
 
     const dirMatch = match.match(PHASE_DIR_RE);
@@ -785,7 +813,11 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
     const restOfContent = content.slice(headerIndex);
     const nextHeaderMatch = restOfContent.match(/\n#{2,4}\s+Phase\s+\d/i);
     const sectionEnd = nextHeaderMatch ? headerIndex + nextHeaderMatch.index : content.length;
-    const section = content.slice(headerIndex, sectionEnd).trim();
+    let section = content.slice(headerIndex, sectionEnd).trim();
+    // A phase moved out by `roadmap compact` leaves a stub; the full section
+    // (and any model_tier override with it) is in roadmap-history.md.
+    const compacted = require('./roadmap-compact.cjs').compactedPhaseSection(cwd, unpadded, section);
+    if (compacted && compacted.section) section = compacted.section;
 
     const goalMatch = section.match(/(?:\*\*Goal:\*\*|\*\*Goal\*\*:)\s*([^\n]+)/i);
     const goal = goalMatch ? goalMatch[1].trim() : null;
@@ -796,6 +828,7 @@ function getRoadmapPhaseInternal(cwd, phaseNum) {
       phase_name: phaseName,
       goal,
       section,
+      ...(compacted ? { compacted: true } : {}),
     };
   } catch {
     return null;
@@ -1362,12 +1395,12 @@ function scanPendingTodos(cwd, area) {
  *
  * Reads files from .planning/ that are stable across agent calls within a phase
  * (project.md, requirements.md, roadmap.md, state.md, standards.md). Each block
- * is tagged `cache: true` so the host runtime (or installer) can translate to
- * the appropriate per-runtime caching syntax (Anthropic cache_control, etc.).
+ * is tagged `cache: true`. Nothing translates that tag into a cache marker: the
+ * host caches each agent's prompt prefix by itself, so this list is what PAN
+ * measures (context-budget, hygiene's cache-context check), not what it primes.
  *
  * Files that don't exist are skipped silently. The order matches the file list
- * in constants.cjs to keep prompt prefixes byte-stable across calls (which is
- * what cache key matching requires).
+ * in constants.cjs, so the `sha` of an unchanged set stays the same.
  *
  * @param {string} cwd - Project root
  * @returns {{blocks: Array<{path: string, content: string, cache: true}>, total_bytes: number, sha: string}}
@@ -1380,14 +1413,12 @@ function buildCachedContext(cwd) {
   const hasher = crypto.createHash('sha256');
 
   // The built-in list is the PHASE-model spine. A focus-model project has none
-  // of those files, so its cached block came out empty and it silently received
-  // no prompt caching at all. `cache.extra_files` lets such a project name its
-  // own stable documents rather than PAN inventing a convention it doesn't
-  // otherwise define.
+  // of those files, so its measured block came out empty and the size checks had
+  // nothing to read. `cache.extra_files` lets such a project name its own stable
+  // documents rather than PAN inventing a convention it doesn't otherwise define.
   //
   // Entries are planning-root-relative, must stay inside it, and are appended
-  // after the built-ins so the prefix stays byte-stable for projects that set
-  // nothing — changing the prefix would invalidate every existing cache key.
+  // after the built-ins, so the `sha` of a project that sets nothing does not change.
   const extra = [];
   try {
     const configured = loadConfig(cwd)?.cache?.extra_files;
@@ -1468,6 +1499,9 @@ module.exports = {
   error,
   verbose,
   safeReadFile,
+  toLf,
+  dominantEol,
+  withEol,
   loadConfig,
   isGitIgnored,
   isGitRepo,

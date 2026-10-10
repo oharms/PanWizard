@@ -11,8 +11,8 @@
 | Runtime | Command prefix | Config location | Status |
 |---------|---------------|-----------------|--------|
 | Claude Code | `/pan:*` | `~/.claude/` or `./.claude/` | Full support |
-| OpenCode | `/pan-*` | `~/.config/opencode/` or `./.opencode/` | Full support |
-| Gemini CLI | `/pan:*` | `~/.gemini/` or `./.gemini/` | Full support |
+| OpenCode | `/pan-*` | `~/.config/opencode/` or `./.opencode/` | Commands; no hooks (a plugin keeps the phase through compaction) |
+| Gemini CLI | `/pan:*` | `~/.gemini/` or `./.gemini/` | Commands; no context monitor, cost or trace capture |
 | Codex | `$pan-*` | `~/.codex/` or `./.codex/` | Skills-based |
 | Copilot CLI | `/pan-*` | `~/.copilot/` or `./.github/` | Skills-based |
 
@@ -24,7 +24,7 @@ PAN itself is free and open source. Token costs depend on your Claude/model usag
 |---------|----------------------|----------|
 | `quality` | Every agent at the session model (reasoning tier) | Critical architecture work |
 | `balanced` (default) | Every agent at the session model (reasoning tier) — identical to `quality` | Normal development |
-| `budget` | The only profile that down-tiers: mid for code-writing agents, fast for research/verification | High-volume work, prototyping |
+| `budget` | The only profile that down-tiers: mid for the planning, orchestration and code-writing agents, fast for research, review, verification and utility agents | High-volume work, prototyping |
 
 Reduce costs further by disabling optional agents:
 ```text
@@ -40,11 +40,11 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 |-------|---------------|-------------------|------------|
 | Research (new-project) | Parallel researchers + synthesizer | 30-50K total | Yes (answer "Skip research" to the research question; `--auto` always researches — `research_enabled: false` in the idea frontmatter only turns off per-phase research) |
 | Research (plan-phase) | 1 phase researcher | 10-20K | Yes (`--skip-research`) |
-| Planning | 1 planner + 1 plan-checker (up to 3 iterations) | 20-40K | Checker skippable (`plan_check: false`) |
+| Planning | 1 planner + 1 plan-checker (up to 3 checks, at most 2 revisions) | 20-40K | Checker skippable (`plan_check: false`) |
 | Execution | 1 executor per plan (fresh context each) | 20-80K per plan | No |
 | Verification | 1 verifier | 10-20K | Yes (`verifier: false`) |
 
-**Profile multiplier:** the numbers above assume the default `balanced` profile, where every agent is on the reasoning tier and inherits the model you launched with, apart from a few review agents that pin their own (`quality` is identical — same reasoning tier for every agent, so switching between the two changes nothing). `budget` is the only profile that down-tiers: mid for the code-writing agents, fast for research and verification. On PAN's relative cost scale (`pan-tools estimate-cost`, reasoning = 15×, mid = 3×, fast = 1×) that puts `quality` and `balanced` at ~15× baseline and `budget` at ~1.6×.
+**Profile multiplier:** the numbers above assume the default `balanced` profile, where every agent is on the reasoning tier and inherits the model you launched with, apart from a few review agents that pin their own (`quality` is identical — same reasoning tier for every agent, so switching between the two changes nothing). `budget` is the only profile that down-tiers: mid for the planning, orchestration and code-writing agents, fast for research, review, verification and the utility agents. On PAN's relative cost scale (`pan-tools estimate-cost`, reasoning = 15×, mid = 3×, fast = 1×) that puts `quality` and `balanced` at ~15× baseline and `budget` at ~1.6×.
 
 **Optimization tips:**
 - Skip research for familiar domains: `/pan:plan-phase N --skip-research`
@@ -61,11 +61,11 @@ Yes. PAN research agents can use Brave Search API for domain research. Setup:
 2. Set the `BRAVE_API_KEY` environment variable — the `websearch` verb reads only the env var. Optionally also create `~/.pan-wizard/brave_api_key`, which pre-sets `brave_search: true` in a config `config-ensure-section` creates (`/pan:new-project` does not set `brave_search`)
 3. Set `brave_search: true` with `pan-tools config-set brave_search true` (`/pan:settings` has no Brave question)
 
-When enabled, researchers use web search to investigate technologies, libraries, and best practices during the research phase.
+When enabled, the phase researcher (`/pan:plan-phase`, `/pan:research-phase`) uses Brave Search; it reads the setting from `init`. `/pan:new-project` and `/pan:milestone-new` do not pass the setting to their researchers, so those use the built-in web search.
 
 ### Is my code sent anywhere?
 
-No. PAN runs entirely within your local Claude Code (or other runtime) session. It uses standard tool calls — no PAN servers, no telemetry, no data collection. Your code stays on your machine and in your Claude session. The only network calls PAN itself makes are the periodic update check, which runs `npm view pan-wizard version` against the npm registry and sends nothing about your project, and web research through the Brave Search API — only after you opt in with `brave_search: true` and a key, and then only the research queries. The MCP bridge PAN registers is a local stdio process; it opens no sockets.
+No. PAN runs entirely within your local Claude Code (or other runtime) session. It uses standard tool calls — no PAN servers, no telemetry, no data collection. Your code stays on your machine and in your Claude session. The only network calls PAN itself makes are the periodic update check, which runs `npm view pan-wizard version` against the npm registry and sends nothing about your project, `/pan:update` when you run it (it checks npm, fetches the changelog from GitHub and reinstalls from npm), `/pan:git push` and `/pan:git sync` when you run them, `/pan:army --push` after you approve a merge and the tag push `/pan:milestone-done` offers (all to your own git remote), and web research through the Brave Search API — only after you opt in with `brave_search: true` and a key, and then only the research queries. The MCP bridge PAN registers is a local stdio process; it opens no sockets.
 
 ### How do I uninstall PAN?
 
@@ -95,23 +95,23 @@ Yes. Run `/pan:map-codebase` first — it maps your stack, architecture, convent
 
 ### Does PAN commit to git automatically?
 
-Yes. Each task gets its own atomic commit immediately after completion. Commit messages follow conventional format with phase numbers (e.g., `feat(03-02): add login endpoint`).
+Yes. Each task gets its own atomic commit immediately after completion; consecutive trivial tasks of one type may share one (never `feat` or `fix`). Commit messages follow conventional format with phase numbers (e.g., `feat(03-02): add login endpoint`).
 
 `commit_docs: false` (plus gitignoring `.planning/`) stops only the planning-doc commits; the per-task code commits are always made.
 
 ### What happens when context runs out?
 
-On Claude Code and Copilot CLI (the runtimes where PAN installs the statusline that feeds it), PAN has a built-in context window monitor:
-- At **35% remaining**: WARNING — the agent wraps up current work
-- At **25% remaining**: CRITICAL — the agent saves state via `/pan:pause`
+The host compacts the session on its own before the window fills, and PAN restores the planning position afterwards (on Claude Code, Codex, Gemini CLI, Copilot CLI and OpenCode). Before that, on Claude Code, PAN's context monitor tells the agent compaction is coming: it reads PAN's status line, or the session transcript where no status line runs (headless `claude -p`). Gemini CLI and OpenCode do not run the monitor, and on Codex, which gets no PAN status line and whose transcript has another shape than the Claude Code records the monitor reads, it stays silent. Under PAN's Copilot CLI registration it stays silent: Copilot's documented hook payload names the session `sessionId`, and the monitor reads only `session_id`. In a project that also has the Claude Code install, that copy steps aside for the Claude Code registration, and what Copilot passes that one has not been observed. It measures the room left before the host compacts, not before the window is full:
+- At **35% of that room left**: a note asking for a checkpoint in `.planning/state.md` at the next natural stopping point
+- At **25% left**: the same, before the next step
 
-Between sessions, use `/pan:resume` to restore full context.
+The note carries no countdown and asks the agent to keep working at full quality: compaction is safe, because the state is restored afterwards. Between sessions, use `/pan:resume` to restore full context.
 
 ### Can I skip steps in the workflow?
 
 Yes. The full workflow is `discuss → plan → execute → verify`, but:
 - Skip `discuss-phase` if you're fine with Claude's defaults
-- Skip `verify-phase` if automated verification is sufficient
+- Skip `/pan:verify-phase` unless you want a re-check: `/pan:exec-phase` already runs the verifier (turn it off with `workflow.verifier: false`)
 - Use `/pan:quick` for one-off tasks that don't need full planning
 - Disable research with `/pan:plan-phase --skip-research`
 
@@ -131,7 +131,7 @@ Yes. Add granular permissions to `.claude/settings.json`:
     "allow": [
       "Bash(date:*)", "Bash(echo:*)", "Bash(cat:*)", "Bash(ls:*)",
       "Bash(mkdir:*)", "Bash(wc:*)", "Bash(head:*)", "Bash(tail:*)",
-      "Bash(sort:*)", "Bash(grep:*)", "Bash(git add:*)",
+      "Bash(sort:*)", "Bash(grep:*)", "Bash(tr:*)", "Bash(git add:*)",
       "Bash(git commit:*)", "Bash(git status:*)", "Bash(git log:*)",
       "Bash(git diff:*)", "Bash(git tag:*)"
     ]
@@ -141,7 +141,7 @@ Yes. Add granular permissions to `.claude/settings.json`:
 
 Note: you'll be prompted to approve agent spawning and other operations, which can slow down automated workflows.
 
-## Spec B v2 Features (v3.0-v3.4)
+## Spec B v2 and Later Features (v3.0+)
 
 ### How do I see what PAN is costing me?
 
@@ -149,7 +149,7 @@ Run `/pan:cost report`. Since v3.4, on Claude Code, Codex and Copilot CLI (Gemin
 
 ### What's the difference between `pan-reviewer` and `/pan:review-deep`?
 
-`pan-reviewer` runs by default during `/pan:exec-phase` (skip it with `--skip-review` or `--fast`) — it flags convention, style, and basic quality issues on changed files. `/pan:review-deep` is opt-in (run standalone or with `--deep-review`) and adds two more agents: `pan-hardener` runs an OWASP Top 10 + STRIDE security audit, and `pan-meta-reviewer` cross-checks the reviewer + hardener output for missed issues or overstated severities. Costs roughly 3× a normal review; recommended for auth/payment/PII/migration phases.
+`pan-reviewer` runs by default during `/pan:exec-phase` (skip it with `--skip-review` or `--fast`) — it flags convention, security-pattern and code-quality issues on changed files. `/pan:review-deep` is opt-in (run standalone or with `--deep-review`) and adds two more agents: `pan-hardener` runs an OWASP Top 10 + STRIDE security audit, and `pan-meta-reviewer` cross-checks the reviewer + hardener output for missed issues or overstated severities. Costs roughly 3× a normal review; recommended for auth/payment/PII/migration phases.
 
 ### When should I use `/pan:exec-phase --hierarchical`?
 
@@ -157,11 +157,11 @@ Only when the phase has ≥4 autonomous plans that genuinely parallelize and the
 
 ### What is `/pan:army` and how is it different from a normal phase?
 
-**It's the difference between building a feature and shipping a project.** `/pan:army` (v3.11) runs a whole-project goal as a coordinated bot army, where `/pan:exec-phase` runs one phase. `pan-conductor` becomes Mission Control — it plans and delegates rather than implementing — handing work to role-scoped squads: Architecture (design), Build (code, one `army/<task>` git worktree per agent so parallel builders never collide), Quality (adversarial review), and Release (`pan-release`, always-ask). Each cycle is plan → delegate → execute → review → integrate → learn, looping until the goal ships or a stop condition fires. Nothing reaches a protected branch without green checks and a human's approval; recovery is `git revert` / previous tag. It runs under the same safety harness as hierarchical exec and carries the same single constraint: Claude Code only, because the squads are spawned as native sub-agents. That's a runtime limit, not a model one — Mission Control runs on whatever model you launched the session with. Inspect the roster with `pan-tools squad list`; start with `/pan:army "<goal>" --dry-run` to preview the plan and delegation before anything runs.
+**It's the difference between building a feature and shipping a project.** `/pan:army` (v3.11) runs a whole-project goal as a coordinated bot army, where `/pan:exec-phase` runs one phase. `pan-conductor` becomes Mission Control — it plans and delegates rather than implementing — handing work to role-scoped squads: Architecture (design), Build (code, one `army/<task>` git worktree per agent so parallel builders never collide), Quality (adversarial review), and Release (`pan-release`, always-ask). Each cycle is plan → delegate → execute → review → integrate → learn, looping until the goal ships or a stop condition fires. Nothing reaches a protected branch without green checks and a human's approval; recovery is `git revert` / previous tag. It runs under the same safety harness as hierarchical exec. It is built for Claude Code, because the squads are spawned as native sub-agents; unlike `--hierarchical`, which warns and runs flat on the other runtimes, `/pan:army` has no runtime check or fallback, so use the flat phase commands there. That's a runtime limit, not a model one — Mission Control runs on whatever model you launched the session with. Inspect the roster with `pan-tools squad list`; start with `/pan:army "<goal>" --dry-run` to preview the plan and delegation before anything runs.
 
 ### Can the army run on a schedule / unattended?
 
-Within a run, yes — it self-drives the loop. Across days, `/pan:army --schedule daily --daily-budget 200` (v3.12) arms a self-resuming campaign. PAN isn't a daemon, so it doesn't wake itself: it writes a schedule descriptor and you point an external trigger at it — a host scheduler (Claude Code routines / cron / scheduled tasks), a `/loop`, or the next-open nudge — which polls `pan-tools campaign due` and runs `/pan:army --continue` when due. Each day's spend is tracked against `--daily-budget` (advisory — `campaign due` reports `budget_exhausted_today` only when the schedule is armed with `pan-tools campaign schedule --enforce-budget`, which `/pan:army --schedule … --enforce-budget` does for you; `--advisory-budget` turns it back off. Otherwise only the `/pan:army --continue` prompt tells the conductor to stop once the day's spend is used up) and the campaign resumes the next day; `pan-tools campaign status` shows where it stands. Crucially, scheduling changes nothing about safety: the merge to a protected branch is still an `always-ask` human gate, so a scheduled campaign burns the backlog down to staged, reviewed, green PRs and waits for you at every merge.
+Within a run, yes — it self-drives the loop. Across days, `/pan:army --schedule daily --daily-budget 200` (v3.12) arms a self-resuming campaign. PAN isn't a daemon, so it doesn't wake itself: it writes a schedule descriptor and you point an external trigger at it — a host scheduler (Claude Code routines / cron / scheduled tasks) or a `/loop` — which polls `pan-tools campaign due` and runs `/pan:army --continue` when due. Each day's spend is tracked against `--daily-budget` (advisory — `campaign due` reports `budget_exhausted_today` only when the schedule is armed with `pan-tools campaign schedule --enforce-budget`, which `/pan:army --schedule … --enforce-budget` does for you; `--advisory-budget` turns it back off. Otherwise only the `/pan:army --continue` prompt tells the conductor to stop once the day's spend is used up) and the campaign resumes the next day; `pan-tools campaign status` shows where it stands. Crucially, scheduling changes nothing about safety: the merge to a protected branch is still an `always-ask` human gate, so a scheduled campaign burns the backlog down to staged, reviewed, green PRs and waits for you at every merge.
 
 ### Is `/pan:army` safe to let loose on my repo?
 
@@ -181,7 +181,7 @@ Yes. `/pan:preview phase <N>` analyzes the phase's plan files, extracts mentione
 
 ### What are MCP tools and how does PAN use them?
 
-MCP (Model Context Protocol) tools are external integrations the host runtime provides — e.g. Linear, Slack, databases. In v3.3, `/pan:mcp-bridge list` shows which tools Claude Code has discovered, and `/pan:mcp-bridge recommend <phase>` suggests which apply to a phase plan based on keyword matching. This is **discovery-only** — PAN doesn't auto-invoke MCP tools. You see the recommendations and reference them in the phase plan; the executor agent uses them via Claude Code's normal tool-use flow. Auto-injection + auto-invocation remain on the roadmap.
+MCP (Model Context Protocol) tools are external integrations the host runtime provides — e.g. Linear, Slack, databases. In v3.3, `/pan:mcp-bridge list` shows the MCP tools in PAN's cache, `.planning/bridge/available-tools.json`, and `/pan:mcp-bridge recommend <phase>` suggests which apply to a phase plan based on keyword matching. PAN fills that cache only through `/pan:mcp-bridge cache --servers '<json>'`; until then `list` reports `source: "empty"`. This is **discovery-only** — PAN doesn't auto-invoke MCP tools. You see the recommendations and reference them in the phase plan; the executor agent uses them via Claude Code's normal tool-use flow. Auto-injection + auto-invocation remain on the roadmap.
 
 ### Does PAN have an MCP server of its own?
 
@@ -191,15 +191,15 @@ Yes — the other direction. `/pan:mcp-bridge` is PAN as an MCP *client*, discov
 
 ### How does the circular optimization loop work?
 
-`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to write the auto-applicable findings as memory entries. Next session, those memory entries get loaded into executor context (W2 fix), so PAN avoids repeating the same mistakes. `/pan:plan-phase`, `/pan:design-phase`, `/pan:exec-phase` and `/pan:verify-phase` also record each judge's verdict with `pan-tools findings record`, which logs `verdict_passed`, `verdict_failed` or `verdict_needs_human` (and `verdict_retry` after a failed attempt) to the trace, so the optimizer can track real quality signal — not just "tasks completed."
+`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to record its suggestions in `.planning/optimization/suggestions.md`. Each names where it belongs: the project's instructions (`CLAUDE.md` or `AGENTS.md`, outside PAN's section), a test, or the code. Once a person puts it there, the next session's agents read it. PAN's workflows do not load agent memory into agents (ADR-0036, amended `2026-10-04`). `/pan:plan-phase`, `/pan:design-phase`, `/pan:exec-phase` and `/pan:verify-phase` also record each judge's verdict with `pan-tools findings record`, which logs `verdict_passed`, `verdict_failed` or `verdict_needs_human` (and `verdict_retry` after a failed attempt) to the trace, so the optimizer can track real quality signal — not just "tasks completed."
 
 ### What does `/pan:focus-auto --category distill` do?
 
-The `distill` focus-auto category targets **AI-generated code bloat** via a 5-pass pipeline (deterministic-first, LLM-on-narrow-spans). Pass 1 deterministically catches phantom try/catch (try around JSON.parse), unused imports, magic numbers, long functions, wide param lists. Pass 2 detects single-instance factory classes and deep nesting via AST-style analysis. Pass 3 finds repeated 5+ line blocks and unreferenced exports across files. Pass 4 spawns the `pan-distiller` agent with **only the flagged spans** (not full files) — it validates each pattern, refines the safety tier (`safe` / `review_required` / `risky`), and proposes a minimal diff. Pass 5 writes findings to `.planning/memory/distill-patterns.md` so next session detects regressed patterns ("we already fixed this"). A bloat-budget gate (touched_LOC / essential_LOC, default 2.0×) prevents runaway code growth.
+The `distill` focus-auto category targets **AI-generated code bloat** via a 5-pass pipeline (deterministic-first, LLM-on-narrow-spans). Pass 1 deterministically catches phantom try/catch (a try around a call the matcher treats as non-throwing, such as `Number()` or `parseInt()`, flagged `review_required` because both throw on a Symbol or an object whose `toString` throws; a try around `JSON.parse` is load-bearing and is not flagged), unused imports, magic numbers, long functions, wide param lists. Pass 2 detects single-instance factory classes and deep nesting via AST-style analysis. Pass 3 finds repeated 5+ line blocks and unreferenced exports across files. Pass 4 spawns the `pan-distiller` agent with **only the flagged spans** (not full files) — it validates each pattern, refines the safety tier (`safe` / `review_required` / `risky`), and proposes a minimal diff. Pass 5 writes findings to `.planning/memory/distill-patterns.md` so the next session's `distill analyze` flags recurring patterns (its `regressed` list: findings already recorded in an earlier session; the file records detections, not fixes). A bloat budget (touched_LOC / essential_LOC, default 2.0×) flags a cycle for review when its ratio exceeds the threshold (`bloat_budget.over_budget` in `distill analyze`).
 
 ### What does `/pan:git` give me that raw `git` doesn't?
 
-Phase-aware naming + safety guardrails. `/pan:git commit --type feat --message "..."` runs deleted-file detection and sensitive-file pattern checks (env, key, secret, token, credentials) before allowing the commit. `/pan:git branch create --phase 3` auto-names the branch `pan/phase-3`. `/pan:git push` validates the remote exists and requires explicit `--force` for force-push. `/pan:git rollback` lists `pan-rollback-*` snapshot tags and resets to one (with `--dry-run` preview); the tags come from `pan-tools rollback-snapshot <phase>`, which no workflow runs for you. Subcommands: commit, branch, push, status, log, stash, diff, rollback, tag, sync. Works on any git repo regardless of whether `.planning/` exists.
+Phase-aware naming + safety guardrails. `/pan:git commit --type feat --message "..."` runs deleted-file detection and sensitive-file checks on the staged paths (`.env`, `.pem`, `.key`, credentials, secret, password, token by default; `commit.sensitive_patterns` replaces the list) before allowing the commit. `/pan:git branch create --phase 3` auto-names the branch `pan/phase-3`. `/pan:git push` validates the remote exists and requires explicit `--force` for force-push. `/pan:git rollback` lists `pan-rollback-*` snapshot tags and resets to one (with `--dry-run` preview); the tags come from `pan-tools rollback-snapshot <phase>`, which no workflow runs for you. Subcommands: commit, branch, push, status, log, stash, diff, rollback, tag, sync. Works on any git repo regardless of whether `.planning/` exists.
 
 ## Customization
 
@@ -246,7 +246,7 @@ Clear context between major commands: `/clear` in Claude Code. PAN is designed a
 
 ### Docker or containerized environments
 
-If file reads fail with tilde paths, set `CLAUDE_CONFIG_DIR` before installing:
+If Claude Code in the container reads its config from somewhere other than the installing user's `~/.claude`, set `CLAUDE_CONFIG_DIR` to that directory before installing (a global install writes absolute paths either way):
 ```bash
 CLAUDE_CONFIG_DIR=/home/youruser/.claude npx pan-wizard --global
 ```

@@ -15,11 +15,8 @@ Template for spawning pan-planner agent. The agent contains all planning experti
 **Project State:**
 @.planning/state.md
 
-**Roadmap:**
-@.planning/roadmap.md
-
-**Requirements (if exists):**
-@.planning/requirements.md
+**This phase's roadmap and requirements** (`pan-tools roadmap slice {phase_number} --write`; the whole roadmap.md and requirements.md only for something it leaves out):
+@.planning/phases/{phase_dir}/{phase_num}-roadmap-slice.md
 
 **Phase Context (if exists):**
 @.planning/phases/{phase_dir}/{phase_num}-context.md
@@ -62,6 +59,7 @@ Before returning PLANNING COMPLETE:
 | `{phase_number}` | From roadmap/arguments | `5` or `2.1` |
 | `{phase_dir}` | Phase directory name | `05-user-profiles` |
 | `{phase}` | Phase prefix | `05` |
+| `{phase_num}` | Padded phase number in file names | `05` |
 | `{standard \| gap_closure}` | Mode flag | `standard` |
 
 ---

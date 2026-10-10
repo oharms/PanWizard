@@ -1,5 +1,5 @@
 <purpose>
-Generate unit and E2E tests for a completed phase based on its summary.md, context.md, and implementation. Classifies each changed file into TDD (unit), E2E (browser), or Skip categories, presents a test plan for user approval, then generates tests following RED-GREEN conventions.
+Generate unit and E2E tests for a completed phase based on its summary.md, context.md, and implementation. Classifies each changed file into TDD (unit), Integration, E2E (browser), or Skip categories, presents a test plan for user approval, then generates tests following RED-GREEN conventions.
 
 Users currently hand-craft `/pan:quick` prompts for test generation after each phase. This workflow standardizes the process with proper classification, quality gates, and gap reporting.
 </purpose>
@@ -70,7 +70,7 @@ Extract the list of files modified by the phase from summary.md ("Files Changed"
 
 **CRITICAL: Project Scope Boundary**
 Skip any files inside PAN infrastructure directories — these are NOT project source code:
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/`, `.planning/`
+- `.claude/`, `.opencode/`, `.gemini/`, `.codex/`, `.agents/`, `.planning/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`)
 If all changed files are inside these directories, report "No project source files to test" and exit.
 
 For each file, classify into one of four categories:
@@ -334,7 +334,7 @@ Create a test coverage report and present to user:
 
 Record test generation in project state:
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state-snapshot
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state update "Last Activity Description" "Phase ${phase_number} tests generated"
 ```
 
 If there are passing tests to commit:
@@ -374,7 +374,7 @@ Present next steps:
 
 <success_criteria>
 - [ ] Phase artifacts loaded (summary.md, context.md, optionally verification.md)
-- [ ] All changed files classified into TDD/E2E/Skip categories
+- [ ] All changed files classified into TDD/Integration/E2E/Skip categories
 - [ ] Classification presented to user and approved
 - [ ] Project test structure discovered (directories, conventions, runners)
 - [ ] Test plan presented to user and approved

@@ -30,6 +30,54 @@ function buildStatuslineOutput(data, deps) {
   const session = data.session_id || '';
   const remaining = data.context_window?.remaining_percentage;
 
+  // The per-user 0700 bridge directory, or null when it is not safe to write into.
+  // Mirrors bridgeDir() in pan-context-monitor.js (the reader).
+  let bridgeSubdirMemo;
+  const secureBridgeDir = () => {
+    if (bridgeSubdirMemo !== undefined) return bridgeSubdirMemo;
+    bridgeSubdirMemo = null;
+    const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
+    const sub = pathMod.join(tmpDir, `pan-hooks-${uid}`);
+    // Fail CLOSED if the per-user dir is pre-planted/symlinked/owned by someone
+    // else: mkdirSync{recursive} silently no-ops on an existing dir, so verify
+    // ownership+mode before writing (M60).
+    try {
+      fsMod.mkdirSync(sub, { recursive: true, mode: 0o700 });
+      const st = fsMod.lstatSync(sub);
+      // Symlink check is cross-platform; POSIX ownership/mode checks apply only
+      // where getuid exists (Windows fakes mode bits; gating on them there
+      // disabled the bridge entirely, N15).
+      let secure = !st.isSymbolicLink();
+      if (secure && typeof process.getuid === 'function') {
+        secure = st.uid === process.getuid() && (st.mode & 0o077) === 0;
+      }
+      if (secure) bridgeSubdirMemo = sub;
+    } catch { /* not safe */ }
+    return bridgeSubdirMemo;
+  };
+
+  // Usage limits (Claude Code subscriptions: `rate_limits.five_hour` / `seven_day`).
+  // Account-wide, so one file for every session; `pan-tools cost limits` and the
+  // focus-auto weekly stop read it. Written only when the host sent the block.
+  const limits = data.rate_limits && typeof data.rate_limits === 'object' ? data.rate_limits : null;
+  const limitWin = (w) => (w && Number.isFinite(Number(w.used_percentage))
+    ? { used_percentage: Number(w.used_percentage), ...(Number.isFinite(Number(w.resets_at)) ? { resets_at: Number(w.resets_at) } : {}) }
+    : null);
+  const fiveHour = limits ? limitWin(limits.five_hour) : null;
+  const sevenDay = limits ? limitWin(limits.seven_day) : null;
+  if ((fiveHour || sevenDay) && d.skipBridge !== true) {
+    try {
+      const sub = secureBridgeDir();
+      if (sub) {
+        fsMod.writeFileSync(pathMod.join(sub, 'claude-limits.json'), JSON.stringify({
+          ...(fiveHour ? { five_hour: fiveHour } : {}),
+          ...(sevenDay ? { seven_day: sevenDay } : {}),
+          timestamp: Math.floor(Date.now() / 1000),
+        }), { mode: 0o600 });
+      }
+    } catch { /* best-effort */ }
+  }
+
   // Context window bar — shows USED percentage scaled so 80% real = 100% shown.
   let ctx = '';
   if (remaining != null) {
@@ -39,34 +87,23 @@ function buildStatuslineOutput(data, deps) {
 
     if (session && d.skipBridge !== true) {
       try {
-        // Write the bridge file into a per-user 0700 subdir so another user on
+        // The session bridge goes into the per-user 0700 subdir so another user on
         // a shared host can't symlink-attack the predictable session path.
-        // Mirrors bridgeDir() in pan-context-monitor.js (the reader).
-        const uid = (typeof process.getuid === 'function' ? process.getuid() : process.env.USERNAME || 'win');
-        const bridgeSubdir = pathMod.join(tmpDir, `pan-hooks-${uid}`);
-        // Fail CLOSED if the per-user dir is pre-planted/symlinked/owned by
-        // someone else — mkdirSync{recursive} silently no-ops on an existing dir,
-        // so verify ownership+mode before writing the session bridge (M60).
-        let secure = false;
-        try {
-          fsMod.mkdirSync(bridgeSubdir, { recursive: true, mode: 0o700 });
-          const st = fsMod.lstatSync(bridgeSubdir);
-          // Symlink check is cross-platform; POSIX ownership/mode checks apply
-          // only where getuid exists (Windows fakes mode bits — gating on them
-          // there disabled the bridge entirely, N15).
-          secure = !st.isSymbolicLink();
-          if (secure && typeof process.getuid === 'function') {
-            secure = st.uid === process.getuid() && (st.mode & 0o077) === 0;
-          }
-        } catch { secure = false; }
-        if (secure) {
+        const bridgeSubdir = secureBridgeDir();
+        if (bridgeSubdir) {
           const bridgePath = pathMod.join(bridgeSubdir, `claude-ctx-${session}.json`);
+          // Token counts and the model id let the context monitor measure against
+          // the window the host compacts at, not the model window (O7).
+          const cw = data.context_window || {};
           fsMod.writeFileSync(bridgePath, JSON.stringify({
             session_id: session,
             remaining_percentage: remaining,
             used_pct: used,
+            ...(Number.isFinite(cw.total_input_tokens) ? { total_input_tokens: cw.total_input_tokens } : {}),
+            ...(Number.isFinite(cw.context_window_size) ? { context_window_size: cw.context_window_size } : {}),
+            ...(data.model && data.model.id ? { model_id: data.model.id } : {}),
             timestamp: Math.floor(Date.now() / 1000),
-          }));
+          }), { mode: 0o600 });
         }
       } catch { /* bridge is best-effort */ }
     }
@@ -154,7 +191,16 @@ function buildStatuslineOutput(data, deps) {
   const head = `${panUpdate}\x1b[2m${model}\x1b[0m`;
   const taskSegment = task ? ` │ \x1b[1m${task}\x1b[0m` : '';
   const dirSegment = ` │ \x1b[2m${dirname}\x1b[0m`;
-  return `${head}${taskSegment}${dirSegment}${ctx}${cacheBadge}${thinkingBadge}`;
+  // Usage-limit badge: the window closer to its cap, green below 70%, yellow below
+  // 90%, red from 90% (focus-auto's default weekly stop).
+  let limitBadge = '';
+  const shown = [fiveHour && ['5h', fiveHour.used_percentage], sevenDay && ['7d', sevenDay.used_percentage]].filter(Boolean);
+  if (shown.length) {
+    const worst = Math.max(...shown.map(([, v]) => v));
+    const color = worst >= 90 ? '[31m' : worst >= 70 ? '[33m' : '[32m';
+    limitBadge = ` ${color}${shown.map(([k, v]) => `${k} ${Math.round(v)}%`).join(' · ')}[0m`;
+  }
+  return `${head}${taskSegment}${dirSegment}${ctx}${cacheBadge}${thinkingBadge}${limitBadge}`;
 }
 
 // ─── Stdin driver ───────────────────────────────────────────────────────────

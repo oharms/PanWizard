@@ -98,6 +98,19 @@ describe('commit safety checks', () => {
     assert.strictEqual(out.type, 'chore');
   });
 
+  test('--files stops at the next flag, so a later --type value is not staged', () => {
+    // `--files .planning/state.md --type docs` staged `docs/` too: every later
+    // argument without a leading `--` was taken as a file, the flag's value included.
+    fs.mkdirSync(path.join(tmpDir, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'docs', 'note.md'), '# not part of this commit');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), '# state');
+    const result = runPanTools('commit update-state --files .planning/state.md --type docs', tmpDir);
+    assert.ok(result.success, `Command failed: ${result.error}`);
+    assert.strictEqual(JSON.parse(result.output).type, 'docs');
+    const committed = execSync('git show --name-only --format= HEAD', { cwd: tmpDir, encoding: 'utf-8' }).trim().split('\n');
+    assert.deepStrictEqual(committed, ['.planning/state.md']);
+  });
+
   test('commit with invalid --type returns error', () => {
     fs.writeFileSync(path.join(tmpDir, '.planning', 'bad.md'), '# bad');
     const result = runPanTools('commit msg --type invalid', tmpDir);
@@ -142,6 +155,35 @@ describe('commit safety checks', () => {
     assert.strictEqual(out.committed, false);
     assert.strictEqual(out.reason, 'sensitive_file_detected');
     assert.ok(out.safety_checks.sensitive_files_blocked.some(f => f.includes('credentials')));
+  });
+
+  test('PAN\'s own cost ledger does not trip the `token` pattern; a real token file still does', () => {
+    // .planning/metrics/tokens.jsonl matched the bare `token` pattern, so every commit
+    // that staged .planning/ was blocked once the cost logger had written to it.
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'metrics'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'metrics', 'tokens.jsonl'), '{"agent":"pan-executor","input_tokens":12}\n');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ledger.md'), '# ledger test');
+    const ok = runPanTools('commit with-ledger', tmpDir);
+    assert.ok(ok.success, ok.error);
+    assert.strictEqual(JSON.parse(ok.output).committed, true);
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'api-token.txt'), 'abc');
+    const blocked = runPanTools('commit with-token-file', tmpDir);
+    assert.equal(blocked.success, false);
+    assert.deepEqual(JSON.parse(blocked.output).safety_checks.sensitive_files_blocked, ['.planning/api-token.txt']);
+  });
+
+  test('an unstaged deletion on the first status line is reported by its full name', () => {
+    // execGit trims stdout, so ` D gone.txt` arrived as `D gone.txt` and a fixed
+    // three-character slice reported `one.txt`.
+    fs.writeFileSync(path.join(tmpDir, 'gone.txt'), 'bye');
+    execSync('git add gone.txt', { cwd: tmpDir, stdio: 'pipe' });
+    execSync('git commit -m "add gone"', { cwd: tmpDir, stdio: 'pipe' });
+    fs.unlinkSync(path.join(tmpDir, 'gone.txt'));
+    const result = runPanTools('commit after-delete', tmpDir);
+    assert.equal(result.success, false, 'a blocked commit must not report success');
+    const out = JSON.parse(result.output);
+    assert.strictEqual(out.reason, 'deleted_files_detected');
+    assert.deepStrictEqual(out.safety_checks.deleted_files, ['gone.txt']);
   });
 
   test('package.json in staging → not blocked (no pattern match)', () => {

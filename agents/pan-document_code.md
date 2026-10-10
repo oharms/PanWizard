@@ -40,9 +40,9 @@ You run in one of two modes depending on what the orchestrator determined in Sta
 - The orchestrator stitches outputs post-hoc
 - This is the historical default mode
 
-**How to detect your mode:** the orchestrator puts `mode: single-shot` or `mode: sharded` in the spawn prompt's `<context>` block along with your focus area (sharded) or the token count that justified single-shot. When `mode` is absent, assume `sharded`.
+**How to detect your mode:** a sharded spawn names one focus area (`Focus: tech` and so on — the map-codebase workflow's prompts); a single-shot spawn names none and asks for every document. When unsure, assume `sharded`.
 
-**Do not change modes mid-execution.** If you hit context pressure in single-shot mode, finish writing whatever documents you've analyzed, emit a note in `overview.md` explaining the truncation, and exit cleanly. The orchestrator can re-spawn in sharded mode if needed.
+**Do not change modes mid-execution.** A context note is not a reason to stop: keep the documents you have written on disk and carry on. Only if the repo plainly cannot fit your window, say so in `overview.md` and exit cleanly. The orchestrator can re-spawn in sharded mode if needed.
 </mode>
 
 <why_this_matters>
@@ -61,7 +61,7 @@ You run in one of two modes depending on what the orchestrator determined in Sta
 | dependency analysis | relationships.md, architecture.md |
 | code quality | best-practices.md, conventions.md, testing.md |
 
-**`/pan:exec-phase`** references codebase docs to:
+**`/pan:exec-phase`** keeps them current (execute-plan's `update_codebase_map` step), and `pan-verifier` checks new code against `conventions.md` and `structure.md`. They exist to:
 - Follow existing conventions when writing code
 - Know where to place new files (structure.md)
 - Match testing patterns (testing.md)
@@ -103,7 +103,7 @@ Your documents guide future Claude instances writing code. "Use X pattern" is mo
 <process>
 
 <step name="parse_focus">
-Read the focus area from your prompt. It will be one of: `tech`, `arch`, `quality`, `concerns`, `relationships`, `practices`.
+Read the focus area from your prompt. It will be one of: `tech`, `arch`, `quality`, `concerns`, `relationships`, `practices` — except from the `pan-map-codebase` workflow script, which names a repository area (a path) and asks for a structured result: document that area and return the fields it asks for; the script's synthesis step writes `.planning/codebase/`.
 
 Based on focus, determine which documents you'll write:
 - `tech` → stack.md, integrations.md
@@ -121,7 +121,7 @@ Explore the codebase thoroughly for your focus area.
 
 **CRITICAL: Project Scope Boundary**
 These directories are PAN Wizard infrastructure — NEVER explore, analyze, or include files from them in your documents:
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/`, `.planning/`
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, `.planning/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`)
 When using Glob or Grep, exclude these paths. They are NOT part of the project's source code.
 
 **For tech focus:**
@@ -183,7 +183,7 @@ Use the Write tool to create each document.
 Return a brief confirmation. DO NOT include document contents.
 
 Format:
-```
+```text
 ## Mapping Complete
 
 **Focus:** {focus}
@@ -405,7 +405,7 @@ Ready for orchestrator summary.
 
 ## structure.md Template (arch focus)
 
-```markdown
+````markdown
 # Codebase Structure
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -470,7 +470,7 @@ Ready for orchestrator summary.
 ---
 
 *Structure analysis: [date]*
-```
+````
 
 ## conventions.md Template (quality focus)
 
@@ -554,7 +554,7 @@ Ready for orchestrator summary.
 
 ## testing.md Template (quality focus)
 
-```markdown
+````markdown
 # Testing Patterns
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -660,7 +660,7 @@ Ready for orchestrator summary.
 ---
 
 *Testing analysis: [date]*
-```
+````
 
 ## concerns.md Template (concerns focus)
 
@@ -744,7 +744,7 @@ Ready for orchestrator summary.
 
 ## relationships.md Template (relationships focus)
 
-```markdown
+````markdown
 # Module Relationships
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -823,11 +823,11 @@ Imports that cross architectural boundaries:
 ---
 
 *Relationship analysis: [date]*
-```
+````
 
 ## best-practices.md Template (practices focus)
 
-```markdown
+````markdown
 # Best Practices Assessment
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -909,7 +909,7 @@ Top 3 improvements ranked by impact:
 ---
 
 *Best practices assessment: [date]*
-```
+````
 
 </templates>
 

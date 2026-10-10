@@ -54,8 +54,7 @@ Claude:   <target>/.claude/
 Gemini:   <target>/.gemini/
 OpenCode: <target>/.opencode/
 Codex:    <target>/.codex/
-Copilot:  <target>/.copilot/ (or ~/.copilot/)
-GitHub:   <target>/.github/
+Copilot:  <target>/.github/ (local install) or ~/.copilot/ (global)
 ```
 
 For the detected runtime config directory (CONFIG_DIR), audit ALL of the following:
@@ -88,14 +87,14 @@ For the detected runtime config directory (CONFIG_DIR), audit ALL of the followi
 - [ ] `CONFIG_DIR/agents/` — every manifest-listed agent file present
 - Verify key agents exist: pan-planner, pan-executor, pan-verifier, pan-debugger
 
-**1.6 Hooks**
+**1.6 Hooks** (not OpenCode: its install copies no hooks — check `CONFIG_DIR/plugins/pan-wizard.js` instead)
 - [ ] `CONFIG_DIR/hooks/pan-statusline.js` exists
 - [ ] `CONFIG_DIR/hooks/pan-check-update.js` exists
 - [ ] `CONFIG_DIR/hooks/pan-context-monitor.js` exists
 
 **1.7 Settings/Config**
 - [ ] Settings file exists (settings.json / opencode.json / config.json)
-- [ ] Hooks are registered — Claude `settings.json`: SessionStart, PostToolUse, SubagentStop, Stop, statusLine; Gemini `settings.json`: SessionStart and AfterAgent only (no statusLine); Codex: `.codex/hooks.json`; Copilot: `.github/hooks/pan.json`
+- [ ] Hooks are registered — Claude `settings.json`: SessionStart, PostToolUse, SubagentStop, Stop, statusLine; Gemini `settings.json`: SessionStart, AfterAgent, PreCompress and AfterTool (the last two for state re-injection; no statusLine); Codex: `.codex/hooks.json`; Copilot: `.github/hooks/pan.json`
 - [ ] Hook commands point to existing files
 
 **1.8 Manifest Integrity**
@@ -137,13 +136,13 @@ Check `.planning/` directory in the target:
 - Parse state.md "Current Position" — extract phase number
 - Count actual phase directories — do they match?
 - Check roadmap.md phase count vs actual directories
-- Verify no orphaned .continue-here-*.md files (paused but not resumed)
+- Check `.planning/phases/*/.continue-here*.md` (pause writes `.continue-here.md`): resuming does not delete it (only the transition workflow removes a completed phase's handoffs), so its presence alone does not mean the session was never resumed
 
 **2.5 Config Sanity**
 - Validate config.json values are within expected ranges
 - `model_profile`: "quality" | "balanced" | "budget"
 - `commit_docs`: boolean
-- `workflow.*` toggles (research, plan_check, verifier, ...): all boolean
+- `workflow.*` toggles (research, plan_check, verifier, ...): boolean — except `workflow.phase_reports`, an object (`enabled`, `open`, `theme`, `index`)
 - `budget`: `default_points` numeric, `enforce` boolean
 </step>
 
@@ -170,7 +169,7 @@ For each phase with plan files (`*-plan.md`, e.g. `01-01-plan.md`):
 - Check for PAN-style commit messages
 
 **3.4 Session Continuity**
-- Check for .continue-here-*.md files (indicates paused sessions)
+- Check for `.planning/phases/*/.continue-here*.md` files (a pause happened at some point; nothing removes them on resume)
 - Check state.md session logs for gaps
 - Look for evidence of context loss (repeated work, contradictory decisions)
 
@@ -250,7 +249,7 @@ Verification Coverage: <N>%
 If `--repair` flag was provided, attempt auto-fixes for repairable issues:
 - Regenerate missing settings.json with default hook config
 - Create missing .planning/config.json with defaults
-- Remove orphaned .continue-here-*.md files
+- Remove `.planning/phases/*/.continue-here*.md` files the user confirms are stale
 
 Report repairs performed.
 </step>
@@ -285,10 +284,10 @@ The spec MUST follow this exact format to be consumable by superplan.md:
 
 ## Success Criteria
 
-```
+~~~
 SC-1: <measurable criterion>
 SC-2: <measurable criterion>
-```
+~~~
 
 ## Design
 
@@ -313,9 +312,9 @@ SC-2: <measurable criterion>
 
 ### Dependency Graph
 
-```
+~~~
 A.1 ──> A.2 ──> A.3
-```
+~~~
 
 ## Test Plan
 

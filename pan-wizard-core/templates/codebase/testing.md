@@ -8,7 +8,7 @@ Template for `.planning/codebase/testing.md` - captures test framework and patte
 
 ## File Template
 
-```markdown
+~~~markdown
 # Testing Patterns
 
 **Analysis Date:** [YYYY-MM-DD]
@@ -207,10 +207,10 @@ it('should reject on failure', async () => {
 
 *Testing analysis: [date]*
 *Update when test patterns change*
-```
+~~~
 
 <good_examples>
-```markdown
+~~~markdown
 # Testing Patterns
 
 **Analysis Date:** 2025-01-20
@@ -435,7 +435,7 @@ it('mocks file system', () => {
 
 *Testing analysis: 2025-01-20*
 *Update when test patterns change*
-```
+~~~
 </good_examples>
 
 <guidelines>

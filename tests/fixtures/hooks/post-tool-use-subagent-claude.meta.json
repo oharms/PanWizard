@@ -1,0 +1,14 @@
+{
+  "hook_event": "PostToolUse",
+  "runtime": "claude",
+  "captured_at": "2026-10-04",
+  "captured_from": "A PostToolUse payload for a tool call made INSIDE a subagent, emitted by Claude Code 2.1.288 under `claude -p --model sonnet` in a scratch project (d:\\pantesting\\ctxmon-probe) whose only hook dumped its stdin; PAN was not installed there. The prompt ran one Bash call in the main thread and started one general-purpose subagent that ran one Bash call. The key set and nesting are copied from the subagent call's payload: `session_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `prompt_id`, `permission_mode`, `agent_id`, `agent_type`, `hook_event_name`, `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, `duration_ms`. Values are neutral synthetic; the tool input and output are the probe's own marker command.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id; the same for the main thread and its subagents",
+    "{{TRANSCRIPT_PATH}}": "the MAIN session transcript — the host sends the main file even for a subagent's call",
+    "{{PROJECT_DIR}}": "absolute path of the project",
+    "{{SCRATCHPAD_DIR}}": "the host's per-session scratch directory",
+    "{{AGENT_ID}}": "the subagent's id; its own transcript is <dir of TRANSCRIPT_PATH>/<SESSION_ID>/subagents/agent-<AGENT_ID>.jsonl"
+  },
+  "notes": "Two facts this payload carries for hooks/pan-context-monitor.js. (1) A subagent's call is marked by `agent_id` and `agent_type`; the main-thread call's payload in the same capture had neither. (2) `transcript_path` still names the main session's file and no `agent_transcript_path` is sent, so a hook that measures the subagent's context must derive the subagent's own file. The payload also carried `effort` as an object whose values were not recorded; it is omitted rather than invented, and no PAN hook reads it."
+}

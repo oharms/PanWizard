@@ -49,7 +49,7 @@ Your output should answer: *"When will the milestone actually finish, and what's
 Before writing the report, think through:
 
 1. **What does the data say literally?** Sort `files_mentioned` by likely impact (source > tests > docs). Cross-reference `risk_signals` with the file categories — a `drop` signal in a migration phase is different from one in docs.
-2. **What's missing?** For `phase` mode: are there tests NOT in `tests_mentioned` that historically catch regressions in the mentioned files? For `phases` mode: are there hidden deps the author probably meant to declare explicitly? For `milestone` mode: is `sample_size` too small to trust the projection?
+2. **What's missing?** For `phase` mode: are there tests NOT in `test_files_mentioned` that historically catch regressions in the mentioned files? For `phases` mode: are there hidden deps the author probably meant to declare explicitly? For `milestone` mode: is `sample_size` too small to trust the projection?
 3. **What's the one-line bottom line?** Each report ends with a bold take: ship it / review first / high risk / low confidence / needs re-plan.
 </reasoning_protocol>
 

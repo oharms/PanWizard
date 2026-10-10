@@ -448,6 +448,39 @@ describe('milestone complete auto-commit', () => {
     assert.strictEqual(data.tag, undefined);
   });
 
+  test('commit_docs: false and a gitignored planning tree skip the commit and tag', () => {
+    // It committed the planning tree whatever commit_docs said, unlike phase complete,
+    // so the documented way to keep planning files out of history did not hold here.
+    const head = () => execSync('git rev-parse HEAD', { cwd: gitDir, encoding: 'utf-8' }).trim();
+    const before = head();
+    fs.writeFileSync(path.join(gitDir, '.planning', 'config.json'), JSON.stringify({ commit_docs: false }));
+    const off = runPanTools('milestone complete v1.0 --name MVP', gitDir);
+    assert.ok(off.success, `Command failed: ${off.error}`);
+    assert.strictEqual(JSON.parse(off.output).commit_hash, undefined);
+    assert.strictEqual(head(), before, 'commit_docs: false must leave history alone');
+    assert.strictEqual(execSync('git tag', { cwd: gitDir, encoding: 'utf-8' }).trim(), '');
+
+    // A planning tree git ignores (never tracked — git does not ignore tracked files).
+    const ign = createTempProject();
+    try {
+      execSync('git init', { cwd: ign, stdio: 'pipe' });
+      execSync('git config user.email "test@test.com"', { cwd: ign, stdio: 'pipe' });
+      execSync('git config user.name "Test"', { cwd: ign, stdio: 'pipe' });
+      fs.writeFileSync(path.join(ign, '.gitignore'), '.planning/\n');
+      execSync('git add .gitignore', { cwd: ign, stdio: 'pipe' });
+      execSync('git commit -m "ignore planning"', { cwd: ign, stdio: 'pipe' });
+      fs.writeFileSync(path.join(ign, '.planning', 'state.md'), '---\nstatus: executing\n---\n**Status:** executing\n');
+      fs.writeFileSync(path.join(ign, '.planning', 'roadmap.md'), '## Phase 01: Setup\n**Goal:** Go\n');
+      const ignHead = execSync('git rev-parse HEAD', { cwd: ign, encoding: 'utf-8' }).trim();
+      const ignored = runPanTools('milestone complete v1.1 --name Next', ign);
+      assert.ok(ignored.success, `Command failed: ${ignored.error}`);
+      assert.strictEqual(JSON.parse(ignored.output).commit_hash, undefined);
+      assert.strictEqual(execSync('git rev-parse HEAD', { cwd: ign, encoding: 'utf-8' }).trim(), ignHead, 'a gitignored planning tree must not be committed');
+    } finally {
+      cleanup(ign);
+    }
+  });
+
   test('milestone complete in non-git dir works without commit', () => {
     const noGitDir = createTempProject();
     fs.writeFileSync(path.join(noGitDir, '.planning', 'state.md'), '---\nstatus: executing\n---\n**Status:** executing\n**Last Activity:** today\n**Last Activity Description:** work');

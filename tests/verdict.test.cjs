@@ -218,13 +218,20 @@ describe('verdict — verification.md frontmatter adapter', () => {
     ]);
   });
 
-  test('the shipped verification template\'s frontmatter example reads as a verdict with its unrequested entry', () => {
+  test('the shipped verification template reads as a clean verdict; its unrequested example reads once uncommented', () => {
+    // The example used to be live YAML, so a report filled as shipped recorded a fake
+    // unrequested finding. It is commented now, like the gaps example.
     const fs = require('fs');
     const tpl = fs.readFileSync(require('path').join(__dirname, '..', 'pan-wizard-core', 'templates', 'verification-report.md'), 'utf-8').replace(/\r\n/g, '\n');
     const example = tpl.slice(tpl.indexOf('```markdown\n') + '```markdown\n'.length).replace('passed | gaps_found | human_needed', 'passed');
     const r = v.parseVerdictText(example);
     assert.equal(r.ok, true, JSON.stringify(r));
-    assert.deepEqual(r.verdict.findings, [{ class: 'unrequested', severity: 'low', where: 'src/admin/panel.tsx', summary: 'An admin panel no plan or requirement asked for' }]);
+    assert.deepEqual(r.verdict.findings, [], 'a report filled as shipped carries no example finding');
+    const uncommented = example
+      .replace(/^# (unrequested:.*)$/m, '$1')
+      .replace(/^#   (- path: "src\/admin\/panel\.tsx")$/m, '  $1')
+      .replace(/^#     (what: .*)$/m, '    $1');
+    assert.deepEqual(v.parseVerdictText(uncommented).verdict.findings, [{ class: 'unrequested', severity: 'low', where: 'src/admin/panel.tsx', summary: 'An admin panel no plan or requirement asked for' }]);
   });
 
   test('a CRLF file with a BOM reads the same', () => {
@@ -310,9 +317,16 @@ describe('verdict — what a judge could not check (M23)', () => {
     const tpl = fs.readFileSync(require('path').join(__dirname, '..', 'pan-wizard-core', 'templates', 'verification-report.md'), 'utf-8').replace(/\r\n/g, '\n');
     const example = tpl.slice(tpl.indexOf('```markdown\n') + '```markdown\n'.length)
       .replace('passed | gaps_found | human_needed', 'passed').replace('passed | failed | skipped', 'skipped');
+    // As shipped the not_checked example is commented; a skipped gate still counts as one.
     const r = v.parseVerdictText(example);
     assert.equal(r.verdict.outcome, 'pass');
-    assert.deepEqual(r.verdict.not_checked, [{ check: 'tests', reason: 'no test script in package.json' }]);
+    assert.deepEqual(r.verdict.not_checked, [{ check: 'tests', reason: 'the test gate was skipped' }]);
+    // Written uncommented, as the template says, it gives its own reason.
+    const uncommented = example
+      .replace(/^# (not_checked:.*)$/m, '$1')
+      .replace(/^#   (- check: "tests")$/m, '  $1')
+      .replace(/^#     (reason: "no test script in package\.json")$/m, '    $1');
+    assert.deepEqual(v.parseVerdictText(uncommented).verdict.not_checked, [{ check: 'tests', reason: 'no test script in package.json' }]);
   });
 });
 

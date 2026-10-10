@@ -32,9 +32,8 @@ With existing decimals:
 ## Extract Values
 
 ```bash
-DECIMAL_INFO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase next-decimal "${AFTER_PHASE}")
-DECIMAL_PHASE=$(echo "$DECIMAL_INFO" | jq -r '.next')
-BASE_PHASE=$(echo "$DECIMAL_INFO" | jq -r '.base_phase')
+DECIMAL_PHASE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase next-decimal "${AFTER_PHASE}" --raw)
+BASE_PHASE="${DECIMAL_PHASE%.*}"
 ```
 
 Or with --raw flag:

@@ -47,7 +47,7 @@ Before verifying, discover project context:
 |--------|----------------|
 | `roadmap.md` phase boundary (main flow) | The phase boundary is FIXED. Flag any design element that implements beyond it. |
 | Feature scope / spec (focus flow) | The feature boundary is FIXED. Flag scope creep past it. |
-| `context.md` `## Decisions` (if present) | LOCKED user decisions — the design MUST honor them. Flag contradictions. |
+| `context.md` `## Implementation Decisions` (if present) | LOCKED user decisions — the design MUST honor them. Flag contradictions. |
 | `context.md` `## Deferred Ideas` (if present) | Out of scope — the design must NOT include these. Flag if designed in. |
 </upstream_input>
 

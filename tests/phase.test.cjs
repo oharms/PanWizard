@@ -626,6 +626,105 @@ describe('phase remove command', () => {
     cleanup(tmpDir);
   });
 
+  test('removing the last phase keeps the sections after it (## Progress, the next milestone group)', () => {
+    // The section ran from the phase heading to the next `Phase N` heading or the end of
+    // the file, so removing the last phase deleted `## Progress` and its table, and a
+    // group's last phase took the next group's heading with it.
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-alpha'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '02-beta'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '03-gamma'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), [
+      '# Roadmap', '',
+      '## v1.0', '',
+      '### Phase 1: Alpha', '**Goal:** a', '',
+      '### Phase 2: Beta', '**Goal:** b', '',
+      '## v2.0', '', '**Goal:** the next milestone', '',
+      '### Phase 3: Gamma', '**Goal:** c', '',
+      '## Progress', '', '| Phase | Status |', '|-------|--------|', '| 1. Alpha | Done |', '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), '# State\n');
+    assert.ok(runPanTools('phase remove 3 --force', tmpDir).success);
+    let roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), 'utf-8');
+    assert.match(roadmap, /## Progress\n\n\| Phase \| Status \|/, 'the progress table survives');
+    assert.doesNotMatch(roadmap, /Phase 3: Gamma/);
+    assert.ok(runPanTools('phase remove 2 --force', tmpDir).success);
+    roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), 'utf-8');
+    assert.match(roadmap, /## v2\.0\n\n\*\*Goal:\*\* the next milestone/, 'the next group heading survives');
+    assert.doesNotMatch(roadmap, /Phase 2: Beta/);
+  });
+
+  test('a `# comment` in a code fence does not end the section, and a following <details> block survives', () => {
+    // Bounding the section by "any heading at its level or above" stopped at a `# run…`
+    // shell comment inside a fence, leaving the rest of the block behind with a stray
+    // closing fence; it also let the section swallow a collapsed milestone's <details>.
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-alpha'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '02-beta'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), [
+      '# Roadmap', '',
+      '## v2.0', '',
+      '### Phase 1: Alpha', '**Goal:** a', '',
+      '### Phase 2: Beta', '**Goal:** b', '', '```bash', '# run the suite', 'npm test', '```', '',
+      '<details>', '<summary>v1.0 (shipped)</summary>', '', '### Phase 0: Old', '', '</details>', '',
+      '## Progress', '', '| Phase | Status |', '|-------|--------|', '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), '# State\n');
+    assert.ok(runPanTools('phase remove 2 --force', tmpDir).success);
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), 'utf-8');
+    assert.doesNotMatch(roadmap, /Phase 2: Beta|npm test|```/, 'the whole section goes, code block included');
+    assert.match(roadmap, /<details>\n<summary>v1\.0 \(shipped\)<\/summary>/, 'the collapsed milestone keeps its <details>');
+    assert.match(roadmap, /## Progress/);
+  });
+
+  test('a `## Usage` line in a fenced example and the phase\'s own <details> block go with the section', () => {
+    // A heading-level bound stopped at `## Usage` inside the fence (leaving the rest of the
+    // block and a stray closing fence) and at the phase's own <details>, leaving the block
+    // and the text after it under the previous phase.
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-alpha'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '02-beta'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), [
+      '# Roadmap', '',
+      '## v2.0', '',
+      '### Phase 1: Alpha', '**Goal:** a', '',
+      '### Phase 2: Beta', '**Goal:** b', '', '```markdown', '## Usage', 'Run beta.', '```', '',
+      '<details>', '<summary>Beta notes</summary>', '', 'Beta detail.', '', '</details>', '', 'Closing beta line.', '',
+      '<details>', '<summary>v1.0 (shipped)</summary>', '', '### Phase 0: Old', '', '</details>', '',
+      '## Progress', '', '| Phase | Status |', '|-------|--------|', '',
+    ].join('\r\n'));
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), '# State\n');
+    assert.ok(runPanTools('phase remove 2 --force', tmpDir).success);
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), 'utf-8');
+    assert.doesNotMatch(roadmap, /Beta|Usage|Run beta|Closing beta|```/, 'the whole section goes');
+    assert.match(roadmap, /\*\*Goal:\*\* a\r\n\r\n<details>\r\n<summary>v1\.0 \(shipped\)<\/summary>/, 'the collapsed milestone follows Phase 1, CRLF kept');
+    assert.match(roadmap, /## Progress/);
+  });
+
+  test('renumbers every later phase once, decimals included, and leaves dates alone', () => {
+    // The renumber loop walked down, so each pass re-hit its own output: every later
+    // phase collapsed onto the removed number, `### Phase 3.1:` kept its number, and
+    // the unanchored NN-NN pattern turned 2026-10-01 into 2002-10-01.
+    for (const d of ['01-alpha', '02-beta', '03-gamma', '03.1-gamma-fix', '04-delta', '10-ten']) {
+      fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', d), { recursive: true });
+    }
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), [
+      '# Roadmap', '', 'Started 2026-10-01.', '',
+      '### Phase 1: Alpha', '**Goal:** a', '',
+      '### Phase 2: Beta', '**Goal:** b', '',
+      '### Phase 3: Gamma', '**Goal:** c', '',
+      '### Phase 3.1: Gamma fix', '**Goal:** cf', '',
+      '### Phase 4: Delta', '**Goal:** d', '**Depends on:** Phase 3', '',
+      '### Phase 10: Ten', '**Goal:** t', '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), '# State\n');
+    const r = runPanTools('phase remove 2 --force', tmpDir);
+    assert.ok(r.success, r.error);
+    const roadmap = fs.readFileSync(path.join(tmpDir, '.planning', 'roadmap.md'), 'utf-8');
+    const headings = roadmap.split('\n').filter((l) => l.startsWith('### Phase'));
+    assert.deepEqual(headings, ['### Phase 1: Alpha', '### Phase 2: Gamma', '### Phase 2.1: Gamma fix', '### Phase 3: Delta', '### Phase 9: Ten']);
+    assert.match(roadmap, /Started 2026-10-01\./, 'a date is not a plan reference');
+    assert.match(roadmap, /\*\*Depends on:\*\* Phase 2\b/, 'Delta now depends on Gamma\'s new number');
+    assert.deepEqual(fs.readdirSync(path.join(tmpDir, '.planning', 'phases')).sort(), ['01-alpha', '02-gamma', '02.1-gamma-fix', '03-delta', '09-ten']);
+  });
+
   test('removes phase directory and renumbers subsequent', () => {
     // Setup 3 phases
     fs.writeFileSync(
@@ -1815,6 +1914,16 @@ describe('phase complete auto-commit', () => {
     assert.strictEqual(data.commit_hash, undefined, 'should not have commit_hash');
   });
 
+  test('commit_docs: false skips the auto-commit, as `pan-tools commit` does', () => {
+    // The commit ran whatever commit_docs said; exec-phase and transition call this.
+    fs.writeFileSync(path.join(gitDir, '.planning', 'config.json'), '{"commit_docs": false}\n');
+    const before = execSync('git rev-parse HEAD', { cwd: gitDir, encoding: 'utf-8' }).trim();
+    const result = runPanTools('phase complete 1', gitDir);
+    assert.ok(result.success, result.error);
+    assert.strictEqual(JSON.parse(result.output).commit_hash, undefined);
+    assert.strictEqual(execSync('git rev-parse HEAD', { cwd: gitDir, encoding: 'utf-8' }).trim(), before, 'no new commit');
+  });
+
   test('phase complete in non-git dir still works without commit', () => {
     const noGitDir = createTempProject();
     fs.writeFileSync(path.join(noGitDir, '.planning', 'roadmap.md'),
@@ -1911,5 +2020,71 @@ describe('phase-plan-index --failed: plans blocked by a failed dependency (M28)'
     assert.match(exec, /phase-plan-index "\$\{PHASE_NUMBER\}" --failed "\$\{FAILED_PLAN_IDS\}"/);
     assert.match(exec, /Do not spawn those plans/);
     assert.ok(!/dependent plans may also fail/.test(exec), 'the old "they may also fail" instruction is gone');
+  });
+});
+
+// removePhaseSection on its own, one layout per row: each row is a shape that removed too
+// much or too little in a version of the section bound (the CLI tests above cover the rest).
+describe('removePhaseSection — the section bound, layout by layout', () => {
+  const { removePhaseSection } = require('../pan-wizard-core/bin/lib/phase-remove.cjs');
+  const rm = (lines, n) => removePhaseSection(lines.join('\n'), n);
+  const progress = ['## Progress', '', '| Phase | Status |', ''];
+
+  test('headings written without a space after the hashes', () => {
+    const out = rm(['# Roadmap', '', '###Phase 1: A', 'a', '', '###Phase 2: B', 'b', '', '###Phase 3: C', 'c', '', ...progress], '2');
+    assert.doesNotMatch(out, /Phase 2|\nb\n/);
+    assert.match(out, /###Phase 1: A\na\n\n###Phase 3: C\nc\n\n## Progress/);
+  });
+
+  test('an unclosed fence does not pair with a later phase\'s fence', () => {
+    const lines = ['# Roadmap', '', '### Phase 2: B', '```', 'unclosed', '', '### Phase 3: C', 'c', '',
+      '### Phase 4: D', '```bash', 'npm test', '```', '', ...progress];
+    const two = rm(lines, '2');
+    assert.match(two, /### Phase 3: C/);
+    assert.match(two, /### Phase 4: D/);
+    assert.doesNotMatch(two, /unclosed/);
+    const three = rm(lines, '3');
+    assert.match(three, /### Phase 2: B/);
+    assert.match(three, /### Phase 4: D/);
+    assert.doesNotMatch(three, /### Phase 3: C/);
+  });
+
+  test('a nested fenced example (```markdown around ```bash) goes whole, `# comment` included', () => {
+    const out = rm(['### Phase 1: A', 'a', '', '### Phase 2: B', '```markdown', '## Usage', '```bash', '# run it', 'npm test', '```', '```', '', ...progress], '2');
+    assert.doesNotMatch(out, /Usage|run it|npm test|```/);
+    assert.match(out, /### Phase 1: A\na\n\n## Progress/);
+  });
+
+  test('a one-line <details> stays part of the section, and the milestone\'s </details> survives', () => {
+    const out = rm(['<details>', '<summary>✅ v1.0 MVP (Phases 1-2)</summary>', '', '### Phase 1: A', 'a', '',
+      '### Phase 2: B', '<details><summary>Notes</summary>b notes</details>', '', '</details>', '', ...progress], '2');
+    assert.doesNotMatch(out, /Phase 2|b notes/);
+    assert.match(out, /### Phase 1: A\na\n\n<\/details>\n\n## Progress/);
+  });
+
+  test('a collapsed milestone after the phase survives, even with no phase heading inside', () => {
+    // The shape /pan:milestone-done leaves: the milestone collapsed to a summary and a link.
+    const out = rm(['### Phase 4: D', 'd', '', '### Phase 5: E', 'e', '', '<details>', '<summary>✅ v1.0 MVP (Phases 1-4) - SHIPPED 2026-01-01</summary>', '',
+      '- Archived in milestones/v1.0-roadmap.md', '', '</details>', '', ...progress], '5');
+    assert.doesNotMatch(out, /Phase 5|\ne\n/);
+    assert.match(out, /<details>\n<summary>✅ v1\.0 MVP \(Phases 1-4\) - SHIPPED 2026-01-01<\/summary>\n\n- Archived in milestones\/v1\.0-roadmap\.md\n\n<\/details>/);
+  });
+
+  test('an H1 after the last phase ends its section', () => {
+    const out = rm(['# Roadmap', '', '### Phase 3: C', 'c', '', '# Appendix', 'kept'], '3');
+    assert.equal(out, '# Roadmap\n\n# Appendix\nkept');
+  });
+
+  test('a section that runs to the end of the file keeps the file\'s final line ending', () => {
+    // The blank line before the section goes with it, as on LF ('# R\n\n…' → '# R\n'); no bare CR is left.
+    assert.equal(removePhaseSection('# R\r\n\r\n### Phase 3: C\r\nc\r\n', '3'), '# R\r\n');
+    assert.equal(removePhaseSection('# R\n\n### Phase 3: C\nc\n', '3'), '# R\n');
+    assert.equal(removePhaseSection('# R\n### Phase 3: C\nc\n', '3'), '# R\n');
+    assert.equal(removePhaseSection('# R\n### Phase 3: C\nc', '3'), '# R', 'no final newline to keep');
+  });
+
+  test('a heading that only appears inside a code fence is not the phase', () => {
+    const text = ['# Roadmap', '', '```markdown', '### Phase 2: Example', '```', '', '### Phase 1: A', 'a', ''].join('\n');
+    assert.equal(removePhaseSection(text, '2'), text);
   });
 });

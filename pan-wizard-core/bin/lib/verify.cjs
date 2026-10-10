@@ -25,6 +25,7 @@ const { detectInstalledRuntimes, validateRuntimeInstall, cmdValidateDeployment }
 const { cmdPreflight, cmdDepsValidate } = require('./verify-preflight.cjs');
 const { scopePhase, cmdVerifyScope, verificationFreshness, cmdVerifyStale } = require('./verify-scope.cjs');
 const { planningRootRel } = require('./planning-root.cjs');
+const { roadmapRequirementIds } = require('./roadmap.cjs');
 
 /**
  * Spot-check files mentioned in summary content.
@@ -439,11 +440,10 @@ function cmdVerifyArtifacts(cwd, planFilePath, raw) {
     // artifacts: [], key_links: [] }` (pan-wizard-core/templates/phase-prompt.md,
     // template.cjs generatePlanTemplate), so an empty block is the documented default
     // state of a scaffolded plan; presence of the block is enforced by
-    // `verify plan-structure`, not here. (2) parseMustHavesBlock currently matches the
-    // block header at 4-space indent while every shipped template and agent emits it at
-    // 2 — so this branch is reached for *every* plan authored in PAN's own format, and
-    // exiting non-zero would fail every real `verify artifacts` call. Reclassifying
-    // this as a failure requires fixing that indentation mismatch first.
+    // `verify plan-structure`, not here. (2) parseMustHavesBlock once required a
+    // 4-space indent while every shipped template and agent writes 2, so this branch
+    // fired for every plan in PAN's own format. It reads relative indent now
+    // (frontmatter.cjs), so reaching it means the plan declares no artifacts.
     output({ error: 'No must_haves.artifacts found in frontmatter', path: planFilePath }, raw, undefined, EXIT_OK);
     return;
   }
@@ -508,8 +508,7 @@ function cmdVerifyKeyLinks(cwd, planFilePath, raw) {
   const r = checkKeyLinks(cwd, content);
   if (r.total === 0) {
     // EXIT_OK: same reasoning as cmdVerifyArtifacts above — an empty key_links block is
-    // the shipped template default, and the parseMustHavesBlock indent mismatch means
-    // this branch fires for every plan written in PAN's own format.
+    // the shipped template default, so a plan that declares none is a result, not a failure.
     output({ error: 'No must_haves.key_links found in frontmatter', path: planFilePath }, raw, undefined, EXIT_OK);
     return;
   }
@@ -550,10 +549,19 @@ function reconcilePhase(cwd, phaseNum) {
   const sm = verRaw.match(/^status:\s*([A-Za-z_-]+)/m);
   const status = sm ? sm[1].toLowerCase() : 'unknown';
   const claimsPass = /^(pass|passed|verified|complete|verified_pass)$/.test(status);
-  const planFile = files.find(f => isPlanFile(f));
-  const planContent = planFile ? (safeReadFile(path.join(dir, planFile)) || '') : '';
-  const artifacts = checkArtifacts(cwd, planContent);
-  const keyLinks = checkKeyLinks(cwd, planContent);
+  // Every plan's must_haves. Reading only the first plan let a later plan's failing
+  // artifact through under a passing verdict — the rubber stamp this check exists for.
+  const artifacts = { all_passed: true, passed: 0, total: 0, artifacts: [] };
+  const keyLinks = { all_verified: true, verified: 0, total: 0, links: [] };
+  for (const planFile of files.filter(f => isPlanFile(f)).sort()) {
+    const planContent = safeReadFile(path.join(dir, planFile)) || '';
+    const a = checkArtifacts(cwd, planContent);
+    const k = checkKeyLinks(cwd, planContent);
+    artifacts.passed += a.passed; artifacts.total += a.total; artifacts.artifacts.push(...a.artifacts.map(x => ({ plan: planFile, ...x })));
+    keyLinks.verified += k.verified; keyLinks.total += k.total; keyLinks.links.push(...k.links.map(x => ({ plan: planFile, ...x })));
+  }
+  artifacts.all_passed = artifacts.passed === artifacts.total;
+  keyLinks.all_verified = keyLinks.verified === keyLinks.total;
   const signals = artifacts.total + keyLinks.total;
   const contradictions = [];
   if (claimsPass) {
@@ -1236,11 +1244,10 @@ function syncRequirementCheckboxes(cwd) {
   // For each completed phase, find linked requirement IDs and check their boxes
   let fixed = 0;
   for (const phaseNum of completedPhases) {
-    const reqMatch = roadmapContent.match(
-      new RegExp(`Phase\\s+${escapeRegex(phaseNum)}[\\s\\S]*?\\*\\*Requirements:\\*\\*\\s*([^\\n]+)`, 'i')
-    );
-    if (!reqMatch) continue;
-    const reqIds = reqMatch[1].replace(/[\[\]]/g, '').split(/[,\s]+/).map(id => id.trim()).filter(Boolean);
+    // The phase's own requirements, as `phase complete` reads them: a bare "Phase N …
+    // Requirements" search took the first section's line for every phase when the
+    // checklist sits above the sections, as templates/roadmap.md lays it out.
+    const reqIds = roadmapRequirementIds(roadmapContent, phaseNum);
     for (const reqId of reqIds) {
       const escaped = escapeRegex(reqId);
       const re = new RegExp(`(- \\[) (\\]\\s*\\*\\*${escaped}\\*\\*)`, 'gi');
@@ -1461,7 +1468,6 @@ function cmdValidateHealth(cwd, options, raw) {
   // Check 10 (optional): full validation — run tests and build
   let testStatus;
   let buildStatus;
-  let memoryBudget;
   if (options.full) {
     testStatus = runFullTestCheck(cwd);
     buildStatus = runFullBuildCheck(cwd);
@@ -1471,14 +1477,9 @@ function cmdValidateHealth(cwd, options, raw) {
     if (buildStatus.pass === false) {
       addIssue('error', 'BUILD_FAIL', `Build failed (exit code ${buildStatus.exitCode})`, 'Fix build errors');
     }
-    // Memory-load budget (ADR-0036 acceptance signal): keep per-agent memory
-    // injection bounded as logs grow. Read-only, non-blocking.
-    memoryBudget = require('./memory.cjs').memoryLoadBudget(cwd);
-    if (memoryBudget.status === 'critical') {
-      addIssue('warning', 'MEM_BUDGET', memoryBudget.advisory, "Run 'pan-tools memory compact <agent>' or scope injection with 'memory select'");
-    } else if (memoryBudget.status === 'warning') {
-      addIssue('info', 'MEM_BUDGET', memoryBudget.advisory, "Run 'pan-tools memory compact <agent>' or scope injection with 'memory select'");
-    }
+    // No memory-load check: PAN's workflows no longer load agent memory into
+    // agents (ADR-0036, amended 2026-10-04), so its size costs no agent context.
+    // `pan-tools memory budget` still sizes the store on request.
   }
 
   // Check 11 (optional): drift analysis
@@ -1539,7 +1540,6 @@ function cmdValidateHealth(cwd, options, raw) {
   if (options.full) {
     result.test_status = testStatus;
     result.build_status = buildStatus;
-    result.memory_budget = memoryBudget;
   }
   if (options.drift) {
     result.drift_status = driftResult;
@@ -1549,8 +1549,10 @@ function cmdValidateHealth(cwd, options, raw) {
   }
 
   // Explicit verdict exit: `broken` → 1; `degraded` and `healthy` → 0 (warnings are
-  // not failures). Computed AFTER --repair ran, so the code reflects the post-repair
-  // state the JSON reports. See the note at the early-return site above.
+  // not failures). The issue lists were collected before --repair ran and a repair
+  // removes nothing from them, so the status and this code describe the tree as it
+  // was before the repairs; `repairs_performed` says what changed, and a second run
+  // shows the result. See the note at the early-return site above.
   output(result, raw, undefined, status === HEALTH_STATUS.BROKEN ? 1 : 0);
 }
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — 2026-09-28. Implemented on `feat/evidence-loop` (spec `docs/specs/evidence_loop_featureai.md`, plan `docs/specs/evidence-loop-plan.md`); the maintainer accepts or amends it at release review. The decisions below were made in `/featureAI` on the maintainer's instruction to design, plan and build the evidence loop from the 2026-09-28 investigation and the September market-ideas queue.
+Proposed — 2026-09-28; shipped in v3.32.0 (2026-09-29), acceptance not yet recorded. Implemented on `feat/evidence-loop` (spec `docs/specs/evidence_loop_featureai.md`, plan `docs/specs/evidence-loop-plan.md`); the maintainer accepts or amends it at release review. The decisions below were made in `/featureAI` on the maintainer's instruction to design, plan and build the evidence loop from the 2026-09-28 investigation and the September market-ideas queue.
 
 ## Context
 

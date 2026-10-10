@@ -62,22 +62,20 @@ ELSE IF .continue-here.md exists:
   → PRESENT: position, blockers, next action
   → ROUTE to the command that was paused (exec-phase, plan-phase, etc.)
 
-ELSE IF state.md exists AND has status "in_progress":
+ELSE IF state.md exists (its Status is free text — Ready to plan, Ready to execute, In progress, Phase complete, Milestone complete and the like; none says "blocked"):
+  → IF state.md's `### Blockers/Concerns` lists a blocker:
+    → PRESENT the blockers first
+    → OFFER: debug (/pan:debug) or unblock manually
   → FIND incomplete work: plans without summaries, phases mid-execution
   → IF incomplete phase found:
     → PRESENT phase status + what remains
     → OFFER: continue execution (/pan:exec-phase) or verify (/pan:verify-phase)
-  → IF no incomplete work but active milestone:
+  → ELSE IF roadmap phases remain incomplete (`roadmap analyze`):
     → PRESENT milestone progress
-    → OFFER: next unplanned phase (/pan:plan-phase) or audit (/pan:milestone-audit)
-
-ELSE IF state.md exists AND has status "blocked":
-  → PRESENT blockers from state.md
-  → OFFER: debug (/pan:debug) or unblock manually
-
-ELSE IF state.md exists AND has status "completed":
-  → "Current milestone is complete. Run /pan:milestone-done or /pan:milestone-new."
-  → STOP
+    → OFFER: next unplanned phase (/pan:discuss-phase, or /pan:plan-phase when it has a context.md) or audit (/pan:milestone-audit)
+  → ELSE (every roadmap phase complete):
+    → "Current milestone is complete. Run /pan:milestone-audit, then /pan:milestone-done, or /pan:milestone-new."
+    → STOP
 
 ELSE (state.md missing or unreadable):
   → ATTEMPT reconstruction from .planning/ artifacts

@@ -312,7 +312,7 @@ function MinimalRepro() {
 5. Find divergence point (where expected vs actual first differ)
 
 **Example:** UI shows "User not found" when user exists
-```
+```text
 Trace backwards:
 1. UI displays: user.error → Is this the right value to display? YES
 2. Component receives: user.error = "User not found" → Correct? NO, should be null
@@ -341,7 +341,7 @@ Trace backwards:
 **Process:** List differences, test each in isolation, find the difference that causes failure.
 
 **Example:** Works locally, fails in CI
-```
+```text
 Differences:
 - Node version: Same ✓
 - Environment variables: Same ✓
@@ -696,7 +696,7 @@ The cost of insufficient verification: bug returns, user frustration, emergency 
 
 ## Research vs Reasoning Decision Tree
 
-```
+```text
 Is this an error message I don't recognize?
 ├─ YES → Web search the error message
 └─ NO ↓
@@ -744,7 +744,7 @@ Can I observe the behavior directly?
 
 ## File Location
 
-```
+```bash
 DEBUG_DIR=.planning/debug
 DEBUG_RESOLVED_DIR=.planning/debug/resolved
 ```
@@ -753,7 +753,7 @@ DEBUG_RESOLVED_DIR=.planning/debug/resolved
 
 ```markdown
 ---
-status: gathering | investigating | fixing | verifying | awaiting_human_verify | resolved
+status: gathering | investigating | diagnosed | fixing | verifying | awaiting_human_verify | resolved
 trigger: "[verbatim user input]"
 created: [ISO timestamp]
 updated: [ISO timestamp]
@@ -775,6 +775,14 @@ actual: [what actually happens]
 errors: [error messages]
 reproduction: [how to trigger]
 started: [when broke / always broken]
+
+## Reproduction
+<!-- Written before the first hypothesis; OVERWRITE only to shrink it -->
+
+command: [one command you have RUN that fails on the reported symptom, or "none"]
+fails_with: [the output that shows the symptom, secrets redacted]
+deterministic: [yes / rate N of M runs for a flaky bug]
+tried: [only when command is "none": what you tried and why it cannot be built]
 
 ## Eliminated
 <!-- APPEND only - prevents re-investigating -->
@@ -808,6 +816,7 @@ files_changed: []
 | Frontmatter.updated | OVERWRITE | Every file update |
 | Current Focus | OVERWRITE | Before every action |
 | Symptoms | IMMUTABLE | After gathering complete |
+| Reproduction | OVERWRITE to shrink | Before the first hypothesis; again only as it is minimised |
 | Eliminated | APPEND | When hypothesis disproved |
 | Evidence | APPEND | After each finding |
 | Resolution | OVERWRITE | As understanding evolves |
@@ -816,7 +825,7 @@ files_changed: []
 
 ## Status Transitions
 
-```
+```text
 gathering -> investigating -> fixing -> verifying -> awaiting_human_verify -> resolved
                   ^            |           |                 |
                   |____________|___________|_________________|
@@ -839,7 +848,7 @@ The file IS the debugging brain.
 <execution_flow>
 
 <step name="check_active_session">
-**First:** Check for active debug sessions.
+**First:** Check for active debug sessions — only when your prompt names no issue. A spawned debugger is handed its issue (`<objective>`/`<symptoms>`, or the debug file to continue): `/pan:debug` lists active sessions before it spawns you, and you cannot wait for the user to pick one.
 
 ```bash
 ls .planning/debug/*.md 2>/dev/null | grep -v resolved
@@ -847,7 +856,7 @@ ls .planning/debug/*.md 2>/dev/null | grep -v resolved
 
 **If active sessions exist AND no $ARGUMENTS:**
 - Display sessions with status, hypothesis, next action
-- Wait for user to select (number) or describe new issue (text)
+- Return them in a `decision` checkpoint (`## CHECKPOINT REACHED`) so the user can pick one or describe a new issue: you cannot wait for the answer
 
 **If active sessions exist AND $ARGUMENTS:**
 - Start new session (continue to create_debug_file)
@@ -896,6 +905,13 @@ Gather symptoms through questioning. Update file after EACH answer.
 - Run app/tests to observe behavior
 - APPEND to Evidence after each finding
 
+**Phase 1b: Reproduce before you theorise** (no hypothesis until this is written)
+- Build ONE command that drives the reported symptom: a failing test at the closest seam, a CLI call with a fixture, a script. It must assert the user's symptom, not merely run.
+- RUN it and record it in Reproduction (`command`, `fails_with`, secrets redacted). Run it again: the same verdict, or for a flaky bug a recorded rate.
+- Shrink it: cut inputs and steps one at a time, re-running after each, while it still fails. Keep the smallest command that fails.
+- If no command can be built, write `command: none` and `tried:` (what you attempted, why it failed). With `goal: find_root_cause_only` and nothing at all to run against, return a `## CHECKPOINT REACHED` asking for the access, the captured artifact or the environment you need instead of guessing.
+- Reading code to build a theory before this is written is the failure this step prevents: a fix aimed at a neighbouring bug.
+
 **Phase 2: Form hypothesis**
 - Based on evidence, form SPECIFIC, FALSIFIABLE hypothesis
 - Update Current Focus with hypothesis, test, expecting, next_action
@@ -940,6 +956,8 @@ Return structured diagnosis:
 
 **Root Cause:** {from Resolution.root_cause}
 
+**Reproduction:** `{Reproduction.command}` — fails with {Reproduction.fails_with}; the fix is done when it passes (or "none: {Reproduction.tried}")
+
 **Evidence Summary:**
 - {key finding 1}
 - {key finding 2}
@@ -981,6 +999,7 @@ Update status to "fixing".
 
 **2. Verify**
 - Update status to "verifying"
+- Re-run Reproduction.command: it must now pass. A fix that leaves it failing is not a fix
 - Test against original Symptoms
 - If verification FAILS: status -> "investigating", return to investigation_loop
 - If verification PASSES: Update Resolution.verification, proceed to request_human_verification

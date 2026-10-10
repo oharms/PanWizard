@@ -330,6 +330,24 @@ describe('allocateBudget', () => {
     assert.ok(batch.find(i => i.id === 'a'));
   });
 
+  test('features mode never allocates past the budget: the split shares what P0 left', () => {
+    const heavy = [
+      { id: 'p0a', priority: 'P0', effort: 'L', points: 10 },
+      { id: 'p0b', priority: 'P0', effort: 'L', points: 10 },
+      { id: 'f1', priority: 'P3', effort: 'M', points: 4 },
+      { id: 'f2', priority: 'P4', effort: 'M', points: 4 },
+      { id: 'f3', priority: 'P5', effort: 'S', points: 2 },
+      { id: 's1', priority: 'P1', effort: 'S', points: 2 },
+      { id: 's2', priority: 'P2', effort: 'S', points: 2 },
+    ];
+    const { batch, allocated } = allocateBudget(heavy, 20, 'features');
+    assert.equal(allocated, 20);
+    assert.deepEqual(batch.map(i => i.id), ['p0a', 'p0b'], 'P0 took the whole budget, so nothing else fits');
+    const roomy = allocateBudget(heavy, 30, 'features');
+    assert.ok(roomy.allocated <= 30, `allocated ${roomy.allocated} of 30`);
+    assert.equal(roomy.batch.reduce((n, i) => n + i.points, 0), roomy.allocated);
+  });
+
   test('full mode includes all within budget', () => {
     const { batch, allocated } = allocateBudget(items, 60, 'full');
     assert.equal(batch.length, 4);

@@ -24,9 +24,9 @@ Unit/scenario tests are safe to run here. Installation testing goes to `d:\pante
 
 | Scope | Command | Tests | Time |
 |-------|---------|-------|------|
-| Unit | `npm test` | `tests/*.test.cjs` | ~30s |
-| Scenarios | `npm run test:scenarios` | tests/scenarios/ | ~15s |
-| All | `npm run test:all` | Everything | ~45s |
+| Unit | `npm test` | `tests/*.test.cjs` | ~1–1.5 min on Linux CI, 3–4 min on Windows CI |
+| Scenarios | `npm run test:scenarios` | tests/scenarios/ | 10–20s on Linux CI, ~1 min on Windows CI |
+| All | `npm run test:all` | Everything | the two combined |
 | Install | See integration section | Manual verification | ~20s |
 
 ---
@@ -82,7 +82,7 @@ node --test tests/installer*.test.cjs
 node --test tests/config.test.cjs
 
 # By test name
-node --test --test-name-pattern "should handle" tests/core.test.cjs
+node --test --test-name-pattern "toPosix" tests/core.test.cjs
 ```
 
 ## If Tests Fail

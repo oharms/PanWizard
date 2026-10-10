@@ -34,6 +34,9 @@ const RESEARCH_SUFFIX = '-research.md';
 const VERIFICATION_SUFFIX = '-verification.md';
 const UAT_SUFFIX = '-uat.md';
 const VALIDATION_SUFFIX = '-validation.md';
+// A phase's roadmap slice (roadmap slice --write), which phase agents and plans read
+// in place of the whole roadmap.md and requirements.md.
+const ROADMAP_SLICE_SUFFIX = '-roadmap-slice.md';
 
 // ─── File matching helpers ───────────────────────────────────────────────────
 
@@ -576,17 +579,23 @@ const TOTAL_BUDGET_MIN = 5;
 const TOTAL_BUDGET_MAX = 5000;
 
 // Memory read/budget (ADR-0036 FW-2/FW-3): distill-and-select on the memory axis.
-const MEMORY_SELECT_BUDGET_TOKENS = 2000; // per-agent cap for cue-scoped memory injection
+const MEMORY_SELECT_BUDGET_TOKENS = 2000; // per-agent cap for a cue-scoped `memory select`
 const MEMORY_RECENCY_FLOOR = 5;           // always keep this many newest entries (recall never empty)
 const MEMORY_SOFT_CAP_MULT = 2;           // soft auto-compaction trigger = DEFAULT_MAX_ENTRIES × this
 const MEMORY_LOAD_WARN_TOKENS = 4000;     // memory-budget telemetry: warn threshold (absolute tokens)
 const MEMORY_LOAD_CRIT_TOKENS = 8000;     // memory-budget telemetry: critical threshold (absolute tokens)
 const MEMORY_LOAD_MAX_FRACTION = 0.15;    // memory-budget telemetry: max fraction of median agent input
+// Cited, verified, expiring memory (memory optimisation O4; the Copilot Memory
+// pattern). An entry not used for this many days is no longer selected and
+// `memory prune` archives it; `memory select --mark-used` refreshes it.
+const MEMORY_EXPIRE_DAYS = 60;
+const MEMORY_CITED_FILE_MAX_BYTES = 2 * 1024 * 1024; // larger cited files: existence is the evidence
 
-// Cached prompt context (ADR-0044). The files in CACHEABLE_CONTEXT_FILES are
-// re-read into EVERY agent call, so their combined size is the single largest
-// recurring cost in a PAN project — cache reads dominate token traffic by roughly
-// two orders of magnitude over generation. These thresholds mirror the
+// Stable planning files (ADR-0044): what `cache prime`, `context-budget` and
+// hygiene's cache-context check measure. state.md among them is re-read on every
+// agent call, the largest recurring cost in a PAN project; roadmap.md and
+// requirements.md are read whole only by the roadmapper and milestone work, since
+// phase agents read `roadmap slice` (O2). These thresholds mirror the
 // MEMORY_LOAD_* pattern above: measured, classified, and surfaced.
 const CACHE_BLOCK_WARN_TOKENS = 15000;    // cached context block: warn threshold (absolute tokens)
 const CACHE_BLOCK_CRIT_TOKENS = 25000;    // cached context block: critical threshold
@@ -780,6 +789,7 @@ module.exports = {
   VERIFICATION_SUFFIX,
   UAT_SUFFIX,
   VALIDATION_SUFFIX,
+  ROADMAP_SLICE_SUFFIX,
   // File matchers
   isPlanFile,
   isSummaryFile,
@@ -862,6 +872,8 @@ module.exports = {
   MEMORY_LOAD_WARN_TOKENS,
   MEMORY_LOAD_CRIT_TOKENS,
   MEMORY_LOAD_MAX_FRACTION,
+  MEMORY_EXPIRE_DAYS,
+  MEMORY_CITED_FILE_MAX_BYTES,
   // Hygiene
   CACHE_BLOCK_WARN_TOKENS,
   CACHE_BLOCK_CRIT_TOKENS,

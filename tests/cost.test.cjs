@@ -721,6 +721,15 @@ describe('cost — aggregate', () => {
     assert.equal(agg.totals.input_tokens, 1);
   });
 
+  test('a bare --until date includes that whole day', () => {
+    // `new Date('2026-10-05')` is that day's first instant, so the documented
+    // "inclusive" bound left out every record written on the day itself.
+    appendRecord(tmpDir, { ts: '2026-10-05T14:30:00Z', agent: 'a', model: 'claude-opus-4-7', input_tokens: 1 });
+    appendRecord(tmpDir, { ts: '2026-10-06T00:00:01Z', agent: 'b', model: 'claude-opus-4-7', input_tokens: 2 });
+    assert.equal(aggregate(tmpDir, { until: '2026-10-05' }).totals.calls, 1);
+    assert.equal(aggregate(tmpDir, { until: '2026-10-05T12:00:00Z' }).totals.calls, 0, 'a full timestamp stays exact');
+  });
+
   test('cache hit rate null when no cache activity', () => {
     appendRecord(tmpDir, { model: 'claude-opus-4-7', input_tokens: 1000, output_tokens: 100 });
     const agg = aggregate(tmpDir);
@@ -831,6 +840,28 @@ describe('cost — CLI dispatch', () => {
     assert.ok(r.success, r.error);
     assert.ok(r.output.includes('Cost Dashboard'));
     assert.ok(r.output.includes('Totals'));
+  });
+
+  test('cost report --format table|chart prints text without --raw too', () => {
+    // The formats are a request for text; without --raw both used to print the JSON report.
+    runPanTools('cost append --model claude-opus-4-7 --input-tokens 100 --output-tokens 10', tmpDir);
+    const table = runPanTools('cost report --format table', tmpDir);
+    assert.ok(table.success, table.error);
+    assert.ok(table.output.includes('Cost Dashboard'), table.output.slice(0, 80));
+    const chart = runPanTools('cost report --format chart', tmpDir);
+    assert.ok(chart.success, chart.error);
+    assert.ok(chart.output.includes('Total window cost'), chart.output.slice(0, 80));
+    assert.equal(JSON.parse(runPanTools('cost report', tmpDir).output).totals.calls, 1, 'the default stays JSON');
+  });
+
+  test('report is the default even when flags come first (`cost --format chart`)', () => {
+    // A leading flag was taken for the subcommand and refused, though /pan:cost
+    // documents `report` as the default and shows `/pan:cost --format chart`.
+    runPanTools('cost append --model claude-opus-4-7 --input-tokens 100 --output-tokens 10', tmpDir);
+    const chart = runPanTools('cost --format chart', tmpDir);
+    assert.ok(chart.success, chart.error);
+    assert.ok(chart.output.includes('Total window cost'), chart.output.slice(0, 80));
+    assert.equal(JSON.parse(runPanTools('cost --since 2020-01-01', tmpDir).output).totals.calls, 1);
   });
 
   test('cost clear removes the log', () => {

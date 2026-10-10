@@ -18,6 +18,7 @@ patterns:
     summary: 30-min DEFAULT_TIMEOUT_MS is too short for typical 3-plan phases; recommend 60+ min default
     promoted_at: 2026-05-02T14:36:15.357Z
     source_experiments: [whoolog]
+    cites: [pan-wizard-core/bin/lib/runner.cjs#DEFAULT_TIMEOUT_MS]
   - id: P-EXP-005
     summary: 4 concurrent claude -p experiment sessions run cleanly on a single machine; no TTY contention or rate-limit issues
     promoted_at: 2026-05-02T14:36:22.170Z

@@ -380,3 +380,21 @@ test('validateAll: summary counts are accurate', () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+// ─── CLI: a leading flag runs validate ───────────────────────────────────────
+
+test('CLI: `links --strict` validates like `links validate --strict` (it was refused as an unknown subcommand)', () => {
+  const { spawnSync } = require('node:child_process');
+  const tools = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+  const root = makeTmp();
+  try {
+    writeFile(root, 'docs/a.md', '# A\n');
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    const run = (...args) => spawnSync(process.execPath, [tools, 'links', ...args, '--doc-root', 'docs', '--source-root', 'src'], { cwd: root, encoding: 'utf8' });
+    const bare = run('--strict');
+    const named = run('validate', '--strict');
+    assert.equal(bare.status, named.status, bare.stderr);
+    assert.doesNotMatch(bare.stderr, /Unknown links subcommand/);
+    assert.deepEqual(JSON.parse(bare.stdout).summary, JSON.parse(named.stdout).summary);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

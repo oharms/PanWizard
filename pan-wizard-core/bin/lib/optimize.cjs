@@ -8,7 +8,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, escapeRegex, execGit } = require('./core.cjs');
+const { output, escapeRegex, execGit, toLf } = require('./core.cjs');
 const { planningPath, planningRel } = require('./utils.cjs');
 
 // ─── Storage layout ──────────────────────────────────────────────────────────
@@ -793,6 +793,27 @@ function revertedIndices(rows) {
   return out;
 }
 
+/** The trace session a report belongs to, from its name (`<session>-opt-report.md`, `<session>-analysis.json`). */
+function reportSessionId(reportPath) {
+  const m = path.basename(String(reportPath || '')).match(/^(.+?)-(?:opt-report\.md|analysis\.json)$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * An older report's memory actions (`memory`, `memory_append`, `memory_entry`) still
+ * write into `.planning/memory/`, but PAN's workflows no longer load that folder into
+ * agents (ADR-0036, amended 2026-10-04). Say so in the result rather than let the
+ * apply look like it taught anyone anything.
+ */
+const MEMORY_NOT_LOADED_WARNING = "stored in .planning/memory/, which PAN's workflows do not load into agents (ADR-0036): "
+  + "write a lesson where the agents read — the project's instructions, a test, or the code";
+
+function notLoadedWarning(cwd, relPath) {
+  const abs = path.resolve(cwd, relPath || '');
+  if (path.dirname(abs) !== path.resolve(planningPath(cwd), 'memory')) return {};
+  return { warning: MEMORY_NOT_LOADED_WARNING };
+}
+
 function applyReportRecommendations(cwd, reportPath) {
   let reportContent;
   try {
@@ -842,13 +863,21 @@ function applyReportRecommendations(cwd, reportPath) {
   const resolvedCwd = path.resolve(cwd);
   actions.forEach((action, i) => {
     try {
-      // Containment: action.path on memory writes is report/agent-authored and
-      // must stay inside the project. A `../` (or absolute) path otherwise
-      // escapes and writes anywhere the process can (M23, ADR audit 2026-08).
+      // Containment: action.path on memory writes is report/agent-authored. A `../`
+      // (or absolute) path escaped the project (M23, ADR audit 2026-08), and a path
+      // inside it reached any file: a report's `memory_append` to CLAUDE.md made
+      // agent-written text a standing instruction with no review (ADR-0040), and
+      // `/pan:learn --apply` runs this on the optimizer's own report. A memory action
+      // writes memory: `.planning/memory/` and nothing else.
       if (action.type === 'memory' || action.type === 'memory_append') {
         const abs = path.resolve(cwd, action.path || '');
+        const memoryDir = path.resolve(planningPath(cwd), 'memory');
         if (abs !== resolvedCwd && !abs.startsWith(resolvedCwd + path.sep)) {
           skipped.push({ action, reason: 'path escapes project root — skipped' });
+          return;
+        }
+        if (!abs.startsWith(memoryDir + path.sep)) {
+          skipped.push({ action, reason: 'a memory action writes only into .planning/memory/ — skipped; make a change to the project\'s instructions yourself' });
           return;
         }
       }
@@ -867,11 +896,29 @@ function applyReportRecommendations(cwd, reportPath) {
           fs.mkdirSync(path.dirname(memPath), { recursive: true });
           fs.writeFileSync(memPath, action.content, 'utf-8');
           records.push({ i, type: action.type, path: rel(memPath), kind: 'created', sha256_after: normalisedHash(fs.readFileSync(memPath, 'utf-8')), action_sig: actionSig(action) });
-          applied.push({ action, result: `Written to ${action.path}` });
+          applied.push({ action, result: `Written to ${action.path}`, ...notLoadedWarning(cwd, action.path) });
         }
       } else if (action.type === 'memory_append') {
         appendRecorded(path.join(cwd, action.path), '\n' + action.content, action, i);
-        applied.push({ action, result: `Appended to ${action.path}` });
+        applied.push({ action, result: `Appended to ${action.path}`, ...notLoadedWarning(cwd, action.path) });
+      } else if (action.type === 'memory_entry') {
+        // The gated write path (O6): a lesson drawn from this report's trace session,
+        // recorded only if it carries citations that hold and passes `memory record`'s
+        // other rules. The optimizer no longer proposes these; an older report's are
+        // still recorded, as created/appended so revert works.
+        const session = reportSessionId(reportPath);
+        if (!session) { skipped.push({ action, reason: 'a memory entry needs the trace session the report came from, and this report\'s name does not carry one' }); return; }
+        const { recordLesson } = require('./memory.cjs');
+        const logPath = path.join(planningPath(cwd), 'memory', `${String(action.agent || '')}.md`);
+        let before = null;
+        try { before = fs.readFileSync(logPath, 'utf-8'); } catch { /* a new log */ }
+        const r = recordLesson(cwd, String(action.agent || ''), { lesson: action.lesson, trace: session, cites: action.cites });
+        if (r.error || !r.recorded) { skipped.push({ action, reason: r.error || `memory record refused it: ${r.reason}` }); return; }
+        const after = fs.readFileSync(logPath, 'utf-8');
+        records.push(before === null
+          ? { i, type: action.type, path: rel(logPath), kind: 'created', sha256_after: normalisedHash(after), action_sig: actionSig(action) }
+          : { i, type: action.type, path: rel(logPath), kind: 'appended', text: toLf(after).slice(toLf(before).length), sha256_after: normalisedHash(after), action_sig: actionSig(action) });
+        applied.push({ action, result: `Recorded for ${r.agent} from ${r.evidence}`, warning: MEMORY_NOT_LOADED_WARNING });
       } else if (action.type === 'note') {
         // Write a human-readable suggestion note
         const entry = `\n## ${new Date().toISOString()}: ${action.description || 'Suggestion'}\n\n${action.content || action.suggestion || ''}\n\n**Target:** ${action.target || 'unspecified'}\n`;
@@ -992,7 +1039,11 @@ function revertApply(cwd, which) {
   return { apply_id: apply.apply_id, reverted: out.sort((x, y) => x - y), refused, status: remaining === 0 ? 'reverted' : (out.length ? 'partial' : 'refused') };
 }
 
-// Derive basic memory actions from a raw JSON analysis when no optimizer agent
+// Where a lesson reaches the next run's agents: they read the project's
+// instructions, and PAN's workflows no longer load `.planning/memory/` (ADR-0036).
+const LESSON_TARGET = "the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section)";
+
+// Derive suggestion notes from a raw JSON analysis when no optimizer agent
 // report is available (fallback for /pan:optimize apply on a JSON file).
 function deriveActionsFromAnalysis(analysis) {
   const actions = [];
@@ -1002,9 +1053,9 @@ function deriveActionsFromAnalysis(analysis) {
     memory_miss_patterns.slice(0, 3).forEach(p => {
       actions.push({
         type: 'note',
-        description: `Memory miss: ${p.pattern}`,
-        content: `This topic was missing from memory ${p.count} time(s) during the traced session. Consider adding a memory entry for it.`,
-        target: '.planning/memory/',
+        description: `Missing knowledge: ${p.pattern}`,
+        content: `An agent logged this as missing ${p.count} time(s) during the traced session. Write the answer where the agents read: ${LESSON_TARGET}, or a comment at the code it concerns.`,
+        target: LESSON_TARGET,
       });
     });
   }
@@ -1016,8 +1067,8 @@ function deriveActionsFromAnalysis(analysis) {
     actions.push({
       type: 'note',
       description: `Recurring tool failure: ${p.agent} ${p.tool} (${p.error_class})`,
-      content: `${p.agent}'s ${p.tool} call failed with "${p.message}" in ${p.spawns} spawns across ${p.sessions} session(s) (${p.occurrences} times in all). Record the working form of the call, or the precondition it needs, as a memory entry for ${p.agent}.`,
-      target: '.planning/memory/',
+      content: `${p.agent}'s ${p.tool} call failed with "${p.message}" in ${p.spawns} spawns across ${p.sessions} session(s) (${p.occurrences} times in all). Write the working form of the call, or the precondition it needs, where ${p.agent} reads it: ${LESSON_TARGET}.`,
+      target: LESSON_TARGET,
     });
   });
   Object.entries(analysis.verdict_stats || {}).filter(([, s]) => s.fail >= 2).forEach(([agent, s]) => {
@@ -1025,7 +1076,7 @@ function deriveActionsFromAnalysis(analysis) {
       type: 'note',
       description: `Repeated judge failures: ${agent}`,
       content: `${agent} failed ${s.fail} time(s) (${s.retries} retr${s.retries === 1 ? 'y' : 'ies'}, ${s.resolved_by_retry} resolved by the retry). Read the recorded findings (\`pan-tools findings list --agent ${agent}\`) for the class that keeps recurring before the next phase.`,
-      target: '.planning/memory/',
+      target: '.planning/findings.jsonl',
     });
   });
 
@@ -1034,8 +1085,8 @@ function deriveActionsFromAnalysis(analysis) {
       actions.push({
         type: 'note',
         description: `Knowledge gap: ${p.pattern}`,
-        content: `The agent had to infer this ${p.count} time(s). Research and cache the answer.`,
-        target: '.planning/memory/',
+        content: `The agent had to infer this ${p.count} time(s). Research the answer and write it where the agents read: ${LESSON_TARGET}, or a comment at the code it concerns.`,
+        target: LESSON_TARGET,
       });
     });
   }
@@ -1286,6 +1337,14 @@ function validatePromoteInputs(pattern, opts) {
   if (!pattern.id) return 'pattern.id is required';
   if (!pattern.summary) return 'pattern.summary is required';
   if (!pattern.rule) return 'pattern.rule is required';
+  // A citation names the code the pattern rests on, relative to the tree that
+  // holds the store; it must hold now, and learn lint L-007 keeps checking it.
+  if (pattern.cites !== undefined && !Array.isArray(pattern.cites)) return 'pattern.cites must be a list';
+  const { citationProblem } = require('./memory.cjs');
+  for (const c of pattern.cites || []) {
+    const problem = citationProblem(opts.sourceRoot, c);
+    if (problem) return `citation ${c}: ${problem}`;
+  }
   return null;
 }
 
@@ -1366,7 +1425,8 @@ function classifyPatternKind(pattern) {
  * always written by us — no general YAML dependency needed).
  */
 function readTopicFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8');
+  // LF: an install committed with core.autocrlf=true holds these files as CRLF.
+  const content = toLf(fs.readFileSync(filePath, 'utf-8'));
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!fmMatch) {
     return { frontmatter: { topic: '', patterns: [] }, body: content, _raw: content };
@@ -1429,6 +1489,13 @@ function serializeTopicFile(topic, patterns, body) {
     fm += `    promoted_at: ${p.promoted_at || ts}\n`;
     const srcExps = Array.isArray(p.source_experiments) ? p.source_experiments : [];
     fm += `    source_experiments: [${srcExps.join(', ')}]\n`;
+    // Optional fields survive a re-serialisation: promoting into an existing topic
+    // rewrites every pattern's frontmatter, and dropping these lost the supersession
+    // learn lint L-005 reads, and the citations L-007 checks.
+    const cites = Array.isArray(p.cites) ? p.cites : [];
+    if (cites.length) fm += `    cites: [${cites.join(', ')}]\n`;
+    if (p.superseded_by) fm += `    superseded_by: ${p.superseded_by}\n`;
+    if (p.superseded_id) fm += `    superseded_id: ${p.superseded_id}\n`;
   }
   return `---\n${fm}---\n${body}`;
 }
@@ -1519,6 +1586,7 @@ function promotePattern(pattern, opts) {
     summary: pattern.summary,
     promoted_at: promotedAt,
     source_experiments: pattern.source_experiments || [],
+    ...(pattern.cites && pattern.cites.length ? { cites: pattern.cites } : {}),
   });
 
   const serialized = serializeTopicFile(topic, frontmatter.patterns, body);

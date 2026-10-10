@@ -122,9 +122,11 @@ function cmdRetro(cwd, raw, args) {
     common_gap_patterns: gapGroups,
   };
 
-  // E-4: optional memory write. Top gap patterns become lessons for pan-planner
-  // (they surface what plans routinely miss). First-try rate deltas feed
-  // pan-verifier memory.
+  // E-4: optional memory write. Top gap patterns become lessons in pan-planner's
+  // log (they surface what plans routinely miss), first-try rate deltas in
+  // pan-verifier's. Stored for /pan:knowledge: PAN's workflows no longer load agent
+  // memory into agents (ADR-0036, amended 2026-10-04), and /pan:army no longer
+  // passes the flag.
   const argsList = Array.isArray(args) ? args : [];
   if (argsList.includes('--write-memory')) {
     const { appendMemory } = require('./memory.cjs');

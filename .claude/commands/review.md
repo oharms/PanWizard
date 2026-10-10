@@ -19,7 +19,7 @@ This is the PAN Wizard SOURCE REPOSITORY. These reviews are for PAN development 
    - **Bugs and logic errors** in installer, core libs, commands, agents
    - **Security vulnerabilities** (OWASP top 10, especially injection in shell commands)
    - **Cross-platform compatibility** (Windows/macOS/Linux path handling)
-   - **All 5 runtime targets** (claude, codex, gemini, opencode, github) handled consistently
+   - **All 5 runtime targets** (claude, codex, gemini, opencode, copilot) handled consistently
    - **Code style consistency** (CommonJS patterns, consistent error handling)
    - **Test coverage** — are new features covered by tests?
    - **Self-install protection** — changes don't weaken the PAN_SOURCE_ROOT guard
@@ -27,7 +27,7 @@ This is the PAN Wizard SOURCE REPOSITORY. These reviews are for PAN development 
 3. Check for PAN-specific concerns:
    - Commands/agents are runtime-agnostic (no PAN-specific hardcoding in shipped content)
    - Installer handles all 5 runtimes with proper path mapping
-   - Pure functions in `install-lib.cjs` remain side-effect free
+   - Functions in `install-lib.cjs` stay free of filesystem writes (the merge/strip helpers may edit only the object they are given)
    - Hook scripts copy cleanly to `hooks/dist/` (copy-only, no bundler)
 
 4. Run tests to validate:

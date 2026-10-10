@@ -2,6 +2,7 @@
 name: focus-auto
 group: Focus
 description: Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness
+argument-hint: "[--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal]"
 allowed-tools:
   - Read
   - Write
@@ -23,7 +24,7 @@ Run purpose-driven improvement campaigns with a single command. The auto-runner 
 This command runs improvement campaigns on the **host project's source code** — not on PAN Wizard's own infrastructure.
 
 **Exclude these directories from scanning and execution:**
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/` — PAN runtime directories
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
 - Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
 
 **These directories are PAN's own tooling installed into the project.** Do not scan PAN files for TODOs, do not report PAN files as lacking coverage, do not modify PAN agents/commands/core as part of a campaign. If a scan finding or batch item targets a PAN infrastructure file — DROP IT.
@@ -35,9 +36,10 @@ A campaign is complete when ANY stop condition is met:
 1. Max cycles reached (--max-cycles, default 10)
 2. Total budget exhausted (--total-budget) — **advisory by default**: tracked and surfaced but does NOT stop the run unless `--enforce-budget` (or config `budget.enforce: true`) is set
 3. Scan returns zero items for the selected category
-4. Context window drops below 25% (CRITICAL threshold)
-5. User sends /pan:focus-auto --stop
-6. Category-specific completion (e.g., prompts_remaining === 0)
+4. User sends /pan:focus-auto --stop
+5. Category-specific completion (e.g., prompts_remaining === 0)
+
+The context monitor's notes are not a stop condition: they give no figure and ask for a checkpoint. On the critical note, bring the scan file up to date (items completed and failed) before the next step, then carry on with the cycle. Record it with `focus auto --update` only at its end (Step 2.4): `--update` closes a cycle and runs the stop checks, so a mid-cycle call with nothing done ends the run as `zero_completed`. After the host compacts, re-read the campaign with `focus auto --status`: PAN's state re-injection carries state.md's position, not the campaign's. If the session ends instead, `focus auto --continue` resumes only a stopped run or one with no cycle recorded yet: run `/pan:focus-auto --stop`, then `--continue`.
 
 Each cycle is complete when: scan → plan → exec → commit succeeds, OR a safety harness triggers and the cycle is cleanly aborted with state preserved.
 </completion_contract>
@@ -133,7 +135,7 @@ When `--source backlog` is set, work is selected from the **curated planning sur
 
 1. **Read the backlog once** at Phase 0: actionable items are unchecked rows in `roadmap.md` (phase/plan checkboxes) and unmet `requirements.md` REQ rows. Skip anything struck, completed, or marked blocked.
 2. **Score from the CURRENT document — never a hardcoded ID list.** For each item, derive `RS = (UserValue + TimeCriticality + RiskReduction) / Effort` (1–5 each; Effort from the row's size tag). Sort by wave/priority ascending → RS descending → effort ascending. This re-derives the order from whatever the roadmap says today, so it never goes stale.
-3. **Pop the top survivor each cycle**; re-rank only if a landing changed a dependency. The same budget/cycle/context stops and safety harness apply unchanged.
+3. **Pop the top survivor each cycle**; re-rank only if a landing changed a dependency. The same budget/cycle stops and safety harness apply unchanged.
 4. The backlog ranker reads only PAN's planning files — it embeds **no** project-specific item IDs, test counts, or build commands. A project with no actionable backlog items is a clean stop (`scan returns zero items` equivalent).
 
 ## Concurrency model (when `--parallel-research` / `--parallel-verify`, ADR-0031)
@@ -188,7 +190,7 @@ Phase 2 (each cycle): Scan → Plan → Exec → Commit is strictly sequential w
 HARD STOP conditions:
 - Phase 1 fails (tests broken): Do not enter main loop — report and exit
 - Any cycle: test count drops below baseline after revert → stop campaign, preserve state
-- Context drops below 25%: stop campaign cleanly (safety harness)
+- The context monitor's critical note is not a stop: bring the scan file up to date before the next step, then carry on; record the cycle (`focus auto --update`) only at its end, since `--update` closes the cycle and runs the stop checks
 </phase_dependencies>
 
 ### Phase 2: Main Loop
@@ -244,7 +246,7 @@ For P3-P6 items, compute Reality Score: `RS = (UV + TC + RR) / JS`
 - RS >= 3.0 = DO, RS 1.5-2.9 = DEFER, RS < 1.5 = BACKLOG
 
 **2.1.4 Filter by Category**
-Only keep items within the run's category priority range (see Category Defaults table). Drop items outside the range. If 0 items match: go to Phase 3 (Campaign End).
+Only keep items within the run's category priority range (see Category Defaults table). Drop items outside the range. If 0 items match: record the empty cycle with Step 2.4's update, `focus auto --update --items-completed 0 --items-failed 0 --points-used 0 --tests-before <N> --tests-after <N>` (`<N>` is the current test count: the last recorded cycle's `tests_after`, or the Phase 1 baseline before the first cycle), so the run ends with its stop reason — `zero_completed`, or `security_complete` / `distill_complete` for those categories (`max_cycles` if this was the run's last cycle) — then go to Phase 3 (Campaign End).
 
 **2.1.5 Write Scan**
 Write scan results to `.planning/focus/scan-<YYYY-MM-DD>-<category>.md` with:
@@ -259,10 +261,10 @@ Create a capacity-budgeted batch from the scan items found in Step 2.1.
 **Capacity Points:** XS=1, S=2, M=4, L=10, XL=20
 
 **Allocation by Mode:**
-- `bugfix`: All budget on P0 mandatory, then P1, then P2-P4 smallest-first. No feature work.
+- `bugfix`: All budget on P0 mandatory, then P1, then P2-P4 smallest-first; no separate feature pass (P3-P4 are taken in priority order, P5-P6 left out).
 - `balanced`: 60% stability (P0-P2), 40% features (P3-P6)
 - `features`: P0 mandatory, then 80% on P3-P5, 20% on P1-P2 quick wins
-- `full`: All priorities equally weighted, largest-impact-first
+- `full`: One pass over every priority in priority order (P0 first), smallest-first within each
 
 **Execution Tiers:** XS/S = MICRO, M = STANDARD, L/XL = FULL
 Select items fitting within the cycle's `budget_per_cycle`. Order: MICRO first, then STANDARD, then FULL.
@@ -354,9 +356,9 @@ Check the response for stop conditions:
 - `zero_completed`: No items completed in this cycle — go to Phase 3
 - `diminishing_returns`: Optimize only — cycle efficiency < 30% of previous cycle — go to Phase 3
 - `prompts_complete`: Prompts only — all prompts in document executed — go to Phase 3
-- `security_complete`: Security only — scan found no HIGH/CRITICAL items remaining — go to Phase 3
-- `distill_complete`: Distill only — scan found no bloat findings remaining — go to Phase 3
-- `deep_review_block`: `--deep-review` only — critical pattern detected in changed files — go to Phase 3 with warning
+- `security_complete`: Security only — the cycle recorded zero completed items (how an empty scan ends the run; for this category it replaces `zero_completed`) — go to Phase 3
+- `distill_complete`: Distill only — the cycle recorded zero completed items (how an empty scan ends the run; for this category it replaces `zero_completed`) — go to Phase 3
+- `weekly_limit`: Claude Code's 7-day usage window reached `cost.weekly_limit_stop_pct` (default 90%; read by `pan-tools cost limits`) — the run is stopped, not completed: go to Phase 3, and resume with `--continue` once the window has room
 - `null`: Continue to next cycle
 
 #### Step 2.5: Inter-Cycle Context Management
@@ -491,7 +493,7 @@ Alternative format — checklist style:
 5. If tests pass: mark the prompt as complete (`- [x]`), commit, move to next prompt
 6. If tests fail: one fix attempt, then revert and mark prompt as FAILED, move to next prompt
 7. Each prompt = one batch item. Budget: 1 prompt per cycle unless prompt is trivial (XS)
-8. Record `prompts_remaining` count in cycle update — when 0, `prompts_complete` stop fires
+8. Record the count with `--prompts-remaining N` on the cycle's `focus auto --update` — at 0, `prompts_complete` fires; without the flag the count is null and it never fires
 
 **Key rules:**
 - Execute prompts in document order — NEVER skip ahead or reorder
@@ -528,7 +530,7 @@ When a specification document is found that doesn't have a matching micro-prompt
 
 ## Security Category — Execution Details
 
-The security category scans for OWASP Top 10 (2025) violations and STRIDE threats, then fixes them cycle by cycle until the scan returns zero HIGH/CRITICAL findings.
+The security category scans for OWASP Top 10 (2025) violations and STRIDE threats, then fixes them cycle by cycle until the scan finds no P0-P2 (critical, high or medium) items or a cycle completes nothing.
 
 ### Scan approach (Step 2.1)
 
@@ -552,7 +554,7 @@ Three passes per cycle:
 - Check for prototype pollution risk: `Object.assign(req.body)` or spread from untrusted input into a stored object
 
 **Pass 3 — Semantic depth (Agent tool, for M/L items only):**
-When a pattern match needs code-path confirmation, spawn an Explore subagent:
+When a pattern match needs code-path confirmation, spawn the `pan-hardener` subagent:
 > "Read [file]. Confirm whether [line N] is reachable from an unauthenticated request path and whether the input is sanitized before use."
 
 Use the confirmation to decide whether to include the item at P0/P1 or drop it as a false positive.
@@ -582,9 +584,9 @@ Treat each security item as a STANDARD or FULL item regardless of effort estimat
 
 ### Stop condition
 
-`security_complete` fires when the scan finds zero P0/P1 items. P2 items (medium) may remain — they won't stop the campaign unless `zero_completed` fires (no items at all).
+`security_complete` fires when a security cycle records zero completed items — `--update` cannot see the scan, so this is how an empty scan ends the run. A cycle whose items all failed reports it too: for this category it replaces `zero_completed`. P2 items (medium) the scan still finds are worked like any other, so they keep the campaign running.
 
-A security campaign that ends with `security_complete` means: no critical or high OWASP violations found in the scanned files. Medium/low items can be addressed in subsequent targeted passes or documented as accepted risk.
+A security campaign that ends with `security_complete` had a cycle that completed nothing: if its scan was empty, no critical or high OWASP violations were found in the scanned files; if its items failed, they are still open. Medium/low items can be addressed in subsequent targeted passes or documented as accepted risk.
 
 ---
 
@@ -600,7 +602,7 @@ The `distill` category targets **AI-generated code bloat** with a 5-pass pipelin
 | 2 | **AST-style analysis** — single-instance factories, deep nesting | Free | review |
 | 3 | **Cross-file graph** — repeated 5+ line blocks, unreferenced exports | Free | review |
 | 4 | **LLM judgment** — pan-distiller agent receives ONLY flagged spans (max 50 lines context per finding); validates pattern, refines tier, proposes minimal rewrite | LLM tokens | safe / review / risky |
-| 5 | **Cross-session memory** — compares findings to `.planning/memory/distill-patterns.md`; flags **regressed** patterns ("we already fixed this") | Free | metadata |
+| 5 | **Cross-session memory** — compares findings to `.planning/memory/distill-patterns.md`; flags **recurring** patterns (detected in an earlier session — the file records detections, not fixes) | Free | metadata |
 
 ### Safety Tiers
 
@@ -624,7 +626,7 @@ Default threshold: **2.0x**. If a cycle's ratio exceeds threshold, the bloat bud
 
 ### Stop condition
 
-`distill_complete` fires when the scan finds zero bloat findings. The codebase is fully distilled for the patterns the deterministic + AST + graph passes detect.
+`distill_complete` fires when a distill cycle records zero completed items — how an empty scan ends the run, and also what a cycle whose items all failed reports, since for this category it replaces `zero_completed`. After an empty scan the codebase is fully distilled for the patterns the deterministic + AST + graph passes detect; after a cycle whose items all failed, those findings are still open.
 
 ### CLI
 
@@ -634,7 +636,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs distill analyze [--touched-loc 
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs distill report
 ```
 
-`scan` returns findings. `analyze` adds bloat budget + regressed pattern detection. `report` writes findings to `.planning/memory/distill-patterns.md` for the next session.
+`scan` returns findings. `analyze` adds bloat budget + recurring-pattern detection (its `regressed` list: findings already recorded in an earlier session). `report` writes findings to `.planning/memory/distill-patterns.md` for the next session.
 
 <failure_pattern_capture>
 When the same failure pattern appears in 2+ items within a campaign, capture it for future runs.

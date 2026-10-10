@@ -22,7 +22,7 @@ Then verify each level against the actual codebase.
 @~/.claude/pan-wizard-core/references/guardrails.md
 @~/.claude/pan-wizard-core/templates/verification-report.md
 
-> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent verifier --token-budget 5000 --raw` to load only the topics tagged relevant for verification at the configured budget. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
+> **Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent verifier --cue "<phase goal; the files it touches>" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for verification. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.
 </required_reading>
 
 ## Re-Read Checkpoints
@@ -47,14 +47,15 @@ INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE_A
 
 Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `has_plans`, `plan_count`.
 
-Then load phase details and list plans/summaries:
+Then load phase details, write the phase's roadmap slice, and list plans/summaries:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${phase_number}"
-grep -E "^\|[^|]*\| *Phase +${phase_number} " .planning/requirements.md 2>/dev/null
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${phase_number}" --write --raw)
+grep -E "^\|[^|]*\| *Phase +0*${phase_number#0} " .planning/requirements.md 2>/dev/null
 ls "$phase_dir"/*-summary.md "$phase_dir"/*-plan.md 2>/dev/null
 ```
 
-Extract **phase goal** from roadmap.md (the outcome to verify, not tasks) and **requirements** from requirements.md if it exists.
+Extract the **phase goal** and success criteria from `get-phase` (the outcome to verify, not tasks), and the phase's **requirements** from `$SLICE_PATH` (its `## Its requirements` lines). Do not read roadmap.md or requirements.md whole: on a long project they are the largest files in `.planning/`, and the slice carries what verification needs from them. If `SLICE_PATH` is empty, grep requirements.md for the phase's IDs instead.
 </step>
 
 <step name="check_prior_verification">
@@ -62,7 +63,7 @@ Extract **phase goal** from roadmap.md (the outcome to verify, not tasks) and **
 
 If `phase_number` > 1:
 ```bash
-PREV=$((phase_number - 1))
+case "$phase_number" in *.*) PREV="${phase_number%%.*}" ;; *[A-Za-z]) PREV="${phase_number%[A-Za-z]}" ;; *) PREV=$((10#$phase_number - 1)) ;; esac
 # Resolve the previous phase's directory via find-phase (handles zero-padding
 # and the .planning/phases/ layout), like exec-phase does — do NOT glob
 # .planning/phase-N*/ (wrong dir, unpadded, matches nothing). With --raw,
@@ -120,6 +121,7 @@ executed. Empty is not zero. Judge the exit code, then the counts.
 | Condition | Action |
 |-----------|--------|
 | `TEST_EXIT` = 0 **and** `TEST_FAIL` = 0 (a real number) | Record counts, continue to must-haves |
+| `TEST_EXIT` = 0 **and** no `ℹ` count lines (a runner other than Node's built-in one) | Set `test_gate_status: passed`; record the runner's own summary line as the counts |
 | `TEST_EXIT` ≠ 0 **and** failures were reported | Set `test_gate_status: failed`, include failure details |
 | `TEST_EXIT` ≠ 0 **and** `TEST_FAIL` is empty/absent — the suite CRASHED or could not run (syntax error, missing module, bad import, no runner) | Set `test_gate_status: failed`, and record the reason as `suite did not run`. **Never `skipped`, never `passed`.** A suite that cannot execute is stronger evidence of a broken phase than one that runs and fails |
 | `HAS_TEST` = `no` (handled in step 1) | Record as `test_gate_status: skipped`, continue. This is the ONLY legitimate route to `skipped` |
@@ -150,13 +152,13 @@ TEST_FAILED: ${TEST_FAIL}
 Use pan-tools to extract must_haves from each PLAN:
 
 ```bash
-for plan in "$PHASE_DIR"/*-plan.md; do
+for plan in "$phase_dir"/*-plan.md; do
   MUST_HAVES=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs frontmatter get "$plan" --field must_haves)
   echo "=== $plan ===" && echo "$MUST_HAVES"
 done
 ```
 
-Returns JSON: `{ truths: [...], artifacts: [...], key_links: [...] }`
+Returns `{ "must_haves": { truths: [...], artifacts: [...], key_links: [...] } }`: each truth a string, each artifact an object (`path`, `provides`, …), each key link an object (`from`, `to`, `via`).
 
 Aggregate all must_haves across plans for phase-level verification.
 
@@ -165,7 +167,7 @@ Aggregate all must_haves across plans for phase-level verification.
 If no must_haves in frontmatter (MUST_HAVES returns error or empty), check for Success Criteria:
 
 ```bash
-PHASE_DATA=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${phase_number}" --raw)
+PHASE_DATA=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${phase_number}")
 ```
 
 Parse the `success_criteria` array from the JSON output. If non-empty:
@@ -200,7 +202,7 @@ For each truth: identify supporting artifacts → check artifact status → chec
 Use pan-tools for artifact verification against must_haves in each PLAN:
 
 ```bash
-for plan in "$PHASE_DIR"/*-plan.md; do
+for plan in "$phase_dir"/*-plan.md; do
   ARTIFACT_RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify artifacts "$plan")
   echo "=== $plan ===" && echo "$ARTIFACT_RESULT"
 done
@@ -232,7 +234,7 @@ WIRED = imported AND used. ORPHANED = exists but not imported/used.
 Use pan-tools for key link verification against must_haves in each PLAN:
 
 ```bash
-for plan in "$PHASE_DIR"/*-plan.md; do
+for plan in "$phase_dir"/*-plan.md; do
   LINKS_RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify key-links "$plan")
   echo "=== $plan ===" && echo "$LINKS_RESULT"
 done
@@ -242,8 +244,8 @@ Parse JSON result: `{ all_verified, verified, total, links: [{from, to, via, ver
 
 **Link status from result:**
 - `verified=true` → WIRED
-- `verified=false` with "not found" → NOT_WIRED
-- `verified=false` with "Pattern not found" → PARTIAL
+- `verified=false` with detail "Source file not found" or "Target not referenced in source" → NOT_WIRED
+- `verified=false` with detail `Pattern "…" not found in source or target` → PARTIAL
 
 **Fallback patterns (if key_links not in must_haves):**
 
@@ -260,7 +262,7 @@ Record status and evidence for each key link.
 <step name="verify_requirements">
 If requirements.md exists:
 ```bash
-grep -E "Phase ${PHASE_NUM}" .planning/requirements.md 2>/dev/null
+grep -E "^\|[^|]*\| *Phase +0*${phase_number#0} " .planning/requirements.md 2>/dev/null
 ```
 
 For each requirement: parse description → identify supporting truths/artifacts → status: ✓ SATISFIED / ✗ BLOCKED / ? NEEDS HUMAN.
@@ -309,7 +311,7 @@ If gaps_found:
 
 <step name="create_report">
 ```bash
-REPORT_PATH="$PHASE_DIR/${PHASE_NUM}-verification.md"
+REPORT_PATH="$phase_dir/${phase_number}-verification.md"
 VERIFIED_COMMIT=$(git rev-parse HEAD 2>/dev/null)
 ```
 
@@ -328,7 +330,7 @@ Orchestrator routes: `passed` → update_roadmap | `gaps_found` → create/execu
 
 **Record the verification.** The record adds its findings to the ledger and logs the outcome to the trace (`verdict_passed`, `verdict_failed` or `verdict_needs_human`). A re-verification is the next attempt, and it closes the gaps it no longer reports:
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${PHASE_NUMBER}" --file "$REPORT_PATH" 2>/dev/null || true
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${phase_number}" --file "$REPORT_PATH" 2>/dev/null || true
 ```
 Recording the same report twice is a no-op, so exec-phase recording it again after this workflow returns is safe.
 </step>

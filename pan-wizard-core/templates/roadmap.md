@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Phase 1: [Name]
 **Goal:** [What this phase delivers]
 **Depends on:** Nothing (first phase)
-**Requirements:** [REQ-01, REQ-02, REQ-03]  <!-- brackets optional, parser handles both formats -->
+**Requirements:** [REQ-01, REQ-02, REQ-03]
 **Success Criteria** (what must be TRUE):
   1. [Observable behavior from user perspective]
   2. [Observable behavior from user perspective]
@@ -37,9 +37,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** [Number of plans, e.g., "3 plans" or "TBD"]
 
 Plans:
-- [ ] 01-01: [Brief description of first plan]
-- [ ] 01-02: [Brief description of second plan]
-- [ ] 01-03: [Brief description of third plan]
+- [ ] 01-01-plan.md — [Brief description of first plan]
+- [ ] 01-02-plan.md — [Brief description of second plan]
+- [ ] 01-03-plan.md — [Brief description of third plan]
 
 ### Phase 2: [Name]
 **Goal:** [What this phase delivers]
@@ -51,8 +51,8 @@ Plans:
 **Plans:** [Number of plans]
 
 Plans:
-- [ ] 02-01: [Brief description]
-- [ ] 02-02: [Brief description]
+- [ ] 02-01-plan.md — [Brief description]
+- [ ] 02-02-plan.md — [Brief description]
 
 ### Phase 2.1: Critical Fix (INSERTED)
 **Goal:** [Urgent work inserted between phases]
@@ -62,7 +62,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 02.1-01: [Description]
+- [ ] 02.1-01-plan.md — [Description]
 
 ### Phase 3: [Name]
 **Goal:** [What this phase delivers]
@@ -75,8 +75,8 @@ Plans:
 **Plans:** [Number of plans]
 
 Plans:
-- [ ] 03-01: [Brief description]
-- [ ] 03-02: [Brief description]
+- [ ] 03-01-plan.md — [Brief description]
+- [ ] 03-02-plan.md — [Brief description]
 
 ### Phase 4: [Name]
 **Goal:** [What this phase delivers]
@@ -88,7 +88,7 @@ Plans:
 **Plans:** [Number of plans]
 
 Plans:
-- [ ] 04-01: [Brief description]
+- [ ] 04-01-plan.md — [Brief description]
 
 ## Progress
 
@@ -156,9 +156,9 @@ After completing first milestone, reorganize with milestone groupings:
 **Plans:** 3 plans
 
 Plans:
-- [x] 01-01: [Brief description]
-- [x] 01-02: [Brief description]
-- [x] 01-03: [Brief description]
+- [x] 01-01-plan.md — [Brief description]
+- [x] 01-02-plan.md — [Brief description]
+- [x] 01-03-plan.md — [Brief description]
 
 [... remaining v1.0 phases ...]
 
@@ -174,8 +174,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 05-01: [Brief description]
-- [ ] 05-02: [Brief description]
+- [ ] 05-01-plan.md — [Brief description]
+- [ ] 05-02-plan.md — [Brief description]
 
 [... remaining v1.1 phases ...]
 

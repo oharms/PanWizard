@@ -1,10 +1,10 @@
 # Stack Research Template
 
-Template for `.planning/research/STACK.md` — recommended technologies for the project domain.
+Template for `.planning/research/stack.md` — recommended technologies for the project domain.
 
 <template>
 
-```markdown
+~~~markdown
 # Stack Research
 
 **Domain:** [domain type]
@@ -88,7 +88,7 @@ npm install -D [packages]
 ---
 *Stack research for: [domain]*
 *Researched: [date]*
-```
+~~~
 
 </template>
 

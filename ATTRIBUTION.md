@@ -11,9 +11,9 @@ PAN Wizard was derived from **Get Shit Done (GSD)**, an earlier workflow automat
 | GSD Component | Evolved Into | What Changed |
 |---------------|-------------|-------------|
 | `gsd-tools.cjs` dispatcher | `pan-tools.cjs` | Same dispatch pattern, expanded command set |
-| 11 core modules (`commands`, `config`, `core`, `frontmatter`, `init`, `milestone`, `phase`, `roadmap`, `state`, `template`, `verify`) | 24 core modules (through v3.4.0) | Added `constants`, `context-budget`, `focus`, `utils`, `codebase`, `memory`, `bus`, `cost`, `preview`, `review-deep`, `knowledge`, `whatif`, `bridge` |
-| 11 `gsd-*` agents | 18 `pan-*` agents (through v3.4.0) | Added specialized agents for verification, review, research, previewing, hardening, knowledge, counterfactual exploration, and hierarchical orchestration |
-| 32 `/gsd:*` slash commands | 48 `/pan:*` slash commands (through v3.4.0) | Added focus commands, standards, settings, Spec B v2 commands (cost, preview, review-deep, knowledge, what-if, mcp-bridge) |
+| 11 core modules (`commands`, `config`, `core`, `frontmatter`, `init`, `milestone`, `phase`, `roadmap`, `state`, `template`, `verify`) | An expanded core module set (by v3.4.0) | Added `constants`, `context-budget`, `focus`, `utils`, `codebase`, `memory`, `bus`, `cost`, `preview`, `review-deep`, `knowledge`, `whatif`, `bridge` |
+| 11 `gsd-*` agents | More `pan-*` agents (by v3.4.0) | Added specialized agents for verification, review, research, previewing, hardening, knowledge, counterfactual exploration, and hierarchical orchestration |
+| 32 `/gsd:*` slash commands | More `/pan:*` slash commands (by v3.4.0) | Added focus commands, standards, settings, Spec B v2 commands (cost, preview, review-deep, knowledge, what-if, mcp-bridge) |
 | Claude Code only | 5 runtimes | Added OpenCode, Gemini, Codex, Copilot CLI |
 | Single install target | Per-runtime converters | TOML (Gemini), skills (Codex/Copilot), tool name mapping |
 
@@ -36,20 +36,22 @@ GSD's core design decisions — phase-scoped fresh context windows, the command/
 
 Integrated into the `standards` command system. See [ADR-0010](docs/decisions/ADR-0010-standards-integration.md) and [standards spec](docs/specs/standards_integration_featureai.md).
 
-| Standard | Governing Body | Category | Checklist Items |
-|----------|---------------|----------|-----------------|
-| OWASP Top 10 (2025) | OWASP Foundation | Security | 10 |
-| OWASP ASVS Level 1 | OWASP Foundation | Security | 8 |
-| OWASP LLM Top 10 | OWASP Foundation | AI Security | 10 |
-| OWASP Agentic Top 10 | OWASP Foundation | AI Security | 10 |
-| WCAG 2.2 | W3C / WAI | Accessibility | 4 |
-| NIST SSDF (SP 800-218A) | NIST (US) | Secure Development | 8 |
-| ISO 25010 | ISO/IEC | Software Quality | 8 |
-| STRIDE | Microsoft | Threat Modeling | 6 |
-| CWE Top 25 | MITRE | Vulnerability Classification | 10 |
-| SOC 2 Dev Controls | AICPA | Compliance | 6 |
-| TOGAF ADM | The Open Group | Architecture | 6 |
-| Conventional Commits | conventionalcommits.org | Commit Standards | 5 |
+| Standard | Governing Body | Category |
+|----------|---------------|----------|
+| OWASP Top 10 (2025) | OWASP Foundation | Security |
+| OWASP ASVS Level 1 | OWASP Foundation | Security |
+| OWASP LLM Top 10 | OWASP Foundation | AI Security |
+| OWASP Agentic Top 10 | OWASP Foundation | AI Security |
+| WCAG 2.2 | W3C / WAI | Accessibility |
+| NIST SSDF (SP 800-218) | NIST (US) | Secure Development |
+| ISO 25010 | ISO/IEC | Software Quality |
+| STRIDE | Microsoft | Threat Modeling |
+| CWE Top 25 | MITRE | Vulnerability Classification |
+| SOC 2 Dev Controls | AICPA | Compliance |
+| TOGAF ADM | The Open Group | Architecture |
+| Conventional Commits | conventionalcommits.org | Commit Standards |
+
+`pan-tools standards list` reports each standard's checklist size (`checklist_items`).
 
 ## Competing Tools Analyzed
 
@@ -98,7 +100,7 @@ Referenced in the standards integration research. PAN does not embed these tools
 
 | Concept | Origin | Used In | Application |
 |---------|--------|---------|-------------|
-| Miller's Law (7 +/- 2) | George A. Miller (1956) | [ADR-0006](docs/decisions/ADR-0006-focus-commands.md) | Justified grouping 5 focus commands under single "Focus" name to reduce cognitive load |
+| Miller's Law (7 +/- 2) | George A. Miller (1956) | [ADR-0006](docs/decisions/ADR-0006-focus-commands.md) | Justified grouping the focus commands under a single "Focus" name to reduce cognitive load |
 
 ## AI Security Research
 
@@ -122,7 +124,7 @@ Diagram types implemented: Flowchart, Sequence, ER, Quadrant chart.
 |------|------|-----------|
 | @playwright/test | VSCode integration test driver (devDependency) | Standard automation harness |
 | @vscode/test-electron | VSCode extension host for integration tests (devDependency) | Official VS Code test runner |
-| GitHub Actions | CI/CD matrix (3 OS x 4 Node versions) | Native to GitHub hosting |
+| GitHub Actions | CI/CD matrix (Linux, Windows and macOS, each on several Node versions) | Native to GitHub hosting |
 | node:test | Test framework | Built-in, zero dependency, Node 18+ |
 | node:assert/strict | Assertions | Built-in, zero dependency |
 
@@ -134,10 +136,8 @@ Ideas that originated within PAN Wizard (not borrowed from external sources):
 
 | Innovation | What | Status |
 |-----------|------|--------|
-| Phase-scoped fresh context windows | A fresh context window per phase prevents context rot | Unique to PAN — no competitor does this |
-| Research-Plan-Verify loop | Dedicated researcher agents investigate domain before planning | Unique to PAN |
-| Wave-based parallel agent execution | Multi-agent orchestration with dependency-aware parallelization | Pioneered by PAN, later adopted by Cursor 2.0, Windsurf Wave 13 |
-| 5-runtime installer | Single `npx` command installs to Claude Code, OpenCode, Gemini, Codex, Copilot CLI | Unique to PAN — no competitor supports more than 1-2 runtimes |
+| Wave-based parallel agent execution | Multi-agent orchestration with dependency-aware parallelization | Present since PAN's first release (0.1.0); Cursor 2.0 and Windsurf Wave 13 already had parallel agents then ([ADR-0001](docs/decisions/ADR-0001-strategic-feature-prioritization.md)), so it is not a differentiator — see [COMPARISON.md](docs/COMPARISON.md) |
+| 5-runtime installer | Single `npx` command installs to Claude Code, OpenCode, Gemini, Codex, Copilot CLI | Spec-driven peers also install into many runtimes — see [COMPARISON.md](docs/COMPARISON.md) |
 | Zero runtime dependencies | Entire system runs on Node.js built-ins only | Architectural constraint, not found in competitors |
 | Reality Score prioritization | Mathematical scoring formula for work item prioritization (UV, TC, RR, JS) | focus-scan command |
 | Budget point system | Token-agnostic capacity planning (XS=1, S=2, M=4, L=10, XL=20) | [ADR-0003](docs/decisions/ADR-0003-smart-execution.md) |
@@ -147,7 +147,7 @@ Ideas that originated within PAN Wizard (not borrowed from external sources):
 
 ## ADR & Spec Index
 
-Every Architecture Decision Record and feature specification, in chronological order:
+The early Architecture Decision Records and feature specifications, in chronological order; [docs/decisions/](docs/decisions/) and [docs/specs/](docs/specs/) hold the later ones:
 
 ### ADRs (docs/decisions/)
 

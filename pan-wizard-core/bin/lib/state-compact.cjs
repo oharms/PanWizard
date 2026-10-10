@@ -26,7 +26,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { output, error } = require('./core.cjs');
+const { output, error, dominantEol, withEol } = require('./core.cjs');
 const {
   STATE_FILE,
   STATE_HISTORY_FILE,
@@ -210,9 +210,13 @@ function planStateCompaction(cwd, opts = {}) {
   // Build the post-compaction text for real rather than estimating it. An
   // estimate that ignores pointer overhead can claim a saving on a file where
   // the pointers cost more than the sections they replace — a dry-run that
-  // overstates its own benefit is worse than no dry-run.
+  // overstates its own benefit is worse than no dry-run. The rebuild comes back
+  // LF and writeStateMd restores the file's own ending on disk, so measure it in
+  // that ending too: on a CRLF file the LF rebuild otherwise "saved" a byte per
+  // line, and a compaction that archived nothing still reported tokens saved.
   const stamp = new Date(now).toISOString().slice(0, 10);
-  let bytesAfter = rebuildState(content, new Set(archivable.map(v => v.title)), stamp).length;
+  const eol = dominantEol(content);
+  let bytesAfter = withEol(rebuildState(content, new Set(archivable.map(v => v.title)), stamp), eol).length;
 
   // The point of compaction is a smaller re-read on every agent call. On a file
   // whose history sections are tiny, the pointers left behind cost more than the
@@ -291,14 +295,15 @@ function compactState(cwd, opts = {}) {
   const { writeStateMd } = require('./state.cjs');
   writeStateMd(statePath, next, cwd);
 
+  const onDisk = withEol(next, dominantEol(content));
   return {
     ...plan,
     applied: true,
     dry_run: false,
     archived: plan.archivable.map(v => v.title),
-    bytes_after: next.length,
-    tokens_after: Math.ceil(next.length / CHARS_PER_TOKEN),
-    tokens_saved_per_call: Math.max(0, Math.ceil((plan.bytes_before - next.length) / CHARS_PER_TOKEN)),
+    bytes_after: onDisk.length,
+    tokens_after: Math.ceil(onDisk.length / CHARS_PER_TOKEN),
+    tokens_saved_per_call: Math.max(0, Math.ceil((plan.bytes_before - onDisk.length) / CHARS_PER_TOKEN)),
   };
 }
 

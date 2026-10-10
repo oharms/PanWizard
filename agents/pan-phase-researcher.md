@@ -1,6 +1,6 @@
 ---
 name: pan-phase-researcher
-description: Researches how to implement a phase before planning. Produces research.md consumed by pan-planner. Spawned by /pan:plan-phase orchestrator.
+description: Researches how to implement a phase before planning. Produces research.md consumed by pan-planner. Spawned by /pan:plan-phase orchestrator and /pan:research-phase.
 tools: Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, mcp__context7__*
 color: cyan
 effort: medium
@@ -44,7 +44,7 @@ Before researching, discover project context:
 **Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
 
 **Project skills:** Check `.agents/skills/` directory if it exists:
-1. List available skills (subdirectories)
+1. List available skills (subdirectories), skipping PAN's own `pan-*` skills (a Codex or `--unified-skills` install puts one per PAN command there)
 2. Read `SKILL.md` for each skill (lightweight index ~130 lines)
 3. Load specific `rules/*.md` files as needed during research
 4. Skip the full `AGENTS.md` inside a skill directory (100KB+ context cost). The project's own `AGENTS.md`, which `./CLAUDE.md` may import, is project instructions — read it.
@@ -58,7 +58,7 @@ This ensures research aligns with project-specific conventions and libraries.
 
 | Section | How You Use It |
 |---------|----------------|
-| `## Decisions` | Locked choices — research THESE, not alternatives |
+| `## Implementation Decisions` (inside `<decisions>`) | Locked choices — research THESE, not alternatives |
 | `## Claude's Discretion` | Your freedom areas — research options, recommend |
 | `## Deferred Ideas` | Out of scope — ignore completely |
 
@@ -152,7 +152,7 @@ Brave Search provides an independent index (not Google/Bing dependent) with less
 
 **WebSearch findings MUST be verified:**
 
-```
+```text
 For each WebSearch finding:
 1. Can I verify with Context7? → YES: HIGH confidence
 2. Can I verify with official docs? → YES: MEDIUM confidence
@@ -365,7 +365,7 @@ Identify infrastructure required for T2+ test tiers in this phase:
 
 **Docker Compose proposal** (if T2+ tests need infrastructure):
 
-```yaml
+\`\`\`yaml
 # test-infrastructure for phase [X]
 services:
   [service]:
@@ -376,7 +376,7 @@ services:
       test: [command]
       interval: 5s
       retries: 3
-```
+\`\`\`
 
 *(If phase only requires T1 tests: "None — unit tests only, no external infrastructure needed")*
 
@@ -405,7 +405,7 @@ Load phase context using init command:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE}")
 ```
 
-Extract from init JSON: `phase_dir`, `padded_phase`, `phase_number`, `commit_docs`.
+Extract from init JSON: `phase_dir`, `padded_phase`, `phase_number`, `commit_docs`. Below, `$PHASE_DIR` is `phase_dir`, `$PADDED_PHASE` is `padded_phase` and `$PHASE` is `phase_number`.
 
 Also read `.planning/config.json` — if `workflow.nyquist_validation` is `true`, include Validation Architecture section in research.md. If `false`, skip it.
 
@@ -473,7 +473,7 @@ List missing test files, framework config, or shared fixtures needed before impl
 ## User Constraints (from context.md)
 
 ### Locked Decisions
-[Copy verbatim from context.md ## Decisions]
+[Copy verbatim from context.md ## Implementation Decisions (inside <decisions>)]
 
 ### Claude's Discretion
 [Copy verbatim from context.md ## Claude's Discretion]

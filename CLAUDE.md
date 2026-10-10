@@ -53,16 +53,16 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Version | (see `package.json`) |
 | Commands (`commands/pan/*.md`) | 59 |
 | Agents (`agents/*.md`) | 24 |
-| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 58 |
+| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 59 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
-| Templates (`pan-wizard-core/templates/*.md`) | 42 |
+| Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 168 |
+| Unit test files (`tests/*.test.cjs`) | 183 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 4973 |
-| Total test suites | 1066 |
+| Total tests (npm run test:all) | 5283 |
+| Total test suites | 1128 |
 | Hooks (`hooks/*.js`) | 7 |
-| Specs (`docs/specs/*.md`) | 53 |
+| Specs (`docs/specs/*.md`) | 54 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
 
 These are a snapshot of the **current working tree**, not of any released tag — a branch mid-audit carries files `main` does not (test files especially). They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**
@@ -77,7 +77,7 @@ These are a snapshot of the **current working tree**, not of any released tag �
 - NEVER create `.claude/pan-wizard-core/`, `.claude/pan-file-manifest.json`, or `.claude/package.json` in this repo
 - NEVER copy source files into `.codex/`, `.gemini/`, `.opencode/`, or `.github/` (Copilot's project dir) within this repo
 - The installer has a hard guard (`PAN_SOURCE_ROOT` check in `bin/install.js` — search for the constant) that refuses to run from the source directory
-- `.gitignore` blocks most self-install artifacts, not all: depending on the runtime, a local install would also write `AGENTS.md`, `.mcp.json`, `.agents/skills/` (and `.agents/pan-wizard-core/` under `--unified-skills`), `.claude/workflows/pan-*.js` and `.github/mcp.json`, none of them ignored, and edit the tracked `CLAUDE.md` and `.claude/settings.json` — the installer guard is what keeps them out
+- `.gitignore` blocks most self-install artifacts, not all: depending on the runtime, a local install would also write `AGENTS.md`, `.mcp.json`, `.agents/skills/` (and `.agents/pan-wizard-core/` under `--unified-skills`), `.claude/workflows/pan-*.js`, `.github/mcp.json` and `.github/copilot/settings.json` (Copilot's statusline), none of them ignored, and edit the tracked `CLAUDE.md` and `.claude/settings.json` — the installer guard is what keeps them out
 
 ## Testing PAN installations
 
@@ -128,8 +128,9 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `pan-wizard-core/bin/pan-tools.cjs` — CLI dispatcher
 - `pan-wizard-core/bin/lib/*.cjs` — Core CJS modules
 - `pan-wizard-core/workflows/*.md` — Multi-step workflow definitions
-- `pan-wizard-core/templates/*.md` — Scaffolding templates
+- `pan-wizard-core/templates/` — Scaffolding templates (`*.md`, the `codebase/` and `research-project/` subdirectories, and `config.json`)
 - `pan-wizard-core/references/*.md` — Agent-loaded reference docs
+- `pan-wizard-core/opencode/pan-wizard.js` — OpenCode plugin. An OpenCode install copies it to `plugins/pan-wizard.js` in its config dir, where it keeps PAN's position through a compaction
 - `pan-wizard-core/mcp/*.cjs` — **MCP bridge (canonical home).** Zero-dep dual-era JSON-RPC stdio server exposing `pan-tools` verbs as MCP tools/resources, plus the registry, the `next-action` state machine, and the human merge gate. Lives under the core so it ships to every install and every runtime. `pan-zcode/` is a **consumer**, not the owner — never fork a copy back under it.
 - `commands/pan/*.md` — Command definitions (copied by installer)
 - `agents/*.md` — Agent definitions (copied by installer)
@@ -152,7 +153,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `.claude/commands/*.md` — Dev commands (`/build`, `/test`, `/check`, `/pandev`, etc.)
 - `.claude/agents/*.md` — Dev agents (dev-orchestrator, dev-workflow)
 - `.claude/workflows/*.md` — Workflow protocols
-- `.claude/settings.json` — Claude Code permissions
+- `.claude/settings.json` — Claude Code permissions, plus PAN hook and statusline registrations that run `.claude/hooks/pan-*.js`, a gitignored path that holds no files in a checkout
 - `scripts/build-hooks.js` — hook copy script (copies the hooks listed in `HOOKS_TO_COPY` to `hooks/dist/`; copy-only, no bundler — a new hook must be added to that list)
 - `scripts/build-plugin.js` — emits the Claude Code plugin to `dist/pan-wizard-plugin/` (manifest, commands, agents, hooks, workflows, `.mcp.json`, core, plus `evals/` from `harness/plugin-evals/` when built from a checkout)
 - `scripts/plugin-path.js` — rebuilds the plugin and prints its absolute path as **exactly one stdout line**, the contract a plugin-marketplace `command` source requires. Claude Code runs it from the user's HOME, so nothing may depend on cwd, and the builder's output is relayed to stderr
@@ -172,4 +173,5 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - **Pure functions** in `install-lib.cjs` — no filesystem writes — the read-only helpers (`verifyInstall()`, `verifyHookEntrypoints()`, `dirDigest()`) read the filesystem, and the merge and strip helpers (`stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()`, `stripMcpRegistration()`) edit the object they are given; fully testable
 - **Runtime-agnostic** commands and agents — no PAN-specific hardcoding in shipped content
 - **Path normalization** via `toPosix()` — cross-platform path handling
-- **Manifest-based tracking** — `pan-file-manifest.json` hashes the PAN files the installer copies in (the runtime's own core — not the shared `.agents/pan-wizard-core/` of a `--unified-skills` install — commands or skills, agents, hook scripts, native workflows), not the config files it writes or merges into
+- **Line endings** — planning files are parsed on LF (`toLf()`) and written back in their own ending (`dominantEol()`, `withEol()`), all in `core.cjs`; `tests/crlf-parity.test.cjs` runs the parsers on LF and CRLF copies
+- **Manifest-based tracking** — `pan-file-manifest.json` hashes the PAN files the installer copies in (the runtime's own core — not the shared `.agents/pan-wizard-core/` of a `--unified-skills` install — commands or skills, agents, hook scripts, native workflows, OpenCode's plugin), not the config files it writes or merges into

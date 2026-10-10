@@ -26,7 +26,7 @@ Before reviewing, discover project context:
 **Project instructions:** Read `./CLAUDE.md` if it exists in the working directory. Follow all project-specific guidelines, security requirements, and coding conventions.
 
 **Project skills:** Check `.agents/skills/` directory if it exists:
-1. List available skills (subdirectories)
+1. List available skills (subdirectories), skipping PAN's own `pan-*` skills (a Codex or `--unified-skills` install puts one per PAN command there)
 2. Read `SKILL.md` for each skill
 3. Load specific `rules/*.md` files as needed during review
 4. Apply skill rules when checking conventions and quality
@@ -45,7 +45,7 @@ Discover project-specific conventions from these sources (in priority order):
 
 **CRITICAL: Project Scope Boundary**
 These directories are PAN Wizard infrastructure — NEVER review, flag, or suggest changes to files inside them:
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/`
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and PAN's files under `.github/`: `pan-wizard-core/`, `pan-local-patches/`, the `pan-*` entries in `agents/`, `skills/` and `hooks/`, `hooks/pan.json`, `package.json` and `pan-file-manifest.json`
 If a changed file path starts with any of these prefixes, **skip it silently**.
 
 ## Security Patterns
@@ -68,6 +68,28 @@ If a changed file path starts with any of these prefixes, **skip it silently**.
 | Dead imports | `require()` not used in file | WARNING |
 | Duplicate code | > 10 identical lines across files | INFO |
 | TODO/FIXME/HACK | New instances added in this phase | INFO |
+
+## Design smells (baseline)
+
+A fixed baseline that applies even when the project documents no standards (Fowler, *Refactoring*, ch. 3). Rules:
+- Each is a judgement call: always **INFO**, written as "possible <smell>", never a reason for a non-PASS verdict on its own.
+- **The project wins.** Where a documented project standard, or an established pattern in the code, endorses what a smell would flag, do not report it. Skip anything a linter or formatter already enforces.
+- Only for code this phase changed, and only with a file:line and the hunk that shows it.
+
+| Smell | What it looks like in the diff | Usual fix |
+|-------|-------------------------------|-----------|
+| Mysterious Name | A name that does not say what it does or holds | Rename; if no honest name comes, the design is unclear |
+| Duplicated Code | The same logic shape in more than one hunk or file | Extract it and call it from both |
+| Feature Envy | A function reaching into another object's data more than its own | Move it onto the data it uses |
+| Data Clumps | The same few fields or parameters always travelling together | Bundle them into one type |
+| Primitive Obsession | A string or number standing in for a domain concept | Give the concept a small type |
+| Repeated Switches | The same switch or if-chain on the same type in several places | One map or polymorphism both sites share |
+| Shotgun Surgery | One logical change forcing scattered edits across many files | Gather what changes together into one module |
+| Divergent Change | One file edited for several unrelated reasons | Split so each module changes for one reason |
+| Speculative Generality | Abstractions, parameters or hooks no task or requirement needs | Inline it back until a real need shows. Unrequested *behaviour* is the Scope section's `Unrequested` finding, not this smell; report the same code once |
+| Message Chains | Long `a.b().c().d()` navigation the caller should not depend on | Hide the walk behind one method |
+| Middle Man | A function or class that mostly delegates onward | Call the real target directly |
+| Refused Bequest | An implementer that ignores or overrides most of what it inherits | Prefer composition |
 
 ## Scope (unrequested work)
 

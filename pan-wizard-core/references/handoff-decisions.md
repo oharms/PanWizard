@@ -55,7 +55,7 @@ No decisions worth documenting — plan is mechanical implementation of must_hav
 - **Open** — Choices left to the executor's judgment, but bounded.
   The planner names the decision space and the constraints; the
   executor picks within them. The executor should log which option
-  they took in the summary's `Decisions Taken`.
+  they took in the summary's `Implementation Decisions` → `Taken` bucket (DT-N).
   Example: "Hashing algorithm: bcrypt | argon2 | scrypt. Constraint:
   zero-deps Node builtin. Reason left open: equivalent for this use case."
 
@@ -74,7 +74,7 @@ No decisions worth documenting — plan is mechanical implementation of must_hav
 
 ## Schema — `## Implementation Decisions` (executor → verifier handoff)
 
-Lives in `summary.md`, after `## Files Changed`:
+Lives in `summary.md`, after `## Files Created/Modified`:
 
 ```markdown
 ## Implementation Decisions
@@ -152,5 +152,5 @@ that field default to v1.
 
 - Cognition, "Don't Build Multi-Agents" (Jun 2025): https://cognition.ai/blog/dont-build-multi-agents
 - Anthropic, "How we built our multi-agent research system": https://www.anthropic.com/engineering/multi-agent-research-system
-- Internal: `pan-wizard-core/learnings/internal/external-research.md` P-RES-003
+- Internal: P-RES-003 (PAN's source-only internal learnings)
 - Spec: this reference doc IS the spec; no separate doc.

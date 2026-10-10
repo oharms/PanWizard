@@ -2,7 +2,7 @@
 name: pan:report
 group: Observability
 description: Generate a self-contained HTML report for one phase, or a project-level timeline index linking every phase report
-argument-hint: "phase <N> | index [--bundle] | all [--out <file>] [--open] [--stdout]"
+argument-hint: "phase <N> [--out <file>] [--open] [--stdout] | index [--out <file>] [--open] [--stdout] [--bundle] | all [--open]"
 allowed-tools:
   - Read
   - Bash
@@ -48,7 +48,7 @@ pan-tools report all        [--open]
 {
   "action": "phase",
   "phase": "03",
-  "path": ".planning/phases/03-auth-sessions/03-report.html",
+  "path": "/abs/path/to/project/.planning/phases/03-auth-sessions/03-report.html",
   "bytes": 16183,
   "status": "complete",
   "written": true,

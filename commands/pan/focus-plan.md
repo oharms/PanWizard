@@ -2,6 +2,7 @@
 name: focus-plan
 group: Focus
 description: Create capacity-budgeted work batch with spec coverage verification and 4 execution modes
+argument-hint: "[--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--lean] [--no-spec-check]"
 allowed-tools:
   - Read
   - Write
@@ -24,7 +25,7 @@ Create a capacity-budgeted work batch from focus-scan results **with mandatory v
 This command plans work batches for the **host project** — NOT for PAN Wizard's own infrastructure.
 
 **NEVER include items targeting these PAN directories:**
-- `.claude/`, `.github/copilot-instructions.md`, `.opencode/`, `.gemini/`, `.codex/` — PAN runtime directories
+- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
 - Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
 
 If a scan item points to a PAN infrastructure file, DROP it from the batch. PAN's files are not the project's responsibility.
@@ -38,11 +39,11 @@ If no recent scan exists, run `/pan:focus-scan` automatically before proceeding.
 **Flags:**
 - `--budget N` — Override capacity budget in points (default: 50, min: 5, max: 100)
 - `--mode MODE` — Execution mode. Default: `balanced`
-  - `bugfix` — P0->P1->smallest-first, no feature work (40 pts)
+  - `bugfix` — one pass over P0-P4 in priority order, smallest-first within each; P5-P6 left out (40 pts)
   - `balanced` — **Default.** Mix of stability fixes + feature development, 60/40 split (50 pts)
-  - `features` — Feature-focused: 80% budget on P3-P5, P0 crashes still mandatory (50 pts)
-  - `full` — Full-spectrum: enhanced budget, all priorities equally weighted (60 pts)
-- `--priority P0-P6` — Only pick items from these priority tiers
+  - `features` — Feature-focused: P0 crashes mandatory, then 80% of what that leaves on P3-P5 (50 pts)
+  - `full` — Full-spectrum: one pass over every priority, P0 first and smallest-first within each; budget raised to at least 60 (60 pts)
+- `--priority PN` — Only pick items at priority PN or higher (P0 through PN), e.g. `--priority P2`
 - `--lean` — Apply RS filtering: exclude items with RS < 1.5
 - `--no-spec-check` — Skip spec coverage verification (NOT recommended — use only for pure bugfix batches)
 
@@ -133,13 +134,13 @@ This becomes the **spec gap backlog** — items that specs/ADRs promised but the
 ### `features` — Feature-Focused Sprint
 - **Budget:** 50 pts
 - **Mandatory pass:** All P0 items
-- **Feature pass (80%):** 40 pts for P3-P5
-- **Stability pass (20%):** 10 pts for P1-P2 quick wins
+- **Feature pass (80%):** 80% of what the P0 pass left, for P3-P5 (40 pts when there are no P0 items)
+- **Stability pass (20%):** the rest of it, for P1-P2 quick wins (10 pts when there are no P0 items)
 - **Spec coverage:** Feature items MUST map to spec requirements — reject unspecified feature work
 
 ### `full` — Full-Spectrum Marathon
 - **Budget:** 60 pts
-- **All priorities weighted equally, largest-impact-first**
+- **One pass over every priority in priority order, smallest-first within each**
 - **Spec coverage:** Full traceability — every item maps to a spec/ADR requirement or is flagged as unspecified
 
 ### Batch Selection Algorithm
@@ -220,7 +221,7 @@ This becomes the post-execution checklist for `/pan:focus-exec`.
 
 ## Phase 5: Output
 
-Produce a batch file at `.planning/focus/batch-<YYYY-MM-DD>.json` via `pan-tools focus plan`:
+Write the batch to `.planning/focus/batch-<YYYY-MM-DD>.json` yourself — `{date, mode, budget, allocated, items: [...]}`, each item `{id, title, priority, effort, points, tier, files}` with `tier` one of `MICRO`, `STANDARD`, `FULL` (`focus exec` and `focus classify-stages` group items by it, and an item without it lands in no wave); `focus exec`, `focus classify-stages` and `/pan:focus-exec` read an `items` or `batch` array. Do not hand this step to `pan-tools focus plan`: it ignores the scan and the spec mapping, batches only incomplete roadmap phases, pending todos and `.planning/patterns.md` entries, and overwrites the day's batch file:
 
 ```markdown
 ## Focus Batch — <date>
@@ -252,11 +253,11 @@ Produce a batch file at `.planning/focus/batch-<YYYY-MM-DD>.json` via `pan-tools
 | NCA affordability | ADR-0018 SC-4 | Blocked by SC-1, SC-2 | After this batch |
 
 ### Dependency Order
-```
+~~~
 #1 (P0 crash fix) → independent
 #3 (categories) → #4 (keywords) → #5 (match types)
 #2 (tests) → independent
-```
+~~~
 
 ### Post-Execution Verification Checklist
 - [ ] SC-1: Category count >= 65 → `SELECT COUNT(*) FROM stx_category`

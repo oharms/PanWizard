@@ -117,6 +117,7 @@ Verify installed files are correct.
 
 ### Stage 6: Session End
 ```powershell
+cd d:\PanWizard
 git add -A
 git commit -m "<type>: <summary of changes>"
 ```

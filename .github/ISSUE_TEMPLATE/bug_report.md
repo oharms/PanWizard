@@ -10,7 +10,7 @@ assignees: ''
 A clear description of the bug.
 
 **To reproduce**
-1. Runtime (Claude Code / Codex / Gemini / OpenCode / Copilot) and PAN version (`npm view pan-wizard version` vs your install's `pan-file-manifest.json` version — or just run `/pan:hygiene`):
+1. Runtime (Claude Code / Codex / Gemini / OpenCode / Copilot) and PAN version (`npm view pan-wizard version` vs your install's `pan-file-manifest.json` version, or its `pan-wizard-core/VERSION`):
 2. Command or workflow you ran:
 3. What you expected vs what you got:
 

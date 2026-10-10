@@ -55,6 +55,12 @@ const TOKENS_FILE = 'tokens.jsonl';
  * write at `cache_write` (market-ideas queue M13). OpenAI and Google report no
  * lifetime split, so their rows carry none.
  */
+// The prompt size above which a long-prompt rate applies (Haiku 5.5's tier). The
+// cost-logger hook and `cost rebuild` record the tokens of every request over it as a
+// row's `long_prompt`, with this figure as its `above`; hooks/pan-cost-logger.js keeps
+// its own copy (hooks require nothing from lib), and a test pins the two equal.
+const LONG_PROMPT_THRESHOLD = 100000;
+
 const DEFAULT_RATES = {
   // Anthropic — platform.claude.com/docs/en/about-claude/pricing, every row read
   // 2026-09-23. Opus 4.6+/Opus 5 are $5/$25 (the old $15/$75 Opus pricing ended with
@@ -91,16 +97,24 @@ const DEFAULT_RATES = {
   // 2026-08-31 was made permanent and the scheduled rise to $3/$15 cancelled.
   // Lesson: never write down a pre-announced price — this row carried the future
   // rate for a month and over-billed by half.
-  // Sonnet 5.5 (claude-sonnet-5-5): the same prices as Sonnet 5 — $2/$10, 5-minute
-  // writes $2.50, 1-hour $4, hits $0.20 (pricing page, read 2026-10-03). Claude Code
-  // 2.1.284 points the `sonnet` alias at it on the Anthropic API (model-config, read
-  // 2026-10-03). The family prefix already priced it at Sonnet 5's identical row; its
-  // own row means a later price change to either model cannot misprice the other.
-  'claude-sonnet-5-5':  { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50, cache_write_1h: 4.0 },
+  // Sonnet 5.5 (claude-sonnet-5-5): $2/$10, 5-minute writes $2.50, 1-hour $4, and
+  // hits at 0.05x input, $0.10 (pricing page, read 2026-10-10; Claude Code 2.1.296
+  // corrected its own figure from $0.20 the same week). Claude Code 2.1.284 points the
+  // `sonnet` alias at it on the Anthropic API (model-config, read 2026-10-03). Its own
+  // row is what keeps it off Sonnet 5's $0.20 hits through the family prefix.
+  'claude-sonnet-5-5':  { input: 2.0,  output: 10.0, cache_read: 0.10, cache_write: 2.50, cache_write_1h: 4.0 },
   'claude-sonnet-5':    { input: 2.0,  output: 10.0, cache_read: 0.20, cache_write: 2.50, cache_write_1h: 4.0 },
   'claude-sonnet-4-6':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75, cache_write_1h: 6.0 },
   // Sonnet 4.5 (dated id claude-sonnet-4-5-20250929): $3/$15/$0.30/$3.75 (R7).
   'claude-sonnet-4-5':  { input: 3.0,  output: 15.0, cache_read: 0.3,  cache_write: 3.75, cache_write_1h: 6.0 },
+  // Haiku 5.5 (claude-haiku-5-5): $0.10/$0.50, 5-minute writes $0.125, 1-hour $0.20,
+  // hits $0.01 — and every rate 5x for a request whose prompt is over 100,000 tokens,
+  // counting cache reads and writes (pricing page "Long context pricing", read
+  // 2026-10-10). Claude Code 2.1.293 makes it the `haiku` alias on the Anthropic API,
+  // which is PAN's fast tier there. `long` prices the part of a row that came from
+  // such requests (`long_prompt`, see computeCost).
+  'claude-haiku-5-5':   { input: 0.10, output: 0.50, cache_read: 0.01, cache_write: 0.125, cache_write_1h: 0.20,
+    long: { above: LONG_PROMPT_THRESHOLD, input: 0.50, output: 2.50, cache_read: 0.05, cache_write: 0.625, cache_write_1h: 1.0 } },
   // Haiku 4.5: API id claude-haiku-4-5-20251001, alias claude-haiku-4-5.
   'claude-haiku-4-5':   { input: 1.0,  output: 5.0,  cache_read: 0.1,  cache_write: 1.25, cache_write_1h: 2.0 },
 
@@ -242,6 +256,7 @@ const scaleRate = (rate, m) => ({
   cache_read: round6(rate.cache_read * m),
   cache_write: round6(rate.cache_write * m),
   ...(typeof rate.cache_write_1h === 'number' ? { cache_write_1h: round6(rate.cache_write_1h * m) } : {}),
+  ...(rate.long && typeof rate.long === 'object' ? { long: { above: rate.long.above, ...scaleRate(rate.long, m) } } : {}),
 });
 
 /**
@@ -388,10 +403,33 @@ function computeCost(rec, configRates) {
   // bills at the one-hour rate; the rest — and every write on a row or rate without
   // the split — at `cache_write`.
   const write1h = Math.min(cacheWrite, Math.max(0, Number(rec.cache_write_1h_tokens) || 0));
-  const rate1h = typeof rate.cache_write_1h === 'number' ? rate.cache_write_1h : rate.cache_write;
-  const usd = (input * rate.input + output * rate.output + cacheRead * rate.cache_read
-    + (cacheWrite - write1h) * rate.cache_write + write1h * rate1h) / 1_000_000;
+  const tokens = { input, output, cacheRead, cacheWrite, write1h };
+  // A long-prompt tier (Haiku 5.5): the row's `long_prompt` holds the tokens of the
+  // requests whose prompt was over the threshold, and those bill at the long rates.
+  // Measured at the same threshold only — a row split at another figure cannot be
+  // re-cut here, so it prices at the base rates as before.
+  const lp = rec.long_prompt;
+  let usd = 0;
+  if (rate.long && lp && typeof lp === 'object' && Number(lp.above) === Number(rate.long.above)) {
+    const part = {
+      input: Math.min(input, Number(lp.input_tokens) || 0),
+      output: Math.min(output, Number(lp.output_tokens) || 0),
+      cacheRead: Math.min(cacheRead, Number(lp.cache_read_tokens) || 0),
+      cacheWrite: Math.min(cacheWrite, Number(lp.cache_write_tokens) || 0),
+    };
+    part.write1h = Math.min(part.cacheWrite, write1h, Number(lp.cache_write_1h_tokens) || 0);
+    usd += priceTokens(part, rate.long);
+    for (const k of Object.keys(part)) tokens[k] -= part[k];
+  }
+  usd += priceTokens(tokens, rate);
   return Math.round(usd * 10000) / 10000;
+}
+
+/** USD for disjoint token counts at one rate row (1-hour writes at their own rate). */
+function priceTokens(t, rate) {
+  const rate1h = typeof rate.cache_write_1h === 'number' ? rate.cache_write_1h : rate.cache_write;
+  return (t.input * rate.input + t.output * rate.output + t.cacheRead * rate.cache_read
+    + (t.cacheWrite - t.write1h) * rate.cache_write + t.write1h * rate1h) / 1_000_000;
 }
 
 /**
@@ -532,7 +570,11 @@ function aggregate(cwd, opts) {
   const records = readRecords(cwd);
   const malformedSkipped = _lastReadMalformed; // captured before any later read
   const since = opts?.since ? new Date(opts.since).getTime() : null;
-  const until = opts?.until ? new Date(opts.until).getTime() : null;
+  // A bare date is that day's first instant, so as an upper bound it left out the
+  // whole day the docs call inclusive: read it as the day's last millisecond.
+  const until = opts?.until
+    ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(opts.until)) ? `${opts.until}T23:59:59.999Z` : opts.until).getTime()
+    : null;
   const config = loadConfig(cwd);
   const configRates = effectiveRates(config);
 
@@ -699,10 +741,12 @@ function renderChart(agg) {
 function cmdCostReport(cwd, opts, raw) {
   const format = opts?.format || 'json';
   const agg = aggregate(cwd, opts);
+  // `--format table|chart` asks for text, so it prints text with or without
+  // `--raw`; without `--raw` it used to print the JSON report unchanged.
   if (format === 'table') {
-    output(agg, raw, renderTable(agg));
+    output(agg, true, renderTable(agg));
   } else if (format === 'chart') {
-    output(agg, raw, renderChart(agg));
+    output(agg, true, renderChart(agg));
   } else {
     output(agg, raw);
   }
@@ -722,6 +766,86 @@ function cmdCostClear(cwd, raw) {
   }
 }
 
+// ─── Host usage limits (Claude Code subscriptions) ───────────────────────────
+//
+// Claude Code's status-line payload carries `rate_limits.five_hour` and
+// `rate_limits.seven_day` (`used_percentage`, `resets_at` in epoch seconds;
+// code.claude.com/docs/en/statusline, read 2026-10-10). On a subscription those
+// windows, not dollars, are what a long campaign runs out of. PAN's status line
+// writes them, account-wide, to claude-limits.json in the per-user pan-hooks
+// directory; campaigns read them here. Headless `claude -p` runs no status line, so
+// there the file goes stale and nothing stops on it.
+
+const HOST_LIMITS_FILE = 'claude-limits.json';
+const HOST_LIMITS_FRESH_SECONDS = 15 * 60;
+const DEFAULT_WEEKLY_LIMIT_STOP_PCT = 90;
+
+/** The per-user pan-hooks directory when it is safe to read (ours, not a symlink, owner-only), else null. */
+function hooksDirIfSafe(tmpDir) {
+  const uid = typeof process.getuid === 'function' ? process.getuid() : (process.env.USERNAME || 'win');
+  const dir = path.join(tmpDir || require('os').tmpdir(), `pan-hooks-${uid}`);
+  try {
+    const st = fs.lstatSync(dir);
+    if (st.isSymbolicLink() || !st.isDirectory()) return null;
+    if (typeof process.getuid === 'function' && (st.uid !== process.getuid() || (st.mode & 0o077) !== 0)) return null;
+    return dir;
+  } catch { return null; }
+}
+
+/**
+ * The host's usage-limit windows as the status line last saw them, or null when no
+ * status line has written them. A window whose `resets_at` has passed reads as reset
+ * (used 0); the whole reading is `stale` past HOST_LIMITS_FRESH_SECONDS.
+ * @param {{tmpDir?: string, now?: number}} [opts] - now in epoch seconds
+ */
+function readHostLimits(opts = {}) {
+  const dir = hooksDirIfSafe(opts.tmpDir);
+  if (!dir) return null;
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(path.join(dir, HOST_LIMITS_FILE), 'utf8')); } catch { return null; }
+  if (!raw || typeof raw !== 'object') return null;
+  const now = Number.isFinite(opts.now) ? opts.now : Math.floor(Date.now() / 1000);
+  const win = (w) => {
+    if (!w || typeof w !== 'object' || !Number.isFinite(Number(w.used_percentage))) return null;
+    const resetsAt = Number.isFinite(Number(w.resets_at)) ? Number(w.resets_at) : null;
+    const reset = resetsAt !== null && resetsAt <= now;
+    return { used_pct: reset ? 0 : Math.max(0, Math.min(100, Number(w.used_percentage))), resets_at: resetsAt, reset_since_read: reset };
+  };
+  const age = Number.isFinite(Number(raw.timestamp)) ? now - Number(raw.timestamp) : null;
+  return {
+    five_hour: win(raw.five_hour),
+    seven_day: win(raw.seven_day),
+    age_seconds: age,
+    stale: age === null || age > HOST_LIMITS_FRESH_SECONDS,
+  };
+}
+
+/**
+ * Whether a campaign should stop on the 7-day window: a fresh reading at or past
+ * `cost.weekly_limit_stop_pct` (default 90; 0 or false turns it off).
+ */
+function weeklyLimitStop(cwd, limits = readHostLimits()) {
+  let pct = DEFAULT_WEEKLY_LIMIT_STOP_PCT;
+  try {
+    const v = loadConfig(cwd)?.cost?.weekly_limit_stop_pct;
+    if (v === false || v === 0) pct = 0;
+    else if (Number.isFinite(Number(v)) && Number(v) > 0 && Number(v) <= 100) pct = Number(v);
+  } catch { /* defaults */ }
+  const used = limits && !limits.stale && limits.seven_day ? limits.seven_day.used_pct : null;
+  return { stop: pct > 0 && used !== null && used >= pct, threshold_pct: pct, seven_day_used_pct: used };
+}
+
+function cmdCostLimits(cwd, raw) {
+  const limits = readHostLimits();
+  const stop = weeklyLimitStop(cwd, limits);
+  output({
+    available: !!limits,
+    ...(limits || { five_hour: null, seven_day: null, age_seconds: null, stale: true }),
+    weekly_limit_stop_pct: stop.threshold_pct,
+    weekly_limit_reached: stop.stop,
+  }, raw, stop.stop ? 'weekly_limit_reached' : (limits ? 'ok' : 'no_reading'));
+}
+
 // ─── Rate-table staleness ───────────────────────────────────────────────────
 
 // Date DEFAULT_RATES was last verified against published provider pricing — ALL
@@ -738,7 +862,7 @@ function cmdCostClear(cwd, raw) {
 // a default-model change inside the window — that is the job of the
 // documented-default-ids fixture test (tests/fixtures/documented-default-models.json,
 // R31), which fails the suite the day a documented default id has no exact row.
-const RATES_VERIFIED_AT = '2026-09-23';
+const RATES_VERIFIED_AT = '2026-10-10';
 const RATES_STALE_AFTER_DAYS = 60;
 const RATE_TIERS = ['reasoning', 'mid', 'fast'];
 
@@ -784,6 +908,11 @@ module.exports = {
   renderTable,
   renderChart,
   resolveRate,
+  LONG_PROMPT_THRESHOLD,
+  readHostLimits,
+  weeklyLimitStop,
+  cmdCostLimits,
+  HOST_LIMITS_FILE,
   ratesFromModelPricing,
   managedSettingsDir,
   loadManagedModelPricing,

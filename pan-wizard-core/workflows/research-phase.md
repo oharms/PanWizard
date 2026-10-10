@@ -35,7 +35,12 @@ If exists: Offer update/view/skip options.
 
 ```bash
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE}")
-# Extract: phase_dir, padded_phase, phase_number, state_path, requirements_path, context_path
+# Extract: phase_dir, padded_phase, phase_slug, phase_number, state_path, requirements_path, context_path
+# phase_dir is null when the phase has no directory yet: create it (scaffold pads the number and honours the planning root) and use the printed path as phase_dir
+case "{phase_dir}" in ""|null) node ~/.claude/pan-wizard-core/bin/pan-tools.cjs scaffold phase-dir --phase "${PHASE}" --name "{phase_name}" --raw ;; esac
+
+# This phase's roadmap and requirements, written into the phase directory
+SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${PHASE}" --write --raw)
 ```
 
 ## Step 4: Spawn Researcher
@@ -48,7 +53,7 @@ Research implementation approach for Phase {phase}: {name}
 
 <files_to_read>
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
-- {requirements_path} (Project requirements)
+- {slice_path} (This phase's roadmap and requirements; if SLICE_PATH is empty, {requirements_path} instead)
 - {state_path} (Project decisions and history)
 </files_to_read>
 
@@ -57,7 +62,7 @@ Phase description: {description}
 </additional_context>
 
 <output>
-Write to: .planning/phases/${PHASE}-{slug}/${PHASE}-research.md
+Write to: {phase_dir}/{padded_phase}-research.md
 </output>",
   subagent_type="pan-phase-researcher",
   model="{researcher_model}"
@@ -67,7 +72,6 @@ Write to: .planning/phases/${PHASE}-{slug}/${PHASE}-research.md
 ## Step 5: Handle Return
 
 - `## RESEARCH COMPLETE` — Display summary, offer: Plan/Dig deeper/Review/Done
-- `## CHECKPOINT REACHED` — Present to user, spawn continuation
-- `## RESEARCH INCONCLUSIVE` — Show attempts, offer: Add context/Try different mode/Manual
+- `## RESEARCH BLOCKED` — Display the blocker, offer: Provide context / Skip research / Abort
 
 </process>

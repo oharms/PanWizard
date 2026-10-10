@@ -1,0 +1,12 @@
+{
+  "hook_event": "PostToolUse",
+  "runtime": "claude",
+  "captured_at": "2026-10-04",
+  "captured_from": "Record shapes of the transcripts Claude Code 2.1.288 wrote under `claude -p --model sonnet` in a scratch project (d:\\pantesting\\ctxmon-probe; PAN not installed) whose only hook was a PostToolUse probe: the main session file `<session>.jsonl` and the subagent's `<session>/subagents/agent-<id>.jsonl`. The key names, nesting and types are copied: an assistant record's `message.{model,id,type,role,content[],stop_reason,usage}` with `usage.{input_tokens,cache_creation_input_tokens,cache_read_input_tokens,output_tokens,service_tier,cache_creation}`, `isSidechain`, `agentId` on subagent records, a tool_result user record with `toolUseResult`, and the `hook_additional_context` attachment the host writes for a PostToolUse hook's `additionalContext`. The token counts are the captured ones; ids, timestamps and prose are neutral synthetic. The `compact_boundary` record's shape is from a manual `/compact` the same day on the same host version (`type: system`, `subtype: compact_boundary`, `content`, `compactMetadata`); its trigger and pre-compaction count here are synthetic.",
+  "placeholders": {
+    "{{SESSION_ID}}": "the host session id, written into every record as `sessionId`",
+    "{{PROJECT_DIR}}": "absolute path of the project, written into every record as `cwd`",
+    "{{AGENT_ID}}": "the subagent's id, written into its records as `agentId`"
+  },
+  "notes": "Three facts the context monitor's transcript fallback rests on. (1) When PostToolUse fires, the assistant record that issued the tool call is already in the file: the probe hook read the transcript while it ran, and the newest assistant record held the tool_use whose id the payload named. So that record's usage is the context of the call. (2) input + cache_creation + cache_read is what the status line reports as `context_window.total_input_tokens` (code.claude.com/docs/en/statusline): 44,265 here, against 34,107 for the subagent, which runs its own context. (3) The injected note is persisted as a `hook_additional_context` attachment, which is what a harness gate can look for. `compact_boundary` is kept apart from `main` so a test can append it: after one, the context is rebuilt and no record has measured it yet."
+}

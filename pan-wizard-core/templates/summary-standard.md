@@ -6,7 +6,8 @@ tags: [searchable tech]
 provides:
   - [bullet list of what was built/delivered]
 affects: [list of phase names or keywords]
-test-tiers: []  # Optional — Test tiers exercised: [unit, integration, e2e, visual]
+requirements-completed: []
+test-tiers: []
 tech-stack:
   added: [libraries/tools]
   patterns: [architectural/code patterns]
