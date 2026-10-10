@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.34.0] - 2026-10-10
+
 The memory optimisation queue (`docs/specs/memory-optimization-2026-10.md`, items O1–O12). The review of `2026-10-04` found PAN's memory design where the evidence and the market have converged, and its operation short of it. The planner re-read the whole roadmap, the roadmap grew without bound, Windows projects silently skipped state reconciliation, agent memory was almost never written, and stored facts carried no citations or expiry. One item ended in a retirement: once agent memory had a working write path, the harness found that injecting it changed nothing, so PAN no longer loads it into agents.
 
 ### Fixed
