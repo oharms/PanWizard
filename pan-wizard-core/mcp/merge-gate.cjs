@@ -52,17 +52,28 @@ function writeJson(p, obj) { fs.mkdirSync(path.dirname(p), { recursive: true });
  * Stage a merge request. Mints a fresh per-request approval token (nonce), records the
  * exact branch + the (caller-attested) CI/verify flags, marks it awaiting_approval, and
  * returns the record. Does NOT merge. The operator sets PAN_MERGE_APPROVAL to
- * `record.approval_token` after reviewing. (ci_green/verify_pass are agent-attested
- * advisory context for the human's decision; the token is the sole unfakeable anchor.)
+ * `record.approval_token` after reviewing. ci_green is agent-attested advisory context.
+ * verify_pass is too, unless the request names a `phase`: then it is the phase gate's
+ * verdict (program V1), computed here, and the caller's flag is ignored. The token is
+ * the sole unfakeable anchor either way.
  */
 function requestMerge(cwd, opts = {}) {
   const branch = validateBranch(opts.branch);
+  let verifyPass = !!opts.verify_pass;
+  let gate = null;
+  if (opts.phase != null && String(opts.phase).trim() !== '') {
+    const g = require('../bin/lib/phase-gate.cjs').phaseGate(cwd, String(opts.phase).trim());
+    gate = g.error ? { phase: String(opts.phase), error: g.error } : { phase: g.phase, ok: g.ok, reasons: g.reasons.map((r) => r.code) };
+    verifyPass = !g.error && g.ok;
+  }
   const record = {
     id: slugify(branch),
     branch,
     approval_token: crypto.randomBytes(9).toString('hex'),
     ci_green: !!opts.ci_green,
-    verify_pass: !!opts.verify_pass,
+    verify_pass: verifyPass,
+    verify_source: gate ? 'phase_gate' : 'caller',
+    ...(gate ? { gate } : {}),
     status: 'awaiting_approval',
     requested_at: opts.now || null,
   };

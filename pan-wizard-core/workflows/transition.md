@@ -155,6 +155,8 @@ If found, delete them — phase is complete, handoffs are stale.
 TRANSITION=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${current_phase}")   # skip when exec-phase invoked this workflow: its `phase complete` already ran — reuse that result
 ```
 
+`phase complete` runs the phase gate first. Exit 1 with `error: phase_gate_refused` (`workflow.phase_gate: enforce`) means the phase was not marked complete: show `gate.reasons` and stop the transition. With `gate.ok` false under `warn`, the phase was marked complete: show the reasons as warnings before continuing.
+
 The CLI handles:
 - Marking the phase checkbox as `[x]` complete with today's date
 - Updating plan count to final (e.g., "3/3 plans complete")

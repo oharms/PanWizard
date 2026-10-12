@@ -126,14 +126,14 @@ const NATIVE_TOOLS = [
   {
     name: 'pan_request_merge',
     title: 'Request a gated merge',
-    description: 'Stage a squash-merge request for a branch and mark it awaiting human approval. Records intent only — does NOT merge.',
+    description: 'Stage a squash-merge request for a branch and mark it awaiting human approval. Records intent only — does NOT merge. Name the phase the branch delivers: verify_pass is then the phase gate\'s verdict, not the caller\'s flag.',
     readOnly: false, destructive: false,
     inputSchema: {
       type: 'object', additionalProperties: false, required: ['branch'],
-      properties: { branch: { type: 'string' }, ci_green: { type: 'boolean' }, verify_pass: { type: 'boolean' } },
+      properties: { branch: { type: 'string' }, ci_green: { type: 'boolean' }, verify_pass: { type: 'boolean' }, phase: { type: 'string' } },
     },
     handler: ({ cwd, input }) => ({
-      json: mergeGate.requestMerge(cwd, { branch: input.branch, ci_green: input.ci_green, verify_pass: input.verify_pass }),
+      json: mergeGate.requestMerge(cwd, { branch: input.branch, ci_green: input.ci_green, verify_pass: input.verify_pass, phase: input.phase }),
     }),
   },
   {

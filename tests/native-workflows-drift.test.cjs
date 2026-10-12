@@ -182,6 +182,14 @@ describe('native workflows: script ⇄ markdown twin drift pin (5b)', () => {
     assert.ok(s.content.includes("phase('Verify')"), 'the port carries the verification phase its twin performs');
   });
 
+  test('the wave script ends on the phase gate and stops when it refuses (V1)', () => {
+    const s = scripts.find(x => x.name === 'pan-exec-waves.js');
+    assert.ok(s.content.includes("{ title: 'Gate'"), 'the meta lists the Gate phase');
+    assert.ok(s.content.indexOf("phase('Gate')") > s.content.indexOf("phase('Verify')"), 'the gate runs after verification');
+    assert.ok(s.content.includes('phase gate '), 'the gate step runs the engine verb');
+    assert.match(s.content, /if \(!gate \|\| gate\.ok !== true\) \{\s*\n\s*return \{[^}]*halted: 'phase_gate'/, 'a refusal, or no verdict at all, halts the script');
+  });
+
   test('the wave script honours parallelization=false with a sequential path', () => {
     const s = scripts.find(x => x.name === 'pan-exec-waves.js');
     assert.ok(s.content.includes('parallelWithinWave'), 'must branch on the parallelization flag');

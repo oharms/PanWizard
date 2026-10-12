@@ -239,6 +239,7 @@ const reviewDeep = require('./lib/review-deep.cjs');
 const findings = require('./lib/findings.cjs');
 const verifyPlanSet = require('./lib/verify-plan-set.cjs');
 const verifyIntegrity = require('./lib/verify-integrity.cjs');
+const phaseGate = require('./lib/phase-gate.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -772,9 +773,11 @@ async function main() {
       } else if (subcommand === 'complete') {
         if (!args[2]) error('phase complete requires a phase number');
         const noCommit = args.includes('--no-commit');
-        phase.cmdPhaseComplete(cwd, args[2], raw, { noCommit });
+        phase.cmdPhaseComplete(cwd, args[2], raw, { noCommit, force: args.includes('--force'), reason: getArgValue(args, '--reason') });
+      } else if (subcommand === 'gate') {
+        phaseGate.cmdPhaseGate(cwd, args[2], raw, { mode: getArgValue(args, '--mode') || undefined });
       } else {
-        error('Unknown phase subcommand. Available: next-decimal, add, insert, remove, complete');
+        error('Unknown phase subcommand. Available: next-decimal, add, insert, remove, complete, gate');
       }
       break;
     }

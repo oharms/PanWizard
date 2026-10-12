@@ -709,6 +709,13 @@
     "revertApply:function",
     "unpromotePattern:function"
   ],
+  "phase-gate.cjs": [
+    "MODES:object",
+    "cmdPhaseGate:function",
+    "gateMode:function",
+    "phaseGate:function",
+    "recordGateOverride:function"
+  ],
   "phase-remove.cjs": [
     "cmdPhaseRemove:function",
     "collectDirsToRenumber:function",

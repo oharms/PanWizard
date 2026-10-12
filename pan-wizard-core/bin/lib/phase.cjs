@@ -823,6 +823,26 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
     error(`Phase ${phaseNum} not found`);
   }
 
+  // The phase gate (V1). In `enforce` mode a refusal stops here unless --force
+  // --reason, which records a decision; in `warn` mode the reasons travel with the
+  // result. A --force without a reason is refused in either mode.
+  const { phaseGate, recordGateOverride } = require('./phase-gate.cjs');
+  const force = !!(opts && opts.force);
+  const forceReason = opts && typeof opts.reason === 'string' ? opts.reason.trim() : '';
+  if (force && !forceReason) {
+    output({ error: 'reason_required', reason: 'phase complete --force needs --reason "<why the gate is being overridden>"' }, raw);
+    return;
+  }
+  const gate = phaseGate(cwd, phaseNum);
+  let gateOverride = null;
+  if (!gate.error && !gate.ok) {
+    if (gate.mode === 'enforce' && !force) {
+      output({ error: 'phase_gate_refused', reason: gate.reasons.map((r) => `${r.code}: ${r.detail}`).join(' | '), gate }, raw);
+      return;
+    }
+    if (force) gateOverride = recordGateOverride(cwd, gate, forceReason);
+  }
+
   const planCount = phaseInfo.plans.length;
   const summaryCount = phaseInfo.summaries.length;
 
@@ -886,6 +906,8 @@ function cmdPhaseComplete(cwd, phaseNum, raw, opts) {
     date: today,
     roadmap_updated: fileAccessible(roadmapPath),
     state_updated: fileAccessible(statePath),
+    gate: gate.error ? { error: gate.error } : { ok: gate.ok, mode: gate.mode, reasons: gate.reasons, not_checked: gate.not_checked },
+    ...(gateOverride ? { gate_override: gateOverride } : {}),
   };
   if (roadmapResult && roadmapResult.requirements_warning) {
     result.requirements_warning = roadmapResult.requirements_warning;

@@ -622,11 +622,25 @@ Gap closure cycle: `/pan:plan-phase {X} --gaps` reads verification.md → create
 </step>
 
 <step name="update_roadmap">
-**Mark phase complete and update all tracking files:**
+**Mark phase complete and update all tracking files.** `phase complete` runs the phase gate first, on every path (this step runs before `offer_next`, with or without `--no-transition`). The gate checks in code what this workflow used to ask for in prose: every plan has a summary, the verification passes (a failed test gate lowers it to gaps), human items have a recorded approval, the verification is fresh, reconcile finds no contradiction, no critical or high finding is left open, no stub was committed, and no test was weakened.
 
 ```bash
 COMPLETION=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${PHASE_NUMBER}")
+COMPLETION_EXIT=$?
 ```
+
+| Result | Action |
+|---|---|
+| exit 1, `error: phase_gate_refused` (`workflow.phase_gate: enforce`) | The phase was NOT marked complete. Show each `gate.reasons` entry (`code`: `detail`) with its fix, and stop: no commit, no auto-advance. The user may complete anyway with a reason (below) |
+| exit 0, `gate.ok` false (`warn`, the default) | The phase was marked complete. Show the reasons as warnings, run the rest of this step, and do NOT auto-advance (`offer_next` reads `GATE_OK`) |
+| exit 0, `gate.ok` true | Continue |
+
+**Completing past a refusal** is the user's decision, never yours, and needs their reason. It records a `decision` for every open finding the gate counted:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${PHASE_NUMBER}" --force --reason "<the user's reason>"
+```
+
+Set `GATE_OK` to `gate.ok` from `COMPLETION` (`false` when the gate refused).
 
 The CLI handles:
 - Marking phase checkbox `[x]` with completion date
@@ -682,7 +696,7 @@ Parse `--no-transition` flag from $ARGUMENTS.
 **If `--no-transition` flag present:**
 
 Execute-phase was spawned by plan-phase's auto-advance. Do NOT run transition.md.
-If verification found gaps, return `## GAPS FOUND` with the phase, score and gap summaries (plan-phase and discuss-phase stop the chain on it). After verification passes and roadmap is updated, return completion status to parent:
+If verification found gaps, or `GATE_OK` is false, return `## GAPS FOUND` with the phase, score and the gap summaries or the gate's reasons (plan-phase and discuss-phase stop the chain on it). After the gate passes, return completion status to parent:
 
 ```
 ## PHASE COMPLETE
@@ -698,37 +712,10 @@ STOP. Do not proceed to auto-advance or transition.
 
 **If `--no-transition` flag is NOT present:**
 
-**Verification gate check (before auto-advance):**
-
-If `workflow.verifier` is true in config, confirm the current phase has a passing verification:
-
-```bash
-VERIF=$(ls "$phase_dir"/*-verification.md 2>/dev/null | head -1)
-VERIF_STATUS=""
-if [ -n "$VERIF" ]; then
-  VERIF_STATUS=$(grep "^status:" "$VERIF" | sed "s/^status:[[:space:]]*//")
-fi
+**Gate check (before auto-advance).** The phase gate already ran inside `phase complete` (`update_roadmap`), and it covers the verification status, reconcile (anti-rubber-stamp, ADR-0036), freshness, open findings, stubs and test integrity. If `GATE_OK` is false:
 ```
-
-**Cross-check the written verdict against the mechanical signals (anti-rubber-stamp, ADR-0036).** The `status:` string above is authored by the verifier agent; `reconcile` re-derives the artifact/key-link checks from disk and exits non-zero when a claimed pass contradicts them:
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify reconcile "${PHASE_NUMBER}" --raw
-RECONCILE_EXIT=$?
-```
-If `RECONCILE_EXIT` is non-zero:
-```
-⚠ Reconcile gate: Phase ${PHASE_NUMBER} verification says "passed" but the mechanical
-  checks disagree — artifacts fail substance checks or key-links are unwired.
-  This is a rubber-stamped verification. Do NOT auto-advance.
-  Re-run /pan:verify-phase and fix the failing artifacts/key-links.
-```
-STOP — do not auto-advance. Return to user.
-
-If `VERIF_STATUS` is not `passed`:
-```
-⚠ Verification gate: Phase ${PHASE_NUMBER} verification status is "${VERIF_STATUS:-missing}"
-  Cannot auto-advance without passing verification.
-  Run /pan:verify-phase to verify this phase first.
+⚠ Phase gate: Phase ${PHASE_NUMBER} may not advance — {each gate reason: code and detail}.
+  Fix the reasons (or close the gaps with /pan:plan-phase ${PHASE_NUMBER} --gaps), then re-run.
 ```
 STOP — do not auto-advance. Return to user.
 

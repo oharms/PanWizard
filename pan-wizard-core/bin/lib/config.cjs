@@ -53,6 +53,8 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       verifier: true,
       nyquist_validation: false,
       phase_record_compact: false,
+      // V1: the phase gate. `warn` reports refusals and completes; `enforce` refuses.
+      phase_gate: 'warn',
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },

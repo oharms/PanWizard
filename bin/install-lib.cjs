@@ -2256,6 +2256,7 @@ return { areas_mapped: maps.filter(Boolean).length, synthesis }
     { title: 'Index', detail: 'plan inventory with wave grouping, from the PAN engine' },
     { title: 'Execute', detail: 'one executor per plan; waves in order, plans within a wave in parallel' },
     { title: 'Verify', detail: 'the phase verifier over the completed plans' },
+    { title: 'Gate', detail: 'the PAN phase gate: stops when the phase may not be completed' },
   ],
 }
 // twin: pan-wizard-core/workflows/exec-phase.md
@@ -2377,7 +2378,24 @@ const verdict = await agent(
   'Verify phase ' + phaseArg + ' following the PAN verify-phase protocol (PAN core: workflows/verify-phase.md — ' + PAN_TOOLS + '). Check the phase goals against what the plans delivered, write the verification file the protocol prescribes, and report status (passed | gaps_found | human_needed | failed), the verification file path, any gaps, and a summary. Do not mark the phase complete or advance state — that decision stays with the user.',
   { agentType: 'pan-verifier', label: 'verify', phase: 'Verify', schema: VERIFY })
 
-return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, next: 'Review the verification, then continue with /pan:exec-phase ' + phaseArg + ' (transition) or /pan:plan-phase for the next phase' }
+phase('Gate')
+const GATE = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    mode: { type: 'string' },
+    reasons: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, detail: { type: 'string' } }, required: ['code'] } },
+  },
+  required: ['ok', 'reasons'],
+}
+const gate = await agent(
+  'Run the PAN phase gate for phase ' + phaseArg + ' with the ' + PAN_TOOLS + ' Run exactly: phase gate ' + phaseArg + ' (it exits 1 when it refuses; that is a result, not an error). Return its JSON fields ok, mode and reasons (each code and detail) unchanged. Do not fix anything and do not mark the phase complete.',
+  { label: 'gate', phase: 'Gate', schema: GATE })
+const gateReasons = gate && Array.isArray(gate.reasons) ? gate.reasons : []
+if (!gate || gate.ok !== true) {
+  return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, gate, halted: 'phase_gate', next: 'The phase gate refused: ' + (gateReasons.map((r) => r.code).join(', ') || 'the gate step returned no verdict') + '. Fix each reason (or close the gaps with /pan:plan-phase ' + phaseArg + ' --gaps), then re-run /pan:exec-phase ' + phaseArg + '. Do not mark the phase complete until the gate passes.' }
+}
+return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, gate, next: 'The phase gate passes. Continue with /pan:exec-phase ' + phaseArg + ' (transition) or /pan:plan-phase for the next phase' }
 `;
 
   const diagnoseIssues = `export const meta = {

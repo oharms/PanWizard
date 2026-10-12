@@ -228,6 +228,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
 | `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
 | `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A re-verification auto-fixes the findings it no longer reports, a regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
+| `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
 | `verify-integrity.cjs` | **(program V3)** `verify test-integrity <phase>`: walks the phase's plan commits and reports a deleted test, a skip or only marker added (JS, Python, Go, Rust, Java), assertions dropped, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail; a renamed test is a warning. Uses verify-scope's `committedFiles()`. |
 | `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
 | `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. Re-exported through verify.cjs. |
@@ -456,6 +457,7 @@ Quick reference of all CLI commands grouped by category.
 | 214 | `cost limits` | Cost | cost.cjs |
 | 215 | `verify plan-set` | Verification | verify-plan-set.cjs |
 | 216 | `verify test-integrity` | Verification | verify-integrity.cjs |
+| 217 | `phase gate` | Phase | phase-gate.cjs |
 
 ---
 
@@ -909,9 +911,15 @@ pan-tools phase remove 5.2 --force    # Force removal even if summaries exist
 
 ---
 
-### `phase complete <phase> [--no-commit]`
+### `phase gate <phase> [--mode warn|enforce]`
+
+Whether a phase may be marked complete (program V1). It prints `{phase, mode, ok, reasons[], facts, not_checked[]}` and exits 1 when it refuses (`--raw`: `pass` or `refuse`). Reason codes: `no_plans`, `missing_summary`, `no_verification`, `verification_unreadable`, `verification_failed` (a failed test gate under `passed` counts), `human_needed_unapproved` (approve a human item with `findings dispose <id> --as decision --reason "…"`), `verification_stale`, `reconcile_contradiction`, `test_failed`, `open_findings` (critical or high, any judge), `stubs_found` (in the files the phase committed), `integrity_violation` (`verify test-integrity`). `not_checked` lists what it could not check, never a refusal: a skipped or unrecorded test gate, an unknown freshness, no git, no plan commits, the verifier switched off. `--mode` overrides `workflow.phase_gate` for this call.
+
+### `phase complete <phase> [--no-commit] [--force --reason "<why>"]`
 
 Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances state.md to the next phase, and updates requirements.md traceability.
+
+**The phase gate runs first.** Under `workflow.phase_gate: warn` (the default) the phase is marked complete and the output carries `gate: {ok, mode, reasons, not_checked}`. Under `enforce` a refusal exits 1 with `{error: "phase_gate_refused", reason, gate}` and changes nothing. `--force --reason "<why>"` completes past a refusal and records a `decision` disposition for every open finding the gate counted (output: `gate_override`); `--force` without `--reason` is refused in either mode.
 
 ```bash
 pan-tools phase complete 5 [--no-commit]
@@ -2172,7 +2180,7 @@ pan-tools config-ensure-section [--raw]
 
 **`--raw` output:** `created` or `exists`.
 
-**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`, `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
+**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`warn`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
 
 | Key | Default | Description |
 |-----|---------|-------------|
