@@ -41,7 +41,7 @@ describe('verdict — parsing the pan-verdict block', () => {
     assert.deepEqual(r.verdict, {
       contract: '1.0', agent: 'pan-reviewer', outcome: 'fail', verdict: 'NEEDS_FIXES', phase: '03', score: null,
       findings: [{ class: 'defect', severity: 'high', where: 'src/utils/parser.ts:42', summary: 'parse() drops the final token' }],
-      not_checked: [],
+      not_checked: [], resolutions: [],
     });
   });
 
@@ -413,8 +413,7 @@ describe('verdict — vocabularies', () => {
     assert.equal(v.outcomeForVerdict('pan-unknown', 'PASS'), null);
   });
 
-  test('dispositions needing a reason and the auto-fix exemptions are subsets of their vocabularies', () => {
+  test('dispositions needing a reason are a subset of the dispositions', () => {
     for (const d of v.REASON_REQUIRED) assert.ok(v.DISPOSITIONS.includes(d));
-    for (const c of v.AUTO_FIX_EXEMPT) assert.ok(v.FINDING_CLASSES.includes(c));
   });
 });

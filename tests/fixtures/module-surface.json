@@ -420,11 +420,13 @@
     "cmdFindingsRecord:function",
     "disposeFindings:function",
     "findingIdsIn:function",
+    "findingsChurn:function",
     "findingsDebt:function",
     "foldFindings:function",
     "listFindings:function",
     "readLedger:function",
-    "recordVerdict:function"
+    "recordVerdict:function",
+    "sameFinding:function"
   ],
   "focus.cjs": [
     "allocateBudget:function",
@@ -912,13 +914,14 @@
     "removeQuotes:function"
   ],
   "verdict.cjs": [
-    "AUTO_FIX_EXEMPT:object",
     "DISPOSITIONS:object",
     "FINDING_CLASSES:object",
+    "FINDING_ID_RE:object",
     "KNOWN_VERDICTS:object",
     "LIMITS:object",
     "OUTCOMES:object",
     "REASON_REQUIRED:object",
+    "RESOLUTION_STATUSES:object",
     "SEVERITIES:object",
     "VERDICT_CONTRACT:string",
     "comparablePhase:function",

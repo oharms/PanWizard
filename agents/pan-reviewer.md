@@ -139,6 +139,7 @@ Return a structured review report:
 - Category maps to class: Convention → `quality`, Security → `risk`, Code Quality → `defect`, Design smell → `quality`, Unrequested → `unrequested`.
 - `where` is `file:line`.
 - A clean review has `"findings": []`.
+- **On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{"id":"f_…","status":"resolved","evidence":"what you checked and saw"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.
 
 The orchestrator records this block. It is how your findings reach the phase's findings ledger and `/pan:review-deep`.
 

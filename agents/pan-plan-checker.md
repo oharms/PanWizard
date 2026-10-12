@@ -766,6 +766,7 @@ Return all issues as a structured `issues:` YAML list (see dimension examples fo
 - `verdict` is `passed` or `issues_found` (the status from Step 10), and `outcome` is `pass` or `fail`.
 - Add one finding per issue you list. Blocker → `high`, warning → `medium`, info → `info`. The class follows the dimension, as mapped in the reference.
 - `where` is the plan file, plus `#task-N` when the issue is about one task.
+- **On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{"id":"f_…","status":"resolved","evidence":"what you checked and saw"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.
 
 The orchestrator records the block, and the record is what it branches on. The block must say the same thing as your heading.
 

@@ -371,7 +371,10 @@ for summary in "$PHASE_DIR"/*-summary.md; do
 done | sort -u > /tmp/review-files.txt
 ```
 
-2. Spawn pan-reviewer:
+2. Collect the reviewer's earlier open findings on this phase (empty on a first review), then spawn pan-reviewer:
+```bash
+OPEN_REVIEW_FINDINGS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings list --phase "${PHASE_NUMBER}" --agent pan-reviewer --status open 2>/dev/null)
+```
 ```
 Task(
   subagent_type="pan-reviewer",
@@ -393,6 +396,10 @@ Task(
     Phase: ${PHASE_NUMBER} - ${PHASE_NAME}
     Phase directory: ${phase_dir}
     </context>
+
+    <open_findings>
+    ${OPEN_REVIEW_FINDINGS}
+    </open_findings>
   "
 )
 ```
@@ -428,7 +435,7 @@ The fallback reads the word under `### Verdict` when the report carries no valid
   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "${PHASE_NUMBER}" --agent pan-reviewer --open --as deferred --reason "accepted at review: PASS_WITH_WARNINGS"
   ```
 - **The user chooses "Continue anyway"** at `NEEDS_FIXES`: the same command with `--reason "continued past NEEDS_FIXES at the user's choice"`, then proceed to verification.
-- **The user chooses "Fix before verification"**: apply the fixes, then run the review once more (steps 2–4). The new record closes the findings it no longer reports.
+- **The user chooses "Fix before verification"**: apply the fixes, then run the review once more (steps 2–4). The re-review answers each earlier finding in its `resolutions`; the record closes the ones it answers `resolved` with evidence, and one it neither reports nor answers stays open.
 
 5. **No separate trace logging.** The record logs `verdict_passed` or `verdict_failed` for the reviewer on every runtime. The `reviewer_correction` and `reviewer_warnings` trace calls that used to sit here read the error count from a shell variable nothing ever set.
 

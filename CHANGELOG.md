@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Findings close on evidence, never on silence.** A judge's later report closed every earlier finding it did not repeat, so a reviewer that simply forgot a finding marked it fixed. A finding now closes only when the judge answers it `resolved` with evidence (a new `resolutions` list in the `pan-verdict` block, or the verifier's `re_verification.gaps_closed`), or when its code fact passes. Unanswered findings stay open and the record lists them as `unaddressed`. The workflows hand each judge its open findings on a re-check. A reworded finding keeps its id, and `findings list --phase N --agent A` reports how much a judge's findings churn between reports (ADR-0049 amendment).
+
 ### Fixed
 
 - **A verification that says `passed` over a failing test suite records as `gaps_found`.** The recorder warned and kept the pass, so exec-phase could complete a phase whose tests failed. Code facts now only lower a judge's verdict, never raise it: the record keeps the judge's word as `agent_verdict`, lists the fact in `lowered_by`, and opens a finding for the gap round (two-key verdict).

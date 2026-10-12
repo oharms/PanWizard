@@ -90,6 +90,7 @@ contract is in `~/.claude/pan-wizard-core/references/verdict-contract.md`. How t
   `unrequested`, every other dimension → `partial`.
 - Each gap is `high`. A gap you report as a caveat on the final iteration is `medium`.
 - `where` is the design section.
+- **On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{"id":"f_…","status":"resolved","evidence":"what you checked and saw"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.
 
 The orchestrator records the block, so it must say what your verdict says.
 

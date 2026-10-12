@@ -16,11 +16,14 @@
  *     again (a regression);
  *   - with no disposition, a finding is `open`.
  *
- * Two rules are applied when a verdict is recorded:
- *   - AUTO-FIX: the same agent's earlier open findings on the phase that the new
- *     verdict does not report become `fixed`. That is how a gap-closure round
- *     closes its gaps. `human` and `unrequested` are exempt, because a re-run does
- *     not re-check them.
+ * Rules applied when a verdict is recorded:
+ *   - EVIDENCE CLOSES, SILENCE DOES NOT (V6): an earlier open finding closes only when
+ *     the judge answers it `resolved` with evidence (a `resolutions` entry, or the
+ *     verifier's `re_verification.gaps_closed`), or, for a `code-fact:<fact>` finding,
+ *     when that fact passes. One the new verdict neither reports nor answers stays
+ *     open and is listed as `unaddressed`. `still_present` counts as a re-report.
+ *   - IDENTITY: a reworded report of an earlier finding (same class family, same
+ *     file, same truth or a similar summary) keeps that finding's id.
  *   - IDEMPOTENCY: recording the same artifact twice is a no-op that returns the
  *     first verdict (record_sig). That is why exec-phase and verify-phase may both
  *     record one verification.md.
@@ -122,6 +125,69 @@ function samePhase(a, b) {
   return V.comparablePhase(a) === V.comparablePhase(b);
 }
 
+// ─── Finding identity across reports (V6) ───────────────────────────────────
+
+/** The file a `where` names, without a line or column suffix. */
+function fileOf(where) {
+  return where ? String(where).replace(/\\/g, '/').replace(/(:\d+){1,2}$/, '').replace(/#L?\d+.*$/, '') : '';
+}
+
+function tokens(s) {
+  return new Set(String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length > 2));
+}
+
+/** Token overlap (Jaccard) of two summaries at or above one half. */
+function similar(a, b) {
+  const A = tokens(a);
+  const B = tokens(b);
+  if (!A.size || !B.size) return false;
+  let both = 0;
+  for (const t of A) if (B.has(t)) both++;
+  return both / (A.size + B.size - both) >= 0.5;
+}
+
+/** The part of a summary before " — " (a verifier gap's truth), lower-cased. */
+const headOf = (s) => String(s || '').split(' — ')[0].trim().toLowerCase();
+/** A verifier gap moves between missing and partial as it is worked on: one family. */
+const familyOf = (c) => (c === 'partial' ? 'missing' : c);
+
+/** Same class family, same file, and the same truth or a similar summary. */
+function sameFinding(e, f) {
+  return familyOf(e.class) === familyOf(f.class) && fileOf(e.where) === fileOf(f.where)
+    && (headOf(e.summary) === headOf(f.summary) || similar(e.summary, f.summary));
+}
+
+/** The earlier finding a judge's resolution answers: by id, else by its truth or summary. */
+function resolutionTarget(mine, r) {
+  if (r.id) return mine.find((f) => f.id === r.id) || null;
+  const head = headOf(r.summary);
+  return mine.find((f) => headOf(f.summary) === head) || mine.find((f) => similar(f.summary, r.summary)) || null;
+}
+
+function truncateReason(s) {
+  return String(s).replace(/\s+/g, ' ').trim().slice(0, REASON_MAX);
+}
+
+/**
+ * How stable a judge's findings are across its reports on one phase (V6): between
+ * consecutive verdicts, how many ids appeared and how many disappeared. A judge whose
+ * findings churn while the code does not change is not measuring the code.
+ */
+function findingsChurn(rows, phase, agent) {
+  const seq = foldFindings(rows).verdicts.filter((v) => v.agent === agent && samePhase(v.phase, phase));
+  let added = 0;
+  let dropped = 0;
+  let union = 0;
+  for (let i = 1; i < seq.length; i++) {
+    const a = new Set(seq[i - 1].finding_ids || []);
+    const b = new Set(seq[i].finding_ids || []);
+    for (const id of b) if (!a.has(id)) added++;
+    for (const id of a) if (!b.has(id)) dropped++;
+    union += new Set([...a, ...b]).size;
+  }
+  return { reports: seq.length, transitions: Math.max(0, seq.length - 1), added, dropped, rate: union ? Math.round(((added + dropped) / union) * 1000) / 1000 : 0 };
+}
+
 /** `.planning/` must exist: the ledger fills a planning tree, it never creates one. */
 function requirePlanningTree(cwd) {
   try { return fs.statSync(planningPath(cwd)).isDirectory(); } catch { return false; }
@@ -171,7 +237,7 @@ function recordVerdict(cwd, input) {
 
   const dup = fold.verdicts.find((r) => r.record_sig === recordSig && r.agent === agent && samePhase(r.phase, phase));
   if (dup) {
-    return { ...base, recorded: false, duplicate: true, verdict_id: dup.verdict_id, attempt: dup.attempt, phase, findings: (dup.finding_ids || []).length, new: 0, auto_fixed: 0, reopened: 0 };
+    return { ...base, recorded: false, duplicate: true, verdict_id: dup.verdict_id, attempt: dup.attempt, phase, findings: (dup.finding_ids || []).length, new: 0, rematched: 0, resolved: 0, unaddressed: [], reopened: 0 };
   }
 
   const prior = fold.verdicts.filter((r) => r.agent === agent && samePhase(r.phase, phase));
@@ -184,21 +250,52 @@ function recordVerdict(cwd, input) {
   const ids = [];
   const newRows = [];
   const findingRows = [];
+  const mine = [...fold.findings.values()].filter((e) => e.agent === agent && samePhase(e.phase, phase));
+  let rematched = 0;
   for (const f of verdict.findings) {
-    const id = V.findingId(phase, agent, f);
+    let id = V.findingId(phase, agent, f);
+    if (!fold.findings.has(id)) {
+      // A reworded report of an earlier finding keeps that finding's id (V6), so a
+      // rewording is a re-report, not a fix plus a new finding.
+      const earlier = mine.filter((e) => !ids.includes(e.id) && sameFinding(e, f)).sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1))[0];
+      if (earlier) { id = earlier.id; rematched++; }
+    }
     if (ids.includes(id)) continue; // the same finding twice in one report is one finding
     ids.push(id);
     if (!fold.findings.has(id)) {
       findingRows.push({ v: LEDGER_V, kind: 'finding', ts, id, verdict_id: verdictId, phase, milestone, agent, class: f.class, severity: f.severity, where: f.where, summary: f.summary });
     }
   }
-  const reopened = ids.filter((id) => fold.findings.has(id) && fold.findings.get(id).status === 'fixed').length;
-  const autoFixRows = [];
-  for (const f of fold.findings.values()) {
-    if (f.agent !== agent || !samePhase(f.phase, phase) || f.status !== 'open') continue;
-    if (ids.includes(f.id) || V.AUTO_FIX_EXEMPT.includes(f.class)) continue;
-    autoFixRows.push({ v: LEDGER_V, kind: 'disposition', ts, id: f.id, disposition: 'fixed', reason: `not reported by ${agent} at attempt ${attempt}`, auto: true, verdict_id: verdictId });
+
+  // Findings close only on evidence (V6). Silence is not evidence: an earlier open
+  // finding the new verdict neither reports nor answers stays open, and the record
+  // lists it as unaddressed. What closes one: the judge's `resolved` answer with its
+  // evidence, or, for a code-fact finding, the fact passing.
+  const resolveRows = [];
+  const closing = new Set();
+  const close = (f, reason) => {
+    if (closing.has(f.id) || ids.includes(f.id) || f.status !== 'open') return;
+    closing.add(f.id);
+    resolveRows.push({ v: LEDGER_V, kind: 'disposition', ts, id: f.id, disposition: 'fixed', reason: truncateReason(reason), auto: true, verdict_id: verdictId });
+  };
+  let contradicted = 0;
+  for (const r of verdict.resolutions || []) {
+    const target = resolutionTarget(mine, r);
+    if (!target) { parsed.warnings.push(`resolution_unmatched: ${r.id || r.summary}`); continue; }
+    if (r.status === 'resolved') {
+      if (ids.includes(target.id)) { contradicted++; continue; }
+      close(target, `resolved by ${agent} at attempt ${attempt}: ${r.evidence}`);
+    } else if (r.status === 'still_present' && !ids.includes(target.id)) {
+      ids.push(target.id); // a re-report: reopens a fixed finding, keeps an open one open
+    }
   }
+  if (contradicted) parsed.warnings.push(`resolution_contradicted: ${contradicted} finding(s) answered resolved but reported again; they stay open`);
+  for (const fact of parsed.facts_ok || []) {
+    for (const f of mine) if (f.where === `code-fact:${fact}`) close(f, `${fact} passed at attempt ${attempt}`);
+  }
+  const reopened = ids.filter((id) => fold.findings.has(id) && fold.findings.get(id).status === 'fixed').length;
+  const unaddressed = mine.filter((f) => f.status === 'open' && !ids.includes(f.id) && !closing.has(f.id)).map((f) => f.id);
+  if (unaddressed.length) parsed.warnings.push(`open_findings_unaddressed: ${unaddressed.length} earlier finding(s) neither reported nor resolved; they stay open`);
 
   const bySeverity = countBy(verdict.findings, 'severity');
   const byClass = countBy(verdict.findings, 'class');
@@ -213,7 +310,7 @@ function recordVerdict(cwd, input) {
     by_severity: bySeverity, by_class: byClass, warnings: parsed.warnings,
     ...(notChecked.length ? { not_checked: notChecked } : {}),
   });
-  appendRows(cwd, [...findingRows, ...newRows, ...autoFixRows]);
+  appendRows(cwd, [...findingRows, ...newRows, ...resolveRows]);
 
   const category = { pass: 'verdict_passed', fail: 'verdict_failed', needs_human: 'verdict_needs_human' }[verdict.outcome];
   const serious = (bySeverity.critical || 0) + (bySeverity.high || 0) > 0;
@@ -232,13 +329,13 @@ function recordVerdict(cwd, input) {
       category: 'verdict_retry',
       agent,
       phase,
-      description: `${agent} judged phase ${phase} again (attempt ${attempt}): ${previous.outcome} → ${verdict.outcome}, ${autoFixRows.length} earlier finding(s) no longer reported`,
+      description: `${agent} judged phase ${phase} again (attempt ${attempt}): ${previous.outcome} → ${verdict.outcome}, ${resolveRows.length} earlier finding(s) resolved, ${unaddressed.length} unaddressed`,
       impact: 'minor',
-      context: { agent, phase, attempt, previous_outcome: previous.outcome, outcome: verdict.outcome, auto_fixed: autoFixRows.length, reopened, verdict_id: verdictId },
+      context: { agent, phase, attempt, previous_outcome: previous.outcome, outcome: verdict.outcome, resolved: resolveRows.length, unaddressed: unaddressed.length, reopened, verdict_id: verdictId },
     });
   }
 
-  return { ...base, recorded: true, duplicate: false, verdict_id: verdictId, attempt, phase, findings: ids.length, new: findingRows.length, auto_fixed: autoFixRows.length, reopened, ledger: planningRel(FINDINGS_FILE) };
+  return { ...base, recorded: true, duplicate: false, verdict_id: verdictId, attempt, phase, findings: ids.length, new: findingRows.length, rematched, resolved: resolveRows.length, unaddressed, reopened, ledger: planningRel(FINDINGS_FILE) };
 }
 
 /**
@@ -303,6 +400,7 @@ function listFindings(cwd, filters = {}) {
     findings,
     counts: { total: findings.length, by_status: countBy(findings, 'status'), by_class: countBy(findings, 'class'), by_severity: countBy(findings, 'severity') },
     verdicts: fold.verdicts.length,
+    ...(filters.phase && filters.agent ? { churn: findingsChurn(rows, filters.phase, filters.agent) } : {}),
     malformed_rows: malformed,
   };
 }
@@ -388,6 +486,8 @@ module.exports = {
   disposeFindings,
   listFindings,
   findingsDebt,
+  findingsChurn,
+  sameFinding,
   findingIdsIn,
   cmdFindingsRecord,
   cmdFindingsDispose,

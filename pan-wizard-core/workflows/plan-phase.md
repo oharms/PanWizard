@@ -427,6 +427,10 @@ Checker prompt:
 **Project skills:** Check .agents/skills/ directory (if exists) — verify plans account for project skill rules
 </verification_context>
 
+<open_findings>
+{output of `pan-tools findings list --phase {phase_number} --agent pan-plan-checker --status open`: empty on the first check; on a re-check, answer each in `resolutions`}
+</open_findings>
+
 <expected_output>
 - ## VERIFICATION PASSED — all checks pass
 - ## ISSUES FOUND — structured issue list
@@ -457,7 +461,7 @@ The fallback reads the heading when the report carries no valid `pan-verdict` bl
 - **`passed`:** Display confirmation, proceed to step 13.
 - **`issues_found`:** Display issues, check iteration count, proceed to step 12.
 
-Each re-check in the revision loop overwrites the same file and is recorded again as the next attempt. The issues a revision resolved are closed by that record.
+Each re-check in the revision loop overwrites the same file and is recorded again as the next attempt. The checker answers each earlier issue in `resolutions`; the record closes the ones it answers `resolved` with evidence, and one it neither reports nor answers stays open.
 
 ## 12. Revision Loop (At Most 2 Revisions, 3 Checks)
 

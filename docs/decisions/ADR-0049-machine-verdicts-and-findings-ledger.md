@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted — 2026-10-12** by the maintainer (recorded in `docs/specs/product_excellence_program_2026_q4_featureai.md` §3.4). Evidence-bound finding closure and stable finding ids (item V6 of that program) will land as an amendment.
+**Accepted — 2026-10-12** by the maintainer (recorded in `docs/specs/product_excellence_program_2026_q4_featureai.md` §3.4). Evidence-bound finding closure and stable finding ids (item V6 of that program) landed as the amendment to D5 and D6 below (`2026-10-12`).
 
 Proposed — 2026-09-28; shipped in v3.32.0 (2026-09-29). Implemented on `feat/evidence-loop` (spec `docs/specs/evidence_loop_featureai.md`, plan `docs/specs/evidence-loop-plan.md`); the maintainer accepts or amends it at release review. The decisions below were made in `/featureAI` on the maintainer's instruction to design, plan and build the evidence loop from the 2026-09-28 investigation and the September market-ideas queue.
 
@@ -50,9 +50,10 @@ The Growing Harness paper (arXiv:2609.26760) supports runtime-recorded, localise
 - `attempt` counts one agent's verdicts on one phase.
 
 **D6: Automatic status changes only where the evidence supports them.**
-- A new verdict closes the same agent's earlier open findings on that phase that it no longer reports. That is how a gap-closure round closes gaps.
-- `human` and `unrequested` findings are exempt, because a re-run does not re-check them.
+- ~~A new verdict closes the same agent's earlier open findings on that phase that it no longer reports.~~ **Amended `2026-10-12` (program V6):** silence is not evidence. An earlier open finding closes only when the judge answers it `resolved` with evidence (a `resolutions` entry in its block, or a truth in the verifier's `re_verification.gaps_closed`), or, for a `code-fact:<fact>` finding (program V9), when that fact passes. A finding the new verdict neither reports nor answers stays open and is listed as `unaddressed`; `still_present` counts as a re-report. The `human`/`unrequested` exemption is retired with the rule it exempted from.
 - Deliberate dispositions are never overridden by a later report.
+
+**D5 amendment (`2026-10-12`, program V6):** a reported finding whose exact id is new but which matches an earlier finding of the same agent and phase (same class family, where `missing` and `partial` are one family; same file, ignoring line numbers; same truth or a summary with token overlap of at least one half) keeps the earlier id. `findings list --phase N --agent A` reports `churn`, the share of ids that appear or disappear between consecutive reports.
 
 **D7: Dispositions need reasons, and workflows dispose what they continue past.** The vocabulary is `fixed`, `deferred`, `dismissed`, `decision`. The last three require a reason, and the verb refuses without one. Workflows record the reason whenever a phase moves on with findings open:
 - warnings accepted at review;
@@ -97,7 +98,8 @@ Verdicts do not go through the hook (D1).
   - The optimiser sees failures and ranks them by recurrence.
   - An apply can be undone.
 - **Negative, accepted.**
-  - A finding reworded between attempts appears as fixed and re-opened under a new id. The open count stays right.
+  - ~~A finding reworded between attempts appears as fixed and re-opened under a new id.~~ Fixed by the D5 amendment: a rewording keeps its id.
+  - Since the D6 amendment, a judge that does not answer its open findings leaves them open, so a phase can carry open findings past a passing verdict until someone answers or disposes them.
   - The judges' reports gain a block of JSON at the end.
   - The phase directory gains up to three report files.
 - **Negative, mitigated.**

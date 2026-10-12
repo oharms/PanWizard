@@ -35,7 +35,11 @@ function review(verdict, outcome, findings) {
   return `## Code Review — Phase 03\n\nprose\n\n${FENCE}pan-verdict\n${JSON.stringify({ contract: '1.0', agent: 'pan-reviewer', phase: '03', verdict, outcome, findings })}\n${FENCE}\n`;
 }
 
-const GAP_LOGIN = { truth: 'User can log in', reason: 'no password check', path: 'src/login.ts' };
+function reviewWith(verdict, outcome, findings, resolutions) {
+  return `## Code Review — Phase 03\n\nprose\n\n${FENCE}pan-verdict\n${JSON.stringify({ contract: '1.0', agent: 'pan-reviewer', phase: '03', verdict, outcome, findings, resolutions })}\n${FENCE}\n`;
+}
+
+const GAP_LOGIN ={ truth: 'User can log in', reason: 'no password check', path: 'src/login.ts' };
 const GAP_EXPIRY = { truth: 'Sessions expire', reason: 'refresh never expires', status: 'partial' };
 
 let dir;
@@ -84,29 +88,92 @@ describe('findings — recording a verdict', () => {
     assert.equal(ledgerRows().filter((x) => x.kind === 'verdict').length, 1);
   });
 
-  test('a re-verification is attempt 2 and auto-fixes the gaps it no longer reports', () => {
+  test('a re-verification is attempt 2: a gap it closes is fixed with evidence, a gap it omits stays open', () => {
     F.recordVerdict(dir, { phase: '03', text: verification({ gaps: [GAP_LOGIN, GAP_EXPIRY] }) });
-    const r = F.recordVerdict(dir, { phase: '03', text: verification({ gaps: [GAP_EXPIRY], stamp: '2026-09-28T12:00:00Z' }) });
+    const second = verification({ gaps: [GAP_EXPIRY], stamp: '2026-09-28T12:00:00Z' })
+      .replace('---\n\n#', 're_verification:\n  previous_status: gaps_found\n  gaps_closed:\n    - "User can log in"\n---\n\n#');
+    const r = F.recordVerdict(dir, { phase: '03', text: second });
     assert.equal(r.attempt, 2);
-    assert.equal(r.auto_fixed, 1);
+    assert.equal(r.resolved, 1);
     const byClass = Object.fromEntries(F.listFindings(dir).findings.map((f) => [f.class, f]));
     assert.equal(byClass.missing.status, 'fixed');
     assert.equal(byClass.missing.auto, true);
-    assert.equal(byClass.missing.reason, 'not reported by pan-verifier at attempt 2');
+    assert.match(byClass.missing.reason, /^resolved by pan-verifier at attempt 2: /);
     assert.equal(byClass.partial.status, 'open', 'a gap reported again stays open');
     assert.equal(byClass.partial.reports, 2);
   });
 
-  test('a passing re-verification closes every open gap, but not human or unrequested findings', () => {
-    F.recordVerdict(dir, { phase: '03', text: verification({ gaps: [GAP_LOGIN], human: ['Log in on a phone'], unrequested: [{ path: 'src/admin.ts', what: 'an admin page nobody asked for' }] }) });
+  test('silence is not evidence: a passing re-verification that says nothing about a gap leaves it open (V6)', () => {
+    F.recordVerdict(dir, { phase: '03', text: verification({ gaps: [GAP_LOGIN], human: ['Log in on a phone'] }) });
     const r = F.recordVerdict(dir, { phase: '03', text: verification({ status: 'passed', stamp: '2026-09-29T09:00:00Z' }) });
     assert.equal(r.outcome, 'pass');
-    assert.equal(r.auto_fixed, 1);
-    const status = Object.fromEntries(F.listFindings(dir).findings.map((f) => [f.class, f.status]));
-    assert.deepEqual(status, { missing: 'fixed', human: 'open', unrequested: 'open' });
+    assert.equal(r.resolved, 0);
+    assert.equal(r.unaddressed.length, 2);
+    assert.ok(r.warnings.some((w) => w.startsWith('open_findings_unaddressed')), r.warnings.join('\n'));
+    assert.deepEqual(F.listFindings(dir).findings.map((f) => f.status), ['open', 'open']);
   });
 
-  test('auto-fix stays within the same agent and phase', () => {
+  test('a judge answers by id: resolved with evidence closes, resolved without evidence does not', () => {
+    const a = { class: 'defect', severity: 'high', where: 'src/a.ts:1', summary: 'a drops the last token' };
+    const b = { class: 'risk', severity: 'medium', where: 'src/b.ts:4', summary: 'b reads an unchecked path' };
+    F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [a, b]) });
+    const [fa, fb] = F.listFindings(dir).findings;
+    const r = F.recordVerdict(dir, { phase: '03', text: reviewWith('PASS', 'pass', [], [
+      { id: fa.id, status: 'resolved', evidence: 'src/a.ts:1 now keeps the final token; test parse.test.ts covers it' },
+      { id: fb.id, status: 'resolved' },
+    ]) });
+    assert.equal(r.resolved, 1);
+    assert.equal(statusOf(fa.id), 'fixed');
+    assert.equal(statusOf(fb.id), 'open', 'a bare "resolved" closes nothing');
+    assert.ok(r.warnings.some((w) => w.startsWith('resolution_without_evidence')), r.warnings.join('\n'));
+  });
+
+  test('still_present reopens a fixed finding; cannot_tell leaves an open one open', () => {
+    const a = { class: 'defect', severity: 'high', where: 'src/a.ts:1', summary: 'a drops the last token' };
+    F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [a]) });
+    const [fa] = F.listFindings(dir).findings;
+    F.disposeFindings(dir, { ids: [fa.id], as: 'fixed' });
+    const r = F.recordVerdict(dir, { phase: '03', text: reviewWith('NEEDS_FIXES', 'fail', [], [{ id: fa.id, status: 'still_present', evidence: 'the token is still dropped' }]) });
+    assert.equal(r.reopened, 1);
+    assert.equal(statusOf(fa.id), 'open');
+    F.recordVerdict(dir, { phase: '03', text: reviewWith('PASS', 'pass', [], [{ id: fa.id, status: 'cannot_tell', evidence: 'could not run the parser' }]) });
+    assert.equal(statusOf(fa.id), 'open');
+  });
+
+  test('a reworded finding keeps its id (V6)', () => {
+    F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [{ class: 'defect', severity: 'high', where: 'src/parser.ts:42', summary: 'parse() drops the final token of every line' }]) });
+    const r = F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [{ class: 'defect', severity: 'high', where: 'src/parser.ts:44', summary: 'parse() drops the final token on every line' }]) });
+    assert.equal(r.rematched, 1);
+    assert.equal(r.new, 0);
+    const list = F.listFindings(dir).findings;
+    assert.equal(list.length, 1);
+    assert.equal(list[0].reports, 2);
+  });
+
+  test('a code-fact finding closes when its fact passes (V6 with V9)', () => {
+    const failed = verification({ status: 'passed' }).replace('status: passed', 'status: passed\ntest_gate: failed');
+    F.recordVerdict(dir, { phase: '03', text: failed });
+    const r = F.recordVerdict(dir, { phase: '03', text: verification({ status: 'passed', stamp: '2026-09-29T09:00:00Z' }).replace('status: passed', 'status: passed\ntest_gate: passed') });
+    assert.equal(r.resolved, 1);
+    const [gate] = F.listFindings(dir).findings;
+    assert.equal(gate.where, 'code-fact:test_gate');
+    assert.equal(gate.status, 'fixed');
+    assert.equal(gate.reason, 'test_gate passed at attempt 2');
+  });
+
+  test('churn over five reports: rewording costs nothing, a real change shows up', () => {
+    const base = { class: 'defect', severity: 'high', where: 'src/p.ts:1' };
+    const words = ['parse drops the final token', 'parse() drops the final token', 'parse drops its final token', 'parse drops the final token', 'parse drops the final token'];
+    words.forEach((w, i) => {
+      const extra = i === 4 ? [{ class: 'risk', severity: 'low', where: 'src/q.ts', summary: 'q logs a secret' }] : [];
+      F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [{ ...base, summary: w }, ...extra]) + `\nrun ${i}\n` });
+    });
+    const churn = F.listFindings(dir, { phase: '03', agent: 'pan-reviewer' }).churn;
+    assert.deepEqual([churn.reports, churn.transitions, churn.added, churn.dropped], [5, 4, 1, 0]);
+    assert.ok(churn.rate > 0 && churn.rate < 0.5, String(churn.rate));
+  });
+
+  test('resolutions stay within the same agent and phase', () => {
     F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [{ class: 'defect', severity: 'high', where: 'src/a.ts:1', summary: 'a is wrong' }]) });
     F.recordVerdict(dir, { phase: '03', text: verification({ status: 'passed' }) });
     fs.mkdirSync(path.join(dir, '.planning', 'phases', '04-billing'), { recursive: true });
@@ -117,7 +184,8 @@ describe('findings — recording a verdict', () => {
   test('a fixed finding reported again is open again (a regression), and the record says so', () => {
     const bad = { class: 'defect', severity: 'high', where: 'src/a.ts:1', summary: 'a is wrong' };
     F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [bad]) });
-    F.recordVerdict(dir, { phase: '03', text: review('PASS', 'pass', []) });
+    const [open] = F.listFindings(dir).findings;
+    F.recordVerdict(dir, { phase: '03', text: reviewWith('PASS', 'pass', [], [{ id: open.id, status: 'resolved', evidence: 'a now returns the right value' }]) });
     const [f] = F.listFindings(dir).findings;
     assert.equal(f.status, 'fixed');
     const r = F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [bad]) + '\nsecond regression run\n' });
@@ -203,7 +271,7 @@ describe('findings — trace events from a record', () => {
     assert.equal(passed.type, 'decision');
     const retry = events.find((e) => e.category === 'verdict_retry');
     assert.equal(retry.type, 'correction');
-    assert.deepEqual([retry.context.attempt, retry.context.previous_outcome, retry.context.outcome, retry.context.auto_fixed], [2, 'fail', 'pass', 1]);
+    assert.deepEqual([retry.context.attempt, retry.context.previous_outcome, retry.context.outcome, retry.context.resolved, retry.context.unaddressed], [2, 'fail', 'pass', 0, 1]);
   });
 
   test('a duplicate record logs nothing', () => {
