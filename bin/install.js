@@ -369,13 +369,11 @@ function getCommitAttribution(runtime) {
     const settings = readSettings(path.join(getGlobalDir('claude', explicitConfigDir), 'settings.json')) || {}; // unusable file = no info (read-only probe)
     result = lib.commitAttributionFromSettings(settings);
   } else if (runtime === 'copilot') {
-    // Copilot CLI: user-editable settings live in settings.json; config.json is
-    // legacy (auto-migrated by the CLI, now internal state) — fall back for old installs
+    // Copilot CLI: user settings live in settings.json only. config.json is the CLI's
+    // internal state, and Copilot 1.0.93 ignores user settings there (R48), so a
+    // stale `attribution` left in it must not decide PAN's attribution.
     const copilotDir = getGlobalDir('copilot', explicitConfigDir);
-    let config = readSettings(path.join(copilotDir, 'settings.json')) || {}; // unusable file = no info (read-only probe)
-    if (!config.attribution) {
-      config = readSettings(path.join(copilotDir, 'config.json')) || {}; // unusable file = no info (read-only probe)
-    }
+    const config = readSettings(path.join(copilotDir, 'settings.json')) || {}; // unusable file = no info (read-only probe)
     if (!config.attribution || config.attribution.commit === undefined) {
       result = undefined;
     } else if (config.attribution.commit === '') {
