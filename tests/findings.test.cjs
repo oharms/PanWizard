@@ -166,6 +166,20 @@ describe('findings — a pass that did not check everything (M23)', () => {
     assert.deepEqual(ev.context.not_checked, ['tests']);
   });
 
+  test('a passed verification over a failed test gate is recorded as gaps (V9)', () => {
+    const failedGate = verification({ status: 'passed' }).replace('status: passed', 'status: passed\ntest_gate: failed');
+    const r = F.recordVerdict(dir, { phase: '3', text: failedGate });
+    assert.equal(r.outcome, 'fail');
+    assert.equal(r.verdict, 'gaps_found', 'the word the workflow branches on is the lowered one');
+    assert.equal(r.agent_verdict, 'passed');
+    assert.deepEqual(r.lowered_by, ['test_gate']);
+    const row = ledgerRows().find(x => x.kind === 'verdict');
+    assert.equal(row.verdict, 'gaps_found');
+    assert.equal(row.agent_verdict, 'passed');
+    assert.deepEqual(row.lowered_by, ['test_gate']);
+    assert.equal(F.listFindings(dir, { status: 'open' }).findings[0].where, 'code-fact:test_gate');
+  });
+
   test('a pass that checked everything keeps a lean ledger row', () => {
     const ran = verification({ status: 'passed' }).replace('status: passed', 'status: passed\ntest_gate: passed');
     const r = F.recordVerdict(dir, { phase: '3', text: ran });

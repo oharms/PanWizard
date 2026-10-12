@@ -163,7 +163,11 @@ function recordVerdict(cwd, input) {
   // `not_checked` (M23): what the judge could not run. A pass with entries here is a
   // pass over less than the whole phase, and the record says so.
   const notChecked = verdict.not_checked || [];
-  const base = { contract: V.VERDICT_CONTRACT, agent, verdict: verdict.verdict, outcome: verdict.outcome, not_checked: notChecked, source_kind: parsed.source_kind, warnings: parsed.warnings };
+  // Two-key verdict (V9): when a code fact lowered the judge's word, the record keeps
+  // both, and `verdict` is the lowered word the workflow branches on.
+  const lowered = Array.isArray(parsed.lowered_by) && parsed.lowered_by.length
+    ? { agent_verdict: verdict.agent_verdict, lowered_by: parsed.lowered_by } : {};
+  const base = { contract: V.VERDICT_CONTRACT, agent, verdict: verdict.verdict, outcome: verdict.outcome, ...lowered, not_checked: notChecked, source_kind: parsed.source_kind, warnings: parsed.warnings };
 
   const dup = fold.verdicts.find((r) => r.record_sig === recordSig && r.agent === agent && samePhase(r.phase, phase));
   if (dup) {
@@ -205,7 +209,7 @@ function recordVerdict(cwd, input) {
   }
   newRows.push({
     v: LEDGER_V, kind: 'verdict', ts, verdict_id: verdictId, record_sig: recordSig, phase, milestone, agent,
-    verdict: verdict.verdict, outcome: verdict.outcome, attempt, source, finding_ids: ids,
+    verdict: verdict.verdict, outcome: verdict.outcome, ...lowered, attempt, source, finding_ids: ids,
     by_severity: bySeverity, by_class: byClass, warnings: parsed.warnings,
     ...(notChecked.length ? { not_checked: notChecked } : {}),
   });

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A verification that says `passed` over a failing test suite records as `gaps_found`.** The recorder warned and kept the pass, so exec-phase could complete a phase whose tests failed. Code facts now only lower a judge's verdict, never raise it: the record keeps the judge's word as `agent_verdict`, lists the fact in `lowered_by`, and opens a finding for the gap round (two-key verdict).
 - **`whatif cleanup` deletes only what what-if created.** It ran `git branch -D` on any `--branch` and `git worktree remove --force` on any `--worktree` it was handed, so a wrong argument could destroy unmerged commits or uncommitted files. It now refuses, before any git write, a branch without the `pan-whatif/` prefix and a registered worktree that is not checked out on that branch.
 
 ## [3.34.0] - 2026-10-10

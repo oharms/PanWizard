@@ -400,9 +400,40 @@ function verdictFromVerificationFrontmatter(text, agent = 'pan-verifier') {
   return { contract: VERDICT_CONTRACT, agent, verdict: status, outcome, findings, not_checked: notChecked, test_gate: testGate, not_checked_contradicted: contradicted };
 }
 
+/** The verdict word an agent uses for a fail, or null for an agent outside KNOWN_VERDICTS. */
+function failWordFor(agent) {
+  const table = KNOWN_VERDICTS[agent];
+  return table ? Object.keys(table).find((k) => table[k] === 'fail') || null : null;
+}
+
+/**
+ * Two-key verdict (V9): a code fact can lower a judge's verdict, never raise it.
+ * Any failing fact turns a pass or needs_human into the agent's fail word, keeps
+ * the agent's own word as `agent_verdict`, and adds one high finding per fact
+ * (`where: code-fact:<fact>`) so the gap round has something to close.
+ *
+ * @param {Object} verdict - a validated verdict
+ * @param {Array<{fact: string, ok: boolean, summary: string}>} facts
+ * @returns {{verdict: Object, lowered_by: string[]}} the same verdict object when nothing lowers it
+ */
+function lowerByCodeFacts(verdict, facts) {
+  const failing = (Array.isArray(facts) ? facts : []).filter((f) => f && f.ok === false && f.fact);
+  if (!failing.length || verdict.outcome === 'fail') return { verdict, lowered_by: [] };
+  const findings = [...verdict.findings];
+  for (const f of failing) {
+    findings.push({ class: 'defect', severity: 'high', where: `code-fact:${f.fact}`, summary: truncate(cleanText(f.summary || `${f.fact} failed`), LIMITS.summary) });
+  }
+  return {
+    verdict: { ...verdict, outcome: 'fail', verdict: failWordFor(verdict.agent) || 'fail', agent_verdict: verdict.verdict, findings },
+    lowered_by: failing.map((f) => f.fact),
+  };
+}
+
 /**
  * Read a judge's verdict from an artifact: the LAST `pan-verdict` block wins; with
  * no block, a verification.md frontmatter `status` is read through the adapter.
+ * Code facts (`opts.facts`, plus a verification's own `test_gate`) are applied
+ * after parsing through lowerByCodeFacts.
  * @param {string} text
  * @param {{agent?: string, phase?: string|number}} [opts]
  * @returns {{ok: true, verdict: Object, warnings: string[], source_kind: 'block'|'frontmatter'}
@@ -418,7 +449,9 @@ function parseVerdictText(text, opts = {}) {
       return { ok: false, error: 'invalid_json', reason: `the last pan-verdict block is not valid JSON: ${e.message}` };
     }
     const r = validateVerdict(obj, opts);
-    return r.ok ? { ...r, source_kind: 'block' } : r;
+    if (!r.ok) return r;
+    const low = lowerByCodeFacts(r.verdict, opts.facts);
+    return { ...r, verdict: low.verdict, lowered_by: low.lowered_by, source_kind: 'block' };
   }
   const adapted = verdictFromVerificationFrontmatter(text, opts.agent || 'pan-verifier');
   if (adapted) {
@@ -431,9 +464,12 @@ function parseVerdictText(text, opts = {}) {
     // gate under a pass: both make "passed" claim more than the verifier checked.
     if (!adapted.test_gate) r.warnings.push('test_gate_unrecorded: the verification does not say whether the test suite ran');
     else if (!TEST_GATE_VALUES.includes(adapted.test_gate)) r.warnings.push(`test_gate_unknown: "${adapted.test_gate}" is not passed, failed or skipped`);
-    else if (adapted.test_gate === 'failed' && adapted.outcome === 'pass') r.warnings.push('test_gate_failed_under_pass: the test gate failed but the status is passed');
+    else if (adapted.test_gate === 'failed' && adapted.outcome === 'pass') r.warnings.push('test_gate_failed_under_pass: the test gate failed but the status is passed, so it records as gaps_found');
     if (adapted.not_checked_contradicted) r.warnings.push(`not_checked_contradicted: test_gate is ${adapted.test_gate}, so the not_checked tests entry was dropped`);
-    return { ...r, source_kind: 'frontmatter' };
+    const facts = [...(Array.isArray(opts.facts) ? opts.facts : [])];
+    if (adapted.test_gate === 'failed') facts.push({ fact: 'test_gate', ok: false, summary: 'The test gate failed: the suite reported failures or did not run' });
+    const low = lowerByCodeFacts(r.verdict, facts);
+    return { ...r, verdict: low.verdict, lowered_by: low.lowered_by, source_kind: 'frontmatter' };
   }
   return { ok: false, error: 'no_verdict', reason: 'no pan-verdict block and no verification frontmatter status' };
 }
@@ -473,6 +509,8 @@ module.exports = {
   validateVerdict,
   verdictFromVerificationFrontmatter,
   parseVerdictText,
+  lowerByCodeFacts,
+  failWordFor,
   recordSig,
   findingId,
   outcomeForVerdict,
