@@ -78,5 +78,8 @@
       ],
       "why": "Memory optimisation O12: OpenCode discovers PAN's plugin from .opencode/plugins/ and lists it in its resolved config. Measured 2026-10-04 on OpenCode 1.18.32, where an instrumented copy also showed OpenCode importing the CommonJS module and calling server(), which returned the experimental.session.compacting hook."
     }
+  ],
+  "controls": [
+    {"id":"renamed-server","replace":{"path":".opencode/opencode.json","find":"\"pan\":","with":"\"nap\":"},"why":"With PAN's MCP server registered under another name, the registration assertion and `opencode mcp list` must both fail."}
   ]
 }

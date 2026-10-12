@@ -35,7 +35,7 @@ const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
 const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 
 function parseArgs(argv) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true };
+  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -50,6 +50,9 @@ function parseArgs(argv) {
     // the working tree dirty, so CI passes --no-ledger and the run reports through its
     // own report.md/report.json under the state directory instead.
     else if (k === '--no-ledger') a.ledger = false;
+    // --controls (H5): also run each passing scenario once per declared control, whose
+    // sabotage must turn it red. Opt-in: it multiplies the run's length.
+    else if (k === '--controls') a.controls = true;
     else if (k === '--help' || k === '-h') { a.help = true; }
     else throw new Error(`unknown argument: ${k}`);
   }
@@ -140,6 +143,38 @@ function interleave(scenarios, repeat) {
     }
   }
   return queue;
+}
+
+/**
+ * Apply a scenario control's sabotage (H5). Paths take the step placeholders and must
+ * resolve inside the workspace or the scenario's scratch directory; a control that
+ * names a missing file or a missing string throws, because a control that changes
+ * nothing would "pass" by measuring nothing.
+ */
+function applyControl(control, vars) {
+  const roots = [vars.ws, vars.other].filter(Boolean).map((r) => path.resolve(r));
+  const target = (rel) => {
+    const filled = fill(rel, vars);
+    const abs = path.resolve(path.isAbsolute(filled) ? filled : path.join(vars.ws, filled));
+    if (!roots.some((r) => abs === r || abs.startsWith(r + path.sep))) throw new Error(`${rel} is outside the workspace`);
+    return abs;
+  };
+  if (control.delete) {
+    const p = target(control.delete);
+    if (!fs.existsSync(p)) throw new Error(`${control.delete} does not exist`);
+    fs.rmSync(p, { recursive: true, force: true });
+  } else if (control.write) {
+    const p = target(control.write.path);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, control.write.content);
+  } else if (control.replace) {
+    const p = target(control.replace.path);
+    const text = fs.readFileSync(p, 'utf8');
+    if (!text.includes(control.replace.find)) throw new Error(`"${control.replace.find}" is not in ${control.replace.path}`);
+    fs.writeFileSync(p, text.split(control.replace.find).join(control.replace.with));
+  } else {
+    throw new Error('no sabotage (delete, write or replace)');
+  }
 }
 
 function runStep(step, ctx) {
@@ -243,7 +278,7 @@ function persistStepOutput(runDir, scenarioId, rep, index, outcome) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger]\n');
+    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls]\n');
     return 0;
   }
   const stateDir = args.stateDir || defaultStateDir();
@@ -276,83 +311,117 @@ function main() {
     for (const [id, share] of shares) if (share > 0) log(`budget share ${id}: $${share.toFixed(2)}`);
   }
 
-  for (const { scenario: s, rep, reps } of interleave(scenarios, args.repeat)) {
-    {
-      const label = reps > 1 ? `${s.id}#${rep}` : s.id;
-      const rec = { scenario: s.id, tier: s.tier, rep, status: 'passed', steps: [], skipped: null, durationMs: 0 };
-      results.push(rec);
-      const t0 = Date.now();
-      const unmet = unmetRequirement(s.requires);
-      if (unmet) {
-        rec.status = 'skipped'; rec.skipped = unmet;
-        log(`${label}: SKIPPED — ${rec.skipped}`);
-        continue;
-      }
-      if (s.tier >= 1 && args.maxUsd === null) {
-        rec.status = 'skipped'; rec.skipped = 'model tier requires --max-usd';
-        log(`${label}: SKIPPED — ${rec.skipped}`);
-        continue;
-      }
-      const seedDir = s.seed && s.seed !== 'empty' ? path.join(HARNESS_ROOT, 'seeds', s.seed) : null;
-      if (seedDir && !fs.existsSync(seedDir)) throw new Error(`${s.id}: seed ${s.seed} not found`);
-      const ws = createWorkspace(runDir, label.replace('#', '-'), seedDir);
-      const other = path.join(runDir, 'ws', `${label.replace('#', '-')}-other`);
-      fs.mkdirSync(other, { recursive: true });
-      const runtime = (s.install || []).map(f => f.replace(/^--/, '')).find(f => ['claude', 'codex', 'gemini', 'opencode', 'copilot'].includes(f)) || 'claude';
-      if (s.install && s.install.length) {
-        const inst = installPan(art.installer, ws, s.install);
-        rec.install = { code: inst.code };
-        if (inst.code !== 0) {
-          rec.status = 'failed';
-          failures.push({ scenario: s.id, tier: s.tier, step: -1, expect: 'exit:0', failure: `installer exit ${inst.code}: ${inst.stderr.slice(0, 400)}`, why: 'PAN must install before any step can run' });
-          log(`${label}: install FAILED (exit ${inst.code})`);
-          continue;
-        }
-      }
-      const shareUsd = args.maxUsd === null ? null : shares.get(s.id);
-      const ctx = {
-        ws, other, repo: args.repo, pkg: art.packageDir, runtime, budget: s.budget || {},
-        shareUsd,
-        spentUsd: () => spentBy.get(s.id) || 0,
-        addCost: (c) => { spent += c; spentBy.set(s.id, (spentBy.get(s.id) || 0) + c); },
-      };
-      const scenarioDeadline = t0 + ((s.budget && s.budget.maxMinutes) || 30) * 60000;
-      for (let i = 0; i < s.steps.length; i++) {
-        const step = s.steps[i];
-        if (Date.now() > scenarioDeadline) { rec.status = 'failed'; failures.push({ scenario: s.id, tier: s.tier, step: i, expect: 'budget', failure: 'scenario exceeded budget.maxMinutes', why: step.why }); break; }
-        const outcome = runStep(step, ctx);
-        if (outcome.refused) { rec.status = 'skipped'; rec.skipped = outcome.stderr; break; }
-        // Budget outcomes are facts about the run, never findings against PAN.
-        if (outcome.budgetExhausted) { rec.status = 'budget'; rec.note = outcome.stderr; log(`${label}: BUDGET — ${rec.note}`); break; }
-        if (outcome.budgetStopped) {
-          rec.status = 'budget'; rec.note = `model step stopped by the cap after $${(outcome.costUsd || 0).toFixed(2)} (${outcome.turns ?? '?'} turns) — no assertion evaluated`;
-          rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
-          log(`${label}: BUDGET — ${rec.note}`); break;
-        }
-        if (step.kind === 'model') {
-          const never = modelStepNeverRan(outcome);
-          if (never) {
-            rec.status = 'error'; rec.note = never;
-            rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
-            log(`${label}: ERROR — ${rec.note}`); break;
-          }
-        }
-        if (step.kind === 'model') persistStepOutput(runDir, s.id, rep, i, outcome);
-        const fails = check(step.expect, outcome, ws);
-        const sr = { index: i, kind: step.kind, code: outcome.code, failures: fails, costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) };
-        rec.steps.push(sr);
-        if (fails.length) {
-          rec.status = 'failed';
-          for (const f of fails) failures.push({ scenario: s.id, tier: s.tier, step: i, expect: f.expect, failure: f.failure, why: step.why });
-          log(`${label} step ${i} (${step.kind}) FAILED: ${fails.map(f => `${f.expect} → ${f.failure}`).join('; ')}`);
-          if (step.fatal) break;
-        } else {
-          passedSteps.push({ scenario: s.id, step: i });
-        }
-      }
-      rec.durationMs = Date.now() - t0;
-      log(`${label}: ${rec.status.toUpperCase()} (${rec.steps.length} steps, ${(rec.durationMs / 1000).toFixed(1)}s${spent ? `, $${spent.toFixed(3)} so far` : ''})`);
+  // One scenario run in a fresh workspace. With a `control`, its sabotage is applied
+  // after step `control.after` (-1: before the first step), and the run's failures are
+  // the expected outcome, so they are returned rather than recorded as findings.
+  const executeScenario = (s, rep, reps, control) => {
+    const label = (reps > 1 ? `${s.id}#${rep}` : s.id) + (control ? `~${control.id}` : '');
+    const rec = { scenario: s.id, tier: s.tier, rep, status: 'passed', steps: [], skipped: null, durationMs: 0, ...(control ? { control: control.id } : {}) };
+    const out = { rec, failures: [], passedSteps: [] };
+    const t0 = Date.now();
+    const unmet = unmetRequirement(s.requires);
+    if (unmet) {
+      rec.status = 'skipped'; rec.skipped = unmet;
+      log(`${label}: SKIPPED — ${rec.skipped}`);
+      return out;
     }
+    if (s.tier >= 1 && args.maxUsd === null) {
+      rec.status = 'skipped'; rec.skipped = 'model tier requires --max-usd';
+      log(`${label}: SKIPPED — ${rec.skipped}`);
+      return out;
+    }
+    const seedDir = s.seed && s.seed !== 'empty' ? path.join(HARNESS_ROOT, 'seeds', s.seed) : null;
+    if (seedDir && !fs.existsSync(seedDir)) throw new Error(`${s.id}: seed ${s.seed} not found`);
+    const wsName = label.replace('#', '-').replace('~', '--');
+    const ws = createWorkspace(runDir, wsName, seedDir);
+    const other = path.join(runDir, 'ws', `${wsName}-other`);
+    fs.mkdirSync(other, { recursive: true });
+    const runtime = (s.install || []).map(f => f.replace(/^--/, '')).find(f => ['claude', 'codex', 'gemini', 'opencode', 'copilot'].includes(f)) || 'claude';
+    if (s.install && s.install.length) {
+      const inst = installPan(art.installer, ws, s.install);
+      rec.install = { code: inst.code };
+      if (inst.code !== 0) {
+        rec.status = 'failed';
+        out.failures.push({ scenario: s.id, tier: s.tier, step: -1, expect: 'exit:0', failure: `installer exit ${inst.code}: ${inst.stderr.slice(0, 400)}`, why: 'PAN must install before any step can run' });
+        log(`${label}: install FAILED (exit ${inst.code})`);
+        return out;
+      }
+    }
+    const shareUsd = args.maxUsd === null ? null : shares.get(s.id);
+    const ctx = {
+      ws, other, repo: args.repo, pkg: art.packageDir, runtime, budget: s.budget || {},
+      shareUsd,
+      spentUsd: () => spentBy.get(s.id) || 0,
+      addCost: (c) => { spent += c; spentBy.set(s.id, (spentBy.get(s.id) || 0) + c); },
+    };
+    const sabotage = (afterIndex) => {
+      if (!control || (control.after === undefined ? -1 : control.after) !== afterIndex) return true;
+      try { applyControl(control, { ws, other, repo: args.repo, pkg: art.packageDir }); return true; }
+      catch (e) { rec.status = 'error'; rec.note = `control ${control.id} could not be applied: ${e.message}`; log(`${label}: ERROR — ${rec.note}`); return false; }
+    };
+    if (!sabotage(-1)) return out;
+    const scenarioDeadline = t0 + ((s.budget && s.budget.maxMinutes) || 30) * 60000;
+    for (let i = 0; i < s.steps.length; i++) {
+      const step = s.steps[i];
+      if (Date.now() > scenarioDeadline) { rec.status = 'failed'; out.failures.push({ scenario: s.id, tier: s.tier, step: i, expect: 'budget', failure: 'scenario exceeded budget.maxMinutes', why: step.why }); break; }
+      const outcome = runStep(step, ctx);
+      if (outcome.refused) { rec.status = 'skipped'; rec.skipped = outcome.stderr; break; }
+      // Budget outcomes are facts about the run, never findings against PAN.
+      if (outcome.budgetExhausted) { rec.status = 'budget'; rec.note = outcome.stderr; log(`${label}: BUDGET — ${rec.note}`); break; }
+      if (outcome.budgetStopped) {
+        rec.status = 'budget'; rec.note = `model step stopped by the cap after $${(outcome.costUsd || 0).toFixed(2)} (${outcome.turns ?? '?'} turns) — no assertion evaluated`;
+        rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
+        log(`${label}: BUDGET — ${rec.note}`); break;
+      }
+      if (step.kind === 'model') {
+        const never = modelStepNeverRan(outcome);
+        if (never) {
+          rec.status = 'error'; rec.note = never;
+          rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
+          log(`${label}: ERROR — ${rec.note}`); break;
+        }
+      }
+      if (step.kind === 'model') persistStepOutput(runDir, s.id, rep, i, outcome);
+      const fails = check(step.expect, outcome, ws);
+      const sr = { index: i, kind: step.kind, code: outcome.code, failures: fails, costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) };
+      rec.steps.push(sr);
+      if (fails.length) {
+        rec.status = 'failed';
+        for (const f of fails) out.failures.push({ scenario: s.id, tier: s.tier, step: i, expect: f.expect, failure: f.failure, why: step.why });
+        log(`${label} step ${i} (${step.kind}) ${control ? 'red (expected under the control)' : 'FAILED'}: ${fails.map(f => `${f.expect} → ${f.failure}`).join('; ')}`);
+        if (step.fatal || control) break;
+      } else {
+        out.passedSteps.push({ scenario: s.id, step: i });
+      }
+      if (!sabotage(i)) return out;
+    }
+    rec.durationMs = Date.now() - t0;
+    log(`${label}: ${rec.status.toUpperCase()} (${rec.steps.length} steps, ${(rec.durationMs / 1000).toFixed(1)}s${spent ? `, $${spent.toFixed(3)} so far` : ''})`);
+    return out;
+  };
+
+  const controlResults = [];
+  for (const { scenario: s, rep, reps } of interleave(scenarios, args.repeat)) {
+    const run = executeScenario(s, rep, reps, null);
+    results.push(run.rec);
+    failures.push(...run.failures);
+    passedSteps.push(...run.passedSteps);
+    // Controls (H5): each sabotage must turn a passing scenario red. A control the
+    // scenario survives is a finding against the scenario: its assertions do not
+    // measure what they claim.
+    if (!args.controls || run.rec.status !== 'passed' || rep !== 1) continue;
+    for (const control of s.controls || []) {
+      const c = executeScenario(s, rep, reps, control);
+      const verdict = c.rec.status === 'failed' ? 'killed' : (c.rec.status === 'passed' ? 'survived' : c.rec.status);
+      controlResults.push({ scenario: s.id, control: control.id, verdict, note: c.rec.note || c.rec.skipped || null });
+      if (verdict === 'survived') {
+        failures.push({ scenario: s.id, tier: s.tier, step: 'control', expect: `control:${control.id}`, failure: 'the scenario stayed green under its sabotage, so its assertions do not measure what they claim', why: control.why });
+        log(`${s.id}~${control.id}: SURVIVED — a control must turn the scenario red`);
+      }
+    }
+  }
+  if (args.controls) {
+    for (const c of controlResults) if (c.verdict === 'error') failures.push({ scenario: c.scenario, tier: 0, step: 'control', expect: `control:${c.control}`, failure: c.note, why: 'a control that cannot be applied measures nothing' });
   }
 
   // Ledger + report
@@ -371,6 +440,7 @@ function main() {
     shares: Object.fromEntries([...shares].filter(([, v]) => v > 0)),
     scenarios: results.map(r => ({ scenario: r.scenario, tier: r.tier, rep: r.rep, status: r.status, skipped: r.skipped, note: r.note || null, steps: r.steps.length, failures: r.steps.reduce((n, st) => n + st.failures.length, 0), costUsd: r.steps.reduce((n, st) => n + (st.costUsd || 0), 0), durationMs: r.durationMs })),
     completion: Object.values(byScenario),
+    controls: controlResults,
     failures, promotable: promotable.map(e => ({ signature: e.signature, scenario: e.scenario, step: e.step, expect: e.expect, detail: e.detail, runs: e.runs.length })),
   };
   fs.writeFileSync(path.join(runDir, 'report.json'), JSON.stringify({ ...summary, steps: results }, null, 2));
@@ -386,6 +456,10 @@ function main() {
     ...summary.completion.map(c => `| ${c.scenario} | ${c.tier} | ${c.reps} | ${c.passed} | ${c.failed} | ${c.budget} | ${c.skipped} | ${c.error || 0} | ${c.spentUsd ? `$${c.spentUsd.toFixed(2)}` : ''} |`),
     '',
   ];
+  if (args.controls) {
+    lines.push('## Controls', '', '| Scenario | Control | Verdict | Note |', '|---|---|---|---|',
+      ...controlResults.map((c) => `| ${c.scenario} | ${c.control} | ${c.verdict} | ${c.note || ''} |`), '');
+  }
   if (failures.length) {
     lines.push('## Failures', '');
     for (const f of failures) lines.push(`- **${f.scenario}** step ${f.step}: \`${f.expect}\` → ${f.failure}`, f.why ? `  - why this step exists: ${f.why}` : '');
@@ -415,4 +489,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };

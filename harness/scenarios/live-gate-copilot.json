@@ -49,5 +49,8 @@
       ],
       "why": "The installed plugin must appear under the manifest name; if the CLI names installed plugins differently, this step's stdout is the evidence to update the scenario from."
     }
+  ],
+  "controls": [
+    {"id":"no-manifest","after":0,"delete":"bundle/plugin.json","why":"copilot plugin install must refuse a bundle without its manifest, or the plugin list must lack it."}
   ]
 }

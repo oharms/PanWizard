@@ -32,5 +32,8 @@
       ],
       "why": "The nested /pan:<name> commands are swept so nothing resolves twice, and no flat shim (R33) comes back with the copy."
     }
+  ],
+  "controls": [
+    {"id":"no-claude-skill","delete":".claude/skills/pan-help/SKILL.md","why":"Claude Code reads only its own skills copy; a missing skill there must fail the assertion."}
   ]
 }

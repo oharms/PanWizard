@@ -28,5 +28,8 @@
     { "kind": "cli", "bin": "codex", "args": ["debug", "prompt-input"], "env": { "CODEX_HOME": "<other>/codex-home" },
       "expect": ["exit:0", "stdout~pan-wizard:pan-help"],
       "why": "The skill catalog Codex renders into a model's prompt lists PAN's skills under the plugin's namespace. `debug prompt-input` builds the prompt without sending it, so no login and no model." }
+  ],
+  "controls": [
+    {"id":"broken-codex-config","after":1,"write":{"path":"<other>/codex-home/config.toml","content":"this is = not [valid toml\n"},"why":"Codex installs from the repository's own bundle, which the harness may not touch, so the control breaks the scratch CODEX_HOME instead: it proves the gate's steps are live against the CLI, not that a broken bundle would be caught."}
   ]
 }

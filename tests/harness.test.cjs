@@ -145,7 +145,7 @@ describe('harness scenarios — every shipped scenario validates, and bad ones a
   });
 
   test('validation rejects the mistakes that would pass vacuously', () => {
-    const good = { id: 'ok', tier: 0, description: 'd', why: 'w', steps: [{ kind: 'fs', expect: ['file:x'], why: 'because' }] };
+    const good = { id: 'ok', tier: 0, description: 'd', why: 'w', steps: [{ kind: 'fs', expect: ['file:x'], why: 'because' }], controls: [{ id: 'gone', delete: 'x', why: 'x must exist' }] };
     assert.deepEqual(validateScenario(good), []);
     assert.ok(validateScenario({ ...good, steps: [] }).length, 'no steps');
     assert.ok(validateScenario({ ...good, steps: [{ kind: 'fs', expect: ['bogus'], why: 'w' }] }).length, 'unknown assertion');
@@ -160,6 +160,51 @@ describe('harness scenarios — every shipped scenario validates, and bad ones a
     assert.ok(validateScenario({ ...good, tier: 1, steps: [{ ...paid, paid: 'yes' }] }).length, 'paid is only true');
     assert.ok(validateScenario({ ...good, install: ['rm -rf /'] }).length, 'install flags must be flags');
     assert.ok(validateScenario({ ...good, requires: { cli: 'a b' } }).length, 'cli must be a bare name');
+  });
+
+  // H5: every tier-0 scenario carries a sabotage that must turn it red.
+  test('a tier-0 scenario without controls is refused, and every control is checked', () => {
+    const base = { id: 'ok', tier: 0, description: 'd', why: 'w', steps: [{ kind: 'fs', expect: ['file:x'], why: 'w' }, { kind: 'fs', expect: ['file:y'], why: 'w' }] };
+    const bad = (controls) => validateScenario({ ...base, controls }).join(' ');
+    assert.match(validateScenario(base).join(' '), /needs controls/);
+    assert.match(bad([]), /needs controls/);
+    assert.equal(bad([{ id: 'a', delete: 'x', why: 'w' }]), '');
+    assert.equal(bad([{ id: 'a', after: 0, write: { path: '<other>/h/c.toml', content: 'z' }, why: 'w' }]), '');
+    assert.equal(bad([{ id: 'a', replace: { path: 'f.json', find: '"pan":', with: '"nap":' }, why: 'w' }]), '');
+    assert.match(bad([{ id: 'a', why: 'w' }]), /exactly one of/);
+    assert.match(bad([{ id: 'a', delete: 'x', write: { path: 'y', content: '' }, why: 'w' }]), /exactly one of/);
+    assert.match(bad([{ id: 'a', delete: 'x' }]), /why required/);
+    assert.match(bad([{ id: 'A b', delete: 'x', why: 'w' }]), /kebab-case/);
+    assert.match(bad([{ id: 'a', delete: 'x', why: 'w' }, { id: 'a', delete: 'y', why: 'w' }]), /duplicate/);
+    assert.match(bad([{ id: 'a', delete: '../outside', why: 'w' }]), /workspace-relative/);
+    assert.match(bad([{ id: 'a', after: 1, delete: 'x', why: 'w' }]), /after must be/);
+    assert.match(bad([{ id: 'a', replace: { path: 'f', find: '', with: 'z' }, why: 'w' }]), /replace needs/);
+    assert.equal(validateScenario({ ...base, tier: 1, steps: [{ kind: 'model', prompt: 'p', expect: ['exit:0'], why: 'w' }] }).join(' ').includes('needs controls'), false, 'only tier 0 must carry them');
+  });
+
+  test('applyControl deletes, writes and replaces inside the workspace, and refuses a control that changes nothing', () => {
+    const { applyControl } = require('../harness/src/run.cjs');
+    const ws = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-ctl-'));
+    const other = fs.mkdtempSync(path.join(require('os').tmpdir(), 'pan-ctl-o-'));
+    try {
+      fs.writeFileSync(path.join(ws, 'a.json'), '{"pan": 1}');
+      fs.writeFileSync(path.join(ws, 'b.txt'), 'b');
+      applyControl({ id: 'r', replace: { path: 'a.json', find: '"pan":', with: '"nap":' } }, { ws, other });
+      assert.equal(fs.readFileSync(path.join(ws, 'a.json'), 'utf8'), '{"nap": 1}');
+      applyControl({ id: 'd', delete: 'b.txt' }, { ws, other });
+      assert.equal(fs.existsSync(path.join(ws, 'b.txt')), false);
+      applyControl({ id: 'w', write: { path: '<other>/h/c.toml', content: 'bad' } }, { ws, other });
+      assert.equal(fs.readFileSync(path.join(other, 'h', 'c.toml'), 'utf8'), 'bad');
+      assert.throws(() => applyControl({ id: 'd', delete: 'missing.txt' }, { ws, other }), /does not exist/);
+      assert.throws(() => applyControl({ id: 'r', replace: { path: 'a.json', find: 'absent', with: 'x' } }, { ws, other }), /is not in/);
+      assert.throws(() => applyControl({ id: 'o', write: { path: path.join(require('os').tmpdir(), 'pan-ctl-escape.txt'), content: 'x' } }, { ws, other }), /outside the workspace/);
+    } finally { fs.rmSync(ws, { recursive: true, force: true }); fs.rmSync(other, { recursive: true, force: true }); }
+  });
+
+  test('every shipped tier-0 scenario declares at least one control', () => {
+    const tier0 = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).filter((s) => s.tier === 0);
+    assert.ok(tier0.length >= 8, 'non-vacuity');
+    for (const s of tier0) assert.ok(Array.isArray(s.controls) && s.controls.length >= 1, s.id);
   });
 });
 
@@ -409,7 +454,7 @@ describe('harness cli steps take a step-scoped env', () => {
   });
 
   test('env is valid only on cli steps, with upper-case names and string values', () => {
-    const base = { id: 'x', tier: 0, description: 'd', why: 'w', seed: 'empty', install: null };
+    const base = { id: 'x', tier: 0, description: 'd', why: 'w', seed: 'empty', install: null, controls: [{ id: 'c', delete: 'x', why: 'w' }] };
     const cli = (env) => ({ ...base, steps: [{ kind: 'cli', bin: 'gemini', args: ['mcp', 'list'], env, expect: ['exit:0'], why: 'w' }] });
     assert.deepEqual(validateScenario(cli({ GEMINI_CLI_HOME: '<other>/gemini-home' })), []);
     for (const bad of [{ gemini_cli_home: 'x' }, { GEMINI_CLI_HOME: 1 }, ['GEMINI_CLI_HOME']]) {
@@ -1001,7 +1046,7 @@ describe('harness model steps take a runtime', () => {
   });
 
   test('pan and mcp steps may name the installed runtime they run against (run.cjs honours step.runtime)', () => {
-    const t0 = (step) => ({ id: 'x', tier: 0, description: 'd', why: 'w', seed: 'empty', install: null, budget: {}, steps: [{ expect: ['exit:0'], why: 'w', ...step }] });
+    const t0 = (step) => ({ id: 'x', tier: 0, description: 'd', why: 'w', seed: 'empty', install: null, budget: {}, steps: [{ expect: ['exit:0'], why: 'w', ...step }], controls: [{ id: 'c', delete: 'x', why: 'w' }] });
     assert.deepEqual(validateScenario(t0({ kind: 'pan', argv: ['state', 'json'], runtime: 'codex' })), []);
     assert.deepEqual(validateScenario(t0({ kind: 'mcp', requests: [], runtime: 'codex' })), []);
     assert.ok(validateScenario(t0({ kind: 'pan', argv: ['state', 'json'], runtime: 'cursor' })).some((e) => /runtime is only for/.test(e)));

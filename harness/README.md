@@ -12,6 +12,7 @@ node harness/src/run.cjs --tier 2 --max-usd 50 --repeat 5 --scenario native-exec
 node harness/src/run.cjs --scenario install-matrix          # one scenario
 node harness/src/run.cjs --repo <dir> --keep                 # pack another checkout; keep the extracted artifact after the run
 node harness/src/run.cjs --no-ledger                        # leave the tracked harness/ledger.jsonl untouched (CI)
+node harness/src/run.cjs --controls                         # also run every control: each sabotage must turn its scenario red
 node harness/src/run.cjs --help
 ```
 
@@ -94,6 +95,18 @@ Assertion kinds: `exit:<n>`, `file:<rel>`, `absent:<rel>`, `glob:<pattern>`,
 `count:<pattern>=<n>`, `json:<path>`, `json:<path>=<value>`, `json!:<path>`,
 `stdout~<regex>`, `stderr~<regex>`, `rpc:<id>.<path>[=<value>]`. Every kind has a
 both-direction test in `tests/harness.test.cjs`; add a kind there first.
+
+### Controls
+
+A scenario that cannot fail measures nothing. Every tier-0 scenario declares `controls`: at least one sabotage that must turn it red, and `validateScenario` refuses a tier-0 scenario without one.
+
+```json
+"controls": [
+  { "id": "no-manifest", "after": 0, "delete": "bundle/plugin.json", "why": "A bundle without its manifest is not a plugin." }
+]
+```
+
+Each control names exactly one sabotage, `delete: <path>`, `write: {path, content}` or `replace: {path, find, with}`, on a path inside the workspace or `<other>`. `after` is the index of the step it follows (default `-1`: after install and seed, before the first step). `--controls` runs each passing scenario once more per control, in a fresh workspace, and reports a **Controls** table: `killed` is the expected verdict. A control the scenario **survives** is a failure, because the scenario's assertions do not measure what they claim; a control that cannot be applied (its file or string is missing) is an error, because it changes nothing. Controls do not run by default, since they multiply a run's length; their failures never reach the ledger.
 
 Every step carries a `why`. That is not decoration — it is what makes a finding readable
 when it surfaces months later, and the runner writes it under each failure in `report.md`.

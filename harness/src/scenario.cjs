@@ -74,6 +74,26 @@ function validateScenario(s, fileName = '<inline>') {
     if (st.persistSession !== undefined && (st.kind !== 'model' || st.persistSession !== true)) err(`${at}: persistSession is only \`true\`, and only on model steps`);
   });
   if (s.tier >= 1 && !s.steps.some(st => st.kind === 'model' || st.paid === true)) err('a tier ≥1 scenario should contain a model step or a paid cli step (else it is tier 0)');
+  // Controls (H5): a tier-0 scenario declares at least one sabotage that must turn it
+  // red, so a scenario whose assertions measure nothing cannot stay in the suite.
+  if (s.controls !== undefined && !Array.isArray(s.controls)) err('controls must be an array');
+  const controls = Array.isArray(s.controls) ? s.controls : [];
+  if (s.tier === 0 && controls.length === 0) err('a tier-0 scenario needs controls: at least one sabotage that must turn it red');
+  const seen = new Set();
+  controls.forEach((c, i) => {
+    const at = `controls[${i}]`;
+    if (!c || typeof c !== 'object') { err(`${at}: not an object`); return; }
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(String(c.id || ''))) err(`${at}: id must be kebab-case`);
+    else if (seen.has(c.id)) err(`${at}: duplicate id "${c.id}"`); else seen.add(c.id);
+    if (typeof c.why !== 'string' || !c.why.trim()) err(`${at}: why required`);
+    if (c.after !== undefined && !(Number.isInteger(c.after) && c.after >= -1 && c.after < s.steps.length - 1)) err(`${at}: after must be -1 or the index of a step before the last`);
+    const ops = ['delete', 'write', 'replace'].filter((k) => c[k] !== undefined);
+    if (ops.length !== 1) err(`${at}: exactly one of delete, write, replace`);
+    const badPath = (p) => typeof p !== 'string' || !p || p.split(/[\\/]/).includes('..') || (/^[A-Za-z]:|^\//.test(p) && !/^<(ws|other)>/.test(p));
+    if (c.delete !== undefined && badPath(c.delete)) err(`${at}: delete needs a workspace-relative path`);
+    if (c.write !== undefined && (badPath(c.write && c.write.path) || typeof (c.write && c.write.content) !== 'string')) err(`${at}: write needs {path, content}`);
+    if (c.replace !== undefined && (badPath(c.replace && c.replace.path) || typeof (c.replace && c.replace.find) !== 'string' || !c.replace.find || typeof c.replace.with !== 'string')) err(`${at}: replace needs {path, find, with}`);
+  });
   return errors;
 }
 

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Harness controls: every tier-0 scenario carries a sabotage that must turn it red.** A scenario whose assertions cannot fail measures nothing. Each tier-0 scenario now declares `controls` (delete, write or replace a file at a given step), the scenario lint refuses one without, and `node harness/src/run.cjs --controls` re-runs each passing scenario per control and fails a control the scenario survives.
 - **A pre-tool guard hook on Claude Code, Codex, Gemini CLI and Copilot CLI.** `pan-guard.js` checks each file a tool call is about to write: a credential in the text, a direct write to PAN's own state, a test file the phase in flight does not declare. `hooks.guard: report`, the default, logs each match to `.planning/guard.jsonl`; `enforce` also denies a credential write, in each host's own way (exit 2 and a reason, or Copilot's `permissionDecision: deny`). It is inert outside PAN projects and fails open on anything it cannot parse.
 
 - **PAN's OpenCode plugin loads on OpenCode 2.** OpenCode 2's loader refuses a plugin without `setup` or `effect`, and PAN exported only `server`, so the compaction hand-off was lost there. The plugin now exports `{ id, server, setup }`: OpenCode 1 calls `server()` as before, OpenCode 2 calls `setup()`, which registers the same hand-off through `ctx.session.hook("compaction", …)`.

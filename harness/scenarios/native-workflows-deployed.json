@@ -10,5 +10,8 @@
     { "kind": "sh", "script": "check-workflows.cjs", "args": ["<ws>/.claude/workflows"],
       "expect": ["exit:0", "json:checked=4", "json:problems"],
       "why": "The checker prints {checked, problems}. Four scripts checked, zero problems — and `problems` must be PRESENT so an empty output cannot pass." }
+  ],
+  "controls": [
+    {"id":"missing-script","delete":".claude/workflows/pan-exec-waves.js","why":"Four scripts are expected; a missing one must fail the count."}
   ]
 }

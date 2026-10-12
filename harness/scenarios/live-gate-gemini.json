@@ -80,5 +80,8 @@
       ],
       "why": "The measurement: once the workspace is trusted, Gemini loads PAN's registration, starts the server, and connects to it. `Connected`, not merely not-Disabled. A broken registration (a wrong server path, measured 2026-09-29) lists as `✗ pan: … - Disconnected` with exit 0, which the old not-Disabled check would have passed."
     }
+  ],
+  "controls": [
+    {"id":"renamed-server","replace":{"path":".gemini/settings.json","find":"\"pan\":","with":"\"nap\":"},"why":"With PAN's MCP server registered under another name, the registration assertion and the listing must both fail."}
   ]
 }
