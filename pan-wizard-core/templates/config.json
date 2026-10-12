@@ -15,12 +15,7 @@
     "search_gitignored": false
   },
   "parallelization": {
-    "enabled": true,
-    "plan_level": true,
-    "task_level": false,
-    "skip_checkpoints": true,
-    "max_concurrent_agents": 3,
-    "min_plans_for_parallel": 2
+    "enabled": true
   },
   "gates": {
     "confirm_project": true,

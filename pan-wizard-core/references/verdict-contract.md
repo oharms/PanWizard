@@ -67,7 +67,7 @@ The verifier does not emit this block. Its verification.md frontmatter (`status`
 - `where`: `NN-MM-plan.md` or `NN-MM-plan.md#task-N`.
 
 **pan-reviewer.**
-- Classes by category: Convention → `quality`, Security → `risk`, Code Quality → `defect`, work no plan asked for → `unrequested`.
+- Classes by category: Convention → `quality`, Security → `risk`, Code Quality → `defect`, Design smell → `quality`, work no plan asked for → `unrequested`.
 - Severity: ERROR → `high`, WARNING → `medium`, INFO → `info`.
 - `where`: `path:line`.
 

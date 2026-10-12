@@ -176,7 +176,9 @@ function planningProject(label) {
  * reads TMPDIR on POSIX and TEMP/TMP on Windows.
  */
 function tmpdirEnv(dir) {
-  return { TMPDIR: dir, TEMP: dir, TMP: dir };
+  // CLAUDE_CONFIG_DIR blanked: the hooks read the user's Claude settings from it, and a
+  // developer's real settings must not move the thresholds under test.
+  return { TMPDIR: dir, TEMP: dir, TMP: dir, CLAUDE_CONFIG_DIR: '' };
 }
 
 let noNpmDir;
@@ -458,7 +460,7 @@ function driveContextFromTranscript(runtime, script, project, baseEnv, bridge) {
   const env = {
     ...baseEnv, HOME: home, USERPROFILE: home,
     ...Object.fromEntries(['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', 'DISABLE_AUTO_COMPACT',
-      'CLAUDE_CODE_DISABLE_1M_CONTEXT', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'ANTHROPIC_MODEL'].map((k) => [k, ''])),
+      'CLAUDE_CODE_DISABLE_1M_CONTEXT', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_USE_FOUNDRY', 'ANTHROPIC_MODEL', 'CLAUDE_CONFIG_DIR'].map((k) => [k, ''])),
   };
   const jsonl = (records) => records.map((r) => JSON.stringify(r)).join('\n') + '\n';
   // Every assistant record's context set to `used` tokens (all of it as cache reads).

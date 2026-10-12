@@ -315,3 +315,18 @@ The second run of `/reality-check`, against `main` @ `371a76b` (`3.29.0`), repor
 - **The unified skills tree left Claude Code with no commands.** Every other target runtime reads `.agents/skills/`; Claude does not. The installer now gives Claude its own copy, and the flat skill shims Claude had never loaded are gone.
 
 **Cadence.** The October re-run stands. This run adds one trigger to re-run early: a new default model on any target runtime.
+
+## 11. Reality check (run `2026-10-11`)
+
+Run on `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`, released `2026-10-10`) plus a same-day doc audit's working tree. Window `2026-09-22` → `2026-10-11`. The suite, every release gate, CI on `main` and harness tier 0 pass; a packed install writes every claimed surface on all five runtimes, and every MCP resource reads cleanly through the real engine on a bare project.
+
+| Finding | Bearing | Queue |
+|---|---|---|
+| OpenCode 2 (`@opencode/cli`; 1.19.0 moves users there) normalises PAN's v1 config in memory, and its published schema is still v1, but its plugin loader needs `setup` or `effect`, so PAN's compaction plugin does not load | The one v2 break; keep writing v1 config | R45, R47 |
+| The verifier's test gate is enforced by its prompt only; the recorder warns on a failed gate filed as `passed` and keeps the status | A claim stronger than the code | R46 |
+| README and COMPARISON claimed more than the code for the test gate, the MCP caps, UAT, budgets and plugin publication | Fixed the same day | — |
+| Several inherited statuses were wrong (corrections listed in `docs/specs/market-delta-2026-09-superplan.md` and the October queue's Addendum) | Docs, not code | — |
+| Two harness findings (`resume-cost`, `memory-not-loaded`) have never passed a live re-run | Behaviour unproven | R49 |
+| Superpowers v7.0.0 extends its distribution (Claude, Codex-curated and Grok official marketplaces) and its eval lab | Publication remains PAN's gap (MI-025) | — |
+
+**Convergence read holds:** the market keeps moving onto PAN's thesis (durable per-plan ledgers, fresh-context implementers, verification gates, explicit model choice, behavioural evals); the gaps are publication and the cost of fresh-context fan-out. **What not to do** adds one entry: do not emit OpenCode v2 config shapes. **Cadence:** re-run around `2026-11-22`, or earlier if OpenCode 2 becomes the default install or a host drops a path PAN writes. **Realigned `2026-10-12`:** the queue is `docs/specs/product_excellence_program_2026_q4_featureai.md` (R45 in W1, R46 by V9/V1); publication is deferred to its Exposure phase.

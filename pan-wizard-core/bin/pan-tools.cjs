@@ -31,7 +31,7 @@
  *   findings record|list|dispose|debt  Judges' verdicts and their findings ledger (evidence loop)
  *   phase-plan-index <phase>           Index plans with waves and status
  *   websearch <query>                  Search web via Brave API (if configured)
- *     [--limit N] [--freshness day|week|month]
+ *     [--limit N] [--freshness day|week|month|year]
  *
  * Phase Listing:
  *   phases list [--type plans|summaries]  List phases with optional type filter

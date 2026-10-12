@@ -105,15 +105,15 @@ HAS_TEST=$(node -e "try{const p=require('./package.json');process.stdout.write(p
 ```bash
 TEST_OUTPUT=$(npm test 2>&1)
 TEST_EXIT=$?
-TEST_COUNT=$(echo "$TEST_OUTPUT" | grep -E "^ℹ tests" | awk '{print $NF}')
-TEST_PASS=$(echo "$TEST_OUTPUT" | grep -E "^ℹ pass" | awk '{print $NF}')
-TEST_FAIL=$(echo "$TEST_OUTPUT" | grep -E "^ℹ fail" | awk '{print $NF}')
+TEST_COUNT=$(echo "$TEST_OUTPUT" | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
+TEST_PASS=$(echo "$TEST_OUTPUT" | grep -E "^(ℹ|#) pass" | awk '{print $NF}')
+TEST_FAIL=$(echo "$TEST_OUTPUT" | grep -E "^(ℹ|#) fail" | awk '{print $NF}')
 ```
 
 3. Evaluate results.
 
 **Check `TEST_EXIT` FIRST, before any count.** A suite that did not run emits no
-`ℹ fail` line at all, so `TEST_FAIL` comes back EMPTY — not `0`. Reading an empty
+`ℹ fail` / `# fail` line at all, so `TEST_FAIL` comes back EMPTY — not `0`. Reading an empty
 value as "no failures" scores a crashed suite as a pass, which is the worst
 direction this gate can fail in: a phase ships green on a project whose tests never
 executed. Empty is not zero. Judge the exit code, then the counts.
@@ -121,7 +121,7 @@ executed. Empty is not zero. Judge the exit code, then the counts.
 | Condition | Action |
 |-----------|--------|
 | `TEST_EXIT` = 0 **and** `TEST_FAIL` = 0 (a real number) | Record counts, continue to must-haves |
-| `TEST_EXIT` = 0 **and** no `ℹ` count lines (a runner other than Node's built-in one) | Set `test_gate_status: passed`; record the runner's own summary line as the counts |
+| `TEST_EXIT` = 0 **and** no `ℹ`/`#` count lines (a runner other than Node's built-in one) | Set `test_gate_status: passed`; record the runner's own summary line as the counts |
 | `TEST_EXIT` ≠ 0 **and** failures were reported | Set `test_gate_status: failed`, include failure details |
 | `TEST_EXIT` ≠ 0 **and** `TEST_FAIL` is empty/absent — the suite CRASHED or could not run (syntax error, missing module, bad import, no runner) | Set `test_gate_status: failed`, and record the reason as `suite did not run`. **Never `skipped`, never `passed`.** A suite that cannot execute is stronger evidence of a broken phase than one that runs and fails |
 | `HAS_TEST` = `no` (handled in step 1) | Record as `test_gate_status: skipped`, continue. This is the ONLY legitimate route to `skipped` |

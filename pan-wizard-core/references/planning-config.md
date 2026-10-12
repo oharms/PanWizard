@@ -42,7 +42,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: update state" --f
 
 # Load config via state load (returns JSON):
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load)
-# commit_docs is available in the JSON output
+# commit_docs is at .config.commit_docs in the JSON output
 
 # Or use init commands which include commit_docs:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init execute-phase "1")
@@ -147,7 +147,7 @@ INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init execute-phase "1")
 Or use `state load` for the config values:
 ```bash
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load)
-# Parse branching_strategy, phase_branch_template, milestone_branch_template from JSON
+# Parse .config.branching_strategy, .config.phase_branch_template, .config.milestone_branch_template from JSON
 ```
 
 **Branch creation:**
@@ -168,7 +168,7 @@ if [ "$BRANCHING_STRATEGY" = "milestone" ]; then
 fi
 ```
 
-**Merge options at milestone-done:**
+**Merge options after milestone-done (it does not merge — run one yourself):**
 
 | Option | Git command | Result |
 |--------|-------------|--------|

@@ -13,7 +13,7 @@ const os = require('os');
  *
  * @param {Object} data - Parsed stdin JSON from Claude Code.
  * @param {Object} [deps] - Optional dep injection for testing.
- *   {fs, path, homeDir, tmpDir} — defaults to real modules + OS paths.
+ *   {fs, path, homeDir, tmpDir, configDir} — defaults to real modules + OS paths (configDir: CLAUDE_CONFIG_DIR, ignored when homeDir is given).
  * @returns {string} The statusline content.
  */
 function buildStatuslineOutput(data, deps) {
@@ -155,7 +155,10 @@ function buildStatuslineOutput(data, deps) {
 
   // Current task from todos
   let task = '';
-  const todosDir = pathMod.join(homeDir, '.claude', 'todos');
+  // Claude Code keeps its todos in CLAUDE_CONFIG_DIR when that is set (a given
+  // homeDir is a test seam and ignores it).
+  const configDir = d.configDir !== undefined ? d.configDir : (d.homeDir ? '' : (process.env.CLAUDE_CONFIG_DIR || ''));
+  const todosDir = configDir ? pathMod.join(configDir, 'todos') : pathMod.join(homeDir, '.claude', 'todos');
   let todosExists = false;
   try { todosExists = fsMod.statSync(todosDir).isDirectory(); } catch { /* missing */ }
   if (session && todosExists) {

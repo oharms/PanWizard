@@ -110,7 +110,7 @@ All tests must pass. If not, fix before proceeding.
 ### Stage 5: Install Check
 ```powershell
 cd d:\pantesting
-Remove-Item .claude, .codex, .gemini, .opencode, .github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 Verify installed files are correct.

@@ -111,7 +111,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs websearch "your query" --limit 
 
 **Options:**
 - `--limit N` — Number of results (default: 10)
-- `--freshness day|week|month` — Restrict to recent content
+- `--freshness day|week|month|year` — Restrict to recent content
 
 If `brave_search: false` (or not set), use built-in WebSearch tool instead.
 

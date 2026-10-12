@@ -41,7 +41,7 @@ You coordinate development of **PAN Wizard** — a lightweight workflow automati
 | Agents (source) | `agents/*.md` | Agent definitions |
 | Hooks (source) | `hooks/*.js` | pure Node.js, copied to `hooks/dist/` |
 | Tests | `tests/*.test.cjs` | Unit tests (counts: CLAUDE.md's counts table) |
-| Scenarios | `tests/scenarios/*.test.cjs` | E2E installer tests |
+| Scenarios | `tests/scenarios/*.test.cjs` | Installer, integration and workflow scenarios |
 | Docs | `docs/*.md` | User & dev documentation |
 
 ## 5 Runtime Targets
@@ -99,7 +99,7 @@ npm run test:all
 
 # If installer or shipped files changed:
 cd d:\pantesting
-Remove-Item .claude, .codex, .gemini, .opencode, .github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 

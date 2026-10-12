@@ -1269,6 +1269,18 @@ function cmdOptimizeLearn(cwd, opts, raw) {
   }, raw);
 }
 
+/**
+ * `--report` as given resolves against the project (`--cwd`), not the shell's
+ * directory; a bare file name that is not there is looked up in the reports dir.
+ */
+function resolveReportPath(cwd, given) {
+  const abs = path.resolve(cwd, given);
+  if (fs.existsSync(abs)) return abs;
+  if (path.basename(given) !== given) return abs; // a path with directories is taken as given
+  const inReports = path.join(getReportsDir(cwd), given);
+  return fs.existsSync(inReports) ? inReports : abs;
+}
+
 function cmdOptimizeApply(cwd, opts, raw) {
   const reports = listOptimizationReports(cwd);
   if (reports.error || reports.count === 0) {
@@ -1276,7 +1288,7 @@ function cmdOptimizeApply(cwd, opts, raw) {
     return;
   }
 
-  const reportPath = opts.reportPath || reports.reports[0].path;
+  const reportPath = opts.reportPath ? resolveReportPath(cwd, opts.reportPath) : reports.reports[0].path;
   const result = applyReportRecommendations(cwd, reportPath);
   output({ report: path.basename(reportPath), ...result }, raw);
 }

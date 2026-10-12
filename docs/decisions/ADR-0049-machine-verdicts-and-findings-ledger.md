@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed — 2026-09-28; shipped in v3.32.0 (2026-09-29), acceptance not yet recorded. Implemented on `feat/evidence-loop` (spec `docs/specs/evidence_loop_featureai.md`, plan `docs/specs/evidence-loop-plan.md`); the maintainer accepts or amends it at release review. The decisions below were made in `/featureAI` on the maintainer's instruction to design, plan and build the evidence loop from the 2026-09-28 investigation and the September market-ideas queue.
+**Accepted — 2026-10-12** by the maintainer (recorded in `docs/specs/product_excellence_program_2026_q4_featureai.md` §3.4). Evidence-bound finding closure and stable finding ids (item V6 of that program) will land as an amendment.
+
+Proposed — 2026-09-28; shipped in v3.32.0 (2026-09-29). Implemented on `feat/evidence-loop` (spec `docs/specs/evidence_loop_featureai.md`, plan `docs/specs/evidence-loop-plan.md`); the maintainer accepts or amends it at release review. The decisions below were made in `/featureAI` on the maintainer's instruction to design, plan and build the evidence loop from the 2026-09-28 investigation and the September market-ideas queue.
 
 ## Context
 

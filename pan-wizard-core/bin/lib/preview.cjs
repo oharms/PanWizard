@@ -161,7 +161,8 @@ function buildPhasePreview(cwd, phaseNum) {
  * Produce a dependency graph + mermaid source + parallel-batch recommendation.
  *
  * Dependency detection:
- *  - plan frontmatter `depends_on: [phase:NN, phase:MM]` (explicit)
+ *  - the roadmap's `**Depends on:** Phase N` line (explicit)
+ *  - plan frontmatter `depends_on: [phase:NN, phase:MM]` (explicit; bare plan ids are not phases)
  *  - mentions of prior phases in plan text (heuristic, flagged as "hidden")
  *
  * @param {string} cwd - Project root
@@ -195,6 +196,13 @@ function buildPhaseDependencyGraph(cwd) {
     }
   }
 
+  // Graph keys are the roadmap checklist's numbers; a dependency written "01" or
+  // "Phase 1" resolves to the key whose unpadded form matches.
+  const unpad = (n) => String(n).trim().replace(/^0+(?=\d)/, '');
+  const keyByUnpadded = new Map(phaseList.map(p => [unpad(p.num), p.num]));
+  const keyOf = (n) => keyByUnpadded.get(unpad(n)) || unpad(n);
+  const { phaseDependencies } = require('./roadmap.cjs');
+
   for (const p of phaseList) {
     graph[p.num] = {
       num: p.num,
@@ -204,6 +212,15 @@ function buildPhaseDependencyGraph(cwd) {
       hidden_deps: [],
     };
 
+    const addExplicit = (d) => {
+      const key = keyOf(d);
+      if (key !== keyOf(p.num) && !graph[p.num].explicit_deps.includes(key)) graph[p.num].explicit_deps.push(key);
+    };
+
+    // Explicit via the roadmap: the phase's `**Depends on:** Phase N` line.
+    const roadmapPhase = getRoadmapPhaseInternal(cwd, p.num);
+    for (const d of phaseDependencies(roadmapPhase && roadmapPhase.section)) addExplicit(d);
+
     // Read plan files for depends_on frontmatter + prior-phase mentions.
     const dir = phaseDirs[p.num];
     if (!dir) continue;
@@ -212,35 +229,18 @@ function buildPhaseDependencyGraph(cwd) {
     try { files = fs.readdirSync(fullDir).filter(isPlanFile); } catch { continue; }
 
     // LF, so the frontmatter match below also finds a CRLF plan's depends_on.
-    const phaseText = toLf(files.map(f => safeReadFile(path.join(fullDir, f)) || '').join('\n'));
+    const planTexts = files.map(f => toLf(safeReadFile(path.join(fullDir, f)) || ''));
+    const phaseText = planTexts.join('\n');
 
-    // Explicit via frontmatter. Parse depends_on as freeform string (either
-    // inline `[phase:1, phase:2]`, or block-list). Extract all digit runs.
-    const fmMatch = phaseText.match(/^---\n([\s\S]*?)\n---/);
-    if (fmMatch) {
-      const depsLine = fmMatch[1].match(/^depends_on:\s*(.+)$/m);
-      if (depsLine) {
-        const digitRuns = depsLine[1].match(/\d+(?:\.\d+)?/g) || [];
-        for (const d of digitRuns) {
-          if (d !== p.num && !graph[p.num].explicit_deps.includes(d)) {
-            graph[p.num].explicit_deps.push(d);
-          }
-        }
-      }
-      // Also support block-list form:
-      //   depends_on:
-      //     - phase:1
-      //     - phase:2
-      const blockMatch = fmMatch[1].match(/^depends_on:\s*\n((?:\s*-\s*.+\n?)*)/m);
-      if (blockMatch && !depsLine) {
-        const items = blockMatch[1].match(/^\s*-\s*(.+)$/gm) || [];
-        for (const item of items) {
-          const d = item.match(/\d+(?:\.\d+)?/);
-          if (d && d[0] !== p.num && !graph[p.num].explicit_deps.includes(d[0])) {
-            graph[p.num].explicit_deps.push(d[0]);
-          }
-        }
-      }
+    // Explicit via each plan's frontmatter. A plan's `depends_on` names plan ids
+    // inside its own phase (`["01"]`), so only `phase:N` entries are phase
+    // dependencies, inline (`[phase:1, phase:2]`) or as a block list.
+    for (const text of planTexts) {
+      const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+      if (!fmMatch) continue;
+      const depsBlock = fmMatch[1].match(/^depends_on:[^\n]*(?:\n[ \t]*-[^\n]*)*/m);
+      if (!depsBlock) continue;
+      for (const m of depsBlock[0].matchAll(/\bphase[:\s]*(\d+(?:\.\d+)?)/gi)) addExplicit(m[1]);
     }
 
     // Hidden via mentions: "phase N", "from phase N", "as in phase N".
@@ -248,7 +248,8 @@ function buildPhaseDependencyGraph(cwd) {
     let mm;
     const mentions = new Set();
     while ((mm = mentionRe.exec(phaseText)) !== null) {
-      if (mm[1] !== p.num) mentions.add(mm[1]);
+      const k = keyOf(mm[1]);
+      if (k !== keyOf(p.num)) mentions.add(k);
     }
     graph[p.num].hidden_deps = [...mentions].filter(d => !graph[p.num].explicit_deps.includes(d));
   }

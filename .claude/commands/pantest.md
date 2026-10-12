@@ -27,6 +27,7 @@ This is the PAN Wizard SOURCE REPOSITORY.
    - **IF MISSING:** Start new testing session
 2. **EXECUTE** all phases sequentially
 3. **UPDATE** status after each phase
+4. **CLEAN UP** at the end — delete `pantest_status.md` and `pantest_baseline.txt`; neither is gitignored, so a later `git add -A` would commit them
 
 ---
 

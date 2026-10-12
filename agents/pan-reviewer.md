@@ -72,7 +72,7 @@ If a changed file path starts with any of these prefixes, **skip it silently**.
 ## Design smells (baseline)
 
 A fixed baseline that applies even when the project documents no standards (Fowler, *Refactoring*, ch. 3). Rules:
-- Each is a judgement call: always **INFO**, written as "possible <smell>", never a reason for a non-PASS verdict on its own.
+- Each is a judgement call: always **INFO**, written as "possible <smell>", never a reason for a non-PASS verdict on its own; its Category is `Design smell`.
 - **The project wins.** Where a documented project standard, or an established pattern in the code, endorses what a smell would flag, do not report it. Skip anything a linter or formatter already enforces.
 - Only for code this phase changed, and only with a file:line and the hunk that shows it.
 
@@ -136,7 +136,7 @@ Return a structured review report:
 **Machine verdict (required).** End the report with a `pan-verdict` block. The contract is in `~/.claude/pan-wizard-core/references/verdict-contract.md`. How to fill it:
 - `verdict` is the word under `### Verdict`; `outcome` is `fail` for NEEDS_FIXES and `pass` otherwise.
 - Add one finding per table row. ERROR → `high`, WARNING → `medium`, INFO → `info`.
-- Category maps to class: Convention → `quality`, Security → `risk`, Code Quality → `defect`, Unrequested → `unrequested`.
+- Category maps to class: Convention → `quality`, Security → `risk`, Code Quality → `defect`, Design smell → `quality`, Unrequested → `unrequested`.
 - `where` is `file:line`.
 - A clean review has `"findings": []`.
 

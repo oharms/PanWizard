@@ -74,7 +74,7 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 
 **Before committing to a milestone date externally:** run `/pan:preview milestone`. Look at `confidence_pct` and `sample_size`. If sample is <3, don't promise a date.
 
-**Before running phases in parallel:** run `/pan:preview phases`. Parallel batches from the data layer are based on declared `depends_on` only; `hidden_coupling_count > 0` means there are cross-phase references the author should promote to explicit deps before parallelizing.
+**Before running phases in parallel:** run `/pan:preview phases`. Parallel batches from the data layer are based on declared dependencies only — the roadmap's `**Depends on:** Phase N` line and any `phase:N` entry in a plan's `depends_on`; `hidden_coupling_count > 0` means there are cross-phase references the author should promote to explicit deps (on the roadmap's Depends on line) before parallelizing.
 
 </workflow>
 

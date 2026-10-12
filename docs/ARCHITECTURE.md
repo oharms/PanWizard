@@ -81,7 +81,7 @@ Memory and caching are file-based, so they work on all 5 runtimes. Extended thin
 
 **The model-name read that users actually see** is the installer's, and it only prints advice. `detectModelCapabilities()` in `bin/install-lib.cjs` is a hand-maintained substring table over literal model-ID fragments (`opus-5`, `sonnet-4-6`, `gpt-5`, `gemini-3`, … — read the function for the current set rather than trusting this sample); `install.js` calls it once, post-install, against the `model` field in `settings.json`, and prints a note if that model is known to lack 1M context or extended thinking. That warning is the table's only consumer — it gates no feature and blocks nothing. `--skip-warnings` suppresses it.
 
-Because it is a name table and not a live probe, it is written to lean forward-compatible. Generations the table knows map exactly. The forward threshold per family is the **last reduced-capability release the table records** for it — not the newest release it lists: any Claude ID whose parsed release number is strictly newer than that boundary inherits its family's modern profile instead of reading as capability-less. Major and point are compared as a pair (so a two-digit point release sorts above a one-digit one), which is what makes a *later point release inside an already-tabled major* forward-compatible too, not just a new major — neither draws a false "lacks 1M context" note. An ID resolves either by matching an explicit branch in the table or — for Claude names — by carrying a family plus a readable release number strictly newer than that family's last reduced-capability release; anything that resolves neither way reads as `tier: 'unknown'` with every capability flag false. Note that "its family's modern profile" is not a synonym for "top capabilities": a newer Haiku inherits Haiku's profile, which has neither 1M context nor thinking. It stays a best-effort advisory heuristic — a genuinely new family can still read as unknown and trigger the note until a branch is added.
+Because it is a name table and not a live probe, it is written to lean forward-compatible. Generations the table knows map exactly. The forward threshold per family is the **last reduced-capability release the table records** for it — not the newest release it lists: any Claude ID whose parsed release number is strictly newer than that boundary inherits its family's modern profile instead of reading as capability-less. Major and point are compared as a pair (so a two-digit point release sorts above a one-digit one), which is what makes a *later point release inside an already-tabled major* forward-compatible too, not just a new major — neither draws a false "lacks 1M context" note. An ID resolves either by matching an explicit branch in the table or — for Claude names — by carrying a family plus a readable release number strictly newer than that family's last reduced-capability release; anything that resolves neither way reads as `tier: 'unknown'` with every capability flag false. Note that "its family's modern profile" means the newest profile the table records for that family, not the top-tier one: a newer Haiku inherits the newest Haiku profile (1M context and thinking, at the fast tier), never Opus's. It stays a best-effort advisory heuristic — a genuinely new family can still read as unknown and trigger the note until a branch is added.
 
 ### Spec B v2 (v3.0-v3.4)
 
@@ -225,7 +225,7 @@ Most commands do no heavy work directly: their substantive logic lives in workfl
 
 ### Command-Only Files (No Workflow)
 
-These commands are self-contained in their `.md` file and do not delegate to a separate workflow; so are `army`, `audit-deployment`, `cost`, `dashboard`, `experiment`, `git`, `hud`, `hygiene`, `knowledge`, `links`, `mcp-bridge`, `optimize`, `preview`, `report`, `review-deep` and `what-if`, none of which references a workflow file:
+These commands are self-contained in their `.md` file and do not delegate to a separate workflow; so are `army`, `audit-deployment`, `cost`, `dashboard`, `experiment`, `git`, `hud`, `hygiene`, `knowledge`, `links`, `mcp-bridge`, `preview`, `report`, `review-deep` and `what-if`, none of which references a workflow file:
 
 | Command | Reason |
 |---------|--------|
@@ -281,7 +281,6 @@ No user command runs these workflows: `execute-plan.md` and `transition.md` are 
 | `transition.md` | Phase-to-phase transition logic |
 | `diagnose-issues.md` | One debugger per failed UAT truth, root cause only; ported to the native `/pan-diagnose-issues` script — no command references it directly |
 | `research-phase.md` | Standalone research protocol; not referenced by any command today (`/pan:research-phase` is self-contained) |
-| `optimize.md` | Subcommand routing for `/pan:optimize`; not referenced by any command today (`/pan:optimize` is self-contained) |
 
 ---
 
@@ -329,7 +328,7 @@ For deep dives on each agent's inputs, outputs, behaviors, and unique features, 
 **Location:** `pan-wizard-core/bin/lib/*.cjs`
 **CLI entry:** `pan-wizard-core/bin/pan-tools.cjs`
 
-The Node.js runtime layer. Zero external dependencies — only Node.js built-in modules (`fs`, `path`, `child_process`, `os`, `crypto`). Commands and workflows call `pan-tools.cjs` via bash and parse JSON output.
+The Node.js runtime layer. Zero external dependencies — only Node.js built-in modules (`fs`, `path`, `child_process`, `os`, `crypto`; the CLI entry also loads `module` to turn on Node's compile cache). Commands and workflows call `pan-tools.cjs` via bash and parse JSON output.
 
 ### CLI Interface
 
@@ -976,7 +975,7 @@ Node's built-in `node:test` runner, which PAN's own suite uses, and the hook cop
 
 ### 2. Zero Runtime Dependencies
 
-The core library uses only Node.js built-in modules (`fs`, `path`, `child_process`, `os`, `crypto`). This keeps installation fast, eliminates supply chain risk, and ensures the tool works offline after install.
+The core library uses only Node.js built-in modules (`fs`, `path`, `child_process`, `os`, `crypto`; the CLI entry also loads `module` for Node's compile cache). This keeps installation fast, eliminates supply chain risk, and ensures the tool works offline after install.
 
 ### 3. Markdown-as-Code
 

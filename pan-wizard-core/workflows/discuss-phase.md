@@ -130,7 +130,7 @@ Exit workflow.
 </step>
 
 <step name="auto_mode_bypass">
-**P-1803 fix (v3.7.8):** When `--auto` is set or `workflow.auto_advance: true`, **skip the entire question-driven discussion** and synthesize a minimal `context.md` directly from upstream artifacts. The unguarded `AskUserQuestion` calls in `check_existing`, `present_gray_areas` and `discuss_areas` all stall headless `claude -p` sessions immediately. Surfaced by the wookie autonomous build (v3.7.7): retry attempts via `/pan:discuss-phase 3 --auto` exited in 75s with $0.42 cost and zero commits before plan-phase auto-mode was patched to bypass discuss-phase entirely. This step makes discuss-phase itself auto-mode-safe, so it can be re-introduced into the auto pipeline cleanly.
+**P-1803 fix (v3.7.8):** When `--auto` is set or `workflow.auto_advance: true`, **skip the entire question-driven discussion** and synthesize a minimal `context.md` directly from upstream artifacts. The unguarded `AskUserQuestion` calls in `check_existing`, `present_gray_areas` and `discuss_areas` all stall headless `claude -p` sessions immediately. Surfaced by the wookie autonomous build (v3.7.7): retry attempts via `/pan:discuss-phase 3 --auto` exited in 75s with 42 cents of cost and zero commits before plan-phase auto-mode was patched to bypass discuss-phase entirely. This step makes discuss-phase itself auto-mode-safe, so it can be re-introduced into the auto pipeline cleanly.
 
 Detect auto mode:
 

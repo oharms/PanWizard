@@ -2,6 +2,8 @@
 
 ## Status
 
+**Amended `2026-10-12` (D2):** a step backed by the harness's local model double — capture, scripted or replayed answers, with no request reaching a real model — spends nothing and counts as tier 0, so it needs no `--max-usd` and may run in CI. Record mode (which proxies to a real model) stays tier ≥1, needs `--max-usd`, and uses API-key auth only (decided by the maintainer, `docs/specs/product_excellence_program_2026_q4_featureai.md` §3.4).
+
 **Amended `2026-10-10` (D4, MI-104):** a `model` step may name a `runtime` — `claude` (the default and the only host with an output parser) or `codex`, `copilot`, `gemini`, `opencode`, whose argv follows each CLI's own help. A host without a parser is refused before anything runs, because D2's cap needs the step's cost; each host gets its parser from one captured run.
 
 Accepted — 2026-09-10. Replaces the PanLoop harness (`D:\panwiz_recursiontest`), which no longer exists on disk; only its Claude transcript folder survives, and this record was written from what that transcript and its recovered files show worked. Implementation under `harness/`; the model-free tier ran green against a packed artifact the day this was accepted.

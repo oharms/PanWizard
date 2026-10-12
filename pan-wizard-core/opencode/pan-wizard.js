@@ -11,7 +11,7 @@
 // hooks/pan-state-reinject.js after compaction.
 //
 // Installed by the PAN installer as <opencode config dir>/plugins/pan-wizard.js,
-// beside the `{"type":"commonjs"}` package.json PAN writes there, so this file is
+// below the `{"type":"commonjs"}` package.json PAN writes in the config dir, so this file is
 // CommonJS and exports the plugin module shape `{ id, server }`.
 //
 // Inert unless the project is a PAN project with work in flight (a state.md naming

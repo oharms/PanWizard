@@ -202,3 +202,19 @@ describe('native workflows: script ⇄ markdown twin drift pin (5b)', () => {
     }
   });
 });
+
+// The review pipeline's findings schema forced critical/major/minor/info while every
+// other PAN reviewer path (verdict.cjs, review-deep.cjs, /pan:review-deep) uses one
+// ladder; the meta-reviewer then merged findings graded on a ladder it does not use
+// (doc audit 2026-10-11).
+describe('native review pipeline grades on PAN\'s severity ladder', () => {
+  test('its FINDINGS severity enum is verdict.cjs SEVERITIES', () => {
+    const { SEVERITIES } = require('../pan-wizard-core/bin/lib/verdict.cjs');
+    const s = scripts.find((x) => x.name === 'pan-review-pipeline.js');
+    assert.ok(s, 'pan-review-pipeline script exists');
+    const m = s.content.match(/severity: \{ type: 'string', enum: \[([^\]]+)\] \}/);
+    assert.ok(m, 'severity enum present');
+    const enumVals = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+    assert.deepEqual(enumVals, [...SEVERITIES]);
+  });
+});

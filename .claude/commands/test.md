@@ -47,7 +47,7 @@ This runs all `tests/*.test.cjs` files via Node.js test runner.
 npm run test:scenarios
 ```
 
-Tests in `tests/scenarios/*.test.cjs` — end-to-end installer scenarios using temp directories.
+Tests in `tests/scenarios/*.test.cjs` — installer, integration and workflow scenarios (CLI contracts, the phase/milestone/git workflows, runtime parity) using temp directories.
 
 ## All Tests
 
@@ -61,7 +61,7 @@ npm run test:all
 
 ```powershell
 # Clean and test fresh install (all 5 runtimes)
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 cd d:\pantesting
 node d:\PanWizard\bin\install.js --all --local
 ```
@@ -78,7 +78,7 @@ Test-Path d:\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs
 
 ```powershell
 # By filename pattern
-node --test tests/installer*.test.cjs
+node --test tests/installer*.test.cjs   # Node 22+ expands the glob itself; on older Node under PowerShell, list the files
 node --test tests/config.test.cjs
 
 # By test name

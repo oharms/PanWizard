@@ -31,7 +31,7 @@ Installation verification goes to `d:\pantesting`.
    ```powershell
    npm test
    ```
-5. **Run scenario tests** if the feature involves installation:
+5. **Run scenario tests** — they cover the installer and also the `pan-tools` contracts and workflows, so run them for any engine change too:
    ```powershell
    npm run test:scenarios
    ```
@@ -63,7 +63,7 @@ Verify all 5 runtimes install correctly:
 
 ```powershell
 # Clean slate
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 
 # Install each runtime
 cd d:\pantesting

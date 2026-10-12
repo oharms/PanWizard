@@ -19,6 +19,8 @@ Reduced scope from Spec B v1's X-7: **discovery and recommendation only**. Auto-
 @~/.claude/pan-wizard-core/bin/lib/bridge.cjs
 </execution_context>
 
+Each subcommand runs `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs bridge <list|recommend|cache> [flags]`. The CLI verb is `bridge`, not `mcp-bridge`: `pan-tools mcp-bridge` is an unknown command.
+
 <subcommands>
 
 ### `list`

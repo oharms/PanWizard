@@ -50,9 +50,10 @@ function validateScenario(s, fileName = '<inline>') {
     if (st.kind === 'pan' && !Array.isArray(st.argv)) err(`${at}: pan steps need argv[]`);
     if (st.kind === 'mcp' && !Array.isArray(st.requests)) err(`${at}: mcp steps need requests[]`);
     if (st.kind === 'model' && typeof st.prompt !== 'string') err(`${at}: model steps need a prompt`);
-    // `runtime` picks the host CLI a model step drives (default claude; MI-104).
-    if (st.runtime !== undefined && (st.kind !== 'model' || !Object.prototype.hasOwnProperty.call(MODEL_RUNTIMES, st.runtime))) {
-      err(`${at}: runtime is only for model steps, one of ${Object.keys(MODEL_RUNTIMES).join(', ')}`);
+    // `runtime` picks the host CLI a model step drives (default claude; MI-104), and the
+    // installed runtime directory a pan or mcp step runs against (run.cjs honours both).
+    if (st.runtime !== undefined && (!['model', 'pan', 'mcp'].includes(st.kind) || !Object.prototype.hasOwnProperty.call(MODEL_RUNTIMES, st.runtime))) {
+      err(`${at}: runtime is only for model, pan and mcp steps, one of ${Object.keys(MODEL_RUNTIMES).join(', ')}`);
     }
     if (st.kind === 'build' && !/^[a-z-]+\.js$/.test(String(st.script || ''))) err(`${at}: build steps need a scripts/<name>.js`);
     if (st.kind === 'sh' && !/^[a-z-]+\.cjs$/.test(String(st.script || ''))) err(`${at}: sh steps need a harness/scripts/<name>.cjs`);

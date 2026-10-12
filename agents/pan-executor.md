@@ -453,7 +453,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements mark-complete ${RE
 **State command behaviors:**
 - `state advance-plan`: Increments Current Plan, detects last-plan edge case, sets status
 - `state update-progress`: Recalculates progress bar from summary.md counts on disk
-- `state record-metric`: Appends to Performance Metrics table
+- `state record-metric`: Appends a per-plan row to the Performance Metrics table
 - `state add-decision`: Adds to Decisions section, removes placeholders
 - `state record-session`: Updates Last session timestamp and Stopped At fields
 - `roadmap update-plan-progress`: Updates roadmap.md progress table row with PLAN vs SUMMARY counts

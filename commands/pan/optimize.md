@@ -111,3 +111,5 @@ List all trace sessions, most recent first.
 Each iteration puts what the last run lacked where the next run's agents read it: fewer repeated errors and gaps.
 
 **See also:** `/pan:learn`, `/pan:exec-phase`
+
+Follow the workflow at `~/.claude/pan-wizard-core/workflows/optimize.md`. Each subcommand runs `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize <subcommand> [flags]` — e.g. `optimize apply --report <path>`, `optimize revert --last`, `optimize trace init --description "..."`.

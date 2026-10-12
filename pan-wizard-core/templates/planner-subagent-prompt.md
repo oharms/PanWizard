@@ -71,6 +71,7 @@ Before returning PLANNING COMPLETE:
 Task(
   prompt=filled_template,
   subagent_type="pan-planner",
+  model="{planner_model}",
   description="Plan Phase {phase}"
 )
 ```
@@ -80,6 +81,7 @@ Task(
 Task(
   prompt=filled_template,  # with mode: gap_closure
   subagent_type="pan-planner",
+  model="{planner_model}",
   description="Plan gaps for Phase {phase}"
 )
 ```

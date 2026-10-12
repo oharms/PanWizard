@@ -995,9 +995,16 @@ describe('harness model steps take a runtime', () => {
   test('a model step may name one of the five hosts, and nothing else', () => {
     assert.deepEqual(Object.keys(MODEL_RUNTIMES).sort(), ['claude', 'codex', 'copilot', 'gemini', 'opencode']);
     for (const rt of Object.keys(MODEL_RUNTIMES)) assert.deepEqual(validateScenario(scen({ runtime: rt })), [], rt);
-    assert.ok(validateScenario(scen({ runtime: 'cursor' })).some((e) => /runtime is only for model steps/.test(e)));
+    assert.ok(validateScenario(scen({ runtime: 'cursor' })).some((e) => /runtime is only for model, pan and mcp steps/.test(e)));
     const fsStep = { id: 'x', tier: 0, description: 'd', why: 'w', seed: 'empty', install: null, budget: {}, steps: [{ kind: 'fs', expect: ['exit:0'], why: 'w', runtime: 'codex' }] };
-    assert.ok(validateScenario(fsStep).some((e) => /runtime is only for model steps/.test(e)));
+    assert.ok(validateScenario(fsStep).some((e) => /runtime is only for model, pan and mcp steps/.test(e)));
+  });
+
+  test('pan and mcp steps may name the installed runtime they run against (run.cjs honours step.runtime)', () => {
+    const t0 = (step) => ({ id: 'x', tier: 0, description: 'd', why: 'w', seed: 'empty', install: null, budget: {}, steps: [{ expect: ['exit:0'], why: 'w', ...step }] });
+    assert.deepEqual(validateScenario(t0({ kind: 'pan', argv: ['state', 'json'], runtime: 'codex' })), []);
+    assert.deepEqual(validateScenario(t0({ kind: 'mcp', requests: [], runtime: 'codex' })), []);
+    assert.ok(validateScenario(t0({ kind: 'pan', argv: ['state', 'json'], runtime: 'cursor' })).some((e) => /runtime is only for/.test(e)));
   });
 
   test('each host\'s argv is what its --help documents', () => {

@@ -81,6 +81,7 @@
     "VALID_COMMIT_TYPES:object",
     "appendErrorPattern:function",
     "appendSessionSummary:function",
+    "braveFreshness:function",
     "cmdBatchCommit:function",
     "cmdCommit:function",
     "cmdCurrentTimestamp:function",

@@ -2147,7 +2147,7 @@ const FINDINGS = {
         properties: {
           title: { type: 'string' },
           file: { type: 'string' },
-          severity: { type: 'string', enum: ['critical', 'major', 'minor', 'info'] },
+          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'info'] }, // PAN's one ladder (verdict.cjs, review-deep.cjs)
           detail: { type: 'string' },
         },
         required: ['title', 'severity', 'detail'],

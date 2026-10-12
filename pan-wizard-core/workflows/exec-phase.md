@@ -34,7 +34,7 @@ Load all context in one call:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init execute-phase "${PHASE_ARG}")
 ```
 
-Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`, `verifier_enabled`.
+Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`, `verifier_enabled`. In the shell steps below, `$PHASE_DIR` (and `$phase_dir`) is `phase_dir` and `$PHASE_NUMBER` is `phase_number`.
 
 **If `phase_found` is false:** Error — phase directory not found.
 **If `plan_count` is 0:** Error — no plans found in phase.
@@ -319,7 +319,7 @@ After all waves:
 
 1. Record baseline test count:
 ```bash
-TEST_BASELINE=$(npm test 2>&1 | grep -E "^ℹ tests" | awk '{print $NF}')
+TEST_BASELINE=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 ```
 
 2. Invoke phase-tests workflow for the completed phase:
@@ -342,7 +342,7 @@ Alternatively, if the user's AI tool supports it, invoke the command directly:
 
 3. Record new test count:
 ```bash
-TEST_AFTER=$(npm test 2>&1 | grep -E "^ℹ tests" | awk '{print $NF}')
+TEST_AFTER=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 ```
 
 4. Report:
@@ -352,6 +352,8 @@ TEST_AFTER=$(npm test 2>&1 | grep -E "^ℹ tests" | awk '{print $NF}')
 - After: ${TEST_AFTER} tests
 - New tests: +$((TEST_AFTER - TEST_BASELINE))
 ```
+
+`ℹ tests N` (spec reporter) and `# tests N` (TAP, Node's default for piped output before Node 23) are the summary lines of Node's built-in test runner, and both greps above match either. With any other runner both counts come back empty, so report the runner's own summary line instead of `+0`.
 
 **If tests fail after generation:** Report failures but continue to next step. Test issues are caught by the verify-phase test gate.
 </step>
@@ -365,7 +367,7 @@ TEST_AFTER=$(npm test 2>&1 | grep -E "^ℹ tests" | awk '{print $NF}')
 ```bash
 # Read each summary.md and extract key-files.created + key-files.modified
 for summary in "$PHASE_DIR"/*-summary.md; do
-  grep -A 50 "key-files" "$summary" | grep -E "^\s*-" | sed 's/^\s*- //'
+  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$summary" --fields key_files | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const k=JSON.parse(s).key_files||{};for(const f of [...(k.created||[]),...(k.modified||[])])console.log(f)})"
 done | sort -u > /tmp/review-files.txt
 ```
 
@@ -683,7 +685,7 @@ If `workflow.verifier` is true in config, confirm the current phase has a passin
 VERIF=$(ls "$phase_dir"/*-verification.md 2>/dev/null | head -1)
 VERIF_STATUS=""
 if [ -n "$VERIF" ]; then
-  VERIF_STATUS=$(grep "^status:" "$VERIF" | awk '{print $2}')
+  VERIF_STATUS=$(grep "^status:" "$VERIF" | sed "s/^status:[[:space:]]*//")
 fi
 ```
 

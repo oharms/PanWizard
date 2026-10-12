@@ -6225,7 +6225,7 @@ Panels render only when they have data — a plain (non-army) project still gets
 | **Requirements & quality** | Requirements done/open + last verification artifacts | `requirements.md`, phase `*-verification.md` / `*-uat.md` |
 | **Recent activity** | Last commits (the army's committed output) | `git log` |
 
-*(army)* panels appear only when a campaign is scheduled or army worktrees exist — graceful degradation per ADR-0035. The *(fallback)* **Planning activity** panel appears only when there is no phase/roadmap layout, so it fills the gap for focus-auto and imported projects instead of leaving a bare page. Telemetry shows an honest advisory (never a fabricated `$0.00`) when the cost ledger is poisoned or every record is unpriced.
+*(army)* panels appear only when a campaign is scheduled or army worktrees exist — graceful degradation per ADR-0035. The *(fallback)* **Planning activity** panel appears only when there is no phase/roadmap layout, so it fills the gap for focus-auto and imported projects instead of leaving a bare page. Telemetry shows an honest advisory (never a fabricated zero-dollar total) when the cost ledger is poisoned or every record is unpriced.
 
 </panels>
 
@@ -6851,7 +6851,7 @@ The orchestrator loads context in layers — NOT everything upfront. Mapper agen
 
 ---
 
-### /pan:mcp-bridge (145 lines)
+### /pan:mcp-bridge (147 lines)
 
 ````markdown
 ---
@@ -6874,6 +6874,8 @@ Reduced scope from Spec B v1's X-7: **discovery and recommendation only**. Auto-
 <execution_context>
 @~/.claude/pan-wizard-core/bin/lib/bridge.cjs
 </execution_context>
+
+Each subcommand runs `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs bridge <list|recommend|cache> [flags]`. The CLI verb is `bridge`, not `mcp-bridge`: `pan-tools mcp-bridge` is an unknown command.
 
 <subcommands>
 
@@ -7475,7 +7477,7 @@ Preserve all workflow gates (validation, approvals, commits, routing).
 
 ---
 
-### /pan:optimize (113 lines)
+### /pan:optimize (115 lines)
 
 ````markdown
 ---
@@ -7591,6 +7593,8 @@ List all trace sessions, most recent first.
 Each iteration puts what the last run lacked where the next run's agents read it: fewer repeated errors and gaps.
 
 **See also:** `/pan:learn`, `/pan:exec-phase`
+
+Follow the workflow at `~/.claude/pan-wizard-core/workflows/optimize.md`. Each subcommand runs `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize <subcommand> [flags]` — e.g. `optimize apply --report <path>`, `optimize revert --last`, `optimize trace init --description "..."`.
 ````
 
 
@@ -7844,7 +7848,7 @@ Run: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs context-budget --raw`
 ---
 name: pan:phase-tests
 group: Phase Management
-description: Generate tests for a completed phase based on UAT criteria and implementation
+description: Generate tests for a completed phase from its summaries, context decisions, verification report and implementation
 argument-hint: "<phase> [additional instructions]"
 allowed-tools:
   - Read
@@ -8106,7 +8110,7 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 
 **Before committing to a milestone date externally:** run `/pan:preview milestone`. Look at `confidence_pct` and `sample_size`. If sample is <3, don't promise a date.
 
-**Before running phases in parallel:** run `/pan:preview phases`. Parallel batches from the data layer are based on declared `depends_on` only; `hidden_coupling_count > 0` means there are cross-phase references the author should promote to explicit deps before parallelizing.
+**Before running phases in parallel:** run `/pan:preview phases`. Parallel batches from the data layer are based on declared dependencies only — the roadmap's `**Depends on:** Phase N` line and any `phase:N` entry in a plan's `depends_on`; `hidden_coupling_count > 0` means there are cross-phase references the author should promote to explicit deps (on the roadmap's Depends on line) before parallelizing.
 
 </workflow>
 
@@ -8389,7 +8393,7 @@ Render **self-contained HTML reports** — no server, no network, no external CS
 
 Like `pan:hud`, these are *views*, not a new source of truth: every value is read from what PAN already tracks on disk (the phase's `plan`/`summary`/`verification` artifacts and their frontmatter, `roadmap.md`, and the cost ledger). The command only writes the rendered file(s), so it can never corrupt planning data. Reports reuse the HUD's visual language, so they look like part of the same product.
 
-Reports are honest by construction: the `verify reconcile` verdict is shown beside the (rubber-stampable) self-reported verification status, status is framed as a current-disk snapshot, and any spend is gated so a poisoned or unpriced ledger never renders a fake `$0`.
+Reports are honest by construction: the `verify reconcile` verdict is shown beside the (rubber-stampable) self-reported verification status, status is framed as a current-disk snapshot, and any spend is gated so a poisoned or unpriced ledger never renders a fake zero-dollar spend.
 </objective>
 
 <execution_context>
@@ -9644,7 +9648,7 @@ Installation verification goes to `d:\pantesting`.
    ```powershell
    npm test
    ```
-5. **Run scenario tests** if the feature involves installation:
+5. **Run scenario tests** — they cover the installer and also the `pan-tools` contracts and workflows, so run them for any engine change too:
    ```powershell
    npm run test:scenarios
    ```
@@ -9676,7 +9680,7 @@ Verify all 5 runtimes install correctly:
 
 ```powershell
 # Clean slate
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 
 # Install each runtime
 cd d:\pantesting
@@ -9776,7 +9780,7 @@ Show summary: files modified, added, deleted, lines changed.
 
 ## Step 3: Run Tests (if code changed)
 
-**Skip if ONLY `.md` or `.txt` files changed.**
+**Skip only if every changed file is a dev doc under `.claude/`.** Markdown is not exempt: the suite lints `docs/`, `commands/pan/`, `agents/`, `pan-wizard-core/{workflows,references,templates}/`, `harness/` and the root `.md` files (`tests/doc-lint.test.cjs`, `tests/model-version-drift.test.cjs`, `tests/claude-md-counts.test.cjs`), and many other unit tests assert the text of shipped markdown.
 
 Otherwise:
 ```powershell
@@ -10290,7 +10294,7 @@ All tests must pass. If not, fix before proceeding.
 ### Stage 5: Install Check
 ```powershell
 cd d:\pantesting
-Remove-Item .claude, .codex, .gemini, .opencode, .github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 Verify installed files are correct.
@@ -10771,7 +10775,7 @@ Execute every phase the flags leave enabled. Do NOT stop between phases. The onl
 - **The GitHub releases API defaults to 30 items** — on a busy repo (Codex) that does not reach a two-week window start. Use `per_page=100`.
 - **The Claude Code changelog carries no dates.** Date a version from the npm registry: `npm view @anthropic-ai/claude-code time --json`. The `stable` dist-tag lags `latest` by a dozen versions; WATCH triggers should name which one.
 - **Big docs pages overflow WebFetch** (settings, memory, plugin-evals) — the tool persists the page to a file; grep that file instead of re-fetching.
-- **Re-read before encoding.** A scout's number is a lead: on `2026-09-22` one reported GPT-6 prices at double the page. Any price, default id or event name an item will write into the tree is re-read from the raw primary text on the day it is written.
+- **Re-read before encoding.** A scout's number is a lead: on `2026-09-22` one reported a new model's prices at double the page. Any price, default id or event name an item will write into the tree is re-read from the raw primary text on the day it is written.
 - **Timing:** three scouts in parallel took 12–20 minutes each (85–134 fetches apiece); the peers scout is the slow one. Launch them before reading anything local.
 
 ---
@@ -11041,7 +11045,7 @@ npm run test:all
 ### Phase 7: Install Verify (if installer/shipped files changed)
 ```powershell
 cd d:\pantesting
-Remove-Item .claude, .codex, .gemini, .opencode, .github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 
@@ -11057,7 +11061,7 @@ node d:\PanWizard\bin\install.js --all --local
 
 ### Phase 10: Ship
 - Final `npm run test:all`
-- Commit with descriptive message
+- Delete `pandev_status.md` (it is not gitignored, so `git add -A` would commit it), then commit with a descriptive message
 - Update version if warranted
 
 ---
@@ -11075,7 +11079,7 @@ node d:\PanWizard\bin\install.js --all --local
 
 ---
 
-### /pantest (144 lines)
+### /pantest (145 lines)
 
 ````markdown
 # /pantest - Structured Testing Workflow for PAN Wizard
@@ -11107,6 +11111,7 @@ This is the PAN Wizard SOURCE REPOSITORY.
    - **IF MISSING:** Start new testing session
 2. **EXECUTE** all phases sequentially
 3. **UPDATE** status after each phase
+4. **CLEAN UP** at the end — delete `pantest_status.md` and `pantest_baseline.txt`; neither is gitignored, so a later `git add -A` would commit them
 
 ---
 
@@ -11328,7 +11333,7 @@ Execute every phase that the flags leave enabled. Do NOT stop between phases. Th
 7. **Never propose retiring what the "What not to do" list protects** without a new finding that overturns the recorded reason. The list is carried forward in Phase 5 and re-affirmed item by item.
 8. **No secrets leave the machine.** This skill reads public docs; it never posts anything, never opens PRs, never pushes. `--write` writes files in the checkout and nothing else.
 9. **Run the installed engine from the install directory.** `cd d:/pantesting/<run>` before any `node .claude/pan-wizard-core/...` call: the same relative path typed from the source root resolves against the source tree, fails, and looks like a product error. Measure footprints there too — a `cd` in the middle of a compound command silently re-roots every `find` after it. And `npm run harness` appends to the tracked `harness/ledger.jsonl`; that diff is expected, list it.
-10. **A scout's number is a lead until a second read of the raw page agrees.** On `2026-09-22` a scout reported GPT-6 prices at double the page and a Codex default that moved the same day; both were caught only because the queue re-read the raw pricing arrays before writing a rate row. Before encoding any price, default model id or event name, re-read it from the raw primary text (curl the page, parse the table or the embedded JSON) on the day you write it.
+10. **A scout's number is a lead until a second read of the raw page agrees.** On `2026-09-22` a scout reported a new model's prices at double the page and a Codex default that moved the same day; both were caught only because the queue re-read the raw pricing arrays before writing a rate row. Before encoding any price, default model id or event name, re-read it from the raw primary text (curl the page, parse the table or the embedded JSON) on the day you write it.
 11. **A runtime-integration test derived from PAN's own table agrees with PAN, not with the runtime.** Every Gemini hook test passed while Gemini skipped three of PAN's four hook keys, because the tests read their event names from `HOOK_EVENT_MAP`. Check emitted config against the runtime's documented vocabulary (`tests/fixtures/hook-vocabulary.json`) and emitted model ids against its documented defaults (`tests/fixtures/documented-default-models.json`), and add a fixture of the same kind for any new integration surface.
 
 ---
@@ -11808,7 +11813,7 @@ ALL installation testing MUST happen in `d:\pantesting`.
 
 ```powershell
 # Clean previous installs
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 
 # Install all runtimes
 cd d:\pantesting
@@ -11847,7 +11852,7 @@ Verify the installed counts match the source repo — compare against **CLAUDE.m
 
 ---
 
-### /session-end (110 lines)
+### /session-end (113 lines)
 
 ````markdown
 ---
@@ -11954,6 +11959,9 @@ Test-Path d:\PanWizard\.opencode
 Test-Path d:\PanWizard\AGENTS.md
 Test-Path d:\PanWizard\.mcp.json
 Test-Path d:\PanWizard\.agents\skills
+Test-Path d:\PanWizard\.agents\pan-wizard-core
+Test-Path d:\PanWizard\.github\pan-wizard-core
+Test-Path d:\PanWizard\.claude\package.json
 Test-Path d:\PanWizard\.claude\workflows\pan-*.js
 Test-Path d:\PanWizard\.github\mcp.json
 Test-Path d:\PanWizard\.github\copilot
@@ -12347,7 +12355,7 @@ This runs all `tests/*.test.cjs` files via Node.js test runner.
 npm run test:scenarios
 ```
 
-Tests in `tests/scenarios/*.test.cjs` — end-to-end installer scenarios using temp directories.
+Tests in `tests/scenarios/*.test.cjs` — installer, integration and workflow scenarios (CLI contracts, the phase/milestone/git workflows, runtime parity) using temp directories.
 
 ## All Tests
 
@@ -12361,7 +12369,7 @@ npm run test:all
 
 ```powershell
 # Clean and test fresh install (all 5 runtimes)
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 cd d:\pantesting
 node d:\PanWizard\bin\install.js --all --local
 ```
@@ -12378,7 +12386,7 @@ Test-Path d:\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs
 
 ```powershell
 # By filename pattern
-node --test tests/installer*.test.cjs
+node --test tests/installer*.test.cjs   # Node 22+ expands the glob itself; on older Node under PowerShell, list the files
 node --test tests/config.test.cjs
 
 # By test name

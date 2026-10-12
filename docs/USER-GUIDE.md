@@ -563,6 +563,8 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; at a phase boundary a chain that `/pan:plan-phase` drives stops (it runs exec-phase with `--no-transition`) and prints the next command; PAN's stop guard then blocks the session's stop once and tells the agent to spawn the next phase; a direct `/pan:exec-phase --auto` hands over to `transition.md`, which spawns the next phase as a Task subagent and, at the end of the milestone, turns `auto_advance` off and stops, showing `/pan:milestone-done` as the next step. Equivalent to passing `--auto` to `/pan:discuss-phase`, `/pan:plan-phase` and `/pan:exec-phase`. |
 | `workflow.phase_record_compact` | `true`, `false` | `false` | When combined with the lightweight-phase bypass (1-plan trivial phases, which already skip per-phase research), plan-phase writes one `${N}-record.md` (goal, locked decisions, plan summary, must_haves) in place of a per-phase context.md; execution still writes each plan's summary.md. Substantive phases (more than one plan, or more than scaffolding, config, docs or a single-file feature) ignore this flag. |
+| `workflow.phase_reports` | object: `enabled`, `open`, `theme`, `index` | `{ "enabled": false, "open": false, "theme": "auto", "index": true }` | With `enabled: true`, `/pan:exec-phase` writes the phase's HTML report (as `/pan:report phase` does) at the verify→complete gate, plus the timeline index `.planning/report-index.html` when `index` is true, and adds them to the completion commit; `/pan:focus-auto` checkpoints and `/pan:army` missions render them too. `open` and `theme` are written but not read, and no automatic run opens a browser. |
+| `workflow.stop_guard` | `true`, `false` | absent (guard on) | `false` turns off PAN's stop guard, which otherwise blocks a session's stop once while `workflow.auto_advance` is true or `mode` is `yolo` and unbuilt roadmap phases remain, unless state.md records failed verification, gaps or a blocker (Claude Code, Codex, Gemini CLI, Copilot CLI) |
 
 Disable these to speed up phases in familiar domains or when conserving tokens.
 
@@ -726,7 +728,7 @@ claude --dangerously-skip-permissions
 |----------|------|-------|---------|----------|------------|----------|
 | Prototyping | `yolo` | `quick` | `budget` | off | off | off |
 | Normal dev | `interactive` | `standard` | `balanced` | on | on | on |
-| Production | `interactive` | `comprehensive` | `quality` | on | on | on |
+| Production | `interactive` | `comprehensive` | `quality` (same tiers as `balanced`) | on | on | on |
 
 ### Mid-Milestone Scope Changes
 
@@ -1028,7 +1030,7 @@ Example: `feat(03-02): add login endpoint`
 | Event | Commit |
 |-------|--------|
 | Each completed task | Individual commit by default (the executor may fold adjacent trivial tasks of one type, never `feat` or `fix`, into one commit) |
-| Plan completion | Metadata commit (`docs(XX-YY): complete plan`) |
+| Plan completion | Metadata commit (`docs(XX-YY): complete <plan-name> plan`) |
 | Project init | `docs: initialize project`, `chore: add project config`, `docs: complete project research` (when research runs), `docs: define v1 requirements`, then `docs: create roadmap (N phases)` |
 | Planning docs | Controlled by `commit_docs` config |
 
@@ -1358,6 +1360,7 @@ For reference, here is what PAN creates in your project:
       XX-uat.md           # User acceptance testing results
       XX-review.md        # Code review report, saved by exec-phase
       XX-plan-check.md    # Plan-checker report, saved by plan-phase
+      XX-design.md        # Phase design (architecture, phase ADR, threat-lite), written by /pan:design-phase
       XX-design-check.md  # Design-checker report, saved by /pan:design-phase (the judges' findings go to .planning/findings.jsonl)
 ```
 

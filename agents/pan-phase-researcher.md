@@ -142,7 +142,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs websearch "your query" --limit 
 
 **Options:**
 - `--limit N` — Number of results (default: 10)
-- `--freshness day|week|month` — Restrict to recent content
+- `--freshness day|week|month|year` — Restrict to recent content
 
 If `brave_search: false` (or not set), use built-in WebSearch tool instead.
 
@@ -411,7 +411,7 @@ Also read `.planning/config.json` — if `workflow.nyquist_validation` is `true`
 
 Then read context.md if exists:
 ```bash
-cat "$phase_dir"/*-context.md 2>/dev/null
+cat "$PHASE_DIR"/*-context.md 2>/dev/null
 ```
 
 **If context.md exists**, it constrains research:

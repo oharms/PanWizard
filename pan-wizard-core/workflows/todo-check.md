@@ -12,7 +12,8 @@ Read all files referenced by the invoking prompt's execution_context before star
 Load todo context:
 
 ```bash
-INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init todos)
+AREA=""   # the area argument when one was given: /pan:todo-check api → AREA="api"; empty lists every todo
+INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init todos "$AREA")
 ```
 
 Extract from init JSON: `todo_count`, `todos`, `pending_dir`.
@@ -35,7 +36,7 @@ Exit.
 </step>
 
 <step name="parse_filter">
-Check for area filter in arguments:
+The area filter was applied in init_context (AREA):
 - `/pan:todo-check` → show all
 - `/pan:todo-check api` → filter to area:api only
 </step>

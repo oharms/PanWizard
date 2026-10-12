@@ -1,7 +1,7 @@
 ---
 name: pan:phase-tests
 group: Phase Management
-description: Generate tests for a completed phase based on UAT criteria and implementation
+description: Generate tests for a completed phase from its summaries, context decisions, verification report and implementation
 argument-hint: "<phase> [additional instructions]"
 allowed-tools:
   - Read

@@ -58,7 +58,7 @@ For STANDARD and FULL tier items, further narrow the phase list based on what's 
 
 | Change Category | Phases | Description |
 |-----------------|--------|-------------|
-| **DOCS_ONLY** | 0 → 3 → 8 → 10 | Documentation, markdown, commands only |
+| **DOCS_ONLY** | 0 → 3 → 6 → 8 → 10 | Documentation, markdown, commands only |
 | **TESTS_ONLY** | 0 → 3 → 5 → 10 | Test files only, no core lib changes |
 | **LIB_CHANGE** | 0 → 3 → 4 → 5 → 6 → 8 → 10 | Core library .cjs module changes |
 | **HOOK_CHANGE** | 0 → 3 → 4 → 5 → 6 → 8 → 10 | Hooks source changes (requires build) |
@@ -267,7 +267,7 @@ When multiple items complete in a session:
 
 | Impact Level | File Patterns | Test Strategy |
 |--------------|---------------|---------------|
-| **DOCS_ONLY** | `*.md`, `commands/pan/*.md` | Skip tests |
+| **DOCS_ONLY** | `*.md`, `commands/pan/*.md` | `npm test` (many unit tests read shipped markdown, not only doc-lint/model-version-drift/claude-md-counts; only `.claude/` dev docs are unscanned) |
 | **TESTS_ONLY** | `tests/*.test.cjs` | Run changed tests only |
 | **LIB_CHANGE** | `pan-wizard-core/bin/lib/*.cjs` | Full `npm test` |
 | **HOOK_CHANGE** | `hooks/*.js` | Build hooks + `npm test` |

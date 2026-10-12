@@ -557,6 +557,21 @@ function cmdSummaryExtract(cwd, summaryPath, fields, raw) {
 }
 
 /**
+ * Map a --freshness value to Brave's `freshness` parameter, which accepts only
+ * pd/pw/pm/py or a YYYY-MM-DDtoYYYY-MM-DD range. Returns null for anything else.
+ * @param {string} value - day|week|month|year, or a value Brave accepts as is
+ * @returns {string|null}
+ */
+function braveFreshness(value) {
+  const v = String(value || '').trim().toLowerCase();
+  const named = { day: 'pd', week: 'pw', month: 'pm', year: 'py' };
+  if (named[v]) return named[v];
+  if (/^p[dwmy]$/.test(v)) return v;
+  if (/^\d{4}-\d{2}-\d{2}to\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  return null;
+}
+
+/**
  * Search the web using Brave Search API and return structured results.
  *
  * Web search API call structure:
@@ -588,6 +603,12 @@ async function cmdWebsearch(query, options, raw) {
     return;
   }
 
+  const freshness = options.freshness ? braveFreshness(options.freshness) : null;
+  if (options.freshness && !freshness) {
+    output({ available: false, error: `Invalid --freshness "${options.freshness}": use day, week, month, year, pd, pw, pm, py or YYYY-MM-DDtoYYYY-MM-DD` }, raw, '');
+    return;
+  }
+
   const params = new URLSearchParams({
     q: query,
     count: String(options.limit || 10),
@@ -596,8 +617,8 @@ async function cmdWebsearch(query, options, raw) {
     text_decorations: 'false'
   });
 
-  if (options.freshness) {
-    params.set('freshness', options.freshness);
+  if (freshness) {
+    params.set('freshness', freshness);
   }
 
   try {
@@ -1161,6 +1182,7 @@ module.exports = {
   cmdSummaryExtract,
   summaryOneLiner,
   cmdWebsearch,
+  braveFreshness,
   cmdProgressRender,
   cmdTodoComplete,
   cmdScaffold,
