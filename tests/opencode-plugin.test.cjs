@@ -42,10 +42,11 @@ async function compact(directory) {
 const positionLines = (block) => block.split('\n').filter((l) => l.startsWith('- '));
 
 describe('the plugin module', () => {
-  test('is the CommonJS plugin shape OpenCode loads: { id, server }, nothing else', () => {
-    assert.deepEqual(Object.keys(plugin).sort(), ['id', 'server']);
+  test('is the CommonJS shape both loaders accept: { id, server, setup }, nothing else (R45)', () => {
+    assert.deepEqual(Object.keys(plugin).sort(), ['id', 'server', 'setup']);
     assert.equal(plugin.id, 'pan-wizard');
-    assert.equal(typeof plugin.server, 'function');
+    assert.equal(typeof plugin.server, 'function', 'OpenCode 1 calls server()');
+    assert.equal(typeof plugin.setup, 'function', 'OpenCode 2 calls setup()');
   });
 
   test('adds one block with PAN\'s position to the compaction prompt — the same position the re-injection hook gives', async () => {
@@ -102,6 +103,116 @@ describe('the plugin module', () => {
       const before = list();
       await compact(d);
       assert.deepEqual(list(), before);
+    } finally { cleanup(d); }
+  });
+});
+
+// OpenCode 2's loader needs `setup` (or `effect`) and registers hooks through
+// `ctx.session.hook(name, fn)`; the compaction event carries `system` (read from the
+// 2.0 binary) or `context`. One object serves both loaders (R45).
+function fakeCtx(directory, { hook } = {}) {
+  const hooks = [];
+  return {
+    hooks,
+    ctx: { directory, session: { hook: hook || ((name, fn) => hooks.push({ name, fn })) } },
+  };
+}
+
+describe('OpenCode 2: setup() registers the same compaction hand-off (R45)', () => {
+  test('registers exactly one compaction hook', () => {
+    const d = project();
+    try {
+      const { ctx, hooks } = fakeCtx(d);
+      plugin.setup(ctx);
+      assert.deepEqual(hooks.map((h) => h.name), ['compaction']);
+    } finally { cleanup(d); }
+  });
+
+  test('pushes onto `system` the same block server() pushes onto `context`', async () => {
+    const d = project();
+    try {
+      const { ctx, hooks } = fakeCtx(d);
+      plugin.setup(ctx);
+      const event = { system: [] };
+      await hooks[0].fn(event);
+      assert.equal(event.system.length, 1);
+      assert.deepEqual(event.system, await compact(d));
+    } finally { cleanup(d); }
+  });
+
+  test('falls back to `context` when the event has no `system` array; neither: no write, no throw', async () => {
+    const d = project();
+    try {
+      const { ctx, hooks } = fakeCtx(d);
+      plugin.setup(ctx);
+      const withContext = { context: [] };
+      await hooks[0].fn(withContext);
+      assert.equal(withContext.context.length, 1);
+      const neither = { other: 1 };
+      await hooks[0].fn(neither);
+      assert.deepEqual(neither, { other: 1 });
+      await hooks[0].fn(undefined);
+    } finally { cleanup(d); }
+  });
+
+  test('follows PAN_TRACK through setup too', async () => {
+    const d = project(STATE, ROADMAP, '.planning/tracks/api');
+    const saved = process.env.PAN_TRACK;
+    process.env.PAN_TRACK = 'api';
+    try {
+      const { ctx, hooks } = fakeCtx(d);
+      plugin.setup(ctx);
+      const event = { system: [] };
+      await hooks[0].fn(event);
+      assert.match(event.system[0], /re-read \.planning\/tracks\/api\/state\.md/);
+    } finally {
+      if (saved === undefined) delete process.env.PAN_TRACK; else process.env.PAN_TRACK = saved;
+      cleanup(d);
+    }
+  });
+
+  test('no work in flight: nothing pushed', async () => {
+    const done = project(STATE, ROADMAP.replace('- [ ] **Phase 2', '- [x] **Phase 2'));
+    try {
+      const { ctx, hooks } = fakeCtx(done);
+      plugin.setup(ctx);
+      const event = { system: [] };
+      await hooks[0].fn(event);
+      assert.deepEqual(event.system, []);
+    } finally { cleanup(done); }
+  });
+
+  test('the block is capped at the same length on both paths', async () => {
+    const long = STATE.replace(/\*\*Stopped At:\*\*.*\n/, `**Stopped At:** ${'x'.repeat(5000)}\n**Resume File:** ${'y'.repeat(5000)}\n`);
+    const d = project(long);
+    try {
+      const { ctx, hooks } = fakeCtx(d);
+      plugin.setup(ctx);
+      const event = { system: [] };
+      await hooks[0].fn(event);
+      assert.ok(event.system[0].length <= 2000);
+      assert.deepEqual(event.system, await compact(d));
+    } finally { cleanup(d); }
+  });
+
+  test('no session, no hook function, or a throwing hook: setup returns without throwing', () => {
+    assert.doesNotThrow(() => plugin.setup(undefined));
+    assert.doesNotThrow(() => plugin.setup({ directory: os.tmpdir() }));
+    assert.doesNotThrow(() => plugin.setup({ directory: os.tmpdir(), session: { hook: 'not a function' } }));
+    assert.doesNotThrow(() => plugin.setup({ directory: os.tmpdir(), session: { hook: () => { throw new Error('host refused'); } } }));
+  });
+
+  test('an unreadable planning tree inside the handler is swallowed', async () => {
+    const d = project();
+    try {
+      // state.md as a directory: the read throws EISDIR inside the handler.
+      fs.rmSync(path.join(d, '.planning', 'state.md'));
+      fs.mkdirSync(path.join(d, '.planning', 'state.md'));
+      const { ctx, hooks } = fakeCtx(d);
+      plugin.setup(ctx);
+      const event = { system: [] };
+      await hooks[0].fn(event);
+      assert.deepEqual(event.system, []);
     } finally { cleanup(d); }
   });
 });

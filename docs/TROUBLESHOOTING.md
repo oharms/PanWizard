@@ -741,6 +741,10 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 3. If you need details from a specific plan execution, read its summary.md directly
 4. For file-level details, read the relevant source files
 
+### OpenCode 2 says "Plugin must export a default definition with an id and an effect or setup function"
+
+The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's loader requires `setup` (or `effect`), and older PAN plugins exported only `server`, so the compaction hand-off was lost. Re-run the installer with `--opencode` (or `/pan:update`) to get the plugin that exports both: OpenCode 1 keeps calling `server()`, OpenCode 2 calls `setup()`.
+
 ### Multiple sessions interfere with each other
 
 **Symptom:** Two Claude Code sessions running PAN on the same project produce conflicting commits, corrupted state.md, or duplicated work.
