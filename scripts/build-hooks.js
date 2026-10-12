@@ -18,6 +18,7 @@ const DIST_DIR = path.join(HOOKS_DIR, 'dist');
 // Hooks to copy (pure Node.js, no bundling needed)
 const HOOKS_TO_COPY = [
   'pan-check-update.js',
+  'pan-guard.js',
   'pan-context-monitor.js',
   'pan-statusline.js',
   'pan-cost-logger.js',

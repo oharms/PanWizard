@@ -65,6 +65,7 @@ const EXTRA_HOOK_ROWS = Object.freeze([
 ]);
 const EVENT_HOOKS = Object.freeze({
   sessionStart: ['pan-check-update.js'],
+  preToolUse: ['pan-guard.js'],
   postToolUse: ['pan-context-monitor.js'],
   subagentStop: ['pan-cost-logger.js', 'pan-trace-logger.js'],
   stop: ['pan-stop-guard.js'],

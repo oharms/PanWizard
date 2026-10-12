@@ -1817,7 +1817,7 @@ describe('HOOK_EVENT_MAP', () => {
   test('Gemini uses its own vocabulary: AfterAgent for the stop guard, nothing for the monitor or loggers (R29)', () => {
     assert.deepEqual(
       { ...lib.HOOK_EVENT_MAP.gemini },
-      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null,
+      { surface: 'settings.json', sessionStart: 'SessionStart', preToolUse: 'BeforeTool', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null,
         compactMark: 'PreCompress', compactInject: 'AfterTool' });
     assert.equal(lib.HOOK_EVENT_MAP.claude.stop, 'Stop', 'Claude keeps its Stop event for the guard');
   });

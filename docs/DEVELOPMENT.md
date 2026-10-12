@@ -81,6 +81,7 @@ pan-wizard/
       pan-check-update.js     # Periodic update check (spawns `npm view pan-wizard version`)
       pan-cost-logger.js      # SubagentStop hook — appends cost record to tokens.jsonl (v3.4)
       pan-trace-logger.js     # SubagentStop hook — circular optimization tracing (v3.5)
+      pan-guard.js            # PreToolUse hook (BeforeTool on Gemini CLI, preToolUse on Copilot CLI) — reports or denies credential writes (A7)
       pan-stop-guard.js       # Stop hook (AfterAgent on Gemini CLI, agentStop on Copilot CLI) — blocks the auto-advance boundary drop once (v3.24)
       pan-state-reinject.js   # SessionStart hook, matcher compact (Claude Code, Codex); PreCompress then AfterTool on Gemini CLI, preCompact then postToolUse on Copilot CLI — re-injects the planning position after a compaction
   scripts/

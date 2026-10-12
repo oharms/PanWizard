@@ -95,6 +95,8 @@ function hookFileOf(projectDir, command) {
  */
 function argsFor(row) {
   const spec = lib.HOOK_EVENT_MAP[row.runtime];
+  // The guard names its host (A7): payloads and the way to deny differ per runtime.
+  if (row.hook === 'pan-guard.js') return ` --host ${row.runtime}`;
   if (row.hook !== 'pan-state-reinject.js' || !spec) return '';
   if (row.event === spec.compactMark) return ' --mark';
   if (row.event === spec.compactInject) return ` --inject ${row.runtime}`;
@@ -131,8 +133,8 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
     // preCompact marker and postToolUse inject (M33); gemini (R29): SessionStart +
     // AfterAgent, plus the re-injection's PreCompress marker and AfterTool inject (M33)
     // — Gemini has no event the context monitor or the loggers could run on, and no
-    // statusline command.
-    assert.equal(ROWS.length, 25, `expected 25 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
+    // statusline command. Plus the pre-tool guard on all four (A7).
+    assert.equal(ROWS.length, 29, `expected 29 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
     for (const runtime of WITH_HOOKS) {
       const spec = lib.HOOK_EVENT_MAP[runtime];
       assert.ok(spec.sessionStart, `${runtime}: every hook runtime runs the update check at session start`);

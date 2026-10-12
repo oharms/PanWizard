@@ -54,6 +54,7 @@ const REGISTERED = JSON.parse(fs.readFileSync(SURFACE_FILE, 'utf8')).hooks;
 /** Which hook file each HOOK_EVENT_MAP slot registers (bin/install-lib.cjs builders). */
 const EVENT_HOOKS = Object.freeze({
   sessionStart: ['pan-check-update.js'],
+  preToolUse: ['pan-guard.js'],
   postToolUse: ['pan-context-monitor.js'],
   subagentStop: ['pan-cost-logger.js', 'pan-trace-logger.js'],
   compact: ['pan-state-reinject.js'],
@@ -640,6 +641,31 @@ function driveStopGuard(runtime) {
   assert.equal(disarmed.stdout, '', 'workflow.stop_guard false must disable the guard even with autonomy armed');
 }
 
+// The guard (A7) is registered with `--host <runtime>`; the installed command is the
+// contract, so the driver passes the same flag the registration carries.
+function driveGuard(runtime) {
+  const script = installedHook(runtime, 'pan-guard.js');
+  const project = planningProject(`guard-${runtime}`);
+  const host = runtime === 'codex' ? 'codex' : runtime;
+  const secret = 'ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8';
+  const payload = substitute(fixture(`pretool-${host}.json`), { '{{PROJECT_DIR}}': project.replace(/\\/g, '/'), '{{SECRET}}': secret });
+  const spawn = () => spawnSync(process.execPath, [script, '--host', host], { cwd: project, input: JSON.stringify(payload), encoding: 'utf8', env: tmpdirEnv(project) });
+  const reported = spawn();
+  assert.equal(reported.status, 0, `report mode never blocks on ${runtime}: ${reported.stderr}`);
+  assert.equal(reported.stdout, '', 'report mode prints nothing the host would read as a decision');
+  const log = fs.readFileSync(path.join(project, '.planning', 'guard.jsonl'), 'utf8');
+  assert.match(log, /"rule":"secret_write"/);
+  fs.writeFileSync(path.join(project, '.planning', 'config.json'), JSON.stringify({ hooks: { guard: 'enforce' } }));
+  const denied = spawn();
+  if (runtime === 'copilot') {
+    assert.equal(denied.status, 0, denied.stderr);
+    assert.equal(JSON.parse(denied.stdout).permissionDecision, 'deny');
+  } else {
+    assert.equal(denied.status, 2, `enforce must deny with exit 2 on ${runtime}`);
+    assert.match(denied.stderr, /PAN guard/);
+  }
+}
+
 function driveStateReinject(runtime) {
   const script = installedHook(runtime, 'pan-state-reinject.js');
   const project = planningProject(`reinject-${runtime}`);
@@ -704,6 +730,10 @@ function driveStatusline(runtime) {
 }
 
 const DRIVERS = Object.freeze({
+  'pan-guard.js': {
+    title: 'logs a credential write in report mode and denies it in enforce mode, in the host\'s own way',
+    run: driveGuard,
+  },
   'pan-check-update.js': {
     title: 'returns at once and leaves a resolvable update-check record',
     run: driveSessionStart,

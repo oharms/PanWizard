@@ -59,6 +59,9 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },
     parallelization: true,
+    // A7: the pre-tool guard. `report` logs to <planning>/guard.jsonl; `enforce` also
+    // denies a write that puts a credential in a file; `off` disables it.
+    hooks: { guard: 'report' },
     brave_search: hasBraveSearch,
     budget: {
       default_points: 50,

@@ -1,0 +1,11 @@
+{
+  "hook_event": "BeforeTool",
+  "runtime": "gemini",
+  "captured_at": "not captured (derived 2026-10-13)",
+  "captured_from": "NOT a capture. Derived 2026-10-13 from the documented payload fields of the host's pre-tool event (the hook reference in tests/fixtures/hook-vocabulary.json, read 2026-09-23): tool_name (write_file, replace) plus tool_input (file_path, content / old_string, new_string), cwd. Live Gemini behaviour is unproven without a key (program section 3.4). The values are synthetic. Recapturing a real payload with a raw dump hook is the open evidence gate of program item A7; until then pan-guard.js reads every documented spelling.",
+  "placeholders": {
+    "{{PROJECT_DIR}}": "absolute path of the project whose .planning/ tree arms the guard",
+    "{{SECRET}}": "a credential-shaped string the guard must catch"
+  },
+  "notes": "Derived, not captured: the shape follows the host documentation. pan-guard.js reads every documented spelling (tool_name/toolName, tool_input/toolArgs as an object or a JSON string), so a real payload that differs in spelling degrades to no match, never to a crash. Replace with a raw capture when the host is available."
+}

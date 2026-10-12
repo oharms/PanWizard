@@ -1220,7 +1220,7 @@ function uninstall(isGlobal, runtime = 'claude') {
   // 4. Remove PAN hooks (scripts + Copilot CLI hooks config file)
   const hooksDir = path.join(targetDir, 'hooks');
   if (fs.existsSync(hooksDir)) {
-    const panHooks = ['pan-statusline.js', 'pan-check-update.js', 'pan-check-update.sh', 'pan-context-monitor.js', 'pan-cost-logger.js', 'pan-trace-logger.js', 'pan-stop-guard.js', 'pan-state-reinject.js', 'pan.json'];
+    const panHooks = ['pan-statusline.js', 'pan-check-update.js', 'pan-check-update.sh', 'pan-guard.js', 'pan-context-monitor.js', 'pan-cost-logger.js', 'pan-trace-logger.js', 'pan-stop-guard.js', 'pan-state-reinject.js', 'pan.json'];
     let hookCount = 0;
     for (const hook of panHooks) {
       const hookPath = path.join(hooksDir, hook);
@@ -2752,6 +2752,10 @@ function install(isGlobal, runtime = 'claude') {
   const stateReinjectCommand = isGlobal
     ? buildHookCommand(targetDir, 'pan-state-reinject.js')
     : 'node ' + dirName + '/hooks/pan-state-reinject.js';
+  // The guard names its host: payloads and the way to deny differ per runtime (A7).
+  const guardCommand = (isGlobal
+    ? buildHookCommand(targetDir, 'pan-guard.js')
+    : 'node ' + dirName + '/hooks/pan-guard.js') + ` --host ${runtime}`;
   // Gemini and Copilot (M33): a marker before the compaction, the block on the next
   // tool result. The inject mode names the host, whose output shapes differ.
   const stateReinjectMarkCommand = `${stateReinjectCommand} --mark`;
@@ -2765,7 +2769,7 @@ function install(isGlobal, runtime = 'claude') {
   if (!isOpencode) {
     const entrypoints = lib.verifyHookEntrypoints([
       updateCheckCommand, contextMonitorCommand, statuslineCommand, costLoggerCommand,
-      traceLoggerCommand, stopGuardCommand, stateReinjectCommand, stateReinjectMarkCommand, stateReinjectInjectCommand,
+      traceLoggerCommand, stopGuardCommand, stateReinjectCommand, stateReinjectMarkCommand, stateReinjectInjectCommand, guardCommand,
     ], process.cwd());
     if (!entrypoints.ok) {
       console.error(`\n  ${red}✖ Hook verification FAILED — these hook commands would run a script that is not there:${reset}`);
@@ -2785,7 +2789,7 @@ function install(isGlobal, runtime = 'claude') {
       let existing = null;
       try { existing = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8')); } catch { /* absent or invalid — start fresh */ }
       const merged = lib.mergeCodexHooksConfig(existing, {
-        updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand,
+        updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand, guardCommand,
       });
       fs.writeFileSync(hooksJsonPath, JSON.stringify(merged, null, 2) + '\n');
       // Print the path we actually wrote. The hardcoded '.codex/hooks.json' was
@@ -2803,7 +2807,7 @@ function install(isGlobal, runtime = 'claude') {
   // from any legacy config.json registration.
   if (isCopilot) {
     const hooksConfigPath = path.join(targetDir, 'hooks', 'pan.json');
-    const hooksConfig = buildCopilotHooksConfig({ updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectMarkCommand, stateReinjectInjectCommand });
+    const hooksConfig = buildCopilotHooksConfig({ updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectMarkCommand, stateReinjectInjectCommand, guardCommand });
     try {
       fs.mkdirSync(path.dirname(hooksConfigPath), { recursive: true });
       fs.writeFileSync(hooksConfigPath, JSON.stringify(hooksConfig, null, 2) + '\n');
@@ -2897,6 +2901,7 @@ function install(isGlobal, runtime = 'claude') {
     // unbuilt phases — fail-open and inert outside PAN projects.
     const registrations = [
       { slot: 'sessionStart', hook: 'pan-check-update', command: updateCheckCommand, label: 'update check hook' },
+      { slot: 'preToolUse', hook: 'pan-guard', command: guardCommand, label: 'pre-tool guard hook' },
       { slot: 'postToolUse', hook: 'pan-context-monitor', command: contextMonitorCommand, label: 'context window monitor hook' },
       { slot: 'subagentStop', hook: 'pan-cost-logger', command: costLoggerCommand, label: 'cost logger hook' },
       { slot: 'subagentStop', hook: 'pan-trace-logger', command: traceLoggerCommand, label: 'trace logger hook' },

@@ -1160,10 +1160,15 @@ function stripThinkingFrontmatter(content, runtime) {
  */
 function buildCopilotHooksConfig(commands) {
   const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand,
-    stateReinjectMarkCommand, stateReinjectInjectCommand } = commands || {};
+    stateReinjectMarkCommand, stateReinjectInjectCommand, guardCommand } = commands || {};
   const config = { version: 1, hooks: {} };
   if (updateCheckCommand) {
     config.hooks.sessionStart = [{ type: 'command', command: updateCheckCommand }];
+  }
+  // preToolUse: the PAN guard (A7). Copilot denies a call on the JSON
+  // `permissionDecision: "deny"` output, which pan-guard.js prints under `--host copilot`.
+  if (guardCommand) {
+    config.hooks.preToolUse = [{ type: 'command', command: guardCommand }];
   }
   const postToolUse = [];
   if (contextMonitorCommand) postToolUse.push({ type: 'command', command: contextMonitorCommand });
@@ -1238,10 +1243,10 @@ function buildCopilotHooksConfig(commands) {
  * 2026-10-03, and live on Copilot CLI 1.0.88 the same day).
  */
 const HOOK_EVENT_MAP = Object.freeze({
-  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
-  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null, compactMark: 'PreCompress', compactInject: 'AfterTool' },
-  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
-  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null, compactMark: 'preCompact', compactInject: 'postToolUse' },
+  claude: { surface: 'settings.json', sessionStart: 'SessionStart', preToolUse: 'PreToolUse', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', preToolUse: 'BeforeTool', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null, compactMark: 'PreCompress', compactInject: 'AfterTool' },
+  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', preToolUse: 'PreToolUse', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', preToolUse: 'preToolUse', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null, compactMark: 'preCompact', compactInject: 'postToolUse' },
   opencode: null,
 });
 
@@ -1253,7 +1258,7 @@ const HOOK_EVENT_MAP = Object.freeze({
 const HOOK_SLOT_MATCHERS = Object.freeze({ compact: 'compact' });
 
 /** The hook scripts PAN registers in a Claude-shaped settings.json `hooks` block. */
-const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard', 'pan-state-reinject']);
+const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-guard', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard', 'pan-state-reinject']);
 
 /**
  * Remove, from every event array of a Claude-shaped `hooks` object except
@@ -1514,7 +1519,7 @@ function buildCodexMcpSnippet(serverPath, panToolsPath, projectRoot, serverName 
  * @returns {object} Merged config object to serialize back to hooks.json
  */
 function mergeCodexHooksConfig(existing, commands) {
-  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand } = commands || {};
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand, guardCommand } = commands || {};
   const config = (existing && typeof existing === 'object') ? existing : {};
   if (!config.hooks || typeof config.hooks !== 'object') config.hooks = {};
 
@@ -1536,6 +1541,8 @@ function mergeCodexHooksConfig(existing, commands) {
   // builders without reading their docs first.
   const wanted = [
     ['SessionStart', updateCheckCommand, 'pan-check-update', true],
+    // The guard decides whether a call may run, which an async handler cannot (A7).
+    ['PreToolUse', guardCommand, 'pan-guard', false],
     ['PostToolUse', contextMonitorCommand, 'pan-context-monitor', false],
     ['SubagentStop', costLoggerCommand, 'pan-cost-logger', true],
     ['SubagentStop', traceLoggerCommand, 'pan-trace-logger', true],
@@ -1579,7 +1586,7 @@ function removeCodexPanHooks(existing) {
   for (const event of Object.keys(existing.hooks)) {
     if (!Array.isArray(existing.hooks[event])) continue;
     existing.hooks[event] = existing.hooks[event].filter(group =>
-      !(Array.isArray(group.hooks) && group.hooks.some(h => h.command && /pan-(check-update|context-monitor|cost-logger|trace-logger|stop-guard|state-reinject)/.test(h.command))));
+      !(Array.isArray(group.hooks) && group.hooks.some(h => h.command && /pan-(check-update|guard|context-monitor|cost-logger|trace-logger|stop-guard|state-reinject)/.test(h.command))));
     if (existing.hooks[event].length === 0) delete existing.hooks[event];
   }
   if (Object.keys(existing.hooks).length === 0) delete existing.hooks;
@@ -2004,15 +2011,16 @@ function buildPluginManifest(pkg) {
  * @returns {object} hooks.json object
  */
 function buildPluginHooksConfig() {
-  const hook = (script, matcher) => ({
+  const hook = (script, matcher, args = '') => ({
     ...(matcher ? { matcher } : {}),
-    hooks: [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/${script}"` }],
+    hooks: [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/${script}"${args}` }],
   });
   const events = HOOK_EVENT_MAP.claude;
   return {
     hooks: {
       // compact shares SessionStart with the update check, narrowed by its matcher (M10).
       [events.sessionStart]: [hook('pan-check-update.js'), hook('pan-state-reinject.js', HOOK_SLOT_MATCHERS.compact)],
+      [events.preToolUse]: [hook('pan-guard.js', null, ' --host claude')],
       [events.postToolUse]: [hook('pan-context-monitor.js')],
       [events.subagentStop]: [hook('pan-cost-logger.js'), hook('pan-trace-logger.js')],
       [events.stop]: [hook('pan-stop-guard.js')],

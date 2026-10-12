@@ -106,8 +106,8 @@ describe('Gemini hook registration after a local --gemini install', () => {
     assert.equal(fs.existsSync(resolveHookFile(projectDir, commands[0])), true, 'the registered stop guard must exist');
   });
 
-  test('exactly the four supported events are written — no Claude-named key Gemini would skip', () => {
-    assert.deepEqual(Object.keys(settings.hooks).sort(), ['AfterAgent', 'AfterTool', 'PreCompress', 'SessionStart']);
+  test('exactly the five supported events are written — no Claude-named key Gemini would skip', () => {
+    assert.deepEqual(Object.keys(settings.hooks).sort(), ['AfterAgent', 'AfterTool', 'BeforeTool', 'PreCompress', 'SessionStart']);
     for (const dead of ['PostToolUse', 'SubagentStop', 'Stop']) {
       assert.equal(settings.hooks[dead], undefined, `${dead} is not a Gemini event and must not be written`);
     }
@@ -145,7 +145,7 @@ describe('Gemini hook registration after a local --gemini install', () => {
 
   test('every registered command in the file points at a PAN hook file that exists', () => {
     const all = Object.keys(settings.hooks).flatMap((event) => commandsFor(settings, event));
-    assert.equal(all.length, 4, `expected the four Gemini registrations, got ${all.length}`);
+    assert.equal(all.length, 5, `expected the five Gemini registrations, got ${all.length}`);
     for (const command of all) {
       assert.equal(fs.existsSync(resolveHookFile(projectDir, command)), true, `dead hook registration: ${command}`);
       assert.ok(path.basename(resolveHookFile(projectDir, command)).startsWith('pan-'),
@@ -195,7 +195,8 @@ describe('Gemini: reinstalling over an install that wrote Claude-named hooks and
   });
 
   test('the user\'s own hook and settings survive, and PAN\'s statusline block is removed', () => {
-    assert.deepEqual(commandsFor(settings, 'BeforeTool'), ['node my-own-guard.js']);
+    // PAN's guard (A7) joins BeforeTool beside the user's own hook, which keeps its matcher.
+    assert.deepEqual(commandsFor(settings, 'BeforeTool'), ['node my-own-guard.js', `node ${GEMINI_DIR}/hooks/pan-guard.js --host gemini`]);
     assert.equal(settings.hooks.BeforeTool[0].matcher, 'run_shell_command');
     assert.deepEqual(settings.ui, { theme: 'mine' });
     assert.equal(settings.statusLine, undefined);
