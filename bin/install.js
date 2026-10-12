@@ -1693,6 +1693,18 @@ function uninstall(isGlobal, runtime = 'claude') {
     console.log(`  ${yellow}⚠${reset} No PAN files found to remove.`);
   }
 
+  // A local install's runtime directory that the removal left empty goes too (X1).
+  // Never a global one (~/.claude and the like are the host's own homes), and never a
+  // directory that still holds anything: `.github` usually holds the project's files.
+  if (!isGlobal) {
+    try {
+      if (fs.readdirSync(targetDir).length === 0) {
+        fs.rmdirSync(targetDir);
+        console.log(`  ${green}✓${reset} Removed empty ${locationLabel}`);
+      }
+    } catch { /* already gone or unreadable: leave it */ }
+  }
+
   console.log(`
   ${green}Done!${reset} PAN has been uninstalled from ${runtimeLabel}.
   Your other files and settings have been preserved.

@@ -412,6 +412,25 @@ describe('E2E: Install and run from installed location', () => {
         fs.rmSync(uninstallDir, { recursive: true, force: true });
       }
     });
+
+    // X1: uninstalling every runtime left .claude/, .codex/, .gemini/, .github/ and
+    // .opencode/ behind, empty. A runtime directory holding anything else stays.
+    test('a five-runtime install then uninstall leaves no empty runtime directory; a non-empty one stays', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-uninstall-all-'));
+      try {
+        const run = (flags) => execSync(`node "${INSTALLER}" ${flags}`, { cwd: dir, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] });
+        run('--claude --codex --gemini --opencode --copilot --local');
+        fs.mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.github', 'workflows', 'ci.yml'), 'name: ci\n');
+        run('--claude --codex --gemini --opencode --copilot --local --uninstall');
+        for (const d of ['.claude', '.codex', '.gemini', '.opencode']) {
+          assert.equal(fs.existsSync(path.join(dir, d)), false, `${d} is gone`);
+        }
+        assert.ok(fs.existsSync(path.join(dir, '.github', 'workflows', 'ci.yml')), 'the project\'s own .github files stay');
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 
   // ── Group: Uninstall All Runtimes ──────────────────────────────
