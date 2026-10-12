@@ -280,8 +280,8 @@ Write to: {phase_dir}/{padded_phase}-research.md
 
 ```
 Task(
-  prompt="First, read ~/.claude/agents/pan-phase-researcher.md for your role and instructions.\n\n" + research_prompt,
-  subagent_type="general-purpose",
+  prompt=research_prompt,
+  subagent_type="pan-phase-researcher",
   model="{researcher_model}",
   description="Research Phase {phase}"
 )
@@ -383,8 +383,8 @@ Output consumed by /pan:exec-phase. Plans need:
 
 ```
 Task(
-  prompt="First, read ~/.claude/agents/pan-planner.md for your role and instructions.\n\n" + filled_prompt,
-  subagent_type="general-purpose",
+  prompt=filled_prompt,
+  subagent_type="pan-planner",
   model="{planner_model}",
   description="Plan Phase {phase}"
 )
@@ -504,8 +504,8 @@ Return what changed.
 
 ```
 Task(
-  prompt="First, read ~/.claude/agents/pan-planner.md for your role and instructions.\n\n" + revision_prompt,
-  subagent_type="general-purpose",
+  prompt=revision_prompt,
+  subagent_type="pan-planner",
   model="{planner_model}",
   description="Revise Phase {phase} plans"
 )
@@ -603,6 +603,7 @@ Task(
     </instructions>
   ",
   subagent_type="general-purpose",
+  model="$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-conductor --raw)",
   description="Execute Phase ${PHASE}"
 )
 ```

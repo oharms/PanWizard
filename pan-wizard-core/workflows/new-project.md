@@ -525,9 +525,7 @@ Display spawning indicator:
 Spawn 4 parallel pan-project-researcher agents with path references:
 
 ```
-Task(prompt="First, read ~/.claude/agents/pan-project-researcher.md for your role and instructions.
-
-<research_type>
+Task(prompt="<research_type>
 Project Research — Stack dimension for [domain].
 </research_type>
 
@@ -563,11 +561,9 @@ Your stack.md feeds into roadmap creation. Be prescriptive:
 Write to: .planning/research/stack.md
 Use template: ~/.claude/pan-wizard-core/templates/research-project/stack.md
 </output>
-", subagent_type="general-purpose", model="{researcher_model}", description="Stack research")
+", subagent_type="pan-project-researcher", model="{researcher_model}", description="Stack research")
 
-Task(prompt="First, read ~/.claude/agents/pan-project-researcher.md for your role and instructions.
-
-<research_type>
+Task(prompt="<research_type>
 Project Research — Features dimension for [domain].
 </research_type>
 
@@ -603,11 +599,9 @@ Your features.md feeds into requirements definition. Categorize clearly:
 Write to: .planning/research/features.md
 Use template: ~/.claude/pan-wizard-core/templates/research-project/features.md
 </output>
-", subagent_type="general-purpose", model="{researcher_model}", description="Features research")
+", subagent_type="pan-project-researcher", model="{researcher_model}", description="Features research")
 
-Task(prompt="First, read ~/.claude/agents/pan-project-researcher.md for your role and instructions.
-
-<research_type>
+Task(prompt="<research_type>
 Project Research — Architecture dimension for [domain].
 </research_type>
 
@@ -643,11 +637,9 @@ Your architecture.md informs phase structure in roadmap. Include:
 Write to: .planning/research/architecture.md
 Use template: ~/.claude/pan-wizard-core/templates/research-project/architecture.md
 </output>
-", subagent_type="general-purpose", model="{researcher_model}", description="Architecture research")
+", subagent_type="pan-project-researcher", model="{researcher_model}", description="Architecture research")
 
-Task(prompt="First, read ~/.claude/agents/pan-project-researcher.md for your role and instructions.
-
-<research_type>
+Task(prompt="<research_type>
 Project Research — Pitfalls dimension for [domain].
 </research_type>
 
@@ -683,7 +675,7 @@ Your pitfalls.md prevents mistakes in roadmap/planning. For each pitfall:
 Write to: .planning/research/pitfalls.md
 Use template: ~/.claude/pan-wizard-core/templates/research-project/pitfalls.md
 </output>
-", subagent_type="general-purpose", model="{researcher_model}", description="Pitfalls research")
+", subagent_type="pan-project-researcher", model="{researcher_model}", description="Pitfalls research")
 ```
 
 After all 4 agents complete, spawn synthesizer to create summary.md:

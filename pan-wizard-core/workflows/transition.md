@@ -455,6 +455,7 @@ Task(
     </instructions>
   ",
   subagent_type="general-purpose",
+  model="$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-conductor --raw)",
   description="Plan Phase ${NEXT_PHASE}"
 )
 ```
@@ -497,6 +498,7 @@ Task(
     </instructions>
   ",
   subagent_type="general-purpose",
+  model="$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-conductor --raw)",
   description="Discuss Phase ${NEXT_PHASE}"
 )
 ```

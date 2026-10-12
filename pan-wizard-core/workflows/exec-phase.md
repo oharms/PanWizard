@@ -345,7 +345,8 @@ Read each summary.md to understand what was built.
 Generate unit and integration tests for the new code.
 Discover the project's existing test patterns, directories, frameworks, and helpers before writing tests.
 Follow whatever conventions the project already uses.",
-  subagent_type="general-purpose"
+  subagent_type="general-purpose",
+  model="{executor_model}",
 )
 ```
 
