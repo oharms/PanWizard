@@ -19,7 +19,6 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/preview.cjs
 @~/.claude/pan-wizard-core/templates/preview-report.md
 </execution_context>
 

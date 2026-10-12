@@ -16,10 +16,6 @@ It is a *view*, not a new source of truth: every panel aggregates state PAN alre
 Default output is `.planning/hud.html`. Open it in any browser. Re-run any time for a fresh snapshot.
 </objective>
 
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/hud.cjs
-</execution_context>
-
 <usage>
 
 ```

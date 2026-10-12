@@ -20,7 +20,6 @@ Unchanged from Spec B v1's X-9. Already narrow enough to stand alone.
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/whatif.cjs
 @~/.claude/agents/pan-counterfactual.md
 </execution_context>
 

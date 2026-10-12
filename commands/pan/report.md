@@ -16,10 +16,6 @@ Like `pan:hud`, these are *views*, not a new source of truth: every value is rea
 Reports are honest by construction: the `verify reconcile` verdict is shown beside the (rubber-stampable) self-reported verification status, status is framed as a current-disk snapshot, and any spend is gated so a poisoned or unpriced ledger never renders a fake zero-dollar spend.
 </objective>
 
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/phase-report.cjs
-</execution_context>
-
 <usage>
 
 ```

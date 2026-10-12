@@ -716,7 +716,7 @@ Show token usage and estimated cost across PAN commands and agents
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 148
+**Lines:** 144
 
 #### /pan:dashboard
 
@@ -728,7 +728,7 @@ Alias for /pan:hud — generate the single-page HTML dashboard of the bot army a
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 25
+**Lines:** 22
 
 #### /pan:hud
 
@@ -740,7 +740,7 @@ Generate a single-page, self-contained HTML dashboard of the bot army and the pr
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 93
+**Lines:** 89
 
 #### /pan:report
 
@@ -752,7 +752,7 @@ Generate a self-contained HTML report for one phase, or a project-level timeline
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 71
+**Lines:** 67
 
 ---
 
@@ -838,7 +838,7 @@ Grounded Q&A, multi-turn design discussion, and playbook generation. Three modes
 
 **Tools:** Read, Write, Bash, Grep, Glob, Task  
 **Group:** Knowledge  
-**Lines:** 129
+**Lines:** 128
 
 ---
 
@@ -878,7 +878,7 @@ Discover available MCP tools and recommend which ones apply to a phase. Discover
 
 **Tools:** Read, Bash, Write  
 **Group:** External tools  
-**Lines:** 147
+**Lines:** 143
 
 ---
 
@@ -899,7 +899,7 @@ Preview what will happen — phase blast radius, phase dependency graph, or mile
 
 **Tools:** Read, Bash, Glob, Grep, Write, Task  
 **Group:** Foresight  
-**Lines:** 114
+**Lines:** 113
 
 #### /pan:what-if
 
@@ -911,7 +911,7 @@ Explore a phase's alternative approach in an isolated git worktree. Replays the 
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Task  
 **Group:** Foresight  
-**Lines:** 146
+**Lines:** 145
 
 ---
 
@@ -931,7 +931,7 @@ Security audit + cross-reviewer check. OWASP/STRIDE pass by pan-hardener, then p
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task  
 **Group:** Review  
-**Lines:** 128
+**Lines:** 126
 
 ---
 

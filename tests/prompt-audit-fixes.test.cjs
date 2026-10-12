@@ -126,3 +126,13 @@ describe('facts in shipped prompts', () => {
     assert.doesNotMatch(read('agents/pan-knowledge.md'), /prompt cache has warmed/i);
   });
 });
+
+// L3: nine commands @-included the engine module they call (`bin/lib/cost.cjs` …),
+// pasting hundreds of lines of JavaScript into the session on every run. The command
+// runs the module through pan-tools; its source is never the model's business.
+describe('no engine source in a prompt (L3)', () => {
+  test('no shipped prompt @-includes a bin/lib/*.cjs module', () => {
+    const offenders = shipped().filter((f) => /^@\S*bin\/lib\/[A-Za-z0-9_-]+\.cjs\s*$/m.test(read(f)));
+    assert.deepEqual(offenders, []);
+  });
+});

@@ -20,6 +20,3 @@ pan-tools hud [--out <file>] [--open] [--stdout]
 See **`/pan:hud`** for the full panel list, flags, JSON result shape, and runtime compatibility. The two commands are interchangeable.
 </objective>
 
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/hud.cjs
-</execution_context>

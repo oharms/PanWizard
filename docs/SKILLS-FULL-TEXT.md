@@ -758,7 +758,7 @@ If repairs were performed:
 
 ---
 
-### /pan:cost (148 lines)
+### /pan:cost (144 lines)
 
 ````markdown
 ---
@@ -778,10 +778,6 @@ Reads `.planning/metrics/tokens.jsonl` — an append-only log where each line is
 
 Default output is JSON for piping. Use `--format table` for human-readable tables or `--format chart` for an ASCII bar chart of daily spend; both print text, with or without `--raw`.
 </objective>
-
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/cost.cjs
-</execution_context>
 
 <subcommands>
 
@@ -914,7 +910,7 @@ The aggregator is runtime-agnostic. What varies across runtimes is how records *
 
 ---
 
-### /pan:dashboard (25 lines)
+### /pan:dashboard (22 lines)
 
 ````markdown
 ---
@@ -938,10 +934,6 @@ pan-tools hud [--out <file>] [--open] [--stdout]
 
 See **`/pan:hud`** for the full panel list, flags, JSON result shape, and runtime compatibility. The two commands are interchangeable.
 </objective>
-
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/hud.cjs
-</execution_context>
 ````
 
 
@@ -1253,7 +1245,7 @@ ELSE (default):
 1. **Validate phase** — error if the phase number is missing or not in `roadmap.md`.
 2. **Prime context** — resolve the phase directory; gather `{phase}-context.md`, `{phase}-research.md`, and the phase boundary from `roadmap.md`.
 3. **Design** — spawn `pan-designer` with a `<files_to_read>` block (context, research, roadmap boundary, `CLAUDE.md`). It fills in `templates/design.md` at the `phase` tier (`spike` if `--spike`).
-4. **Verify (reflexion loop)** — spawn `pan-design-checker` with the drafted design + the boundary source:
+4. **Verify (reflexion loop)** — spawn `pan-design-checker` with the drafted design + the boundary source, plus an `<open_findings>` block holding `pan-tools findings list --phase {phase} --agent pan-design-checker --status open` (empty on the first check):
    - If it PASSES → done.
    - If it finds gaps (iteration 1) → `pan-designer` revises (address genuine gaps only), re-check.
    - If it finds gaps (iteration 2) → final revision, record remaining gaps as caveats.
@@ -1262,7 +1254,7 @@ ELSE (default):
      ```bash
      node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "{phase}" --agent pan-design-checker --file "{phase_dir}/{padded_phase}-design-check.md" --raw
      ```
-     A re-check is the next attempt and closes the gaps it no longer reports. When the final iteration still has gaps, record them as the caveats they are before writing the design:
+     A re-check is the next attempt. It answers each earlier gap in `resolutions`, and the record closes the ones answered `resolved` with evidence; a gap it neither reports nor answers stays open. When the final iteration still has gaps, record them as the caveats they are before writing the design:
      ```bash
      node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "{phase}" --agent pan-design-checker --open --as deferred --reason "design caveat after 2 revision iterations"
      ```
@@ -6158,7 +6150,7 @@ Display the reference content directly — no additions or modifications.
 
 ---
 
-### /pan:hud (93 lines)
+### /pan:hud (89 lines)
 
 ````markdown
 ---
@@ -6178,10 +6170,6 @@ It is a *view*, not a new source of truth: every panel aggregates state PAN alre
 
 Default output is `.planning/hud.html`. Open it in any browser. Re-run any time for a fresh snapshot.
 </objective>
-
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/hud.cjs
-</execution_context>
 
 <usage>
 
@@ -6390,7 +6378,7 @@ Preserve all validation gates (argument parsing, phase verification, decimal cal
 
 ---
 
-### /pan:knowledge (129 lines)
+### /pan:knowledge (128 lines)
 
 ````markdown
 ---
@@ -6418,7 +6406,6 @@ Consolidates Spec B v1's X-3 converse + X-6 teach + X-10 explain into one comman
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/knowledge.cjs
 @~/.claude/agents/pan-knowledge.md
 @~/.claude/pan-wizard-core/templates/playbook.md
 </execution_context>
@@ -6851,7 +6838,7 @@ The orchestrator loads context in layers — NOT everything upfront. Mapper agen
 
 ---
 
-### /pan:mcp-bridge (147 lines)
+### /pan:mcp-bridge (143 lines)
 
 ````markdown
 ---
@@ -6870,10 +6857,6 @@ Surface Model Context Protocol (MCP) tools visible to the host runtime and recom
 
 Reduced scope from Spec B v1's X-7: **discovery and recommendation only**. Auto-injection of MCP tools into planner context and auto-invocation from executor agents are deliberately deferred and still unscheduled (the v3.5 target passed without them). This kept v3.3 narrow and avoids coupling PAN to Claude Code's MCP schema stability.
 </objective>
-
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/bridge.cjs
-</execution_context>
 
 Each subcommand runs `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs bridge <list|recommend|cache> [flags]`. The CLI verb is `bridge`, not `mcp-bridge`: `pan-tools mcp-bridge` is an unknown command.
 
@@ -8031,7 +8014,7 @@ Preserve all workflow gates (validation, research, planning, verification loop, 
 
 ---
 
-### /pan:preview (114 lines)
+### /pan:preview (113 lines)
 
 ````markdown
 ---
@@ -8055,7 +8038,6 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/preview.cjs
 @~/.claude/pan-wizard-core/templates/preview-report.md
 </execution_context>
 
@@ -8375,7 +8357,7 @@ Preserve all validation gates (future phase check, work check), renumbering logi
 
 ---
 
-### /pan:report (71 lines)
+### /pan:report (67 lines)
 
 ````markdown
 ---
@@ -8395,10 +8377,6 @@ Like `pan:hud`, these are *views*, not a new source of truth: every value is rea
 
 Reports are honest by construction: the `verify reconcile` verdict is shown beside the (rubber-stampable) self-reported verification status, status is framed as a current-disk snapshot, and any spend is gated so a poisoned or unpriced ledger never renders a fake zero-dollar spend.
 </objective>
-
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/phase-report.cjs
-</execution_context>
 
 <usage>
 
@@ -8804,7 +8782,7 @@ Present findings in a structured, actionable format.
 
 ---
 
-### /pan:review-deep (128 lines)
+### /pan:review-deep (126 lines)
 
 ````markdown
 ---
@@ -8833,8 +8811,6 @@ Consolidates Spec B v1's X-4 (self-review) + X-12 (harden) into a single command
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/review-deep.cjs
-@~/.claude/pan-wizard-core/bin/lib/bus.cjs
 @~/.claude/agents/pan-hardener.md
 @~/.claude/agents/pan-meta-reviewer.md
 </execution_context>
@@ -9229,7 +9205,7 @@ Preserve all workflow gates (the test-suite gate, the truth/artifact/wiring chec
 
 ---
 
-### /pan:what-if (146 lines)
+### /pan:what-if (145 lines)
 
 ````markdown
 ---
@@ -9254,7 +9230,6 @@ Unchanged from Spec B v1's X-9. Already narrow enough to stand alone.
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/whatif.cjs
 @~/.claude/agents/pan-counterfactual.md
 </execution_context>
 
@@ -9314,7 +9289,7 @@ This writes `.planning/counterfactuals/<phase>-<slug>.md`. The file belongs to t
 pan-tools whatif cleanup --worktree <path> --branch <name> --force
 ```
 
-Removes the worktree directory and deletes the counterfactual branch. Best-effort: warnings are surfaced but don't block.
+Removes the worktree directory and deletes the counterfactual branch. Pass the `worktree.worktree_path` and `worktree.branch` that `whatif prepare` returned, unchanged. Cleanup refuses (exit 1, nothing removed) a branch outside `pan-whatif/` and a worktree that is not checked out on that branch, so it can never delete your own work. Otherwise best-effort: warnings are surfaced but don't block.
 
 ### Stage 5 — Confirm
 
