@@ -229,6 +229,7 @@
     "verify commits",
     "verify key-links",
     "verify phase-completeness",
+    "verify plan-set",
     "verify plan-structure",
     "verify reconcile",
     "verify references",

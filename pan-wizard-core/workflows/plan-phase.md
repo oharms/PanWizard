@@ -398,6 +398,15 @@ Task(
 
 ## 10. Spawn pan-plan-checker Agent
 
+**First, the checks code can make.** Run them before spending a checker:
+
+```bash
+PLAN_SET=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-set "${PHASE_NUMBER}")
+PLAN_SET_EXIT=$?
+```
+
+Exit 1 means the plan set is broken in a way no review can wave through: a roadmap requirement no plan lists, two plans in one wave modifying the same file, a `depends_on` that names no plan or a plan in the same or a later wave, or a cycle. Send `PLAN_SET`'s `errors` to the planner as the revision context (step 12; it counts as an iteration) and do not spawn the checker for this set. Exit 0: continue, and pass any `warnings` to the checker.
+
 Display banner:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

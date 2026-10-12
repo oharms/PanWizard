@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`verify plan-set <phase>`: the plan checks code can make.** Requirement coverage, two plans in one wave modifying one file, dependencies that name no plan or point at the same or a later wave, and cycles were left to the plan-checker agent. `/pan:plan-phase` now runs them in code first and sends errors straight back to the planner. A passing plan check is bound to the plans it checked (a hash stored with the verdict), and exec-phase stops when the plans changed since, when the check failed, or when there is none, unless the user gives a reason. Plans record `planned_commit`, and exec-phase tells each executor which of its files changed on the branch since it was planned.
+
 ### Changed
 
 - **Findings close on evidence, never on silence.** A judge's later report closed every earlier finding it did not repeat, so a reviewer that simply forgot a finding marked it fixed. A finding now closes only when the judge answers it `resolved` with evidence (a new `resolutions` list in the `pan-verdict` block, or the verifier's `re_verification.gaps_closed`), or when its code fact passes. Unanswered findings stay open and the record lists them as `unaddressed`. The workflows hand each judge its open findings on a re-check. A reworded finding keeps its id, and `findings list --phase N --agent A` reports how much a judge's findings churn between reports (ADR-0049 amendment).

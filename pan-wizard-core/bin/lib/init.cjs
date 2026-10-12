@@ -8,6 +8,7 @@ const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInte
 const { PHASES_DIR, CODEBASE_DIR, QUICK_DIR, MILESTONES_DIR, STATE_FILE, ROADMAP_FILE, CONFIG_FILE, PROJECT_FILE, REQUIREMENTS_FILE, isPlanFile, isSummaryFile, isResearchFile, isContextFile, isVerificationFile, PLAN_SUFFIX, SUMMARY_SUFFIX, CONTEXT_SUFFIX, RESEARCH_SUFFIX, VERIFICATION_SUFFIX, UAT_SUFFIX, MAX_SLUG_LENGTH } = require('./constants.cjs');
 const { planningPath, phasesPath, filterPlanFiles, filterSummaryFiles, classifyPhaseStatus, hasBraveSearchKey, parsePhaseDir, planningRel } = require('./utils.cjs');
 const { classifyPlanTier } = require('./phase.cjs');
+const { planCheckStatus, planDrift } = require('./verify-plan-set.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { detectLanguages } = require('./codebase.cjs');
 const { detectForeignPlanningTreeAt } = require('./foreign-planning.cjs');
@@ -205,6 +206,11 @@ function cmdInitExecutePhase(cwd, phase, raw, opts) {
     execution_mode: (config.execution && config.execution.default_mode) || 'wave_order',
     dry_run: dryRun,
     rollback_tag: null,
+
+    // Plan checks in code (V7): whether these plans are the ones that passed the
+    // plan check, and which planned files changed on the branch since planning.
+    plan_check: phaseInfo ? planCheckStatus(cwd, phase) : null,
+    plan_drift: phaseInfo ? planDrift(cwd, phase) : [],
   };
 
   output(result, raw);

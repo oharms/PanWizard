@@ -53,11 +53,11 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Version | (see `package.json`) |
 | Commands (`commands/pan/*.md`) | 59 |
 | Agents (`agents/*.md`) | 24 |
-| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 59 |
+| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 60 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 183 |
+| Unit test files (`tests/*.test.cjs`) | 184 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
 | Total tests (npm run test:all) | 5296 |
 | Total test suites | 1131 |

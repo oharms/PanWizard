@@ -737,6 +737,7 @@
   ],
   "phase.cjs": [
     "blockedPlans:function",
+    "buildPlanIndex:function",
     "classifyPlanTier:function",
     "cmdFindPhase:function",
     "cmdPhaseAdd:function",
@@ -746,6 +747,7 @@
     "cmdPhasePlanIndex:function",
     "cmdPhaseRemove:function",
     "cmdPhasesList:function",
+    "dependencyNames:function",
     "markPhaseCompleteInRoadmap:function",
     "removePhaseFromDisk:function",
     "renumberDecimalPhases:function",
@@ -950,6 +952,15 @@
     "getChangedFiles:function",
     "parseConventionRules:function",
     "runDriftCheck:function"
+  ],
+  "verify-plan-set.cjs": [
+    "PLAN_CHECKER:string",
+    "checkPlanSet:function",
+    "cmdVerifyPlanSet:function",
+    "planCheckStatus:function",
+    "planDrift:function",
+    "plansSha:function",
+    "plansShaFor:function"
   ],
   "verify-preflight.cjs": [
     "cmdDepsValidate:function",

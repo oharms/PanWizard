@@ -422,6 +422,7 @@ files_modified: []
 autonomous: true
 requirements: []
 user_setup: []
+planned_commit: <sha>
 
 # Goal-backward verification; the Frontmatter Fields table below explains each field
 must_haves:
@@ -505,10 +506,11 @@ After completion, create `.planning/phases/XX-name/{phase}-{plan}-summary.md`
 | `files_modified` | Yes | Files this plan touches |
 | `autonomous` | Yes | `true` if no checkpoints |
 | `requirements` | Yes | **MUST** list requirement IDs from ROADMAP. Every roadmap requirement ID MUST appear in at least one plan. |
+| `planned_commit` | Yes | The output of `git rev-parse HEAD` when you write the plan (omit it outside a git repository) |
 | `user_setup` | No | Human-required setup items |
 | `must_haves` | Yes | Goal-backward verification criteria |
 
-Wave numbers are pre-computed during planning. Execute-phase reads `wave` directly from frontmatter.
+Wave numbers are pre-computed during planning. Execute-phase reads `wave` directly from frontmatter. `pan-tools verify plan-set <phase>` checks the arithmetic before the plan checker runs: every roadmap requirement covered, no two plans in one wave modifying the same file, every `depends_on` naming a plan of this phase in an earlier wave, and no cycles.
 
 ## Interface Context for Executors
 

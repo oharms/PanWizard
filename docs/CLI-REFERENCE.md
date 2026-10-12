@@ -228,6 +228,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
 | `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
 | `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A re-verification auto-fixes the findings it no longer reports, a regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
+| `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
 | `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. Re-exported through verify.cjs. |
 
 ---
@@ -452,6 +453,7 @@ Quick reference of all CLI commands grouped by category.
 | 212 | `memory prune` | Memory | memory.cjs |
 | 213 | `memory record` | Memory | memory.cjs |
 | 214 | `cost limits` | Cost | cost.cjs |
+| 215 | `verify plan-set` | Verification | verify-plan-set.cjs |
 
 ---
 
@@ -1679,6 +1681,19 @@ pan-tools verify stale 3 --raw    # fresh | stale | unverified | unknown
 ```
 
 `state` is `fresh`, `stale`, `unverified` (no verification file) or `unknown`. `unknown` comes with a `reason`: the verification records no `verified_commit`, the commit is no longer in the repository (rebased or squashed), the phase declares no files, or git is unavailable. `progress json` adds `verification` to each verified phase (and `changed_since_verification` when it is stale), and `progress table` marks a stale phase `Complete (verification stale)`. Exits 1 without a phase or for an unknown one.
+
+### `verify plan-set <phase>`
+
+The checks a plan set has to pass that code can make (program V7). `/pan:plan-phase` runs it before spawning the plan checker and sends its errors straight back to the planner.
+
+```bash
+pan-tools verify plan-set 3          # {phase, ok, errors[], warnings[], plans, plans_sha, plan_check, drift[]}
+pan-tools verify plan-set 3 --raw    # valid | invalid
+```
+
+**Errors** (exit 1): `uncovered_requirement` (a roadmap requirement for the phase that no plan lists), `same_wave_overlap` (two plans in one wave modifying the same file with no dependency between them), `missing_reference` (a `depends_on` that names no plan of the phase), `self_reference`, `future_reference` (a dependency in the same or a later wave), `cycle`. **Warnings**: `unknown_requirement` (a plan lists a requirement the roadmap does not give the phase) and `wave_gap` (a plan later than its dependencies need). A dependency on another phase's plan (`02-04` from phase 3) is not checked.
+
+`plan_check` says whether the plans are the ones that passed the plan check. The recorder stores a hash of the phase's plan files (`plans_sha`, line endings normalised) with every `pan-plan-checker` verdict. `status` is `ok`, `stale` (edited since the check), `failed`, `missing`, `legacy` (recorded before hashing; a warning) or `disabled` (`workflow.plan_check` is off). `drift` lists, for each plan without a summary that records `planned_commit`, the `files_modified` that changed between that commit and `HEAD`. `init execute-phase` carries the same two as `plan_check` and `plan_drift`, and exec-phase stops on `stale`, `failed` or `missing` unless the user gives a reason. Exits 1 for an unknown phase or a phase with no plans.
 
 ### `verify stubs [--gate]`
 

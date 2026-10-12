@@ -309,6 +309,9 @@ function recordVerdict(cwd, input) {
     verdict: verdict.verdict, outcome: verdict.outcome, ...lowered, attempt, source, finding_ids: ids,
     by_severity: bySeverity, by_class: byClass, warnings: parsed.warnings,
     ...(notChecked.length ? { not_checked: notChecked } : {}),
+    // A plan check is bound to the plans it checked (V7): exec-phase compares this
+    // hash with the plans it is about to run.
+    ...(agent === 'pan-plan-checker' ? { plans_sha: require('./verify-plan-set.cjs').plansShaFor(cwd, phase) } : {}),
   });
   appendRows(cwd, [...findingRows, ...newRows, ...resolveRows]);
 

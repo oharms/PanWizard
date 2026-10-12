@@ -34,11 +34,23 @@ Load all context in one call:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init execute-phase "${PHASE_ARG}")
 ```
 
-Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`, `verifier_enabled`. In the shell steps below, `$PHASE_DIR` (and `$phase_dir`) is `phase_dir` and `$PHASE_NUMBER` is `phase_number`.
+Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`, `verifier_enabled`, `plan_check`, `plan_drift`. In the shell steps below, `$PHASE_DIR` (and `$phase_dir`) is `phase_dir` and `$PHASE_NUMBER` is `phase_number`.
 
 **If `phase_found` is false:** Error — phase directory not found.
 **If `plan_count` is 0:** Error — no plans found in phase.
 **If `state_exists` is false but `.planning/` exists:** Offer reconstruct or continue.
+
+**The plans must be the plans that passed the plan check** (`plan_check.status`):
+
+| Status | Action |
+|---|---|
+| `ok`, `disabled` | Continue |
+| `legacy` | Continue, and say: "the plan check predates plan hashing, so it cannot show these plans are unchanged" |
+| `stale` | Stop: "The plans changed after they passed the plan check. Run `/pan:plan-phase {N} --skip-research` to re-check them." Continue only if the user gives a reason, and record it: `pan-tools optimize trace log --type decision --category plan_check_overridden --description "<reason>"` |
+| `failed` | Stop: "The last plan check found issues." Same override |
+| `missing` | Stop: "No plan check is recorded for this phase." Same override |
+
+**Drift.** For each `plan_drift` entry, tell the executor of that plan, in its prompt, which of its `files_modified` changed since it was planned (`files`), so it re-reads them before editing. An entry with `error` means its `planned_commit` is unknown: say so and continue.
 
 When `parallelization` is false, plans within a wave execute sequentially.
 

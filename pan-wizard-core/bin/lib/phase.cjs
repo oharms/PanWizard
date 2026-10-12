@@ -982,6 +982,8 @@ module.exports = {
   cmdFindPhase,
   cmdPhasePlanIndex,
   blockedPlans,
+  buildPlanIndex,
+  dependencyNames,
   cmdPhaseAdd,
   cmdPhaseInsert,
   cmdPhaseRemove,
