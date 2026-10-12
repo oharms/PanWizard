@@ -236,6 +236,7 @@
     "verify scope",
     "verify stale",
     "verify stubs",
+    "verify test-integrity",
     "whatif cleanup",
     "whatif prepare",
     "whatif report",

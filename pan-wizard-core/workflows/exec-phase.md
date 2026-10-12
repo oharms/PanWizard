@@ -202,6 +202,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    If ANY spot-check fails: report which plan failed, route to failure handler — ask "Retry plan?" or "Continue with remaining waves?"
 
+   **An executor that returned `## BLOCKED_SPEC_CONFLICT`** found a test it cannot satisfy without weakening it. It is not a failure to retry: show the user its Test, Requirement and Options and ask for a ruling. "Change the test" means a revised plan that declares the test file in `files_modified` (`/pan:plan-phase {N} --gaps` or an edit to the plan), then re-run that plan; "change the requirement" means updating the requirement and the plan. Never re-run the same plan unchanged: it would meet the same test.
+
    If pass:
    ```
    ---

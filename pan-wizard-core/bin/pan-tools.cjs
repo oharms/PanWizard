@@ -238,6 +238,7 @@ const preview = require('./lib/preview.cjs');
 const reviewDeep = require('./lib/review-deep.cjs');
 const findings = require('./lib/findings.cjs');
 const verifyPlanSet = require('./lib/verify-plan-set.cjs');
+const verifyIntegrity = require('./lib/verify-integrity.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -652,8 +653,10 @@ async function main() {
         verify.cmdVerifyStale(cwd, args[2], raw);
       } else if (subcommand === 'plan-set') {
         verifyPlanSet.cmdVerifyPlanSet(cwd, args[2], raw);
+      } else if (subcommand === 'test-integrity') {
+        verifyIntegrity.cmdVerifyTestIntegrity(cwd, args[2], raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity');
       }
       break;
     }

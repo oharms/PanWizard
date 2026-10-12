@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`verify test-integrity <phase>` and a way out for the executor.** An agent that cannot make a test pass can make it stop failing instead. The check walks the phase's plan commits and reports a deleted test, an added skip or only marker (JS, Python, Go, Rust, Java), dropped assertions, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail. The executor's prompt makes undeclared tests read-only and gives it `## BLOCKED_SPEC_CONFLICT` for a test it cannot satisfy honestly, which exec-phase routes to a person.
 - **`verify plan-set <phase>`: the plan checks code can make.** Requirement coverage, two plans in one wave modifying one file, dependencies that name no plan or point at the same or a later wave, and cycles were left to the plan-checker agent. `/pan:plan-phase` now runs them in code first and sends errors straight back to the planner. A passing plan check is bound to the plans it checked (a hash stored with the verdict), and exec-phase stops when the plans changed since, when the check failed, or when there is none, unless the user gives a reason. Plans record `planned_commit`, and exec-phase tells each executor which of its files changed on the branch since it was planned.
 
 ### Changed
