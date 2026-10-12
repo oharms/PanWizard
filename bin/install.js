@@ -1576,35 +1576,12 @@ function uninstall(isGlobal, runtime = 'claude') {
       // CodeQL js/file-system-race. Same idiom as the hooks' metrics read.
       try {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        let modified = false;
+        let modified;
 
-        // Remove PAN permission entries
-        if (config.permission) {
-          for (const permType of ['read', 'external_directory']) {
-            if (config.permission[permType]) {
-              const keys = Object.keys(config.permission[permType]);
-              for (const key of keys) {
-                // Match `pan-wizard` rather than `pan-wizard-core` so the malformed
-                // key earlier versions wrote (`~/.config/opencode/pan-wizard/*`) is
-                // cleaned too. Without this, machines that ran any global OpenCode
-                // install before the glob was fixed keep that entry forever — the
-                // uninstaller could never match it, which is what made it residue
-                // rather than a cosmetic typo.
-                if (key.includes('pan-wizard')) {
-                  delete config.permission[permType][key];
-                  modified = true;
-                }
-              }
-              // Clean up empty objects
-              if (Object.keys(config.permission[permType]).length === 0) {
-                delete config.permission[permType];
-              }
-            }
-          }
-          if (Object.keys(config.permission).length === 0) {
-            delete config.permission;
-          }
-        }
+        // Remove PAN permission entries, v1 `permission` keys and OpenCode 2
+        // `permissions[]` rules alike (R47). Keys matching `pan-wizard` rather than
+        // `pan-wizard-core` also clean the malformed key earlier versions wrote.
+        ({ modified } = lib.stripOpencodePermissions(config));
 
         if (modified) {
           // If stripping PAN permissions emptied the config, remove the file
@@ -1760,10 +1737,6 @@ function configureOpencodePermissions(isGlobal = true) {
     }
   }
 
-  // Ensure permission structure exists
-  if (!config.permission) {
-    config.permission = {};
-  }
 
   // Build the PAN path using the actual config directory
   // Use ~ shorthand if it's in the default location, otherwise use full path
@@ -1780,25 +1753,9 @@ function configureOpencodePermissions(isGlobal = true) {
     ? '~/.config/opencode/pan-wizard-core/*'
     : `${opencodeConfigDir.replace(/\\/g, '/')}/pan-wizard-core/*`;
   
-  let modified = false;
-
-  // Configure read permission
-  if (!config.permission.read || typeof config.permission.read !== 'object') {
-    config.permission.read = {};
-  }
-  if (config.permission.read[panPath] !== 'allow') {
-    config.permission.read[panPath] = 'allow';
-    modified = true;
-  }
-
-  // Configure external_directory permission (the safety guard for paths outside project)
-  if (!config.permission.external_directory || typeof config.permission.external_directory !== 'object') {
-    config.permission.external_directory = {};
-  }
-  if (config.permission.external_directory[panPath] !== 'allow') {
-    config.permission.external_directory[panPath] = 'allow';
-    modified = true;
-  }
+  // v1 `permission` object in a new or v1 file; the native `permissions[]` array
+  // in a file the user already converted to OpenCode 2, never both (R47).
+  const { modified } = lib.addOpencodePermissions(config, panPath);
 
   if (!modified) {
     return; // Already configured

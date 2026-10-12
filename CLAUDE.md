@@ -57,7 +57,7 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 186 |
+| Unit test files (`tests/*.test.cjs`) | 187 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
 | Total tests (npm run test:all) | 5375 |
 | Total test suites | 1144 |
@@ -124,7 +124,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 ### Source code (shipped by installer)
 
 - `bin/install.js` — Installer entry point
-- `bin/install-lib.cjs` — Installer functions, free of filesystem writes (`verifyInstall()`/`verifyHookEntrypoints()`/`dirDigest()` only read; the merge and strip helpers `stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()` and `stripMcpRegistration()` edit the object they are given)
+- `bin/install-lib.cjs` — Installer functions, free of filesystem writes (`verifyInstall()`/`verifyHookEntrypoints()`/`dirDigest()` only read; the merge and strip helpers `stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()`, `stripMcpRegistration()`, `addOpencodePermissions()` and `stripOpencodePermissions()` edit the object they are given)
 - `pan-wizard-core/bin/pan-tools.cjs` — CLI dispatcher
 - `pan-wizard-core/bin/lib/*.cjs` — Core CJS modules
 - `pan-wizard-core/workflows/*.md` — Multi-step workflow definitions
@@ -170,7 +170,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 ### Key design patterns
 
 - **CommonJS (.cjs)** for all core modules — required for Claude Code compatibility
-- **Pure functions** in `install-lib.cjs` — no filesystem writes — the read-only helpers (`verifyInstall()`, `verifyHookEntrypoints()`, `dirDigest()`) read the filesystem, and the merge and strip helpers (`stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()`, `stripMcpRegistration()`) edit the object they are given; fully testable
+- **Pure functions** in `install-lib.cjs` — no filesystem writes — the read-only helpers (`verifyInstall()`, `verifyHookEntrypoints()`, `dirDigest()`) read the filesystem, and the merge and strip helpers (`stripPanHookEntries()`, `mergeCodexHooksConfig()`, `removeCodexPanHooks()`, `mergeMcpRegistration()`, `stripMcpRegistration()`, `addOpencodePermissions()`, `stripOpencodePermissions()`) edit the object they are given; fully testable
 - **Runtime-agnostic** commands and agents — no PAN-specific hardcoding in shipped content
 - **Path normalization** via `toPosix()` — cross-platform path handling
 - **Line endings** — planning files are parsed on LF (`toLf()`) and written back in their own ending (`dominantEol()`, `withEol()`), all in `core.cjs`; `tests/crlf-parity.test.cjs` runs the parsers on LF and CRLF copies

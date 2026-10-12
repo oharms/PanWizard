@@ -1384,8 +1384,76 @@ function mergeMcpRegistration(existing, runtime, entry, serverName = 'pan') {
   const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
   const key = spec.key;
   if (!config[key] || typeof config[key] !== 'object' || Array.isArray(config[key])) config[key] = {};
+  // OpenCode 2 nests servers under `mcp.servers` (R47). PAN keeps writing the v1
+  // shape, but in a file the user already converted it updates the native entry and
+  // never leaves a legacy `mcp.pan` beside it: the native one would win, stale.
+  if (runtime === 'opencode' && isOpencodeV2Servers(config[key].servers)) {
+    config[key].servers[serverName] = entry;
+    delete config[key][serverName];
+    return config;
+  }
   config[key][serverName] = entry;
   return config;
+}
+
+/** OpenCode 2's `mcp.servers` container: an object of server entries, not a v1 server named "servers". */
+function isOpencodeV2Servers(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v) && !('type' in v) && !('command' in v);
+}
+
+/**
+ * Add PAN's OpenCode read and external_directory allowances for `panPath`.
+ * v1 (or a new file): the `permission` object PAN has always written. v2 (the file
+ * already has an ordered `permissions[]` of {action, resource, effect}): PAN's rules
+ * go into that array, and no legacy `permission` object is added beside it (R47).
+ * @returns {{config: object, modified: boolean, shape: 'v1'|'v2'}}
+ */
+function addOpencodePermissions(existing, panPath) {
+  const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
+  let modified = false;
+  if (Array.isArray(config.permissions)) {
+    for (const action of ['read', 'external_directory']) {
+      const has = config.permissions.some((r) => r && r.action === action && r.resource === panPath && r.effect === 'allow');
+      if (!has) { config.permissions.push({ action, resource: panPath, effect: 'allow' }); modified = true; }
+    }
+    return { config, modified, shape: 'v2' };
+  }
+  if (!config.permission || typeof config.permission !== 'object' || Array.isArray(config.permission)) config.permission = {};
+  for (const type of ['read', 'external_directory']) {
+    if (!config.permission[type] || typeof config.permission[type] !== 'object') config.permission[type] = {};
+    if (config.permission[type][panPath] !== 'allow') { config.permission[type][panPath] = 'allow'; modified = true; }
+  }
+  return { config, modified, shape: 'v1' };
+}
+
+/**
+ * Remove every PAN allowance from an OpenCode config, in either shape: keys of the
+ * v1 `permission.read` / `permission.external_directory` objects and v2
+ * `permissions[]` rules whose path names `pan-wizard` (which also catches the
+ * malformed `~/.config/opencode/pan-wizard/*` key early versions wrote). Containers
+ * PAN emptied are removed.
+ * @returns {{config: object, modified: boolean}}
+ */
+function stripOpencodePermissions(existing) {
+  const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
+  let modified = false;
+  if (config.permission && typeof config.permission === 'object' && !Array.isArray(config.permission)) {
+    for (const type of ['read', 'external_directory']) {
+      const bag = config.permission[type];
+      if (!bag || typeof bag !== 'object') continue;
+      for (const key of Object.keys(bag)) if (key.includes('pan-wizard')) { delete bag[key]; modified = true; }
+      if (Object.keys(bag).length === 0) delete config.permission[type];
+    }
+    if (Object.keys(config.permission).length === 0) delete config.permission;
+  }
+  if (Array.isArray(config.permissions)) {
+    const kept = config.permissions.filter((r) => !(r && typeof r.resource === 'string' && r.resource.includes('pan-wizard')));
+    if (kept.length !== config.permissions.length) {
+      modified = true;
+      if (kept.length) config.permissions = kept; else delete config.permissions;
+    }
+  }
+  return { config, modified };
 }
 
 /**
@@ -1400,10 +1468,17 @@ function stripMcpRegistration(existing, runtime, serverName = 'pan') {
   if (!spec) throw new Error(`stripMcpRegistration: unknown runtime "${runtime}"`);
   const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
   const bag = config[spec.key];
-  if (!bag || typeof bag !== 'object' || !(serverName in bag)) return { config, removed: false };
-  delete bag[serverName];
-  if (Object.keys(bag).length === 0) delete config[spec.key];
-  return { config, removed: true };
+  if (!bag || typeof bag !== 'object') return { config, removed: false };
+  let removed = false;
+  // OpenCode 2's `mcp.servers.pan` as well as the v1 `mcp.pan` (R47).
+  if (runtime === 'opencode' && isOpencodeV2Servers(bag.servers) && serverName in bag.servers) {
+    delete bag.servers[serverName];
+    if (Object.keys(bag.servers).length === 0) delete bag.servers;
+    removed = true;
+  }
+  if (serverName in bag) { delete bag[serverName]; removed = true; }
+  if (removed && Object.keys(bag).length === 0) delete config[spec.key];
+  return { config, removed };
 }
 
 /**
@@ -2577,6 +2652,8 @@ module.exports = {
   buildMcpServerEntry,
   mergeMcpRegistration,
   stripMcpRegistration,
+  addOpencodePermissions,
+  stripOpencodePermissions,
   buildCodexMcpSnippet,
   removeCodexPanHooks,
   buildNativeWorkflowScripts,
