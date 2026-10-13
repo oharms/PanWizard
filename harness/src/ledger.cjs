@@ -11,6 +11,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const { wilson } = require('./stats.cjs');
 
 /** Strip the volatile parts (paths under the run dir, run ids, numbers that are counters) before hashing. */
 function normaliseDetail(detail) {
@@ -55,11 +56,13 @@ function mergeRun(entries, { runId, build, now, failures, passedSteps }) {
       existing.builds = [...new Set([...(existing.builds || []), build])];
       existing.resolved_at = null;
       existing.detail = f.failure;
+      existing.fail_count = (existing.fail_count || (existing.runs || []).length - 1) + 1;
     } else {
       byKey.set(sig, {
         signature: sig, scenario: f.scenario, tier: f.tier, step: f.step, expect: f.expect,
         detail: f.failure, why: f.why || null,
         first_seen: now, last_seen: now, runs: [runId], builds: [build], resolved_at: null,
+        fail_count: 1, pass_count: 0,
       });
     }
   }
@@ -68,6 +71,15 @@ function mergeRun(entries, { runId, build, now, failures, passedSteps }) {
   // that failed on rep 5 and passed on reps 1–4 is a flake to surface, not a
   // finding to close — the first tier-2 run (2026-09-10) hid exactly that.
   const passed = new Set((passedSteps || []).map(p => `${p.scenario}#${p.step}`));
+  // Every pass of an open finding's step counts toward its rate (H3), this run included:
+  // a step that fails one rep in five is a 20% finding, not a 100% one.
+  const passCounts = new Map();
+  for (const p of passedSteps || []) passCounts.set(`${p.scenario}#${p.step}`, (passCounts.get(`${p.scenario}#${p.step}`) || 0) + 1);
+  for (const e of byKey.values()) {
+    if (e.resolved_at) continue;
+    const n = passCounts.get(`${e.scenario}#${e.step}`) || 0;
+    if (n) e.pass_count = (e.pass_count || 0) + n;
+  }
   for (const e of byKey.values()) {
     if (e.resolved_at || !passed.has(`${e.scenario}#${e.step}`)) continue;
     if ((e.runs || []).includes(runId)) continue;
@@ -76,10 +88,32 @@ function mergeRun(entries, { runId, build, now, failures, passedSteps }) {
   return [...byKey.values()];
 }
 
-/** Promotion rule: model-free findings promote at once; model-tier findings need two runs. */
-function isPromotable(entry) {
-  if (entry.resolved_at) return false;
-  return entry.tier === 0 || (entry.runs || []).length >= 2;
+// A model-tier finding promotes when its failure rate is at least this, at the 95%
+// lower bound of its Wilson interval (H3). Below it, with passes and failures on
+// record, the finding is flaky: real, but not yet shown to be more than noise.
+const PROMOTE_RATE = 0.2;
+
+/**
+ * What a ledger entry is (H3): 'resolved', 'promotable', 'flaky' or 'watch'.
+ * Model-free (tier 0) findings promote at once: tier 0 is deterministic. A model-tier
+ * finding promotes on its interval; an entry written before the counts existed falls
+ * back to the old two-run rule.
+ */
+function classify(entry) {
+  if (entry.resolved_at) return 'resolved';
+  if (entry.tier === 0) return 'promotable';
+  if (entry.fail_count === undefined) return (entry.runs || []).length >= 2 ? 'promotable' : 'watch';
+  const fails = entry.fail_count;
+  const n = fails + (entry.pass_count || 0);
+  const w = wilson(fails, n);
+  // At least two failures as well: one failure alone has a lower bound of 0.21 on n = 1.
+  if (fails >= 2 && w.lower >= PROMOTE_RATE) return 'promotable';
+  return entry.pass_count > 0 ? 'flaky' : 'watch';
 }
 
-module.exports = { signature, normaliseDetail, readLedger, writeLedger, mergeRun, isPromotable };
+/** Promotion rule: classify() says promotable. */
+function isPromotable(entry) {
+  return classify(entry) === 'promotable';
+}
+
+module.exports = { signature, normaliseDetail, readLedger, writeLedger, mergeRun, isPromotable, classify, PROMOTE_RATE };

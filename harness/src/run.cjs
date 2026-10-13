@@ -27,6 +27,7 @@ const { createWorkspace, installPan, runPan } = require('./workspace.cjs');
 const { rpcBatch, materialise } = require('./mcp.cjs');
 const { runModelStep } = require('./model.cjs');
 const { check } = require('./assert.cjs');
+const { wilson, passHatK, sprt } = require('./stats.cjs');
 const { readLedger, writeLedger, mergeRun, isPromotable } = require('./ledger.cjs');
 const { findCli, unmetRequirement } = require('./cli-detect.cjs');
 
@@ -35,7 +36,7 @@ const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
 const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 
 function parseArgs(argv) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false };
+  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -53,6 +54,12 @@ function parseArgs(argv) {
     // --controls (H5): also run each passing scenario once per declared control, whose
     // sabotage must turn it red. Opt-in: it multiplies the run's length.
     else if (k === '--controls') a.controls = true;
+    // --until-decided (H3): stop a model-tier scenario's reps once SPRT decides (pass
+    // rate 0.8 against 0.5, alpha 0.05, beta 0.2), so a clear result costs fewer reps.
+    else if (k === '--until-decided') a.untilDecided = true;
+    // --arm <id> (H3, M43): run the scenarios that declare this arm with its change applied
+    // (the no-guidance baseline, a deletion arm), for a paired comparison with the plain run.
+    else if (k === '--arm') { a.arm = v; i++; }
     else if (k === '--help' || k === '-h') { a.help = true; }
     else throw new Error(`unknown argument: ${k}`);
   }
@@ -177,6 +184,18 @@ function applyControl(control, vars) {
   }
 }
 
+/**
+ * One row of the report's completion table (H3), pure: the pass rate always travels with
+ * its 95% Wilson interval, and pass^3 (all of three trials pass) when there are three reps.
+ */
+function completionRow(c) {
+  const n = c.passed + c.failed;
+  const interval = c.interval || (n ? wilson(c.passed, n) : null);
+  const hat3 = c.passHat3 !== undefined ? c.passHat3 : (n >= 3 ? passHatK(c.passed, n, 3) : null);
+  const rate = interval ? `${c.passed}/${n} [${interval.lower.toFixed(2)}, ${interval.upper.toFixed(2)}]` : '—';
+  return `| ${c.scenario} | ${c.tier} | ${c.reps} | ${c.passed} | ${c.failed} | ${c.budget || 0} | ${c.skipped || 0} | ${c.error || 0} | ${rate} | ${hat3 === null ? '—' : hat3.toFixed(2)} | ${c.spentUsd ? `$${c.spentUsd.toFixed(2)}` : ''} |`;
+}
+
 function runStep(step, ctx) {
   const { ws, other, repo, pkg, runtime, budget } = ctx;
   const vars = { ws, other, repo, pkg };
@@ -278,7 +297,7 @@ function persistStepOutput(runDir, scenarioId, rep, index, outcome) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls]\n');
+    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id]\n');
     return 0;
   }
   const stateDir = args.stateDir || defaultStateDir();
@@ -298,6 +317,11 @@ function main() {
   let scenarios = loadScenarios(path.join(HARNESS_ROOT, 'scenarios'));
   if (args.scenarios.length) scenarios = scenarios.filter(s => args.scenarios.includes(s.id));
   scenarios = scenarios.filter(s => s.tier <= args.tier);
+  if (args.arm) {
+    const without = scenarios.filter(s => !(s.arms || []).some(a => a.id === args.arm)).map(s => s.id);
+    if (without.length) log(`arm ${args.arm}: not declared by ${without.join(', ')} — left out`);
+    scenarios = scenarios.filter(s => (s.arms || []).some(a => a.id === args.arm));
+  }
   if (scenarios.length === 0) { log('no scenarios selected'); return 2; }
 
   let spent = 0;
@@ -314,9 +338,11 @@ function main() {
   // One scenario run in a fresh workspace. With a `control`, its sabotage is applied
   // after step `control.after` (-1: before the first step), and the run's failures are
   // the expected outcome, so they are returned rather than recorded as findings.
+  const armOf = (s) => (args.arm ? (s.arms || []).find(a => a.id === args.arm) || null : null);
   const executeScenario = (s, rep, reps, control) => {
-    const label = (reps > 1 ? `${s.id}#${rep}` : s.id) + (control ? `~${control.id}` : '');
-    const rec = { scenario: s.id, tier: s.tier, rep, status: 'passed', steps: [], skipped: null, durationMs: 0, ...(control ? { control: control.id } : {}) };
+    const arm = armOf(s);
+    const label = (reps > 1 ? `${s.id}#${rep}` : s.id) + (arm ? `@${arm.id}` : '') + (control ? `~${control.id}` : '');
+    const rec = { scenario: s.id, tier: s.tier, rep, status: 'passed', steps: [], skipped: null, durationMs: 0, ...(arm ? { arm: arm.id } : {}), ...(control ? { control: control.id } : {}) };
     const out = { rec, failures: [], passedSteps: [] };
     const t0 = Date.now();
     const unmet = unmetRequirement(s.requires);
@@ -332,7 +358,7 @@ function main() {
     }
     const seedDir = s.seed && s.seed !== 'empty' ? path.join(HARNESS_ROOT, 'seeds', s.seed) : null;
     if (seedDir && !fs.existsSync(seedDir)) throw new Error(`${s.id}: seed ${s.seed} not found`);
-    const wsName = label.replace('#', '-').replace('~', '--');
+    const wsName = label.replace('#', '-').replace('@', '-at-').replace('~', '--');
     const ws = createWorkspace(runDir, wsName, seedDir);
     const other = path.join(runDir, 'ws', `${wsName}-other`);
     fs.mkdirSync(other, { recursive: true });
@@ -354,10 +380,14 @@ function main() {
       spentUsd: () => spentBy.get(s.id) || 0,
       addCost: (c) => { spent += c; spentBy.set(s.id, (spentBy.get(s.id) || 0) + c); },
     };
+    // An arm's change and a control's sabotage are applied the same way, each after its step.
     const sabotage = (afterIndex) => {
-      if (!control || (control.after === undefined ? -1 : control.after) !== afterIndex) return true;
-      try { applyControl(control, { ws, other, repo: args.repo, pkg: art.packageDir }); return true; }
-      catch (e) { rec.status = 'error'; rec.note = `control ${control.id} could not be applied: ${e.message}`; log(`${label}: ERROR — ${rec.note}`); return false; }
+      for (const [kind, mod] of [['arm', arm], ['control', control]]) {
+        if (!mod || (mod.after === undefined ? -1 : mod.after) !== afterIndex) continue;
+        try { applyControl(mod, { ws, other, repo: args.repo, pkg: art.packageDir }); }
+        catch (e) { rec.status = 'error'; rec.note = `${kind} ${mod.id} could not be applied: ${e.message}`; log(`${label}: ERROR — ${rec.note}`); return false; }
+      }
+      return true;
     };
     if (!sabotage(-1)) return out;
     const scenarioDeadline = t0 + ((s.budget && s.budget.maxMinutes) || 30) * 60000;
@@ -401,8 +431,21 @@ function main() {
   };
 
   const controlResults = [];
+  const outcomesBy = new Map();
+  const decided = new Map();
   for (const { scenario: s, rep, reps } of interleave(scenarios, args.repeat)) {
+    if (args.untilDecided && s.tier >= 1 && decided.has(s.id)) continue;
     const run = executeScenario(s, rep, reps, null);
+    if (s.tier >= 1 && (run.rec.status === 'passed' || run.rec.status === 'failed')) {
+      const seq = outcomesBy.get(s.id) || [];
+      seq.push(run.rec.status === 'passed');
+      outcomesBy.set(s.id, seq);
+      const d = sprt(seq);
+      if (args.untilDecided && d.decision !== 'continue' && !decided.has(s.id)) {
+        decided.set(s.id, { decision: d.decision, reps: seq.length });
+        log(`${s.id}: decided after ${seq.length} rep(s) — pass rate ${d.decision === 'h1' ? 'at least 0.8' : 'at most 0.5'} (SPRT, alpha 0.05, beta 0.2)`);
+      }
+    }
     results.push(run.rec);
     failures.push(...run.failures);
     passedSteps.push(...run.passedSteps);
@@ -435,6 +478,13 @@ function main() {
     const b = byScenario[r.scenario] || (byScenario[r.scenario] = { scenario: r.scenario, tier: r.tier, reps: 0, passed: 0, failed: 0, skipped: 0, budget: 0, error: 0, spentUsd: 0 });
     b.reps++; b[r.status] = (b[r.status] || 0) + 1; b.spentUsd += r.steps.reduce((n, st) => n + (st.costUsd || 0), 0);
   }
+  // Every measured rate carries its interval (H3): 4/5 is [0.38, 0.96], not "80%".
+  for (const b of Object.values(byScenario)) {
+    const n = b.passed + b.failed;
+    b.interval = n ? wilson(b.passed, n) : null;
+    b.passHat3 = n >= 3 ? passHatK(b.passed, n, 3) : null;
+    if (decided.has(b.scenario)) b.decided = decided.get(b.scenario);
+  }
   const summary = {
     run: id, build: art.build, tier: args.tier, maxUsd: args.maxUsd, spentUsd: spent, durationMs: Date.now() - startedAt,
     shares: Object.fromEntries([...shares].filter(([, v]) => v > 0)),
@@ -452,8 +502,8 @@ function main() {
     ...summary.scenarios.map(r => `| ${r.scenario}${r.rep > 1 ? ` #${r.rep}` : ''} | ${r.tier} | ${r.status} | ${r.steps} | ${r.failures} | ${r.costUsd ? `$${r.costUsd.toFixed(2)}` : ''} | ${r.skipped || r.note || ''} |`),
     '',
     '## Completion per scenario', '',
-    '| Scenario | Tier | Reps | Passed | Failed | Budget-stopped | Skipped | Error | Spent |', '|---|---|---|---|---|---|---|---|---|',
-    ...summary.completion.map(c => `| ${c.scenario} | ${c.tier} | ${c.reps} | ${c.passed} | ${c.failed} | ${c.budget} | ${c.skipped} | ${c.error || 0} | ${c.spentUsd ? `$${c.spentUsd.toFixed(2)}` : ''} |`),
+    '| Scenario | Tier | Reps | Passed | Failed | Budget-stopped | Skipped | Error | Pass rate (95% interval) | pass^3 | Spent |', '|---|---|---|---|---|---|---|---|---|---|---|',
+    ...summary.completion.map(completionRow),
     '',
   ];
   if (args.controls) {
@@ -489,4 +539,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };

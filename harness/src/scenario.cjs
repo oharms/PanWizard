@@ -79,9 +79,13 @@ function validateScenario(s, fileName = '<inline>') {
   if (s.controls !== undefined && !Array.isArray(s.controls)) err('controls must be an array');
   const controls = Array.isArray(s.controls) ? s.controls : [];
   if (s.tier === 0 && controls.length === 0) err('a tier-0 scenario needs controls: at least one sabotage that must turn it red');
+  // Arms (H3, M43) are variants of the scenario, measured rather than expected to fail:
+  // a no-guidance baseline, a deletion arm. Same shape and rules as a control.
+  if (s.arms !== undefined && !Array.isArray(s.arms)) err('arms must be an array');
+  for (const [field, list] of [['controls', controls], ['arms', Array.isArray(s.arms) ? s.arms : []]]) {
   const seen = new Set();
-  controls.forEach((c, i) => {
-    const at = `controls[${i}]`;
+  list.forEach((c, i) => {
+    const at = `${field}[${i}]`;
     if (!c || typeof c !== 'object') { err(`${at}: not an object`); return; }
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(String(c.id || ''))) err(`${at}: id must be kebab-case`);
     else if (seen.has(c.id)) err(`${at}: duplicate id "${c.id}"`); else seen.add(c.id);
@@ -94,6 +98,7 @@ function validateScenario(s, fileName = '<inline>') {
     if (c.write !== undefined && (badPath(c.write && c.write.path) || typeof (c.write && c.write.content) !== 'string')) err(`${at}: write needs {path, content}`);
     if (c.replace !== undefined && (badPath(c.replace && c.replace.path) || typeof (c.replace && c.replace.find) !== 'string' || !c.replace.find || typeof c.replace.with !== 'string')) err(`${at}: replace needs {path, find, with}`);
   });
+  }
   return errors;
 }
 

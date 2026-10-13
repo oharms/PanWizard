@@ -126,6 +126,116 @@ describe('harness ledger — signatures, merge, promotion', () => {
     entries = mergeRun(entries, { runId: 'r2', build: 'b', now: 't2', failures: [f], passedSteps: [] });
     assert.equal(isPromotable(entries[0]), true);
   });
+
+  // H3: a model-tier finding promotes on its failure-rate interval, and one that fails
+  // rarely among many passes is classified flaky rather than promoted or forgotten.
+  test('model-tier promotion follows the interval: rare failures among passes are flaky', () => {
+    const { classify } = require('../harness/src/ledger.cjs');
+    const f = { scenario: 'm', tier: 2, step: 0, expect: 'exit:0', failure: 'x', why: 'w' };
+    const pass = { scenario: 'm', step: 0 };
+    // Two failures among eighteen passes over three runs: 2/20, lower bound well under 0.2.
+    let entries = mergeRun([], { runId: 'r1', build: 'b', now: 't1', failures: [f], passedSteps: Array(6).fill(pass) });
+    entries = mergeRun(entries, { runId: 'r2', build: 'b', now: 't2', failures: [f], passedSteps: Array(6).fill(pass) });
+    entries = mergeRun(entries, { runId: 'r3', build: 'b', now: 't3', failures: [], passedSteps: Array(6).fill(pass) });
+    // r3's passes resolve the finding (an earlier run's step passed); classify an unresolved copy.
+    const open = { ...entries[0], resolved_at: null };
+    assert.deepEqual([open.fail_count, open.pass_count], [2, 18]);
+    assert.equal(classify(open), 'flaky');
+    // Four failures in five reps: lower bound 0.38, promotable.
+    let hot = mergeRun([], { runId: 'r1', build: 'b', now: 't1', failures: [f, f, f, f], passedSteps: [pass] });
+    hot = mergeRun(hot, { runId: 'r1', build: 'b', now: 't1', failures: [], passedSteps: [] });
+    assert.deepEqual([hot[0].fail_count, hot[0].pass_count], [4, 1]);
+    assert.equal(classify(hot[0]), 'promotable');
+    assert.equal(classify({ ...hot[0], tier: 0, fail_count: 1, pass_count: 99 }), 'promotable', 'tier 0 is deterministic: one failure is a finding');
+    assert.equal(classify({ tier: 2, runs: ['a', 'b'], resolved_at: null }), 'promotable', 'an entry from before the counts keeps the two-run rule');
+  });
+});
+
+describe('harness statistics (H3)', () => {
+  const S = require('../harness/src/stats.cjs');
+  const close = (a, b, eps = 1e-3) => assert.ok(Math.abs(a - b) < eps, `${a} vs ${b}`);
+
+  test('Wilson intervals on known values', () => {
+    const w35 = S.wilson(3, 5);
+    close(w35.lower, 0.2307); close(w35.upper, 0.8824);
+    const w45 = S.wilson(4, 5);
+    close(w45.lower, 0.3755); close(w45.upper, 0.9638);
+    assert.deepEqual(S.wilson(0, 0), { p: null, lower: 0, upper: 1, n: 0 });
+    assert.equal(S.wilson(5, 5).upper, 1);
+    assert.throws(() => S.wilson(6, 5), RangeError);
+  });
+
+  test('the inverse normal and the power planner', () => {
+    close(S.normInv(0.975), 1.959964, 1e-6);
+    close(S.normInv(0.8), 0.841621, 1e-6);
+    close(S.normInv(0.01), -2.326348, 1e-6);
+    assert.equal(S.powerN(0.6, 0.8), 79, 'two-sided alpha 0.05, power 0.8, unpooled normal approximation');
+    assert.equal(S.powerN(0.5, 0.5), Infinity);
+  });
+
+  test('pass^k and pass@k on hand-computed counts', () => {
+    assert.equal(S.passHatK(4, 5, 2), 0.6, 'C(4,2)/C(5,2) = 6/10');
+    assert.equal(S.passHatK(5, 5, 3), 1);
+    assert.equal(S.passHatK(2, 5, 3), 0);
+    close(S.passAtK(1, 5, 2), 0.4, 1e-9);
+    assert.equal(S.passAtK(0, 5, 2), 0);
+    assert.equal(S.passHatK(1, 2, 3), null, 'k beyond n has no estimate');
+  });
+
+  test('the paired sign test reads only discordant pairs', () => {
+    const t = S.pairedSignTest([[true, false], [true, false], [true, false], [true, false], [true, false], [false, false], [true, true]]);
+    assert.deepEqual([t.aOnly, t.bOnly, t.discordant], [5, 0, 5]);
+    close(t.p, 0.0625, 1e-9);
+    assert.equal(S.pairedSignTest([[true, true]]).p, 1);
+  });
+
+  test('SPRT decides in both directions, and keeps going when the evidence is thin', () => {
+    assert.equal(S.sprt(Array(10).fill(true)).decision, 'h1');
+    assert.equal(S.sprt(Array(10).fill(false)).decision, 'h0');
+    assert.equal(S.sprt([true, true, true, false, false]).decision, 'continue');
+    assert.equal(S.sprt({ successes: 0, n: 0 }).decision, 'continue');
+    // A paired comparison: B wins every discordant pair.
+    const pairs = Array(12).fill([false, true]);
+    assert.equal(S.sprtPaired(pairs).decision, 'h1');
+    assert.equal(S.sprtPaired(Array(12).fill([true, false])).decision, 'h0');
+    assert.throws(() => S.sprt([], { p0: 0.5, p1: 0.5 }), RangeError);
+  });
+
+  test('a past five-rep result re-rendered with its interval: the markdown chain\'s 3/5 (RC22, 2026-09-10)', () => {
+    const { completionRow } = require('../harness/src/run.cjs');
+    const row = completionRow({ scenario: 'markdown-exec-phase-chain', tier: 2, reps: 5, passed: 3, failed: 2, budget: 0, skipped: 0, error: 0, spentUsd: 20 });
+    // "60%" said nothing a sixth rep could not overturn: the interval spans most of the scale,
+    // and the chance that three runs in a row all complete is one in ten.
+    assert.match(row, /\| 3\/5 \[0\.23, 0\.88\] \| 0\.10 \| \$20\.00 \|$/);
+    assert.match(completionRow({ scenario: 's', tier: 0, reps: 1, passed: 0, failed: 0, skipped: 1 }), /\| — \| — \|/);
+  });
+
+  test('the runner takes --until-decided and --arm', () => {
+    const { parseArgs } = require('../harness/src/run.cjs');
+    const a = parseArgs(['--until-decided', '--arm', 'no-guidance', '--repeat', '9']);
+    assert.deepEqual([a.untilDecided, a.arm, a.repeat], [true, 'no-guidance', 9]);
+    assert.deepEqual([parseArgs([]).untilDecided, parseArgs([]).arm], [false, null]);
+  });
+
+  test('arms are validated like controls, and quick-mode carries the no-guidance baseline (M43)', () => {
+    const base = { id: 'x', tier: 2, description: 'd', why: 'w', steps: [{ kind: 'model', prompt: 'p', expect: ['exit:0'], why: 'w' }] };
+    assert.deepEqual(validateScenario({ ...base, arms: [{ id: 'no-guidance', write: { path: '.claude/agents/x.md', content: 'x' }, why: 'w' }] }), []);
+    assert.ok(validateScenario({ ...base, arms: [{ id: 'no-guidance' }] }).length);
+    assert.ok(validateScenario({ ...base, arms: 'x' }).length);
+    const quick = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((s) => s.id === 'quick-mode');
+    assert.equal(quick.arms[0].id, 'no-guidance');
+    assert.match(quick.arms[0].write.content, /^---\nname: pan-executor\n/);
+  });
+
+  test('non-inferiority with the Newcombe interval', () => {
+    const same = S.nonInferiority({ successes: 90, n: 100 }, { successes: 90, n: 100 }, 0.1);
+    assert.equal(same.nonInferior, true);
+    const worse = S.nonInferiority({ successes: 90, n: 100 }, { successes: 60, n: 100 }, 0.1);
+    assert.equal(worse.nonInferior, false);
+    const thin = S.nonInferiority({ successes: 4, n: 5 }, { successes: 4, n: 5 }, 0.1);
+    assert.equal(thin.nonInferior, false, 'five reps cannot show non-inferiority at 0.1');
+    assert.equal(S.nonInferiority({ successes: 0, n: 0 }, { successes: 1, n: 1 }, 0.1).nonInferior, false);
+  });
 });
 
 describe('harness scenarios — every shipped scenario validates, and bad ones are refused', () => {

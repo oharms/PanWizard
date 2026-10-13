@@ -39,5 +39,8 @@
       ],
       "why": "Working code, not files that look right."
     }
+  ],
+  "arms": [
+    {"id":"no-guidance","write":{"path":".claude/agents/pan-executor.md","content":"---\nname: pan-executor\ndescription: Executes a PAN plan.\ntools: Read, Write, Edit, Bash, Grep, Glob\n---\n\nImplement the plan you are given, run its verification, write its summary, and commit your work.\n"},"why":"The no-guidance baseline (M43, MI-114): the executor reduced to a one-line role. A paired run against the plain scenario shows whether PAN's executor guidance earns its tokens; a prompt change to the executor is measured against this arm as well as the baseline."}
   ]
 }
