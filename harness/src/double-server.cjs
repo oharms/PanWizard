@@ -8,11 +8,11 @@
  * script, waits for the port file, runs the host, then stops it.
  *
  *   node double-server.cjs --mode script --script <file.json> --captures <dir> --port-file <file>
- *                          [--cassette <file.json>] [--upstream <url>]
+ *                          [--cassette <file.json>] [--upstream <url>] [--ws <dir>] [--other <dir>] [--home <dir>] [--agents <dir>]
  */
 
 const fs = require('fs');
-const { startDouble } = require('./model-double.cjs');
+const { startDouble, makeNormaliser, loadAgents } = require('./model-double.cjs');
 
 function arg(name) {
   const i = process.argv.indexOf(name);
@@ -27,6 +27,11 @@ function arg(name) {
     cassette: readJson(arg('--cassette')),
     upstream: arg('--upstream') || undefined,
     capturesDir: arg('--captures') || undefined,
+    // Cassette keys ignore what changes between runs (H2); the run's own paths are passed in.
+    normalise: makeNormaliser({ ws: arg('--ws') || undefined, other: arg('--other') || undefined, home: arg('--home') || undefined }),
+    // An agent's request is keyed on that agent's installed lines (read once: an edit
+    // between steps lands in the next step's double).
+    agents: arg('--agents') ? loadAgents(arg('--agents')) : [],
     onChange: () => flush(),
   });
   const portFile = arg('--port-file');

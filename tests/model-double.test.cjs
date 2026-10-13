@@ -110,7 +110,8 @@ describe('model double — replay and record', () => {
     try {
       assert.equal((await post(`${d.url}/v1/messages`, body)).text, '{"recorded":true}');
       const changed = await post(`${d.url}/v1/messages`, { ...body, system: 'executor body v2' });
-      assert.equal(changed.status, 409);
+      assert.equal(changed.status, 400, 'an error the clients do not retry');
+      assert.match(changed.text, /cassette drift/);
       assert.equal(d.drift.length, 1);
       assert.match(d.drift[0].system, /v2/);
     } finally { await d.close(); }
@@ -209,5 +210,124 @@ describe('wire-agent-body.cjs — the whole body, or not', () => {
       const cut = run(caps, src);
       assert.deepEqual([cut.whole, cut.missing, cut.firstMissing], [false, 1, ['The last line.']]);
     } finally { cleanup(dir); }
+  });
+});
+
+describe('cassettes: replay at $0, drift as prompt impact (H2)', () => {
+  const { driftNote, unmetRuns, parseArgs } = require('../harness/src/run.cjs');
+  const CASSETTE = path.join(ROOT, 'harness', 'cassettes', 'executor-spawn-claude.json');
+
+  test('an agent request keys on the agent lines it carries, across runs and machines; an edit to them moves it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-key-'));
+    try {
+      const rules = ['You are pan-x, the executor of PAN plans.', 'Write your notes under the memory dir you are given.', 'Short line.'];
+      const writeAgent = (extra = []) => fs.writeFileSync(path.join(dir, 'pan-x.md'), ['---', 'name: pan-x', '---', ...rules, ...extra, ''].join('\n'));
+      const sys = (ws, home, slug, sep, eol, hostProse, extra = []) => [
+        `x-anthropic-billing-header: cc_version=1; id=${Math.random()}`,
+        'You are a Claude agent.',
+        ...hostProse,
+        `Memory lives at \`${home}${sep}projects${sep}${slug}${sep}memory\`.`,
+        'Session 0b8e9c2a-1f3d-4e5a-9b7c-123456789abc, today 2026-10-13.',
+        ...rules, ...extra,
+      ].join(eol);
+      const win = D.makeNormaliser({ ws: 'D:\\runs\\a\\ws', home: 'D:\\runs\\a\\double-0-home' });
+      const nix = D.makeNormaliser({ ws: '/tmp/runs/b/ws', home: '/tmp/runs/b/double-0-home' });
+      const body = (system) => ({ model: 'm', system, messages: [{ role: 'user', content: 'p' }] });
+      writeAgent();
+      const agents = D.loadAgents(dir);
+      const a = D.requestKey('anthropic', body(sys('D:\\runs\\a\\ws', 'D:\\runs\\a\\double-0-home', 'D--runs-a-ws', '\\', '\r\n', ['A paragraph this host adds on Windows.'])), win, agents);
+      const b = D.requestKey('anthropic', body(sys('/tmp/runs/b/ws', '/tmp/runs/b/double-0-home', '-tmp-runs-b-ws', '/', '\n', [])), nix, agents);
+      assert.equal(a, b, 'paths, slugs, line endings, the billing line, uuids, dates and the host\'s own prose do not move the key');
+      writeAgent(['Restate the objective.']);
+      const edited = D.requestKey('anthropic', body(sys('/tmp/runs/b/ws', '/tmp/runs/b/double-0-home', '-tmp-runs-b-ws', '/', '\n', [], ['Restate the objective.'])), nix, D.loadAgents(dir));
+      assert.notEqual(edited, b, 'a one-line agent edit (even a short line) moves it');
+    } finally { cleanup(dir); }
+  });
+
+  test('a host request keys on its opening line', () => {
+    const key = (system) => D.requestKey('anthropic', { model: 'm', system, messages: [] });
+    assert.equal(key('x-anthropic-billing-header: a\nYou are a classifier.\nRule one.'), key('x-anthropic-billing-header: b\nYou are a classifier.\nRule one, reworded by the host.'));
+    assert.notEqual(key('You are a classifier.'), key('You are a Claude agent.'));
+  });
+
+  test('the key counts turns, not the text of tool results', () => {
+    const turn = (result, extra = []) => ({ model: 'm', system: 's', messages: [{ role: 'user', content: 'p' }, { role: 'assistant', content: 'a' }, { role: 'user', content: result }, ...extra] });
+    assert.equal(D.requestKey('anthropic', turn('agent launched in 41ms')), D.requestKey('anthropic', turn('agent launched in 77ms, id 9')));
+    assert.notEqual(D.requestKey('anthropic', turn('r')), D.requestKey('anthropic', turn('r', [{ role: 'assistant', content: 'b' }, { role: 'user', content: 'c' }])));
+  });
+
+  test('drift is attributed to the agent whose body the request carries, or to none', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-drift-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'pan-a.md'), '---\nname: pan-a\n---\nThe first rule of agent A is a long line.\nThe second rule of agent A is a long line.\n');
+      fs.writeFileSync(path.join(dir, 'pan-b.md'), '---\r\nname: pan-b\r\n---\r\nThe first rule of agent B is a long line.\r\nThe second rule of agent B is a long line.\r\n');
+      assert.deepEqual(D.attributeDrift('preamble\nThe first rule of agent B is a long line.\nThe second rule of agent B is a long line.\nAn edit.', dir), { agent: 'pan-b', file: 'agents/pan-b.md', share: 1 });
+      assert.equal(D.attributeDrift('You are the main session.', dir), null);
+      assert.equal(D.attributeDrift('anything', path.join(dir, 'absent')), null);
+    } finally { cleanup(dir); }
+  });
+
+  test('drift:none and drift:<agent> pass and fail', () => {
+    const exec = { agent: 'pan-executor', file: 'agents/pan-executor.md', share: 1 };
+    assert.equal(checkOne('drift:none', { drift: [] }, '.'), null);
+    assert.match(checkOne('drift:none', { drift: [{ attributed: exec }] }, '.'), /1 drifted request/);
+    assert.equal(checkOne('drift:^pan-executor$', { drift: [{ attributed: exec }] }, '.'), null);
+    assert.match(checkOne('drift:^pan-executor$', { drift: [] }, '.'), /no drift/);
+    assert.match(checkOne('drift:^pan-executor$', { drift: [{ attributed: exec }, { attributed: null }] }, '.'), /unattributed/);
+    assert.match(checkOne('drift:none', { stdout: '' }, '.'), /no model-double replay/);
+  });
+
+  test('unexpected drift is a note naming the agent, never a finding; an expected one is an assertion', () => {
+    const outcome = { doubled: true, drift: [{ key: 'k', attributed: { agent: 'pan-executor', file: 'agents/pan-executor.md', share: 1 } }, { key: 'k2', attributed: null }] };
+    const note = driftNote({ kind: 'model', double: { cassette: 'c' }, expect: ['exit:0'] }, outcome);
+    assert.match(note, /prompt impact/);
+    assert.match(note, /pan-executor \(agents\/pan-executor\.md\)/);
+    assert.match(note, /1 unattributed/);
+    assert.match(note, /--record/);
+    assert.equal(driftNote({ kind: 'model', double: {}, expect: ['drift:^pan-executor$'] }, outcome), null);
+    assert.equal(driftNote({ kind: 'model', double: {}, expect: [] }, { doubled: true, drift: [] }), null);
+    assert.equal(driftNote({ kind: 'sh', expect: [] }, outcome), null);
+    assert.deepEqual(unmetRuns([{ scenario: 's', status: 'drift' }], ['s']), [], 'a drifted scenario ran');
+  });
+
+  test('--record re-records a step that carries a synthetic recipe; a real-model recording is refused', () => {
+    assert.equal(parseArgs(['--record']).record, true);
+    assert.notEqual(parseArgs([]).record, true);
+    const r = runDoubledModelStep(os.tmpdir(), 'p', { double: { cassette: 'c.json', record: { upstream: 'https://api.anthropic.com' } }, capturesDir: path.join(os.tmpdir(), 'x'), configDir: path.join(os.tmpdir(), 'y') });
+    assert.equal(r.refused, true);
+    assert.match(r.stderr, /recording from a real model/);
+  });
+
+  test('scenario rules: a cassette step, a synthetic recipe, and what is refused', () => {
+    const step = (double, expect = ['exit:0', 'drift:none']) => ({ kind: 'model', prompt: 'p', double, expect, why: 'w' });
+    const scen = (st) => ({ id: 'x', tier: 0, description: 'd', why: 'w', steps: [st, { kind: 'fs', expect: ['file:a'], why: 'w' }], controls: [{ id: 'c', delete: 'a', why: 'w' }] });
+    const recipe = { script: { rules: [{ when: {}, turns: [{ text: 'x' }] }] } };
+    assert.deepEqual(validateScenario(scen(step({ cassette: '<repo>/c.json' }))), []);
+    assert.deepEqual(validateScenario(scen(step({ cassette: '<repo>/c.json', record: recipe }, ['drift:^pan-executor$']))), []);
+    assert.ok(validateScenario(scen(step({ record: recipe }))).some((e) => /record needs a cassette/.test(e)));
+    assert.ok(validateScenario(scen(step({ cassette: 'c', record: { upstream: 'https://x' } }))).some((e) => /real model/.test(e)));
+    assert.ok(validateScenario(scen(step({ cassette: 'c', script: recipe.script }))).some((e) => /either a script or a cassette/.test(e)));
+  });
+
+  test('the committed cassette is synthetic: no prompt text, no credentials, only keyed replies', () => {
+    const pairs = JSON.parse(fs.readFileSync(CASSETTE, 'utf8'));
+    assert.ok(pairs.length > 0);
+    for (const p of pairs) {
+      assert.deepEqual(Object.keys(p).sort(), ['contentType', 'key', 'protocol', 'response', 'status']);
+      assert.match(p.key, /^[0-9a-f]{16}$/);
+    }
+    assert.doesNotMatch(fs.readFileSync(CASSETTE, 'utf8'), /x-api-key|authorization|sk-ant-|You are /i);
+  });
+
+  test('the shipped cassette scenario replays green, then expects drift for exactly the edited agent', () => {
+    const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'cassette-drift-claude');
+    assert.equal(s.tier, 0);
+    const models = s.steps.filter((st) => st.kind === 'model');
+    assert.equal(models.length, 2);
+    for (const m of models) assert.equal(m.double.cassette, '<repo>/harness/cassettes/executor-spawn-claude.json');
+    assert.ok(models[0].expect.includes('drift:none'));
+    assert.ok(models[1].expect.includes('drift:^pan-executor$'));
+    assert.ok(models[0].double.record && models[0].double.record.script, 'the synthetic recipe the cassette is re-recorded from');
+    assert.match(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8'), /--require-run cassette-drift-claude/, 'CI runs it, never skips it');
   });
 });

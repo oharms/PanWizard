@@ -13,7 +13,7 @@ const path = require('path');
 const { MODEL_RUNTIMES } = require('./model.cjs');
 
 const STEP_KINDS = new Set(['pan', 'sh', 'mcp', 'model', 'fs', 'build', 'cli']);
-const ASSERTION_RE = /^(exit:-?\d+|file:.+|absent:.+|glob:.+|count:.+=\d+|json:[^=]+(=.*)?|json!:.+|stdout~.+|stderr~.+|rpc:[^.]+\.[^=]+(=.*)?|wire:(system|tools|url|body)~.+|wire-count:(system|tools|url|body)~.+=\d+)$/;
+const ASSERTION_RE = /^(exit:-?\d+|file:.+|absent:.+|glob:.+|count:.+=\d+|json:[^=]+(=.*)?|json!:.+|stdout~.+|stderr~.+|rpc:[^.]+\.[^=]+(=.*)?|wire:(system|tools|url|body)~.+|wire-count:(system|tools|url|body)~.+=\d+|drift:.+)$/;
 
 function validateScenario(s, fileName = '<inline>') {
   const errors = [];
@@ -49,8 +49,17 @@ function validateScenario(s, fileName = '<inline>') {
     // A double-backed model step (H1) reaches no real model and spends nothing: tier 0.
     if (st.kind === 'model' && s.tier === 0 && !st.double) err(`${at}: a model step cannot live in a tier-0 scenario`);
     if (st.double !== undefined) {
-      const rules = st.double && st.double.script && st.double.script.rules;
-      if (st.kind !== 'model' || !Array.isArray(rules) || !rules.every((r) => r && typeof r === 'object' && Array.isArray(r.turns))) err(`${at}: double needs {script: {rules: [{when, turns: [...]}]}} on a model step`);
+      // H1 script, or H2 cassette replay, optionally carrying the synthetic recipe `--record`
+      // re-records it from. A recording from a real model is never a scenario step: it spends.
+      const d = st.double && typeof st.double === 'object' ? st.double : {};
+      const goodScript = (sc) => sc && Array.isArray(sc.rules) && sc.rules.every((r) => r && typeof r === 'object' && Array.isArray(r.turns));
+      if (st.kind !== 'model') err(`${at}: double is only for model steps`);
+      else if (d.script !== undefined && d.cassette !== undefined) err(`${at}: double takes either a script or a cassette, not both`);
+      else if (d.record !== undefined && d.record && d.record.upstream !== undefined) err(`${at}: double.record.upstream records from a real model (paid, API key) — not a scenario step`);
+      else if (d.record !== undefined && typeof d.cassette !== 'string') err(`${at}: double.record needs a cassette to write`);
+      else if (d.record !== undefined && !goodScript(d.record && d.record.script)) err(`${at}: double.record needs {script: {rules: [{when, turns: [...]}]}}`);
+      else if (d.cassette === undefined && !goodScript(d.script)) err(`${at}: double needs {script: {rules: [{when, turns: [...]}]}} or {cassette} on a model step`);
+      else if (d.cassette !== undefined && typeof d.cassette !== 'string') err(`${at}: double.cassette must be a path`);
     }
     if (st.kind === 'pan' && !Array.isArray(st.argv)) err(`${at}: pan steps need argv[]`);
     if (st.kind === 'mcp' && !Array.isArray(st.requests)) err(`${at}: mcp steps need requests[]`);

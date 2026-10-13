@@ -1,0 +1,58 @@
+{
+  "id": "cassette-drift-claude",
+  "tier": 0,
+  "description": "Replay the real Claude Code CLI against a committed synthetic cassette: the main session spawns pan-executor and every request matches a recorded one. Then one line is added to the installed pan-executor and the same run drifts, for that agent and no other.",
+  "why": "Program H2: a cassette replays at $0 with no model, and a prompt edit shows up as drift attributed to the agent that was edited, which is the measure of a prompt change's impact. A cassette that keyed on run-to-run noise would drift everywhere and attribute nothing; one that ignored the prompt would never drift.",
+  "seed": "empty",
+  "install": ["--claude"],
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 0, "maxMinutes": 8, "maxStepMinutes": 4 },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "Spawn the pan-executor agent once, then report.",
+      "double": {
+        "cassette": "<repo>/harness/cassettes/executor-spawn-claude.json",
+        "record": {
+          "script": {
+            "rules": [
+              { "when": { "toolsInclude": ["Agent", "Task"] }, "turns": [
+                { "tool": { "name": ["Agent", "Task"], "input": { "subagent_type": "pan-executor", "description": "wire probe", "prompt": "Reply with EXECUTOR-DONE and nothing else." } } },
+                { "text": "MAIN-DONE" }
+              ] },
+              { "when": { "toolsExclude": ["Agent", "Task"], "toolsInclude": ["Read"] }, "turns": [{ "text": "EXECUTOR-DONE" }] }
+            ],
+            "fallback": { "text": "done" }
+          }
+        }
+      },
+      "expect": ["exit:0", "stdout~MAIN-DONE", "drift:none"],
+      "why": "The committed cassette answers every request the host sends, so the run completes at $0 with no model. `--record` re-records the cassette from the synthetic recipe above after an intended prompt change."
+    },
+    {
+      "kind": "sh",
+      "script": "append-line.cjs",
+      "args": [".claude/agents/pan-executor.md", "Before you finish, restate the plan's objective in one sentence."],
+      "expect": ["exit:0", "json:file=.claude/agents/pan-executor.md"],
+      "why": "A one-line agent edit: the smallest prompt change a reviewer would wave through."
+    },
+    {
+      "kind": "model",
+      "prompt": "Spawn the pan-executor agent once, then report.",
+      "double": { "cassette": "<repo>/harness/cassettes/executor-spawn-claude.json" },
+      "expect": ["drift:^pan-executor$"],
+      "why": "The edit drifts the executor's request and nothing else: the main session and the host's own requests still match, and the drifted request is attributed to the edited agent."
+    }
+  ],
+  "controls": [
+    {
+      "id": "edited-before-replay",
+      "after": -1,
+      "write": {
+        "path": ".claude/agents/pan-executor.md",
+        "content": "---\nname: pan-executor\ndescription: Executes a PAN plan.\ntools: Read, Write, Edit, Bash, Grep, Glob\n---\n\nYou are a PAN plan executor. Execute the plan you are given, one task at a time.\n"
+      },
+      "why": "An agent changed before the first replay must drift it: a cassette that matched anyway would be keying on nothing."
+    }
+  ]
+}

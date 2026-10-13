@@ -61,10 +61,100 @@ function toolNames(body) {
   return out;
 }
 
-/** A stable key for a request, for cassettes: protocol, model, system and messages, normalised. */
-function requestKey(protocol, body, normalise = (s) => s) {
+/**
+ * The normaliser cassette keys use (H2): the parts of a request that change from run to run
+ * without the prompt changing. Claude Code puts a billing header line at the top of the
+ * system prompt, ids in tool results (agent ids, tool-use ids), dates and durations; the
+ * workspace and config paths differ per run directory and per machine.
+ * @param {{ws?: string, other?: string, home?: string}} [ctx]
+ */
+function makeNormaliser(ctx = {}) {
+  // Each path as written, with either separator, escaped, and as the host's project slug
+  // (Claude Code names a project's memory dir after its path with every non-alphanumeric
+  // turned into '-'), so a cassette recorded on one machine keys the same on another.
+  const paths = [ctx.ws, ctx.other, ctx.home].filter(Boolean)
+    .flatMap((p) => [p, p.replace(/\\/g, '/'), p.replace(/\\/g, '\\\\'), p.replace(/[^A-Za-z0-9]/g, '-')])
+    .sort((a, b) => b.length - a.length);
+  return (s) => {
+    let t = String(s).replace(/\r\n/g, '\n');
+    for (const p of paths) t = t.split(p).join('<path>');
+    return t
+      .replace(/<path>[^\s`'"]*/g, (m) => m.replace(/\\+/g, '/'))
+      .replace(/x-anthropic-billing-header:[^\n]*\n?/g, '')
+      .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<uuid>')
+      .replace(/\b(?:toolu|msg|call|fc|resp|chatcmpl)_[A-Za-z0-9]+\b/g, '<id>')
+      .replace(/\b[0-9a-f]{12,}\b/gi, '<hex>')
+      .replace(/\b\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+Z?)?\b/g, '<date>')
+      .replace(/\b\d+(?:\.\d+)?\s?(?:ms|s)\b/g, '<dur>')
+      .replace(/\b(duration_ms|total_tokens|tool_uses|input_tokens|output_tokens)(["']?\s*[:=]\s*)\d+/g, '$1$2<n>');
+  };
+}
+
+/**
+ * The installed agents' body lines (H2), for keying and attributing requests: `lines` is
+ * every non-empty body line, `long` the lines distinctive enough to identify the agent.
+ * @param {string} agentsDir - the runtime's installed agents directory
+ * @returns {{agent: string, file: string, lines: string[], long: string[]}[]}
+ */
+function loadAgents(agentsDir) {
+  let names = [];
+  try { names = fs.readdirSync(agentsDir).filter((n) => n.endsWith('.md')).sort(); } catch { return []; }
+  return names.map((n) => {
+    const body = fs.readFileSync(path.join(agentsDir, n), 'utf8').replace(/\r\n/g, '\n').replace(/^---\n[\s\S]*?\n---\n/, '');
+    const lines = body.split('\n').map((l) => l.trim()).filter(Boolean);
+    return { agent: n.replace(/\.md$/, ''), file: `agents/${n}`, lines, long: lines.filter((l) => l.length > 20) };
+  }).filter((a) => a.long.length);
+}
+
+/** The agent whose distinctive lines a system prompt carries most of (over half), or null. */
+function agentOf(system, agents) {
+  const sys = String(system || '').replace(/\r\n/g, '\n');
+  let best = null;
+  for (const a of agents || []) {
+    const share = a.long.filter((l) => sys.includes(l)).length / a.long.length;
+    if (share > 0.5 && (!best || share > best.share)) best = { ...a, share: Math.round(share * 100) / 100 };
+  }
+  return best;
+}
+
+/**
+ * Which installed agent a drifted request belongs to (H2). Null when none is close (the
+ * main session, or a host-internal request).
+ * @param {string} system - the drifted request's system prompt (as sent: the current body)
+ * @param {string} agentsDir - the runtime's installed agents directory
+ * @returns {{agent: string, file: string, share: number}|null}
+ */
+function attributeDrift(system, agentsDir) {
+  const best = agentOf(system, loadAgents(agentsDir));
+  return best ? { agent: best.agent, file: best.file, share: best.share } : null;
+}
+
+/** How many model turns a request's conversation already holds (assistant or model messages). */
+function turnIndex(body) {
+  const list = (body && (body.messages || body.input || body.contents)) || [];
+  return Array.isArray(list) ? list.filter((m) => m && (m.role === 'assistant' || m.role === 'model' || m.type === 'function_call')).length : 0;
+}
+
+/**
+ * A stable key for a request, for cassettes (H2): protocol, model, turn number, and the
+ * part of the system prompt PAN owns. A request that carries an installed agent's body is
+ * keyed on that agent's lines as sent, in order, so a one-line agent edit drifts it and
+ * nothing else. Any other request (the main session, the host's own classifiers) is keyed
+ * on its opening line: the rest is the host's prose, which varies with platform and host
+ * flags (seen 2026-10-13: one paragraph on Windows, absent on Linux, same CLI version) and
+ * is not PAN's prompt to measure.
+ * Not the whole conversation either: Claude Code moves its `cache_control` breakpoints
+ * between turns, and an async subagent's result arrives with timing-dependent text.
+ * @param {Array} [agents] - loadAgents() of the runtime's installed agents
+ */
+function requestKey(protocol, body, normalise = (s) => s, agents = []) {
   const b = body && typeof body === 'object' ? body : {};
-  const shape = { protocol, model: b.model || null, system: normalise(systemText(b)), messages: normalise(JSON.stringify(b.messages || b.input || b.contents || [])) };
+  const sys = systemText(b).replace(/\r\n/g, '\n');
+  const lines = sys.split('\n').map((l) => l.trim()).filter((l) => l && !/^x-anthropic-billing-header:/.test(l));
+  const who = agentOf(sys, agents);
+  const own = who && new Set(who.lines);
+  const prompt = who ? lines.filter((l) => own.has(l)).map(normalise) : normalise(lines[0] || '');
+  const shape = { protocol, model: b.model || null, turn: turnIndex(b), agent: who ? who.agent : null, prompt };
   return crypto.createHash('sha256').update(JSON.stringify(shape)).digest('hex').slice(0, 16);
 }
 
@@ -196,7 +286,7 @@ function reply(protocol, res, body, turn, id, url) {
 /**
  * Start a double.
  * @param {{mode?: 'capture'|'script'|'replay'|'record', script?: object, cassette?: Array, upstream?: string,
- *          capturesDir?: string, normalise?: (s: string) => string, port?: number}} opts
+ *          capturesDir?: string, normalise?: (s: string) => string, agents?: Array, port?: number}} opts
  * @returns {Promise<{url: string, port: number, captures: Array, drift: Array, recorded: Array, close: () => Promise<void>}>}
  */
 function startDouble(opts = {}) {
@@ -206,6 +296,7 @@ function startDouble(opts = {}) {
   const recorded = [];
   const cursors = new Map();
   const normalise = opts.normalise || ((s) => s);
+  const agents = opts.agents || [];
   if (opts.capturesDir) fs.mkdirSync(opts.capturesDir, { recursive: true, mode: 0o700 });
   const cassette = new Map((opts.cassette || []).map((p) => [p.key, p]));
 
@@ -236,7 +327,7 @@ function startDouble(opts = {}) {
         try {
           const up = await fetch(new URL(req.url, opts.upstream), { method: 'POST', headers: forwardHeaders(req.headers), body: raw });
           const text = await up.text();
-          recorded.push({ key: requestKey(protocol, body, normalise), protocol, status: up.status, contentType: up.headers.get('content-type'), response: text });
+          recorded.push({ key: requestKey(protocol, body, normalise, agents), protocol, status: up.status, contentType: up.headers.get('content-type'), response: text });
           res.writeHead(up.status, { 'content-type': up.headers.get('content-type') || 'application/json' });
           return res.end(text);
         } catch (e) {
@@ -245,12 +336,14 @@ function startDouble(opts = {}) {
         }
       }
       if (mode === 'replay') {
-        const key = requestKey(protocol, body, normalise);
+        const key = requestKey(protocol, body, normalise, agents);
         const pair = cassette.get(key);
         if (!pair) {
           drift.push({ n, key, protocol, system: entry.system.slice(0, 400) });
-          res.writeHead(409, { 'content-type': 'application/json' });
-          return res.end(JSON.stringify({ error: { type: 'cassette_drift', message: `no recorded answer for request ${key}` } }));
+          // 400, not 409: the Anthropic and OpenAI clients retry a 409 with backoff (minutes of
+          // dead time per drifted request); an invalid-request error ends the turn at once.
+          res.writeHead(400, { 'content-type': 'application/json' });
+          return res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: `model double: cassette drift, no recorded answer for request ${key}` } }));
         }
         res.writeHead(pair.status || 200, { 'content-type': pair.contentType || 'application/json' });
         return res.end(pair.response);
@@ -296,4 +389,4 @@ function hostEnv(runtime, url, base = process.env) {
   return null;
 }
 
-module.exports = { startDouble, hostEnv, systemText, protocolOf, toolNames, requestKey, scriptTurn, resolveTool };
+module.exports = { startDouble, hostEnv, systemText, protocolOf, toolNames, requestKey, turnIndex, scriptTurn, resolveTool, makeNormaliser, attributeDrift, loadAgents };

@@ -36,7 +36,7 @@ const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
 const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 
 function parseArgs(argv) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [] };
+  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -64,6 +64,10 @@ function parseArgs(argv) {
     // all, fails the run: CI installs a host CLI so the double-backed scenarios run there, and
     // a missing CLI must not turn into a quiet skip.
     else if (k === '--require-run') { a.requireRun.push(v); i++; }
+    // --record (H2): a double step that carries a synthetic recipe (`double.record.script`)
+    // re-records its cassette from it instead of replaying. Recording from a real model is
+    // not a harness flag: it spends and needs an API key (program H2 evidence step).
+    else if (k === '--record') a.record = true;
     else if (k === '--help' || k === '-h') { a.help = true; }
     else throw new Error(`unknown argument: ${k}`);
   }
@@ -247,7 +251,9 @@ function runStep(step, ctx) {
       // answers from the step's script. Nothing is spent, so it needs no cap and is tier 0.
       if (step.double) {
         const tag = `double-${ctx.stepIndex === undefined ? 'x' : ctx.stepIndex}`;
-        return runDoubledModelStep(ws, fill(step.prompt, vars), { runtime: step.runtime, script: step.double.script, capturesDir: path.join(other, tag), configDir: path.join(other, `${tag}-home`), timeoutMs: stepTimeout });
+        const dbl = { ...step.double, ...(step.double.cassette ? { cassette: fill(step.double.cassette, vars) } : {}) };
+        if (!ctx.record) delete dbl.record; // replay unless the run asked to re-record
+        return runDoubledModelStep(ws, fill(step.prompt, vars), { runtime: step.runtime, double: dbl, capturesDir: path.join(other, tag), configDir: path.join(other, `${tag}-home`), other, timeoutMs: stepTimeout });
       }
       // Cap = what is left of THIS scenario's share, bounded by its own budget.maxUsd.
       const remaining = ctx.shareUsd === null ? null : ctx.shareUsd - ctx.spentUsd();
@@ -283,12 +289,28 @@ function unmetRuns(results, required) {
   const out = [];
   for (const id of required || []) {
     const recs = results.filter((r) => r.scenario === id && !r.control);
-    const ran = recs.some((r) => r.status === 'passed' || r.status === 'failed');
+    const ran = recs.some((r) => r.status === 'passed' || r.status === 'failed' || r.status === 'drift');
     if (ran) continue;
     const why = recs.length ? recs.map((r) => r.skipped || r.note || r.status).join('; ') : 'not selected in this run';
     out.push({ scenario: id, tier: 0, step: 'require-run', expect: 'ran', failure: `required to run, but did not: ${why}`, why: 'CI installs the host CLI so this scenario runs; a skip would hide a broken setup' });
   }
   return out;
+}
+
+/**
+ * Cassette drift no step expected (H2): the prompt the host sent changed since the cassette
+ * was recorded. That is the impact of a prompt edit, reported, never a finding against PAN:
+ * the step's other assertions cannot be read once the double refused an unrecorded request.
+ * Null when there is none, or when the step asserts on drift itself. Pure.
+ */
+function driftNote(step, outcome) {
+  if (!step || step.kind !== 'model' || !outcome || !outcome.doubled) return null;
+  const drift = outcome.drift || [];
+  if (!drift.length || (step.expect || []).some((e) => /^drift:/.test(e))) return null;
+  const agents = [...new Map(drift.filter((d) => d.attributed).map((d) => [d.attributed.agent, `${d.attributed.agent} (${d.attributed.file})`])).values()];
+  const unattributed = drift.filter((d) => !d.attributed).length;
+  const parts = [...agents, ...(unattributed ? [`${unattributed} unattributed (the main session, a host-internal request, or a host upgrade)`] : [])];
+  return `prompt impact: ${drift.length} request(s) not in the cassette — ${parts.join('; ')}. Intended? Re-record with --record`;
 }
 
 function modelStepNeverRan(outcome) {
@@ -330,7 +352,7 @@ function persistStepOutput(runDir, scenarioId, rep, index, outcome) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id] [--require-run id]...\n');
+    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id] [--require-run id]... [--record]\n');
     return 0;
   }
   const stateDir = args.stateDir || defaultStateDir();
@@ -408,7 +430,7 @@ function main() {
     }
     const shareUsd = args.maxUsd === null ? null : shares.get(s.id);
     const ctx = {
-      ws, other, repo: args.repo, pkg: art.packageDir, runtime, budget: s.budget || {},
+      ws, other, repo: args.repo, pkg: art.packageDir, runtime, budget: s.budget || {}, record: args.record,
       shareUsd,
       spentUsd: () => spentBy.get(s.id) || 0,
       addCost: (c) => { spent += c; spentBy.set(s.id, (spentBy.get(s.id) || 0) + c); },
@@ -446,6 +468,12 @@ function main() {
         }
       }
       if (step.kind === 'model') persistStepOutput(runDir, s.id, rep, i, outcome);
+      const impact = driftNote(step, outcome);
+      if (impact) {
+        rec.status = 'drift'; rec.note = impact;
+        rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: 0, drift: outcome.drift, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
+        log(`${label}: DRIFT — ${impact}`); break;
+      }
       const fails = check(step.expect, outcome, ws);
       const sr = { index: i, kind: step.kind, code: outcome.code, failures: fails, costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) };
       rec.steps.push(sr);
@@ -563,11 +591,12 @@ function main() {
   const budget = summary.scenarios.filter(r => r.status === 'budget').length;
   const passed = summary.scenarios.filter(r => r.status === 'passed').length;
   const errors = summary.scenarios.filter(r => r.status === 'error').length;
+  const drifted = summary.scenarios.filter(r => r.status === 'drift').length;
   // Run-level failures that no scenario status carries: a control the scenario survived
   // (H5) and a required scenario that did not run (CI1). Each fails the run.
   const runLevel = failures.filter((f) => f.step === 'control' || f.step === 'require-run').length;
-  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped, ${errors} harness errors${runLevel ? `, ${runLevel} run-level failure(s)` : ''} — report ${path.join(runDir, 'report.md')}`);
-  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, errors, runLevel, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
+  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped, ${errors} harness errors${drifted ? `, ${drifted} drifted (prompt impact, see report)` : ''}${runLevel ? `, ${runLevel} run-level failure(s)` : ''} — report ${path.join(runDir, 'report.md')}`);
+  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, errors, drifted, runLevel, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
   // An error is not green: the run could not measure what it set out to.
   return (failed || errors || runLevel) ? 1 : 0;
 }
@@ -577,4 +606,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
