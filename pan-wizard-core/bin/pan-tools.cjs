@@ -94,6 +94,13 @@
  *   verify artifacts <plan-file>       Check must_haves.artifacts
  *   verify key-links <plan-file>       Check must_haves.key_links
  *
+ * Test Gate (V2):
+ *   test run [--phase N] [--baseline]  Run the project's tests, any language; with
+ *     [--command "<cmd>"]              --phase, write {NN}-test-run.json (or the
+ *     [--timeout <ms>] [--rebaseline]  --baseline record) to the phase directory; an
+ *                                      existing baseline is kept unless --rebaseline
+ *   test detect                        The test command the gate would run, and why
+ *
  * Template Fill:
  *   template fill summary --phase N    Create pre-filled summary.md
  *     [--plan M] [--name "..."]
@@ -241,6 +248,7 @@ const findings = require('./lib/findings.cjs');
 const verifyPlanSet = require('./lib/verify-plan-set.cjs');
 const verifyIntegrity = require('./lib/verify-integrity.cjs');
 const phaseGate = require('./lib/phase-gate.cjs');
+const testGate = require('./lib/test-gate.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -366,7 +374,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -627,6 +635,24 @@ async function main() {
         frontmatter.cmdFrontmatterValidate(cwd, file, getArgValue(args, '--schema'), raw);
       } else {
         error('Unknown frontmatter subcommand. Available: get, set, merge, validate');
+      }
+      break;
+    }
+
+    case 'test': {
+      const subcommand = args[1];
+      if (subcommand === 'run') {
+        testGate.cmdTestRun(cwd, {
+          phase: getArgValue(args, '--phase'),
+          baseline: args.includes('--baseline'),
+          rebaseline: args.includes('--rebaseline'),
+          command: getArgValue(args, '--command'),
+          timeout: getArgValue(args, '--timeout'),
+        }, raw);
+      } else if (subcommand === 'detect') {
+        testGate.cmdTestDetect(cwd, raw);
+      } else {
+        error('Unknown test subcommand. Available: run, detect');
       }
       break;
     }

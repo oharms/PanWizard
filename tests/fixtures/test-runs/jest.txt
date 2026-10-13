@@ -1,0 +1,30 @@
+
+> jf@1.0.0 test
+> jest
+
+FAIL __tests__/math.test.js
+  √ adds numbers (1 ms)
+  × subtracts numbers (1 ms)
+  suite
+    √ nested passes
+
+  ● subtracts numbers
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 2
+
+    [0m [90m 1 |[39m test([32m'adds numbers'[39m[33m,[39m () [33m=>[39m { expect([35m1[39m [33m+[39m [35m1[39m)[33m.[39mtoBe([35m2[39m)[33m;[39m })[33m;[39m
+    [31m[1m>[22m[39m[90m 2 |[39m test([32m'subtracts numbers'[39m[33m,[39m () [33m=>[39m { expect([35m3[39m [33m-[39m [35m1[39m)[33m.[39mtoBe([35m1[39m)[33m;[39m })[33m;[39m
+     [90m   |[39m                                                 [31m[1m^[22m[39m
+     [90m 3 |[39m describe([32m'suite'[39m[33m,[39m () [33m=>[39m { test([32m'nested passes'[39m[33m,[39m () [33m=>[39m { expect([36mtrue[39m)[33m.[39mtoBe([36mtrue[39m)[33m;[39m })[33m;[39m })[33m;[39m
+     [90m 4 |[39m[0m
+
+      at Object.toBe (__tests__/math.test.js:2:49)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 2 passed, 3 total
+Snapshots:   0 total
+Time:        3.537 s
+Ran all test suites.

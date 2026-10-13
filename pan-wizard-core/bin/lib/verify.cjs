@@ -572,8 +572,21 @@ function reconcilePhase(cwd, phaseNum) {
       contradictions.push(`verification status "${status}" but ${keyLinks.total - keyLinks.verified}/${keyLinks.total} key-link(s) UNWIRED`);
     }
   }
+  // The engine's test run (V2) is the record the verifier copies its test gate from: a
+  // verification that says otherwise, or passes over a failed run, contradicts it.
+  const testRun = require('./test-gate.cjs').readTestRun(cwd, phaseNum);
+  const writtenGate = (verRaw.match(/^test_gate:\s*([A-Za-z_]+)/m) || [])[1] || null;
+  if (testRun && testRun.status) {
+    const why = testRun.reason ? ` (${testRun.reason})` : '';
+    if (writtenGate && writtenGate.toLowerCase() !== testRun.status) {
+      contradictions.push(`verification test_gate "${writtenGate}" but the engine's test run recorded "${testRun.status}"${why}`);
+    } else if (!writtenGate && claimsPass && testRun.status === 'failed') {
+      contradictions.push(`verification status "${status}" but the engine's test run failed${why}`);
+    }
+  }
   return {
     phase: String(phaseNum), found: true, verification_status: status, claims_pass: claimsPass,
+    test_run: testRun ? { status: testRun.status, head: testRun.head || null, regressions: (testRun.regressions || []).length } : undefined,
     mechanical_signals: signals, artifacts, key_links: keyLinks, contradictions,
     reconciled: contradictions.length === 0,
     note: signals === 0 ? 'no must_haves declared — mechanical reconciliation unavailable; verdict trusted' : undefined,
@@ -1557,35 +1570,22 @@ function cmdValidateHealth(cwd, options, raw) {
 }
 
 /**
- * Run node --test and capture result.
+ * Run the project's tests through the engine's test gate (V2): any language, the
+ * project's own command, and a crash reads failed. `pass` is null when there was nothing
+ * to run (no test command, or one that ran no tests).
  */
 function runFullTestCheck(cwd) {
-  try {
-    const result = execFileSync('node', ['--test'], {
-      cwd,
-      timeout: 120000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      encoding: 'utf-8',
-    });
-    // Match both TAP ("# tests N") and spec-reporter ("ℹ tests N") summaries —
-    // modern node --test defaults to the spec reporter, which the old "# "-only
-    // regex silently missed (returning tests: null).
-    const testMatch = result.match(/[#ℹ]\s*tests\s+(\d+)/);
-    const passMatch = result.match(/[#ℹ]\s*pass\s+(\d+)/);
-    return {
-      pass: true,
-      exitCode: 0,
-      tests: testMatch ? parseInt(testMatch[1], 10) : null,
-      passing: passMatch ? parseInt(passMatch[1], 10) : null,
-    };
-  } catch (err) {
-    return {
-      pass: false,
-      exitCode: err.status || 1,
-      tests: null,
-      passing: null,
-    };
-  }
+  const rec = require('./test-gate.cjs').runTests(cwd, { timeoutMs: 120000 });
+  return {
+    pass: rec.status === 'passed' ? true : (rec.status === 'failed' ? false : null),
+    exitCode: rec.exit,
+    tests: rec.total,
+    passing: rec.passed,
+    status: rec.status,
+    command: rec.command,
+    reason: rec.reason || undefined,
+    failing: rec.failing && rec.failing.length ? rec.failing.slice(0, 20) : undefined,
+  };
 }
 
 /**

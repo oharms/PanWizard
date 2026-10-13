@@ -906,6 +906,25 @@
     "generateSummaryTemplate:function",
     "generateVerificationTemplate:function"
   ],
+  "test-gate.cjs": [
+    "classifyRun:function",
+    "cmdTestDetect:function",
+    "cmdTestRun:function",
+    "detectTestCommand:function",
+    "parseCargo:function",
+    "parseGo:function",
+    "parseJUnit:function",
+    "parseJest:function",
+    "parseNodeSpec:function",
+    "parsePytest:function",
+    "parseTap:function",
+    "parseTestOutput:function",
+    "readTestRun:function",
+    "recordPaths:function",
+    "runTests:function",
+    "stripAnsi:function",
+    "testRunFacts:function"
+  ],
   "utils.cjs": [
     "classifyPhaseStatus:function",
     "detectPlanningModel:function",

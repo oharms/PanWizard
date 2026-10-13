@@ -736,7 +736,11 @@ describe('validate health --full', () => {
     const output = JSON.parse(result.output);
     assert.ok('test_status' in output, 'should have test_status');
     assert.ok('build_status' in output, 'should have build_status');
-    assert.strictEqual(typeof output.test_status.pass, 'boolean');
+    // No test script: nothing ran, so neither a pass nor a failure (V2). The old check ran
+    // `node --test` here, which found no tests, exited 0 and reported pass: true.
+    assert.strictEqual(output.test_status.status, 'skipped');
+    assert.strictEqual(output.test_status.pass, null);
+    assert.strictEqual(output.test_status.command, null);
     // build_status should be skipped (no build:hooks script)
     assert.strictEqual(output.build_status.skipped, true);
   });

@@ -51,6 +51,7 @@ function phaseGate(cwd, phase, opts = {}) {
   const { reconcilePhase, verificationFreshness, scanStubs } = require('./verify.cjs');
   const { committedFiles } = require('./verify-scope.cjs');
   const { checkTestIntegrity } = require('./verify-integrity.cjs');
+  const TG = require('./test-gate.cjs');
 
   const mode = MODES.includes(opts.mode) ? opts.mode : gateMode(cwd);
   const reasons = [];
@@ -77,18 +78,23 @@ function phaseGate(cwd, phase, opts = {}) {
     if (verifierOn) refuse('no_verification', 'the phase has no verification; run /pan:verify-phase');
     else skip('verification', 'workflow.verifier is off');
   } else {
-    const parsed = V.parseVerdictText(safeReadFile(path.join(dir, verFile)) || '', { agent: 'pan-verifier', phase: phaseNumber });
+    // The engine's test run (V2) is a code fact: a failed run lowers a written pass.
+    const run = TG.readTestRun(cwd, phaseNumber);
+    const parsed = V.parseVerdictText(safeReadFile(path.join(dir, verFile)) || '', { agent: 'pan-verifier', phase: phaseNumber, facts: TG.testRunFacts(cwd, phaseNumber) });
     if (!parsed.ok) {
       refuse('verification_unreadable', `${verFile}: ${parsed.reason}`);
     } else {
       const v = parsed.verdict;
       const fm = V.verdictFromVerificationFrontmatter(safeReadFile(path.join(dir, verFile)) || '') || {};
       facts.verification = v.verdict;
-      facts.test_gate = fm.test_gate || null;
+      // The verification's own word, else the engine's record of the run.
+      const gate = fm.test_gate || (run && run.status) || null;
+      facts.test_gate = gate;
+      if (run) facts.test_run = run.status;
       if (parsed.lowered_by && parsed.lowered_by.length) facts.lowered_by = parsed.lowered_by;
-      if (fm.test_gate === 'failed') refuse('test_failed', 'the verification records test_gate: failed');
-      else if (fm.test_gate === 'skipped') skip('tests', 'the test gate was skipped');
-      else if (!fm.test_gate) skip('tests', 'the verification does not record its test gate');
+      if (gate === 'failed') refuse('test_failed', fm.test_gate === 'failed' ? 'the verification records test_gate: failed' : `the engine's test run failed: ${run.reason || 'see the test-run record'}`);
+      else if (gate === 'skipped') skip('tests', fm.test_gate ? 'the test gate was skipped' : (run.reason || 'the test gate was skipped'));
+      else if (!gate) skip('tests', 'the verification does not record its test gate');
       if (v.outcome === 'fail') {
         refuse('verification_failed', `the verification is ${v.verdict}${v.agent_verdict ? ` (the verifier wrote ${v.agent_verdict})` : ''}`);
       } else if (v.outcome === 'needs_human') {

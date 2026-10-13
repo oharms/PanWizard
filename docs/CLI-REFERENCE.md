@@ -458,6 +458,8 @@ Quick reference of all CLI commands grouped by category.
 | 215 | `verify plan-set` | Verification | verify-plan-set.cjs |
 | 216 | `verify test-integrity` | Verification | verify-integrity.cjs |
 | 217 | `phase gate` | Phase Ops | phase-gate.cjs |
+| 218 | `test run` | Verification | test-gate.cjs |
+| 219 | `test detect` | Verification | test-gate.cjs |
 
 ---
 
@@ -1719,6 +1721,35 @@ pan-tools verify test-integrity 3 --raw    # clean | violated | not_checked
 ```
 
 **Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/` or `spec/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test(s).java`/`.kt`/`.cs`, or a Rust file holding `#[test]` or `#[cfg(test)]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
+
+### `test run [--phase N] [--baseline] [--rebaseline] [--command "<cmd>"] [--timeout <ms>]`
+
+Run the project's test suite and record the result (program V2): the engine's test gate, in any language.
+
+```bash
+pan-tools test run                         # run and print the record; writes nothing
+pan-tools test run --phase 3 --baseline    # before execution: 03-test-baseline.json in the phase directory
+pan-tools test run --phase 3               # after: 03-test-run.json, compared with the baseline
+pan-tools test run --phase 3 --raw         # passed | failed | skipped
+```
+
+**The command:** `workflow.test_command` from config.json, else the first of: package.json's `test` script (`npm test`; npm's placeholder script does not count), pytest (`pytest.ini`, `conftest.py`, `[tool.pytest…]` in pyproject.toml, `setup.cfg` or `tox.ini`: `python -m pytest`), `go.mod` (`go test ./...`), `Cargo.toml` (`cargo test`), `pom.xml` (`mvn -q test`), Gradle (`./gradlew test` or `gradle test`), a Makefile `test:` target (`make test`). `--command` overrides it for one run.
+
+**The parse:** the runner's own output, by its shape: Node's runner (spec and TAP), jest, pytest, go test (plain or `-v`), cargo, and JUnit XML (also read from `target/surefire-reports/`, `target/failsafe-reports/` and `build/test-results/test/` after Maven or Gradle). Each failing test gets an id (`file > name`, `test_file.py::name`, `pkg > TestName`, `module::name`) that is the same from one run to the next.
+
+**The status:**
+
+| `status` | When |
+|---|---|
+| `passed` | the suite exited 0; or, against a baseline, every failure was already failing at the baseline (`preexisting_failures`) |
+| `failed` | a failing test the baseline did not have (`regressions`); a failure with no baseline; or the suite did not run: a non-zero exit with no failing test reported, a crash, a build error, a timeout (`reason: "suite did not run: …"`) |
+| `skipped` | nothing to run: no test command, or one that ran no tests |
+
+A `--baseline` run keeps an existing baseline (`kept_existing: true`, nothing run) unless `--rebaseline`: a resumed run or a gaps-only round compares against the phase's start. The record holds `command`, `source`, `runner`, `exit`, `total`, `passed`, `failed`, `skipped`, `failing[]`, `regressions[]`, `preexisting_failures[]`, `head`, `duration_ms` and the output's last lines. The verifier copies `test_gate` from it, `verify reconcile` reports a verification whose `test_gate` disagrees with it, the verdict recorder lowers a verifier's pass over a failed run, and `phase gate` refuses on it. `validate health --full` runs the same gate.
+
+### `test detect`
+
+The test command the gate would run, and where it came from: `{command, source}`, or `{command: null, reason}`.
 
 ### `verify stubs [--gate]`
 

@@ -117,6 +117,14 @@ Report:
 | 1 | 01-01, 01-02 | {from plan objectives, 3-8 words} |
 | 2 | 01-03 | ... |
 ```
+
+**Test baseline.** Before the first wave, record what the test suite does now, so the verifier can tell a failure this phase caused from one it inherited:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs test run --phase "${PHASE_NUMBER}" --baseline > /dev/null
+```
+
+A phase that already has a baseline keeps it (a resumed run or a `--gaps-only` round compares against the phase's start, not its half-built state); the command says `kept_existing: true` and runs nothing. A failing or empty baseline is not a reason to stop: it is what the phase starts from.
 </step>
 
 <step name="execute_waves">

@@ -257,3 +257,41 @@ describe('phase gate — CLI', () => {
     assert.equal(G.phaseGate(dir, '9').error, 'phase_not_found');
   });
 });
+
+describe('the engine\'s test run is a code fact (V2)', () => {
+  const testRun = (status, reason) => write('.planning/phases/03-auth/03-test-run.json', JSON.stringify({ version: 1, kind: 'run', status, reason, command: 'npm test', regressions: status === 'failed' ? ['tests/login.test.js > logs in'] : [] }));
+
+  test('a verification that passes over a failed run is refused: reconcile contradiction, and the pass is lowered', () => {
+    testRun('failed', '1 regression(s): failing now, passing at the baseline');
+    const g = G.phaseGate(dir, '3');
+    assert.equal(g.ok, false);
+    assert.ok(codes(g).includes('reconcile_contradiction'), JSON.stringify(g.reasons));
+    assert.ok(codes(g).includes('verification_failed'), JSON.stringify(g.reasons));
+    assert.equal(g.facts.test_run, 'failed');
+    assert.ok(g.facts.lowered_by.includes('test_run'));
+  });
+
+  test('a verification that records no test gate takes the run\'s: failed refuses, skipped is not checked', () => {
+    verification('passed');
+    testRun('failed', 'suite did not run: exit 1');
+    assert.ok(codes(G.phaseGate(dir, '3')).includes('test_failed'));
+    testRun('skipped', 'no test command');
+    const g = G.phaseGate(dir, '3');
+    assert.ok(!codes(g).includes('test_failed'));
+    assert.ok(g.not_checked.some((n) => n.check === 'tests' && /no test command/.test(n.reason)));
+  });
+
+  test('a run that agrees with the verification changes nothing', () => {
+    testRun('passed', null);
+    const g = G.phaseGate(dir, '3');
+    assert.equal(g.ok, true, JSON.stringify(g.reasons));
+    assert.equal(g.facts.test_run, 'passed');
+  });
+
+  test('the verdict recorder lowers the verifier\'s pass over a failed run', () => {
+    testRun('failed', '1 regression(s)');
+    const r = F.recordVerdict(dir, { phase: '3', text: fs.readFileSync(path.join(phaseDir, '03-verification.md'), 'utf-8') });
+    assert.equal(r.outcome, 'fail');
+    assert.deepEqual(r.lowered_by, ['test_run']);
+  });
+});

@@ -486,9 +486,9 @@ Unrequested work never changes the status on its own; a phase can pass with it. 
 
 ## Step 8b: Run the Test Gate
 
-Run the project's test suite exactly as the verify-phase protocol's `run_test_suite` step says (`~/.claude/pan-wizard-core/workflows/verify-phase.md`): detect a test script first, then run it and judge the exit code before any count. Record the result in the frontmatter as `test_gate: passed | failed | skipped`. `skipped` is only for a project with no test script; a suite that exists and did not run is `failed`.
+Run the test suite through the engine, as the verify-phase protocol's `run_test_suite` step says (`~/.claude/pan-wizard-core/workflows/verify-phase.md`): `pan-tools test run --phase <N>` detects the project's test command in any language, runs it, compares it with the phase's baseline and writes the record. Copy its `status` into the frontmatter as `test_gate: passed | failed | skipped`; do not run the suite yourself and do not re-judge the result. A failed record lowers a `passed` verification whatever you write, and reconcile refuses a `test_gate` that disagrees with it.
 
-A gate you could not run goes in `not_checked` with the reason, e.g. `- check: "tests"` / `reason: "no test script in package.json"`. If the orchestrator already ran the suite and gave you the result, record that result rather than running it again.
+A `skipped` record goes in `not_checked` with the record's reason, e.g. `- check: "tests"` / `reason: "no test command: …"`. If the orchestrator already ran `test run` for this phase and gave you the result, record that result rather than running it again.
 
 ## Step 9: Determine Overall Status
 
