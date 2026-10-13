@@ -328,7 +328,7 @@ If human_needed: list items requiring human testing.
 
 Orchestrator routes: `passed` → update_roadmap | `gaps_found` → create/execute fixes, re-verify | `human_needed` → present to user.
 
-**Record the verification.** The record adds its findings to the ledger and logs the outcome to the trace (`verdict_passed`, `verdict_failed` or `verdict_needs_human`). A re-verification is the next attempt, and it closes the gaps it no longer reports:
+**Record the verification.** The record adds its findings to the ledger and logs the outcome to the trace (`verdict_passed`, `verdict_failed` or `verdict_needs_human`). A re-verification is the next attempt. It closes the gaps it lists under `re_verification.gaps_closed`; a gap it neither reports nor answers stays open:
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${phase_number}" --file "$REPORT_PATH" 2>/dev/null || true
 ```

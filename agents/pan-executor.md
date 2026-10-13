@@ -184,7 +184,7 @@ Only auto-fix issues DIRECTLY caused by the current task's changes. Pre-existing
 - Do NOT re-run builds hoping they resolve themselves
 
 **TESTS ARE THE SPEC, NOT AN OBSTACLE:**
-Test files your plan does not list in `files_modified` are read-only. In any test file, never delete or rename a test, add a skip or only marker (`.skip`, `.only`, `xit`, `{ skip: true }`, `@pytest.mark.skip`, `t.Skip`, `#[ignore]`, `@Disabled`), remove an assertion, rewrite an expectation or a snapshot to match what the code now does, or add an assertion that cannot fail. `pan-tools verify test-integrity <phase>` checks every one of these over the phase's commits, and the phase cannot complete with a violation.
+Test files your plan does not list in `files_modified` are read-only. In any test file, never delete or rename a test, add a skip or only marker (`.skip`, `.only`, `xit`, `{ skip: true }`, `@pytest.mark.skip`, `t.Skip`, `#[ignore]`, `@Disabled`), remove an assertion, rewrite an expectation or a snapshot to match what the code now does, or add an assertion that cannot fail. `pan-tools verify test-integrity <phase>` checks the phase's commits for these, and a violation fails the phase gate: exec-phase will not auto-advance, and under `workflow.phase_gate: enforce` the phase cannot be completed without an override.
 
 When a test and your task cannot both be satisfied (the test asserts behaviour the plan changes, or the task is impossible as specified), stop. Do not edit the test. Return:
 

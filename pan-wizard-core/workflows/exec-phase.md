@@ -46,9 +46,9 @@ Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_do
 |---|---|
 | `ok`, `disabled` | Continue |
 | `legacy` | Continue, and say: "the plan check predates plan hashing, so it cannot show these plans are unchanged" |
-| `stale` | Stop: "The plans changed after they passed the plan check. Run `/pan:plan-phase {N} --skip-research` to re-check them." Continue only if the user gives a reason, and record it: `pan-tools optimize trace log --type decision --category plan_check_overridden --description "<reason>"` |
+| `stale` | Stop: "The plans changed after they passed the plan check. Re-plan with `/pan:plan-phase {N} --skip-research`, which checks the new plans." Continue only if the user gives a reason, and record it: `pan-tools optimize trace log --type decision --category plan_check_overridden --description "<reason>"` |
 | `failed` | Stop: "The last plan check found issues." Same override |
-| `missing` | Stop: "No plan check is recorded for this phase." Same override |
+| `missing` | Stop: "No plan check is recorded for this phase." This includes plans made with `/pan:plan-phase --skip-verify` or with `workflow.plan_check` off after the fact. Same override |
 
 **Drift.** For each `plan_drift` entry, tell the executor of that plan, in its prompt, which of its `files_modified` changed since it was planned (`files`), so it re-reads them before editing. An entry with `error` means its `planned_commit` is unknown: say so and continue.
 
@@ -202,7 +202,7 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    If ANY spot-check fails: report which plan failed, route to failure handler — ask "Retry plan?" or "Continue with remaining waves?"
 
-   **An executor that returned `## BLOCKED_SPEC_CONFLICT`** found a test it cannot satisfy without weakening it. It is not a failure to retry: show the user its Test, Requirement and Options and ask for a ruling. "Change the test" means a revised plan that declares the test file in `files_modified` (`/pan:plan-phase {N} --gaps` or an edit to the plan), then re-run that plan; "change the requirement" means updating the requirement and the plan. Never re-run the same plan unchanged: it would meet the same test.
+   **An executor that returned `## BLOCKED_SPEC_CONFLICT`** found a test it cannot satisfy without weakening it. It is not a failure to retry: show the user its Test, Requirement and Options and ask for a ruling. "Change the test" means a revised plan that declares the test file in `files_modified` (`/pan:plan-phase {N} --gaps` or an edit to the plan), then re-run that plan; "change the requirement" means updating the requirement and the plan. Never re-run the same plan unchanged: it would meet the same test. Declaring the file permits rewriting its expectations; deleting the test, skipping it or dropping assertions still fails `verify test-integrity`, so a ruling to do that also needs `phase complete --force --reason`.
 
    If pass:
    ```
@@ -577,7 +577,7 @@ VERIF_FILE=$(ls "$PHASE_DIR"/*-verification.md 2>/dev/null | head -1)
 VERIF_STATUS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${PHASE_NUMBER}" --file "$VERIF_FILE" --raw 2>/dev/null) \
   || VERIF_STATUS=$(grep "^status:" "$VERIF_FILE" | cut -d: -f2 | tr -d ' ')
 ```
-`findings record` reads the verdict from the verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`) and adds its findings to the ledger. A re-verification after a fix round is the next attempt: the gaps it no longer reports are closed, and the retry is logged. Recording the same file twice is a no-op, so verify-phase recording it too is safe. The grep fallback keeps the old reading when the record cannot parse the file.
+`findings record` reads the verdict from the verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`) and adds its findings to the ledger. A re-verification after a fix round is the next attempt: the gaps it lists under `re_verification.gaps_closed` are closed, a gap it neither reports nor answers stays open (listed in `unaddressed`), and the retry is logged. Recording the same file twice is a no-op, so verify-phase recording it too is safe. The grep fallback keeps the old reading when the record cannot parse the file.
 
 **Trace logging happens in the record.** The record above logs the verification outcome (`verdict_passed`, `verdict_failed` or `verdict_needs_human`) here, after the verifier returns. That covers inline verification too, which is the reason P-1806 moved the trace call here (v3.7.8). No separate `optimize trace log` call is needed.
 

@@ -392,7 +392,7 @@ Task(
 
 ## 9. Handle Planner Return
 
-- **`## PLANNING COMPLETE`:** Display plan count. If `--skip-verify` or `plan_checker_enabled` is false (from init): skip to step 13. Otherwise: step 10.
+- **`## PLANNING COMPLETE`:** Display plan count. If `--skip-verify` or `plan_checker_enabled` is false (from init): still run the code checks at the start of step 10 (`verify plan-set`; they cost no model call), send any errors back to the planner (step 12), then skip to step 13. Otherwise: step 10.
 - **`## GAP CLOSURE PLANS CREATED`:** (`--gaps` mode) Handle as `## PLANNING COMPLETE`.
 - **`## CHECKPOINT REACHED`:** Present to user, get response, spawn a fresh planner (step 8's Task) with the response added to its prompt
 

@@ -227,7 +227,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `planning-root.cjs` | **(v3.27)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
 | `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
-| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A re-verification auto-fixes the findings it no longer reports, a regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
+| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A finding closes only on evidence (a judge's `resolved` answer, the verifier's `gaps_closed`, or a passing code fact); one a report neither repeats nor answers stays open as `unaddressed`. A regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
 | `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
 | `verify-integrity.cjs` | **(program V3)** `verify test-integrity <phase>`: walks the phase's plan commits and reports a deleted test, a skip or only marker added (JS, Python, Go, Rust, Java), assertions dropped, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail; a renamed test is a warning. Uses verify-scope's `committedFiles()`. |
 | `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
@@ -457,7 +457,7 @@ Quick reference of all CLI commands grouped by category.
 | 214 | `cost limits` | Cost | cost.cjs |
 | 215 | `verify plan-set` | Verification | verify-plan-set.cjs |
 | 216 | `verify test-integrity` | Verification | verify-integrity.cjs |
-| 217 | `phase gate` | Phase | phase-gate.cjs |
+| 217 | `phase gate` | Phase Ops | phase-gate.cjs |
 
 ---
 
@@ -1655,7 +1655,7 @@ pan-tools verify key-links .planning/phases/05-setup/05-01-plan.md [--raw]
 
 ### `verify reconcile <phase>`
 
-Cross-check a phase's recorded verification against the mechanical checks of every plan's `must_haves`, so a verification.md whose `status` claims a pass while an artifact substance check fails or a key link is unwired is caught (each artifact and link in the result names its `plan`). Exits `1` on a contradiction (so `exec-phase`'s auto-advance gate stops) and `0` otherwise, including a phase with no directory, no verification.md or no `must_haves`, which report `reconciled: true` with a `note`.
+Cross-check a phase's recorded verification against the mechanical checks of every plan's `must_haves`, so a verification.md whose `status` claims a pass while an artifact substance check fails or a key link is unwired is caught (each artifact and link in the result names its `plan`). Exits `1` on a contradiction (and the phase gate refuses with `reconcile_contradiction`) and `0` otherwise, including a phase with no directory, no verification.md or no `must_haves`, which report `reconciled: true` with a `note`.
 
 ```bash
 pan-tools verify reconcile 5 [--raw]
@@ -1694,7 +1694,7 @@ pan-tools verify stale 3 --raw    # fresh | stale | unverified | unknown
 
 ### `verify plan-set <phase>`
 
-The checks a plan set has to pass that code can make (program V7). `/pan:plan-phase` runs it before spawning the plan checker and sends its errors straight back to the planner.
+The checks a plan set has to pass that code can make (program V7). `/pan:plan-phase` runs it before spawning the plan checker, and also when the checker is skipped (`--skip-verify`, `workflow.plan_check` off), and sends its errors straight back to the planner.
 
 ```bash
 pan-tools verify plan-set 3          # {phase, ok, errors[], warnings[], plans, plans_sha, plan_check, drift[]}
@@ -1714,7 +1714,7 @@ pan-tools verify test-integrity 3          # {phase, checked, ok, commits, viola
 pan-tools verify test-integrity 3 --raw    # clean | violated | not_checked
 ```
 
-**Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/` or `spec/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test.java`, or a Rust file holding `#[test]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
+**Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/` or `spec/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test(s).java`/`.kt`/`.cs`, or a Rust file holding `#[test]` or `#[cfg(test)]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
 
 ### `verify stubs [--gate]`
 
@@ -2180,7 +2180,7 @@ pan-tools config-ensure-section [--raw]
 
 **`--raw` output:** `created` or `exists`.
 
-**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`warn`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
+**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`warn`), `hooks.guard` (`report`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -4196,11 +4196,11 @@ pan-tools findings debt [--milestone v1.1] [--raw]
 
 **`findings record`** takes exactly one of `--file`, `--text` or `--stdin`, plus `--phase` and optionally `--agent`.
 - **Input.** It reads the last `pan-verdict` block; without one, it reads a verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`, `test_gate`, `not_checked`). It prints `{contract, recorded, duplicate, verdict_id, agent, verdict, outcome, not_checked, source_kind, attempt, phase, findings, new, rematched, resolved, unaddressed, reopened, warnings}`, plus `ledger` when it wrote a verdict, and `agent_verdict` and `lowered_by` when a code fact lowered the judge's word.
-- **What was not checked.** `not_checked` lists `{check, reason}` for each check the judge could not run. A verification with `test_gate: skipped` always carries a `tests` entry, so a pass whose tests never ran is never recorded as a plain pass. The warnings name a verification that does not record `test_gate` (`test_gate_unrecorded`) and a failed gate under a passed status (`test_gate_failed_under_pass`). `--raw` prints the judge's own verdict word (`gaps_found`, `NEEDS_FIXES`, `issues_found`, `GAPS` …), or the outcome when there is none.
+- **What was not checked.** `not_checked` lists `{check, reason}` for each check the judge could not run. A verification with `test_gate: skipped` always carries a `tests` entry, so a pass whose tests never ran is never recorded as a plain pass. The warnings name a verification that does not record `test_gate` (`test_gate_unrecorded`) and a failed gate under a passed status (`test_gate_failed_under_pass`). `--raw` prints the recorded verdict word (`gaps_found`, `NEEDS_FIXES`, `issues_found`, `GAPS` …): the judge's own word, or the lowered one when a code fact lowered it. It prints the outcome when there is no word.
 - **Exit codes.** A failed verdict is data: exit 0. An unreadable input exits 1 with `{error, reason}`, for example `no_verdict`, `invalid_json`, `unsupported_contract` or `phase_not_found`. That is what a workflow's `||` fallback runs on.
 - **Idempotency and attempts.** Recording the same artifact twice is a no-op that returns the first verdict. Each new verdict from an agent on a phase is the next `attempt`.
 - **Code facts only lower.** A verification with `status: passed` over `test_gate: failed` records as `gaps_found`, with a high finding at `code-fact:test_gate`; the judge's word is kept as `agent_verdict`.
-- **Closing on evidence.** An earlier open finding becomes `fixed` only when the new report answers it `resolved` with evidence (a `resolutions` entry, or a truth in the verifier's `re_verification.gaps_closed`), or when its code fact now passes. One the report neither repeats nor answers stays open and is listed in `unaddressed`. `still_present` reopens a `fixed` finding. A reworded report of an earlier finding keeps its id (`rematched`).
+- **Closing on evidence.** An earlier open finding becomes `fixed` only when the new report answers it `resolved` with evidence (a `resolutions` entry, or a truth in the verifier's `re_verification.gaps_closed`), or when its code fact now passes. One the report does not repeat, or answers other than `resolved` with evidence, stays open and is listed in `unaddressed`. `still_present` reopens a `fixed` finding. A reworded report of an earlier finding keeps its id (`rematched`).
 - **Trace.** It logs `verdict_passed`, `verdict_failed` or `verdict_needs_human`, plus `verdict_retry` after a failed attempt.
 
 **`findings list`** filtered by both `--phase` and `--agent` adds `churn`: `{reports, transitions, added, dropped, rate}`, how many ids appeared or disappeared between that judge's consecutive reports.

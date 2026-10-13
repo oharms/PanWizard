@@ -500,6 +500,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
   "parallelization": true,
+  "hooks": { "guard": "report" },
   "brave_search": false,
   "budget": {
     "default_points": 50,
@@ -775,8 +776,8 @@ Each script names the markdown protocol it ports, and a test pins the pair so th
 
 PAN's judges decide whether work passed: the plan checker, the reviewer, the design checker and the verifier. Their verdicts, what they found, and what was done about each finding are kept on record in `.planning/findings.jsonl`. The optimisation loop sees the failures that happen inside subagents.
 
-- **Verdicts on the record.** Each judge's report ends with a machine-readable verdict: a fenced `pan-verdict` block, or the verifier's verification.md frontmatter. The workflows save each report in the phase directory (`NN-review.md`, `NN-plan-check.md`, `NN-design-check.md`, `NN-verification.md`) and record it with `pan-tools findings record`. They branch on the verdict the record prints and fall back to the old heading or `status:` read when a report has no valid verdict; exec-phase's auto-advance gate still reads the verification's `status:` directly.
-- **Fix rounds close their findings.** A re-verification after a gap-closure round is the next attempt. The gaps it no longer reports are marked fixed, and the retry is logged. Human-verification items and unrequested work are never closed this way, because a re-run does not re-check them.
+- **Verdicts on the record.** Each judge's report ends with a machine-readable verdict: a fenced `pan-verdict` block, or the verifier's verification.md frontmatter. The workflows save each report in the phase directory (`NN-review.md`, `NN-plan-check.md`, `NN-design-check.md`, `NN-verification.md`) and record it with `pan-tools findings record`. They branch on the verdict the record prints and fall back to the old heading or `status:` read when a report has no valid verdict; exec-phase's auto-advance decision comes from the phase gate that `phase complete` runs (`pan-tools phase gate`).
+- **Fix rounds close their findings on evidence.** A re-verification after a gap-closure round is the next attempt. The gaps it lists under `re_verification.gaps_closed` (or that a judge answers `resolved` with evidence) are marked fixed, and the retry is logged. A finding the new report neither repeats nor answers stays open.
 - **Nothing is continued past silently.** When a phase moves on past open review, plan-check or design findings, the workflow records the reason. Findings nothing disposes stay `open` until you dispose them: the rows of a plain `PASS` review or a passing plan or design check, `unrequested` work, and human-verification items (a `PASS_WITH_WARNINGS` review defers all its open rows, INFO included). Examples of recorded reasons: warnings accepted at review, "continue anyway" at `NEEDS_FIXES`, "force proceed" after the third plan check. You can dispose findings yourself, too: `pan-tools findings dispose <id> --as deferred|dismissed|decision --reason "…"`. A reason is required.
 - **Milestone audits read the record.** `/pan:milestone-audit` takes its tech debt from `pan-tools findings debt`, the deferred findings with their reasons. It lists the findings nobody disposed, instead of reconstructing either from prose.
 - **Unrequested work is a finding.** The verifier runs `pan-tools verify scope <phase>`, which lists the files the phase changed that no plan declared. Whatever it judges to be work nobody asked for is recorded as `unrequested`. That finding does not fail the phase; keeping or removing the work is your decision.
