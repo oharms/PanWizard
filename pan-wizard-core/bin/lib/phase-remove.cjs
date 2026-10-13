@@ -352,10 +352,37 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
 }
 
 /**
+ * The decimal phases inserted after an integer phase, from its directories and its
+ * roadmap headings (a phase can be in the roadmap before it has a directory).
+ * @param {string} phasesDir - the phases directory
+ * @param {string} roadmapPath - roadmap.md
+ * @param {number} baseInt - the integer phase
+ * @returns {{num: string, dir: string|null}[]} in numeric order, e.g. [{num: '3.1', dir: '03.1-fix'}]
+ */
+function findDecimalPhases(phasesDir, roadmapPath, baseInt) {
+  const found = new Map();
+  const dirRe = new RegExp(`^0*${baseInt}\\.(\\d+)(?:-|$)`);
+  try {
+    for (const entry of fs.readdirSync(phasesDir, { withFileTypes: true })) {
+      const m = entry.isDirectory() && entry.name.match(dirRe);
+      if (m) found.set(Number(m[1]), entry.name);
+    }
+  } catch { /* no phases directory: the roadmap alone decides */ }
+  let text = '';
+  try { text = fs.readFileSync(roadmapPath, 'utf8'); } catch { /* unreadable: directories alone */ }
+  for (const m of text.matchAll(new RegExp(`^#{2,4}\\s*Phase\\s+0*${baseInt}\\.(\\d+)\\s*:`, 'gim'))) {
+    if (!found.has(Number(m[1]))) found.set(Number(m[1]), null);
+  }
+  return [...found.entries()].sort((a, b) => a[0] - b[0]).map(([dec, dir]) => ({ num: `${baseInt}.${dec}`, dir }));
+}
+
+/**
  * Remove a phase directory, renumber subsequent phases, and update ROADMAP/STATE.
+ * An integer phase that still has decimal phases is refused unless `withDecimals`.
  * @param {string} cwd - Working directory path
  * @param {string} targetPhase - Phase number to remove
- * @param {Object} options - Options (force: skip executed-work check)
+ * @param {Object} options - Options (force: skip executed-work check; withDecimals: remove
+ *   the integer phase's decimal phases with it)
  * @param {boolean} raw - If true, output raw value instead of JSON
  * @returns {void}
  */
@@ -420,6 +447,21 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     }
   }
 
+  // An integer phase's decimal phases (3.1, 3.2 …) were inserted after it. Removing the
+  // integer alone orphaned them: they stayed on disk and in the roadmap and, once the
+  // phases above were renumbered, read as decimals of a different phase, listed before
+  // their new base. So they go with it only when asked; otherwise refuse, naming them.
+  const decimals = isDecimal ? [] : findDecimalPhases(phasesDir, roadmapPath, parseInt(normalized, 10));
+  if (decimals.length && !options.withDecimals) {
+    error(`Phase ${targetPhase} has decimal phases ${decimals.map((d) => d.num).join(', ')} inserted after it. Remove them first, or pass --with-decimals to remove them with it.`);
+  }
+  if (!force) {
+    for (const d of decimals) {
+      const executed = d.dir ? fs.readdirSync(path.join(phasesDir, d.dir)).filter(isSummaryFile).length : 0;
+      if (executed) error(`Phase ${d.num} has ${executed} executed plan(s). Use --force to remove anyway.`);
+    }
+  }
+
   // Check for executed work (summary.md files)
   if (targetDir && !force) {
     const targetPath = path.join(phasesDir, targetDir);
@@ -428,6 +470,16 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     if (summaries.length > 0) {
       error(`Phase ${targetPhase} has ${summaries.length} executed plan(s). Use --force to remove anyway.`);
     }
+  }
+
+  // --with-decimals: every check has passed, so remove the decimals first, highest first,
+  // which leaves no sibling above any of them to renumber.
+  const removedDecimals = [];
+  for (const d of decimals.slice().reverse()) {
+    if (d.dir) removePhaseFromDisk(path.join(phasesDir, d.dir));
+    updateRoadmapAfterRemoval(cwd, d.num, true, normalizePhaseName(d.num));
+    updateStateAfterPhaseRemoval(cwd);
+    removedDecimals.unshift(d.num);
   }
 
   // Delete target directory
@@ -476,6 +528,7 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     roadmap_updated: true,
     state_updated: stateUpdated,
   };
+  if (removedDecimals.length) result.removed_decimals = removedDecimals;
   if (renameError) result.rename_warning = renameError;
   if (removeWarning) result.remove_warning = removeWarning;
 

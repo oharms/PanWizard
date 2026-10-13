@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A second `phase insert` under one phase no longer lands before the first.** The new decimal phase went straight after its base phase, so the roadmap and `roadmap analyze` read 6, 6.2, 6.1, and the next-action machine, which takes phases in that order, would run 6.2 first. Its checklist entry also went to the end of the list, after later phases. Both now follow the base phase's existing decimals.
 - **`phase remove` handles the padded numbers `phase insert` writes.** Removing `1.1` deleted its directory but left its `Phase 01.1` section and checklist entry in the roadmap, while still reporting `roadmap_updated: true`. Removing an integer phase left padded decimal headings such as `Phase 03.1` unrenumbered. Removing a decimal phase now also renumbers its higher siblings in the roadmap, as their directories already were.
+- **`phase remove` no longer orphans decimal phases.** Removing an integer phase that still had decimal phases left them on disk and in the roadmap, where they read as decimals of the phase renumbered into its place. It now refuses, naming them, and changes nothing. The new `--with-decimals` flag removes them with it, each still checked for executed plans (`--force` applies), and lists them as `removed_decimals`. The remove-phase workflow asks before passing it.
 - **A phase sent with the legacy `verified` status and `merged: true` is finished.** The next-action machine asked for its merge again on every cycle.
 
 ## [3.35.0] - 2026-10-13

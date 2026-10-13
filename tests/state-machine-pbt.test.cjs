@@ -13,9 +13,10 @@
  * vocabulary plus Title Case, legacy aliases and garbage: it never returns a verb its
  * contract forbids.
  *
- * Out of the model on purpose: removing an integer phase that still has decimal phases
- * (what should happen to them is unspecified), and `phase complete` (it needs plans and
- * summaries, which the phase gate tests cover).
+ * Removing an integer phase that still has decimal phases is refused unless
+ * `--with-decimals` is given, which removes them with it; the model covers both.
+ * Out of the model on purpose: `phase complete` (it needs plans and summaries, which the
+ * phase gate tests cover).
  */
 'use strict';
 
@@ -39,6 +40,8 @@ const cmp = (a, b) => { const x = parts(a); const y = parts(b); return (x[0] - y
 const sorted = (list) => list.slice().sort(cmp);
 const ints = (m) => m.filter((n) => !n.includes('.')).map(Number);
 const decimalsOf = (m, k) => m.filter((n) => n.startsWith(`${k}.`)).map((n) => Number(n.split('.')[1]));
+// Removing n leaves at least one phase standing (an integer takes its decimals with it).
+const removable = (m, n) => m.includes(n) && m.filter((x) => (n.includes('.') ? x !== n : parts(x)[0] !== Number(n))).length > 0;
 
 const FIXTURE = [
   '# Roadmap', '', '## Phases', '',
@@ -83,16 +86,30 @@ function phaseSpec(tools, opts = {}) {
       },
       {
         name: 'remove',
-        // An integer with no decimals left, or a decimal; never the last phase.
-        applicable: (m) => m.length > 1 && m.some((n) => n.includes('.') || !decimalsOf(m, n).length),
-        gen: (m, rnd) => [rnd.pick(m.filter((n) => n.includes('.') || !decimalsOf(m, n).length))],
-        validArgs: (m, [n]) => m.length > 1 && m.includes(n) && (n.includes('.') || !decimalsOf(m, n).length),
-        run: (dir, [n]) => pan(dir, ['phase', 'remove', n, '--force']),
+        // Any phase but the last left standing. An integer that still has decimals needs
+        // --with-decimals and takes them with it.
+        applicable: (m) => m.some((n) => removable(m, n)),
+        gen: (m, rnd) => { const n = rnd.pick(m.filter((x) => removable(m, x))); return decimalsOf(m, n).length && !n.includes('.') ? [n, '--with-decimals'] : [n]; },
+        validArgs: (m, [n, flag]) => removable(m, n) && (n.includes('.') || !decimalsOf(m, n).length || flag === '--with-decimals'),
+        run: (dir, [n, ...flags]) => pan(dir, ['phase', 'remove', n, ...flags, '--force']),
         next: (m, [n]) => {
           const [k, d] = parts(n);
           if (d !== undefined) return sorted(m.filter((x) => x !== n).map((x) => { const [xk, xd] = parts(x); return xk === k && xd > d ? `${k}.${xd - 1}` : x; }));
-          return sorted(m.filter((x) => x !== n).map((x) => { const [xk, xd] = parts(x); return xk > k ? (xd === undefined ? String(xk - 1) : `${xk - 1}.${xd}`) : x; }));
+          return sorted(m.filter((x) => parts(x)[0] !== k).map((x) => { const [xk, xd] = parts(x); return xk > k ? (xd === undefined ? String(xk - 1) : `${xk - 1}.${xd}`) : x; }));
         },
+      },
+      {
+        name: 'remove-refused',
+        // Without --with-decimals, an integer that still has decimals is refused and nothing changes.
+        applicable: (m) => ints(m).some((k) => decimalsOf(m, k).length),
+        gen: (m, rnd) => [String(rnd.pick(ints(m).filter((k) => decimalsOf(m, k).length)))],
+        validArgs: (m, [k]) => ints(m).includes(Number(k)) && decimalsOf(m, k).length > 0,
+        run: (dir, [k]) => {
+          const r = spawnSync(process.execPath, [tools, 'phase', 'remove', k, '--force'], { cwd: dir, encoding: 'utf8' });
+          if (r.status === 0) throw new Error(`phase remove ${k} succeeded although phase ${k} still has decimal phases`);
+          if (!/--with-decimals/.test(r.stderr + r.stdout)) throw new Error(`the refusal does not name --with-decimals: ${String(r.stderr).trim().slice(0, 200)}`);
+        },
+        next: (m) => m,
       },
     ],
     invariant: (dir, model) => {
@@ -279,6 +296,49 @@ describe('the counterexamples H7 found, pinned as examples', () => {
       pan(dir, 'phase', 'remove', '1', '--force');
       assert.equal(listed(dir), '1,2,2.1');
       assert.match(fs.readFileSync(path.join(dir, '.planning', 'roadmap.md'), 'utf8'), /### Phase 02\.1: urgent/);
+    } finally { cleanup(dir); }
+  });
+
+  test('removing an integer phase that still has decimals is refused, naming them, and changes nothing', () => {
+    const dir = project();
+    try {
+      pan(dir, 'phase', 'insert', '1', 'alpha');
+      pan(dir, 'phase', 'insert', '1', 'beta');
+      const before = fs.readFileSync(path.join(dir, '.planning', 'roadmap.md'), 'utf8');
+      const r = spawnSync(process.execPath, [TOOLS_PATH, 'phase', 'remove', '1', '--force'], { cwd: dir, encoding: 'utf8' });
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, /Phase 1 has decimal phases 1\.1, 1\.2/);
+      assert.match(r.stderr, /--with-decimals/);
+      assert.equal(fs.readFileSync(path.join(dir, '.planning', 'roadmap.md'), 'utf8'), before);
+      assert.deepEqual(fs.readdirSync(path.join(dir, '.planning', 'phases')).sort(), ['01-first', '01.1-alpha', '01.2-beta', '02-second']);
+    } finally { cleanup(dir); }
+  });
+
+  test('--with-decimals removes the phase and its decimals, then renumbers', () => {
+    const dir = project();
+    try {
+      pan(dir, 'phase', 'insert', '1', 'alpha');
+      pan(dir, 'phase', 'insert', '2', 'gamma');
+      const out = JSON.parse(pan(dir, 'phase', 'remove', '1', '--with-decimals'));
+      assert.deepEqual(out.removed_decimals, ['1.1']);
+      assert.equal(listed(dir), '1,1.1');
+      assert.equal(checklist(dir), '1,1.1');
+      assert.deepEqual(fs.readdirSync(path.join(dir, '.planning', 'phases')).sort(), ['01-second', '01.1-gamma']);
+      assert.doesNotMatch(fs.readFileSync(path.join(dir, '.planning', 'roadmap.md'), 'utf8'), /alpha/);
+    } finally { cleanup(dir); }
+  });
+
+  test('--with-decimals still refuses a decimal with executed plans unless --force, before removing anything', () => {
+    const dir = project();
+    try {
+      pan(dir, 'phase', 'insert', '1', 'alpha');
+      fs.writeFileSync(path.join(dir, '.planning', 'phases', '01.1-alpha', '01.1-01-summary.md'), '# done\n');
+      const r = spawnSync(process.execPath, [TOOLS_PATH, 'phase', 'remove', '1', '--with-decimals'], { cwd: dir, encoding: 'utf8' });
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, /Phase 1\.1 has 1 executed plan/);
+      assert.deepEqual(fs.readdirSync(path.join(dir, '.planning', 'phases')).sort(), ['01-first', '01.1-alpha', '02-second']);
+      pan(dir, 'phase', 'remove', '1', '--with-decimals', '--force');
+      assert.equal(listed(dir), '1');
     } finally { cleanup(dir); }
   });
 
