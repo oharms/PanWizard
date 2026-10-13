@@ -101,7 +101,10 @@ function normalizeStatus(status) {
 function isPhaseOpen(phase) {
   if (!phase || typeof phase !== 'object') return false;
   const status = normalizeStatus(phase.status);
-  if (status !== COMPLETE_STATUS) return true;
+  // The legacy `verified` alias stands for complete-and-verified: once merged, that phase
+  // is finished too. Without this a caller sending it got request_merge on every cycle,
+  // for a phase already merged (found by H7's nextAction fuzz).
+  if (status !== COMPLETE_STATUS) return !(PHASE_NEXT[status] === 'request_merge' && phase.merged === true);
   // Complete on disk, but the run facts decide whether it is actually finished.
   return !(phase.verified === true && phase.merged === true);
 }

@@ -22,6 +22,12 @@
  *   stderr~<regex>        stderr matches
  *   rpc:<id>.<path>=<value>   for mcp steps: the response with that id has path == value
  *   rpc:<id>.<path>       … the path exists
+ *   wire:<field>~<regex>  for double-backed model steps (H1): some request the host sent the
+ *                         model double has <field> (system | tools | url | body) matching
+ *   wire-count:<field>~<regex>=<n>   exactly n requests match
+ *   drift:none            for cassette replays (H2): every request the host sent was recorded
+ *   drift:<regex>         at least one request drifted, and every drifted request is attributed
+ *                         to an installed agent whose name matches (exactly the edited agent)
  */
 
 const fs = require('fs');
@@ -127,6 +133,24 @@ function checkOne(expectation, outcome, workspace) {
     if (!got.found) return `rpc ${m[1]}: path ${m[2]} absent`;
     if (m[3] !== undefined && !scalarEquals(got.value, m[3])) return `rpc ${m[1]}.${m[2]} = ${JSON.stringify(got.value)}, expected ${m[3]}`;
     return null;
+  }
+  if ((m = expectation.match(/^wire(-count)?:(system|tools|url|body)~(.+?)(?:=(\d+))?$/))) {
+    if (!Array.isArray(o.captures)) return `no model-double captures on this step (needed for ${expectation})`;
+    const counting = m[1] === '-count';
+    if (counting && m[4] === undefined) return `wire-count needs =<n>: ${expectation}`;
+    const re = new RegExp(counting ? m[3] : (m[4] === undefined ? m[3] : `${m[3]}=${m[4]}`));
+    const text = (c) => (m[2] === 'tools' ? (c.tools || []).join(',') : m[2] === 'body' ? JSON.stringify(c.body || {}) : String(c[m[2]] || ''));
+    const n = o.captures.filter((c) => c && c.protocol && re.test(text(c))).length;
+    if (counting) return n === Number(m[4]) ? null : `${n} request(s) with ${m[2]} matching /${m[3]}/, expected ${m[4]}`;
+    return n > 0 ? null : `no request to the model double has ${m[2]} matching /${m[3]}/`;
+  }
+  if ((m = expectation.match(/^drift:(.+)$/))) {
+    if (!Array.isArray(o.drift)) return `no model-double replay on this step (needed for ${expectation})`;
+    if (m[1] === 'none') return o.drift.length ? `${o.drift.length} drifted request(s): ${o.drift.map((d) => (d.attributed ? d.attributed.agent : 'unattributed')).join(', ')}` : null;
+    if (!o.drift.length) return `no drift: every request matched the cassette (expected drift for /${m[1]}/)`;
+    const re = new RegExp(m[1]);
+    const off = o.drift.filter((d) => !d.attributed || !re.test(d.attributed.agent));
+    return off.length ? `drift beyond /${m[1]}/: ${off.map((d) => (d.attributed ? d.attributed.agent : 'unattributed')).join(', ')}` : null;
   }
   return `unknown assertion kind: ${expectation}`;
 }

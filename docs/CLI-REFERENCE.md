@@ -878,18 +878,22 @@ pan-tools phase insert 5 "Emergency Hotfix" [--raw]
 
 ---
 
-### `phase remove <phase> [--force]`
+### `phase remove <phase> [--force] [--with-decimals]`
 
-Remove a phase, delete its directory, and renumber all subsequent phases. Also updates roadmap.md and state.md.
+Remove a phase, delete its directory, and renumber all subsequent phases. Also updates roadmap.md and state.md. Removing a decimal phase renumbers its higher siblings (5.3 becomes 5.2).
+
+An integer phase that still has decimal phases inserted after it is refused, with their numbers in the error, and nothing changes: removed alone, they would be left behind and read as decimals of the phase renumbered into its place.
 
 ```bash
 pan-tools phase remove 7
-pan-tools phase remove 5.2 --force    # Force removal even if summaries exist
+pan-tools phase remove 5.2 --force         # Force removal even if summaries exist
+pan-tools phase remove 5 --with-decimals   # Remove phase 5 and its 5.1, 5.2 …
 ```
 
 **Arguments:**
 - `<phase>` — Phase number to remove
-- `--force` — Allow removal of phases with executed plans (summary.md files)
+- `--force` — Allow removal of phases with executed plans (summary.md files), the decimals included
+- `--with-decimals` — Also remove the integer phase's decimal phases; the output lists them as `removed_decimals`
 
 **JSON output:**
 ```json

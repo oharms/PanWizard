@@ -72,6 +72,8 @@ This will:
 Proceed? (y/n)
 ```
 
+If an integer target has decimal phases inserted after it (`### Phase {target}.1:` and so on in roadmap.md, or `{target}.N-*` directories), name them in the summary and ask whether to remove them too. pan-tools refuses to remove the integer phase while they exist, because they would be left behind under a different phase's number.
+
 Wait for confirmation.
 </step>
 
@@ -88,6 +90,14 @@ If the phase has executed plans (summary.md files), pan-tools will error. Use `-
 RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase remove "${target}" --force)
 ```
 
+If the phase has decimal phases, pan-tools errors and names them. Add `--with-decimals` only if the user confirmed removing them as well (each is checked for executed plans the same way, so `--force` still applies to them):
+
+```bash
+RESULT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase remove "${target}" --with-decimals)
+```
+
+Otherwise stop and report the decimals; the user can remove them one by one first.
+
 The CLI handles:
 - Deleting the phase directory
 - Renumbering all subsequent directories (in reverse order to avoid conflicts)
@@ -95,7 +105,7 @@ The CLI handles:
 - Updating roadmap.md (removing section, renumbering all phase references, updating dependencies)
 - Updating state.md (decrementing phase count)
 
-Extract from result: `removed`, `directory_deleted`, `renamed_directories`, `renamed_files`, `roadmap_updated`, `state_updated`.
+Extract from result: `removed`, `directory_deleted`, `renamed_directories`, `renamed_files`, `roadmap_updated`, `state_updated`, and `removed_decimals` when `--with-decimals` removed any.
 </step>
 
 <step name="commit">

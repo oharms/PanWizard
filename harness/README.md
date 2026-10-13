@@ -13,6 +13,8 @@ node harness/src/run.cjs --scenario install-matrix          # one scenario
 node harness/src/run.cjs --repo <dir> --keep                 # pack another checkout; keep the extracted artifact after the run
 node harness/src/run.cjs --no-ledger                        # leave the tracked harness/ledger.jsonl untouched (CI)
 node harness/src/run.cjs --controls                         # also run every control: each sabotage must turn its scenario red
+node harness/src/run.cjs --require-run double-executor-body-claude   # fail, never skip, when this scenario cannot run (CI)
+node harness/src/run.cjs --scenario cassette-drift-claude --record   # re-record a synthetic cassette after an intended prompt change
 node harness/src/run.cjs --tier 2 --max-usd 50 --repeat 12 --until-decided --scenario quick-mode   # stop the reps once SPRT decides
 node harness/src/run.cjs --tier 2 --max-usd 25 --repeat 5 --arm no-guidance --scenario quick-mode # the no-guidance baseline arm
 node harness/src/run.cjs --help
@@ -56,6 +58,22 @@ one chain scenario want about `--max-usd 25`, and both chain scenarios together 
 and, when the workspace carries `.mcp.json`, with `--strict-mcp-config` so the agent sees
 exactly one `pan` server — the workspace's.
 
+## The model double: real hosts, no model, no spend
+
+`src/model-double.cjs` is a local `node:http` server that answers a host CLI in place of the model provider (program H1). It speaks Anthropic Messages (streamed and not), OpenAI Responses and Chat, and Gemini, in four modes: **capture** (record every request, answer briefly), **script** (answer from a script of turns, text or a tool call), **replay** (answer from recorded pairs; any other request is `drift`) and **record** (proxy to a real upstream and keep the pairs). Nothing reaches a real model in the first three, so a step backed by them is **tier 0** (ADR-0047 D2 as amended `2026-10-12`) and runs in CI.
+
+A `model` step with `double: {script}` runs the real host CLI against the double (`src/double-server.cjs`, its own process, because the step runner is synchronous), with a scratch config directory and a dummy key, so a user's own login is never read. A script is `{rules: [{when, turns}], fallback}`: `when` matches on the tools a request offers (`toolsInclude`, `toolsExclude`), its system prompt (`systemIncludes`, `systemExcludes`) or a header; each rule answers its turns in order and repeats the last. Claude Code `2.1.288` sends no agent-type header: its main session is the request that offers the spawn tool (`Agent`), a subagent's system prompt carries its agent body, and two more requests per turn are its own notification classifier (the fallback answers them). Only Claude Code takes a model base URL from the environment today; a double-backed step on another host is refused with that reason. CI installs a pinned Claude Code CLI on the Ubuntu Node-22 job and runs the harness with `--require-run double-executor-body-claude`, so the scenario fails rather than skips when the CLI is missing; a control the scenario survives and an unmet `--require-run` both make the run exit 1. CI requires `cassette-drift-claude` the same way.
+
+Two assertion kinds read what the host sent: `wire:<field>~<regex>` (some request's `system`, `tools`, `url` or `body` matches) and `wire-count:<field>~<regex>=<n>`. `double-executor-body-claude` uses the double to show the executor subagent receives the **packaged** `pan-executor` body whole (`scripts/wire-agent-body.cjs`, after the installer's path rewrites), and its control truncates the installed agent to prove the check can fail: the MI-015 class, at $0.
+
+## Cassettes: replay at $0, drift as prompt impact
+
+A `model` step with `double: {cassette: <file>}` replays recorded answers (program H2). A request is keyed on its protocol, model and turn number, plus the part of the system prompt PAN owns: a request that carries an installed agent's body is keyed on that agent's lines as sent, in order, and any other request (the main session, the host's own classifiers) on its opening line. Paths, the host's project slug, line endings, Claude Code's billing line, ids, dates and durations are normalised away, so a cassette recorded on Windows replays on Linux. The host's own prose is not in the key: it varies with platform and host flags under one CLI version, and it is not PAN's prompt to measure.
+
+A request with no recorded answer is **drift**, attributed to the installed agent whose body it carries (or *unattributed*: the main session, a host request, or a host upgrade). The double answers it with a 400, which the clients do not retry. Drift a step does not assert on gives the scenario the status `drift` with a note naming each agent and its file: the impact of a prompt change, reported and never a ledger finding, and not a failed run. Two assertion kinds expect it: `drift:none`, and `drift:<regex>` (at least one drifted request, every one attributed to an agent whose name matches).
+
+Cassettes committed under `cassettes/` are **synthetic**: recorded from a scripted upstream, they hold keys and replies only, no prompt text and no credentials. A step that carries its recipe as `double.record.script` re-records its cassette from it under `--record`; without the flag it replays. `cassette-drift-claude` replays `cassettes/executor-spawn-claude.json` green, adds one line to the installed `pan-executor`, and expects drift for that agent and no other; its control edits the agent before the first replay. Recording from a real model (`double.record.upstream`) is refused both by the scenario validator and by the step runner: it spends, needs an API key (never a subscription login), and its cassettes stay outside the repository.
+
 ## Statistics: intervals, decisions, arms
 
 Five reps cannot separate two variants: 4/5 passes has a 95% interval of [0.38, 0.96]. `src/stats.cjs` (pure, no dependencies) gives the runner and the ledger what a claim needs:
@@ -98,7 +116,7 @@ text in stdout for `json:` assertions), `sh` (a script under `harness/scripts/`)
 `paid: true` marks one that spends that CLI's model credits — it may not live in tier 0,
 and it counts as a tier-1 scenario's model step; its credits are not counted against `--max-usd`),
 `mcp` (a JSON-RPC batch to the installed bridge; `cwd: "other"` runs it from a directory
-that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin).
+that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin; `double: {script}` runs it against the local model double at tier 0, see below).
 Any step may carry `timeoutMinutes` (default `budget.maxStepMinutes`, else 5) and `fatal: true` (a failed step ends the scenario); a step due after `budget.maxMinutes` (default 30) has passed is not run, and the overrun is a failure with a finding, not a `budget` stop; `pan` and `mcp` steps may
 name a `runtime`; `model` steps take `runtime` (`claude` by default; `codex`, `copilot`, `gemini` or `opencode` name another host, but those are refused until a parser for that host's JSON output and usage exists, which needs one captured run each: MI-104), `strictMcp` (default true) and `persistSession: true` (it drops `--no-session-persistence`, so the host writes the session and per-agent transcripts that a transcript-reading hook, or a later step that checks what agents were sent or opened, needs); `mcp` steps take `cwd: "other"` to address the second workspace; `build` steps take `out`; `cli` steps take `env` (`{"NAME": "value"}`, placeholders filled), which `live-gate-gemini` uses to give Gemini a scratch home under `<other>` instead of the user's real `~/.gemini`.
 Placeholders `<ws>`, `<other>`, `<repo>`, `<pkg>` are filled in argv, args, paths and prompts; an `mcp` step's requests get `<ws>` and `<other>` only.

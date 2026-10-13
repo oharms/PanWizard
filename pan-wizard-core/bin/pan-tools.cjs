@@ -41,7 +41,8 @@
  *   phase next-decimal <phase>         Calculate next decimal phase number
  *   phase add <description>            Append new phase to roadmap + create dir
  *   phase insert <after> <description> Insert decimal phase after existing
- *   phase remove <phase> [--force]     Remove phase, renumber all subsequent
+ *   phase remove <phase> [--force] [--with-decimals]
+ *                                      Remove phase, renumber all subsequent
  *   phase complete <phase>             Mark phase done, update state + roadmap
  *
  * Roadmap Operations:
@@ -769,7 +770,7 @@ async function main() {
       } else if (subcommand === 'remove') {
         if (!args[2]) error('phase remove requires a phase number');
         const forceFlag = args.includes('--force');
-        phase.cmdPhaseRemove(cwd, args[2], { force: forceFlag }, raw);
+        phase.cmdPhaseRemove(cwd, args[2], { force: forceFlag, withDecimals: args.includes('--with-decimals') }, raw);
       } else if (subcommand === 'complete') {
         if (!args[2]) error('phase complete requires a phase number');
         const noCommit = args.includes('--no-commit');

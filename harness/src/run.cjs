@@ -25,7 +25,7 @@ const { packAndExtract } = require('./artifact.cjs');
 const { loadScenarios } = require('./scenario.cjs');
 const { createWorkspace, installPan, runPan } = require('./workspace.cjs');
 const { rpcBatch, materialise } = require('./mcp.cjs');
-const { runModelStep } = require('./model.cjs');
+const { runModelStep, runDoubledModelStep } = require('./model.cjs');
 const { check } = require('./assert.cjs');
 const { wilson, passHatK, sprt } = require('./stats.cjs');
 const { readLedger, writeLedger, mergeRun, isPromotable } = require('./ledger.cjs');
@@ -36,7 +36,7 @@ const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
 const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 
 function parseArgs(argv) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null };
+  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -60,6 +60,14 @@ function parseArgs(argv) {
     // --arm <id> (H3, M43): run the scenarios that declare this arm with its change applied
     // (the no-guidance baseline, a deletion arm), for a paired comparison with the plain run.
     else if (k === '--arm') { a.arm = v; i++; }
+    // --require-run <id> (CI1): this scenario must actually run. Skipped, or not selected at
+    // all, fails the run: CI installs a host CLI so the double-backed scenarios run there, and
+    // a missing CLI must not turn into a quiet skip.
+    else if (k === '--require-run') { a.requireRun.push(v); i++; }
+    // --record (H2): a double step that carries a synthetic recipe (`double.record.script`)
+    // re-records its cassette from it instead of replaying. Recording from a real model is
+    // not a harness flag: it spends and needs an API key (program H2 evidence step).
+    else if (k === '--record') a.record = true;
     else if (k === '--help' || k === '-h') { a.help = true; }
     else throw new Error(`unknown argument: ${k}`);
   }
@@ -239,6 +247,14 @@ function runStep(step, ctx) {
       return rpcBatch(ws, materialise(step.requests, { ws, other }), { runtime: step.runtime || runtime, cwd, timeoutMs: stepTimeout });
     }
     case 'model': {
+      // A double-backed step (H1): the host runs for real against the local model double, which
+      // answers from the step's script. Nothing is spent, so it needs no cap and is tier 0.
+      if (step.double) {
+        const tag = `double-${ctx.stepIndex === undefined ? 'x' : ctx.stepIndex}`;
+        const dbl = { ...step.double, ...(step.double.cassette ? { cassette: fill(step.double.cassette, vars) } : {}) };
+        if (!ctx.record) delete dbl.record; // replay unless the run asked to re-record
+        return runDoubledModelStep(ws, fill(step.prompt, vars), { runtime: step.runtime, double: dbl, capturesDir: path.join(other, tag), configDir: path.join(other, `${tag}-home`), other, timeoutMs: stepTimeout });
+      }
       // Cap = what is left of THIS scenario's share, bounded by its own budget.maxUsd.
       const remaining = ctx.shareUsd === null ? null : ctx.shareUsd - ctx.spentUsd();
       const cap = remaining === null ? null : Math.min(remaining, budget.maxUsd || remaining);
@@ -265,8 +281,46 @@ function runStep(step, ctx) {
  * opposite and filed two promotable phantom findings (reality check RC23 / R20).
  * Returns the note to record, or null when the outcome is a real result. Pure.
  */
+/**
+ * The scenarios a run was required to execute (--require-run) that did not run: skipped,
+ * or never selected. Pure. Each is a failure of the run, with the reason.
+ */
+function unmetRuns(results, required) {
+  const out = [];
+  for (const id of required || []) {
+    const recs = results.filter((r) => r.scenario === id && !r.control);
+    const ran = recs.some((r) => r.status === 'passed' || r.status === 'failed' || r.status === 'drift');
+    if (ran) continue;
+    const why = recs.length ? recs.map((r) => r.skipped || r.note || r.status).join('; ') : 'not selected in this run';
+    out.push({ scenario: id, tier: 0, step: 'require-run', expect: 'ran', failure: `required to run, but did not: ${why}`, why: 'CI installs the host CLI so this scenario runs; a skip would hide a broken setup' });
+  }
+  return out;
+}
+
+/**
+ * Cassette drift no step expected (H2): the prompt the host sent changed since the cassette
+ * was recorded. That is the impact of a prompt edit, reported, never a finding against PAN:
+ * the step's other assertions cannot be read once the double refused an unrecorded request.
+ * Null when there is none, or when the step asserts on drift itself. Pure.
+ */
+function driftNote(step, outcome) {
+  if (!step || step.kind !== 'model' || !outcome || !outcome.doubled) return null;
+  const drift = outcome.drift || [];
+  if (!drift.length || (step.expect || []).some((e) => /^drift:/.test(e))) return null;
+  const agents = [...new Map(drift.filter((d) => d.attributed).map((d) => [d.attributed.agent, `${d.attributed.agent} (${d.attributed.file})`])).values()];
+  const unattributed = drift.filter((d) => !d.attributed).length;
+  const parts = [...agents, ...(unattributed ? [`${unattributed} unattributed (the main session, a host-internal request, or a host upgrade)`] : [])];
+  return `prompt impact: ${drift.length} request(s) not in the cassette — ${parts.join('; ')}. Intended? Re-record with --record`;
+}
+
 function modelStepNeverRan(outcome) {
   if (!outcome || outcome.refused || outcome.budgetExhausted || outcome.budgetStopped) return null;
+  // A double-backed step spends nothing by design: it ran if the host reached the double.
+  if (outcome.doubled) {
+    if ((outcome.captures || []).some((c) => c && c.protocol)) return null;
+    const why = String(outcome.stderr || outcome.stdout || '').replace(/\s+/g, ' ').slice(0, 300);
+    return `the host never reached the model double — a probe or harness fault, not a PAN result: ${why || '(no output)'}`;
+  }
   const spent = outcome.costUsd || 0;
   const turns = typeof outcome.turns === 'number' ? outcome.turns : 0;
   if (spent > 0 || turns > 0) return null;
@@ -298,7 +352,7 @@ function persistStepOutput(runDir, scenarioId, rep, index, outcome) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id]\n');
+    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id] [--require-run id]... [--record]\n');
     return 0;
   }
   const stateDir = args.stateDir || defaultStateDir();
@@ -376,7 +430,7 @@ function main() {
     }
     const shareUsd = args.maxUsd === null ? null : shares.get(s.id);
     const ctx = {
-      ws, other, repo: args.repo, pkg: art.packageDir, runtime, budget: s.budget || {},
+      ws, other, repo: args.repo, pkg: art.packageDir, runtime, budget: s.budget || {}, record: args.record,
       shareUsd,
       spentUsd: () => spentBy.get(s.id) || 0,
       addCost: (c) => { spent += c; spentBy.set(s.id, (spentBy.get(s.id) || 0) + c); },
@@ -395,6 +449,7 @@ function main() {
     for (let i = 0; i < s.steps.length; i++) {
       const step = s.steps[i];
       if (Date.now() > scenarioDeadline) { rec.status = 'failed'; out.failures.push({ scenario: s.id, tier: s.tier, step: i, expect: 'budget', failure: 'scenario exceeded budget.maxMinutes', why: step.why }); break; }
+      ctx.stepIndex = i;
       const outcome = runStep(step, ctx);
       if (outcome.refused) { rec.status = 'skipped'; rec.skipped = outcome.stderr; break; }
       // Budget outcomes are facts about the run, never findings against PAN.
@@ -413,6 +468,12 @@ function main() {
         }
       }
       if (step.kind === 'model') persistStepOutput(runDir, s.id, rep, i, outcome);
+      const impact = driftNote(step, outcome);
+      if (impact) {
+        rec.status = 'drift'; rec.note = impact;
+        rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: 0, drift: outcome.drift, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
+        log(`${label}: DRIFT — ${impact}`); break;
+      }
       const fails = check(step.expect, outcome, ws);
       const sr = { index: i, kind: step.kind, code: outcome.code, failures: fails, costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) };
       rec.steps.push(sr);
@@ -464,6 +525,7 @@ function main() {
       }
     }
   }
+  for (const f of unmetRuns(results, args.requireRun)) failures.push(f);
   if (args.controls) {
     for (const c of controlResults) if (c.verdict === 'error') failures.push({ scenario: c.scenario, tier: 0, step: 'control', expect: `control:${c.control}`, failure: c.note, why: 'a control that cannot be applied measures nothing' });
   }
@@ -529,10 +591,14 @@ function main() {
   const budget = summary.scenarios.filter(r => r.status === 'budget').length;
   const passed = summary.scenarios.filter(r => r.status === 'passed').length;
   const errors = summary.scenarios.filter(r => r.status === 'error').length;
-  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped, ${errors} harness errors — report ${path.join(runDir, 'report.md')}`);
-  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, errors, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
+  const drifted = summary.scenarios.filter(r => r.status === 'drift').length;
+  // Run-level failures that no scenario status carries: a control the scenario survived
+  // (H5) and a required scenario that did not run (CI1). Each fails the run.
+  const runLevel = failures.filter((f) => f.step === 'control' || f.step === 'require-run').length;
+  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped, ${errors} harness errors${drifted ? `, ${drifted} drifted (prompt impact, see report)` : ''}${runLevel ? `, ${runLevel} run-level failure(s)` : ''} — report ${path.join(runDir, 'report.md')}`);
+  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, errors, drifted, runLevel, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
   // An error is not green: the run could not measure what it set out to.
-  return (failed || errors) ? 1 : 0;
+  return (failed || errors || runLevel) ? 1 : 0;
 }
 
 if (require.main === module) {
@@ -540,4 +606,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };

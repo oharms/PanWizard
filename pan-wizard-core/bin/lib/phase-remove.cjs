@@ -13,6 +13,21 @@ const { ROADMAP_FILE, STATE_FILE, isSummaryFile } = require('./constants.cjs');
 const { planningPath, phasesPath, fileAccessible } = require('./utils.cjs');
 
 /**
+ * A regex source matching a phase number as any roadmap writes it: `phase insert` writes
+ * padded decimals (`Phase 01.1`) and `phase add` unpadded integers (`Phase 3`), so "1.1"
+ * must match both `1.1` and `01.1` (found by H7's property test: removing 1.1 deleted its
+ * directory and left its roadmap section behind).
+ * @param {string} num - a phase number, padded or not ("1.1", "01.1", "3")
+ */
+function phaseNumPattern(num) {
+  const [int, ...rest] = String(num).split('.');
+  return `0*${escapeRegex(String(parseInt(int, 10)))}${rest.map((d) => `\\.${escapeRegex(d)}`).join('')}`;
+}
+
+/** Write `next` in the style `matched` was written in: padded to two digits, or not. */
+const samePadding = (matched, next) => (/^0\d/.test(matched) ? String(next).padStart(2, '0') : String(next));
+
+/**
  * Delete a phase directory from disk.
  * @param {string} phaseDir - Absolute path to the phase directory to remove
  */
@@ -200,7 +215,7 @@ function removePhaseSection(content, phaseNum) {
       fenced.fill(true, top.open, i + 1);
     } else if (!top || f[2].trim()) stack.push({ fence: f[1], open: i });
   }
-  const headRe = new RegExp(`^(#{2,4})\\s*Phase\\s+${escapeRegex(phaseNum)}\\s*:`, 'i');
+  const headRe = new RegExp(`^(#{2,4})\\s*Phase\\s+${phaseNumPattern(phaseNum)}\\s*:`, 'i');
   const start = lines.findIndex((l, i) => !fenced[i] && headRe.test(l));
   if (start === -1) return content;
   const levelEndRe = new RegExp(`^#{1,${lines[start].match(headRe)[1].length}}\\s`);
@@ -258,7 +273,7 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
   } catch { return; }
 
   roadmapContent = removePhaseSection(roadmapContent, phaseNum);
-  const targetEscaped = escapeRegex(phaseNum);
+  const targetEscaped = phaseNumPattern(phaseNum);
 
   // Remove checkbox list items referencing this phase
   const checkboxPattern = new RegExp(`\\n?-\\s*\\[[ x]\\]\\s*.*Phase\\s+${targetEscaped}[:\\s][^\\n]*`, 'gi');
@@ -291,14 +306,14 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
 
       // Phase headings: ## Phase 18: or ### Phase 18.1: -> ## Phase 17: / ### Phase 17.1:
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(#{2,4}\\s*Phase\\s+)${oldStr}((?:\\.\\d+)?\\s*:)`, 'gi'),
-        `$1${newStr}$2`
+        new RegExp(`(#{2,4}\\s*Phase\\s+)(0*)${oldStr}((?:\\.\\d+)?\\s*:)`, 'gi'),
+        (_, head, zeros, tail) => `${head}${samePadding(zeros + oldStr, newNum)}${tail}`
       );
 
       // Inline phase references: "Phase 18:", "Phase 18 " or "Phase 18.1:" -> "Phase 17..."
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(Phase\\s+)${oldStr}((?:\\.\\d+)?[:\\s])`, 'g'),
-        `$1${newStr}$2`
+        new RegExp(`(Phase\\s+)(0*)${oldStr}((?:\\.\\d+)?[:\\s])`, 'g'),
+        (_, head, zeros, tail) => `${head}${samePadding(zeros + oldStr, newNum)}${tail}`
       );
 
       // Plan references in padded form: 18-01 / 18.1-01 -> 17-01 / 17.1-01, never inside a date (2026-10-01)
@@ -309,15 +324,27 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
 
       // Progress table row numbers: | 18. or | 18.1. -> | 17. / | 17.1.
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(\\|\\s*)${oldStr}((?:\\.\\d+)?)\\.\\s`, 'g'),
-        `$1${newStr}$2. `
+        new RegExp(`(\\|\\s*)(0*)${oldStr}((?:\\.\\d+)?)\\.\\s`, 'g'),
+        (_, head, zeros, dec) => `${head}${samePadding(zeros + oldStr, newNum)}${dec}. `
       );
 
       // Depends-on references: "Depends on:** Phase 18" -> "Phase 17"
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(Depends on:\\*\\*\\s*Phase\\s+)${oldStr}\\b`, 'gi'),
-        `$1${newStr}`
+        new RegExp(`(Depends on:\\*\\*\\s*Phase\\s+)(0*)${oldStr}\\b`, 'gi'),
+        (_, head, zeros) => `${head}${samePadding(zeros + oldStr, newNum)}`
       );
+    }
+  } else {
+    // Decimal removal: the siblings above it move down one (06.3 -> 06.2), as their
+    // directories already did. Upward, so a renamed reference is never renamed twice.
+    const [baseStr, removedStr] = normalized.split('.');
+    const base = escapeRegex(String(parseInt(baseStr, 10)));
+    for (let dec = parseInt(removedStr, 10) + 1; dec <= 99; dec++) {
+      const was = `(0*${base})\\.${dec}`;
+      roadmapContent = roadmapContent
+        .replace(new RegExp(`(Phase\\s+)${was}([:\\s])`, 'gi'), (_, head, int, tail) => `${head}${int}.${dec - 1}${tail}`)
+        .replace(new RegExp(`(\\|\\s*)${was}\\.\\s`, 'g'), (_, head, int) => `${head}${int}.${dec - 1}. `)
+        .replace(new RegExp(`(?<![\\d.-])${was}-(\\d{2})(?!\\d)`, 'g'), (_, int, plan) => `${int}.${dec - 1}-${plan}`);
     }
   }
 
@@ -325,10 +352,37 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
 }
 
 /**
+ * The decimal phases inserted after an integer phase, from its directories and its
+ * roadmap headings (a phase can be in the roadmap before it has a directory).
+ * @param {string} phasesDir - the phases directory
+ * @param {string} roadmapPath - roadmap.md
+ * @param {number} baseInt - the integer phase
+ * @returns {{num: string, dir: string|null}[]} in numeric order, e.g. [{num: '3.1', dir: '03.1-fix'}]
+ */
+function findDecimalPhases(phasesDir, roadmapPath, baseInt) {
+  const found = new Map();
+  const dirRe = new RegExp(`^0*${baseInt}\\.(\\d+)(?:-|$)`);
+  try {
+    for (const entry of fs.readdirSync(phasesDir, { withFileTypes: true })) {
+      const m = entry.isDirectory() && entry.name.match(dirRe);
+      if (m) found.set(Number(m[1]), entry.name);
+    }
+  } catch { /* no phases directory: the roadmap alone decides */ }
+  let text = '';
+  try { text = fs.readFileSync(roadmapPath, 'utf8'); } catch { /* unreadable: directories alone */ }
+  for (const m of text.matchAll(new RegExp(`^#{2,4}\\s*Phase\\s+0*${baseInt}\\.(\\d+)\\s*:`, 'gim'))) {
+    if (!found.has(Number(m[1]))) found.set(Number(m[1]), null);
+  }
+  return [...found.entries()].sort((a, b) => a[0] - b[0]).map(([dec, dir]) => ({ num: `${baseInt}.${dec}`, dir }));
+}
+
+/**
  * Remove a phase directory, renumber subsequent phases, and update ROADMAP/STATE.
+ * An integer phase that still has decimal phases is refused unless `withDecimals`.
  * @param {string} cwd - Working directory path
  * @param {string} targetPhase - Phase number to remove
- * @param {Object} options - Options (force: skip executed-work check)
+ * @param {Object} options - Options (force: skip executed-work check; withDecimals: remove
+ *   the integer phase's decimal phases with it)
  * @param {boolean} raw - If true, output raw value instead of JSON
  * @returns {void}
  */
@@ -393,6 +447,21 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     }
   }
 
+  // An integer phase's decimal phases (3.1, 3.2 …) were inserted after it. Removing the
+  // integer alone orphaned them: they stayed on disk and in the roadmap and, once the
+  // phases above were renumbered, read as decimals of a different phase, listed before
+  // their new base. So they go with it only when asked; otherwise refuse, naming them.
+  const decimals = isDecimal ? [] : findDecimalPhases(phasesDir, roadmapPath, parseInt(normalized, 10));
+  if (decimals.length && !options.withDecimals) {
+    error(`Phase ${targetPhase} has decimal phases ${decimals.map((d) => d.num).join(', ')} inserted after it. Remove them first, or pass --with-decimals to remove them with it.`);
+  }
+  if (!force) {
+    for (const d of decimals) {
+      const executed = d.dir ? fs.readdirSync(path.join(phasesDir, d.dir)).filter(isSummaryFile).length : 0;
+      if (executed) error(`Phase ${d.num} has ${executed} executed plan(s). Use --force to remove anyway.`);
+    }
+  }
+
   // Check for executed work (summary.md files)
   if (targetDir && !force) {
     const targetPath = path.join(phasesDir, targetDir);
@@ -401,6 +470,16 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     if (summaries.length > 0) {
       error(`Phase ${targetPhase} has ${summaries.length} executed plan(s). Use --force to remove anyway.`);
     }
+  }
+
+  // --with-decimals: every check has passed, so remove the decimals first, highest first,
+  // which leaves no sibling above any of them to renumber.
+  const removedDecimals = [];
+  for (const d of decimals.slice().reverse()) {
+    if (d.dir) removePhaseFromDisk(path.join(phasesDir, d.dir));
+    updateRoadmapAfterRemoval(cwd, d.num, true, normalizePhaseName(d.num));
+    updateStateAfterPhaseRemoval(cwd);
+    removedDecimals.unshift(d.num);
   }
 
   // Delete target directory
@@ -449,6 +528,7 @@ function cmdPhaseRemove(cwd, targetPhase, options, raw) {
     roadmap_updated: true,
     state_updated: stateUpdated,
   };
+  if (removedDecimals.length) result.removed_decimals = removedDecimals;
   if (renameError) result.rename_warning = renameError;
   if (removeWarning) result.remove_warning = removeWarning;
 
