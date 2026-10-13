@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A local model double for the harness: real hosts, no model, no spend.** `harness/src/model-double.cjs` answers a host CLI in place of the model provider (Anthropic Messages, OpenAI Responses and Chat, Gemini) in capture, script, replay and record modes. A `model` step with `double: {script}` drives the real Claude Code CLI against it at tier 0, and new `wire:`/`wire-count:` assertions read what the host sent. The first scenario proves the executor subagent receives the packaged `pan-executor` body whole, and its control proves a truncated agent turns it red.
+
 ## [3.35.0] - 2026-10-13
 
 Sprint 1 of the product excellence program (`docs/specs/product-excellence-superplan.md`): every guarantee at the end of PAN's loop becomes a check in code, and the harness learns to tell a real result from noise. A phase is complete only when a gate in code says so: summaries for every plan, a passing and fresh verification, approved human items, a clean reconcile, no open critical or high finding, no committed stub, and no weakened test. It ships in `warn` mode, which completes the phase and reports what failed; `enforce` becomes the default in a later release. Findings close only on evidence, a failing test suite can no longer hide under "passed", plans are checked in code before the plan checker runs, and a guard hook watches what agents write on the four hosts with hook events. OpenCode 2 loads PAN's plugin. The harness reports every rate with its interval and proves each free-tier scenario can fail.

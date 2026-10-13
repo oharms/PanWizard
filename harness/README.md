@@ -56,6 +56,14 @@ one chain scenario want about `--max-usd 25`, and both chain scenarios together 
 and, when the workspace carries `.mcp.json`, with `--strict-mcp-config` so the agent sees
 exactly one `pan` server — the workspace's.
 
+## The model double: real hosts, no model, no spend
+
+`src/model-double.cjs` is a local `node:http` server that answers a host CLI in place of the model provider (program H1). It speaks Anthropic Messages (streamed and not), OpenAI Responses and Chat, and Gemini, in four modes: **capture** (record every request, answer briefly), **script** (answer from a script of turns, text or a tool call), **replay** (answer from recorded pairs; any other request is `drift`) and **record** (proxy to a real upstream and keep the pairs). Nothing reaches a real model in the first three, so a step backed by them is **tier 0** (ADR-0047 D2 as amended `2026-10-12`) and runs in CI.
+
+A `model` step with `double: {script}` runs the real host CLI against the double (`src/double-server.cjs`, its own process, because the step runner is synchronous), with a scratch config directory and a dummy key, so a user's own login is never read. A script is `{rules: [{when, turns}], fallback}`: `when` matches on the tools a request offers (`toolsInclude`, `toolsExclude`), its system prompt (`systemIncludes`, `systemExcludes`) or a header; each rule answers its turns in order and repeats the last. Claude Code `2.1.288` sends no agent-type header: its main session is the request that offers the spawn tool (`Agent`), a subagent's system prompt carries its agent body, and two more requests per turn are its own notification classifier (the fallback answers them). Only Claude Code takes a model base URL from the environment today; a double-backed step on another host is refused with that reason.
+
+Two assertion kinds read what the host sent: `wire:<field>~<regex>` (some request's `system`, `tools`, `url` or `body` matches) and `wire-count:<field>~<regex>=<n>`. `double-executor-body-claude` uses the double to show the executor subagent receives the **packaged** `pan-executor` body whole (`scripts/wire-agent-body.cjs`, after the installer's path rewrites), and its control truncates the installed agent to prove the check can fail: the MI-015 class, at $0.
+
 ## Statistics: intervals, decisions, arms
 
 Five reps cannot separate two variants: 4/5 passes has a 95% interval of [0.38, 0.96]. `src/stats.cjs` (pure, no dependencies) gives the runner and the ledger what a claim needs:
@@ -98,7 +106,7 @@ text in stdout for `json:` assertions), `sh` (a script under `harness/scripts/`)
 `paid: true` marks one that spends that CLI's model credits — it may not live in tier 0,
 and it counts as a tier-1 scenario's model step; its credits are not counted against `--max-usd`),
 `mcp` (a JSON-RPC batch to the installed bridge; `cwd: "other"` runs it from a directory
-that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin).
+that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin; `double: {script}` runs it against the local model double at tier 0, see below).
 Any step may carry `timeoutMinutes` (default `budget.maxStepMinutes`, else 5) and `fatal: true` (a failed step ends the scenario); a step due after `budget.maxMinutes` (default 30) has passed is not run, and the overrun is a failure with a finding, not a `budget` stop; `pan` and `mcp` steps may
 name a `runtime`; `model` steps take `runtime` (`claude` by default; `codex`, `copilot`, `gemini` or `opencode` name another host, but those are refused until a parser for that host's JSON output and usage exists, which needs one captured run each: MI-104), `strictMcp` (default true) and `persistSession: true` (it drops `--no-session-persistence`, so the host writes the session and per-agent transcripts that a transcript-reading hook, or a later step that checks what agents were sent or opened, needs); `mcp` steps take `cwd: "other"` to address the second workspace; `build` steps take `out`; `cli` steps take `env` (`{"NAME": "value"}`, placeholders filled), which `live-gate-gemini` uses to give Gemini a scratch home under `<other>` instead of the user's real `~/.gemini`.
 Placeholders `<ws>`, `<other>`, `<repo>`, `<pkg>` are filled in argv, args, paths and prompts; an `mcp` step's requests get `<ws>` and `<other>` only.

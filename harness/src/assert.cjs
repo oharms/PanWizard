@@ -22,6 +22,9 @@
  *   stderr~<regex>        stderr matches
  *   rpc:<id>.<path>=<value>   for mcp steps: the response with that id has path == value
  *   rpc:<id>.<path>       … the path exists
+ *   wire:<field>~<regex>  for double-backed model steps (H1): some request the host sent the
+ *                         model double has <field> (system | tools | url | body) matching
+ *   wire-count:<field>~<regex>=<n>   exactly n requests match
  */
 
 const fs = require('fs');
@@ -127,6 +130,16 @@ function checkOne(expectation, outcome, workspace) {
     if (!got.found) return `rpc ${m[1]}: path ${m[2]} absent`;
     if (m[3] !== undefined && !scalarEquals(got.value, m[3])) return `rpc ${m[1]}.${m[2]} = ${JSON.stringify(got.value)}, expected ${m[3]}`;
     return null;
+  }
+  if ((m = expectation.match(/^wire(-count)?:(system|tools|url|body)~(.+?)(?:=(\d+))?$/))) {
+    if (!Array.isArray(o.captures)) return `no model-double captures on this step (needed for ${expectation})`;
+    const counting = m[1] === '-count';
+    if (counting && m[4] === undefined) return `wire-count needs =<n>: ${expectation}`;
+    const re = new RegExp(counting ? m[3] : (m[4] === undefined ? m[3] : `${m[3]}=${m[4]}`));
+    const text = (c) => (m[2] === 'tools' ? (c.tools || []).join(',') : m[2] === 'body' ? JSON.stringify(c.body || {}) : String(c[m[2]] || ''));
+    const n = o.captures.filter((c) => c && c.protocol && re.test(text(c))).length;
+    if (counting) return n === Number(m[4]) ? null : `${n} request(s) with ${m[2]} matching /${m[3]}/, expected ${m[4]}`;
+    return n > 0 ? null : `no request to the model double has ${m[2]} matching /${m[3]}/`;
   }
   return `unknown assertion kind: ${expectation}`;
 }

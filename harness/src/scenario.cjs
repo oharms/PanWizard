@@ -13,7 +13,7 @@ const path = require('path');
 const { MODEL_RUNTIMES } = require('./model.cjs');
 
 const STEP_KINDS = new Set(['pan', 'sh', 'mcp', 'model', 'fs', 'build', 'cli']);
-const ASSERTION_RE = /^(exit:-?\d+|file:.+|absent:.+|glob:.+|count:.+=\d+|json:[^=]+(=.*)?|json!:.+|stdout~.+|stderr~.+|rpc:[^.]+\.[^=]+(=.*)?)$/;
+const ASSERTION_RE = /^(exit:-?\d+|file:.+|absent:.+|glob:.+|count:.+=\d+|json:[^=]+(=.*)?|json!:.+|stdout~.+|stderr~.+|rpc:[^.]+\.[^=]+(=.*)?|wire:(system|tools|url|body)~.+|wire-count:(system|tools|url|body)~.+=\d+)$/;
 
 function validateScenario(s, fileName = '<inline>') {
   const errors = [];
@@ -46,7 +46,12 @@ function validateScenario(s, fileName = '<inline>') {
     if (typeof st.why !== 'string' || !st.why.trim()) err(`${at}: why required`);
     if (!Array.isArray(st.expect)) err(`${at}: expect must be an array`);
     else for (const e of st.expect) if (typeof e !== 'string' || !ASSERTION_RE.test(e)) err(`${at}: bad assertion "${e}"`);
-    if (st.kind === 'model' && s.tier === 0) err(`${at}: a model step cannot live in a tier-0 scenario`);
+    // A double-backed model step (H1) reaches no real model and spends nothing: tier 0.
+    if (st.kind === 'model' && s.tier === 0 && !st.double) err(`${at}: a model step cannot live in a tier-0 scenario`);
+    if (st.double !== undefined) {
+      const rules = st.double && st.double.script && st.double.script.rules;
+      if (st.kind !== 'model' || !Array.isArray(rules) || !rules.every((r) => r && typeof r === 'object' && Array.isArray(r.turns))) err(`${at}: double needs {script: {rules: [{when, turns: [...]}]}} on a model step`);
+    }
     if (st.kind === 'pan' && !Array.isArray(st.argv)) err(`${at}: pan steps need argv[]`);
     if (st.kind === 'mcp' && !Array.isArray(st.requests)) err(`${at}: mcp steps need requests[]`);
     if (st.kind === 'model' && typeof st.prompt !== 'string') err(`${at}: model steps need a prompt`);
@@ -73,7 +78,7 @@ function validateScenario(s, fileName = '<inline>') {
     // `persistSession: true` lets a model step's host write transcripts (see model.cjs).
     if (st.persistSession !== undefined && (st.kind !== 'model' || st.persistSession !== true)) err(`${at}: persistSession is only \`true\`, and only on model steps`);
   });
-  if (s.tier >= 1 && !s.steps.some(st => st.kind === 'model' || st.paid === true)) err('a tier ≥1 scenario should contain a model step or a paid cli step (else it is tier 0)');
+  if (s.tier >= 1 && !s.steps.some(st => (st.kind === 'model' && !st.double) || st.paid === true)) err('a tier ≥1 scenario should contain a model step or a paid cli step (else it is tier 0)');
   // Controls (H5): a tier-0 scenario declares at least one sabotage that must turn it
   // red, so a scenario whose assertions measure nothing cannot stay in the suite.
   if (s.controls !== undefined && !Array.isArray(s.controls)) err('controls must be an array');

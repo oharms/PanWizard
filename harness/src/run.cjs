@@ -25,7 +25,7 @@ const { packAndExtract } = require('./artifact.cjs');
 const { loadScenarios } = require('./scenario.cjs');
 const { createWorkspace, installPan, runPan } = require('./workspace.cjs');
 const { rpcBatch, materialise } = require('./mcp.cjs');
-const { runModelStep } = require('./model.cjs');
+const { runModelStep, runDoubledModelStep } = require('./model.cjs');
 const { check } = require('./assert.cjs');
 const { wilson, passHatK, sprt } = require('./stats.cjs');
 const { readLedger, writeLedger, mergeRun, isPromotable } = require('./ledger.cjs');
@@ -239,6 +239,12 @@ function runStep(step, ctx) {
       return rpcBatch(ws, materialise(step.requests, { ws, other }), { runtime: step.runtime || runtime, cwd, timeoutMs: stepTimeout });
     }
     case 'model': {
+      // A double-backed step (H1): the host runs for real against the local model double, which
+      // answers from the step's script. Nothing is spent, so it needs no cap and is tier 0.
+      if (step.double) {
+        const tag = `double-${ctx.stepIndex === undefined ? 'x' : ctx.stepIndex}`;
+        return runDoubledModelStep(ws, fill(step.prompt, vars), { runtime: step.runtime, script: step.double.script, capturesDir: path.join(other, tag), configDir: path.join(other, `${tag}-home`), timeoutMs: stepTimeout });
+      }
       // Cap = what is left of THIS scenario's share, bounded by its own budget.maxUsd.
       const remaining = ctx.shareUsd === null ? null : ctx.shareUsd - ctx.spentUsd();
       const cap = remaining === null ? null : Math.min(remaining, budget.maxUsd || remaining);
@@ -267,6 +273,12 @@ function runStep(step, ctx) {
  */
 function modelStepNeverRan(outcome) {
   if (!outcome || outcome.refused || outcome.budgetExhausted || outcome.budgetStopped) return null;
+  // A double-backed step spends nothing by design: it ran if the host reached the double.
+  if (outcome.doubled) {
+    if ((outcome.captures || []).some((c) => c && c.protocol)) return null;
+    const why = String(outcome.stderr || outcome.stdout || '').replace(/\s+/g, ' ').slice(0, 300);
+    return `the host never reached the model double — a probe or harness fault, not a PAN result: ${why || '(no output)'}`;
+  }
   const spent = outcome.costUsd || 0;
   const turns = typeof outcome.turns === 'number' ? outcome.turns : 0;
   if (spent > 0 || turns > 0) return null;
@@ -395,6 +407,7 @@ function main() {
     for (let i = 0; i < s.steps.length; i++) {
       const step = s.steps[i];
       if (Date.now() > scenarioDeadline) { rec.status = 'failed'; out.failures.push({ scenario: s.id, tier: s.tier, step: i, expect: 'budget', failure: 'scenario exceeded budget.maxMinutes', why: step.why }); break; }
+      ctx.stepIndex = i;
       const outcome = runStep(step, ctx);
       if (outcome.refused) { rec.status = 'skipped'; rec.skipped = outcome.stderr; break; }
       // Budget outcomes are facts about the run, never findings against PAN.

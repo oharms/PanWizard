@@ -117,4 +117,71 @@ function runModelStep(ws, prompt, opts) {
   };
 }
 
-module.exports = { runModelStep, modelEnv, modelArgs, modelArgsFor, MODEL_RUNTIMES };
+/** Block this thread for `ms` (the step runner is synchronous; the double is another process). */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * A model step backed by the local model double (H1; ADR-0047 D2 as amended 2026-10-12):
+ * the host CLI runs for real against `harness/src/double-server.cjs`, which answers from
+ * the step's script and records every request. Nothing reaches a real model, so nothing
+ * is spent and the step is tier 0. The host gets a scratch config dir and a dummy key, so
+ * a user's own login is never read or used.
+ * @param {string} ws - the workspace
+ * @param {string} prompt
+ * @param {{runtime?: string, script: object, capturesDir: string, configDir: string, timeoutMs?: number}} opts
+ * @returns {{code, stdout, stderr, costUsd: 0, captures: Array, drift: Array, capturesDir: string, doubled: true}|{refused: true, ...}}
+ */
+function runDoubledModelStep(ws, prompt, opts) {
+  const runtime = opts.runtime || 'claude';
+  const { hostEnv } = require('./model-double.cjs');
+  if (!hostEnv(runtime, 'http://127.0.0.1:1')) {
+    return { code: 2, stdout: '', stderr: `refused: ${runtime} takes no model base URL from the environment, so the double cannot stand in for its model yet`, costUsd: 0, refused: true };
+  }
+  fs.mkdirSync(opts.capturesDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(opts.configDir, { recursive: true, mode: 0o700 });
+  const scriptFile = path.join(opts.capturesDir, '..', `${path.basename(opts.capturesDir)}.script.json`);
+  const portFile = path.join(opts.capturesDir, '..', `${path.basename(opts.capturesDir)}.port`);
+  try { fs.rmSync(portFile, { force: true }); } catch { /* fresh */ }
+  fs.writeFileSync(scriptFile, JSON.stringify(opts.script || {}), { mode: 0o600 });
+  const { spawn } = require('child_process');
+  const child = spawn(process.execPath, [path.join(__dirname, 'double-server.cjs'), '--mode', 'script', '--script', scriptFile, '--captures', opts.capturesDir, '--port-file', portFile], { stdio: ['pipe', 'ignore', 'pipe'] });
+  let port = null;
+  for (let waited = 0; waited < 10000 && port === null; waited += 50) {
+    try { port = Number(fs.readFileSync(portFile, 'utf8').trim()) || null; } catch { sleepSync(50); }
+  }
+  if (!port) {
+    try { child.kill(); } catch { /* gone */ }
+    return { code: 1, stdout: '', stderr: 'the model double did not start within 10 s', costUsd: 0, doubled: true, captures: [], drift: [] };
+  }
+  const env = hostEnv(runtime, `http://127.0.0.1:${port}`, { ...modelEnv(), CLAUDE_CONFIG_DIR: opts.configDir });
+  const args = ['-p', '--output-format', 'json', '--dangerously-skip-permissions', '--no-session-persistence'];
+  const mcpConfig = path.join(ws, '.mcp.json');
+  if (fs.existsSync(mcpConfig)) args.push('--mcp-config', mcpConfig, '--strict-mcp-config');
+  const r = spawnSync(MODEL_RUNTIMES[runtime].bin, args, {
+    cwd: ws, input: prompt, encoding: 'utf8', timeout: opts.timeoutMs || 5 * 60000, env,
+    stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024,
+  });
+  try { child.stdin.end(); } catch { /* gone */ }
+  sleepSync(100);
+  try { child.kill(); } catch { /* gone */ }
+  const captures = [];
+  for (const f of fs.readdirSync(opts.capturesDir).filter((n) => /^\d{3}\.json$/.test(n)).sort()) {
+    try { captures.push(JSON.parse(fs.readFileSync(path.join(opts.capturesDir, f), 'utf8'))); } catch { /* a torn capture is skipped */ }
+  }
+  let drift = [];
+  try { drift = JSON.parse(fs.readFileSync(path.join(opts.capturesDir, 'drift.json'), 'utf8')); } catch { /* none */ }
+  let json = null;
+  try { json = JSON.parse(String(r.stdout || '')); } catch { /* not JSON */ }
+  return {
+    code: json ? (json.is_error ? 1 : 0) : (r.status ?? 1),
+    stdout: json && typeof json.result === 'string' ? json.result : String(r.stdout || ''),
+    stderr: String(r.stderr || '') + (r.error ? `\n${r.error.message}` : ''),
+    costUsd: 0, // the double answered: nothing was spent, whatever the host computed from its usage fields
+    turns: json && typeof json.num_turns === 'number' ? json.num_turns : null,
+    captures, drift, capturesDir: opts.capturesDir, doubled: true, json,
+  };
+}
+
+module.exports = { runModelStep, runDoubledModelStep, modelEnv, modelArgs, modelArgsFor, MODEL_RUNTIMES };

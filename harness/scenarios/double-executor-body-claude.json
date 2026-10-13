@@ -1,0 +1,47 @@
+{
+  "id": "double-executor-body-claude",
+  "tier": 0,
+  "description": "Drive the real Claude Code CLI against the local model double: the scripted main session spawns pan-executor, and the executor subagent's request must carry the package's pan-executor body whole.",
+  "why": "Program H1 and the MI-015 bug class: a package or an install that truncates an agent file leaves every file-level test green while the model never sees half its instructions. Only the request the host actually sends can show it. The double answers from a script, so nothing is spent and the check runs at tier 0, in CI as well (ADR-0047 D2, amended 2026-10-12).",
+  "seed": "empty",
+  "install": ["--claude"],
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 0, "maxMinutes": 6, "maxStepMinutes": 4 },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "Spawn the pan-executor agent once, then report.",
+      "double": {
+        "script": {
+          "rules": [
+            { "when": { "toolsInclude": ["Agent", "Task"] }, "turns": [
+              { "tool": { "name": ["Agent", "Task"], "input": { "subagent_type": "pan-executor", "description": "wire probe", "prompt": "Reply with EXECUTOR-DONE and nothing else." } } },
+              { "text": "MAIN-DONE" }
+            ] },
+            { "when": { "toolsExclude": ["Agent", "Task"], "toolsInclude": ["Read"] }, "turns": [{ "text": "EXECUTOR-DONE" }] }
+          ],
+          "fallback": { "text": "done" }
+        }
+      },
+      "expect": ["exit:0", "stdout~MAIN-DONE", "wire:tools~(^|,)Agent(,|$)"],
+      "why": "The host ran end to end against the double: the main session (the request that offers the spawn tool) spawned the executor and finished after its result."
+    },
+    {
+      "kind": "sh",
+      "script": "wire-agent-body.cjs",
+      "args": ["<other>/double-0", "<pkg>/agents/pan-executor.md"],
+      "expect": ["exit:0", "json:whole=true", "json:missing=0"],
+      "why": "Every non-empty line of the packaged pan-executor body appears in the system prompt the host sent for the subagent. A truncating package or install would leave lines out."
+    }
+  ],
+  "controls": [
+    {
+      "id": "truncated-agent",
+      "write": {
+        "path": ".claude/agents/pan-executor.md",
+        "content": "---\nname: pan-executor\ndescription: Executes a PAN plan.\ntools: Read, Write, Edit, Bash, Grep, Glob\n---\n\nYou are a PAN plan executor. Execute the plan you are given.\n"
+      },
+      "why": "An installed agent cut down to its first lines (what a truncating install leaves) must turn the whole-body check red."
+    }
+  ]
+}
