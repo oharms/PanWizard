@@ -124,6 +124,16 @@ describe('modes, through the hook process', () => {
   });
 });
 
+describe('the deny format follows the payload, not only the registration', () => {
+  test('a camelCase Copilot payload is Copilot whatever --host says; snake_case keeps the flag', () => {
+    assert.equal(G.hostOf({ toolName: 'create', toolArgs: '{}' }, 'claude'), 'copilot');
+    assert.equal(G.hostOf({ tool_name: 'Write', tool_input: {} }, 'claude'), 'claude');
+    assert.equal(G.hostOf({ tool_name: 'write_file', tool_input: {} }, 'gemini'), 'gemini');
+    assert.equal(G.hostOf({ toolName: 'x', tool_name: 'x' }, 'codex'), 'codex', 'a payload carrying the snake_case key is not Copilot\'s');
+    assert.equal(G.hostOf(null, 'claude'), 'claude');
+  });
+});
+
 describe('inert and fail-open', () => {
   test('outside a PAN project: nothing, whatever the payload', () => {
     fs.rmSync(path.join(dir, '.planning'), { recursive: true });

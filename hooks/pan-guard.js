@@ -33,6 +33,46 @@ const TEST_PATH_RE = /(^|\/)(tests?|__tests__|specs?)\//i;
 const TEST_FILE_RE = /(\.(test|spec)\.[a-z0-9]+|(^|\/)test_[^/]+\.py|_test\.(py|go)|Tests?\.(java|kt|cs))$/i;
 const MODES = ['off', 'report', 'enforce'];
 
+// ─── R39: one run per hook when Claude and Copilot share a project ───────────
+// Copilot CLI also runs the hooks in a repository's .claude/settings.json and
+// .claude/settings.local.json. Measured 2026-09-26 (Copilot CLI 1.0.88, repository
+// hooks loaded): in a project with both the Claude and the Copilot install, every
+// PAN hook ran twice under Copilot — once from .github/hooks/pan.json, once from the
+// Claude settings. The Copilot project copy (this file under .github/hooks) steps
+// aside whenever the project's Claude settings register the same script, so the hook
+// runs once, and runs again from here the moment the Claude registration is gone.
+// Both files are repository hooks to Copilot and load under the same trust rule, so
+// deferring never leaves zero. Only this copy defers: Claude Code never reads
+// .github/hooks, Gemini and Codex never read .claude/settings.json, and a global
+// Copilot copy loads where repository hooks may not. Identical in every hook
+// Copilot registers — tests/copilot-hook-dedupe.test.cjs pins the copies.
+function deferToClaudeRegistration(projectDir, hookFile = __filename) {
+  // Assembled, not written as a literal: the installer rewrites every quoted .claude
+  // literal in a hook copy to that runtime's own directory, and this one must stay Claude's.
+  const claudeDir = ['.', 'claude'].join('');
+  try {
+    const hooksDir = path.dirname(hookFile);
+    if (path.basename(hooksDir) !== 'hooks' || path.basename(path.dirname(hooksDir)) !== '.github') return false;
+    if (typeof projectDir !== 'string' || !projectDir) return false;
+    const script = path.basename(hookFile);
+    for (const name of ['settings.json', 'settings.local.json']) {
+      let settings;
+      try { settings = JSON.parse(fs.readFileSync(path.join(projectDir, claudeDir, name), 'utf8')); } catch { continue; }
+      const events = settings && typeof settings.hooks === 'object' ? settings.hooks : null;
+      if (!events) continue;
+      for (const groups of Object.values(events)) {
+        if (!Array.isArray(groups)) continue;
+        for (const group of groups) {
+          const handlers = group && Array.isArray(group.hooks) ? group.hooks : [];
+          if (handlers.some((h) => h && typeof h.command === 'string' && h.command.includes(script))) return true;
+        }
+      }
+    }
+  } catch { /* fail open: run this copy */ }
+  return false;
+}
+
+
 function planningDirName() {
   const raw = process.env.PAN_PLANNING_DIR || '';
   if (raw.trim()) {
@@ -154,13 +194,26 @@ function decide(hits, mode) {
   return hits.find((h) => h.rule === 'secret_write') || null;
 }
 
+/** The host whose deny format this call needs: Copilot by payload shape, else the --host flag. */
+function hostOf(payload, flagHost) {
+  const p = payload && typeof payload === 'object' ? payload : {};
+  if (typeof p.toolName === 'string' && p.tool_name === undefined) return 'copilot';
+  return flagHost;
+}
+
 function main() {
-  const host = (process.argv[process.argv.indexOf('--host') + 1] || 'claude').toLowerCase();
+  const flagHost = (process.argv[process.argv.indexOf('--host') + 1] || 'claude').toLowerCase();
   let raw = '';
   try { raw = fs.readFileSync(0, 'utf8'); } catch { return; }
   let payload;
   try { payload = JSON.parse(raw); } catch { return; } // fail open
   const projectDir = (payload && (payload.cwd || payload.workspace || payload.project_dir)) || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  if (deferToClaudeRegistration(projectDir)) return; // the Claude registration covers this call under Copilot
+  // The payload names the host better than the registration does: Copilot sends its own
+  // camelCase payload (toolName, toolArgs) even to a hook registered in .claude/settings.json,
+  // and denies only on the JSON decision, so a Copilot payload gets Copilot's deny whatever
+  // --host says. The flag decides for the snake_case hosts (Claude Code, Codex, Gemini).
+  const host = hostOf(payload, flagHost);
   const planningRel = planningDirName();
   const planning = path.join(projectDir, planningRel);
   if (!fs.existsSync(planning)) return; // not a PAN project
@@ -188,4 +241,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { normalise, evaluate, decide, hasSecret, declaredFiles, isTestFile };
+module.exports = { normalise, evaluate, decide, hasSecret, declaredFiles, isTestFile, hostOf, deferToClaudeRegistration };
