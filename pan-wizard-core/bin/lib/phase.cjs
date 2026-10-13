@@ -431,6 +431,30 @@ function appendPhaseChecklistEntry(content, phaseNum, name) {
 }
 
 /**
+ * Add an inserted phase's "## Phases" checklist entry after its base phase's entry and
+ * that phase's existing decimals, so the list stays in numeric order (appending put 3.1
+ * after Phase 4; found by H7's property test). Falls back to appending when the base
+ * phase has no checklist entry.
+ *
+ * @param {string} content - Full roadmap.md content
+ * @param {string} basePhase - The integer phase inserted after, without leading zeros
+ * @param {string} phaseNum - The inserted phase's number as it should appear
+ * @param {string} name - Phase name/description
+ * @returns {string} Updated content
+ */
+function insertPhaseChecklistEntry(content, basePhase, phaseNum, name) {
+  const lines = content.split('\n');
+  const own = new RegExp(`^\\s*- \\[[ x]\\]\\s*(?:\\*\\*)?Phase\\s+0*${escapeRegex(basePhase)}(?:\\.\\d+)*:`, 'i');
+  let lastIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (own.test(lines[i])) lastIdx = i;
+  }
+  if (lastIdx === -1) return appendPhaseChecklistEntry(content, phaseNum, name);
+  lines.splice(lastIdx + 1, 0, `- [ ] **Phase ${phaseNum}: ${name}**`);
+  return lines.join('\n');
+}
+
+/**
  * Append a new phase to the end of the roadmap and create its directory.
  * @param {string} cwd - Working directory path
  * @param {string} description - Human-readable phase description
@@ -581,20 +605,24 @@ function cmdPhaseInsert(cwd, afterPhase, description, raw) {
   }
 
   const headerIdx = content.indexOf(headerMatch[0]);
-  const afterHeader = content.slice(headerIdx + headerMatch[0].length);
-  const nextPhaseMatch = afterHeader.match(/\n#{2,4}\s+Phase\s+\d/i);
-
-  let insertIdx;
-  if (nextPhaseMatch) {
-    insertIdx = headerIdx + headerMatch[0].length + nextPhaseMatch.index;
-  } else {
-    insertIdx = content.length;
+  const bodyStart = headerIdx + headerMatch[0].length;
+  const afterHeader = content.slice(bodyStart);
+  // The new section goes before the next phase that is not one of this phase's decimals:
+  // after 06.1 and 06.2, not straight after Phase 6, or the roadmap (and `roadmap analyze`,
+  // which lists phases in roadmap order) would read 6, 6.3, 6.2, 6.1 (found by H7's
+  // property test).
+  const ownDecimal = new RegExp(`^#{2,4}\\s*Phase\\s+0*${afterPhaseEscaped}\\.\\d`, 'i');
+  const headingRe = /\n(#{2,4}\s+Phase\s+\d[^\n]*)/gi;
+  let insertIdx = content.length;
+  let heading;
+  while ((heading = headingRe.exec(afterHeader)) !== null) {
+    if (!ownDecimal.test(heading[1])) { insertIdx = bodyStart + heading.index; break; }
   }
 
   // Insert the detail section, then the matching checklist entry — same reason as
   // cmdPhaseAdd: without it the inserted phase never appears in the "## Phases" list.
   const withEntry = content.slice(0, insertIdx) + phaseEntry + content.slice(insertIdx);
-  const updatedContent = appendPhaseChecklistEntry(withEntry, decimalPhase, description);
+  const updatedContent = insertPhaseChecklistEntry(withEntry, unpadded, decimalPhase, description);
   try {
     fs.writeFileSync(roadmapPath, updatedContent, 'utf-8');
   } catch (e) {

@@ -13,6 +13,21 @@ const { ROADMAP_FILE, STATE_FILE, isSummaryFile } = require('./constants.cjs');
 const { planningPath, phasesPath, fileAccessible } = require('./utils.cjs');
 
 /**
+ * A regex source matching a phase number as any roadmap writes it: `phase insert` writes
+ * padded decimals (`Phase 01.1`) and `phase add` unpadded integers (`Phase 3`), so "1.1"
+ * must match both `1.1` and `01.1` (found by H7's property test: removing 1.1 deleted its
+ * directory and left its roadmap section behind).
+ * @param {string} num - a phase number, padded or not ("1.1", "01.1", "3")
+ */
+function phaseNumPattern(num) {
+  const [int, ...rest] = String(num).split('.');
+  return `0*${escapeRegex(String(parseInt(int, 10)))}${rest.map((d) => `\\.${escapeRegex(d)}`).join('')}`;
+}
+
+/** Write `next` in the style `matched` was written in: padded to two digits, or not. */
+const samePadding = (matched, next) => (/^0\d/.test(matched) ? String(next).padStart(2, '0') : String(next));
+
+/**
  * Delete a phase directory from disk.
  * @param {string} phaseDir - Absolute path to the phase directory to remove
  */
@@ -200,7 +215,7 @@ function removePhaseSection(content, phaseNum) {
       fenced.fill(true, top.open, i + 1);
     } else if (!top || f[2].trim()) stack.push({ fence: f[1], open: i });
   }
-  const headRe = new RegExp(`^(#{2,4})\\s*Phase\\s+${escapeRegex(phaseNum)}\\s*:`, 'i');
+  const headRe = new RegExp(`^(#{2,4})\\s*Phase\\s+${phaseNumPattern(phaseNum)}\\s*:`, 'i');
   const start = lines.findIndex((l, i) => !fenced[i] && headRe.test(l));
   if (start === -1) return content;
   const levelEndRe = new RegExp(`^#{1,${lines[start].match(headRe)[1].length}}\\s`);
@@ -258,7 +273,7 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
   } catch { return; }
 
   roadmapContent = removePhaseSection(roadmapContent, phaseNum);
-  const targetEscaped = escapeRegex(phaseNum);
+  const targetEscaped = phaseNumPattern(phaseNum);
 
   // Remove checkbox list items referencing this phase
   const checkboxPattern = new RegExp(`\\n?-\\s*\\[[ x]\\]\\s*.*Phase\\s+${targetEscaped}[:\\s][^\\n]*`, 'gi');
@@ -291,14 +306,14 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
 
       // Phase headings: ## Phase 18: or ### Phase 18.1: -> ## Phase 17: / ### Phase 17.1:
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(#{2,4}\\s*Phase\\s+)${oldStr}((?:\\.\\d+)?\\s*:)`, 'gi'),
-        `$1${newStr}$2`
+        new RegExp(`(#{2,4}\\s*Phase\\s+)(0*)${oldStr}((?:\\.\\d+)?\\s*:)`, 'gi'),
+        (_, head, zeros, tail) => `${head}${samePadding(zeros + oldStr, newNum)}${tail}`
       );
 
       // Inline phase references: "Phase 18:", "Phase 18 " or "Phase 18.1:" -> "Phase 17..."
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(Phase\\s+)${oldStr}((?:\\.\\d+)?[:\\s])`, 'g'),
-        `$1${newStr}$2`
+        new RegExp(`(Phase\\s+)(0*)${oldStr}((?:\\.\\d+)?[:\\s])`, 'g'),
+        (_, head, zeros, tail) => `${head}${samePadding(zeros + oldStr, newNum)}${tail}`
       );
 
       // Plan references in padded form: 18-01 / 18.1-01 -> 17-01 / 17.1-01, never inside a date (2026-10-01)
@@ -309,15 +324,27 @@ function updateRoadmapAfterRemoval(cwd, phaseNum, isDecimal, normalized) {
 
       // Progress table row numbers: | 18. or | 18.1. -> | 17. / | 17.1.
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(\\|\\s*)${oldStr}((?:\\.\\d+)?)\\.\\s`, 'g'),
-        `$1${newStr}$2. `
+        new RegExp(`(\\|\\s*)(0*)${oldStr}((?:\\.\\d+)?)\\.\\s`, 'g'),
+        (_, head, zeros, dec) => `${head}${samePadding(zeros + oldStr, newNum)}${dec}. `
       );
 
       // Depends-on references: "Depends on:** Phase 18" -> "Phase 17"
       roadmapContent = roadmapContent.replace(
-        new RegExp(`(Depends on:\\*\\*\\s*Phase\\s+)${oldStr}\\b`, 'gi'),
-        `$1${newStr}`
+        new RegExp(`(Depends on:\\*\\*\\s*Phase\\s+)(0*)${oldStr}\\b`, 'gi'),
+        (_, head, zeros) => `${head}${samePadding(zeros + oldStr, newNum)}`
       );
+    }
+  } else {
+    // Decimal removal: the siblings above it move down one (06.3 -> 06.2), as their
+    // directories already did. Upward, so a renamed reference is never renamed twice.
+    const [baseStr, removedStr] = normalized.split('.');
+    const base = escapeRegex(String(parseInt(baseStr, 10)));
+    for (let dec = parseInt(removedStr, 10) + 1; dec <= 99; dec++) {
+      const was = `(0*${base})\\.${dec}`;
+      roadmapContent = roadmapContent
+        .replace(new RegExp(`(Phase\\s+)${was}([:\\s])`, 'gi'), (_, head, int, tail) => `${head}${int}.${dec - 1}${tail}`)
+        .replace(new RegExp(`(\\|\\s*)${was}\\.\\s`, 'g'), (_, head, int) => `${head}${int}.${dec - 1}. `)
+        .replace(new RegExp(`(?<![\\d.-])${was}-(\\d{2})(?!\\d)`, 'g'), (_, int, plan) => `${int}.${dec - 1}-${plan}`);
     }
   }
 
