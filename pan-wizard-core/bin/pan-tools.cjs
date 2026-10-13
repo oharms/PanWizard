@@ -95,6 +95,9 @@
  *   verify key-links <plan-file>       Check must_haves.key_links
  *   verify red <phase>                 Each test the phase changed fails at the
  *     [--timeout <ms>]                 phase's base and passes at HEAD (V4)
+ *   verify mutate --phase N            Mutation report on the phase's changed lines
+ *     [--max n] [--seed n]             (V5): which mutants the suite does not kill;
+ *     [--timeout <ms>]                 writes {NN}-mutation.json
  *
  * Test Gate (V2):
  *   test run [--phase N] [--baseline]  Run the project's tests, any language; with
@@ -252,6 +255,7 @@ const verifyIntegrity = require('./lib/verify-integrity.cjs');
 const phaseGate = require('./lib/phase-gate.cjs');
 const testGate = require('./lib/test-gate.cjs');
 const verifyRed = require('./lib/verify-red.cjs');
+const mutate = require('./lib/mutate.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -688,8 +692,15 @@ async function main() {
         verifyIntegrity.cmdVerifyTestIntegrity(cwd, args[2], raw);
       } else if (subcommand === 'red') {
         verifyRed.cmdVerifyRed(cwd, args[2], raw, { timeout: getArgValue(args, '--timeout') });
+      } else if (subcommand === 'mutate') {
+        mutate.cmdVerifyMutate(cwd, {
+          phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),
+          max: getArgValue(args, '--max'),
+          seed: getArgValue(args, '--seed'),
+          timeout: getArgValue(args, '--timeout'),
+        }, raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate');
       }
       break;
     }

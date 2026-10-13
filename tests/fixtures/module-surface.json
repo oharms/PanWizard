@@ -662,6 +662,19 @@
     "cmdMilestoneComplete:function",
     "cmdRequirementsMarkComplete:function"
   ],
+  "mutate.cjs": [
+    "MODES:object",
+    "OPERATORS:object",
+    "applyMutation:function",
+    "changedLines:function",
+    "cmdVerifyMutate:function",
+    "languageOf:function",
+    "mutableLine:function",
+    "mutatePhase:function",
+    "mutationMode:function",
+    "mutationsFor:function",
+    "sample:function"
+  ],
   "optimize.cjs": [
     "APPLIED_LOG:string",
     "CURRENT_SESSION_FILE:string",

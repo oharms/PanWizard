@@ -55,6 +55,9 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       phase_record_compact: false,
       // V1: the phase gate. `warn` reports refusals and completes; `enforce` refuses.
       phase_gate: 'warn',
+      // V5: the mutation report on a phase's diff. `report` lists surviving mutants and
+      // never refuses; `off` skips it; `gate` is reserved for V5G.
+      mutation_gate: 'report',
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },

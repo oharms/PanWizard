@@ -461,6 +461,7 @@ Quick reference of all CLI commands grouped by category.
 | 218 | `test run` | Verification | test-gate.cjs |
 | 219 | `test detect` | Verification | test-gate.cjs |
 | 220 | `verify red` | Verification | verify-red.cjs |
+| 221 | `verify mutate` | Verification | mutate.cjs |
 
 ---
 
@@ -1742,6 +1743,21 @@ The **base** is the parent of the phase's oldest plan commit (subjects like `fea
 | `not_checked` | no command can run that one file, with the reason |
 
 The one-file command is `workflow.test_file_command` from config.json (a `{file}` placeholder), else derived from the suite's runner: `node --test <file>`, jest, vitest or mocha through `npx --no-install`, `python -m pytest <file>`, or `go test ./<dir>`. Cargo, Maven, Gradle and make have none. Exit 1 when a file is `not_red` or `not_green`; a phase with no plan commits, no changed test or no runnable one is `checked: false` and exits 0.
+
+### `verify mutate --phase N [--max <n>] [--seed <n>] [--timeout <ms>]`
+
+A mutation report on the phase's diff (program V5): would a test fail if the code the phase wrote were wrong?
+
+```bash
+pan-tools verify mutate --phase 3            # writes 03-mutation.json; exit 0
+pan-tools verify mutate --phase 3 --raw      # "3/5 killed" | aborted:flaky | aborted:suite_fails | not_checked
+```
+
+It takes the lines the phase's plan commits changed (`git diff` from the phase's base, as `verify red` finds it) in source files that are not tests, and swaps one thing at a time on a changed line, outside comments and strings: a comparison flipped (`>=`/`>`, `<=`/`<`), equality inverted (`===`/`!==` in JS and TS, `==`/`!=` in C-family languages and Python), `&&`/`||` (`and`/`or` in Python), a boolean return inverted, `+ 1` for `- 1`. A seeded sample (`--max`, default 8; `--seed`, default 1) runs in a throwaway worktree at HEAD (uncommitted changes are not measured), the project's whole test suite once per mutant: **killed** when it fails or times out, **survived** otherwise.
+
+Before any mutant, the unmutated suite runs twice: if it fails, the report aborts (`suite_fails`), and if one run passes and the other fails, it aborts as `flaky`, since no mutant could be read against it. The record holds `mode`, `base`, `head`, `command`, `candidates`, `sampled`, `killed`, `survived`, `score` and each survivor's `{file, line, op, before, after}`.
+
+`workflow.mutation_gate` in config.json: `report` (the default; a report, never a refusal), `off` (runs nothing), `gate` (reserved: survivors becoming gaps is a later step). verify-phase runs it with `--max 5` after a passing test gate and lists survivors under **Test strength**.
 
 ### `test run [--phase N] [--baseline] [--rebaseline] [--command "<cmd>"] [--timeout <ms>]`
 

@@ -118,6 +118,27 @@ from the exit code and the runner's output, and you copy it.
 **If test gate FAILED:** Continue verification (gather full picture) but set overall status to `gaps_found` regardless of goal-backward results. Include test failures as gaps in the report.
 </step>
 
+<step name="mutation_report">
+**Measure whether the tests pin the code the phase wrote** (a report, never a gate).
+
+Only when the test gate passed: a mutant cannot be read against a suite that already fails.
+With `workflow.mutation_gate: off` the command runs nothing and says so.
+
+```bash
+MUTATION=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify mutate --phase "${phase_number}" --max 5)
+```
+
+The engine flips one comparison, boolean or `+ 1` at a time on the lines the phase's plan
+commits changed, in a throwaway worktree at HEAD, and runs the suite against each mutant. Read
+`checked`, `sampled`, `killed`, `survivors` (file, line, the swap) and `aborted`.
+
+Write a **Test strength** section in verification.md: `killed/sampled`, and each survivor as
+`file:line — before → after`, framed as a test the phase could add. A survivor is a lead, not a
+gap: it never changes the status. `aborted: flaky` (the unmutated suite passed once and failed
+once) is worth reporting as a finding of its own; `checked: false` with its `reason` goes in
+`not_checked` as `check: "mutation"`.
+</step>
+
 <step name="establish_must_haves">
 **Option A: Must-haves in PLAN frontmatter**
 
