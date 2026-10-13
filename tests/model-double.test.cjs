@@ -309,6 +309,47 @@ describe('cassettes: replay at $0, drift as prompt impact (H2)', () => {
     assert.ok(validateScenario(scen(step({ cassette: 'c', script: recipe.script }))).some((e) => /either a script or a cassette/.test(e)));
   });
 
+  test('record mode proxies model API paths only, to the upstream origin: an absolute-form target is refused', async () => {
+    let reached = 0;
+    const upstream = await D.startDouble({ mode: 'script', script: { rules: [], fallback: { text: 'up' } }, onChange: () => { reached++; } });
+    const rec = await D.startDouble({ mode: 'record', upstream: upstream.url });
+    try {
+      const net = require('net');
+      const port = new URL(rec.url).port;
+      const reply = await new Promise((resolve, reject) => {
+        const sock = net.connect(Number(port), '127.0.0.1', () => {
+          const body = '{"model":"m","messages":[]}';
+          sock.write(`POST http://example.invalid/v1/messages HTTP/1.1\r\nHost: example.invalid\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n${body}`);
+        });
+        let out = '';
+        sock.on('data', (d) => { out += d; });
+        sock.on('end', () => resolve(out));
+        sock.on('error', reject);
+      });
+      assert.match(reply, /^HTTP\/1\.1 400/);
+      assert.match(reply, /model API paths only/);
+      assert.equal(rec.recorded.length, 0);
+      assert.equal(reached, 0, 'nothing went upstream');
+      assert.equal(JSON.parse((await post(`${rec.url}/v1/messages`, { model: 'm', messages: [] })).text).content[0].text, 'up', 'a model path still proxies');
+    } finally { await rec.close(); await upstream.close(); }
+  });
+
+  test('append-line.cjs appends one line in the file\'s own line ending, and fails on a missing file', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-append-'));
+    try {
+      const script = path.join(ROOT, 'harness', 'scripts', 'append-line.cjs');
+      fs.writeFileSync(path.join(dir, 'a.md'), 'one\r\ntwo\r\n');
+      const r = spawnSync(process.execPath, [script, 'a.md', 'three'], { cwd: dir, encoding: 'utf8' });
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(fs.readFileSync(path.join(dir, 'a.md'), 'utf8'), 'one\r\ntwo\r\n\r\nthree\r\n');
+      assert.equal(JSON.parse(r.stdout).bytes, Buffer.byteLength('one\r\ntwo\r\n\r\nthree\r\n'));
+      const missing = spawnSync(process.execPath, [script, 'b.md', 'x'], { cwd: dir, encoding: 'utf8' });
+      assert.equal(missing.status, 1);
+      assert.match(missing.stderr, /no such file: b\.md/);
+      assert.equal(spawnSync(process.execPath, [script, '../outside.md', 'x'], { cwd: dir, encoding: 'utf8' }).status, 2);
+    } finally { cleanup(dir); }
+  });
+
   test('the committed cassette is synthetic: no prompt text, no credentials, only keyed replies', () => {
     const pairs = JSON.parse(fs.readFileSync(CASSETTE, 'utf8'));
     assert.ok(pairs.length > 0);

@@ -325,7 +325,14 @@ function startDouble(opts = {}) {
       const id = `${n}`;
       if (mode === 'record') {
         try {
-          const up = await fetch(new URL(req.url, opts.upstream), { method: 'POST', headers: forwardHeaders(req.headers), body: raw });
+          // Only a model API path goes upstream, and only to the upstream's own origin: an
+          // absolute-form request target (`POST http://elsewhere/…`) would otherwise replace
+          // the base URL and send the request, credentials included, anywhere.
+          if (!/^\/[A-Za-z0-9._~\-/:]*(?:\?[A-Za-z0-9._~\-=&%]*)?$/.test(req.url) || req.url.startsWith('//')) {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            return res.end(JSON.stringify({ error: { type: 'double_upstream', message: 'record mode proxies model API paths only' } }));
+          }
+          const up = await fetch(`${new URL(opts.upstream).origin}/${req.url.slice(1)}`, { method: 'POST', headers: forwardHeaders(req.headers), body: raw });
           const text = await up.text();
           recorded.push({ key: requestKey(protocol, body, normalise, agents), protocol, status: up.status, contentType: up.headers.get('content-type'), response: text });
           res.writeHead(up.status, { 'content-type': up.headers.get('content-type') || 'application/json' });
