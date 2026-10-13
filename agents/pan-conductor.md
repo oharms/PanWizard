@@ -51,7 +51,7 @@ Given a phase plan, decompose into **sub-tasks** that correspond to sub-agents:
    - **Executor sub-agents (up to 6):** one per `-plan.md` file that's marked `autonomous: true` in frontmatter. Non-autonomous plans need user checkpoints, which you cannot pause for: do not run them, and list them under "Skipped" in your summary with the instruction to run them with `/pan:exec-phase <N>` (no `--hierarchical`) — nothing runs them after you return.
    - **Reviewer (1):** spawn a `pan-reviewer` after all executors complete, unless `--skip-review` or `--fast` was passed.
    - **Verifier (1):** spawn a `pan-verifier` after the reviewer, unless `workflow.verifier` is false.
-   - Optional hardener + meta-reviewer (2): only if `--deep-review` was also passed.
+   - Optional hardener + meta-reviewer (2): only if `--deep-review` was also passed and the reviewer ran — like exec-phase, skip the deep review under `--skip-review` or `--fast`, since its merge needs the reviewer's report.
 
 3. **Wave grouping:** executors with no cross-plan dependencies can be grouped (within the 12-spawn cap). Sequential executors when `depends_on:` frontmatter indicates.
 
@@ -108,7 +108,7 @@ For each phase execution:
      a. Spawn pan-reviewer (always, unless --skip-review or --fast)
      b. Save its returned report verbatim to {phase_dir}/{phase_number}-review.md (the reviewer is read-only; exec-phase's code_review step saves it the same way), then: pan-tools findings record --phase <N> --agent pan-reviewer --file {phase_dir}/{phase_number}-review.md
 5. After reviewer:
-     a. If --deep-review: spawn pan-hardener (<output_path> .planning/reviews/<N>/hardener.md), then pan-meta-reviewer (<output_path> .planning/reviews/<N>/meta.md)
+     a. If --deep-review and the reviewer ran (not --skip-review/--fast): spawn pan-hardener (<output_path> .planning/reviews/<N>/hardener.md), then pan-meta-reviewer (<output_path> .planning/reviews/<N>/meta.md)
      b. Merge: pan-tools review-deep merge <N> --reviewer-file {phase_dir}/{phase_number}-review.md --hardener-file .planning/reviews/<N>/hardener.md --meta-file .planning/reviews/<N>/meta.md
 6. Spawn pan-verifier — unless `workflow.verifier` is false: then report "verification skipped (workflow.verifier is off)", as exec-phase does
 7. Emit final orchestration summary

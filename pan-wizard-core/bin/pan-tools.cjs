@@ -31,7 +31,7 @@
  *   findings record|list|dispose|debt  Judges' verdicts and their findings ledger (evidence loop)
  *   phase-plan-index <phase>           Index plans with waves and status
  *   websearch <query>                  Search web via Brave API (if configured)
- *     [--limit N] [--freshness day|week|month]
+ *     [--limit N] [--freshness day|week|month|year]
  *
  * Phase Listing:
  *   phases list [--type plans|summaries]  List phases with optional type filter
@@ -237,6 +237,9 @@ const costRebuild = require('./lib/cost-rebuild.cjs');
 const preview = require('./lib/preview.cjs');
 const reviewDeep = require('./lib/review-deep.cjs');
 const findings = require('./lib/findings.cjs');
+const verifyPlanSet = require('./lib/verify-plan-set.cjs');
+const verifyIntegrity = require('./lib/verify-integrity.cjs');
+const phaseGate = require('./lib/phase-gate.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -649,8 +652,12 @@ async function main() {
         verify.cmdVerifyScope(cwd, args[2], raw);
       } else if (subcommand === 'stale') {
         verify.cmdVerifyStale(cwd, args[2], raw);
+      } else if (subcommand === 'plan-set') {
+        verifyPlanSet.cmdVerifyPlanSet(cwd, args[2], raw);
+      } else if (subcommand === 'test-integrity') {
+        verifyIntegrity.cmdVerifyTestIntegrity(cwd, args[2], raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity');
       }
       break;
     }
@@ -766,9 +773,11 @@ async function main() {
       } else if (subcommand === 'complete') {
         if (!args[2]) error('phase complete requires a phase number');
         const noCommit = args.includes('--no-commit');
-        phase.cmdPhaseComplete(cwd, args[2], raw, { noCommit });
+        phase.cmdPhaseComplete(cwd, args[2], raw, { noCommit, force: args.includes('--force'), reason: getArgValue(args, '--reason') });
+      } else if (subcommand === 'gate') {
+        phaseGate.cmdPhaseGate(cwd, args[2], raw, { mode: getArgValue(args, '--mode') || undefined });
       } else {
-        error('Unknown phase subcommand. Available: next-decimal, add, insert, remove, complete');
+        error('Unknown phase subcommand. Available: next-decimal, add, insert, remove, complete, gate');
       }
       break;
     }

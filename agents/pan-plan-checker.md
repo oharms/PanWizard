@@ -246,8 +246,8 @@ issue:
 ```yaml
 issue:
   dimension: scope_sanity
-  severity: warning
-  description: "Plan 01 has 5 tasks - split recommended"
+  severity: blocker
+  description: "Plan 01 has 5 tasks - split required"
   plan: "01"
   metrics:
     tasks: 5
@@ -541,11 +541,11 @@ Extract from init JSON: `phase_dir`, `phase_number`, `has_plans`, `plan_count`. 
 Orchestrator provides context.md content in the verification prompt. If provided, parse for locked decisions, discretion areas, deferred ideas.
 
 ```bash
-ls "$phase_dir"/*-plan.md 2>/dev/null
+ls "$PHASE_DIR"/*-plan.md 2>/dev/null
 # Read research for Nyquist validation data
-cat "$phase_dir"/*-research.md 2>/dev/null
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$phase_number"
-cat "$phase_dir"/*-design.md 2>/dev/null   # approved design from /pan:design-phase (Design Conformance)
+cat "$PHASE_DIR"/*-research.md 2>/dev/null
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "$PHASE"
+cat "$PHASE_DIR"/*-design.md 2>/dev/null   # approved design from /pan:design-phase (Design Conformance)
 ```
 
 **Extract:** Phase goal, requirements (decompose goal), locked decisions, deferred ideas.
@@ -660,7 +660,7 @@ Missing: No mention of fetch/API call → Issue: Key link not planned
 ## Step 8: Assess Scope
 
 ```bash
-for plan in "$phase_dir"/*-plan.md; do
+for plan in "$PHASE_DIR"/*-plan.md; do
   grep -cE "<task[ >]" "$plan"   # "<task" alone also counts the <tasks> wrapper; Step 2's task_count is the same number
   grep "files_modified:" "$plan"
 done
@@ -766,6 +766,7 @@ Return all issues as a structured `issues:` YAML list (see dimension examples fo
 - `verdict` is `passed` or `issues_found` (the status from Step 10), and `outcome` is `pass` or `fail`.
 - Add one finding per issue you list. Blocker → `high`, warning → `medium`, info → `info`. The class follows the dimension, as mapped in the reference.
 - `where` is the plan file, plus `#task-N` when the issue is about one task.
+- **On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{"id":"f_…","status":"resolved","evidence":"what you checked and saw"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.
 
 The orchestrator records the block, and the record is what it branches on. The block must say the same thing as your heading.
 
@@ -838,7 +839,7 @@ End it with one finding per listed issue:
 
 ````markdown
 ```pan-verdict
-{"contract":"1.0","agent":"pan-plan-checker","phase":"{phase}","verdict":"issues_found","outcome":"fail","findings":[{"class":"missing","severity":"high","where":"{phase}-01-plan.md","summary":"requirement AUTH-02 (password reset) has no covering task"},{"class":"risk","severity":"medium","where":"{phase}-02-plan.md","summary":"plan 02 modifies 12 files across 5 tasks; split it"}]}
+{"contract":"1.0","agent":"pan-plan-checker","phase":"{phase}","verdict":"issues_found","outcome":"fail","findings":[{"class":"missing","severity":"high","where":"{phase}-01-plan.md","summary":"requirement AUTH-02 (password reset) has no covering task"},{"class":"risk","severity":"high","where":"{phase}-02-plan.md","summary":"plan 02 modifies 12 files across 5 tasks; split it"}]}
 ```
 ````
 

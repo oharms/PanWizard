@@ -58,7 +58,7 @@ Show summary: files modified, added, deleted, lines changed.
 
 ## Step 3: Run Tests (if code changed)
 
-**Skip if ONLY `.md` or `.txt` files changed.**
+**Skip only if every changed file is a dev doc under `.claude/`.** Markdown is not exempt: the suite lints `docs/`, `commands/pan/`, `agents/`, `pan-wizard-core/{workflows,references,templates}/`, `harness/` and the root `.md` files (`tests/doc-lint.test.cjs`, `tests/model-version-drift.test.cjs`, `tests/claude-md-counts.test.cjs`), and many other unit tests assert the text of shipped markdown.
 
 Otherwise:
 ```powershell

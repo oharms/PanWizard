@@ -35,10 +35,10 @@ See: .planning/project.md (updated [date])
 - Average duration: [X] min
 - Total execution time: [X.X] hours
 
-**By Phase:**
+**By Plan:** (one row per plan, written by `state record-metric`)
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
 | - | - | - | - |
 
 **Recent Trend:**
@@ -139,7 +139,7 @@ Progress calculation: (completed plans) / (total plans across all phases) × 100
 Track velocity to understand execution patterns:
 - Total plans completed
 - Average duration per plan
-- Per-phase breakdown
+- Per-plan rows (phase, plan, duration, tasks, files)
 - Recent trend (improving/stable/degrading)
 
 Updated after each plan completion.

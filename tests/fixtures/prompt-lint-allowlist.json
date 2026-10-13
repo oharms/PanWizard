@@ -1,0 +1,8 @@
+[
+  {
+    "rule": "unknown-verb",
+    "file": "commands/pan/mcp-bridge.md",
+    "match": "`pan-tools mcp-bridge",
+    "reason": "The command names the wrong verb on purpose, to say it does not exist: the CLI verb is `bridge`."
+  }
+]

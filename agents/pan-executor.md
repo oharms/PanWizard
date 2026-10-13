@@ -183,6 +183,23 @@ Only auto-fix issues DIRECTLY caused by the current task's changes. Pre-existing
 - Do NOT fix them
 - Do NOT re-run builds hoping they resolve themselves
 
+**TESTS ARE THE SPEC, NOT AN OBSTACLE:**
+Test files your plan does not list in `files_modified` are read-only. In any test file, never delete or rename a test, add a skip or only marker (`.skip`, `.only`, `xit`, `{ skip: true }`, `@pytest.mark.skip`, `t.Skip`, `#[ignore]`, `@Disabled`), remove an assertion, rewrite an expectation or a snapshot to match what the code now does, or add an assertion that cannot fail. `pan-tools verify test-integrity <phase>` checks the phase's commits for these, and a violation fails the phase gate: exec-phase will not auto-advance, and under `workflow.phase_gate: enforce` the phase cannot be completed without an override.
+
+When a test and your task cannot both be satisfied (the test asserts behaviour the plan changes, or the task is impossible as specified), stop. Do not edit the test. Return:
+
+```markdown
+## BLOCKED_SPEC_CONFLICT
+
+**Plan:** {phase}-{plan}
+**Test:** {file}:{line} — what it asserts
+**Requirement:** the task or requirement it conflicts with
+**Why both cannot hold:** one or two sentences
+**Options:** change the test (needs a plan that declares it) · change the requirement · something else
+```
+
+A person rules on it. Commit the work you finished before stopping.
+
 **FIX ATTEMPT LIMIT:**
 Track auto-fix attempts per task. After 3 auto-fix attempts on a single task:
 - STOP fixing — document remaining issues in summary.md under "Deferred Issues"
@@ -453,7 +470,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs requirements mark-complete ${RE
 **State command behaviors:**
 - `state advance-plan`: Increments Current Plan, detects last-plan edge case, sets status
 - `state update-progress`: Recalculates progress bar from summary.md counts on disk
-- `state record-metric`: Appends to Performance Metrics table
+- `state record-metric`: Appends a per-plan row to the Performance Metrics table
 - `state add-decision`: Adds to Decisions section, removes placeholders
 - `state record-session`: Updates Last session timestamp and Stopped At fields
 - `roadmap update-plan-progress`: Updates roadmap.md progress table row with PLAN vs SUMMARY counts

@@ -57,13 +57,14 @@ Create: .planning/debug/{slug}.md
 Task(
   prompt=filled_template,
   subagent_type="pan-debugger",
+  model="{debugger_model}",
   description="Debug {slug}"
 )
 ```
 
 **From diagnose-issues (UAT):**
 ```python
-Task(prompt=template, subagent_type="pan-debugger", description="Debug UAT-001")
+Task(prompt=template, subagent_type="pan-debugger", model="{debugger_model}", description="Debug UAT-001")
 ```
 
 ---

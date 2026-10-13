@@ -176,6 +176,7 @@
     "optimize trace",
     "phase add",
     "phase complete",
+    "phase gate",
     "phase insert",
     "phase next-decimal",
     "phase remove",
@@ -229,12 +230,14 @@
     "verify commits",
     "verify key-links",
     "verify phase-completeness",
+    "verify plan-set",
     "verify plan-structure",
     "verify reconcile",
     "verify references",
     "verify scope",
     "verify stale",
     "verify stubs",
+    "verify test-integrity",
     "whatif cleanup",
     "whatif prepare",
     "whatif report",
@@ -364,6 +367,12 @@
     },
     {
       "runtime": "claude",
+      "hook": "pan-guard.js",
+      "event": "PreToolUse",
+      "surface": "settings.json"
+    },
+    {
+      "runtime": "claude",
       "hook": "pan-state-reinject.js",
       "event": "SessionStart",
       "surface": "settings.json"
@@ -406,6 +415,12 @@
     },
     {
       "runtime": "codex",
+      "hook": "pan-guard.js",
+      "event": "PreToolUse",
+      "surface": "hooks.json"
+    },
+    {
+      "runtime": "codex",
       "hook": "pan-state-reinject.js",
       "event": "SessionStart",
       "surface": "hooks.json"
@@ -442,6 +457,12 @@
     },
     {
       "runtime": "copilot",
+      "hook": "pan-guard.js",
+      "event": "preToolUse",
+      "surface": "hooks/pan.json"
+    },
+    {
+      "runtime": "copilot",
       "hook": "pan-state-reinject.js",
       "event": "preCompact",
       "surface": "hooks/pan.json"
@@ -474,6 +495,12 @@
       "runtime": "gemini",
       "hook": "pan-check-update.js",
       "event": "SessionStart",
+      "surface": "settings.json"
+    },
+    {
+      "runtime": "gemini",
+      "hook": "pan-guard.js",
+      "event": "BeforeTool",
       "surface": "settings.json"
     },
     {
@@ -532,6 +559,7 @@
     "execution.default_mode",
     "execution.error_pattern_learning",
     "execution.rollback_snapshots",
+    "hooks.guard",
     "milestone_branch_template",
     "model_profile",
     "parallelization",
@@ -544,6 +572,7 @@
     "routing.strategy",
     "search_gitignored",
     "workflow.nyquist_validation",
+    "workflow.phase_gate",
     "workflow.phase_record_compact",
     "workflow.phase_reports.enabled",
     "workflow.phase_reports.index",

@@ -318,13 +318,15 @@ parallel sub-agents use lighter ones.
 ```
 
 ```text
-PAN: Current settings:
-  research: true
-  plan_check: true
-  verifier: false
-
-What would you like to change?
-You: Disable research and plan-check.
+PAN: Which model profile for agents?
+You: Budget
+PAN: Spawn Plan Researcher? (researches domain before planning)
+You: No
+PAN: Spawn Plan Checker? (verifies plans before execution)
+You: No
+PAN: Spawn Execution Verifier? (verifies phase completion)
+You: Yes
+(auto-advance, Nyquist, branching and routing questions follow, each with your current value pre-selected)
 ```
 
 With these off, `plan-phase` skips the researcher agent and the

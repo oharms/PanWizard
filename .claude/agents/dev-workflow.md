@@ -146,7 +146,7 @@ npm run test:all
 
 ```powershell
 cd d:\pantesting
-Remove-Item .claude, .codex, .gemini, .opencode, .github -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 
@@ -163,7 +163,7 @@ Update relevant docs if behavior changed.
 ## Phase 8: Ship
 
 - Final `npm run test:all`
-- Commit with descriptive message
+- Delete `pandev_status.md` (it is not gitignored, so `git add -A` would commit it), then commit with a descriptive message
 - Report summary
 
 ---

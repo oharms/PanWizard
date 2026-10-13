@@ -429,14 +429,23 @@ function buildContextWarning(metrics, warnState, nowSeconds, opts = {}) {
   };
 }
 
-/** Claude Code's settings for a project, highest precedence first: local, project, user. */
-function readClaudeSettings(projectDir, homeDir = os.homedir()) {
+/**
+ * Claude Code's settings for a project, highest precedence first: local, project, user.
+ * The user file lives in CLAUDE_CONFIG_DIR when that is set, as Claude Code reads it.
+ * A given homeDir is a test seam and ignores CLAUDE_CONFIG_DIR (as the statusline and
+ * hygiene do), unless configDir is passed too.
+ */
+function readClaudeSettings(projectDir, homeArg, configArg) {
+  const seam = homeArg !== undefined;
+  const homeDir = seam ? homeArg : os.homedir();
+  const configDir = configArg !== undefined ? configArg : (seam ? '' : (process.env.CLAUDE_CONFIG_DIR || ''));
   // Assembled, not a literal: the installer rewrites quoted .claude literals in hook
   // copies, and these are Claude Code's own settings (only it writes the bridge).
   const dir = ['.', 'claude'].join('');
   const files = [];
   if (typeof projectDir === 'string' && projectDir) files.push(path.join(projectDir, dir, 'settings.local.json'), path.join(projectDir, dir, 'settings.json'));
-  if (homeDir) files.push(path.join(homeDir, dir, 'settings.json'));
+  if (configDir) files.push(path.join(configDir, 'settings.json'));
+  else if (homeDir) files.push(path.join(homeDir, dir, 'settings.json'));
   const out = [];
   for (const f of files) {
     try { out.push(JSON.parse(fs.readFileSync(f, 'utf8'))); } catch { /* absent or unreadable */ }

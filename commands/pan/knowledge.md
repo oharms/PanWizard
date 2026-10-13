@@ -23,7 +23,6 @@ Consolidates Spec B v1's X-3 converse + X-6 teach + X-10 explain into one comman
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/knowledge.cjs
 @~/.claude/agents/pan-knowledge.md
 @~/.claude/pan-wizard-core/templates/playbook.md
 </execution_context>

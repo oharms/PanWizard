@@ -59,7 +59,7 @@ source: pan-previewer
 ## Hidden coupling
 
 <!-- phases mode only; may be "none found" -->
-- Phase {{from}} → Phase {{to}} — inferred from prose mention; consider promoting to `depends_on:` frontmatter.
+- Phase {{from}} → Phase {{to}} — inferred from prose mention; consider adding it to Phase {{to}}'s `**Depends on:**` line in the roadmap.
 
 ## Current state
 

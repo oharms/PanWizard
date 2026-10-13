@@ -53,10 +53,15 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       verifier: true,
       nyquist_validation: false,
       phase_record_compact: false,
+      // V1: the phase gate. `warn` reports refusals and completes; `enforce` refuses.
+      phase_gate: 'warn',
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },
     parallelization: true,
+    // A7: the pre-tool guard. `report` logs to <planning>/guard.jsonl; `enforce` also
+    // denies a write that puts a credential in a file; `off` disables it.
+    hooks: { guard: 'report' },
     brave_search: hasBraveSearch,
     budget: {
       default_points: 50,

@@ -39,11 +39,11 @@ All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/p
 - `security` — OWASP Top 10 + STRIDE audit campaigns (P0–P2)
 - `distill` — AI code-bloat optimizer with 5-pass pipeline (P1–P5)
 
-### Two new flags on existing commands
+### New flags on existing commands
 
 - `/pan:exec-phase <N> --hierarchical` (v3.4) — spawn `pan-conductor` as top-level orchestrator. Claude Code only, because it needs native sub-agent spawning; that is a runtime constraint, not a model one — the conductor runs on whatever model you launched the session with. On the other four runtimes the flag is a no-op that warns and falls back to flat exec.
 - `/pan:exec-phase <N> --deep-review` (v3.4) — auto-invoke `/pan:review-deep` after the normal reviewer step.
-- `/pan:focus-exec --deep-review` (v3.4) — same integration for focus campaigns.
+- `/pan:focus-exec --deep-review` (v3.4) — for focus campaigns: after each high-stakes item, runs `pan-hardener` and `pan-meta-reviewer` on that item's changed files and merges their reports with `pan-tools review-deep merge` (no first-pass reviewer; `/pan:review-deep` itself needs a phase).
 
 ### New agents
 

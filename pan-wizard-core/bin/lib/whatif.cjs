@@ -210,9 +210,37 @@ function createWorktree(cwd, phaseNum, scenario, opts) {
   };
 }
 
+/** Registered worktrees as {path, branch}; branch is null on a detached HEAD. */
+function listWorktrees(cwd) {
+  const r = execGit(cwd, ['worktree', 'list', '--porcelain']);
+  if (r.exitCode !== 0) return [];
+  const list = [];
+  for (const line of r.stdout.split(/\r?\n/)) {
+    if (line.startsWith('worktree ')) list.push({ path: line.slice('worktree '.length), branch: null });
+    else if (line.startsWith('branch ') && list.length) list[list.length - 1].branch = line.slice('branch '.length).replace(/^refs\/heads\//, '');
+  }
+  return list;
+}
+
+function samePath(a, b) {
+  const norm = (p) => {
+    let r = path.resolve(p);
+    try { r = fs.realpathSync.native(r); } catch { /* gone: compare the resolved form */ }
+    r = toPosix(r);
+    return process.platform === 'win32' ? r.toLowerCase() : r;
+  };
+  return norm(a) === norm(b);
+}
+
 /**
  * Remove a worktree + its branch. Best-effort: errors are surfaced but
  * don't block subsequent cleanups.
+ *
+ * Only what-if's own objects are touched: the branch must carry BRANCH_PREFIX and the
+ * worktree, when git still lists it, must be checked out on that branch (or, with no
+ * branch given, on some BRANCH_PREFIX branch). Anything else is refused before a single
+ * git write, because `branch -D` and `worktree remove --force` destroy unmerged commits
+ * and uncommitted files.
  *
  * @param {string} cwd - Main project root (for the cleanup git call)
  * @param {string} worktreePath - Path returned by createWorktree
@@ -224,15 +252,29 @@ function cleanupWorktree(cwd, worktreePath, branch, opts) {
   if (!isGitRepo(cwd)) {
     return { error: 'Not a git repo' };
   }
+  if (branch && !branch.startsWith(BRANCH_PREFIX)) {
+    return { error: `Refusing to delete branch '${branch}': what-if only cleans up branches it created (${BRANCH_PREFIX}*)` };
+  }
+  const entry = listWorktrees(cwd).find(w => samePath(w.path, worktreePath));
+  if (entry) {
+    const owned = entry.branch && entry.branch.startsWith(BRANCH_PREFIX) && (!branch || entry.branch === branch);
+    if (!owned) {
+      return { error: `Refusing to remove worktree ${toPosix(worktreePath)}: it is on '${entry.branch || 'a detached HEAD'}', not ${branch || BRANCH_PREFIX + '*'}` };
+    }
+  }
   const warnings = [];
   const force = opts?.force === true;
 
-  const rmArgs = ['worktree', 'remove'];
-  if (force) rmArgs.push('--force');
-  rmArgs.push(worktreePath);
-  const removeResult = execGit(cwd, rmArgs);
-  if (removeResult.exitCode !== 0) {
-    warnings.push(`worktree remove: ${removeResult.stderr}`);
+  if (entry) {
+    const rmArgs = ['worktree', 'remove'];
+    if (force) rmArgs.push('--force');
+    rmArgs.push(worktreePath);
+    const removeResult = execGit(cwd, rmArgs);
+    if (removeResult.exitCode !== 0) {
+      warnings.push(`worktree remove: ${removeResult.stderr}`);
+    }
+  } else {
+    warnings.push(`worktree remove: ${toPosix(worktreePath)} is not a registered worktree (already removed?)`);
   }
 
   // Branch cleanup — only if branch still exists.

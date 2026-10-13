@@ -59,5 +59,8 @@
       ],
       "why": "R14 probe, part 2: if Antigravity accepts the Claude plugin, the deferred variant (ADR-0045) collapses to a marketplace entry; if it rejects both bundles, the rejection messages are the spec for the variant. Either outcome is information."
     }
+  ],
+  "controls": [
+    {"id":"no-manifest","after":0,"delete":"bundle/plugin.json","why":"agy must refuse a bundle without its manifest."}
   ]
 }

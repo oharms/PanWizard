@@ -18,7 +18,7 @@ const path = require('path');
 
 const { installInto, spawnHook, cleanup } = require('./helpers.cjs');
 
-const HOOKS = ['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard'];
+const HOOKS = ['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard', 'pan-guard'];
 const SRC = path.join(__dirname, '..', 'hooks');
 
 function fnText(hook) {
@@ -135,5 +135,46 @@ describe('a real Claude + Copilot install runs the stop guard once under Copilot
     } finally {
       fs.writeFileSync(file, saved);
     }
+  });
+});
+
+// The pre-tool guard (A7) under Copilot with both installs: the .github copy stands aside,
+// and the .claude copy that runs denies the Copilot way. Its registration says
+// `--host claude`, but Copilot sends its own camelCase payload (toolName, toolArgs) even to
+// a Claude-registered hook, and denies only on the JSON decision, so the payload decides.
+describe('a real Claude + Copilot install runs the guard once under Copilot, and its deny is Copilot\'s', () => {
+  let project;
+  const secret = 'ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8';
+  const copilotPayload = () => ({ timestamp: 1, cwd: project, toolName: 'create', toolArgs: JSON.stringify({ path: path.join(project, 'src', 'a.js'), file_text: `const k = '${secret}';` }) });
+  const run = (dir, host, payload) => require('child_process').spawnSync(process.execPath, [path.join(project, dir, 'hooks', 'pan-guard.js'), '--host', host], { cwd: project, input: JSON.stringify(payload), encoding: 'utf8' });
+  const log = () => { try { return fs.readFileSync(path.join(project, '.planning', 'guard.jsonl'), 'utf8').trim().split('\n').filter(Boolean); } catch { return []; } };
+
+  before(() => {
+    project = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-r39-guard-'));
+    const r = installInto(project, ['--claude', '--copilot', '--local']);
+    assert.ok(r.success, `install failed: ${r.error}`);
+    fs.mkdirSync(path.join(project, '.planning'), { recursive: true });
+    fs.writeFileSync(path.join(project, '.planning', 'config.json'), JSON.stringify({ hooks: { guard: 'enforce' } }));
+  });
+  after(() => cleanup(project));
+
+  test('the .claude copy denies a Copilot payload with Copilot\'s JSON decision, not exit 2', () => {
+    const r = run('.claude', 'claude', copilotPayload());
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(JSON.parse(r.stdout).permissionDecision, 'deny');
+    assert.equal(log().length, 1);
+  });
+
+  test('the .github copy stands aside: no decision, no second log line', () => {
+    const r = run('.github', 'copilot', copilotPayload());
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, '');
+    assert.equal(log().length, 1, 'one match, one line');
+  });
+
+  test('a Claude payload to the .claude copy still denies with exit 2', () => {
+    const r = run('.claude', 'claude', { cwd: project, tool_name: 'Write', tool_input: { file_path: path.join(project, 'src', 'b.js'), content: `const k = '${secret}';` } });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /PAN guard/);
   });
 });

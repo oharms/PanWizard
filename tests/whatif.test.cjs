@@ -10,7 +10,7 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const {
   scenarioSlug,
   buildCounterfactualContext,
@@ -20,7 +20,10 @@ const {
   COUNTERFACTUALS_DIR,
   BRANCH_PREFIX,
 } = require('../pan-wizard-core/bin/lib/whatif.cjs');
-const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { runPanTools, createTempProject, cleanup, TOOLS_PATH } = require('./helpers.cjs');
+
+const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe', encoding: 'utf-8' });
+const branchExists = (cwd, name) => git(cwd, 'branch', '--list', name).trim() !== '';
 
 // ─── scenarioSlug ───────────────────────────────────────────────────────────
 
@@ -232,6 +235,54 @@ describe('whatif — worktree lifecycle (integration)', () => {
     const cleanupResult = cleanupWorktree(tmpDir, wt.worktree_path, wt.branch, { force: true });
     assert.equal(cleanupResult.removed, true);
     assert.equal(fs.existsSync(wt.worktree_path), false);
+    assert.equal(branchExists(tmpDir, wt.branch), false, 'the what-if branch is deleted');
+  });
+
+  // Cleanup ran `git branch -D` on whatever --branch named and `worktree remove --force`
+  // on whatever --worktree named, so a slip in the prompt's arguments could destroy
+  // unmerged commits or uncommitted files that what-if never created.
+  test('cleanup refuses a branch without the what-if prefix and leaves it intact', (t) => {
+    if (!tmpDir) { t.skip('git unavailable'); return; }
+    git(tmpDir, 'checkout', '-q', '-b', 'feature/unmerged');
+    fs.writeFileSync(path.join(tmpDir, 'work.txt'), 'unmerged work');
+    git(tmpDir, 'add', '.');
+    git(tmpDir, 'commit', '-q', '-m', 'unmerged');
+    git(tmpDir, 'checkout', '-q', 'main');
+
+    const r = cleanupWorktree(tmpDir, path.join(tmpDir, '..', 'no-such-worktree'), 'feature/unmerged', { force: true });
+    assert.match(r.error || '', /pan-whatif\//, 'cleanup refuses a foreign branch');
+    assert.equal(branchExists(tmpDir, 'feature/unmerged'), true, 'the unmerged branch survives');
+  });
+
+  test('cleanup refuses a worktree that is not on a what-if branch and leaves its files', (t) => {
+    if (!tmpDir) { t.skip('git unavailable'); return; }
+    const foreign = fs.mkdtempSync(path.join(path.dirname(tmpDir), 'foreign-wt-'));
+    fs.rmSync(foreign, { recursive: true, force: true });
+    git(tmpDir, 'worktree', 'add', '-q', '-b', 'feature/other', foreign);
+    try {
+      fs.writeFileSync(path.join(foreign, 'uncommitted.txt'), 'not yet committed');
+      const wt = createWorktree(tmpDir, '07', 'Try SQLite');
+      if (wt.error) { t.skip(wt.error); return; }
+
+      // Wrong path paired with a genuine what-if branch, and the path on its own.
+      const paired = cleanupWorktree(tmpDir, foreign, wt.branch, { force: true });
+      assert.match(paired.error || '', /feature\/other/);
+      const alone = cleanupWorktree(tmpDir, foreign, undefined, { force: true });
+      assert.match(alone.error || '', /feature\/other/);
+      assert.equal(fs.existsSync(path.join(foreign, 'uncommitted.txt')), true, 'the foreign worktree keeps its files');
+      assert.equal(branchExists(tmpDir, wt.branch), true, 'a refused call deletes nothing');
+
+      assert.equal(cleanupWorktree(tmpDir, wt.worktree_path, wt.branch, { force: true }).removed, true);
+    } finally {
+      git(tmpDir, 'worktree', 'remove', '--force', foreign);
+    }
+  });
+
+  test('CLI: whatif cleanup --branch main exits 1 and main survives', (t) => {
+    if (!tmpDir) { t.skip('git unavailable'); return; }
+    const r = spawnSync(process.execPath, [TOOLS_PATH, 'whatif', 'cleanup', '--worktree', path.join(tmpDir, '..', 'gone'), '--branch', 'main', '--force'], { cwd: tmpDir, encoding: 'utf-8' });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.equal(branchExists(tmpDir, 'main'), true);
   });
 
   test('a repeat of the same phase and scenario gets its own worktree', (t) => {

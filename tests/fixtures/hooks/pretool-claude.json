@@ -1,0 +1,12 @@
+{
+  "session_id": "s-guard-0001",
+  "transcript_path": "{{PROJECT_DIR}}/transcript.jsonl",
+  "cwd": "{{PROJECT_DIR}}",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "{{PROJECT_DIR}}/src/config.js",
+    "content": "module.exports = { apiKey: \"{{SECRET}}\" };\n"
+  }
+}

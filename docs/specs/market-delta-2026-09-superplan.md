@@ -293,3 +293,18 @@ All inherited entries hold. One addition, from RC27 and RC35: **do not derive a 
 ### Sources read (all `2026-09-23` unless noted)
 
 Anthropic: `platform.claude.com/docs/en/about-claude/pricing` (raw table), `/docs/en/models/overview`; `code.claude.com/docs/en/model-config`, `/hooks`, `/skills`, `/plugins-reference`, `/claude-directory`, `/headless`, `/workflows`; the Claude Code `2.1.280` binary's skill loader. OpenAI: `developers.openai.com/api/docs/pricing` (embedded arrays, Standard tier), `/api/docs/models/gpt-5.6`, `/api/docs/changelog`; `learn.chatgpt.com/docs/config-file/config-basic`, `/config-file/config-sample`, `/agent-configuration/subagents`, `/docs/hooks`; `openai/codex` `codex-rs/config/src/hook_config.rs`, `codex-rs/hooks/src/schema.rs` @ `c44deff7`. Google: `ai.google.dev/gemini-api/docs/pricing`, `/models`, `/deprecations`, `/generate-content/caching`, `/billing`; `docs.cloud.google.com/gemini-enterprise-agent-platform/models/context-cache/context-cache-overview`; `google-gemini/gemini-cli` `packages/core/src/hooks/{types,hookRegistry,hookRunner}.ts`, `packages/core/src/core/client.ts`, `packages/cli/src/config/settingsSchema.ts` @ `62364cb2`; `geminicli.com/docs/hooks/`, `/docs/hooks/reference`, `/docs/cli/skills/`. GitHub: `docs.github.com/en/copilot/reference/hooks-reference`, `github/copilot-cli` `changelog.md`. Agent Skills: `agentskills.io/specification`. Read `2026-09-22`: the Copilot `1.0.85` release body, `openai/codex` `core-plugins/src/marketplace.rs`, Antigravity's plugins page.
+
+## Corrections — reality check `2026-10-11`
+
+The open-move ledger of the `2026-10-11` reality check re-verified every status in this plan. These statuses did not survive; the rows above keep their original text as the record, and this list is what is true now.
+
+- **Item 5c (native vs markdown oracle) is done**, not blocked: R19 and R23 measured it (5/5 against 5/5, runs `run-20260910-214704-wgJSxr` and `run-20260910-235141-ITzx9T`), and MI-002 records it. The §3.2 move is closed.
+- **Item 11 (body budget) is closed by measurement**, not parked: RC25 says the R21 A/B closes it, and S8 (`3.32.0`) split the bundle's long skills (no bundle `SKILL.md` over 8,000 bytes). Default installs still emit long skill bodies; that is a size note, not this item.
+- **Items 4c and 4d (Copilot and Codex live installs) are done**: `live-gate-copilot` and `live-gate-codex` pass in every full tier-0 run since `2026-09-26`. Antigravity stays deferred (no `agy`).
+- **Item 4f (marketplaces exercised live) is half done**: the Codex gate adds `.agents/plugins/marketplace.json`; Copilot's `.github/plugin/marketplace.json` is still not exercised (the gate installs from a path).
+- **Item 3b's blocker is gone**: `claude plugin eval` reported `AGENT_SCOPE: scoped` live on `2026-09-26`. The follow-up (a scoped-name pass over plugin prose, or a check that bare names resolve) is undecided and unbuilt.
+- **The Gemini live-gate blocker is wrong**: Gemini CLI is installed and `live-gate-gemini` passes. The real blocker for R29 and R44 is auth (a personal login is refused; no `GEMINI_API_KEY`), and R44 has no Gemini path in the context monitor. R39 is done and does not belong in "needs machines".
+- **Item 13 (unpriced ids) is narrower**: R26, R27 and M19 priced most of them; still unpriced are a bare `gpt-6`, `gpt-oss-120b` and `mai-code-1.1-flash`.
+- **Item 5a's sub-item "split `transition.md`"** was dropped without a record; the file is unchanged.
+
+The open items carried forward are in the Addendum of `docs/specs/market-ideas-2026-10.md` (R45–R49).

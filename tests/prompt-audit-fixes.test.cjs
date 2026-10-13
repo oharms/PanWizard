@@ -126,3 +126,45 @@ describe('facts in shipped prompts', () => {
     assert.doesNotMatch(read('agents/pan-knowledge.md'), /prompt cache has warmed/i);
   });
 });
+
+// L3: nine commands @-included the engine module they call (`bin/lib/cost.cjs` …),
+// pasting hundreds of lines of JavaScript into the session on every run. The command
+// runs the module through pan-tools; its source is never the model's business.
+describe('no engine source in a prompt (L3)', () => {
+  test('no shipped prompt @-includes a bin/lib/*.cjs module', () => {
+    const offenders = shipped().filter((f) => /^@\S*bin\/lib\/[A-Za-z0-9_-]+\.cjs\s*$/m.test(read(f)));
+    assert.deepEqual(offenders, []);
+  });
+});
+
+// L4 (absorbs M39): a spawn without a model inherits whatever the session runs on,
+// and a general-purpose spawn told to "read your role file" gets every tool instead
+// of the role's own. Every spawn names its model; a role spawn names its agent type.
+describe('typed spawns (L4)', () => {
+  const spawns = () => {
+    const out = [];
+    for (const f of shipped().filter((x) => !x.startsWith('agents/'))) {
+      const lines = read(f).replace(/\r\n/g, '\n').split('\n');
+      lines.forEach((l, i) => {
+        if (!/^\s*Task\(/.test(l)) return;
+        let j = i;
+        while (j < lines.length - 1 && !/^\s*\)\s*$/.test(lines[j]) && !/description="[^"]*"\s*\)\s*$/.test(lines[j])) j++;
+        out.push({ at: `${f}:${i + 1}`, block: lines.slice(i, j + 1).join('\n') });
+      });
+    }
+    return out;
+  };
+
+  test('the scan finds the spawns it should', () => {
+    assert.ok(spawns().length >= 20, `only ${spawns().length} spawns found: the scanner broke`);
+  });
+
+  test('every spawn in a shipped workflow or command names its model', () => {
+    assert.deepEqual(spawns().filter((s) => !/\bmodel\s*=/.test(s.block)).map((s) => s.at), []);
+  });
+
+  test('no general-purpose spawn is told to read a role file: it names the agent type instead', () => {
+    const offenders = spawns().filter((s) => /subagent_type="general-purpose"/.test(s.block) && /agents\/pan-[a-z-]+\.md for your role/.test(s.block));
+    assert.deepEqual(offenders.map((s) => s.at), []);
+  });
+});

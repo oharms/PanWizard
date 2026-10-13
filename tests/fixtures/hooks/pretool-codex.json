@@ -1,0 +1,9 @@
+{
+  "session_id": "s-guard-0002",
+  "cwd": "{{PROJECT_DIR}}",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "apply_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Add File: src/config.js\n+module.exports = { apiKey: \"{{SECRET}}\" };\n*** End Patch\n"
+  }
+}

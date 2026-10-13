@@ -207,7 +207,22 @@ describe('pan-context-monitor — measured against where the host compacts (O7)'
         fs.mkdirSync(path.join(d, '.claude'), { recursive: true });
         fs.writeFileSync(path.join(d, '.claude', f), JSON.stringify({ autoCompactWindow: v * 100000 }));
       }
-      assert.deepEqual(readClaudeSettings(proj, home).map((x) => x.autoCompactWindow), [100000, 200000, 300000]);
+      assert.deepEqual(readClaudeSettings(proj, home, '').map((x) => x.autoCompactWindow), [100000, 200000, 300000]);
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
+
+  test('the user settings come from CLAUDE_CONFIG_DIR when it is set, not from the home directory', () => {
+    const os = require('os');
+    const path = require('path');
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ctxcfg-'));
+    try {
+      const home = path.join(base, 'h');
+      const cfg = path.join(base, 'cfg');
+      fs.mkdirSync(path.join(home, '.claude'), { recursive: true });
+      fs.writeFileSync(path.join(home, '.claude', 'settings.json'), JSON.stringify({ autoCompactWindow: 300000 }));
+      fs.mkdirSync(cfg, { recursive: true });
+      fs.writeFileSync(path.join(cfg, 'settings.json'), JSON.stringify({ autoCompactWindow: 400000 }));
+      assert.deepEqual(readClaudeSettings(null, home, cfg).map((x) => x.autoCompactWindow), [400000]);
     } finally { fs.rmSync(base, { recursive: true, force: true }); }
   });
 });

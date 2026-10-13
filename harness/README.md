@@ -12,6 +12,9 @@ node harness/src/run.cjs --tier 2 --max-usd 50 --repeat 5 --scenario native-exec
 node harness/src/run.cjs --scenario install-matrix          # one scenario
 node harness/src/run.cjs --repo <dir> --keep                 # pack another checkout; keep the extracted artifact after the run
 node harness/src/run.cjs --no-ledger                        # leave the tracked harness/ledger.jsonl untouched (CI)
+node harness/src/run.cjs --controls                         # also run every control: each sabotage must turn its scenario red
+node harness/src/run.cjs --tier 2 --max-usd 50 --repeat 12 --until-decided --scenario quick-mode   # stop the reps once SPRT decides
+node harness/src/run.cjs --tier 2 --max-usd 25 --repeat 5 --arm no-guidance --scenario quick-mode # the no-guidance baseline arm
 node harness/src/run.cjs --help
 ```
 
@@ -52,6 +55,16 @@ the cap per scenario: a chain rep on the two-plan seed measured **$3–6**, so f
 one chain scenario want about `--max-usd 25`, and both chain scenarios together `--max-usd 50`. Model steps run with `--dangerously-skip-permissions`
 and, when the workspace carries `.mcp.json`, with `--strict-mcp-config` so the agent sees
 exactly one `pan` server — the workspace's.
+
+## Statistics: intervals, decisions, arms
+
+Five reps cannot separate two variants: 4/5 passes has a 95% interval of [0.38, 0.96]. `src/stats.cjs` (pure, no dependencies) gives the runner and the ledger what a claim needs:
+
+- **Every rate carries its interval.** The report's completion table shows the pass rate with its 95% Wilson interval, and pass^3 (the chance that three runs in a row all pass, tau-bench's measure) once a scenario has three reps. The markdown chain's 3/5 of `2026-09-10` re-renders as `3/5 [0.23, 0.88]`, pass^3 0.10.
+- **`--until-decided`** stops a model-tier scenario's reps once Wald's sequential test decides (pass rate 0.8 against 0.5, alpha 0.05, beta 0.2), so a clear result costs fewer reps.
+- **Comparisons** use `pairedSignTest` and `sprtPaired` (does B beat A on the same items?) or `nonInferiority` (Newcombe interval for the difference against a margin). `powerN` plans the reps: telling 0.6 from 0.8 at 80% power takes 79 per arm, which is why a wider matrix waits.
+- **Arms** are declared variants of a scenario, the same shape as a control (`arms: [{id, why, delete|write|replace, after?}]`), applied after install and measured rather than expected to fail. `--arm <id>` runs the scenarios that declare it. `quick-mode` carries `no-guidance`, the executor reduced to a one-line role: the baseline a change to the executor prompt is measured against (M43).
+- **Ledger classes.** A model-free finding promotes at once (tier 0 is deterministic). A model-tier finding counts every failure and every pass of its step, and promotes once it has failed at least twice and its failure rate's 95% lower bound reaches 0.2; with passes on record below that, it is `flaky`. An entry from before the counts keeps the old two-run rule.
 
 ## Headless background-wait ceiling
 
@@ -94,6 +107,18 @@ Assertion kinds: `exit:<n>`, `file:<rel>`, `absent:<rel>`, `glob:<pattern>`,
 `count:<pattern>=<n>`, `json:<path>`, `json:<path>=<value>`, `json!:<path>`,
 `stdout~<regex>`, `stderr~<regex>`, `rpc:<id>.<path>[=<value>]`. Every kind has a
 both-direction test in `tests/harness.test.cjs`; add a kind there first.
+
+### Controls
+
+A scenario that cannot fail measures nothing. Every tier-0 scenario declares `controls`: at least one sabotage that must turn it red, and `validateScenario` refuses a tier-0 scenario without one.
+
+```json
+"controls": [
+  { "id": "no-manifest", "after": 0, "delete": "bundle/plugin.json", "why": "A bundle without its manifest is not a plugin." }
+]
+```
+
+Each control names exactly one sabotage, `delete: <path>`, `write: {path, content}` or `replace: {path, find, with}`, on a path inside the workspace or `<other>`. `after` is the index of the step it follows (default `-1`: after install and seed, before the first step). `--controls` runs each passing scenario once more per control, in a fresh workspace, and reports a **Controls** table: `killed` is the expected verdict. A control the scenario **survives** is a failure, because the scenario's assertions do not measure what they claim; a control that cannot be applied (its file or string is missing) is an error, because it changes nothing. Controls do not run by default, since they multiply a run's length; their failures never reach the ledger.
 
 Every step carries a `why`. That is not decoration — it is what makes a finding readable
 when it surfaces months later, and the runner writes it under each failure in `report.md`.

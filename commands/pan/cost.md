@@ -16,10 +16,6 @@ Reads `.planning/metrics/tokens.jsonl` — an append-only log where each line is
 Default output is JSON for piping. Use `--format table` for human-readable tables or `--format chart` for an ASCII bar chart of daily spend; both print text, with or without `--raw`.
 </objective>
 
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/cost.cjs
-</execution_context>
-
 <subcommands>
 
 ### `report` (default)

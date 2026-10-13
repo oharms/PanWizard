@@ -12,7 +12,7 @@
  *      holds failing tool calls (the record shape of tests/fixtures/hooks/
  *      subagent-tool-errors-claude.json), writes error/tool_error events.
  *   2. The installed engine records a verification with gaps. A passing
- *      re-verification closes them (auto-fix, attempt 2). A reviewer report with
+ *      re-verification that names them in gaps_closed closes them (attempt 2). A reviewer report with
  *      warnings is recorded and deferred with a reason, and `findings debt` reads
  *      the deferral back.
  *   3. `optimize learn` sees the captured failures and the verdicts.
@@ -82,16 +82,16 @@ const toolErrors = events.filter((e) => e.category === 'tool_error');
 check(toolErrors.length === 4, `the hook wrote 4 tool_error events (got ${toolErrors.length})`);
 check(toolErrors.every((e) => !String(e.context && e.context.message).includes(FAKE_SECRET)), 'no planted secret reached the trace');
 
-// ── 2. Verdicts, auto-fix, dispositions, debt ───────────────────────────────
+// ── 2. Verdicts, evidence-based closing, dispositions, debt ───────────────────────────────
 const phaseDir = path.join(ws, '.planning', 'phases', '01-greetings');
 if (!check(fs.existsSync(phaseDir), 'the seed has phase 01-greetings')) done();
 const verification = path.join(phaseDir, '01-verification.md');
 fs.writeFileSync(verification, '---\nphase: 01-greetings\nstatus: gaps_found\ngaps:\n  - truth: "greet() says hello"\n    status: failed\n    reason: "greet() is a stub"\n    artifacts:\n      - path: "src/greet.js"\n---\n\n# Phase 1 verification\n');
 const first = json(['findings', 'record', '--phase', '1', '--file', verification]);
 check(first.recorded === true && first.outcome === 'fail' && first.attempt === 1 && first.findings === 1, `a gaps_found verification is recorded as attempt 1 with one finding (${JSON.stringify(first)})`);
-fs.writeFileSync(verification, '---\nphase: 01-greetings\nstatus: passed\n---\n\n# Phase 1 re-verification\n');
+fs.writeFileSync(verification, '---\nphase: 01-greetings\nstatus: passed\nre_verification:\n  previous_status: gaps_found\n  gaps_closed:\n    - "greet() says hello"\n---\n\n# Phase 1 re-verification\n');
 const second = json(['findings', 'record', '--phase', '1', '--file', verification]);
-check(second.attempt === 2 && second.auto_fixed === 1, `the passing re-verification is attempt 2 and closes the gap (${JSON.stringify(second)})`);
+check(second.attempt === 2 && second.resolved === 1, `the passing re-verification is attempt 2 and closes the gap it names (${JSON.stringify(second)})`);
 const FENCE = '`'.repeat(3);
 const reviewFile = path.join(phaseDir, '01-review.md');
 fs.writeFileSync(reviewFile, `## Code Review — Phase 01\n\n### Verdict\nPASS_WITH_WARNINGS\n\n${FENCE}pan-verdict\n${JSON.stringify({ contract: '1.0', agent: 'pan-reviewer', phase: '01', verdict: 'PASS_WITH_WARNINGS', outcome: 'pass', findings: [{ class: 'quality', severity: 'medium', where: 'src/greet.js:3', summary: 'greet() mixes formatting and I/O' }] })}\n${FENCE}\n`);

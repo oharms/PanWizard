@@ -26,5 +26,8 @@
         "rpc:5.error.code=-32602"
       ],
       "why": "id 1: every tool advertises cwd. id 2 vs 3: the SAME tool from the SAME foreign directory succeeds only when cwd names the project — the load-bearing contrast (roadmap analyze errors on a directory with no roadmap, by design). id 4: a second tool for good measure. id 5: a relative cwd is a bad REQUEST (-32602), not a spawn with a bad root." }
+  ],
+  "controls": [
+    {"id":"no-server","delete":".claude/pan-wizard-core/mcp/server.cjs","why":"The bridge is spawned from the installed copy; without it no request can be answered."}
   ]
 }

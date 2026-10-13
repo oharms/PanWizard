@@ -584,6 +584,19 @@ describe('state record-metric command', () => {
     assert.match(state, /\*Updated after each plan completion\*\n\n## Accumulated Context/);
   });
 
+  test('on the shipped template, the row it writes matches the table header it lands under', () => {
+    // The template's table was headed Phase | Plans | Total | Avg/Plan while every row
+    // is one plan's Phase-and-plan | duration | tasks | files, so each row sat under the
+    // wrong headers.
+    const tpl = fs.readFileSync(path.join(__dirname, '..', 'pan-wizard-core', 'templates', 'state.md'), 'utf-8');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'state.md'), tpl);
+    assert.ok(runPanTools('state record-metric --phase 05 --plan 01 --duration 12min --tasks 4 --files 6', tmpDir).success);
+    const state = fs.readFileSync(path.join(tmpDir, '.planning', 'state.md'), 'utf-8');
+    const m = state.match(/\| ([^|\n]+) \| ([^|\n]+) \| ([^|\n]+) \| ([^|\n]+) \|\n\|[-| ]+\|\n\| Phase 05 P01 \| 12min \| 4 tasks \| 6 files \|/);
+    assert.ok(m, 'the row lands directly under a four-column header');
+    assert.deepEqual(m.slice(1).map((c) => c.trim()), ['Plan', 'Duration', 'Tasks', 'Files']);
+  });
+
   test('replaces None yet placeholder when adding first metric', () => {
     fs.writeFileSync(
       path.join(tmpDir, '.planning', 'state.md'),

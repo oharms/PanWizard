@@ -841,3 +841,18 @@ describe('convertClaudeToCopilotAgent — repository instructions reach PAN suba
     }
   });
 });
+
+// R48: Copilot 1.0.93 ignores user settings in ~/.copilot/config.json (now its internal
+// state), so PAN's attribution must come from settings.json alone. A stale
+// `attribution` in config.json used to decide it whenever settings.json had none.
+describe('Copilot commit attribution reads settings.json only (R48)', () => {
+  test('the Copilot branch of getCommitAttribution names settings.json and never config.json', () => {
+    const src = fs.readFileSync(INSTALLER, 'utf8');
+    const start = src.indexOf("} else if (runtime === 'copilot') {", src.indexOf('function getCommitAttribution'));
+    const end = src.indexOf('} else {', start);
+    assert.ok(start > 0 && end > start, 'the Copilot branch is where it was');
+    const branch = src.slice(start, end);
+    assert.match(branch, /'settings\.json'/);
+    assert.doesNotMatch(branch, /'config\.json'/);
+  });
+});

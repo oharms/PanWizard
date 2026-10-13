@@ -20,7 +20,6 @@ Unchanged from Spec B v1's X-9. Already narrow enough to stand alone.
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/whatif.cjs
 @~/.claude/agents/pan-counterfactual.md
 </execution_context>
 
@@ -80,7 +79,7 @@ This writes `.planning/counterfactuals/<phase>-<slug>.md`. The file belongs to t
 pan-tools whatif cleanup --worktree <path> --branch <name> --force
 ```
 
-Removes the worktree directory and deletes the counterfactual branch. Best-effort: warnings are surfaced but don't block.
+Removes the worktree directory and deletes the counterfactual branch. Pass the `worktree.worktree_path` and `worktree.branch` that `whatif prepare` returned, unchanged. Cleanup refuses (exit 1, nothing removed) a branch outside `pan-whatif/` and a worktree that is not checked out on that branch, so it can never delete your own work. Otherwise best-effort: warnings are surfaced but don't block.
 
 ### Stage 5 — Confirm
 

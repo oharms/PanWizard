@@ -53,7 +53,7 @@ ELSE (default):
 1. **Validate phase** — error if the phase number is missing or not in `roadmap.md`.
 2. **Prime context** — resolve the phase directory; gather `{phase}-context.md`, `{phase}-research.md`, and the phase boundary from `roadmap.md`.
 3. **Design** — spawn `pan-designer` with a `<files_to_read>` block (context, research, roadmap boundary, `CLAUDE.md`). It fills in `templates/design.md` at the `phase` tier (`spike` if `--spike`).
-4. **Verify (reflexion loop)** — spawn `pan-design-checker` with the drafted design + the boundary source:
+4. **Verify (reflexion loop)** — spawn `pan-design-checker` with the drafted design + the boundary source, plus an `<open_findings>` block holding `pan-tools findings list --phase {phase} --agent pan-design-checker --status open` (empty on the first check):
    - If it PASSES → done.
    - If it finds gaps (iteration 1) → `pan-designer` revises (address genuine gaps only), re-check.
    - If it finds gaps (iteration 2) → final revision, record remaining gaps as caveats.
@@ -62,7 +62,7 @@ ELSE (default):
      ```bash
      node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "{phase}" --agent pan-design-checker --file "{phase_dir}/{padded_phase}-design-check.md" --raw
      ```
-     A re-check is the next attempt and closes the gaps it no longer reports. When the final iteration still has gaps, record them as the caveats they are before writing the design:
+     A re-check is the next attempt. It answers each earlier gap in `resolutions`, and the record closes the ones answered `resolved` with evidence; a gap it neither reports nor answers stays open. When the final iteration still has gaps, record them as the caveats they are before writing the design:
      ```bash
      node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "{phase}" --agent pan-design-checker --open --as deferred --reason "design caveat after 2 revision iterations"
      ```

@@ -81,6 +81,7 @@
     "VALID_COMMIT_TYPES:object",
     "appendErrorPattern:function",
     "appendSessionSummary:function",
+    "braveFreshness:function",
     "cmdBatchCommit:function",
     "cmdCommit:function",
     "cmdCurrentTimestamp:function",
@@ -419,11 +420,13 @@
     "cmdFindingsRecord:function",
     "disposeFindings:function",
     "findingIdsIn:function",
+    "findingsChurn:function",
     "findingsDebt:function",
     "foldFindings:function",
     "listFindings:function",
     "readLedger:function",
-    "recordVerdict:function"
+    "recordVerdict:function",
+    "sameFinding:function"
   ],
   "focus.cjs": [
     "allocateBudget:function",
@@ -706,6 +709,13 @@
     "revertApply:function",
     "unpromotePattern:function"
   ],
+  "phase-gate.cjs": [
+    "MODES:object",
+    "cmdPhaseGate:function",
+    "gateMode:function",
+    "phaseGate:function",
+    "recordGateOverride:function"
+  ],
   "phase-remove.cjs": [
     "cmdPhaseRemove:function",
     "collectDirsToRenumber:function",
@@ -734,6 +744,7 @@
   ],
   "phase.cjs": [
     "blockedPlans:function",
+    "buildPlanIndex:function",
     "classifyPlanTier:function",
     "cmdFindPhase:function",
     "cmdPhaseAdd:function",
@@ -743,6 +754,7 @@
     "cmdPhasePlanIndex:function",
     "cmdPhaseRemove:function",
     "cmdPhasesList:function",
+    "dependencyNames:function",
     "markPhaseCompleteInRoadmap:function",
     "removePhaseFromDisk:function",
     "renumberDecimalPhases:function",
@@ -911,18 +923,21 @@
     "removeQuotes:function"
   ],
   "verdict.cjs": [
-    "AUTO_FIX_EXEMPT:object",
     "DISPOSITIONS:object",
     "FINDING_CLASSES:object",
+    "FINDING_ID_RE:object",
     "KNOWN_VERDICTS:object",
     "LIMITS:object",
     "OUTCOMES:object",
     "REASON_REQUIRED:object",
+    "RESOLUTION_STATUSES:object",
     "SEVERITIES:object",
     "VERDICT_CONTRACT:string",
     "comparablePhase:function",
+    "failWordFor:function",
     "findVerdictBlocks:function",
     "findingId:function",
+    "lowerByCodeFacts:function",
     "normaliseEol:function",
     "outcomeForVerdict:function",
     "parseVerdictText:function",
@@ -945,6 +960,23 @@
     "parseConventionRules:function",
     "runDriftCheck:function"
   ],
+  "verify-integrity.cjs": [
+    "ALWAYS_TRUE_RE:object",
+    "ASSERT_RE:object",
+    "SKIP_RE:object",
+    "checkTestIntegrity:function",
+    "cmdVerifyTestIntegrity:function",
+    "isTestFile:function"
+  ],
+  "verify-plan-set.cjs": [
+    "PLAN_CHECKER:string",
+    "checkPlanSet:function",
+    "cmdVerifyPlanSet:function",
+    "planCheckStatus:function",
+    "planDrift:function",
+    "plansSha:function",
+    "plansShaFor:function"
+  ],
   "verify-preflight.cjs": [
     "cmdDepsValidate:function",
     "cmdPreflight:function"
@@ -957,8 +989,11 @@
   ],
   "verify-scope.cjs": [
     "LOCKFILES:object",
+    "TEST_FILE_RE:object",
+    "TEST_PATH_RE:object",
     "cmdVerifyScope:function",
     "cmdVerifyStale:function",
+    "committedFiles:function",
     "coveredFiles:function",
     "scopePhase:function",
     "verificationFreshness:function"

@@ -138,8 +138,10 @@ for (const rt of RUNTIMES) {
       const refs = fs.readdirSync(agentsRefDir).filter(f => f.startsWith('pan-') && f.endsWith('.md'));
       assert.ok(refs.length >= 15, `expected 15+ agent reference copies, got ${refs.length}`);
 
-      const skill = readSkill(tmpDir, 'pan-research-phase');
-      const match = skill.match(/(\S*pan-wizard-core\/agents\/pan-[a-z-]+\.md)/);
+      // what-if @-includes pan-counterfactual.md; research-phase used to, until its spawns
+      // named the agent type instead of a role file (L4).
+      const skill = readSkill(tmpDir, 'pan-what-if');
+      const match = skill.match(/@?([^\s@]*pan-wizard-core\/agents\/pan-[a-z-]+\.md)/);
       assert.ok(match, 'skill should reference the shared agents path');
       assert.ok(fs.existsSync(path.resolve(tmpDir, match[1])),
         `referenced agent copy should resolve: ${match[1]}`);

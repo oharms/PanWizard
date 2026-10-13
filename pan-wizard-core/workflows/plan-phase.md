@@ -280,8 +280,8 @@ Write to: {phase_dir}/{padded_phase}-research.md
 
 ```
 Task(
-  prompt="First, read ~/.claude/agents/pan-phase-researcher.md for your role and instructions.\n\n" + research_prompt,
-  subagent_type="general-purpose",
+  prompt=research_prompt,
+  subagent_type="pan-phase-researcher",
   model="{researcher_model}",
   description="Research Phase {phase}"
 )
@@ -383,8 +383,8 @@ Output consumed by /pan:exec-phase. Plans need:
 
 ```
 Task(
-  prompt="First, read ~/.claude/agents/pan-planner.md for your role and instructions.\n\n" + filled_prompt,
-  subagent_type="general-purpose",
+  prompt=filled_prompt,
+  subagent_type="pan-planner",
   model="{planner_model}",
   description="Plan Phase {phase}"
 )
@@ -392,11 +392,20 @@ Task(
 
 ## 9. Handle Planner Return
 
-- **`## PLANNING COMPLETE`:** Display plan count. If `--skip-verify` or `plan_checker_enabled` is false (from init): skip to step 13. Otherwise: step 10.
+- **`## PLANNING COMPLETE`:** Display plan count. If `--skip-verify` or `plan_checker_enabled` is false (from init): still run the code checks at the start of step 10 (`verify plan-set`; they cost no model call), send any errors back to the planner (step 12), then skip to step 13. Otherwise: step 10.
 - **`## GAP CLOSURE PLANS CREATED`:** (`--gaps` mode) Handle as `## PLANNING COMPLETE`.
 - **`## CHECKPOINT REACHED`:** Present to user, get response, spawn a fresh planner (step 8's Task) with the response added to its prompt
 
 ## 10. Spawn pan-plan-checker Agent
+
+**First, the checks code can make.** Run them before spending a checker:
+
+```bash
+PLAN_SET=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-set "${PHASE_NUMBER}")
+PLAN_SET_EXIT=$?
+```
+
+Exit 1 means the plan set is broken in a way no review can wave through: a roadmap requirement no plan lists, two plans in one wave modifying the same file, a `depends_on` that names no plan or a plan in the same or a later wave, or a cycle. Send `PLAN_SET`'s `errors` to the planner as the revision context (step 12; it counts as an iteration) and do not spawn the checker for this set. Exit 0: continue, and pass any `warnings` to the checker.
 
 Display banner:
 ```
@@ -426,6 +435,10 @@ Checker prompt:
 **Project instructions:** Read ./CLAUDE.md if exists — verify plans honor project guidelines
 **Project skills:** Check .agents/skills/ directory (if exists) — verify plans account for project skill rules
 </verification_context>
+
+<open_findings>
+{output of `pan-tools findings list --phase {phase_number} --agent pan-plan-checker --status open`: empty on the first check; on a re-check, answer each in `resolutions`}
+</open_findings>
 
 <expected_output>
 - ## VERIFICATION PASSED — all checks pass
@@ -457,7 +470,7 @@ The fallback reads the heading when the report carries no valid `pan-verdict` bl
 - **`passed`:** Display confirmation, proceed to step 13.
 - **`issues_found`:** Display issues, check iteration count, proceed to step 12.
 
-Each re-check in the revision loop overwrites the same file and is recorded again as the next attempt. The issues a revision resolved are closed by that record.
+Each re-check in the revision loop overwrites the same file and is recorded again as the next attempt. The checker answers each earlier issue in `resolutions`; the record closes the ones it answers `resolved` with evidence, and one it neither reports nor answers stays open.
 
 ## 12. Revision Loop (At Most 2 Revisions, 3 Checks)
 
@@ -491,8 +504,8 @@ Return what changed.
 
 ```
 Task(
-  prompt="First, read ~/.claude/agents/pan-planner.md for your role and instructions.\n\n" + revision_prompt,
-  subagent_type="general-purpose",
+  prompt=revision_prompt,
+  subagent_type="pan-planner",
   model="{planner_model}",
   description="Revise Phase {phase} plans"
 )
@@ -590,6 +603,7 @@ Task(
     </instructions>
   ",
   subagent_type="general-purpose",
+  model="$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-conductor --raw)",
   description="Execute Phase ${PHASE}"
 )
 ```

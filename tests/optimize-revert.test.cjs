@@ -159,6 +159,22 @@ describe('optimize revert — CLI and stats', () => {
     assert.deepEqual([byId.apply_id, byId.status], [json.apply_id, 'reverted']);
   });
 
+  test('--report resolves against --cwd, and a bare name is found in the reports dir', () => {
+    // It went straight to readFileSync, so it resolved against the shell's directory:
+    // `/pan:learn --experiment` passes --cwd and got ENOENT.
+    const elsewhere = require('os').tmpdir();
+    report('r1.md', [APPEND]);
+    report('r2.md', [CREATE]);
+    fs.writeFileSync(mem('pan-executor.md'), '# memory\n');
+    const rel = JSON.parse(runPanTools(`optimize apply --report .planning/optimization/reports/r1.md --cwd "${dir}"`, elsewhere).output);
+    assert.equal(rel.report, 'r1.md');
+    assert.ok(!rel.error, JSON.stringify(rel));
+    const bare = JSON.parse(runPanTools(`optimize apply --report r2.md --cwd "${dir}"`, elsewhere).output);
+    assert.equal(bare.report, 'r2.md');
+    assert.ok(!bare.error, JSON.stringify(bare));
+    assert.ok(fs.existsSync(mem('pan-verifier.md')), 'the bare-named report was applied');
+  });
+
   test('optimize revert with no target, or an unknown one, exits 1', () => {
     for (const args of ['optimize revert', 'optimize revert apl_20260101_000000_abcd']) {
       const r = runPanTools(args, dir);

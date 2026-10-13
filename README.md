@@ -101,7 +101,7 @@ PAN is the context engineering layer that makes Claude Code reliable. It breaks 
 
 - **A human merges.** The Release squad prepares a squash-merge and surfaces an `always-ask` approval instead of merging; pair it with branch protection on your repo, which is what makes that unbypassable rather than merely instructed. Recovery is `git revert` or the previous tag, never a force-push.
 - **Isolated builders.** Each Build agent forks its own `army/<task>` branch + git worktree, so parallel agents never share a file.
-- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn by Mission Control's protocol (prompt-enforced; the MCP `pan_next_action` path enforces the cycle cap, the budget cap when `caps.enforceBudget` is set, an `aborted` flag the caller sets (it does not read the abort file) and the human gate in code — delegation depth is bounded by which agents hold the `Task` tool) — the same harness as hierarchical exec, at campaign scale.
+- **Caps.** Delegation-depth cap, per-cycle spawn + budget ceilings, and a `.planning/orchestration/abort` kill-switch, re-checked before every spawn by Mission Control's protocol (prompt-enforced; the MCP `pan_next_action` path applies the cycle cap, the budget cap (when `caps.enforceBudget` is set) and an `aborted` flag to the counts and caps the caller passes in — it tracks none of them and does not read the abort file; only the merge is gated independently of the caller, by `pan_confirm_merge`'s human approval token — delegation depth is bounded by which agents hold the `Task` tool) — the same harness as hierarchical exec, at campaign scale.
 
 **Run it over days.** `--schedule` arms a resumable campaign with a per-day budget that burns the backlog down across sessions (the per-day budget is advisory unless the schedule is armed with `--enforce-budget`, which pauses the day's run once spent — `campaign status` shows the day's spend — and an external scheduler triggers each `--continue`) — and *still* waits for you at every merge. **Autonomy runs up to the irreversible step; a human is at the step.**
 
@@ -415,7 +415,7 @@ Automated verification checks that code exists and tests pass. `/pan:verify-phas
 
 The system:
 
-1. **Gates on the test suite** — a failing (or non-running) suite forces the verdict to `gaps_found`; the must-have checks still run so the report is complete
+1. **Gates on the test suite** — the verifier's protocol sets the verdict to `gaps_found` when the suite fails or cannot run, and the must-have checks still run so the report is complete; the recorder flags a failed gate filed under `passed` (`test_gate_failed_under_pass`) but does not overwrite the status
 2. **Checks every must-have** — each phase promise is verified against the code, not the task list
 3. **Reports the gaps** — a verification report with a per-truth status and the recommended fix plans
 4. **Hands the gaps to the planner** — `/pan:plan-phase N --gaps` writes the fix plans (`gap_closure: true`); `/pan:exec-phase N --gaps-only` runs just those
@@ -528,7 +528,7 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 
 The orchestrator never does heavy lifting. It spawns agents, waits, integrates results.
 
-**The result:** You can run an entire phase — deep research, multiple plans created and verified, thousands of lines of code written across parallel executors, automated verification against goals — and your main context window stays at 30-40%. The work happens in fresh subagent contexts. Your session stays fast and responsive.
+**The result:** You can run an entire phase — deep research, multiple plans created and verified, thousands of lines of code written across parallel executors, automated verification against goals — and your main context window stays small, because the work happens in fresh subagent contexts. Your session stays fast and responsive.
 
 ### Reasoning-Trace Handoff
 
@@ -582,7 +582,7 @@ You're never locked in. The system adapts.
 | **Context rot prevention** | Phase-scoped fresh context windows (native sub-agents on Claude Code) | No — context degrades over time | No (Cline: condensing) | No |
 | **Multi-agent** | Specialized agents, parallel waves | Parallel agents in worktrees (Cursor) | Single agent (Cline: subagents) | Custom agents as subagents |
 | **Plan → Verify loop** | Research → plan → verify with iteration | Agent generates plan | Plan mode (Cline) | Plan step |
-| **Post-execution verification** | Auto verifier + human UAT | Iterative error-fix | Manual test runs | Auto-fix loop |
+| **Post-execution verification** | Auto verifier with a test-suite gate (UAT is a template no command runs) | Iterative error-fix | Manual test runs | Auto-fix loop |
 | **Session persistence** | state.md + pause/resume + handoff | Memory tool / transcripts | None / checkpoints (Cline) | Copilot Memory, CLI session recovery |
 | **Runtime support** | Claude Code, OpenCode, Gemini CLI, Codex, Copilot CLI | IDE-locked | Terminal / VS Code | VS Code + CLI |
 | **Zero dependencies** | Yes (Node builtins only) | No (Electron) | No (Python / Node) | No |
@@ -630,7 +630,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:army "<goal>"` | Campaign-scale delivery: Mission Control delegates a whole-project goal to architecture/build/quality/release squads with branch-per-agent worktrees, behind CI + a human merge gate; `--schedule`/`--continue` run it over time |
+| `/pan:army "<goal>"` | Campaign-scale delivery: Mission Control delegates a whole-project goal to architecture/build/quality/release squads with branch-per-agent worktrees, behind CI + a human merge gate (prompt-enforced on `/pan:army`; enforced in code on the MCP path); `--schedule`/`--continue` run it over time |
 
 ### Phase Management
 
@@ -662,7 +662,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` fixes the issues it marks repairable |
 | `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat and stale or expired memory entries, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs) and Claude Code's own memory index (reported, never edited); `--apply` executes the safe fixes — poisoned ledgers are quarantined by rename (only the newest quarantine copy is kept), and settled `state.md` history, shipped roadmap phases and stale memory entries are archived rather than dropped |
 | `/pan:links [--strict] [--doc-root <dir>] [--source-root <dir>]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027). The default roots are PAN's own source layout, so pass your project's roots |
-| `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase based on UAT criteria |
+| `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase from its summaries, context decisions and verification report |
 | `/pan:milestone-cleanup` | Archive accumulated phase directories from completed milestones |
 | `/pan:retro` | Milestone retrospective — estimation accuracy, verification patterns, gap analysis |
 | `/pan:patches` | Restore local modifications after a PAN update |

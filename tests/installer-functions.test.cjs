@@ -1766,7 +1766,7 @@ describe('buildNativeWorkflowScripts', () => {
     const s = scripts.find(x => x.name === 'pan-exec-waves.js');
     const body = s.content.replace(/^export const meta/, 'const meta');
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-    const run = async (verifierEnabled) => {
+    const run = async (verifierEnabled, gateVerdict = { ok: true, mode: 'warn', reasons: [] }) => {
       const spawned = [];
       const agent = async (prompt, opts = {}) => {
         spawned.push(opts.agentType || opts.label);
@@ -1777,6 +1777,7 @@ describe('buildNativeWorkflowScripts', () => {
         }
         if (opts.agentType === 'pan-executor') return { plan_id: '01-01', status: 'complete', self_check: 'passed', commits: 1 };
         if (opts.agentType === 'pan-verifier') return { status: 'passed', summary: 'ok' };
+        if (opts.label === 'gate') return gateVerdict;
         return {};
       };
       const parallel = async (thunks) => Promise.all(thunks.map((t) => t()));
@@ -1788,8 +1789,15 @@ describe('buildNativeWorkflowScripts', () => {
     assert.equal(off.result.verification, null);
     assert.match(off.result.next, /workflow\.verifier is off/);
     const on = await run(true);
-    assert.deepEqual(on.spawned, ['index', 'pan-executor', 'pan-verifier']);
+    assert.deepEqual(on.spawned, ['index', 'pan-executor', 'pan-verifier', 'gate']);
     assert.equal(on.result.verification.status, 'passed');
+    assert.equal(on.result.halted, undefined);
+    // V1: a refusal from the phase gate halts the script with the reasons.
+    const refused = await run(true, { ok: false, mode: 'warn', reasons: [{ code: 'open_findings', detail: '1 open' }] });
+    assert.equal(refused.result.halted, 'phase_gate');
+    assert.match(refused.result.next, /open_findings/);
+    const silent = await run(true, {});
+    assert.equal(silent.result.halted, 'phase_gate', 'a gate step that returns no verdict is not a pass');
   });
 });
 
@@ -1809,7 +1817,7 @@ describe('HOOK_EVENT_MAP', () => {
   test('Gemini uses its own vocabulary: AfterAgent for the stop guard, nothing for the monitor or loggers (R29)', () => {
     assert.deepEqual(
       { ...lib.HOOK_EVENT_MAP.gemini },
-      { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null,
+      { surface: 'settings.json', sessionStart: 'SessionStart', preToolUse: 'BeforeTool', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null,
         compactMark: 'PreCompress', compactInject: 'AfterTool' });
     assert.equal(lib.HOOK_EVENT_MAP.claude.stop, 'Stop', 'Claude keeps its Stop event for the guard');
   });

@@ -11,8 +11,9 @@
 // hooks/pan-state-reinject.js after compaction.
 //
 // Installed by the PAN installer as <opencode config dir>/plugins/pan-wizard.js,
-// beside the `{"type":"commonjs"}` package.json PAN writes there, so this file is
-// CommonJS and exports the plugin module shape `{ id, server }`.
+// below the `{"type":"commonjs"}` package.json PAN writes in the config dir, so this file is
+// CommonJS and exports one object both loaders accept: `{ id, server, setup }`
+// (OpenCode 1 calls server(), OpenCode 2 calls setup()).
 //
 // Inert unless the project is a PAN project with work in flight (a state.md naming
 // a current phase and a roadmap.md with an unticked phase). Never writes anything.
@@ -96,16 +97,43 @@ function compactionContext(directory) {
   return block.length > BLOCK_MAX ? block.slice(0, BLOCK_MAX - 1) + '…' : block;
 }
 
+function directoryOf(ctx) {
+  return (ctx && (ctx.directory || ctx.worktree)) || process.cwd();
+}
+
+/** Push PAN's block onto the first array target; fail-open, inert outside work in flight. */
+function pushBlock(directory, target) {
+  try {
+    if (!Array.isArray(target)) return;
+    const block = compactionContext(directory);
+    if (block) target.push(block);
+  } catch { /* fail open: a compaction without PAN's block beats a broken one */ }
+}
+
+// OpenCode 1: the loader calls server() and reads its hook map.
 async function server(ctx) {
-  const directory = (ctx && (ctx.directory || ctx.worktree)) || process.cwd();
+  const directory = directoryOf(ctx);
   return {
     'experimental.session.compacting': async (input, output) => {
-      try {
-        const block = compactionContext(directory);
-        if (block && output && Array.isArray(output.context)) output.context.push(block);
-      } catch { /* fail open: a compaction without PAN's block beats a broken one */ }
+      pushBlock(directory, output && output.context);
     },
   };
 }
 
-module.exports = { id: 'pan-wizard', server };
+// OpenCode 2: the loader requires `setup` (or `effect`) and hooks register through
+// `ctx.session.hook(name, fn)` (opencode.ai/v2/docs/build/plugins, migrate-v1). The
+// compaction event's prompt parts are `system` (read from the 2.0 binary); `context`
+// is the documented v1 name and the fallback.
+function setup(ctx) {
+  try {
+    const directory = directoryOf(ctx);
+    const session = ctx && ctx.session;
+    if (!session || typeof session.hook !== 'function') return;
+    session.hook('compaction', async (event) => {
+      if (!event) return;
+      pushBlock(directory, Array.isArray(event.system) ? event.system : event.context);
+    });
+  } catch { /* fail open: a plugin that cannot register leaves the session as it was */ }
+}
+
+module.exports = { id: 'pan-wizard', server, setup };

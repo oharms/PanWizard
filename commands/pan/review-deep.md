@@ -24,8 +24,6 @@ Consolidates Spec B v1's X-4 (self-review) + X-12 (harden) into a single command
 </objective>
 
 <execution_context>
-@~/.claude/pan-wizard-core/bin/lib/review-deep.cjs
-@~/.claude/pan-wizard-core/bin/lib/bus.cjs
 @~/.claude/agents/pan-hardener.md
 @~/.claude/agents/pan-meta-reviewer.md
 </execution_context>

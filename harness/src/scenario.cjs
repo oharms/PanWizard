@@ -50,9 +50,10 @@ function validateScenario(s, fileName = '<inline>') {
     if (st.kind === 'pan' && !Array.isArray(st.argv)) err(`${at}: pan steps need argv[]`);
     if (st.kind === 'mcp' && !Array.isArray(st.requests)) err(`${at}: mcp steps need requests[]`);
     if (st.kind === 'model' && typeof st.prompt !== 'string') err(`${at}: model steps need a prompt`);
-    // `runtime` picks the host CLI a model step drives (default claude; MI-104).
-    if (st.runtime !== undefined && (st.kind !== 'model' || !Object.prototype.hasOwnProperty.call(MODEL_RUNTIMES, st.runtime))) {
-      err(`${at}: runtime is only for model steps, one of ${Object.keys(MODEL_RUNTIMES).join(', ')}`);
+    // `runtime` picks the host CLI a model step drives (default claude; MI-104), and the
+    // installed runtime directory a pan or mcp step runs against (run.cjs honours both).
+    if (st.runtime !== undefined && (!['model', 'pan', 'mcp'].includes(st.kind) || !Object.prototype.hasOwnProperty.call(MODEL_RUNTIMES, st.runtime))) {
+      err(`${at}: runtime is only for model, pan and mcp steps, one of ${Object.keys(MODEL_RUNTIMES).join(', ')}`);
     }
     if (st.kind === 'build' && !/^[a-z-]+\.js$/.test(String(st.script || ''))) err(`${at}: build steps need a scripts/<name>.js`);
     if (st.kind === 'sh' && !/^[a-z-]+\.cjs$/.test(String(st.script || ''))) err(`${at}: sh steps need a harness/scripts/<name>.cjs`);
@@ -73,6 +74,31 @@ function validateScenario(s, fileName = '<inline>') {
     if (st.persistSession !== undefined && (st.kind !== 'model' || st.persistSession !== true)) err(`${at}: persistSession is only \`true\`, and only on model steps`);
   });
   if (s.tier >= 1 && !s.steps.some(st => st.kind === 'model' || st.paid === true)) err('a tier ≥1 scenario should contain a model step or a paid cli step (else it is tier 0)');
+  // Controls (H5): a tier-0 scenario declares at least one sabotage that must turn it
+  // red, so a scenario whose assertions measure nothing cannot stay in the suite.
+  if (s.controls !== undefined && !Array.isArray(s.controls)) err('controls must be an array');
+  const controls = Array.isArray(s.controls) ? s.controls : [];
+  if (s.tier === 0 && controls.length === 0) err('a tier-0 scenario needs controls: at least one sabotage that must turn it red');
+  // Arms (H3, M43) are variants of the scenario, measured rather than expected to fail:
+  // a no-guidance baseline, a deletion arm. Same shape and rules as a control.
+  if (s.arms !== undefined && !Array.isArray(s.arms)) err('arms must be an array');
+  for (const [field, list] of [['controls', controls], ['arms', Array.isArray(s.arms) ? s.arms : []]]) {
+  const seen = new Set();
+  list.forEach((c, i) => {
+    const at = `${field}[${i}]`;
+    if (!c || typeof c !== 'object') { err(`${at}: not an object`); return; }
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(String(c.id || ''))) err(`${at}: id must be kebab-case`);
+    else if (seen.has(c.id)) err(`${at}: duplicate id "${c.id}"`); else seen.add(c.id);
+    if (typeof c.why !== 'string' || !c.why.trim()) err(`${at}: why required`);
+    if (c.after !== undefined && !(Number.isInteger(c.after) && c.after >= -1 && c.after < s.steps.length - 1)) err(`${at}: after must be -1 or the index of a step before the last`);
+    const ops = ['delete', 'write', 'replace'].filter((k) => c[k] !== undefined);
+    if (ops.length !== 1) err(`${at}: exactly one of delete, write, replace`);
+    const badPath = (p) => typeof p !== 'string' || !p || p.split(/[\\/]/).includes('..') || (/^[A-Za-z]:|^\//.test(p) && !/^<(ws|other)>/.test(p));
+    if (c.delete !== undefined && badPath(c.delete)) err(`${at}: delete needs a workspace-relative path`);
+    if (c.write !== undefined && (badPath(c.write && c.write.path) || typeof (c.write && c.write.content) !== 'string')) err(`${at}: write needs {path, content}`);
+    if (c.replace !== undefined && (badPath(c.replace && c.replace.path) || typeof (c.replace && c.replace.find) !== 'string' || !c.replace.find || typeof c.replace.with !== 'string')) err(`${at}: replace needs {path, find, with}`);
+  });
+  }
   return errors;
 }
 

@@ -226,8 +226,61 @@ All the inherited entries hold. Three additions with reasons:
 
 **Dead ends:**
 - `openai.com/news` and its index pages return 403 (the RSS feed works).
-- `sst/opencode` moved to `anomalyco/opencode`, and no OpenCode 2.x is released.
+- `sst/opencode` moved to `anomalyco/opencode`. ("No OpenCode 2.x is released" was wrong: v2 ships as `@opencode/cli`, corrected `2026-10-11`, see the Addendum.)
 - `learn.chatgpt.com/docs/changelog.md` returns 404 (the HTML works).
 - `code.claude.com` `plugin-marketplaces` is now a tutorial; the reference moved to `plugins/marketplace-reference`.
 - `geminicli.com/docs/cli/model-selection` returns 404.
 - Two pages could not be dated: Anthropic's directory portal and OpenAI's plugin-submission guide.
+
+## Addendum — `2026-10-11` (Superpowers read, doc audit, reality check)
+
+Three runs on one day, on `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`) plus the doc audit's working tree: a same-window `/market-ideas` re-verify with a feature-level read of Superpowers (v7.0.0, `2026-10-10`), a `/doc-audit --all --fix` (twelve auditors, four verifier rounds), and a `/reality-check` (claims audit, packed five-runtime install, open-move ledger, runtime surfaces). Ledger rows MI-110 to MI-126; this addendum carries their queue.
+
+### Corrections to this plan
+
+- **M35 named two items.** The ledger's MI-107 and MI-023 called the Sonnet 5.5 cache-read fix "M35", while the Items table above uses M35 for the prompt-style pass. M35 stays the prompt-style pass (open); the rate fixes are M36 below.
+- **M36, M37 and M38 had no row.** The third run's built items (`2026-10-10`) shipped in `3.34.0` without queue rows; they are added below.
+- **M34's leftovers:** two of the three are fixed in `3.34.0` (`--hierarchical` routes to `pan-conductor`; the project researcher defers commits to the synthesizer). Still open: `THINKING_BUDGETS` in `constants.cjs` is exported and read nowhere.
+- **The dead end "no OpenCode 2.x is released" is wrong.** OpenCode 2 ships as the npm package `@opencode/cli` (2.0.0 on `2026-09-11`, 2.0.26 on `2026-10-08`) with no GitHub release tags; this run's checks read only `opencode-ai` and the releases API.
+- **H-items:** H2 (the MCP `2026-07-28` path) was a real bug, fixed in `3.33.0`; H1 is fixed; the H1 side mismatch (`attribution.commit` written as a whole trailer while `processAttribution` prefixes `Co-Authored-By:`) is still open and latent.
+
+### Items
+
+| ID | Pri | Size | Pts | Title | Files | Gate / verify | Status |
+|---|---|---|---|---|---|---|---|
+| M36 | P1 | S | 2 | **Rate rows for the newest models**: Sonnet 5.5 cache reads at the page's rate, a Haiku 5.5 row with its long-prompt tier, the Haiku capability row and fallback profile, the OpenCode fast tier (MI-023, MI-107) | `pan-wizard-core/bin/lib/cost.cjs`, `bin/install-lib.cjs`, `core.cjs` | `tests/cost-long-prompt.test.cjs`; rates re-read from the pricing page | **Done**, released in `3.34.0` |
+| M37 | P7 | XS | 1 | **Node compile cache for the CLI** in a per-user 0700 directory (MI-108) | `pan-wizard-core/bin/pan-tools.cjs` | `tests/compile-cache.test.cjs` | **Done**, released in `3.34.0` |
+| M38 | P5 | S | 2 | **Stop on the host's usage window**: `cost limits`, focus-auto `weekly_limit`, the army check (MI-109) | `cost.cjs`, `focus.cjs`, `hooks/pan-statusline.js`, `commands/pan/army.md` | `tests/host-limits.test.cjs` | **Done**, released in `3.34.0` |
+| M39 | P1 | S | 2 | **Every subagent spawn names its model** (MI-110): the remaining `general-purpose` spawns in `discuss-phase.md`, `exec-phase.md`, `plan-phase.md` and `transition.md` pass a resolved model, or move to named agent types | those workflows | a test that fails on any `Task(`/`subagent_type=` block in shipped workflows and commands without `model=` | Open — absorbed by L4 (W1) of `product_excellence_program_2026_q4_featureai.md`; the debugger and template spawns were fixed by the doc audit |
+| M40 | P1 | XS | 1 | **No positional `$N` in command bodies** (MI-111) | `tests/shipped-content-prefix.test.cjs`, `commands/pan/hud.md`, `commands/pan/report.md` | the test (proven red on the two bodies first) | **Done `2026-10-11`** (working tree) |
+| M41 | P2 | M | 4 | **Review Focus in plans** (MI-112): the planner names up to five implied inputs no test covers, each pinned to a test in its owning task; the plan-checker checks it | `agents/pan-planner.md`, `agents/pan-plan-checker.md`, the plan template | a plan-checker fixture | Open |
+| M42 | P2 | S | 2 | **Executor concerns and cost-if-wrong** (MI-113): a `DONE_WITH_CONCERNS` result; each deviation records why and its cost if wrong; the exec-phase report lists them | `agents/pan-executor.md`, the summary template, `workflows/exec-phase.md` | a contract test on the executor's return | Open |
+| M43 | P3 | S | 2 | **A no-guidance baseline arm in the harness** (MI-114), then run M35 through it | `harness/scenarios/`, `harness/README.md` | an A/B run with a control arm | Open (needs `--max-usd` for the run) |
+| R45 | P1 | S | 2 | **OpenCode 2 plugin**: add `setup(ctx)` with `ctx.session.hook("compaction", …)` beside `server()` in one default export (MI-038). v1 calls `server()`, v2 calls `setup()`; OpenCode ≥1.18.29 | `pan-wizard-core/opencode/pan-wizard.js`, `tests/opencode-plugin.test.cjs` | unit test of both entry points; a live check on `@opencode/cli` 2.0.26 shows the block in a compaction (the event's `system` array is read from the binary, not the docs) | Open |
+| R46 | P1 | M | 4 | **Code-enforce the verifier's test gate**: a verification with `test_gate: failed` routes to gaps however its status reads (today only the verifier's prompt forces it; the recorder warns `test_gate_failed_under_pass` and keeps `passed`) | `pan-wizard-core/bin/lib/verdict.cjs` or `workflows/exec-phase.md`, tests | a test where a failed gate under `passed` does not reach phase completion | Open — absorbed by V9 and V1 (W1) of `product_excellence_program_2026_q4_featureai.md` |
+| R47 | P2 | M | 4 | **OpenCode uninstall and re-merge recognise both shapes**: strip PAN's entries from v2 `permissions[]` and `mcp.servers.pan` as well as the v1 keys; never add a legacy key beside a native one. Keep writing v1 (the published schema is still v1 and closed) | `bin/install.js` (uninstall, `configureOpencodePermissions`), `bin/install-lib.cjs` (`mergeMcpRegistration`, `stripMcpRegistration`) | tests on a v2-shaped `opencode.json` | Open |
+| R48 | P2 | XS | 1 | **Drop the Copilot attribution fallback to `~/.copilot/config.json`**, which Copilot 1.0.93 ignores for user settings | `bin/install.js` | a test | Open |
+| R49 | P3 | S | 2 | **Re-run `resume-cost` and `memory-not-loaded` live**: both ledger findings are unresolved, and their passes were re-scored from recorded transcripts, never re-run | `harness/` | tier-2 runs pass and the ledger rows resolve | Waits on a per-run `--max-usd` approval (no standing cap, owner `2026-10-12`) |
+
+### Session queue
+
+| Session | Items | Pts | Theme | Exit criterion |
+|---|---|---|---|---|
+> Superseded `2026-10-12` by `product_excellence_program_2026_q4_featureai.md` §3.3: R45 → W1, R46 → V9/V1, M39 → L4, M41/M42 → program P4 (W3), M43 → H3/S4 (deletion arm). R47, R48, R49 and M35 stay here and run alongside the program's waves.
+
+| **S9** | R45, R46, M39, R48 | 9 | Correctness | the plugin loads on OpenCode 2; a failed test gate cannot pass a phase; no spawn inherits the session model |
+| **S10** | R47, M41, M42 | 10 | Stability and plans | a v2-converted OpenCode config uninstalls cleanly; plans carry Review Focus; executors report concerns |
+| **S11** | M43 then M35, R49 | 8 + spend | Measured behaviour | prompt changes ship only behind a baseline arm; the two open harness findings resolve |
+
+### What not to do — added `2026-10-11`
+
+- **Do not emit OpenCode v2 config shapes.** v2 normalises the v1 shapes in memory, and the published `$schema` is still the closed v1 schema, so writing `permissions` or `mcp.servers` would break OpenCode 1.x users for no gain (MI-038).
+- **Do not take the always-on bootstrap skill.** It trades progressive disclosure for recall (MI-119).
+
+### Sources read (`2026-10-11`)
+
+- `github.com/obra/superpowers` at `v7.0.0` (shallow clone of `main`, nothing executed), its releases API (`published_at`), `RELEASE-NOTES.md`; `obra/superpowers-marketplace`; `prime-radiant-inc/superpowers-evals` and sibling repos (repo metadata and READMEs).
+- Marketplaces, raw JSON parsed: `anthropics/claude-plugins-official` `.claude-plugin/marketplace.json`, `openai/plugins` `.agents/plugins/marketplace.json`, `xai-org/plugin-marketplace`, `github/copilot-plugins`, `github/awesome-copilot`, `cursor/plugins`.
+- OpenCode: `opencode.ai/v2/docs/{permissions,config,migrate-v1,build/plugins}`, `opencode.ai/config.json`, `npm view @opencode/cli`, strings read from the `@opencode/cli-linux-x64@2.0.26` binary (not run), `anomalyco/opencode` v1.19.0.
+- Host tools: npm `@anthropic-ai/claude-code` time and dist-tags plus the raw CHANGELOG; releases APIs for `openai/codex`, `google-gemini/gemini-cli`, `github/copilot-cli`; `platform.claude.com` models and pricing.
+- Antigravity: `antigravity.google/docs/plugins` (undated; its schema URL returns 404).

@@ -102,6 +102,9 @@ Test-Path d:\PanWizard\.opencode
 Test-Path d:\PanWizard\AGENTS.md
 Test-Path d:\PanWizard\.mcp.json
 Test-Path d:\PanWizard\.agents\skills
+Test-Path d:\PanWizard\.agents\pan-wizard-core
+Test-Path d:\PanWizard\.github\pan-wizard-core
+Test-Path d:\PanWizard\.claude\package.json
 Test-Path d:\PanWizard\.claude\workflows\pan-*.js
 Test-Path d:\PanWizard\.github\mcp.json
 Test-Path d:\PanWizard\.github\copilot

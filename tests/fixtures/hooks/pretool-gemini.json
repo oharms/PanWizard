@@ -1,0 +1,10 @@
+{
+  "session_id": "s-guard-0003",
+  "cwd": "{{PROJECT_DIR}}",
+  "hook_event_name": "BeforeTool",
+  "tool_name": "write_file",
+  "tool_input": {
+    "file_path": "{{PROJECT_DIR}}/src/config.js",
+    "content": "module.exports = { apiKey: \"{{SECRET}}\" };\n"
+  }
+}

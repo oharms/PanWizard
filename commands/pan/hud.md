@@ -16,10 +16,6 @@ It is a *view*, not a new source of truth: every panel aggregates state PAN alre
 Default output is `.planning/hud.html`. Open it in any browser. Re-run any time for a fresh snapshot.
 </objective>
 
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/hud.cjs
-</execution_context>
-
 <usage>
 
 ```
@@ -62,7 +58,7 @@ Panels render only when they have data — a plain (non-army) project still gets
 | **Requirements & quality** | Requirements done/open + last verification artifacts | `requirements.md`, phase `*-verification.md` / `*-uat.md` |
 | **Recent activity** | Last commits (the army's committed output) | `git log` |
 
-*(army)* panels appear only when a campaign is scheduled or army worktrees exist — graceful degradation per ADR-0035. The *(fallback)* **Planning activity** panel appears only when there is no phase/roadmap layout, so it fills the gap for focus-auto and imported projects instead of leaving a bare page. Telemetry shows an honest advisory (never a fabricated `$0.00`) when the cost ledger is poisoned or every record is unpriced.
+*(army)* panels appear only when a campaign is scheduled or army worktrees exist — graceful degradation per ADR-0035. The *(fallback)* **Planning activity** panel appears only when there is no phase/roadmap layout, so it fills the gap for focus-auto and imported projects instead of leaving a bare page. Telemetry shows an honest advisory (never a fabricated zero-dollar total) when the cost ledger is poisoned or every record is unpriced.
 
 </panels>
 

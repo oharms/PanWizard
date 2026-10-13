@@ -81,6 +81,7 @@ For each gap, fill the debug-subagent-prompt template and spawn:
 Task(
   prompt=filled_debug_subagent_prompt + "\n\n<files_to_read>\n- {phase_dir}/{phase_num}-uat.md\n- .planning/state.md\n</files_to_read>",
   subagent_type="pan-debugger",
+  model="{debugger_model}",   # node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-debugger --raw
   description="Debug: {issue_summary_short}"
 )
 ```
@@ -181,11 +182,10 @@ Display:
 
 Debug sessions: ${DEBUG_DIR}/
 
-Proceeding to plan fixes...
+Next: /pan:plan-phase {phase_num} --gaps
 ```
 
-Return to verify-phase orchestrator for automatic planning.
-Do NOT offer manual next steps - verify-phase handles the rest.
+No command runs this workflow as a sub-step, so end by giving the user the next step: `/pan:plan-phase {phase_num} --gaps` (it reads the diagnosed uat.md).
 </step>
 
 </process>
@@ -217,5 +217,5 @@ Agents only diagnose—plan-phase --gaps handles fixes (no fix application).
 - [ ] Root causes collected from all agents
 - [ ] uat.md gaps updated with artifacts and missing
 - [ ] Debug sessions saved to ${DEBUG_DIR}/
-- [ ] Hand off to verify-phase for automatic planning
+- [ ] Next step shown: /pan:plan-phase {phase_num} --gaps
 </success_criteria>

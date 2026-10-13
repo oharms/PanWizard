@@ -68,3 +68,23 @@ describe('shipped-content path-prefix lint (runtime parity — audit Batch A)', 
       `Non-canonical PAN-asset path prefix in shipped content (breaks non-Claude runtimes / global installs):\n${violations.join('\n')}`);
   });
 });
+
+// Claude Code substitutes `$N` (and `$ARGUMENTS[N]`) in a command or skill body with
+// the N-th argument word, counting from 0, so a body that writes `$0.00` reads
+// "`--open.00`" when run as `/pan:hud --open` (found by the 2026-10-11 doc audit;
+// Superpowers v7.0.0 fixed the same trap). Command bodies are the only shipped text
+// invoked with arguments; the unified-skill and plugin SKILL.md bodies are built from them.
+describe('command bodies carry no positional $N tokens', () => {
+  test('no `$<digit>` in any commands/pan/*.md body', () => {
+    const dir = path.join(ROOT, 'commands', 'pan');
+    const hits = [];
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith('.md'))) {
+      const text = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n');
+      const body = text.replace(/^---\n[\s\S]*?\n---\n/, '');
+      body.split('\n').forEach((line, i) => {
+        if (/\$\d/.test(line)) hits.push(`commands/pan/${f}: ${line.trim().slice(0, 100)}`);
+      });
+    }
+    assert.deepEqual(hits, [], `positional $N tokens are replaced by argument words:\n${hits.join('\n')}`);
+  });
+});

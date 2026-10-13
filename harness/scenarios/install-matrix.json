@@ -129,5 +129,8 @@
       ],
       "why": "A bare directory with PAN installed reads as a VERDICT: status `broken` with an errors list on stdout, and — since reality check R2 (2026-09-10) — a non-zero exit, because verdict commands set their exit code explicitly for shell gating (CLI-REFERENCE). The MCP resource rule (ADR-0041) is still met: the bridge's reader accepts a JSON verdict on a non-zero exit as data (server.cjs parseVerdict), which mcp-bridge-cwd exercises on the deployed engine. The contract under test here is the shape, the status and the exit code."
     }
+  ],
+  "controls": [
+    {"id":"no-codex-hooks","delete":".codex/hooks.json","why":"The Codex hooks file carries the async observers; its absence must fail the hooks assertions."}
   ]
 }

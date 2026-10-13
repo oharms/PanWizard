@@ -1160,10 +1160,15 @@ function stripThinkingFrontmatter(content, runtime) {
  */
 function buildCopilotHooksConfig(commands) {
   const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand,
-    stateReinjectMarkCommand, stateReinjectInjectCommand } = commands || {};
+    stateReinjectMarkCommand, stateReinjectInjectCommand, guardCommand } = commands || {};
   const config = { version: 1, hooks: {} };
   if (updateCheckCommand) {
     config.hooks.sessionStart = [{ type: 'command', command: updateCheckCommand }];
+  }
+  // preToolUse: the PAN guard (A7). Copilot denies a call on the JSON
+  // `permissionDecision: "deny"` output, which pan-guard.js prints under `--host copilot`.
+  if (guardCommand) {
+    config.hooks.preToolUse = [{ type: 'command', command: guardCommand }];
   }
   const postToolUse = [];
   if (contextMonitorCommand) postToolUse.push({ type: 'command', command: contextMonitorCommand });
@@ -1238,10 +1243,10 @@ function buildCopilotHooksConfig(commands) {
  * 2026-10-03, and live on Copilot CLI 1.0.88 the same day).
  */
 const HOOK_EVENT_MAP = Object.freeze({
-  claude: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
-  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null, compactMark: 'PreCompress', compactInject: 'AfterTool' },
-  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
-  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null, compactMark: 'preCompact', compactInject: 'postToolUse' },
+  claude: { surface: 'settings.json', sessionStart: 'SessionStart', preToolUse: 'PreToolUse', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  gemini: { surface: 'settings.json', sessionStart: 'SessionStart', preToolUse: 'BeforeTool', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null, compactMark: 'PreCompress', compactInject: 'AfterTool' },
+  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', preToolUse: 'PreToolUse', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', preToolUse: 'preToolUse', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null, compactMark: 'preCompact', compactInject: 'postToolUse' },
   opencode: null,
 });
 
@@ -1253,7 +1258,7 @@ const HOOK_EVENT_MAP = Object.freeze({
 const HOOK_SLOT_MATCHERS = Object.freeze({ compact: 'compact' });
 
 /** The hook scripts PAN registers in a Claude-shaped settings.json `hooks` block. */
-const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard', 'pan-state-reinject']);
+const PAN_SETTINGS_HOOKS = Object.freeze(['pan-check-update', 'pan-guard', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard', 'pan-state-reinject']);
 
 /**
  * Remove, from every event array of a Claude-shaped `hooks` object except
@@ -1384,8 +1389,76 @@ function mergeMcpRegistration(existing, runtime, entry, serverName = 'pan') {
   const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
   const key = spec.key;
   if (!config[key] || typeof config[key] !== 'object' || Array.isArray(config[key])) config[key] = {};
+  // OpenCode 2 nests servers under `mcp.servers` (R47). PAN keeps writing the v1
+  // shape, but in a file the user already converted it updates the native entry and
+  // never leaves a legacy `mcp.pan` beside it: the native one would win, stale.
+  if (runtime === 'opencode' && isOpencodeV2Servers(config[key].servers)) {
+    config[key].servers[serverName] = entry;
+    delete config[key][serverName];
+    return config;
+  }
   config[key][serverName] = entry;
   return config;
+}
+
+/** OpenCode 2's `mcp.servers` container: an object of server entries, not a v1 server named "servers". */
+function isOpencodeV2Servers(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v) && !('type' in v) && !('command' in v);
+}
+
+/**
+ * Add PAN's OpenCode read and external_directory allowances for `panPath`.
+ * v1 (or a new file): the `permission` object PAN has always written. v2 (the file
+ * already has an ordered `permissions[]` of {action, resource, effect}): PAN's rules
+ * go into that array, and no legacy `permission` object is added beside it (R47).
+ * @returns {{config: object, modified: boolean, shape: 'v1'|'v2'}}
+ */
+function addOpencodePermissions(existing, panPath) {
+  const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
+  let modified = false;
+  if (Array.isArray(config.permissions)) {
+    for (const action of ['read', 'external_directory']) {
+      const has = config.permissions.some((r) => r && r.action === action && r.resource === panPath && r.effect === 'allow');
+      if (!has) { config.permissions.push({ action, resource: panPath, effect: 'allow' }); modified = true; }
+    }
+    return { config, modified, shape: 'v2' };
+  }
+  if (!config.permission || typeof config.permission !== 'object' || Array.isArray(config.permission)) config.permission = {};
+  for (const type of ['read', 'external_directory']) {
+    if (!config.permission[type] || typeof config.permission[type] !== 'object') config.permission[type] = {};
+    if (config.permission[type][panPath] !== 'allow') { config.permission[type][panPath] = 'allow'; modified = true; }
+  }
+  return { config, modified, shape: 'v1' };
+}
+
+/**
+ * Remove every PAN allowance from an OpenCode config, in either shape: keys of the
+ * v1 `permission.read` / `permission.external_directory` objects and v2
+ * `permissions[]` rules whose path names `pan-wizard` (which also catches the
+ * malformed `~/.config/opencode/pan-wizard/*` key early versions wrote). Containers
+ * PAN emptied are removed.
+ * @returns {{config: object, modified: boolean}}
+ */
+function stripOpencodePermissions(existing) {
+  const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
+  let modified = false;
+  if (config.permission && typeof config.permission === 'object' && !Array.isArray(config.permission)) {
+    for (const type of ['read', 'external_directory']) {
+      const bag = config.permission[type];
+      if (!bag || typeof bag !== 'object') continue;
+      for (const key of Object.keys(bag)) if (key.includes('pan-wizard')) { delete bag[key]; modified = true; }
+      if (Object.keys(bag).length === 0) delete config.permission[type];
+    }
+    if (Object.keys(config.permission).length === 0) delete config.permission;
+  }
+  if (Array.isArray(config.permissions)) {
+    const kept = config.permissions.filter((r) => !(r && typeof r.resource === 'string' && r.resource.includes('pan-wizard')));
+    if (kept.length !== config.permissions.length) {
+      modified = true;
+      if (kept.length) config.permissions = kept; else delete config.permissions;
+    }
+  }
+  return { config, modified };
 }
 
 /**
@@ -1400,10 +1473,17 @@ function stripMcpRegistration(existing, runtime, serverName = 'pan') {
   if (!spec) throw new Error(`stripMcpRegistration: unknown runtime "${runtime}"`);
   const config = (existing && typeof existing === 'object' && !Array.isArray(existing)) ? existing : {};
   const bag = config[spec.key];
-  if (!bag || typeof bag !== 'object' || !(serverName in bag)) return { config, removed: false };
-  delete bag[serverName];
-  if (Object.keys(bag).length === 0) delete config[spec.key];
-  return { config, removed: true };
+  if (!bag || typeof bag !== 'object') return { config, removed: false };
+  let removed = false;
+  // OpenCode 2's `mcp.servers.pan` as well as the v1 `mcp.pan` (R47).
+  if (runtime === 'opencode' && isOpencodeV2Servers(bag.servers) && serverName in bag.servers) {
+    delete bag.servers[serverName];
+    if (Object.keys(bag.servers).length === 0) delete bag.servers;
+    removed = true;
+  }
+  if (serverName in bag) { delete bag[serverName]; removed = true; }
+  if (removed && Object.keys(bag).length === 0) delete config[spec.key];
+  return { config, removed };
 }
 
 /**
@@ -1439,7 +1519,7 @@ function buildCodexMcpSnippet(serverPath, panToolsPath, projectRoot, serverName 
  * @returns {object} Merged config object to serialize back to hooks.json
  */
 function mergeCodexHooksConfig(existing, commands) {
-  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand } = commands || {};
+  const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand, guardCommand } = commands || {};
   const config = (existing && typeof existing === 'object') ? existing : {};
   if (!config.hooks || typeof config.hooks !== 'object') config.hooks = {};
 
@@ -1461,6 +1541,8 @@ function mergeCodexHooksConfig(existing, commands) {
   // builders without reading their docs first.
   const wanted = [
     ['SessionStart', updateCheckCommand, 'pan-check-update', true],
+    // The guard decides whether a call may run, which an async handler cannot (A7).
+    ['PreToolUse', guardCommand, 'pan-guard', false],
     ['PostToolUse', contextMonitorCommand, 'pan-context-monitor', false],
     ['SubagentStop', costLoggerCommand, 'pan-cost-logger', true],
     ['SubagentStop', traceLoggerCommand, 'pan-trace-logger', true],
@@ -1504,7 +1586,7 @@ function removeCodexPanHooks(existing) {
   for (const event of Object.keys(existing.hooks)) {
     if (!Array.isArray(existing.hooks[event])) continue;
     existing.hooks[event] = existing.hooks[event].filter(group =>
-      !(Array.isArray(group.hooks) && group.hooks.some(h => h.command && /pan-(check-update|context-monitor|cost-logger|trace-logger|stop-guard|state-reinject)/.test(h.command))));
+      !(Array.isArray(group.hooks) && group.hooks.some(h => h.command && /pan-(check-update|guard|context-monitor|cost-logger|trace-logger|stop-guard|state-reinject)/.test(h.command))));
     if (existing.hooks[event].length === 0) delete existing.hooks[event];
   }
   if (Object.keys(existing.hooks).length === 0) delete existing.hooks;
@@ -1929,15 +2011,16 @@ function buildPluginManifest(pkg) {
  * @returns {object} hooks.json object
  */
 function buildPluginHooksConfig() {
-  const hook = (script, matcher) => ({
+  const hook = (script, matcher, args = '') => ({
     ...(matcher ? { matcher } : {}),
-    hooks: [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/${script}"` }],
+    hooks: [{ type: 'command', command: `node "\${CLAUDE_PLUGIN_ROOT}/hooks/${script}"${args}` }],
   });
   const events = HOOK_EVENT_MAP.claude;
   return {
     hooks: {
       // compact shares SessionStart with the update check, narrowed by its matcher (M10).
       [events.sessionStart]: [hook('pan-check-update.js'), hook('pan-state-reinject.js', HOOK_SLOT_MATCHERS.compact)],
+      [events.preToolUse]: [hook('pan-guard.js', null, ' --host claude')],
       [events.postToolUse]: [hook('pan-context-monitor.js')],
       [events.subagentStop]: [hook('pan-cost-logger.js'), hook('pan-trace-logger.js')],
       [events.stop]: [hook('pan-stop-guard.js')],
@@ -2147,7 +2230,7 @@ const FINDINGS = {
         properties: {
           title: { type: 'string' },
           file: { type: 'string' },
-          severity: { type: 'string', enum: ['critical', 'major', 'minor', 'info'] },
+          severity: { type: 'string', enum: ['critical', 'high', 'medium', 'low', 'info'] }, // PAN's one ladder (verdict.cjs, review-deep.cjs)
           detail: { type: 'string' },
         },
         required: ['title', 'severity', 'detail'],
@@ -2256,6 +2339,7 @@ return { areas_mapped: maps.filter(Boolean).length, synthesis }
     { title: 'Index', detail: 'plan inventory with wave grouping, from the PAN engine' },
     { title: 'Execute', detail: 'one executor per plan; waves in order, plans within a wave in parallel' },
     { title: 'Verify', detail: 'the phase verifier over the completed plans' },
+    { title: 'Gate', detail: 'the PAN phase gate: stops when the phase may not be completed' },
   ],
 }
 // twin: pan-wizard-core/workflows/exec-phase.md
@@ -2377,7 +2461,24 @@ const verdict = await agent(
   'Verify phase ' + phaseArg + ' following the PAN verify-phase protocol (PAN core: workflows/verify-phase.md — ' + PAN_TOOLS + '). Check the phase goals against what the plans delivered, write the verification file the protocol prescribes, and report status (passed | gaps_found | human_needed | failed), the verification file path, any gaps, and a summary. Do not mark the phase complete or advance state — that decision stays with the user.',
   { agentType: 'pan-verifier', label: 'verify', phase: 'Verify', schema: VERIFY })
 
-return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, next: 'Review the verification, then continue with /pan:exec-phase ' + phaseArg + ' (transition) or /pan:plan-phase for the next phase' }
+phase('Gate')
+const GATE = {
+  type: 'object',
+  properties: {
+    ok: { type: 'boolean' },
+    mode: { type: 'string' },
+    reasons: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, detail: { type: 'string' } }, required: ['code'] } },
+  },
+  required: ['ok', 'reasons'],
+}
+const gate = await agent(
+  'Run the PAN phase gate for phase ' + phaseArg + ' with the ' + PAN_TOOLS + ' Run exactly: phase gate ' + phaseArg + ' (it exits 1 when it refuses; that is a result, not an error). Return its JSON fields ok, mode and reasons (each code and detail) unchanged. Do not fix anything and do not mark the phase complete.',
+  { label: 'gate', phase: 'Gate', schema: GATE })
+const gateReasons = gate && Array.isArray(gate.reasons) ? gate.reasons : []
+if (!gate || gate.ok !== true) {
+  return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, gate, halted: 'phase_gate', next: 'The phase gate refused: ' + (gateReasons.map((r) => r.code).join(', ') || 'the gate step returned no verdict') + '. Fix each reason (or close the gaps with /pan:plan-phase ' + phaseArg + ' --gaps), then re-run /pan:exec-phase ' + phaseArg + '. Do not mark the phase complete until the gate passes.' }
+}
+return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, gate, next: 'The phase gate passes. Continue with /pan:exec-phase ' + phaseArg + ' (transition) or /pan:plan-phase for the next phase' }
 `;
 
   const diagnoseIssues = `export const meta = {
@@ -2559,6 +2660,8 @@ module.exports = {
   buildMcpServerEntry,
   mergeMcpRegistration,
   stripMcpRegistration,
+  addOpencodePermissions,
+  stripOpencodePermissions,
   buildCodexMcpSnippet,
   removeCodexPanHooks,
   buildNativeWorkflowScripts,

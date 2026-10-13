@@ -59,7 +59,7 @@ cat "$PHASE_DIR"/*-verification.md 2>/dev/null
 1. Parse previous verification.md frontmatter
 2. Take `must_haves` (truths, artifacts, key_links) from the plans' frontmatter (Step 2, Option A): the verification frontmatter does not store them
 3. Extract `gaps` (items that failed)
-4. Set `is_re_verification = true`
+4. Set `is_re_verification = true`. In the frontmatter's `re_verification` block, list every earlier gap you re-checked and found closed under `gaps_closed`, by its truth (add `evidence:` under a truth when one line says what you saw), and every gap still failing under `gaps_remaining`. A gap you leave out of both stays open in the findings ledger: silence never closes a gap
 5. **Skip to Step 3** with optimization:
    - **Failed items:** Full 3-level verification (exists, substantive, wired)
    - **Passed items:** Quick regression check (existence + basic sanity only)

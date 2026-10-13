@@ -68,27 +68,28 @@ function exclusionReason(file, planningPrefix) {
 
 /**
  * Files the phase's plan commits touched, paths relative to `cwd` (git's --relative).
- * @returns {{git: boolean, commits: number, files: Set<string>}}
+ * @returns {{git: boolean, commits: number, files: Set<string>, hashes: string[]}} hashes newest first
  */
 function committedFiles(cwd, phaseNumber) {
   const r = execGit(cwd, ['-c', 'core.quotepath=off', 'log', '--no-merges', '-n', String(COMMIT_SCAN_LIMIT), '--relative', '--name-only', '--format=@@%H%x09%s']);
-  if (r.exitCode !== 0) return { git: false, commits: 0, files: new Set() };
+  if (r.exitCode !== 0) return { git: false, commits: 0, files: new Set(), hashes: [] };
   // `{type}({phase}-{plan}):` with the phase's zero padding optional ("feat(03-01):", "fix(3-02)!:").
   const unpadded = String(phaseNumber).replace(/^0+(?=\d)/, '');
   const subjectRe = new RegExp(`^[a-z]+\\(0*${escapeRegex(unpadded)}-[0-9]+\\)!?:`);
   const files = new Set();
+  const hashes = [];
   let commits = 0;
   let inPhase = false;
   for (const line of r.stdout.split('\n')) {
     if (line.startsWith('@@')) {
       const subject = line.slice(2).split('\t').slice(1).join('\t');
       inPhase = subjectRe.test(subject);
-      if (inPhase) commits++;
+      if (inPhase) { commits++; hashes.push(line.slice(2).split('\t')[0]); }
       continue;
     }
     if (inPhase && line.trim()) files.add(normalisePath(line));
   }
-  return { git: true, commits, files };
+  return { git: true, commits, files, hashes };
 }
 
 /**
@@ -223,4 +224,4 @@ function cmdVerifyStale(cwd, phase, raw) {
   output(r, raw, r.error ? undefined : r.state);
 }
 
-module.exports = { scopePhase, cmdVerifyScope, verificationFreshness, cmdVerifyStale, coveredFiles, LOCKFILES };
+module.exports = { scopePhase, cmdVerifyScope, verificationFreshness, cmdVerifyStale, coveredFiles, committedFiles, LOCKFILES, TEST_PATH_RE, TEST_FILE_RE };

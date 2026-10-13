@@ -15,9 +15,7 @@ Surface Model Context Protocol (MCP) tools visible to the host runtime and recom
 Reduced scope from Spec B v1's X-7: **discovery and recommendation only**. Auto-injection of MCP tools into planner context and auto-invocation from executor agents are deliberately deferred and still unscheduled (the v3.5 target passed without them). This kept v3.3 narrow and avoids coupling PAN to Claude Code's MCP schema stability.
 </objective>
 
-<execution_context>
-@~/.claude/pan-wizard-core/bin/lib/bridge.cjs
-</execution_context>
+Each subcommand runs `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs bridge <list|recommend|cache> [flags]`. The CLI verb is `bridge`, not `mcp-bridge`: `pan-tools mcp-bridge` is an unknown command.
 
 <subcommands>
 

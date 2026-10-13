@@ -198,7 +198,7 @@ That meets this queue's own rule ("if two reps show no effect, retire the layer"
   - `optimize apply` warns on any write into `.planning/memory/`.
 - **What stays:** the store, every `memory` command, hygiene, the quarantine and `/pan:knowledge`.
 - **Also removed:** `validate health --full`'s `MEM_BUDGET`, which measured a cost that is gone.
-- **Gates:** a class test forbids any shipped prompt from loading or writing agent memory (15 mutations caught). Harness `memory-not-loaded` checks the deployed chain. It is not yet run against a model.
+- **Gates:** a class test forbids any shipped prompt from loading or writing agent memory (15 mutations caught). Harness `memory-not-loaded` checks the deployed chain. Its one model run (`run-20261004-173408-7PFC09`) failed (`memory_file_reads = 2`); the pass after the fix was re-scored from recorded transcripts, not re-run, so the harness ledger row stays unresolved until a live re-run (R49 in `market-ideas-2026-10.md`, corrected `2026-10-11`).
 - **Revisit when** a long-horizon run shows an effect.
 
 **Found while retiring (`5f6f077`):** `docs/CLI-REFERENCE.md` had held a second copy of its first 3,400 lines since `86aa9c2`. An O4 edit script passed `String.replace` a replacement holding a regex ending in `+$` followed by a backtick. In a replacement string, `` $` `` inserts everything before the match. The paste went through five commits unseen. A doc-lint test now fails on any markdown file whose opening appears twice.

@@ -28,10 +28,6 @@ const FINDING_CLASSES = Object.freeze(['missing', 'partial', 'contradicts', 'unr
 const SEVERITIES = Object.freeze(['critical', 'high', 'medium', 'low', 'info']);
 const DISPOSITIONS = Object.freeze(['fixed', 'deferred', 'dismissed', 'decision']);
 const REASON_REQUIRED = Object.freeze(['deferred', 'dismissed', 'decision']);
-// A re-run does not re-check these, so their absence from a later verdict is not
-// evidence that they were resolved (D6).
-const AUTO_FIX_EXEMPT = Object.freeze(['human', 'unrequested']);
-
 /** Each judge's own verdict word → the normalised outcome it implies. */
 const KNOWN_VERDICTS = Object.freeze({
   'pan-verifier': Object.freeze({ passed: 'pass', gaps_found: 'fail', human_needed: 'needs_human' }),
@@ -43,6 +39,8 @@ const KNOWN_VERDICTS = Object.freeze({
 const LIMITS = Object.freeze({ findings: 100, where: 200, summary: 300, verdict: 40, score: 40, not_checked: 20, check: 80 });
 // What the verifier's test gate can report (verify-phase.md, run_test_suite).
 const TEST_GATE_VALUES = Object.freeze(['passed', 'failed', 'skipped']);
+const RESOLUTION_STATUSES = Object.freeze(['resolved', 'still_present', 'cannot_tell']);
+const FINDING_ID_RE = /^f_[0-9a-f]{10}$/;
 const AGENT_RE = /^[a-z][a-z0-9-]{0,63}$/;
 const OPEN_FENCE_RE = /^[ \t]*(`{3,}|~{3,})[ \t]*pan-verdict[ \t]*$/;
 const CLOSE_FENCE_RE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/;
@@ -198,7 +196,42 @@ function validateVerdict(obj, opts = {}) {
   });
 
   const notChecked = normaliseNotChecked(obj.not_checked, warnings);
-  return { ok: true, verdict: { contract, agent, outcome, verdict, phase, score, findings, not_checked: notChecked }, warnings };
+  const resolutions = normaliseResolutions(obj.resolutions, warnings);
+  return { ok: true, verdict: { contract, agent, outcome, verdict, phase, score, findings, not_checked: notChecked, resolutions }, warnings };
+}
+
+/**
+ * A judge's answers about its earlier open findings (V6): each `{id|summary, status,
+ * evidence}` with status resolved | still_present | cannot_tell. Silence is not an
+ * answer: a finding the judge leaves out stays open. `resolved` without evidence is
+ * recorded as cannot_tell, so a bare "fixed" closes nothing.
+ */
+function normaliseResolutions(value, warnings) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) {
+    warnings.push('resolutions_not_an_array');
+    return [];
+  }
+  const out = [];
+  value.slice(0, LIMITS.findings).forEach((r, i) => {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) { warnings.push(`resolution_dropped: #${i} is not an object`); return; }
+    const id = typeof r.id === 'string' && FINDING_ID_RE.test(r.id.trim()) ? r.id.trim() : null;
+    const named = r.summary ?? r.truth;
+    const summary = named == null ? null : (truncate(cleanText(String(named)), LIMITS.summary) || null);
+    if (!id && !summary) { warnings.push(`resolution_dropped: #${i} names no finding id or summary`); return; }
+    let status = typeof r.status === 'string' ? r.status.trim().toLowerCase() : '';
+    if (!RESOLUTION_STATUSES.includes(status)) {
+      warnings.push(`resolution_unknown_status: #${i} ${JSON.stringify(r.status === undefined ? null : r.status)} recorded as cannot_tell`);
+      status = 'cannot_tell';
+    }
+    const evidence = r.evidence == null ? '' : truncate(cleanText(String(r.evidence)), LIMITS.summary);
+    if (status === 'resolved' && !evidence) {
+      warnings.push(`resolution_without_evidence: #${i} recorded as cannot_tell`);
+      status = 'cannot_tell';
+    }
+    out.push({ id, summary, status, evidence: evidence || null });
+  });
+  return out;
 }
 
 /**
@@ -336,6 +369,49 @@ function listOfMappings(yaml, key) {
   return items;
 }
 
+/**
+ * A list nested one level under a top-level key, as the verifier writes
+ * `re_verification.gaps_closed`. Items are bare strings (read as `{truth}`) or
+ * mappings (`- truth: "…"` with `evidence: "…"` below it).
+ */
+function nestedList(yaml, parent, key) {
+  const lines = yaml.split('\n');
+  const start = lines.findIndex((l) => {
+    const m = KEY_VALUE_RE.exec(l);
+    return m && m[1] === parent && indentOf(l) === 0;
+  });
+  if (start === -1) return [];
+  const items = [];
+  let keyIndent = -1;
+  let cur = null;
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    const ind = indentOf(line);
+    if (ind === 0) break;
+    const body = line.trim();
+    if (keyIndent === -1) {
+      const kv = KEY_VALUE_RE.exec(body);
+      if (kv && kv[1] === key) {
+        if (stripComment(kv[2]) !== '') return []; // `gaps_closed: []`
+        keyIndent = ind;
+      }
+      continue;
+    }
+    if (ind <= keyIndent) break;
+    const it = ITEM_RE.exec(line);
+    if (it) {
+      const kv = KEY_VALUE_RE.exec(it[2]);
+      cur = kv ? { [kv[1]]: unquote(kv[2]) } : { truth: unquote(it[2]) };
+      items.push(cur);
+    } else if (cur) {
+      const kv = KEY_VALUE_RE.exec(body);
+      if (kv) cur[kv[1]] = unquote(kv[2]);
+    }
+  }
+  return items.filter((x) => x.truth || x.summary || x.id);
+}
+
 /** A top-level scalar from the frontmatter (e.g. `status`), or null. */
 function frontmatterScalar(yaml, key) {
   for (const l of yaml.split('\n')) {
@@ -397,12 +473,57 @@ function verdictFromVerificationFrontmatter(text, agent = 'pan-verifier') {
     notChecked = notChecked.filter((n) => !isTests(n));
     contradicted = true;
   }
-  return { contract: VERDICT_CONTRACT, agent, verdict: status, outcome, findings, not_checked: notChecked, test_gate: testGate, not_checked_contradicted: contradicted };
+  // Re-verification answers (V6): a gap the verifier re-checked and closed is
+  // resolved; a regression or a remaining gap is still present.
+  const resolutions = [
+    ...nestedList(yaml, 're_verification', 'gaps_closed').map((g) => ({
+      id: g.id, summary: g.truth || g.summary, status: 'resolved', evidence: g.evidence || 'closed by the verifier\'s re-verification',
+    })),
+    ...nestedList(yaml, 're_verification', 'regressions').map((g) => ({ id: g.id, summary: g.truth || g.summary, status: 'still_present', evidence: g.evidence || null })),
+    ...nestedList(yaml, 're_verification', 'gaps_remaining').map((g) => ({ id: g.id, summary: g.truth || g.summary, status: 'still_present', evidence: g.evidence || null })),
+  ];
+  return { contract: VERDICT_CONTRACT, agent, verdict: status, outcome, findings, not_checked: notChecked, resolutions, test_gate: testGate, not_checked_contradicted: contradicted };
+}
+
+/** Names of the code facts that passed: a passing fact closes its own code-fact finding (V6). */
+function passingFacts(facts) {
+  return (Array.isArray(facts) ? facts : []).filter((f) => f && f.ok === true && f.fact).map((f) => f.fact);
+}
+
+/** The verdict word an agent uses for a fail, or null for an agent outside KNOWN_VERDICTS. */
+function failWordFor(agent) {
+  const table = KNOWN_VERDICTS[agent];
+  return table ? Object.keys(table).find((k) => table[k] === 'fail') || null : null;
+}
+
+/**
+ * Two-key verdict (V9): a code fact can lower a judge's verdict, never raise it.
+ * Any failing fact turns a pass or needs_human into the agent's fail word, keeps
+ * the agent's own word as `agent_verdict`, and adds one high finding per fact
+ * (`where: code-fact:<fact>`) so the gap round has something to close.
+ *
+ * @param {Object} verdict - a validated verdict
+ * @param {Array<{fact: string, ok: boolean, summary: string}>} facts
+ * @returns {{verdict: Object, lowered_by: string[]}} the same verdict object when nothing lowers it
+ */
+function lowerByCodeFacts(verdict, facts) {
+  const failing = (Array.isArray(facts) ? facts : []).filter((f) => f && f.ok === false && f.fact);
+  if (!failing.length || verdict.outcome === 'fail') return { verdict, lowered_by: [] };
+  const findings = [...verdict.findings];
+  for (const f of failing) {
+    findings.push({ class: 'defect', severity: 'high', where: `code-fact:${f.fact}`, summary: truncate(cleanText(f.summary || `${f.fact} failed`), LIMITS.summary) });
+  }
+  return {
+    verdict: { ...verdict, outcome: 'fail', verdict: failWordFor(verdict.agent) || 'fail', agent_verdict: verdict.verdict, findings },
+    lowered_by: failing.map((f) => f.fact),
+  };
 }
 
 /**
  * Read a judge's verdict from an artifact: the LAST `pan-verdict` block wins; with
  * no block, a verification.md frontmatter `status` is read through the adapter.
+ * Code facts (`opts.facts`, plus a verification's own `test_gate`) are applied
+ * after parsing through lowerByCodeFacts.
  * @param {string} text
  * @param {{agent?: string, phase?: string|number}} [opts]
  * @returns {{ok: true, verdict: Object, warnings: string[], source_kind: 'block'|'frontmatter'}
@@ -418,7 +539,9 @@ function parseVerdictText(text, opts = {}) {
       return { ok: false, error: 'invalid_json', reason: `the last pan-verdict block is not valid JSON: ${e.message}` };
     }
     const r = validateVerdict(obj, opts);
-    return r.ok ? { ...r, source_kind: 'block' } : r;
+    if (!r.ok) return r;
+    const low = lowerByCodeFacts(r.verdict, opts.facts);
+    return { ...r, verdict: low.verdict, lowered_by: low.lowered_by, facts_ok: passingFacts(opts.facts), source_kind: 'block' };
   }
   const adapted = verdictFromVerificationFrontmatter(text, opts.agent || 'pan-verifier');
   if (adapted) {
@@ -431,9 +554,13 @@ function parseVerdictText(text, opts = {}) {
     // gate under a pass: both make "passed" claim more than the verifier checked.
     if (!adapted.test_gate) r.warnings.push('test_gate_unrecorded: the verification does not say whether the test suite ran');
     else if (!TEST_GATE_VALUES.includes(adapted.test_gate)) r.warnings.push(`test_gate_unknown: "${adapted.test_gate}" is not passed, failed or skipped`);
-    else if (adapted.test_gate === 'failed' && adapted.outcome === 'pass') r.warnings.push('test_gate_failed_under_pass: the test gate failed but the status is passed');
+    else if (adapted.test_gate === 'failed' && adapted.outcome === 'pass') r.warnings.push('test_gate_failed_under_pass: the test gate failed but the status is passed, so it records as gaps_found');
     if (adapted.not_checked_contradicted) r.warnings.push(`not_checked_contradicted: test_gate is ${adapted.test_gate}, so the not_checked tests entry was dropped`);
-    return { ...r, source_kind: 'frontmatter' };
+    const facts = [...(Array.isArray(opts.facts) ? opts.facts : [])];
+    if (adapted.test_gate === 'failed') facts.push({ fact: 'test_gate', ok: false, summary: 'The test gate failed: the suite reported failures or did not run' });
+    if (adapted.test_gate === 'passed') facts.push({ fact: 'test_gate', ok: true, summary: 'the test gate passed' });
+    const low = lowerByCodeFacts(r.verdict, facts);
+    return { ...r, verdict: low.verdict, lowered_by: low.lowered_by, facts_ok: passingFacts(facts), source_kind: 'frontmatter' };
   }
   return { ok: false, error: 'no_verdict', reason: 'no pan-verdict block and no verification frontmatter status' };
 }
@@ -466,13 +593,16 @@ module.exports = {
   SEVERITIES,
   DISPOSITIONS,
   REASON_REQUIRED,
-  AUTO_FIX_EXEMPT,
   KNOWN_VERDICTS,
   LIMITS,
+  RESOLUTION_STATUSES,
+  FINDING_ID_RE,
   findVerdictBlocks,
   validateVerdict,
   verdictFromVerificationFrontmatter,
   parseVerdictText,
+  lowerByCodeFacts,
+  failWordFor,
   recordSig,
   findingId,
   outcomeForVerdict,

@@ -182,6 +182,14 @@ describe('native workflows: script ⇄ markdown twin drift pin (5b)', () => {
     assert.ok(s.content.includes("phase('Verify')"), 'the port carries the verification phase its twin performs');
   });
 
+  test('the wave script ends on the phase gate and stops when it refuses (V1)', () => {
+    const s = scripts.find(x => x.name === 'pan-exec-waves.js');
+    assert.ok(s.content.includes("{ title: 'Gate'"), 'the meta lists the Gate phase');
+    assert.ok(s.content.indexOf("phase('Gate')") > s.content.indexOf("phase('Verify')"), 'the gate runs after verification');
+    assert.ok(s.content.includes('phase gate '), 'the gate step runs the engine verb');
+    assert.match(s.content, /if \(!gate \|\| gate\.ok !== true\) \{\s*\n\s*return \{[^}]*halted: 'phase_gate'/, 'a refusal, or no verdict at all, halts the script');
+  });
+
   test('the wave script honours parallelization=false with a sequential path', () => {
     const s = scripts.find(x => x.name === 'pan-exec-waves.js');
     assert.ok(s.content.includes('parallelWithinWave'), 'must branch on the parallelization flag');
@@ -200,5 +208,21 @@ describe('native workflows: script ⇄ markdown twin drift pin (5b)', () => {
       for (const t of agentTypesOf(s.content)) assert.ok(scoped.includes(`agentType: 'pan-wizard:${t}'`), `${s.name}: '${t}' not scoped`);
       assert.deepEqual(agentTypesOf(scoped).filter(t => !t.startsWith('pan-wizard:')), [], `${s.name}: a bare agentType survived scoping`);
     }
+  });
+});
+
+// The review pipeline's findings schema forced critical/major/minor/info while every
+// other PAN reviewer path (verdict.cjs, review-deep.cjs, /pan:review-deep) uses one
+// ladder; the meta-reviewer then merged findings graded on a ladder it does not use
+// (doc audit 2026-10-11).
+describe('native review pipeline grades on PAN\'s severity ladder', () => {
+  test('its FINDINGS severity enum is verdict.cjs SEVERITIES', () => {
+    const { SEVERITIES } = require('../pan-wizard-core/bin/lib/verdict.cjs');
+    const s = scripts.find((x) => x.name === 'pan-review-pipeline.js');
+    assert.ok(s, 'pan-review-pipeline script exists');
+    const m = s.content.match(/severity: \{ type: 'string', enum: \[([^\]]+)\] \}/);
+    assert.ok(m, 'severity enum present');
+    const enumVals = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+    assert.deepEqual(enumVals, [...SEVERITIES]);
   });
 });

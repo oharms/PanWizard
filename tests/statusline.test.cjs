@@ -254,3 +254,21 @@ describe('pan-statusline ↔ pan-context-monitor bridge (N24: pins the N15 win32
     }
   });
 });
+
+// Claude Code writes its todos under CLAUDE_CONFIG_DIR when that is set; the status
+// line read only ~/.claude/todos, so the current-task segment went blank (doc audit
+// 2026-10-11, verifier).
+describe('statusline reads todos from CLAUDE_CONFIG_DIR', () => {
+  test('the in-progress task comes from <configDir>/todos, not the home directory', () => {
+    const scratch = fsReal.mkdtempSync(pathReal.join(os.tmpdir(), 'pan-sl-cfg-'));
+    try {
+      const cfg = pathReal.join(scratch, 'cfg');
+      fsReal.mkdirSync(pathReal.join(cfg, 'todos'), { recursive: true });
+      fsReal.writeFileSync(pathReal.join(cfg, 'todos', 'sess1-agent-sess1.json'),
+        JSON.stringify([{ status: 'in_progress', activeForm: 'Wiring the config dir' }]));
+      const out = buildStatuslineOutput({ model: { display_name: 'x' }, workspace: { current_dir: scratch }, session_id: 'sess1' },
+        { fs: fsReal, path: pathReal, homeDir: pathReal.join(scratch, 'home'), tmpDir: scratch, configDir: cfg, skipBridge: true });
+      assert.match(out, /Wiring the config dir/);
+    } finally { fsReal.rmSync(scratch, { recursive: true, force: true }); }
+  });
+});

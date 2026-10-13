@@ -41,7 +41,7 @@ describe('verdict — parsing the pan-verdict block', () => {
     assert.deepEqual(r.verdict, {
       contract: '1.0', agent: 'pan-reviewer', outcome: 'fail', verdict: 'NEEDS_FIXES', phase: '03', score: null,
       findings: [{ class: 'defect', severity: 'high', where: 'src/utils/parser.ts:42', summary: 'parse() drops the final token' }],
-      not_checked: [],
+      not_checked: [], resolutions: [],
     });
   });
 
@@ -302,6 +302,56 @@ describe('verdict — what a judge could not check (M23)', () => {
     assert.ok(v.parseVerdictText(fm(['test_gate: failed'])).warnings.some(w => w.startsWith('test_gate_failed_under_pass')));
     assert.ok(v.parseVerdictText(fm(['test_gate: maybe'])).warnings.some(w => w.startsWith('test_gate_unknown')));
   });
+});
+
+// Two-key verdict (V9, absorbs R46): a code fact can lower a judge's verdict, never
+// raise it. The verifier's word alone could record "passed" over a failing suite.
+describe('verdict — code facts only lower (V9)', () => {
+  const fm = (status, lines) => ['---', `status: ${status}`, ...lines, '---', ''].join('\n');
+
+  test('passed with a failed test gate records as gaps_found, with the gate as a finding', () => {
+    const r = v.parseVerdictText(fm('passed', ['test_gate: failed']));
+    assert.equal(r.verdict.outcome, 'fail');
+    assert.equal(r.verdict.verdict, 'gaps_found');
+    assert.equal(r.verdict.agent_verdict, 'passed');
+    assert.deepEqual(r.lowered_by, ['test_gate']);
+    const gate = r.verdict.findings.find(f => f.where === 'code-fact:test_gate');
+    assert.ok(gate, 'the failing fact is a finding the gap round can close');
+    assert.equal(gate.severity, 'high');
+  });
+
+  test('human_needed with a failed test gate is lowered too', () => {
+    const r = v.parseVerdictText(fm('human_needed', ['test_gate: failed']));
+    assert.equal(r.verdict.outcome, 'fail');
+    assert.equal(r.verdict.verdict, 'gaps_found');
+  });
+
+  test('a skipped gate stays passed (with not_checked); a passed gate changes nothing', () => {
+    const skipped = v.parseVerdictText(fm('passed', ['test_gate: skipped']));
+    assert.equal(skipped.verdict.outcome, 'pass');
+    assert.deepEqual(skipped.lowered_by, []);
+    const ran = v.parseVerdictText(fm('passed', ['test_gate: passed']));
+    assert.equal(ran.verdict.verdict, 'passed');
+    assert.equal(ran.verdict.agent_verdict, undefined);
+  });
+
+  test('a fact never raises: gaps_found with a passed gate stays gaps_found', () => {
+    const r = v.parseVerdictText(fm('gaps_found', ['test_gate: passed']));
+    assert.equal(r.verdict.outcome, 'fail');
+    assert.deepEqual(r.lowered_by, []);
+  });
+
+  test('lowerByCodeFacts applies to a verdict block too, and passing facts are ignored', () => {
+    const block = { contract: '1.0', agent: 'pan-reviewer', outcome: 'pass', verdict: 'APPROVE', phase: '3', score: null, findings: [], not_checked: [] };
+    const kept = v.lowerByCodeFacts(block, [{ fact: 'integrity', ok: true, summary: 'clean' }]);
+    assert.equal(kept.verdict, block);
+    const low = v.lowerByCodeFacts(block, [{ fact: 'integrity', ok: false, summary: 'a test was deleted' }]);
+    assert.equal(low.verdict.outcome, 'fail');
+    assert.equal(low.verdict.verdict, 'NEEDS_FIXES', 'the reviewer gets its own fail word');
+    assert.deepEqual(low.lowered_by, ['integrity']);
+    const other = v.lowerByCodeFacts({ ...block, agent: 'pan-hardener' }, [{ fact: 'integrity', ok: false, summary: 'x' }]);
+    assert.equal(other.verdict.verdict, 'fail', 'an agent without a known fail word records the outcome');
+  });
 
   test('a pan-verdict block\'s not_checked is normalised: strings, objects, junk', () => {
     const r = v.parseVerdictText(report({ ...REVIEW, not_checked: ['lint', { check: 'types', reason: 'tsc missing' }, { reason: 'no check named' }, 7] }));
@@ -363,8 +413,7 @@ describe('verdict — vocabularies', () => {
     assert.equal(v.outcomeForVerdict('pan-unknown', 'PASS'), null);
   });
 
-  test('dispositions needing a reason and the auto-fix exemptions are subsets of their vocabularies', () => {
+  test('dispositions needing a reason are a subset of the dispositions', () => {
     for (const d of v.REASON_REQUIRED) assert.ok(v.DISPOSITIONS.includes(d));
-    for (const c of v.AUTO_FIX_EXEMPT) assert.ok(v.FINDING_CLASSES.includes(c));
   });
 });

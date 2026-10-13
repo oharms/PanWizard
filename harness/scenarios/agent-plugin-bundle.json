@@ -23,5 +23,8 @@
     { "kind": "fs", "read": "bundle/com.github.copilot/hooks/hooks.json",
       "expect": ["json:hooks.SessionStart.0.type=command", "json:hooks.SessionStart.0.command=node ${CLAUDE_PLUGIN_ROOT}/hooks/pan-check-update.js", "json!:hooks.SessionStart.0.hooks"],
       "why": "Copilot plugin hooks: FLAT PascalCase entries with ${CLAUDE_PLUGIN_ROOT} (the shape VS Code documents). No nested matcher groups." }
+  ],
+  "controls": [
+    {"id":"no-manifest","after":0,"delete":"bundle/plugin.json","why":"A bundle without its manifest is not a plugin; the manifest assertions must see that."}
   ]
 }

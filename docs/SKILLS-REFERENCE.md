@@ -53,7 +53,7 @@ These are installed into host projects via the PAN installer and available to en
 
 Analyze codebase with parallel mapper agents to produce .planning/codebase/ documents
 
-```
+```text
 /pan:map-codebase [optional: specific area to map, e.g., 'api' or 'auth']
 ```
 
@@ -65,7 +65,7 @@ Analyze codebase with parallel mapper agents to produce .planning/codebase/ docu
 
 Initialize a new project with deep context gathering and project.md
 
-```
+```text
 /pan:new-project [--auto]
 ```
 
@@ -90,7 +90,7 @@ Initialize a new project with deep context gathering and project.md
 
 Design a roadmap phase before planning — architecture, ADR, threat-lite, machine-checkable criteria — verified by an independent checker
 
-```
+```text
 /pan:design-phase <phase> [--spike] [--skip-design] [--redesign]
 ```
 
@@ -102,7 +102,7 @@ Design a roadmap phase before planning — architecture, ADR, threat-lite, machi
 
 Gather phase context through adaptive questioning before planning
 
-```
+```text
 /pan:discuss-phase <phase> [--auto]
 ```
 
@@ -114,7 +114,7 @@ Gather phase context through adaptive questioning before planning
 
 Execute all plans in a phase with wave-based parallelization
 
-```
+```text
 /pan:exec-phase <phase-number> [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]
 ```
 
@@ -126,7 +126,7 @@ Execute all plans in a phase with wave-based parallelization
 
 Create detailed phase plan (plan.md) with verification loop
 
-```
+```text
 /pan:plan-phase [phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>]
 ```
 
@@ -138,7 +138,7 @@ Create detailed phase plan (plan.md) with verification loop
 
 Research how to implement a phase (standalone - usually use /pan:plan-phase instead)
 
-```
+```text
 /pan:research-phase <phase>
 ```
 
@@ -150,7 +150,7 @@ Research how to implement a phase (standalone - usually use /pan:plan-phase inst
 
 Re-run goal-backward verification of a phase with a test-suite gate and list its gaps
 
-```
+```text
 /pan:verify-phase [phase number, e.g., '4']
 ```
 
@@ -168,14 +168,14 @@ Re-run goal-backward verification of a phase with a test-suite gate and list its
 | `/pan:assumptions` | Read, Bash, Grep, Glob | Surface Claude's assumptions about a phase approach before planning |
 | `/pan:insert-phase` | Read, Write, Bash | Insert urgent work as decimal phase (e.g., 72.1) between existing phases |
 | `/pan:phase-budget` | Bash, Read | Estimate context utilization and quality for the current phase |
-| `/pan:phase-tests` | Read, Write, Edit, Bash, Glob, Grep, Task, AskUserQuestion | Generate tests for a completed phase based on UAT criteria and implementation |
+| `/pan:phase-tests` | Read, Write, Edit, Bash, Glob, Grep, Task, AskUserQuestion | Generate tests for a completed phase from its summaries, context decisions, verification report and implementation |
 | `/pan:remove-phase` | Read, Write, Bash, Glob | Remove a future phase from roadmap and renumber subsequent phases |
 
 #### /pan:add-phase
 
 Add phase to end of current milestone in roadmap
 
-```
+```text
 /pan:add-phase <description>
 ```
 
@@ -187,7 +187,7 @@ Add phase to end of current milestone in roadmap
 
 Surface Claude's assumptions about a phase approach before planning
 
-```
+```text
 /pan:assumptions <phase>
 ```
 
@@ -199,7 +199,7 @@ Surface Claude's assumptions about a phase approach before planning
 
 Insert urgent work as decimal phase (e.g., 72.1) between existing phases
 
-```
+```text
 /pan:insert-phase <after> <description>
 ```
 
@@ -211,7 +211,7 @@ Insert urgent work as decimal phase (e.g., 72.1) between existing phases
 
 Estimate context utilization and quality for the current phase
 
-```
+```text
 /pan:phase-budget
 ```
 
@@ -221,9 +221,9 @@ Estimate context utilization and quality for the current phase
 
 #### /pan:phase-tests
 
-Generate tests for a completed phase based on UAT criteria and implementation
+Generate tests for a completed phase from its summaries, context decisions, verification report and implementation
 
-```
+```text
 /pan:phase-tests <phase> [additional instructions]
 ```
 
@@ -235,7 +235,7 @@ Generate tests for a completed phase based on UAT criteria and implementation
 
 Remove a future phase from roadmap and renumber subsequent phases
 
-```
+```text
 /pan:remove-phase <phase-number>
 ```
 
@@ -262,7 +262,7 @@ Remove a future phase from roadmap and renumber subsequent phases
 
 Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness
 
-```
+```text
 /pan:focus-auto [--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal]
 ```
 
@@ -274,7 +274,7 @@ Continuous scan-plan-exec loop with purpose-driven categories and a layered safe
 
 Strategic 10-phase feature investigation, design, and specification pipeline
 
-```
+```text
 /pan:focus-design <feature description> [--full | --internal | --outward | --spike] [--gate] [--audit] [--mvp]
 ```
 
@@ -286,7 +286,7 @@ Strategic 10-phase feature investigation, design, and specification pipeline
 
 Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality
 
-```
+```text
 /pan:focus-doc-audit [file|directory] [--deep] [--links] [--fix] [--all] [--score-only] [--min-score N] [--format markdown|json|checklist]
 ```
 
@@ -298,7 +298,7 @@ Multi-dimensional document audit — accuracy, freshness, links, cross-consisten
 
 Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories
 
-```
+```text
 /pan:focus-drift-walking [--create] [--audit] [--repair] [--report] [--dir <path>] [--depth N] [--severity critical|high|medium|low|info] [--format markdown|json|checklist] [--quick]
 ```
 
@@ -310,7 +310,7 @@ Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair ac
 
 Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
 
-```
+```text
 /pan:focus-exec [--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--dry-run] [--no-commit] [--continue] [--deep-review]
 ```
 
@@ -322,7 +322,7 @@ Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution 
 
 Create capacity-budgeted work batch with spec coverage verification and 4 execution modes
 
-```
+```text
 /pan:focus-plan [--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--lean] [--no-spec-check]
 ```
 
@@ -334,7 +334,7 @@ Create capacity-budgeted work batch with spec coverage verification and 4 execut
 
 Deep-dive strategic work scan with prioritized items and Reality Score filtering
 
-```
+```text
 /pan:focus-scan [--focus <area>] [--quick] [--refresh] [--lean]
 ```
 
@@ -346,7 +346,7 @@ Deep-dive strategic work scan with prioritized items and Reality Score filtering
 
 Synchronize documentation after changes — check staleness and update counts
 
-```
+```text
 /pan:focus-sync [--readme | --docs | --arch | --all]
 ```
 
@@ -370,7 +370,7 @@ Synchronize documentation after changes — check staleness and update counts
 
 Audit milestone completion against original intent before archiving
 
-```
+```text
 /pan:milestone-audit [version] [--track <name>] [--all-tracks]
 ```
 
@@ -382,7 +382,7 @@ Audit milestone completion against original intent before archiving
 
 Archive accumulated phase directories from completed milestones
 
-```
+```text
 /pan:milestone-cleanup
 ```
 
@@ -394,7 +394,7 @@ Archive accumulated phase directories from completed milestones
 
 Archive completed milestone and prepare for next version
 
-```
+```text
 /pan:milestone-done <version>
 ```
 
@@ -406,7 +406,7 @@ Archive completed milestone and prepare for next version
 
 Create phases to close all gaps identified by milestone audit
 
-```
+```text
 /pan:milestone-gaps
 ```
 
@@ -418,7 +418,7 @@ Create phases to close all gaps identified by milestone audit
 
 Start a new milestone cycle — update project.md and route to requirements
 
-```
+```text
 /pan:milestone-new [milestone name, e.g., 'v1.1 Notifications']
 ```
 
@@ -438,7 +438,7 @@ Start a new milestone cycle — update project.md and route to requirements
 
 Milestone retrospective — analyze estimation accuracy, verification patterns, and common gaps
 
-```
+```text
 /pan:retro [--write-memory] [--max N]
 ```
 
@@ -462,7 +462,7 @@ Milestone retrospective — analyze estimation accuracy, verification patterns, 
 
 Create context handoff when pausing work mid-phase
 
-```
+```text
 /pan:pause
 ```
 
@@ -474,7 +474,7 @@ Create context handoff when pausing work mid-phase
 
 Switch model profile for PAN agents (quality/balanced/budget)
 
-```
+```text
 /pan:profile <profile>
 ```
 
@@ -486,7 +486,7 @@ Switch model profile for PAN agents (quality/balanced/budget)
 
 Check project progress, show context, and route to next action (execute or plan)
 
-```
+```text
 /pan:progress
 ```
 
@@ -498,7 +498,7 @@ Check project progress, show context, and route to next action (execute or plan)
 
 Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents
 
-```
+```text
 /pan:quick [--full] [description]
 ```
 
@@ -510,7 +510,7 @@ Execute a quick task with PAN guarantees (atomic commits, state tracking) but sk
 
 Resume work from previous session with full context restoration
 
-```
+```text
 /pan:resume
 ```
 
@@ -539,7 +539,7 @@ Resume work from previous session with full context restoration
 
 Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
 
-```
+```text
 /pan:audit-deployment <target-directory> [--enhancements] [--repair]
 ```
 
@@ -551,7 +551,7 @@ Audit a PAN Wizard deployment — verify installation integrity, project health,
 
 Systematic debugging with persistent state across context resets
 
-```
+```text
 /pan:debug [issue description]
 ```
 
@@ -563,7 +563,7 @@ Systematic debugging with persistent state across context resets
 
 Diagnose planning directory health and optionally repair issues
 
-```
+```text
 /pan:health [--repair] [--standards] [--full] [--drift] [--links]
 ```
 
@@ -575,7 +575,7 @@ Diagnose planning directory health and optionally repair issues
 
 Show available PAN commands and usage guide
 
-```
+```text
 /pan:help
 ```
 
@@ -587,7 +587,7 @@ Show available PAN commands and usage guide
 
 Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat and stale entries, poisoned ledgers, trace debris, oversized planning files) and apply safe cleanups
 
-```
+```text
 /pan:hygiene [--apply] [--trace-age-days N] [--all-tracks] [--track <name>]
 ```
 
@@ -599,7 +599,7 @@ Scan the project for PAN version drift and stale artifacts (legacy filenames, me
 
 Reapply local modifications after a PAN update
 
-```
+```text
 /pan:patches
 ```
 
@@ -611,7 +611,7 @@ Reapply local modifications after a PAN update
 
 Configure PAN workflow toggles and model profile
 
-```
+```text
 /pan:settings
 ```
 
@@ -623,7 +623,7 @@ Configure PAN workflow toggles and model profile
 
 Capture idea or task as todo from current conversation context
 
-```
+```text
 /pan:todo-add [optional description]
 ```
 
@@ -635,7 +635,7 @@ Capture idea or task as todo from current conversation context
 
 List pending todos and select one to work on
 
-```
+```text
 /pan:todo-check [area filter]
 ```
 
@@ -647,7 +647,7 @@ List pending todos and select one to work on
 
 Update PAN to latest version with changelog display
 
-```
+```text
 /pan:update
 ```
 
@@ -667,7 +667,7 @@ Update PAN to latest version with changelog display
 
 Join the PAN Discord community
 
-```
+```text
 /pan:discord
 ```
 
@@ -687,7 +687,7 @@ Join the PAN Discord community
 
 Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires.
 
-```
+```text
 /pan:army <goal> [--source scan|backlog] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--squads a,b,c] [--no-build-worktrees] [--push] [--clean-seal] [--schedule <cadence>] [--daily-budget N] [--dry-run] [--continue] [--stop] [--status]
 ```
 
@@ -710,49 +710,49 @@ Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a
 
 Show token usage and estimated cost across PAN commands and agents
 
-```
+```text
 /pan:cost [report|append|clear|rebuild|limits] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 148
+**Lines:** 144
 
 #### /pan:dashboard
 
 Alias for /pan:hud — generate the single-page HTML dashboard of the bot army and project
 
-```
+```text
 /pan:dashboard [--out <file>] [--open] [--stdout]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 25
+**Lines:** 22
 
 #### /pan:hud
 
 Generate a single-page, self-contained HTML dashboard of the bot army and the project's current state
 
-```
+```text
 /pan:hud [--out <file>] [--open] [--stdout]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 93
+**Lines:** 89
 
 #### /pan:report
 
 Generate a self-contained HTML report for one phase, or a project-level timeline index linking every phase report
 
-```
+```text
 /pan:report phase <N> [--out <file>] [--open] [--stdout] | index [--out <file>] [--open] [--stdout] [--bundle] | all [--open]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 71
+**Lines:** 67
 
 ---
 
@@ -768,7 +768,7 @@ Generate a self-contained HTML report for one phase, or a project-level timeline
 
 Manage external experiments — scaffold, run, harvest, promote findings back to PAN
 
-```
+```text
 /pan:experiment new <slug> --idea <path> [--runtime r] [--root path] [--budget n] | list [--root path] | manifest <slug> | run <slug> [--timeout sec] [--prompt text] | status <slug> | stop <slug> | harvest <slug> [--source-root path] [--force] | prune <slug> [--hard]
 ```
 
@@ -780,7 +780,7 @@ Manage external experiments — scaffold, run, harvest, promote findings back to
 
 Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports
 
-```
+```text
 /pan:learn [--session <id> | --sessions <n> | --experiment <slug>] [--apply]
 ```
 
@@ -792,13 +792,13 @@ Analyze trace sessions or harvested experiments via pan-optimizer; generate rank
 
 Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions
 
-```
+```text
 /pan:optimize apply [--report <file>] | revert <apply_id> | revert --last | list | stats | trace init|end|current|list
 ```
 
 **Tools:** Read, Write, Edit, Bash, Glob, Grep  
 **Group:** Self-Improvement  
-**Lines:** 113
+**Lines:** 115
 
 ---
 
@@ -812,7 +812,7 @@ Manage the circular optimization loop — record a report's suggestions, undo th
 
 Safe, phase-aware git workflow commands — commit, branch, push, status, log, stash, diff, rollback, tag, sync
 
-```
+```text
 /pan:git <subcommand> [options]
 ```
 
@@ -832,13 +832,13 @@ Safe, phase-aware git workflow commands — commit, branch, push, status, log, s
 
 Grounded Q&A, multi-turn design discussion, and playbook generation. Three modes in one command.
 
-```
+```text
 /pan:knowledge ask <question> | discuss <phase> <topic> | playbook
 ```
 
 **Tools:** Read, Write, Bash, Grep, Glob, Task  
 **Group:** Knowledge  
-**Lines:** 129
+**Lines:** 128
 
 ---
 
@@ -852,7 +852,7 @@ Grounded Q&A, multi-turn design discussion, and playbook generation. Three modes
 
 Validate the doc-code link graph — inline wiki-style refs, source-comment anchors, and require-code-mention contracts (ADR-0027, v3.8.0+)
 
-```
+```text
 /pan:links [--strict] [--doc-root <path>]... [--source-root <path>]... [--raw]
 ```
 
@@ -872,13 +872,13 @@ Validate the doc-code link graph — inline wiki-style refs, source-comment anch
 
 Discover available MCP tools and recommend which ones apply to a phase. Discovery-only; auto-invocation deferred.
 
-```
+```text
 /pan:mcp-bridge list | recommend <phase> [--max N] [--min-score N] | cache [--servers <json>] [--runtime <name>]
 ```
 
 **Tools:** Read, Bash, Write  
 **Group:** External tools  
-**Lines:** 145
+**Lines:** 143
 
 ---
 
@@ -893,25 +893,25 @@ Discover available MCP tools and recommend which ones apply to a phase. Discover
 
 Preview what will happen — phase blast radius, phase dependency graph, or milestone ETA
 
-```
+```text
 /pan:preview phase <N> | phases | milestone
 ```
 
 **Tools:** Read, Bash, Glob, Grep, Write, Task  
 **Group:** Foresight  
-**Lines:** 114
+**Lines:** 113
 
 #### /pan:what-if
 
 Explore a phase's alternative approach in an isolated git worktree. Replays the scenario, compares to the original plan, writes a report.
 
-```
+```text
 /pan:what-if <phase-number> <scenario-text>
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Task  
 **Group:** Foresight  
-**Lines:** 146
+**Lines:** 145
 
 ---
 
@@ -925,13 +925,13 @@ Explore a phase's alternative approach in an isolated git worktree. Replays the 
 
 Security audit + cross-reviewer check. OWASP/STRIDE pass by pan-hardener, then pan-meta-reviewer catches what the first pass missed. Writes consolidated deep-review.md.
 
-```
+```text
 /pan:review-deep <phase-number>
 ```
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task  
 **Group:** Review  
-**Lines:** 128
+**Lines:** 126
 
 ---
 
@@ -1021,7 +1021,7 @@ Full reality check of PAN Wizard — claims vs code vs deployed installs, market
 
 /pantest - Structured Testing Workflow for PAN Wizard
 
-**Lines:** 144
+**Lines:** 145
 
 #### /quick
 
@@ -1104,7 +1104,7 @@ Full reality check of PAN Wizard — claims vs code vs deployed installs, market
 
 End a PAN Wizard development session by verifying state and preserving context
 
-**Lines:** 110
+**Lines:** 113
 
 #### /session-start
 

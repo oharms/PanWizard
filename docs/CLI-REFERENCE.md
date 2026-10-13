@@ -197,7 +197,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply]` (AGENTS.md PAN section, CLAUDE.md bridge, state.md frontmatter) |
 | `agents-md.cjs` | Single source for the AGENTS.md PAN section and PAN's CLAUDE.md block (the `@AGENTS.md` import plus a `# Compact instructions` section Claude Code reads when it compacts), shared by the installer and `memory rebuild` |
 | `core.cjs` (CLI surface) | **(v2.10.0, E-1)** Cached context: `cache prime [--summary]` lists the stable planning files agents re-read (wraps `buildCachedContext`). It measures them and primes nothing: the host caches each agent's prompt prefix itself. |
-| `cost.cjs` | **(v3.0, Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, plus `models check` rate-table staleness (v3.9). Log at `.planning/metrics/tokens.jsonl`. |
+| `cost.cjs` | **(v3.0, Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, `cost limits` (the host's usage-limit windows as the status line last saw them), plus `models check` rate-table staleness (v3.9). Log at `.planning/metrics/tokens.jsonl`. |
 | `cost-rebuild.cjs` | **(v3.29)** `cost rebuild`: rebuilds the ledger from Claude Code's session and per-agent transcripts (usage deduped per turn, agents typed from the main thread's `Agent` calls, Workflow-tool subagents included, one main-thread row per session); supersedes hook rows of rebuilt sessions, keeps the rest, moves the old ledger aside. |
 | `bus.cjs` | **(v3.0, Y-7)** Agent message channels: `bus publish`, `bus drain`, `bus list`. Channels at `.planning/bus/<channel>.jsonl`. |
 | `preview.cjs` | **(v3.1, Y-1)** Foresight: `preview phase <N>`, `preview phases`, `preview milestone`. |
@@ -227,7 +227,10 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `planning-root.cjs` | **(v3.27)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
 | `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
-| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A re-verification auto-fixes the findings it no longer reports, a regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
+| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A finding closes only on evidence (a judge's `resolved` answer, the verifier's `gaps_closed`, or a passing code fact); one a report neither repeats nor answers stays open as `unaddressed`. A regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
+| `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
+| `verify-integrity.cjs` | **(program V3)** `verify test-integrity <phase>`: walks the phase's plan commits and reports a deleted test, a skip or only marker added (JS, Python, Go, Rust, Java), assertions dropped, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail; a renamed test is a warning. Uses verify-scope's `committedFiles()`. |
+| `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
 | `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. Re-exported through verify.cjs. |
 
 ---
@@ -451,6 +454,10 @@ Quick reference of all CLI commands grouped by category.
 | 211 | `roadmap compact` | Roadmap | roadmap-compact.cjs |
 | 212 | `memory prune` | Memory | memory.cjs |
 | 213 | `memory record` | Memory | memory.cjs |
+| 214 | `cost limits` | Cost | cost.cjs |
+| 215 | `verify plan-set` | Verification | verify-plan-set.cjs |
+| 216 | `verify test-integrity` | Verification | verify-integrity.cjs |
+| 217 | `phase gate` | Phase Ops | phase-gate.cjs |
 
 ---
 
@@ -904,9 +911,15 @@ pan-tools phase remove 5.2 --force    # Force removal even if summaries exist
 
 ---
 
-### `phase complete <phase> [--no-commit]`
+### `phase gate <phase> [--mode warn|enforce]`
+
+Whether a phase may be marked complete (program V1). It prints `{phase, mode, ok, reasons[], facts, not_checked[]}` and exits 1 when it refuses (`--raw`: `pass` or `refuse`). Reason codes: `no_plans`, `missing_summary`, `no_verification`, `verification_unreadable`, `verification_failed` (a failed test gate under `passed` counts), `human_needed_unapproved` (approve a human item with `findings dispose <id> --as decision --reason "…"`), `verification_stale`, `reconcile_contradiction`, `test_failed`, `open_findings` (critical or high, any judge), `stubs_found` (in the files the phase committed), `integrity_violation` (`verify test-integrity`). `not_checked` lists what it could not check, never a refusal: a skipped or unrecorded test gate, an unknown freshness, no git, no plan commits, the verifier switched off. `--mode` overrides `workflow.phase_gate` for this call.
+
+### `phase complete <phase> [--no-commit] [--force --reason "<why>"]`
 
 Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances state.md to the next phase, and updates requirements.md traceability.
+
+**The phase gate runs first.** Under `workflow.phase_gate: warn` (the default) the phase is marked complete and the output carries `gate: {ok, mode, reasons, not_checked}`. Under `enforce` a refusal exits 1 with `{error: "phase_gate_refused", reason, gate}` and changes nothing. `--force --reason "<why>"` completes past a refusal and records a `decision` disposition for every open finding the gate counted (output: `gate_override`); `--force` without `--reason` is refused in either mode.
 
 ```bash
 pan-tools phase complete 5 [--no-commit]
@@ -1642,7 +1655,7 @@ pan-tools verify key-links .planning/phases/05-setup/05-01-plan.md [--raw]
 
 ### `verify reconcile <phase>`
 
-Cross-check a phase's recorded verification against the mechanical checks of every plan's `must_haves`, so a verification.md whose `status` claims a pass while an artifact substance check fails or a key link is unwired is caught (each artifact and link in the result names its `plan`). Exits `1` on a contradiction (so `exec-phase`'s auto-advance gate stops) and `0` otherwise, including a phase with no directory, no verification.md or no `must_haves`, which report `reconciled: true` with a `note`.
+Cross-check a phase's recorded verification against the mechanical checks of every plan's `must_haves`, so a verification.md whose `status` claims a pass while an artifact substance check fails or a key link is unwired is caught (each artifact and link in the result names its `plan`). Exits `1` on a contradiction (and the phase gate refuses with `reconcile_contradiction`) and `0` otherwise, including a phase with no directory, no verification.md or no `must_haves`, which report `reconciled: true` with a `note`.
 
 ```bash
 pan-tools verify reconcile 5 [--raw]
@@ -1678,6 +1691,30 @@ pan-tools verify stale 3 --raw    # fresh | stale | unverified | unknown
 ```
 
 `state` is `fresh`, `stale`, `unverified` (no verification file) or `unknown`. `unknown` comes with a `reason`: the verification records no `verified_commit`, the commit is no longer in the repository (rebased or squashed), the phase declares no files, or git is unavailable. `progress json` adds `verification` to each verified phase (and `changed_since_verification` when it is stale), and `progress table` marks a stale phase `Complete (verification stale)`. Exits 1 without a phase or for an unknown one.
+
+### `verify plan-set <phase>`
+
+The checks a plan set has to pass that code can make (program V7). `/pan:plan-phase` runs it before spawning the plan checker, and also when the checker is skipped (`--skip-verify`, `workflow.plan_check` off), and sends its errors straight back to the planner.
+
+```bash
+pan-tools verify plan-set 3          # {phase, ok, errors[], warnings[], plans, plans_sha, plan_check, drift[]}
+pan-tools verify plan-set 3 --raw    # valid | invalid
+```
+
+**Errors** (exit 1): `uncovered_requirement` (a roadmap requirement for the phase that no plan lists), `same_wave_overlap` (two plans in one wave modifying the same file with no dependency between them), `missing_reference` (a `depends_on` that names no plan of the phase), `self_reference`, `future_reference` (a dependency in the same or a later wave), `cycle`. **Warnings**: `unknown_requirement` (a plan lists a requirement the roadmap does not give the phase) and `wave_gap` (a plan later than its dependencies need). A dependency on another phase's plan (`02-04` from phase 3) is not checked.
+
+`plan_check` says whether the plans are the ones that passed the plan check. The recorder stores a hash of the phase's plan files (`plans_sha`, line endings normalised) with every `pan-plan-checker` verdict. `status` is `ok`, `stale` (edited since the check), `failed`, `missing`, `legacy` (recorded before hashing; a warning) or `disabled` (`workflow.plan_check` is off). `drift` lists, for each plan without a summary that records `planned_commit`, the `files_modified` that changed between that commit and `HEAD`. `init execute-phase` carries the same two as `plan_check` and `plan_drift`, and exec-phase stops on `stale`, `failed` or `missing` unless the user gives a reason. Exits 1 for an unknown phase or a phase with no plans.
+
+### `verify test-integrity <phase>`
+
+Did the phase weaken the tests that judge it (program V3)? It walks the phase's own plan commits (subjects like `feat(03-01): …`) one at a time and reads each test file's diff.
+
+```bash
+pan-tools verify test-integrity 3          # {phase, checked, ok, commits, violations[], warnings[], reason?}
+pan-tools verify test-integrity 3 --raw    # clean | violated | not_checked
+```
+
+**Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/` or `spec/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test(s).java`/`.kt`/`.cs`, or a Rust file holding `#[test]` or `#[cfg(test)]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
 
 ### `verify stubs [--gate]`
 
@@ -2143,7 +2180,7 @@ pan-tools config-ensure-section [--raw]
 
 **`--raw` output:** `created` or `exists`.
 
-**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`, `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
+**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`warn`), `hooks.guard` (`report`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -2157,7 +2194,7 @@ pan-tools config-ensure-section [--raw]
 | `memory.auto_optimize` | (not written; absent = `true`) | Reconcile the always-loaded project memory automatically at the focus-auto checkpoint and the normal-flow session record. No-op when state.md is already lean. Set `false` to opt out and reconcile only via `memory optimize`. |
 | `budget.enforce` | `false` | Make the spawn/point budget a hard stop. Advisory by default (tracked + surfaced, never stops a run). |
 | `budget.verify_reserve` | `0.15` | Fraction of the spawn budget (0–0.5) held back for re-verification so it can't be starved. Surfaced as `new_work_budget_remaining` / `into_verify_reserve` always; a hard early stop (`budget_reserve_reached`) only under `budget.enforce` / `--enforce-budget`. Override per-run with `--verify-reserve`. |
-| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "claude-opus-4-8": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25, "cache_write_1h": 10 } }`. `cache_write` is the five-minute cache write; the optional `cache_write_1h` prices the one-hour share of a row that recorded the split, which otherwise bills at `cache_write`. Applied to both `cost append` and aggregate reporting, exactly as written. Precedence: this key, then a Claude Code managed `modelPricing` block (its `overrides` rows, times its `multiplier`), then the built-in table (times the managed `multiplier` when one is set). |
+| `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "<model-id>": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25, "cache_write_1h": 10 } }`. `cache_write` is the five-minute cache write; the optional `cache_write_1h` prices the one-hour share of a row that recorded the split, which otherwise bills at `cache_write`. The optional `long` block (`{ "above": 100000, "input": …, "output": …, "cache_read": …, "cache_write": …, "cache_write_1h": … }`) prices the part of a row recorded as `long_prompt` (requests whose prompt was over 100,000 tokens); `above` must be 100000, the figure the logger records at. An override row replaces the built-in row whole, so an override for a model with a long-prompt tier needs its own `long` block, or those requests bill at the base rates. Applied to both `cost append` and aggregate reporting, exactly as written. Precedence: this key, then a Claude Code managed `modelPricing` block (its `overrides` rows, times its `multiplier`), then the built-in table (times the managed `multiplier` when one is set). |
 | `routing.max_escalations` | `1` | How many tiers a retry may climb under `resolve-model --attempt` (failure-tier escalation). `0` turns escalation off. |
 | `cache.extra_files` | (not written; absent = no extra files) | **(v3.27)** Extra planning-root-relative docs to include in the cached context block, e.g. `["research/api-contract.md"]`. The built-in list is the *phase-model* spine (project/requirements/roadmap/state/standards), so a focus-model project measures an empty block. The block is what `cache prime`, `context-budget` and `hygiene scan` measure. It does not decide what the host caches: the host caches each agent's prompt prefix by itself. Entries are appended after the built-ins, so the `sha` of a project that sets nothing does not change; absolute paths, drive paths, and `..` segments are ignored. |
 | `brave_search` | auto-detected | Brave Search API availability |
@@ -2239,7 +2276,7 @@ pan-tools resolve-model pan-executor [--metadata '<json>'] [--attempt <n>] [--ra
 
 For unknown agents: `{ "model": "sonnet", "profile": "balanced", "strategy": "static", "effort": "medium", "unknown_agent": true }` — unknown agents get the mid tier regardless of profile.
 
-**Under OpenCode:** the copy of PAN installed under `.opencode/` (or `~/.config/opencode/`) resolves provider-qualified ids — the provider, a slash, and the model's models.dev id, such as `openai/gpt-6-sol` for the OpenAI mid tier (the table is `OPENCODE_MODELS` in `core.cjs`) — because OpenCode names every model `provider/model`. With `routing.provider` unset or `auto` (the default) and no `PAN_PROVIDER`, the provider is the one in OpenCode's own configured `model` (`opencode.json` at the project root, then `.opencode/opencode.json`) when it is `anthropic`, `openai` or `google`, and otherwise the runtime-directory detection's (`.opencode/` alone counts as OpenAI); the reasoning tier stays `inherit`.
+**Under OpenCode:** the copy of PAN installed under `.opencode/` (or `~/.config/opencode/`) resolves provider-qualified ids — the provider, a slash, and the model's models.dev id, such as `openai/<model>` for an OpenAI tier (the table is `OPENCODE_MODELS` in `core.cjs`) — because OpenCode names every model `provider/model`. With `routing.provider` unset or `auto` (the default) and no `PAN_PROVIDER`, the provider is the one in OpenCode's own configured `model` (`opencode.json` at the project root, then `.opencode/opencode.json`) when it is `anthropic`, `openai` or `google`, and otherwise the runtime-directory detection's (`.opencode/` alone counts as OpenAI); the reasoning tier stays `inherit`.
 
 **`--raw` output:** Model name string (e.g., `inherit`, `sonnet`, `haiku`). `inherit` means "use the model the session was launched with" — PAN does not name a model here, so it never goes stale as the lineup moves.
 
@@ -2492,7 +2529,7 @@ pan-tools summary-extract path/to/summary.md --fields key_files,decisions
 
 ---
 
-### `websearch <query> [--limit N] [--freshness day|week|month]`
+### `websearch <query> [--limit N] [--freshness day|week|month|year]`
 
 Search the web via the Brave Search API. Requires `BRAVE_API_KEY` environment variable. This is the only async command in pan-tools.
 
@@ -2503,7 +2540,7 @@ pan-tools websearch "Node.js stream backpressure" --limit 5 --freshness week
 **Arguments:**
 - `<query>` — Search query string
 - `--limit N` — Max results (default: 10)
-- `--freshness day|week|month` — Recency filter
+- `--freshness day|week|month|year` — Recency filter, sent to Brave as `pd`/`pw`/`pm`/`py`; those codes and a `YYYY-MM-DDtoYYYY-MM-DD` range also pass through as given. Any other value is refused with an error (exit 1) before a request is made
 
 **JSON output:**
 ```json
@@ -2902,6 +2939,7 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
 - `max_cycles` — iteration limit reached
 - `zero_completed` — no items completed in a cycle
 - `diminishing_returns` — optimize only: cycle efficiency < 30% of previous cycle
+- `weekly_limit` — a fresh `cost limits` reading puts Claude Code's 7-day usage window at or past `cost.weekly_limit_stop_pct` (default 90; `0` turns it off). Like `regression`, the run is stopped rather than completed, and `--continue` resumes it
 
 **State file:** `.planning/focus/auto-run.json`
 
@@ -2944,9 +2982,9 @@ pan-tools standards list --category security
 ```json
 {
   "standards": [
-    { "id": "owasp-top10", "name": "OWASP Top 10 (2025)", "category": "security", "level": "foundational", "description": "..." }
+    { "id": "owasp-top10", "name": "OWASP Top 10 (2025)", "category": "security", "level": "foundational", "description": "...", "checklist_items": 10 }
   ],
-  "count": 12
+  "count": <N>
 }
 ```
 
@@ -4062,7 +4100,7 @@ Both subcommands accept the planning-root flags (`--track`, `--planning-dir`, `-
 
 ### `hygiene scan [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
 
-Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the stable planning files `cache prime` lists, warned at 15k tokens and critical at 25k, with any single file over 6k called out: `state.md`, re-read on every agent call, carries the `compact-state` remedy while it has settled history to archive, and `roadmap.md`, read whole only by the roadmapper and milestone work (phase agents read `roadmap slice`), carries `compact-roadmap` while shipped phases can move to `roadmap-history.md`; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; a **`shared-planning-tree`** info finding when another tool writes into the tree beside PAN (planning-with-files markers), after which PAN's own checks still run; and, under `cache-context` at `info` (`warn` once the re-written context is large), the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Memory: `memory-stale` (entries `memory select` leaves out because their cited code is gone or they went unused past the expiry window; fix `prune-memory`) and `memory-format` (a file in `.planning/memory/` with no `## Entries` list, or whose name is not a valid agent name, which `memory select` and `knowledge playbook` never read as memory (`knowledge ask` can still offer it as a source)). Once per project, read-only, `host-memory`: Claude Code's auto-memory index (`~/.claude/projects/<project>/memory/MEMORY.md`, or `autoMemoryDirectory`). It reports an index past the 200-line / 25 KB session-start load limit (`warn`) or near it (`info`), and index lines that hold content where a one-line pointer belongs (`info`). PAN never writes that store. Returns `{findings, installs, latest_version, host_memory, planning_exists, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fix` (the action `hygiene clean` would take, e.g. `{"action": "prune-memory", "agent": "pan-executor"}`, or `null`), `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
+Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the stable planning files `cache prime` lists, warned at 15k tokens and critical at 25k, with any single file over 6k called out: `state.md`, re-read on every agent call, carries the `compact-state` remedy while it has settled history to archive, and `roadmap.md`, read whole only by the roadmapper and milestone work (phase agents read `roadmap slice`), carries `compact-roadmap` while shipped phases can move to `roadmap-history.md`; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; a **`shared-planning-tree`** info finding when another tool writes into the tree beside PAN (planning-with-files markers), after which PAN's own checks still run; and, under `cache-context` at `info` (`warn` once the re-written context is large), the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Memory: `memory-stale` (entries `memory select` leaves out because their cited code is gone or they went unused past the expiry window; fix `prune-memory`) and `memory-format` (a file in `.planning/memory/` with no `## Entries` list, or whose name is not a valid agent name, which `memory select` and `knowledge playbook` never read as memory (`knowledge ask` can still offer it as a source)). Once per project, read-only, `host-memory`: Claude Code's auto-memory index (`~/.claude/projects/<project>/memory/MEMORY.md`, under `CLAUDE_CONFIG_DIR` instead of `~/.claude` when that is set, or `autoMemoryDirectory`). It reports an index past the 200-line / 25 KB session-start load limit (`warn`) or near it (`info`), and index lines that hold content where a one-line pointer belongs (`info`). PAN never writes that store. Returns `{findings, installs, latest_version, host_memory, planning_exists, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fix` (the action `hygiene clean` would take, e.g. `{"action": "prune-memory", "agent": "pan-executor"}`, or `null`), `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
 
 ```bash
 pan-tools hygiene scan --raw
@@ -4157,12 +4195,15 @@ pan-tools findings debt [--milestone v1.1] [--raw]
 ```
 
 **`findings record`** takes exactly one of `--file`, `--text` or `--stdin`, plus `--phase` and optionally `--agent`.
-- **Input.** It reads the last `pan-verdict` block; without one, it reads a verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`, `test_gate`, `not_checked`). It prints `{contract, recorded, duplicate, verdict_id, agent, verdict, outcome, not_checked, source_kind, attempt, phase, findings, new, auto_fixed, reopened, warnings}`, plus `ledger` when it wrote a verdict.
-- **What was not checked.** `not_checked` lists `{check, reason}` for each check the judge could not run. A verification with `test_gate: skipped` always carries a `tests` entry, so a pass whose tests never ran is never recorded as a plain pass. The warnings name a verification that does not record `test_gate` (`test_gate_unrecorded`) and a failed gate under a passed status (`test_gate_failed_under_pass`). `--raw` prints the judge's own verdict word (`gaps_found`, `NEEDS_FIXES`, `issues_found`, `GAPS` …), or the outcome when there is none.
+- **Input.** It reads the last `pan-verdict` block; without one, it reads a verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`, `test_gate`, `not_checked`). It prints `{contract, recorded, duplicate, verdict_id, agent, verdict, outcome, not_checked, source_kind, attempt, phase, findings, new, rematched, resolved, unaddressed, reopened, warnings}`, plus `ledger` when it wrote a verdict, and `agent_verdict` and `lowered_by` when a code fact lowered the judge's word.
+- **What was not checked.** `not_checked` lists `{check, reason}` for each check the judge could not run. A verification with `test_gate: skipped` always carries a `tests` entry, so a pass whose tests never ran is never recorded as a plain pass. The warnings name a verification that does not record `test_gate` (`test_gate_unrecorded`) and a failed gate under a passed status (`test_gate_failed_under_pass`). `--raw` prints the recorded verdict word (`gaps_found`, `NEEDS_FIXES`, `issues_found`, `GAPS` …): the judge's own word, or the lowered one when a code fact lowered it. It prints the outcome when there is no word.
 - **Exit codes.** A failed verdict is data: exit 0. An unreadable input exits 1 with `{error, reason}`, for example `no_verdict`, `invalid_json`, `unsupported_contract` or `phase_not_found`. That is what a workflow's `||` fallback runs on.
 - **Idempotency and attempts.** Recording the same artifact twice is a no-op that returns the first verdict. Each new verdict from an agent on a phase is the next `attempt`.
-- **Automatic status changes.** The agent's earlier open findings on that phase that the new verdict no longer reports become `fixed`, except `human` and `unrequested` ones. A `fixed` finding reported again is open again.
+- **Code facts only lower.** A verification with `status: passed` over `test_gate: failed` records as `gaps_found`, with a high finding at `code-fact:test_gate`; the judge's word is kept as `agent_verdict`.
+- **Closing on evidence.** An earlier open finding becomes `fixed` only when the new report answers it `resolved` with evidence (a `resolutions` entry, or a truth in the verifier's `re_verification.gaps_closed`), or when its code fact now passes. One the report does not repeat, or answers other than `resolved` with evidence, stays open and is listed in `unaddressed`. `still_present` reopens a `fixed` finding. A reworded report of an earlier finding keeps its id (`rematched`).
 - **Trace.** It logs `verdict_passed`, `verdict_failed` or `verdict_needs_human`, plus `verdict_retry` after a failed attempt.
+
+**`findings list`** filtered by both `--phase` and `--agent` adds `churn`: `{reports, transitions, added, dropped, rate}`, how many ids appeared or disappeared between that judge's consecutive reports.
 
 **`findings dispose`** takes finding ids, or `--phase N [--agent A] --open`, and records `fixed`, `deferred`, `dismissed` or `decision`. It refuses `deferred`, `dismissed` and `decision` without `--reason` (exit 1: never dispose silently). A later report does not override a `deferred`, `dismissed` or `decision` disposition; a `fixed` one, deliberate or automatic, reopens when the finding is reported again.
 

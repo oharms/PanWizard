@@ -391,11 +391,11 @@ def generate_reference(shipped: list[Skill], dev: list[Skill], version: str) -> 
                 w(s.description)
                 w("")
             if s.argument_hint:
-                w(f"```")
+                w("```text")
                 w(f"{s.command} {s.argument_hint}")
                 w(f"```")
             else:
-                w(f"```")
+                w("```text")
                 w(f"{s.command}")
                 w(f"```")
             w("")

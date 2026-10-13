@@ -16,5 +16,8 @@
     { "kind": "fs", "read": ".claude/pan-wizard-core/references/verdict-contract.md",
       "expect": ["exit:0", "stdout~pan-verdict"],
       "why": "The judges point at this reference. It must ship with the install, or every judge is told to follow a file that is not there." }
+  ],
+  "controls": [
+    {"id":"no-findings-engine","delete":".claude/pan-wizard-core/bin/lib/findings.cjs","why":"The loop records verdicts through the installed findings module; without it nothing can be recorded and the script must fail."}
   ]
 }

@@ -60,8 +60,8 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
 | `pan-previewer` | Foresight — blast radius / dependency graph / milestone ETA in one agent (3 modes) | `/pan:preview` | Read, Bash, Glob, Grep, Write | cyan |
-| `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase | `/pan:review-deep` (also `--deep-review` on exec-phase), `/pan:focus-auto` Pass 3, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | red |
-| `pan-meta-reviewer` | Reviews the reviewer + hardener output; flags missed issues, disputes overstated severities | `/pan:review-deep` (also `--deep-review` on exec-phase), native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | pink |
+| `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`), `/pan:focus-auto` Pass 3, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | red |
+| `pan-meta-reviewer` | Reviews the reviewer + hardener output; flags missed issues, disputes overstated severities | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`, where it reviews the hardener's report alone), native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | pink |
 | `pan-knowledge` | Grounded Q&A / multi-turn discussion / playbook generation (3 modes) | `/pan:knowledge` | Read, Grep, Glob, Bash, Write | cyan |
 | `pan-counterfactual` | Explores alternative phase approaches in isolated git worktree | `/pan:what-if` | Read, Write, Edit, Bash, Grep, Glob | purple |
 | `pan-conductor` | Top-level orchestrator for hierarchical exec — decomposes a phase, spawns sub-agents in waves, enforces safety harness | `/pan:exec-phase --hierarchical`, `/pan:army` | Read, Write, Bash, Glob, Grep, Task | orange |
@@ -607,7 +607,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 | Evidence | Append-only | Observations with implications |
 | Resolution | Overwritten as understanding evolves | Root cause, fix, verification, files changed |
 
-**Status Progression:** `gathering` → `investigating` → `fixing` → `verifying` → `awaiting_human_verify` → `resolved`
+**Status Progression:** `gathering` → `investigating` → `fixing` → `verifying` → `awaiting_human_verify` → `resolved` (a `find_root_cause_only` session stops at `diagnosed` after `investigating`)
 
 **Investigation Techniques:**
 - Binary Search — narrow the problem space by halving

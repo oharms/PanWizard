@@ -22,6 +22,7 @@ files_modified: []
 autonomous: true
 requirements: []
 user_setup: []
+planned_commit: <sha>
 
 # Goal-backward verification (derived during planning, verified after execution); the Frontmatter Fields table below explains each field
 must_haves:
@@ -144,6 +145,7 @@ After completion, create `.planning/phases/XX-name/{phase}-{plan}-summary.md`
 | `files_modified` | Yes | Files this plan touches. |
 | `autonomous` | Yes | `true` if no checkpoints, `false` if has checkpoints |
 | `requirements` | Yes | **MUST** list requirement IDs from ROADMAP. Every roadmap requirement MUST appear in at least one plan. |
+| `planned_commit` | Yes | `git rev-parse HEAD` when the plan is written. exec-phase lists the `files_modified` that changed on the branch since then, so an executor knows its plan's picture of the code may be out of date. |
 | `user_setup` | No | Array of human-required setup items (external services) |
 | `must_haves` | Yes | Goal-backward verification criteria (see below) |
 

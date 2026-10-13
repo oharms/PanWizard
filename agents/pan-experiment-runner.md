@@ -105,7 +105,7 @@ After the run completes, produce a concise structured summary:
 - <e.g., "External session ran a tight 14-cycle focus-auto loop">
 
 ### Recommendation for /pan:learn
-- Run `/pan:learn --experiment <slug>` to extract patterns from the trace.
+- Run `/pan:experiment harvest <slug>`, then `/pan:learn --experiment <slug>` to extract patterns from the trace (learn reads the harvest folder, not the experiment folder).
 - Especially check: <areas of high event density / repeated failures>
 ```
 

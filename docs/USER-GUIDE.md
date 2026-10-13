@@ -496,9 +496,11 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "verifier": true,
     "nyquist_validation": false,
     "phase_record_compact": false,
+    "phase_gate": "warn",
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
   "parallelization": true,
+  "hooks": { "guard": "report" },
   "brave_search": false,
   "budget": {
     "default_points": 50,
@@ -562,7 +564,11 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `workflow.verifier` | `true`, `false` | `true` | Post-execution verification against phase goals |
 | `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; at a phase boundary a chain that `/pan:plan-phase` drives stops (it runs exec-phase with `--no-transition`) and prints the next command; PAN's stop guard then blocks the session's stop once and tells the agent to spawn the next phase; a direct `/pan:exec-phase --auto` hands over to `transition.md`, which spawns the next phase as a Task subagent and, at the end of the milestone, turns `auto_advance` off and stops, showing `/pan:milestone-done` as the next step. Equivalent to passing `--auto` to `/pan:discuss-phase`, `/pan:plan-phase` and `/pan:exec-phase`. |
+| `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write. |
+| `workflow.phase_gate` | `warn`, `enforce` | `warn` | The phase gate `phase complete` runs first: summaries for every plan, a passing and fresh verification, approved human items, a clean reconcile, no open critical or high finding, no committed stub, no weakened test. `warn` marks the phase complete and reports what failed (exec-phase then does not auto-advance); `enforce` refuses until each reason is fixed, or until `phase complete <N> --force --reason "<why>"`, which records the override. `pan-tools phase gate <N>` runs the gate alone. |
 | `workflow.phase_record_compact` | `true`, `false` | `false` | When combined with the lightweight-phase bypass (1-plan trivial phases, which already skip per-phase research), plan-phase writes one `${N}-record.md` (goal, locked decisions, plan summary, must_haves) in place of a per-phase context.md; execution still writes each plan's summary.md. Substantive phases (more than one plan, or more than scaffolding, config, docs or a single-file feature) ignore this flag. |
+| `workflow.phase_reports` | object: `enabled`, `open`, `theme`, `index` | `{ "enabled": false, "open": false, "theme": "auto", "index": true }` | With `enabled: true`, `/pan:exec-phase` writes the phase's HTML report (as `/pan:report phase` does) at the verify→complete gate, plus the timeline index `.planning/report-index.html` when `index` is true, and adds them to the completion commit; `/pan:focus-auto` checkpoints and `/pan:army` missions render them too. `open` and `theme` are written but not read, and no automatic run opens a browser. |
+| `workflow.stop_guard` | `true`, `false` | absent (guard on) | `false` turns off PAN's stop guard, which otherwise blocks a session's stop once while `workflow.auto_advance` is true or `mode` is `yolo` and unbuilt roadmap phases remain, unless state.md records failed verification, gaps or a blocker (Claude Code, Codex, Gemini CLI, Copilot CLI) |
 
 Disable these to speed up phases in familiar domains or when conserving tokens.
 
@@ -726,7 +732,7 @@ claude --dangerously-skip-permissions
 |----------|------|-------|---------|----------|------------|----------|
 | Prototyping | `yolo` | `quick` | `budget` | off | off | off |
 | Normal dev | `interactive` | `standard` | `balanced` | on | on | on |
-| Production | `interactive` | `comprehensive` | `quality` | on | on | on |
+| Production | `interactive` | `comprehensive` | `quality` (same tiers as `balanced`) | on | on | on |
 
 ### Mid-Milestone Scope Changes
 
@@ -770,8 +776,8 @@ Each script names the markdown protocol it ports, and a test pins the pair so th
 
 PAN's judges decide whether work passed: the plan checker, the reviewer, the design checker and the verifier. Their verdicts, what they found, and what was done about each finding are kept on record in `.planning/findings.jsonl`. The optimisation loop sees the failures that happen inside subagents.
 
-- **Verdicts on the record.** Each judge's report ends with a machine-readable verdict: a fenced `pan-verdict` block, or the verifier's verification.md frontmatter. The workflows save each report in the phase directory (`NN-review.md`, `NN-plan-check.md`, `NN-design-check.md`, `NN-verification.md`) and record it with `pan-tools findings record`. They branch on the verdict the record prints and fall back to the old heading or `status:` read when a report has no valid verdict; exec-phase's auto-advance gate still reads the verification's `status:` directly.
-- **Fix rounds close their findings.** A re-verification after a gap-closure round is the next attempt. The gaps it no longer reports are marked fixed, and the retry is logged. Human-verification items and unrequested work are never closed this way, because a re-run does not re-check them.
+- **Verdicts on the record.** Each judge's report ends with a machine-readable verdict: a fenced `pan-verdict` block, or the verifier's verification.md frontmatter. The workflows save each report in the phase directory (`NN-review.md`, `NN-plan-check.md`, `NN-design-check.md`, `NN-verification.md`) and record it with `pan-tools findings record`. They branch on the verdict the record prints and fall back to the old heading or `status:` read when a report has no valid verdict; exec-phase's auto-advance decision comes from the phase gate that `phase complete` runs (`pan-tools phase gate`).
+- **Fix rounds close their findings on evidence.** A re-verification after a gap-closure round is the next attempt. The gaps it lists under `re_verification.gaps_closed` (or that a judge answers `resolved` with evidence) are marked fixed, and the retry is logged. A finding the new report neither repeats nor answers stays open.
 - **Nothing is continued past silently.** When a phase moves on past open review, plan-check or design findings, the workflow records the reason. Findings nothing disposes stay `open` until you dispose them: the rows of a plain `PASS` review or a passing plan or design check, `unrequested` work, and human-verification items (a `PASS_WITH_WARNINGS` review defers all its open rows, INFO included). Examples of recorded reasons: warnings accepted at review, "continue anyway" at `NEEDS_FIXES`, "force proceed" after the third plan check. You can dispose findings yourself, too: `pan-tools findings dispose <id> --as deferred|dismissed|decision --reason "…"`. A reason is required.
 - **Milestone audits read the record.** `/pan:milestone-audit` takes its tech debt from `pan-tools findings debt`, the deferred findings with their reasons. It lists the findings nobody disposed, instead of reconstructing either from prose.
 - **Unrequested work is a finding.** The verifier runs `pan-tools verify scope <phase>`, which lists the files the phase changed that no plan declared. Whatever it judges to be work nobody asked for is recorded as `unrequested`. That finding does not fail the phase; keeping or removing the work is your decision.
@@ -1028,7 +1034,7 @@ Example: `feat(03-02): add login endpoint`
 | Event | Commit |
 |-------|--------|
 | Each completed task | Individual commit by default (the executor may fold adjacent trivial tasks of one type, never `feat` or `fix`, into one commit) |
-| Plan completion | Metadata commit (`docs(XX-YY): complete plan`) |
+| Plan completion | Metadata commit (`docs(XX-YY): complete <plan-name> plan`) |
 | Project init | `docs: initialize project`, `chore: add project config`, `docs: complete project research` (when research runs), `docs: define v1 requirements`, then `docs: create roadmap (N phases)` |
 | Planning docs | Controlled by `commit_docs` config |
 
@@ -1358,6 +1364,7 @@ For reference, here is what PAN creates in your project:
       XX-uat.md           # User acceptance testing results
       XX-review.md        # Code review report, saved by exec-phase
       XX-plan-check.md    # Plan-checker report, saved by plan-phase
+      XX-design.md        # Phase design (architecture, phase ADR, threat-lite), written by /pan:design-phase
       XX-design-check.md  # Design-checker report, saved by /pan:design-phase (the judges' findings go to .planning/findings.jsonl)
 ```
 

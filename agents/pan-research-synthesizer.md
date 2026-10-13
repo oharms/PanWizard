@@ -59,7 +59,7 @@ cat .planning/research/features.md
 cat .planning/research/architecture.md
 cat .planning/research/pitfalls.md
 
-# Planning config loaded via pan-tools.cjs in commit step
+# The commit step loads the planning config through pan-tools
 ```
 
 Parse each file to extract:

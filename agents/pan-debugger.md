@@ -830,6 +830,8 @@ gathering -> investigating -> fixing -> verifying -> awaiting_human_verify -> re
                   ^            |           |                 |
                   |____________|___________|_________________|
                   (if verification fails or user reports issue)
+
+goal: find_root_cause_only → gathering -> investigating -> diagnosed (stops there)
 ```
 
 ## Resume Behavior
@@ -1060,7 +1062,7 @@ mv .planning/debug/{slug}.md .planning/debug/resolved/
 
 ```bash
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load)
-# commit_docs is in the JSON output
+# commit_docs is at .config.commit_docs in the JSON output
 ```
 
 **Commit the fix:**

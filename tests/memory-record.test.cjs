@@ -46,7 +46,8 @@ beforeEach(() => {
   // A gap found, then closed by a fix round: the ledger folds it to `fixed`.
   F.recordVerdict(dir, { phase: '03', text: verification([GAP]) });
   fixedId = F.listFindings(dir).findings[0].id;
-  F.recordVerdict(dir, { phase: '03', text: verification([]).replace('2026-10-01T10:00:00Z', '2026-10-01T12:00:00Z') });
+  F.recordVerdict(dir, { phase: '03', text: verification([]).replace('2026-10-01T10:00:00Z', '2026-10-01T12:00:00Z')
+    .replace('---\n\n#', `re_verification:\n  gaps_closed:\n    - "${GAP.truth}"\n---\n\n#`) });
   // And a second gap that is still open.
   F.recordVerdict(dir, { phase: '03', text: verification([{ truth: 'Logout clears the cookie', reason: 'cookie kept' }]).replace('10:00:00Z', '13:00:00Z') });
   openId = F.listFindings(dir, { status: 'open' }).findings[0].id;

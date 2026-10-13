@@ -26,6 +26,7 @@ A judging agent ends its report with one fenced `pan-verdict` block. The block i
 | `verdict` | yes | your own verdict word (table below) |
 | `outcome` | yes | `pass`, `fail` or `needs_human` |
 | `findings` | yes (may be empty) | a list of `{class, severity, where, summary}` |
+| `resolutions` | on a re-check | a list of `{id, status, evidence}` answering each earlier open finding you were given in `<open_findings>`: `status` is `resolved` (with `evidence`: what you checked and saw), `still_present` or `cannot_tell`. A finding you leave out stays open, and `resolved` without evidence is recorded as `cannot_tell` |
 | `not_checked` | when a check could not run | a list of `{check, reason}`: a check you were asked to make and could not run, and why (no test script, no browser, a file you could not read). Never fold it into `pass`: a verdict with entries here says what it did not see |
 
 | Agent | `verdict` → `outcome` |
@@ -35,6 +36,10 @@ A judging agent ends its report with one fenced `pan-verdict` block. The block i
 | pan-design-checker | `PASS` → `pass` · `GAPS` → `fail` |
 
 The verifier does not emit this block. Its verification.md frontmatter (`status`, `gaps`, `human_verification`, `unrequested`, `test_gate`, `not_checked`) is its machine contract, and the recorder reads that directly. `test_gate` is `passed`, `failed` or `skipped`. A skipped gate is recorded as a `tests` entry in `not_checked` even when the list leaves it out, and a verification that does not record `test_gate` at all is recorded with a `test_gate_unrecorded` warning.
+
+**Findings close on evidence, never on silence.** An earlier finding closes only when the judge answers it `resolved` with evidence (a `resolutions` entry, or a truth in the verifier's `re_verification.gaps_closed`), or, for a `code-fact:` finding, when that fact passes. A finding the new report neither repeats nor answers stays open and is listed as `unaddressed`. A reworded report of an earlier finding (same class family, where `missing` and `partial` count as one; same file; same truth or a similar summary) keeps the earlier id.
+
+**Code facts only lower a verdict (two-key verdict).** A fact the engine measures can turn a judge's `pass` or `needs_human` into a fail, never the reverse. `test_gate: failed` under `status: passed` records as `gaps_found`: the record keeps the judge's own word as `agent_verdict`, names the fact in `lowered_by`, and adds a high finding at `code-fact:test_gate` for the gap round to close. `findings record --raw` prints the lowered word, so the workflow routes to gap closure.
 
 ## `class`: what kind of finding
 
@@ -67,7 +72,7 @@ The verifier does not emit this block. Its verification.md frontmatter (`status`
 - `where`: `NN-MM-plan.md` or `NN-MM-plan.md#task-N`.
 
 **pan-reviewer.**
-- Classes by category: Convention → `quality`, Security → `risk`, Code Quality → `defect`, work no plan asked for → `unrequested`.
+- Classes by category: Convention → `quality`, Security → `risk`, Code Quality → `defect`, Design smell → `quality`, work no plan asked for → `unrequested`.
 - Severity: ERROR → `high`, WARNING → `medium`, INFO → `info`.
 - `where`: `path:line`.
 

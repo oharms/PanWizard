@@ -57,7 +57,7 @@ Execute every phase the flags leave enabled. Do NOT stop between phases. The onl
 - **The GitHub releases API defaults to 30 items** — on a busy repo (Codex) that does not reach a two-week window start. Use `per_page=100`.
 - **The Claude Code changelog carries no dates.** Date a version from the npm registry: `npm view @anthropic-ai/claude-code time --json`. The `stable` dist-tag lags `latest` by a dozen versions; WATCH triggers should name which one.
 - **Big docs pages overflow WebFetch** (settings, memory, plugin-evals) — the tool persists the page to a file; grep that file instead of re-fetching.
-- **Re-read before encoding.** A scout's number is a lead: on `2026-09-22` one reported GPT-6 prices at double the page. Any price, default id or event name an item will write into the tree is re-read from the raw primary text on the day it is written.
+- **Re-read before encoding.** A scout's number is a lead: on `2026-09-22` one reported a new model's prices at double the page. Any price, default id or event name an item will write into the tree is re-read from the raw primary text on the day it is written.
 - **Timing:** three scouts in parallel took 12–20 minutes each (85–134 fetches apiece); the peers scout is the slow one. Launch them before reading anything local.
 
 ---

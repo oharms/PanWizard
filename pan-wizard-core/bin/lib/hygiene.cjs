@@ -300,10 +300,14 @@ function hostMemoryProjectRoot(cwd) {
   }
 }
 
-/** Claude Code's auto-memory directory for a project, and how it was found. */
-function hostMemoryDir(cwd, homeDir) {
+/**
+ * Claude Code's auto-memory directory for a project, and how it was found.
+ * `configDir` is Claude Code's user directory when CLAUDE_CONFIG_DIR moves it.
+ */
+function hostMemoryDir(cwd, homeDir, configDir = '') {
   const claudeDir = '.claude';
-  for (const f of [path.join(cwd, claudeDir, 'settings.local.json'), path.join(cwd, claudeDir, 'settings.json'), path.join(homeDir, claudeDir, 'settings.json')]) {
+  const userDir = configDir || path.join(homeDir, claudeDir);
+  for (const f of [path.join(cwd, claudeDir, 'settings.local.json'), path.join(cwd, claudeDir, 'settings.json'), path.join(userDir, 'settings.json')]) {
     let s = null;
     try { s = JSON.parse(safeReadFile(f) || 'null'); } catch { /* unreadable settings */ }
     if (s && typeof s.autoMemoryDirectory === 'string' && s.autoMemoryDirectory.trim()) {
@@ -312,18 +316,20 @@ function hostMemoryDir(cwd, homeDir) {
     }
   }
   const key = hostMemoryProjectRoot(cwd).replace(/[^A-Za-z0-9]/g, '-');
+  if (configDir) return { dir: path.join(configDir, 'projects', key, 'memory'), display: toPosix(path.join(configDir, 'projects', key, 'memory')), source: 'default' };
   return { dir: path.join(homeDir, claudeDir, 'projects', key, 'memory'), display: `~/${claudeDir}/projects/${key}/memory`, source: 'default' };
 }
 
 /**
  * H-11: Claude Code's auto-memory index. Read-only; never fixable by PAN.
  * @param {string} cwd
- * @param {{homeDir?: string}} [opts]
+ * @param {{homeDir?: string, configDir?: string}} [opts] - a given homeDir (a test seam) ignores CLAUDE_CONFIG_DIR
  */
 function checkHostMemory(cwd, opts = {}) {
   const findings = [];
   const home = opts.homeDir || require('os').homedir();
-  const loc = hostMemoryDir(cwd, home);
+  const configDir = opts.configDir !== undefined ? opts.configDir : (opts.homeDir ? '' : (process.env.CLAUDE_CONFIG_DIR || ''));
+  const loc = hostMemoryDir(cwd, home, configDir);
   const text = safeReadFile(path.join(loc.dir, 'MEMORY.md'));
   if (text == null) return { findings, host_memory: { dir: loc.display, index: false } };
   const lines = text.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n');

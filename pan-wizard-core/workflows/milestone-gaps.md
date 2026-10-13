@@ -64,8 +64,8 @@ Gap: Flow "View dashboard" broken at data fetch
 
 Find highest existing phase:
 ```bash
-# Get sorted phase list, extract last one
-HIGHEST=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phases list --raw | tail -1)
+# Highest phase number in roadmap.md — the same source `phase add` numbers from
+HIGHEST=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap analyze | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const n=JSON.parse(s).phases.map(p=>parseInt(p.number,10)).filter(Number.isFinite);console.log(n.length?Math.max(...n):0)})")
 ```
 
 New phases continue from there:

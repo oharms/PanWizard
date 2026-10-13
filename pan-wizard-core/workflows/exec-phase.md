@@ -34,11 +34,23 @@ Load all context in one call:
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init execute-phase "${PHASE_ARG}")
 ```
 
-Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`, `verifier_enabled`.
+Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_docs`, `parallelization`, `branching_strategy`, `branch_name`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `plans`, `incomplete_plans`, `plan_count`, `incomplete_count`, `state_exists`, `roadmap_exists`, `phase_req_ids`, `verifier_enabled`, `plan_check`, `plan_drift`. In the shell steps below, `$PHASE_DIR` (and `$phase_dir`) is `phase_dir` and `$PHASE_NUMBER` is `phase_number`.
 
 **If `phase_found` is false:** Error — phase directory not found.
 **If `plan_count` is 0:** Error — no plans found in phase.
 **If `state_exists` is false but `.planning/` exists:** Offer reconstruct or continue.
+
+**The plans must be the plans that passed the plan check** (`plan_check.status`):
+
+| Status | Action |
+|---|---|
+| `ok`, `disabled` | Continue |
+| `legacy` | Continue, and say: "the plan check predates plan hashing, so it cannot show these plans are unchanged" |
+| `stale` | Stop: "The plans changed after they passed the plan check. Re-plan with `/pan:plan-phase {N} --skip-research`, which checks the new plans." Continue only if the user gives a reason, and record it: `pan-tools optimize trace log --type decision --category plan_check_overridden --description "<reason>"` |
+| `failed` | Stop: "The last plan check found issues." Same override |
+| `missing` | Stop: "No plan check is recorded for this phase." This includes plans made with `/pan:plan-phase --skip-verify` or with `workflow.plan_check` off after the fact. Same override |
+
+**Drift.** For each `plan_drift` entry, tell the executor of that plan, in its prompt, which of its `files_modified` changed since it was planned (`files`), so it re-reads them before editing. An entry with `error` means its `planned_commit` is unknown: say so and continue.
 
 When `parallelization` is false, plans within a wave execute sequentially.
 
@@ -190,6 +202,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    If ANY spot-check fails: report which plan failed, route to failure handler — ask "Retry plan?" or "Continue with remaining waves?"
 
+   **An executor that returned `## BLOCKED_SPEC_CONFLICT`** found a test it cannot satisfy without weakening it. It is not a failure to retry: show the user its Test, Requirement and Options and ask for a ruling. "Change the test" means a revised plan that declares the test file in `files_modified` (`/pan:plan-phase {N} --gaps` or an edit to the plan), then re-run that plan; "change the requirement" means updating the requirement and the plan. Never re-run the same plan unchanged: it would meet the same test. Declaring the file permits rewriting its expectations; deleting the test, skipping it or dropping assertions still fails `verify test-integrity`, so a ruling to do that also needs `phase complete --force --reason`.
+
    If pass:
    ```
    ---
@@ -319,7 +333,7 @@ After all waves:
 
 1. Record baseline test count:
 ```bash
-TEST_BASELINE=$(npm test 2>&1 | grep -E "^ℹ tests" | awk '{print $NF}')
+TEST_BASELINE=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 ```
 
 2. Invoke phase-tests workflow for the completed phase:
@@ -331,7 +345,8 @@ Read each summary.md to understand what was built.
 Generate unit and integration tests for the new code.
 Discover the project's existing test patterns, directories, frameworks, and helpers before writing tests.
 Follow whatever conventions the project already uses.",
-  subagent_type="general-purpose"
+  subagent_type="general-purpose",
+  model="{executor_model}",
 )
 ```
 
@@ -342,7 +357,7 @@ Alternatively, if the user's AI tool supports it, invoke the command directly:
 
 3. Record new test count:
 ```bash
-TEST_AFTER=$(npm test 2>&1 | grep -E "^ℹ tests" | awk '{print $NF}')
+TEST_AFTER=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 ```
 
 4. Report:
@@ -352,6 +367,8 @@ TEST_AFTER=$(npm test 2>&1 | grep -E "^ℹ tests" | awk '{print $NF}')
 - After: ${TEST_AFTER} tests
 - New tests: +$((TEST_AFTER - TEST_BASELINE))
 ```
+
+`ℹ tests N` (spec reporter) and `# tests N` (TAP, Node's default for piped output before Node 23) are the summary lines of Node's built-in test runner, and both greps above match either. With any other runner both counts come back empty, so report the runner's own summary line instead of `+0`.
 
 **If tests fail after generation:** Report failures but continue to next step. Test issues are caught by the verify-phase test gate.
 </step>
@@ -365,11 +382,14 @@ TEST_AFTER=$(npm test 2>&1 | grep -E "^ℹ tests" | awk '{print $NF}')
 ```bash
 # Read each summary.md and extract key-files.created + key-files.modified
 for summary in "$PHASE_DIR"/*-summary.md; do
-  grep -A 50 "key-files" "$summary" | grep -E "^\s*-" | sed 's/^\s*- //'
+  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$summary" --fields key_files | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const k=JSON.parse(s).key_files||{};for(const f of [...(k.created||[]),...(k.modified||[])])console.log(f)})"
 done | sort -u > /tmp/review-files.txt
 ```
 
-2. Spawn pan-reviewer:
+2. Collect the reviewer's earlier open findings on this phase (empty on a first review), then spawn pan-reviewer:
+```bash
+OPEN_REVIEW_FINDINGS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings list --phase "${PHASE_NUMBER}" --agent pan-reviewer --status open 2>/dev/null)
+```
 ```
 Task(
   subagent_type="pan-reviewer",
@@ -391,6 +411,10 @@ Task(
     Phase: ${PHASE_NUMBER} - ${PHASE_NAME}
     Phase directory: ${phase_dir}
     </context>
+
+    <open_findings>
+    ${OPEN_REVIEW_FINDINGS}
+    </open_findings>
   "
 )
 ```
@@ -426,7 +450,7 @@ The fallback reads the word under `### Verdict` when the report carries no valid
   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "${PHASE_NUMBER}" --agent pan-reviewer --open --as deferred --reason "accepted at review: PASS_WITH_WARNINGS"
   ```
 - **The user chooses "Continue anyway"** at `NEEDS_FIXES`: the same command with `--reason "continued past NEEDS_FIXES at the user's choice"`, then proceed to verification.
-- **The user chooses "Fix before verification"**: apply the fixes, then run the review once more (steps 2–4). The new record closes the findings it no longer reports.
+- **The user chooses "Fix before verification"**: apply the fixes, then run the review once more (steps 2–4). The re-review answers each earlier finding in its `resolutions`; the record closes the ones it answers `resolved` with evidence, and one it neither reports nor answers stays open.
 
 5. **No separate trace logging.** The record logs `verdict_passed` or `verdict_failed` for the reviewer on every runtime. The `reviewer_correction` and `reviewer_warnings` trace calls that used to sit here read the error count from a shell variable nothing ever set.
 
@@ -553,7 +577,7 @@ VERIF_FILE=$(ls "$PHASE_DIR"/*-verification.md 2>/dev/null | head -1)
 VERIF_STATUS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "${PHASE_NUMBER}" --file "$VERIF_FILE" --raw 2>/dev/null) \
   || VERIF_STATUS=$(grep "^status:" "$VERIF_FILE" | cut -d: -f2 | tr -d ' ')
 ```
-`findings record` reads the verdict from the verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`) and adds its findings to the ledger. A re-verification after a fix round is the next attempt: the gaps it no longer reports are closed, and the retry is logged. Recording the same file twice is a no-op, so verify-phase recording it too is safe. The grep fallback keeps the old reading when the record cannot parse the file.
+`findings record` reads the verdict from the verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`) and adds its findings to the ledger. A re-verification after a fix round is the next attempt: the gaps it lists under `re_verification.gaps_closed` are closed, a gap it neither reports nor answers stays open (listed in `unaddressed`), and the retry is logged. Recording the same file twice is a no-op, so verify-phase recording it too is safe. The grep fallback keeps the old reading when the record cannot parse the file.
 
 **Trace logging happens in the record.** The record above logs the verification outcome (`verdict_passed`, `verdict_failed` or `verdict_needs_human`) here, after the verifier returns. That covers inline verification too, which is the reason P-1806 moved the trace call here (v3.7.8). No separate `optimize trace log` call is needed.
 
@@ -599,11 +623,25 @@ Gap closure cycle: `/pan:plan-phase {X} --gaps` reads verification.md → create
 </step>
 
 <step name="update_roadmap">
-**Mark phase complete and update all tracking files:**
+**Mark phase complete and update all tracking files.** `phase complete` runs the phase gate first, on every path (this step runs before `offer_next`, with or without `--no-transition`). The gate checks in code what this workflow used to ask for in prose: every plan has a summary, the verification passes (a failed test gate lowers it to gaps), human items have a recorded approval, the verification is fresh, reconcile finds no contradiction, no critical or high finding is left open, no stub was committed, and no test was weakened.
 
 ```bash
 COMPLETION=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${PHASE_NUMBER}")
+COMPLETION_EXIT=$?
 ```
+
+| Result | Action |
+|---|---|
+| exit 1, `error: phase_gate_refused` (`workflow.phase_gate: enforce`) | The phase was NOT marked complete. Show each `gate.reasons` entry (`code`: `detail`) with its fix, and stop: no commit, no auto-advance. The user may complete anyway with a reason (below) |
+| exit 0, `gate.ok` false (`warn`, the default) | The phase was marked complete. Show the reasons as warnings, run the rest of this step, and do NOT auto-advance (`offer_next` reads `GATE_OK`) |
+| exit 0, `gate.ok` true | Continue |
+
+**Completing past a refusal** is the user's decision, never yours, and needs their reason. It records a `decision` for every open finding the gate counted:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase complete "${PHASE_NUMBER}" --force --reason "<the user's reason>"
+```
+
+Set `GATE_OK` to `gate.ok` from `COMPLETION` (`false` when the gate refused).
 
 The CLI handles:
 - Marking phase checkbox `[x]` with completion date
@@ -659,7 +697,7 @@ Parse `--no-transition` flag from $ARGUMENTS.
 **If `--no-transition` flag present:**
 
 Execute-phase was spawned by plan-phase's auto-advance. Do NOT run transition.md.
-If verification found gaps, return `## GAPS FOUND` with the phase, score and gap summaries (plan-phase and discuss-phase stop the chain on it). After verification passes and roadmap is updated, return completion status to parent:
+If verification found gaps, or `GATE_OK` is false, return `## GAPS FOUND` with the phase, score and the gap summaries or the gate's reasons (plan-phase and discuss-phase stop the chain on it). After the gate passes, return completion status to parent:
 
 ```
 ## PHASE COMPLETE
@@ -675,37 +713,10 @@ STOP. Do not proceed to auto-advance or transition.
 
 **If `--no-transition` flag is NOT present:**
 
-**Verification gate check (before auto-advance):**
-
-If `workflow.verifier` is true in config, confirm the current phase has a passing verification:
-
-```bash
-VERIF=$(ls "$phase_dir"/*-verification.md 2>/dev/null | head -1)
-VERIF_STATUS=""
-if [ -n "$VERIF" ]; then
-  VERIF_STATUS=$(grep "^status:" "$VERIF" | awk '{print $2}')
-fi
+**Gate check (before auto-advance).** The phase gate already ran inside `phase complete` (`update_roadmap`), and it covers the verification status, reconcile (anti-rubber-stamp, ADR-0036), freshness, open findings, stubs and test integrity. If `GATE_OK` is false:
 ```
-
-**Cross-check the written verdict against the mechanical signals (anti-rubber-stamp, ADR-0036).** The `status:` string above is authored by the verifier agent; `reconcile` re-derives the artifact/key-link checks from disk and exits non-zero when a claimed pass contradicts them:
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify reconcile "${PHASE_NUMBER}" --raw
-RECONCILE_EXIT=$?
-```
-If `RECONCILE_EXIT` is non-zero:
-```
-⚠ Reconcile gate: Phase ${PHASE_NUMBER} verification says "passed" but the mechanical
-  checks disagree — artifacts fail substance checks or key-links are unwired.
-  This is a rubber-stamped verification. Do NOT auto-advance.
-  Re-run /pan:verify-phase and fix the failing artifacts/key-links.
-```
-STOP — do not auto-advance. Return to user.
-
-If `VERIF_STATUS` is not `passed`:
-```
-⚠ Verification gate: Phase ${PHASE_NUMBER} verification status is "${VERIF_STATUS:-missing}"
-  Cannot auto-advance without passing verification.
-  Run /pan:verify-phase to verify this phase first.
+⚠ Phase gate: Phase ${PHASE_NUMBER} may not advance — {each gate reason: code and detail}.
+  Fix the reasons (or close the gaps with /pan:plan-phase ${PHASE_NUMBER} --gaps), then re-run.
 ```
 STOP — do not auto-advance. Return to user.
 

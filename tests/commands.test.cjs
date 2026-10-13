@@ -734,6 +734,33 @@ describe('websearch command', () => {
     assert.strictEqual(output.error, 'Query required');
     assert.ok(!('reason' in output), 'the unconfigured-capability reason must not appear when a key is set');
   });
+
+  test('--freshness maps day/week/month/year to the values Brave accepts', () => {
+    const { braveFreshness } = require('../pan-wizard-core/bin/lib/commands.cjs');
+    assert.strictEqual(braveFreshness('day'), 'pd');
+    assert.strictEqual(braveFreshness('week'), 'pw');
+    assert.strictEqual(braveFreshness('month'), 'pm');
+    assert.strictEqual(braveFreshness('year'), 'py');
+    assert.strictEqual(braveFreshness('pw'), 'pw');
+    assert.strictEqual(braveFreshness('2026-01-01to2026-02-01'), '2026-01-01to2026-02-01');
+    assert.strictEqual(braveFreshness('fortnight'), null);
+  });
+
+  test('an invalid --freshness is refused before any request, with exit 1', () => {
+    let out = '';
+    let code = 0;
+    try {
+      out = execFileSync(process.execPath, [TOOLS_PATH, 'websearch', 'q', '--freshness', 'fortnight'], {
+        cwd: os.tmpdir(), encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, BRAVE_API_KEY: 'unused-key-validation-returns-first' },
+      });
+    } catch (err) {
+      code = err.status;
+      out = err.stdout?.toString() || '';
+    }
+    assert.strictEqual(code, 1);
+    assert.match(JSON.parse(out).error, /Invalid --freshness "fortnight"/);
+  });
 });
 
 // ── commit command ──────────────────────────────────────────

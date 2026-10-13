@@ -54,7 +54,7 @@ ROADMAP=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap analyze)
 ```
 
 This returns structured JSON with:
-- All phases with disk status (complete/partial/planned/empty/no_directory)
+- All phases with disk status (complete/partial/planned/researched/discussed/empty/no_directory)
 - Goal and dependencies per phase
 - Plan and summary counts per phase
 - Aggregated stats: total plans, summaries, progress percent

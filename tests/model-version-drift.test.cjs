@@ -383,11 +383,6 @@ const ALLOWLIST = [
     re: /(?<=substring table[^(]*\([^)]*)`(?:opus|sonnet|haiku|fable|mythos)-\d[\d-]*`/i,
     reason: "(a) quotes the substrings `detectModelCapabilities()` itself matches on — documenting the code's hand-maintained table, which the same paragraph correctly describes as advisory-only (\"It gates no feature\"). Code is out of this lint's scope; a faithful quote of it must be too.",
   },
-  {
-    file: 'docs/CLI-REFERENCE.md',
-    snippet: '`{ "claude-opus-4-8": { "input"',
-    reason: '(a) `cost.rates` override example in the config table — the model ID is the JSON KEY the user writes to override a rate. A generic placeholder would not show the key shape.',
-  },
   // (b) true historical provenance: none left. CONTRIBUTORS.md credited one model
   // version with "all human commits", which the public history's trailers contradict
   // (they name several), so it now credits Claude without a version (doc audit

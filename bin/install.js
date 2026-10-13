@@ -369,13 +369,11 @@ function getCommitAttribution(runtime) {
     const settings = readSettings(path.join(getGlobalDir('claude', explicitConfigDir), 'settings.json')) || {}; // unusable file = no info (read-only probe)
     result = lib.commitAttributionFromSettings(settings);
   } else if (runtime === 'copilot') {
-    // Copilot CLI: user-editable settings live in settings.json; config.json is
-    // legacy (auto-migrated by the CLI, now internal state) — fall back for old installs
+    // Copilot CLI: user settings live in settings.json only. config.json is the CLI's
+    // internal state, and Copilot 1.0.93 ignores user settings there (R48), so a
+    // stale `attribution` left in it must not decide PAN's attribution.
     const copilotDir = getGlobalDir('copilot', explicitConfigDir);
-    let config = readSettings(path.join(copilotDir, 'settings.json')) || {}; // unusable file = no info (read-only probe)
-    if (!config.attribution) {
-      config = readSettings(path.join(copilotDir, 'config.json')) || {}; // unusable file = no info (read-only probe)
-    }
+    const config = readSettings(path.join(copilotDir, 'settings.json')) || {}; // unusable file = no info (read-only probe)
     if (!config.attribution || config.attribution.commit === undefined) {
       result = undefined;
     } else if (config.attribution.commit === '') {
@@ -1222,7 +1220,7 @@ function uninstall(isGlobal, runtime = 'claude') {
   // 4. Remove PAN hooks (scripts + Copilot CLI hooks config file)
   const hooksDir = path.join(targetDir, 'hooks');
   if (fs.existsSync(hooksDir)) {
-    const panHooks = ['pan-statusline.js', 'pan-check-update.js', 'pan-check-update.sh', 'pan-context-monitor.js', 'pan-cost-logger.js', 'pan-trace-logger.js', 'pan-stop-guard.js', 'pan-state-reinject.js', 'pan.json'];
+    const panHooks = ['pan-statusline.js', 'pan-check-update.js', 'pan-check-update.sh', 'pan-guard.js', 'pan-context-monitor.js', 'pan-cost-logger.js', 'pan-trace-logger.js', 'pan-stop-guard.js', 'pan-state-reinject.js', 'pan.json'];
     let hookCount = 0;
     for (const hook of panHooks) {
       const hookPath = path.join(hooksDir, hook);
@@ -1576,35 +1574,12 @@ function uninstall(isGlobal, runtime = 'claude') {
       // CodeQL js/file-system-race. Same idiom as the hooks' metrics read.
       try {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        let modified = false;
+        let modified;
 
-        // Remove PAN permission entries
-        if (config.permission) {
-          for (const permType of ['read', 'external_directory']) {
-            if (config.permission[permType]) {
-              const keys = Object.keys(config.permission[permType]);
-              for (const key of keys) {
-                // Match `pan-wizard` rather than `pan-wizard-core` so the malformed
-                // key earlier versions wrote (`~/.config/opencode/pan-wizard/*`) is
-                // cleaned too. Without this, machines that ran any global OpenCode
-                // install before the glob was fixed keep that entry forever — the
-                // uninstaller could never match it, which is what made it residue
-                // rather than a cosmetic typo.
-                if (key.includes('pan-wizard')) {
-                  delete config.permission[permType][key];
-                  modified = true;
-                }
-              }
-              // Clean up empty objects
-              if (Object.keys(config.permission[permType]).length === 0) {
-                delete config.permission[permType];
-              }
-            }
-          }
-          if (Object.keys(config.permission).length === 0) {
-            delete config.permission;
-          }
-        }
+        // Remove PAN permission entries, v1 `permission` keys and OpenCode 2
+        // `permissions[]` rules alike (R47). Keys matching `pan-wizard` rather than
+        // `pan-wizard-core` also clean the malformed key earlier versions wrote.
+        ({ modified } = lib.stripOpencodePermissions(config));
 
         if (modified) {
           // If stripping PAN permissions emptied the config, remove the file
@@ -1718,6 +1693,18 @@ function uninstall(isGlobal, runtime = 'claude') {
     console.log(`  ${yellow}⚠${reset} No PAN files found to remove.`);
   }
 
+  // A local install's runtime directory that the removal left empty goes too (X1).
+  // Never a global one (~/.claude and the like are the host's own homes), and never a
+  // directory that still holds anything: `.github` usually holds the project's files.
+  if (!isGlobal) {
+    try {
+      if (fs.readdirSync(targetDir).length === 0) {
+        fs.rmdirSync(targetDir);
+        console.log(`  ${green}✓${reset} Removed empty ${locationLabel}`);
+      }
+    } catch { /* already gone or unreadable: leave it */ }
+  }
+
   console.log(`
   ${green}Done!${reset} PAN has been uninstalled from ${runtimeLabel}.
   Your other files and settings have been preserved.
@@ -1760,10 +1747,6 @@ function configureOpencodePermissions(isGlobal = true) {
     }
   }
 
-  // Ensure permission structure exists
-  if (!config.permission) {
-    config.permission = {};
-  }
 
   // Build the PAN path using the actual config directory
   // Use ~ shorthand if it's in the default location, otherwise use full path
@@ -1780,25 +1763,9 @@ function configureOpencodePermissions(isGlobal = true) {
     ? '~/.config/opencode/pan-wizard-core/*'
     : `${opencodeConfigDir.replace(/\\/g, '/')}/pan-wizard-core/*`;
   
-  let modified = false;
-
-  // Configure read permission
-  if (!config.permission.read || typeof config.permission.read !== 'object') {
-    config.permission.read = {};
-  }
-  if (config.permission.read[panPath] !== 'allow') {
-    config.permission.read[panPath] = 'allow';
-    modified = true;
-  }
-
-  // Configure external_directory permission (the safety guard for paths outside project)
-  if (!config.permission.external_directory || typeof config.permission.external_directory !== 'object') {
-    config.permission.external_directory = {};
-  }
-  if (config.permission.external_directory[panPath] !== 'allow') {
-    config.permission.external_directory[panPath] = 'allow';
-    modified = true;
-  }
+  // v1 `permission` object in a new or v1 file; the native `permissions[]` array
+  // in a file the user already converted to OpenCode 2, never both (R47).
+  const { modified } = lib.addOpencodePermissions(config, panPath);
 
   if (!modified) {
     return; // Already configured
@@ -2785,6 +2752,10 @@ function install(isGlobal, runtime = 'claude') {
   const stateReinjectCommand = isGlobal
     ? buildHookCommand(targetDir, 'pan-state-reinject.js')
     : 'node ' + dirName + '/hooks/pan-state-reinject.js';
+  // The guard names its host: payloads and the way to deny differ per runtime (A7).
+  const guardCommand = (isGlobal
+    ? buildHookCommand(targetDir, 'pan-guard.js')
+    : 'node ' + dirName + '/hooks/pan-guard.js') + ` --host ${runtime}`;
   // Gemini and Copilot (M33): a marker before the compaction, the block on the next
   // tool result. The inject mode names the host, whose output shapes differ.
   const stateReinjectMarkCommand = `${stateReinjectCommand} --mark`;
@@ -2798,7 +2769,7 @@ function install(isGlobal, runtime = 'claude') {
   if (!isOpencode) {
     const entrypoints = lib.verifyHookEntrypoints([
       updateCheckCommand, contextMonitorCommand, statuslineCommand, costLoggerCommand,
-      traceLoggerCommand, stopGuardCommand, stateReinjectCommand, stateReinjectMarkCommand, stateReinjectInjectCommand,
+      traceLoggerCommand, stopGuardCommand, stateReinjectCommand, stateReinjectMarkCommand, stateReinjectInjectCommand, guardCommand,
     ], process.cwd());
     if (!entrypoints.ok) {
       console.error(`\n  ${red}✖ Hook verification FAILED — these hook commands would run a script that is not there:${reset}`);
@@ -2818,7 +2789,7 @@ function install(isGlobal, runtime = 'claude') {
       let existing = null;
       try { existing = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8')); } catch { /* absent or invalid — start fresh */ }
       const merged = lib.mergeCodexHooksConfig(existing, {
-        updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand,
+        updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectCommand, guardCommand,
       });
       fs.writeFileSync(hooksJsonPath, JSON.stringify(merged, null, 2) + '\n');
       // Print the path we actually wrote. The hardcoded '.codex/hooks.json' was
@@ -2836,7 +2807,7 @@ function install(isGlobal, runtime = 'claude') {
   // from any legacy config.json registration.
   if (isCopilot) {
     const hooksConfigPath = path.join(targetDir, 'hooks', 'pan.json');
-    const hooksConfig = buildCopilotHooksConfig({ updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectMarkCommand, stateReinjectInjectCommand });
+    const hooksConfig = buildCopilotHooksConfig({ updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand, stateReinjectMarkCommand, stateReinjectInjectCommand, guardCommand });
     try {
       fs.mkdirSync(path.dirname(hooksConfigPath), { recursive: true });
       fs.writeFileSync(hooksConfigPath, JSON.stringify(hooksConfig, null, 2) + '\n');
@@ -2930,6 +2901,7 @@ function install(isGlobal, runtime = 'claude') {
     // unbuilt phases — fail-open and inert outside PAN projects.
     const registrations = [
       { slot: 'sessionStart', hook: 'pan-check-update', command: updateCheckCommand, label: 'update check hook' },
+      { slot: 'preToolUse', hook: 'pan-guard', command: guardCommand, label: 'pre-tool guard hook' },
       { slot: 'postToolUse', hook: 'pan-context-monitor', command: contextMonitorCommand, label: 'context window monitor hook' },
       { slot: 'subagentStop', hook: 'pan-cost-logger', command: costLoggerCommand, label: 'cost logger hook' },
       { slot: 'subagentStop', hook: 'pan-trace-logger', command: traceLoggerCommand, label: 'trace logger hook' },

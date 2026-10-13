@@ -94,13 +94,21 @@ describe('finding the store the way Claude Code does', () => {
     assert.equal(loc.dir, path.join(home, 'notes', 'mem'));
     assert.equal(loc.source, 'autoMemoryDirectory');
   });
+
+  test('CLAUDE_CONFIG_DIR moves the user settings and the projects store, as it does for Claude Code', () => {
+    const cfg = path.join(base, 'cfg');
+    fs.mkdirSync(cfg, { recursive: true });
+    assert.equal(hostMemoryDir(proj, home, cfg).dir, path.join(cfg, 'projects', key(proj), 'memory'));
+    fs.writeFileSync(path.join(cfg, 'settings.json'), JSON.stringify({ autoMemoryDirectory: path.join(base, 'elsewhere') }));
+    assert.equal(hostMemoryDir(proj, home, cfg).dir, path.join(base, 'elsewhere'));
+  });
 });
 
 describe('through hygiene, read-only', () => {
   test('hygiene scan reports it, and hygiene clean --apply leaves the store byte for byte', () => {
     const file = index(proj, Array.from({ length: 250 }, (_, i) => pointer(i)).join('\n') + '\n');
     const before = fs.readFileSync(file);
-    const env = { HOME: home, USERPROFILE: home };
+    const env = { HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: '' };
     const { execFileSync } = require('child_process');
     const tools = path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs');
     const scan = JSON.parse(execFileSync(process.execPath, [tools, 'hygiene', 'scan', '--cwd', proj], { encoding: 'utf8', env: { ...process.env, ...env } }));

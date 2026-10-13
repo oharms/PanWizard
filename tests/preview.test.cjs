@@ -320,6 +320,44 @@ describe('preview — buildPhaseDependencyGraph', () => {
     assert.ok(r.mermaid.startsWith('graph TD'));
     assert.match(r.mermaid, /P1 --> P2/);
   });
+
+  test('the roadmap\'s **Depends on:** line is an explicit dependency, so dependent phases never share a batch', () => {
+    scaffold(
+      '- [ ] Phase 1: A\n- [ ] Phase 2: B\n\n### Phase 1: A\n**Goal:** a\n**Depends on:** Nothing (first phase)\n\n### Phase 2: B\n**Goal:** b\n**Depends on:** Phase 1\n',
+      [
+        { num: '01', slug: 'a', plan: 'text' },
+        { num: '02', slug: 'b', plan: 'text' },
+      ]
+    );
+    const r = buildPhaseDependencyGraph(tmpDir);
+    assert.deepEqual(r.phases.find(p => p.num === '2').explicit_deps, ['1']);
+    assert.ok(!r.parallel_batches.some(b => b.includes('1') && b.includes('2')), JSON.stringify(r.parallel_batches));
+  });
+
+  test('a plan\'s depends_on plan ids are not phase dependencies, and every plan\'s frontmatter is read', () => {
+    scaffold('- [ ] Phase 1: A\n- [ ] Phase 2: B\n- [ ] Phase 3: C\n', [
+      { num: '01', slug: 'a', plan: 'text' },
+      { num: '02', slug: 'b', plan: 'text' },
+      { num: '03', slug: 'c', plan: '---\ndepends_on: ["01"]\n---\ntext' },
+    ]);
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'phases', '03-c', '02-plan.md'), '---\ndepends_on:\n  - phase:2\n---\ntext');
+    const r = buildPhaseDependencyGraph(tmpDir);
+    assert.deepEqual(r.phases.find(p => p.num === '3').explicit_deps, ['2']);
+  });
+
+  test('on a padded checklist, mentions resolve to the same keys: no self-dependency, no duplicate of an explicit one', () => {
+    scaffold(
+      '- [ ] Phase 01: A\n- [ ] Phase 02: B\n\n### Phase 1: A\n**Goal:** a\n\n### Phase 2: B\n**Goal:** b\n**Depends on:** Phase 1\n',
+      [
+        { num: '01', slug: 'a', plan: 'Phase 1 sets up the base.' },
+        { num: '02', slug: 'b', plan: 'Builds on phase 1.' },
+      ]
+    );
+    const r = buildPhaseDependencyGraph(tmpDir);
+    assert.deepEqual(r.phases.find(p => p.num === '01').hidden_deps, []);
+    const p2 = r.phases.find(p => p.num === '02');
+    assert.deepEqual([p2.explicit_deps, p2.hidden_deps], [['01'], []]);
+  });
 });
 
 // ─── buildMilestoneETA ──────────────────────────────────────────────────────
