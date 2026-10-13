@@ -57,7 +57,8 @@ describe('every host\'s payload normalises to the same call', () => {
 describe('the rules', () => {
   test('secret_write: a known token shape and a long key=value secret; placeholders are not secrets', () => {
     assert.equal(G.hasSecret(`const k = "${SECRET}";`), true);
-    assert.equal(G.hasSecret('password = "s3cr3tPassw0rdXyz"'), true);
+    // Assembled at runtime, like SECRET above, so no secret scanner reads the fixture as a leak.
+    assert.equal(G.hasSecret('password = "' + 's3cr3tPass' + 'w0rdXyz"'), true);
     assert.equal(G.hasSecret('apiKey: process.env.API_KEY'), false);
     assert.equal(G.hasSecret('password = "${DB_PASSWORD}"'), false);
     assert.equal(G.hasSecret('token = "your-token-here"'), false);

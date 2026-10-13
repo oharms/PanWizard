@@ -135,7 +135,9 @@ function lintText(rel, raw, ctx) {
 
   // dev-skill
   if (ctx.dev.length) {
-    const devRe = new RegExp(`(^|[\\s\`'"(])/(${ctx.dev.map((d) => d.replace(/[-]/g, '\\-')).join('|')})(?=[\\s\`'".,;:)]|$)`, 'gm');
+    // Every regex metacharacter escaped, backslash included (inline: CodeQL does not follow a helper).
+    const names = ctx.dev.map((d) => d.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&'));
+    const devRe = new RegExp(`(^|[\\s\`'"(])/(${names.join('|')})(?=[\\s\`'".,;:)]|$)`, 'gm');
     while ((m = devRe.exec(text))) hit('dev-skill', m.index + m[1].length, m[0]);
   }
   return out;

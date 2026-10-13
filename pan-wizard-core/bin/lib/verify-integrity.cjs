@@ -28,7 +28,10 @@ const { isPlanFile } = require('./constants.cjs');
 const { committedFiles, TEST_PATH_RE, TEST_FILE_RE } = require('./verify-scope.cjs');
 
 const TEST_NAME_RE = /(^|\/)(test_[^/]+\.py|[^/]+_test\.(py|go)|[^/]+Tests?\.(java|kt|cs))$/;
-const SNAPSHOT_RE = /(^|\/)(__snapshots__|snapshots)\/|\.snap$/;
+// A snapshot directory anywhere in the path, or a `.snap` file: two patterns, so neither
+// alternative's anchoring reads as the other's.
+const SNAPSHOT_DIR_RE = /(?:^|\/)(?:__snapshots__|snapshots)\//;
+const SNAPSHOT_EXT_RE = /\.snap$/;
 
 /** Markers that stop a test from running, per ecosystem. */
 const SKIP_RE = [
@@ -68,7 +71,7 @@ const ALWAYS_TRUE_RE = [
 ];
 
 const isTestFile = (f) => TEST_PATH_RE.test(f) || TEST_FILE_RE.test(f) || TEST_NAME_RE.test(f);
-const isSnapshot = (f) => SNAPSHOT_RE.test(f);
+const isSnapshot = (f) => SNAPSHOT_DIR_RE.test(f) || SNAPSHOT_EXT_RE.test(f);
 const any = (res, line) => res.some((re) => re.test(line));
 const norm = (p) => toPosix(String(p || '').trim()).replace(/^\.\/+/, '');
 

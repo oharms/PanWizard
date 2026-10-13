@@ -172,8 +172,9 @@ function applyControl(control, vars) {
     fs.rmSync(p, { recursive: true, force: true });
   } else if (control.write) {
     const p = target(control.write.path);
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, control.write.content);
+    fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
+    // Owner-only: off Windows the workspace lives under the shared OS temp directory.
+    fs.writeFileSync(p, control.write.content, { mode: 0o600 });
   } else if (control.replace) {
     const p = target(control.replace.path);
     const text = fs.readFileSync(p, 'utf8');
