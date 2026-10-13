@@ -119,7 +119,7 @@ const CONFIG_KEYS_BEYOND_DEFAULTS = Object.freeze({
   top: Object.freeze(['research', 'plan_checker', 'verifier', 'nyquist_validation', 'mode', 'depth', 'planning', 'git',
     'focus', 'model_overrides', 'effort_overrides', 'cost', 'cache', 'build', 'verification', 'concurrency', 'memory']),
   sections: Object.freeze({
-    workflow: Object.freeze(['auto_advance', 'stop_guard', 'test_command']),
+    workflow: Object.freeze(['auto_advance', 'stop_guard', 'test_command', 'test_file_command']),
     planning: Object.freeze(['commit_docs', 'search_gitignored']),
     git: Object.freeze(['branching_strategy', 'phase_branch_template', 'milestone_branch_template']),
   }),

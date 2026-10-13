@@ -911,6 +911,7 @@
     "cmdTestDetect:function",
     "cmdTestRun:function",
     "detectTestCommand:function",
+    "fileCommand:function",
     "parseCargo:function",
     "parseGo:function",
     "parseJUnit:function",
@@ -919,8 +920,10 @@
     "parsePytest:function",
     "parseTap:function",
     "parseTestOutput:function",
+    "rawConfig:function",
     "readTestRun:function",
     "recordPaths:function",
+    "runCommand:function",
     "runTests:function",
     "stripAnsi:function",
     "testRunFacts:function"
@@ -999,6 +1002,12 @@
   "verify-preflight.cjs": [
     "cmdDepsValidate:function",
     "cmdPreflight:function"
+  ],
+  "verify-red.cjs": [
+    "checkRed:function",
+    "cmdVerifyRed:function",
+    "phaseBase:function",
+    "withWorktree:function"
   ],
   "verify-retro.cjs": [
     "cmdRetro:function",

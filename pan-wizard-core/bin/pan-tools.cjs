@@ -93,6 +93,8 @@
  *   verify commits <h1> [h2] ...      Batch verify commit hashes
  *   verify artifacts <plan-file>       Check must_haves.artifacts
  *   verify key-links <plan-file>       Check must_haves.key_links
+ *   verify red <phase>                 Each test the phase changed fails at the
+ *     [--timeout <ms>]                 phase's base and passes at HEAD (V4)
  *
  * Test Gate (V2):
  *   test run [--phase N] [--baseline]  Run the project's tests, any language; with
@@ -249,6 +251,7 @@ const verifyPlanSet = require('./lib/verify-plan-set.cjs');
 const verifyIntegrity = require('./lib/verify-integrity.cjs');
 const phaseGate = require('./lib/phase-gate.cjs');
 const testGate = require('./lib/test-gate.cjs');
+const verifyRed = require('./lib/verify-red.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -683,8 +686,10 @@ async function main() {
         verifyPlanSet.cmdVerifyPlanSet(cwd, args[2], raw);
       } else if (subcommand === 'test-integrity') {
         verifyIntegrity.cmdVerifyTestIntegrity(cwd, args[2], raw);
+      } else if (subcommand === 'red') {
+        verifyRed.cmdVerifyRed(cwd, args[2], raw, { timeout: getArgValue(args, '--timeout') });
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red');
       }
       break;
     }

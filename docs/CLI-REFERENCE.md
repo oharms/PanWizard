@@ -460,6 +460,7 @@ Quick reference of all CLI commands grouped by category.
 | 217 | `phase gate` | Phase Ops | phase-gate.cjs |
 | 218 | `test run` | Verification | test-gate.cjs |
 | 219 | `test detect` | Verification | test-gate.cjs |
+| 220 | `verify red` | Verification | verify-red.cjs |
 
 ---
 
@@ -1721,6 +1722,26 @@ pan-tools verify test-integrity 3 --raw    # clean | violated | not_checked
 ```
 
 **Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/` or `spec/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test(s).java`/`.kt`/`.cs`, or a Rust file holding `#[test]` or `#[cfg(test)]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
+
+### `verify red <phase> [--timeout <ms>]`
+
+Does each test the phase wrote test what the phase built (program V4)? A test that passes before the phase's code exists cannot have caught anything.
+
+```bash
+pan-tools verify red 3          # {phase, checked, ok, base, caught, files: [{file, verdict, command, base_exit, head_exit, detail?}], reason?}
+pan-tools verify red 3 --raw    # caught | not_caught | not_checked
+```
+
+The **base** is the parent of the phase's oldest plan commit (subjects like `feat(03-01): …`). For each test file those commits added or changed, it runs that one file twice: in a throwaway git worktree at the base, with the file copied in from HEAD, and at HEAD. The worktree links the project's `node_modules` (untracked, so absent from a checkout) and removes the link before the worktree.
+
+| `verdict` | When |
+|---|---|
+| `caught` | fails at the base (a crash on a missing module counts) and passes at HEAD |
+| `not_red` | passes at the base: tautological, or testing something the phase did not change |
+| `not_green` | fails at HEAD |
+| `not_checked` | no command can run that one file, with the reason |
+
+The one-file command is `workflow.test_file_command` from config.json (a `{file}` placeholder), else derived from the suite's runner: `node --test <file>`, jest, vitest or mocha through `npx --no-install`, `python -m pytest <file>`, or `go test ./<dir>`. Cargo, Maven, Gradle and make have none. Exit 1 when a file is `not_red` or `not_green`; a phase with no plan commits, no changed test or no runnable one is `checked: false` and exits 0.
 
 ### `test run [--phase N] [--baseline] [--rebaseline] [--command "<cmd>"] [--timeout <ms>]`
 

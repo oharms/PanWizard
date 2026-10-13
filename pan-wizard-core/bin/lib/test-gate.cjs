@@ -84,6 +84,44 @@ function detectTestCommand(cwd, config = rawConfig(cwd)) {
   return { command: null, source: null, reason: 'no test command: set workflow.test_command, or add a test script (package.json, pytest, go.mod, Cargo.toml, Maven, Gradle, Makefile)' };
 }
 
+/**
+ * The command that runs one test file (V4, V5), or null with a reason. A configured
+ * `workflow.test_file_command` with a `{file}` placeholder wins; otherwise it is derived
+ * from the suite's runner: node's runner, jest, vitest, mocha, pytest, or go (the file's
+ * package). Cargo, Maven, Gradle and make cannot target one file this way.
+ */
+function fileCommand(cwd, file, config = rawConfig(cwd)) {
+  const quoted = JSON.stringify(String(file).replace(/\\/g, '/'));
+  const configured = config && config.workflow && typeof config.workflow.test_file_command === 'string' ? config.workflow.test_file_command.trim() : '';
+  if (configured) return configured.includes('{file}') ? { command: configured.split('{file}').join(quoted) } : { command: null, reason: 'workflow.test_file_command has no {file} placeholder' };
+  const suite = detectTestCommand(cwd, config);
+  let script = suite.command || '';
+  if (script === 'npm test') {
+    try { script = JSON.parse(safeReadFile(path.join(cwd, 'package.json')) || '{}').scripts.test || ''; } catch { script = ''; }
+  }
+  if (/\bnode\b[^&|;]*--test\b/.test(script)) return { command: `node --test ${quoted}` };
+  if (/\bjest\b/.test(script)) return { command: `npx --no-install jest ${quoted}` };
+  if (/\bvitest\b/.test(script)) return { command: `npx --no-install vitest run ${quoted}` };
+  if (/\bmocha\b/.test(script)) return { command: `npx --no-install mocha ${quoted}` };
+  if (/pytest/.test(script)) return { command: `python -m pytest ${quoted}` };
+  if (/^go test\b/.test(script)) return { command: `go test ./${path.posix.dirname(String(file).replace(/\\/g, '/'))}` };
+  return { command: null, reason: suite.command ? `no per-file command for "${suite.command}": set workflow.test_file_command with a {file} placeholder` : (suite.reason || 'no test command') };
+}
+
+/**
+ * Run a shell command with the gate's environment; `{exit, timed_out, output}`.
+ * NODE_TEST_CONTEXT is how node's runner marks its own children: a `node --test` that
+ * inherits it skips every file and exits 0, so a gate run from inside a test process
+ * would pass a suite that never ran.
+ */
+function runCommand(cwd, command, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  const env = { ...process.env, CI: process.env.CI || '1', FORCE_COLOR: '0', NO_COLOR: '1' };
+  delete env.NODE_TEST_CONTEXT;
+  const r = spawnSync(command, { cwd, shell: true, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, env });
+  const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
+  return { exit: typeof r.status === 'number' ? r.status : (timedOut ? null : 1), timed_out: timedOut, output: `${r.stdout || ''}\n${r.stderr || ''}` };
+}
+
 // ─── Parsers (each tested on real emitted output: tests/fixtures/test-runs/) ─
 
 function result(runner, counts, failing, extra = {}) {
@@ -312,20 +350,15 @@ function runTests(cwd, opts = {}) {
     const c = classifyRun({ command: null, reason: detected.reason });
     return { ...rec, exit: null, duration_ms: 0, runner: null, parsed: false, total: null, passed: null, failed: null, skipped: null, failing: [], status: c.status, reason: c.reason, regressions: [], preexisting_failures: [] };
   }
-  // NODE_TEST_CONTEXT is how node's runner marks its own children: a `node --test` that
-  // inherits it skips every file and exits 0, so a gate run from inside a test process
-  // would pass a suite that never ran.
-  const env = { ...process.env, CI: process.env.CI || '1', FORCE_COLOR: '0', NO_COLOR: '1' };
-  delete env.NODE_TEST_CONTEXT;
-  const r = spawnSync(detected.command, { cwd, shell: true, encoding: 'utf8', timeout: opts.timeoutMs || DEFAULT_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, env });
-  const raw = `${r.stdout || ''}\n${r.stderr || ''}`;
-  const timedOut = !!(r.error && r.error.code === 'ETIMEDOUT');
+  const r = runCommand(cwd, detected.command, opts.timeoutMs || DEFAULT_TIMEOUT_MS);
+  const raw = r.output;
+  const timedOut = r.timed_out;
   let parse = parseTestOutput(raw, cwd);
   if (!parse.parsed && /^(mvn|gradle|\.\/gradlew)\b/.test(detected.command)) {
     const reports = junitReports(cwd);
     if (reports) parse = parseJUnit(toLf(reports), cwd);
   }
-  const exit = typeof r.status === 'number' ? r.status : (timedOut ? null : 1);
+  const exit = r.exit;
   const c = classifyRun({ command: detected.command, exit, timed_out: timedOut, parse }, opts.baseline || null);
   return {
     ...rec, exit, timed_out: timedOut || undefined, duration_ms: Date.now() - started,
@@ -396,4 +429,5 @@ function cmdTestDetect(cwd, raw) {
 module.exports = {
   detectTestCommand, parseTestOutput, parseNodeSpec, parseTap, parseJest, parsePytest, parseGo, parseCargo, parseJUnit,
   classifyRun, runTests, readTestRun, testRunFacts, recordPaths, cmdTestRun, cmdTestDetect, stripAnsi,
+  fileCommand, runCommand, rawConfig,
 };
