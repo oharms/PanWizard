@@ -82,9 +82,15 @@ jobs:
       # installs an artifact, so running it on all nine would buy nothing. --no-ledger
       # keeps harness/ledger.jsonl (a tracked file) out of it; the run reports through its
       # own report.md under the runner's temp directory.
+      # The double-backed scenarios (program H1) drive the real Claude Code CLI against the
+      # harness's local model double: no key, no spend. Pinned to the version they were proven on.
+      - name: Claude Code CLI for the double-backed harness scenarios
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
+        run: npm install -g @anthropic-ai/claude-code@2.1.288
+
       - name: PAN Harness (tier 0, model-free)
         if: matrix.os == 'ubuntu-latest' && matrix.node == 22
-        run: npm run harness -- --no-ledger
+        run: npm run harness -- --no-ledger --require-run double-executor-body-claude
 
       # The suite and the harness must both leave the tree as they found it. A gate that
       # writes into the checkout hides its own side effects from review.

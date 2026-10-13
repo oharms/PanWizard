@@ -36,7 +36,7 @@ const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
 const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 
 function parseArgs(argv) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null };
+  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [] };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -60,6 +60,10 @@ function parseArgs(argv) {
     // --arm <id> (H3, M43): run the scenarios that declare this arm with its change applied
     // (the no-guidance baseline, a deletion arm), for a paired comparison with the plain run.
     else if (k === '--arm') { a.arm = v; i++; }
+    // --require-run <id> (CI1): this scenario must actually run. Skipped, or not selected at
+    // all, fails the run: CI installs a host CLI so the double-backed scenarios run there, and
+    // a missing CLI must not turn into a quiet skip.
+    else if (k === '--require-run') { a.requireRun.push(v); i++; }
     else if (k === '--help' || k === '-h') { a.help = true; }
     else throw new Error(`unknown argument: ${k}`);
   }
@@ -271,6 +275,22 @@ function runStep(step, ctx) {
  * opposite and filed two promotable phantom findings (reality check RC23 / R20).
  * Returns the note to record, or null when the outcome is a real result. Pure.
  */
+/**
+ * The scenarios a run was required to execute (--require-run) that did not run: skipped,
+ * or never selected. Pure. Each is a failure of the run, with the reason.
+ */
+function unmetRuns(results, required) {
+  const out = [];
+  for (const id of required || []) {
+    const recs = results.filter((r) => r.scenario === id && !r.control);
+    const ran = recs.some((r) => r.status === 'passed' || r.status === 'failed');
+    if (ran) continue;
+    const why = recs.length ? recs.map((r) => r.skipped || r.note || r.status).join('; ') : 'not selected in this run';
+    out.push({ scenario: id, tier: 0, step: 'require-run', expect: 'ran', failure: `required to run, but did not: ${why}`, why: 'CI installs the host CLI so this scenario runs; a skip would hide a broken setup' });
+  }
+  return out;
+}
+
 function modelStepNeverRan(outcome) {
   if (!outcome || outcome.refused || outcome.budgetExhausted || outcome.budgetStopped) return null;
   // A double-backed step spends nothing by design: it ran if the host reached the double.
@@ -310,7 +330,7 @@ function persistStepOutput(runDir, scenarioId, rep, index, outcome) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id]\n');
+    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id] [--require-run id]...\n');
     return 0;
   }
   const stateDir = args.stateDir || defaultStateDir();
@@ -477,6 +497,7 @@ function main() {
       }
     }
   }
+  for (const f of unmetRuns(results, args.requireRun)) failures.push(f);
   if (args.controls) {
     for (const c of controlResults) if (c.verdict === 'error') failures.push({ scenario: c.scenario, tier: 0, step: 'control', expect: `control:${c.control}`, failure: c.note, why: 'a control that cannot be applied measures nothing' });
   }
@@ -542,10 +563,13 @@ function main() {
   const budget = summary.scenarios.filter(r => r.status === 'budget').length;
   const passed = summary.scenarios.filter(r => r.status === 'passed').length;
   const errors = summary.scenarios.filter(r => r.status === 'error').length;
-  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped, ${errors} harness errors — report ${path.join(runDir, 'report.md')}`);
-  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, errors, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
+  // Run-level failures that no scenario status carries: a control the scenario survived
+  // (H5) and a required scenario that did not run (CI1). Each fails the run.
+  const runLevel = failures.filter((f) => f.step === 'control' || f.step === 'require-run').length;
+  log(`done: ${passed} passed, ${failed} failed, ${budget} budget-stopped, ${skipped} skipped, ${errors} harness errors${runLevel ? `, ${runLevel} run-level failure(s)` : ''} — report ${path.join(runDir, 'report.md')}`);
+  process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, errors, runLevel, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
   // An error is not green: the run could not measure what it set out to.
-  return (failed || errors) ? 1 : 0;
+  return (failed || errors || runLevel) ? 1 : 0;
 }
 
 if (require.main === module) {
@@ -553,4 +577,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };

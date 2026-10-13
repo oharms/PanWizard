@@ -165,6 +165,32 @@ describe('wire assertions and the scenario rules', () => {
   });
 });
 
+describe('CI runs the double-backed scenario, never skips it (CI1)', () => {
+  const { unmetRuns, parseArgs } = require('../harness/src/run.cjs');
+
+  test('--require-run: a skipped or unselected scenario is a run-level failure with its reason', () => {
+    assert.deepEqual(parseArgs(['--require-run', 'a', '--require-run', 'b']).requireRun, ['a', 'b']);
+    const out = unmetRuns([{ scenario: 'a', status: 'passed' }, { scenario: 'b', status: 'skipped', skipped: 'claude not installed on this machine' }, { scenario: 'c', status: 'failed' }], ['a', 'b', 'c', 'd']);
+    assert.deepEqual(out.map((f) => f.scenario), ['b', 'd']);
+    assert.match(out[0].failure, /claude not installed/);
+    assert.match(out[1].failure, /not selected/);
+    assert.ok(out.every((f) => f.step === 'require-run'));
+  });
+
+  test('the CI harness job installs a pinned Claude Code and requires the double scenario to run', () => {
+    const ci = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+    assert.match(ci, /npm install -g @anthropic-ai\/claude-code@\d+\.\d+\.\d+\b/, 'pinned to an exact version');
+    assert.match(ci, /npm run harness -- --no-ledger --require-run double-executor-body-claude/);
+    assert.ok(ci.indexOf('@anthropic-ai/claude-code@') < ci.indexOf('--require-run double-executor-body-claude'), 'installed before the harness runs');
+  });
+
+  test('a run-level failure (a survived control, an unmet --require-run) makes the harness exit 1', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'harness', 'src', 'run.cjs'), 'utf8');
+    assert.match(src, /return \(failed \|\| errors \|\| runLevel\) \? 1 : 0;/);
+    assert.match(src, /f\.step === 'control' \|\| f\.step === 'require-run'/);
+  });
+});
+
 describe('wire-agent-body.cjs — the whole body, or not', () => {
   const SCRIPT_PATH = path.join(ROOT, 'harness', 'scripts', 'wire-agent-body.cjs');
   const run = (caps, src) => JSON.parse(spawnSync(process.execPath, [SCRIPT_PATH, caps, src], { encoding: 'utf8' }).stdout);

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **A local model double for the harness: real hosts, no model, no spend.** `harness/src/model-double.cjs` answers a host CLI in place of the model provider (Anthropic Messages, OpenAI Responses and Chat, Gemini) in capture, script, replay and record modes. A `model` step with `double: {script}` drives the real Claude Code CLI against it at tier 0, and new `wire:`/`wire-count:` assertions read what the host sent. The first scenario proves the executor subagent receives the packaged `pan-executor` body whole, and its control proves a truncated agent turns it red.
+- **CI runs the double-backed scenario.** The Ubuntu Node-22 job installs a pinned Claude Code CLI and runs the harness with `--require-run`, so the scenario fails rather than skips when it cannot run. A control a scenario survives, and an unmet `--require-run`, now make the harness exit 1 (they were reported but left the exit code at 0).
 
 ## [3.35.0] - 2026-10-13
 
