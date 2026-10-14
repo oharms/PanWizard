@@ -51,86 +51,13 @@ const TARGETS = [
   { file: 'pan-wizard-core/bin/pan-tools.cjs', tests: ['tests/dispatcher.test.cjs', 'tests/dispatcher-arms.test.cjs'] },
 ];
 
-/**
- * The mutation operators. Each is a plain textual swap with a token that must appear
- * OUTSIDE a string or comment to be worth mutating (see mutableLine). They are deliberately
- * few and blunt: the point is to find unconstrained logic, not to enumerate every possible
- * defect.
- */
-const OPERATORS = [
-  { id: 'gte→gt', find: ' >= ', replace: ' > ' },
-  { id: 'gt→gte', find: ' > ', replace: ' >= ' },
-  { id: 'lte→lt', find: ' <= ', replace: ' < ' },
-  { id: 'lt→lte', find: ' < ', replace: ' <= ' },
-  { id: 'eq→neq', find: ' === ', replace: ' !== ' },
-  { id: 'neq→eq', find: ' !== ', replace: ' === ' },
-  { id: 'and→or', find: ' && ', replace: ' || ' },
-  { id: 'or→and', find: ' || ', replace: ' && ' },
-  { id: 'true→false', find: 'return true', replace: 'return false' },
-  { id: 'false→true', find: 'return false', replace: 'return true' },
-  { id: 'plus→minus', find: ' + 1', replace: ' - 1' },
-];
-
-/**
- * Is this line worth mutating? Skips comments, and skips a line whose only occurrence of
- * the token is inside a string literal — mutating a message changes nothing a test should
- * be pinning, and a survivor there would be noise.
- *
- * Crude but conservative: a line containing a quote is only mutated when the token also
- * occurs before the first quote.
- */
-function mutableLine(line, token) {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) return false;
-  const at = line.indexOf(token);
-  if (at === -1) return false;
-  const firstQuote = Math.min(
-    ...["'", '"', '`'].map((q) => { const i = line.indexOf(q); return i === -1 ? Infinity : i; }),
-  );
-  return at < firstQuote;
-}
-
-/**
- * Every mutation available in a source file: one per (line, operator) pair, first
- * occurrence on the line.
- *
- * @returns {Array<{line: number, op: string, before: string, after: string}>}
- */
-function mutationsFor(src) {
-  const lines = src.split(/\r?\n/);
-  const out = [];
-  lines.forEach((line, i) => {
-    for (const op of OPERATORS) {
-      if (!mutableLine(line, op.find)) continue;
-      out.push({ line: i + 1, op: op.id, before: line, after: line.replace(op.find, op.replace) });
-    }
-  });
-  return out;
-}
-
-/** Apply one mutation to a source string, by line number. Throws if the line moved. */
-function applyMutation(src, mutation) {
-  const eol = src.includes('\r\n') ? '\r\n' : '\n';
-  const lines = src.split(/\r?\n/);
-  const idx = mutation.line - 1;
-  if (lines[idx] !== mutation.before) {
-    throw new Error(`line ${mutation.line} is not what the mutation was built from`);
-  }
-  lines[idx] = mutation.after;
-  return lines.join(eol);
-}
-
-/** Deterministic shuffle, so a run is reproducible from its seed. */
-function sample(items, n, seed) {
-  let s = seed >>> 0;
-  const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
-  const copy = items.slice();
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(0, n);
-}
+// The operators, the line filter, mutation and the seeded sample live in the shipped
+// mutation report (pan-wizard-core/bin/lib/mutate.cjs, program V5), which a user's phase
+// diff is measured with; this probe applies the JavaScript table to PAN itself.
+const M = require('../pan-wizard-core/bin/lib/mutate.cjs');
+const OPERATORS = M.OPERATORS.js;
+const { mutableLine, applyMutation, sample } = M;
+const mutationsFor = (src) => M.mutationsFor(src, { family: 'js' });
 
 function parseArgs(argv) {
   const a = { max: 20, seed: 1, json: false, targets: [], timeoutMs: 600000, help: false };

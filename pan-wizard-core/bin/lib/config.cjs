@@ -55,6 +55,9 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       phase_record_compact: false,
       // V1: the phase gate. `warn` reports refusals and completes; `enforce` refuses.
       phase_gate: 'warn',
+      // V5: the mutation report on a phase's diff. `report` lists surviving mutants and
+      // never refuses; `off` skips it; `gate` is reserved for V5G.
+      mutation_gate: 'report',
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },
@@ -119,7 +122,7 @@ const CONFIG_KEYS_BEYOND_DEFAULTS = Object.freeze({
   top: Object.freeze(['research', 'plan_checker', 'verifier', 'nyquist_validation', 'mode', 'depth', 'planning', 'git',
     'focus', 'model_overrides', 'effort_overrides', 'cost', 'cache', 'build', 'verification', 'concurrency', 'memory']),
   sections: Object.freeze({
-    workflow: Object.freeze(['auto_advance', 'stop_guard']),
+    workflow: Object.freeze(['auto_advance', 'stop_guard', 'test_command', 'test_file_command']),
     planning: Object.freeze(['commit_docs', 'search_gitignored']),
     git: Object.freeze(['branching_strategy', 'phase_branch_template', 'milestone_branch_template']),
   }),

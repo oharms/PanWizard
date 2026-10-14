@@ -93,6 +93,18 @@
  *   verify commits <h1> [h2] ...      Batch verify commit hashes
  *   verify artifacts <plan-file>       Check must_haves.artifacts
  *   verify key-links <plan-file>       Check must_haves.key_links
+ *   verify red <phase>                 Each test the phase changed fails at the
+ *     [--timeout <ms>]                 phase's base and passes at HEAD (V4)
+ *   verify mutate --phase N            Mutation report on the phase's changed lines
+ *     [--max n] [--seed n]             (V5): which mutants the suite does not kill;
+ *     [--timeout <ms>]                 writes {NN}-mutation.json
+ *
+ * Test Gate (V2):
+ *   test run [--phase N] [--baseline]  Run the project's tests, any language; with
+ *     [--command "<cmd>"]              --phase, write {NN}-test-run.json (or the
+ *     [--timeout <ms>] [--rebaseline]  --baseline record) to the phase directory; an
+ *                                      existing baseline is kept unless --rebaseline
+ *   test detect                        The test command the gate would run, and why
  *
  * Template Fill:
  *   template fill summary --phase N    Create pre-filled summary.md
@@ -241,6 +253,9 @@ const findings = require('./lib/findings.cjs');
 const verifyPlanSet = require('./lib/verify-plan-set.cjs');
 const verifyIntegrity = require('./lib/verify-integrity.cjs');
 const phaseGate = require('./lib/phase-gate.cjs');
+const testGate = require('./lib/test-gate.cjs');
+const verifyRed = require('./lib/verify-red.cjs');
+const mutate = require('./lib/mutate.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -366,7 +381,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -631,6 +646,24 @@ async function main() {
       break;
     }
 
+    case 'test': {
+      const subcommand = args[1];
+      if (subcommand === 'run') {
+        testGate.cmdTestRun(cwd, {
+          phase: getArgValue(args, '--phase'),
+          baseline: args.includes('--baseline'),
+          rebaseline: args.includes('--rebaseline'),
+          command: getArgValue(args, '--command'),
+          timeout: getArgValue(args, '--timeout'),
+        }, raw);
+      } else if (subcommand === 'detect') {
+        testGate.cmdTestDetect(cwd, raw);
+      } else {
+        error('Unknown test subcommand. Available: run, detect');
+      }
+      break;
+    }
+
     case 'verify': {
       const subcommand = args[1];
       if (subcommand === 'plan-structure') {
@@ -657,8 +690,17 @@ async function main() {
         verifyPlanSet.cmdVerifyPlanSet(cwd, args[2], raw);
       } else if (subcommand === 'test-integrity') {
         verifyIntegrity.cmdVerifyTestIntegrity(cwd, args[2], raw);
+      } else if (subcommand === 'red') {
+        verifyRed.cmdVerifyRed(cwd, args[2], raw, { timeout: getArgValue(args, '--timeout') });
+      } else if (subcommand === 'mutate') {
+        mutate.cmdVerifyMutate(cwd, {
+          phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),
+          max: getArgValue(args, '--max'),
+          seed: getArgValue(args, '--seed'),
+          timeout: getArgValue(args, '--timeout'),
+        }, raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate');
       }
       break;
     }

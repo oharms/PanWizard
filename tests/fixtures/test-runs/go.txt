@@ -1,0 +1,6 @@
+--- FAIL: TestSubtract (0.00s)
+    calc_test.go:13: expected 1, got 2
+FAIL
+FAIL	example.com/calc/calc	0.020s
+ok  	example.com/calc/other	0.020s
+FAIL

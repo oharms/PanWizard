@@ -662,6 +662,19 @@
     "cmdMilestoneComplete:function",
     "cmdRequirementsMarkComplete:function"
   ],
+  "mutate.cjs": [
+    "MODES:object",
+    "OPERATORS:object",
+    "applyMutation:function",
+    "changedLines:function",
+    "cmdVerifyMutate:function",
+    "languageOf:function",
+    "mutableLine:function",
+    "mutatePhase:function",
+    "mutationMode:function",
+    "mutationsFor:function",
+    "sample:function"
+  ],
   "optimize.cjs": [
     "APPLIED_LOG:string",
     "CURRENT_SESSION_FILE:string",
@@ -906,6 +919,28 @@
     "generateSummaryTemplate:function",
     "generateVerificationTemplate:function"
   ],
+  "test-gate.cjs": [
+    "classifyRun:function",
+    "cmdTestDetect:function",
+    "cmdTestRun:function",
+    "detectTestCommand:function",
+    "fileCommand:function",
+    "parseCargo:function",
+    "parseGo:function",
+    "parseJUnit:function",
+    "parseJest:function",
+    "parseNodeSpec:function",
+    "parsePytest:function",
+    "parseTap:function",
+    "parseTestOutput:function",
+    "rawConfig:function",
+    "readTestRun:function",
+    "recordPaths:function",
+    "runCommand:function",
+    "runTests:function",
+    "stripAnsi:function",
+    "testRunFacts:function"
+  ],
   "utils.cjs": [
     "classifyPhaseStatus:function",
     "detectPlanningModel:function",
@@ -980,6 +1015,12 @@
   "verify-preflight.cjs": [
     "cmdDepsValidate:function",
     "cmdPreflight:function"
+  ],
+  "verify-red.cjs": [
+    "checkRed:function",
+    "cmdVerifyRed:function",
+    "phaseBase:function",
+    "withWorktree:function"
   ],
   "verify-retro.cjs": [
     "cmdRetro:function",

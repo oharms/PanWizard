@@ -85,65 +85,58 @@ This step provides awareness; the hard gate is enforced by exec-phase.
 </step>
 
 <step name="run_test_suite">
-**Run the project's test suite as a verification gate.**
+**Run the project's test suite as a verification gate, through the engine.**
 
-This step catches test regressions that goal-backward analysis cannot detect.
-
-1. Detect whether a test script exists. **This decides `skipped` vs `failed` later**, so
-   it must be answered BEFORE running anything — `npm test` on a project with no `test`
-   script exits non-zero with "Missing script", which is indistinguishable from a crash
-   once you are only looking at the exit code.
+This step catches test regressions that goal-backward analysis cannot detect. The engine
+runs the suite, not you: it finds the project's test command in any language
+(`workflow.test_command` in config.json, else package.json's test script, pytest, `go test
+./...`, cargo, Maven, Gradle or `make test`), reads the runner's own output, compares it with
+the baseline exec-phase recorded before the first wave, and writes the result to the phase
+directory as `{NN}-test-run.json`.
 
 ```bash
-HAS_TEST=$(node -e "try{const p=require('./package.json');process.stdout.write(p.scripts&&p.scripts.test?'yes':'no')}catch(e){process.stdout.write('no')}")
+TEST_RUN=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs test run --phase "${phase_number}")
 ```
 
-   **If `HAS_TEST` is `no`:** record `test_gate_status: skipped` and go to step 4. Do not
-   run the suite, and do not report a crash — there is nothing to run.
+Read from the JSON: `status`, `reason`, `command`, `total`, `passed`, `failed`,
+`regressions`, `preexisting_failures` and `record`.
 
-2. Run test suite and capture results:
-```bash
-TEST_OUTPUT=$(npm test 2>&1)
-TEST_EXIT=$?
-TEST_COUNT=$(echo "$TEST_OUTPUT" | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
-TEST_PASS=$(echo "$TEST_OUTPUT" | grep -E "^(ℹ|#) pass" | awk '{print $NF}')
-TEST_FAIL=$(echo "$TEST_OUTPUT" | grep -E "^(ℹ|#) fail" | awk '{print $NF}')
-```
+**Copy the status; do not judge it.** Write `test_gate: <status>` into the verification.md
+frontmatter exactly as the record says. Reconcile compares the two, so a verification whose
+`test_gate` disagrees with the record is refused at the phase gate, and a failed record
+lowers a `passed` verification to `gaps_found` whatever the frontmatter says.
 
-3. Evaluate results.
+| `status` | What it means | What you do |
+|----------|---------------|-------------|
+| `passed` | The suite ran and nothing that passed at the baseline fails now | Record the counts. If `preexisting_failures` is not empty, list them as known failures the phase inherited, not as gaps |
+| `failed` | A test that passed at the baseline fails now (`regressions`), or the suite did not run at all (a crash, a build error, a timeout: `reason` says `suite did not run`) | Set the overall status to `gaps_found` and list each regression, or the reason, as a gap |
+| `skipped` | There was nothing to run: no test command, or one that ran no tests | Add a `not_checked` entry: `check: "tests"`, `reason:` the record's `reason` |
 
-**Check `TEST_EXIT` FIRST, before any count.** A suite that did not run emits no
-`ℹ fail` / `# fail` line at all, so `TEST_FAIL` comes back EMPTY — not `0`. Reading an empty
-value as "no failures" scores a crashed suite as a pass, which is the worst
-direction this gate can fail in: a phase ships green on a project whose tests never
-executed. Empty is not zero. Judge the exit code, then the counts.
-
-| Condition | Action |
-|-----------|--------|
-| `TEST_EXIT` = 0 **and** `TEST_FAIL` = 0 (a real number) | Record counts, continue to must-haves |
-| `TEST_EXIT` = 0 **and** no `ℹ`/`#` count lines (a runner other than Node's built-in one) | Set `test_gate_status: passed`; record the runner's own summary line as the counts |
-| `TEST_EXIT` ≠ 0 **and** failures were reported | Set `test_gate_status: failed`, include failure details |
-| `TEST_EXIT` ≠ 0 **and** `TEST_FAIL` is empty/absent — the suite CRASHED or could not run (syntax error, missing module, bad import, no runner) | Set `test_gate_status: failed`, and record the reason as `suite did not run`. **Never `skipped`, never `passed`.** A suite that cannot execute is stronger evidence of a broken phase than one that runs and fails |
-| `HAS_TEST` = `no` (handled in step 1) | Record as `test_gate_status: skipped`, continue. This is the ONLY legitimate route to `skipped` |
-
-**The distinction that matters:** *no test command exists* is a project that never had
-tests — a known, acceptable gap. *A test command exists and did not run* is a broken
-project. They must never share a verdict; the first is `skipped`, the second is
-`failed`.
-
-4. Store test gate results for inclusion in verification.md:
-```
-TEST_GATE_STATUS: passed | failed | skipped
-TEST_TOTAL: ${TEST_COUNT}
-TEST_PASSED: ${TEST_PASS}
-TEST_FAILED: ${TEST_FAIL}
-```
-   Write `test_gate: ${TEST_GATE_STATUS}` into the verification.md frontmatter. When it is
-   `skipped`, also add a `not_checked` entry (`check: "tests"`, `reason: "no test script in
-   package.json"`). The recorder reads both: a pass whose tests never ran is recorded as a
-   pass with tests not checked, never as a plain pass.
+A suite that exists and did not run is `failed`, never `skipped`: the engine decides that
+from the exit code and the runner's output, and you copy it.
 
 **If test gate FAILED:** Continue verification (gather full picture) but set overall status to `gaps_found` regardless of goal-backward results. Include test failures as gaps in the report.
+</step>
+
+<step name="mutation_report">
+**Measure whether the tests pin the code the phase wrote** (a report, never a gate).
+
+Only when the test gate passed: a mutant cannot be read against a suite that already fails.
+With `workflow.mutation_gate: off` the command runs nothing and says so.
+
+```bash
+MUTATION=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify mutate --phase "${phase_number}" --max 5)
+```
+
+The engine flips one comparison, boolean or `+ 1` at a time on the lines the phase's plan
+commits changed, in a throwaway worktree at HEAD, and runs the suite against each mutant. Read
+`checked`, `sampled`, `killed`, `survivors` (file, line, the swap) and `aborted`.
+
+Write a **Test strength** section in verification.md: `killed/sampled`, and each survivor as
+`file:line — before → after`, framed as a test the phase could add. A survivor is a lead, not a
+gap: it never changes the status. `aborted: flaky` (the unmutated suite passed once and failed
+once) is worth reporting as a finding of its own; `checked: false` with its `reason` goes in
+`not_checked` as `check: "mutation"`.
 </step>
 
 <step name="establish_must_haves">

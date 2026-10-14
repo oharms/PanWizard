@@ -218,8 +218,14 @@ function recordVerdict(cwd, input) {
   const text = typeof input.text === 'string' ? input.text : '';
   if (!text.trim()) return { error: 'empty_input', reason: 'nothing to record' };
 
-  const parsed = V.parseVerdictText(text, { agent: input.agent, phase });
+  let parsed = V.parseVerdictText(text, { agent: input.agent, phase });
   if (!parsed.ok) return { error: parsed.error, reason: parsed.reason };
+  // A verification is read against the engine's test run (V2): a failed run is a code
+  // fact that lowers the verifier's pass, as a failed test_gate already does (V9).
+  if (parsed.verdict.agent === 'pan-verifier') {
+    const facts = require('./test-gate.cjs').testRunFacts(cwd, phase);
+    if (facts.length) parsed = V.parseVerdictText(text, { agent: input.agent, phase, facts });
+  }
   const verdict = parsed.verdict;
   const agent = verdict.agent;
   const recordSig = V.recordSig(text);

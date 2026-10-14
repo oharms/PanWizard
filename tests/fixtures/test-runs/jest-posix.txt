@@ -1,0 +1,26 @@
+FAIL __tests__/math.test.js
+  ✓ adds numbers (5 ms)
+  ✕ subtracts numbers (1 ms)
+  suite
+    ✓ nested passes
+
+  ● subtracts numbers
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 2
+
+      1 | test('adds numbers', () => { expect(1 + 1).toBe(2); });
+    > 2 | test('subtracts numbers', () => { expect(3 - 1).toBe(1); });
+        |                                                 ^
+      3 | describe('suite', () => { test('nested passes', () => { expect(true).toBe(true); }); });
+      4 |
+
+      at Object.toBe (__tests__/math.test.js:2:49)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 2 passed, 3 total
+Snapshots:   0 total
+Time:        5.316 s
+Ran all test suites.

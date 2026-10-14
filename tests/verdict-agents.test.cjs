@@ -139,6 +139,6 @@ describe('the verifier runs and records the test gate on every path', () => {
     assert.ok(/## Step 8b: Run the Test Gate/.test(agent), 'pan-verifier carries the test-gate step');
     assert.ok(/^test_gate: passed \| failed \| skipped/m.test(agent), 'the frontmatter template records test_gate');
     assert.ok(/^not_checked:/m.test(agent), 'the frontmatter template carries not_checked');
-    assert.ok(read('pan-wizard-core/workflows/verify-phase.md').includes('test_gate: ${TEST_GATE_STATUS}'), 'verify-phase writes the gate into the frontmatter');
+    assert.ok(read('pan-wizard-core/workflows/verify-phase.md').includes('test_gate: <status>'), 'verify-phase writes the gate into the frontmatter');
   });
 });

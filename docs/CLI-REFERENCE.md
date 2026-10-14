@@ -458,6 +458,10 @@ Quick reference of all CLI commands grouped by category.
 | 215 | `verify plan-set` | Verification | verify-plan-set.cjs |
 | 216 | `verify test-integrity` | Verification | verify-integrity.cjs |
 | 217 | `phase gate` | Phase Ops | phase-gate.cjs |
+| 218 | `test run` | Verification | test-gate.cjs |
+| 219 | `test detect` | Verification | test-gate.cjs |
+| 220 | `verify red` | Verification | verify-red.cjs |
+| 221 | `verify mutate` | Verification | mutate.cjs |
 
 ---
 
@@ -1719,6 +1723,70 @@ pan-tools verify test-integrity 3 --raw    # clean | violated | not_checked
 ```
 
 **Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/` or `spec/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test(s).java`/`.kt`/`.cs`, or a Rust file holding `#[test]` or `#[cfg(test)]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
+
+### `verify red <phase> [--timeout <ms>]`
+
+Does each test the phase wrote test what the phase built (program V4)? A test that passes before the phase's code exists cannot have caught anything.
+
+```bash
+pan-tools verify red 3          # {phase, checked, ok, base, caught, files: [{file, verdict, command, base_exit, head_exit, detail?}], reason?}
+pan-tools verify red 3 --raw    # caught | not_caught | not_checked
+```
+
+The **base** is the parent of the phase's oldest plan commit (subjects like `feat(03-01): …`). For each test file those commits added or changed, it runs that one file twice: in a throwaway git worktree at the base, with the file copied in from HEAD, and at HEAD. The worktree links the project's `node_modules` (untracked, so absent from a checkout) and removes the link before the worktree.
+
+| `verdict` | When |
+|---|---|
+| `caught` | fails at the base (a crash on a missing module counts) and passes at HEAD |
+| `not_red` | passes at the base: tautological, or testing something the phase did not change |
+| `not_green` | fails at HEAD |
+| `not_checked` | no command can run that one file, with the reason |
+
+The one-file command is `workflow.test_file_command` from config.json (a `{file}` placeholder), else derived from the suite's runner: `node --test <file>`, jest, vitest or mocha through `npx --no-install`, `python -m pytest <file>`, or `go test ./<dir>`. Cargo, Maven, Gradle and make have none. Exit 1 when a file is `not_red` or `not_green`; a phase with no plan commits, no changed test or no runnable one is `checked: false` and exits 0.
+
+### `verify mutate --phase N [--max <n>] [--seed <n>] [--timeout <ms>]`
+
+A mutation report on the phase's diff (program V5): would a test fail if the code the phase wrote were wrong?
+
+```bash
+pan-tools verify mutate --phase 3            # writes 03-mutation.json; exit 0
+pan-tools verify mutate --phase 3 --raw      # "3/5 killed" | aborted:flaky | aborted:suite_fails | not_checked
+```
+
+It takes the lines the phase's plan commits changed (`git diff` from the phase's base, as `verify red` finds it) in source files that are not tests, and swaps one thing at a time on a changed line, outside comments and strings: a comparison flipped (`>=`/`>`, `<=`/`<`), equality inverted (`===`/`!==` in JS and TS, `==`/`!=` in C-family languages and Python), `&&`/`||` (`and`/`or` in Python), a boolean return inverted, `+ 1` for `- 1`. A seeded sample (`--max`, default 8; `--seed`, default 1) runs in a throwaway worktree at HEAD (uncommitted changes are not measured), the project's whole test suite once per mutant: **killed** when it fails or times out, **survived** otherwise.
+
+Before any mutant, the unmutated suite runs twice: if it fails, the report aborts (`suite_fails`), and if one run passes and the other fails, it aborts as `flaky`, since no mutant could be read against it. The record holds `mode`, `base`, `head`, `command`, `candidates`, `sampled`, `killed`, `survived`, `score` and each survivor's `{file, line, op, before, after}`.
+
+`workflow.mutation_gate` in config.json: `report` (the default; a report, never a refusal), `off` (runs nothing), `gate` (reserved: survivors becoming gaps is a later step). verify-phase runs it with `--max 5` after a passing test gate and lists survivors under **Test strength**.
+
+### `test run [--phase N] [--baseline] [--rebaseline] [--command "<cmd>"] [--timeout <ms>]`
+
+Run the project's test suite and record the result (program V2): the engine's test gate, in any language.
+
+```bash
+pan-tools test run                         # run and print the record; writes nothing
+pan-tools test run --phase 3 --baseline    # before execution: 03-test-baseline.json in the phase directory
+pan-tools test run --phase 3               # after: 03-test-run.json, compared with the baseline
+pan-tools test run --phase 3 --raw         # passed | failed | skipped
+```
+
+**The command:** `workflow.test_command` from config.json, else the first of: package.json's `test` script (`npm test`; npm's placeholder script does not count), pytest (`pytest.ini`, `conftest.py`, `[tool.pytest…]` in pyproject.toml, `setup.cfg` or `tox.ini`: `python -m pytest`), `go.mod` (`go test ./...`), `Cargo.toml` (`cargo test`), `pom.xml` (`mvn -q test`), Gradle (`./gradlew test` or `gradle test`), a Makefile `test:` target (`make test`). `--command` overrides it for one run.
+
+**The parse:** the runner's own output, by its shape: Node's runner (spec and TAP), jest, pytest, go test (plain or `-v`), cargo, and JUnit XML (also read from `target/surefire-reports/`, `target/failsafe-reports/` and `build/test-results/test/` after Maven or Gradle). Each failing test gets an id (`file > name`, `test_file.py::name`, `pkg > TestName`, `module::name`) that is the same from one run to the next.
+
+**The status:**
+
+| `status` | When |
+|---|---|
+| `passed` | the suite exited 0; or, against a baseline, every failure was already failing at the baseline (`preexisting_failures`) |
+| `failed` | a failing test the baseline did not have (`regressions`); a failure with no baseline; or the suite did not run: a non-zero exit with no failing test reported, a crash, a build error, a timeout (`reason: "suite did not run: …"`) |
+| `skipped` | nothing to run: no test command, or one that ran no tests |
+
+A `--baseline` run keeps an existing baseline (`kept_existing: true`, nothing run) unless `--rebaseline`: a resumed run or a gaps-only round compares against the phase's start. The record holds `command`, `source`, `runner`, `exit`, `total`, `passed`, `failed`, `skipped`, `failing[]`, `regressions[]`, `preexisting_failures[]`, `head`, `duration_ms` and the output's last lines. The verifier copies `test_gate` from it, `verify reconcile` reports a verification whose `test_gate` disagrees with it, the verdict recorder lowers a verifier's pass over a failed run, and `phase gate` refuses on it. `validate health --full` runs the same gate.
+
+### `test detect`
+
+The test command the gate would run, and where it came from: `{command, source}`, or `{command: null, reason}`.
 
 ### `verify stubs [--gate]`
 
