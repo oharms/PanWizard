@@ -49,7 +49,7 @@ describe('phase gate — a clean phase passes, and what it cannot check is liste
   test('summaries, a passing verification with a passing test gate: ok', () => {
     const g = G.phaseGate(dir, '3');
     assert.equal(g.ok, true, JSON.stringify(g.reasons));
-    assert.equal(g.mode, 'warn');
+    assert.equal(g.mode, 'enforce', 'enforce is the default since V1E');
     assert.equal(g.facts.plans, '1/1');
     const skipped = g.not_checked.map((n) => n.check).sort();
     assert.deepEqual(skipped, ['freshness', 'stubs', 'test_integrity'], 'no git and no verified_commit here');
@@ -168,7 +168,20 @@ describe('phase gate — the reasons that need git', () => {
 describe('phase complete — the gate decides', () => {
   const roadmapTicked = () => /- \[x\] \*\*Phase 3/.test(fs.readFileSync(path.join(dir, '.planning', 'roadmap.md'), 'utf-8'));
 
-  test('warn (default): completes and carries the reasons', () => {
+  test('enforce is the default: with no config, a phase missing a summary is refused', () => {
+    fs.rmSync(path.join(phaseDir, '03-01-summary.md'));
+    const r = pan('phase', 'complete', '3', '--no-commit');
+    assert.equal(r.status, 1);
+    assert.equal(JSON.parse(r.stdout).error, 'phase_gate_refused');
+    assert.equal(roadmapTicked(), false);
+    const { buildConfigDefaults } = require('../pan-wizard-core/bin/lib/config.cjs');
+    assert.equal(buildConfigDefaults(false, {}).workflow.phase_gate, 'enforce');
+    const tpl = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'pan-wizard-core', 'templates', 'config.json'), 'utf-8'));
+    assert.equal(tpl.workflow.phase_gate, 'enforce');
+  });
+
+  test('warn (opt-out): completes and carries the reasons', () => {
+    config({ phase_gate: 'warn' });
     fs.rmSync(path.join(phaseDir, '03-01-summary.md'));
     const r = pan('phase', 'complete', '3', '--no-commit');
     assert.equal(r.status, 0, r.stderr);

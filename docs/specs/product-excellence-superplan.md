@@ -14,9 +14,10 @@ Updated `2026-10-18`. The superplan's own order holds; nothing has been re-seque
 | 1a, 1b, 1c | Sprint 1 (W0 … HX1) | Released in **3.35.0** | PR oharms/PanWizard#41 |
 | 2a | H1, CI1, H2, H7 | Merged | PR oharms/PanWizard#42 |
 | 2b | V2, V4, V5 | Merged | PR oharms/PanWizard#43 |
-| 3a | H4, L1, R1 (code gates green); R49 not run | PR open | PR oharms/PanWizard#44, branch `feat/sprint-3a` |
-| 3b | R3, P4, P2, P3, P6 (code gates green) | Committed, not pushed | branch `feat/sprint-3b` (on top of 3a) |
-| 3c | H9, L5, L9, V1E, HX2 | Not started | — |
+| 3a | H4, L1, R1; R49 not run | Merged | PR oharms/PanWizard#44 |
+| 3b | R3, P4, P2, P3, P6 | Merged | PR oharms/PanWizard#45 |
+| — | Owner request: per-phase spend budget ($20, warn only) and a $15 default harness cap | Merged | PR oharms/PanWizard#47 |
+| 3c | H9, L5, L9, V1E, HX2 (release 3.36.0) | Release commit on its branch; tag after merge | branch `release/v3.36.0` |
 | 4a onward | — | Not started | — |
 
 **Open from finished sessions:**
@@ -24,7 +25,7 @@ Updated `2026-10-18`. The superplan's own order holds; nothing has been re-seque
 - **R49** (session 3a) is a paid live re-run and has not run: it needs a `--max-usd` approval. It blocks nothing.
 - **P6** (session 3b) shipped the forecast in `preview phase`. The design's last clause, the autodev loop stopping when spend passes p90, waits for the autodev loop, which does not exist yet: **A1a** (session 6a) builds its core, and **A6** (session 6b, depends on P6) already carries the stop, as `forecast_exceeded` for a unit past p90.
 - **Evidence gates.** No paid evidence step in [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-cap) has run yet: `harness/ledger.jsonl` holds no evidence-gate row, and the committed corpus replay is synthetic. Under the MI-114 rule, sessions 3a and 3b edited judge prompts (pan-reviewer, pan-hardener, pan-plan-checker), so each owes a paired corpus result once H4's first real baseline is paid for. Those items shipped in their safe defaults, as the rules below allow.
-- **Release 3.36.0** waits for session 3c (V1E promotes the phase gate to `enforce`; HX2 is the release hardening).
+- **Release 3.36.0** is session 3c's last item (HX2): it publishes when its PR is merged and the merge commit is tagged `v3.36.0`. V1E made `enforce` the phase gate default, with a field-upgrade note in the CHANGELOG.
 
 ## Baseline
 

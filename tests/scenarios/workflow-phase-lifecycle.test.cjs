@@ -21,7 +21,7 @@ describe('E2E Workflow: Phase Lifecycle', () => {
     fs.writeFileSync(path.join(pd, 'roadmap.md'), [
       '## Roadmap', '', '| Phase | Name | Status |', '|---|---|---|',
     ].join('\n'));
-    fs.writeFileSync(path.join(pd, 'config.json'), JSON.stringify({ model_profile: 'balanced', commit_docs: true }));
+    fs.writeFileSync(path.join(pd, 'config.json'), JSON.stringify({ model_profile: 'balanced', commit_docs: true, workflow: { phase_gate: 'warn' } }));
   });
 
   after(() => { runner.cleanup(); });

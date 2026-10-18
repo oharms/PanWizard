@@ -8,7 +8,7 @@
     "auto_advance": false,
     "nyquist_validation": false,
     "phase_record_compact": false,
-    "phase_gate": "warn",
+    "phase_gate": "enforce",
     "mutation_gate": "report",
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },

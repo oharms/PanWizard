@@ -5,7 +5,9 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.36.0] - 2026-10-18
+
+Sprints 2 and 3 of the product excellence program (`docs/specs/product-excellence-superplan.md`): PAN's checks are now measured, and planning is checked in code. The harness runs real host CLIs against a local model double at no cost, replays cassettes, drives conversations with a scripted user and scores judges against a seeded-defect corpus. The engine runs the test gate in any language, proves a phase's tests can fail and reports surviving mutants. Plans carry a Review Focus and cite design decisions, research claims carry a source and a date, executors report their concerns, dismissals become learned suppressions, and `preview` forecasts a phase's cost against a $20 per-phase budget that warns. **The phase gate now enforces by default:** see Changed for the upgrade note.
 
 ### Added
 
@@ -27,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`preview phase` forecasts what the phase will cost.** `cost_forecast` gives p10/p50/p90 dollars per plan and for the phase, from the project's own cost ledger: executor calls at the tier the project runs, never pooled across tiers, and a seeded resample of past phases' other agents. Below five observations it says `insufficient` instead of guessing. The previewer reports it under `## Cost`.
 - **A spend budget per phase, $20 by default.** `cost.phase_budget_usd` (API-equivalent dollars; `0` turns it off) is in every new config, and `/pan:settings` asks for it ($20, $50, $10, off, or any amount). It only warns: exec-phase reports `near` from 80% and `over` once a phase passes it, after each wave, and plan-phase shows the spend so far beside the forecast. Nothing stops on it. `pan-tools cost budget --phase N` shows it.
 - **The harness caps a model-tier run at $15 by default.** `--tier 1` or `2` without `--max-usd` used to skip every model scenario; it now runs under a $15 cap. `PAN_HARNESS_MAX_USD` changes the default, `--max-usd` overrides it, and `--max-usd 0` spends nothing. Tier 0, which CI runs, is unchanged and spends nothing.
+- **A scripted user for the harness: conversations at $0.** A `user` step answers the session before it on a pattern over its last reply and resumes it (`claude -p --resume`). The double's new `userIncludes` and `messagesInclude` rules key a turn on the latest answer and on the whole conversation. `discuss-phase-scripted-user` runs `/pan:discuss-phase 1` on the new `discuss-needed` seed through three scripted answers at tier 0, and the context file is written only when all three are in the request; its control deletes the kept session and the run goes red.
+- **`/pan:help` lists every command.** Its command index is generated from each command's `group` and `description` frontmatter (`scripts/build-help.cjs`), and a test fails when it is stale. It used to be a curated subset that left seventeen commands out.
+- **`pan-tools usage`: a local census of what this project runs.** Against the installed commands and agents, it reports what the cost ledger and trace sessions show was used (calls, last use), what was never used, and commands started but never finished. It reads local files only and sends nothing anywhere. `/pan:cost` documents it.
+
+### Changed
+
+- **The phase gate now enforces by default (field upgrade).** `workflow.phase_gate` defaults to `enforce`, in new configs and in any config that does not set it: `phase complete` refuses a phase with a missing summary, a missing, failing or stale verification, a contradicted reconcile, a failed test run, an open critical or high finding, a committed stub or a weakened test, and leaves the roadmap alone. **Upgrading a project:** run `pan-tools phase gate <N>` on the phase in progress to see what it would refuse; fix the reasons, or complete past them with `phase complete <N> --force --reason "<why>"`, which records the override. To keep the old behaviour, set it back with `pan-tools config-set workflow.phase_gate warn`.
 
 ### Fixed
 

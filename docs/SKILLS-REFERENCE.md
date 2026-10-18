@@ -711,12 +711,12 @@ Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a
 Show token usage and estimated cost across PAN commands and agents
 
 ```text
-/pan:cost [report|append|clear|rebuild|limits] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]
+/pan:cost [report|append|clear|rebuild|limits|budget] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Observability  
-**Lines:** 144
+**Lines:** 164
 
 #### /pan:dashboard
 

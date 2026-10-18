@@ -209,81 +209,140 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 ## All Commands
 
-> This table is a **curated subset** of the most-used commands, not an exhaustive list. For the full, always-current command set, browse the `commands/pan/*.md` files in your install (each `.md` is one `/pan:<name>` command).
+Every shipped command, by group. This list is generated from each command's own description, so it is complete.
 
+<!-- generated:command-index:start (scripts/build-help.cjs --write) -->
 ### Getting Started
 | Command | Description |
 |---------|-------------|
-| `/pan:new-project` | Initialize new project — research, requirements, roadmap |
-| `/pan:map-codebase` | Analyze existing codebase with parallel agents |
+| `/pan:map-codebase` | Analyze codebase with parallel mapper agents to produce .planning/codebase/ documents |
+| `/pan:new-project` | Initialize a new project with deep context gathering and project.md |
 
 ### Phase Lifecycle
 | Command | Description |
 |---------|-------------|
-| `/pan:discuss-phase <N>` | Shape implementation through targeted questions |
-| `/pan:plan-phase <N>` | Research + plan a phase with verification |
-| `/pan:exec-phase <N>` | Execute plans with wave-based parallelization |
-| `/pan:research-phase <N>` | Deep ecosystem research for specialized domains |
-| `/pan:verify-phase <N>` | Re-run goal-backward verification with a test-suite gate |
+| `/pan:design-phase` | Design a roadmap phase before planning — architecture, ADR, threat-lite, machine-checkable criteria — verified by an independent checker |
+| `/pan:discuss-phase` | Gather phase context through adaptive questioning before planning |
+| `/pan:exec-phase` | Execute all plans in a phase with wave-based parallelization |
+| `/pan:plan-phase` | Create detailed phase plan (plan.md) with verification loop |
+| `/pan:research-phase` | Research how to implement a phase (standalone - usually use /pan:plan-phase instead) |
+| `/pan:verify-phase` | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps |
 
 ### Phase Management
 | Command | Description |
 |---------|-------------|
-| `/pan:add-phase <desc>` | Append new phase to roadmap |
-| `/pan:insert-phase <N> <desc>` | Insert urgent work between phases |
-| `/pan:remove-phase <N>` | Remove phase and renumber |
-| `/pan:assumptions <N>` | Surface approach assumptions before planning |
-| `/pan:phase-tests <N>` | Generate tests for completed phase |
-| `/pan:phase-budget` | Estimate context utilization for current phase |
+| `/pan:add-phase` | Add phase to end of current milestone in roadmap |
+| `/pan:assumptions` | Surface Claude's assumptions about a phase approach before planning |
+| `/pan:insert-phase` | Insert urgent work as decimal phase (e.g., 72.1) between existing phases |
+| `/pan:phase-budget` | Estimate context utilization and quality for the current phase |
+| `/pan:phase-tests` | Generate tests for a completed phase from its summaries, context decisions, verification report and implementation |
+| `/pan:remove-phase` | Remove a future phase from roadmap and renumber subsequent phases |
 
 ### Session & Progress
 | Command | Description |
 |---------|-------------|
-| `/pan:progress` | Check status and route to next action |
-| `/pan:quick <desc>` | Fast-path execution (skip optional agents) |
-| `/pan:pause` | Save context for later resumption |
-| `/pan:resume` | Restore previous session context |
-| `/pan:profile <name>` | Switch model profile (quality/balanced/budget) |
+| `/pan:pause` | Create context handoff when pausing work mid-phase |
+| `/pan:profile` | Switch model profile for PAN agents (quality/balanced/budget) |
+| `/pan:progress` | Check project progress, show context, and route to next action (execute or plan) |
+| `/pan:quick` | Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents |
+| `/pan:resume` | Resume work from previous session with full context restoration |
 
 ### Milestone
 | Command | Description |
 |---------|-------------|
-| `/pan:milestone-new` | Start a new milestone cycle |
-| `/pan:milestone-done <v>` | Archive completed milestone |
-| `/pan:milestone-audit` | Audit completion against intent |
-| `/pan:milestone-gaps` | Create phases to close audit gaps |
-| `/pan:milestone-cleanup` | Archive accumulated phase directories |
-| `/pan:retro` | Milestone retrospective — estimation & verification analysis |
+| `/pan:milestone-audit` | Audit milestone completion against original intent before archiving |
+| `/pan:milestone-cleanup` | Archive accumulated phase directories from completed milestones |
+| `/pan:milestone-done` | Archive completed milestone and prepare for next version |
+| `/pan:milestone-gaps` | Create phases to close all gaps identified by milestone audit |
+| `/pan:milestone-new` | Start a new milestone cycle — update project.md and route to requirements |
 
-### Focus (Strategic Project Management)
+### Milestone Lifecycle
 | Command | Description |
 |---------|-------------|
-| `/pan:focus-scan` | Step 1: Find and prioritize all work items |
-| `/pan:focus-plan` | Step 2: Budget items into an execution batch |
-| `/pan:focus-exec` | Step 3: Implement, test, verify, commit |
-| `/pan:focus-sync` | Step 4: Synchronize documentation after changes |
-| `/pan:focus-auto` | Continuous scan→plan→exec loop with safety harness |
-| `/pan:focus-design <desc>` | Standalone: Deep feature investigation and spec |
-| `/pan:focus-drift-walking` | Walk project tree, detect doc-code drift, auto-repair |
-| `/pan:focus-doc-audit` | Deep document audit with quality scoring |
+| `/pan:retro` | Milestone retrospective — analyze estimation accuracy, verification patterns, and common gaps |
+
+### Focus
+| Command | Description |
+|---------|-------------|
+| `/pan:focus-auto` | Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness |
+| `/pan:focus-design` | Strategic 10-phase feature investigation, design, and specification pipeline |
+| `/pan:focus-doc-audit` | Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality |
+| `/pan:focus-drift-walking` | Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories |
+| `/pan:focus-exec` | Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers |
+| `/pan:focus-plan` | Create capacity-budgeted work batch with spec coverage verification and 4 execution modes |
+| `/pan:focus-scan` | Deep-dive strategic work scan with prioritized items and Reality Score filtering |
+| `/pan:focus-sync` | Synchronize documentation after changes — check staleness and update counts |
+
+### Foresight
+| Command | Description |
+|---------|-------------|
+| `/pan:preview` | Preview what will happen — phase blast radius, phase dependency graph, or milestone ETA |
+| `/pan:what-if` | Explore a phase's alternative approach in an isolated git worktree. Replays the scenario, compares to the original plan, writes a report. |
+
+### Review
+| Command | Description |
+|---------|-------------|
+| `/pan:review-deep` | Security audit + cross-reviewer check. OWASP/STRIDE pass by pan-hardener, then pan-meta-reviewer catches what the first pass missed. Writes consolidated deep-review.md. |
+
+### Validation
+| Command | Description |
+|---------|-------------|
+| `/pan:links` | Validate the doc-code link graph — inline wiki-style refs, source-comment anchors, and require-code-mention contracts (ADR-0027, v3.8.0+) |
+
+### Observability
+| Command | Description |
+|---------|-------------|
+| `/pan:cost` | Show token usage and estimated cost across PAN commands and agents |
+| `/pan:dashboard` | Alias for /pan:hud — generate the single-page HTML dashboard of the bot army and project |
+| `/pan:hud` | Generate a single-page, self-contained HTML dashboard of the bot army and the project's current state |
+| `/pan:report` | Generate a self-contained HTML report for one phase, or a project-level timeline index linking every phase report |
+
+### Knowledge
+| Command | Description |
+|---------|-------------|
+| `/pan:knowledge` | Grounded Q&A, multi-turn design discussion, and playbook generation. Three modes in one command. |
+
+### Self-Improvement
+| Command | Description |
+|---------|-------------|
+| `/pan:experiment` | Manage external experiments — scaffold, run, harvest, promote findings back to PAN |
+| `/pan:learn` | Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports |
+| `/pan:optimize` | Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions |
+
+### Git Workflow
+| Command | Description |
+|---------|-------------|
+| `/pan:git` | Safe, phase-aware git workflow commands — commit, branch, push, status, log, stash, diff, rollback, tag, sync |
+
+### Army
+| Command | Description |
+|---------|-------------|
+| `/pan:army` | Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires. |
+
+### External tools
+| Command | Description |
+|---------|-------------|
+| `/pan:mcp-bridge` | Discover available MCP tools and recommend which ones apply to a phase. Discovery-only; auto-invocation deferred. |
 
 ### System
 | Command | Description |
 |---------|-------------|
-| `/pan:help` | Show this reference |
-| `/pan:health` | Diagnose planning directory integrity |
-| `/pan:settings` | Configure workflow toggles |
-| `/pan:update` | Update PAN to latest version |
-| `/pan:debug` | Systematic debugging with persistent state |
-| `/pan:todo-add` | Capture idea as todo |
-| `/pan:todo-check` | List and select pending todos |
-| `/pan:audit-deployment <dir>` | Audit a PAN installation for integrity and health |
+| `/pan:audit-deployment` | Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs |
+| `/pan:debug` | Systematic debugging with persistent state across context resets |
+| `/pan:health` | Diagnose planning directory health and optionally repair issues |
+| `/pan:help` | Show available PAN commands and usage guide |
+| `/pan:hygiene` | Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat and stale entries, poisoned ledgers, trace debris, oversized planning files) and apply safe cleanups |
+| `/pan:patches` | Reapply local modifications after a PAN update |
+| `/pan:settings` | Configure PAN workflow toggles and model profile |
+| `/pan:todo-add` | Capture idea or task as todo from current conversation context |
+| `/pan:todo-check` | List pending todos and select one to work on |
+| `/pan:update` | Update PAN to latest version with changelog display |
 
 ### Community
 | Command | Description |
 |---------|-------------|
 | `/pan:discord` | Join the PAN Discord community |
-| `/pan:patches` | Reapply local modifications after update |
+<!-- generated:command-index:end -->
 
 ---
 

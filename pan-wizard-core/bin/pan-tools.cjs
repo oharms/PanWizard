@@ -102,6 +102,8 @@
  *                                      each naming its task and test (P4)
  *   verify decisions <phase>           Plans cite only DD-N ids the design records,
  *                                      and every recorded one is cited (P2)
+ *   usage                              Local census: installed commands and agents
+ *                                      used, never used, unfinished (L9)
  *   research lint <phase|path>         Claims table: source and date on every claim,
  *     [--now YYYY-MM-DD]               stale ones per type window (P3)
  *
@@ -265,6 +267,7 @@ const verifyScope = require('./lib/verify-scope.cjs');
 const mutate = require('./lib/mutate.cjs');
 const planLint = require('./lib/plan-lint.cjs');
 const researchLint = require('./lib/research-lint.cjs');
+const usage = require('./lib/usage.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -390,7 +393,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, research, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -1321,6 +1324,12 @@ async function main() {
       } else {
         error('Unknown review subcommand. Available: scope');
       }
+      break;
+    }
+
+    case 'usage': {
+      // Program L9: which installed commands and agents this project used, from its own files.
+      usage.cmdUsage(cwd, raw);
       break;
     }
 

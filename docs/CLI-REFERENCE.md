@@ -235,6 +235,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. `review scope <phase>` (program R1): the files a reviewer reads (the phase's commits plus uncommitted and untracked work) and the plans' intent. Re-exported through verify.cjs. |
 | `plan-lint.cjs` | **(program P4, P2)** `verify review-focus <phase>`: every plan has a `## Review Focus` of at most five items, each naming its owning task and a test, or one `None — <reason>` line. `verify decisions <phase>`: plans cite only `DD-N` decision ids the phase design records, and every recorded decision is cited. `/pan:plan-phase` runs both with `verify plan-set` before the plan checker. |
 | `research-lint.cjs` | **(program P3)** `research lint <phase|path>`: the research file's `## Claims` table (claim · type · source · checked). A claim with no source or no date is an error; one older than its type's freshness window is `stale`. |
+| `usage.cjs` | **(program L9)** `usage`: a local census of the installed commands and agents against the project's cost ledger and trace sessions: used (calls, last use), never used, and commands started but never finished. Local files only. |
 | `test-gate.cjs` | **(program V2)** `test run` and `test detect`: finds the project's test command in any language (or `workflow.test_command`), runs it, parses the runner's output into stable failing-test ids, and compares a phase's run with its baseline (`{NN}-test-baseline.json`, `{NN}-test-run.json`). The phase gate and the verdict recorder read the run record. |
 | `verify-red.cjs` | **(program V4)** `verify red <phase>`: runs each test file the phase changed at the phase's base (in a throwaway worktree) and at HEAD; a test that passes before the phase's code exists is `not_red`. Also exports the phase-base and worktree helpers `verify mutate` uses. |
 | `mutate.cjs` | **(program V5)** `verify mutate --phase N`: a seeded sample of single-operator mutations on the lines the phase changed, each run against the whole suite in a worktree at HEAD; writes `{NN}-mutation.json`. Report-only under `workflow.mutation_gate`. |
@@ -475,6 +476,7 @@ Quick reference of all CLI commands grouped by category.
 | 226 | `research lint` | Verification | research-lint.cjs |
 | 227 | `state snapshot` (alias of `state-snapshot`) | State | state.cjs |
 | 228 | `cost budget` | Cost | cost.cjs |
+| 229 | `usage` | Observability | usage.cjs |
 
 ---
 
@@ -942,7 +944,7 @@ Whether a phase may be marked complete (program V1). It prints `{phase, mode, ok
 
 Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances state.md to the next phase, and updates requirements.md traceability.
 
-**The phase gate runs first.** Under `workflow.phase_gate: warn` (the default) the phase is marked complete and the output carries `gate: {ok, mode, reasons, not_checked}`. Under `enforce` a refusal exits 1 with `{error: "phase_gate_refused", reason, gate}` and changes nothing. `--force --reason "<why>"` completes past a refusal and records a `decision` disposition for every open finding the gate counted (output: `gate_override`); `--force` without `--reason` is refused in either mode.
+**The phase gate runs first.** Under `workflow.phase_gate: enforce` (the default; a config without the key, or with any other value, reads as `enforce`) a refusal exits 1 with `{error: "phase_gate_refused", reason, gate}` and changes nothing. Under `warn` the phase is marked complete and the output carries `gate: {ok, mode, reasons, not_checked}`. `--force --reason "<why>"` completes past a refusal and records a `decision` disposition for every open finding the gate counted (output: `gate_override`); `--force` without `--reason` is refused in either mode.
 
 ```bash
 pan-tools phase complete 5 [--no-commit]
@@ -1760,6 +1762,17 @@ pan-tools verify decisions 3 --raw    # valid | invalid
 
 **Errors** (exit 1): `decision_unrecorded` (a plan cites an id the design does not record), `decision_uncited` (a recorded decision no plan cites), `decision_duplicate` (an id recorded twice). `status` is `checked`, `no_design` (nothing to check) or `legacy` (a design whose decisions carry no ids: a `decisions_without_ids` warning, never a refusal).
 
+### `usage`
+
+Which of the installed commands and agents this project has used (program L9), from its own files only: the cost ledger (`command`, `agent` per row) and the trace sessions (`command`, `ended_at`). The inventory is the install `pan-tools` ships in: its `commands/pan/*.md` or `skills/pan-*`, and its `agents/pan-*`.
+
+```bash
+pan-tools usage          # {local_only, commands: {used[], never_used[], unfinished[], installed}, agents: {used[], never_used[], installed}, sources}
+pan-tools usage --raw    # N of M commands used, K unfinished; A of B agents used
+```
+
+A used command is `{name, calls, last_used, sessions, finished}`, a used agent `{name, calls, last_used}`; both lists are sorted by calls. A command name is matched with or without its `/pan:` or `pan-` prefix. **`unfinished`** lists used commands whose every trace session stopped without `ended_at`, the newest started more than six hours ago (a newer open session may still be running). Nothing leaves the machine. Exits 0.
+
 ### `research lint <phase|path> [--now YYYY-MM-DD]`
 
 Research claims with provenance and freshness (program P3). The phase's research file (or the file at the path) lists the claims plans will rest on in a `## Claims` table with the columns Claim, Type, Source and Checked.
@@ -2328,7 +2341,7 @@ pan-tools config-ensure-section [--raw]
 
 **`--raw` output:** `created` or `exists`.
 
-**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`warn`), `hooks.guard` (`report`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
+**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`enforce`), `hooks.guard` (`report`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
 
 | Key | Default | Description |
 |-----|---------|-------------|

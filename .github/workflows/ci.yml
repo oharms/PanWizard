@@ -91,7 +91,7 @@ jobs:
 
       - name: PAN Harness (tier 0, model-free)
         if: matrix.os == 'ubuntu-latest' && matrix.node == 22
-        run: npm run harness -- --no-ledger --require-run double-executor-body-claude --require-run cassette-drift-claude
+        run: npm run harness -- --no-ledger --require-run double-executor-body-claude --require-run cassette-drift-claude --require-run discuss-phase-scripted-user
 
       # The suite and the harness must both leave the tree as they found it. A gate that
       # writes into the checkout hides its own side effects from review.

@@ -55,6 +55,7 @@ pan-wizard/
         verify-red.cjs        # `verify red`: each phase test must fail at the phase's base and pass at HEAD; mutate.cjs — the `verify mutate` report
         plan-lint.cjs         # `verify review-focus` and `verify decisions`: a plan's Review Focus and its design-decision citations, checked in code
         research-lint.cjs     # `research lint`: research claims carry a source and a checked date, and go stale by type
+        usage.cjs             # `usage`: local census of installed commands and agents (used, never used, unfinished) from the cost ledger and traces
         knowledge.cjs         # Grounded Q&A / discuss / playbook (Y-3)
         whatif.cjs            # Counterfactual phase replay in worktree (Y-4)
         bridge.cjs            # MCP discovery + recommendation — the CLIENT side (Y-5)
@@ -106,6 +107,7 @@ pan-wizard/
     coverage-gate.cjs         # Suite under Node coverage: dispatcher arms + floors (release Gate 9)
     test-quality-lint.cjs     # Vacuous-assertion lint rules applied by tests/test-quality.test.cjs
     prompt-lint.cjs           # Prompt-contract lint over shipped prompts, applied by tests/prompt-lint.test.cjs
+    build-help.cjs            # Writes /pan:help's command index from command frontmatter (--write, --check); tests/help-generated.test.cjs fails when stale
     mutation-probe.cjs        # Report-only mutation probe (npm run test:mutate)
     git-hooks/                # Tracked pre-commit hook (gitleaks)
   harness/                    # PAN Harness — behavioural scenarios against installs built from a packed artifact (ADR-0047); not shipped

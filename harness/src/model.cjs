@@ -44,9 +44,11 @@ function modelEnv(base = process.env) {
 }
 
 /** The `claude` argv for a model step. Pure apart from the .mcp.json existence check. */
-function modelArgs(ws, { maxUsd, pluginDir, strictMcp = true, persistSession = false }) {
+function modelArgs(ws, { maxUsd, pluginDir, strictMcp = true, persistSession = false, resume = null }) {
   const args = ['-p', '--output-format', 'json', '--dangerously-skip-permissions'];
-  if (!persistSession) args.push('--no-session-persistence');
+  // A resumed session (H9's scripted user) is written back, so the next answer finds it.
+  if (resume) args.push('--resume', String(resume));
+  else if (!persistSession) args.push('--no-session-persistence');
   args.push('--max-budget-usd', String(maxUsd));
   const mcpConfig = path.join(ws, '.mcp.json');
   if (strictMcp && fs.existsSync(mcpConfig)) args.push('--mcp-config', mcpConfig, '--strict-mcp-config');
@@ -113,6 +115,7 @@ function runModelStep(ws, prompt, opts) {
     costUsd: json && typeof json.total_cost_usd === 'number' ? json.total_cost_usd : 0,
     durationMs: json && typeof json.duration_ms === 'number' ? json.duration_ms : null,
     turns: json && typeof json.num_turns === 'number' ? json.num_turns : null,
+    sessionId: json && typeof json.session_id === 'string' ? json.session_id : null,
     json,
   };
 }
@@ -197,7 +200,9 @@ function runDoubledModelStep(ws, prompt, opts) {
     return { code: 1, stdout: '', stderr: 'the model double did not start within 10 s', costUsd: 0, doubled: true, captures: [], drift: [] };
   }
   const env = hostEnv(runtime, `http://127.0.0.1:${front.port}`, { ...modelEnv(), CLAUDE_CONFIG_DIR: opts.configDir });
-  const args = ['-p', '--output-format', 'json', '--dangerously-skip-permissions', '--no-session-persistence'];
+  const args = ['-p', '--output-format', 'json', '--dangerously-skip-permissions'];
+  if (opts.resume) args.push('--resume', String(opts.resume));
+  else if (!opts.persistSession) args.push('--no-session-persistence');
   const mcpConfig = path.join(ws, '.mcp.json');
   if (fs.existsSync(mcpConfig)) args.push('--mcp-config', mcpConfig, '--strict-mcp-config');
   const r = spawnSync(MODEL_RUNTIMES[runtime].bin, args, {
@@ -235,7 +240,8 @@ function runDoubledModelStep(ws, prompt, opts) {
     stderr: String(r.stderr || '') + (r.error ? `\n${r.error.message}` : ''),
     costUsd: 0, // the double answered: nothing was spent, whatever the host computed from its usage fields
     turns: json && typeof json.num_turns === 'number' ? json.num_turns : null,
-    captures, drift, recorded, capturesDir: opts.capturesDir, doubled: true, json,
+    sessionId: json && typeof json.session_id === 'string' ? json.session_id : null,
+    captures, drift, recorded, capturesDir: opts.capturesDir, doubled: true, resumed: !!opts.resume, json,
   };
 }
 
