@@ -39,6 +39,18 @@ function phasePlans(cwd, phase) {
 
 // ─── Review Focus (P4) ───────────────────────────────────────────────────────
 
+/**
+ * Text with HTML comments removed: repeated until nothing changes, since removing
+ * one can join the text around it into another, and an unclosed `<!--` hides the
+ * rest. A placeholder comment is not a Review Focus item.
+ */
+function stripComments(s) {
+  let prev;
+  do { prev = s; s = s.replace(/<!--[\s\S]*?-->/g, ''); } while (s !== prev);
+  const open = s.indexOf('<!--');
+  return open === -1 ? s : s.slice(0, open);
+}
+
 /** Check one plan's `## Review Focus`. */
 function reviewFocusOf(p) {
   const body = sectionBody(p.text, 'Review Focus');
@@ -48,7 +60,7 @@ function reviewFocusOf(p) {
     errors.push({ code: 'review_focus_missing', plan: p.plan, detail: 'no `## Review Focus` section' });
     return { ...out, status: 'missing', errors };
   }
-  const text = body.replace(/<!--[\s\S]*?-->/g, '').trim();
+  const text = stripComments(body).trim();
   const items = text.split('\n').map((l) => l.match(/^\s*(?:[-*]|\d+[.)])\s+(.*\S)/)).filter(Boolean).map((m) => m[1]);
   if (!items.length) {
     // `None — <reason>`: the reason is what tells the checker the planner looked.

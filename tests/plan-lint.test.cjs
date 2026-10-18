@@ -76,6 +76,14 @@ describe('verify review-focus (P4)', () => {
     assert.deepEqual(codes(L.checkReviewFocus(dir, '3')), ['review_focus_empty', 'review_focus_empty', 'review_focus_too_many']);
   });
 
+  test('comments are stripped whole: one that re-forms after a pass, or never closes, hides what it holds', () => {
+    plan('01', '## Review Focus\n\n<!<!-- a -->-- - RF-1: hidden. Test: Task 1 adds it. -->\n');
+    plan('02', '## Review Focus\n\n<!-- left open\n- RF-1: hidden. Test: Task 1 adds it.\n');
+    const r = L.checkReviewFocus(dir, '3');
+    assert.deepEqual(r.plans.map((p) => [p.plan, p.status]), [['03-01', 'invalid'], ['03-02', 'invalid']]);
+    assert.deepEqual(codes(r), ['review_focus_empty', 'review_focus_empty']);
+  });
+
   test('CLI: exit 1 and `invalid` on a refused set, exit 0 and `valid` on a good one', () => {
     plan('01', '');
     const bad = cli(['verify', 'review-focus', '3', '--raw']);
