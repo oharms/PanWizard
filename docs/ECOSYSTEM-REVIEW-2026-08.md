@@ -129,10 +129,10 @@ That is a correct mitigation and it should stay. But the market moved orchestrat
 
 ### 3.3 — Re-aim the MCP server at PAN itself
 
-**This is the finding of the review.** `pan-zcode/mcp/server.cjs` is a zero-dependency, dual-era (legacy handshake + 2026-07-28 stateless) JSON-RPC MCP server over stdio. Check its coupling to the beta harness it was written for:
+**This is the finding of the review.** `pan-zcode/mcp/server.cjs` (now `pan-wizard-core/mcp/server.cjs`) is a zero-dependency, dual-era (legacy handshake + 2026-07-28 stateless) JSON-RPC MCP server over stdio. Check its coupling to the beta harness it was written for:
 
 ```bash
-grep -in "zcode\|z\.ai\|glm" pan-zcode/mcp/server.cjs   # comments only
+grep -in "zcode\|z\.ai\|glm" pan-wizard-core/mcp/server.cjs   # comments only
 ```
 
 It is **generic in protocol and logic** — the hits are comments plus one path assumption: the server resolved its default engine location by walking up to a root and back down into `pan-wizard-core/`.
@@ -155,9 +155,9 @@ grep -rn "mcpServers\|mcp.json" bin/install.js   # returns nothing
 **The registry is not a stub — it is a correctly-designed thin slice**, which is better news and required correcting an earlier draft of this section. Enumerate all three of its surfaces; a grep of `pan_*` names in `tool-registry.cjs` alone misses two of them:
 
 ```bash
-grep -oE "uri: 'pan://[a-z]+'" pan-zcode/mcp/tool-registry.cjs   # MCP resources
-grep -oE "name: 'pan_[a-z_]+'" pan-zcode/mcp/tool-registry.cjs   # spawn-backed tools
-grep -oE "name: 'pan_[a-z_]+'" pan-zcode/mcp/native-tools.cjs    # in-process tools
+grep -oE "uri: 'pan://[a-z]+'" pan-wizard-core/mcp/tool-registry.cjs   # MCP resources
+grep -oE "name: 'pan_[a-z_]+'" pan-wizard-core/mcp/tool-registry.cjs   # spawn-backed tools
+grep -oE "name: 'pan_[a-z_]+'" pan-wizard-core/mcp/native-tools.cjs    # in-process tools
 ```
 
 What that returns is a design already making the right calls: read-only aggregators are exposed as **resources** (the module's own reasoning: "cheaper, side-effect-free, quota-friendly") while anything actionable is a **tool** carrying accurate `readOnlyHint`/`destructiveHint` annotations; a `FORBIDDEN_VERB` guardrail structurally refuses to ever expose a history-rewriting or force git op ("recovery is revert-only"); every argument is validated against a whitelist regex with a length bound before it can become argv; and the human merge gate is enforced by an out-of-band approval token that an agent-supplied value cannot satisfy.

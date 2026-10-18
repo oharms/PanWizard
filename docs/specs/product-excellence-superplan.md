@@ -1,9 +1,30 @@
 # Product Excellence Superplan
 
-**Date:** `2026-10-12` · **Status:** Proposed (reviewed `2026-10-12`; review folded in) · **Source program:** `docs/specs/product_excellence_program_2026_q4_featureai.md` (item design and evidence) · **Owner decisions:** that program's §3.4
-**Tree:** `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`) plus the uncommitted audit work. This superplan **supersedes the program's §3.3 wave ordering** with a dependency-checked session order. Item ids are the program's and local to it (write "program R2" outside these two files); W0, X1, CI1, A0, A1a/A1c, A7b, L6a/L6b, V1E, V5G and HX1–HX5 are added here.
+**Date:** `2026-10-12` · **Status:** In progress: sprints 1–2 merged, sprint 3 under way (see [Progress](#progress); reviewed `2026-10-12`, review folded in) · **Source program:** `docs/specs/product_excellence_program_2026_q4_featureai.md` (item design and evidence) · **Owner decisions:** that program's §3.4
+**Tree (when written):** `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`) plus the uncommitted audit work. This superplan **supersedes the program's §3.3 wave ordering** with a dependency-checked session order. Item ids are the program's and local to it (write "program R2" outside these two files); W0, X1, CI1, A0, A1a/A1c, A7b, L6a/L6b, V1E, V5G and HX1–HX5 are added here.
 
 This is the executable form of the program. Every item has a priority class, a size, the files it touches, the items it depends on, a **code gate** (free, blocking: the item is not done until it is green) and, where the claim needs a model, a separate **evidence gate** (non-blocking: it runs on a per-run `--max-usd` approval and never holds up later items). `/execplan` consumes it one session at a time.
+
+## Progress
+
+Updated `2026-10-18`. The superplan's own order holds; nothing has been re-sequenced.
+
+| Session | Items | State | Where |
+|---|---|---|---|
+| 1a, 1b, 1c | Sprint 1 (W0 … HX1) | Released in **3.35.0** | PR oharms/PanWizard#41 |
+| 2a | H1, CI1, H2, H7 | Merged | PR oharms/PanWizard#42 |
+| 2b | V2, V4, V5 | Merged | PR oharms/PanWizard#43 |
+| 3a | H4, L1, R1 (code gates green); R49 not run | PR open | PR oharms/PanWizard#44, branch `feat/sprint-3a` |
+| 3b | R3, P4, P2, P3, P6 (code gates green) | Committed, not pushed | branch `feat/sprint-3b` (on top of 3a) |
+| 3c | H9, L5, L9, V1E, HX2 | Not started | — |
+| 4a onward | — | Not started | — |
+
+**Open from finished sessions:**
+
+- **R49** (session 3a) is a paid live re-run and has not run: it needs a `--max-usd` approval. It blocks nothing.
+- **P6** (session 3b) shipped the forecast in `preview phase`. The design's last clause, the autodev loop stopping when spend passes p90, waits for the autodev loop, which does not exist yet: **A1a** (session 6a) builds its core, and **A6** (session 6b, depends on P6) already carries the stop, as `forecast_exceeded` for a unit past p90.
+- **Evidence gates.** No paid evidence step in [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-cap) has run yet: `harness/ledger.jsonl` holds no evidence-gate row, and the committed corpus replay is synthetic. Under the MI-114 rule, sessions 3a and 3b edited judge prompts (pan-reviewer, pan-hardener, pan-plan-checker), so each owes a paired corpus result once H4's first real baseline is paid for. Those items shipped in their safe defaults, as the rules below allow.
+- **Release 3.36.0** waits for session 3c (V1E promotes the phase gate to `enforce`; HX2 is the release hardening).
 
 ## Baseline
 
@@ -76,7 +97,7 @@ A new gate first ships in a mode that cannot block a working project. It is prom
 | H7 | P3 | M | 4 | Model-based property tests over pan-tools state + nextAction fuzz (zero-dep PRNG + shrink) | new tests/helpers/pbt.cjs, new tests/state-machine-pbt.test.cjs | — | A planted off-by-one in phase insertion is found and shrunk to ≤4 commands | — | 2a |
 | V2 | P1 | L | 10 | Engine-run test gate, any language: `workflow.test_command` or detection; `test run --phase/--baseline` → test-run.json; verifier copies test_gate; reconcile cross-checks | new pan-wizard-core/bin/lib/test-gate.cjs, pan-tools.cjs, config.cjs, verify.cjs (runFullTestCheck), workflows/verify-phase.md, workflows/exec-phase.md, agents/pan-verifier.md, verdict.cjs | V1, V9 | Parsers tested on real emitted output (node:test spec+TAP, jest, pytest, go, cargo, JUnit); a phase-1 regression seeded in phase 2 is caught; a crash reads failed, never skipped | — | 2b |
 | V4 | P5 | M | 4 | RED/catch proof: new tests fail at phase base, pass at HEAD | new verify-red.cjs, worktree.cjs, pan-tools.cjs | V2 | Seeded tautological test rejected; real test passes | — | 2b |
-| V5 | P5 | M | 4 | Mutation report on the diff (report mode; mutates changed lines only, no coverage collection); `mutate.cjs` lifted from scripts/mutation-probe.cjs | new pan-wizard-core/bin/lib/mutate.cjs, pan-tools.cjs (verify mutate), workflows/verify-phase.md, config (workflow.mutation_gate: off|report|gate) | V2 | Weak-test seed shows survivors; strong seed none; flake pre-check aborts on a flaky suite | — | 2b |
+| V5 | P5 | M | 4 | Mutation report on the diff (report mode; mutates changed lines only, no coverage collection); `mutate.cjs` lifted from scripts/mutation-probe.cjs | new pan-wizard-core/bin/lib/mutate.cjs, pan-tools.cjs (verify mutate), workflows/verify-phase.md, config (workflow.mutation_gate: off\|report\|gate) | V2 | Weak-test seed shows survivors; strong seed none; flake pre-check aborts on a flaky suite | — | 2b |
 | H4 | P3 | L | 10 | Seeded-defect corpus + detection scoreboard (catch and false-alarm rates with intervals); reuses V5 operators | new harness/corpus/<id>/, harness/scripts/catch-rate.cjs, harness/src/run.cjs report | H3, H1, V5 | Scoreboard computed from replayed cassettes at $0; corpus seeds verified by V4 (each seed's test fails on the seeded diff) | Baselines for Claude × balanced × verifier + reviewer; a deliberately weakened verifier is rejected by SPRT (catch rate lower, α 0.05, β 0.2) (paid) | 3a |
 | R49 | P3 | S | 2 | Re-run resume-cost and memory-not-loaded live | harness/ | H3 | — (evidence only) | Both ledger rows resolve or are re-diagnosed with a fresh finding (paid) | 3a |
 | L1 | P3 | M | 4 | Liveness registry: every command/agent names a scenario; every verb has a prompt caller; every config key a reader | scripts/test-surface.cjs, tests/surface-map.test.cjs, tests/fixtures/surface-allowlist.json | — | `--check` fails on a seeded orphan command, verb and key | — | 3a |

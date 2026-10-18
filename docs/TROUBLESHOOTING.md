@@ -125,6 +125,19 @@ must_haves: []
 
 **Fix:** Either adjust the context.md to align with the checker's expectations, or temporarily disable the checker: set `workflow.plan_check: false` in `/pan:settings`. You can also run `/pan:discuss-phase N` to surface assumptions before planning.
 
+### Plans sent back for Review Focus or design decisions
+
+**Symptom:** plan-phase sends plans back to the planner without spawning the plan checker, citing one of these codes: `review_focus_missing`, `review_focus_empty`, `review_focus_too_many`, `review_focus_no_task`, `review_focus_unknown_task`, `review_focus_no_test`, `decision_unrecorded`, `decision_uncited` or `decision_duplicate`.
+
+**Root cause:** plan-phase runs code checks that cost no model call, even with `--skip-verify` or `workflow.plan_check: false`:
+
+- `verify review-focus <phase>` — each plan needs a `## Review Focus` section with at most five items, each naming its owning task (`Task N`, one of the plan's tasks) and a test, or one `None — <reason>` line.
+- `verify decisions <phase>` — a plan cites a `DD-N` id the phase's design does not record, a recorded decision no plan cites, or the design records one id twice. A phase with no design passes; a design with no `DD-N` ids only warns (`decisions_without_ids`).
+
+When the checker runs, `research lint <phase|path>` runs just before it but never blocks: claims in the research file's `## Claims` table with no source or checked date, and stale ones past their type's freshness window, go to the checker to weigh.
+
+**Fix:** Run the command named in the code to see each failing plan, then fix the plan or the design and re-run `/pan:plan-phase N`. Each send-back counts as one of the checker loop's iterations.
+
 ---
 
 ## Execution and Deviations

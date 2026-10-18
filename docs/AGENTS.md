@@ -44,7 +44,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | `pan-research-synthesizer` | Synthesizes parallel research into summary.md | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash | purple |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Glob, Grep | purple |
 | `pan-document_code` | Analyzes existing codebase (6 focus areas, or the whole repo in one single-shot pass) | `/pan:map-codebase` (x6 parallel, or one agent in single-shot mode); native `/pan-map-codebase` script on Claude Code (one per discovered area) | Read, Bash, Grep, Glob, Write | cyan |
-| `pan-designer` | Designs a phase before planning — architecture, ADR, threat-lite; spawned by /pan:design-phase | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
+| `pan-designer` | Designs a phase before planning — architecture, ADR, threat-lite; records only decisions that pass its three-question test, each with a `DD-N` id plans cite | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
 | `pan-design-checker` | Independently verifies a design before planning; spawned by /pan:design-phase and /pan:focus-design | `/pan:design-phase`, `/pan:focus-design` | Read, Bash, Glob, Grep | green |
 | `pan-phase-researcher` | Investigates how to implement a specific phase | `/pan:plan-phase`, `/pan:research-phase` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
 | `pan-planner` | Creates executable plan.md files with task breakdown | `/pan:plan-phase`, `/pan:quick` | Read, Write, Edit, Bash, Glob, Grep, WebFetch, Context7 | green |
@@ -59,8 +59,8 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
-| `pan-previewer` | Foresight — blast radius / dependency graph / milestone ETA in one agent (3 modes) | `/pan:preview` | Read, Bash, Glob, Grep, Write | cyan |
-| `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`), `/pan:focus-auto` Pass 3, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | red |
+| `pan-previewer` | Foresight — blast radius / dependency graph / milestone ETA in one agent (3 modes), with a `## Cost` section taken from the cost forecast | `/pan:preview` | Read, Bash, Glob, Grep, Write | cyan |
+| `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase; reports every security finding, since the findings ledger never suppresses one | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`), `/pan:focus-auto` Pass 3, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | red |
 | `pan-meta-reviewer` | Reviews the reviewer + hardener output; flags missed issues, disputes overstated severities | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`, where it reviews the hardener's report alone), native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | pink |
 | `pan-knowledge` | Grounded Q&A / multi-turn discussion / playbook generation (3 modes) | `/pan:knowledge` | Read, Grep, Glob, Bash, Write | cyan |
 | `pan-counterfactual` | Explores alternative phase approaches in isolated git worktree | `/pan:what-if` | Read, Write, Edit, Bash, Grep, Glob | purple |
@@ -200,6 +200,7 @@ Agents are ordered by workflow stage: project init → brownfield → phase plan
 - Opinionated recommendations: "Use X because Y" — not "Options are X, Y, Z"
 - Treats Claude's training data as hypothesis (it may be out of date) — verifies before asserting
 - Reports honestly when something couldn't be found or confidence is LOW
+- Records each fact the roadmap or a plan rests on in a `## Claims` table (type, source, checked date) and runs `pan-tools research lint` on the file before returning
 - Three research modes: Ecosystem (default), Feasibility, Comparison
 
 **Tool Strategy:**
@@ -315,7 +316,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 - Existing codebase (if brownfield)
 
 **Outputs:**
-- `.planning/phases/XX-name/{phase_num}-research.md` — User Constraints (first, copied from context.md when present), Summary, Standard Stack, Architecture Patterns, Don't Hand-Roll, Common Pitfalls, Code Examples, State of the Art, Open Questions, Validation Architecture (Nyquist only), Sources, Infrastructure Dependencies, Metadata
+- `.planning/phases/XX-name/{phase_num}-research.md` — User Constraints (first, copied from context.md when present), Summary, Standard Stack, Architecture Patterns, Don't Hand-Roll, Common Pitfalls, Code Examples, State of the Art, Open Questions, Validation Architecture (Nyquist only), Claims, Sources, Infrastructure Dependencies, Metadata
 - A `## Validation Architecture` section inside research.md (if `nyquist_validation` enabled) — the plan-phase orchestrator (step 5.5) then writes `{padded_phase}-validation.md` from `templates/validation.md`
 
 **Key Behaviors:**
@@ -324,6 +325,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 - Treats Claude's training as hypothesis — verifies through Context7 and official docs
 - Reports honestly when uncertain or when sources contradict
 - Same tool strategy as project-researcher: Context7 → Official Docs → WebSearch
+- Records each fact a plan rests on in research.md's `## Claims` table (type, source, checked date) and runs `pan-tools research lint`: unsourced or undated claims are fixed before returning, stale ones rechecked or named in Open Questions
 
 **Validation Architecture (Nyquist Layer):** When `nyquist_validation` is enabled, the researcher maps each requirement to specific test commands, identifies test scaffolding needed before implementation (Wave 0 tasks), and emits the `## Validation Architecture` section of research.md, from which the plan-phase orchestrator writes validation.md — the feedback contract for the phase.
 
@@ -370,6 +372,8 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 **Key Behaviors:**
 - Goal-backward planning: "What must be TRUE for this phase to succeed?" → derive must-haves → derive tasks
 - Honors locked decisions from context.md (non-negotiable)
+- Cites the design's `DD-N` id in `## Plan Decisions` for each design decision a plan implements (`pan-tools verify decisions` checks the citations)
+- Writes a `## Review Focus` section in every plan: at most five inputs or failure modes no test covers yet, each pinned to a task and its test, or `None — <why>` (`pan-tools verify review-focus` checks the structure)
 - Optimizes for parallel execution through wave assignment and dependency graphs
 - Task types: `auto` (fully automated) and `checkpoint` (pauses for user input)
 - TDD support via dedicated `type: tdd` plans (RED → GREEN → REFACTOR)
@@ -391,6 +395,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 - The phase's roadmap slice (phase goal, success criteria and requirement lines); the whole roadmap.md only if the slice is missing
 - context.md (locked decisions)
 - research.md's `## Validation Architecture` section (if Nyquist enabled)
+- A `<research_claims>` block: `pan-tools research lint` over the phase's research
 
 **Outputs:**
 - Structured issues report returned to orchestrator, ending with a `pan-verdict` block (`references/verdict-contract.md`); `/pan:plan-phase` saves it to `{phase_dir}/{padded_phase}-plan-check.md` and branches on `pan-tools findings record`, which also adds the issues to the findings ledger
@@ -413,6 +418,9 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 | 11 | Spec Sufficiency for Handoff | Plan complete enough that the executor cannot diverge in the implicit space (P-RES-004 — Specification Gap; arXiv:2603.24284) |
 | (cond.) | Design Conformance | Plans conform to the phase `design.md` when one exists |
 | 12 | Decision Trace Completeness | Plan's `## Plan Decisions` section is well-formed — Locked / Open / Considered+rejected buckets present, locked items unambiguous, downstream agents have enough reasoning context to act without re-deriving the upstream choices (P-RES-003 — Cognition's "Don't build multi-agents" anti-multi-agent argument: silent decisions force blind reconciliation) |
+| 13 | Review Focus | Each plan's `## Review Focus` names real untested inputs or failure modes, owned by the named task and caught by the named test (structure already checked by `pan-tools verify review-focus`) |
+| 14 | Decision Spine | When design.md exists, plans make no design-level choice that is neither a recorded `DD-N` nor a locked decision (citation checks already run by `pan-tools verify decisions`) |
+| 15 | Research Freshness | Plans do not rest on research claims that `pan-tools research lint` reports as unsourced, undated or stale |
 
 **Reasoning-trace handoff (P-RES-003):** plan-checker, planner, executor, and verifier exchange decisions explicitly via the `## Plan Decisions` section in plan.md and `## Implementation Decisions` in summary.md. Schema lives in `references/handoff-decisions.md`. Three buckets: Locked (binding, executor must obey), Open (executor's discretion), Considered+rejected (paths the planner already weighed and dismissed — saves the executor from re-arguing them).
 
@@ -464,7 +472,8 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 - Per-task atomic commits with conventional commit format
 - TDD execution when flagged: RED (write failing test) → GREEN (minimal implementation) → REFACTOR
 - Self-check verification before updating state.md
-- Documents all deviations in summary.md (what changed and why)
+- Documents all deviations in summary.md (what changed, why, and its cost if wrong: low / medium / high)
+- Lists what it finished but is unsure of under the summary's `## Concerns` (each with a cost if wrong), and then returns `## DONE_WITH_CONCERNS` instead of `## PLAN COMPLETE`
 - Authentication gates recognized as normal flow, not failures
 
 ---
@@ -521,6 +530,8 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 - Changed file list from executor summary.md files (key-files.created + key-files.modified)
 - Phase context from orchestrator
 - Project conventions from CLAUDE.md and `.agents/skills/`
+- An `<intent>` block (the `review scope` JSON): each plan's objective, must_haves and `review_focus`, the claimed requirements' text, and `unlisted` changed files no summary lists
+- An `<executor_concerns>` block when executors returned concerns, each with its cost if wrong
 
 **Outputs:**
 - Structured review report returned to orchestrator, ending with a `pan-verdict` block (`references/verdict-contract.md`); `/pan:exec-phase` saves it to `{phase_dir}/{phase_number}-review.md`, which `/pan:review-deep` reads, and branches on `pan-tools findings record`, which also adds the findings to the findings ledger
@@ -543,7 +554,9 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 **Key Behaviors:**
 - Strictly read-only — inspects but never modifies code
-- Only reviews files changed in the current phase (scoped via summary.md)
+- Only reviews files changed in the current phase (scoped via summary.md), plus any `unlisted` file the intent block names
+- Checks each plan's Review Focus items first, and the high-cost executor concerns against the code
+- Reports every finding, including ones dismissed before: the recorder filters a dismissed finding while its file is unchanged (learned suppressions, `pan-tools findings suppressions`), and never filters security or logic findings
 - Reports every finding with its file path and line number, style-only ones included at INFO; the severity tiers, the verdict and `/pan:review-deep`'s meta-reviewer do the filtering
 - Skips pure documentation files (.md) unless they contain code blocks
 

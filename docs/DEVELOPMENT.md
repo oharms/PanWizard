@@ -10,7 +10,7 @@
 pan-wizard/
   bin/
     install.js                # Interactive installer (npx pan-wizard entry point)
-    install-lib.cjs           # Installer functions — no filesystem writes (verifyInstall()/verifyHookEntrypoints()/dirDigest() read the filesystem; the merge and strip helpers stripPanHookEntries()/mergeCodexHooksConfig()/removeCodexPanHooks()/mergeMcpRegistration()/stripMcpRegistration() edit the object they are given): converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
+    install-lib.cjs           # Installer functions — no filesystem writes (verifyInstall()/verifyHookEntrypoints()/dirDigest() read the filesystem; the merge and strip helpers stripPanHookEntries()/mergeCodexHooksConfig()/removeCodexPanHooks()/mergeMcpRegistration()/stripMcpRegistration()/addOpencodePermissions()/stripOpencodePermissions() edit the object they are given): converters, parsers, MCP_REGISTRATION, HOOK_EVENT_MAP
   package.json                # Zero runtime deps; devDependencies are the VS Code e2e harness only
   commands/pan/               # Command .md files (Claude Code format; converted per runtime at install)
   agents/                     # Agent .md files (specialized AI roles)
@@ -31,6 +31,9 @@ pan-wizard/
         roadmap.cjs           # roadmap.md parsing (get-phase, analyze, update-plan-progress) and `roadmap slice` — one phase's slice of roadmap.md + requirements.md
         roadmap-compact.cjs   # roadmap compact — move shipped phases' sections to roadmap-history.md, leaving a stub (ADR-0044)
         verify.cjs            # Verification + health facade; verify-{drift,retro,deploy,preflight,scope}.cjs re-exported
+        verify-plan-set.cjs   # `verify plan-set`: requirement coverage, same-wave file overlap and dependency checks in code; plan-check hashes and drift
+        verify-integrity.cjs  # `verify test-integrity`: a phase's plan commits checked for deleted, skipped or weakened tests
+        phase-gate.cjs        # `phase gate`: may a phase be marked complete; `phase complete`, exec-waves and the MCP merge request call it (`workflow.phase_gate`)
         foreign-planning.cjs  # Is this .planning/ another tool's? (gsd-core markers; planning-with-files markers make it shared, not foreign) — hygiene, health and init consult it
         milestone.cjs         # Milestone lifecycle (archive, milestones.md)
         frontmatter.cjs       # YAML-like frontmatter CRUD
@@ -41,13 +44,17 @@ pan-wizard/
         codebase.cjs          # Codebase analysis: language detection, imports, best practices
         memory.cjs            # Agent memory store: cited, expiring entries, not loaded into agents (ADR-0036); memory-optimize.cjs and memory-rebuild.cjs (ADR-0040)
         agents-md.cjs         # AGENTS.md PAN section + CLAUDE.md block: the @AGENTS.md import and a Compact instructions section (shared by the installer and memory rebuild)
-        cost.cjs              # Token ledger, dated rate table, managed modelPricing (Y-6); models check
+        cost.cjs              # Token ledger, dated rate table, managed modelPricing (Y-6); models check; the p10/p50/p90 cost forecast `preview phase` reports
         cost-rebuild.cjs      # `cost rebuild`: the ledger regenerated from Claude Code transcripts (v3.29)
         bus.cjs               # Agent message channels (Y-7)
         preview.cjs           # Foresight: phase blast radius, dependency graph (Y-1)
         review-deep.cjs       # Deep review merge (reviewer + hardener + meta) (Y-2)
         verdict.cjs           # The pan-verdict contract: parses and validates a judge's block, or the verifier's verification.md frontmatter (ADR-0049)
-        findings.cjs          # Findings ledger .planning/findings.jsonl: findings record/list/dispose/debt (ADR-0049)
+        findings.cjs          # Findings ledger .planning/findings.jsonl: findings record/list/dispose/debt, and the suppressions a dismissal teaches until its file changes (ADR-0049)
+        test-gate.cjs         # The test gate: `test run` / `test detect` — runs the project's own tests and parses the runner's output
+        verify-red.cjs        # `verify red`: each phase test must fail at the phase's base and pass at HEAD; mutate.cjs — the `verify mutate` report
+        plan-lint.cjs         # `verify review-focus` and `verify decisions`: a plan's Review Focus and its design-decision citations, checked in code
+        research-lint.cjs     # `research lint`: research claims carry a source and a checked date, and go stale by type
         knowledge.cjs         # Grounded Q&A / discuss / playbook (Y-3)
         whatif.cjs            # Counterfactual phase replay in worktree (Y-4)
         bridge.cjs            # MCP discovery + recommendation — the CLIENT side (Y-5)
@@ -95,9 +102,10 @@ pan-wizard/
     run-tests.cjs             # Glob-free test runner (the CI matrix shells do not expand test globs)
     install-git-hooks.js      # `prepare` script — points core.hooksPath at scripts/git-hooks/ (the gitleaks pre-commit scan)
     generate-skills-docs.py   # Regenerates docs/SKILLS-REFERENCE.md and docs/SKILLS-FULL-TEXT.md
-    test-surface.cjs          # Shipped-surface registry → tests/fixtures/surface.json (--write/--check/--map/--scaffold)
+    test-surface.cjs          # Shipped-surface registry → tests/fixtures/surface.json (--write/--check/--map/--scaffold); also the liveness registry (--liveness)
     coverage-gate.cjs         # Suite under Node coverage: dispatcher arms + floors (release Gate 9)
     test-quality-lint.cjs     # Vacuous-assertion lint rules applied by tests/test-quality.test.cjs
+    prompt-lint.cjs           # Prompt-contract lint over shipped prompts, applied by tests/prompt-lint.test.cjs
     mutation-probe.cjs        # Report-only mutation probe (npm run test:mutate)
     git-hooks/                # Tracked pre-commit hook (gitleaks)
   harness/                    # PAN Harness — behavioural scenarios against installs built from a packed artifact (ADR-0047); not shipped
@@ -206,15 +214,16 @@ describe('your feature', () => {
 
 ### What the suite must cover, and what an assertion must be
 
-Three checks decide this from the code rather than from the tests — the registry and the lint run with the rest of the suite, the coverage gate as a run of its own (the plan is `docs/specs/testing-system-redesign-2026-09.md`):
+The checks below decide this from the code rather than from the tests — the registry and the two lints run with the rest of the suite, the coverage gate as a run of its own (the plan is `docs/specs/testing-system-redesign-2026-09.md`):
 
 - **The surface registry.** `node scripts/test-surface.cjs --write` derives every shipped surface — verbs from the dispatcher's usage line, subcommands from its `Unknown … subcommand. Available:` strings, dispatcher `case` arms, installer flag literals, hook × runtime registrations from `HOOK_EVENT_MAP`, MCP tools and resources, config default keys, the content directories — into `tests/fixtures/surface.json`, which is committed and reviewed like code. `tests/surface-map.test.cjs` fails when the registry drifts from the code (`npm run test:surface`) and when a row is named by no test: a verb quoted or after `pan-tools`, a subcommand as `<verb> <sub>` (a comment counts), a flag as a literal, a hook together with its runtime, an MCP tool by name, a config key as a key. A row without a test goes in `tests/fixtures/surface-allowlist.json` **with a reason**, and the entry fails once a test names it. `node scripts/test-surface.cjs --scaffold <dir>` writes one todo stub per unreferenced row; that is how a suite rebuilt from an empty directory starts.
 - **The coverage gate.** `npm run test:coverage` runs the suite under Node's own instrumentation (Node 22+; the processes tests spawn are captured through the inherited `NODE_V8_COVERAGE`) and fails when a dispatcher `case` arm never executed, or when overall line or function coverage, or a module group's line coverage, falls below its floor in `tests/fixtures/coverage-policy.json` (set a point below the measured baseline). An arm no test dispatches yet is allowlisted there with a reason, and the entry fails once a test dispatches it. Release-check Gate 9 runs it; CI runs it as an advisory (`continue-on-error`) step on the Node 22 jobs.
 - **The quality lint.** `tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file and fails on the shapes that have passed while the feature they named was broken: an OR between result-status fields (`output || error` — a crash satisfies it), an in-process call to a lib module's `cmd*` function (they end in `output()`/`error()`, which exit the process, so the test child dies and `node --test` reports the file as one passing test — always go through `runPanTools`), `assert(true)`, CLI output asserted only by its length, a platform conditional that bare-returns instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read of the real home directory, a committed `test.todo`, and an `assert.ok(a.x || a.y)` that only asks whether one of several fields exists. Exceptions live in `tests/fixtures/test-quality-allowlist.json` per file and rule with a count and a reason; an entry that allows more than the file has is stale and fails too.
+- **The prompt-contract lint.** `tests/prompt-lint.test.cjs` applies `scripts/prompt-lint.cjs` to `commands/pan`, `agents` and `pan-wizard-core/workflows` and fails when a `pan-tools` call names a verb or subcommand the engine does not have, an agent is told to use a tool it is not granted, a prompt @-includes engine source, an AskUserQuestion offers more than four options, a spawn names no model (or a role spawn no agent type), or a shipped prompt sends the user to a dev-only skill. Exceptions live in `tests/fixtures/prompt-lint-allowlist.json` with a reason; a stale entry fails.
 
 The allowlists are the debt register: seeded from the suite as it stood on 2026-09-17 and burned down in the spec's phase 2 — the never-dispatched CLI arms and verbs and every "Unknown <group> subcommand" arm are now covered by `tests/dispatcher-arms.test.cjs`, which is driven from the dispatcher's own source rather than a hand-kept list.
 
-A fourth check is **not** part of the gate and is run by hand: `npm run test:mutate` breaks the code on purpose — one small mutation at a time, inside a throwaway `git worktree` so your checkout is never touched — and reports the mutations the suite did not notice. Coverage says a line executed; a surviving mutant says no assertion constrained it. Some survivors are correct (equivalent mutants, defensive `|| 0` defaults, log strings), which is exactly why it reports and never fails: a survivor is a question about whether a behaviour is worth pinning.
+One more check is **not** part of the gate and is run by hand: `npm run test:mutate` breaks the code on purpose — one small mutation at a time, inside a throwaway `git worktree` so your checkout is never touched — and reports the mutations the suite did not notice. Coverage says a line executed; a surviving mutant says no assertion constrained it. Some survivors are correct (equivalent mutants, defensive `|| 0` defaults, log strings), which is exactly why it reports and never fails: a survivor is a question about whether a behaviour is worth pinning.
 
 ### Running Tests
 
@@ -384,7 +393,7 @@ npm run harness                                    # tier 0 — model-free, free
 npm run harness:model -- --max-usd 50 --repeat 5 --scenario native-exec-waves-chain --scenario markdown-exec-phase-chain   # tier 2 — the chain pair; skipped (never green) without a spend cap
 ```
 
-Tier 0 is the one to run before a release. Model tiers spend your Claude usage (or, for a `cli` step marked `paid: true`, that CLI's credits) and are skipped — never green — without `--max-usd`, which is split across the model-tier scenarios in the run. Run state goes outside the checkout (`D:\pantesting\harness-runs\<run-id>\` on the maintainer's machine); `harness/ledger.jsonl` is the tracked findings history, deduped by signature. A scenario's `requires` (`cli`, `minVersion`) **skips** it with the reason when the environment cannot run it — never a pass — and a model step that never ran is a harness error, not a finding. Every assertion kind has a both-direction test in `tests/harness.test.cjs`; add a kind there first. `harness/README.md` has the scenario schema, the tiers, and the headless background-wait ceiling the runner lifts.
+Tier 0 is the one to run before a release. Model tiers spend your Claude usage (or, for a `cli` step marked `paid: true`, that CLI's credits) and are skipped — never green — without `--max-usd`, which is split across the model-tier scenarios in the run. Run state goes outside the checkout (`D:\pantesting\harness-runs\<run-id>\` on the maintainer's machine); `harness/ledger.jsonl` is the tracked findings history, deduped by signature. A scenario's `requires` (`cli`, `minVersion`) **skips** it with the reason when the environment cannot run it — never a pass — and a model step that never ran is a harness error, not a finding. Every assertion kind has a both-direction test in `tests/harness.test.cjs`; add a kind there first. `harness/corpus/` holds seeded-defect projects (a clean twin, a defective twin and a held-out catching test each, every entry proven with `verify red` by `tests/harness-corpus.test.cjs`), and `harness/scripts/catch-rate.cjs` scores judge runs against them: catch rate and false-alarm rate with Wilson intervals. `harness/README.md` has the scenario schema, the tiers, and the headless background-wait ceiling the runner lifts.
 
 ## Release Process
 

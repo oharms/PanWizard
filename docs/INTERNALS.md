@@ -152,6 +152,8 @@ verification.md (layout from `templates/verification-report.md`) includes:
 - Wiring chain validation
 - Gap analysis with suggested fixes
 - Unrequested work: changes no plan asked for, found with `pan-tools verify scope` (recorded, never blocking)
+- Test gate: `test_gate` in the frontmatter, copied from the record `pan-tools test run --phase N` writes rather than judged by the verifier
+- Test strength: the `verify mutate` survivors on the phase's changed lines, when the test gate passed (reported, never changing the status). The section comes from the `verify-phase` workflow's `mutation_report` step, not from the template
 - Overall score (N/M must-haves verified)
 
 ---

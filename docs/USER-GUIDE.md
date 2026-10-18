@@ -63,7 +63,7 @@ PAN asks you questions about your project — what you're building, who it's for
 /pan:plan-phase 1
 ```
 
-PAN researches how to implement Phase 1, creates detailed execution plans with specific tasks, and validates them through a quality checker. Each plan targets a single concern with 2-3 atomic tasks.
+PAN researches how to implement Phase 1, creates detailed execution plans with specific tasks, and validates them through a quality checker. Each plan targets a single concern with 2-3 atomic tasks, and carries a `## Review Focus` section: at most five untested inputs or failure modes, each tied to a task and a test (or `None — <reason>`). Before the checker runs, code checks send a broken plan set straight back to the planner: `verify plan-set`, `verify review-focus` and `verify decisions` (plans cite only the `DD-N` design decisions the design records, and every recorded one is cited). When the checker runs, `research lint` runs before it but never blocks: claims in the research's `## Claims` table with no source or checked date, and stale ones, go to the checker.
 
 **What gets created:**
 - `.planning/phases/01-{name}/01-01-plan.md` — First execution plan
@@ -77,7 +77,7 @@ PAN researches how to implement Phase 1, creates detailed execution plans with s
 /pan:exec-phase 1
 ```
 
-PAN executes each plan's tasks in wave order — independent plans run in parallel, dependent plans run sequentially. Each task produces a git commit. If something breaks, PAN auto-fixes it (up to 3 attempts per task).
+PAN executes each plan's tasks in wave order — independent plans run in parallel, dependent plans run sequentially. Each task produces a git commit. If something breaks, PAN auto-fixes it (up to 3 attempts per task). An executor that finished but is unsure of something returns `DONE_WITH_CONCERNS` with each concern's reason and cost if wrong; the plan counts as complete and the concerns go to the reviewer, which judges the phase's diff against the plans' intent (`pan-tools review scope`).
 
 **What gets created:**
 - Your actual project files (code, config, etc.)
@@ -141,7 +141,7 @@ Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purp
 
 - **`/pan:cost` (v3.0)** — token usage + estimated cost across all PAN invocations. Three output formats (`json`/`table`/`chart`). Auto-populated since v3.4 by the SubagentStop hook on Claude Code, Codex and Copilot CLI (not Gemini CLI or OpenCode); no manual instrumentation needed. Time-windowed with `--since YYYY-MM-DD --until YYYY-MM-DD`.
 - **`/pan:preview phase <N> | phases | milestone` (v3.1)** — read-only foresight. Three modes:
-  - `phase N` — blast radius (files likely touched, tests at risk, risk score 1-10, migration flags)
+  - `phase N` — blast radius (files likely touched, tests at risk, risk score 1-10, migration flags) and a cost forecast (p10/p50/p90 per plan and per phase from this project's own cost ledger; `insufficient` until there are enough observations)
   - `phases` — dependency graph (mermaid DAG + parallel batches + hidden coupling)
   - `milestone` — ETA with confidence + bottleneck identification
 - **`/pan:review-deep <phase>` (v3.2)** — security audit (OWASP + STRIDE via `pan-hardener`) + cross-check by `pan-meta-reviewer`. Merges reviewer + hardener + meta findings into one verdict ladder. Recommended for phases touching auth/payment/PII/migrations/public APIs. Also invokable as `/pan:exec-phase <N> --deep-review`; `/pan:focus-exec --deep-review` runs the hardener and meta-reviewer on each high-stakes item's changed files and merges them under the item's id. Costs ~3× a normal review.
@@ -497,6 +497,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "nyquist_validation": false,
     "phase_record_compact": false,
     "phase_gate": "warn",
+    "mutation_gate": "report",
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
   "parallelization": true,
@@ -566,6 +567,7 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; at a phase boundary a chain that `/pan:plan-phase` drives stops (it runs exec-phase with `--no-transition`) and prints the next command; PAN's stop guard then blocks the session's stop once and tells the agent to spawn the next phase; a direct `/pan:exec-phase --auto` hands over to `transition.md`, which spawns the next phase as a Task subagent and, at the end of the milestone, turns `auto_advance` off and stops, showing `/pan:milestone-done` as the next step. Equivalent to passing `--auto` to `/pan:discuss-phase`, `/pan:plan-phase` and `/pan:exec-phase`. |
 | `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write. |
 | `workflow.phase_gate` | `warn`, `enforce` | `warn` | The phase gate `phase complete` runs first: summaries for every plan, a passing and fresh verification, approved human items, a clean reconcile, no open critical or high finding, no committed stub, no weakened test. `warn` marks the phase complete and reports what failed (exec-phase then does not auto-advance); `enforce` refuses until each reason is fixed, or until `phase complete <N> --force --reason "<why>"`, which records the override. `pan-tools phase gate <N>` runs the gate alone. |
+| `workflow.mutation_gate` | `off`, `report`, `gate` | `report` | The mutation report `/pan:verify-phase` runs on the phase's changed lines once the test gate passes (`pan-tools verify mutate`). `report` lists the mutants the suite did not kill and never refuses; `off` runs nothing; `gate` is reserved |
 | `workflow.phase_record_compact` | `true`, `false` | `false` | When combined with the lightweight-phase bypass (1-plan trivial phases, which already skip per-phase research), plan-phase writes one `${N}-record.md` (goal, locked decisions, plan summary, must_haves) in place of a per-phase context.md; execution still writes each plan's summary.md. Substantive phases (more than one plan, or more than scaffolding, config, docs or a single-file feature) ignore this flag. |
 | `workflow.phase_reports` | object: `enabled`, `open`, `theme`, `index` | `{ "enabled": false, "open": false, "theme": "auto", "index": true }` | With `enabled: true`, `/pan:exec-phase` writes the phase's HTML report (as `/pan:report phase` does) at the verify→complete gate, plus the timeline index `.planning/report-index.html` when `index` is true, and adds them to the completion commit; `/pan:focus-auto` checkpoints and `/pan:army` missions render them too. `open` and `theme` are written but not read, and no automatic run opens a browser. |
 | `workflow.stop_guard` | `true`, `false` | absent (guard on) | `false` turns off PAN's stop guard, which otherwise blocks a session's stop once while `workflow.auto_advance` is true or `mode` is `yolo` and unbuilt roadmap phases remain, unless state.md records failed verification, gaps or a blocker (Claude Code, Codex, Gemini CLI, Copilot CLI) |
@@ -779,7 +781,7 @@ PAN's judges decide whether work passed: the plan checker, the reviewer, the des
 - **Verdicts on the record.** Each judge's report ends with a machine-readable verdict: a fenced `pan-verdict` block, or the verifier's verification.md frontmatter. The workflows save each report in the phase directory (`NN-review.md`, `NN-plan-check.md`, `NN-design-check.md`, `NN-verification.md`) and record it with `pan-tools findings record`. They branch on the verdict the record prints and fall back to the old heading or `status:` read when a report has no valid verdict; exec-phase's auto-advance decision comes from the phase gate that `phase complete` runs (`pan-tools phase gate`).
 - **Fix rounds close their findings on evidence.** A re-verification after a gap-closure round is the next attempt. The gaps it lists under `re_verification.gaps_closed` (or that a judge answers `resolved` with evidence) are marked fixed, and the retry is logged. A finding the new report neither repeats nor answers stays open.
 - **Nothing is continued past silently.** When a phase moves on past open review, plan-check or design findings, the workflow records the reason. Findings nothing disposes stay `open` until you dispose them: the rows of a plain `PASS` review or a passing plan or design check, `unrequested` work, and human-verification items (a `PASS_WITH_WARNINGS` review defers all its open rows, INFO included). Examples of recorded reasons: warnings accepted at review, "continue anyway" at `NEEDS_FIXES`, "force proceed" after the third plan check. You can dispose findings yourself, too: `pan-tools findings dispose <id> --as deferred|dismissed|decision --reason "…"`. A reason is required.
-- **A dismissal teaches the ledger, until the file changes.** After you dismiss a finding, the same judge raising it again is filtered while its file is unchanged: in that phase at first, and in every phase once you have dismissed it in two. When the file changes, the finding comes back. Security and logic findings are never filtered. `pan-tools findings suppressions` lists what is being filtered.
+- **A dismissal teaches the ledger, until the file changes.** After you dismiss a finding, the same judge raising it again is filtered while its file is unchanged: in that phase at first, and in every phase once you have dismissed it in two. When the file changes, the finding comes back. Security and logic findings, and findings that name no file, are never filtered. `pan-tools findings suppressions` lists what is being filtered.
 - **Milestone audits read the record.** `/pan:milestone-audit` takes its tech debt from `pan-tools findings debt`, the deferred findings with their reasons. It lists the findings nobody disposed, instead of reconstructing either from prose.
 - **Unrequested work is a finding.** The verifier runs `pan-tools verify scope <phase>`, which lists the files the phase changed that no plan declared. Whatever it judges to be work nobody asked for is recorded as `unrequested`. That finding does not fail the phase; keeping or removing the work is your decision.
 - **Failures inside subagents reach `/pan:learn`.** On Claude Code the trace hook records the failed tool calls in a subagent's own transcript, redacted and grouped by tool and message (capped per spawn; the completion keeps the total): a failing test run, a missing file, a refused permission. `/pan:learn` ranks them by how often they recur across spawns and sessions. `/pan:learn --sessions 5` pools the last five sessions, so a suggestion rests on a pattern, not on one run's accident.
@@ -1175,7 +1177,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Plan Rejected by Checker Multiple Times
 
 **Cause:** Plan-checker found structural issues the planner keeps reproducing.
-**Fix:** Run `/pan:discuss-phase N` to capture more context, then re-plan. Or disable the checker temporarily: set `workflow.plan_check: false` in `/pan:settings`. Check plan.md manually for missing `verify` commands on tasks or empty `must_haves` sections.
+**Fix:** Run `/pan:discuss-phase N` to capture more context, then re-plan. Or disable the checker temporarily: set `workflow.plan_check: false` in `/pan:settings`. Check plan.md manually for missing `verify` commands on tasks or empty `must_haves` sections. A send-back before any checker runs comes from the code checks (`verify plan-set`, `verify review-focus`, `verify decisions`); run the named command on the phase to see the failing plan (see [Plans sent back for Review Focus or design decisions](TROUBLESHOOTING.md#plans-sent-back-for-review-focus-or-design-decisions)).
 
 ### Research Phase Returns Irrelevant Results
 
