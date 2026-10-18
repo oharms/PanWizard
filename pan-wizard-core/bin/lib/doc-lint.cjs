@@ -343,11 +343,13 @@ function scanDocFlags(cwd, opts = {}) {
   const docDirs = opts.docDirs || ['docs'];
   const collected = [];
   for (const d of docDirs) {
-    const abs = path.join(cwd, d);
+    const abs = path.resolve(cwd, d);
     if (!fs.existsSync(abs)) continue;
     for (const f of walkMarkdownFiles(abs)) {
       if (f.readError) continue;
-      collected.push({ rel: path.join(d, f.relativePath).replace(/\\/g, '/'), content: f.content });
+      // Relative to the project root whether --doc-dir was given relative or
+      // absolute, so the frozen-doc allowlist sees project segments only.
+      collected.push({ rel: path.relative(cwd, path.join(abs, f.relativePath)).replace(/\\/g, '/'), content: f.content });
     }
   }
   for (const rel of (opts.files || [])) {
@@ -379,7 +381,7 @@ function scanDocFlags(cwd, opts = {}) {
 
 function cmdDocLintFlags(cwd, opts = {}, raw) {
   for (const d of opts.docDirs || []) {
-    const abs = path.isAbsolute(d) ? d : path.join(cwd, d);
+    const abs = path.resolve(cwd, d);
     if (fs.existsSync(abs)) requireDirectory(abs);
   }
   const r = scanDocFlags(cwd, opts);

@@ -4176,7 +4176,7 @@ Scan `<dir>` for embedded numeric counts that violate the single-source-of-truth
 
 ### `doc-lint flags [--doc-dir <dir>]` (v3.14)
 
-Detect aspirational or stale `--flags` documented for the PAN CLI that never appear as literals in the source (`pan-wizard-core/bin`, `bin`). `--doc-dir <dir>` (repeatable, relative to the project root) replaces the default `docs`, so list `docs` again to keep it; a missing directory is skipped. Only lines that mention `pan-tools` are checked. Exits 1 when any doc-only flag is found. Reports each doc-only flag with its file and line.
+Detect aspirational or stale `--flags` documented for the PAN CLI that never appear as literals in the source (`pan-wizard-core/bin`, `bin`). `--doc-dir <dir>` (repeatable; a path relative to the project root, or an absolute path) replaces the default `docs`, so list `docs` again to keep it; a missing directory is skipped. Only lines that mention `pan-tools` are checked, and findings are reported relative to the project root. Exits 1 when any doc-only flag is found. Reports each doc-only flag with its file and line.
 
 ---
 

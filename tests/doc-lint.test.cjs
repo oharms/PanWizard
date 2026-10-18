@@ -53,6 +53,23 @@ describe('doc-lint flags — aspirational CLI-flag checker (anti-fake, ADR-0036)
     assert.equal(r.violation_count, 0);
     fs.rmSync(d, { recursive: true, force: true });
   });
+
+  test('--doc-dir scans both a relative and an absolute directory', () => {
+    const { createTempProject, cleanup, TOOLS_PATH } = require('./helpers.cjs');
+    const { spawnSync } = require('child_process');
+    const tmp = createTempProject();
+    try {
+      fs.mkdirSync(path.join(tmp, 'guide'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'guide', 'cli.md'), 'Run `pan-tools verify --turbo` for speed.\n');
+      for (const dir of ['guide', path.join(tmp, 'guide')]) {
+        const r = spawnSync('node', [TOOLS_PATH, 'doc-lint', 'flags', '--doc-dir', dir, '--raw'], { cwd: tmp, encoding: 'utf-8' });
+        assert.equal(r.status, 1, `--doc-dir ${dir}: expected exit 1, got ${r.status}\n${r.stdout}${r.stderr}`);
+        assert.match(r.stdout, /--turbo/, `--doc-dir ${dir}: ${r.stdout}`);
+      }
+    } finally {
+      cleanup(tmp);
+    }
+  });
 });
 
 describe('doc-lint vendored modules', () => {
