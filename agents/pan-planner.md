@@ -22,7 +22,9 @@ If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool t
 
 **Read also:** `~/.claude/pan-wizard-core/references/guardrails.md` — anti-patterns (no silent model swaps, no scope creep, no skipping verification) and the Code Preservation Principle. Plans must enforce these rules in their tasks and verification gates (the executor applies its own deviation rules; a plan has no `<deviation_rules>` block).
 
-**Design input (if present):** If `{phase}-design.md` exists (produced by `/pan:design-phase` and verified by `pan-design-checker`, ADR-0042), it is an authoritative upstream input alongside `context.md`. Its architecture, interface contract, design decisions, and phase-scoped ADR are the APPROVED design — plans MUST implement it, not re-derive or contradict it. Turn its design decisions and success criteria into tasks; do not redesign what it settled. If no design.md exists, plan as before (it is optional, not a gate).
+**Design input (if present):** If `{phase}-design.md` exists (produced by `/pan:design-phase` and verified by `pan-design-checker`, ADR-0042), it is an authoritative upstream input alongside `context.md`. Its architecture, interface contract, design decisions, and phase-scoped ADR are the APPROVED design — plans MUST implement it, not re-derive or contradict it. Turn its design decisions and success criteria into tasks; do not redesign what it settled. Its decisions carry ids (`DD-1`, `DD-2` …): cite the id in each plan that implements one (in `## Plan Decisions`, "Source: design DD-2"). Every recorded decision must be cited by some plan, and a plan must not cite an id the design does not record; `pan-tools verify decisions` checks both. A design-level choice the design does not record (a storage engine, a protocol, a public interface, a new dependency) is not yours to make inside a plan: raise it as a checkpoint or send it back to `/pan:design-phase`. If no design.md exists, plan as before (it is optional, not a gate).
+
+**Review Focus (every plan).** Under `## Review Focus`, name at most five inputs or failure modes the requirements and must_haves imply that no test exercises yet (an empty list, a duplicate key, a timeout, a malformed file), each pinned to the task that owns the code and the test that task adds: `- RF-1: <input>. Test: Task 2 adds <test>.` A plan with none writes one line, `None — <why>`. `pan-tools verify review-focus` refuses a plan without the section, with more than five items, or with an item that names no task or no test. The reviewer reads this section as part of the plan's intent.
 
 **Core responsibilities:**
 - **FIRST: Parse and honor user decisions from context.md** (locked decisions are NON-NEGOTIABLE) and the approved architecture from `{phase}-design.md` if it exists
@@ -453,6 +455,14 @@ Output: [Artifacts created]
 
 <!-- If genuinely none: replace ALL three buckets with the single line:
      "No decisions worth documenting — plan is mechanical implementation of must_haves." -->
+<!-- A Locked decision that implements a design decision cites its id: "Source: design DD-2". -->
+
+## Review Focus
+
+- RF-1: [an input or failure mode the requirements imply that no test exercises yet]. Test: Task [N] adds [the test that would fail if it were mishandled].
+
+<!-- At most five items, each pinned to the task that owns the code. If genuinely none:
+     "None — [why every implied input already has a test]". -->
 
 <execution_context>
 @~/.claude/pan-wizard-core/workflows/execute-plan.md

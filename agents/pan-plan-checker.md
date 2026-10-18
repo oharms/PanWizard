@@ -61,7 +61,7 @@ If context.md exists, add verification dimension: **Context Compliance**
 | Section | How You Use It |
 |---------|----------------|
 | Architecture & interface contract | Plans MUST implement this architecture. Flag if a plan invents a different one or contradicts the interface contract. |
-| Design decisions / ADR | LOCKED — plans must realize these decisions, not re-open them. |
+| Design decisions / ADR | LOCKED — plans must realize these decisions, not re-open them. Decisions carry ids (`DD-N`) that plans cite (Dimension 14). |
 | Success criteria (machine-checkable) | Every machine-checkable criterion must have a task that satisfies it, with its named check. |
 
 If design.md exists, add verification dimension: **Design Conformance**
@@ -524,6 +524,33 @@ issue:
   plan: "01"
   fix_hint: "Either fill at least one bucket OR replace with the single line 'No decisions worth documenting — plan is mechanical implementation of must_haves.'"
 ```
+
+## Dimension 13: Review Focus
+
+**Question:** Does each plan's `## Review Focus` name the inputs and failure modes its requirements imply that no test covers yet?
+
+The workflow ran `pan-tools verify review-focus` before spawning you, so the structure is already checked: the section exists, it has at most five items (or one `None — <reason>` line), and each item names an existing task and a test. Judge the content:
+
+- Is each item a real input or failure mode the requirements or must_haves imply (an empty list, a duplicate key, a timeout, a malformed file), not a restated task?
+- Does the named task own the code that input reaches, and would the named test fail if that input were mishandled?
+- Did the plan miss an obvious one, such as an error path a requirement names that no task's tests reach? → WARNING
+- Is `None — <reason>` credible for this plan? A plan that parses user input and claims none → WARNING
+
+## Dimension 14: Decision Spine (if design.md exists)
+
+**Question:** Does each plan rely only on decisions the design records?
+
+The workflow ran `pan-tools verify decisions` before spawning you. It already flags a plan citing a `DD-N` id the design does not record, and a recorded decision no plan cites. Judge what code cannot read: a plan that makes a design-level choice (a storage engine, a protocol, a public interface, a dependency) that is neither a recorded `DD-N` nor in context.md's locked decisions relies on an unrecorded decision → BLOCKER, with a fix_hint to cite the decision that covers it, or to send the choice back to `/pan:design-phase`. A choice local to one task is the planner's to make, not a design decision.
+
+## Dimension 15: Research Freshness
+
+**Question:** Do the plans rest on research claims that are unsourced or out of date?
+
+The prompt's `<research_claims>` block is `pan-tools research lint` over the phase's research: `errors` are claims with no source or no checked date, and `stale` lists claims older than their type's window (a version, price or security advisory after 30 days, an API after 90, a practice after 365). For each one a plan relies on (a pinned version, an API call, a price in a budget, a security setting):
+
+- unsourced or undated → WARNING, fix_hint: source it, or move it to Open Questions
+- stale, and the plan's correctness depends on it (a version pinned in a task, an API's behaviour a task assumes) → WARNING, fix_hint: recheck it before execution, or add a task that verifies it
+- stale but incidental to the plans → no issue
 
 </verification_dimensions>
 

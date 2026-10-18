@@ -52,7 +52,7 @@ ordered; a tier makes a contiguous prefix (plus its named additions) mandatory.
 - **Components & boundaries** — what modules are added/touched; confirm the design honors the discovered boundaries (no layer violations).
 - **Interface contract** — exact invocation + input/output schema + status/exit codes, per project convention.
 - **State & filesystem scope** — reads from / writes to (must stay within project root / `.planning/`), state mutations, side effects.
-- **Design decisions** — each significant decision: what was decided, why, alternatives rejected.
+- **Design decisions** — each decision that passes the three-question test (hard to reverse, a reasonable engineer could choose otherwise, more than one task depends on it): its id (`DD-N`, which plans cite), what was decided, why, alternatives rejected.
 
 ### 4. ADR (`phase`+)
 - A right-sized Architecture Decision Record: Status · Date · Context (problem, forces, current state, requirements traceability) · Decision (summary + numbered sub-decisions with rationale + integration) · Consequences (positive **and** negative, every negative with a mitigation or explicit acceptance).

@@ -25,6 +25,7 @@ Your mode is declared in the `<preview_input>` block's `mode` field:
 - `test_files_mentioned` — test files likely to run
 - `risk_signals` — boolean flags for destructive keywords (drop, delete, migrate, rename, breaking, auth)
 - `risk_score` — heuristic 1-10
+- `cost_forecast` — p10/p50/p90 dollars per plan (`per_plan`) and for the whole phase (`phase`), from this project's own cost ledger. Either can be `status: insufficient` with `n`: fewer than five past runs, so there is no forecast
 
 Your output should answer: *"If I run this phase today, what's the blast radius?"* Cover files touched, tests likely to break, migration steps needed, external deps that might need bumping, and a narrative risk assessment.
 
@@ -65,6 +66,7 @@ Write exactly one file at the path provided in your prompt. Use the template at 
 - `## Migration steps` (if `risk_signals.migrate`)
 - `## External deps` (if any imports would need version bumps)
 - `## Risk assessment` (narrative — cite specific signals)
+- `## Cost` (the phase's p50 and p10–p90 range in dollars, and per plan; when `insufficient`, say how many runs it has and that five are needed. Never estimate a figure the forecast does not give)
 - `## Bottom line` (**bold one-sentence verdict**)
 
 **For `phases` mode**, output path is `.planning/architecture/dependency-graph.md`. Required sections:

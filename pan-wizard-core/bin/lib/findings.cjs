@@ -27,6 +27,12 @@
  *   - IDEMPOTENCY: recording the same artifact twice is a no-op that returns the
  *     first verdict (record_sig). That is why exec-phase and verify-phase may both
  *     record one verification.md.
+ *   - LEARNED SUPPRESSIONS (R3): a dismissed finding is noise for its file as it was
+ *     when dismissed. The same judge raising it again (same signature, sameFinding)
+ *     is filtered, in the dismissal's phase (candidate) or, once dismissed in two
+ *     phases, in any phase (promoted). When the file changes the suppression retires
+ *     and the finding comes back open. Security and logic findings, and findings
+ *     with no file, are never suppressed: a re-report reopens them.
  */
 const fs = require('fs');
 const path = require('path');
@@ -40,6 +46,11 @@ const LEDGER_V = 1;
 const REASON_MAX = 300;
 const FINDING_ID_RE = /^f_[0-9a-f]{10}$/;
 const STATUSES = Object.freeze(['open', ...V.DISPOSITIONS]);
+// Logic findings are never suppressed (R3): what the code does wrong, or not at all.
+const LOGIC_CLASSES = Object.freeze(['defect', 'contradicts', 'missing', 'partial']);
+// Security findings are never suppressed either, whatever class a judge gave them.
+const SECURITY_RE = /secur|inject|xss|csrf|ssrf|secret|credential|password|authenticat|authoriz|\bauth\b|token|crypt|traversal|privilege|sanitiz|escap|cve-|owasp|\brce\b|deserializ/i;
+const SECURITY_AGENTS = Object.freeze(['pan-hardener']);
 
 function ledgerPath(cwd) {
   return planningPath(cwd, FINDINGS_FILE);
@@ -80,7 +91,7 @@ function foldFindings(rows) {
         id: r.id, phase: r.phase, milestone: r.milestone || null, agent: r.agent, class: r.class,
         severity: r.severity, where: r.where || null, summary: r.summary, first_seen: r.ts,
         first_verdict_id: r.verdict_id || null, reports: 0, last_reported: null, _reportedSeq: -1,
-        disposition: null, reason: null, disposed_at: null, auto: false, _disposedSeq: -1,
+        disposition: null, reason: null, disposed_at: null, auto: false, file_sha: null, _disposedSeq: -1, _returnedSeq: -1,
       });
     } else if (r.kind === 'verdict') {
       verdicts.push({ ...r, _seq: seq });
@@ -91,6 +102,11 @@ function foldFindings(rows) {
         f.last_reported = r.ts;
         f._reportedSeq = seq;
       }
+      // A dismissed finding raised again once its suppression no longer holds (R3).
+      for (const id of Array.isArray(r.returned_ids) ? r.returned_ids : []) {
+        const f = findings.get(id);
+        if (f) f._returnedSeq = seq;
+      }
     } else if (r.kind === 'disposition' && typeof r.id === 'string') {
       const f = findings.get(r.id);
       if (!f || !V.DISPOSITIONS.includes(r.disposition)) return;
@@ -98,12 +114,14 @@ function foldFindings(rows) {
       f.reason = r.reason || null;
       f.disposed_at = r.ts;
       f.auto = r.auto === true;
+      f.file_sha = r.file_sha || null;
       f._disposedSeq = seq;
     }
   });
   for (const f of findings.values()) {
     if (!f.disposition) f.status = 'open';
     else if (f.disposition === 'fixed' && f._reportedSeq > f._disposedSeq) f.status = 'open';
+    else if (f._returnedSeq > f._disposedSeq) f.status = 'open';
     else f.status = f.disposition;
   }
   return { verdicts, findings };
@@ -111,7 +129,7 @@ function foldFindings(rows) {
 
 /** A finding as the CLI shows it (internal sequence fields removed). */
 function publicFinding(f) {
-  const { _reportedSeq, _disposedSeq, ...rest } = f;
+  const { _reportedSeq, _disposedSeq, _returnedSeq, ...rest } = f;
   return rest;
 }
 
@@ -166,6 +184,52 @@ function resolutionTarget(mine, r) {
 
 function truncateReason(s) {
   return String(s).replace(/\s+/g, ' ').trim().slice(0, REASON_MAX);
+}
+
+// ─── Learned suppressions (R3) ──────────────────────────────────────────────
+
+/** Security and logic findings are always reported, dismissed or not. */
+function neverSuppressed(f, agent) {
+  return LOGIC_CLASSES.includes(f.class) || SECURITY_AGENTS.includes(agent) || SECURITY_RE.test(String(f.summary || ''));
+}
+
+/** The content hash of the project file a `where` names, or null (no file, outside the project, unreadable). */
+function fileSha(cwd, where) {
+  const file = fileOf(where);
+  if (!file || file.startsWith('code-fact:')) return null;
+  const abs = path.resolve(cwd, file);
+  const rel = path.relative(path.resolve(cwd), abs);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null;
+  try { return crypto.createHash('sha256').update(fs.readFileSync(abs)).digest('hex'); } catch { return null; }
+}
+
+/**
+ * Every learned suppression: a dismissed finding scoped to a file, of a kind that may
+ * be suppressed. `active` while the file is as it was when dismissed; `promoted` once
+ * the same judge dismissed the same signature in two phases (active ones only).
+ */
+function learnedSuppressions(cwd, fold) {
+  const shas = new Map();
+  const current = (where) => {
+    const k = fileOf(where);
+    if (!shas.has(k)) shas.set(k, fileSha(cwd, where));
+    return shas.get(k);
+  };
+  const all = [...fold.findings.values()]
+    .filter((f) => f.status === 'dismissed' && f.file_sha && !neverSuppressed(f, f.agent))
+    .map((f) => ({ f, active: current(f.where) === f.file_sha }));
+  return all.map((s) => {
+    const phases = new Set(all.filter((o) => o.active && o.f.agent === s.f.agent && sameFinding(o.f, s.f)).map((o) => V.comparablePhase(o.f.phase)));
+    return { ...s, scope: phases.size >= 2 ? 'promoted' : 'candidate' };
+  });
+}
+
+/** The suppression that filters this judge's finding in this phase, or null. */
+function suppressionFor(supps, agent, phase, f) {
+  if (neverSuppressed(f, agent)) return null;
+  const hits = supps.filter((s) => s.active && s.f.agent === agent && sameFinding(s.f, f)
+    && (s.scope === 'promoted' || samePhase(s.f.phase, phase)));
+  return hits.find((s) => samePhase(s.f.phase, phase)) || hits[0] || null;
 }
 
 /**
@@ -243,7 +307,7 @@ function recordVerdict(cwd, input) {
 
   const dup = fold.verdicts.find((r) => r.record_sig === recordSig && r.agent === agent && samePhase(r.phase, phase));
   if (dup) {
-    return { ...base, recorded: false, duplicate: true, verdict_id: dup.verdict_id, attempt: dup.attempt, phase, findings: (dup.finding_ids || []).length, new: 0, rematched: 0, resolved: 0, unaddressed: [], reopened: 0 };
+    return { ...base, recorded: false, duplicate: true, verdict_id: dup.verdict_id, attempt: dup.attempt, phase, findings: (dup.finding_ids || []).length, new: 0, rematched: 0, resolved: 0, unaddressed: [], reopened: 0, suppressed: dup.suppressed || [], returned: (dup.returned_ids || []).length };
   }
 
   const prior = fold.verdicts.filter((r) => r.agent === agent && samePhase(r.phase, phase));
@@ -257,6 +321,9 @@ function recordVerdict(cwd, input) {
   const newRows = [];
   const findingRows = [];
   const mine = [...fold.findings.values()].filter((e) => e.agent === agent && samePhase(e.phase, phase));
+  const supps = learnedSuppressions(cwd, fold);
+  const suppressed = [];
+  const returned = [];
   let rematched = 0;
   for (const f of verdict.findings) {
     let id = V.findingId(phase, agent, f);
@@ -267,6 +334,17 @@ function recordVerdict(cwd, input) {
       if (earlier) { id = earlier.id; rematched++; }
     }
     if (ids.includes(id)) continue; // the same finding twice in one report is one finding
+    // A learned suppression (R3) filters it; a dismissed finding no suppression
+    // covers any more comes back open.
+    const existing = fold.findings.get(id);
+    if (!existing || existing.status === 'dismissed') {
+      const s = suppressionFor(supps, agent, phase, f);
+      if (s) {
+        suppressed.push({ id: s.f.id, scope: s.scope, summary: f.summary });
+        continue;
+      }
+      if (existing) returned.push(id);
+    }
     ids.push(id);
     if (!fold.findings.has(id)) {
       findingRows.push({ v: LEDGER_V, kind: 'finding', ts, id, verdict_id: verdictId, phase, milestone, agent, class: f.class, severity: f.severity, where: f.where, summary: f.summary });
@@ -313,6 +391,8 @@ function recordVerdict(cwd, input) {
   newRows.push({
     v: LEDGER_V, kind: 'verdict', ts, verdict_id: verdictId, record_sig: recordSig, phase, milestone, agent,
     verdict: verdict.verdict, outcome: verdict.outcome, ...lowered, attempt, source, finding_ids: ids,
+    ...(returned.length ? { returned_ids: returned } : {}),
+    ...(suppressed.length ? { suppressed } : {}),
     by_severity: bySeverity, by_class: byClass, warnings: parsed.warnings,
     ...(notChecked.length ? { not_checked: notChecked } : {}),
     // A plan check is bound to the plans it checked (V7): exec-phase compares this
@@ -344,7 +424,7 @@ function recordVerdict(cwd, input) {
     });
   }
 
-  return { ...base, recorded: true, duplicate: false, verdict_id: verdictId, attempt, phase, findings: ids.length, new: findingRows.length, rematched, resolved: resolveRows.length, unaddressed, reopened, ledger: planningRel(FINDINGS_FILE) };
+  return { ...base, recorded: true, duplicate: false, verdict_id: verdictId, attempt, phase, findings: ids.length, new: findingRows.length, rematched, resolved: resolveRows.length, unaddressed, reopened, suppressed, returned: returned.length, ledger: planningRel(FINDINGS_FILE) };
 }
 
 /**
@@ -379,7 +459,10 @@ function disposeFindings(cwd, input) {
     const f = fold.findings.get(id);
     if (!f) { skipped.push({ id, why: 'unknown id' }); continue; }
     if (f.status === as) { skipped.push({ id, why: `already ${as}` }); continue; }
-    out.push({ v: LEDGER_V, kind: 'disposition', ts, id, disposition: as, reason: reason || null, auto: false });
+    // A dismissal remembers its file as it was (R3): it suppresses the finding only
+    // until that file changes.
+    const fsha = as === 'dismissed' ? fileSha(cwd, f.where) : null;
+    out.push({ v: LEDGER_V, kind: 'disposition', ts, id, disposition: as, reason: reason || null, auto: false, ...(fsha ? { file_sha: fsha } : {}) });
     disposed.push(id);
   }
   appendRows(cwd, out);
@@ -412,6 +495,19 @@ function listFindings(cwd, filters = {}) {
     ...(filters.phase && filters.agent ? { churn: findingsChurn(rows, filters.phase, filters.agent) } : {}),
     malformed_rows: malformed,
   };
+}
+
+/** Learned suppressions (R3), each with its scope and whether its file is unchanged. */
+function listSuppressions(cwd, filters = {}) {
+  const fold = foldFindings(readLedger(cwd).rows);
+  let list = learnedSuppressions(cwd, fold);
+  if (filters.agent) list = list.filter((s) => s.f.agent === filters.agent);
+  if (filters.phase) list = list.filter((s) => s.scope === 'promoted' || samePhase(s.f.phase, filters.phase));
+  const suppressions = list.map((s) => ({
+    id: s.f.id, agent: s.f.agent, phase: s.f.phase, class: s.f.class, file: fileOf(s.f.where), summary: s.f.summary,
+    reason: s.f.reason, scope: s.scope, active: s.active,
+  }));
+  return { contract: V.VERDICT_CONTRACT, suppressions, active: suppressions.filter((s) => s.active).length };
 }
 
 /**
@@ -476,6 +572,11 @@ function cmdFindingsList(cwd, opts, raw) {
   output(r, raw, String(r.counts.total));
 }
 
+function cmdFindingsSuppressions(cwd, opts, raw) {
+  const r = listSuppressions(cwd, opts);
+  output(r, raw, String(r.active));
+}
+
 function cmdFindingsDebt(cwd, opts, raw) {
   const r = findingsDebt(cwd, opts);
   output(r, raw, `${r.deferred_count} deferred, ${r.open_count} open`);
@@ -494,6 +595,7 @@ module.exports = {
   recordVerdict,
   disposeFindings,
   listFindings,
+  listSuppressions,
   findingsDebt,
   findingsChurn,
   sameFinding,
@@ -502,4 +604,5 @@ module.exports = {
   cmdFindingsDispose,
   cmdFindingsList,
   cmdFindingsDebt,
+  cmdFindingsSuppressions,
 };

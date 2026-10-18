@@ -227,11 +227,13 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `planning-root.cjs` | **(v3.27)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
 | `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
-| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose` and `findings debt`, and the MCP resource `pan://findings`. It is append-only and folded on read. A finding closes only on evidence (a judge's `resolved` answer, the verifier's `gaps_closed`, or a passing code fact); one a report neither repeats nor answers stays open as `unaddressed`. A regressed fix reopens, and deliberate dispositions stick. Each recorded verdict is logged to the trace. |
+| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose`, `findings debt` and `findings suppressions`, and the MCP resource `pan://findings`. It is append-only and folded on read. A finding closes only on evidence (a judge's `resolved` answer, the verifier's `gaps_closed`, or a passing code fact); one a report neither repeats nor answers stays open as `unaddressed`. A regressed fix reopens, and deliberate dispositions stick, except that a dismissal only suppresses its finding until the file changes, and never a security or logic finding. Each recorded verdict is logged to the trace. |
 | `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
 | `verify-integrity.cjs` | **(program V3)** `verify test-integrity <phase>`: walks the phase's plan commits and reports a deleted test, a skip or only marker added (JS, Python, Go, Rust, Java), assertions dropped, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail; a renamed test is a warning. Uses verify-scope's `committedFiles()`. |
 | `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
 | `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. `review scope <phase>` (program R1): the files a reviewer reads (the phase's commits plus uncommitted and untracked work) and the plans' intent. Re-exported through verify.cjs. |
+| `plan-lint.cjs` | **(program P4, P2)** `verify review-focus <phase>`: every plan has a `## Review Focus` of at most five items, each naming its owning task and a test, or one `None — <reason>` line. `verify decisions <phase>`: plans cite only `DD-N` decision ids the phase design records, and every recorded decision is cited. `/pan:plan-phase` runs both with `verify plan-set` before the plan checker. |
+| `research-lint.cjs` | **(program P3)** `research lint <phase|path>`: the research file's `## Claims` table (claim · type · source · checked). A claim with no source or no date is an error; one older than its type's freshness window is `stale`. |
 
 ---
 
@@ -463,6 +465,10 @@ Quick reference of all CLI commands grouped by category.
 | 220 | `verify red` | Verification | verify-red.cjs |
 | 221 | `verify mutate` | Verification | mutate.cjs |
 | 222 | `review scope` | Verification | verify-scope.cjs |
+| 223 | `findings suppressions` | Evidence loop | findings.cjs |
+| 224 | `verify review-focus` | Verification | plan-lint.cjs |
+| 225 | `verify decisions` | Verification | plan-lint.cjs |
+| 226 | `research lint` | Verification | research-lint.cjs |
 
 ---
 
@@ -1713,6 +1719,39 @@ pan-tools verify plan-set 3 --raw    # valid | invalid
 **Errors** (exit 1): `uncovered_requirement` (a roadmap requirement for the phase that no plan lists), `same_wave_overlap` (two plans in one wave modifying the same file with no dependency between them), `missing_reference` (a `depends_on` that names no plan of the phase), `self_reference`, `future_reference` (a dependency in the same or a later wave), `cycle`. **Warnings**: `unknown_requirement` (a plan lists a requirement the roadmap does not give the phase) and `wave_gap` (a plan later than its dependencies need). A dependency on another phase's plan (`02-04` from phase 3) is not checked.
 
 `plan_check` says whether the plans are the ones that passed the plan check. The recorder stores a hash of the phase's plan files (`plans_sha`, line endings normalised) with every `pan-plan-checker` verdict. `status` is `ok`, `stale` (edited since the check), `failed`, `missing`, `legacy` (recorded before hashing; a warning) or `disabled` (`workflow.plan_check` is off). `drift` lists, for each plan without a summary that records `planned_commit`, the `files_modified` that changed between that commit and `HEAD`. `init execute-phase` carries the same two as `plan_check` and `plan_drift`, and exec-phase stops on `stale`, `failed` or `missing` unless the user gives a reason. Exits 1 for an unknown phase or a phase with no plans.
+
+### `verify review-focus <phase>`
+
+Every plan names what its reviewer should check first (program P4): under `## Review Focus`, at most five inputs or failure modes its requirements imply that no test exercises yet, each pinned to the task that owns the code and the test that task adds, or one `None — <reason>` line. `/pan:plan-phase` runs it with `verify plan-set` and sends errors back to the planner; `review scope` hands the section to the reviewer.
+
+```bash
+pan-tools verify review-focus 3          # {phase, ok, plans: [{plan, file, status, items}], errors[]}
+pan-tools verify review-focus 3 --raw    # valid | invalid
+```
+
+**Errors** (exit 1), each `{code, plan, detail}`: `review_focus_missing` (no section), `review_focus_empty` (no items and no `None — <reason>` with a reason of three or more words), `review_focus_too_many` (more than five items), `review_focus_no_task` (an item that names no `Task N`), `review_focus_unknown_task` (a `Task N` past the plan's task count), `review_focus_no_test` (an item that names no test). A plan's `status` is `ok`, `none`, `missing` or `invalid`.
+
+### `verify decisions <phase>`
+
+The decision spine (program P2). The phase design (`{phase}-design.md`) records each decision that passes the three-question test with an id (`DD-1`, `DD-2` …) in the first column of its design-decisions table, or at the head of a list item or heading. Plans cite the ids they implement.
+
+```bash
+pan-tools verify decisions 3          # {phase, ok, status, design, decisions[], cited: {id: [plans]}, errors[], warnings[]}
+pan-tools verify decisions 3 --raw    # valid | invalid
+```
+
+**Errors** (exit 1): `decision_unrecorded` (a plan cites an id the design does not record), `decision_uncited` (a recorded decision no plan cites), `decision_duplicate` (an id recorded twice). `status` is `checked`, `no_design` (nothing to check) or `legacy` (a design whose decisions carry no ids: a `decisions_without_ids` warning, never a refusal).
+
+### `research lint <phase|path> [--now YYYY-MM-DD]`
+
+Research claims with provenance and freshness (program P3). The phase's research file (or the file at the path) lists the claims plans will rest on in a `## Claims` table with the columns Claim, Type, Source and Checked.
+
+```bash
+pan-tools research lint 3                                  # {file, ok, claims, errors[], warnings[], stale[], windows}
+pan-tools research lint .planning/research/stack.md --raw  # valid | invalid
+```
+
+**Errors** (exit 1), each `{code, row, claim, detail}`: `claims_missing` (no `## Claims` section), `claim_no_source` (empty, or a placeholder such as `[Official docs URL]`), `claim_no_date` (not `YYYY-MM-DD`), `claim_future_date`. **Warnings:** `claim_unknown_type` (read as `general`). **`stale`** lists `{row, claim, type, checked, age_days, window_days}` for each claim older than its type's window: `version`, `pricing` and `security` 30 days, `api` 90, `general` 180, `practice` 365. Stale is not an error: `/pan:plan-phase` passes the lint to the plan checker, which flags the stale claims a plan depends on. `--now` fixes today's date. Exits 1 with `{error}` for an unknown phase, a phase with no research file (`no_research`) or a missing path.
 
 ### `verify test-integrity <phase>`
 
@@ -3963,7 +4002,9 @@ Blast-radius analysis for a single phase.
 pan-tools preview phase <N> [--raw]
 ```
 
-Returns `{phase, status, plans, files_mentioned, test_files_mentioned, risk_signals, risk_score, goal}`. Risk keywords checked: drop / delete / migrate / rename / breaking / auth. Score 1-10.
+Returns `{phase, status, plans, files_mentioned, test_files_mentioned, risk_signals, risk_score, goal, cost_forecast}`. Risk keywords checked: drop / delete / migrate / rename / breaking / auth. Score 1-10.
+
+`cost_forecast` (program P6) is `{agent, tier, plans, min_samples, per_plan, phase}`, from the project's cost ledger with this phase's own rows left out. `per_plan` is the p10/p50/p90 dollars of a `pan-executor` call at one tier (the tier of the latest executor call); tiers are never pooled. `phase` resamples, 2,000 times and seeded, one past phase's other agents (planner, checkers, verifier, reviewer) plus one executor call per plan, and reports `n_phases`. Either is `{status: "insufficient", n, needed: 5}` when fewer than five observations back it: no forecast is better than a guess from two runs.
 
 ### `preview phases` (v3.1, Y-1)
 
@@ -4276,10 +4317,11 @@ pan-tools findings list [--phase N] [--agent A] [--status open|fixed|deferred|di
 pan-tools findings dispose f_81ab3c9d20 --as dismissed --reason "generated file, not project code"
 pan-tools findings dispose --phase 3 --agent pan-reviewer --open --as deferred --reason "accepted at review: PASS_WITH_WARNINGS"
 pan-tools findings debt [--milestone v1.1] [--raw]
+pan-tools findings suppressions [--phase N] [--agent A] [--raw]
 ```
 
 **`findings record`** takes exactly one of `--file`, `--text` or `--stdin`, plus `--phase` and optionally `--agent`.
-- **Input.** It reads the last `pan-verdict` block; without one, it reads a verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`, `test_gate`, `not_checked`). It prints `{contract, recorded, duplicate, verdict_id, agent, verdict, outcome, not_checked, source_kind, attempt, phase, findings, new, rematched, resolved, unaddressed, reopened, warnings}`, plus `ledger` when it wrote a verdict, and `agent_verdict` and `lowered_by` when a code fact lowered the judge's word.
+- **Input.** It reads the last `pan-verdict` block; without one, it reads a verification frontmatter (`status`, `gaps`, `human_verification`, `unrequested`, `test_gate`, `not_checked`). It prints `{contract, recorded, duplicate, verdict_id, agent, verdict, outcome, not_checked, source_kind, attempt, phase, findings, new, rematched, resolved, unaddressed, reopened, suppressed, returned, warnings}`, plus `ledger` when it wrote a verdict, and `agent_verdict` and `lowered_by` when a code fact lowered the judge's word.
 - **What was not checked.** `not_checked` lists `{check, reason}` for each check the judge could not run. A verification with `test_gate: skipped` always carries a `tests` entry, so a pass whose tests never ran is never recorded as a plain pass. The warnings name a verification that does not record `test_gate` (`test_gate_unrecorded`) and a failed gate under a passed status (`test_gate_failed_under_pass`). `--raw` prints the recorded verdict word (`gaps_found`, `NEEDS_FIXES`, `issues_found`, `GAPS` …): the judge's own word, or the lowered one when a code fact lowered it. It prints the outcome when there is no word.
 - **Exit codes.** A failed verdict is data: exit 0. An unreadable input exits 1 with `{error, reason}`, for example `no_verdict`, `invalid_json`, `unsupported_contract` or `phase_not_found`. That is what a workflow's `||` fallback runs on.
 - **Idempotency and attempts.** Recording the same artifact twice is a no-op that returns the first verdict. Each new verdict from an agent on a phase is the next `attempt`.
@@ -4289,7 +4331,9 @@ pan-tools findings debt [--milestone v1.1] [--raw]
 
 **`findings list`** filtered by both `--phase` and `--agent` adds `churn`: `{reports, transitions, added, dropped, rate}`, how many ids appeared or disappeared between that judge's consecutive reports.
 
-**`findings dispose`** takes finding ids, or `--phase N [--agent A] --open`, and records `fixed`, `deferred`, `dismissed` or `decision`. It refuses `deferred`, `dismissed` and `decision` without `--reason` (exit 1: never dispose silently). A later report does not override a `deferred`, `dismissed` or `decision` disposition; a `fixed` one, deliberate or automatic, reopens when the finding is reported again.
+**`findings dispose`** takes finding ids, or `--phase N [--agent A] --open`, and records `fixed`, `deferred`, `dismissed` or `decision`. It refuses `deferred`, `dismissed` and `decision` without `--reason` (exit 1: never dispose silently). A later report does not override a `deferred` or `decision` disposition; a `fixed` one, deliberate or automatic, reopens when the finding is reported again. A `dismissed` one records the hash of the file its `where` names and becomes a learned suppression (below).
+
+**Learned suppressions.** While the dismissed finding's file is unchanged, `findings record` filters the same judge's report of the same finding (same class family, same file, same truth or a similar summary). It is not one of the verdict's findings and is listed under `suppressed` as `{id, scope, summary}`. A suppression is a `candidate` in the phase it was dismissed in, and `promoted` to every phase once the same judge's finding was dismissed in two phases. Once the file changes, the suppression retires: a report of the finding reopens it, counted in `returned`. Logic findings (`defect`, `contradicts`, `missing`, `partial`), security findings (any `pan-hardener` finding, or a summary naming injection, auth, secrets, crypto and the like) and findings with no project file are never suppressed: a report of one reopens it. **`findings suppressions`** lists them with `{id, agent, phase, class, file, summary, reason, scope, active}`; `--phase` keeps that phase's candidates and every promoted one, and `--raw` prints the active count.
 
 **`findings debt`** is what `/pan:milestone-audit` reads for tech debt. For one milestone (default: the current one), it groups the `deferred` findings, each with the reason recorded at the time, and the `open` ones nobody disposed, by phase.
 

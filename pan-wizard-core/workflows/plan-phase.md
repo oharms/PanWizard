@@ -392,7 +392,7 @@ Task(
 
 ## 9. Handle Planner Return
 
-- **`## PLANNING COMPLETE`:** Display plan count. If `--skip-verify` or `plan_checker_enabled` is false (from init): still run the code checks at the start of step 10 (`verify plan-set`; they cost no model call), send any errors back to the planner (step 12), then skip to step 13. Otherwise: step 10.
+- **`## PLANNING COMPLETE`:** Display plan count. If `--skip-verify` or `plan_checker_enabled` is false (from init): still run the code checks at the start of step 10 (`verify plan-set`, `verify review-focus`, `verify decisions`; they cost no model call), send any errors back to the planner (step 12), then skip to step 13. Otherwise: step 10.
 - **`## GAP CLOSURE PLANS CREATED`:** (`--gaps` mode) Handle as `## PLANNING COMPLETE`.
 - **`## CHECKPOINT REACHED`:** Present to user, get response, spawn a fresh planner (step 8's Task) with the response added to its prompt
 
@@ -403,9 +403,14 @@ Task(
 ```bash
 PLAN_SET=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-set "${PHASE_NUMBER}")
 PLAN_SET_EXIT=$?
+REVIEW_FOCUS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify review-focus "${PHASE_NUMBER}")
+REVIEW_FOCUS_EXIT=$?
+DECISIONS=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify decisions "${PHASE_NUMBER}")
+DECISIONS_EXIT=$?
+RESEARCH_LINT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs research lint "${PHASE_NUMBER}" 2>/dev/null)
 ```
 
-Exit 1 means the plan set is broken in a way no review can wave through: a roadmap requirement no plan lists, two plans in one wave modifying the same file, a `depends_on` that names no plan or a plan in the same or a later wave, or a cycle. Send `PLAN_SET`'s `errors` to the planner as the revision context (step 12; it counts as an iteration) and do not spawn the checker for this set. Exit 0: continue, and pass any `warnings` to the checker.
+Exit 1 from `verify plan-set` means the plan set is broken in a way no review can wave through: a roadmap requirement no plan lists, two plans in one wave modifying the same file, a `depends_on` that names no plan or a plan in the same or a later wave, or a cycle. Exit 1 from `verify review-focus` means a plan has no `## Review Focus` section, more than five items, or an item that names no owning task or no test. Exit 1 from `verify decisions` means a plan cites a `DD-N` decision the design does not record, or a recorded decision no plan cites (it exits 0 when there is no design, or a design without ids). On any exit 1, send the `errors` of each failing check to the planner as the revision context (step 12; it counts as an iteration) and do not spawn the checker for this set. All exit 0: continue, and pass any `warnings` to the checker. `RESEARCH_LINT` never blocks planning: it goes to the checker as `<research_claims>` (claims with no source or date, and `stale` ones older than their type's window), and is `{"error":"no_research"}` when the phase was not researched.
 
 Display banner:
 ```
@@ -435,6 +440,10 @@ Checker prompt:
 **Project instructions:** Read ./CLAUDE.md if exists — verify plans honor project guidelines
 **Project skills:** Check .agents/skills/ directory (if exists) — verify plans account for project skill rules
 </verification_context>
+
+<research_claims>
+{RESEARCH_LINT}
+</research_claims>
 
 <open_findings>
 {output of `pan-tools findings list --phase {phase_number} --agent pan-plan-checker --status open`: empty on the first check; on a re-check, answer each in `resolutions`}

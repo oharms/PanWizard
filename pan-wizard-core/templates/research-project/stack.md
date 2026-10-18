@@ -79,6 +79,12 @@ npm install -D [packages]
 |-----------|-----------------|-------|
 | [package@version] | [package@version] | [compatibility notes] |
 
+## Claims
+
+| Claim | Type | Source | Checked |
+|-------|------|--------|---------|
+| [what is true] | [version / api / pricing / security / practice / general] | [URL, doc section or Context7 id] | [YYYY-MM-DD] |
+
 ## Sources
 
 - [Context7 library ID] — [topics fetched]

@@ -218,9 +218,11 @@ Proceed with proposed change? (yes / different approach / defer)
 
 Summary MUST include deviations section. None? → `## Deviations from Plan\n\nNone - plan executed exactly as written.`
 
-Per deviation: **[Rule N - Category] Title** — Found during: Task X | Issue | Fix | Files modified | Verification | Commit hash
+Per deviation: **[Rule N - Category] Title** — Found during: Task X | Issue | Fix | Files modified | Verification | Cost if wrong (low, medium or high, and what breaks) | Commit hash
 
 End with: **Total deviations:** N auto-fixed (breakdown). **Impact:** assessment.
+
+Then `## Concerns`: what was finished but is not certain, each as `- C-1: <concern>. Why: <…>. Cost if wrong: <…>.`, or "None". A plan with concerns returns `## DONE_WITH_CONCERNS` (see the executor's completion format).
 
 </deviation_documentation>
 

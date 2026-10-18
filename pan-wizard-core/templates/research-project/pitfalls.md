@@ -151,6 +151,12 @@ How roadmap phases should address these pitfalls.
 | [pitfall] | Phase [X] | [how to verify prevention worked] |
 | [pitfall] | Phase [X] | [how to verify prevention worked] |
 
+## Claims
+
+| Claim | Type | Source | Checked |
+|-------|------|--------|---------|
+| [what is true] | [version / api / pricing / security / practice / general] | [URL, doc section or Context7 id] | [YYYY-MM-DD] |
+
 ## Sources
 
 - [Post-mortems referenced]

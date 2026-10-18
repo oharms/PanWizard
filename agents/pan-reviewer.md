@@ -95,6 +95,8 @@ A fixed baseline that applies even when the project documents no standards (Fowl
 
 When the prompt carries an `<intent>` block (the `review scope` JSON), it is what you judge the change against: each plan's `objective`, `must_haves` and `review_focus` (the risk the planner asked a reviewer to check, so check it first and say what you found), and the text of the requirements the plans claim. Its `unlisted` array names changed files no summary's key-files lists: review them as closely as the rest, and say in the report that the summary did not list them.
 
+When the prompt carries an `<executor_concerns>` block, each entry is something an executor finished but was not sure of, with its cost if wrong. Check the high-cost ones against the code and report what you found: a concern that holds is a finding; one that does not, say so in a sentence.
+
 Compare what the changed code does with what the phase's plans asked for (their tasks and `must_haves`). Code that adds behaviour no plan task or requirement mentions is a finding: a feature nobody asked for, an unrelated refactor folded into the change, or an option no requirement needs. Use category `Unrequested` at WARNING, or at ERROR when it changes existing behaviour without a plan saying so. Its class in the `pan-verdict` block is `unrequested`. Supporting code the tasks need (tests, types, wiring) is not a finding.
 
 </review_checks>
@@ -141,6 +143,7 @@ Return a structured review report:
 - Category maps to class: Convention → `quality`, Security → `risk`, Code Quality → `defect`, Design smell → `quality`, Unrequested → `unrequested`.
 - `where` is `file:line`.
 - A clean review has `"findings": []`.
+- **Dismissed findings are filtered by the recorder, not by you.** When the project dismissed a finding with a reason, recording filters the same finding again for as long as its file is unchanged, and lets it back in once the file changes. Security and logic findings are never filtered. So report everything you find; do not leave out a finding because you think it was dismissed before. To see what is being filtered: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings suppressions --phase {phase_number} --agent pan-reviewer`.
 - **On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{"id":"f_…","status":"resolved","evidence":"what you checked and saw"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.
 
 The orchestrator records this block. It is how your findings reach the phase's findings ledger and `/pan:review-deep`.

@@ -44,5 +44,9 @@ completed: YYYY-MM-DD
 [One line each, or this single line if none:
  "No deviations or open questions — implementation followed plan exactly."]
 
+## Concerns
+[What was finished but is not certain, or "None"]
+- C-1: [concern]. Why: [what makes it uncertain]. Cost if wrong: [low | medium | high] — [what breaks].
+
 ## Next Phase Readiness
 [Ready for next phase]

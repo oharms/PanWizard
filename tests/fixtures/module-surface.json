@@ -333,6 +333,7 @@
   ],
   "cost.cjs": [
     "DEFAULT_RATES:object",
+    "FORECAST_MIN_SAMPLES:number",
     "HOST_LIMITS_FILE:string",
     "LONG_PROMPT_THRESHOLD:number",
     "METRICS_DIR:string",
@@ -347,11 +348,13 @@
     "cmdCostReport:function",
     "cmdModelsCheck:function",
     "computeCost:function",
+    "costForecast:function",
     "effectiveRates:function",
     "isEmptyRecord:function",
     "isSuspectRecord:function",
     "loadManagedModelPricing:function",
     "managedSettingsDir:function",
+    "quantiles:function",
     "ratesFromModelPricing:function",
     "readHostLimits:function",
     "readRecords:function",
@@ -418,12 +421,14 @@
     "cmdFindingsDispose:function",
     "cmdFindingsList:function",
     "cmdFindingsRecord:function",
+    "cmdFindingsSuppressions:function",
     "disposeFindings:function",
     "findingIdsIn:function",
     "findingsChurn:function",
     "findingsDebt:function",
     "foldFindings:function",
     "listFindings:function",
+    "listSuppressions:function",
     "readLedger:function",
     "recordVerdict:function",
     "sameFinding:function"
@@ -775,6 +780,14 @@
     "updateRoadmapAfterRemoval:function",
     "updateStateAfterPhaseComplete:function"
   ],
+  "plan-lint.cjs": [
+    "REVIEW_FOCUS_MAX:number",
+    "checkDecisions:function",
+    "checkReviewFocus:function",
+    "cmdVerifyDecisions:function",
+    "cmdVerifyReviewFocus:function",
+    "recordedDecisions:function"
+  ],
   "planning-root.cjs": [
     "DEFAULT_PLANNING_DIR:string",
     "PLANNING_SPINE:object",
@@ -808,6 +821,11 @@
     "findBottleneckCandidate:function",
     "generateMermaid:function",
     "sampleCompletedPhaseDurations:function"
+  ],
+  "research-lint.cjs": [
+    "FRESHNESS_DAYS:object",
+    "cmdResearchLint:function",
+    "lintResearch:function"
   ],
   "review-deep.cjs": [
     "REVIEWS_DIR:string",
@@ -1008,6 +1026,7 @@
     "PLAN_CHECKER:string",
     "checkPlanSet:function",
     "cmdVerifyPlanSet:function",
+    "phaseFiles:function",
     "planCheckStatus:function",
     "planDrift:function",
     "plansSha:function",

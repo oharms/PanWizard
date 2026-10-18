@@ -152,6 +152,9 @@ function buildPhasePreview(cwd, phaseNum) {
     risk_signals,
     risk_score,
     plans: planContents.map(p => ({ file: p.file, bytes: Buffer.byteLength(p.content, 'utf-8') })),
+    // p10/p50/p90 dollars for this phase's plans, from the project's own cost ledger
+    // (P6); this phase's rows are left out of its own samples.
+    cost_forecast: require('./cost.cjs').costForecast(cwd, { plans: planFiles.length, excludePhase: phaseInfo.phase_number || phaseNum }),
   };
 }
 

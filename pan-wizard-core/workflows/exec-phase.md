@@ -210,6 +210,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    If ANY spot-check fails: report which plan failed, route to failure handler — ask "Retry plan?" or "Continue with remaining waves?"
 
+   **An executor that returned `## DONE_WITH_CONCERNS`** finished its plan: run the same spot-checks and treat it as complete. Keep its concerns (each with why and cost if wrong, also under `## Concerns` in its summary) for the wave report and the phase report. Do not stop the wave for them; a high-cost concern is something the review and the verifier should look at, and the phase report puts it in front of the user.
+
    **An executor that returned `## BLOCKED_SPEC_CONFLICT`** found a test it cannot satisfy without weakening it. It is not a failure to retry: show the user its Test, Requirement and Options and ask for a ruling. "Change the test" means a revised plan that declares the test file in `files_modified` (`/pan:plan-phase {N} --gaps` or an edit to the plan), then re-run that plan; "change the requirement" means updating the requirement and the plan. Never re-run the same plan unchanged: it would meet the same test. Declaring the file permits rewriting its expectations; deleting the test, skipping it or dropping assertions still fails `verify test-integrity`, so a ruling to do that also needs `phase complete --force --reason`.
 
    If pass:
@@ -219,7 +221,8 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
 
    **{Plan ID}: {Plan Name}**
    {What was built — from summary.md}
-   {Notable deviations, if any}
+   {Notable deviations, if any, with their cost if wrong}
+   {Concerns, if it returned DONE_WITH_CONCERNS}
 
    {If more waves: what this enables for next wave}
    ---
@@ -331,7 +334,14 @@ After all waves:
 
 ### Issues Encountered
 [Aggregate from SUMMARYs, or "None"]
+
+### Concerns
+[Every concern from the plans that returned DONE_WITH_CONCERNS (and any `## Concerns` entry in a summary), high cost if wrong first:]
+- **03-02** C-1: [concern]. Why: [...]. Cost if wrong: high — [what breaks]
+[Or "None"]
 ```
+
+Concerns go into the review too: the code_review step passes them to the reviewer as `${EXECUTOR_CONCERNS}`, so a high-cost concern is checked rather than only reported.
 </step>
 
 <step name="generate_tests">
@@ -424,6 +434,13 @@ Task(
     and the changed files no summary listed (review scope JSON):
     ${REVIEW_SCOPE}
     </intent>
+
+    <executor_concerns>
+    What the executors finished but were not sure of, each with why and its cost if
+    wrong (from DONE_WITH_CONCERNS returns and the summaries' ## Concerns). Check the
+    high-cost ones first. Empty when there were none:
+    ${EXECUTOR_CONCERNS}
+    </executor_concerns>
 
     <open_findings>
     ${OPEN_REVIEW_FINDINGS}
