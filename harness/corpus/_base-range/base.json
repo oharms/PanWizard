@@ -1,0 +1,6 @@
+{
+  "id": "_base-range",
+  "task": "Implement inRange, clamp and isEmpty in src/range.js as their doc comments describe.",
+  "catch": "test/catch.test.js",
+  "mutate": ["src/range.js"]
+}

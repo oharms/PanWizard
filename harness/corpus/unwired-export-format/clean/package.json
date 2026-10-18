@@ -1,0 +1,5 @@
+{
+  "name": "corpus-unwired-export-format",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

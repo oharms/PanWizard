@@ -1,0 +1,5 @@
+{
+  "name": "corpus-swallowed-error-config",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

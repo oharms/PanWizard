@@ -1,0 +1,5 @@
+{
+  "name": "corpus-base-range",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

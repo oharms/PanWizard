@@ -1,0 +1,5 @@
+{
+  "name": "corpus-hollow-test-mean",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

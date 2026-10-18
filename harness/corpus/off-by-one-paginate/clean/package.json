@@ -1,0 +1,5 @@
+{
+  "name": "corpus-off-by-one-paginate",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

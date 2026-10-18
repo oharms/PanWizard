@@ -1,0 +1,7 @@
+{
+  "id": "unwired-export-format",
+  "category": "unwired-export",
+  "task": "Add formatDuration(ms) in src/format.js and export it from the package entry point src/index.js.",
+  "truth": { "file": "src/index.js", "summary": "formatDuration is implemented but never exported from the entry point, so callers cannot reach it" },
+  "catch": "test/catch.test.js"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "stub-slugify",
+  "category": "stub",
+  "task": "Implement slugify(text) in src/slugify.js as its doc comment describes.",
+  "truth": { "file": "src/slugify.js", "summary": "slugify is a stub that returns an empty string for every input" },
+  "catch": "test/catch.test.js"
+}

@@ -1,0 +1,7 @@
+{
+  "id": "off-by-one-paginate",
+  "category": "off-by-one",
+  "task": "Implement paginate(items, page, size) in src/paginate.js with 1-based page numbers.",
+  "truth": { "file": "src/paginate.js", "summary": "paginate treats page numbers as 0-based, so page 1 skips the first page of items" },
+  "catch": "test/catch.test.js"
+}

@@ -1,0 +1,5 @@
+{
+  "name": "corpus-test-tampering-even",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

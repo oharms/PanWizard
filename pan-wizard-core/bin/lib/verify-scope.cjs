@@ -17,7 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const { safeReadFile, execGit, findPhaseInternal, toPosix, output, escapeRegex } = require('./core.cjs');
-const { extractFrontmatter } = require('./frontmatter.cjs');
+const { extractFrontmatter, parseMustHavesBlock } = require('./frontmatter.cjs');
 const { isPlanFile, isSummaryFile, isVerificationFile } = require('./constants.cjs');
 const { planningRel } = require('./utils.cjs');
 
@@ -151,6 +151,143 @@ function scopePhase(cwd, phase) {
   };
 }
 
+// ─── Review scope (program R1) ───────────────────────────────────────────────
+// The reviewer used to get the summaries' key-files: what the executor said it touched.
+// A file the executor changed and did not list was never reviewed. The review scope is
+// the diff instead (the phase's plan commits, plus work not yet committed), with the
+// intent the code is judged against: each plan's objective, must_haves and Review Focus,
+// and the text of the requirements the plans claim.
+
+/** Files modified, staged or untracked in the working tree, relative to cwd. */
+function workingTreeFiles(cwd) {
+  const r = execGit(cwd, ['-c', 'core.quotepath=off', 'status', '--porcelain', '--untracked-files=all', '--', '.']);
+  if (r.exitCode !== 0) return { git: false, uncommitted: [], untracked: [] };
+  const top = execGit(cwd, ['rev-parse', '--show-prefix']);
+  const prefix = top.exitCode === 0 ? normalisePath(top.stdout.trim()) : '';
+  const uncommitted = [];
+  const untracked = [];
+  for (const line of r.stdout.split('\n')) {
+    if (line.length < 4) continue;
+    const code = line.slice(0, 2);
+    let p = line.slice(3);
+    if (p.includes(' -> ')) p = p.split(' -> ').pop();
+    p = normalisePath(p.replace(/^"|"$/g, ''));
+    if (prefix && p.startsWith(prefix)) p = p.slice(prefix.length);
+    if (code === '??') untracked.push(p);
+    else if (!code.includes('D')) uncommitted.push(p);
+  }
+  return { git: true, uncommitted, untracked };
+}
+
+/** A markdown section's body, from its `## <title>` heading to the next heading of the same or higher level. */
+function sectionBody(text, title) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const re = new RegExp(`^(#{1,6})\\s+${escapeRegex(title)}\\s*$`, 'i');
+  const at = lines.findIndex((l) => re.test(l.trim()));
+  if (at === -1) return null;
+  const level = lines[at].trim().match(/^#+/)[0].length;
+  const out = [];
+  for (let i = at + 1; i < lines.length; i++) {
+    const h = lines[i].match(/^(#{1,6})\s/);
+    if (h && h[1].length <= level) break;
+    out.push(lines[i]);
+  }
+  const body = out.join('\n').trim();
+  return body || null;
+}
+
+/** The text between `<tag>` and `</tag>`, trimmed, or null. */
+function tagBody(text, tag) {
+  const m = String(text || '').match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+  return m && m[1].trim() ? m[1].trim() : null;
+}
+
+/**
+ * What a reviewer of one phase reads: the diff and the intent.
+ * @returns {Object} `{phase, directory, base, files: [{path, sources, listed}], unlisted, excluded,
+ *   intent: {plans: [{plan, objective, must_haves, review_focus, requirements}], requirements: [{id, text}], missing_requirements}, git, commits}`
+ *   or `{error, reason}`. `sources` is any of commit · summary · uncommitted · untracked;
+ *   `listed` is whether a summary's key-files names it; `unlisted` lists the files that are not.
+ */
+function reviewScope(cwd, phase) {
+  const info = findPhaseInternal(cwd, phase);
+  if (!info) return { error: 'phase_not_found', reason: `no phase directory for phase ${phase}` };
+  const dir = path.join(cwd, info.directory);
+  const sources = new Map();
+  const note = (file, source) => {
+    if (!file) return;
+    if (!sources.has(file)) sources.set(file, new Set());
+    sources.get(file).add(source);
+  };
+  const listed = new Set();
+  for (const f of info.summaries.filter(isSummaryFile)) {
+    const fm = extractFrontmatter(safeReadFile(path.join(dir, f)) || '');
+    const kf = fm['key-files'] || fm.key_files || {};
+    for (const p of [...asList(kf.created), ...asList(kf.modified)]) { const n = normalisePath(p); if (n) { listed.add(n); note(n, 'summary'); } }
+  }
+  const git = committedFiles(cwd, info.phase_number);
+  for (const p of git.files) note(p, 'commit');
+  const wt = workingTreeFiles(cwd);
+  for (const p of wt.uncommitted) note(p, 'uncommitted');
+  for (const p of wt.untracked) note(p, 'untracked');
+
+  const planningPrefix = normalisePath(planningRel());
+  const files = [];
+  const excluded = [];
+  for (const file of [...sources.keys()].sort()) {
+    const why = exclusionReason(file, planningPrefix);
+    if (why) { excluded.push({ path: file, reason: why }); continue; }
+    // A file deleted by the phase has nothing left to read.
+    if (!fs.existsSync(path.join(cwd, file))) continue;
+    files.push({ path: file, sources: [...sources.get(file)].sort(), listed: listed.has(file) });
+  }
+
+  const plans = [];
+  const reqIds = new Set();
+  for (const f of info.plans.filter(isPlanFile).sort()) {
+    const text = safeReadFile(path.join(dir, f)) || '';
+    const fm = extractFrontmatter(text);
+    const requirements = asList(fm.requirements).map((s) => s.trim()).filter(Boolean);
+    for (const id of requirements) reqIds.add(id);
+    const mh = fm.must_haves && typeof fm.must_haves === 'object' ? fm.must_haves : {};
+    plans.push({
+      plan: f,
+      objective: tagBody(text, 'objective'),
+      must_haves: { truths: asList(mh.truths), artifacts: parseMustHavesBlock(text, 'artifacts'), key_links: parseMustHavesBlock(text, 'key_links') },
+      review_focus: sectionBody(text, 'Review Focus'),
+      requirements,
+    });
+  }
+  const { requirementLines } = require('./roadmap.cjs');
+  const reqText = safeReadFile(path.join(cwd, planningRel(), 'requirements.md')) || '';
+  const ids = [...reqIds].sort();
+  const requirements = ids.map((id) => ({ id, text: requirementLines(reqText, [id]).lines.join('\n').trim() || null }));
+
+  let base = null;
+  if (git.hashes.length) {
+    const r = execGit(cwd, ['rev-parse', '--verify', '-q', `${git.hashes[git.hashes.length - 1]}^`]);
+    if (r.exitCode === 0 && r.stdout) base = r.stdout.trim();
+  }
+  return {
+    phase: info.phase_number,
+    directory: info.directory,
+    base,
+    files,
+    unlisted: files.filter((f) => !f.listed).map((f) => f.path),
+    excluded,
+    intent: { plans, requirements, missing_requirements: requirements.filter((r) => !r.text).map((r) => r.id) },
+    git: git.git,
+    commits: git.commits,
+  };
+}
+
+/** `pan-tools review scope <phase>`: the JSON scope; `--raw` prints the file paths, one per line. */
+function cmdReviewScope(cwd, phase, raw) {
+  if (!phase) { output({ error: 'phase_required', reason: 'Usage: review scope <phase>' }, raw); return; }
+  const r = reviewScope(cwd, phase);
+  output(r, raw, r.error ? undefined : r.files.map((f) => f.path).join('\n'));
+}
+
 function cmdVerifyScope(cwd, phase, raw) {
   if (!phase) { output({ error: 'phase_required', reason: 'Usage: verify scope <phase>' }, raw); return; }
   const r = scopePhase(cwd, phase);
@@ -224,4 +361,4 @@ function cmdVerifyStale(cwd, phase, raw) {
   output(r, raw, r.error ? undefined : r.state);
 }
 
-module.exports = { scopePhase, cmdVerifyScope, verificationFreshness, cmdVerifyStale, coveredFiles, committedFiles, LOCKFILES, TEST_PATH_RE, TEST_FILE_RE };
+module.exports = { scopePhase, cmdVerifyScope, reviewScope, cmdReviewScope, workingTreeFiles, sectionBody, verificationFreshness, cmdVerifyStale, coveredFiles, committedFiles, LOCKFILES, TEST_PATH_RE, TEST_FILE_RE };

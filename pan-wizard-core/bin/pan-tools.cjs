@@ -255,6 +255,7 @@ const verifyIntegrity = require('./lib/verify-integrity.cjs');
 const phaseGate = require('./lib/phase-gate.cjs');
 const testGate = require('./lib/test-gate.cjs');
 const verifyRed = require('./lib/verify-red.cjs');
+const verifyScope = require('./lib/verify-scope.cjs');
 const mutate = require('./lib/mutate.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
@@ -381,7 +382,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -1296,6 +1297,17 @@ async function main() {
         hygiene.cmdHygieneClean(cwd, hygieneOpts, raw);
       } else {
         error('Unknown hygiene subcommand. Available: scan, clean [--apply] [--trace-age-days N] [--all-tracks] [--track <name>]');
+      }
+      break;
+    }
+
+    case 'review': {
+      // Program R1: the diff a reviewer reads, with the plans' intent beside it.
+      const subcommand = args[1];
+      if (subcommand === 'scope') {
+        verifyScope.cmdReviewScope(cwd, args[2], raw);
+      } else {
+        error('Unknown review subcommand. Available: scope');
       }
       break;
     }

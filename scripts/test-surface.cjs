@@ -19,7 +19,9 @@
  * Modes:
  *   node scripts/test-surface.cjs            summary
  *   node scripts/test-surface.cjs --write    write tests/fixtures/surface.json (the committed registry)
- *   node scripts/test-surface.cjs --check    exit 1 when the committed registry differs from the code
+ *   node scripts/test-surface.cjs --check    exit 1 when the committed registry differs from the code, or
+ *                                            a command, agent, verb or config key has no user (liveness, L1)
+ *   node scripts/test-surface.cjs --liveness who uses each command, agent, verb, subcommand and config key
  *   node scripts/test-surface.cjs --map      which test files reference each surface row; lists the misses
  *   node scripts/test-surface.cjs --scaffold <dir>   one todo stub per unreferenced row (for a suite rebuilt from scratch)
  *
@@ -297,6 +299,153 @@ function scaffold(missingRows, outDir) {
 
 function readJson(p) { return JSON.parse(fs.readFileSync(p, 'utf8')); }
 
+// ─── Liveness (program L1) ──────────────────────────────────────────────────
+//
+// The map above asks "does a test name it?". Liveness asks "does anything USE it?":
+//   - every shipped command and agent is named by a harness scenario, so some behavioural
+//     run exercises it as a user would;
+//   - every pan-tools verb and subcommand has a caller in what PAN ships: a prompt
+//     (commands, agents, workflows, references, templates), a native workflow's prompt
+//     (bin/install-lib.cjs), or an MCP tool or resource (the bridge registry);
+//   - every config default has a reader: code under the core, hooks, installer or MCP
+//     bridge that reads the key, or a shipped prompt that runs `config-get <key>`.
+// An orphan either gains a user or sits in tests/fixtures/liveness-allowlist.json with a
+// reason; `--check` fails on an orphan without one, and on an entry no longer needed.
+
+const LIVENESS_ALLOWLIST_REL = path.join('tests', 'fixtures', 'liveness-allowlist.json');
+const PROMPT_DIRS = Object.freeze(['commands/pan', 'agents', 'pan-wizard-core/workflows', 'pan-wizard-core/references', 'pan-wizard-core/templates']);
+const NATIVE_WORKFLOW_SOURCES = Object.freeze(['bin/install-lib.cjs']);
+const READER_DIRS = Object.freeze(['pan-wizard-core/bin', 'pan-wizard-core/mcp', 'pan-wizard-core/opencode', 'hooks', 'bin']);
+const SCENARIO_DIR = 'harness/scenarios';
+
+/** Every file under rel (recursively) whose name matches re, as posix paths; skips dist/ and node_modules/. */
+function walkFiles(root, rel, re) {
+  const out = [];
+  const walk = (r) => {
+    let ents;
+    try { ents = fs.readdirSync(path.join(root, r), { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      const p = path.posix.join(r, e.name);
+      if (e.isDirectory()) { if (e.name !== 'dist' && e.name !== 'node_modules') walk(p); } else if (re.test(e.name)) out.push(p);
+    }
+  };
+  walk(rel);
+  return out.sort();
+}
+
+/**
+ * The verbs and `verb sub` pairs a text invokes: the script path (`pan-tools.cjs <verb>`),
+ * a backticked `pan-tools <verb>`, or `pan-tools <verb>` as a shell command (opening a
+ * line, or after `|`, `;`, `&` or `(`), then the verb and an optional subcommand. Prose
+ * that mentions pan-tools is not a call.
+ */
+function pantoolsCalls(text) {
+  const out = new Set();
+  const re = /(?:pan-tools\.cjs["']?|`pan-tools|(?:^|[|;&(])[ \t]*pan-tools)[ \t]+([a-z][a-z0-9-]*)(?:[ \t]+([a-z][a-z0-9-]*))?/gm;
+  let m;
+  while ((m = re.exec(text))) { out.add(m[1]); if (m[2]) out.add(`${m[1]} ${m[2]}`); }
+  return out;
+}
+
+/** The text a liveness check reads, from the tree. Tests pass a hand-built object instead. */
+function loadLivenessInputs(root = ROOT) {
+  const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
+  const prompts = PROMPT_DIRS.flatMap((d) => walkFiles(root, d, /\.(md|js)$/)).map((file) => ({ file, src: read(file) }));
+  const native = NATIVE_WORKFLOW_SOURCES.filter((f) => fs.existsSync(path.join(root, f))).map((file) => ({ file, src: read(file) }));
+  const registry = require(path.join(root, SOURCES.mcpRegistry));
+  const mcp = [...(registry.TOOLS || []), ...(registry.RESOURCES || [])].map((t) => ({ name: t.name || t.uri, verb: t.verb, sub: (t.args && t.args[0]) || null }));
+  const scenarios = walkFiles(root, SCENARIO_DIR, /\.json$/).map((file) => ({ file, src: read(file) }));
+  const configSrc = path.posix.normalize(SOURCES.config);
+  const readers = READER_DIRS.flatMap((d) => walkFiles(root, d, /\.(c?js|mjs)$/)).map((file) => ({ file, src: read(file), isConfig: file === configSrc }));
+  return { prompts, native, mcp, scenarios, readers };
+}
+
+/** The body of buildConfigDefaults in config.cjs: where defaults are written, which is not a read. */
+function stripDefaultsBuilder(src) {
+  const start = src.indexOf('function buildConfigDefaults');
+  if (start === -1) return src;
+  const open = src.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) return src.slice(0, start) + src.slice(i + 1);
+  }
+  return src;
+}
+
+/**
+ * Who uses each piece of the surface. Pure over `surface` (extractSurface) and `inputs`
+ * (loadLivenessInputs). Returns one row per command, agent, verb, subcommand and config
+ * key: `{id, kind, users: string[]}`; a row with no users is an orphan.
+ */
+function liveness(surface, inputs) {
+  const rows = [];
+  const scen = inputs.scenarios;
+  const named = (re) => scen.filter((s) => re.test(s.src)).map((s) => s.file);
+  for (const f of surface.content['commands/pan'] || []) {
+    const name = f.replace(/\.md$/, '');
+    // /pan:<name> (Claude, Gemini), /pan-<name> or pan-<name> as a skill (Codex, Copilot, OpenCode), or the file itself.
+    rows.push({ id: `command:${name}`, kind: 'command', users: named(new RegExp(`(?:/pan[:-]|commands/pan/|\\bpan-)${esc(name)}(?![a-z0-9-])`)) });
+  }
+  for (const f of surface.content.agents || []) {
+    const name = f.replace(/\.md$/, '');
+    rows.push({ id: `agent:${name}`, kind: 'agent', users: named(new RegExp(`(?<![a-z0-9-])${esc(name)}(?![a-z0-9-])`)) });
+  }
+  const callers = new Map();
+  const add = (key, who) => { if (!callers.has(key)) callers.set(key, new Set()); callers.get(key).add(who); };
+  for (const t of [...inputs.prompts, ...inputs.native]) for (const c of pantoolsCalls(t.src)) add(c, t.file);
+  // A registry entry with no verb (one served by the bridge itself) calls nothing.
+  for (const t of inputs.mcp.filter((x) => x.verb)) { add(t.verb, `mcp:${t.name}`); if (t.sub) add(`${t.verb} ${t.sub}`, `mcp:${t.name}`); }
+  for (const v of surface.verbs) {
+    const direct = callers.get(v) || new Set();
+    // A verb is alive when it is called, bare or through any of its subcommands.
+    const viaSub = [...callers.entries()].filter(([k]) => k.startsWith(`${v} `)).flatMap(([, s]) => [...s]);
+    rows.push({ id: `caller:verb:${v}`, kind: 'verb', users: [...new Set([...direct, ...viaSub])].sort() });
+  }
+  for (const s of surface.subcommands) rows.push({ id: `caller:sub:${s}`, kind: 'sub', users: [...(callers.get(s) || [])].sort() });
+  const readerText = inputs.readers.map((r) => ({ file: r.file, src: r.isConfig ? stripDefaultsBuilder(r.src) : r.src }));
+  const promptText = [...inputs.prompts, ...inputs.native];
+  for (const key of surface.config_keys) {
+    const last = esc(key.split('.').pop());
+    const codeRe = new RegExp(`['"\`]${esc(key)}['"\`]|\\.${last}\\b|\\[['"]${last}['"]\\]|['"]${last}['"]`);
+    // A prompt reads a key with `config-get <key>`, or names the full dotted key in backticks
+    // for the agent to check in the config or the init payload (`workflow.x: true`).
+    const promptRe = new RegExp(`config-get[ \\t]+["']?${esc(key)}\\b|\`${esc(key)}[\`:= ]`);
+    const users = [...readerText.filter((r) => codeRe.test(r.src)).map((r) => r.file), ...promptText.filter((p) => promptRe.test(p.src)).map((p) => p.file)];
+    rows.push({ id: `reader:config:${key}`, kind: 'config', users: [...new Set(users)].sort() });
+  }
+  return rows;
+}
+
+/**
+ * Orphans not allowlisted, and allowlist entries that are wrong (no reason, no such row, or
+ * a row that has users now). `--check` fails when either list is non-empty.
+ */
+function livenessProblems(rows, allowlist) {
+  const allow = new Map(allowlist.map((a) => [a.id, a]));
+  const problems = [];
+  for (const a of allowlist) {
+    if (!a.reason || !String(a.reason).trim()) problems.push(`liveness allowlist entry ${a.id} has no reason`);
+    const row = rows.find((r) => r.id === a.id);
+    if (!row) problems.push(`liveness allowlist entry ${a.id} names nothing that exists — remove it`);
+    else if (row.users.length) problems.push(`liveness allowlist entry ${a.id} has a user now (${row.users[0]}) — remove the entry`);
+  }
+  const hint = { command: 'name it in a harness scenario', agent: 'name it in a harness scenario', verb: 'call it from a shipped prompt', sub: 'call it from a shipped prompt', config: 'read it in code, or drop the default' };
+  for (const r of rows) if (!r.users.length && !allow.has(r.id)) problems.push(`orphan ${r.id} — ${hint[r.kind]}, or allowlist it in ${LIVENESS_ALLOWLIST_REL} with a reason`);
+  return problems;
+}
+
+/** What `--check` decides: registry drift plus liveness problems. Pure. */
+function checkReport(committed, surface, inputs, allowlist) {
+  const drift = diffSurface(committed, surface);
+  const live = livenessProblems(liveness(surface, inputs), allowlist);
+  return { drift, live, ok: !drift.added.length && !drift.removed.length && !live.length };
+}
+
+function readLivenessAllowlist(root = ROOT) {
+  try { return readJson(path.join(root, LIVENESS_ALLOWLIST_REL)); } catch { return []; }
+}
+
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
 function main(argv) {
@@ -310,12 +459,24 @@ function main(argv) {
   if (argv.includes('--check')) {
     let committed;
     try { committed = readJson(registryPath); } catch { console.error(`no committed registry at ${REGISTRY_REL} — run --write`); return 1; }
-    const d = diffSurface(committed, surface);
-    if (!d.added.length && !d.removed.length) { console.log('surface registry matches the code'); return 0; }
-    console.error(`surface registry is stale — run \`node scripts/test-surface.cjs --write\` and commit it`);
-    for (const x of d.added) console.error(`  + ${x}`);
-    for (const x of d.removed) console.error(`  - ${x}`);
+    const { drift: d, live, ok } = checkReport(committed, surface, loadLivenessInputs(ROOT), readLivenessAllowlist(ROOT));
+    if (ok) { console.log('surface registry matches the code; every command, agent, verb and config key is alive'); return 0; }
+    if (d.added.length || d.removed.length) {
+      console.error(`surface registry is stale — run \`node scripts/test-surface.cjs --write\` and commit it`);
+      for (const x of d.added) console.error(`  + ${x}`);
+      for (const x of d.removed) console.error(`  - ${x}`);
+    }
+    if (live.length) {
+      console.error('liveness: orphans without a user or an allowlist reason');
+      for (const x of live) console.error(`  ${x}`);
+    }
     return 1;
+  }
+  if (argv.includes('--liveness')) {
+    const rows = liveness(surface, loadLivenessInputs(ROOT));
+    for (const r of rows) console.log(`${r.users.length ? 'ok    ' : 'ORPHAN'} ${r.id.padEnd(48)} ${r.users.slice(0, 2).join(', ')}${r.users.length > 2 ? ` +${r.users.length - 2}` : ''}`);
+    console.log(`liveness rows: ${rows.length} · orphans: ${rows.filter((r) => !r.users.length).length}`);
+    return 0;
   }
   const rows = mapSurface(surfaceRows(surface), loadTestSources(ROOT));
   const missing = rows.filter((r) => !r.hits.length);
@@ -339,4 +500,5 @@ module.exports = {
   ROOT, REGISTRY_REL, ALLOWLIST_REL, SOURCES, EXTRA_HOOK_ROWS,
   parseTopLevelCommands, parseGroupSubcommands, parseCaseArms, parseInstallerFlags, flattenKeys, hookMatrix,
   extractSurface, surfaceRows, referencePattern, mapSurface, listTestFiles, loadTestSources, diffSurface, scaffold,
+  LIVENESS_ALLOWLIST_REL, pantoolsCalls, loadLivenessInputs, stripDefaultsBuilder, liveness, livenessProblems, checkReport, readLivenessAllowlist,
 };

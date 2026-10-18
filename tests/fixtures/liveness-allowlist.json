@@ -1,0 +1,558 @@
+[
+  {
+    "id": "command:add-phase",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:army",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:assumptions",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:audit-deployment",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:cost",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:dashboard",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:debug",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:design-phase",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:discord",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:discuss-phase",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:experiment",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:focus-auto",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:focus-doc-audit",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:focus-drift-walking",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:focus-exec",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:focus-plan",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:focus-scan",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:focus-sync",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:git",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:health",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:hud",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:hygiene",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:insert-phase",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:knowledge",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:learn",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:links",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:mcp-bridge",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:milestone-audit",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:milestone-cleanup",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:milestone-done",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:milestone-gaps",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:milestone-new",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:optimize",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:patches",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:phase-budget",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:phase-tests",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:preview",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:profile",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:progress",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:remove-phase",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:report",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:research-phase",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:retro",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:review-deep",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:settings",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:todo-add",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:todo-check",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:update",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "command:what-if",
+    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
+  },
+  {
+    "id": "agent:pan-conductor",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-counterfactual",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-debugger",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-design-checker",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-designer",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-distiller",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-document_code",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-experiment-runner",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-hardener",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-integration-checker",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-knowledge",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-meta-reviewer",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-optimizer",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-phase-researcher",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-plan-checker",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-previewer",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-project-researcher",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-release",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-research-synthesizer",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-reviewer",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "agent:pan-roadmapper",
+    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
+  },
+  {
+    "id": "caller:verb:batch-commit",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:cache",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:dashboard",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:deps",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:drift-check",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:learnings",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:list-todos",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:milestone",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:models",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:preflight",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:template",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:verify-path-exists",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:verify-summary",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:verb:version",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:bridge cache",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:bridge list",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:bridge recommend",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:bus drain",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:bus list",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:cache prime",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:deps validate",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:experiment harvest",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:experiment prune",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:focus design",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:focus exec",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:frontmatter merge",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:frontmatter set",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:init verify-work",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:learn build-index",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:learn lint",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:learn list-promoted",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:learnings extract",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:learnings list",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:learnings prune",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory append",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory budget",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory compact",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory list",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory optimize",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory prune",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory read",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory record",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:memory select",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:milestone complete",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:models check",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:phase gate",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:review-deep analyze",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:roadmap compact",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:skills index",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:standards list",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:standards remove",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:state compact",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:state get",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:state patch",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:state resolve-blocker",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:state snapshot",
+    "reason": "No shipped prompt, native workflow or MCP tool runs it, and docs/CLI-REFERENCE.md does not document it: wire it into the workflow that needs it, or retire it (L7)."
+  },
+  {
+    "id": "caller:sub:template fill",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:template select",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:test detect",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:validate consistency",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:validate deployment",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:verify phase-completeness",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:verify reconcile",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:verify red",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:verify references",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "caller:sub:verify stubs",
+    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
+  },
+  {
+    "id": "reader:config:commit.conventional_types",
+    "reason": "Written as a default but read nowhere (documented as reserved): decide whether to read it or drop the default."
+  },
+  {
+    "id": "reader:config:execution.rollback_snapshots",
+    "reason": "Written as a default but read nowhere (documented as reserved): decide whether to read it or drop the default."
+  },
+  {
+    "id": "reader:config:workflow.phase_reports.theme",
+    "reason": "Written as a default but no code or prompt reads it: decide whether to read it or drop the default."
+  }
+]
