@@ -474,6 +474,7 @@ Quick reference of all CLI commands grouped by category.
 | 225 | `verify decisions` | Verification | plan-lint.cjs |
 | 226 | `research lint` | Verification | research-lint.cjs |
 | 227 | `state snapshot` (alias of `state-snapshot`) | State | state.cjs |
+| 228 | `cost budget` | Cost | cost.cjs |
 
 ---
 
@@ -3946,6 +3947,19 @@ pan-tools cost limits --raw    # weekly_limit_reached | ok | no_reading
 ```
 
 Returns `{available, five_hour, seven_day, age_seconds, stale, weekly_limit_stop_pct, weekly_limit_reached}`. Each window is `{used_pct, resets_at, reset_since_read}`; a window whose `resets_at` has passed reads `used_pct: 0`. A reading older than 15 minutes is `stale`, and a stale reading never reaches the stop. `weekly_limit_reached` is true when a fresh 7-day reading is at or past `cost.weekly_limit_stop_pct` in `.planning/config.json` (default `90`; `0` or `false` turns it off; any other value that is not above 0 and at most 100 falls back to `90`). `/pan:focus-auto` stops on it with `weekly_limit` (the run is resumable), and `/pan:army` checks it between missions. Headless `claude -p` runs no status line, so there is nothing to read and nothing stops on it; other runtimes pass no such block.
+
+### `cost budget --phase <N>`
+
+**Module:** `cost.cjs`
+
+A phase's spend against its budget, `cost.phase_budget_usd` (default `20`; `0` or `false` turns it off; any other value that is not a positive number reads as `20`). The phase can also be given positionally.
+
+```bash
+pan-tools cost budget --phase 3          # JSON
+pan-tools cost budget 3 --raw            # off | ok | near | over
+```
+
+Returns `{phase, budget_usd, spent_usd, pct, status, mode, warn_at_pct, unpriced}`. `spent_usd` sums the phase's priced ledger rows (suspect and empty rows left out, `phase: "03"` and `"3"` alike); `unpriced` counts its rows with no known rate. `status` is `near` from `warn_at_pct` (80) of the budget and `over` once spend reaches it. `mode` is always `warn`: exec-phase reports `near` and `over` after a wave and plan-phase in its final status, and nothing stops on it. Exits 0 whatever the status; exits 1 without a phase.
 
 ### `models check` (v3.9)
 

@@ -233,6 +233,8 @@ Longest dependency chain by points: `V6 → V1 → V2 → A1a → A1c → A6 →
 
 ## Paid steps (each needs a per-run `--max-usd` approval; there is no standing cap)
 
+Since `2026-10-18` a model-tier harness run without `--max-usd` is capped at $15 (`PAN_HARNESS_MAX_USD` changes it; owner decision). The cap is a ceiling, not an approval: each paid step below is still asked for before it runs.
+
 No paid step blocks a later item. If an evidence gate has not run or has not decided, its item still ships, in the mode the defaults table gives it.
 
 | Item | Evidence run |

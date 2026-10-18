@@ -582,6 +582,7 @@ Disable these to speed up phases in familiar domains or when conserving tokens.
 | `budget.micro_threshold_tasks` | number | `3` | Task-count ceiling (inclusive) at or below which — together with `micro_threshold_files` — `init execute-phase` classifies a plan as MICRO (`classifyPlanTier`); an explicit plan `tier:` overrides |
 | `budget.micro_threshold_files` | number | `2` | File-count ceiling for the same MICRO classification |
 | `budget.enforce` | `true`, `false` | `false` | Make the point budget a hard stop; advisory (tracked, never stops a run) by default |
+| `cost.phase_budget_usd` | dollars, `0` = off | `20` | Spend per phase PAN warns about, in API-equivalent dollars: `near` from 80%, `over` at the budget, reported after each exec-phase wave and in plan-phase's final status. It only warns, never stops. Set it with `/pan:settings`; `pan-tools cost budget --phase N` shows it |
 | `cost.weekly_limit_stop_pct` | `0`–`100` | `90` | Stop a `/pan:focus-auto` run (resumable) or an `/pan:army` campaign once Claude Code's 7-day usage window reaches this share, as the status line last saw it (`pan-tools cost limits`); `0` turns it off. Interactive Claude Code sessions on a subscription only: headless runs and other runtimes have no reading, so nothing stops on it there |
 
 ### Commit Safety Settings

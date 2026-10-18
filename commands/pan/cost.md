@@ -2,7 +2,7 @@
 name: pan:cost
 group: Observability
 description: Show token usage and estimated cost across PAN commands and agents
-argument-hint: "[report|append|clear|rebuild|limits] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]"
+argument-hint: "[report|append|clear|rebuild|limits|budget] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]"
 allowed-tools:
   - Read
   - Bash
@@ -76,6 +76,16 @@ Delete the cost log. Useful at the start of a billing cycle.
 ```
 pan-tools cost clear
 ```
+
+### `budget`
+
+A phase's spend against its budget: `cost.phase_budget_usd` in `.planning/config.json`, **20 dollars per phase by default**, `0` to turn it off. Change it with `/pan:settings` or `pan-tools config-set cost.phase_budget_usd 50`. It only warns: `near` from 80% of the budget, `over` once spend reaches it; nothing ever stops on it. exec-phase reports it after each wave and plan-phase in its final status. On a subscription the dollars are API-equivalent (the tokens priced at the rate table).
+
+```
+pan-tools cost budget --phase <N> [--raw]
+```
+
+Prints `{phase, budget_usd, spent_usd, pct, status, mode, warn_at_pct, unpriced}`; `status` is `off`, `ok`, `near` or `over`, and `--raw` prints it. `unpriced` counts the phase's rows with no known rate (not added to the spend).
 
 ### `limits`
 

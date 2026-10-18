@@ -43,10 +43,10 @@ Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on this machine
 | Tier | Steps | Cost | Default |
 |---|---|---|---|
 | 0 | `pan`, `fs`, `sh`, `build`, `cli`, `mcp` | none | yes |
-| 1 | + `model` steps (one headless `claude -p` run each, however many turns it takes), or a `cli` step marked `paid: true` (another CLI's model run) | your Claude usage, or that CLI's credits | needs `--max-usd` |
-| 2 | + chain runs (a whole `/pan-exec-waves`) | more | needs `--max-usd`, run `--repeat 5` |
+| 1 | + `model` steps (one headless `claude -p` run each, however many turns it takes), or a `cli` step marked `paid: true` (another CLI's model run) | your Claude usage, or that CLI's credits | capped at $15 unless `--max-usd` says otherwise |
+| 2 | + chain runs (a whole `/pan-exec-waves`) | more | set `--max-usd` to fit (the $15 default buys about one chain rep), run `--repeat 5` |
 
-A model-tier scenario is **skipped with the reason** `model tier requires --max-usd` when no cap is given (never green). The cap is **split equally across the
+A model-tier run (`--tier 1` or `2`) is capped at **$15** when no `--max-usd` is given; `PAN_HARNESS_MAX_USD` changes that default, `--max-usd` overrides both, and `--max-usd 0` spends nothing (each model step is then recorded as `budget`, never green). Tier 0 spends nothing and has no cap. The cap is **split equally across the
 model-tier scenarios in the run** and enforced per scenario from the measured
 `total_cost_usd` in Claude Code's JSON output, so an oracle cannot starve the scenario it is
 compared with; reps are interleaved (every scenario's rep 1 before any rep 2) so an

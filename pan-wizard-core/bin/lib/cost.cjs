@@ -664,6 +664,52 @@ function aggregate(cwd, opts) {
   };
 }
 
+// ─── Per-phase budget ───────────────────────────────────────────────────────
+// `cost.phase_budget_usd` (default $20, `0`/`false` = off). It only WARNS: `near` from
+// PHASE_BUDGET_WARN_PCT of the budget, `over` once spend reaches it. No run stops on it.
+// On a subscription the dollars are API-equivalent: what the tokens would cost at the
+// configured rates.
+
+const DEFAULT_PHASE_BUDGET_USD = 20;
+const PHASE_BUDGET_WARN_PCT = 80;
+
+function phaseBudgetUsd(cwd) {
+  let v;
+  try { v = loadConfig(cwd)?.cost?.phase_budget_usd; } catch { /* defaults */ }
+  if (v === false || v === 0 || v === '0') return 0;
+  const n = Number(v);
+  return v != null && Number.isFinite(n) && n > 0 ? n : DEFAULT_PHASE_BUDGET_USD;
+}
+
+/**
+ * A phase's spend against its budget.
+ * @returns {{phase, budget_usd, spent_usd, pct, status: 'off'|'ok'|'near'|'over', mode: 'warn', warn_at_pct, unpriced}}
+ */
+function phaseBudget(cwd, phase) {
+  const budget = phaseBudgetUsd(cwd);
+  const rates = effectiveRates(loadConfig(cwd));
+  const key = samePhaseKey(phase);
+  let spent = 0;
+  let unpriced = 0;
+  for (const r of readRecords(cwd)) {
+    if (samePhaseKey(r.phase) !== key || isSuspectRecord(r) || isEmptyRecord(r)) continue;
+    const usd = typeof r.cost_usd === 'number' ? r.cost_usd : computeCost(r, rates);
+    if (typeof usd === 'number') spent += usd;
+    else unpriced++;
+  }
+  spent = round4(spent);
+  const pct = budget > 0 ? Math.round((spent / budget) * 1000) / 10 : null;
+  let status = 'off';
+  if (budget > 0) status = pct >= 100 ? 'over' : pct >= PHASE_BUDGET_WARN_PCT ? 'near' : 'ok';
+  return { phase: String(phase), budget_usd: budget, spent_usd: spent, pct, status, mode: 'warn', warn_at_pct: PHASE_BUDGET_WARN_PCT, unpriced };
+}
+
+function cmdCostBudget(cwd, phase, raw) {
+  if (!phase) error('Usage: cost budget --phase <N>');
+  const r = phaseBudget(cwd, phase);
+  output(r, raw, r.status);
+}
+
 // ─── Cost forecast (program P6) ─────────────────────────────────────────────
 // What a plan and a phase will cost, as p10/p50/p90 dollars, from what this project's
 // agents have cost so far. Fewer than FORECAST_MIN_SAMPLES observations is no
@@ -994,6 +1040,9 @@ function cmdModelsCheck(raw) {
 
 module.exports = {
   computeCost,
+  phaseBudget,
+  cmdCostBudget,
+  DEFAULT_PHASE_BUDGET_USD,
   costForecast,
   quantiles,
   FORECAST_MIN_SAMPLES,

@@ -701,7 +701,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:cost` | Token usage + estimated cost across PAN invocations (json/table/chart) |
+| `/pan:cost` | Token usage + estimated cost across PAN invocations (json/table/chart), and `budget`: a phase's spend against its budget (`cost.phase_budget_usd`, $20 by default, warn only; change it with `/pan:settings`) |
 | `/pan:preview phase <N>\|phases\|milestone` | Read-only foresight: blast radius, a p10/p50/p90 cost forecast from the project's own cost ledger, dependency graph, milestone ETA |
 | `/pan:review-deep <phase>` | Security audit (OWASP + STRIDE) + cross-check by meta-reviewer |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook |
@@ -731,6 +731,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 |---------|---------|---------|------------------|
 | `mode` | `yolo`, `interactive` | chosen at `/pan:new-project` (`yolo` is the recommended answer; `--auto` always sets it) | Auto-approve vs confirm at each step |
 | `depth` | `quick`, `standard`, `comprehensive` | chosen at `/pan:new-project` (`--auto` uses `quick` unless the idea document's frontmatter sets `planning_depth`) | Planning thoroughness (phases × plans) |
+| `cost.phase_budget_usd` | dollars, `0` = off | `20` | Spend per phase PAN warns about (API-equivalent dollars): at 80% and once a phase passes it. Warns only; never stops a run |
 
 ### Model Profiles
 
