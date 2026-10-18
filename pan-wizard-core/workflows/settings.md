@@ -31,6 +31,7 @@ Parse current values (when a key is absent, use PAN's default: `true` for resear
 - `workflow.nyquist_validation` — validation architecture research during plan-phase
 - `model_profile` — which model each agent uses (default: `balanced`)
 - `routing.strategy` — how model tiers are adjusted at runtime (default: `static`)
+- `cost.phase_budget_usd` — spend per phase PAN warns about, in API-equivalent dollars (default: `20`; `0` = off). It never stops a run
 - `branching_strategy` — branching approach (default: `"none"`; a top-level key — a nested `git.branching_strategy` is ignored when the top-level key exists, as it does in every config `config-ensure-section` creates — write the top-level key)
 </step>
 
@@ -112,8 +113,22 @@ AskUserQuestion([
       { label: "Static (Recommended)", description: "Profile assigns fixed tiers to each agent. Predictable and simple." },
       { label: "Complexity", description: "Adjust tiers by task complexity, only where a model is resolved with the task passed (resolve-model --metadata); the *_model values workflows pass are not, so it changes nothing there" }
     ]
+  },
+  {
+    question: "Warn when a phase's spend passes how much? (API-equivalent dollars; warns only, never stops)",
+    header: "Phase budget",
+    multiSelect: false,
+    options: [
+      { label: "$20 per phase (Recommended)", description: "Warn at $16 (80%) and again once a phase passes $20" },
+      { label: "$50 per phase", description: "For larger phases or the quality profile" },
+      { label: "$10 per phase", description: "For small phases or the budget profile" },
+      { label: "Off", description: "No spend warnings; /pan:cost still reports spend" }
+    ]
   }
 ])
+```
+
+A dollar amount typed under Other is used as given.
 ```
 </step>
 
@@ -129,6 +144,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advanc
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.nyquist_validation <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set branching_strategy <none|phase|milestone>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set routing.strategy <static|complexity>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set cost.phase_budget_usd <20|50|10|0|amount>
 ```
 </step>
 
@@ -194,6 +210,7 @@ Display:
 | Nyquist Validation   | {On/Off} |
 | Git Branching        | {None/Per Phase/Per Milestone} |
 | Routing Strategy     | {Static/Complexity} |
+| Phase Budget         | {$N per phase (warn only)/Off} |
 | Saved as Defaults    | {Yes/No} |
 
 These settings apply to future /pan:plan-phase and /pan:exec-phase runs.

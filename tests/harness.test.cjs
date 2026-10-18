@@ -355,11 +355,17 @@ describe('harness runner helpers', () => {
     assert.deepEqual(fill(['<ws>/x', '<other>', '<repo>/scripts', 'plain', '<unknown>'], { ws: 'W', other: 'O', repo: 'R', pkg: 'P' }), ['W/x', 'O', 'R/scripts', 'plain', '<unknown>']);
   });
 
-  test('parseArgs: tier defaults to 0, model spend is off unless --max-usd is given', () => {
+  test('parseArgs: tier defaults to 0, which never spends; a model tier caps at $15 unless told otherwise', () => {
     const a = parseArgs([]);
     assert.equal(a.tier, 0); assert.equal(a.maxUsd, null); assert.equal(a.repeat, 1);
     const b = parseArgs(['--tier', '2', '--max-usd', '3', '--repeat', '5', '--scenario', 'x', '--scenario', 'y']);
-    assert.equal(b.tier, 2); assert.equal(b.maxUsd, 3); assert.equal(b.repeat, 5); assert.deepEqual(b.scenarios, ['x', 'y']);
+    assert.equal(b.tier, 2); assert.equal(b.maxUsd, 3); assert.equal(b.maxUsdDefaulted, false); assert.equal(b.repeat, 5); assert.deepEqual(b.scenarios, ['x', 'y']);
+    const c = parseArgs(['--tier', '1'], {});
+    assert.deepEqual([c.maxUsd, c.maxUsdDefaulted], [15, true]);
+    assert.equal(parseArgs(['--tier', '2'], { PAN_HARNESS_MAX_USD: '7.5' }).maxUsd, 7.5, 'the environment changes the default');
+    assert.equal(parseArgs(['--tier', '2'], { PAN_HARNESS_MAX_USD: 'lots' }).maxUsd, 15, 'a bad value keeps the default');
+    assert.equal(parseArgs(['--tier', '2', '--max-usd', '0'], { PAN_HARNESS_MAX_USD: '9' }).maxUsd, 0, 'the flag wins, and 0 means spend nothing');
+    assert.equal(parseArgs(['--tier', '0'], { PAN_HARNESS_MAX_USD: '9' }).maxUsd, null, 'tier 0 never carries a cap');
     assert.throws(() => parseArgs(['--bogus']), /unknown argument/);
   });
 

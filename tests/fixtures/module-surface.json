@@ -332,6 +332,7 @@
     "sumTranscriptUsage:function"
   ],
   "cost.cjs": [
+    "DEFAULT_PHASE_BUDGET_USD:number",
     "DEFAULT_RATES:object",
     "FORECAST_MIN_SAMPLES:number",
     "HOST_LIMITS_FILE:string",
@@ -343,6 +344,7 @@
     "appendRecord:function",
     "checkRatesStaleness:function",
     "cmdCostAppend:function",
+    "cmdCostBudget:function",
     "cmdCostClear:function",
     "cmdCostLimits:function",
     "cmdCostReport:function",
@@ -354,6 +356,7 @@
     "isSuspectRecord:function",
     "loadManagedModelPricing:function",
     "managedSettingsDir:function",
+    "phaseBudget:function",
     "quantiles:function",
     "ratesFromModelPricing:function",
     "readHostLimits:function",

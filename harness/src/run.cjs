@@ -7,9 +7,10 @@
  *   node harness/src/run.cjs [--scenario <id>]... [--tier 0|1|2] [--max-usd <n>]
  *                            [--repeat <n>] [--state-dir <dir>] [--repo <dir>] [--keep]
  *
- * Tier 0 (default) is model-free and free. A model step is REFUSED without an
- * explicit --max-usd; the cap is enforced from measured spend and reaching it ends
- * the run with a run-level note, not a finding against PAN.
+ * Tier 0 (default) is model-free and free, and carries no cap. A model tier (1, 2) is
+ * capped at DEFAULT_MAX_USD ($15) unless --max-usd or PAN_HARNESS_MAX_USD says
+ * otherwise (0 = spend nothing); the cap is enforced from measured spend and reaching
+ * it ends the run with a run-level note, not a finding against PAN.
  *
  * Every run: pack the repo → extract → install from the package (never the source
  * tree) → for each scenario: workspace + seed → install → steps → assertions.
@@ -37,8 +38,12 @@ const HARNESS_ROOT = path.join(__dirname, '..');
 const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
 const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 
-function parseArgs(argv) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [] };
+// The spend cap a model-tier run gets when none is given. The environment changes it
+// (PAN_HARNESS_MAX_USD); --max-usd overrides both. Tier 0 spends nothing and has none.
+const DEFAULT_MAX_USD = 15;
+
+function parseArgs(argv, env = process.env) {
+  const a = { scenarios: [], tier: 0, maxUsd: null, maxUsdDefaulted: false, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [] };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -76,6 +81,11 @@ function parseArgs(argv) {
     else if (k === '--scoreboard') { a.scoreboards.push(path.resolve(v)); i++; }
     else if (k === '--help' || k === '-h') { a.help = true; }
     else throw new Error(`unknown argument: ${k}`);
+  }
+  if (a.tier >= 1 && a.maxUsd === null) {
+    const fromEnv = Number(env && env.PAN_HARNESS_MAX_USD);
+    a.maxUsd = env && env.PAN_HARNESS_MAX_USD != null && Number.isFinite(fromEnv) && fromEnv >= 0 ? fromEnv : DEFAULT_MAX_USD;
+    a.maxUsdDefaulted = true;
   }
   return a;
 }
@@ -397,6 +407,7 @@ function main() {
   const failures = [];
   const passedSteps = [];
   const startedAt = Date.now();
+  if (args.maxUsdDefaulted) log(`budget: ${args.maxUsd} (default; --max-usd or PAN_HARNESS_MAX_USD changes it)`);
   if (args.maxUsd !== null) {
     for (const [id, share] of shares) if (share > 0) log(`budget share ${id}: $${share.toFixed(2)}`);
   }
@@ -619,4 +630,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+module.exports = { DEFAULT_MAX_USD, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

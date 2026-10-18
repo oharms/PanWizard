@@ -240,6 +240,12 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
      2>/dev/null || true
    ```
 
+   Check the phase's spend against its budget (`cost.phase_budget_usd`, default $20; it only warns):
+   ```bash
+   BUDGET=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs cost budget --phase "${PHASE_NUMBER}" 2>/dev/null)
+   ```
+   When its `status` is `near` or `over`, add one line to the wave report: "Spend: ${spent_usd} of the ${budget_usd} phase budget (${pct}%)", and for `over`, "over budget: the phase keeps running; change the budget with /pan:settings". Do not stop, pause or ask: the budget warns, it never blocks. `ok` and `off` add nothing.
+
    - Bad: "Wave 2 complete. Proceeding to Wave 3."
    - Good: "Terrain system complete — 3 biome types, height-based texturing, physics collision meshes. Vehicle physics (Wave 3) can now reference ground surfaces."
 

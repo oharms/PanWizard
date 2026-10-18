@@ -546,6 +546,15 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state update "Last Activity" "$
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state update "Last Activity Description" "Phase ${PHASE_NUMBER} planned — ${PLAN_COUNT} plans created"
 ```
 
+**Spend so far and what execution may cost** (`cost.phase_budget_usd`, default $20; it only warns):
+
+```bash
+BUDGET=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs cost budget --phase "${PHASE_NUMBER}" 2>/dev/null)
+FORECAST=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs preview phase "${PHASE_NUMBER}" 2>/dev/null)
+```
+
+In the final status, when the budget's `status` is not `off`, add: "Budget: ${spent_usd} of ${budget_usd} spent so far". When `FORECAST`'s `cost_forecast.phase.status` is `ok`, add its p50 and p10–p90, and say so when the p50 alone is above what is left of the budget. When the forecast is `insufficient`, say nothing about it. Never stop or ask on either.
+
 Route to `<offer_next>` OR `auto_advance` depending on flags/config.
 
 **Circular optimization — log plan creation:**

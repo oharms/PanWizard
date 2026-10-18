@@ -1439,8 +1439,10 @@ async function main() {
         }, raw);
       } else if (subcommand === 'limits') {
         cost.cmdCostLimits(cwd, raw);
+      } else if (subcommand === 'budget') {
+        cost.cmdCostBudget(cwd, getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null), raw);
       } else {
-        error('Unknown cost subcommand. Available: report, append, clear, rebuild, limits');
+        error('Unknown cost subcommand. Available: report, append, clear, rebuild, limits, budget');
       }
       break;
     }

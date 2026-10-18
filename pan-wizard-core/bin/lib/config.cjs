@@ -65,6 +65,8 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
     // A7: the pre-tool guard. `report` logs to <planning>/guard.jsonl; `enforce` also
     // denies a write that puts a credential in a file; `off` disables it.
     hooks: { guard: 'report' },
+    // Spend per phase, in API-equivalent dollars. It only warns (80% and over); 0 = off.
+    cost: { phase_budget_usd: 20 },
     brave_search: hasBraveSearch,
     budget: {
       default_points: 50,
@@ -105,6 +107,7 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
     ...userDefaults,
     workflow: { ...hardcoded.workflow, ...(userDefaults.workflow || {}) },
     budget: { ...hardcoded.budget, ...(userDefaults.budget || {}) },
+    cost: { ...hardcoded.cost, ...(userDefaults.cost || {}) },
     commit: { ...hardcoded.commit, ...(userDefaults.commit || {}) },
     execution: { ...hardcoded.execution, ...(userDefaults.execution || {}) },
     routing: { ...hardcoded.routing, ...(userDefaults.routing || {}) },

@@ -12,6 +12,9 @@
     "mutation_gate": "report",
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
+  "cost": {
+    "phase_budget_usd": 20
+  },
   "planning": {
     "commit_docs": true,
     "search_gitignored": false
