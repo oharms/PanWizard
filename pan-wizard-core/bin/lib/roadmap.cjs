@@ -773,5 +773,6 @@ module.exports = {
   roadmapRequirementIds,
   phaseRequirementIds,
   phaseDependencies,
+  requirementLines,
   ROADMAP_SLICE_SUFFIX,
 };

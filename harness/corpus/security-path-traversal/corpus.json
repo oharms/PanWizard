@@ -1,0 +1,7 @@
+{
+  "id": "security-path-traversal",
+  "category": "security-flaw",
+  "task": "Implement safeJoin(root, rel) in src/files.js: join a user-supplied relative path onto root, refusing any path that escapes root.",
+  "truth": { "file": "src/files.js", "summary": "safeJoin does not refuse .. segments, so a caller can reach files outside root (path traversal)" },
+  "catch": "test/catch.test.js"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "gen-range-L17-eq-to-neq",
+  "category": "logic-inversion",
+  "task": "Implement inRange, clamp and isEmpty in src/range.js as their doc comments describe.",
+  "truth": {
+    "file": "src/range.js",
+    "summary": "line 17: `if (xs.length === 0) return true;` became `if (xs.length !== 0) return true;` (eq→neq)"
+  },
+  "catch": "test/catch.test.js",
+  "mutation": {
+    "base": "_base-range",
+    "file": "src/range.js",
+    "line": 17,
+    "op": "eq→neq",
+    "before": "  if (xs.length === 0) return true;",
+    "after": "  if (xs.length !== 0) return true;"
+  }
+}

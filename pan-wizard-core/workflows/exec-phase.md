@@ -386,13 +386,12 @@ TEST_AFTER=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 
 **Skip if** `--skip-review` or `--fast` flag is present in $ARGUMENTS.
 
-1. Collect changed files from executor summaries:
+1. Collect the review scope: the files the phase's commits changed plus any uncommitted or untracked work, whether or not a summary lists them, and the intent to judge them against:
 ```bash
-# Read each summary.md and extract key-files.created + key-files.modified
-for summary in "$PHASE_DIR"/*-summary.md; do
-  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs summary-extract "$summary" --fields key_files | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const k=JSON.parse(s).key_files||{};for(const f of [...(k.created||[]),...(k.modified||[])])console.log(f)})"
-done | sort -u > /tmp/review-files.txt
+REVIEW_SCOPE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs review scope "${PHASE_NUMBER}")
+CHANGED_FILES_LIST=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs review scope "${PHASE_NUMBER}" --raw)
 ```
+`REVIEW_SCOPE` is JSON. Its `unlisted` array holds the changed files no summary's key-files names. Review them like the others: an executor that changed a file without listing it is exactly what a review must not miss. Its `intent` holds each plan's objective, `must_haves` and Review Focus, and the text of the requirements the plans claim.
 
 2. Collect the reviewer's earlier open findings on this phase (empty on a first review), then spawn pan-reviewer:
 ```bash
@@ -419,6 +418,12 @@ Task(
     Phase: ${PHASE_NUMBER} - ${PHASE_NAME}
     Phase directory: ${phase_dir}
     </context>
+
+    <intent>
+    The plans' objectives, must_haves and Review Focus, the requirements they claim,
+    and the changed files no summary listed (review scope JSON):
+    ${REVIEW_SCOPE}
+    </intent>
 
     <open_findings>
     ${OPEN_REVIEW_FINDINGS}

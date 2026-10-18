@@ -843,6 +843,7 @@
     "extractMilestones:function",
     "phaseDependencies:function",
     "phaseRequirementIds:function",
+    "requirementLines:function",
     "roadmapRequirementIds:function",
     "syncRequirementCheckboxes:function"
   ],
@@ -1032,12 +1033,16 @@
     "LOCKFILES:object",
     "TEST_FILE_RE:object",
     "TEST_PATH_RE:object",
+    "cmdReviewScope:function",
     "cmdVerifyScope:function",
     "cmdVerifyStale:function",
     "committedFiles:function",
     "coveredFiles:function",
+    "reviewScope:function",
     "scopePhase:function",
-    "verificationFreshness:function"
+    "sectionBody:function",
+    "verificationFreshness:function",
+    "workingTreeFiles:function"
   ],
   "verify.cjs": [
     "calculateDriftScore:function",

@@ -231,7 +231,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
 | `verify-integrity.cjs` | **(program V3)** `verify test-integrity <phase>`: walks the phase's plan commits and reports a deleted test, a skip or only marker added (JS, Python, Go, Rust, Java), assertions dropped, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail; a renamed test is a warning. Uses verify-scope's `committedFiles()`. |
 | `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
-| `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. Re-exported through verify.cjs. |
+| `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. `review scope <phase>` (program R1): the files a reviewer reads (the phase's commits plus uncommitted and untracked work) and the plans' intent. Re-exported through verify.cjs. |
 
 ---
 
@@ -462,6 +462,7 @@ Quick reference of all CLI commands grouped by category.
 | 219 | `test detect` | Verification | test-gate.cjs |
 | 220 | `verify red` | Verification | verify-red.cjs |
 | 221 | `verify mutate` | Verification | mutate.cjs |
+| 222 | `review scope` | Verification | verify-scope.cjs |
 
 ---
 
@@ -1723,6 +1724,17 @@ pan-tools verify test-integrity 3 --raw    # clean | violated | not_checked
 ```
 
 **Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/` or `spec/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test(s).java`/`.kt`/`.cs`, or a Rust file holding `#[test]` or `#[cfg(test)]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
+
+### `review scope <phase>`
+
+What a reviewer of the phase reads (program R1): the diff, not the executor's own list of what it touched, with the intent to judge it against. exec-phase passes it to pan-reviewer.
+
+```bash
+pan-tools review scope 3          # {phase, directory, base, files: [{path, sources, listed}], unlisted[], excluded[], intent: {plans[], requirements[], missing_requirements[]}, git, commits}
+pan-tools review scope 3 --raw    # the file paths, one per line
+```
+
+**Files** are those the phase's plan commits changed (subjects like `feat(03-01): …`), the summaries' key-files, and the working tree's uncommitted and untracked files; `sources` says which of `commit`, `summary`, `uncommitted` and `untracked` each came from. The planning tree, lockfiles and PAN's runtime directories are `excluded`, and a file the phase deleted is left out. `listed` is whether a summary's key-files names the file; **`unlisted`** collects the ones it does not, the files a review driven by the summaries never saw. **`intent.plans`** holds each plan's `objective`, `must_haves` (truths, artifacts, key_links), its `## Review Focus` section (`review_focus`, null without one) and the requirement ids it claims; **`intent.requirements`** the text of each claimed id from requirements.md, with ids it does not find in `missing_requirements`. `base` is the parent of the oldest plan commit. Exit 1 for a missing or unknown phase.
 
 ### `verify red <phase> [--timeout <ms>]`
 

@@ -1,0 +1,18 @@
+{
+  "id": "gen-range-L5-lte-to-lt",
+  "category": "off-by-one",
+  "task": "Implement inRange, clamp and isEmpty in src/range.js as their doc comments describe.",
+  "truth": {
+    "file": "src/range.js",
+    "summary": "line 5: `return n >= lo && n <= hi;` became `return n >= lo && n < hi;` (lte→lt)"
+  },
+  "catch": "test/catch.test.js",
+  "mutation": {
+    "base": "_base-range",
+    "file": "src/range.js",
+    "line": 5,
+    "op": "lte→lt",
+    "before": "  return n >= lo && n <= hi;",
+    "after": "  return n >= lo && n < hi;"
+  }
+}

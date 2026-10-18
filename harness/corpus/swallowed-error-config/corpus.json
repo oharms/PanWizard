@@ -1,0 +1,7 @@
+{
+  "id": "swallowed-error-config",
+  "category": "swallowed-error",
+  "task": "Implement readConfig(text) in src/config.js: parse JSON and reject a config whose port is not a number.",
+  "truth": { "file": "src/config.js", "summary": "readConfig catches every error and returns an empty object, so invalid JSON and a bad port pass silently" },
+  "catch": "test/catch.test.js"
+}

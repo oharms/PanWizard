@@ -1,0 +1,18 @@
+{
+  "id": "gen-range-L18-false-to-true",
+  "category": "logic-inversion",
+  "task": "Implement inRange, clamp and isEmpty in src/range.js as their doc comments describe.",
+  "truth": {
+    "file": "src/range.js",
+    "summary": "line 18: `return false;` became `return true;` (false→true)"
+  },
+  "catch": "test/catch.test.js",
+  "mutation": {
+    "base": "_base-range",
+    "file": "src/range.js",
+    "line": 18,
+    "op": "false→true",
+    "before": "  return false;",
+    "after": "  return true;"
+  }
+}

@@ -93,6 +93,8 @@ A fixed baseline that applies even when the project documents no standards (Fowl
 
 ## Scope (unrequested work)
 
+When the prompt carries an `<intent>` block (the `review scope` JSON), it is what you judge the change against: each plan's `objective`, `must_haves` and `review_focus` (the risk the planner asked a reviewer to check, so check it first and say what you found), and the text of the requirements the plans claim. Its `unlisted` array names changed files no summary's key-files lists: review them as closely as the rest, and say in the report that the summary did not list them.
+
 Compare what the changed code does with what the phase's plans asked for (their tasks and `must_haves`). Code that adds behaviour no plan task or requirement mentions is a finding: a feature nobody asked for, an unrelated refactor folded into the change, or an option no requirement needs. Use category `Unrequested` at WARNING, or at ERROR when it changes existing behaviour without a plan saying so. Its class in the `pan-verdict` block is `unrequested`. Supporting code the tasks need (tests, types, wiring) is not a finding.
 
 </review_checks>

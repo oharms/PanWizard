@@ -1,0 +1,5 @@
+{
+  "name": "corpus-scope-creep-normalize",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

@@ -30,13 +30,15 @@ const { check } = require('./assert.cjs');
 const { wilson, passHatK, sprt } = require('./stats.cjs');
 const { readLedger, writeLedger, mergeRun, isPromotable } = require('./ledger.cjs');
 const { findCli, unmetRequirement } = require('./cli-detect.cjs');
+const { loadCorpus } = require('./corpus.cjs');
+const { readRows, scoreboard, renderMarkdown } = require('../scripts/catch-rate.cjs');
 
 const HARNESS_ROOT = path.join(__dirname, '..');
 const DEFAULT_REPO = path.join(HARNESS_ROOT, '..');
 const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 
 function parseArgs(argv) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false };
+  const a = { scenarios: [], tier: 0, maxUsd: null, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [] };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -68,6 +70,10 @@ function parseArgs(argv) {
     // re-records its cassette from it instead of replaying. Recording from a real model is
     // not a harness flag: it spends and needs an API key (program H2 evidence step).
     else if (k === '--record') a.record = true;
+    // --scoreboard <results.jsonl> (H4): add the detection scoreboard (catch and false-alarm
+    // rates per judge × host × profile against harness/corpus/) to report.md and report.json.
+    // Repeatable; the rows are judge runs replayed from cassettes or recorded live.
+    else if (k === '--scoreboard') { a.scoreboards.push(path.resolve(v)); i++; }
     else if (k === '--help' || k === '-h') { a.help = true; }
     else throw new Error(`unknown argument: ${k}`);
   }
@@ -349,10 +355,15 @@ function persistStepOutput(runDir, scenarioId, rep, index, outcome) {
   } catch { /* evidence is best effort */ }
 }
 
+/** The detection scoreboard (H4) from result-row files, scored against the corpus. */
+function detectionScoreboard(files) {
+  return scoreboard(readRows(files), loadCorpus());
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id] [--require-run id]... [--record]\n');
+    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id] [--require-run id]... [--record] [--scoreboard results.jsonl]...\n');
     return 0;
   }
   const stateDir = args.stateDir || defaultStateDir();
@@ -555,6 +566,7 @@ function main() {
     completion: Object.values(byScenario),
     controls: controlResults,
     failures, promotable: promotable.map(e => ({ signature: e.signature, scenario: e.scenario, step: e.step, expect: e.expect, detail: e.detail, runs: e.runs.length })),
+    scoreboard: args.scoreboards.length ? detectionScoreboard(args.scoreboards) : null,
   };
   fs.writeFileSync(path.join(runDir, 'report.json'), JSON.stringify({ ...summary, steps: results }, null, 2));
   const lines = [
@@ -578,6 +590,7 @@ function main() {
     for (const f of failures) lines.push(`- **${f.scenario}** step ${f.step}: \`${f.expect}\` → ${f.failure}`, f.why ? `  - why this step exists: ${f.why}` : '');
     lines.push('');
   }
+  if (summary.scoreboard) lines.push(...renderMarkdown(summary.scoreboard));
   if (promotable.length) {
     lines.push('## Promotable findings (ledger)', '');
     for (const e of promotable) lines.push(`- \`${e.signature}\` ${e.scenario} step ${e.step} \`${e.expect}\` — ${e.detail} (${e.runs.length} run${e.runs.length === 1 ? '' : 's'})`);
@@ -606,4 +619,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, MIN_MODEL_STEP_USD };
+module.exports = { parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

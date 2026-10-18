@@ -1,0 +1,5 @@
+{
+  "name": "corpus-security-path-traversal",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}

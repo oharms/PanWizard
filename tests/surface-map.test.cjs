@@ -11,8 +11,10 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const {
   ROOT, REGISTRY_REL, ALLOWLIST_REL, extractSurface, surfaceRows, mapSurface, loadTestSources, diffSurface,
+  LIVENESS_ALLOWLIST_REL, pantoolsCalls, loadLivenessInputs, stripDefaultsBuilder, liveness, livenessProblems, checkReport, readLivenessAllowlist,
 } = require('../scripts/test-surface.cjs');
 
 describe('surface map — the code names the surface, the tests must name it back', () => {
@@ -59,5 +61,94 @@ describe('surface map — the code names the surface, the tests must name it bac
     const fake = mapSurface([{ id: `sub:state ${never}`, kind: 'sub', verb: 'state', sub: never }, { id: 'sub:state snapshot', kind: 'sub', verb: 'state', sub: 'snapshot' }], loadTestSources(ROOT));
     assert.equal(fake[0].hits.length, 0);
     assert.ok(fake[1].hits.length > 0);
+  });
+});
+
+describe('liveness registry (program L1) — every command, agent, verb and config key has a user', () => {
+  const surface = extractSurface(ROOT);
+  const inputs = loadLivenessInputs(ROOT);
+  const rows = liveness(surface, inputs);
+  const allowlist = readLivenessAllowlist(ROOT);
+  const committed = JSON.parse(fs.readFileSync(path.join(ROOT, REGISTRY_REL), 'utf8'));
+  const users = (id) => (rows.find((r) => r.id === id) || { users: null }).users;
+  // A name no file in the tree can contain, built at run time.
+  const never = `zz${process.pid}x${Date.now()}`;
+
+  test('the tree is clean: every orphan is allowlisted with a reason, and no entry is stale', () => {
+    assert.deepEqual(livenessProblems(rows, allowlist), []);
+  });
+
+  test('the registry is not vacuous: known users are found', () => {
+    assert.ok(users('command:quick').some((f) => f.endsWith('quick-mode.json')), 'quick-mode scenario runs /pan:quick');
+    assert.ok(users('agent:pan-executor').length > 0);
+    assert.ok(users('caller:verb:state').length > 0);
+    assert.ok(users('caller:sub:validate health').some((u) => u.startsWith('mcp:')), 'pan://health calls validate health');
+    assert.ok(users('reader:config:workflow.phase_gate').length > 0);
+    assert.ok(rows.filter((r) => r.kind === 'command').length === surface.content['commands/pan'].length);
+  });
+
+  test('--check fails on a seeded orphan command, verb, subcommand and config key', () => {
+    const seeded = JSON.parse(JSON.stringify(surface));
+    seeded.content['commands/pan'].push(`${never}.md`);
+    seeded.verbs.push(`${never}-verb`);
+    seeded.subcommands.push(`state ${never}`);
+    seeded.config_keys.push(`workflow.${never}_key`);
+    const r = checkReport(seeded, seeded, inputs, allowlist);
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.drift, { added: [], removed: [] }, 'the seeds are liveness problems, not registry drift');
+    for (const id of [`command:${never}`, `caller:verb:${never}-verb`, `caller:sub:state ${never}`, `reader:config:workflow.${never}_key`]) {
+      assert.ok(r.live.some((p) => p.startsWith(`orphan ${id} `)), `${id} not reported: ${r.live.join('\n')}`);
+    }
+    assert.equal(checkReport(committed, surface, inputs, allowlist).ok, true, 'the unseeded tree passes');
+  });
+
+  test('a stale or reasonless allowlist entry fails', () => {
+    const used = rows.find((r) => r.users.length);
+    const p = livenessProblems(rows, [...allowlist, { id: used.id, reason: 'x' }, { id: `command:${never}`, reason: 'gone' }, { ...allowlist[0], reason: '' }]);
+    assert.ok(p.some((x) => x.includes(`${used.id} has a user now`)));
+    assert.ok(p.some((x) => x.includes(`command:${never} names nothing`)));
+    assert.ok(p.some((x) => x.includes('has no reason')));
+  });
+
+  test('a user added for an orphan is found (the seed comes alive)', () => {
+    const seeded = JSON.parse(JSON.stringify(surface));
+    seeded.verbs.push(`${never}-verb`);
+    seeded.content.agents.push(`${never}-agent.md`);
+    const withUsers = {
+      ...inputs,
+      prompts: [...inputs.prompts, { file: 'commands/pan/x.md', src: `Run \`node "$PT/pan-tools.cjs" ${never}-verb now\`` }],
+      scenarios: [...inputs.scenarios, { file: 'harness/scenarios/x.json', src: `{"prompt": "spawn ${never}-agent"}` }],
+    };
+    const r = liveness(seeded, withUsers);
+    assert.deepEqual(r.find((x) => x.id === `caller:verb:${never}-verb`).users, ['commands/pan/x.md']);
+    assert.deepEqual(r.find((x) => x.id === `agent:${never}-agent`).users, ['harness/scenarios/x.json']);
+  });
+
+  test('pantoolsCalls reads the invocation shapes prompts use', () => {
+    const c = pantoolsCalls('node "$HOME/.claude/pan-wizard-core/bin/pan-tools.cjs" phase complete 3\n`pan-tools state load`\necho {} \\\n  | pan-tools focus reflection\nprose about pan-tools is not a call.');
+    assert.ok(c.has('phase complete') && c.has('phase') && c.has('state load') && c.has('focus reflection'));
+    assert.equal(c.has('is not'), false);
+  });
+
+  test('writing a default is not reading it', () => {
+    const src = "function buildConfigDefaults() {\n  return { workflow: { only_here: true } };\n}\nconst x = cfg.workflow.read_here;";
+    const stripped = stripDefaultsBuilder(src);
+    assert.equal(stripped.includes('only_here'), false);
+    assert.ok(stripped.includes('read_here'));
+  });
+
+  test('the CLI --check exits 0 on the tree', () => {
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'test-surface.cjs'), '--check'], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /every command, agent, verb and config key is alive/);
+  });
+
+  test(`${LIVENESS_ALLOWLIST_REL} reasons are specific to the kind of orphan`, () => {
+    for (const a of allowlist) {
+      const kind = a.id.split(':')[0];
+      if (kind === 'command' || kind === 'agent') assert.match(a.reason, /harness scenario/, a.id);
+      if (kind === 'caller') assert.match(a.reason, /prompt/, a.id);
+      if (kind === 'reader') assert.match(a.reason, /default/, a.id);
+    }
   });
 });

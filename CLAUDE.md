@@ -57,10 +57,10 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 194 |
+| Unit test files (`tests/*.test.cjs`) | 196 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 5549 |
-| Total test suites | 1180 |
+| Total tests (npm run test:all) | 5593 |
+| Total test suites | 1188 |
 | Hooks (`hooks/*.js`) | 8 |
 | Specs (`docs/specs/*.md`) | 57 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
@@ -159,7 +159,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `scripts/plugin-path.js` — rebuilds the plugin and prints its absolute path as **exactly one stdout line**, the contract a plugin-marketplace `command` source requires. Claude Code runs it from the user's HOME, so nothing may depend on cwd, and the builder's output is relayed to stderr
 - `scripts/npm-dist-tag.js` — prints the npm dist-tag a version publishes under (`next` for a prerelease, `latest` otherwise); `release.yml` publishes with it so a release candidate never becomes `latest`
 - `scripts/deprecate-old-versions.js` — release housekeeping: after a successful publish, deprecates every stable release outside the newest-3 window plus any superseded prerelease. Dry-run by default; **never unpublishes** (a test asserts the script has no unpublish path)
-- `scripts/test-surface.cjs` — derives the shipped surface from the code (verbs, subcommands, dispatcher arms, installer flags, hook × runtime, MCP tools/resources, config keys, content dirs) into `tests/fixtures/surface.json`; `--check` fails on drift, `--map` shows which test names each row, `--scaffold <dir>` writes a todo stub per unreferenced row. `tests/surface-map.test.cjs` enforces it with `tests/fixtures/surface-allowlist.json` (every entry needs a reason)
+- `scripts/test-surface.cjs` — derives the shipped surface from the code (verbs, subcommands, dispatcher arms, installer flags, hook × runtime, MCP tools/resources, config keys, content dirs) into `tests/fixtures/surface.json`; `--check` fails on drift, `--map` shows which test names each row, `--scaffold <dir>` writes a todo stub per unreferenced row. `tests/surface-map.test.cjs` enforces it with `tests/fixtures/surface-allowlist.json` (every entry needs a reason). It is also the **liveness registry** (program L1): `--check` fails when a shipped command or agent is named by no harness scenario, a verb or subcommand has no caller in a shipped prompt, native workflow or MCP tool, or a config default has no reader, unless `tests/fixtures/liveness-allowlist.json` gives the reason; `--liveness` lists who uses what
 - `scripts/coverage-gate.cjs` — runs the suite under Node's own coverage (`node --test --experimental-test-coverage`, Node 22+) and fails when a dispatcher `case` arm never executed, or when overall line or function coverage, or a module group's line coverage, drops below its floor in `tests/fixtures/coverage-policy.json`. Release-check Gate 9; advisory CI step on the Node 22 jobs. `npm run test:coverage`
 - `scripts/mutation-probe.cjs` — **report-only** (`npm run test:mutate`): breaks the code on purpose inside a throwaway `git worktree` and reports which mutations the suite failed to notice. Answers what coverage cannot — not "did the line run" but "would a test fail if it were wrong". Sampled and seeded (`--max`, `--seed`, `--target`); targets the cost and trace logger hooks, `cost.cjs`, `cost-rebuild.cjs` and the dispatcher. Never a gate: release-check and CI do not run it, and `tests/mutation-probe.test.cjs` asserts they do not
 - `scripts/test-quality-lint.cjs` — the assertion shapes that passed while the feature was broken (OR-shaped liveness asserts, in-process `cmd*` calls that exit the process, `assert(true)`, length-only CLI asserts, bare platform returns, tight wall-clock bounds, real-HOME reads, committed todos, OR-of-bare-property existence asserts), applied to the suite by `tests/test-quality.test.cjs` with `tests/fixtures/test-quality-allowlist.json`

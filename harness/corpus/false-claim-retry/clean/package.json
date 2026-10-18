@@ -1,0 +1,5 @@
+{
+  "name": "corpus-false-claim-retry",
+  "private": true,
+  "scripts": { "test": "node --test" }
+}
