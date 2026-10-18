@@ -342,6 +342,12 @@ Verified patterns from official sources:
 
 *(If no gaps: "None — existing test infrastructure covers all phase requirements")*
 
+## Claims
+
+| Claim | Type | Source | Checked |
+|-------|------|--------|---------|
+| [what is true] | [version / api / pricing / security / practice / general] | [URL, doc section or Context7 id] | [YYYY-MM-DD] |
+
 ## Sources
 
 ### Primary (HIGH confidence)
@@ -500,6 +506,14 @@ This section is REQUIRED when IDs are provided. The planner uses it to map requi
 Write to: `$PHASE_DIR/$PADDED_PHASE-research.md`
 
 ⚠️ `commit_docs` controls git only, NOT file writing. Always write first.
+
+**Claims with provenance.** Every fact a plan will rest on (a version, an API's behaviour, a price, a security advisory, a practice) gets a row in `## Claims` with its type, its source and the day you checked it. A claim you could not source is an open question, not a claim. Then lint the file:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs research lint "$PHASE_DIR/$PADDED_PHASE-research.md"
+```
+
+Exit 1 lists claims with no source or no date: fix them before you return. `stale` lists claims older than their type's window (30 days for versions, prices and security, 90 for APIs, 365 for practices): check them again, or say in Open Questions that they were not rechecked.
 
 ## Step 7: Commit Research (optional)
 

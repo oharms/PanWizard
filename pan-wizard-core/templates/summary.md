@@ -88,7 +88,7 @@ _Note: TDD tasks may have multiple commits (test → feat → refactor)_
 - DT-1: Chose [option] for O-N. Reason: [rationale].
 
 ### Deviations (from plan; must explain)
-- DV-1: Plan said [X]; I did [Y]. Reason: [rationale]. Verification: [how I confirmed Y is acceptable].
+- DV-1: Plan said [X]; I did [Y]. Reason: [rationale]. Verification: [how I confirmed Y is acceptable]. Cost if wrong: [low | medium | high] — [what breaks].
 
 ### Open questions for verifier
 - Q-1: [question]. Why it matters: [stake].
@@ -112,6 +112,7 @@ _Note: TDD tasks may have multiple commits (test → feat → refactor)_
 - **Fix:** [What was done]
 - **Files modified:** [file paths]
 - **Verification:** [How it was verified]
+- **Cost if wrong:** [low | medium | high] — [what breaks, and for whom, if this call was wrong]
 - **Committed in:** [hash] (part of task commit)
 
 [... repeat for each auto-fix ...]
@@ -123,6 +124,12 @@ _Note: TDD tasks may have multiple commits (test → feat → refactor)_
 
 ## Issues Encountered
 [Problems and how they were resolved, or "None"]
+
+## Concerns
+
+[What was finished but is not certain, or "None". Any entry here means the executor returned DONE_WITH_CONCERNS.]
+
+- C-1: [concern]. Why: [what makes it uncertain]. Cost if wrong: [low | medium | high] — [what breaks].
 
 [Note: "Deviations from Plan" documents unplanned work that was handled automatically via deviation rules. "Issues Encountered" documents problems during planned work that required problem-solving.]
 

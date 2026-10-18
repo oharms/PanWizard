@@ -49,13 +49,17 @@ completed: YYYY-MM-DD
 - DT-1: Chose [option] for O-N. Reason: [rationale].
 
 ### Deviations (from plan; must explain)
-- DV-1: Plan said [X]; I did [Y]. Reason: [rationale]. Verification: [how I confirmed Y is acceptable].
+- DV-1: Plan said [X]; I did [Y]. Reason: [rationale]. Verification: [how I confirmed Y is acceptable]. Cost if wrong: [low | medium | high] — [what breaks].
 
 ### Open questions for verifier
 - Q-1: [question]. Why it matters: [stake].
 
 <!-- If none: replace ALL three buckets with:
      "No deviations or open questions — implementation followed plan exactly." -->
+
+## Concerns
+[What was finished but is not certain, or "None"]
+- C-1: [concern]. Why: [what makes it uncertain]. Cost if wrong: [low | medium | high] — [what breaks].
 
 ## Next Phase Readiness
 [What's ready for next phase]

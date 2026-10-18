@@ -415,7 +415,7 @@ Automated verification checks that code exists and tests pass. `/pan:verify-phas
 
 The system:
 
-1. **Gates on the test suite** — the verifier's protocol sets the verdict to `gaps_found` when the suite fails or cannot run, and the must-have checks still run so the report is complete; the recorder flags a failed gate filed under `passed` (`test_gate_failed_under_pass`) but does not overwrite the status
+1. **Gates on the test suite** — the engine runs the project's tests (`pan-tools test run`) and the verifier copies the result into `test_gate` rather than judging it; the must-have checks still run so the report is complete. A failed gate, in the verification or in the engine's test-run record, lowers a `passed` status to `gaps_found` when the verdict is recorded (`test_gate_failed_under_pass` names the first case); reconcile flags a `test_gate` that disagrees with the record, and the phase gate reports a failed test run as `test_failed`
 2. **Checks every must-have** — each phase promise is verified against the code, not the task list
 3. **Reports the gaps** — a verification report with a per-truth status and the recommended fix plans
 4. **Hands the gaps to the planner** — `/pan:plan-phase N --gaps` writes the fix plans (`gap_closure: true`); `/pan:exec-phase N --gaps-only` runs just those
@@ -535,7 +535,8 @@ The orchestrator never does heavy lifting. It spawns agents, waits, integrates r
 When agents hand work off via files, only OUTPUTS get passed by default — not the reasoning that produced them. Per Cognition's "Don't build multi-agents" research (June 2025), silent decisions force downstream agents to reconcile contradictions blindly. PAN passes the reasoning explicitly:
 
 - Plans carry a `## Plan Decisions` section (Locked / Open / Considered+rejected buckets) — the executor reads it before coding so it doesn't re-argue settled choices.
-- Summaries carry an `## Implementation Decisions` section — the verifier reads it to understand WHY the executor deviated from the plan, not just THAT it did.
+- Summaries carry an `## Implementation Decisions` section — the verifier reads it to understand WHY the executor deviated from the plan, not just THAT it did. An executor unsure of something it finished returns `## DONE_WITH_CONCERNS`, each concern with its cost if wrong, and the reviewer is told to check them.
+- Plans carry a `## Review Focus` section (the untested inputs and failure modes their requirements imply) and cite the design's `DD-N` decisions; `pan-tools verify review-focus` and `pan-tools verify decisions` check both in code, and the reviewer reads the phase's actual diff (`pan-tools review scope`) with that intent beside it.
 
 The plan-checker enforces this with dedicated dimensions for Spec Sufficiency for Handoff and Decision Trace Completeness. Schema lives in `pan-wizard-core/references/handoff-decisions.md`.
 
@@ -701,7 +702,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | Command | What it does |
 |---------|--------------|
 | `/pan:cost` | Token usage + estimated cost across PAN invocations (json/table/chart) |
-| `/pan:preview phase <N>\|phases\|milestone` | Read-only foresight: blast radius, dependency graph, milestone ETA |
+| `/pan:preview phase <N>\|phases\|milestone` | Read-only foresight: blast radius, a p10/p50/p90 cost forecast from the project's own cost ledger, dependency graph, milestone ETA |
 | `/pan:review-deep <phase>` | Security audit (OWASP + STRIDE) + cross-check by meta-reviewer |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook |
 | `/pan:what-if <phase> "scenario"` | Counterfactual phase replay in isolated git worktree |

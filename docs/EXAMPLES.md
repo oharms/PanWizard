@@ -68,8 +68,11 @@ You: Rich tables for list view, plain text for single-task view.
 PAN spawns a researcher agent that investigates the phase's domain —
 Typer best practices, SQLite schema patterns for task managers, Rich table
 formatting, and Python project structure conventions. A planner agent
-synthesizes research into a concrete plan. A plan-checker agent then reviews
-the plan for gaps, contradictions, and missing edge cases.
+synthesizes research into a concrete plan, with a `## Review Focus` section
+naming the untested inputs the reviewer should check. Code checks
+(`verify plan-set`, `verify review-focus`, `verify decisions`) send a broken
+plan set back first; a plan-checker agent then reviews the plan for gaps,
+contradictions, and missing edge cases.
 
 Result: `.planning/phases/01-{name}/01-01-plan.md` (and additional plans) containing ordered implementation steps,
 file-by-file change descriptions, and dependency notes.
@@ -83,7 +86,9 @@ file-by-file change descriptions, and dependency notes.
 PAN reads the phase's plans and groups independent plans into parallel waves. Wave 1
 might create the project skeleton and database module simultaneously. Wave 2
 builds the CLI commands that depend on both. Each wave completes and its summaries are
-spot-checked before the next begins; the verifier checks the phase after the last wave
+spot-checked before the next begins. After the last wave, `pan-reviewer` reviews the
+phase's diff against the plans' intent (`pan-tools review scope`), including any concerns
+an executor returned with `DONE_WITH_CONCERNS`, and the verifier checks the phase
 (unless `workflow.verifier` is off).
 
 You see real-time progress as files are created and tests are run.
@@ -330,7 +335,7 @@ You: Yes
 ```
 
 With these off, `plan-phase` skips the researcher agent and the
-plan-checker agent. Planning still happens, but it relies on the model's
+plan-checker agent (the code checks on the plans still run; they cost no model call). Planning still happens, but it relies on the model's
 built-in knowledge instead of dedicated research passes.
 
 **Token savings:** A typical phase with research and plan-check might use
@@ -523,6 +528,7 @@ The data layer scans `07-01-plan.md`, `07-02-plan.md`, etc., extracts file paths
 - **Files likely touched** — `src/db/migrations.js`, `src/models/User.js`, `tests/migrations.test.cjs`
 - **Tests at risk** — 3 test files reference migration schemas
 - **Risk signals** — `drop: true`, `migrate: true`, `rename: true` → risk score 7/10
+- **Cost forecast** — p10/p50/p90 dollars per plan and for the phase, from this project's own cost ledger; `insufficient` until enough past runs back it
 - **Bottom line** — "Run in a feature branch with a rollback plan. Migration reverse is not documented in plan.md."
 
 If risk ≥ 7 or auth keywords hit, review the plan before `/pan:exec-phase`. Combine with `--deep-review` for auth/payment phases.

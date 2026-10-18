@@ -204,6 +204,16 @@ Things that couldn't be fully resolved:
    - Recommendation: [how to handle]
 </open_questions>
 
+<claims>
+## Claims
+
+Every claim a plan will rest on: a version, an API's behaviour, a price, a security advisory, a practice. One row each, with where it came from and the day it was checked (YYYY-MM-DD). `pan-tools research lint` refuses a claim with no source or no date, and lists as stale a claim older than its type's window (version, pricing, security: 30 days; api: 90; general: 180; practice: 365).
+
+| Claim | Type | Source | Checked |
+|-------|------|--------|---------|
+| [what is true] | [version / api / pricing / security / practice / general] | [URL, doc section or Context7 id] | [YYYY-MM-DD] |
+</claims>
+
 <sources>
 ## Sources
 

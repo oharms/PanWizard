@@ -664,6 +664,100 @@ function aggregate(cwd, opts) {
   };
 }
 
+// ─── Cost forecast (program P6) ─────────────────────────────────────────────
+// What a plan and a phase will cost, as p10/p50/p90 dollars, from what this project's
+// agents have cost so far. Fewer than FORECAST_MIN_SAMPLES observations is no
+// forecast: the result says `insufficient` rather than extrapolating from two runs.
+
+const FORECAST_MIN_SAMPLES = 5;
+const FORECAST_ITERATIONS = 2000;
+const PLAN_AGENT = 'pan-executor';
+
+const round4 = (x) => Math.round(x * 10000) / 10000;
+
+/** Linear interpolation between the closest ranks (R type 7). */
+function quantile(sorted, q) {
+  const h = (sorted.length - 1) * q;
+  const lo = Math.floor(h);
+  return sorted[lo] + (sorted[Math.min(lo + 1, sorted.length - 1)] - sorted[lo]) * (h - lo);
+}
+
+function quantiles(values) {
+  const s = [...values].sort((a, b) => a - b);
+  return { p10: round4(quantile(s, 0.1)), p50: round4(quantile(s, 0.5)), p90: round4(quantile(s, 0.9)) };
+}
+
+/** mulberry32: a seeded PRNG, so a forecast is reproducible. */
+function prng(seed) {
+  let a = (Number(seed) >>> 0) || 1;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const samePhaseKey = (p) => String(p == null ? '' : p).replace(/^0+(?=\d)/, '');
+
+/**
+ * Forecast a plan and a phase.
+ *
+ * - Per plan: the cost of each pan-executor call at one tier (the tier the latest
+ *   executor call ran at, unless `tier` is given). Tiers differ several-fold in price,
+ *   so they are never pooled.
+ * - Per phase: for each past phase, the cost of its other agents (planner, checkers,
+ *   verifier, reviewer …); a phase is resampled as one of those plus one executor
+ *   draw per plan, `FORECAST_ITERATIONS` times, seeded.
+ *
+ * @param {string} cwd
+ * @param {{plans?: number, tier?: string, excludePhase?: string, seed?: number}} [opts]
+ */
+function costForecast(cwd, opts = {}) {
+  const rates = effectiveRates(loadConfig(cwd));
+  const exclude = opts.excludePhase != null ? samePhaseKey(opts.excludePhase) : null;
+  const rows = [];
+  for (const r of readRecords(cwd)) {
+    if (isSuspectRecord(r) || isEmptyRecord(r)) continue;
+    if (exclude != null && samePhaseKey(r.phase) === exclude) continue;
+    const usd = typeof r.cost_usd === 'number' ? r.cost_usd : computeCost(r, rates);
+    if (typeof usd === 'number') rows.push({ ...r, usd });
+  }
+  const executor = rows.filter((r) => r.agent === PLAN_AGENT);
+  const tier = opts.tier || (executor.length ? executor[executor.length - 1].tier || null : null);
+  const planCosts = executor.filter((r) => (r.tier || null) === tier).map((r) => r.usd);
+  const parsedPlans = Number.parseInt(opts.plans, 10);
+  const plans = Number.isFinite(parsedPlans) && parsedPlans >= 0 ? parsedPlans : 1;
+  const insufficient = (n) => ({ status: 'insufficient', n, needed: FORECAST_MIN_SAMPLES });
+
+  const perPlan = planCosts.length >= FORECAST_MIN_SAMPLES ? { status: 'ok', n: planCosts.length, ...quantiles(planCosts) } : insufficient(planCosts.length);
+
+  // A past phase is one the executor ran in; its overhead is everything else it spent.
+  const ranIn = new Set(executor.filter((r) => r.phase != null).map((r) => samePhaseKey(r.phase)));
+  const overhead = new Map([...ranIn].map((p) => [p, 0]));
+  for (const r of rows) {
+    const p = samePhaseKey(r.phase);
+    if (r.agent !== PLAN_AGENT && overhead.has(p)) overhead.set(p, overhead.get(p) + r.usd);
+  }
+  const overheads = [...overhead.values()];
+  let phase;
+  if (perPlan.status !== 'ok') phase = { ...insufficient(planCosts.length), n_phases: overheads.length, reason: 'too few executor calls at this tier' };
+  else if (overheads.length < FORECAST_MIN_SAMPLES) phase = { ...insufficient(overheads.length), n_phases: overheads.length, reason: 'too few past phases' };
+  else {
+    const rand = prng(opts.seed == null ? 1 : opts.seed);
+    const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+    const sims = [];
+    for (let i = 0; i < FORECAST_ITERATIONS; i++) {
+      let usd = pick(overheads);
+      for (let k = 0; k < plans; k++) usd += pick(planCosts);
+      sims.push(usd);
+    }
+    phase = { status: 'ok', n_phases: overheads.length, ...quantiles(sims) };
+  }
+  return { agent: PLAN_AGENT, tier, plans, min_samples: FORECAST_MIN_SAMPLES, per_plan: perPlan, phase };
+}
+
 /**
  * Render aggregation as a human-readable table.
  * @param {Object} agg - from aggregate()
@@ -900,6 +994,9 @@ function cmdModelsCheck(raw) {
 
 module.exports = {
   computeCost,
+  costForecast,
+  quantiles,
+  FORECAST_MIN_SAMPLES,
   appendRecord,
   readRecords,
   aggregate,

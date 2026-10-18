@@ -66,10 +66,11 @@ tier may omit them.
 - Writes to: [paths — within .planning/ or project root]
 - Side effects: [git ops, dir creation, etc.]
 
-**Design decisions:**
-| Decision | Chosen | Alternative rejected | Rationale |
-|----------|--------|----------------------|-----------|
-| [point] | [what] | [alt] | [why] |
+**Design decisions:** record a decision here only when it passes all three questions: (1) is it hard to reverse once code depends on it? (2) could a reasonable engineer have chosen otherwise? (3) does more than one task or plan depend on it? A choice that fails any of them is the planner's to make, not a design decision. Each recorded decision gets an id (`DD-1`, `DD-2` …) that the plans implementing it cite; `pan-tools verify decisions` flags a plan citing an id not recorded here and a decision no plan cites.
+
+| ID | Decision | Chosen | Alternative rejected | Rationale |
+|----|----------|--------|----------------------|-----------|
+| DD-1 | [point] | [what] | [alt] | [why] |
 </architecture>
 
 <adr>

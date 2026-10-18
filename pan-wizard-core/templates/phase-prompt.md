@@ -71,6 +71,13 @@ Output: [What artifacts will be created]
 ### Considered and rejected
 - R-1: [alternative]. Rejected because: [reason].
 
+<!-- A Locked decision that implements a design decision cites its id: "Source: design DD-2". -->
+
+## Review Focus
+<!-- At most five inputs or failure modes the requirements imply that no test exercises yet,
+     each pinned to the task that owns the code. If genuinely none: "None — [why]". -->
+- RF-1: [input or failure mode]. Test: Task [N] adds [test that fails if it is mishandled].
+
 <tasks>
 
 <task type="auto">

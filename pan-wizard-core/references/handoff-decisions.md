@@ -83,7 +83,7 @@ Lives in `summary.md`, after `## Files Created/Modified`:
 - DT-1: Chose <option> for O-N. Reason: <rationale>.
 
 ### Deviations (from plan; must explain)
-- DV-1: Plan said <X>; I did <Y>. Reason: <rationale>. Verification: <how I confirmed Y is acceptable>.
+- DV-1: Plan said <X>; I did <Y>. Reason: <rationale>. Verification: <how I confirmed Y is acceptable>. Cost if wrong: <low | medium | high> — <what breaks if this call was wrong>.
 
 ### Open questions for verifier
 - Q-1: <question>. Why it matters: <stake>.

@@ -31,7 +31,7 @@ Consolidates Spec B v1's architect + simulate + predict-milestone into one entry
 ```
 
 **What it does:**
-1. `pan-tools preview phase <N>` returns `{files_mentioned, test_files_mentioned, risk_signals, risk_score, plans[], status}`.
+1. `pan-tools preview phase <N>` returns `{files_mentioned, test_files_mentioned, risk_signals, risk_score, plans[], status, cost_forecast}`. `cost_forecast` gives p10/p50/p90 dollars per plan (`per_plan`) and for the phase (`phase`) from this project's own cost ledger, or `status: insufficient` with `n` when fewer than five past runs back it.
 2. Spawn `pan-previewer` with the payload as `<preview_input>`.
 3. Agent writes `.planning/phases/<NN-slug>/preview.md` with files touched / tests at risk / migration steps / risk assessment / bottom line.
 

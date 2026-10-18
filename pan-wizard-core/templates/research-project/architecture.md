@@ -161,6 +161,12 @@ src/
 |----------|---------------|-------|
 | [module A ↔ module B] | [API/events/direct] | [considerations] |
 
+## Claims
+
+| Claim | Type | Source | Checked |
+|-------|------|--------|---------|
+| [what is true] | [version / api / pricing / security / practice / general] | [URL, doc section or Context7 id] | [YYYY-MM-DD] |
+
 ## Sources
 
 - [Architecture references]

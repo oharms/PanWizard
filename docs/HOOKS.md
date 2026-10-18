@@ -350,6 +350,12 @@ Check Update (pan-check-update.js)
     v
 ~/.claude/cache/pan-update-check.json
 
+Tool call about to write a file (PreToolUse; Gemini BeforeTool, Copilot preToolUse)
+    |
+    v
+Guard (pan-guard.js)
+    | appends each match → .planning/guard.jsonl; under hooks.guard: enforce, denies a credential write
+
 Sub-agent finishes
     |
     +--> Cost Logger (pan-cost-logger.js, SubagentStop)
@@ -419,6 +425,16 @@ Hooks are automatically installed and registered during `npx pan-wizard`. The bl
         ]
       }
     ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ~/.claude/hooks/pan-guard.js --host claude"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "hooks": [
@@ -470,6 +486,7 @@ hooks/
   pan-statusline.js         # Source
   pan-context-monitor.js    # Source
   pan-check-update.js       # Source
+  pan-guard.js              # Source
   pan-cost-logger.js        # Source (v3.4+)
   pan-trace-logger.js       # Source (v3.5+)
   pan-stop-guard.js         # Source (v3.24+)
@@ -478,6 +495,7 @@ hooks/
     pan-statusline.js
     pan-context-monitor.js
     pan-check-update.js
+    pan-guard.js
     pan-cost-logger.js
     pan-trace-logger.js
     pan-stop-guard.js
@@ -489,7 +507,7 @@ Build command:
 npm run build:hooks    # Copies hooks from hooks/ to hooks/dist/
 ```
 
-The build script (`scripts/build-hooks.js`) simply copies files — no bundling or transpilation needed since hooks are pure Node.js with zero dependencies.
+The build script (`scripts/build-hooks.js`) simply copies the files named in its `HOOKS_TO_COPY` list (a new hook must be added there) — no bundling or transpilation needed since hooks are pure Node.js with zero dependencies.
 
 ## Hook Runtime Support
 

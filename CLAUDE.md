@@ -53,14 +53,14 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Version | (see `package.json`) |
 | Commands (`commands/pan/*.md`) | 59 |
 | Agents (`agents/*.md`) | 24 |
-| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 65 |
+| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 67 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
 | Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 196 |
+| Unit test files (`tests/*.test.cjs`) | 201 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 5593 |
-| Total test suites | 1188 |
+| Total tests (npm run test:all) | 5639 |
+| Total test suites | 1194 |
 | Hooks (`hooks/*.js`) | 8 |
 | Specs (`docs/specs/*.md`) | 57 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
@@ -166,7 +166,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `scripts/prompt-lint.cjs` — the prompt-contract lint (program L2): every `pan-tools` call in a shipped prompt names a real verb and subcommand, an agent is never told to use a tool it is not granted, no prompt @-includes engine source, no AskUserQuestion offers more than four options, every spawn names its model and role spawns name their agent type, and no shipped prompt sends the user to a dev-only skill. Applied by `tests/prompt-lint.test.cjs` with `tests/fixtures/prompt-lint-allowlist.json` (every entry needs a reason, and a stale entry fails)
 - `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
 - `scripts/build-agent-plugin.js` — emits the vendor-neutral **Agent Plugins** bundle to `dist/pan-agent-plugin/` (ADR-0045) for Copilot CLI, Codex, Cursor, Kiro. `.agents/plugins/marketplace.json` (Codex) and `.github/plugin/marketplace.json` (Copilot) point at it
-- `harness/` — the **PAN Harness** (ADR-0047): behavioural scenarios run against deployed installs built from a packed artifact. `npm run harness` is tier 0 (model-free, free); model tiers need `--max-usd`. Run state goes to `d:\pantesting\harness-runs\`; `harness/plugin-evals/` holds the `claude plugin eval` suite `scripts/build-plugin.js` copies into the plugin's `evals/`; `harness/ledger.jsonl` is the tracked finding history — `--no-ledger` leaves it alone, which is how CI runs tier 0 on the ubuntu Node-22 job without dirtying the tree. Not shipped. See `harness/README.md`
+- `harness/` — the **PAN Harness** (ADR-0047): behavioural scenarios run against deployed installs built from a packed artifact. `npm run harness` is tier 0 (model-free, free); model tiers need `--max-usd`. Run state goes to `d:\pantesting\harness-runs\`; `harness/plugin-evals/` holds the `claude plugin eval` suite `scripts/build-plugin.js` copies into the plugin's `evals/`; `harness/corpus/` holds the seeded-defect projects (a clean twin, a defective twin and a catching test each) that `harness/scripts/catch-rate.cjs` scores judges against, catch rate and false-alarm rate with Wilson intervals; `harness/ledger.jsonl` is the tracked finding history — `--no-ledger` leaves it alone, which is how CI runs tier 0 on the ubuntu Node-22 job without dirtying the tree. Not shipped. See `harness/README.md`
 
 ### Key design patterns
 

@@ -55,7 +55,7 @@ Produce `{phase}-design.md` from the template at the `phase` tier:
 
 1. **Problem & scope** — the phase's problem and its fixed boundary.
 2. **Success criteria** — 3–7, **at least 2 machine-checkable**, each naming its automated check.
-3. **Architecture & synthesis** — discovered conventions (cited), components/boundaries (no layer violations), a concrete interface contract, filesystem scope, and a design-decisions table (chosen vs rejected + rationale).
+3. **Architecture & synthesis** — discovered conventions (cited), components/boundaries (no layer violations), a concrete interface contract, filesystem scope, and a design-decisions table (chosen vs rejected + rationale). Record a decision only when it passes the three-question test: hard to reverse once code depends on it, a reasonable engineer could have chosen otherwise, and more than one task or plan depends on it. Give each one an id in the table's first column (`DD-1`, `DD-2` …); plans cite these ids, and `pan-tools verify decisions` flags a citation of an unrecorded id and a recorded decision no plan cites. Leave the rest to the planner.
 4. **Phase-scoped ADR** — context (problem, forces, current state, requirements traceability), decision (numbered sub-decisions with rationale), consequences (positive AND negative, every negative mitigated or explicitly accepted). No placeholder/skeleton sections.
 5. **Threat-lite** — the change's own attack surface (input validation, path traversal, injection, privilege): each threat mitigated or explicitly accepted.
 6. **Test hooks** — how each success criterion is verified; seed inputs for the machine-checkable ones.

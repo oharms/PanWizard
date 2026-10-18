@@ -227,4 +227,4 @@ function cmdVerifyPlanSet(cwd, phase, raw) {
   output(result, raw, r.ok ? 'valid' : 'invalid', r.ok ? 0 : 1);
 }
 
-module.exports = { checkPlanSet, plansSha, plansShaFor, planCheckStatus, planDrift, cmdVerifyPlanSet, PLAN_CHECKER };
+module.exports = { phaseFiles, checkPlanSet, plansSha, plansShaFor, planCheckStatus, planDrift, cmdVerifyPlanSet, PLAN_CHECKER };

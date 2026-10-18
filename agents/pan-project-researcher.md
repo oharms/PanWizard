@@ -506,6 +506,14 @@ In `.planning/research/`, write only the file your prompt's `<output>` block nam
 
 The other researchers write the other dimensions in parallel, and pan-research-synthesizer writes `summary.md` after they all finish. Writing either would overwrite their work.
 
+**Claims with provenance.** Every fact the roadmap or a plan will rest on (a version, an API's behaviour, a price, a security advisory, a practice) gets a row in the file's `## Claims` table with its type, its source and the day you checked it (YYYY-MM-DD). A claim you could not source is an open question, not a claim. Then lint the file you wrote:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs research lint .planning/research/{file}.md
+```
+
+Exit 1 lists claims with no source or no date: fix them before you return. `stale` lists claims older than their type's window: check them again, or name them in your return as not rechecked.
+
 ## Step 6: Return Structured Result
 
 **DO NOT commit.** Spawned in parallel with other researchers. pan-research-synthesizer commits `.planning/research/` after all complete.

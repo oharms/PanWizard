@@ -104,6 +104,12 @@ Features to defer until product-market fit is established.
 | [feature] | [how they do it] | [how they do it] | [our plan] |
 | [feature] | [how they do it] | [how they do it] | [our plan] |
 
+## Claims
+
+| Claim | Type | Source | Checked |
+|-------|------|--------|---------|
+| [what is true] | [version / api / pricing / security / practice / general] | [URL, doc section or Context7 id] | [YYYY-MM-DD] |
+
 ## Sources
 
 - [Competitor products analyzed]

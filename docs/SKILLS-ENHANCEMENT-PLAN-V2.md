@@ -4,11 +4,10 @@ Second-pass systematic review. Deeper techniques from Anthropic's agent engineer
 guides, Manus context engineering, and 2025-2026 multi-agent orchestration research.
 
 **Status:** ALL 12 ENHANCEMENTS APPLIED (2026-04-12)
-**SKILLS-FULL-TEXT.md:** 8884 lines (up from ~8300 pre-v2)
 
 **Sources:** Anthropic Building Effective Agents, Anthropic Context Engineering for
 AI Agents, Anthropic Writing Effective Tools, Anthropic Multi-Agent Research System,
-Manus Context Engineering, OpenAI GPT-5.4 Prompt Guidance, Chanl Multi-Agent Patterns.
+Manus Context Engineering, OpenAI prompt guidance, Chanl Multi-Agent Patterns.
 
 ---
 

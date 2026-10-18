@@ -93,6 +93,8 @@ generated: <ISO timestamp>
 <optional: what you explicitly did NOT audit and why>
 ```
 
+Report every security finding, including ones the project dismissed before. The findings ledger never suppresses a security finding, whoever raised it, so a dismissal never excuses leaving one out.
+
 **Severity scale:**
 - `critical` — remotely reachable with no prerequisites; use sparingly, only when one misuse leads to data loss or remote code execution.
 - `high` — exploitable with typical user privileges; blocks merge by default.

@@ -403,9 +403,14 @@ Write these into the summary's `## Implementation Decisions` section per the sch
 - **Fix:** [what was done]
 - **Files modified:** [files]
 - **Commit:** [hash]
+- **Cost if wrong:** [low | medium | high] — [what breaks, and for whom, if this call was the wrong one]
 ```
 
 Or: "None - plan executed exactly as written."
+
+Every deviation records why you made it and its cost if wrong, including the `DV-N` lines under `## Implementation Decisions`. A reviewer reads the high-cost ones first.
+
+**Concerns:** what you finished but are not sure of, such as an assumption you could not check, a path no test reaches, a deviation whose cost if wrong is high, or a requirement you met only in part. List each under the summary's `## Concerns` as `- C-1: <concern>. Why: <what makes you unsure>. Cost if wrong: <low | medium | high> — <what breaks>.`, or write "None". Do not hide a concern to return a clean result: a concern stated now costs a review, and one found later costs a fix round.
 
 **Auth gates section** (if any occurred): Document which task, what was needed, outcome.
 </summary_creation>
@@ -508,6 +513,26 @@ Separate from per-task commits — captures execution results only.
 ```
 
 Include ALL commits (previous + new if continuation agent).
+
+When every task is done but the summary's `## Concerns` lists at least one concern, return `## DONE_WITH_CONCERNS` instead of `## PLAN COMPLETE`. The plan is complete either way; this tells the orchestrator what to look at:
+
+```markdown
+## DONE_WITH_CONCERNS
+
+**Plan:** {phase}-{plan}
+**Tasks:** {completed}/{total}
+**SUMMARY:** {path to summary.md}
+
+**Commits:**
+- {hash}: {message}
+
+**Concerns:**
+- C-1: {concern}. Why: {what makes you unsure}. Cost if wrong: {low | medium | high} — {what breaks}
+
+**Duration:** {time}
+```
+
+A plan you could not finish is not this: return `## CHECKPOINT REACHED` or `## BLOCKED_SPEC_CONFLICT`.
 </completion_format>
 
 <success_criteria>
