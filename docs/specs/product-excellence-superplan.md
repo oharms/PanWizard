@@ -1,6 +1,6 @@
 # Product Excellence Superplan
 
-**Date:** `2026-10-12` · **Status:** In progress: sprints 1–2 merged; sprint 3 complete, its release (3.36.0) committed on `release/v3.36.0` and awaiting merge and tag; sprint 4 not started (see [Progress](#progress); reviewed `2026-10-12`, review folded in) · **Source program:** `docs/specs/product_excellence_program_2026_q4_featureai.md` (item design and evidence) · **Owner decisions:** that program's §3.4
+**Date:** `2026-10-12` · **Status:** In progress: sprints 1–3 released (`3.35.0`, `3.36.0` (tagged `v3.36.0` on `e7d1011`, PR oharms/PanWizard#48, published `2026-10-19`)); sprint 4 not started (see [Progress](#progress); reviewed `2026-10-12`, review folded in) · **Source program:** `docs/specs/product_excellence_program_2026_q4_featureai.md` (item design and evidence) · **Owner decisions:** that program's §3.4
 **Tree (when written):** `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`) plus the uncommitted audit work. This superplan **supersedes the program's §3.3 wave ordering** with a dependency-checked session order. Item ids are the program's and local to it (write "program R2" outside these two files); W0, X1, CI1, A0, A1a/A1c, A7b, L6a/L6b, V1E, V5G and HX1–HX5 are added here.
 
 This is the executable form of the program. Every item has a priority class, a size, the files it touches, the items it depends on, a **code gate** (free, blocking: the item is not done until it is green) and, where the claim needs a model, a separate **evidence gate** (non-blocking: it runs on a per-run `--max-usd` approval and never holds up later items). `/execplan` consumes it one session at a time.
@@ -12,21 +12,21 @@ Updated `2026-10-19`. The superplan's own order holds; nothing has been re-seque
 | Session | Items | State | Where |
 |---|---|---|---|
 | 1a, 1b, 1c | Sprint 1 (W0 … HX1) | Released in **3.35.0** | PR oharms/PanWizard#41 |
-| 2a | H1, CI1, H2, H7 | Merged | PR oharms/PanWizard#42 |
-| 2b | V2, V4, V5 | Merged | PR oharms/PanWizard#43 |
-| 3a | H4, L1, R1; R49 not run | Merged | PR oharms/PanWizard#44 |
-| 3b | R3, P4, P2, P3, P6 | Merged | PR oharms/PanWizard#45 (`a2fa00c`) |
+| 2a | H1, CI1, H2, H7 | Released in **3.36.0** | PR oharms/PanWizard#42 |
+| 2b | V2, V4, V5 | Released in **3.36.0** | PR oharms/PanWizard#43 |
+| 3a | H4, L1, R1; R49 not run | Released in **3.36.0** | PR oharms/PanWizard#44 |
+| 3b | R3, P4, P2, P3, P6 | Released in **3.36.0** | PR oharms/PanWizard#45 (`a2fa00c`) |
 | — | Fix outside the plan: doc-lint scans an absolute `--doc-dir` instead of silently passing | Merged | PR oharms/PanWizard#46 (`c2b3571`) |
 | — | Owner request: per-phase spend budget ($20, warn only) and a $15 default harness cap | Merged | PR oharms/PanWizard#47 (`da3f493`) |
-| 3c | H9, L5, L9, V1E, HX2 (release 3.36.0) | Committed (`7346f93`), not yet pushed, merged or tagged; two follow-up fixes uncommitted on top (review scope reads `git status --porcelain=v2 -z` in `verify-scope.cjs`; `execGit` keeps the leading column of `git status --porcelain` in `git.cjs`/`core.cjs`) | branch `release/v3.36.0` |
+| 3c | H9, L5, L9, V1E, HX2 (release 3.36.0) | Released in **3.36.0** (squash-merged as `e7d1011`, PR oharms/PanWizard#48; `7346f93` and the follow-up fixes are in it) | branch `release/v3.36.0` |
 | 4a onward | — | Not started | — |
 
 **Open from finished sessions:**
 
-- **R49** (session 3a) is a paid live re-run and has not run: it needs a `--max-usd` approval. It blocks nothing.
+- **R49** (session 3a) is a paid live re-run and has not run: tier-1/2 runs now default to a $15 cap (`harness/src/run.cjs`), so it needs only the owner's approval to spend; run `memory-not-loaded` on its own or raise `--max-usd`, because one run splits the cap evenly. It blocks nothing.
 - **P6** (session 3b) shipped the forecast in `preview phase`. The design's last clause, the autodev loop stopping when spend passes p90, waits for the autodev loop, which does not exist yet: **A1a** (session 6a) builds its core, and **A6** (session 6b, depends on P6) already carries the stop, as `forecast_exceeded` for a unit past p90.
 - **Evidence gates.** No paid evidence step in [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-approval) has run yet: `harness/ledger.jsonl` holds no evidence-gate row, and the committed corpus replay is synthetic. Under the MI-114 rule, sessions 3a and 3b edited judge prompts (pan-reviewer, pan-hardener, pan-plan-checker), so each owes a paired corpus result once H4's first real baseline is paid for. Those items shipped in their safe defaults, as the rules below allow.
-- **Release 3.36.0** is session 3c's last item (HX2), committed as `7346f93` on `release/v3.36.0`. It publishes once the branch is pushed, its PR merged and the merge commit tagged `v3.36.0`; until then sprint 3's exit criterion is met in the tree but not released. V1E made `enforce` the phase gate default (`config.cjs` and `templates/config.json`), with a field-upgrade note in the CHANGELOG.
+- **Release 3.36.0** shipped: `3.36.0` (tagged `v3.36.0` on `e7d1011`, PR oharms/PanWizard#48, published `2026-10-19`). Sprint 3's exit criterion is released. *(Corrected `2026-10-19` by the reality check; this line said the release was pending push, merge and tag.)*
 
 ## Baseline
 
@@ -176,9 +176,9 @@ A new gate first ships in a mode that cannot block a working project. It is prom
 - **Session 3b** (16 pts): R3 (2) → P4 (6) → P2 (4) → P3 (2) → P6 (2)
 - **Session 3c** (15 pts): H9 (4) → L5 (2) → L9 (2) → V1E (1) → HX2 (6)
 
-**Exit criterion:** Every judge has a scoreboard; the product surface has a liveness registry; plans carry Review Focus, decisions and sourced claims checked in code; the phase gate enforces. *Met in code at `7346f93`; the scoreboards are computed from a scripted replay until H4's paid baseline runs.*
+**Exit criterion:** Every judge has a scoreboard; the product surface has a liveness registry; plans carry Review Focus, decisions and sourced claims checked in code; the phase gate enforces. *Met in code and released in `3.36.0`; the scoreboards are computed from a scripted replay until H4's paid baseline runs.*
 
-**Release point:** Release **3.36.0** — "measured" (phase gate `enforce`). *Release commit `7346f93` on `release/v3.36.0`; pending push, merge and the `v3.36.0` tag.*
+**Release point:** Release **3.36.0** — "measured" (phase gate `enforce`). *Released: `3.36.0` (tagged `v3.36.0` on `e7d1011`, PR oharms/PanWizard#48, published `2026-10-19`).*
 
 ### Sprint 4: Judges, measured (W3, 36 points)
 

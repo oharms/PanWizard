@@ -322,8 +322,8 @@ Run on `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`, released `2026-
 
 | Finding | Bearing | Queue |
 |---|---|---|
-| OpenCode 2 (`@opencode/cli`; 1.19.0 moves users there) normalises PAN's v1 config in memory, and its published schema is still v1, but its plugin loader needs `setup` or `effect`, so PAN's compaction plugin does not load | The one v2 break; keep writing v1 config | R45, R47 |
-| The verifier's test gate is enforced by its prompt only; the recorder warns on a failed gate filed as `passed` and keeps the status | A claim stronger than the code | R46 |
+| OpenCode 2 (`@opencode/cli`; 1.19.0 moves users there) normalises PAN's v1 config in memory, and its published schema is still v1, but its plugin loader needs `setup` or `effect`, so PAN's compaction plugin does not load | The one v2 break; keep writing v1 config | R45, R47 — shipped in `3.35.0` (`18efcb5`); the OpenCode 2 load is unit-tested only, live check R51 (§12) |
+| The verifier's test gate is enforced by its prompt only; the recorder warns on a failed gate filed as `passed` and keeps the status | A claim stronger than the code | R46 — shipped in `3.35.0` (`18efcb5`): a failed test gate lowers `passed` to `gaps_found`, and the phase gate refuses it |
 | README and COMPARISON claimed more than the code for the test gate, the MCP caps, UAT, budgets and plugin publication | Fixed the same day | — |
 | Several inherited statuses were wrong (corrections listed in `docs/specs/market-delta-2026-09-superplan.md` and the October queue's Addendum) | Docs, not code | — |
 | Two harness findings (`resume-cost`, `memory-not-loaded`) have never passed a live re-run | Behaviour unproven | R49 |

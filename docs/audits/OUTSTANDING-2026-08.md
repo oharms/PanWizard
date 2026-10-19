@@ -143,7 +143,7 @@ If the first or third returns anything, the revert is incomplete or a doc/test s
 
 ### L6 · The generated skills docs went stale again — the recurrence this document's own lesson 2 predicted (Medium)
 
-**Status:** open. Not a new defect class: **the same one as L1**, recurring for exactly the reason [process lesson 2](#process-lesson-worth-keeping) gives — a source was edited by a pass whose file scope did not include the generated copies, and no source edit updates them.
+**Status:** instance closed, guard open (re-checked `2026-10-19`: the stale `army.md` paragraph now matches the generated docs; the content-staleness guard this entry asks for is still not built). Was: open. Not a new defect class: **the same one as L1**, recurring for exactly the reason [process lesson 2](#process-lesson-worth-keeping) gives — a source was edited by a pass whose file scope did not include the generated copies, and no source edit updates them.
 
 **What happened.** L1 was closed by regenerating `docs/SKILLS-FULL-TEXT.md` / `docs/SKILLS-REFERENCE.md`, verified by both of its checks. A later pass in this chain then edited `commands/pan/army.md` — the tier table's Architecture and Quality membership cells, the Workers Model-tier cell, and the "Squad tier is not profile tier" paragraph — and could not touch the generated copies. So the copies now carry the superseded table.
 
