@@ -1,0 +1,130 @@
+{
+  "id": "live-gate-opencode2",
+  "tier": 0,
+  "description": "Install PAN for OpenCode locally and confirm OpenCode 2 (the `opencode2` binary from npm @opencode/cli) loads PAN's MCP server, agents and plugin.",
+  "why": "Reality check RC3 (2026-10-19): the 3.35.0 changelog said OpenCode 2 loads PAN's plugin on the strength of a simulated loader, while Homebrew Core has installed OpenCode 2 since 2026-09-28. live-gate-opencode is shaped for 1.x: OpenCode 2 has no `agent list` (it is `debug agents`), and its `debug config` lists config sources, not plugin paths. Measured on 2.0.32 (2026-10-19, R51): v2 normalised PAN's v1 config in memory, `mcp list` showed `pan connected` once the background service was up (the first call raced its start and reported no servers), `debug agents` listed every pan-* agent with the legacy permission keys translated (bash to shell, write to edit, task to subagent), and `plugin list --builtin` listed `pan-wizard` as a local plugin. The @opencode/cli package installs `opencode2` beside `opencode`, so this gate needs no PATH trick; SKIPPED with reason when it is absent.",
+  "seed": "empty",
+  "install": [
+    "--opencode",
+    "--local"
+  ],
+  "requires": {
+    "cli": "opencode2"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 8,
+    "maxStepMinutes": 3
+  },
+  "steps": [
+    {
+      "kind": "fs",
+      "read": ".opencode/opencode.json",
+      "expect": [
+        "json:mcp.pan.type=local",
+        "json:mcp.pan.enabled=true"
+      ],
+      "why": "PAN writes the v1 shape on purpose (the published schema is still v1; MI-038); OpenCode 2 must translate it."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode2",
+      "args": [
+        "--version"
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Pins the OpenCode 2 build the measurement was taken on."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode2",
+      "args": [
+        "service",
+        "start"
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "These subcommands go through OpenCode 2's background service and refuse --standalone."
+    },
+    {
+      "kind": "sh",
+      "script": "opencode-two-ready.cjs",
+      "args": [
+        "60"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~\"ready\":true"
+      ],
+      "why": "Right after the service starts it answers before it has loaded the project (on 2.0.32 the first two debug agents calls listed only built-ins); this step waits until PAN's agents are visible so the checks below measure PAN, not the race."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode2",
+      "args": [
+        "mcp",
+        "list"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~pan"
+      ],
+      "why": "OpenCode 2 lists the servers it loaded for this workspace from PAN's v1 `mcp` block (normalised to `mcp.servers`)."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode2",
+      "args": [
+        "debug",
+        "agents"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~\"id\": \"pan-planner\"",
+        "stdout~\"id\": \"pan-executor\"",
+        "stdout~\"id\": \"pan-verifier\""
+      ],
+      "why": "OpenCode 2 loads PAN's agents from .opencode/agents/ and translates their legacy `permission:` frontmatter; `agent list` no longer exists."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode2",
+      "args": [
+        "plugin",
+        "list",
+        "--builtin"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~pan-wizard\\s+local"
+      ],
+      "why": "The v2 loader registers PAN's plugin under the `id` it exports (R45); plain `plugin list` shows package plugins only."
+    },
+    {
+      "kind": "cli",
+      "bin": "opencode2",
+      "args": [
+        "service",
+        "stop"
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Leave no background server behind."
+    }
+  ],
+  "controls": [
+    {
+      "id": "renamed-server",
+      "replace": {
+        "path": ".opencode/opencode.json",
+        "find": "\"pan\":",
+        "with": "\"nap\":"
+      },
+      "why": "With PAN's MCP server registered under another name, the registration assertion and `opencode2 mcp list` must both fail."
+    }
+  ]
+}
