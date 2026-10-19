@@ -678,12 +678,12 @@ Use template: ~/.claude/pan-wizard-core/templates/research-project/pitfalls.md
 ", subagent_type="pan-project-researcher", model="{researcher_model}", description="Pitfalls research")
 ```
 
-After all 4 agents complete, spawn synthesizer to create summary.md:
+After all 4 agents complete, spawn synthesizer to create research-summary.md:
 
 ```
 Task(prompt="
 <task>
-Synthesize research outputs into summary.md.
+Synthesize research outputs into research-summary.md.
 </task>
 
 <files_to_read>
@@ -694,7 +694,7 @@ Synthesize research outputs into summary.md.
 </files_to_read>
 
 <output>
-Write to: .planning/research/summary.md
+Write to: .planning/research/research-summary.md
 Use template: ~/.claude/pan-wizard-core/templates/research-project/summary.md
 Commit after writing.
 </output>
@@ -709,9 +709,9 @@ Display research complete banner and key findings:
 
 ## Key Findings
 
-**Stack:** [from summary.md]
-**Table Stakes:** [from summary.md]
-**Watch Out For:** [from summary.md]
+**Stack:** [from research-summary.md]
+**Table Stakes:** [from research-summary.md]
+**Watch Out For:** [from research-summary.md]
 
 Files: `.planning/research/`
 ```
@@ -883,7 +883,7 @@ Task(prompt="
 <files_to_read>
 - .planning/project.md (Project context)
 - .planning/requirements.md (v1 Requirements)
-- .planning/research/summary.md (Research findings - if exists)
+- .planning/research/research-summary.md (Research findings - if exists; older projects: .planning/research/summary.md)
 - .planning/config.json (Depth and mode settings)
 </files_to_read>
 
@@ -1136,7 +1136,7 @@ Spawn discuss-phase for Phase 1 as a Task subagent, exactly as transition.md Rou
   - `features.md`
   - `architecture.md`
   - `pitfalls.md`
-  - `summary.md`
+  - `research-summary.md`
 - `.planning/requirements.md`
 - `.planning/roadmap.md`
 - `.planning/state.md`

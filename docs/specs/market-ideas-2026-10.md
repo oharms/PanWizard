@@ -252,25 +252,25 @@ Three runs on one day, on `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.
 | M37 | P7 | XS | 1 | **Node compile cache for the CLI** in a per-user 0700 directory (MI-108) | `pan-wizard-core/bin/pan-tools.cjs` | `tests/compile-cache.test.cjs` | **Done**, released in `3.34.0` |
 | M38 | P5 | S | 2 | **Stop on the host's usage window**: `cost limits`, focus-auto `weekly_limit`, the army check (MI-109) | `cost.cjs`, `focus.cjs`, `hooks/pan-statusline.js`, `commands/pan/army.md` | `tests/host-limits.test.cjs` | **Done**, released in `3.34.0` |
 | M39 | P1 | S | 2 | **Every subagent spawn names its model** (MI-110): the remaining `general-purpose` spawns in `discuss-phase.md`, `exec-phase.md`, `plan-phase.md` and `transition.md` pass a resolved model, or move to named agent types | those workflows | a test that fails on any `Task(`/`subagent_type=` block in shipped workflows and commands without `model=` | **Done `3.35.0`** (`18efcb5`; recorded `2026-10-19`): program L4 gave the remaining `general-purpose` spawns a resolved `model=`, and `scripts/prompt-lint.cjs` (`untyped-spawn`) fails a spawn without one; the debugger and template spawns were fixed by the doc audit |
-| M40 | P1 | XS | 1 | **No positional `$N` in command bodies** (MI-111) | `tests/shipped-content-prefix.test.cjs`, `commands/pan/hud.md`, `commands/pan/report.md` | the test (proven red on the two bodies first) | **Done `2026-10-11`** (working tree) |
-| M41 | P2 | M | 4 | **Review Focus in plans** (MI-112): the planner names up to five implied inputs no test covers, each pinned to a test in its owning task; the plan-checker checks it | `agents/pan-planner.md`, `agents/pan-plan-checker.md`, the plan template | a plan-checker fixture | **Done `2026-10-18`** as program P4, commit `f427e4f` on `feat/sprint-3b` (unreleased) |
-| M42 | P2 | S | 2 | **Executor concerns and cost-if-wrong** (MI-113): a `DONE_WITH_CONCERNS` result; each deviation records why and its cost if wrong; the exec-phase report lists them | `agents/pan-executor.md`, the summary template, `workflows/exec-phase.md` | a contract test on the executor's return | **Done `2026-10-18`** as program P4, commit `f427e4f` on `feat/sprint-3b` (unreleased) |
-| M43 | P3 | S | 2 | **A no-guidance baseline arm in the harness** (MI-114), then run M35 through it | `harness/scenarios/`, `harness/README.md` | an A/B run with a control arm | Open: the arm is built (program H3, `3.35.0`, `18efcb5`: a scenario can declare arms, and `quick-mode` declares `no-guidance`); the run through it needs `--max-usd` |
+| M40 | P1 | XS | 1 | **No positional `$N` in command bodies** (MI-111) | `tests/shipped-content-prefix.test.cjs`, `commands/pan/hud.md`, `commands/pan/report.md` | the test (proven red on the two bodies first) | **Released `3.35.0`** (`18efcb5`; the changelog omits it; corrected `2026-10-19`) |
+| M41 | P2 | M | 4 | **Review Focus in plans** (MI-112): the planner names up to five implied inputs no test covers, each pinned to a test in its owning task; the plan-checker checks it | `agents/pan-planner.md`, `agents/pan-plan-checker.md`, the plan template | a plan-checker fixture | **Released `3.36.0`** (PR #45, `a2fa00c`; corrected `2026-10-19`) |
+| M42 | P2 | S | 2 | **Executor concerns and cost-if-wrong** (MI-113): a `DONE_WITH_CONCERNS` result; each deviation records why and its cost if wrong; the exec-phase report lists them | `agents/pan-executor.md`, the summary template, `workflows/exec-phase.md` | a contract test on the executor's return | **Released `3.36.0`** (PR #45, `a2fa00c`; corrected `2026-10-19`) |
+| M43 | P3 | S | 2 | **A no-guidance baseline arm in the harness** (MI-114), then run M35 through it | `harness/scenarios/`, `harness/README.md` | an A/B run with a control arm | Open: the arm is built (program H3, `3.35.0`, `18efcb5`: a scenario can declare arms, and `quick-mode` declares `no-guidance`); the run through it waits on the owner's approval to spend (the default $15 cap applies) |
 | R45 | P1 | S | 2 | **OpenCode 2 plugin**: add `setup(ctx)` with `ctx.session.hook("compaction", …)` beside `server()` in one default export (MI-038). v1 calls `server()`, v2 calls `setup()`; OpenCode ≥1.18.29 | `pan-wizard-core/opencode/pan-wizard.js`, `tests/opencode-plugin.test.cjs` | unit test of both entry points; a live check on `@opencode/cli` 2.0.26 shows the block in a compaction (the event's `system` array is read from the binary, not the docs) | **Done `3.35.0`** (`18efcb5`; recorded `2026-10-19`): the plugin exports `{ id, server, setup }`, unit-tested on both loaders; the live OpenCode 2 check has not run (OpenCode 1.x on this machine) |
 | R46 | P1 | M | 4 | **Code-enforce the verifier's test gate**: a verification with `test_gate: failed` routes to gaps however its status reads (today only the verifier's prompt forces it; the recorder warns `test_gate_failed_under_pass` and keeps `passed`) | `pan-wizard-core/bin/lib/verdict.cjs` or `workflows/exec-phase.md`, tests | a test where a failed gate under `passed` does not reach phase completion | **Done `3.35.0`** (`18efcb5`; recorded `2026-10-19`): program V9 records `passed` over a failed test gate as `gaps_found` (`verdict.cjs`), and the V1 phase gate refuses it |
 | R47 | P2 | M | 4 | **OpenCode uninstall and re-merge recognise both shapes**: strip PAN's entries from v2 `permissions[]` and `mcp.servers.pan` as well as the v1 keys; never add a legacy key beside a native one. Keep writing v1 (the published schema is still v1 and closed) | `bin/install.js` (uninstall, `configureOpencodePermissions`), `bin/install-lib.cjs` (`mergeMcpRegistration`, `stripMcpRegistration`) | tests on a v2-shaped `opencode.json` | **Done `3.35.0`** (`18efcb5`; recorded `2026-10-19`): program R47 |
 | R48 | P2 | XS | 1 | **Drop the Copilot attribution fallback to `~/.copilot/config.json`**, which Copilot 1.0.93 ignores for user settings | `bin/install.js` | a test | **Done `3.35.0`** (`18efcb5`; recorded `2026-10-19`): program R48, attribution from `settings.json` only |
-| R49 | P3 | S | 2 | **Re-run `resume-cost` and `memory-not-loaded` live**: both ledger findings are unresolved, and their passes were re-scored from recorded transcripts, never re-run | `harness/` | tier-2 runs pass and the ledger rows resolve | Waits on a per-run `--max-usd` approval (no standing cap, owner `2026-10-12`) |
+| R49 | P3 | S | 2 | **Re-run `resume-cost` and `memory-not-loaded` live**: both ledger findings are unresolved, and their passes were re-scored from recorded transcripts, never re-run | `harness/` | tier-2 runs pass and the ledger rows resolve | Waits on the owner's approval to spend: tier-1/2 runs default to a $15 cap since `3.36.0` (corrected `2026-10-19`; was "no standing cap"). One run splits the cap evenly, so run `memory-not-loaded` alone or raise `--max-usd` |
 
 ### Session queue
 
-| Session | Items | Pts | Theme | Exit criterion |
-|---|---|---|---|---|
 > Superseded `2026-10-12` by `product_excellence_program_2026_q4_featureai.md` §3.3: R45 → W1, R46 → V9/V1, M39 → L4, M41/M42 → program P4 (W3), M43 → H3/S4 (deletion arm). R47, R48, R49 and M35 stay here and run alongside the program's waves.
 
-| **S9** | R45, R46, M39, R48 | 9 | Correctness | the plugin loads on OpenCode 2; a failed test gate cannot pass a phase; no spawn inherits the session model |
-| **S10** | R47, M41, M42 | 10 | Stability and plans | a v2-converted OpenCode config uninstalls cleanly; plans carry Review Focus; executors report concerns |
-| **S11** | M43 then M35, R49 | 8 + spend | Measured behaviour | prompt changes ship only behind a baseline arm; the two open harness findings resolve |
+| Session | Items | Pts | Theme | Exit criterion | State (`2026-10-19`) |
+|---|---|---|---|---|---|
+| **S9** | R45, R46, M39, R48 | 9 | Correctness | the plugin loads on OpenCode 2; a failed test gate cannot pass a phase; no spawn inherits the session model | Complete: released in `3.35.0` |
+| **S10** | R47, M41, M42 | 10 | Stability and plans | a v2-converted OpenCode config uninstalls cleanly; plans carry Review Focus; executors report concerns | Complete: released in `3.35.0` and `3.36.0` |
+| **S11** | M43 then M35, R49 | 8 + spend | Measured behaviour | prompt changes ship only behind a baseline arm; the two open harness findings resolve | Open: the M43 arm is built; M35 and R49 wait on a spend approval |
 
 ### What not to do — added `2026-10-11`
 
@@ -284,3 +284,145 @@ Three runs on one day, on `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.
 - OpenCode: `opencode.ai/v2/docs/{permissions,config,migrate-v1,build/plugins}`, `opencode.ai/config.json`, `npm view @opencode/cli`, strings read from the `@opencode/cli-linux-x64@2.0.26` binary (not run), `anomalyco/opencode` v1.19.0.
 - Host tools: npm `@anthropic-ai/claude-code` time and dist-tags plus the raw CHANGELOG; releases APIs for `openai/codex`, `google-gemini/gemini-cli`, `github/copilot-cli`; `platform.claude.com` models and pricing.
 - Antigravity: `antigravity.google/docs/plugins` (undated; its schema URL returns 404).
+
+## Addendum — `2026-10-19` (delta scan)
+
+A delta run of `/market-ideas` for `2026-10-11` → `2026-10-19`, on `claude/quirky-thompson-2c5aa3` @ `127389f` (`3.36.0`, `main` @ `e7d1011` plus the unmerged deprecate-sweep fix). Three scouts ran in parallel (host tools · direct peers · entrants and standards), and one claim was probed live on this machine. Ledger rows MI-127 to MI-143; this addendum carries their queue.
+
+### Baseline (reproduce with the commands, never copy the numbers)
+
+| Item | Value |
+|---|---|
+| Tree | `claude/quirky-thompson-2c5aa3` @ `127389f`, docs being written |
+| Version | `package.json` `3.36.0`; newest tag `v3.36.0` |
+| Ledger | count rows with `grep -cE "^\| MI-" docs/specs/market-ideas-ledger.md` |
+| Window | `2026-10-11` → `2026-10-19`, delta only |
+| Rate table | `RATES_VERIFIED_AT` in `pan-wizard-core/bin/lib/cost.cjs` reads `2026-10-10` |
+| CLIs here | Claude Code 2.1.302 (`stable` 2.1.292, `latest` 2.1.303), Codex 0.163.0, Gemini CLI 0.64.0, OpenCode 1.19.3, Copilot CLI 1.0.98; `agy` absent |
+
+### What the scan found
+
+- **A live defect (MI-127).** Claude Code refuses a subagent's `Write` when the file's basename is `summary.md`, `report.md`, `findings.md` or `analysis.md`, in any case and any directory. gsd-core found it on 2.1.301. A probe on this machine's Claude Code reproduced it, while `01-01-summary.md` and `research-summary.md` wrote fine. PAN's research synthesizer writes `.planning/research/summary.md`, which new-project, milestone-new and the roadmapper read, and `pan-conductor` writes `.planning/orchestration/summary.md`. Research synthesis on Claude Code therefore fails at its write step today.
+- **Model churn.** Copilot deprecates Claude Opus 4.8, Claude Opus 5 and GPT-5.6 Terra on `2026-11-16`, and PAN's recommended reasoning tier still names two of them (MI-128). Gemini 4 Argon is generally available with a price change scheduled for `2026-12-01`, and PAN cannot price it (MI-129).
+- **Peers hardened their plan and gate checks** (gsd-core v1.17.0 and v1.18.0): truncated-plan detection, baselining a plan's own grep gates, monitors registered only where they can measure, fail-closed artifact lookup, and scope-checked state writes. The first three are queued; the rest are WATCH.
+- **Anthropic described its own code-review practice** (`2026-10-15`). Most of it PAN already has (dispositions, clean twins in the corpus, review scope). The "pre-existing" finding class is new (MI-135), and the round cap is WATCH (MI-139).
+- **No standard moved.** Agent Plugins 1.1.0 is still a draft, MCP has no core change (the Tasks working-group SEP and SEP-2848 are open), and OTel GenAI is still `development`.
+
+### Hand-offs to `/reality-check` (path or behaviour changes, not ideas)
+
+- **Copilot runs Claude's hooks too.** The Copilot hooks reference says the CLI also reads `.claude/settings.json` and `.claude/settings.local.json` hooks and runs every source (since 1.0.12). **Refuted as a PAN defect by the same-day reality check:** each Copilot-registered hook's `.github/hooks` copy defers to a Claude registration of the same script (`deferToClaudeRegistration`, pinned by `tests/copilot-hook-dedupe.test.cjs`).
+- **OpenCode 2 is arriving.** Homebrew Core tracks OpenCode 2 (`@opencode/cli` 2.0.32), 1.19.0 offers `opencode upgrade --major`, and gsd-core reports renamed tool ids (`shell`, `patch`), dropped `opencode run` flags and a 1.x freeze on `2026-12-31`. Check PAN's permissions and tool names on 2.x; the installer does not detect the generation (MI-038).
+- **Claude Code 2.1.302 turns fork subagents on by default** in `claude -p`, the Agent SDK, the desktop app and VS Code, and runs a subagent's own Agent calls in the foreground there. Confirm that PAN's typed spawns stay fresh-context in harness `-p` runs (ADR-0046 D6).
+- **Claude Code idle compaction** (2.1.299; `idleCompaction`, `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS`). Confirm that PAN's post-compaction re-injection (`SessionStart` `compact`) fires after an idle compaction.
+- **Codex 0.163.0 adds a configurable default plugin activation policy.** Check whether the Agent Plugins bundle is active by default after install.
+- **Copilot 1.0.99 prereleases** apply path-specific `.github/instructions` automatically and install verified plugins from GitHub install links (MI-025, MI-098).
+- **Entrant claims about hosts, unverified at the host:** agentic-project-management v1.0.3 says Antigravity CLI no longer loads `.agents/workflows/` and that Codex rejects `/` in command names; dryforge v1.3.8 moved to "the current Codex plugin format".
+
+### Items
+
+| ID | Pri | Size | Pts | Title | Files | Gate / verify | Status |
+|---|---|---|---|---|---|---|---|
+| M44 | P0 | M | 4 | **Subagent-refused basenames** (MI-127): rename the synthesizer's output (for example `research-summary.md`, which the probe wrote) and the conductor's (`orchestration-summary.md`). Readers fall back to the old name for existing projects | `agents/pan-research-synthesizer.md`, `agents/pan-conductor.md`, `agents/pan-roadmapper.md`, `workflows/new-project.md`, `workflows/milestone-new.md`, the research template references | a prompt-lint rule that fails when an agent with Write is told to write a refused basename (proven red on the two agents first), plus a live research run on Claude Code that leaves the file | **Done `2026-10-19`** on `claude/quirky-thompson-2c5aa3` (unreleased) |
+| M45 | P1 | XS | 1 | **Recommended reasoning tier names a live model** (MI-128): `RECOMMENDED_MODELS.reasoningTier` names Opus 5.5 instead of Opus 5 and Opus 4.8 | `bin/install.js` | a test on the advisory's names | **Done `2026-10-19`** on `claude/quirky-thompson-2c5aa3` (unreleased) |
+| M46 | P1 | S | 2 | **Gemini 4 Argon rate row** (MI-129), with the price re-read from the pricing page on the day it is written; the `2026-12-01` change is recorded as a dated note (the table has no effective-from field) | `pan-wizard-core/bin/lib/cost.cjs` | a rate test; `RATES_VERIFIED_AT` bumped | **Done `2026-10-19`** on `claude/quirky-thompson-2c5aa3` (unreleased) |
+| M47 | P2 | S | 2 | **Truncated-plan detection** (MI-130): `verify plan-structure` errors on an unclosed `<tasks>`, a file ending inside a tag, or a continuation marker | `pan-wizard-core/bin/lib/verify.cjs` | unit tests on truncated fixtures | Open |
+| M48 | P2 | M | 4 | **Baseline a plan's grep and count gates** (MI-131): the plan-checker runs read-only grep and count `<verify>` forms at HEAD and flags one that already passes or can never match. It never runs tests or builds | `agents/pan-plan-checker.md`, a `pan-tools verify` subcommand | unit tests plus a defect-corpus case with a gate that passes before any work | Open |
+| M49 | P5 | S | 2 | **`disable-model-invocation: true` on emitted Claude skills** (MI-132), after a live check that a marked skill leaves the listing and still runs as `/pan:<name>` | the skills converter in `bin/install-lib.cjs`, `scripts/build-plugin.js` | the live check recorded first (MI-022), then a converter test | Open |
+| M50 | P2 | S | 2 | **Context monitor only where it can measure** (MI-133): confirm on Codex, Gemini and Copilot whether the monitor gets any numbers; drop the registration where it cannot | `bin/install.js`, `bin/install-lib.cjs`, `hooks/pan-context-monitor.js` | a test that every registered monitor has a metrics source on its runtime | Open |
+| M51 | P7 | XS | 1 | **`x-` config keys are user metadata** (MI-134): `unknownConfigKeys()` skips them | `pan-wizard-core/bin/lib/config.cjs` | a unit test | Open |
+| M52 | P5 | S | 2 | **A "pre-existing" class for review findings** (MI-135): a finding outside the change's diff is tagged pre-existing and disposed as deferred debt, never a blocker | `agents/pan-reviewer.md`, the review pipeline, `findings` | a contract test, plus a corpus case where a pre-existing defect does not block | Open |
+
+### Session queue
+
+| Session | Items | Pts | Theme | Exit criterion |
+|---|---|---|---|---|
+| **S12** | M44, M45, M46 | 7 | Correctness | research synthesis writes its file on Claude Code; no recommended model is deprecated; every model a runtime defaults to is priced |
+| **S13** | M47, M48, M50 | 8 | Plan and gate integrity | a truncated plan fails structure checks; a plan gate that cannot fail is flagged; no hook runs where it measures nothing |
+| **S14** | M49, M51, M52 | 5 | Polish | PAN's skills leave the listing budget on Claude; config metadata keys are quiet; pre-existing findings never block |
+
+### What not to do — re-affirmed `2026-10-19`
+
+- **Do not take the fork spawn now that it is on by default.** It inverts the fresh-context guarantee for planners, executors and judges (MI-013, ADR-0046 D6).
+- **Do not put a controller in the loop** (MI-142). That is MI-058's layer, and PAN's levers are budgets, the stall watchdog and escalation.
+- **Do not route PAN's review through the host's PR product** (MI-143).
+
+### Sources read (`2026-10-19`)
+
+- Host tools: npm `@anthropic-ai/claude-code` time and dist-tags plus the raw CHANGELOG; `code.claude.com/docs/en/{skills,headless,agent-teams,workflows,model-config}`; `platform.claude.com` models overview; releases APIs for `openai/codex` (`per_page=60`; 100 returned 504), `google-gemini/gemini-cli`, `github/copilot-cli`, `anomalyco/opencode`; `npm view @opencode/cli time`; `learn.chatgpt.com/docs/changelog` (first 100K characters); `geminicli.com/docs/changelogs`; `antigravity.google/docs/{changelog,plugins}`; `opencode.ai/v2/docs/plugins`; `docs.github.com/en/copilot/reference/hooks-reference` and the custom-agents reference; `github.blog/changelog` (`2026-10-13`, `2026-10-15`); `ai.google.dev/gemini-api/docs/pricing`.
+- Peers: releases APIs and linked PRs for `github/spec-kit`, `bmad-code-org/BMAD-METHOD`, `open-gsd/gsd-core`, `Fission-AI/OpenSpec`, `OthmanAdi/planning-with-files`, `obra/superpowers`, `eyaltoledano/claude-task-master`. Marketplaces, raw JSON parsed: `anthropics/claude-plugins-official`, `openai/plugins`, `github/copilot-plugins`, `github/awesome-copilot`.
+- Standards: `agentplugins/agent-plugins-spec`, `agentskills/agentskills`, `modelcontextprotocol/modelcontextprotocol` (draft path, PRs #3440, #3415, #2848, #2419), `modelcontextprotocol/ext-skills`, `agentsmd/agents.md`, `open-telemetry/semantic-conventions-genai`.
+- Patterns: the Claude blog on code review and Code Review GA (`2026-10-15`), Claude Platform agent observability (`2026-10-14`), the GitHub blog on teaching Copilot a codebase (`2026-10-12`), the Google Developers blog on agent evaluation (`2026-10-15`), arXiv 2610.20003, 2610.22987, 2610.22732, 2610.21073, 2610.20116, 2610.22466 and 2610.18206.
+- Entrants (releases APIs and READMEs): `sdi2200262/agentic-project-management`, `spec-kitty/spec-kitty`, `maxritter/pilot-shell`, `thedotmack/claude-mem`, `DietrichGebert/ponytail`, `dagoSte/squadra`, `seropaski/lets-build`, `addyosmani/agent-skills`, `foryourhealth111-pixel/Vibe-Skills`, `prekuter/dryforge`, `open-gsd/gsd-pi`. Star counts are secondary and are not repeated here.
+- Live probe (this machine): a subagent's `Write` was refused for five report-like basenames and accepted for three others.
+
+## Addendum — `2026-10-19` (reality check)
+
+A `/reality-check` delta run on `claude/quirky-thompson-2c5aa3` @ `127389f` (`3.36.0` plus one unreleased release-workflow fix), the same day as the delta scan above, whose market read it reuses. Findings are prefixed `RC`, items `R`. The review-side summary is §12 of `docs/ECOSYSTEM-REVIEW-2026-08.md`.
+
+### Baseline (reproduce with the commands, never copy the numbers)
+
+| Item | Value |
+|---|---|
+| Suite and gates | `npm run test:all` and `node scripts/release-check.js` pass. In the first suite run, one wall-clock assertion failed under load and passed alone (RC6) |
+| CI | `gh run list --limit 6`: green on `main`, the `v3.36.0` release run and this branch |
+| Packed install | `npm pack` of the tree, then `install.js --claude --codex --gemini --opencode --copilot --local` into a scratch directory (there is no `D:` drive here; this machine's test directory is `C:\Project\pantesting`, where the harness keeps its run state) |
+| Engine and bridge | installed `pan-tools models check` reports the rate table fresh; `validate health` reports `E001` on a bare project (expected); every resource listed by `resources/list` read cleanly through the installed MCP server |
+| Harness | `node harness/src/run.cjs --tier 0 --no-ledger`: every scenario passed except the Antigravity live gate, skipped for lack of `agy` |
+| Rates | the Anthropic and OpenAI rows match the pricing pages read today; Gemini: see M46 |
+
+### Findings
+
+| # | Finding (verified `2026-10-19`) | Phase | Class |
+|---|---|---|---|
+| RC1 | Claude Code refuses a subagent's write to `summary.md`, `report.md`, `findings.md` or `analysis.md`; the research synthesizer and the conductor write such files (MI-127) | 2.1 | P0 BROKEN → M44 |
+| RC2 | Inherited statuses describe shipped work as open or unreleased (corrections below) | 1.5 | P1 WRONG → R50 |
+| RC3 | The `3.35.0` changelog claims OpenCode 2 loads PAN's plugin; only a simulated loader has run it. Homebrew Core has installed OpenCode 2 since `2026-09-28`. PAN's OpenCode agents carry a legacy `permission:` map with `mcp__…` and `todowrite` keys, and the v2 docs do not say how those translate | 1.2, 2.1 | P1 WRONG → R50 wording, R51 live check |
+| RC4 | Native `pan-exec-waves` lacks the test baseline, the phase budget report, the reviewer and `review scope` that `exec-phase.md` runs; its phase gate verdict reaches the halt through an agent's relay | 1.2 | P2 STABILITY → R52 |
+| RC5 | COMPARISON's leading rows omit the code-enforced phase gate, the any-language test gate and the guard hook; its "Last verified" predates changes to PAN's own rows | 1.2, 1.4 | P6 DOCUMENTATION → R50 |
+| RC6 | `tests/scenarios/feedback-performance.test.cjs` asserts a bound of exactly two seconds and flaked under load; the test-quality lint's wall-clock rule flags only bounds under two seconds | 4.4 | P2 STABILITY → R53 |
+| RC7 | Claude Code `2.1.302` fork mode is on by default in `claude -p`: main-conversation spawns run in the background and `run_in_background` is removed (typed and `general-purpose` spawns still start fresh, per the sub-agents doc; the doc's default still reads "off" for `-p`). The harness model tiers have not run on it; CI pins `2.1.288` | 2.1 | P2 STABILITY → R54 |
+| RC8 | Codex `0.163.0` lists the `plugin_hooks` feature flag as removed; `live-gate-codex` still discovers the bundle, but hook delivery from the bundle is unchecked | 2.1 | P4 FEATURE GAP → R55 |
+| RC9 | Copilot `1.0.98` shows `copilot workflow run` with no experimental flag in its help (MI-076); `copilot instruction list` still enables AGENTS.md and CLAUDE.md as two sources (MI-098) | 2.1 | WATCH (ledger) |
+| RC10 | Gemini's deprecation page auto-routes `gemini-3.5-flash` to `gemini-3.6-flash`; if routed calls bill at the newer rates, PAN's older row over-prices them (inferred; neither page states the billing rate) | 2.3 | P1 WRONG (unconfirmed) → M46 |
+| RC11 | No model-tier harness run since `3.33.0`; two ledger findings (`resume-cost`, `memory-not-loaded`) are unresolved. The blocker is now only the owner's spend approval, since tier-1/2 runs default to a $15 cap | 1.4 | → R49 (open) |
+| — | Refuted: Copilot running PAN's Claude hooks a second time. Each Copilot hook copy defers to a Claude registration of the same script (`tests/copilot-hook-dedupe.test.cjs`) | 2.1 | — |
+
+### Corrections to this plan
+
+- **R45, R46, R47** shipped in `3.35.0` (`18efcb5`): §11 of the review still lists R45 and R46 as open. R45 has unit evidence only (RC3).
+- **R49 and M43:** "no standing cap" is no longer the blocker; `harness/src/run.cjs` defaults tier-1/2 runs to a $15 cap. When both R49 scenarios run together the cap is split evenly, so give `memory-not-loaded` its own run or raise `--max-usd`.
+- **M40** shipped in `3.35.0` (`18efcb5`), not "working tree"; the changelog omits it. **M41, M42** shipped in `3.36.0` (PR #45); `f427e4f` is reachable from no ref.
+- **Session queue S9 and S10** are complete; S11 (M43's run, M35, R49) is open. A blockquote placed between the queue's header and its rows breaks that table.
+- **product-excellence-superplan:** `3.36.0` is tagged on `e7d1011`, not "awaiting push, merge and tag"; sprints 2a to 3c are released, not merged-only or unpushed.
+- **OUTSTANDING-2026-08:** L6's stale instance is gone but the guard it asks for is not built (instance closed, guard open); A1's "`SCHEMA_V` is 3 in both hooks" is outdated (the hooks moved on; nothing regressed).
+- **CHANGELOG:** `127389f` (the deprecation sweep fix) has no `[Unreleased]` entry.
+
+### Items
+
+| ID | Pri | Size | Pts | Title | Files | Gate / verify | Status |
+|---|---|---|---|---|---|---|---|
+| R50 | P1 | S | 2 | **Status and claims sweep** (RC2, RC3 wording, RC5): correct §11's rows, the superplan's release state, M40–M42 and the session queue, OUTSTANDING L6 and A1; qualify the `3.35.0` OpenCode 2 line as unit-tested; add the gates to COMPARISON's leading rows with a re-verified date; add an `[Unreleased]` entry for `127389f` | `docs/ECOSYSTEM-REVIEW-2026-08.md`, `docs/specs/product-excellence-superplan.md`, this file, `docs/audits/OUTSTANDING-2026-08.md`, `docs/COMPARISON.md`, `CHANGELOG.md` | doc-lint, model-version drift, link validation | **Done `2026-10-19`** (unreleased): §11, the superplan, M40–M43, R49, the session queue, OUTSTANDING L6, COMPARISON's PAN rows and the changelog. The `3.35.0` changelog line stays as written (past entries are never edited); this file and §12 qualify it |
+| R51 | P1 | S | 2 | **OpenCode 2 live check** (RC3): install `@opencode/cli` into the test directory (never globally), then run `live-gate-opencode` against it. The plugin must load through `setup`, and the agents' legacy `permission:` keys (`mcp__…`, `todowrite`) must translate | `harness/scenarios/live-gate-opencode.json`, `bin/install-lib.cjs` (OpenCode agent converter) | the gate passes on OpenCode 2, or the converter emits v2-safe keys behind a test | **Done `2026-10-19`** (unreleased) on OpenCode 2.0.32, model-free: PAN's v1 config is normalised, `mcp list` shows `pan connected`, `debug agents` lists every pan-* agent with its legacy permission keys translated, and `plugin list --builtin` lists `pan-wizard` as a local plugin. New gate `live-gate-opencode2` (the v1 gate's `agent list` and `debug config` steps do not exist or no longer list plugins on 2.x). Compaction through the plugin's `setup` is still unproven (needs a model turn) |
+| R52 | P2 | M | 4 | **Bring native `pan-exec-waves` level with `exec-phase.md`** (RC4): test baseline, phase budget report, reviewer with `review scope`; the phase gate read in code, not relayed | `bin/install-lib.cjs` (`buildNativeWorkflowScripts`), `tests/native-workflows-drift.test.cjs` | the drift test asserts each twin step | **Done `2026-10-19`** (unreleased): `pan-exec-waves` records the test baseline in its index step, runs `pan-reviewer` over `review scope` between execution and verification (a second agent saves the report, records the verdict in the findings ledger and reads the phase budget), and halts on `NEEDS_FIXES` because a script cannot ask. Pinned by the drift test and the executable spawn-order test. The phase gate is still relayed by an agent: workflow scripts have no shell. The budget is read once after the waves, not after each wave |
+| R53 | P2 | XS | 1 | **Flaky wall-clock bound** (RC6): measure the CLI calls without a tight bound (or a bound with headroom), and make the lint's wall-clock rule include a bound of exactly two seconds | `tests/scenarios/feedback-performance.test.cjs`, `scripts/test-quality-lint.cjs` | the lint flags the old assertion (proven red), then passes | **Done `2026-10-19`** (unreleased): Q6 flags a bound of two seconds or less (proven red on the assertion); the bound is 5000 ms like its sibling canaries |
+| R54 | P2 | S | 2 | **Harness under fork mode** (RC7): set `CLAUDE_CODE_FORK_SUBAGENT=0` in the harness's model-step environment, or show a tier-2 chain passing on current Claude Code | `harness/src/model.cjs` | a unit test on the spawned environment; a recorded tier-2 rep if spend is approved | **Done `2026-10-19`** (unreleased), by measurement: the double-backed tier-0 scenarios (cassette drift, scripted user, executor body) pass on Claude Code 2.1.302 with fork mode on. The harness leaves `CLAUDE_CODE_FORK_SUBAGENT` alone because users run with it on; `harness/README.md` and `modelEnv` document setting it to `0` to compare with an older baseline. CI stays pinned to the cassette's recording version |
+| R55 | P3 | S | 2 | **Codex bundle hooks after `plugin_hooks` left the flag list** (RC8): find out from Codex's source or docs whether plugin hooks are now always on or gone, then adjust the bundle or its docs | `scripts/build-agent-plugin.js`, `harness/scenarios/live-gate-codex.json` | a model-free check in `live-gate-codex`, or a dated note | **Done `2026-10-19`** (unreleased), by reading Codex's source: a root `plugin.json` with the agent-plugins.org schema makes Codex treat the bundle as an Agent Plugin, and its loader then returns no hooks (openai/codex#37027, `2026-08-05`; same at `rust-v0.163.0`). The bundle's Codex hooks, including the MI-037 stop guard, never fire on Codex; a `--codex` install's `.codex/hooks.json` does. Recorded in ADR-0045 (amendment), `docs/DEVELOPMENT.md` and the build script; no build change |
+
+### Session queue
+
+| Session | Items | Pts | Theme | Exit criterion |
+|---|---|---|---|---|
+| **S12** (from the scan above) | M44, M45, M46 | 7 | Correctness | runs first: M44 is the only P0 |
+| **S15** | R50, R51, R53 | 5 | Truthful docs and runtimes | no inherited status contradicts the tree; OpenCode 2 is checked live; the timing test cannot flake |
+| **S16** | R52, R54, R55 | 8 | Runtime drift | the native and markdown exec paths run the same gates; the harness behaves the same on current Claude Code; Codex bundle hooks are accounted for |
+
+### What not to do — re-affirmed `2026-10-19`
+
+Every entry carried forward still holds, and no finding overturns one: do not derive a runtime-integration test from the installer's table alone; do not retire the markdown workflows; do not chase a sixth runtime; do not standardise `.planning/`; do not soften the behavioural harness; do not list on a skills marketplace on quality grounds alone; do not fork the skills compiler; do not emit frontmatter a runtime has not been seen to read; do not add a model rate without a primary citation; do not emit OpenCode v2 config shapes. RC3 does not overturn the last one: R51 checks whether OpenCode 2 translates PAN's v1 agent keys before anything changes.
+
+### Sources read (`2026-10-19`)
+
+- `code.claude.com/docs/en/{sub-agents,hooks,settings-reference,env-vars}`, the raw Claude Code CHANGELOG; `platform.claude.com/docs/en/about-claude/pricing`; `developers.openai.com/api/docs/pricing`; `ai.google.dev/gemini-api/docs/{pricing,deprecations}`.
+- `opencode.ai/v2/docs/{migrate-v1,permissions,agents,commands,plugins}`, `opencode.ai/install`, `formulae.brew.sh/api/formula/opencode.json`, Homebrew core commits, `npm view @opencode/cli` and `opencode-ai`, `anomalyco/opencode` releases.
+- `docs.github.com/en/copilot/reference/hooks-reference`, `github/copilot-cli` releases (from 1.0.4 on, for the hook sources).
+- Local CLIs, help and list commands only (no model turns): `copilot workflow run --help`, `copilot instruction list`, `codex plugin --help`, `codex features list`.

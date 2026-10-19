@@ -24,6 +24,15 @@ describe('test quality — assertions that can fail', () => {
     assert.equal(new Set(RULES.map((r) => r.id)).size, RULES.length);
   });
 
+  test('Q6 flags a wall-clock bound of two seconds or less, and passes a generous one (R53)', () => {
+    // A bound of exactly 2000 ms passed the rule and then flaked at 2109 ms under load
+    // (reality check 2026-10-19).
+    const q6 = (src) => lintTestSource(src, 'tests/x.test.cjs').filter((f) => f.rule === 'Q6').length;
+    assert.equal(q6('assert.ok(elapsed < 2000, `took ${elapsed}ms`);'), 1);
+    assert.equal(q6('assert.ok(elapsed <= 1500, `took ${elapsed}ms`);'), 1);
+    assert.equal(q6('assert.ok(elapsed < 5000, `took ${elapsed}ms`);'), 0);
+  });
+
   test('the suite carries none of the banned shapes beyond its reasoned allowlist', () => {
     let allowlist = [];
     try { allowlist = JSON.parse(fs.readFileSync(path.join(ROOT, ALLOWLIST_REL), 'utf8')); } catch { /* none */ }

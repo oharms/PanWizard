@@ -322,11 +322,28 @@ Run on `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`, released `2026-
 
 | Finding | Bearing | Queue |
 |---|---|---|
-| OpenCode 2 (`@opencode/cli`; 1.19.0 moves users there) normalises PAN's v1 config in memory, and its published schema is still v1, but its plugin loader needs `setup` or `effect`, so PAN's compaction plugin does not load | The one v2 break; keep writing v1 config | R45, R47 |
-| The verifier's test gate is enforced by its prompt only; the recorder warns on a failed gate filed as `passed` and keeps the status | A claim stronger than the code | R46 |
+| OpenCode 2 (`@opencode/cli`; 1.19.0 moves users there) normalises PAN's v1 config in memory, and its published schema is still v1, but its plugin loader needs `setup` or `effect`, so PAN's compaction plugin does not load | The one v2 break; keep writing v1 config | R45, R47 — shipped in `3.35.0` (`18efcb5`); the OpenCode 2 load is unit-tested only, live check R51 (§12) |
+| The verifier's test gate is enforced by its prompt only; the recorder warns on a failed gate filed as `passed` and keeps the status | A claim stronger than the code | R46 — shipped in `3.35.0` (`18efcb5`): a failed test gate lowers `passed` to `gaps_found`, and the phase gate refuses it |
 | README and COMPARISON claimed more than the code for the test gate, the MCP caps, UAT, budgets and plugin publication | Fixed the same day | — |
 | Several inherited statuses were wrong (corrections listed in `docs/specs/market-delta-2026-09-superplan.md` and the October queue's Addendum) | Docs, not code | — |
 | Two harness findings (`resume-cost`, `memory-not-loaded`) have never passed a live re-run | Behaviour unproven | R49 |
 | Superpowers v7.0.0 extends its distribution (Claude, Codex-curated and Grok official marketplaces) and its eval lab | Publication remains PAN's gap (MI-025) | — |
 
 **Convergence read holds:** the market keeps moving onto PAN's thesis (durable per-plan ledgers, fresh-context implementers, verification gates, explicit model choice, behavioural evals); the gaps are publication and the cost of fresh-context fan-out. **What not to do** adds one entry: do not emit OpenCode v2 config shapes. **Cadence:** re-run around `2026-11-22`, or earlier if OpenCode 2 becomes the default install or a host drops a path PAN writes. **Realigned `2026-10-12`:** the queue is `docs/specs/product_excellence_program_2026_q4_featureai.md` (R45 in W1, R46 by V9/V1); publication is deferred to its Exposure phase.
+
+## 12. Reality check (run `2026-10-19`, delta)
+
+Run on `claude/quirky-thompson-2c5aa3` @ `127389f` (`3.36.0`, released `2026-10-19`, plus one unreleased release-workflow fix). Window `2026-10-11` → `2026-10-19`; the same-day `/market-ideas` scan supplied the market read. The suite, every release gate, CI on `main` and harness tier 0 pass. The Antigravity live gate skips because `agy` is not installed. A packed install wrote every claimed surface on all five runtimes, and every MCP resource read cleanly through the real engine on a bare project. The Anthropic and OpenAI rate rows match their pricing pages as read today.
+
+| Finding | Bearing | Queue |
+|---|---|---|
+| Claude Code refuses a subagent's write to `summary.md` (and `report.md`, `findings.md`, `analysis.md`); reproduced live on this machine | The research synthesizer and the conductor write such a file, so research synthesis fails at its write step on Claude Code | M44 |
+| §11's first two rows, the product-excellence superplan's release state and several queue statuses describe work as open or unreleased that shipped in `3.35.0` or `3.36.0`; COMPARISON's leading rows omit the code-enforced phase gate and test gate | Docs, not code | R50 |
+| The `3.35.0` changelog says OpenCode 2 loads PAN's plugin, but only a simulated loader has run it. Homebrew Core has installed OpenCode 2 since `2026-09-28`, while the install script and the `opencode-ai` npm package stay on 1.x | A claim stronger than the evidence, on a channel users now reach | R51 |
+| The native `pan-exec-waves` script lacks steps its markdown twin has: the test baseline, the phase budget report, the reviewer and `review scope` | Claude's recommended path gives less than the portable one | R52 |
+| A wall-clock assertion of exactly two seconds failed once under load; the test-quality lint flags only bounds under two seconds | A flaky test the lint was meant to catch | R53 |
+| Claude Code `2.1.302` turns fork mode on by default in `claude -p`, the SDK and the desktop app: main-conversation spawns run in the background, and `run_in_background` is removed. Typed and `general-purpose` spawns still start fresh | The harness's model tiers run `claude -p`, while CI pins an older Claude Code | R54 |
+| Codex `0.163.0` lists its `plugin_hooks` feature flag as removed | Whether the Agent Plugins bundle's hooks fire on Codex needs a fresh check | R55 |
+| Copilot reads `.claude/settings.json` hooks and runs every source | Refuted as a PAN defect: each Copilot hook copy defers to a Claude registration of the same script | — |
+
+**Convergence read holds:** peers spent the window on plan and gate integrity, and Anthropic's account of its own code review matches PAN's verify, findings and defect-corpus design. The move the other way is a host default, fork mode in headless Claude Code, which PAN keeps declining (ADR-0046 D6). **What not to do** carries forward unchanged. **Cadence:** a full re-run is still due around `2026-11-22`. The early trigger ("OpenCode 2 becomes the default install") is met for Homebrew users only, so R51 runs now instead of a full re-run. The queue is the `2026-10-19` reality-check Addendum of `docs/specs/market-ideas-2026-10.md`.

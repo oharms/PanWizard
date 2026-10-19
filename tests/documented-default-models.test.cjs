@@ -97,3 +97,18 @@ describe('every provider routing tier resolves to a model id the host accepts (R
     }
   }
 });
+
+describe('the installer recommends the documented default, not a superseded model (M45)', () => {
+  // Copilot deprecates Claude Opus 4.8 and Claude Opus 5 on 2026-11-16 (GitHub
+  // changelog 2026-10-15), and the advisory still named both. Tie it to the fixture so
+  // the next lineup move fails here instead of shipping a stale recommendation.
+  test('RECOMMENDED_MODELS.reasoningTier names the documented Claude default', () => {
+    const src = require('fs').readFileSync(path.join(__dirname, '..', 'bin', 'install.js'), 'utf8');
+    const m = src.match(/reasoningTier:\s*'([^']+)'/);
+    assert.ok(m, 'RECOMMENDED_MODELS.reasoningTier not found in bin/install.js');
+    const claudeDefault = FIXTURE.defaults.find((e) => e.runtime === 'claude' && /opus/.test(e.id));
+    assert.ok(claudeDefault, 'the fixture records the Claude Opus-tier default');
+    const named = m[1].split(/\s*\/\s*/);
+    assert.ok(named.includes(claudeDefault.id), `reasoningTier "${m[1]}" must name ${claudeDefault.id}`);
+  });
+});

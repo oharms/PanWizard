@@ -13,7 +13,7 @@
  *   Q4  a runPanTools result asserted only by `.output.length`;
  *   Q5  a platform conditional that bare-`return`s (counted as a pass) instead of
  *       `t.skip(reason)`;
- *   Q6  a wall-clock upper bound under two seconds on a spawned process;
+ *   Q6  a wall-clock upper bound of two seconds or less on a spawned process;
  *   Q7  a read of the developer's real HOME / USERPROFILE / os.homedir();
  *   Q8  a committed `test.todo` (scaffold stubs must be filled before commit);
  *   Q9  an OR of bare property reads inside assert.ok — `assert.ok(a.x || a.y)` asks only
@@ -143,7 +143,7 @@ const RULES = [
   },
   {
     id: 'Q6',
-    title: 'wall-clock upper bound under two seconds',
+    title: 'wall-clock upper bound of two seconds or less',
     fix: 'assert the behaviour, not the speed; if timing is the contract, bound it generously and allowlist with the reason',
     detect(lines) {
       const out = [];
@@ -151,7 +151,7 @@ const RULES = [
         const line = stripComments(raw);
         if (!/\bassert(?:\.ok)?\s*\(/.test(line) || !TIME_WORDS.test(line)) return;
         const m = /<\s*=?\s*(\d{2,4})\b/.exec(line);
-        if (m && Number(m[1]) < 2000) out.push({ line: i + 1, text: raw.trim() });
+        if (m && Number(m[1]) <= 2000) out.push({ line: i + 1, text: raw.trim() });
       });
       return out;
     },

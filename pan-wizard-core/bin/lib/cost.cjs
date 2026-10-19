@@ -149,7 +149,8 @@ const DEFAULT_RATES = {
 
   // Google Gemini — ai.google.dev/gemini-api/docs/pricing, paid tier, text input,
   // the ≤200K-token prompt tier where the page splits by length, read 2026-09-23.
-  // cache_read is the page's "context caching" price: 0.1× input on every row, not
+  // cache_read is the page's "context caching" price: 0.1× input on every row but
+  // Gemini 4 Argon (0.05×), not
   // the 0.25× this block carried until 2026-09-22 (cache reads 2.5× high, R26). The
   // tokens that CREATE a cache bill at the standard input price (Google Cloud's
   // context-cache overview; the Gemini API pages list only cached-token and storage
@@ -157,7 +158,12 @@ const DEFAULT_RATES = {
   // HOUR, which a per-token table cannot carry: PAN's Gemini totals exclude it.
   // The 3.6/3.7/3.8 Flash prices run "through December 31, 2026" and double from
   // January 1, 2027 (the page states both) — re-read them after that date.
-  'gemini-3.8-flash':       { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 },
+  // Gemini 4 Argon (paid tier only; one price at every prompt length; implicit caching
+  // only): these rates run "through November 30, 2026" and double from December 1,
+  // 2026 (input $4.00, output $20.00, caching $0.20; read 2026-10-19) — change the row
+  // on that date.
+  'gemini-4-argon':         { input: 2.00, output: 10.0, cache_read: 0.10,  cache_write: 2.00 },
+  'gemini-3.8-flash':      { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 },
   'gemini-3.7-flash':       { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 },
   'gemini-3.6-flash':       { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 },
   'gemini-3.5-flash':       { input: 1.50, output: 9.00, cache_read: 0.15,  cache_write: 1.50 },

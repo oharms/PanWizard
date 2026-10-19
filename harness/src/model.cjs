@@ -36,6 +36,14 @@ const path = require('path');
  * 2026-09-10). Both native-workflow reps measured that day died at ~605 s with
  * `Workflow aborted` — the ceiling, not PAN's script. `0` removes it; the harness's
  * own per-step timeout still bounds the run. A caller's explicit value wins.
+ *
+ * CLAUDE_CODE_FORK_SUBAGENT is deliberately left alone. Claude Code 2.1.302 turned fork
+ * mode on by default in `claude -p`: main-conversation spawns run in the background and
+ * `run_in_background` leaves the Agent tool, while typed and `general-purpose` spawns
+ * still start fresh. That is what users now run, so the harness measures it; the
+ * double-backed scenarios passed on 2.1.302 (reality check R54, 2026-10-19). Set
+ * `CLAUDE_CODE_FORK_SUBAGENT=0` in the caller's environment to compare with a baseline
+ * recorded before 2.1.302.
  */
 function modelEnv(base = process.env) {
   const env = { ...base };

@@ -47,7 +47,7 @@ const pkg = require('../package.json');
 // that keep the advice actionable. Nothing in PAN gates on these values.
 const RECOMMENDED_MODELS = {
   flagship: 'claude-fable-5-1',
-  reasoningTier: 'claude-opus-5 / claude-opus-4-8',
+  reasoningTier: 'claude-opus-5-5',
 };
 
 // Source repo root — prevent installing PAN into its own source directory

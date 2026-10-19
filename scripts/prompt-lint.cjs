@@ -17,6 +17,10 @@
  *                       to read a role file instead of naming the agent type
  *   dev-skill           a shipped prompt sending the user to a dev-only skill of this
  *                       repository (.claude/commands/*.md), which no install carries
+ *   refused-write       a write instruction whose target file is named summary.md,
+ *                       report.md, findings.md or analysis.md: Claude Code refuses a
+ *                       subagent's Write to those names in any directory ("Subagents
+ *                       should return findings as text"; reproduced 2026-10-19, MI-127)
  *
  *   node scripts/prompt-lint.cjs            # report the current tree, exit 1 on a finding
  */
@@ -131,6 +135,18 @@ function lintText(rel, raw, ctx) {
       if (!/\bmodel\s*=/.test(block)) hit('untyped-spawn', at, 'a Task( spawn without model=');
       else if (/subagent_type="general-purpose"/.test(block) && /agents\/pan-[a-z-]+\.md for your role/.test(block)) hit('untyped-spawn', at, 'general-purpose spawn told to read a role file');
     });
+  }
+
+  // refused-write
+  // A line that writes, creates or outputs a path ending in a refused name. Reads of
+  // such a path (an older project's file, a template) are not flagged.
+  const REFUSED = /(?:^|[\s`'"(])((?:[\w.{}$~-]+\/)+(summary|report|findings|analysis)\.md)\b/i;
+  const WRITES = /\b(write|writes|written|writing|create|creates|save|saves)\b|\*\*output:?\*\*|\boutput:/i;
+  let offset = 0;
+  for (const l of text.split('\n')) {
+    const r = REFUSED.exec(l);
+    if (r && !/(?:^|\/)templates\//.test(r[1]) && WRITES.test(l)) hit('refused-write', offset, r[1]);
+    offset += l.length + 1;
   }
 
   // dev-skill

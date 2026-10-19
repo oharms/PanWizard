@@ -164,18 +164,27 @@ describe('cost — resolveRate', () => {
     assert.deepEqual(preview, r, 'preview id should carry the same rate');
   });
 
-  test('Gemini cache reads are the page\'s context-caching price, 0.1x input on every row (R26)', () => {
+  test('Gemini cache reads are the page\'s context-caching price, 0.1x input on every row but Argon (R26)', () => {
     // Until 2026-09-22 every Gemini row carried 0.25x input — 2.5x the page. The
     // tokens that create a cache bill at the standard input rate, so writes = input.
+    // Gemini 4 Argon is the page's one exception: caching $0.10 on $2.00 input, 0.05x
+    // (read 2026-10-19; both double together on 2026-12-01, so the ratio holds).
     const gemini = Object.keys(DEFAULT_RATES).filter((k) => k.startsWith('gemini-'));
     assert.ok(gemini.length > 0, 'non-vacuity: the table carries Gemini rows');
     for (const id of gemini) {
       const r = DEFAULT_RATES[id];
-      assert.equal(Number((r.cache_read / r.input).toFixed(6)), 0.1, `${id}: cache_read must be 0.1x input`);
+      const ratio = id === 'gemini-4-argon' ? 0.05 : 0.1;
+      assert.equal(Number((r.cache_read / r.input).toFixed(6)), ratio, `${id}: cache_read must be ${ratio}x input`);
       assert.equal(r.cache_write, r.input, `${id}: cache creation bills at the standard input rate`);
     }
     const flash = resolveRate('gemini-3.8-flash', null, null);
     assert.deepEqual(flash, { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 });
+  });
+
+  test('gemini-4-argon prices at the page rate (M46; read 2026-10-19, doubles from 2026-12-01)', () => {
+    // Copilot CLI offers it from 1.0.98; without a row resolveRate returned null and
+    // every Argon request went unpriced.
+    assert.deepEqual(resolveRate('gemini-4-argon', null, null), { input: 2.0, output: 10.0, cache_read: 0.10, cache_write: 2.0 });
   });
 
   test('claude-opus-5 has explicit rate ($5/$25, verified 2026-08)', () => {

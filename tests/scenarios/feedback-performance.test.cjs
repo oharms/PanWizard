@@ -35,12 +35,12 @@ describe('E2E Feedback: Performance Sanity', () => {
   // still catch genuine O(n²) regressions (which push elapsed into 10s+)
   // while tolerating a busy dev machine.
 
-  test('state json completes in < 2000ms', () => {
+  test('state json completes in < 5000ms', () => {
     const start = Date.now();
     const r = runner.run('state json');
     const elapsed = Date.now() - start;
     assert.ok(r.success, `should succeed: ${r.error}`);
-    assert.ok(elapsed < 2000, `state json took ${elapsed}ms, should be < 2000ms`);
+    assert.ok(elapsed < 5000, `state json took ${elapsed}ms, should be < 5000ms`);
   });
 
   test('phases list (10 phases) completes in < 3000ms', () => {

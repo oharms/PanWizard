@@ -2338,6 +2338,7 @@ return { areas_mapped: maps.filter(Boolean).length, synthesis }
   phases: [
     { title: 'Index', detail: 'plan inventory with wave grouping, from the PAN engine' },
     { title: 'Execute', detail: 'one executor per plan; waves in order, plans within a wave in parallel' },
+    { title: 'Review', detail: 'pan-reviewer over the phase diff (review scope); the verdict recorded, and the phase budget read' },
     { title: 'Verify', detail: 'the phase verifier over the completed plans' },
     { title: 'Gate', detail: 'the PAN phase gate: stops when the phase may not be completed' },
   ],
@@ -2363,6 +2364,7 @@ const INDEX = {
     parallelization: { type: 'boolean' },
     verifier_enabled: { type: 'boolean' },
     has_checkpoints: { type: 'boolean' },
+    test_baseline: { type: 'string' },
     plans: {
       type: 'array',
       items: {
@@ -2382,7 +2384,7 @@ const INDEX = {
   required: ['phase_found', 'has_checkpoints', 'plans'],
 }
 const index = await agent(
-  'Index phase ' + phaseArg + ' for execution using the ' + PAN_TOOLS + ' Run two verbs and merge their JSON: (1) init execute-phase ' + phaseArg + ' — take phase_found, phase_number, phase_name, phase_dir, parallelization, verifier_enabled; (2) phase-plan-index ' + phaseArg + ' — take has_checkpoints and plans[] (id, wave, autonomous, has_summary, objective; include each plan file path as file). Do not execute anything; return only the merged index.',
+  'Index phase ' + phaseArg + ' for execution using the ' + PAN_TOOLS + ' Run two verbs and merge their JSON: (1) init execute-phase ' + phaseArg + ' — take phase_found, phase_number, phase_name, phase_dir, parallelization, verifier_enabled; (2) phase-plan-index ' + phaseArg + ' — take has_checkpoints and plans[] (id, wave, autonomous, has_summary, objective; include each plan file path as file). Then, only if phase_found is true and has_checkpoints is false, (3) test run --phase ' + phaseArg + ' --baseline — it records what the test suite does before the first wave, so the verifier can tell a failure this phase caused from one it inherited; a phase that already has a baseline keeps it (kept_existing), and a failing or empty baseline is not an error. Put one line describing its result in test_baseline. Do not execute any plan; return only the merged index.',
   { label: 'index', phase: 'Index', schema: INDEX })
 if (!index || !index.phase_found) return { error: 'phase ' + phaseArg + ' not found' }
 if (index.has_checkpoints) {
@@ -2441,9 +2443,44 @@ for (const w of waveNumbers) {
 if (halted) {
   return { phase: phaseArg, halted, executed, next: 'Inspect the failed plan(s), then re-run /pan-exec-waves ' + phaseArg + ' (completed plans are skipped) or fall back to /pan:exec-phase ' + phaseArg }
 }
+
+// Code review before verification, as in exec-phase.md (code_review). The reviewer is
+// read-only, so a second agent saves its report, records the verdict in the findings
+// ledger and reads the phase budget. A script cannot ask "fix before verification?",
+// so NEEDS_FIXES halts and hands the choice back. { skipReview: true } in args skips it,
+// like --skip-review.
+phase('Review')
+const skipReview = !!(args && typeof args === 'object' && args.skipReview === true)
+let review = null
+if (!skipReview) {
+  const REPORT = { type: 'object', properties: { report: { type: 'string' } }, required: ['report'] }
+  const reviewed = await agent(
+    'Review the code phase ' + phaseArg + ' changed, following your agent definition. Get the scope with the ' + PAN_TOOLS + ' Run review scope ' + phaseArg + ' (JSON: the changed files, the unlisted ones no summary names, and the intent to judge them against: objectives, must_haves, Review Focus) and findings list --phase ' + phaseArg + ' --agent pan-reviewer --status open (your earlier open findings; answer each in resolutions). Review every file in the scope, unlisted ones included. Return your full report, verbatim, closing pan-verdict block included, as report.',
+    { agentType: 'pan-reviewer', label: 'review', phase: 'Review', schema: REPORT })
+  const RECORD = {
+    type: 'object',
+    properties: {
+      verdict: { type: 'string', enum: ['PASS', 'PASS_WITH_WARNINGS', 'NEEDS_FIXES', 'unknown'] },
+      errors: { type: 'integer' },
+      warnings: { type: 'integer' },
+      review_path: { type: 'string' },
+      budget_status: { type: 'string' },
+      budget_line: { type: 'string' },
+    },
+    required: ['verdict'],
+  }
+  review = await agent(
+    'Record a PAN code review for phase ' + phaseArg + ' with the ' + PAN_TOOLS + ' (1) Write the report below, verbatim and in full, to ' + (index.phase_dir || '.planning/phases/<phase dir>') + '/' + (index.phase_number || phaseArg) + '-review.md. (2) Run findings record --phase ' + phaseArg + ' --agent pan-reviewer --file <that path> --raw and take the verdict it prints (if it fails, read the word under ### Verdict in the report). (3) If the verdict is PASS_WITH_WARNINGS, run findings dispose --phase ' + phaseArg + ' --agent pan-reviewer --open --as deferred --reason "accepted at review: PASS_WITH_WARNINGS". (4) Run cost budget --phase ' + phaseArg + ' and report its status as budget_status; when it is near or over, set budget_line to "Spend: <spent_usd> of the <budget_usd> phase budget (<pct>%)", adding "over budget: the phase keeps running" for over. The budget warns, it never blocks. Return verdict, error and warning counts, review_path, budget_status and budget_line. Do not change any code.\\n\\nREPORT:\\n' + ((reviewed && reviewed.report) || '(the reviewer returned no report)'),
+    { label: 'review-record', phase: 'Review', schema: RECORD })
+  if (review && review.budget_line) log(review.budget_line)
+  if (!review || !review.verdict || review.verdict === 'NEEDS_FIXES' || review.verdict === 'unknown') {
+    return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, review, halted: 'review', next: 'The review ' + (review ? 'found errors (' + review.verdict + ')' : 'returned no verdict') + '. Fix them and re-run /pan-exec-waves ' + phaseArg + ', or continue past them with /pan:exec-phase ' + phaseArg + ', which asks and records why. Do not mark the phase complete yet.' }
+  }
+}
+
 // workflow.verifier: false (/pan:settings) turns the phase verifier off, as in exec-phase.
 if (index.verifier_enabled === false) {
-  return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: null, next: 'Verification skipped: workflow.verifier is off. /pan:verify-phase ' + phaseArg + ' verifies on demand; then continue with /pan:exec-phase ' + phaseArg + ' (transition)' }
+  return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, review, verification: null, next: 'Verification skipped: workflow.verifier is off. /pan:verify-phase ' + phaseArg + ' verifies on demand; then continue with /pan:exec-phase ' + phaseArg + ' (transition)' }
 }
 
 phase('Verify')
@@ -2476,9 +2513,9 @@ const gate = await agent(
   { label: 'gate', phase: 'Gate', schema: GATE })
 const gateReasons = gate && Array.isArray(gate.reasons) ? gate.reasons : []
 if (!gate || gate.ok !== true) {
-  return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, gate, halted: 'phase_gate', next: 'The phase gate refused: ' + (gateReasons.map((r) => r.code).join(', ') || 'the gate step returned no verdict') + '. Fix each reason (or close the gaps with /pan:plan-phase ' + phaseArg + ' --gaps), then re-run /pan:exec-phase ' + phaseArg + '. Do not mark the phase complete until the gate passes.' }
+  return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, review, verification: verdict, gate, halted: 'phase_gate', next: 'The phase gate refused: ' + (gateReasons.map((r) => r.code).join(', ') || 'the gate step returned no verdict') + '. Fix each reason (or close the gaps with /pan:plan-phase ' + phaseArg + ' --gaps), then re-run /pan:exec-phase ' + phaseArg + '. Do not mark the phase complete until the gate passes.' }
 }
-return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, verification: verdict, gate, next: 'The phase gate passes. Continue with /pan:exec-phase ' + phaseArg + ' (transition) or /pan:plan-phase for the next phase' }
+return { phase: phaseArg, waves_run: waveNumbers.length, plans_complete: executed.length, review, verification: verdict, gate, next: 'The phase gate passes. Continue with /pan:exec-phase ' + phaseArg + ' (transition) or /pan:plan-phase for the next phase' }
 `;
 
   const diagnoseIssues = `export const meta = {

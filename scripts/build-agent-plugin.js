@@ -15,9 +15,17 @@
  *                                 canonical agent reference copies under agents/
  *
  *   hooks/pan-*.js                PAN's hook scripts (pure Node), shared by every vendor
- *   hooks/hooks.json              Codex: default plugin hooks location; matcher-group
+ *   hooks/hooks.json              Codex's default plugin hooks location; matcher-group
  *                                 shape with `${PLUGIN_ROOT}` paths and `async` observers
- *                                 (developers.openai.com/plugins/build/plugins, 2026-09-10)
+ *                                 (developers.openai.com/plugins/build/plugins, 2026-09-10).
+ *                                 NOT LOADED BY CODEX for this bundle: a root plugin.json
+ *                                 with the agent-plugins.org schema makes Codex treat the
+ *                                 plugin as an Agent Plugin, and its loader then skips
+ *                                 hooks entirely (codex-rs/core-plugins/src/loader.rs,
+ *                                 "Enforce Agent Plugin runtime boundaries" #37027,
+ *                                 2026-08-05; same at rust-v0.163.0; read 2026-10-19, R55).
+ *                                 Codex users get PAN's hooks from a `--codex` install
+ *                                 (.codex/hooks.json). Kept for the other consumers.
  *   com.github.copilot/           Copilot's reverse-domain namespace (ADR-0045 D5):
  *     agents/pan-*.agent.md         agents in Copilot's format
  *     hooks/hooks.json              flat PascalCase format, `${CLAUDE_PLUGIN_ROOT}` paths

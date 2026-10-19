@@ -5,6 +5,15 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Research synthesis writes its file on Claude Code again.** Claude Code refuses a subagent's write to a file named `summary.md`, `report.md`, `findings.md` or `analysis.md`, in any directory ("Subagents should return findings as text"; reproduced on 2026-10-19). The research synthesizer wrote `.planning/research/summary.md`, and the conductor wrote `.planning/orchestration/summary.md`. They now write `research-summary.md` and `orchestration-summary.md`. The roadmapper and the new-project and milestone workflows still read an older project's `summary.md`. A new prompt-lint rule, `refused-write`, fails any shipped prompt that tells a subagent to write one of those names.
+- **The installer recommends a current Opus-tier model.** The capability advisory named Claude Opus 5 and Claude Opus 4.8, which Copilot deprecates on 2026-11-16. It now names the documented default, Claude Opus 5.5, and a test ties it to the documented-default fixture.
+- **Gemini 4 Argon is priced.** `resolveRate('gemini-4-argon')` returned nothing, so Argon requests (offered in Copilot CLI) went unpriced. The row carries the pricing page's rates as read on 2026-10-19; they double on 2026-12-01.
+- **The deprecation sweep reports npm's real error.** After a release, `scripts/deprecate-old-versions.js` printed only the first line of npm's stderr, which is an unrelated `always-auth` warning, so every failure looked the same. It now reports the npm error code and detail with a hint for auth failures, stops after the first auth refusal, and raises a warning annotation in CI. The release workflow logs a read-only `npm whoami` first.
+
 ## [3.36.0] - 2026-10-19
 
 Sprints 2 and 3 of the product excellence program (`docs/specs/product-excellence-superplan.md`): PAN's checks are now measured, and planning is checked in code. The harness runs real host CLIs against a local model double at no cost, replays cassettes, drives conversations with a scripted user and scores judges against a seeded-defect corpus. The engine runs the test gate in any language, proves a phase's tests can fail and reports surviving mutants. Plans carry a Review Focus and cite design decisions, research claims carry a source and a date, executors report their concerns, dismissals become learned suppressions, and `preview` forecasts a phase's cost against a $20 per-phase budget that warns. **The phase gate now enforces by default:** see Changed for the upgrade note.

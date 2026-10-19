@@ -70,3 +70,7 @@ Three facts that a changelog-level reading would have gotten wrong, recorded so 
 ## Verification caveats
 
 Copilot CLI's namespace layout is verified through VS Code's documentation and GitHub's changelog, not through the CLI's own how-to; Codex agent placement and hook path variables, and every Antigravity file shape, are unverified. Each is gated in the plan. Re-read the spec repository before implementing 4c/4d — the 1.1.0 draft is live.
+
+## Amendment — `2026-10-19`: Codex loads no hooks from the bundle
+
+Codex decides a plugin's format from its manifest. A root `plugin.json` carrying the agent-plugins.org schema is an Agent Plugin, and for an Agent Plugin the loader returns no hook sources at all (`codex-rs/core-plugins/src/loader.rs`; introduced by "Enforce Agent Plugin runtime boundaries", openai/codex#37027, `2026-08-05`; identical at `rust-v0.163.0`). A `.codex-plugin/plugin.json` beside it is read only as an overlay and does not change the format. The `hooks/hooks.json` this bundle emits for Codex (D5), and the stop guard added to it (MI-037), therefore never fire on Codex. The `plugin_hooks` feature flag Codex now lists as removed is a compatibility flag for the other manifest format. Nothing changes in the build: the file is harmless and other consumers may read it. Codex users get PAN's hooks from a `--codex` install, which writes `.codex/hooks.json`. Found by the reality check (R55).

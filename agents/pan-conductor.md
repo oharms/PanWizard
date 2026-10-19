@@ -123,7 +123,7 @@ For each phase execution:
 
 <output_contract>
 
-On completion (success, partial, or abort), write `.planning/orchestration/summary.md`:
+On completion (success, partial, or abort), write `.planning/orchestration/orchestration-summary.md` (not `summary.md`: Claude Code refuses a subagent's write to a file of that name):
 
 ```markdown
 ---

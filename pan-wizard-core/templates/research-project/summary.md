@@ -1,6 +1,6 @@
 # Research Summary Template
 
-Template for `.planning/research/summary.md` — executive summary of project research with roadmap implications.
+Template for `.planning/research/research-summary.md` — executive summary of project research with roadmap implications.
 
 <template>
 
