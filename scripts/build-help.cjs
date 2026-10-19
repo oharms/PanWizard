@@ -42,7 +42,8 @@ function readCommands(root = ROOT) {
   });
 }
 
-const cell = (s) => s.replace(/\|/g, '\\|');
+// Backslashes first, so one in a description cannot turn the escaped pipe after it back into a cell break.
+const cell = (s) => s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 
 /** The markdown command index, grouped. Throws on a command with no group or description. */
 function renderCommandIndex(commands) {

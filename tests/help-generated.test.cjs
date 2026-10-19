@@ -51,6 +51,11 @@ describe('generated /pan:help', () => {
     assert.match(H.renderCommandIndex([{ name: 'pan:x', group: 'G', description: 'a | b' }]), /a \\\| b/);
   });
 
+  test('a backslash in a description is escaped too, so it cannot unescape the pipe after it', () => {
+    const out = H.renderCommandIndex([{ name: 'pan:x', group: 'G', description: 'path C:\\dir\\| x' }]);
+    assert.ok(out.includes('| `/pan:x` | path C:\\\\dir\\\\\\| x |'), out);
+  });
+
   test('CLI: --check exits 0 on the committed tree', () => {
     const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-help.cjs'), '--check'], { cwd: ROOT, encoding: 'utf-8' });
     assert.match(out, /up to date/);
