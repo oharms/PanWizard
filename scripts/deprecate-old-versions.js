@@ -156,6 +156,58 @@ function npmJson(args, fallback = null) {
   return JSON.parse(out);
 }
 
+/**
+ * Turn npm's stderr into the error that matters.
+ *
+ * WHY. npm writes warnings before the error, and on a GitHub runner the first
+ * line is setup-node's `npm warn Unknown user config "always-auth"` — present on
+ * every call, unrelated to any failure. Reporting only the first line made all 69
+ * failures across the 3.35.0 and 3.36.0 releases say that, hiding the cause. The
+ * real error is the `npm error code X` line plus the first other `npm error` line,
+ * skipping npm's closing "A complete log of this run..." pointer.
+ */
+function summarizeNpmError(stderr) {
+  const lines = String(stderr || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  let code = null;
+  let detail = null;
+  for (const l of lines) {
+    const m = /^npm (?:error|ERR!)\s*(.*)$/.exec(l);
+    if (!m) continue;
+    const rest = m[1].trim();
+    const c = /^code\s+(\S+)$/.exec(rest);
+    if (c) { code = code || c[1]; continue; }
+    if (!detail && rest && !/^A complete log of this run/i.test(rest)) detail = rest;
+  }
+  if (!detail) detail = lines.find((l) => !/^npm (warn|notice)\b/i.test(l)) || null;
+  return { code, detail };
+}
+
+/** Auth refusals: every further call with the same credential fails the same way. */
+const AUTH_CODES = new Set(['E401', 'E403', 'EOTP', 'ENEEDAUTH']);
+function isAuthFailure(code) {
+  return AUTH_CODES.has(code);
+}
+
+/**
+ * What the owner has to change, per auth failure. `npm deprecate` cannot use the
+ * OIDC trusted-publishing credential (npm grants that for `npm publish` only), so
+ * it runs on the NPM_TOKEN secret, and each hint points at that secret.
+ */
+const AUTH_HINTS = {
+  E401: 'NPM_TOKEN is missing, expired or revoked — write-enabled granular tokens expire (90 days at most); create a new one and update the secret',
+  ENEEDAUTH: 'NPM_TOKEN is missing or empty — add it as a repository secret',
+  EOTP: 'NPM_TOKEN cannot get past 2FA — create the granular token with "Bypass 2FA" enabled',
+  E403: 'NPM_TOKEN has no write access to pan-wizard — give the granular token Read and write on the pan-wizard package',
+};
+
+/** One line for the log: `CODE: detail (hint)`, falling back to what npm or node said. */
+function formatNpmError(stderr, fallback = '') {
+  const { code, detail } = summarizeNpmError(stderr);
+  const text = detail || String(fallback || '').split('\n')[0] || 'unknown error';
+  const head = code ? `${code}: ${text}` : text;
+  return AUTH_HINTS[code] ? `${head} (${AUTH_HINTS[code]})` : head;
+}
+
 function main() {
   const args = process.argv.slice(2);
   const apply = args.includes('--apply');
@@ -185,7 +237,7 @@ function main() {
     // npm returns a bare string for a single version, or {version: message}.
     deprecatedAlready = (map && typeof map === 'object') ? Object.keys(map) : [];
   } catch (e) {
-    console.error(`deprecate: could not read the registry (${String(e.message).split('\n')[0]}). Nothing changed.`);
+    console.error(`deprecate: could not read the registry (${formatNpmError(e.stderr, e.message)}). Nothing changed.`);
     return; // never fail the build over housekeeping
   }
 
@@ -210,16 +262,31 @@ function main() {
       console.log(`  ✓ ${v}`);
     } catch (e) {
       failed++;
-      console.error(`  ✗ ${v}: ${String(e.stderr || e.message).split('\n')[0]}`);
+      console.error(`  ✗ ${v}: ${formatNpmError(e.stderr, e.message)}`);
+      // An auth refusal repeats identically for every remaining version — say it
+      // once and stop rather than printing the same line 35 times.
+      if (isAuthFailure(summarizeNpmError(e.stderr).code)) {
+        const skipped = deprecate.length - deprecate.indexOf(v) - 1;
+        if (skipped > 0) console.error(`  stopping: authentication refused — ${skipped} remaining version(s) not attempted.`);
+        break;
+      }
     }
   }
   if (failed) {
     // Reported, not fatal. The publish already succeeded; a red build here would
     // imply the release failed, which is false and worse than the omission.
     console.error(`deprecate: ${failed} of ${deprecate.length} failed — release is unaffected.`);
+    // continue-on-error hides a failed step inside the log; an annotation puts it
+    // on the run's summary page where the owner actually looks.
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      console.log(`::warning title=Deprecation sweep failed::${failed} of ${deprecate.length} old versions were not deprecated — see the "Deprecate superseded versions" step log`);
+    }
   }
 }
 
 if (require.main === module) main();
 
-module.exports = { selectVersionsToDeprecate, buildMessage, parse, compare, assertQuotable };
+module.exports = {
+  selectVersionsToDeprecate, buildMessage, parse, compare, assertQuotable,
+  summarizeNpmError, formatNpmError, isAuthFailure,
+};
