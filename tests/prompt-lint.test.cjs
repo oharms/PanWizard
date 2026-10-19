@@ -60,6 +60,23 @@ describe('prompt lint — each rule catches its seeded defect, and the clean twi
   });
 });
 
+describe('prompt lint — refused-write (MI-127)', () => {
+  test('a write to a name Claude Code refuses a subagent is caught, in any case and any directory', () => {
+    assert.deepEqual(rules('agents/pan-x.md', 'Write to `.planning/research/summary.md`'), ['refused-write']);
+    assert.deepEqual(rules('agents/pan-x.md', 'On completion, write `.planning/orchestration/SUMMARY.md`:'), ['refused-write']);
+    assert.deepEqual(rules('pan-wizard-core/workflows/x.md', 'Write to: .planning/review/findings.md'), ['refused-write']);
+    assert.deepEqual(rules('agents/pan-x.md', '**Output:** .planning/research/analysis.md'), ['refused-write']);
+    assert.deepEqual(rules('agents/pan-x.md', 'Create docs/report.md with the results.'), ['refused-write']);
+  });
+
+  test('names the host accepts, reads, and templates are not flagged', () => {
+    assert.deepEqual(rules('agents/pan-x.md', 'Write to `.planning/research/research-summary.md`'), []);
+    assert.deepEqual(rules('agents/pan-x.md', 'Write `.planning/phases/01/01-01-summary.md`'), []);
+    assert.deepEqual(rules('agents/pan-x.md', 'If research/summary.md provided, read it.'), []);
+    assert.deepEqual(rules('agents/pan-x.md', 'Use template: ~/.claude/pan-wizard-core/templates/research-project/summary.md and write the result.'), []);
+  });
+});
+
 describe('prompt lint — the shipped tree', () => {
   const allow = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'prompt-lint-allowlist.json'), 'utf8'));
   const allowed = (f) => allow.some((a) => a.rule === f.rule && a.file === f.file && f.text.includes(a.match));

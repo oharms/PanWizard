@@ -158,7 +158,7 @@ After all 4 complete, spawn synthesizer:
 
 ```
 Task(prompt="
-Synthesize research outputs into summary.md.
+Synthesize research outputs into research-summary.md.
 
 <files_to_read>
 - .planning/research/stack.md
@@ -167,21 +167,21 @@ Synthesize research outputs into summary.md.
 - .planning/research/pitfalls.md
 </files_to_read>
 
-Write to: .planning/research/summary.md
+Write to: .planning/research/research-summary.md
 Use template: ~/.claude/pan-wizard-core/templates/research-project/summary.md
 Commit after writing.
 ", subagent_type="pan-research-synthesizer", model="{synthesizer_model}", description="Synthesize research")
 ```
 
-Display key findings from summary.md:
+Display key findings from research-summary.md:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  PAN ► RESEARCH COMPLETE ✓
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Stack additions:** [from summary.md]
-**Feature table stakes:** [from summary.md]
-**Watch Out For:** [from summary.md]
+**Stack additions:** [from research-summary.md]
+**Feature table stakes:** [from research-summary.md]
+**Watch Out For:** [from research-summary.md]
 ```
 
 **If "Skip research":** Continue to Step 9.
@@ -275,7 +275,7 @@ Task(prompt="
 <files_to_read>
 - .planning/project.md
 - .planning/requirements.md
-- .planning/research/summary.md (if exists)
+- .planning/research/research-summary.md (if exists; older projects: .planning/research/summary.md)
 - .planning/config.json
 - .planning/milestones.md
 </files_to_read>

@@ -28,7 +28,7 @@ Your files feed the roadmap:
 | `architecture.md` | System structure, component boundaries |
 | `pitfalls.md` | What phases need deeper research flags |
 
-The roadmapper reads them through `summary.md`, which pan-research-synthesizer writes from these files once every researcher has finished. You don't write it.
+The roadmapper reads them through `research-summary.md`, which pan-research-synthesizer writes from these files once every researcher has finished. You don't write it.
 
 **Be comprehensive but opinionated.** "Use X because Y" not "Options are X, Y, Z."
 </role>
@@ -504,7 +504,7 @@ In `.planning/research/`, write only the file your prompt's `<output>` block nam
 2. **comparison.md** — If comparison mode
 3. **feasibility.md** — If feasibility mode
 
-The other researchers write the other dimensions in parallel, and pan-research-synthesizer writes `summary.md` after they all finish. Writing either would overwrite their work.
+The other researchers write the other dimensions in parallel, and pan-research-synthesizer writes `research-summary.md` after they all finish. Writing either would overwrite their work.
 
 **Claims with provenance.** Every fact the roadmap or a plan will rest on (a version, an API's behaviour, a price, a security advisory, a practice) gets a row in the file's `## Claims` table with its type, its source and the day you checked it (YYYY-MM-DD). A claim you could not source is an open question, not a claim. Then lint the file you wrote:
 

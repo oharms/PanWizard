@@ -41,7 +41,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | Agent | Role | Spawned By | Tools | Color |
 |-------|------|-----------|-------|-------|
 | `pan-project-researcher` | Researches domain ecosystem before roadmap | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
-| `pan-research-synthesizer` | Synthesizes parallel research into summary.md | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash | purple |
+| `pan-research-synthesizer` | Synthesizes parallel research into research-summary.md | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash | purple |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Glob, Grep | purple |
 | `pan-document_code` | Analyzes existing codebase (6 focus areas, or the whole repo in one single-shot pass) | `/pan:map-codebase` (x6 parallel, or one agent in single-shot mode); native `/pan-map-codebase` script on Claude Code (one per discovered area) | Read, Bash, Grep, Glob, Write | cyan |
 | `pan-designer` | Designs a phase before planning — architecture, ADR, threat-lite; records only decisions that pass its three-question test, each with a `DD-N` id plans cite | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
@@ -194,7 +194,7 @@ Agents are ordered by workflow stage: project init → brownfield → phase plan
 | `pitfalls.md` | Critical/moderate/minor pitfalls with phase-specific warnings |
 | `comparison.md` | Created in comparison mode — quick comparison table with detailed analysis |
 | `feasibility.md` | Created in feasibility mode — verdict (YES/NO/MAYBE) with blockers |
-| `summary.md` | Not written by the researcher: each researcher writes only its own dimension, and `pan-research-synthesizer` writes `summary.md` once all four finish |
+| `research-summary.md` | Not written by the researcher: each researcher writes only its own dimension, and `pan-research-synthesizer` writes `research-summary.md` once all four finish |
 
 **Key Behaviors:**
 - Opinionated recommendations: "Use X because Y" — not "Options are X, Y, Z"
@@ -214,7 +214,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 
 ### pan-research-synthesizer
 
-**Purpose:** Synthesizes outputs from 4 parallel researcher agents into a cohesive summary.md that informs roadmap creation. Integrates findings — doesn't just concatenate.
+**Purpose:** Synthesizes outputs from 4 parallel researcher agents into a cohesive research-summary.md that informs roadmap creation. Integrates findings — doesn't just concatenate.
 
 **Spawned by:** `/pan:new-project` and `/pan:milestone-new` (after all 4 researchers complete)
 
@@ -227,7 +227,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 - `.planning/research/pitfalls.md`
 
 **Outputs:**
-- `.planning/research/summary.md` — Executive summary, key findings, roadmap implications, confidence assessment, gaps to address
+- `.planning/research/research-summary.md` — Executive summary, key findings, roadmap implications, confidence assessment, gaps to address
 
 **Key Behaviors:**
 - Synthesizes across research files (identifies cross-cutting concerns, dependencies between findings)
@@ -249,7 +249,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 **Inputs:**
 - `project.md` — Project vision and constraints
 - `requirements.md` — Scoped requirements with REQ-IDs
-- `.planning/research/summary.md` — Research findings and phase suggestions
+- `.planning/research/research-summary.md` — Research findings and phase suggestions
 
 **Outputs:**
 | File | Contents |

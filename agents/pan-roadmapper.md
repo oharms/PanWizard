@@ -352,7 +352,7 @@ Key sections:
 Orchestrator provides:
 - project.md content (core value, constraints)
 - requirements.md content (v1 requirements with REQ-IDs)
-- research/summary.md content (if exists - phase suggestions)
+- research/research-summary.md content (if exists - phase suggestions; older projects have research/summary.md instead)
 - config.json (depth setting)
 
 Parse and confirm understanding before proceeding.
@@ -376,7 +376,7 @@ Total v1: 11 requirements
 
 ## Step 3: Load Research Context (if exists)
 
-If research/summary.md provided:
+If research/research-summary.md (or an older project's research/summary.md) provided:
 - Extract suggested phase structure from "Implications for Roadmap"
 - Note research flags (which phases need deeper research)
 - Use as input, not mandate
