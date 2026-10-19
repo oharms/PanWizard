@@ -963,6 +963,13 @@
     "stripAnsi:function",
     "testRunFacts:function"
   ],
+  "usage.cjs": [
+    "UNFINISHED_AFTER_MS:number",
+    "cmdUsage:function",
+    "commandName:function",
+    "readInventory:function",
+    "usageCensus:function"
+  ],
   "utils.cjs": [
     "classifyPhaseStatus:function",
     "detectPlanningModel:function",

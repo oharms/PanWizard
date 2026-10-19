@@ -1,0 +1,9 @@
+{
+  "name": "greeting-cli-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Seed project for the PAN Harness: one phase with open questions (H9).",
+  "scripts": {
+    "test": "node --test"
+  }
+}

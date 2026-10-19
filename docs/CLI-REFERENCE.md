@@ -235,6 +235,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. `review scope <phase>` (program R1): the files a reviewer reads (the phase's commits plus uncommitted and untracked work) and the plans' intent. Re-exported through verify.cjs. |
 | `plan-lint.cjs` | **(program P4, P2)** `verify review-focus <phase>`: every plan has a `## Review Focus` of at most five items, each naming its owning task and a test, or one `None — <reason>` line. `verify decisions <phase>`: plans cite only `DD-N` decision ids the phase design records, and every recorded decision is cited. `/pan:plan-phase` runs both with `verify plan-set` before the plan checker. |
 | `research-lint.cjs` | **(program P3)** `research lint <phase|path>`: the research file's `## Claims` table (claim · type · source · checked). A claim with no source or no date is an error; one older than its type's freshness window is `stale`. |
+| `usage.cjs` | **(program L9)** `usage`: a local census of the installed commands and agents against the project's cost ledger and trace sessions: used (calls, last use), never used, and commands started but never finished. Local files only. |
 | `test-gate.cjs` | **(program V2)** `test run` and `test detect`: finds the project's test command in any language (or `workflow.test_command`), runs it, parses the runner's output into stable failing-test ids, and compares a phase's run with its baseline (`{NN}-test-baseline.json`, `{NN}-test-run.json`). The phase gate and the verdict recorder read the run record. |
 | `verify-red.cjs` | **(program V4)** `verify red <phase>`: runs each test file the phase changed at the phase's base (in a throwaway worktree) and at HEAD; a test that passes before the phase's code exists is `not_red`. Also exports the phase-base and worktree helpers `verify mutate` uses. |
 | `mutate.cjs` | **(program V5)** `verify mutate --phase N`: a seeded sample of single-operator mutations on the lines the phase changed, each run against the whole suite in a worktree at HEAD; writes `{NN}-mutation.json`. Report-only under `workflow.mutation_gate`. |
@@ -475,6 +476,7 @@ Quick reference of all CLI commands grouped by category.
 | 226 | `research lint` | Verification | research-lint.cjs |
 | 227 | `state snapshot` (alias of `state-snapshot`) | State | state.cjs |
 | 228 | `cost budget` | Cost | cost.cjs |
+| 229 | `usage` | Observability | usage.cjs |
 
 ---
 
@@ -524,10 +526,13 @@ pan-tools state json [--raw]
 {
   "pan_state_version": "1.0",
   "milestone": "v1.0",
+  "milestone_name": "Core Platform",
   "current_phase": "05",
+  "current_phase_name": "Setup",
   "current_plan": "2",
   "status": "executing",
   "last_updated": "2026-02-27T12:00:00.000Z",
+  "last_activity": "2026-02-27",
   "progress": {
     "total_phases": 12,
     "completed_phases": 4,
@@ -819,6 +824,8 @@ pan-tools state record-session --stopped-at "Mid-task" --resume-file .planning/p
 { "recorded": true, "updated": ["Last session", "Stopped At", "Resume File"] }
 ```
 
+The fields are `**Field:** value` lines (`Last session` or `Last Date`, `Stopped At`, `Resume File`); only the ones present are updated. When none is present it prints `{ "recorded": false, "reason": "No session fields found in state.md", "error": "session_fields_missing" }` and exits 1. `--raw` prints `true` or `false`.
+
 ---
 
 ## 3. Phase Operations
@@ -936,13 +943,13 @@ pan-tools phase remove 5 --with-decimals   # Remove phase 5 and its 5.1, 5.2 …
 
 ### `phase gate <phase> [--mode warn|enforce]`
 
-Whether a phase may be marked complete (program V1). It prints `{phase, mode, ok, reasons[], facts, not_checked[]}` and exits 1 when it refuses (`--raw`: `pass` or `refuse`). Reason codes: `no_plans`, `missing_summary`, `no_verification`, `verification_unreadable`, `verification_failed` (a failed test gate under `passed` counts), `human_needed_unapproved` (approve a human item with `findings dispose <id> --as decision --reason "…"`), `verification_stale`, `reconcile_contradiction`, `test_failed`, `open_findings` (critical or high, any judge), `stubs_found` (in the files the phase committed), `integrity_violation` (`verify test-integrity`). `not_checked` lists what it could not check, never a refusal: a skipped or unrecorded test gate, an unknown freshness, no git, no plan commits, the verifier switched off. `--mode` overrides `workflow.phase_gate` for this call.
+Whether a phase may be marked complete (program V1). It prints `{phase, mode, ok, reasons[], facts, not_checked[]}` and exits 1 when it refuses (`--raw`: `pass` or `refuse`). Reason codes: `no_plans`, `missing_summary`, `no_verification`, `verification_unreadable`, `verification_failed` (a failed test gate under `passed` counts), `human_needed_unapproved` (approve a human item with `findings dispose <id> --as decision --reason "…"`), `verification_stale`, `reconcile_contradiction`, `test_failed`, `open_findings` (critical or high, any judge), `stubs_found` (in the files the phase committed), `integrity_violation` (`verify test-integrity`). `not_checked` lists what it could not check, never a refusal: a skipped or unrecorded test gate, an unknown freshness, no git, no plan commits, the verifier switched off. `--mode` overrides `workflow.phase_gate` for this call. The mode changes what `phase complete` does with a refusal, not the gate's own verdict: `phase gate` exits 1 and prints `refuse` on a refusal under `warn` too.
 
 ### `phase complete <phase> [--no-commit] [--force --reason "<why>"]`
 
 Mark a phase as done. Updates roadmap.md checkboxes and progress table, advances state.md to the next phase, and updates requirements.md traceability.
 
-**The phase gate runs first.** Under `workflow.phase_gate: warn` (the default) the phase is marked complete and the output carries `gate: {ok, mode, reasons, not_checked}`. Under `enforce` a refusal exits 1 with `{error: "phase_gate_refused", reason, gate}` and changes nothing. `--force --reason "<why>"` completes past a refusal and records a `decision` disposition for every open finding the gate counted (output: `gate_override`); `--force` without `--reason` is refused in either mode.
+**The phase gate runs first.** Under `workflow.phase_gate: enforce` (the default; a config without the key, or with any other value, reads as `enforce`) a refusal exits 1 with `{error: "phase_gate_refused", reason, gate}` and changes nothing. Under `warn` the phase is marked complete and the output carries `gate: {ok, mode, reasons, not_checked}`. `--force --reason "<why>"` completes past a refusal and records a `decision` disposition for every open finding the gate counted (output: `gate_override`); `--force` without `--reason` is refused in either mode.
 
 ```bash
 pan-tools phase complete 5 [--no-commit]
@@ -966,7 +973,7 @@ pan-tools phase complete 5 [--no-commit]
 }
 ```
 
-`commit_hash`, `gate_override`, `roadmap_warning` and `requirements_warning` are added when they apply. `gate` is `{error}` when the gate itself could not run.
+`commit_hash`, `gate_override` (`{reason, refused_by[], disposed[]}`: the `--reason` text, the refusal codes it overrode, and the findings it recorded a `decision` for), `roadmap_warning` and `requirements_warning` are added when they apply. `gate` is `{error}` when the gate itself could not run.
 
 **Side effects:** Checks off the phase checkbox in roadmap.md, updates the progress table row, advances `Current Phase` in state.md, and marks the requirements on the phase's own `**Requirements:**` line complete in requirements.md (checkbox and traceability row), reading the phase's section or, in an older roadmap, the line under its checklist entry. Both padded and unpadded phase spellings tick the same lines (`phase complete 01` and `phase complete 1` are equivalent).
 
@@ -1398,7 +1405,7 @@ pan-tools validate health --links
 }
 ```
 
-**Status values:** `healthy`, `degraded`, `broken`.
+**Status values:** `healthy`, `degraded`, `broken`. `--raw` prints the same JSON.
 
 **Error/warning codes:**
 
@@ -1760,6 +1767,17 @@ pan-tools verify decisions 3 --raw    # valid | invalid
 
 **Errors** (exit 1): `decision_unrecorded` (a plan cites an id the design does not record), `decision_uncited` (a recorded decision no plan cites), `decision_duplicate` (an id recorded twice). `status` is `checked`, `no_design` (nothing to check) or `legacy` (a design whose decisions carry no ids: a `decisions_without_ids` warning, never a refusal).
 
+### `usage`
+
+Which of the installed commands and agents this project has used (program L9), from its own files only: the cost ledger (`command`, `agent` per row) and the trace sessions (`command`, `ended_at`). The inventory is the install `pan-tools` ships in: its `commands/pan/*.md` or `skills/pan-*`, and its `agents/pan-*`.
+
+```bash
+pan-tools usage          # {local_only, commands: {used[], never_used[], unfinished[], installed}, agents: {used[], never_used[], installed}, sources}
+pan-tools usage --raw    # N of M commands used, K unfinished; A of B agents used
+```
+
+A used command is `{name, calls, last_used, sessions, finished}`, a used agent `{name, calls, last_used}`; both lists are sorted by calls. A command name is matched with or without its `/pan:` or `pan-` prefix. **`unfinished`** lists used commands whose every trace session stopped without `ended_at`, the newest started more than six hours ago (a newer open session may still be running). Nothing leaves the machine. Exits 0.
+
 ### `research lint <phase|path> [--now YYYY-MM-DD]`
 
 Research claims with provenance and freshness (program P3). The phase's research file (or the file at the path) lists the claims plans will rest on in a `## Claims` table with the columns Claim, Type, Source and Checked.
@@ -2008,6 +2026,8 @@ pan-tools todo complete improve-error-handling.md [--raw]
 
 **`--raw` output:** `completed`.
 
+A file not in `pending/` prints `Error: Todo not found: <filename>` on stderr and exits 1.
+
 ---
 
 ### `list-todos [area]`
@@ -2213,7 +2233,7 @@ pan-tools frontmatter validate path/to/plan.md --schema plan [--raw]
 }
 ```
 
-**`--raw` output:** `valid` or `invalid`.
+**`--raw` output:** `valid` or `invalid`. An invalid result still exits 0; any other `--schema` prints `Error: Unknown schema: <name>. Available: plan, summary, verification` on stderr and exits 1.
 
 ---
 
@@ -2328,7 +2348,7 @@ pan-tools config-ensure-section [--raw]
 
 **`--raw` output:** `created` or `exists`.
 
-**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`warn`), `hooks.guard` (`report`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
+**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`enforce`), `hooks.guard` (`report`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -2361,6 +2381,8 @@ pan-tools config-get workflow.research [--raw]
 **JSON output:** The value at the key path (could be string, boolean, number, object, or array).
 
 **`--raw` output:** The value as a string; an object or array prints as JSON.
+
+A key that is not set, including a default PAN applies without writing it (such as `cost.phase_budget_usd` or `workflow.phase_gate` in a config that never set them), prints `Error: Key not found: <key>` on stderr and exits 1; a project with no config.json prints `Error: No config.json found at <path>` and exits 1. The command reads the file, not the effective value.
 
 ---
 
@@ -2961,6 +2983,9 @@ pan-tools focus scan [--lean] [--raw]
 - `sources` — Count per source type: `{phases, todos, patterns}`
 - `total` — Total item count
 - `priorities` — Count per priority level: `{P0: N, P1: N, ...}`
+- `source_todos` — `{count, items[{file, line, tag, text}]}`: `TODO`/`FIXME`/`XXX`/`HACK` markers in `pan-wizard-core/bin/lib/*.cjs` under the project root, so `{count: 0, items: []}` in any project other than the PAN source tree. Not added to `items`
+
+When no work item is found it prints `{items: [], sources, total: 0, message: "No work items found"}` instead, with no `priorities` or `source_todos`.
 
 **Flags:**
 - `--lean` — Filter items with Reality Score < 1.5 (only affects P3-P6 items)
@@ -3981,7 +4006,7 @@ Append a message to a file-backed channel at `.planning/bus/<channel>.jsonl`.
 
 **Module:** `bus.cjs`
 
-Channel and source names validated against `^[a-zA-Z0-9_-]+$` (path-traversal safe). Payload is any JSON-serializable value; if not valid JSON, stored as a raw string.
+Channel and source names validated against `^[a-zA-Z0-9_-]+$` (path-traversal safe). Payload is any JSON-serializable value; if not valid JSON, stored as a raw string. Returns `{published: true, ts, file, size}` (`file` is the channel file's absolute path, `size` its size in bytes after the append); an invalid channel or source name exits 1 with `error: "Invalid channel: …"` (or `"Invalid source: …"`).
 
 ### `bus drain <channel> [--mode peek|consume|archive] [--limit N] [--offset N]` (v3.0, Y-7)
 
@@ -4007,7 +4032,7 @@ Blast-radius analysis for a single phase.
 pan-tools preview phase <N> [--raw]
 ```
 
-Returns `{phase, phase_name, directory, status, plan_count, summary_count, goal, files_mentioned, test_files_mentioned, files_mentioned_count, test_files_count, risk_signals, risk_score, plans: [{file, bytes}], cost_forecast}`. Risk keywords checked: drop / delete / migrate / rename / breaking / auth. Score 1-10.
+Returns `{phase, phase_name, directory, status, plan_count, summary_count, goal, files_mentioned, test_files_mentioned, files_mentioned_count, test_files_count, risk_signals, risk_score, plans: [{file, bytes}], cost_forecast}`. Risk keywords checked: drop / delete / migrate / rename / breaking / auth. Score 1-10. `--raw` prints the same JSON.
 
 `cost_forecast` (program P6) is `{agent, tier, plans, min_samples, per_plan, phase}`, from the project's cost ledger with this phase's own rows (and suspect or empty rows) left out. `per_plan` is `{status: "ok", n, p10, p50, p90}`, the dollars of a `pan-executor` call at one tier (the tier of the latest executor call); tiers are never pooled. `phase` is `{status: "ok", n_phases, p10, p50, p90}`: it resamples, 2,000 times and seeded, one past phase's other agents (planner, checkers, verifier, reviewer) plus one executor call per plan. Either is `{status: "insufficient", n, needed: 5}` when fewer than five observations back it (`phase` then also carries `n_phases` and a `reason`): no forecast is better than a guess from two runs.
 
@@ -4299,6 +4324,8 @@ pan-tools git rollback [--tag <pan-rollback-*>] [--dry-run]    # resets --hard t
 pan-tools git tag <list|create|delete> [--name <n>] [--message <m>] [--pattern <glob>]   # --pattern for list; --name/--message for create; --name for delete
 pan-tools git sync [--remote <r>] [--branch <b>] [--rebase]
 ```
+
+`git status` prints `{branch, clean, staged_count, unstaged_count, untracked_count, files[]}`. `files` are the `git status --porcelain` lines with their two-letter status column kept (` M src/a.js`, `M  src/b.js`, `?? c.js`, `R  old.js -> new.js`); an entry counts as staged when its first column is set and as unstaged when its second is, so a file staged and then edited again counts in both. `--raw` prints `<branch> (clean)` or `<branch> (<N> changes)`. Outside a git repository every `git` subcommand prints `{error: "not_a_git_repo", hint}` and exits 1.
 
 ### `distill <scan|analyze|report> [--bloat-threshold N] [--touched-loc N]`
 

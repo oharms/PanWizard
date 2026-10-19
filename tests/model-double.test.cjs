@@ -372,3 +372,46 @@ describe('cassettes: replay at $0, drift as prompt impact (H2)', () => {
     assert.match(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8'), /--require-run cassette-drift-claude/, 'CI runs it, never skips it');
   });
 });
+
+describe('a scripted user (H9): rules on what the user said and what the conversation holds', () => {
+  const body = (messages) => ({ system: 'sys', messages });
+  const SCRIPTED = {
+    rules: [
+      { when: { userIncludes: 'Exit code 0.', messagesInclude: ['Casual.', 'Lowercase.'] }, turns: [{ text: 'ALL-THREE' }] },
+      { when: { userIncludes: 'Casual.' }, turns: [{ text: 'Q2' }] },
+    ],
+    fallback: { text: 'Q1' },
+  };
+
+  test('lastUserText reads the latest user text, across text blocks, and skips tool results', () => {
+    const b = body([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: [{ type: 'text', text: 'Q1' }] },
+      { role: 'user', content: [{ type: 'text', text: '<system-reminder>x</system-reminder>' }, { type: 'text', text: 'Casual.' }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't', content: 'ignored' }] },
+    ]);
+    assert.equal(D.lastUserText(b), '<system-reminder>x</system-reminder>\nCasual.');
+    assert.deepEqual(D.messageTexts(b).map((m) => m.role), ['user', 'assistant', 'user', 'user']);
+    assert.equal(D.lastUserText({ input: 'responses prompt' }), 'responses prompt');
+    assert.equal(D.lastUserText({ contents: [{ role: 'user', parts: [{ text: 'gemini' }] }] }), 'gemini');
+  });
+
+  test('userIncludes keys a turn on the latest answer; messagesInclude needs every earlier one too', () => {
+    const c = () => new Map();
+    assert.equal(D.scriptTurn(SCRIPTED, { headers: {} }, body([{ role: 'user', content: 'Casual.' }]), c()).text, 'Q2');
+    const resumed = body([{ role: 'user', content: 'Casual.' }, { role: 'assistant', content: 'Q2' }, { role: 'user', content: 'Lowercase.' }, { role: 'assistant', content: 'Q3' }, { role: 'user', content: 'Exit code 0.' }]);
+    assert.equal(D.scriptTurn(SCRIPTED, { headers: {} }, resumed, c()).text, 'ALL-THREE');
+    const fresh = body([{ role: 'user', content: 'Exit code 0.' }]);
+    assert.equal(D.scriptTurn(SCRIPTED, { headers: {} }, fresh, c()).text, 'Q1', 'a session that lost the earlier answers does not match');
+  });
+});
+
+describe('CI requires the scripted-user scenario (H9)', () => {
+  test('ci.yml names discuss-phase-scripted-user with --require-run, so a missing CLI fails rather than skips', () => {
+    assert.match(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8'), /--require-run discuss-phase-scripted-user/);
+    const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'discuss-phase-scripted-user');
+    assert.ok(s, 'the scenario exists');
+    assert.deepEqual(s.steps.map((st) => st.kind), ['model', 'user', 'user', 'user', 'fs']);
+    assert.ok(s.controls.some((c) => c.id === 'session-lost'));
+  });
+});

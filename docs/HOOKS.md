@@ -1,6 +1,6 @@
 # PAN Hook System
 
-PAN ships a small set of built-in Claude Code hooks that enhance the development experience — the ones in the table below, which is the whole set (`ls hooks/*.js`). Hooks are JavaScript files that execute in response to Claude Code lifecycle events.
+PAN ships a small set of built-in hooks that enhance the development experience — the ones in the table below, which is the whole set (`ls hooks/*.js`). Hooks are JavaScript files that execute in response to host lifecycle events; they were written for Claude Code and are also registered on Codex, Gemini CLI and Copilot CLI under each host's own event names (see [Hook Runtime Support](#hook-runtime-support)).
 
 ## Built-in Hooks
 
@@ -391,7 +391,7 @@ Stop Guard (pan-stop-guard.js, Stop / agentStop / AfterAgent)
 ```
 
 The hooks communicate through files rather than being directly coupled:
-- Either hook can fail independently without breaking the others
+- Any hook can fail independently without breaking the others
 - Bridge and log files are inspectable for debugging
 - No shared memory or IPC needed
 

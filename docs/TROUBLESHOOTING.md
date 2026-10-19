@@ -496,6 +496,20 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 3. Use `/pan:verify-phase N` which performs its own final check and distinguishes critical gaps from acceptable state
 4. If the verifier is consistently too aggressive, consider disabling it for prototyping phases: `workflow.verifier: false` in `/pan:settings`
 
+### Phase gate refuses to complete a phase
+
+**Symptom:** `/pan:exec-phase` (or the transition to the next phase) stops without marking the phase complete, and `pan-tools phase complete <N>` exits 1 with `"error": "phase_gate_refused"` and a `reason` such as `missing_summary: 1 plan(s) have no summary: 01-01-plan.md | no_verification: the phase has no verification; run /pan:verify-phase`.
+
+**Root cause:** `phase complete` runs the phase gate first, and `workflow.phase_gate` defaults to `enforce`. A config with no `phase_gate` key, including one written by an older PAN, reads as `enforce` too. The gate refuses on any of these codes: `no_plans`, `missing_summary`, `no_verification`, `verification_unreadable`, `verification_failed`, `verification_stale` (files changed since the verified commit), `test_failed`, `human_needed_unapproved`, `reconcile_contradiction`, `open_findings` (an open critical or high finding), `stubs_found` and `integrity_violation` (a weakened test). What it could not check (no git, verifier off) is listed under `not_checked` and never refused on.
+
+**Diagnostic:** `pan-tools phase gate <N>` runs the gate alone and prints each reason with its `detail`; it exits 1 while the gate fails.
+
+**Fix, in order of preference:**
+
+1. Fix each reason. The `detail` names the fix: run `/pan:verify-phase N` for a missing or stale verification, `/pan:plan-phase N --gaps` then `/pan:exec-phase N --gaps-only` for gaps, `pan-tools findings dispose <id> --as fixed|deferred|dismissed|decision --reason "..."` for an open finding, and `pan-tools findings dispose <id> --as decision --reason "<what was checked>"` for an unapproved human item (only a `decision` approves it). Then run `/pan:exec-phase N` (or `pan-tools phase complete N`) again.
+2. Complete past the gate once, with a recorded reason: `pan-tools phase complete <N> --force --reason "<why>"`. `--force` without `--reason` is refused (`reason_required`). The override is recorded as a decision.
+3. Make the gate advisory for the project: `pan-tools config-set workflow.phase_gate warn`. The phase is then marked complete and the reasons are shown as warnings; `/pan:exec-phase` does not auto-advance past a failed gate.
+
 ---
 
 ## Git Integration
@@ -616,6 +630,14 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 4. **Disable verifier:** `workflow.verifier: false` for early prototyping (saves 10-30K per phase)
 5. **Smaller plans:** Keep plans to 2-3 tasks each (reduces per-plan context usage)
 6. **Use --prd:** Provide a detailed PRD with `/pan:plan-phase N --prd spec.md` to skip discuss-phase
+
+### A wave report says the phase is near or over budget
+
+**Symptom:** `/pan:exec-phase` adds "Spend: … of the … phase budget (…%)" to a wave report, or "over budget: the phase keeps running", and `/pan:plan-phase` ends with "Budget: … of … spent so far".
+
+**What it means:** the phase's recorded spend has reached 80% (`near`) or 100% (`over`) of `cost.phase_budget_usd`, $20 by default. The dollars are API-equivalent: the cost ledger's tokens priced at the rate table, even on a subscription. It is a warning only: nothing pauses or stops on it.
+
+**Fix:** `pan-tools cost budget --phase N` shows the figures. Raise or lower the budget with `/pan:settings` or `pan-tools config-set cost.phase_budget_usd 50`; `0` turns the warning off. To spend less, see the strategies above.
 
 ### Wrong model being used for an agent
 
@@ -934,7 +956,8 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state load
 # Specific field value
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state get "Current Phase" --raw
 
-# Config value
+# Config value as written in config.json (a key the file leaves out
+# reports "Key not found"; its built-in default still applies)
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.research --raw
 
 # Phase directory lookup

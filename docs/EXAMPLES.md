@@ -89,9 +89,14 @@ builds the CLI commands that depend on both. Each wave completes and its summari
 spot-checked before the next begins. After the last wave, `pan-reviewer` reviews the
 phase's diff against the plans' intent (`pan-tools review scope`), including any concerns
 an executor returned with `DONE_WITH_CONCERNS`, and the verifier checks the phase
-(unless `workflow.verifier` is off).
+(unless `workflow.verifier` is off). Finally the phase gate decides whether the phase
+is marked complete: by default it refuses while a plan has no summary, the
+verification is missing or failing, or a critical or high finding is open, and
+lists each reason (`pan-tools phase gate 1` runs the same check).
 
-You see real-time progress as files are created and tests are run.
+You see real-time progress as files are created and tests are run. Once the
+phase's spend reaches 80% of the phase budget (`cost.phase_budget_usd`, $20 by
+default), the wave report says so; it is a warning, and the run continues.
 
 ### Step 5 -- Verify the work
 
@@ -331,7 +336,7 @@ PAN: Spawn Plan Checker? (verifies plans before execution)
 You: No
 PAN: Spawn Execution Verifier? (verifies phase completion)
 You: Yes
-(auto-advance, Nyquist, branching and routing questions follow, each with your current value pre-selected)
+(auto-advance, Nyquist, branching, routing and phase-budget questions follow, each with your current value pre-selected)
 ```
 
 With these off, `plan-phase` skips the researcher agent and the

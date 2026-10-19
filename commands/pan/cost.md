@@ -87,6 +87,16 @@ pan-tools cost budget --phase <N> [--raw]
 
 Prints `{phase, budget_usd, spent_usd, pct, status, mode, warn_at_pct, unpriced}`; `status` is `off`, `ok`, `near` or `over`, and `--raw` prints it. `unpriced` counts the phase's rows with no known rate (not added to the spend).
 
+### `usage` (census)
+
+Which of the installed PAN commands and agents this project has used, from its own files only: the cost ledger and the trace sessions. Nothing is sent anywhere.
+
+```
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs usage [--raw]
+```
+
+Prints `{local_only, commands: {used, never_used, unfinished, installed}, agents: {used, never_used, installed}, sources}`. Each used entry has `calls` and `last_used`, and a command also has `sessions` and `finished`. `unfinished` lists commands that were started but never finished: every trace session for them stopped without ending, the newest more than six hours ago. `--raw` prints a one-line summary. Use it to see which parts of PAN this project actually runs.
+
 ### `limits`
 
 `pan-tools cost limits` shows Claude Code's 5-hour and 7-day usage windows as the status line last saw them, and whether the 7-day one has reached `cost.weekly_limit_stop_pct` (default 90%), where `/pan:focus-auto` and `/pan:army` stop. Interactive Claude Code sessions on a subscription only: headless runs and other runtimes have no reading.

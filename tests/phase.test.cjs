@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { runPanTools, createTempProject, cleanup, gateOff } = require('./helpers.cjs');
 const {
   removePhaseFromDisk,
   renumberDecimalPhases,
@@ -862,6 +862,7 @@ describe('phase complete command', () => {
 
   beforeEach(() => {
     tmpDir = createTempProject();
+    gateOff(tmpDir); // these test what completion does; the gate is tests/phase-gate.test.cjs
   });
 
   afterEach(() => {
@@ -1874,6 +1875,7 @@ describe('phase complete auto-commit', () => {
 
   beforeEach(() => {
     gitDir = createTempProject();
+    gateOff(gitDir);
     execSync('git init', { cwd: gitDir, stdio: 'pipe' });
     execSync('git config user.email "test@test.com"', { cwd: gitDir, stdio: 'pipe' });
     execSync('git config user.name "Test"', { cwd: gitDir, stdio: 'pipe' });
@@ -1916,7 +1918,7 @@ describe('phase complete auto-commit', () => {
 
   test('commit_docs: false skips the auto-commit, as `pan-tools commit` does', () => {
     // The commit ran whatever commit_docs said; exec-phase and transition call this.
-    fs.writeFileSync(path.join(gitDir, '.planning', 'config.json'), '{"commit_docs": false}\n');
+    fs.writeFileSync(path.join(gitDir, '.planning', 'config.json'), '{"commit_docs": false, "workflow": {"phase_gate": "warn"}}\n');
     const before = execSync('git rev-parse HEAD', { cwd: gitDir, encoding: 'utf-8' }).trim();
     const result = runPanTools('phase complete 1', gitDir);
     assert.ok(result.success, result.error);
@@ -1926,6 +1928,7 @@ describe('phase complete auto-commit', () => {
 
   test('phase complete in non-git dir still works without commit', () => {
     const noGitDir = createTempProject();
+    gateOff(noGitDir);
     fs.writeFileSync(path.join(noGitDir, '.planning', 'roadmap.md'),
       '## Phase 01: Setup\n**Goal:** Bootstrap\n');
     const p1 = path.join(noGitDir, '.planning', 'phases', '01-setup');

@@ -669,7 +669,7 @@ COMPLETION_EXIT=$?
 | Result | Action |
 |---|---|
 | exit 1, `error: phase_gate_refused` (`workflow.phase_gate: enforce`) | The phase was NOT marked complete. Show each `gate.reasons` entry (`code`: `detail`) with its fix, and stop: no commit, no auto-advance. The user may complete anyway with a reason (below) |
-| exit 0, `gate.ok` false (`warn`, the default) | The phase was marked complete. Show the reasons as warnings, run the rest of this step, and do NOT auto-advance (`offer_next` reads `GATE_OK`) |
+| exit 0, `gate.ok` false (`workflow.phase_gate: warn`) | The phase was marked complete. Show the reasons as warnings, run the rest of this step, and do NOT auto-advance (`offer_next` reads `GATE_OK`) |
 | exit 0, `gate.ok` true | Continue |
 
 **Completing past a refusal** is the user's decision, never yours, and needs their reason. It records a `decision` for every open finding the gate counted:

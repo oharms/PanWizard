@@ -102,6 +102,8 @@
  *                                      each naming its task and test (P4)
  *   verify decisions <phase>           Plans cite only DD-N ids the design records,
  *                                      and every recorded one is cited (P2)
+ *   usage                              Local census: installed commands and agents
+ *                                      used, never used, unfinished (L9)
  *   research lint <phase|path>         Claims table: source and date on every claim,
  *     [--now YYYY-MM-DD]               stale ones per type window (P3)
  *
@@ -263,8 +265,6 @@ const testGate = require('./lib/test-gate.cjs');
 const verifyRed = require('./lib/verify-red.cjs');
 const verifyScope = require('./lib/verify-scope.cjs');
 const mutate = require('./lib/mutate.cjs');
-const planLint = require('./lib/plan-lint.cjs');
-const researchLint = require('./lib/research-lint.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -390,7 +390,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, research, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -702,9 +702,9 @@ async function main() {
       } else if (subcommand === 'red') {
         verifyRed.cmdVerifyRed(cwd, args[2], raw, { timeout: getArgValue(args, '--timeout') });
       } else if (subcommand === 'review-focus') {
-        planLint.cmdVerifyReviewFocus(cwd, args[2], raw);
+        require('./lib/plan-lint.cjs').cmdVerifyReviewFocus(cwd, args[2], raw);
       } else if (subcommand === 'decisions') {
-        planLint.cmdVerifyDecisions(cwd, args[2], raw);
+        require('./lib/plan-lint.cjs').cmdVerifyDecisions(cwd, args[2], raw);
       } else if (subcommand === 'mutate') {
         mutate.cmdVerifyMutate(cwd, {
           phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),
@@ -1324,11 +1324,17 @@ async function main() {
       break;
     }
 
+    case 'usage': {
+      // Program L9: which installed commands and agents this project used, from its own files.
+      require('./lib/usage.cjs').cmdUsage(cwd, raw);
+      break;
+    }
+
     case 'research': {
       // Program P3: research claims carry a source and a checked date.
       const subcommand = args[1];
       if (subcommand === 'lint') {
-        researchLint.cmdResearchLint(cwd, args[2], { now: getArgValue(args, '--now') }, raw);
+        require('./lib/research-lint.cjs').cmdResearchLint(cwd, args[2], { now: getArgValue(args, '--now') }, raw);
       } else {
         error('Unknown research subcommand. Available: lint');
       }

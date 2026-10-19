@@ -115,6 +115,10 @@ Yes. The full workflow is `discuss → plan → execute → verify`, but:
 - Use `/pan:quick` for one-off tasks that don't need full planning
 - Disable research with `/pan:plan-phase --skip-research`
 
+### Why won't PAN mark my phase complete?
+
+The phase gate refused. `phase complete` checks the phase first (a summary for every plan, a passing and fresh verification, no open critical or high finding, among other checks), and `workflow.phase_gate` defaults to `enforce`, so a failed check stops the completion and lists each reason. `pan-tools phase gate <N>` runs the check alone. Fix the reasons, complete once anyway with `pan-tools phase complete <N> --force --reason "<why>"` (the override is recorded), or make the gate advisory with `pan-tools config-set workflow.phase_gate warn`. See [Phase gate refuses to complete a phase](TROUBLESHOOTING.md#phase-gate-refuses-to-complete-a-phase).
+
 ### How do I fix a plan that doesn't match my vision?
 
 Run `/pan:discuss-phase [N]` before planning. Most misalignment comes from Claude making assumptions that your preferences (captured in context.md) would prevent.
@@ -146,6 +150,8 @@ Note: you'll be prompted to approve agent spawning and other operations, which c
 ### How do I see what PAN is costing me?
 
 Run `/pan:cost report`. Since v3.4, on Claude Code, Codex and Copilot CLI (Gemini CLI has no subagent-completion event, and PAN registers no hooks on OpenCode), a SubagentStop hook auto-captures every sub-agent completion into `.planning/metrics/tokens.jsonl` — so `/pan:cost` works without any manual instrumentation. Use `--format table` for human-readable output, `--format chart` for a daily bar chart, or `--since YYYY-MM-DD --until YYYY-MM-DD` to scope to a billing window.
+
+Each phase also has a spend budget, `cost.phase_budget_usd` ($20 by default, in API-equivalent dollars): `/pan:exec-phase` notes in its wave report when a phase reaches 80% of it and again when it reaches the whole of it, and `/pan:plan-phase` ends with the spend so far and, once the ledger holds enough runs, a p10/p50/p90 forecast. It only warns and never stops a run. Change it with `/pan:settings` (`0` turns it off); `pan-tools cost budget --phase N` shows the figures.
 
 ### What's the difference between `pan-reviewer` and `/pan:review-deep`?
 

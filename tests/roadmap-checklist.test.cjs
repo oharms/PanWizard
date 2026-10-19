@@ -47,6 +47,7 @@ beforeEach(() => {
   tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-rmc-'));
   proj = path.join(tempRoot, 'proj');
   fs.mkdirSync(path.join(proj, '.planning', 'phases'), { recursive: true });
+  require('./helpers.cjs').gateOff(proj); // these test the roadmap tick, not the gate
   fs.writeFileSync(path.join(proj, '.planning', 'roadmap.md'), [
     '# Roadmap',
     '',

@@ -1186,3 +1186,44 @@ describe('harness model steps take a runtime', () => {
     assert.match(runModelStep(os.tmpdir(), 'p', { maxUsd: 1, runtime: 'cursor' }).stderr, /unknown model-step runtime/);
   });
 });
+
+describe('the scripted user (H9)', () => {
+  const { pickAnswer } = require('../harness/src/run.cjs');
+  const { modelArgs } = require('../harness/src/model.cjs');
+  const base = (steps) => ({ id: 'scripted-user', tier: 0, description: 'd', why: 'w', seed: 'empty', install: ['--claude'], steps, controls: [{ id: 'c', delete: 'x', why: 'w' }] });
+  const dbl = { script: { rules: [], fallback: { text: 'Q1' } } };
+  const model = { kind: 'model', prompt: '/pan:discuss-phase 1', persistSession: true, double: dbl, expect: ['exit:0'], why: 'w' };
+  const user = (extra = {}) => ({ kind: 'user', answers: [{ match: 'Q1', reply: 'Casual.' }], double: dbl, expect: ['exit:0'], why: 'w', ...extra });
+
+  test('pickAnswer: the first answer whose pattern matches the last reply, case-insensitive', () => {
+    const answers = [{ match: 'greeting style', reply: 'Casual.' }, { match: 'case', reply: 'Lowercase.' }, { match: '.', reply: 'fallback' }];
+    assert.equal(pickAnswer(answers, 'Which GREETING style?').reply, 'Casual.');
+    assert.equal(pickAnswer(answers, 'Upper or lower case?').reply, 'Lowercase.');
+    assert.equal(pickAnswer(answers.slice(0, 2), 'nothing here'), null);
+    assert.equal(pickAnswer(answers, ''), null, 'no reply to answer is no answer');
+  });
+
+  test('a user step validates: it follows a session it can resume, has answers, and is double-backed at tier 0', () => {
+    assert.deepEqual(validateScenario(base([model, user()])), []);
+    assert.match(validateScenario(base([user()])).join(' '), /user step must follow a model or user step/);
+    assert.match(validateScenario(base([{ ...model, persistSession: undefined }, user()])).join(' '), /persistSession/);
+    assert.match(validateScenario(base([model, user({ answers: [] })])).join(' '), /answers/);
+    assert.match(validateScenario(base([model, user({ answers: [{ match: '(', reply: 'x' }] })])).join(' '), /not a valid pattern/);
+    assert.match(validateScenario(base([model, user({ double: undefined })])).join(' '), /tier-0/);
+  });
+
+  test('a resumed model step keeps its session and names the one it resumes', () => {
+    const a = modelArgs(os.tmpdir(), { maxUsd: 1, resume: 'abc-123' });
+    assert.ok(a.includes('--resume') && a[a.indexOf('--resume') + 1] === 'abc-123');
+    assert.ok(!a.includes('--no-session-persistence'), 'a resumed session must be written back');
+  });
+});
+
+describe('the scripted user (H9): a lost session is red, not a harness fault', () => {
+  const { modelStepNeverRan } = require('../harness/src/run.cjs');
+  test('a resumed doubled step that finds no conversation is a result; a fresh one that never reached the double is not', () => {
+    const lost = { doubled: true, resumed: true, captures: [], code: 1, stdout: 'No conversation found with session ID: abc', stderr: '' };
+    assert.equal(modelStepNeverRan(lost), null);
+    assert.match(String(modelStepNeverRan({ ...lost, resumed: false })), /never reached the model double/);
+  });
+});

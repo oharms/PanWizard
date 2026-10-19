@@ -128,6 +128,13 @@ function fill(value, vars) {
   return value;
 }
 
+/** fill() through every string of a JSON-shaped value (a double's script). Pure. */
+function fillDeep(value, vars) {
+  if (typeof value === 'string' || Array.isArray(value)) return Array.isArray(value) ? value.map(v => fillDeep(v, vars)) : fill(value, vars);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fillDeep(v, vars)]));
+  return value;
+}
+
 /**
  * The environment a `cli` step's child runs with: the harness's own, plus the step's
  * `env` overrides with placeholders filled. Pure. live-gate-gemini points
@@ -139,6 +146,15 @@ function stepEnv(step, vars, base = process.env) {
   const env = { ...base };
   for (const [k, v] of Object.entries(step.env)) env[k] = fill(String(v), vars);
   return env;
+}
+
+/**
+ * The scripted user's answer (H9): the first whose `match` (a case-insensitive pattern)
+ * finds the host's last reply. Null when nothing matches, or there was no reply. Pure.
+ */
+function pickAnswer(answers, lastReply) {
+  if (!lastReply) return null;
+  return (answers || []).find((a) => new RegExp(a.match, 'i').test(lastReply)) || null;
 }
 
 // A model step is not started with less than this much cap left: a run cut off by
@@ -262,6 +278,15 @@ function runStep(step, ctx) {
       const cwd = step.cwd === 'other' ? other : ws;
       return rpcBatch(ws, materialise(step.requests, { ws, other }), { runtime: step.runtime || runtime, cwd, timeoutMs: stepTimeout });
     }
+    case 'user': {
+      // H9: answer the session the last model or user step left, by pattern over its reply,
+      // and resume it with that answer. Double-backed it is tier 0; with a model it spends.
+      const last = ctx.lastSession;
+      if (!last || !last.sessionId) return { code: 1, stdout: '', stderr: 'no session to answer: the step before left no session id (persistSession on the model step?)', unanswered: true };
+      const answer = pickAnswer(step.answers, last.reply);
+      if (!answer) return { code: 1, stdout: '', stderr: `no scripted answer matches the last reply: ${String(last.reply || '').slice(0, 300)}`, unanswered: true };
+      return runStep({ ...step, kind: 'model', prompt: answer.reply, persistSession: true, resume: last.sessionId }, ctx);
+    }
     case 'model': {
       // A double-backed step (H1): the host runs for real against the local model double, which
       // answers from the step's script. Nothing is spent, so it needs no cap and is tier 0.
@@ -269,7 +294,11 @@ function runStep(step, ctx) {
         const tag = `double-${ctx.stepIndex === undefined ? 'x' : ctx.stepIndex}`;
         const dbl = { ...step.double, ...(step.double.cassette ? { cassette: fill(step.double.cassette, vars) } : {}) };
         if (!ctx.record) delete dbl.record; // replay unless the run asked to re-record
-        return runDoubledModelStep(ws, fill(step.prompt, vars), { runtime: step.runtime, double: dbl, capturesDir: path.join(other, tag), configDir: path.join(other, `${tag}-home`), other, timeoutMs: stepTimeout });
+        // A session kept for a scripted user lives in one home for the whole scenario, so the
+        // step that resumes it finds it; otherwise each step has its own.
+        const keep = step.persistSession === true || !!step.resume;
+        const script = dbl.script ? { script: fillDeep(dbl.script, vars) } : {};
+        return runDoubledModelStep(ws, fill(step.prompt, vars), { runtime: step.runtime, double: { ...dbl, ...script }, capturesDir: path.join(other, tag), configDir: path.join(other, keep ? 'double-session-home' : `${tag}-home`), other, timeoutMs: stepTimeout, persistSession: keep, resume: step.resume || null });
       }
       // Cap = what is left of THIS scenario's share, bounded by its own budget.maxUsd.
       const remaining = ctx.shareUsd === null ? null : ctx.shareUsd - ctx.spentUsd();
@@ -277,7 +306,7 @@ function runStep(step, ctx) {
       if (cap !== null && cap < MIN_MODEL_STEP_USD) {
         return { code: 2, stdout: '', stderr: `budget exhausted: $${cap.toFixed(2)} of this scenario's $${ctx.shareUsd.toFixed(2)} share left (floor $${MIN_MODEL_STEP_USD})`, costUsd: 0, budgetExhausted: true };
       }
-      const r = runModelStep(ws, fill(step.prompt, vars), { maxUsd: cap, timeoutMs: stepTimeout, pluginDir: step.pluginDir ? fill(step.pluginDir, vars) : undefined, strictMcp: step.strictMcp !== false, persistSession: step.persistSession === true, runtime: step.runtime });
+      const r = runModelStep(ws, fill(step.prompt, vars), { maxUsd: cap, timeoutMs: stepTimeout, pluginDir: step.pluginDir ? fill(step.pluginDir, vars) : undefined, strictMcp: step.strictMcp !== false, persistSession: step.persistSession === true, resume: step.resume || null, runtime: step.runtime });
       ctx.addCost(r.costUsd || 0);
       // Claude Code stops a run at --max-budget-usd with is_error and a tool_use
       // stop reason. Spend within ~15% of the cap is that stop, not a PAN result.
@@ -330,10 +359,14 @@ function driftNote(step, outcome) {
 }
 
 function modelStepNeverRan(outcome) {
-  if (!outcome || outcome.refused || outcome.budgetExhausted || outcome.budgetStopped) return null;
+  // A scripted user with nothing to answer is a real result (the session went elsewhere).
+  if (!outcome || outcome.refused || outcome.budgetExhausted || outcome.budgetStopped || outcome.unanswered) return null;
   // A double-backed step spends nothing by design: it ran if the host reached the double.
   if (outcome.doubled) {
     if ((outcome.captures || []).some((c) => c && c.protocol)) return null;
+    // A resume that finds no conversation is the step's own failure (H9): the session it
+    // answers is gone, which is what a scripted user must be able to show.
+    if (outcome.resumed && /no conversation found/i.test(`${outcome.stdout || ''} ${outcome.stderr || ''}`)) return null;
     const why = String(outcome.stderr || outcome.stdout || '').replace(/\s+/g, ' ').slice(0, 300);
     return `the host never reached the model double — a probe or harness fault, not a PAN result: ${why || '(no output)'}`;
   }
@@ -481,7 +514,7 @@ function main() {
         rec.steps.push({ index: i, kind: step.kind, code: outcome.code, failures: [], costUsd: outcome.costUsd || 0, stdout: String(outcome.stdout || '').slice(0, 4000), stderr: String(outcome.stderr || '').slice(0, 2000) });
         log(`${label}: BUDGET — ${rec.note}`); break;
       }
-      if (step.kind === 'model') {
+      if (step.kind === 'model' || step.kind === 'user') {
         const never = modelStepNeverRan(outcome);
         if (never) {
           rec.status = 'error'; rec.note = never;
@@ -489,7 +522,10 @@ function main() {
           log(`${label}: ERROR — ${rec.note}`); break;
         }
       }
-      if (step.kind === 'model') persistStepOutput(runDir, s.id, rep, i, outcome);
+      if (step.kind === 'model' || step.kind === 'user') {
+        persistStepOutput(runDir, s.id, rep, i, outcome);
+        if (outcome.sessionId) ctx.lastSession = { sessionId: outcome.sessionId, reply: String(outcome.stdout || '') };
+      }
       const impact = driftNote(step, outcome);
       if (impact) {
         rec.status = 'drift'; rec.note = impact;
@@ -630,4 +666,4 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { DEFAULT_MAX_USD, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+module.exports = { DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

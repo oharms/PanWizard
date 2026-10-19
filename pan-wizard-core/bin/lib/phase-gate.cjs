@@ -17,8 +17,8 @@
  *
  * What the gate could not check is listed in `not_checked`, never refused on:
  * a skipped test gate, an unknown freshness, no git, no plan commits, the verifier
- * switched off. `workflow.phase_gate` is `warn` (default: report and proceed) or
- * `enforce` (refuse unless `--force --reason`, which records a decision).
+ * switched off. `workflow.phase_gate` is `enforce` (the default since V1E: refuse
+ * unless `--force --reason`, which records a decision) or `warn` (report and proceed).
  */
 const fs = require('fs');
 const path = require('path');
@@ -29,12 +29,12 @@ const { planningPath } = require('./utils.cjs');
 const MODES = Object.freeze(['warn', 'enforce']);
 const SERIOUS = new Set(['critical', 'high']);
 
-/** `workflow.phase_gate` from config.json: `enforce` or (anything else) `warn`. */
+/** `workflow.phase_gate` from config.json: `warn`, or (anything else, absent included) `enforce`. */
 function gateMode(cwd) {
   let cfg = null;
   try { cfg = JSON.parse(fs.readFileSync(planningPath(cwd, 'config.json'), 'utf-8')); } catch { /* defaults */ }
   const v = cfg && cfg.workflow && cfg.workflow.phase_gate;
-  return MODES.includes(v) ? v : 'warn';
+  return MODES.includes(v) ? v : 'enforce';
 }
 
 /**

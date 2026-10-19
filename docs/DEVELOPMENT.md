@@ -55,6 +55,7 @@ pan-wizard/
         verify-red.cjs        # `verify red`: each phase test must fail at the phase's base and pass at HEAD; mutate.cjs — the `verify mutate` report
         plan-lint.cjs         # `verify review-focus` and `verify decisions`: a plan's Review Focus and its design-decision citations, checked in code
         research-lint.cjs     # `research lint`: research claims carry a source and a checked date, and go stale by type
+        usage.cjs             # `usage`: local census of installed commands and agents (used, never used, unfinished) from the cost ledger and traces
         knowledge.cjs         # Grounded Q&A / discuss / playbook (Y-3)
         whatif.cjs            # Counterfactual phase replay in worktree (Y-4)
         bridge.cjs            # MCP discovery + recommendation — the CLIENT side (Y-5)
@@ -106,6 +107,7 @@ pan-wizard/
     coverage-gate.cjs         # Suite under Node coverage: dispatcher arms + floors (release Gate 9)
     test-quality-lint.cjs     # Vacuous-assertion lint rules applied by tests/test-quality.test.cjs
     prompt-lint.cjs           # Prompt-contract lint over shipped prompts, applied by tests/prompt-lint.test.cjs
+    build-help.cjs            # Writes /pan:help's command index from command frontmatter (--write, --check); tests/help-generated.test.cjs fails when stale
     mutation-probe.cjs        # Report-only mutation probe (npm run test:mutate)
     git-hooks/                # Tracked pre-commit hook (gitleaks)
   harness/                    # PAN Harness — behavioural scenarios against installs built from a packed artifact (ADR-0047); not shipped
@@ -153,7 +155,7 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 3. Commands should be thin orchestrators — read state, spawn agents, route results
 4. Call pan-tools for state operations: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs <cmd> [args]`
 5. Reference a workflow if multi-step logic is needed
-6. No installer edit is needed — the installer copies `commands/pan/` recursively, so new command files ship automatically. Give the file frontmatter that `pan-tools doc-lint commands/pan` accepts, run `node scripts/test-surface.cjs --write` (the surface registry lists every command file) and refresh the Commands row of the counts table in `CLAUDE.md`, or `npm test` fails (`tests/doc-lint.test.cjs`, `tests/surface-map.test.cjs`, `tests/claude-md-counts.test.cjs`)
+6. No installer edit is needed — the installer copies `commands/pan/` recursively, so new command files ship automatically. Give the file frontmatter that `pan-tools doc-lint commands/pan` accepts, with a `group` and a `description` (the `/pan:help` index is generated from them), run `node scripts/build-help.cjs --write` and `node scripts/test-surface.cjs --write` (the surface registry lists every command file), name the command in a harness scenario or give it a reason in `tests/fixtures/liveness-allowlist.json`, and refresh the Commands row of the counts table in `CLAUDE.md`, or `npm test` fails (`tests/doc-lint.test.cjs`, `tests/help-generated.test.cjs`, `tests/surface-map.test.cjs`, `tests/claude-md-counts.test.cjs`)
 
 ## How to Add a New Agent
 
@@ -161,7 +163,7 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 2. Define role, context requirements, constraints, output format using XML structure
 3. Add the agent to `MODEL_PROFILES` and `AGENT_BASE_EFFORT` in `core.cjs`, and set the agent's `effort:` frontmatter to that base effort (`tests/core.test.cjs` pins all three)
 4. Reference from workflow .md that spawns it via Task tool
-5. No installer edit is needed — the installer copies every top-level `agents/*.md` file (subdirectories are not scanned), so new agent files ship automatically. Run `node scripts/test-surface.cjs --write` (the surface registry lists every agent file) and refresh the Agents row of the counts table in `CLAUDE.md`, and place the agent in a squad or the worker list in `pan-wizard-core/bin/lib/squads.cjs`, or `npm test` fails (`tests/surface-map.test.cjs`, `tests/claude-md-counts.test.cjs`, `tests/squads.test.cjs`)
+5. No installer edit is needed — the installer copies every top-level `agents/*.md` file (subdirectories are not scanned), so new agent files ship automatically. Run `node scripts/test-surface.cjs --write` (the surface registry lists every agent file), name the agent in a harness scenario or give it a reason in `tests/fixtures/liveness-allowlist.json`, and refresh the Agents row of the counts table in `CLAUDE.md`, and place the agent in a squad or the worker list in `pan-wizard-core/bin/lib/squads.cjs`, or `npm test` fails (`tests/surface-map.test.cjs`, `tests/claude-md-counts.test.cjs`, `tests/squads.test.cjs`)
 
 ## How to Add a Core Module Function
 
@@ -393,7 +395,7 @@ npm run harness                                    # tier 0 — model-free, free
 npm run harness:model -- --max-usd 50 --repeat 5 --scenario native-exec-waves-chain --scenario markdown-exec-phase-chain   # tier 2 — the chain pair; without --max-usd the cap is $15
 ```
 
-Tier 0 is the one to run before a release. Model tiers spend your Claude usage (or, for a `cli` step marked `paid: true`, that CLI's credits) and are capped at $15 per run unless `--max-usd` (or `PAN_HARNESS_MAX_USD`) gives another figure; the cap is split across the model-tier scenarios in the run. Run state goes outside the checkout (`D:\pantesting\harness-runs\<run-id>\` on the maintainer's machine); `harness/ledger.jsonl` is the tracked findings history, deduped by signature. A scenario's `requires` (`cli`, `minVersion`) **skips** it with the reason when the environment cannot run it — never a pass — and a model step that never ran is a harness error, not a finding. Every assertion kind has a both-direction test in `tests/harness.test.cjs`; add a kind there first. `harness/corpus/` holds seeded-defect projects (a clean twin, a defective twin and a held-out catching test each, every entry proven with `verify red` by `tests/harness-corpus.test.cjs`), and `harness/scripts/catch-rate.cjs` scores judge runs against them: catch rate and false-alarm rate with Wilson intervals. `harness/README.md` has the scenario schema, the tiers, and the headless background-wait ceiling the runner lifts.
+Tier 0 is the one to run before a release; it includes `model` and scripted-`user` steps answered by the local model double (`harness/src/model-double.cjs`) or a committed cassette, which reach no real model and spend nothing. Model tiers spend your Claude usage (or, for a `cli` step marked `paid: true`, that CLI's credits) and are capped at $15 per run unless `--max-usd` (or `PAN_HARNESS_MAX_USD`) gives another figure; the cap is split across the model-tier scenarios in the run. Run state goes outside the checkout (`D:\pantesting\harness-runs\<run-id>\` on Windows when `D:\pantesting` exists, else the OS temp directory; `PAN_HARNESS_STATE` or `--state-dir` overrides it); `harness/ledger.jsonl` is the tracked findings history, deduped by signature. A scenario's `requires` (`cli`, `minVersion`) **skips** it with the reason when the environment cannot run it — never a pass — and a model step that never ran is a harness error, not a finding. Every assertion kind has a both-direction test in `tests/harness.test.cjs` (the double's `wire:` and `drift:` kinds in `tests/model-double.test.cjs`); add a kind there first. `harness/corpus/` holds seeded-defect projects (a clean twin, a defective twin and a held-out catching test each, every entry proven with `verify red` by `tests/harness-corpus.test.cjs`), and `harness/scripts/catch-rate.cjs` scores judge runs against them: catch rate and false-alarm rate with Wilson intervals. `harness/README.md` has the scenario schema, the tiers, and the headless background-wait ceiling the runner lifts.
 
 ## Release Process
 

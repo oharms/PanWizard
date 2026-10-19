@@ -1,0 +1,83 @@
+{
+  "id": "discuss-phase-scripted-user",
+  "tier": 0,
+  "description": "Run /pan:discuss-phase 1 in the real Claude Code CLI against the model double, with a scripted user answering its three questions in the same resumed session. The scripted model writes 01-context.md only once the conversation holds all three answers.",
+  "why": "Program H9: discuss-phase and UAT are conversations, and a headless run could only test their first turn. A user step answers on a pattern over the last reply and resumes the session, so the plumbing a real user goes through (the command expands, the question comes back, the answer reaches the same conversation, the decision is written) is measured at tier 0. The double writes the file only when every earlier answer is in the request, so a step that lost the session cannot pass.",
+  "seed": "discuss-needed",
+  "install": ["--claude"],
+  "requires": { "cli": "claude" },
+  "budget": { "maxUsd": 0, "maxMinutes": 10, "maxStepMinutes": 3 },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:discuss-phase 1",
+      "persistSession": true,
+      "double": {
+        "script": {
+          "rules": [],
+          "fallback": { "text": "Q1: Which greeting style should greet use, formal or casual?" }
+        }
+      },
+      "expect": ["exit:0", "stdout~Q1:", "absent:.planning/phases/01-greeting-cli/01-context.md"],
+      "why": "The command runs headless and the session's first reply is the first question; nothing is written before the user has answered."
+    },
+    {
+      "kind": "user",
+      "answers": [{ "match": "greeting style", "reply": "Casual." }],
+      "double": {
+        "script": {
+          "rules": [{ "when": { "userIncludes": "Casual." }, "turns": [{ "text": "Q2: Should the greeting be in upper case or lower case?" }] }],
+          "fallback": { "text": "UNEXPECTED" }
+        }
+      },
+      "expect": ["exit:0", "stdout~Q2:"],
+      "why": "The scripted user's answer reaches the resumed session and the next question comes back."
+    },
+    {
+      "kind": "user",
+      "answers": [{ "match": "upper case or lower case", "reply": "Lowercase." }],
+      "double": {
+        "script": {
+          "rules": [{ "when": { "userIncludes": "Lowercase.", "messagesInclude": ["Casual."] }, "turns": [{ "text": "Q3: When the name is missing, should greet exit with code 0 or 1?" }] }],
+          "fallback": { "text": "UNEXPECTED" }
+        }
+      },
+      "expect": ["exit:0", "stdout~Q3:"],
+      "why": "The second answer arrives in the same conversation as the first: the request still carries 'Casual.'."
+    },
+    {
+      "kind": "user",
+      "answers": [{ "match": "exit with code", "reply": "Exit code 0." }],
+      "double": {
+        "script": {
+          "rules": [
+            {
+              "when": { "userIncludes": "Exit code 0.", "messagesInclude": ["Casual.", "Lowercase."] },
+              "turns": [
+                { "tool": { "name": "Write", "input": { "file_path": "<ws>/.planning/phases/01-greeting-cli/01-context.md", "content": "# Phase 1: Greeting CLI - Context\n\n<decisions>\n## Implementation Decisions\n\n- Greeting style: casual (user, Q1).\n- Letter case: lowercase (user, Q2).\n- Missing name: exit code 0 (user, Q3).\n</decisions>\n" } } },
+                { "text": "CONTEXT-WRITTEN" }
+              ]
+            }
+          ],
+          "fallback": { "text": "UNEXPECTED" }
+        }
+      },
+      "expect": ["exit:0", "stdout~CONTEXT-WRITTEN", "file:.planning/phases/01-greeting-cli/01-context.md", "count:.planning/phases/01-greeting-cli/*-context.md=1"],
+      "why": "After three scripted answers in one session, discuss-phase's output exists: context.md is written once all three answers are in the conversation."
+    },
+    {
+      "kind": "fs",
+      "read": ".planning/phases/01-greeting-cli/01-context.md",
+      "expect": ["stdout~casual", "stdout~lowercase", "stdout~exit code 0"],
+      "why": "Each of the three answers is recorded as a decision."
+    }
+  ],
+  "controls": [
+    {
+      "id": "session-lost",
+      "after": 0,
+      "delete": "<other>/double-session-home/projects",
+      "why": "Without the session the first step kept, the answers cannot be resumed: the user steps must turn red rather than pass on a fresh conversation."
+    }
+  ]
+}

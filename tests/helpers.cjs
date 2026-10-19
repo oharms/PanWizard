@@ -62,6 +62,21 @@ function createTempProject() {
   return tmpDir;
 }
 
+/**
+ * Opt a fixture out of the phase gate (`workflow.phase_gate: warn`), merged into any
+ * config.json it has. For tests of what `phase complete` does once the gate lets it
+ * through (roadmap ticks, requirements, commits): V1E made `enforce` the default, and
+ * those fixtures carry no verification. Gate behaviour itself is tests/phase-gate.test.cjs.
+ */
+function gateOff(dir) {
+  const p = path.join(dir, '.planning', 'config.json');
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { /* none yet */ }
+  cfg.workflow = { ...(cfg.workflow || {}), phase_gate: 'warn' };
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+}
+
 function cleanup(tmpDir) {
   // Best-effort removal. maxRetries absorbs short ENOTEMPTY/EBUSY races, but a
   // DETACHED background process (git gc --auto on macOS detaches after commits)
@@ -211,4 +226,4 @@ function installInto(cwd, flags) {
   }
 }
 
-module.exports = { runPanTools, createTempProject, cleanup, createScenarioRunner, buildPluginInto, buildAgentPluginInto, withFakeHome, readLedger, spawnHook, installInto, TOOLS_PATH, INSTALLER_PATH, RUNTIME_DIR };
+module.exports = { runPanTools, createTempProject, cleanup, gateOff, createScenarioRunner, buildPluginInto, buildAgentPluginInto, withFakeHome, readLedger, spawnHook, installInto, TOOLS_PATH, INSTALLER_PATH, RUNTIME_DIR };

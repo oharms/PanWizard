@@ -65,7 +65,7 @@ With `workflow.auto_advance: true` in config.json:
 
 *Source: `references/tdd.md`*
 
-PAN's executor follows RED-GREEN-REFACTOR discipline for tasks flagged as testable.
+PAN's executor follows RED-GREEN-REFACTOR discipline for a plan of `type: tdd` (the planner gives TDD work its own plan, with a `<feature>` block) or a task marked `tdd="true"`.
 
 ### When TDD Applies
 
@@ -93,9 +93,9 @@ PAN's executor follows RED-GREEN-REFACTOR discipline for tasks flagged as testab
 ### Commit Pattern
 
 Each TDD cycle produces 2-3 commits:
-- `test(phase-plan): Add failing test for {feature}`
-- `feat(phase-plan): Implement {feature}`
-- `refactor(phase-plan): Clean up {feature}` (optional)
+- `test({phase}-{plan}): add failing test for {feature}`
+- `feat({phase}-{plan}): implement {feature}`
+- `refactor({phase}-{plan}): clean up {feature}` (optional, only when the refactor changed something)
 
 ---
 
@@ -119,14 +119,14 @@ After execution, PAN's verifier checks that artifacts are real implementations -
 - Props accepted but never used in render
 
 **API route stubs:**
-- `return { message: "Not implemented" }` or `res.json([])`
-- No database query (missing ORM/SQL calls)
+- `Response.json({ message: "Not implemented" })`, `Response.json([])` with no database query, or an empty `new Response()`
+- A handler that only logs the request body and returns `{ ok: true }`
 - No input validation or error handling
 
 **Schema stubs:**
-- Only `id` field defined
-- All fields optional with no constraints
-- Missing indexes or relations
+- Only an `id` field (or a single real field) defined
+- Critical fields missing (e.g. an order with no user, items, total or status)
+- Expected relationships absent, or every field typed `String`
 
 ### Wiring Verification
 
@@ -135,24 +135,24 @@ Each layer must connect to the next:
 ```text
 Component -> API call (fetch/axios/tRPC)
     -> API route -> Database query (Prisma/Drizzle/SQL)
-        -> Schema -> Indexes + constraints
+        -> Schema -> Migrations applied + client generated
 ```
 
 **What the verifier checks:**
 1. Component renders data from state/props (not hardcoded)
 2. Component calls API on user action
 3. API route queries database with parameters
-4. Database schema has correct types and relations
+4. Database schema has correct types and relations, with migrations applied
 
 ### Verification Report Structure
 
-verification.md (layout from `templates/verification-report.md`) includes:
-- Per-requirement pass/fail assessment
-- Stub inventory (if any found)
-- Wiring chain validation
-- Gap analysis with suggested fixes
+`{phase_num}-verification.md` in the phase directory (layout from `templates/verification-report.md`) carries frontmatter `phase`, `verified`, `verified_commit` (the HEAD `pan-tools verify stale` compares against), `status` (`passed` | `gaps_found` | `human_needed`), `score` and `test_gate`, plus `not_checked`, `gaps`, `human_verification` and `unrequested` lists when they apply. The body includes:
+- Observable truths, required artifacts and requirements coverage, each with a pass/fail status
+- Anti-patterns found (stubs and placeholders)
+- Key link verification (the wiring chain)
+- Gaps summary with suggested fixes
 - Unrequested work: changes no plan asked for, found with `pan-tools verify scope` (recorded, never blocking)
-- Test gate: `test_gate` in the frontmatter, copied from the record `pan-tools test run --phase N` writes rather than judged by the verifier
+- Test gate: `test_gate` (`passed` | `failed` | `skipped`) in the frontmatter, copied from the record `pan-tools test run --phase N` writes rather than judged by the verifier
 - Test strength: the `verify mutate` survivors on the phase's changed lines, when the test gate passed (reported, never changing the status). The section comes from the `verify-phase` workflow's `mutation_report` step, not from the template
 - Overall score (N/M must-haves verified)
 
@@ -228,7 +228,7 @@ Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) ar
 | Executor | reasoning | reasoning | mid |
 | Verifier | reasoning | reasoning | fast |
 | Plan Checker | reasoning | reasoning | fast |
-| Codebase Mapper | reasoning | reasoning | fast |
+| Codebase Mapper (`pan-document_code`) | reasoning | reasoning | fast |
 
 ### Routing Pipeline
 
@@ -271,13 +271,13 @@ Override specific agents in config:
 ```json
 {
   "model_overrides": {
-    "pan-executor": "opus",
-    "pan-phase-researcher": "sonnet"
+    "pan-executor": "reasoning",
+    "pan-phase-researcher": "mid"
   }
 }
 ```
 
-Overrides take precedence over profile defaults, per-phase overrides, and routing strategy.
+Values are tiers (`reasoning`, `mid`, `fast`; the legacy names are accepted). Overrides take precedence over profile defaults, per-phase overrides, and routing strategy, and are never escalated on retry.
 
 ---
 
@@ -344,12 +344,13 @@ Major workflow stages use a `PAN ►` banner between two rules (stage name in ca
 
 | Symbol | Meaning |
 |--------|---------|
-| checkmark | Success / Complete |
-| cross | Failure / Error |
-| diamond | In progress |
-| circle | Pending / Not started |
-| lightning | Auto-approved |
-| warning | Warning |
+| `✓` | Complete / Passed / Verified |
+| `✗` | Failed / Missing / Blocked |
+| `◆` | In progress |
+| `○` | Pending |
+| `⚡` | Auto-approved |
+| `⚠` | Warning |
+| `🎉` | Milestone complete (banner only) |
 
 ### Checkpoint Boxes
 
@@ -406,9 +407,10 @@ PAN's project initialization uses a collaborative discussion model, not a requir
 ### Anti-Patterns
 
 - **Checklist walking:** Don't ask generic questions in order
-- **Interrogation:** Don't ask 10 questions at once
+- **Interrogation:** Don't fire questions without building on the answers
 - **Shallow acceptance:** Don't take vague answers without probing
-- **Skill assessment:** Don't ask "What's your experience level?"
+- **Premature constraints:** Don't ask about the tech stack before understanding the idea
+- **User skills:** Never ask about the user's technical experience
 
 ---
 

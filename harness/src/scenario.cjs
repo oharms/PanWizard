@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { MODEL_RUNTIMES } = require('./model.cjs');
 
-const STEP_KINDS = new Set(['pan', 'sh', 'mcp', 'model', 'fs', 'build', 'cli']);
+const STEP_KINDS = new Set(['pan', 'sh', 'mcp', 'model', 'user', 'fs', 'build', 'cli']);
 const ASSERTION_RE = /^(exit:-?\d+|file:.+|absent:.+|glob:.+|count:.+=\d+|json:[^=]+(=.*)?|json!:.+|stdout~.+|stderr~.+|rpc:[^.]+\.[^=]+(=.*)?|wire:(system|tools|url|body)~.+|wire-count:(system|tools|url|body)~.+=\d+|drift:.+)$/;
 
 function validateScenario(s, fileName = '<inline>') {
@@ -48,12 +48,13 @@ function validateScenario(s, fileName = '<inline>') {
     else for (const e of st.expect) if (typeof e !== 'string' || !ASSERTION_RE.test(e)) err(`${at}: bad assertion "${e}"`);
     // A double-backed model step (H1) reaches no real model and spends nothing: tier 0.
     if (st.kind === 'model' && s.tier === 0 && !st.double) err(`${at}: a model step cannot live in a tier-0 scenario`);
+    if (st.kind === 'user' && s.tier === 0 && !st.double) err(`${at}: a user step in a tier-0 scenario needs a double`);
     if (st.double !== undefined) {
       // H1 script, or H2 cassette replay, optionally carrying the synthetic recipe `--record`
       // re-records it from. A recording from a real model is never a scenario step: it spends.
       const d = st.double && typeof st.double === 'object' ? st.double : {};
       const goodScript = (sc) => sc && Array.isArray(sc.rules) && sc.rules.every((r) => r && typeof r === 'object' && Array.isArray(r.turns));
-      if (st.kind !== 'model') err(`${at}: double is only for model steps`);
+      if (st.kind !== 'model' && st.kind !== 'user') err(`${at}: double is only for model and user steps`);
       else if (d.script !== undefined && d.cassette !== undefined) err(`${at}: double takes either a script or a cassette, not both`);
       else if (d.record !== undefined && d.record && d.record.upstream !== undefined) err(`${at}: double.record.upstream records from a real model (paid, API key) — not a scenario step`);
       else if (d.record !== undefined && typeof d.cassette !== 'string') err(`${at}: double.record needs a cassette to write`);
@@ -64,6 +65,20 @@ function validateScenario(s, fileName = '<inline>') {
     if (st.kind === 'pan' && !Array.isArray(st.argv)) err(`${at}: pan steps need argv[]`);
     if (st.kind === 'mcp' && !Array.isArray(st.requests)) err(`${at}: mcp steps need requests[]`);
     if (st.kind === 'model' && typeof st.prompt !== 'string') err(`${at}: model steps need a prompt`);
+    // H9: a scripted user answers the session before it, by pattern over its last reply,
+    // and resumes it. The session it resumes starts at a model step that kept it.
+    if (st.kind === 'user') {
+      const prev = s.steps[i - 1];
+      if (!prev || !['model', 'user'].includes(prev.kind)) err(`${at}: a user step must follow a model or user step`);
+      let k = i - 1;
+      while (k >= 0 && s.steps[k] && s.steps[k].kind === 'user') k--;
+      if (k >= 0 && s.steps[k] && s.steps[k].kind === 'model' && s.steps[k].persistSession !== true) err(`${at}: the model step a user step answers needs persistSession: true`);
+      if (!Array.isArray(st.answers) || st.answers.length === 0) err(`${at}: user steps need answers: [{match, reply}]`);
+      else for (const a of st.answers) {
+        if (!a || typeof a.match !== 'string' || typeof a.reply !== 'string' || !a.reply) { err(`${at}: each answer needs a match pattern and a reply`); continue; }
+        try { new RegExp(a.match, 'i'); } catch { err(`${at}: "${a.match}" is not a valid pattern`); }
+      }
+    }
     // `runtime` picks the host CLI a model step drives (default claude; MI-104), and the
     // installed runtime directory a pan or mcp step runs against (run.cjs honours both).
     if (st.runtime !== undefined && (!['model', 'pan', 'mcp'].includes(st.kind) || !Object.prototype.hasOwnProperty.call(MODEL_RUNTIMES, st.runtime))) {

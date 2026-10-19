@@ -39,6 +39,26 @@ function systemText(body) {
   return '';
 }
 
+/**
+ * The conversation turns of a request (not the system prompt) as {role, text}, whatever
+ * the protocol: text blocks only, so tool calls and tool results are left out. Pure.
+ */
+function messageTexts(body) {
+  if (!body || typeof body !== 'object') return [];
+  const flat = (v) => (typeof v === 'string' ? v : Array.isArray(v) ? v.map((x) => (typeof x === 'string' ? x : x && (x.type === undefined || /text$/.test(x.type)) ? (x.text || '') : '')).filter(Boolean).join('\n') : '');
+  if (Array.isArray(body.messages)) return body.messages.filter((m) => m && m.role !== 'system').map((m) => ({ role: m.role, text: flat(m.content) })); // Anthropic, OpenAI Chat
+  if (Array.isArray(body.input)) return body.input.filter((m) => m && m.role).map((m) => ({ role: m.role, text: flat(m.content) })); // OpenAI Responses
+  if (typeof body.input === 'string') return [{ role: 'user', text: body.input }];
+  if (Array.isArray(body.contents)) return body.contents.map((c) => ({ role: c.role === 'model' ? 'assistant' : (c.role || 'user'), text: flat(c.parts) })); // Gemini
+  return [];
+}
+
+/** The text of the latest user turn that carries text (a scripted user's answer, H9). Pure. */
+function lastUserText(body) {
+  const turns = messageTexts(body).filter((m) => m.role === 'user' && m.text);
+  return turns.length ? turns[turns.length - 1].text : '';
+}
+
 /** Which wire protocol a request speaks, from its path. */
 function protocolOf(url) {
   if (/\/v1\/messages(\?|$)/.test(url)) return 'anthropic';
@@ -179,6 +199,13 @@ function scriptTurn(script, req, body, cursors) {
     if (w.toolsExclude && toolNames(body).some((t) => [].concat(w.toolsExclude).includes(t))) continue;
     if (w.systemIncludes && !system.includes(w.systemIncludes)) continue;
     if (w.systemExcludes && system.includes(w.systemExcludes)) continue;
+    // H9: what the user just said, and what the whole conversation holds. A resumed session
+    // carries the earlier answers; a fresh one does not.
+    if (w.userIncludes && !lastUserText(body).includes(w.userIncludes)) continue;
+    if (w.messagesInclude) {
+      const all = messageTexts(body).map((m) => m.text).join('\n');
+      if (![].concat(w.messagesInclude).every((t) => all.includes(t))) continue;
+    }
     const turns = rules[i].turns || [];
     const at = cursors.get(i) || 0;
     cursors.set(i, at + 1);
@@ -396,4 +423,4 @@ function hostEnv(runtime, url, base = process.env) {
   return null;
 }
 
-module.exports = { startDouble, hostEnv, systemText, protocolOf, toolNames, requestKey, turnIndex, scriptTurn, resolveTool, makeNormaliser, attributeDrift, loadAgents };
+module.exports = { startDouble, hostEnv, systemText, messageTexts, lastUserText, protocolOf, toolNames, requestKey, turnIndex, scriptTurn, resolveTool, makeNormaliser, attributeDrift, loadAgents };

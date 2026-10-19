@@ -36,10 +36,6 @@
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
-    "id": "command:discuss-phase",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
     "id": "command:experiment",
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },

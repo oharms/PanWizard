@@ -13,7 +13,7 @@ const { test, describe, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { runPanTools, createTempProject, cleanup } = require('./helpers.cjs');
+const { runPanTools, createTempProject, cleanup, gateOff } = require('./helpers.cjs');
 
 const ROADMAP = [
   '# Roadmap', '',
@@ -99,7 +99,7 @@ describe('a padded phase number finds an unpadded roadmap heading', () => {
 
 describe('completing a phase ticks its own requirements', () => {
   let tmp;
-  beforeEach(() => { tmp = createTempProject(); seed(tmp); });
+  beforeEach(() => { tmp = createTempProject(); seed(tmp); gateOff(tmp); });
   afterEach(() => cleanup(tmp));
 
   test('phase complete 5 ticks PAY-01 and PAY-02 and leaves phase 1\'s BASE-01 alone', () => {

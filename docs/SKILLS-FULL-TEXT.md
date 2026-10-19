@@ -758,14 +758,14 @@ If repairs were performed:
 
 ---
 
-### /pan:cost (144 lines)
+### /pan:cost (164 lines)
 
 ````markdown
 ---
 name: pan:cost
 group: Observability
 description: Show token usage and estimated cost across PAN commands and agents
-argument-hint: "[report|append|clear|rebuild|limits] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]"
+argument-hint: "[report|append|clear|rebuild|limits|budget] [--format json|table|chart] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--apply] [--no-main-thread]"
 allowed-tools:
   - Read
   - Bash
@@ -839,6 +839,26 @@ Delete the cost log. Useful at the start of a billing cycle.
 ```
 pan-tools cost clear
 ```
+
+### `budget`
+
+A phase's spend against its budget: `cost.phase_budget_usd` in `.planning/config.json`, **20 dollars per phase by default**, `0` to turn it off. Change it with `/pan:settings` or `pan-tools config-set cost.phase_budget_usd 50`. It only warns: `near` from 80% of the budget, `over` once spend reaches it; nothing ever stops on it. exec-phase reports it after each wave and plan-phase in its final status. On a subscription the dollars are API-equivalent (the tokens priced at the rate table).
+
+```
+pan-tools cost budget --phase <N> [--raw]
+```
+
+Prints `{phase, budget_usd, spent_usd, pct, status, mode, warn_at_pct, unpriced}`; `status` is `off`, `ok`, `near` or `over`, and `--raw` prints it. `unpriced` counts the phase's rows with no known rate (not added to the spend).
+
+### `usage` (census)
+
+Which of the installed PAN commands and agents this project has used, from its own files only: the cost ledger and the trace sessions. Nothing is sent anywhere.
+
+```
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs usage [--raw]
+```
+
+Prints `{local_only, commands: {used, never_used, unfinished, installed}, agents: {used, never_used, installed}, sources}`. Each used entry has `calls` and `last_used`, and a command also has `sessions` and `finished`. `unfinished` lists commands that were started but never finished: every trace session for them stopped without ending, the newest more than six hours ago. `--raw` prints a one-line summary. Use it to see which parts of PAN this project actually runs.
 
 ### `limits`
 

@@ -175,7 +175,7 @@ function cmdGitPush(cwd, opts, raw) {
 function cmdGitStatus(cwd, opts, raw) {
   if (!isGitRepo(cwd)) { _notGitRepo(raw); return; }
   const branch = getCurrentBranch(cwd);
-  const r = execGit(cwd, ['status', '--porcelain']);
+  const r = execGit(cwd, ['status', '--porcelain'], { keepLeading: true });
   if (r.exitCode !== 0) {
     output({ error: 'status_failed', detail: r.stderr }, raw, 'status failed');
     return;

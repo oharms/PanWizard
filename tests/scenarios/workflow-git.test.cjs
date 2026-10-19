@@ -30,7 +30,7 @@ describe('E2E Workflow: Git Integration', () => {
     fs.writeFileSync(path.join(pd, 'roadmap.md'), [
       '## Roadmap', '', '| Phase | Name | Status |', '|---|---|---|',
     ].join('\n'));
-    fs.writeFileSync(path.join(pd, 'config.json'), JSON.stringify({ model_profile: 'balanced', commit_docs: true }));
+    fs.writeFileSync(path.join(pd, 'config.json'), JSON.stringify({ model_profile: 'balanced', commit_docs: true, workflow: { phase_gate: 'warn' } }));
 
     // Initial commit so we have a HEAD
     execSync('git add -A', { cwd: runner.tmpDir, stdio: 'pipe' });
