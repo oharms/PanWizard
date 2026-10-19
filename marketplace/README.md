@@ -21,10 +21,15 @@ Everything else about the plugin was already tested; this was the gap, and that 
 ## Run the test
 
 From **any directory that is not inside `dist/pan-wizard-plugin/`** — Claude Code
-refuses a printed path that is the session's own directory or one of its parents:
+refuses a printed path that is the session's own directory or one of its parents.
+
+The marketplace's `command` (`marketplace/.claude-plugin/marketplace.json`) names the
+script by absolute path, `node D:/PanWizard/scripts/plugin-path.js`, because Claude Code
+runs it from your HOME. In a checkout anywhere else, point that path at your own
+`scripts/plugin-path.js` first (and do not commit the change), or the install fails.
 
 ```text
-/plugin marketplace add D:/PanWizard/marketplace
+/plugin marketplace add <checkout>/marketplace
 /plugin install pan-wizard@pan-wizard-local
 ```
 
@@ -110,7 +115,7 @@ Claude Code loads a plugin directory straight from the command line:
 
 ```bash
 npm run build:plugin
-claude --plugin-dir D:/PanWizard/dist/pan-wizard-plugin
+claude --plugin-dir <checkout>/dist/pan-wizard-plugin
 ```
 
 Since Claude Code v2.1.265 the flag also accepts a **folder of plugins**, where

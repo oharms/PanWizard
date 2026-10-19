@@ -59,8 +59,8 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | References (`pan-wizard-core/references/*.md`) | 17 |
 | Unit test files (`tests/*.test.cjs`) | 204 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 5664 |
-| Total test suites | 1201 |
+| Total tests (npm run test:all) | 5667 |
+| Total test suites | 1202 |
 | Hooks (`hooks/*.js`) | 8 |
 | Specs (`docs/specs/*.md`) | 57 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
@@ -167,7 +167,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `scripts/build-help.cjs` — generates the command index in `pan-wizard-core/workflows/help.md` (what `/pan:help` prints) from each `commands/pan/*.md` file's `group` and `description` frontmatter; `--write` refreshes it, `--check` exits 1 when stale, and `tests/help-generated.test.cjs` fails on a stale block or a missing command
 - `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
 - `scripts/build-agent-plugin.js` — emits the vendor-neutral **Agent Plugins** bundle to `dist/pan-agent-plugin/` (ADR-0045) for Copilot CLI, Codex, Cursor, Kiro. `.agents/plugins/marketplace.json` (Codex) and `.github/plugin/marketplace.json` (Copilot) point at it
-- `harness/` — the **PAN Harness** (ADR-0047): behavioural scenarios run against deployed installs built from a packed artifact. `npm run harness` is tier 0 (model-free, free); model tiers spend, capped at $15 per run unless `--max-usd` or `PAN_HARNESS_MAX_USD` says otherwise. Run state goes to `d:\pantesting\harness-runs\`; `harness/plugin-evals/` holds the `claude plugin eval` suite `scripts/build-plugin.js` copies into the plugin's `evals/`; `harness/corpus/` holds the seeded-defect projects (a clean twin, a defective twin and a catching test each) that `harness/scripts/catch-rate.cjs` scores judges against, catch rate and false-alarm rate with Wilson intervals; `harness/ledger.jsonl` is the tracked finding history — `--no-ledger` leaves it alone, which is how CI runs tier 0 on the ubuntu Node-22 job without dirtying the tree. Not shipped. See `harness/README.md`
+- `harness/` — the **PAN Harness** (ADR-0047): behavioural scenarios run against deployed installs built from a packed artifact. `npm run harness` is tier 0 (model-free, free); model tiers spend, capped at $15 per run unless `--max-usd` or `PAN_HARNESS_MAX_USD` says otherwise. Run state goes to `d:\pantesting\harness-runs\` on Windows when `d:\pantesting` exists, else the OS temp directory (`PAN_HARNESS_STATE` or `--state-dir` overrides it); `harness/plugin-evals/` holds the `claude plugin eval` suite `scripts/build-plugin.js` copies into the plugin's `evals/`; `harness/corpus/` holds the seeded-defect projects (a clean twin, a defective twin and a catching test each) that `harness/scripts/catch-rate.cjs` scores judges against, catch rate and false-alarm rate with Wilson intervals; `harness/ledger.jsonl` is the tracked finding history — `--no-ledger` leaves it alone, which is how CI runs tier 0 on the ubuntu Node-22 job without dirtying the tree. Not shipped. See `harness/README.md`
 
 ### Key design patterns
 

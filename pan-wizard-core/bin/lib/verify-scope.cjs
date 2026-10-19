@@ -160,21 +160,25 @@ function scopePhase(cwd, phase) {
 
 /** Files modified, staged or untracked in the working tree, relative to cwd. */
 function workingTreeFiles(cwd) {
-  const r = execGit(cwd, ['-c', 'core.quotepath=off', 'status', '--porcelain', '--untracked-files=all', '--', '.']);
+  // Porcelain v2 with -z: each entry starts with its type (`1`, `2`, `u`, `?`), never a
+  // space, and paths come unquoted. v1 starts an unstaged edit with a space (" M a.js"),
+  // which execGit's trim() cut off the first line, and the path lost its first letter.
+  const r = execGit(cwd, ['status', '--porcelain=v2', '-z', '--untracked-files=all', '--', '.']);
   if (r.exitCode !== 0) return { git: false, uncommitted: [], untracked: [] };
   const top = execGit(cwd, ['rev-parse', '--show-prefix']);
   const prefix = top.exitCode === 0 ? normalisePath(top.stdout.trim()) : '';
+  const rel = (p) => { const n = normalisePath(p); return prefix && n.startsWith(prefix) ? n.slice(prefix.length) : n; };
   const uncommitted = [];
   const untracked = [];
-  for (const line of r.stdout.split('\n')) {
-    if (line.length < 4) continue;
-    const code = line.slice(0, 2);
-    let p = line.slice(3);
-    if (p.includes(' -> ')) p = p.split(' -> ').pop();
-    p = normalisePath(p.replace(/^"|"$/g, ''));
-    if (prefix && p.startsWith(prefix)) p = p.slice(prefix.length);
-    if (code === '??') untracked.push(p);
-    else if (!code.includes('D')) uncommitted.push(p);
+  const entries = r.stdout.split('\0');
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (!e) continue;
+    const f = e.split(' ');
+    if (e[0] === '?') untracked.push(rel(e.slice(2)));
+    else if (e[0] === '1') { if (!f[1].includes('D')) uncommitted.push(rel(f.slice(8).join(' '))); }
+    else if (e[0] === '2') { if (!f[1].includes('D')) uncommitted.push(rel(f.slice(9).join(' '))); i++; } // the next entry is the old path
+    else if (e[0] === 'u') uncommitted.push(rel(f.slice(10).join(' ')));
   }
   return { git: true, uncommitted, untracked };
 }

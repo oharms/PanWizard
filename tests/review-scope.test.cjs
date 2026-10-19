@@ -133,3 +133,29 @@ describe('review scope', () => {
     assert.equal(sectionBody('## Review Focus\n\nA\n### detail\nB\n## Tasks\nC', 'Review Focus'), 'A\n### detail\nB');
   });
 });
+
+describe('review scope reads every working-tree change, whatever its status column', () => {
+  const { workingTreeFiles } = require('../pan-wizard-core/bin/lib/verify-scope.cjs');
+  let dir;
+  before(() => {
+    dir = createTempProject();
+    git(dir, 'init', '-q');
+    write(dir, 'a/first.js', '1\n');
+    write(dir, 'b/second.js', '2\n');
+    write(dir, 'c/old-name.js', '3\n');
+    git(dir, 'add', '-A');
+    git(dir, 'commit', '-q', '-m', 'chore: init');
+    write(dir, 'a/first.js', '1 changed\n'); // unstaged: " M a/first.js", the line `git status` prints first
+    write(dir, 'b/second.js', '2 changed\n');
+    git(dir, 'add', 'b/second.js'); // staged: "M  b/second.js"
+    git(dir, 'mv', 'c/old-name.js', 'c/new-name.js'); // renamed: "R  c/old-name.js -> c/new-name.js"
+    write(dir, 'd/fresh.js', '4\n'); // untracked
+  });
+  after(() => cleanup(dir));
+
+  test('an unstaged edit on the first status line keeps its whole path', () => {
+    const w = workingTreeFiles(dir);
+    assert.deepEqual(w.uncommitted.sort(), ['a/first.js', 'b/second.js', 'c/new-name.js']);
+    assert.deepEqual(w.untracked, ['d/fresh.js']);
+  });
+});

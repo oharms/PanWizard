@@ -59,7 +59,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
-| `pan-previewer` | Foresight — blast radius / dependency graph / milestone ETA in one agent (3 modes), with a `## Cost` section taken from the cost forecast | `/pan:preview` | Read, Bash, Glob, Grep, Write | cyan |
+| `pan-previewer` | Foresight — blast radius / dependency graph / milestone ETA in one agent (3 modes); a phase preview carries a `## Cost` section (p50 and p10–p90 per phase and per plan) taken only from the cost forecast, which reports `insufficient` below five past runs | `/pan:preview` | Read, Bash, Glob, Grep, Write | cyan |
 | `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase; reports every security finding, since the findings ledger never suppresses one | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`), `/pan:focus-auto` Pass 3, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | red |
 | `pan-meta-reviewer` | Reviews the reviewer + hardener output; flags missed issues, disputes overstated severities | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`, where it reviews the hardener's report alone), native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | pink |
 | `pan-knowledge` | Grounded Q&A / multi-turn discussion / playbook generation (3 modes) | `/pan:knowledge` | Read, Grep, Glob, Bash, Write | cyan |
@@ -325,7 +325,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 - Treats Claude's training as hypothesis — verifies through Context7 and official docs
 - Reports honestly when uncertain or when sources contradict
 - Same tool strategy as project-researcher: Context7 → Official Docs → WebSearch
-- Records each fact a plan rests on in research.md's `## Claims` table (type, source, checked date) and runs `pan-tools research lint`: unsourced or undated claims are fixed before returning, stale ones rechecked or named in Open Questions
+- Records each fact a plan rests on in research.md's `## Claims` table (type, source, checked date) and runs `pan-tools research lint <phase|path> [--now YYYY-MM-DD]` (exit 1 on a claim with no source or date; `stale` per type window: 30 days for versions, prices and security, 90 for APIs, 180 for general claims, 365 for practices): unsourced or undated claims are fixed before returning, stale ones rechecked or named in Open Questions
 
 **Validation Architecture (Nyquist Layer):** When `nyquist_validation` is enabled, the researcher maps each requirement to specific test commands, identifies test scaffolding needed before implementation (Wave 0 tasks), and emits the `## Validation Architecture` section of research.md, from which the plan-phase orchestrator writes validation.md — the feedback contract for the phase.
 
@@ -475,6 +475,9 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 - Documents all deviations in summary.md (what changed, why, and its cost if wrong: low / medium / high)
 - Lists what it finished but is unsure of under the summary's `## Concerns` (each with a cost if wrong), and then returns `## DONE_WITH_CONCERNS` instead of `## PLAN COMPLETE`
 - Authentication gates recognized as normal flow, not failures
+- Never edits a test to make it pass: when a test and the task cannot both hold, it stops and returns `## BLOCKED_SPEC_CONFLICT`
+
+**Return statuses:** `## PLAN COMPLETE`, `## DONE_WITH_CONCERNS` (complete, with concerns listed), `## CHECKPOINT REACHED` (checkpoint or auth gate, with its type) and `## BLOCKED_SPEC_CONFLICT` (a test conflicts with the task).
 
 ---
 
@@ -532,6 +535,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 - Project conventions from CLAUDE.md and `.agents/skills/`
 - An `<intent>` block (the `review scope` JSON): each plan's objective, must_haves and `review_focus`, the claimed requirements' text, and `unlisted` changed files no summary lists
 - An `<executor_concerns>` block when executors returned concerns, each with its cost if wrong
+- On a re-check, an `<open_findings>` block: its earlier open findings on the phase, each of which it must answer in the verdict's `resolutions` list (`resolved` with evidence, `still_present` or `cannot_tell`)
 
 **Outputs:**
 - Structured review report returned to orchestrator, ending with a `pan-verdict` block (`references/verdict-contract.md`); `/pan:exec-phase` saves it to `{phase_dir}/{phase_number}-review.md`, which `/pan:review-deep` reads, and branches on `pan-tools findings record`, which also adds the findings to the findings ledger
@@ -677,6 +681,8 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 | pan-distiller (v3.5+) | reasoning | reasoning | fast |
 | pan-experiment-runner | reasoning | reasoning | fast |
 | pan-release (v3.11+) | reasoning | reasoning | fast |
+
+**Resolution order** (`resolveModelDetailed()` in `core.cjs`): a `model_overrides` entry for the agent wins, then a per-phase tier from the roadmap, then the profile column above (an agent missing from the table gets `mid`, unadjusted). Only a profile-derived tier is then adjusted — by `routing.strategy: complexity`, by the capability hints below, and on a retry (`attempt > 1`) by escalation toward the agent's `quality` tier; a pinned tier is never adjusted.
 
 **Tier mapping by provider:** Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents. Legacy names (`opus`, `sonnet`, `haiku`) still work as aliases.
 

@@ -559,23 +559,28 @@ function isGitRepo(cwd) {
 }
 
 /**
- * Execute a git command safely with proper argument escaping.
+ * Execute a git command safely with proper argument escaping. stdout is trimmed;
+ * `keepLeading` trims only whitespace at its end, for output whose first column means
+ * something (`git status --porcelain` starts an unstaged edit with a space, which a
+ * full trim cuts off the first line).
  * @param {string} cwd - Working directory for git
  * @param {string[]} args - Git arguments (e.g., ['add', 'file.md'])
+ * @param {{keepLeading?: boolean}} [opts]
  * @returns {{exitCode: number, stdout: string, stderr: string}}
  */
-function execGit(cwd, args) {
+function execGit(cwd, args, opts = {}) {
+  const clean = (s) => (opts.keepLeading ? String(s).replace(/\s+$/, '') : String(s).trim());
   try {
     const stdout = execFileSync('git', args, {
       cwd,
       stdio: 'pipe',
       encoding: 'utf-8',
     });
-    return { exitCode: 0, stdout: stdout.trim(), stderr: '' };
+    return { exitCode: 0, stdout: clean(stdout), stderr: '' };
   } catch (err) {
     return {
       exitCode: err.status ?? 1,
-      stdout: (err.stdout ?? '').toString().trim(),
+      stdout: clean((err.stdout ?? '').toString()),
       stderr: (err.stderr ?? '').toString().trim(),
     };
   }

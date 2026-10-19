@@ -1,13 +1,13 @@
 # Product Excellence Superplan
 
-**Date:** `2026-10-12` · **Status:** In progress: sprints 1–2 merged, sprint 3 under way (see [Progress](#progress); reviewed `2026-10-12`, review folded in) · **Source program:** `docs/specs/product_excellence_program_2026_q4_featureai.md` (item design and evidence) · **Owner decisions:** that program's §3.4
+**Date:** `2026-10-12` · **Status:** In progress: sprints 1–2 merged; sprint 3 complete, its release (3.36.0) committed on `release/v3.36.0` and awaiting merge and tag; sprint 4 not started (see [Progress](#progress); reviewed `2026-10-12`, review folded in) · **Source program:** `docs/specs/product_excellence_program_2026_q4_featureai.md` (item design and evidence) · **Owner decisions:** that program's §3.4
 **Tree (when written):** `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`) plus the uncommitted audit work. This superplan **supersedes the program's §3.3 wave ordering** with a dependency-checked session order. Item ids are the program's and local to it (write "program R2" outside these two files); W0, X1, CI1, A0, A1a/A1c, A7b, L6a/L6b, V1E, V5G and HX1–HX5 are added here.
 
 This is the executable form of the program. Every item has a priority class, a size, the files it touches, the items it depends on, a **code gate** (free, blocking: the item is not done until it is green) and, where the claim needs a model, a separate **evidence gate** (non-blocking: it runs on a per-run `--max-usd` approval and never holds up later items). `/execplan` consumes it one session at a time.
 
 ## Progress
 
-Updated `2026-10-18`. The superplan's own order holds; nothing has been re-sequenced.
+Updated `2026-10-19`. The superplan's own order holds; nothing has been re-sequenced.
 
 | Session | Items | State | Where |
 |---|---|---|---|
@@ -15,17 +15,18 @@ Updated `2026-10-18`. The superplan's own order holds; nothing has been re-seque
 | 2a | H1, CI1, H2, H7 | Merged | PR oharms/PanWizard#42 |
 | 2b | V2, V4, V5 | Merged | PR oharms/PanWizard#43 |
 | 3a | H4, L1, R1; R49 not run | Merged | PR oharms/PanWizard#44 |
-| 3b | R3, P4, P2, P3, P6 | Merged | PR oharms/PanWizard#45 |
-| — | Owner request: per-phase spend budget ($20, warn only) and a $15 default harness cap | Merged | PR oharms/PanWizard#47 |
-| 3c | H9, L5, L9, V1E, HX2 (release 3.36.0) | Release commit on its branch; tag after merge | branch `release/v3.36.0` |
+| 3b | R3, P4, P2, P3, P6 | Merged | PR oharms/PanWizard#45 (`a2fa00c`) |
+| — | Fix outside the plan: doc-lint scans an absolute `--doc-dir` instead of silently passing | Merged | PR oharms/PanWizard#46 (`c2b3571`) |
+| — | Owner request: per-phase spend budget ($20, warn only) and a $15 default harness cap | Merged | PR oharms/PanWizard#47 (`da3f493`) |
+| 3c | H9, L5, L9, V1E, HX2 (release 3.36.0) | Committed (`7346f93`), not yet pushed, merged or tagged; two follow-up fixes uncommitted on top (review scope reads `git status --porcelain=v2 -z` in `verify-scope.cjs`; `execGit` keeps the leading column of `git status --porcelain` in `git.cjs`/`core.cjs`) | branch `release/v3.36.0` |
 | 4a onward | — | Not started | — |
 
 **Open from finished sessions:**
 
 - **R49** (session 3a) is a paid live re-run and has not run: it needs a `--max-usd` approval. It blocks nothing.
 - **P6** (session 3b) shipped the forecast in `preview phase`. The design's last clause, the autodev loop stopping when spend passes p90, waits for the autodev loop, which does not exist yet: **A1a** (session 6a) builds its core, and **A6** (session 6b, depends on P6) already carries the stop, as `forecast_exceeded` for a unit past p90.
-- **Evidence gates.** No paid evidence step in [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-cap) has run yet: `harness/ledger.jsonl` holds no evidence-gate row, and the committed corpus replay is synthetic. Under the MI-114 rule, sessions 3a and 3b edited judge prompts (pan-reviewer, pan-hardener, pan-plan-checker), so each owes a paired corpus result once H4's first real baseline is paid for. Those items shipped in their safe defaults, as the rules below allow.
-- **Release 3.36.0** is session 3c's last item (HX2): it publishes when its PR is merged and the merge commit is tagged `v3.36.0`. V1E made `enforce` the phase gate default, with a field-upgrade note in the CHANGELOG.
+- **Evidence gates.** No paid evidence step in [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-approval) has run yet: `harness/ledger.jsonl` holds no evidence-gate row, and the committed corpus replay is synthetic. Under the MI-114 rule, sessions 3a and 3b edited judge prompts (pan-reviewer, pan-hardener, pan-plan-checker), so each owes a paired corpus result once H4's first real baseline is paid for. Those items shipped in their safe defaults, as the rules below allow.
+- **Release 3.36.0** is session 3c's last item (HX2), committed as `7346f93` on `release/v3.36.0`. It publishes once the branch is pushed, its PR merged and the merge commit tagged `v3.36.0`; until then sprint 3's exit criterion is met in the tree but not released. V1E made `enforce` the phase gate default (`config.cjs` and `templates/config.json`), with a field-upgrade note in the CHANGELOG.
 
 ## Baseline
 
@@ -35,7 +36,7 @@ Updated `2026-10-18`. The superplan's own order holds; nothing has been re-seque
 | Suite | green: `npm run test:all` (counts live in `CLAUDE.md`) |
 | Release gates | all pass (`node scripts/release-check.js`) |
 | Harness tier 0 | all pass; Antigravity skipped (no `agy`) |
-| Open TODO/FIXME in shipped code | none real (`grep -rnE "\b(TODO|FIXME|HACK)\b" bin pan-wizard-core/bin hooks`) |
+| Open TODO/FIXME in shipped code | none real (`grep -rnE "\b(TODO\|FIXME\|HACK)\b" bin pan-wizard-core/bin hooks`) |
 | Open GitHub issues | none |
 | Inventory | commands, agents, modules, workflows and hooks: enumerate with the snippet at the top of `CLAUDE.md` |
 
@@ -80,14 +81,14 @@ A new gate first ships in a mode that cannot block a working project. It is prom
 | V6 | P1 | M | 4 | Findings close only on evidence; stable finding ids (ADR-0049 amendment) | findings.cjs (recordVerdict auto-fix rows), verdict.cjs (findingId), references/verdict-contract.md, the three judge agents, ADR-0049 | — | Unit: an omitted finding stays open; a reworded finding keeps its id; churn computed over five recorded fixture reports | Churn over five live repeated reviews (paid) | 1a |
 | V7 | P1 | M | 4 | `verify plan-set` in code + plan-check bound to `plans_sha` + `planned_commit` drift; legacy plan-check records without `plans_sha` warn, never refuse | verify.cjs (cmdVerifyPlanSet), phase.cjs (buildPlanIndex, dependencyNames), roadmap.cjs (roadmapRequirementIds), init.cjs (cmdInitExecPhase), findings.cjs, workflows/plan-phase.md, workflows/exec-phase.md, templates/phase-prompt.md | — | Tier-0 seeds: uncovered requirement, same-wave overlap, cycle, future ref, edited-after-check — each caught; clean set passes; legacy record → warning | — | 1a |
 | V3 | P1 | M | 4 | Test-integrity guard + executor abort path (`BLOCKED_SPEC_CONFLICT`); exports `committedFiles` from verify-scope.cjs | new verify-integrity.cjs, verify-scope.cjs (export committedFiles), test-quality-lint shapes, pan-tools.cjs, agents/pan-executor.md, workflows/exec-phase.md | — | Fixture repos per pattern (deleted test, .skip/.only/xit/pytest.mark.skip/t.Skip/#[ignore], assertion drop, undeclared edit) each caught; clean twins pass | — | 1a |
-| V1 | P1 | M | 4 | Phase gate in code (`workflow.phase_gate: warn|enforce`, ships `warn`): summaries, fresh verification, clean reconcile, test fact, dispositions, stubs and integrity clean; never refuses on `not_checked`; reconcile before `update_roadmap` and on the auto-advance path; MCP requestMerge + native exec-waves use it | phase.cjs (phaseGate, cmdPhaseGate, cmdPhaseComplete), pan-tools.cjs, verify.cjs (reconcilePhase), config.cjs, workflows/exec-phase.md, workflows/transition.md, bin/install-lib.cjs (pan-exec-waves), mcp/merge-gate.cjs, docs/CLI-REFERENCE.md | V9, V6, V3 | One unit test per refusal reason in `enforce`; `warn` prints the same reasons and exits 0; `--force` needs `--reason` and records a decision; tier-0 seeded states (catch all, clean twin passes); native script stops on ok:false | — | 1a |
+| V1 | P1 | M | 4 | Phase gate in code (`workflow.phase_gate: warn\|enforce`, ships `warn`): summaries, fresh verification, clean reconcile, test fact, dispositions, stubs and integrity clean; never refuses on `not_checked`; reconcile before `update_roadmap` and on the auto-advance path; MCP requestMerge + native exec-waves use it | phase.cjs (phaseGate, cmdPhaseGate, cmdPhaseComplete), pan-tools.cjs, verify.cjs (reconcilePhase), config.cjs, workflows/exec-phase.md, workflows/transition.md, bin/install-lib.cjs (pan-exec-waves), mcp/merge-gate.cjs, docs/CLI-REFERENCE.md | V9, V6, V3 | One unit test per refusal reason in `enforce`; `warn` prints the same reasons and exits 0; `--force` needs `--reason` and records a decision; tier-0 seeded states (catch all, clean twin passes); native script stops on ok:false | — | 1a |
 | R45 | P1 | S | 2 | OpenCode 2 plugin: `setup()` + compaction hook beside `server()` | pan-wizard-core/opencode/pan-wizard.js, tests/opencode-plugin.test.cjs, docs/HOOKS.md | — | Unit tests of both entry points against the v1 and v2 loader shapes | Live OpenCode 2 compaction check — needs OpenCode 2 on this machine (1.x installed); free through H1 once it lands, otherwise one paid run (paid) | 1b |
 | R47 | P2 | M | 4 | OpenCode uninstall/merge recognise v1 and v2 config shapes (keep writing v1) | bin/install.js (uninstall, configureOpencodePermissions), bin/install-lib.cjs (mergeMcpRegistration, stripMcpRegistration) | — | Tests on a v2-shaped opencode.json: clean uninstall, no legacy key beside a native one | — | 1b |
 | R48 | P2 | XS | 1 | Drop the Copilot attribution fallback to `~/.copilot/config.json` | bin/install.js | — | Unit test | — | 1b |
 | L3 | P7 | XS | 1 | Remove @-includes of `bin/lib/*.cjs` from command prompts | commands/pan/{cost,dashboard,hud,knowledge,mcp-bridge,preview,report,review-deep,what-if}.md | — | Interim test (folded into L2): no command @-includes bin/lib | — | 1b |
 | L4 | P1 | S | 2 | Typed spawns: named agent types + resolved models; workflow-runner spawns keep general-purpose with `model=` (absorbs M39) | workflows/{plan-phase,new-project,discuss-phase,exec-phase,transition,quick}.md, commands/pan/research-phase.md | — | Spawn-scan test: every Task( has model=; general-purpose only where no role file exists | — | 1b |
 | X1 | P7 | XS | 1 | Uninstall removes runtime directories it leaves empty (`docs/audits/STABILITY-TEST-2026-08.md`, uninstall section; re-seen in the `2026-10-12` sanity check) | bin/install.js (uninstall) | — | Scenario: five-runtime install then uninstall leaves no empty runtime dirs | — | 1b |
-| A7 | P2 | M | 4 | Pre-tool guard hook on Claude/Codex/Copilot/Gemini (`hooks.guard: off|report|enforce`, ships `report`; `enforce` denies secret writes only); exec-phase writes a current-plan marker the guard reads for undeclared test edits | new hooks/pan-guard.js, bin/install-lib.cjs (HOOK_EVENT_MAP pre-tool slot), bin/install.js, scripts/build-hooks.js, workflows/exec-phase.md (plan marker), tests/fixtures/hook-vocabulary.json (re-read dates, payload fixtures), docs/HOOKS.md | V3 | Hook unit tests per host payload fixture; `report` never denies; `enforce` denies a secret write; install-matrix shows registration on four runtimes; uninstall removes it | Live Gemini behaviour — unproven without a key (§3.4) | 1b |
+| A7 | P2 | M | 4 | Pre-tool guard hook on Claude/Codex/Copilot/Gemini (`hooks.guard: off\|report\|enforce`, ships `report`; `enforce` denies secret writes only); exec-phase writes a current-plan marker the guard reads for undeclared test edits | new hooks/pan-guard.js, bin/install-lib.cjs (HOOK_EVENT_MAP pre-tool slot), bin/install.js, scripts/build-hooks.js, workflows/exec-phase.md (plan marker), tests/fixtures/hook-vocabulary.json (re-read dates, payload fixtures), docs/HOOKS.md | V3 | Hook unit tests per host payload fixture; `report` never denies; `enforce` denies a secret write; install-matrix shows registration on four runtimes; uninstall removes it | Live Gemini behaviour — unproven without a key (§3.4) | 1b |
 | H5 | P3 | M | 4 | Controls for every tier-0 scenario (sabotage must turn it red) + lint | harness/src/scenario.cjs, harness/src/run.cjs (--controls), harness/scenarios/*.json, tests/harness.test.cjs | — | Every tier-0 scenario killed by ≥1 control; a scenario without one is rejected | — | 1b |
 | H3 | P3 | S+S+S | 6 | Harness statistics: Wilson, pass^k, paired test, SPRT, non-inferiority, power; `--until-decided`; interval-based promotion for tier ≥1; the no-guidance and deletion arms (absorbs M43) | new harness/src/stats.cjs, harness/src/run.cjs, harness/src/ledger.cjs, harness/README.md, tests/harness.test.cjs | — | Known values (Wilson 3/5 ≈ [0.231, 0.882]); SPRT decides both directions on synthetic streams; non-inferiority at δ; tier-0 promotion unchanged; arms selectable per scenario | — | 1c |
 | L2 | P3 | M | 4 | Prompt-contract lint (flags, tools, pasted source, oversized question blocks, untyped spawns, dev-skill names) | scripts/test-quality-lint.cjs or new scripts/prompt-lint.cjs, tests/prompt-audit-fixes.test.cjs, allowlist | L3, L4 | Seeded-defect fixtures caught; current-tree violations fixed or allowlisted naming the fixing item (L6a/L6b) | — | 1c |
@@ -175,9 +176,9 @@ A new gate first ships in a mode that cannot block a working project. It is prom
 - **Session 3b** (16 pts): R3 (2) → P4 (6) → P2 (4) → P3 (2) → P6 (2)
 - **Session 3c** (15 pts): H9 (4) → L5 (2) → L9 (2) → V1E (1) → HX2 (6)
 
-**Exit criterion:** Every judge has a scoreboard; the product surface has a liveness registry; plans carry Review Focus, decisions and sourced claims checked in code; the phase gate enforces.
+**Exit criterion:** Every judge has a scoreboard; the product surface has a liveness registry; plans carry Review Focus, decisions and sourced claims checked in code; the phase gate enforces. *Met in code at `7346f93`; the scoreboards are computed from a scripted replay until H4's paid baseline runs.*
 
-**Release point:** Release **3.36.0** — "measured" (phase gate `enforce`).
+**Release point:** Release **3.36.0** — "measured" (phase gate `enforce`). *Release commit `7346f93` on `release/v3.36.0`; pending push, merge and the `v3.36.0` tag.*
 
 ### Sprint 4: Judges, measured (W3, 36 points)
 
@@ -232,7 +233,7 @@ A new gate first ships in a mode that cannot block a working project. It is prom
 
 Longest dependency chain by points: `V6 → V1 → V2 → A1a → A1c → A6 → H8` (48 points). The measurement chain into prompt evolution is `V6 → V1 → V2 → V5 → H4 → S4` (42 points). Slipping any item on these chains delays everything after it. V1 and V2 together gate the autonomy sprints. H1 and H4 gate every measured claim. Every other item can move within its sprint.
 
-## Paid steps (each needs a per-run `--max-usd` approval; there is no standing cap)
+## Paid steps (each needs a per-run `--max-usd` approval; there is no standing approval)
 
 Since `2026-10-18` a model-tier harness run without `--max-usd` is capped at $15 (`PAN_HARNESS_MAX_USD` changes it; owner decision). The cap is a ceiling, not an approval: each paid step below is still asked for before it runs.
 

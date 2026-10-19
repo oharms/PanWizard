@@ -346,22 +346,23 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | Category | Example Commands |
 |----------|-----------------|
 | **State** | `state load`, `state update`, `state get`, `state json`, `state advance-plan`, `state record-metric` |
-| **Phase** | `phases list`, `phase add`, `phase insert`, `phase remove`, `phase complete`, `phase next-decimal` |
+| **Phase** | `phases list`, `phase add`, `phase insert`, `phase remove`, `phase complete [--force --reason <r>]`, `phase gate <N>`, `phase next-decimal` |
 | **Roadmap** | `roadmap get-phase`, `roadmap analyze`, `roadmap update-plan-progress`, `roadmap slice <N> [--write]`, `roadmap compact [--apply] [--keep N]` |
 | **Config** | `config-get`, `config-set`, `config-ensure-section` |
 | **Frontmatter** | `frontmatter get`, `frontmatter set`, `frontmatter merge`, `frontmatter validate` |
 | **Template** | `template select`, `template fill` |
 | **Scaffold** | `scaffold context`, `scaffold uat`, `scaffold verification`, `scaffold phase-dir` |
-| **Verify** | `verify plan-structure`, `verify phase-completeness`, `verify references`, `verify artifacts`, `verify key-links`, `verify scope`, `verify review-focus`, `verify decisions` |
+| **Verify** | `verify plan-structure`, `verify phase-completeness`, `verify references`, `verify commits`, `verify artifacts`, `verify key-links`, `verify reconcile`, `verify stubs`, `verify scope`, `verify stale`, `verify plan-set`, `verify test-integrity`, `verify red`, `verify mutate`, `verify review-focus`, `verify decisions` |
+| **Test** | `test run [--baseline]`, `test detect` |
 | **Review / Research** | `review scope <phase>`, `research lint <phase\|path>` |
-| **Validate** | `validate consistency`, `validate health` |
+| **Validate** | `validate consistency`, `validate health`, `validate deployment` |
 | **Init** | `init execute-phase`, `init plan-phase`, `init new-project`, `init quick`, `init progress` (compound commands for each major workflow) |
 | **Milestone** | `milestone complete`, `requirements mark-complete` |
 | **Focus** | `focus scan`, `focus plan`, `focus sync`, `focus exec`, `focus auto`, `focus design`, `focus classify-stages`, `focus reflection` |
 | **Memory** (E-4, v2.10.0) | `memory read`, `memory append`, `memory list`, `memory compact`, `memory select`, `memory record`, `memory prune`, `memory budget`, `memory optimize`, `memory rebuild` |
 | **Cache** (E-1, v2.10.0) | `cache prime [--summary]` |
 | **Codebase** (E-2 extended) | `codebase detect-languages`, `codebase analyze-imports`, `codebase best-practices`, `codebase estimate-size` |
-| **Cost** (Spec B v2 Y-6, v3.0) | `cost report`, `cost append`, `cost clear` |
+| **Cost** (Spec B v2 Y-6, v3.0) | `cost report`, `cost append`, `cost clear`, `cost rebuild`, `cost limits`, `cost budget`; `usage` (installed commands and agents used, never used, unfinished) |
 | **Bus** (Spec B v2 Y-7, v3.0) | `bus publish`, `bus drain`, `bus list` |
 | **Preview** (Spec B v2 Y-1, v3.1) | `preview phase <N>`, `preview phases`, `preview milestone` |
 | **Review-Deep** (Spec B v2 Y-2, v3.2) | `review-deep merge`, `review-deep analyze` |
@@ -373,13 +374,14 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | **Git** (v3.5) | `git commit`, `git branch`, `git push`, `git status`, `git log`, `git stash`, `git diff`, `git rollback`, `git tag`, `git sync` |
 | **Distill** (v3.5) | `distill scan`, `distill analyze`, `distill report` |
 | **Squads** (v3.11, ADR-0032) | `squad list`, `squad show <name>` |
-| **Worktree** (v3.11, ADR-0033) | `worktree list`, `worktree create <task>`, `worktree remove <path>` |
+| **Worktree** (v3.11, ADR-0033) | `worktree list`, `worktree create <task>`, `worktree remove <path>`, `worktree cleanup` |
 | **Campaign** (v3.12, ADR-0034) | `campaign schedule`, `campaign status`, `campaign due`, `campaign record-run` |
 | **HUD** (v3.12, ADR-0035) | `hud [--out <f>] [--open] [--stdout]` |
 | **Report** (v3.15) | `report phase <N>` and `report index` (`[--out <f>] [--open] [--stdout]`; `index` also `--bundle`), `report all [--open]` |
 | **Standards** | `standards list`, `standards select`, `standards remove`, `standards status`, `standards recommend`, `standards phase-track`, `standards tools` |
 | **Operations** | `preflight`, `dashboard`, `learnings extract`, `learnings list`, `learnings prune`, `deps validate` |
-| **Utility** | `resolve-model`, `generate-slug`, `current-timestamp`, `context-budget`, `websearch`, `progress`, `todo` |
+| **Learnings & lint** | `learn promote/unpromote/list-promoted/build-index/topics-for/lint`, `skills index/align`, `hygiene scan/clean`, `links validate`, `doc-lint` |
+| **Utility** | `resolve-model`, `models check`, `generate-slug`, `current-timestamp`, `context-budget`, `websearch`, `progress`, `todo`, `version` |
 
 ### Module Inventory
 
@@ -446,7 +448,7 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `plan-lint.cjs` | **(program P2, P4)** Plan intent checked in code. `verify review-focus <phase>`: every plan has a `## Review Focus` with at most five items, each naming a task and a test, or one `None — <reason>` line. `verify decisions <phase>`: a plan citing a `DD-N` id the phase design does not record, and a recorded decision no plan cites, are flagged; a design from before ids is `legacy` (a warning). |
 | `research-lint.cjs` | **(program P3)** `research lint <phase\|path>`: reads a research file's `## Claims` table. A claim with no source or no valid checked date is an error; one older than its type's freshness window (versions, prices and security 30 days, APIs 90, general claims 180, practices 365) is `stale`. The plan-checker weighs the result. |
 | `usage.cjs` | **(program L9)** `usage`: local census of installed commands and agents against the cost ledger and trace sessions (used, never used, unfinished). Reads `cost.cjs` `readRecords` and the trace sessions' `session.json`; writes nothing. |
-| `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
+| `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `workflow.phase_gate` is `enforce` by default (also when unset or unrecognised): a refusal stops `phase complete` unless `--force --reason`, which records the override as a decision; `warn` reports the reasons and proceeds. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
 | `test-gate.cjs` | **(program V2)** `test run` / `test detect`: the engine runs the project's tests in any language (`workflow.test_command`, else package.json, pytest, go, cargo, Maven, Gradle, make), parses the runner's own output into counts and failing-test ids, and writes `{NN}-test-baseline.json` before execution and `{NN}-test-run.json` after. A failure the baseline already had is pre-existing; a new one is a regression; a suite that did not run is failed, never skipped. The verifier copies its status, reconcile cross-checks it, and the verdict recorder and the phase gate take it as a code fact. |
 | `mutate.cjs` | **(program V5)** `verify mutate --phase N`: per-language mutation operators (JS/TS, C-family, Python) applied one at a time to the lines the phase changed, in a worktree at HEAD, with a seeded sample, a flake pre-check, and survivors written to `{NN}-mutation.json`. `workflow.mutation_gate`: `report` (default), `off`, `gate` (reserved). `scripts/mutation-probe.cjs` imports its operator table. |
 | `verify-red.cjs` | **(program V4)** `verify red <phase>`: each test file the phase's plan commits added or changed must fail in a throwaway worktree at the phase's base (the parent of its oldest plan commit) and pass at HEAD; a test that passes at the base is `not_red` (tautological, or testing something the phase did not change). Runs one file at a time through test-gate's `fileCommand`; exports `withWorktree` for the mutation report. |
@@ -682,6 +684,7 @@ User                  Workflow                   Agents
   |                     |  → JSON: plans           |
   |                     |  phase-plan-index "1"    |
   |                     |  → JSON: waves           |
+  |                     |  test run --baseline     |
   |                     |                          |
   |                     |  Wave 1 (parallel):      |
   |                     |    pan-executor Plan-01 ----------->| commit
@@ -695,6 +698,8 @@ User                  Workflow                   Agents
   |                     |    → XX-review.md        |          |
   |                     |    pan-verifier ---------------------->|
   |                     |    → verification.md     |          |
+  |                     |  phase complete "1"      |
+  |                     |  → phase gate (enforce)  |
   |                     |                          |
   |  Phase complete     |                          |
   |<--------------------|                          |
@@ -769,6 +774,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── planning-root.cjs, foreign-planning.cjs
   │     ├── config.cjs (also lazily, for the defaults), links.cjs (lazy)
   │     ├── roadmap.cjs (roadmapRequirementIds — the --repair requirements sync)
+  │     ├── test-gate.cjs (lazy — the recorded test run for reconcile, a full run for `validate health --full`)
   │     └── verify-{drift,retro,deploy,preflight,scope}.cjs (re-exported)
   │
   ├── phase.cjs (facade)
@@ -778,6 +784,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── constants.cjs
   │     ├── utils.cjs
   │     ├── roadmap.cjs
+  │     ├── phase-gate.cjs (lazy — `phase complete` runs the gate first)
   │     └── phase-remove.cjs (re-exported)
   │
   ├── milestone.cjs
@@ -807,7 +814,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── roadmap.cjs
   │     ├── commands.cjs
   │     ├── utils.cjs
-  │     ├── cost.cjs (lazy)
+  │     ├── cost.cjs (weeklyLimitStop; also lazily)
   │     ├── memory-optimize.cjs (lazy)
   │     └── phase-report.cjs (lazy)
   │
@@ -817,6 +824,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │     ├── utils.cjs
   │     ├── frontmatter.cjs
   │     ├── phase.cjs
+  │     ├── verify-plan-set.cjs (plan_check / plan_drift)
   │     ├── codebase.cjs
   │     ├── planning-root.cjs
   │     └── foreign-planning.cjs
@@ -827,8 +835,8 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   │
   │  LAYER 6: Spec B v2 modules (v3.0–v3.4), with the older codebase.cjs (v2.7) and memory.cjs (v2.10)
   ├── bus.cjs            (depends on: core, utils)
-  ├── cost.cjs           (depends on: core, utils — shared infrastructure: read by commands, context-budget, cost-rebuild, focus, hud, hygiene, memory, optimize, phase-report)
-  ├── preview.cjs        (depends on: core, constants, utils, frontmatter, verify)
+  ├── cost.cjs           (depends on: core, utils — shared infrastructure: read by commands, context-budget, cost-rebuild, focus, hud, hygiene, memory, optimize, phase-report, preview, usage)
+  ├── preview.cjs        (depends on: utils, frontmatter, verify; core, constants, cost and roadmap lazily — the last two for the cost forecast and phase dependencies)
   ├── review-deep.cjs    (depends on: core, utils, bus, verdict — a report's pan-verdict block)
   ├── knowledge.cjs      (depends on: core, utils, memory)
   ├── whatif.cjs         (depends on: core, utils)
@@ -877,6 +885,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
   ├── verify-plan-set.cjs (depends on: core, constants, utils, frontmatter, roadmap, phase; findings and verdict lazily; read by init, plan-lint, findings)
   ├── plan-lint.cjs      (depends on: core, constants, verify-plan-set, verify-scope)
   ├── research-lint.cjs  (depends on: core, verify-scope)
+  ├── usage.cjs          (depends on: core, cost, utils)
   └── re-exported submodules: verify-drift (core, constants, utils), verify-retro (core, frontmatter, constants, utils; memory lazily), verify-deploy (core), verify-preflight (core, state, constants, utils; focus lazily), verify-scope (core, frontmatter, constants, utils; roadmap lazily; also read by commands, verify-integrity, verify-red, phase-gate, plan-lint, research-lint), phase-remove (core, state, constants, utils), commands-learnings (core, frontmatter, constants, utils)
 ```
 
@@ -886,7 +895,7 @@ pan-tools.cjs (CLI entry point — routes to all modules)
 - `frontmatter.cjs` is widely depended upon (state, verify, phase, milestone, commands, template all use it)
 - Of the Layer 6 and Layer 7 (v3.5) modules only `preview`, `review-deep`, `whatif`, `bridge`, `git` and `distill` are leaves: `cost.cjs` and `memory.cjs` are shared infrastructure with many consumers, `bus.cjs` feeds review-deep, `codebase.cjs` feeds init, `knowledge.cjs` feeds skill-align and `optimize.cjs` feeds findings and memory (lazily, for trace events) — remove those with care
 - `git.cjs` reuses `runCommitSafetyChecks` from `commands.cjs`; `optimize.cjs` reads `cost.cjs`; `optimize.cjs` and `distill.cjs` also use `utils.cjs` (`git.cjs` does not)
-- Cycles exist — `core ⇄ utils`, `core ⇄ roadmap-compact` (with `utils` on the same loop), `state ⇄ memory-optimize`, `memory ⇄ memory-optimize`, `memory ⇄ optimize` (with `findings` on the same loop) and `verify → verify-preflight → focus → phase-report → verify` — each broken by a lazy in-function `require`; everything else is a DAG
+- Cycles exist — `core ⇄ utils`, `core ⇄ roadmap-compact` (with `utils` on the same loop), `state ⇄ memory-optimize`, `memory ⇄ memory-optimize`, `memory ⇄ optimize` (with `findings` on the same loop), `state-compact → state → … → commands → hygiene → state-compact`, `findings ⇄ verify-plan-set` (with `phase → phase-gate → findings` on the same loop) and `verify → verify-preflight → focus → phase-report → verify` — all but the first two meet in one larger knot, and each is broken by a lazy in-function `require`: the load-time (top-level) require graph is a DAG
 - `pan-tools.cjs` requires every module with a CLI surface (the foundation and the re-exported submodules load transitively) but is itself a script (no `module.exports`)
 
 ---

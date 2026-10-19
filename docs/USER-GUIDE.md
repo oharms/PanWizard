@@ -84,6 +84,8 @@ PAN executes each plan's tasks in wave order — independent plans run in parall
 - `.planning/phases/01-{name}/01-01-summary.md` — Execution report per plan, plus `01-review.md` (the code review) and `01-verification.md` (the phase verification)
 - Git commits for each completed task
 
+After each wave PAN reports the phase's spend when it nears or reaches the phase budget (`cost.phase_budget_usd`, $20 by default; it only warns). At the end, `phase complete` runs the phase gate: with the default `workflow.phase_gate: enforce` it refuses to mark the phase complete when a check fails, such as a plan with no summary, a missing, failing or stale verification, or an open critical or high finding, and shows each reason. See [Phase gate refuses to complete a phase](TROUBLESHOOTING.md#phase-gate-refuses-to-complete-a-phase).
+
 ### Step 4: Verify the Work
 
 ```text
@@ -139,7 +141,7 @@ On lower tiers (mid/fast models) and non-Claude runtimes, features degrade grace
 
 Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purpose. None modify the focus system. v3.5 added `/pan:learn`, `/pan:optimize` and `/pan:git`, and the `security` and `distill` focus-auto categories.
 
-- **`/pan:cost` (v3.0)** — token usage + estimated cost across all PAN invocations. Three output formats (`json`/`table`/`chart`). Auto-populated since v3.4 by the SubagentStop hook on Claude Code, Codex and Copilot CLI (not Gemini CLI or OpenCode); no manual instrumentation needed. Time-windowed with `--since YYYY-MM-DD --until YYYY-MM-DD`.
+- **`/pan:cost` (v3.0)** — token usage + estimated cost across all PAN invocations. Three output formats (`json`/`table`/`chart`). Auto-populated since v3.4 by the SubagentStop hook on Claude Code, Codex and Copilot CLI (not Gemini CLI or OpenCode); no manual instrumentation needed. Time-windowed with `--since YYYY-MM-DD --until YYYY-MM-DD`. `pan-tools cost budget --phase N` shows a phase's spend against `cost.phase_budget_usd` ($20 by default, warn only).
 - **`/pan:preview phase <N> | phases | milestone` (v3.1)** — read-only foresight. Three modes:
   - `phase N` — blast radius (files likely touched, tests at risk, risk score 1-10, migration flags) and a cost forecast (p10/p50/p90 per plan and per phase from this project's own cost ledger; `insufficient` until there are enough observations)
   - `phases` — dependency graph (mermaid DAG + parallel batches + hidden coupling)
@@ -357,7 +359,7 @@ off by default; turn it on for phases where planning test coverage up front matt
 | `/pan:debug [desc]` | Systematic debugging with persistent state | When something breaks |
 | `/pan:todo-add [desc]` | Capture an idea for later | Think of something during a session |
 | `/pan:todo-check` | List pending todos | Review captured ideas |
-| `/pan:settings` | Configure workflow toggles and model profile | Change model, toggle agents |
+| `/pan:settings` | Configure workflow toggles, model profile, branching and the phase budget | Change model, toggle agents, change the spend warning |
 | `/pan:profile <profile>` | Quick profile switch | Change cost/quality tradeoff |
 | `/pan:patches` | Restore local modifications after update | After `/pan:update` if you had local edits |
 | `/pan:phase-budget` | Estimate context window utilization | Monitor context health during execution |
@@ -373,7 +375,7 @@ off by default; turn it on for phases where planning test coverage up front matt
 
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
-| `/pan:cost` | Token usage + estimated cost report (json/table/chart) | Track AI costs across phases |
+| `/pan:cost` | Token usage + estimated cost report (json/table/chart); `budget` (a phase's spend against `cost.phase_budget_usd`), `limits` (Claude Code's usage windows), and the `usage` census (`pan-tools usage`: which installed commands and agents this project has used) | Track AI costs across phases |
 | `/pan:preview phase <N>\|phases\|milestone` | Read-only foresight: blast radius / dependency graph / milestone ETA | Before exec — "what will this touch?" |
 | `/pan:review-deep <phase>` | Security audit (OWASP+STRIDE) + cross-checked by meta-reviewer | High-stakes phases (auth/payments/PII) |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook | Reflection or design discussion |
@@ -502,6 +504,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
   },
   "parallelization": true,
   "hooks": { "guard": "report" },
+  "cost": { "phase_budget_usd": 20 },
   "brave_search": false,
   "budget": {
     "default_points": 50,
@@ -1205,6 +1208,11 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 **Cause:** Profile override or stale config.
 **Fix:** Check current profile: review `.planning/config.json` for `model_profile`, `model_overrides`, and `routing` settings. Switch profiles with `/pan:profile balanced`. Per-agent overrides in `model_overrides` take precedence over profile, per-phase overrides, and routing strategy.
 
+### Phase Will Not Complete (Phase Gate Refused)
+
+**Cause:** `phase complete` runs the phase gate, and `workflow.phase_gate` defaults to `enforce` (a config without the key reads as `enforce`): a plan without a summary, a missing, failing or stale verification, an open critical or high finding, a committed stub or a weakened test refuses the completion with `phase_gate_refused`.
+**Fix:** `pan-tools phase gate <N>` lists each reason and its fix. Fix them and complete again, or override once with `pan-tools phase complete <N> --force --reason "<why>"` (recorded as a decision), or make the gate advisory with `pan-tools config-set workflow.phase_gate warn`. See [Phase gate refuses to complete a phase](TROUBLESHOOTING.md#phase-gate-refuses-to-complete-a-phase).
+
 ### Decimal Phase Numbering Issues
 
 **Cause:** Inserted phases (e.g., 3.1) may not sort correctly in some views.
@@ -1225,6 +1233,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 | Plan doesn't match your vision | `/pan:discuss-phase N` then re-plan |
 | Costs running high | `/pan:profile budget`, `model_overrides` for one agent, toggle agents off via `/pan:settings` |
 | Update broke local changes | `/pan:patches` |
+| Phase gate refused completion | `pan-tools phase gate <N>`, fix the reasons; or `phase complete <N> --force --reason "<why>"` |
 
 ---
 

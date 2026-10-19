@@ -121,6 +121,31 @@ describe('git status', () => {
     assert.equal(result.clean, false);
   });
 
+  test('an unstaged edit on the first status line counts as unstaged, and keeps its status column', () => {
+    cwd = createTempProject();
+    makeGitRepo(cwd);
+    const f = path.join(cwd, 'aaa.txt');
+    fs.writeFileSync(f, 'v1');
+    execFileSync('git', ['add', f], { cwd, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd, stdio: 'pipe' });
+    fs.writeFileSync(f, 'v2'); // " M aaa.txt": the line git prints first starts with a space
+    const result = parseOut(runPanTools('git status', cwd));
+    assert.deepEqual([result.staged_count, result.unstaged_count, result.untracked_count], [0, 1, 0]);
+    assert.deepEqual(result.files, [' M aaa.txt']);
+  });
+
+  test('keeping the leading column trims only whitespace at the end, never a path\'s last letters', () => {
+    cwd = createTempProject();
+    makeGitRepo(cwd);
+    seedCommit(cwd, 'init');
+    fs.writeFileSync(path.join(cwd, 'notes'), 'x');
+    const { execGit } = require('../pan-wizard-core/bin/lib/core.cjs');
+    assert.equal(execGit(cwd, ['status', '--porcelain'], { keepLeading: true }).stdout, '?? notes', 'the newline goes, the path stays whole');
+    assert.equal(execGit(cwd, ['rev-parse', '--show-prefix'], { keepLeading: true }).stdout, '');
+    const result = parseOut(runPanTools('git status', cwd));
+    assert.deepEqual(result.files, ['?? notes']);
+  });
+
   test('non-git dir returns error', () => {
     cwd = createTempProject();
     const r = runPanTools('git status', cwd);

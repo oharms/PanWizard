@@ -364,6 +364,9 @@ The system:
 2. **Fresh context per plan** — a whole context window purely for implementation, zero accumulated garbage (native sub-agent spawning on Claude Code; the other runtimes delegate through their own agent mechanism)
 3. **Commits per task** — Every task gets its own atomic commit (consecutive trivial chore or docs tasks may be coalesced into one)
 4. **Verifies against goals** — Checks the codebase delivers what the phase promised (skipped, and said so, when `workflow.verifier` is off)
+5. **Gates completion** — `phase complete` refuses (the default `workflow.phase_gate: enforce`) when a check fails, such as a plan with no summary, a missing, failing or stale verification, or an open critical or high finding, and lists each reason. `pan-tools phase gate <N>` runs the check alone
+
+After each wave it also reports the phase's spend once it nears or reaches the phase budget (`cost.phase_budget_usd`, $20 by default; a warning, never a stop).
 
 Walk away, come back to completed work with clean git history.
 
@@ -654,7 +657,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:settings` | Configure model profile and workflow agents |
+| `/pan:settings` | Configure model profile, workflow agents, branching and the phase budget |
 | `/pan:profile <profile>` | Switch model profile (quality/balanced/budget) |
 | `/pan:todo-add [desc]` | Capture idea for later |
 | `/pan:todo-check` | List pending todos |
@@ -701,7 +704,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:cost` | Token usage + estimated cost across PAN invocations (json/table/chart), and `budget`: a phase's spend against its budget (`cost.phase_budget_usd`, $20 by default, warn only; change it with `/pan:settings`) |
+| `/pan:cost` | Token usage + estimated cost across PAN invocations (json/table/chart), and `budget`: a phase's spend against its budget (`cost.phase_budget_usd`, $20 by default, warn only; change it with `/pan:settings`); `pan-tools usage` is a local census of which installed commands and agents this project has used |
 | `/pan:preview phase <N>\|phases\|milestone` | Read-only foresight: blast radius, a p10/p50/p90 cost forecast from the project's own cost ledger, dependency graph, milestone ETA |
 | `/pan:review-deep <phase>` | Security audit (OWASP + STRIDE) + cross-check by meta-reviewer |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook |
@@ -731,7 +734,8 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
 |---------|---------|---------|------------------|
 | `mode` | `yolo`, `interactive` | chosen at `/pan:new-project` (`yolo` is the recommended answer; `--auto` always sets it) | Auto-approve vs confirm at each step |
 | `depth` | `quick`, `standard`, `comprehensive` | chosen at `/pan:new-project` (`--auto` uses `quick` unless the idea document's frontmatter sets `planning_depth`) | Planning thoroughness (phases × plans) |
-| `cost.phase_budget_usd` | dollars, `0` = off | `20` | Spend per phase PAN warns about (API-equivalent dollars): at 80% and once a phase passes it. Warns only; never stops a run |
+| `cost.phase_budget_usd` | dollars, `0` = off | `20` | Spend per phase PAN warns about (API-equivalent dollars): at 80% and once a phase reaches it. Warns only; never stops a run |
+| `workflow.phase_gate` | `enforce`, `warn` | `enforce` (also when the key is absent) | Whether `phase complete` refuses a phase that fails its gate. Override once with `phase complete <N> --force --reason "<why>"`; `warn` completes and reports the reasons |
 
 ### Model Profiles
 

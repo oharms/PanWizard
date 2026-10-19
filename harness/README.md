@@ -33,16 +33,16 @@ Or `npm run harness` (tier 0) and `npm run harness:model -- --max-usd <n>`.
 3. Evaluate every step's `expect` list. A failed assertion becomes a finding with a stable
    signature in `harness/ledger.jsonl` (tracked); a step that later passes resolves it.
 4. Write `report.md` and `report.json` under the run directory and print a one-line JSON
-   summary. Exit 1 when any step failed or a model step never reached the model (recorded as `error`, with no assertion evaluated and no finding filed). **A skipped scenario is never counted as passed:** the report records it as `skipped` with its reason, but a skip does not by itself make the run exit 1.
+   summary. Exit 1 when any step failed or a model step never reached the model (recorded as `error`, with no assertion evaluated and no finding filed). **A skipped scenario is never counted as passed:** the report records it as `skipped` with its reason, but a skip does not by itself make the run exit 1 (a scenario named by `--require-run` that does not run does, as does a control a scenario survives).
 
-Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on this machine
-(`<os temp>/pan-harness-runs/` elsewhere; `--state-dir` or `PAN_HARNESS_STATE` overrides it).
+Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on Windows when `D:\pantesting` exists
+(`<os temp>/pan-harness-runs/` otherwise; `--state-dir` or `PAN_HARNESS_STATE` overrides it).
 
 ## Tiers and spend
 
 | Tier | Steps | Cost | Default |
 |---|---|---|---|
-| 0 | `pan`, `fs`, `sh`, `build`, `cli`, `mcp` | none | yes |
+| 0 | `pan`, `fs`, `sh`, `build`, `cli`, `mcp`, and `model` and `user` steps backed by the model double | none | yes |
 | 1 | + `model` steps (one headless `claude -p` run each, however many turns it takes), or a `cli` step marked `paid: true` (another CLI's model run) | your Claude usage, or that CLI's credits | capped at $15 unless `--max-usd` says otherwise |
 | 2 | + chain runs (a whole `/pan-exec-waves`) | more | set `--max-usd` to fit (the $15 default buys about one chain rep), run `--repeat 5` |
 
@@ -62,7 +62,7 @@ exactly one `pan` server — the workspace's.
 
 `src/model-double.cjs` is a local `node:http` server that answers a host CLI in place of the model provider (program H1). It speaks Anthropic Messages (streamed and not), OpenAI Responses and Chat, and Gemini, in four modes: **capture** (record every request, answer briefly), **script** (answer from a script of turns, text or a tool call), **replay** (answer from recorded pairs; any other request is `drift`) and **record** (proxy to a real upstream and keep the pairs). Nothing reaches a real model in the first three, so a step backed by them is **tier 0** (ADR-0047 D2 as amended `2026-10-12`) and runs in CI.
 
-A `model` step with `double: {script}` runs the real host CLI against the double (`src/double-server.cjs`, its own process, because the step runner is synchronous), with a scratch config directory and a dummy key, so a user's own login is never read. A script is `{rules: [{when, turns}], fallback}`: `when` matches on the tools a request offers (`toolsInclude`, `toolsExclude`), its system prompt (`systemIncludes`, `systemExcludes`) or a header; each rule answers its turns in order and repeats the last. Claude Code `2.1.288` sends no agent-type header: its main session is the request that offers the spawn tool (`Agent`), a subagent's system prompt carries its agent body, and two more requests per turn are its own notification classifier (the fallback answers them). Only Claude Code takes a model base URL from the environment today; a double-backed step on another host is refused with that reason. CI installs a pinned Claude Code CLI on the Ubuntu Node-22 job and runs the harness with `--require-run double-executor-body-claude`, so the scenario fails rather than skips when the CLI is missing; a control the scenario survives and an unmet `--require-run` both make the run exit 1. CI requires `cassette-drift-claude` and `discuss-phase-scripted-user` the same way.
+A `model` step with `double: {script}` runs the real host CLI against the double (`src/double-server.cjs`, its own process, because the step runner is synchronous), with a scratch config directory and a dummy key, so a user's own login is never read. A script is `{rules: [{when, turns}], fallback}`: `when` matches on the tools a request offers (`toolsInclude`, `toolsExclude`), its system prompt (`systemIncludes`, `systemExcludes`), the conversation (`userIncludes`, `messagesInclude`, below) or a header; each rule answers its turns in order and repeats the last. Claude Code `2.1.288` sends no agent-type header: its main session is the request that offers the spawn tool (`Agent`), a subagent's system prompt carries its agent body, and two more requests per turn are its own notification classifier (the fallback answers them). Only Claude Code takes a model base URL from the environment today; a double-backed step on another host is refused with that reason. CI installs a pinned Claude Code CLI on the Ubuntu Node-22 job and runs the harness with `--require-run double-executor-body-claude`, so the scenario fails rather than skips when the CLI is missing; a control the scenario survives and an unmet `--require-run` both make the run exit 1. CI requires `cassette-drift-claude` and `discuss-phase-scripted-user` the same way.
 
 Two assertion kinds read what the host sent: `wire:<field>~<regex>` (some request's `system`, `tools`, `url` or `body` matches) and `wire-count:<field>~<regex>=<n>`. `double-executor-body-claude` uses the double to show the executor subagent receives the **packaged** `pan-executor` body whole (`scripts/wire-agent-body.cjs`, after the installer's path rewrites), and its control truncates the installed agent to prove the check can fail: the MI-015 class, at $0.
 
@@ -129,15 +129,16 @@ text in stdout for `json:` assertions), `sh` (a script under `harness/scripts/`)
 `paid: true` marks one that spends that CLI's model credits — it may not live in tier 0,
 and it counts as a tier-1 scenario's model step; its credits are not counted against `--max-usd`),
 `mcp` (a JSON-RPC batch to the installed bridge; `cwd: "other"` runs it from a directory
-that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin; `double: {script}` runs it against the local model double at tier 0, see below).
+that is not the project), `model` (a prompt to `claude -p`; `pluginDir` loads a plugin; `double: {script}` or `double: {cassette}` runs it against the local model double at tier 0, see above), `user` (a scripted answer to the session the step before it left: `answers: [{match, reply}]`, see above; it must follow a `model` or `user` step).
 Any step may carry `timeoutMinutes` (default `budget.maxStepMinutes`, else 5) and `fatal: true` (a failed step ends the scenario); a step due after `budget.maxMinutes` (default 30) has passed is not run, and the overrun is a failure with a finding, not a `budget` stop; `pan` and `mcp` steps may
 name a `runtime`; `model` steps take `runtime` (`claude` by default; `codex`, `copilot`, `gemini` or `opencode` name another host, but those are refused until a parser for that host's JSON output and usage exists, which needs one captured run each: MI-104), `strictMcp` (default true) and `persistSession: true` (it drops `--no-session-persistence`, so the host writes the session and per-agent transcripts that a transcript-reading hook, or a later step that checks what agents were sent or opened, needs); `mcp` steps take `cwd: "other"` to address the second workspace; `build` steps take `out`; `cli` steps take `env` (`{"NAME": "value"}`, placeholders filled), which `live-gate-gemini` uses to give Gemini a scratch home under `<other>` instead of the user's real `~/.gemini`.
 Placeholders `<ws>`, `<other>`, `<repo>`, `<pkg>` are filled in argv, args, paths and prompts; an `mcp` step's requests get `<ws>` and `<other>` only.
 
 Assertion kinds: `exit:<n>`, `file:<rel>`, `absent:<rel>`, `glob:<pattern>`,
 `count:<pattern>=<n>`, `json:<path>`, `json:<path>=<value>`, `json!:<path>`,
-`stdout~<regex>`, `stderr~<regex>`, `rpc:<id>.<path>[=<value>]`. Every kind has a
-both-direction test in `tests/harness.test.cjs`; add a kind there first.
+`stdout~<regex>`, `stderr~<regex>`, `rpc:<id>.<path>[=<value>]`, and for double-backed steps
+`wire:<field>~<regex>`, `wire-count:<field>~<regex>=<n>` and `drift:none` / `drift:<regex>`. Every kind has a
+both-direction test, in `tests/harness.test.cjs` (the double's kinds in `tests/model-double.test.cjs`); add a kind there first.
 
 ### Controls
 

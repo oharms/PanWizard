@@ -265,9 +265,6 @@ const testGate = require('./lib/test-gate.cjs');
 const verifyRed = require('./lib/verify-red.cjs');
 const verifyScope = require('./lib/verify-scope.cjs');
 const mutate = require('./lib/mutate.cjs');
-const planLint = require('./lib/plan-lint.cjs');
-const researchLint = require('./lib/research-lint.cjs');
-const usage = require('./lib/usage.cjs');
 const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
@@ -705,9 +702,9 @@ async function main() {
       } else if (subcommand === 'red') {
         verifyRed.cmdVerifyRed(cwd, args[2], raw, { timeout: getArgValue(args, '--timeout') });
       } else if (subcommand === 'review-focus') {
-        planLint.cmdVerifyReviewFocus(cwd, args[2], raw);
+        require('./lib/plan-lint.cjs').cmdVerifyReviewFocus(cwd, args[2], raw);
       } else if (subcommand === 'decisions') {
-        planLint.cmdVerifyDecisions(cwd, args[2], raw);
+        require('./lib/plan-lint.cjs').cmdVerifyDecisions(cwd, args[2], raw);
       } else if (subcommand === 'mutate') {
         mutate.cmdVerifyMutate(cwd, {
           phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),
@@ -1329,7 +1326,7 @@ async function main() {
 
     case 'usage': {
       // Program L9: which installed commands and agents this project used, from its own files.
-      usage.cmdUsage(cwd, raw);
+      require('./lib/usage.cjs').cmdUsage(cwd, raw);
       break;
     }
 
@@ -1337,7 +1334,7 @@ async function main() {
       // Program P3: research claims carry a source and a checked date.
       const subcommand = args[1];
       if (subcommand === 'lint') {
-        researchLint.cmdResearchLint(cwd, args[2], { now: getArgValue(args, '--now') }, raw);
+        require('./lib/research-lint.cjs').cmdResearchLint(cwd, args[2], { now: getArgValue(args, '--now') }, raw);
       } else {
         error('Unknown research subcommand. Available: lint');
       }
