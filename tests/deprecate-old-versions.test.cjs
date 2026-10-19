@@ -164,3 +164,80 @@ describe('the script itself', () => {
       'a prerelease must not trigger a sweep — it would deprecate the current stable release');
   });
 });
+
+describe('npm failure reporting — the real error, not the first stderr line', () => {
+  // Captured shape of what the 3.35.0 and 3.36.0 release runs got back from
+  // `npm deprecate`. The script printed only the first stderr line, which is
+  // setup-node's harmless `always-auth` warning, so 69 failures across two
+  // releases all said the same unrelated thing and the cause stayed hidden.
+  const WARN = 'npm warn Unknown user config "always-auth". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.';
+  const LOG = 'npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2026-10-19T07_20_27_000Z-debug-0.log';
+  const E401 = [WARN,
+    'npm error code E401',
+    'npm error 401 Unauthorized - PUT https://registry.npmjs.org/pan-wizard - unauthenticated: User cannot be authenticated with the token provided.',
+    LOG, ''].join('\n');
+  const EOTP = [WARN,
+    'npm error code EOTP',
+    'npm error This operation requires a one-time password from your authenticator.',
+    'npm error You can provide a one-time password by passing --otp=<code> to the command you ran.',
+    LOG, ''].join('\n');
+  const E403 = [WARN,
+    'npm error code E403',
+    'npm error 403 403 Forbidden - PUT https://registry.npmjs.org/pan-wizard - You do not have permission to publish "pan-wizard". Are you logged in as the correct user?',
+    LOG, ''].join('\n');
+
+  test('skips npm warn lines and reports the code and the first real error line', () => {
+    const s = dep.summarizeNpmError(E401);
+    assert.equal(s.code, 'E401');
+    assert.match(s.detail, /^401 Unauthorized - PUT .* User cannot be authenticated/);
+    const text = dep.formatNpmError(E401);
+    assert.ok(!/always-auth/.test(text), `the warning must not be reported as the error: ${text}`);
+    assert.match(text, /^E401: 401 Unauthorized/);
+  });
+
+  test('CRLF output and the trailing log-location line do not leak in', () => {
+    const s = dep.summarizeNpmError(EOTP.replace(/\n/g, '\r\n'));
+    assert.equal(s.code, 'EOTP');
+    assert.equal(s.detail, 'This operation requires a one-time password from your authenticator.');
+  });
+
+  test('each auth failure carries a hint saying what the owner must change', () => {
+    assert.match(dep.formatNpmError(E401), /NPM_TOKEN.*(missing|expired|revoked)/i);
+    assert.match(dep.formatNpmError(EOTP), /bypass 2FA/i);
+    assert.match(dep.formatNpmError(E403), /write access to pan-wizard/i);
+  });
+
+  test('auth failures are recognised so the sweep stops after the first one', () => {
+    for (const c of ['E401', 'E403', 'EOTP', 'ENEEDAUTH']) assert.equal(dep.isAuthFailure(c), true, c);
+    for (const c of ['E404', 'E500', 'ETIMEDOUT', null]) assert.equal(dep.isAuthFailure(c), false, String(c));
+  });
+
+  test('output with no `npm error` line falls back to the first non-warning line', () => {
+    assert.equal(dep.formatNpmError(`${WARN}\nspawn npm ENOENT\n`), 'spawn npm ENOENT');
+    assert.equal(dep.formatNpmError('', 'Command failed: npm deprecate'), 'Command failed: npm deprecate');
+  });
+});
+
+describe('the release workflow step', () => {
+  const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'release.yml'), 'utf8');
+  const step = (yml.split('- name: Deprecate superseded versions')[1] || '').split('\n      - name:')[0];
+
+  test('still never fails a release and still applies only in CI', () => {
+    assert.match(step, /continue-on-error: true/);
+    assert.match(step, /node scripts\/deprecate-old-versions\.js --apply/);
+  });
+
+  test('authenticates with the NPM_TOKEN secret, since OIDC cannot deprecate', () => {
+    assert.match(step, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
+  });
+
+  test('logs which npm identity the token resolves to before sweeping', () => {
+    // Read-only, and the one line that tells an expired token from a scoped one.
+    assert.match(step, /npm whoami/);
+  });
+
+  test('a failed sweep raises a GitHub annotation instead of hiding in the log', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'deprecate-old-versions.js'), 'utf8');
+    assert.match(src, /::warning title=Deprecation sweep failed::/);
+  });
+});

@@ -126,17 +126,25 @@ jobs:
       # undeprecated — a cosmetic omission. Letting that mark the release red would
       # claim the publish failed, which is false and strictly worse.
       #
-      # NOTE ON AUTH: this job publishes via OIDC trusted publishing, whose token is
-      # scoped to publishing. `npm deprecate` is a different operation and may be
-      # refused with E401/E403. If it is, the step logs the refusal and the release
-      # still passes — see the script's own failure handling. To make it work,
-      # supply a granular automation token with write access as NPM_TOKEN; the
-      # script needs no change.
+      # NOTE ON AUTH: the publish above uses OIDC trusted publishing, and npm grants
+      # that credential for `npm publish` only — `npm deprecate` cannot use it. This
+      # step therefore runs on the NPM_TOKEN secret, which must be a granular access
+      # token (npmjs.com → Access Tokens → Generate New Token → Granular) with:
+      #   - Packages and scopes: Read and write, limited to `pan-wizard`
+      #   - "Bypass two-factor authentication" ticked (else npm answers EOTP)
+      #   - an expiry: write-enabled granular tokens last 90 days at most, so the
+      #     secret has to be replaced before it lapses (E401 once it has)
+      # `npm whoami` below is read-only and names the account the token belongs to,
+      # or prints the refusal; the script then prints npm's error code with a hint
+      # and stops after the first auth refusal. A failure still never fails the
+      # release (continue-on-error), but it raises a warning annotation on the run.
       - name: Deprecate superseded versions
         continue-on-error: true
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: node scripts/deprecate-old-versions.js --apply
+        run: |
+          echo "npm identity: $(npm whoami 2>&1 | grep -v '^npm warn' | head -n 3 || true)"
+          node scripts/deprecate-old-versions.js --apply
 
       # The GitHub Release. Until 2026-09-17 this workflow published to npm and
       # stopped, so every tagged version from 3.15.0 to 3.28.0 has a tag and
