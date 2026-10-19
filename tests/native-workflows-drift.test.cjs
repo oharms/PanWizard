@@ -190,6 +190,22 @@ describe('native workflows: script ⇄ markdown twin drift pin (5b)', () => {
     assert.match(s.content, /if \(!gate \|\| gate\.ok !== true\) \{\s*\n\s*return \{[^}]*halted: 'phase_gate'/, 'a refusal, or no verdict at all, halts the script');
   });
 
+  test('the wave script runs the gates its markdown twin runs: baseline, review with its scope, budget (R52)', () => {
+    // Reality check 2026-10-19: the native path, Claude's recommended one, lacked the test
+    // baseline, the reviewer reading `review scope`, and the phase budget report that
+    // exec-phase.md runs, while being labelled its twin.
+    const s = scripts.find(x => x.name === 'pan-exec-waves.js');
+    assert.ok(s.content.includes('test run --phase ') && s.content.includes('--baseline'), 'records the test baseline before the first wave');
+    assert.ok(s.content.indexOf('--baseline') < s.content.indexOf("phase('Execute')"), 'the baseline comes before execution');
+    assert.ok(s.content.includes("{ title: 'Review'"), 'the meta lists the Review phase');
+    assert.ok(s.content.indexOf("phase('Review')") > s.content.indexOf("phase('Execute')") && s.content.indexOf("phase('Review')") < s.content.indexOf("phase('Verify')"), 'review runs after execution and before verification, as in exec-phase.md');
+    assert.ok(agentTypesOf(s.content).includes('pan-reviewer'), 'spawns pan-reviewer');
+    assert.ok(s.content.includes('review scope '), 'the reviewer reads the diff through review scope');
+    assert.ok(s.content.includes('findings record --phase '), 'the verdict is recorded in the findings ledger');
+    assert.match(s.content, /halted: 'review'/, 'NEEDS_FIXES halts: a script cannot ask the user');
+    assert.ok(s.content.includes('cost budget --phase '), 'reports the phase budget');
+  });
+
   test('the wave script honours parallelization=false with a sequential path', () => {
     const s = scripts.find(x => x.name === 'pan-exec-waves.js');
     assert.ok(s.content.includes('parallelWithinWave'), 'must branch on the parallelization flag');

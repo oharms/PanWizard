@@ -1766,7 +1766,7 @@ describe('buildNativeWorkflowScripts', () => {
     const s = scripts.find(x => x.name === 'pan-exec-waves.js');
     const body = s.content.replace(/^export const meta/, 'const meta');
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-    const run = async (verifierEnabled, gateVerdict = { ok: true, mode: 'warn', reasons: [] }) => {
+    const run = async (verifierEnabled, gateVerdict = { ok: true, mode: 'warn', reasons: [] }, reviewVerdict = 'PASS') => {
       const spawned = [];
       const agent = async (prompt, opts = {}) => {
         spawned.push(opts.agentType || opts.label);
@@ -1776,6 +1776,8 @@ describe('buildNativeWorkflowScripts', () => {
             plans: [{ id: '01-01', file: '.planning/phases/01-a/01-01-plan.md', wave: 1, autonomous: true, has_summary: false }] };
         }
         if (opts.agentType === 'pan-executor') return { plan_id: '01-01', status: 'complete', self_check: 'passed', commits: 1 };
+        if (opts.agentType === 'pan-reviewer') return { report: '### Verdict\n' + reviewVerdict };
+        if (opts.label === 'review-record') return { verdict: reviewVerdict, errors: 0, warnings: 0 };
         if (opts.agentType === 'pan-verifier') return { status: 'passed', summary: 'ok' };
         if (opts.label === 'gate') return gateVerdict;
         return {};
@@ -1785,11 +1787,15 @@ describe('buildNativeWorkflowScripts', () => {
       return { spawned, result };
     };
     const off = await run(false);
-    assert.deepEqual(off.spawned, ['index', 'pan-executor']);
+    assert.deepEqual(off.spawned, ['index', 'pan-executor', 'pan-reviewer', 'review-record']);
     assert.equal(off.result.verification, null);
     assert.match(off.result.next, /workflow\.verifier is off/);
     const on = await run(true);
-    assert.deepEqual(on.spawned, ['index', 'pan-executor', 'pan-verifier', 'gate']);
+    assert.deepEqual(on.spawned, ['index', 'pan-executor', 'pan-reviewer', 'review-record', 'pan-verifier', 'gate']);
+    // R52: review runs before verification, as in exec-phase.md, and NEEDS_FIXES halts there.
+    const fixes = await run(true, undefined, 'NEEDS_FIXES');
+    assert.deepEqual(fixes.spawned, ['index', 'pan-executor', 'pan-reviewer', 'review-record']);
+    assert.equal(fixes.result.halted, 'review');
     assert.equal(on.result.verification.status, 'passed');
     assert.equal(on.result.halted, undefined);
     // V1: a refusal from the phase gate halts the script with the reasons.
