@@ -43,7 +43,7 @@ const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 const DEFAULT_MAX_USD = 15;
 
 function parseArgs(argv, env = process.env) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, maxUsdDefaulted: false, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [] };
+  const a = { scenarios: [], tier: 0, maxUsd: null, maxUsdDefaulted: false, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [], promptMutant: null };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -67,6 +67,9 @@ function parseArgs(argv, env = process.env) {
     // --arm <id> (H3, M43): run the scenarios that declare this arm with its change applied
     // (the no-guidance baseline, a deletion arm), for a paired comparison with the plain run.
     else if (k === '--arm') { a.arm = v; i++; }
+    // --prompt-mutant <rule id> (H6): delete that rule from the packed package and run only
+    // the scenarios that cover it. All of them passing means the rule changed nothing.
+    else if (k === '--prompt-mutant') { a.promptMutant = v; i++; }
     // --require-run <id> (CI1): this scenario must actually run. Skipped, or not selected at
     // all, fails the run: CI installs a host CLI so the double-backed scenarios run there, and
     // a missing CLI must not turn into a quiet skip.
@@ -424,6 +427,15 @@ function main() {
   log(`artifact ${art.build.tarball} (${art.build.sha256.slice(0, 12)}) from ${art.build.head ? art.build.head.slice(0, 9) : 'no-git'}`);
 
   let scenarios = loadScenarios(path.join(HARNESS_ROOT, 'scenarios'));
+  let mutant = null;
+  if (args.promptMutant) {
+    const PR = require(path.join(args.repo, 'scripts', 'prompt-rules.cjs'));
+    mutant = PR.applyMutant(args.repo, art.packageDir, args.promptMutant);
+    if (mutant.error) { log(`prompt mutant ${args.promptMutant}: ${mutant.reason}`); return 2; }
+    log(`prompt mutant ${mutant.id}: removed ${mutant.file}:${mutant.line} "${mutant.text.slice(0, 70)}"`);
+    scenarios = PR.coveringScenarios(scenarios, mutant.id);
+    if (!scenarios.length) { log(`no scenario covers ${mutant.id}: add it to a scenario's covers first`); return 2; }
+  }
   if (args.scenarios.length) scenarios = scenarios.filter(s => args.scenarios.includes(s.id));
   scenarios = scenarios.filter(s => s.tier <= args.tier);
   if (args.arm) {
@@ -614,7 +626,13 @@ function main() {
     controls: controlResults,
     failures, promotable: promotable.map(e => ({ signature: e.signature, scenario: e.scenario, step: e.step, expect: e.expect, detail: e.detail, runs: e.runs.length })),
     scoreboard: args.scoreboards.length ? detectionScoreboard(args.scoreboards) : null,
+    promptMutant: mutant ? { ...mutant, verdict: results.some(r => r.status === 'failed') ? 'load_bearing' : (results.some(r => r.status === 'passed') ? 'decorative' : 'undecided') } : null,
   };
+  if (summary.promptMutant && args.ledger) {
+    // H6's record: one row per mutant run, with the reps and each covering scenario's interval.
+    const row = { ts: new Date().toISOString(), run: id, rule: mutant.id, file: mutant.file, verdict: summary.promptMutant.verdict, scenarios: summary.completion.map(b => ({ scenario: b.scenario, passed: b.passed, runs: (b.passed || 0) + (b.failed || 0), interval: b.interval || null })) };
+    fs.appendFileSync(path.join(HARNESS_ROOT, 'prompt-mutants.jsonl'), JSON.stringify(row) + '\n');
+  }
   fs.writeFileSync(path.join(runDir, 'report.json'), JSON.stringify({ ...summary, steps: results }, null, 2));
   const lines = [
     `# PAN Harness run ${id}`, '',

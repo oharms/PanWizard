@@ -459,8 +459,15 @@ function main(argv) {
   if (argv.includes('--check')) {
     let committed;
     try { committed = readJson(registryPath); } catch { console.error(`no committed registry at ${REGISTRY_REL} — run --write`); return 1; }
-    const { drift: d, live, ok } = checkReport(committed, surface, loadLivenessInputs(ROOT), readLivenessAllowlist(ROOT));
-    if (ok) { console.log('surface registry matches the code; every command, agent, verb and config key is alive'); return 0; }
+    const { drift: d, live, ok: surfaceOk } = checkReport(committed, surface, loadLivenessInputs(ROOT), readLivenessAllowlist(ROOT));
+    // H6: the prompt-rule rows. A rule that is neither grandfathered nor claimed by a
+    // scenario's covers (or allowlisted with a reason) fails, as does a stale registry.
+    const rules = require('./prompt-rules.cjs').checkRegistry(ROOT);
+    const ok = surfaceOk && !rules.stale && !rules.unclaimed.length && !rules.dangling.length;
+    if (ok) { console.log('surface registry matches the code; every command, agent, verb and config key is alive; every new prompt rule is claimed'); return 0; }
+    if (rules.stale) console.error('prompt-rule registry is stale — run `node scripts/prompt-rules.cjs --write` and commit it');
+    for (const u of rules.unclaimed) console.error(`  unclaimed prompt rule ${u.id}: "${u.text.slice(0, 80)}"`);
+    for (const x of rules.dangling) console.error(`  scenario ${x.scenario} covers ${x.id}, which is no rule`);
     if (d.added.length || d.removed.length) {
       console.error(`surface registry is stale — run \`node scripts/test-surface.cjs --write\` and commit it`);
       for (const x of d.added) console.error(`  + ${x}`);

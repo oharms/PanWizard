@@ -6,7 +6,7 @@ Synchronize project documentation across all files. $ARGUMENTS
 
 ---
 
-## CRITICAL: Project Scope Boundary
+## Project Scope Boundary
 
 This command synchronizes the **host project's documentation** — NOT PAN Wizard's own infrastructure files.
 

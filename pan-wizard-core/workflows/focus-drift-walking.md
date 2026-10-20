@@ -8,7 +8,7 @@ Walk every directory in the project, detect drift between documentation and code
 
 ---
 
-## CRITICAL: Project Scope Boundary
+## Project Scope Boundary
 
 This command walks the **host project's directories and documentation** — NOT PAN Wizard's own infrastructure.
 

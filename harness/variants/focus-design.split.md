@@ -27,7 +27,7 @@ Research, design, and specify a new feature with strategic analysis. $ARGUMENTS
 
 ---
 
-## CRITICAL: Project Scope Boundary
+## Project Scope Boundary
 
 This command investigates and designs features for the **host project** — NOT for PAN Wizard itself.
 
@@ -57,9 +57,8 @@ Prefer local evidence over web research. Start with the codebase, then broaden.
 ## Context Management Across Phases
 
 This pipeline spans 10+ phases. Manage context to maintain quality:
-- **KEEP:** Problem statement, success criteria, key architectural decisions, file paths being designed for
-- **SUMMARIZE:** Research findings (compress to key takeaways after each research phase), competitive analysis results
-- **DISCARD:** Raw web fetch content after extracting relevant data, superseded design drafts
+- **Carry forward:** Problem statement, success criteria, key architectural decisions, file paths being designed for
+- **Summarise:** Research findings (compress to key takeaways after each research phase), competitive analysis results
 - After Phase 3 (Strategic Analysis), summarize all findings from Phases 0-3 into a compact brief before entering design phases
 
 **Progressive context loading — load only what the current phase needs:**

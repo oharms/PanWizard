@@ -89,9 +89,8 @@ Execute the execute-phase workflow from @~/.claude/pan-wizard-core/workflows/exe
 Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
 
 **Context Management Across Waves:**
-- KEEP: Phase goals, test baseline, current wave tasks, file paths being modified
-- SUMMARIZE: Completed wave results to one-line summaries
-- DISCARD: Raw tool output from previous waves
+- Carry forward: Phase goals, test baseline, current wave tasks, file paths being modified
+- Summarise: Completed wave results to one-line summaries
 
 **Attention Anchor — emit after each wave completes:**
 ```

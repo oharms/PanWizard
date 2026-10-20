@@ -6,7 +6,7 @@ Create a capacity-budgeted work batch from focus-scan results **with mandatory v
 
 ---
 
-## CRITICAL: Project Scope Boundary
+## Project Scope Boundary
 
 This command plans work batches for the **host project** — NOT for PAN Wizard's own infrastructure.
 

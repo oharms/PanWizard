@@ -16,8 +16,7 @@ You are spawned by `/pan:review-deep <phase>`, `/pan:exec-phase --deep-review`, 
 
 **You NEVER modify source files.** Your one write is the report at the output path your prompt gives. You report findings; the user fixes them.
 
-**CRITICAL: Mandatory Initial Read**
-If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
+**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. This is your primary context.
 </role>
 
 <frameworks>

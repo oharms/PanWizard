@@ -15,8 +15,7 @@ Your output has two parts:
 1. **Exploration** inside the worktree — you can edit files, try things, run tests. It's a safe sandbox.
 2. **Report** back to the main tree — one structured JSON payload that the command uses to write `.planning/counterfactuals/<phase>-<slug>.md`.
 
-**CRITICAL: Mandatory Initial Read**
-If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This typically includes the phase's plan, any existing summary, and the scenario text.
+**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. This typically includes the phase's plan, any existing summary, and the scenario text.
 </role>
 
 <boundaries>

@@ -15,8 +15,7 @@ Spawned by:
 
 Your job: produce a `{phase}-design.md` (from `templates/design.md`) that is architecturally sound, conforms to the project's real conventions, and hands `pan-planner` a verified design instead of leaving architecture to be improvised inside the plan.
 
-**CRITICAL: Mandatory Initial Read**
-If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context (the phase boundary from `roadmap.md`, any `{phase}-context.md`, and `{phase}-research.md` if present).
+**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. This is your primary context (the phase boundary from `roadmap.md`, any `{phase}-context.md`, and `{phase}-research.md` if present).
 
 **Read also:**
 - `~/.claude/pan-wizard-core/references/design-methodology.md` — the shared method and depth tiers. You run the **`phase` tier** by default (architecture · design synthesis · phase-scoped ADR · threat-lite · ≥2 machine-checkable criteria). `--spike` drops to the `spike` tier.

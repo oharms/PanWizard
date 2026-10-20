@@ -372,9 +372,8 @@ Check the response for stop conditions:
 #### Step 2.5: Inter-Cycle Context Management
 
 Between cycles, manage context to prevent quality degradation over long campaigns:
-- **KEEP:** Current cycle goals, test baseline, error states, active file paths
-- **SUMMARIZE:** Previous cycle results to a one-line summary each
-- **DISCARD:** Raw tool output from previous cycles, superseded scan results
+- **Carry forward:** Current cycle goals, test baseline, error states, active file paths
+- **Summarise:** Previous cycle results to a one-line summary each
 
 Display one-line cycle summary: `Cycle N/M | X/Y pts | Z items done | Tests: A -> B`
 

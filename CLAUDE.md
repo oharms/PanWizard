@@ -57,10 +57,10 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Workflows (`pan-wizard-core/workflows/*.md`) | 40 |
 | Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 215 |
+| Unit test files (`tests/*.test.cjs`) | 217 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 37 |
-| Total tests (npm run test:all) | 5802 |
-| Total test suites | 1250 |
+| Total tests (npm run test:all) | 5817 |
+| Total test suites | 1254 |
 | Hooks (`hooks/*.js`) | 8 |
 | Specs (`docs/specs/*.md`) | 57 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
@@ -164,6 +164,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `scripts/mutation-probe.cjs` — **report-only** (`npm run test:mutate`): breaks the code on purpose inside a throwaway `git worktree` and reports which mutations the suite failed to notice. Answers what coverage cannot — not "did the line run" but "would a test fail if it were wrong". Sampled and seeded (`--max`, `--seed`, `--target`); targets the cost and trace logger hooks, `cost.cjs`, `cost-rebuild.cjs` and the dispatcher. Never a gate: release-check and CI do not run it, and `tests/mutation-probe.test.cjs` asserts they do not
 - `scripts/test-quality-lint.cjs` — the assertion shapes that passed while the feature was broken (OR-shaped liveness asserts, in-process `cmd*` calls that exit the process, `assert(true)`, length-only CLI asserts, bare platform returns, tight wall-clock bounds, real-HOME reads, committed todos, OR-of-bare-property existence asserts), applied to the suite by `tests/test-quality.test.cjs` with `tests/fixtures/test-quality-allowlist.json`
 - `scripts/prompt-lint.cjs` — the prompt-contract lint (program L2): every `pan-tools` call in a shipped prompt names a real verb and subcommand, an agent is never told to use a tool it is not granted, no prompt @-includes engine source, no AskUserQuestion offers more than four options, every spawn names its model and role spawns name their agent type, and no shipped prompt sends the user to a dev-only skill. Applied by `tests/prompt-lint.test.cjs` with `tests/fixtures/prompt-lint-allowlist.json` (every entry needs a reason, and a stale entry fails)
+- `scripts/prompt-rules.cjs` — the prompt-rule registry (program H6): every normative line (MUST, NEVER, always, do not …) in a shipped prompt gets a stable id (`<file>:<sha1 prefix of its text>`) in `tests/fixtures/prompt-rules.json`. A harness scenario claims the rules it exercises with `covers: [ids]`. Rules present when the registry was created are `baseline`; any other unclaimed rule fails `--check` (and `test-surface.cjs --check`) unless `tests/fixtures/prompt-rules-allowlist.json` gives a reason. After editing a prompt's normative lines, run `--write`. `harness/src/run.cjs --prompt-mutant <id>` deletes that rule from the packed package and runs only the scenarios that cover it: all passing means the rule is decorative; each run appends a row to `harness/prompt-mutants.jsonl`
 - `scripts/build-help.cjs` — generates the command index in `pan-wizard-core/workflows/help.md` (what `/pan:help` prints) from each `commands/pan/*.md` file's `group` and `description` frontmatter; `--write` refreshes it, `--check` exits 1 when stale, and `tests/help-generated.test.cjs` fails on a stale block or a missing command
 - `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
 - `scripts/build-agent-plugin.js` — emits the vendor-neutral **Agent Plugins** bundle to `dist/pan-agent-plugin/` (ADR-0045) for Copilot CLI, Codex, Cursor, Kiro. `.agents/plugins/marketplace.json` (Codex) and `.github/plugin/marketplace.json` (Copilot) point at it

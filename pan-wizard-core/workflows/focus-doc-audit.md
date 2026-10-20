@@ -8,7 +8,7 @@ Audit project documentation for accuracy, freshness, broken links, structural qu
 
 ---
 
-## CRITICAL: Project Scope Boundary
+## Project Scope Boundary
 
 This command audits the **host project's documentation** — NOT PAN Wizard's own infrastructure files.
 
