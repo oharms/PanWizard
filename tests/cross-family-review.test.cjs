@@ -123,7 +123,7 @@ describe('a lane run against a stand-in host CLI (R4, tier 0)', () => {
   after(() => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(binDir, { recursive: true, force: true }); });
 
   test('the verdict is parsed, reported per rep, and written for review-deep', () => {
-    const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH };
+    const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, PAN_STANDIN_DIR: binDir };
     const res = spawnSync(process.execPath, [TOOLS, 'review', 'cross-family', '1', '--reps', '2', '--cwd', dir], { encoding: 'utf8', env });
     const r = JSON.parse(res.stdout);
     assert.equal(r.lane, 'cross-family:codex');

@@ -208,7 +208,77 @@ function cmdWorktreeCleanup(cwd, raw, opts) {
   output(r, raw, lines.length ? lines.join('\n') : 'nothing to clean');
 }
 
+// ─── Shadow-merge preflight (program A3) ────────────────────────────────────
+// Branches that each pass the oracle can still break it together. Before merging a
+// sub-wave back, merge every branch onto the base in a throwaway worktree, in order,
+// and run the test command there. A conflict is named; a red result is bisected to
+// "each passes alone" (break_together) or the branches that fail on their own.
+
+const GIT_IDENTITY = ['-c', 'user.name=PAN preflight', '-c', 'user.email=preflight@pan.local', '-c', 'commit.gpgsign=false'];
+
+function runOracle(dir, test) {
+  const { spawnSync } = require('child_process');
+  const r = spawnSync(test, { cwd: dir, shell: true, encoding: 'utf8', timeout: 20 * 60 * 1000 });
+  return r.status === 0;
+}
+
+/**
+ * @param {string} cwd
+ * @param {{base?: string, branches: string[], test?: string}} opts
+ * @returns {{ok: boolean, verdict: 'clean'|'conflict'|'break_together'|'branch_fails'|'base_failing'|'no_test', ...}}
+ */
+function shadowMergePreflight(cwd, opts = {}) {
+  if (!isGitRepo(cwd)) return { error: 'not_git', reason: 'the preflight needs a git repository' };
+  const base = opts.base || 'HEAD';
+  const branches = (opts.branches || []).filter(Boolean);
+  let test = opts.test;
+  if (!test) {
+    try { test = require('./test-gate.cjs').detectTestCommand(cwd).command; } catch { test = null; }
+  }
+  if (!test) return { ok: false, verdict: 'no_test', base, branches, reason: 'no test command: pass --test or set one for the project' };
+  const os = require('os');
+  const fsx = require('fs');
+  const dir = fsx.mkdtempSync(path.join(os.tmpdir(), 'pan-preflight-'));
+  fsx.rmSync(dir, { recursive: true, force: true });
+  const add = execGit(cwd, ['worktree', 'add', '--detach', dir, base]);
+  if (add.exitCode !== 0) return { error: 'worktree_failed', reason: add.stderr.trim() };
+  const g = (args) => execGit(dir, [...GIT_IDENTITY, ...args]);
+  const result = { base, branches, test, merged: [], alone: {} };
+  try {
+    if (!runOracle(dir, test)) return { ...result, ok: false, verdict: 'base_failing', reason: 'the oracle already fails on the base: a merge cannot be judged' };
+    for (const b of branches) {
+      const m = g(['merge', '--no-ff', '--no-edit', b]);
+      if (m.exitCode !== 0) {
+        const files = g(['diff', '--name-only', '--diff-filter=U']).stdout.split('\n').map((x) => x.trim()).filter(Boolean);
+        g(['merge', '--abort']);
+        return { ...result, ok: false, verdict: 'conflict', conflict: { branch: b, files, after: [...result.merged] } };
+      }
+      result.merged.push(b);
+    }
+    if (runOracle(dir, test)) return { ...result, ok: true, verdict: 'clean' };
+    for (const b of branches) {
+      g(['reset', '--hard', '-q', base]);
+      result.alone[b] = g(['merge', '--no-ff', '--no-edit', b]).exitCode === 0 && runOracle(dir, test);
+    }
+    const failing = branches.filter((b) => !result.alone[b]);
+    return failing.length
+      ? { ...result, ok: false, verdict: 'branch_fails', failing }
+      : { ...result, ok: false, verdict: 'break_together', reason: 'each branch passes alone; merged together they fail' };
+  } finally {
+    execGit(cwd, ['worktree', 'remove', '--force', dir]);
+    try { fsx.rmSync(dir, { recursive: true, force: true }); } catch {}
+    execGit(cwd, ['worktree', 'prune']);
+  }
+}
+
+function cmdWorktreePreflight(cwd, opts, raw) {
+  const r = shadowMergePreflight(cwd, opts);
+  output(r, raw, r.verdict || r.error);
+}
+
 module.exports = {
+  shadowMergePreflight,
+  cmdWorktreePreflight,
   ARMY_BRANCH_PREFIX,
   createTaskWorktree,
   removeTaskWorktree,

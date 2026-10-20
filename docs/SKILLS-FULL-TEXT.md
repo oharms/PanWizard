@@ -364,14 +364,14 @@ GOOD: "Assumption: The project uses Express for routing — Evidence: require('e
 
 ---
 
-### /pan:autodev (66 lines)
+### /pan:autodev (75 lines)
 
 ````markdown
 ---
 name: pan:autodev
 group: Phase Lifecycle
 description: Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
-argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--run <id>]"
+argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]"
 allowed-tools:
   - Read
   - Bash
@@ -387,10 +387,16 @@ It stops in code, with one of these reasons:
 | `done` | Every phase is finished; the milestone audit is next |
 | `human_needed` | A verifier asked for a human check, or there is no roadmap |
 | `gate_failed` | The phase gate refused to complete a phase |
+| `ci_failed` | With `--ci`: the pull request checks still failed after the fix rounds |
 | `forecast_exceeded` | An execute unit cost more than the project's p90 forecast for it |
 | `budget_usd` | Spend reached `--max-usd` (the run) or `--max-usd-day` (today, across runs) |
 | `turns` | `--max-turns` units have run (20 when not given) |
 | `no_progress` | A unit ran and changed nothing on disk |
+
+Two options change how units run:
+
+- `--worktrees`: a phase with two or more plans runs each plan in its own git worktree and session (`/pan:exec-phase N --plan <id>`). Plans of a wave that share a file run one after the other. Before a group of plans is merged back, `pan-tools worktree preflight` merges them onto HEAD in a throwaway worktree and runs the tests: branches that pass alone but break together, or conflict, stop the run for a human.
+- `--ci`: after each completed phase, the pull request's checks (GitHub's `gh` CLI) are the oracle. A check that already fails on the base branch is ignored. A failure starts a fix round, a fresh session given the failing checks and log; after `--ci-rounds` rounds (3) the run stops with `ci_failed`. The checks must be for HEAD: push the branch yourself, or pass `--ci-push` to have autodev push after each phase.
 
 A failed session is classified before anything else happens: a compile or assertion failure is retried with its error in the prompt, then once more at a higher tier; a timeout or an unknown failure is restarted once; a missing CLI or login, a merge conflict, the guard's deny or an undeclared file stops for a human.
 </objective>
@@ -410,6 +416,8 @@ A failed session is classified before anything else happens: a compile or assert
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev run --host claude --max-usd 20 --max-turns 12
    ```
 
+   Add `--worktrees` or `--ci` only when the user asked for them; `--ci-push` pushes the branch, so name that before running it.
+
    After an interrupted run, resume it: the unit that was in flight runs again first.
 
    ```bash
@@ -428,6 +436,7 @@ A failed session is classified before anything else happens: a compile or assert
 5. **Report** the result: `stop.reason` and `stop.detail`, the units run, `spent_usd`, and the ledger path (`.planning/autodev/<run>/ledger.jsonl`, one `started` and one `finished` row per unit with its argv, exit, cost and commits). Then route on the reason:
    - `done` → `/pan:milestone-audit`
    - `human_needed` → show the phase's verification and the human checks it lists
+   - `ci_failed` → show the failing checks and the last fix round from the ledger
    - `gate_failed` → show the gate's reasons (`pan-tools phase gate <N>`), then `/pan:plan-phase <N> --gaps`
    - `budget_usd`, `turns` → offer `autodev resume` with a higher cap
    - `forecast_exceeded` → show the unit's cost and forecast from the ledger; offer `autodev resume` once the user has looked
@@ -1052,7 +1061,7 @@ Generate 3-4 **phase-specific** gray areas, not generic categories.
 name: pan:exec-phase
 group: Phase Lifecycle
 description: Execute all plans in a phase with wave-based parallelization
-argument-hint: "<phase-number> [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]"
+argument-hint: "<phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]"
 allowed-tools:
   - Read
   - Write

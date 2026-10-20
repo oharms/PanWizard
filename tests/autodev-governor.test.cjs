@@ -141,7 +141,7 @@ process.stdout.write(JSON.stringify({ result: 'ok', total_cost_usd: cost }) + '\
   }
   function run(dir, args, env = {}) {
     const log = path.join(dir, 'fake.log');
-    const r = spawnSync(process.execPath, [TOOLS, 'autodev', ...args, '--host', 'claude'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, FAKE_LOG: log, ...env } });
+    const r = spawnSync(process.execPath, [TOOLS, 'autodev', ...args, '--host', 'claude'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, PAN_STANDIN_DIR: binDir, FAKE_LOG: log, ...env } });
     const calls = (() => { try { return fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l)); } catch { return []; } })();
     return { json: JSON.parse(r.stdout), calls };
   }

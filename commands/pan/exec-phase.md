@@ -2,7 +2,7 @@
 name: pan:exec-phase
 group: Phase Lifecycle
 description: Execute all plans in a phase with wave-based parallelization
-argument-hint: "<phase-number> [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]"
+argument-hint: "<phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]"
 allowed-tools:
   - Read
   - Write

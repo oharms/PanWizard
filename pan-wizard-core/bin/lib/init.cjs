@@ -155,6 +155,8 @@ function cmdInitExecutePhase(cwd, phase, raw, opts) {
     // Config flags
     commit_docs: config.commit_docs,
     parallelization: config.parallelization,
+    // A3: each pan-exec-waves executor in its own git worktree (Claude Code's Workflow tool).
+    worktree_isolation: (require('./test-gate.cjs').rawConfig(cwd).workflow || {}).worktree_isolation === true,
     branching_strategy: config.branching_strategy,
     phase_branch_template: config.phase_branch_template,
     milestone_branch_template: config.milestone_branch_template,

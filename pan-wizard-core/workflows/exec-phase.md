@@ -96,6 +96,8 @@ PLAN_INDEX=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase-plan-index "
 
 Parse JSON for: `phase`, `plans[]` (each with `id`, `wave`, `autonomous`, `objective`, `files_modified`, `task_count`, `has_summary`), `waves` (map of wave number → plan IDs), `incomplete`, `has_checkpoints`.
 
+**One plan (`--plan <id>`).** Execute only that plan: skip every other plan, then stop after its summary and commits, with no code review, verification or phase routing. `pan-tools autodev run --worktrees` runs each plan this way in its own git worktree and merges the plans back behind a shadow-merge preflight; the phase-level steps run later on the merged result. If the plan already has a summary, say so and stop.
+
 **Filtering:** Skip plans where `has_summary: true`. If `--gaps-only`: also skip plans whose frontmatter lacks `gap_closure: true` (`phase-plan-index` does not report it; `frontmatter get <plan> --field gap_closure` exits 1 when it is absent). If all filtered: "No matching incomplete plans" → exit.
 
 **If `--gaps-only`:** this run is the fix round after a verification found gaps — a second attempt at work that failed once. Resolve the executor for that attempt and use it in place of `executor_model` for every spawn in this run:

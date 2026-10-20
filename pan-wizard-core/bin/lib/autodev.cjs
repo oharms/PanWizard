@@ -35,7 +35,7 @@ const { planningPath } = require('./utils.cjs');
 const { HOSTS } = require('./hosts.cjs');
 const { routeNextAction, diskSnapshot } = require('./next-action.cjs');
 
-const STOP_REASONS = Object.freeze(['done', 'human_needed', 'gate_failed', 'forecast_exceeded', 'budget_usd', 'turns', 'no_progress']);
+const STOP_REASONS = Object.freeze(['done', 'human_needed', 'gate_failed', 'ci_failed', 'forecast_exceeded', 'budget_usd', 'turns', 'no_progress']);
 const FC = require('./failure-class.cjs');
 // The tier an escalation climbs to, as the alias Claude Code's --model takes.
 const CLAUDE_MODEL_FOR_TIER = { reasoning: 'opus', mid: 'sonnet', fast: 'haiku' };
@@ -139,8 +139,12 @@ function decideStop({ unit, rows = [], limits = {}, snapshot, daySpent = 0 }) {
 
 /** One shell-safe line: the command to run, unattended, and nothing else. */
 function unitPrompt(host, unit, note) {
+  const clean = (t) => String(t || '').replace(/[\r\n&|<>%^"]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (unit.action === 'ci_fix') {
+    return `PAN autodev CI fix round ${unit.round} for phase ${unit.phase}: the pull request checks failed. ${clean(note)} Fix the code so they pass and commit the fix. Do not ask questions. Do not start another phase or command.`;
+  }
   const name = SESSION_ACTIONS[unit.action];
-  const args = `${unit.phase}${unit.action === 'plan_gaps' ? ' --gaps' : ''}`;
+  const args = `${unit.phase}${unit.action === 'plan_gaps' ? ' --gaps' : ''}${unit.plan ? ` --plan ${unit.plan}` : ''}`;
   const cmd = host === 'codex' ? `$pan-${name} ${args}` : host === 'opencode' ? `/pan-${name} ${args}` : `/pan:${name} ${args}`;
   const base = `PAN autodev unit: run ${cmd} unattended. Do not ask questions: take the recommended default and record what you assumed. Do not start another phase or command when it ends.`;
   return note ? `${base} ${String(note).replace(/[\r\n&|<>%^"]/g, ' ').replace(/\s+/g, ' ').trim()}` : base;
@@ -160,6 +164,17 @@ function parseCost(stdout) {
     try { const o = JSON.parse(lines.slice(i).join('\n')); if (o && o.total_cost_usd != null) return Number(o.total_cost_usd); } catch {}
   }
   return null;
+}
+
+/**
+ * Test safety: with PAN_STANDIN_DIR set, a host CLI must be a stand-in in that directory.
+ * A test whose stand-in went missing would otherwise reach the real CLI, and spend.
+ */
+function standinMissing(bin) {
+  const dir = process.env.PAN_STANDIN_DIR;
+  if (!dir) return null;
+  const names = process.platform === 'win32' ? [`${bin}.cmd`, `${bin}.exe`, bin] : [bin];
+  return names.some((n) => fs.existsSync(path.join(dir, n))) ? null : `PAN_STANDIN_DIR is set and has no stand-in for ${bin}: refusing to run the real CLI`;
 }
 
 /** The host argv for a session: hosts.cjs's, plus Claude's spend ceiling and an escalated model. */
@@ -184,6 +199,8 @@ function executeUnit(cwd, unit, host, opts = {}) {
     return { exit: failed ? (r.status || 1) : 0, cost_usd: 0, argv: ['phase', 'complete', String(unit.phase)], error: failed ? ((res && res.error) || 'phase_complete_failed') : null, reason: res && res.reason ? String(res.reason).slice(0, 300) : null, duration_ms: Date.now() - t0 };
   }
   const h = HOSTS[host];
+  const refused = standinMissing(h.runner.bin);
+  if (refused) return { exit: 127, cost_usd: 0, argv: [], error: refused, stderr_tail: refused, duration_ms: 0 };
   const prompt = unitPrompt(host, unit, opts.note);
   const argv = sessionArgv(host, prompt, { remainingUsd: opts.remainingUsd, model: opts.model });
   const useShell = h.runner.shell === 'win32' && process.platform === 'win32';
@@ -247,6 +264,107 @@ function recorded(r) {
   const out = { status: r.status, unit: r.unit, exit: r.exit, cost_usd: r.cost_usd, snapshot_after: r.snapshot_after };
   for (const k of ['error', 'reason', 'forecast_p90']) if (r[k] != null) out[k] = r[k];
   return out;
+}
+
+// ─── Worktrees (program A3) ────────────────────────────────────────────────
+// With --worktrees, an execute unit whose phase has two or more pending plans runs each
+// plan in its own git worktree and session (`exec-phase N --plan <id>`), sub-wave by
+// sub-wave (plans of a wave that share a file are in different sub-waves). After each
+// sub-wave its branches are shadow-merged onto HEAD and the oracle run (worktree
+// preflight); only then are they merged into the checkout.
+
+function git(cwd, args) {
+  const r = spawnSync('git', ['-c', 'user.name=PAN autodev', '-c', 'user.email=autodev@pan.local', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' });
+  return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
+}
+
+function pendingPlanGroups(cwd, phase) {
+  const r = spawnSync(process.execPath, [TOOLS, 'phase-plan-index', String(phase)], { cwd, encoding: 'utf8' });
+  let idx = null;
+  try { idx = JSON.parse(r.stdout); } catch { return []; }
+  const pending = (idx.plans || []).filter((p) => !p.has_summary);
+  const groups = [];
+  for (const w of [...new Set(pending.map((p) => p.wave))].sort((a, b) => a - b)) {
+    const inWave = pending.filter((p) => p.wave === w);
+    for (const sw of [...new Set(inWave.map((p) => p.sub_wave || 0))].sort((a, b) => a - b)) groups.push(inWave.filter((p) => (p.sub_wave || 0) === sw).map((p) => p.id));
+  }
+  return groups;
+}
+
+/** @returns {{stop?: {reason, detail}}} */
+function runPlansInWorktrees(cwd, unit, host, groups, ctx) {
+  const os = require('os');
+  const { shadowMergePreflight } = require('./worktree.cjs');
+  for (const group of groups) {
+    const made = [];
+    try {
+      for (const plan of group) {
+        const branch = `pan/autodev-p${unit.phase}-${plan}-${crypto.randomBytes(2).toString('hex')}`;
+        const dir = path.join(os.tmpdir(), `pan-autodev-wt-${crypto.randomBytes(4).toString('hex')}`);
+        const add = git(cwd, ['worktree', 'add', '-b', branch, dir, 'HEAD']);
+        if (!add.ok) return { stop: { reason: 'human_needed', detail: `could not create a worktree for plan ${plan}: ${add.err}` } };
+        made.push({ plan, branch, dir });
+        const u = { action: 'execute', phase: unit.phase, plan, command: `/pan:exec-phase ${unit.phase} --plan ${plan}` };
+        const seq = ctx.nextSeq();
+        ctx.append({ seq, attempt: 1, status: 'started', unit: u, host, worktree: branch, start_sha: gitHead(dir) });
+        const res = executeUnit(dir, u, host, ctx.opts);
+        // Whatever the session left uncommitted belongs to its plan.
+        if (git(dir, ['status', '--porcelain']).out) { git(dir, ['add', '-A']); git(dir, ['commit', '-q', '-m', `autodev: plan ${plan} (uncommitted work)`]); }
+        ctx.append({ seq, attempt: 1, status: 'finished', unit: u, host, worktree: branch, ...res, end_sha: gitHead(dir), snapshot_after: snapshotHash(dir) });
+        if (res.exit !== 0) return { stop: { reason: 'human_needed', detail: `plan ${plan} failed in its worktree (exit ${res.exit}); the branch ${branch} keeps its work` }, keep: branch };
+      }
+      const pf = shadowMergePreflight(cwd, { base: 'HEAD', branches: made.map((m) => m.branch) });
+      if (pf.verdict && !['clean', 'no_test'].includes(pf.verdict)) {
+        return { stop: { reason: 'human_needed', detail: `the merge preflight for plans ${group.join(', ')} says ${pf.verdict}${pf.conflict ? ` (${pf.conflict.files.join(', ')})` : ''}` } };
+      }
+      for (const m of made) {
+        const merged = git(cwd, ['merge', '--no-ff', '--no-edit', m.branch]);
+        if (!merged.ok) { git(cwd, ['merge', '--abort']); return { stop: { reason: 'human_needed', detail: `merging plan ${m.plan} back conflicted: ${merged.err.slice(0, 200)}` } }; }
+      }
+    } finally {
+      for (const m of made) {
+        git(cwd, ['worktree', 'remove', '--force', m.dir]);
+        try { fs.rmSync(m.dir, { recursive: true, force: true }); } catch {}
+        git(cwd, ['branch', '-D', m.branch]);
+      }
+      git(cwd, ['worktree', 'prune']);
+    }
+  }
+  return {};
+}
+
+// ─── CI in the loop (program A2) ────────────────────────────────────────────
+// With --ci, each completed phase is checked against the pull request's checks (ci.cjs).
+// A failure starts a fix round, a fresh session given the failing names and log tail;
+// the breaker stops the run after --ci-rounds rounds (3). The session's own account of
+// its tests never decides: the checks do.
+
+function ciBase(cwd, opts) {
+  if (opts.ciBase) return opts.ciBase;
+  const r = git(cwd, ['rev-parse', '--abbrev-ref', 'origin/HEAD']);
+  return r.ok && r.out ? r.out.replace(/^origin\//, '') : 'main';
+}
+
+function runCiRounds(cwd, unit, host, ctx) {
+  const { waitForCi, breakerTripped, DEFAULT_CI_ROUNDS } = require('./ci.cjs');
+  const max = Number(ctx.opts.ciRounds) > 0 ? Number(ctx.opts.ciRounds) : DEFAULT_CI_ROUNDS;
+  for (let round = 0; ; round++) {
+    if (ctx.opts.ciPush) {
+      const p = git(cwd, ['push']);
+      if (!p.ok) return { stop: { reason: 'human_needed', detail: `--ci-push: git push failed: ${p.err.slice(0, 200)}` } };
+    }
+    const ci = waitForCi(cwd, { head: gitHead(cwd) || undefined, base: ciBase(cwd, ctx.opts), timeoutMs: ctx.opts.ciTimeoutMs, pollMs: ctx.opts.ciPollMs });
+    ctx.append({ status: 'ci', phase: unit.phase, round, ci: { status: ci.status, failed: ci.failed, ignored: ci.ignored, reason: ci.reason } });
+    if (ci.status === 'passed') return {};
+    if (ci.status !== 'failed') return { stop: { reason: 'human_needed', detail: `CI for phase ${unit.phase} is ${ci.status}${ci.reason ? `: ${ci.reason}` : ''}` } };
+    if (breakerTripped(round, max)) return { stop: { reason: 'ci_failed', detail: `phase ${unit.phase}: CI still fails after ${round} fix round(s): ${ci.failed.join(', ')}` } };
+    const u = { action: 'ci_fix', phase: unit.phase, round: round + 1, command: `CI fix round ${round + 1}` };
+    const seq = ctx.nextSeq();
+    ctx.append({ seq, attempt: 1, status: 'started', unit: u, host, start_sha: gitHead(cwd) });
+    const note = `Failing checks: ${ci.failed.join(', ')}. Failing log: ${String(ci.tail || '').split(/\r?\n/).slice(-6).join(' / ').slice(-600)}`;
+    const res = executeUnit(cwd, u, host, { ...ctx.opts, note });
+    ctx.append({ seq, attempt: 1, status: 'finished', unit: u, host, ...res, end_sha: gitHead(cwd), snapshot_after: snapshotHash(cwd) });
+  }
 }
 
 function newRunId() {
@@ -318,6 +436,17 @@ function runAutodev(cwd, opts = {}) {
       persistRunFacts(cwd);
       return { run: runId, ledger: path.relative(cwd, ledger).replace(/\\/g, '/'), host, stop, units: units.map((u) => ({ action: u.action, phase: u.phase })), spent_usd: readRows(ledger).filter((r) => r.status === 'finished').reduce((n, r) => n + (Number(r.cost_usd) || 0), 0) };
     }
+    if (opts.worktrees && !pending && unit.action === 'execute') {
+      const groups = pendingPlanGroups(cwd, unit.phase);
+      if (groups.flat().length >= 2) {
+        let next = new Set(rows.filter((r) => r.status === 'started').map((r) => r.seq)).size;
+        const wt = runPlansInWorktrees(cwd, unit, host, groups, { append, opts, nextSeq: () => ++next });
+        if (wt.stop) { append({ status: 'stopped', ...wt.stop }); persistRunFacts(cwd); return finish(); }
+        persistRunFacts(cwd);
+        units.push(unit);
+        continue;
+      }
+    }
     const seq = pending ? pending.seq : new Set(rows.filter((r) => r.status === 'started').map((r) => r.seq)).size + 1;
     const u = { action: unit.action, phase: unit.phase, command: unit.command };
     let note = null;
@@ -333,6 +462,10 @@ function runAutodev(cwd, opts = {}) {
         row.forecast_p90 = unitForecast(cwd, unit);
         if (routed) row.recovered_from = routed.cls;
         append(row);
+        if (opts.ci && unit.action === 'complete_phase') {
+          const ci = runCiRounds(cwd, unit, host, { append, opts, nextSeq: () => new Set(readRows(ledger).filter((r) => r.status === 'started').map((r) => r.seq)).size + 1 });
+          if (ci.stop) { append({ status: 'stopped', ...ci.stop }); persistRunFacts(cwd); return finish(); }
+        }
         break;
       }
       if (unit.action === 'complete_phase') { append(row); break; }
@@ -398,9 +531,10 @@ function cmdAutodev(cwd, sub, flags, raw) {
   if (sub !== 'run' && sub !== 'resume') { output({ error: 'unknown_subcommand', reason: 'Usage: autodev run|resume|status|report|replay [--host H] [--max-usd N] [--max-usd-day N] [--max-turns N] [--run ID]' }, raw); return; }
   const r = runAutodev(cwd, {
     host: flags.host || (sub === 'run' ? 'claude' : undefined), maxUsd: numOrNull(flags.maxUsd), maxUsdDay: numOrNull(flags.maxUsdDay), maxTurns: numOrNull(flags.maxTurns),
-    runId: flags.run, resume: sub === 'resume',
+    runId: flags.run, resume: sub === 'resume', worktrees: !!flags.worktrees,
+    ci: !!flags.ci, ciRounds: numOrNull(flags.ciRounds), ciPush: !!flags.ciPush, ciBase: flags.ciBase || undefined,
   });
   output(r, raw, r.stop ? r.stop.reason : r.error);
 }
 
-module.exports = { STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };
+module.exports = { standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };

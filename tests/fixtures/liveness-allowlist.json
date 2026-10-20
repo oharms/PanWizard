@@ -473,6 +473,6 @@
   },
   {
     "id": "command:autodev",
-    "reason": "Driven end to end at tier 0 by tests/autodev.test.cjs with a stand-in host on PATH (every stop reason, resume after a kill). A harness scenario needs the deterministic simulation H8 builds (session 6b), which then removes this entry."
+    "reason": "Driven at tier 0 by tests/autodev.test.cjs (a stand-in host on PATH, every stop reason, resume after a kill) and by harness/src/sim.cjs (H8, seeded faults on 20 seeds). Neither is a harness scenario that installs PAN and invokes /pan:autodev; that needs a host double that answers slash commands."
   }
 ]

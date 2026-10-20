@@ -102,7 +102,7 @@ describe('A1a: stop reasons from fixture state', () => {
   });
 
   test('every stop reason is one of the declared ones', () => {
-    assert.deepEqual([...A.STOP_REASONS].sort(), ['budget_usd', 'done', 'forecast_exceeded', 'gate_failed', 'human_needed', 'no_progress', 'turns']);
+    assert.deepEqual([...A.STOP_REASONS].sort(), ['budget_usd', 'ci_failed', 'done', 'forecast_exceeded', 'gate_failed', 'human_needed', 'no_progress', 'turns']);
   });
 });
 
@@ -161,7 +161,7 @@ process.stdout.write(JSON.stringify({ result: 'ok', total_cost_usd: Number(proce
     // An unattended run needs a spend cap (A6); these tests are not about it.
     if (!args.includes('--max-usd') && args[0] !== 'status') args = [...args, '--max-usd', '100'];
     const r = spawnSync(process.execPath, [TOOLS, 'autodev', ...args, '--host', 'claude'], {
-      cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, FAKE_LOG: fakeLog, ...env },
+      cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, PAN_STANDIN_DIR: binDir, FAKE_LOG: fakeLog, ...env },
     });
     let json = null;
     try { json = JSON.parse(r.stdout); } catch {}
@@ -247,5 +247,24 @@ process.stdout.write(JSON.stringify({ result: 'ok', total_cost_usd: Number(proce
     assert.match(t, /pan-tools\.cjs autodev run/);
     assert.match(t, /autodev resume/);
     assert.match(t, /autodev status/);
+  });
+});
+
+describe('test safety: PAN_STANDIN_DIR', () => {
+  test('with the variable set, a host with no stand-in there is refused, never run', () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-standin-'));
+    dirs.push(empty);
+    const prev = process.env.PAN_STANDIN_DIR;
+    process.env.PAN_STANDIN_DIR = empty;
+    try {
+      assert.match(A.standinMissing('claude'), /refusing to run the real CLI/);
+      const r = A.executeUnit(empty, { action: 'plan', phase: '1', command: '/pan:plan-phase 1' }, 'claude', {});
+      assert.equal(r.exit, 127);
+      assert.match(r.error, /PAN_STANDIN_DIR/);
+      fs.writeFileSync(path.join(empty, process.platform === 'win32' ? 'claude.cmd' : 'claude'), '');
+      assert.equal(A.standinMissing('claude'), null);
+    } finally {
+      if (prev === undefined) delete process.env.PAN_STANDIN_DIR; else process.env.PAN_STANDIN_DIR = prev;
+    }
   });
 });

@@ -275,6 +275,7 @@
     "worktree cleanup",
     "worktree create",
     "worktree list",
+    "worktree preflight",
     "worktree remove"
   ],
   "case_arms": [
@@ -613,7 +614,8 @@
     "workflow.plan_check",
     "workflow.research",
     "workflow.review_mode",
-    "workflow.verifier"
+    "workflow.verifier",
+    "workflow.worktree_isolation"
   ],
   "content": {
     "commands/pan": [

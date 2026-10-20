@@ -278,9 +278,9 @@ function cmdPhasePlanIndex(cwd, phase, raw, opts = {}) {
   const planFiles = filterPlanFiles(phaseFiles);
   const summaryFiles = filterSummaryFiles(phaseFiles);
 
-  const { plans, waves, incomplete, hasCheckpoints } = buildPlanIndex(phaseDir, planFiles, summaryFiles);
+  const { plans, waves, subWaves, incomplete, hasCheckpoints } = buildPlanIndex(phaseDir, planFiles, summaryFiles);
 
-  const result = { phase: normalized, plans, waves, incomplete, has_checkpoints: hasCheckpoints };
+  const result = { phase: normalized, plans, waves, sub_waves: subWaves, incomplete, has_checkpoints: hasCheckpoints };
   // `--failed <ids>` (market-ideas M28): the plans that must not run after those
   // failed, because a dependency, direct or transitive, is among them.
   if (opts.failed) {
@@ -336,6 +336,35 @@ function blockedPlans(plans, failedIds) {
  * @param {string[]} summaryFiles - List of summary filenames
  * @returns {{plans: Array, waves: Object, incomplete: string[], hasCheckpoints: boolean}}
  */
+/**
+ * Split one wave's plans into sub-waves so no two plans in a sub-wave modify the same
+ * file (program A3). Greedy, in plan order: each plan joins the first sub-wave it does
+ * not overlap. A plan that declares no files may touch anything, so it runs alone.
+ * @param {Array<{id: string, files_modified?: string[]}>} plans
+ * @returns {string[][]} plan ids per sub-wave
+ */
+function partitionWave(plans) {
+  const subs = [];
+  const norm = (p) => String(p).replace(/\\/g, '/').replace(/^\.\//, '');
+  for (const p of plans) {
+    const files = (p.files_modified || []).map(norm);
+    const solo = files.length === 0;
+    let placed = false;
+    if (!solo) {
+      for (const sub of subs) {
+        if (sub.solo) continue;
+        if (files.some((x) => sub.files.has(x))) continue;
+        sub.ids.push(p.id);
+        for (const x of files) sub.files.add(x);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) subs.push({ ids: [p.id], files: new Set(files), solo });
+  }
+  return subs.map((x) => x.ids);
+}
+
 function buildPlanIndex(phaseDir, planFiles, summaryFiles) {
   const completedPlanIds = new Set(
     summaryFiles.map(summaryFile => summaryFile.replace('-summary.md', '').replace('summary.md', ''))
@@ -401,7 +430,14 @@ function buildPlanIndex(phaseDir, planFiles, summaryFiles) {
     waves[waveKey].push(planId);
   }
 
-  return { plans, waves, incomplete, hasCheckpoints };
+  // A3: within a wave, plans that share a file run in different sub-waves.
+  const subWaves = {};
+  for (const [w, ids] of Object.entries(waves)) {
+    subWaves[w] = partitionWave(ids.map((id) => plans.find((p) => p.id === id)));
+    subWaves[w].forEach((sub, i) => { for (const id of sub) plans.find((p) => p.id === id).sub_wave = i; });
+  }
+
+  return { plans, waves, subWaves, incomplete, hasCheckpoints };
 }
 
 /**
@@ -1033,6 +1069,7 @@ function classifyPlanTier(frontmatter, config) {
 }
 
 module.exports = {
+  partitionWave,
   cmdPhasesList,
   cmdPhaseNextDecimal,
   cmdFindPhase,

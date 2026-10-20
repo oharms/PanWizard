@@ -66,6 +66,8 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       // R4: a second review on another host's CLI (another model family), read-only.
       // `off`, or a host: claude | codex | copilot | gemini | opencode.
       cross_family_review: 'off',
+      // A3: pan-exec-waves runs each executor in its own git worktree (Claude Code).
+      worktree_isolation: false,
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },

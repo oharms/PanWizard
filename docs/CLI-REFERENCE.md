@@ -1981,7 +1981,19 @@ Writes `.planning/autodev/<run>/run.json` and `ledger.jsonl`: a `started` row be
 
 **Record (A5).** `blackbox.jsonl` holds every stop decision with its inputs. `autodev replay [--run ID]` re-runs the stop logic over them and returns `identical` and any `mismatches`. `autodev report [--run ID]` writes `dossier.md` and `dossier.html` beside the ledger.
 
-**Module:** `autodev.cjs`, `failure-class.cjs`, `autodev-report.cjs`
+**Worktrees (A3).** `--worktrees`: an execute unit whose phase has two or more pending plans runs each plan in its own git worktree and session (`exec-phase N --plan <id>`), sub-wave by sub-wave (`phase-plan-index` reports `sub_waves`: plans of a wave that share a file are split). Each sub-wave's branches pass `worktree preflight` before they are merged into the checkout; a conflict or a red merge stops with `human_needed`.
+
+**CI (A2, `ci.cjs`).** `--ci`: after each completed phase, `gh pr checks` is the oracle. Checks whose latest run on the base branch (`--ci-base`, else `origin/HEAD`) failed are ignored. A failure starts a fix round (a `ci_fix` session given the failing names and `gh run view --log-failed` tail); `--ci-rounds N` (3) rounds later the run stops with `ci_failed`. Checks for a commit other than HEAD are `stale` and stop the run; `--ci-push` pushes after each phase. Each check is a `ci` row in the ledger.
+
+**Test safety.** With `PAN_STANDIN_DIR` set (the test suite sets it), autodev, the CI oracle and the cross-family lane run a host CLI only when a stand-in for it is in that directory.
+
+**Module:** `autodev.cjs`, `failure-class.cjs`, `autodev-report.cjs`, `ci.cjs`
+
+### `worktree preflight --branches a,b [--base REF] [--test CMD]`
+
+The shadow-merge preflight (program A3). In a throwaway worktree at `--base` (HEAD), merges each branch in order and runs the test command (`--test`, else the project's). `verdict`: `clean`, `conflict` (with `conflict.branch` and `conflict.files`), `break_together` (each branch passes alone, `alone` says so, but merged they fail), `branch_fails` (`failing` lists the branches red on their own), `base_failing`, or `no_test`. The checkout is never touched.
+
+**Module:** `worktree.cjs`
 
 ### `next-action`
 

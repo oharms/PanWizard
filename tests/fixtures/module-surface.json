@@ -29,6 +29,7 @@
     "selectUnit:function",
     "sessionArgv:function",
     "snapshotHash:function",
+    "standinMissing:function",
     "unitForecast:function",
     "unitPrompt:function",
     "verificationStatus:function"
@@ -56,6 +57,14 @@
     "readSchedule:function",
     "recordRun:function",
     "writeSchedule:function"
+  ],
+  "ci.cjs": [
+    "DEFAULT_CI_ROUNDS:number",
+    "baseFailing:function",
+    "breakerTripped:function",
+    "bucketOf:function",
+    "ciOracle:function",
+    "waitForCi:function"
   ],
   "codebase.cjs": [
     "buildDependencyGraph:function",
@@ -826,6 +835,7 @@
     "dependencyNames:function",
     "markPhaseCompleteInRoadmap:function",
     "markRequirementsCompleteForPhase:function",
+    "partitionWave:function",
     "removePhaseFromDisk:function",
     "renumberDecimalPhases:function",
     "renumberIntegerPhases:function",
@@ -1216,9 +1226,11 @@
     "cmdWorktreeCleanup:function",
     "cmdWorktreeCreate:function",
     "cmdWorktreeList:function",
+    "cmdWorktreePreflight:function",
     "cmdWorktreeRemove:function",
     "createTaskWorktree:function",
     "listArmyWorktrees:function",
-    "removeTaskWorktree:function"
+    "removeTaskWorktree:function",
+    "shadowMergePreflight:function"
   ]
 }

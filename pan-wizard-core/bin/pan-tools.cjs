@@ -912,7 +912,8 @@ async function main() {
       // A1: the deterministic outer loop — a fresh host session per unit, stops in code.
       require('./lib/autodev.cjs').cmdAutodev(cwd, args[1], {
         host: getArgValue(args, '--host'), maxUsd: getArgValue(args, '--max-usd'), maxUsdDay: getArgValue(args, '--max-usd-day'),
-        maxTurns: getArgValue(args, '--max-turns'), run: getArgValue(args, '--run'),
+        maxTurns: getArgValue(args, '--max-turns'), run: getArgValue(args, '--run'), worktrees: args.includes('--worktrees'),
+        ci: args.includes('--ci'), ciRounds: getArgValue(args, '--ci-rounds'), ciPush: args.includes('--ci-push'), ciBase: getArgValue(args, '--ci-base'),
       }, raw);
       break;
     }
@@ -1567,8 +1568,14 @@ async function main() {
         worktree.cmdWorktreeRemove(cwd, args[2], getArgValue(args, '--branch'), raw, { force: args.includes('--force') });
       } else if (subcommand === 'cleanup') {
         worktree.cmdWorktreeCleanup(cwd, raw, { force: args.includes('--force') });
+      } else if (subcommand === 'preflight') {
+        // A3: shadow-merge branches onto the base in a throwaway worktree and run the oracle.
+        worktree.cmdWorktreePreflight(cwd, {
+          base: getArgValue(args, '--base'), test: getArgValue(args, '--test'),
+          branches: String(getArgValue(args, '--branches') || '').split(',').map((b) => b.trim()).filter(Boolean),
+        }, raw);
       } else {
-        error('Unknown worktree subcommand. Available: list, create, remove, cleanup');
+        error('Unknown worktree subcommand. Available: list, create, remove, cleanup, preflight');
       }
       break;
     }

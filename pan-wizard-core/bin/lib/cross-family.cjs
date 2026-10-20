@@ -102,6 +102,8 @@ function crossFamilyReview(cwd, phase, opts = {}) {
   const reps = Math.max(1, Math.min(10, Number(opts.reps) || 1));
   const runs = [];
   const outputs = [];
+  const refused = require('./autodev.cjs').standinMissing(h.bin);
+  if (refused) return { ...base, error: 'standin_missing', reason: refused };
   for (let i = 0; i < reps; i++) {
     const r = spawnSync(h.bin, argv, {
       cwd, encoding: 'utf8', input: h.review.promptVia === 'stdin' ? built.prompt : undefined,

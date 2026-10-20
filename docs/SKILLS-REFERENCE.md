@@ -89,12 +89,12 @@ Initialize a new project with deep context gathering and project.md
 Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
 
 ```text
-/pan:autodev [run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--run <id>]
+/pan:autodev [run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Phase Lifecycle  
-**Lines:** 66
+**Lines:** 75
 
 #### /pan:design-phase
 
@@ -125,7 +125,7 @@ Gather phase context through adaptive questioning before planning
 Execute all plans in a phase with wave-based parallelization
 
 ```text
-/pan:exec-phase <phase-number> [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]
+/pan:exec-phase <phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]
 ```
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion  
