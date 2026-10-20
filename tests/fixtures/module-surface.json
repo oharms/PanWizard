@@ -9,16 +9,27 @@
     "removeClaudeMdImport:function",
     "upsertAgentsMdSection:function"
   ],
+  "autodev-report.cjs": [
+    "buildDossier:function",
+    "cmdAutodevReplay:function",
+    "cmdAutodevReport:function",
+    "renderHtml:function",
+    "replayRun:function",
+    "writeDossier:function"
+  ],
   "autodev.cjs": [
     "STOP_REASONS:object",
     "cmdAutodev:function",
+    "daySpend:function",
     "decideStop:function",
     "executeUnit:function",
     "pendingUnit:function",
     "runAutodev:function",
     "runStatus:function",
     "selectUnit:function",
+    "sessionArgv:function",
     "snapshotHash:function",
+    "unitForecast:function",
     "unitPrompt:function",
     "verificationStatus:function"
   ],
@@ -431,6 +442,13 @@
     "listExperiments:function",
     "newExperiment:function",
     "pruneExperiment:function"
+  ],
+  "failure-class.cjs": [
+    "FAILURE_CLASSES:object",
+    "POLICIES:object",
+    "classifyFailure:function",
+    "errorTail:function",
+    "routeFailure:function"
   ],
   "findings.cjs": [
     "FINDINGS_FILE:string",

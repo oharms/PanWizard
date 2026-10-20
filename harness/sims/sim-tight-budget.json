@@ -1,0 +1,8 @@
+{
+  "id": "sim-tight-budget",
+  "why": "A spend cap smaller than a clean run needs, and frequent cost spikes: the governor must stop it with budget_usd and never overspend by more than one unit.",
+  "phases": 3,
+  "gate": "enforce",
+  "limits": { "maxUsd": 0.9, "maxTurns": 30 },
+  "faults": { "noop": 0.02, "compile": 0.08, "cost_spike": 0.2, "human": 0.02, "gaps": 0.04 }
+}

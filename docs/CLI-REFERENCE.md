@@ -1975,7 +1975,13 @@ Stop reasons: `done` (the milestone audit is next), `human_needed` (a verificati
 
 Writes `.planning/autodev/<run>/run.json` and `ledger.jsonl`: a `started` row before each unit and a `finished` row after it (`argv`, `exit`, `cost_usd` from Claude's JSON envelope, `start_sha`, `end_sha`, `snapshot_after`), and a `stopped` row with the reason. `resume` continues the latest run (or `--run`), relaunching a unit that was in flight when it died. `.planning/autodev/state.json` keeps each phase's `verified` and `merged` facts. `status` reports the latest run.
 
-**Module:** `autodev.cjs`
+**Failures (A4, `failure-class.cjs`).** A failed session is classified: `compile` and `assertion` are retried with the error tail in the prompt, then at the next tier (Claude gets `--model`); `timeout` and `unknown` are restarted once; `flake` is quarantined; `missing_env`, `merge_conflict`, `integrity_violation` and `scope_violation` stop with `human_needed`; `budget` stops with `budget_usd`. The ledger row carries `failure_class` and `policy`.
+
+**Spend (A6).** A run needs a cap: `--max-usd` or `budget.max_usd_run`, else `budget_required`. `--max-usd-day` or `budget.max_usd_day` caps today's spend across runs (UTC). Claude sessions get the remainder as `--max-budget-usd`. An execute unit that costs more than the P6 p90 forecast (per-plan p90 × the phase's plans, when the forecast has enough samples) stops the run with `forecast_exceeded`.
+
+**Record (A5).** `blackbox.jsonl` holds every stop decision with its inputs. `autodev replay [--run ID]` re-runs the stop logic over them and returns `identical` and any `mismatches`. `autodev report [--run ID]` writes `dossier.md` and `dossier.html` beside the ledger.
+
+**Module:** `autodev.cjs`, `failure-class.cjs`, `autodev-report.cjs`
 
 ### `next-action`
 

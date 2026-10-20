@@ -911,7 +911,7 @@ async function main() {
     case 'autodev': {
       // A1: the deterministic outer loop — a fresh host session per unit, stops in code.
       require('./lib/autodev.cjs').cmdAutodev(cwd, args[1], {
-        host: getArgValue(args, '--host'), maxUsd: getArgValue(args, '--max-usd'),
+        host: getArgValue(args, '--host'), maxUsd: getArgValue(args, '--max-usd'), maxUsdDay: getArgValue(args, '--max-usd-day'),
         maxTurns: getArgValue(args, '--max-turns'), run: getArgValue(args, '--run'),
       }, raw);
       break;

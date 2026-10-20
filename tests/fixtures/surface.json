@@ -576,6 +576,8 @@
     "brave_search",
     "budget.default_points",
     "budget.enforce",
+    "budget.max_usd_day",
+    "budget.max_usd_run",
     "budget.micro_threshold_files",
     "budget.micro_threshold_tasks",
     "budget.verify_reserve",

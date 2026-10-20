@@ -87,6 +87,10 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       // Fraction of the spawn budget held back for re-verification (0..0.5).
       // Surfaced as an indicator always; a hard early stop only under enforce.
       verify_reserve: 0.15,
+      // A6: autodev's dollar caps, per run and per day (UTC), across every run's ledger.
+      // null: none set. An unattended run needs a run cap, here or as --max-usd.
+      max_usd_run: null,
+      max_usd_day: null,
     },
     commit: {
       safety_checks: true,

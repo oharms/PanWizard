@@ -89,12 +89,12 @@ Initialize a new project with deep context gathering and project.md
 Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
 
 ```text
-/pan:autodev [run | resume | status] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-turns N] [--run <id>]
+/pan:autodev [run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--run <id>]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Phase Lifecycle  
-**Lines:** 53
+**Lines:** 66
 
 #### /pan:design-phase
 

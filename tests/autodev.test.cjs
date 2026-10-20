@@ -102,7 +102,7 @@ describe('A1a: stop reasons from fixture state', () => {
   });
 
   test('every stop reason is one of the declared ones', () => {
-    assert.deepEqual([...A.STOP_REASONS].sort(), ['budget_usd', 'done', 'gate_failed', 'human_needed', 'no_progress', 'turns']);
+    assert.deepEqual([...A.STOP_REASONS].sort(), ['budget_usd', 'done', 'forecast_exceeded', 'gate_failed', 'human_needed', 'no_progress', 'turns']);
   });
 });
 
@@ -158,6 +158,8 @@ process.stdout.write(JSON.stringify({ result: 'ok', total_cost_usd: Number(proce
 
   function autodev(dir, args, env = {}) {
     fakeLog = path.join(dir, 'fake.log');
+    // An unattended run needs a spend cap (A6); these tests are not about it.
+    if (!args.includes('--max-usd') && args[0] !== 'status') args = [...args, '--max-usd', '100'];
     const r = spawnSync(process.execPath, [TOOLS, 'autodev', ...args, '--host', 'claude'], {
       cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, FAKE_LOG: fakeLog, ...env },
     });
