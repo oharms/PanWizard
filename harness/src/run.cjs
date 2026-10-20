@@ -626,6 +626,7 @@ function main() {
     controls: controlResults,
     failures, promotable: promotable.map(e => ({ signature: e.signature, scenario: e.scenario, step: e.step, expect: e.expect, detail: e.detail, runs: e.runs.length })),
     scoreboard: args.scoreboards.length ? detectionScoreboard(args.scoreboards) : null,
+    pairs: pairSummary(results, scenarios),
     promptMutant: mutant ? { ...mutant, verdict: results.some(r => r.status === 'failed') ? 'load_bearing' : (results.some(r => r.status === 'passed') ? 'decorative' : 'undecided') } : null,
   };
   if (summary.promptMutant && args.ledger) {
@@ -656,6 +657,11 @@ function main() {
     lines.push('');
   }
   if (summary.scoreboard) lines.push(...renderMarkdown(summary.scoreboard));
+  if (summary.pairs.length) {
+    const fmt = (d, k = 1) => (d.mean == null ? '—' : `${(d.mean * k).toFixed(2)}${d.lower == null ? '' : ` [${(d.lower * k).toFixed(2)}, ${(d.upper * k).toFixed(2)}]`}`);
+    lines.push('', '## PAN versus the bare host (H10)', '', 'Paired deltas, PAN minus the host alone, with 95% intervals.', '', '| Pair | Reps | Completion | Cost ($) | Duration (s) |', '|---|---|---|---|---|');
+    for (const p of summary.pairs) lines.push(`| ${p.pair} | ${p.n} | ${fmt(p.completion)} | ${fmt(p.cost_usd)} | ${fmt(p.duration_ms, 0.001)} |`);
+  }
   if (promotable.length) {
     lines.push('## Promotable findings (ledger)', '');
     for (const e of promotable) lines.push(`- \`${e.signature}\` ${e.scenario} step ${e.step} \`${e.expect}\` — ${e.detail} (${e.runs.length} run${e.runs.length === 1 ? '' : 's'})`);
@@ -684,4 +690,35 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+/**
+ * H10: each pair's paired deltas (pan − stock), rep by rep: completion (passed = 1),
+ * cost and duration, each with a 95% interval (stats.cjs pairedDelta).
+ */
+function pairSummary(results, scenarios) {
+  const { pairedDelta } = require('./stats.cjs');
+  const arms = new Map();
+  for (const s of scenarios) if (s.pair) arms.set(s.id, s.pair);
+  const byPair = new Map();
+  for (const r of results) {
+    const p = arms.get(r.scenario);
+    if (!p || r.control || r.status === 'skipped') continue;
+    if (!byPair.has(p.id)) byPair.set(p.id, { goal: p.goal, reps: new Map() });
+    const reps = byPair.get(p.id).reps;
+    if (!reps.has(r.rep)) reps.set(r.rep, {});
+    reps.get(r.rep)[p.arm] = r;
+  }
+  const out = [];
+  for (const [id, { goal, reps }] of byPair) {
+    const both = [...reps.values()].filter((x) => x.pan && x.stock);
+    const cost = (r) => (r.steps || []).reduce((n, st) => n + (st.costUsd || 0), 0);
+    out.push({
+      pair: id, goal, n: both.length,
+      completion: pairedDelta(both.map((x) => ({ pan: x.pan.status === 'passed' ? 1 : 0, stock: x.stock.status === 'passed' ? 1 : 0 }))),
+      cost_usd: pairedDelta(both.map((x) => ({ pan: cost(x.pan), stock: cost(x.stock) }))),
+      duration_ms: pairedDelta(both.map((x) => ({ pan: x.pan.durationMs || 0, stock: x.stock.durationMs || 0 }))),
+    });
+  }
+  return out;
+}
+
+module.exports = { pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

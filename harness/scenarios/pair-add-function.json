@@ -1,0 +1,85 @@
+{
+  "id": "pair-add-function",
+  "tier": 0,
+  "description": "The PAN arm of the add-function pair: /pan:quick on Claude Code with PAN installed, replayed from a committed cassette.",
+  "why": "Program H10: the same seed and goal with and without PAN, paired, is how the product's value claim gets measured. At tier 0 the pair replays synthetic cassettes, which proves the plumbing (both arms run, the report pairs them and gives deltas with intervals); the evidence run re-records both arms from a real model with paired reps.",
+  "seed": "empty",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 6,
+    "maxStepMinutes": 4
+  },
+  "pair": {
+    "id": "add-function",
+    "arm": "pan",
+    "goal": "Add an add(a, b) function to math.js"
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:quick Add an add(a, b) function to math.js",
+      "double": {
+        "cassette": "<repo>/harness/cassettes/pair-add-function-pan.json",
+        "record": {
+          "script": {
+            "rules": [
+              {
+                "when": {
+                  "toolsInclude": [
+                    "Bash"
+                  ]
+                },
+                "turns": [
+                  {
+                    "tool": {
+                      "name": "Bash",
+                      "input": {
+                        "command": "node -e \"require('fs').writeFileSync('math.js', 'module.exports.add = (a, b) => a + b;\\n')\"",
+                        "description": "write math.js"
+                      }
+                    }
+                  },
+                  {
+                    "text": "DONE"
+                  }
+                ]
+              }
+            ],
+            "fallback": {
+              "text": "DONE"
+            }
+          }
+        }
+      },
+      "expect": [
+        "exit:0",
+        "file:math.js",
+        "file:.claude/commands/pan/quick.md"
+      ],
+      "why": "The session reaches the goal (math.js exists) with PAN installed (its /pan:quick command is there). The cassette answers every request at $0; `--record` re-records it from the synthetic recipe."
+    }
+  ],
+  "controls": [
+    {
+      "id": "bash-denied",
+      "after": -1,
+      "write": {
+        "path": ".claude/settings.json",
+        "content": "{\"permissions\":{\"deny\":[\"Bash\"]}}\n"
+      },
+      "why": "With Bash denied the session cannot write math.js: a scenario that still passed would not be measuring the goal."
+    },
+    {
+      "id": "quick-missing",
+      "after": -1,
+      "delete": ".claude/commands/pan/quick.md",
+      "why": "Without the installed /pan:quick the PAN arm is not running PAN: the replay must drift and fail."
+    }
+  ]
+}
