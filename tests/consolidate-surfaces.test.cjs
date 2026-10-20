@@ -190,3 +190,21 @@ describe('one next-action router (L7)', () => {
     }
   });
 });
+
+describe('next-action through the CLI (L7)', () => {
+  test('pan-tools next-action prints the route; --raw prints the command', () => {
+    const { spawnSync } = require('child_process');
+    const tools = path.join(ROOT, 'pan-wizard-core', 'bin', 'pan-tools.cjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-next-cli-'));
+    try {
+      const p = path.join(dir, '.planning');
+      fs.mkdirSync(path.join(p, 'phases', '01-a'), { recursive: true });
+      fs.writeFileSync(path.join(p, 'requirements.md'), '# R\n');
+      fs.writeFileSync(path.join(p, 'roadmap.md'), '# Roadmap\n\n- [ ] **Phase 1: A**\n\n### Phase 1: A\n**Goal:** g\n');
+      fs.writeFileSync(path.join(p, 'phases', '01-a', '01-01-plan.md'), 'x');
+      const json = JSON.parse(spawnSync(process.execPath, [tools, 'next-action'], { cwd: dir, encoding: 'utf8' }).stdout);
+      assert.equal(json.action, 'execute');
+      assert.equal(spawnSync(process.execPath, [tools, 'next-action', '--raw'], { cwd: dir, encoding: 'utf8' }).stdout, '/pan:exec-phase 1');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
