@@ -4,8 +4,8 @@
  * Each host's payload (fixtures/hooks/pretool-*.json, derived from the documented
  * fields) normalises to the same call. The rules: a credential written into a file,
  * a direct write to PAN's own state, a test file the phase in flight does not declare.
- * `report` (the default) logs and never denies; `enforce` denies a secret write only,
- * on stderr with exit 2 (Claude, Codex, Gemini) or as Copilot's JSON decision; `off`
+ * `report` (the default) logs and never denies; `enforce` denies a secret write, a direct
+ * write to PAN's state and a judge's write outside the planning tree (A7b), on stderr with exit 2 (Claude, Codex, Gemini) or as Copilot's JSON decision; `off`
  * does nothing. Inert outside a PAN project, fail-open on input it cannot parse.
  */
 'use strict';
@@ -69,6 +69,12 @@ describe('the rules', () => {
     assert.deepEqual(hits.map((h) => h.rule), ['state_write']);
   });
 
+  test('judge_write: a judge agent writing outside the planning tree', () => {
+    const hits = G.evaluate({ ...G.normalise({ tool_name: 'Edit', tool_input: { file_path: path.join(dir, 'src', 'a.js'), new_string: 'x' } }), agent: 'pan-reviewer' }, dir, '.planning');
+    assert.deepEqual(hits.map((h) => h.rule), ['judge_write']);
+    assert.equal(G.normalise({ agent_type: 'pan-plan-checker', tool_name: 'Read', tool_input: {} }).agent, 'pan-plan-checker');
+  });
+
   test('undeclared_test_edit: a test file outside the unfinished plans of the phase in flight', () => {
     fs.writeFileSync(path.join(dir, '.planning', 'state.md'), '# State\n\n**Current Phase:** 3\n');
     fs.writeFileSync(path.join(dir, '.planning', 'phases', '03-auth', '03-01-plan.md'), '---\nphase: 03-auth\nfiles_modified: [src/login.js, tests/login.test.js]\n---\n');
@@ -110,11 +116,37 @@ describe('modes, through the hook process', () => {
     assert.match(out.permissionDecisionReason, /credential/);
   });
 
-  test('enforce still only reports a state write (A7b turns that on)', () => {
+  test('enforce denies a direct state.md write (A7b: its writers go through pan-tools)', () => {
     config('enforce');
+    const r = run('claude', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, '.planning', 'state.md'), content: 'x' } });
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /pan-tools state/);
+    assert.equal(guardLog()[0].action, 'denied');
+  });
+
+  test('report only logs a state write', () => {
     const r = run('claude', { cwd: dir, tool_name: 'Write', tool_input: { file_path: path.join(dir, '.planning', 'state.md'), content: 'x' } });
     assert.equal(r.status, 0);
     assert.equal(guardLog()[0].action, 'reported');
+  });
+
+  test('enforce denies a judge editing source, and lets it write its report in the planning tree', () => {
+    config('enforce');
+    const src = run('claude', { cwd: dir, agent_type: 'pan-verifier', tool_name: 'Edit', tool_input: { file_path: path.join(dir, 'src', 'a.js'), new_string: 'x' } });
+    assert.equal(src.status, 2);
+    assert.match(src.stderr, /judge/);
+    const report = run('claude', { cwd: dir, agent_type: 'pan-verifier', tool_name: 'Write', tool_input: { file_path: path.join(dir, '.planning', 'phases', '03-auth', '03-verification.md'), content: 'x' } });
+    assert.equal(report.status, 0);
+    const executor = run('claude', { cwd: dir, agent_type: 'pan-executor', tool_name: 'Edit', tool_input: { file_path: path.join(dir, 'src', 'a.js'), new_string: 'x' } });
+    assert.equal(executor.status, 0, 'an executor edits source');
+  });
+
+  test('undeclared_test_edit still only reports under enforce', () => {
+    config('enforce');
+    fs.writeFileSync(path.join(dir, '.planning', 'state.md'), '# State\n\n**Current Phase:** 3\n');
+    fs.writeFileSync(path.join(dir, '.planning', 'phases', '03-auth', '03-01-plan.md'), '---\nphase: 03-auth\nfiles_modified: [src/login.js]\n---\n');
+    const r = run('claude', { cwd: dir, tool_name: 'Edit', tool_input: { file_path: path.join(dir, 'tests', 'x.test.js'), new_string: 'x' } });
+    assert.equal(r.status, 0);
   });
 
   test('off: nothing at all', () => {

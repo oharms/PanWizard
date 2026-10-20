@@ -284,7 +284,13 @@ If state.md is missing but other artifacts exist:
 4. Count pending todos in .planning/todos/pending/
 5. Check for .continue-here files → Session continuity
 
-Reconstruct and write state.md, then proceed normally.
+Reconstruct state.md through the engine, never with the Write tool:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state init --core-value "<from project.md>" --focus "<current phase name>" --phase <current phase> --phase-name "<its name>" --total-phases <N> --activity "Reconstructed from artifacts"
+```
+
+Then add what the summaries and todos hold, one section at a time: `state section "Decisions" --append "- [Phase X]: ..."`, `state section "Blockers/Concerns" --append "..."`, `state section "Pending Todos" --set "<N> pending"`. Proceed normally.
 
 This handles cases where:
 

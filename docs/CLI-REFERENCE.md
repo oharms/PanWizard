@@ -1808,6 +1808,16 @@ pan-tools review scope 3 --raw    # the file paths, one per line
 
 **Files** are those the phase's plan commits changed (subjects like `feat(03-01): …`), the summaries' key-files, and the working tree's uncommitted and untracked files; `sources` says which of `commit`, `summary`, `uncommitted` and `untracked` each came from. The planning tree, lockfiles and PAN's runtime directories are `excluded`, and a file the phase deleted is left out. `listed` is whether a summary's key-files names the file; **`unlisted`** collects the ones it does not, the files a review driven by the summaries never saw. **`intent.plans`** holds each plan's `objective`, `must_haves` (truths, artifacts, key_links), its `## Review Focus` section (`review_focus`, null without one) and the requirement ids it claims; **`intent.requirements`** the text of each claimed id from requirements.md, with ids it does not find in `missing_requirements`. `base` is the parent of the oldest plan commit. Exit 1 for a missing or unknown phase.
 
+### `review cross-family <phase> [--host <name>] [--reps N] [--dry-run]`
+
+The cross-family reviewer lane (program R4). Runs the phase review once more on another host's CLI, so a model from a different family checks the change. The run is read-only: the argv comes from `hosts.cjs` (`review`) and carries no write or auto-approve flag. The prompt holds the verdict contract, the plans' intent, the files in scope and the phase's diff.
+
+Off unless `workflow.cross_family_review` names a host (`claude`, `codex`, `copilot`, `gemini`, `opencode`); then it returns `{enabled: false, reason: "lane_off"}` and runs nothing. `--host` overrides the configured host for one run. `--dry-run` prints `lane`, `host`, `family`, `bin`, `argv` and the prompt and spawns nothing. `--reps N` (at most 10) runs it N times and reports each run's verdict, and `verdict` is the most common one.
+
+Writes `.planning/reviews/<NN>/cross-family-<host>.md` with the host's answer. `review-deep merge … --cross-file <that file>` merges its findings as a fourth source (`coverage.by_source.cross_family`).
+
+**Module:** `cross-family.cjs`
+
 ### `verify red <phase> [--timeout <ms>]`
 
 Does each test the phase wrote test what the phase built (program V4)? A test that passes before the phase's code exists cannot have caught anything.

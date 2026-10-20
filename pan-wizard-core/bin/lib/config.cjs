@@ -63,6 +63,9 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       // LENSES) and keeps only the findings a quorum of passes reported. Opt-in until
       // its paired corpus run decides.
       review_mode: 'single',
+      // R4: a second review on another host's CLI (another model family), read-only.
+      // `off`, or a host: claude | codex | copilot | gemini | opencode.
+      cross_family_review: 'off',
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },

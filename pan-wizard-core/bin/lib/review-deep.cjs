@@ -126,14 +126,16 @@ function findingsFromVerdictBlock(content, source) {
  * @param {Array|string} reviewer - reviewer findings array OR markdown content
  * @param {Array|string} hardener - hardener findings array OR markdown content
  * @param {Array|string} [meta]   - optional meta-reviewer findings
+ * @param {Array|string} [cross]  - optional cross-family lane findings (R4)
  * @returns {Object} Merged payload
  */
-function mergeReviews(reviewer, hardener, meta) {
+function mergeReviews(reviewer, hardener, meta, cross) {
   const r = Array.isArray(reviewer) ? reviewer : parseReviewFindings(reviewer || '', 'reviewer');
   const h = Array.isArray(hardener) ? hardener : parseReviewFindings(hardener || '', 'hardener');
   const m = Array.isArray(meta) ? meta : parseReviewFindings(meta || '', 'meta-reviewer');
+  const x = Array.isArray(cross) ? cross : parseReviewFindings(cross || '', 'cross-family');
 
-  const findings = [...r, ...h, ...m].sort((a, b) => {
+  const findings = [...r, ...h, ...m, ...x].sort((a, b) => {
     const wa = SEVERITY_WEIGHT[a.severity] ?? 0;
     const wb = SEVERITY_WEIGHT[b.severity] ?? 0;
     if (wa !== wb) return wb - wa;
@@ -174,6 +176,7 @@ function mergeReviews(reviewer, hardener, meta) {
       reviewer: r.length,
       hardener: h.length,
       meta_reviewer: m.length,
+      cross_family: x.length,
     },
     by_severity: SEVERITIES.reduce((acc, s) => { acc[s] = findings.filter(f => f.severity === s).length; return acc; }, {}),
   };
@@ -277,15 +280,16 @@ function resolveAgainstCwd(cwd, p) {
 }
 
 function cmdReviewDeepMerge(cwd, phaseNum, opts, raw) {
-  if (!phaseNum) error('Usage: review-deep merge <phase> --reviewer-file X --hardener-file Y [--meta-file Z]');
+  if (!phaseNum) error('Usage: review-deep merge <phase> --reviewer-file X --hardener-file Y [--meta-file Z] [--cross-file W]');
   const reviewerContent = opts.reviewerFile ? safeReadFile(resolveAgainstCwd(cwd, opts.reviewerFile)) : '';
   const hardenerContent = opts.hardenerFile ? safeReadFile(resolveAgainstCwd(cwd, opts.hardenerFile)) : '';
   const metaContent = opts.metaFile ? safeReadFile(resolveAgainstCwd(cwd, opts.metaFile)) : '';
-  if (!reviewerContent && !hardenerContent && !metaContent) {
+  const crossContent = opts.crossFile ? safeReadFile(resolveAgainstCwd(cwd, opts.crossFile)) : '';
+  if (!reviewerContent && !hardenerContent && !metaContent && !crossContent) {
     output({ error: 'No input files provided or readable' }, raw);
     return;
   }
-  const payload = mergeReviews(reviewerContent, hardenerContent, metaContent);
+  const payload = mergeReviews(reviewerContent, hardenerContent, metaContent, crossContent);
   const result = writeDeepReview(cwd, phaseNum, payload);
   if (result.error) { output(result, raw); return; }
   output({ ...result, verdict: payload.verdict, coverage: payload.coverage, conflicts: payload.conflicts.length }, raw);
@@ -293,11 +297,12 @@ function cmdReviewDeepMerge(cwd, phaseNum, opts, raw) {
 
 function cmdReviewDeepAnalyze(cwd, phaseNum, opts, raw) {
   // Returns the merged payload WITHOUT writing a file. Useful for piping.
-  if (!phaseNum) error('Usage: review-deep analyze <phase> --reviewer-file X --hardener-file Y [--meta-file Z]');
+  if (!phaseNum) error('Usage: review-deep analyze <phase> --reviewer-file X --hardener-file Y [--meta-file Z] [--cross-file W]');
   const reviewerContent = opts.reviewerFile ? safeReadFile(resolveAgainstCwd(cwd, opts.reviewerFile)) : '';
   const hardenerContent = opts.hardenerFile ? safeReadFile(resolveAgainstCwd(cwd, opts.hardenerFile)) : '';
   const metaContent = opts.metaFile ? safeReadFile(resolveAgainstCwd(cwd, opts.metaFile)) : '';
-  output(mergeReviews(reviewerContent, hardenerContent, metaContent), raw);
+  const crossContent = opts.crossFile ? safeReadFile(resolveAgainstCwd(cwd, opts.crossFile)) : '';
+  output(mergeReviews(reviewerContent, hardenerContent, metaContent, crossContent), raw);
 }
 
 module.exports = {

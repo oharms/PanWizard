@@ -68,14 +68,21 @@ Per-item deep review during focus campaigns: focus-exec runs the hardener and me
    - Prompt includes: `<files_to_read>` with both `{directory}/{phase_number}-review.md` AND `.planning/reviews/<N>/hardener.md` (and representative diff snippets); `<output_path>` = `.planning/reviews/<N>/meta.md`.
    - Agent reads both first-pass reports, identifies missed patterns, disputes overstated severities, writes to output path.
 
+3b. **Cross-family lane (only when the project turned it on).** A reviewer from the author's own model family shares its blind spots. Run:
+   ```
+   pan-tools review cross-family <N>
+   ```
+   With `workflow.cross_family_review: off` (the default) it returns `enabled: false` and runs nothing: skip to the merge. With a host set, it runs the review on that host's CLI, read-only, and writes `.planning/reviews/<N>/cross-family-<host>.md`; pass that file to the merge as `--cross-file`. If the host's CLI is missing or fails, say so and merge without it.
+
 4. **Merge** — call:
    ```
    pan-tools review-deep merge <N> \
      --reviewer-file {directory}/{phase_number}-review.md \
      --hardener-file .planning/reviews/<N>/hardener.md \
-     --meta-file .planning/reviews/<N>/meta.md
+     --meta-file .planning/reviews/<N>/meta.md \
+     [--cross-file .planning/reviews/<N>/cross-family-<host>.md]
    ```
-   The merger parses all three, sorts by severity, computes verdict (`ok` | `ok_with_minor` | `fix_before_merge` | `review_required` | `block`), and writes `.planning/reviews/<N>/deep-review.md`.
+   The merger parses every input, sorts by severity, computes verdict (`ok` | `ok_with_minor` | `fix_before_merge` | `review_required` | `block`), and writes `.planning/reviews/<N>/deep-review.md`.
 
 5. **Report back** — echo verdict + finding count + conflict count. If verdict is `block` or `review_required`, recommend the user review `deep-review.md` before proceeding.
 

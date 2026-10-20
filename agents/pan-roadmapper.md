@@ -334,7 +334,7 @@ Reference full template: `~/.claude/pan-wizard-core/templates/roadmap.md`
 
 ## state.md Structure
 
-Use template from `~/.claude/pan-wizard-core/templates/state.md`.
+`pan-tools state init` writes it from the sections of `~/.claude/pan-wizard-core/templates/state.md`; you supply the values.
 
 Key sections:
 - Project Reference (core value, current focus)
@@ -415,7 +415,13 @@ If gaps found, resolve them (see Coverage Validation) and list each gap with the
 
 1. **Write roadmap.md** using output format
 
-2. **Write state.md** using output format
+2. **Initialise state.md through the engine**, not with Write:
+
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state init --core-value "<core value from project.md>" --focus "<first phase name>" --phase <first phase number> --phase-name "<first phase name>" --total-phases <N>
+   ```
+
+   When state.md already exists (a new milestone), add `--force --keep-context`: the old file is backed up and its Accumulated Context carried over. The engine writes every section of the template and keeps the frontmatter in sync; never write state.md with the Write or Edit tool (under `hooks.guard: enforce` the guard denies it).
 
 3. **Update requirements.md traceability section**
 
@@ -500,7 +506,7 @@ After incorporating user feedback and updating files:
 
 **Files updated:**
 - .planning/roadmap.md
-- .planning/state.md (if needed)
+- .planning/state.md (if needed, through `pan-tools state apply` or `state section`)
 - .planning/requirements.md (if traceability changed)
 
 ### Updated Summary

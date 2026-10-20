@@ -896,7 +896,7 @@ Create roadmap:
 2. Map every v1 requirement to exactly one phase
 3. Derive 2-5 success criteria per phase (observable user behaviors)
 4. Validate 100% coverage
-5. Compose each file in full, then write each exactly once — one Write per file, no draft-then-refine (P-1808): roadmap.md, state.md, update requirements.md traceability
+5. Compose roadmap.md in full and write it exactly once, no draft-then-refine (P-1808); initialise state.md with `pan-tools state init --core-value ... --focus ... --phase ... --phase-name ... --total-phases ...`, never the Write tool; update requirements.md traceability
 6. Return ROADMAP CREATED with summary
 
 Write files first, then return — before the return, not early and often. One complete Write per file persists the artifacts without the rewrite churn (P-1808).

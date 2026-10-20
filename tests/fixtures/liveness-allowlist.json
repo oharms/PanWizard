@@ -420,10 +420,6 @@
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },
   {
-    "id": "caller:sub:state patch",
-    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
-  },
-  {
     "id": "caller:sub:state resolve-blocker",
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },

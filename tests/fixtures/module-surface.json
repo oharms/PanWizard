@@ -355,6 +355,12 @@
     "resolveRate:function",
     "weeklyLimitStop:function"
   ],
+  "cross-family.cjs": [
+    "buildPrompt:function",
+    "cmdReviewCrossFamily:function",
+    "crossFamilyReview:function",
+    "parseVerdict:function"
+  ],
   "debug-cases.cjs": [
     "cmdDebugRepro:function",
     "cmdDebugSimilar:function",
@@ -934,6 +940,18 @@
     "compactState:function",
     "planStateCompaction:function",
     "splitSections:function"
+  ],
+  "state-write.cjs": [
+    "cmdStateApply:function",
+    "cmdStateInit:function",
+    "cmdStateQuickTask:function",
+    "cmdStateSection:function",
+    "editSection:function",
+    "findSection:function",
+    "stateApply:function",
+    "stateInit:function",
+    "stateQuickTask:function",
+    "stateSection:function"
   ],
   "state.cjs": [
     "activeBlockersFromState:function",

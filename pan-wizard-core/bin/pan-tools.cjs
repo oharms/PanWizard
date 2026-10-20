@@ -414,6 +414,29 @@ async function main() {
         state.cmdStateUpdate(cwd, args[2], args[3]);
       } else if (subcommand === 'get') {
         state.cmdStateGet(cwd, args[2], raw);
+      } else if (subcommand === 'init' || subcommand === 'section' || subcommand === 'quick-task' || subcommand === 'apply') {
+        // A7b: the wholesale and by-section writers of state.md.
+        const sw = require('./lib/state-write.cjs');
+        if (subcommand === 'init') {
+          sw.cmdStateInit(cwd, {
+            coreValue: getArgValue(args, '--core-value'), focus: getArgValue(args, '--focus'),
+            phase: getArgValue(args, '--phase'), phaseName: getArgValue(args, '--phase-name'),
+            totalPhases: getArgValue(args, '--total-phases'), status: getArgValue(args, '--status'),
+            activity: getArgValue(args, '--activity'),
+            force: args.includes('--force'), keepContext: args.includes('--keep-context'),
+          }, raw);
+        } else if (subcommand === 'section') {
+          sw.cmdStateSection(cwd, args[2] && !args[2].startsWith('--') ? args[2] : null, {
+            append: getArgValue(args, '--append'), set: getArgValue(args, '--set'), under: getArgValue(args, '--under'),
+          }, raw);
+        } else if (subcommand === 'quick-task') {
+          sw.cmdStateQuickTask(cwd, {
+            description: getArgValue(args, '--description'), commit: getArgValue(args, '--commit'),
+            directory: getArgValue(args, '--directory'), status: getArgValue(args, '--status'), date: getArgValue(args, '--date'),
+          }, raw);
+        } else {
+          sw.cmdStateApply(cwd, getArgValue(args, '--json'), raw);
+        }
       } else if (subcommand === 'patch') {
         const patches = {};
         for (let i = 2; i < args.length; i += 2) {
@@ -470,7 +493,7 @@ async function main() {
       } else if (subcommand === 'load' || !subcommand) {
         state.cmdStateLoad(cwd, raw);
       } else {
-        error(`Unknown state subcommand: ${subcommand}. Available: json, update, get, patch, compact, advance-plan, record-metric, update-progress, add-decision, add-blocker, resolve-blocker, record-session, load, snapshot`);
+        error(`Unknown state subcommand: ${subcommand}. Available: json, update, get, patch, init, section, quick-task, apply, compact, advance-plan, record-metric, update-progress, add-decision, add-blocker, resolve-blocker, record-session, load, snapshot`);
       }
       break;
     }
@@ -1316,8 +1339,13 @@ async function main() {
         const valued = new Set(['--phase', '--quorum', '--out']);
         const files = args.slice(2).filter((a, i, all) => !a.startsWith('--') && !valued.has(all[i - 1]));
         require('./lib/review-vote.cjs').cmdReviewVote(cwd, { files, phase: getArgValue(args, '--phase'), quorum: getArgValue(args, '--quorum'), out: getArgValue(args, '--out') }, raw);
+      } else if (subcommand === 'cross-family') {
+        // R4: the review on another host's CLI, read-only; off unless the project opts in.
+        require('./lib/cross-family.cjs').cmdReviewCrossFamily(cwd, args[2], {
+          host: getArgValue(args, '--host'), reps: getArgValue(args, '--reps'), dryRun: args.includes('--dry-run'),
+        }, raw);
       } else {
-        error('Unknown review subcommand. Available: scope, vote');
+        error('Unknown review subcommand. Available: scope, vote, cross-family');
       }
       break;
     }
@@ -1388,6 +1416,7 @@ async function main() {
         reviewerFile: getArgValue(args, '--reviewer-file'),
         hardenerFile: getArgValue(args, '--hardener-file'),
         metaFile: getArgValue(args, '--meta-file'),
+        crossFile: getArgValue(args, '--cross-file'),
       };
       if (subcommand === 'merge') {
         reviewDeep.cmdReviewDeepMerge(cwd, phaseNum, opts, raw);

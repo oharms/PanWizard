@@ -11,6 +11,7 @@
     "phase_gate": "enforce",
     "mutation_gate": "report",
     "review_mode": "single",
+    "cross_family_review": "off",
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
   "cost": {
