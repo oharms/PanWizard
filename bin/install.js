@@ -673,7 +673,14 @@ function mirrorUnifiedSkillsForClaude(sharedSkillsDir, targetDir, prefix) {
     try {
       fs.mkdirSync(destDir, { recursive: true });
       for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
-        if (entry.isFile()) fs.copyFileSync(path.join(srcDir, entry.name), path.join(destDir, entry.name));
+        if (!entry.isFile()) continue;
+        // SKILL.md gains disable-model-invocation for Claude Code (M49); the shared
+        // tree keeps the plain file, since no other runtime was seen to read the field.
+        if (entry.name === 'SKILL.md') {
+          fs.writeFileSync(path.join(destDir, entry.name), lib.withClaudeUserInvokedOnly(fs.readFileSync(path.join(srcDir, entry.name), 'utf8')));
+        } else {
+          fs.copyFileSync(path.join(srcDir, entry.name), path.join(destDir, entry.name));
+        }
       }
       copied++;
     } catch (err) { pushInstallWarning('claudeSkillMirror', `skills/${name}`, err); }
@@ -907,6 +914,9 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime, isCommand
           content = convertClaudeToCopilotMarkdown(content);
           fs.writeFileSync(destPath, content);
         } else {
+          // Claude Code: PAN's commands are user-invoked only (M49), so their
+          // descriptions stay out of the listing the model gets every turn.
+          if (runtime === 'claude' && isCommand) content = lib.withClaudeUserInvokedOnly(content);
           fs.writeFileSync(destPath, content);
         }
       } catch (err) {
@@ -2795,7 +2805,7 @@ function install(isGlobal, runtime = 'claude') {
       // Print the path we actually wrote. The hardcoded '.codex/hooks.json' was
       // wrong for --global and for --config-dir, telling users to inspect a file
       // that does not exist while the real one sat elsewhere.
-      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksJsonPath)}: update check, context monitor, cost + trace loggers, stop guard, state re-injection)`);
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksJsonPath)}: update check, guard, cost + trace loggers, stop guard, state re-injection)`);
     } catch (e) {
       pushInstallWarning('codexHooks', 'hooks.json', e);
     }
@@ -2812,7 +2822,7 @@ function install(isGlobal, runtime = 'claude') {
       fs.mkdirSync(path.dirname(hooksConfigPath), { recursive: true });
       fs.writeFileSync(hooksConfigPath, JSON.stringify(hooksConfig, null, 2) + '\n');
       // Same as the Codex case: a global Copilot install writes to ~/.copilot/, not .github/.
-      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, context monitor, cost + trace loggers, stop guard, state re-injection)`);
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, guard, cost + trace loggers, stop guard, state re-injection)`);
     } catch (e) {
       console.error(`  ${yellow}✗${reset} Failed to write Copilot hooks config: ${e.message}`);
     }

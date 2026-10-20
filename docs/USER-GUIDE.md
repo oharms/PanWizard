@@ -1200,7 +1200,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 
 ### Context Monitor Warnings Not Showing
 
-**Cause:** Hooks not installed, the session not yet near its compaction point (the note comes only when about a third of the room before compaction is left), or a runtime the monitor cannot measure. Gemini CLI and OpenCode run no context monitor. On Codex there is no PAN status line and the monitor cannot read its transcript; on Copilot CLI PAN's own registration of the monitor stays silent, because Copilot's documented hook payload names the session `sessionId` and the monitor reads only `session_id` (in a project that also has the Claude Code install, that copy steps aside for the `.claude/settings.json` registration, and what Copilot passes that one has not been observed) (see [Feature Availability](#feature-availability)).
+**Cause:** Hooks not installed, the session not yet near its compaction point (the note comes only when about a third of the room before compaction is left), or a runtime the monitor cannot measure. Gemini CLI and OpenCode run no context monitor. PAN registers the monitor only on Claude Code. On Codex there is no PAN status line and the monitor cannot read Codex's transcript. On Copilot CLI the hook payload names the session `sessionId`, which the monitor never read. In both cases it measured nothing, so PAN no longer registers it there (see [Feature Availability](#feature-availability)).
 **Fix:** Re-run `npx pan-wizard` to reinstall hooks. Check `.claude/settings.json` (local install) or `~/.claude/settings.json` (global) for hook registration. On Claude Code the monitor reads PAN's status line bridge (`<os-tmpdir>/pan-hooks-{uid}/claude-ctx-{session_id}.json`) when it is fresh, and the session transcript otherwise, so headless `claude -p` runs are covered. Read from the transcript, a native-1M model on Bedrock, Google Cloud or Foundry gives no note while it runs a 200K window there, because the transcript cannot tell that window from 1M; on a 1M window the note still comes, since a context past 200K tokens can only be in a 1M window.
 
 ### Wrong Model Being Used for Agents
@@ -1323,7 +1323,7 @@ Codex and Copilot CLI use a "skills" format rather than slash commands. Each com
 |---------|------------|----------|--------|-------|-------------|
 | All commands | Yes | Yes | Yes | Yes | Yes |
 | All agents | Yes | Yes | Yes | Yes | Yes |
-| Hooks: update check, context monitor, cost + trace loggers | Yes | No | Update check only (Gemini has no context metric or subagent event for the others) | Yes (the context monitor is registered but stays silent) | Yes (the context monitor is registered but stays silent) |
+| Hooks: update check, context monitor, cost + trace loggers | Yes | No | Update check only (Gemini has no context metric or subagent event for the others) | Update check and loggers (no context monitor: it cannot measure on Codex) | Update check and loggers (no context monitor: it cannot measure on Copilot) |
 | Statusline (the context bridge the monitor reads) | Yes | No | No (Gemini CLI has no statusline command) | No | Yes (the monitor does not read it there) |
 | Stop guard (auto-advance boundary) | Yes | No | Yes | Yes | Yes |
 | State re-injection after context compaction | Yes | Yes (a plugin adds PAN's position to the compaction prompt) | Yes (two steps: `PreCompress` marks, `AfterTool` injects) | Yes | Yes (two steps: `preCompact` marks, `postToolUse` injects) |

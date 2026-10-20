@@ -129,14 +129,15 @@ describe('Codex: install structure', () => {
 
   // Codex hooks (2026-06): .codex/hooks.json with Claude-compatible
   // PascalCase events; hook scripts in .codex/hooks/.
-  test('hooks.json registers all five PAN hooks', () => {
+  test('hooks.json registers the PAN hooks that work on Codex (no context monitor, M50)', () => {
     const hooksJsonPath = path.join(tempDir, '.codex', 'hooks.json');
     assert.ok(fs.existsSync(hooksJsonPath), '.codex/hooks.json should exist');
     const config = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8'));
     const flat = JSON.stringify(config.hooks);
-    for (const marker of ['pan-check-update', 'pan-context-monitor', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard']) {
+    for (const marker of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger', 'pan-stop-guard']) {
       assert.ok(flat.includes(marker), `hooks.json should register ${marker}`);
     }
+    assert.ok(!flat.includes('pan-context-monitor'), 'the context monitor cannot measure on Codex and is not registered (M50)');
     assert.ok(config.hooks.SessionStart, 'SessionStart (PascalCase) should exist');
     assert.ok(config.hooks.SubagentStop, 'SubagentStop (PascalCase) should exist');
   });
@@ -170,7 +171,7 @@ describe('Codex: install structure', () => {
   // Codex `async` handlers (0.148+) run off the critical path and cannot inject
   // context. Observers get the flag; the context monitor, whose whole job is to
   // inject `additionalContext` the model must read this turn, must NOT.
-  test('hooks.json marks the observer hooks async and leaves the context monitor synchronous', () => {
+  test('hooks.json marks the observer hooks async', () => {
     const hooksJsonPath = path.join(tempDir, '.codex', 'hooks.json');
     const config = JSON.parse(fs.readFileSync(hooksJsonPath, 'utf8'));
     const handlers = Object.values(config.hooks).flat().flatMap(g => g.hooks || []);
@@ -178,10 +179,7 @@ describe('Codex: install structure', () => {
     for (const observer of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger']) {
       assert.equal(byMarker(observer)?.async, true, `${observer} is a pure observer and should be async`);
     }
-    const monitor = byMarker('pan-context-monitor');
-    assert.ok(monitor, 'context monitor should be registered');
-    assert.equal(monitor.async, undefined,
-      'context monitor returns additionalContext and must stay synchronous — async output is deferred');
+    assert.equal(byMarker('pan-context-monitor'), undefined, 'no context monitor on Codex (M50)');
     for (const h of handlers) assert.equal(h.type, 'command', 'every PAN handler is a command handler');
   });
 

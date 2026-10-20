@@ -591,7 +591,16 @@ done
 
 Parse JSON result: `{ valid, errors, warnings, task_count, tasks: [{name, type, hasFiles, hasAction, hasVerify, hasDone}], frontmatter_fields }`. A checkpoint task's entry is `{name, type}`, plus `auto_select` on a decision.
 
+Then check that each plan's own grep and count gates can fail. The engine runs every read-only `grep`/`rg`/`git grep` it finds in a `<verify>` against the tree as it is now, without a shell:
+
+```bash
+GATES=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify gates "$PHASE")
+```
+
+`gate_vacuous` means the gate already passes before any work, so it cannot show the task did anything. `gate_invalid` means its pattern does not compile, so it can never match. Both are blockers under `verification_derivation`, unless the `<verify>` line marks the gate a regression guard. Gates listed as `not_checkable` (pipes, other tools) are left to your judgement.
+
 Map errors/warnings to verification dimensions:
+- "Plan looks truncated" (error) → `task_completeness`, blocker: the planner's write was cut off
 - Missing frontmatter field → `task_completeness` or `verification_derivation`
 - Task missing elements → `task_completeness`
 - Wave/depends_on inconsistency → `dependency_correctness`

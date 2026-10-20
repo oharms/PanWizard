@@ -1236,6 +1236,7 @@ STRUCTURE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-structu
 Returns JSON: `{ valid, errors, warnings, task_count, tasks }`
 
 **If errors exist:** Fix before committing:
+- "Plan looks truncated" → the write was cut off, even if it reported success (hosts cap tool output). Read the end of the file, then rewrite the plan in full, or in smaller writes
 - Missing `<name>` in an auto task → add name element
 - Missing `<action>` in an auto task → add action element
 - A checkpoint missing its own elements (`<decision>` + `<options>`, `<what-built>` + `<how-to-verify>`, or `<action>`) → add them; checkpoints need no `<name>`/`<files>`/`<verify>`/`<done>`

@@ -1,0 +1,92 @@
+{
+  "id": "skill-listing-claude",
+  "tier": 0,
+  "description": "Drive the real Claude Code CLI against the local model double on a --unified-skills install, and check that none of PAN's skills is listed to the model.",
+  "why": "Market-ideas M49 (MI-132, 2026-10-20): PAN's commands are invoked explicitly, so a skill description Claude Code lists to the model is context spent on every turn, and an invitation to run a PAN command unasked. `disable-model-invocation: true` on the emitted SKILL.md is meant to keep them out. MI-022 applies: a frontmatter field is emitted only once the host is seen to honour it, and this scenario is that observation. The double answers from a script, so nothing is spent.",
+  "seed": "empty",
+  "install": [
+    "--claude",
+    "--unified-skills"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 6,
+    "maxStepMinutes": 4
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "Reply with DONE.",
+      "double": {
+        "script": {
+          "rules": [],
+          "fallback": {
+            "text": "DONE"
+          }
+        }
+      },
+      "expect": [
+        "exit:0",
+        "stdout~DONE"
+      ],
+      "why": "One turn, so the host sends its full system prompt and tool list."
+    },
+    {
+      "kind": "sh",
+      "script": "wire-skill-listing.cjs",
+      "args": [
+        "<other>/double-0",
+        "<pkg>/commands/pan"
+      ],
+      "expect": [
+        "exit:0",
+        "json:captured=true",
+        "json:listed=0"
+      ],
+      "why": "No PAN skill description reaches the model: the host honours disable-model-invocation on PAN's skills."
+    },
+    {
+      "kind": "model",
+      "prompt": "/pan-help",
+      "double": {
+        "script": {
+          "rules": [],
+          "fallback": {
+            "text": "HELP-SHOWN"
+          }
+        }
+      },
+      "expect": [
+        "exit:0",
+        "stdout~HELP-SHOWN"
+      ],
+      "why": "The user types the command, as PAN's docs tell them to."
+    },
+    {
+      "kind": "sh",
+      "script": "wire-contains.cjs",
+      "args": [
+        "<other>/double-2",
+        "Display the complete PAN command reference."
+      ],
+      "expect": [
+        "exit:0",
+        "json:found=true"
+      ],
+      "why": "The command still runs when the user types it: its body reaches the model. disable-model-invocation only takes it out of the listing."
+    }
+  ],
+  "controls": [
+    {
+      "id": "listed-skill",
+      "write": {
+        "path": ".claude/skills/pan-help/SKILL.md",
+        "content": "---\nname: pan-help\ndescription: Show available PAN commands and usage guide\n---\n\n<objective>\nDisplay the complete PAN command reference.\n</objective>\n"
+      },
+      "why": "The same help entry without disable-model-invocation (description and body as shipped) must show up in the listing, and the listing step alone must turn the scenario red."
+    }
+  ]
+}

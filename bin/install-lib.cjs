@@ -130,6 +130,25 @@ function extractFrontmatterAndBody(content) {
   };
 }
 
+/**
+ * Mark a Claude Code command or skill as user-invoked only (market-ideas M49): add
+ * `disable-model-invocation: true` to its frontmatter. Claude Code then keeps it out
+ * of the listing it sends the model on every turn, and it still runs as /pan:<name>.
+ * Seen to work on Claude Code 2.1.302 against the harness model double
+ * (skill-listing-claude, skill-listing-claude-commands; 2026-10-20). Claude only:
+ * no other runtime was seen to read the field (MI-022). Idempotent; content without
+ * frontmatter is returned unchanged.
+ * @param {string} content
+ * @returns {string}
+ */
+function withClaudeUserInvokedOnly(content) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (!m || /^disable-model-invocation:/m.test(m[1])) return content;
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const end = m.index + m[0].length - 3; // the closing ---
+  return content.slice(0, end) + 'disable-model-invocation: true' + eol + content.slice(end);
+}
+
 /** Extract a field value from YAML frontmatter string */
 function extractFrontmatterField(frontmatter, fieldName) {
   const regex = new RegExp(`^${fieldName}:\\s*(.+)$`, 'm');
@@ -708,7 +727,8 @@ function buildCopilotPluginHooksConfig(commands) {
   const { updateCheckCommand, contextMonitorCommand, costLoggerCommand, traceLoggerCommand, stopGuardCommand } = commands || {};
   const hooks = {};
   if (updateCheckCommand) hooks.SessionStart = [{ type: 'command', command: updateCheckCommand }];
-  if (contextMonitorCommand) hooks.PostToolUse = [{ type: 'command', command: contextMonitorCommand }];
+  // No context monitor: it cannot measure on Copilot (HOOK_EVENT_MAP, M50).
+  if (contextMonitorCommand && HOOK_EVENT_MAP.copilot.postToolUse) hooks.PostToolUse = [{ type: 'command', command: contextMonitorCommand }];
   const subagentStop = [];
   if (costLoggerCommand) subagentStop.push({ type: 'command', command: costLoggerCommand });
   if (traceLoggerCommand) subagentStop.push({ type: 'command', command: traceLoggerCommand });
@@ -1171,7 +1191,7 @@ function buildCopilotHooksConfig(commands) {
     config.hooks.preToolUse = [{ type: 'command', command: guardCommand }];
   }
   const postToolUse = [];
-  if (contextMonitorCommand) postToolUse.push({ type: 'command', command: contextMonitorCommand });
+  if (contextMonitorCommand && HOOK_EVENT_MAP.copilot.postToolUse) postToolUse.push({ type: 'command', command: contextMonitorCommand });
   // State re-injection after a compaction (M33): preCompact leaves the marker, the
   // next postToolUse returns the block once (hooks/pan-state-reinject.js).
   if (stateReinjectInjectCommand) postToolUse.push({ type: 'command', command: stateReinjectInjectCommand });
@@ -1241,12 +1261,19 @@ function buildCopilotHooksConfig(commands) {
  * next tool result, the first point after it where both hosts take added context
  * (gemini-cli v0.61.0 docs/hooks/reference.md; Copilot hooks reference; read
  * 2026-10-03, and live on Copilot CLI 1.0.88 the same day).
+ *
+ * `postToolUse` is the context monitor's slot, and it is set only where the monitor
+ * can measure (market-ideas M50). Its numbers come from Claude Code's status-line
+ * bridge or a Claude-shaped transcript. Copilot sends camelCase `sessionId`, so the
+ * hook exited at its session_id check on every call. Codex has no bridge, and its
+ * transcripts are not Claude-shaped. Both events exist on those hosts, but PAN
+ * registers nothing there (reality check 2026-10-19).
  */
 const HOOK_EVENT_MAP = Object.freeze({
   claude: { surface: 'settings.json', sessionStart: 'SessionStart', preToolUse: 'PreToolUse', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
   gemini: { surface: 'settings.json', sessionStart: 'SessionStart', preToolUse: 'BeforeTool', postToolUse: null, subagentStop: null, stop: 'AfterAgent', compact: null, compactMark: 'PreCompress', compactInject: 'AfterTool' },
-  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', preToolUse: 'PreToolUse', postToolUse: 'PostToolUse', subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
-  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', preToolUse: 'preToolUse', postToolUse: 'postToolUse', subagentStop: 'subagentStop', stop: 'agentStop', compact: null, compactMark: 'preCompact', compactInject: 'postToolUse' },
+  codex: { surface: 'hooks.json', sessionStart: 'SessionStart', preToolUse: 'PreToolUse', postToolUse: null, subagentStop: 'SubagentStop', stop: 'Stop', compact: 'SessionStart', compactMark: null, compactInject: null },
+  copilot: { surface: 'hooks/pan.json', sessionStart: 'sessionStart', preToolUse: 'preToolUse', postToolUse: null, subagentStop: 'subagentStop', stop: 'agentStop', compact: null, compactMark: 'preCompact', compactInject: 'postToolUse' },
   opencode: null,
 });
 
@@ -1543,7 +1570,7 @@ function mergeCodexHooksConfig(existing, commands) {
     ['SessionStart', updateCheckCommand, 'pan-check-update', true],
     // The guard decides whether a call may run, which an async handler cannot (A7).
     ['PreToolUse', guardCommand, 'pan-guard', false],
-    ['PostToolUse', contextMonitorCommand, 'pan-context-monitor', false],
+    ['PostToolUse', HOOK_EVENT_MAP.codex.postToolUse ? contextMonitorCommand : null, 'pan-context-monitor', false],
     ['SubagentStop', costLoggerCommand, 'pan-cost-logger', true],
     ['SubagentStop', traceLoggerCommand, 'pan-trace-logger', true],
     ['Stop', stopGuardCommand, 'pan-stop-guard', false],
@@ -1571,6 +1598,14 @@ function mergeCodexHooksConfig(existing, commands) {
     const handler = { type: 'command', command };
     if (async) handler.async = true;
     config.hooks[event].push({ ...(matcher ? { matcher } : {}), hooks: [handler] });
+  }
+  // An install from before M50 registered the context monitor here; it cannot measure
+  // on Codex, so an upgrade drops that handler (foreign hooks in the group stay).
+  if (!HOOK_EVENT_MAP.codex.postToolUse && Array.isArray(config.hooks.PostToolUse)) {
+    config.hooks.PostToolUse = config.hooks.PostToolUse
+      .map((group) => (Array.isArray(group.hooks) ? { ...group, hooks: group.hooks.filter((h) => !(h && h.command && h.command.includes('pan-context-monitor'))) } : group))
+      .filter((group) => !Array.isArray(group.hooks) || group.hooks.length > 0);
+    if (config.hooks.PostToolUse.length === 0) delete config.hooks.PostToolUse;
   }
   return config;
 }
@@ -2634,6 +2669,7 @@ const {
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 module.exports = {
+  withClaudeUserInvokedOnly,
   // Constants
   colorNameToHex,
   claudeToOpencodeTools,

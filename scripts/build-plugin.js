@@ -111,7 +111,8 @@ function main() {
   );
 
   // 2. Commands (Claude flavor, plugin-root-relative paths)
-  copyTree(path.join(ROOT, 'commands', 'pan'), path.join(OUT, 'commands', 'pan'), rewriteContent);
+  // Commands are user-invoked only on Claude Code (M49): out of the model's listing.
+  copyTree(path.join(ROOT, 'commands', 'pan'), path.join(OUT, 'commands', 'pan'), (c) => lib.withClaudeUserInvokedOnly(rewriteContent(c)));
 
   // 3. Agents
   copyTree(path.join(ROOT, 'agents'), path.join(OUT, 'agents'), rewriteContent);

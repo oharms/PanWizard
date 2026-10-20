@@ -426,3 +426,35 @@ describe('findings — CLI', () => {
     assert.equal(json.malformed_rows, 2);
   });
 });
+
+// ── Pre-existing findings (market-ideas M52, MI-135) ─────────────────────────────
+// A finding on code the phase did not change was there before it. Anthropic's own
+// review practice tags these "pre-existing" so they never block the change; PAN records
+// them as deferred debt with the reason, so the milestone audit still sees them.
+describe('findings record: a pre-existing finding is debt, never a blocker (M52)', () => {
+  test('the parser keeps the flag', () => {
+    const V = require('../pan-wizard-core/bin/lib/verdict.cjs');
+    const p = V.parseVerdictText(review('PASS_WITH_WARNINGS', 'pass', [{ class: 'defect', severity: 'high', where: 'old.ts:3', summary: 'old bug', pre_existing: true }]), { agent: 'pan-reviewer', phase: '03' });
+    assert.equal(p.ok, true);
+    assert.equal(p.verdict.findings[0].pre_existing, true);
+  });
+
+  test('a pre-existing finding is recorded deferred with its reason; a new one stays open', () => {
+    const r = F.recordVerdict(dir, { phase: '03', text: review('NEEDS_FIXES', 'fail', [
+      { class: 'defect', severity: 'high', where: 'old.ts:3', summary: 'null deref in code this phase never touched', pre_existing: true },
+      { class: 'defect', severity: 'high', where: 'new.ts:9', summary: 'off-by-one the phase introduced' },
+    ]) });
+    assert.equal(r.recorded, true);
+    assert.equal(r.pre_existing, 1);
+    const list = F.listFindings(dir, { phase: '3' }).findings;
+    const old = list.find((f) => f.where === 'old.ts:3');
+    const fresh = list.find((f) => f.where === 'new.ts:9');
+    assert.equal(old.status, 'deferred');
+    assert.equal(old.pre_existing, true);
+    assert.equal(fresh.status, 'open');
+    const debt = F.findingsDebt(dir);
+    assert.equal(debt.open_count, 1, 'only the finding the phase introduced is open');
+    assert.equal(debt.deferred_count, 1);
+    assert.match(debt.phases[0].deferred[0].reason, /pre-existing/);
+  });
+});

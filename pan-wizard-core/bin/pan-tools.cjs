@@ -705,6 +705,8 @@ async function main() {
         require('./lib/plan-lint.cjs').cmdVerifyReviewFocus(cwd, args[2], raw);
       } else if (subcommand === 'decisions') {
         require('./lib/plan-lint.cjs').cmdVerifyDecisions(cwd, args[2], raw);
+      } else if (subcommand === 'gates') {
+        require('./lib/plan-lint.cjs').cmdVerifyGates(cwd, args[2], raw);
       } else if (subcommand === 'mutate') {
         mutate.cmdVerifyMutate(cwd, {
           phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),
@@ -713,7 +715,7 @@ async function main() {
           timeout: getArgValue(args, '--timeout'),
         }, raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate, review-focus, decisions');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate, review-focus, decisions, gates');
       }
       break;
     }

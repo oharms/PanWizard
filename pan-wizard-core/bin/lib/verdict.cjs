@@ -192,7 +192,9 @@ function validateVerdict(obj, opts = {}) {
       warnings.push(`summary_truncated: #${i}`);
     }
     const where = f.where == null || cleanText(f.where) === '' ? null : truncate(cleanText(f.where).replace(/\\/g, '/'), LIMITS.where);
-    findings.push({ class: cls, severity, where, summary });
+    // pre_existing (M52): the finding is in code the change did not touch. It is
+    // recorded as deferred debt, never a blocker; findings.cjs files it.
+    findings.push({ class: cls, severity, where, summary, ...(f.pre_existing === true ? { pre_existing: true } : {}) });
   });
 
   const notChecked = normaliseNotChecked(obj.not_checked, warnings);

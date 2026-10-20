@@ -132,7 +132,9 @@ Return a structured review report:
 {PASS | PASS_WITH_WARNINGS | NEEDS_FIXES}
 ```
 
-**Verdict rules:**
+**Pre-existing problems.** A problem in code this phase did not change, such as an untouched file or untouched lines of a changed file, was there before the phase. Report it, tagged pre-existing, but leave it out of the verdict: it is the project's debt, not this change's defect. `review scope` and `git diff` tell you what the phase changed.
+
+**Verdict rules** (pre-existing findings never count):
 - **PASS**: Zero errors, zero warnings
 - **PASS_WITH_WARNINGS**: Zero errors, warnings present
 - **NEEDS_FIXES**: Any errors present
@@ -142,6 +144,7 @@ Return a structured review report:
 - Add one finding per table row. ERROR → `high`, WARNING → `medium`, INFO → `info`.
 - Category maps to class: Convention → `quality`, Security → `risk`, Code Quality → `defect`, Design smell → `quality`, Unrequested → `unrequested`.
 - `where` is `file:line`.
+- A pre-existing finding carries `"pre_existing": true`. The recorder files it as deferred debt with the reason, so it never blocks the phase, and the milestone audit still lists it.
 - A clean review has `"findings": []`.
 - **Dismissed findings are filtered by the recorder, not by you.** When the project dismissed a finding with a reason, recording filters the same finding again for as long as its file is unchanged, and lets it back in once the file changes. Security and logic findings are never filtered. So report everything you find; do not leave out a finding because you think it was dismissed before. To see what is being filtered: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings suppressions --phase {phase_number} --agent pan-reviewer`.
 - **On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{"id":"f_…","status":"resolved","evidence":"what you checked and saw"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.

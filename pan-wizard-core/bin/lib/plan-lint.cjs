@@ -144,6 +144,152 @@ function checkDecisions(cwd, phase) {
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
+// ─── Gate baselines (M48) ─────────────────────────────────────────────────────
+//
+// A plan's `<verify>` often names a grep or count gate. One that already passes
+// before any work proves nothing about the task; one whose pattern cannot compile
+// can never match (gsd-core v1.18.0 "gate baselines"). The simple grep forms are
+// interpreted here, in Node, never through a shell: the same on every platform,
+// and nothing a plan writes is executed. Anything else is listed as not checkable.
+
+const GATE_TOOLS = [['git', 'grep'], ['grep'], ['rg']];
+const GATE_FLAGS = new Set(['r', 'R', 'i', 'c', 'E', 'F', 'w', 'q', 'l', 'n', 's', 'H', 'h']);
+const REGRESSION_GUARD = /regression guard|already passes|must still pass/i;
+
+/** Split a command line on spaces, honouring quotes. Null on shell syntax. */
+function shellWords(cmd) {
+  const words = [];
+  let cur = '';
+  let quote = null;
+  let started = false;
+  for (const ch of cmd) {
+    if (quote) {
+      if (ch === quote) quote = null; else cur += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; started = true; continue; }
+    if (/[|;&<>`$()\\]/.test(ch)) return null;
+    if (/\s/.test(ch)) { if (started) { words.push(cur); cur = ''; started = false; } continue; }
+    cur += ch; started = true;
+  }
+  if (quote) return null;
+  if (started) words.push(cur);
+  return words;
+}
+
+/**
+ * Parse a simple grep gate: `grep|rg|git grep [flags] PATTERN [paths...]`.
+ * @returns {{tool, flags, pattern, paths}|null} null when the command is not one
+ */
+function parseGateCommand(cmd) {
+  const words = shellWords(String(cmd || '').trim());
+  if (!words || !words.length) return null;
+  const tool = GATE_TOOLS.find((t) => t.every((w, i) => words[i] === w));
+  if (!tool) return null;
+  const flags = {};
+  let pattern = null;
+  const paths = [];
+  let flagsDone = false;
+  for (const w of words.slice(tool.length)) {
+    if (!flagsDone && w === '--') { flagsDone = true; continue; }
+    if (!flagsDone && /^-[A-Za-z]+$/.test(w)) {
+      for (const f of w.slice(1)) { if (!GATE_FLAGS.has(f)) return null; flags[f] = true; }
+      continue;
+    }
+    if (!flagsDone && w.startsWith('-')) return null;
+    if (pattern === null) pattern = w; else paths.push(w);
+  }
+  if (pattern === null) return null;
+  return { tool: tool.join(' '), flags, pattern, paths };
+}
+
+/** A JS RegExp for a grep pattern: -F literal, -E extended, else basic (BRE). Null when it cannot compile. */
+function gateRegex(g) {
+  let src = g.pattern;
+  if (g.flags.F) src = src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  else if (!g.flags.E && g.tool !== 'rg') {
+    // BRE: \( \) \{ \} \| \+ \? are the operators; their bare forms are literals.
+    src = src.replace(/\\([(){}|+?])|([(){}|+?])/g, (m, esc, bare) => (esc ? esc : '\\' + bare));
+  }
+  if (g.flags.w) src = `\\b(?:${src})\\b`;
+  try { return new RegExp(src, g.flags.i ? 'i' : ''); } catch { return null; }
+}
+
+function filesUnder(root, rel, recursive) {
+  const abs = path.join(root, rel);
+  let st;
+  try { st = fs.statSync(abs); } catch { return null; }
+  if (st.isFile()) return [abs];
+  if (!st.isDirectory() || !recursive) return [];
+  const out = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (e.name === '.git' || e.name === 'node_modules') continue;
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p); else if (e.isFile()) out.push(p);
+    }
+  };
+  walk(abs);
+  return out;
+}
+
+/** Run a parsed gate against the tree as it is: passes_now | fails_now | target_missing | invalid. */
+function runGate(cwd, g) {
+  const re = gateRegex(g);
+  if (!re) return 'invalid';
+  const recursive = g.tool !== 'grep' || g.flags.r || g.flags.R;
+  const targets = g.paths.length ? g.paths : ['.'];
+  let anyTarget = false;
+  for (const t of targets) {
+    const files = filesUnder(cwd, t, recursive);
+    if (files === null) continue;
+    anyTarget = true;
+    for (const f of files) {
+      let text;
+      try { text = toLf(fs.readFileSync(f, 'utf-8')); } catch { continue; }
+      if (text.split('\n').some((line) => re.test(line))) return 'passes_now';
+    }
+  }
+  return anyTarget ? 'fails_now' : 'target_missing';
+}
+
+/** The gate commands in a plan: backticked spans inside each task's <verify>. */
+function gatesOf(text) {
+  const out = [];
+  const taskRe = /<task\b[^>]*>([\s\S]*?)<\/task>/g;
+  let t;
+  while ((t = taskRe.exec(text)) !== null) {
+    const name = ((t[1].match(/<name>([\s\S]*?)<\/name>/) || [])[1] || 'unnamed').trim();
+    const verify = (t[1].match(/<verify>([\s\S]*?)<\/verify>/) || [])[1] || '';
+    for (const m of verify.matchAll(/`([^`]+)`/g)) out.push({ task: name, command: m[1].trim(), guard: REGRESSION_GUARD.test(verify) });
+  }
+  return out;
+}
+
+function checkGates(cwd, phase) {
+  const pp = phasePlans(cwd, phase);
+  if (pp.error) return pp;
+  const gates = [];
+  const errors = [];
+  for (const p of pp.plans) {
+    for (const g of gatesOf(p.text)) {
+      const parsed = parseGateCommand(g.command);
+      const status = parsed ? runGate(cwd, parsed) : 'not_checkable';
+      gates.push({ plan: p.plan, task: g.task, command: g.command, status, ...(g.guard ? { regression_guard: true } : {}) });
+      if (status === 'passes_now' && !g.guard) errors.push({ code: 'gate_vacuous', plan: p.plan, task: g.task, command: g.command, detail: 'passes before any work, so it cannot show the task did anything; check for what the task adds, or mark it a regression guard' });
+      if (status === 'invalid') errors.push({ code: 'gate_invalid', plan: p.plan, task: g.task, command: g.command, detail: 'the pattern does not compile, so the gate can never match as written' });
+    }
+  }
+  return { phase: pp.pf.info.phase_number, ok: errors.length === 0, gates, errors };
+}
+
+function cmdVerifyGates(cwd, phase, raw) {
+  if (!phase) error('Usage: verify gates <phase>');
+  const r = checkGates(cwd, phase);
+  if (r.error) { output(r, raw); return; }
+  output(r, raw, r.ok ? 'valid' : 'invalid', r.ok ? 0 : 1);
+}
+
 function cmdVerifyReviewFocus(cwd, phase, raw) {
   if (!phase) error('Usage: verify review-focus <phase>');
   const r = checkReviewFocus(cwd, phase);
@@ -158,4 +304,7 @@ function cmdVerifyDecisions(cwd, phase, raw) {
   output(r, raw, r.ok ? 'valid' : 'invalid', r.ok ? 0 : 1);
 }
 
-module.exports = { REVIEW_FOCUS_MAX, checkReviewFocus, checkDecisions, recordedDecisions, cmdVerifyReviewFocus, cmdVerifyDecisions };
+module.exports = {
+  REVIEW_FOCUS_MAX, checkReviewFocus, checkDecisions, recordedDecisions, cmdVerifyReviewFocus, cmdVerifyDecisions,
+  parseGateCommand, checkGates, cmdVerifyGates,
+};

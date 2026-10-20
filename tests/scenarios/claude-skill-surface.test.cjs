@@ -21,6 +21,7 @@
 const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
+const lib = require('../../bin/install-lib.cjs');
 const os = require('os');
 const path = require('path');
 const { installInto, cleanup, createScenarioRunner } = require('../helpers.cjs');
@@ -55,15 +56,17 @@ describe('a --unified-skills install gives Claude Code its own copy of every ski
   });
   after(() => { if (dir) cleanup(dir); });
 
-  test('every shared skill has a Claude copy, and every copy is byte-identical to it', () => {
+  test('every shared skill has a Claude copy, identical to it but for disable-model-invocation (M49)', () => {
     const shared = panDirs(path.join(dir, '.agents', 'skills'));
     const claude = panDirs(path.join(dir, '.claude', 'skills'));
     assert.ok(shared.length > 0, 'precondition: the shared tree must be populated, or the comparison below is vacuous');
     assert.deepEqual(claude, shared, 'the Claude copy must hold exactly the shared tree\'s skills');
     for (const name of shared) {
-      const a = fs.readFileSync(path.join(dir, '.agents', 'skills', name, 'SKILL.md'));
-      const b = fs.readFileSync(path.join(dir, '.claude', 'skills', name, 'SKILL.md'));
-      assert.equal(Buffer.compare(a, b), 0, `${name}: the Claude copy differs from the shared skill`);
+      const a = fs.readFileSync(path.join(dir, '.agents', 'skills', name, 'SKILL.md'), 'utf8');
+      const b = fs.readFileSync(path.join(dir, '.claude', 'skills', name, 'SKILL.md'), 'utf8');
+      // The Claude copy is the shared skill plus one frontmatter line (M49), nothing else.
+      assert.equal(b, lib.withClaudeUserInvokedOnly(a), `${name}: the Claude copy must be the shared skill marked user-invoked only`);
+      assert.notEqual(a, b, `${name}: the Claude copy must carry disable-model-invocation`);
     }
   });
 

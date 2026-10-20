@@ -35,10 +35,11 @@
         "json:hooks.SessionStart.0.hooks.0.async=true",
         "json:hooks.SubagentStop.0.hooks.0.async=true",
         "json:hooks.SubagentStop.1.hooks.0.async=true",
-        "json!:hooks.PostToolUse.0.hooks.0.async",
-        "json:hooks.PostToolUse.0.hooks.0.type=command"
+        "json!:hooks.PostToolUse",
+        "json:hooks.Stop.0.hooks.0.type=command",
+        "json!:hooks.Stop.0.hooks.0.async"
       ],
-      "why": "Plan item 2: observers run async on Codex (0.148+), the context monitor stays synchronous because it injects additionalContext the model must read this turn. Both directions asserted — an async monitor would silently defer its warnings."
+      "why": "Plan item 2: observers run async on Codex (0.148+). The stop guard stays synchronous because it decides whether the turn may end. No context monitor on Codex (M50, 2026-10-20): it has no bridge and cannot read Codex transcripts, so PostToolUse carries no PAN hook."
     },
     {
       "kind": "fs",
@@ -131,6 +132,10 @@
     }
   ],
   "controls": [
-    {"id":"no-codex-hooks","delete":".codex/hooks.json","why":"The Codex hooks file carries the async observers; its absence must fail the hooks assertions."}
+    {
+      "id": "no-codex-hooks",
+      "delete": ".codex/hooks.json",
+      "why": "The Codex hooks file carries the async observers; its absence must fail the hooks assertions."
+    }
   ]
 }

@@ -786,9 +786,12 @@
   "plan-lint.cjs": [
     "REVIEW_FOCUS_MAX:number",
     "checkDecisions:function",
+    "checkGates:function",
     "checkReviewFocus:function",
     "cmdVerifyDecisions:function",
+    "cmdVerifyGates:function",
     "cmdVerifyReviewFocus:function",
+    "parseGateCommand:function",
     "recordedDecisions:function"
   ],
   "planning-root.cjs": [
@@ -1100,6 +1103,7 @@
     "collectVerificationStats:function",
     "countRoadmapPhases:function",
     "detectInstalledRuntimes:function",
+    "detectPlanTruncation:function",
     "getChangedFiles:function",
     "groupGapPatterns:function",
     "parseConventionRules:function",

@@ -1203,8 +1203,7 @@ describe('buildCopilotHooksConfig', () => {
     assert.equal(cfg.version, 1);
     assert.equal(cfg.hooks.sessionStart[0].type, 'command');
     assert.equal(cfg.hooks.sessionStart[0].command, 'node .github/hooks/pan-check-update.js');
-    assert.equal(cfg.hooks.postToolUse[0].type, 'command');
-    assert.equal(cfg.hooks.postToolUse[0].command, 'node .github/hooks/pan-context-monitor.js');
+    assert.equal(cfg.hooks.postToolUse, undefined, 'no context monitor on Copilot: it cannot measure there (M50)');
   });
 
   test('omits an event when its command is absent', () => {
@@ -1465,10 +1464,10 @@ describe('mergeCodexHooksConfig', () => {
     stopGuardCommand: 'node .codex/hooks/pan-stop-guard.js',
   };
 
-  test('builds all five registrations from scratch (PascalCase events)', () => {
+  test('builds the registrations from scratch (PascalCase events; no context monitor, M50)', () => {
     const config = lib.mergeCodexHooksConfig(null, COMMANDS);
     assert.equal(config.hooks.SessionStart.length, 1);
-    assert.equal(config.hooks.PostToolUse.length, 1);
+    assert.equal(config.hooks.PostToolUse, undefined, 'the context monitor cannot measure on Codex');
     assert.equal(config.hooks.SubagentStop.length, 2, 'cost + trace loggers');
     assert.equal(config.hooks.SubagentStop[0].hooks[0].type, 'command');
     assert.deepEqual(config.hooks.Stop, [{ hooks: [{ type: 'command', command: COMMANDS.stopGuardCommand }] }],
@@ -1509,12 +1508,11 @@ describe('mergeCodexHooksConfig', () => {
     const merged = lib.mergeCodexHooksConfig(legacy, COMMANDS);
     const handlers = Object.values(merged.hooks).flat().flatMap(g => g.hooks);
     const byMarker = (m) => handlers.find(h => h.command.includes(m));
-    assert.equal(handlers.length, 5, 'no duplicate registrations on upgrade (four kept + the stop guard added)');
+    assert.equal(handlers.length, 4, 'no duplicate registrations on upgrade (three observers kept + the stop guard added; the legacy monitor dropped, M50)');
     for (const observer of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger']) {
       assert.equal(byMarker(observer).async, true, `${observer} gains async on upgrade`);
     }
-    assert.equal(byMarker('pan-context-monitor').async, undefined,
-      'a stray async on the context monitor is cleared — its additionalContext must land this turn');
+    assert.equal(byMarker('pan-context-monitor'), undefined, 'the monitor an older install wrote is dropped on upgrade (M50)');
   });
 });
 
@@ -1816,8 +1814,10 @@ describe('HOOK_EVENT_MAP', () => {
       assert.ok(lib.HOOK_EVENT_MAP[rt].sessionStart, `${rt}: every hook runtime names its session-start event`);
     }
     for (const rt of ['claude', 'codex', 'copilot']) {
-      assert.ok(lib.HOOK_EVENT_MAP[rt].postToolUse && lib.HOOK_EVENT_MAP[rt].subagentStop, `${rt}: tool and subagent events are named`);
+      assert.ok(lib.HOOK_EVENT_MAP[rt].subagentStop, `${rt}: the subagent event is named`);
     }
+    // postToolUse is the context monitor's slot, set only where it can measure (M50).
+    assert.deepEqual(['claude', 'gemini', 'codex', 'copilot'].filter((rt) => lib.HOOK_EVENT_MAP[rt].postToolUse), ['claude']);
   });
 
   test('Gemini uses its own vocabulary: AfterAgent for the stop guard, nothing for the monitor or loggers (R29)', () => {
@@ -1839,7 +1839,7 @@ describe('HOOK_EVENT_MAP', () => {
     assert.deepEqual([lib.HOOK_EVENT_MAP.copilot.compactMark, lib.HOOK_EVENT_MAP.copilot.compactInject], ['preCompact', 'postToolUse']);
     const config = lib.buildCopilotHooksConfig({ contextMonitorCommand: 'node m.js', stateReinjectMarkCommand: 'node r.js --mark', stateReinjectInjectCommand: 'node r.js --inject copilot' });
     assert.deepEqual(config.hooks.preCompact, [{ type: 'command', command: 'node r.js --mark' }]);
-    assert.deepEqual(config.hooks.postToolUse.map((h) => h.command), ['node m.js', 'node r.js --inject copilot'], 'the monitor first, then the re-injection');
+    assert.deepEqual(config.hooks.postToolUse.map((h) => h.command), ['node r.js --inject copilot'], 'only the re-injection: no context monitor on Copilot (M50)');
   });
 
   test('stripPanHookEntries keeps every event in a keep list (a hook registered under two events)', () => {
@@ -2013,4 +2013,23 @@ describe('an install that copied no hook scripts registers none (M24)', () => {
       }
     });
   }
+});
+
+describe('withClaudeUserInvokedOnly (M49)', () => {
+  // Claude Code keeps a command or skill marked disable-model-invocation out of the
+  // listing it sends the model every turn; it still runs as /pan:<name>. Seen on 2.1.302
+  // by harness/scenarios/skill-listing-claude*.json.
+  test('adds the field to the frontmatter, once, keeping the line ending', () => {
+    const md = '---\nname: pan:help\ndescription: Show help\n---\nBody\n';
+    const out = lib.withClaudeUserInvokedOnly(md);
+    assert.equal(out, '---\nname: pan:help\ndescription: Show help\ndisable-model-invocation: true\n---\nBody\n');
+    assert.equal(lib.withClaudeUserInvokedOnly(out), out, 'idempotent');
+    assert.match(lib.withClaudeUserInvokedOnly(md.replace(/\n/g, '\r\n')), /description: Show help\r\ndisable-model-invocation: true\r\n---/);
+  });
+
+  test('content without frontmatter, or already marked, is unchanged', () => {
+    assert.equal(lib.withClaudeUserInvokedOnly('plain body\n'), 'plain body\n');
+    const marked = '---\nname: x\ndisable-model-invocation: false\n---\nB\n';
+    assert.equal(lib.withClaudeUserInvokedOnly(marked), marked, 'an explicit value is the author\'s');
+  });
 });

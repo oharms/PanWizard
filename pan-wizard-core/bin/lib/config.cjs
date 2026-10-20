@@ -156,8 +156,13 @@ function knownConfigKeys() {
  * @param {string} keyPath
  * @returns {boolean}
  */
+// A lowercase `x-` key is the user's own metadata, never a typo (market-ideas M51,
+// after OpenSpec v1.14.2): PAN ignores it at the top level and inside a section.
+const USER_KEY = /^x-/;
+
 function isKnownConfigPath(keyPath) {
   const [head, sub] = String(keyPath).split('.');
+  if (USER_KEY.test(head) || (sub !== undefined && USER_KEY.test(sub))) return true;
   const { top, sections } = knownConfigKeys();
   if (!top.has(head)) return false;
   return sub === undefined || !sections.has(head) || sections.get(head).has(sub);
@@ -174,10 +179,11 @@ function unknownConfigKeys(config) {
   const { top, sections } = knownConfigKeys();
   const unknown = [];
   for (const [k, v] of Object.entries(config)) {
+    if (USER_KEY.test(k)) continue;
     if (!top.has(k)) { unknown.push(k); continue; }
     const known = sections.get(k);
     if (!known || !v || typeof v !== 'object' || Array.isArray(v)) continue;
-    for (const sub of Object.keys(v)) if (!known.has(sub)) unknown.push(`${k}.${sub}`);
+    for (const sub of Object.keys(v)) if (!known.has(sub) && !USER_KEY.test(sub)) unknown.push(`${k}.${sub}`);
   }
   return unknown;
 }

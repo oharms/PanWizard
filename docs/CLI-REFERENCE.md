@@ -1429,7 +1429,7 @@ pan-tools validate health --links
 | I003 | info | The tree runs the focus model or an orchestration campaign, so the phase-model checks (E002–E004, W001, W002, W005–W007, I001, I002, the state-consistency and verification gates) do not apply | No |
 | I004 | info | Another tool shares the planning tree (planning-with-files markers: `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories such as `sessions/`). PAN leaves its files alone and keeps checking its own | No |
 | I005 | info | The planning tree is ignored by git while `commit_docs` is true, so planning commits commit nothing. planning-with-files adds `.planning/` to `.gitignore` by default. Fix: remove the entry, or set `commit_docs` to false | No |
-| I006 | info | `config.json` holds keys PAN does not read, usually a typo. The fix names the nearest known key. Fix: correct the spelling or remove the key | No |
+| I006 | info | `config.json` holds keys PAN does not read, usually a typo. The fix names the nearest known key. A key starting with lowercase `x-` is your own metadata and is never reported. Fix: correct the spelling or remove the key | No |
 | STATE_REQ_DRIFT | warning | `state.md` shows all plans complete but `requirements.md` has unchecked boxes | Yes |
 | STATE_ROADMAP_DRIFT | warning | `state.md` shows all plans complete but `roadmap.md` has unchecked plan boxes | Yes |
 | VERIFICATION_GATE_MISSING | warning | Phase has completed plans but no verification record (verifier enabled) | No |
@@ -2403,7 +2403,7 @@ pan-tools config-set parallelization true [--raw]
 
 **`--raw` output:** `key=value` string.
 
-**Unknown keys.** A key path PAN does not read is still written, but the output gains a `warning` (also printed to stderr) naming it and the nearest known key: `unknown config key "workflow.auto_advnace": PAN does not read it; did you mean "workflow.auto_advance"?`. PAN checks the top-level key and, inside a known section such as `workflow` or `routing`, the key one level down. Sections that hold your own names (`model_overrides`, `effort_overrides`, `cost`, `cache`, `build`, `verification`, `concurrency`, `focus`, `memory`) are not checked below the top. `validate health` reports the same keys as `I006`.
+**Unknown keys.** A key path PAN does not read is still written, but the output gains a `warning` (also printed to stderr) naming it and the nearest known key: `unknown config key "workflow.auto_advnace": PAN does not read it; did you mean "workflow.auto_advance"?`. PAN checks the top-level key and, inside a known section such as `workflow` or `routing`, the key one level down. Sections that hold your own names (`model_overrides`, `effort_overrides`, `cost`, `cache`, `build`, `verification`, `concurrency`, `focus`, `memory`) are not checked below the top. `validate health` reports the same keys as `I006`. Keys that start with lowercase `x-` are user metadata and never warn.
 
 ---
 
