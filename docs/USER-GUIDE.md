@@ -341,6 +341,7 @@ Some commands were folded into flags of another command. The old names keep work
 | `/pan:plan-phase [N]` | Research + plan + verify; `--research-only <N>` runs the research step alone | Before executing a phase; research only for a complex or unfamiliar domain |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves | After planning is complete |
 | `/pan:verify-phase [N]` | Goal-backward re-verification with a test-suite gate; lists gaps for `--gaps` | After execution completes |
+| `/pan:autodev [run\|resume\|status]` | Unattended loop over the roadmap: a fresh host session per plan, execute and verify step, `phase complete` in the engine, stop reasons in code, a ledger per run in `.planning/autodev/` | When the roadmap is settled and you want phases built without supervision |
 | `/pan:milestone-audit` | Verify milestone met its definition of done; `--gaps` creates phases for the gaps it found | Before completing milestone |
 | `/pan:milestone-done <version>` | Archive milestone, tag release; `--cleanup` archives old phase directories from completed milestones | All phases verified |
 | `/pan:milestone-new [name]` | Start next version cycle | After completing a milestone |

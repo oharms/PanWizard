@@ -609,6 +609,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:plan-phase [N] [--auto]` | Research + plan + verify for a phase; `--research-only <N>` runs the research step alone |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves, verify when complete |
 | `/pan:verify-phase [N]` | Re-run goal-backward verification with a test-suite gate; lists gaps for `/pan:plan-phase N --gaps` ¹ |
+| `/pan:autodev [run\|resume\|status]` | Run the roadmap unattended: a deterministic loop plans, executes, verifies and completes each phase, each step in a fresh host session, and stops in code (done, human needed, gate failed, budget, turns, no progress) |
 | `/pan:milestone-audit` | Verify milestone achieved its definition of done; `--gaps` creates phases to close the gaps the audit found |
 | `/pan:milestone-done <version>` | Archive milestone, tag release; `--cleanup` archives accumulated phase directories from completed milestones |
 | `/pan:milestone-new [name]` | Start next version: questions → research → requirements → roadmap |

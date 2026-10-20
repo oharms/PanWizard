@@ -9,6 +9,19 @@
     "removeClaudeMdImport:function",
     "upsertAgentsMdSection:function"
   ],
+  "autodev.cjs": [
+    "STOP_REASONS:object",
+    "cmdAutodev:function",
+    "decideStop:function",
+    "executeUnit:function",
+    "pendingUnit:function",
+    "runAutodev:function",
+    "runStatus:function",
+    "selectUnit:function",
+    "snapshotHash:function",
+    "unitPrompt:function",
+    "verificationStatus:function"
+  ],
   "bus.cjs": [
     "BUS_DIR:string",
     "DEFAULT_DRAIN_LIMIT:number",

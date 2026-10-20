@@ -364,6 +364,67 @@ GOOD: "Assumption: The project uses Express for routing — Evidence: require('e
 
 ---
 
+### /pan:autodev (53 lines)
+
+````markdown
+---
+name: pan:autodev
+group: Phase Lifecycle
+description: Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
+argument-hint: "[run | resume | status] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-turns N] [--run <id>]"
+allowed-tools:
+  - Read
+  - Bash
+---
+
+<objective>
+Drive the project's roadmap with no model in the control loop. `pan-tools autodev` is a foreground Node process: each turn it reads `.planning/` from disk, asks the next-action router for the next unit (plan, execute or verify a phase, or complete a verified one), and runs it. Plan, execute and verify units each get a fresh headless session on the host; `phase complete` runs in the engine, so the phase gate decides.
+
+It stops in code, with one of these reasons:
+
+| Stop | Meaning |
+|------|---------|
+| `done` | Every phase is finished; the milestone audit is next |
+| `human_needed` | A verifier asked for a human check, or there is no roadmap |
+| `gate_failed` | The phase gate refused to complete a phase |
+| `budget_usd` | Spend reached `--max-usd` |
+| `turns` | `--max-turns` units have run (20 when not given) |
+| `no_progress` | A unit ran and changed nothing on disk |
+</objective>
+
+<process>
+1. **Check the subcommand** in `$ARGUMENTS`: `run` (the default), `resume` or `status`.
+
+2. **Status** only reports the latest run (or `--run <id>`):
+
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev status
+   ```
+
+3. **Run or resume.** Say what will happen first: which host runs the sessions (`--host`, Claude Code by default; Copilot CLI has no unattended adapter yet), and the spend and unit caps. Each session spends on that host. Then run it in the foreground and wait; a run can take hours:
+
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev run --host claude --max-usd 20 --max-turns 12
+   ```
+
+   After an interrupted run, resume it: the unit that was in flight runs again first.
+
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev resume
+   ```
+
+4. **Report** the result: `stop.reason` and `stop.detail`, the units run, `spent_usd`, and the ledger path (`.planning/autodev/<run>/ledger.jsonl`, one `started` and one `finished` row per unit with its argv, exit, cost and commits). Then route on the reason:
+   - `done` → `/pan:milestone-audit`
+   - `human_needed` → show the phase's verification and the human checks it lists
+   - `gate_failed` → show the gate's reasons (`pan-tools phase gate <N>`), then `/pan:plan-phase <N> --gaps`
+   - `budget_usd`, `turns` → offer `autodev resume` with a higher cap
+   - `no_progress` → show the last unit's `stderr_tail` from the ledger; the session likely could not run the command
+</process>
+````
+
+
+---
+
 ### /pan:cost (164 lines)
 
 ````markdown
@@ -971,7 +1032,7 @@ Generate 3-4 **phase-specific** gray areas, not generic categories.
 
 ---
 
-### /pan:exec-phase (136 lines)
+### /pan:exec-phase (135 lines)
 
 ````markdown
 ---
@@ -1065,9 +1126,8 @@ Execute the execute-phase workflow from @~/.claude/pan-wizard-core/workflows/exe
 Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
 
 **Context Management Across Waves:**
-- KEEP: Phase goals, test baseline, current wave tasks, file paths being modified
-- SUMMARIZE: Completed wave results to one-line summaries
-- DISCARD: Raw tool output from previous waves
+- Carry forward: Phase goals, test baseline, current wave tasks, file paths being modified
+- Summarise: Completed wave results to one-line summaries
 
 **Attention Anchor — emit after each wave completes:**
 ```
@@ -1349,7 +1409,7 @@ Works in all 5 runtimes (Claude / Codex / Gemini / OpenCode / Copilot). The W2 e
 
 ---
 
-### /pan:focus-auto (702 lines)
+### /pan:focus-auto (701 lines)
 
 ````markdown
 ---
@@ -1726,9 +1786,8 @@ Check the response for stop conditions:
 #### Step 2.5: Inter-Cycle Context Management
 
 Between cycles, manage context to prevent quality degradation over long campaigns:
-- **KEEP:** Current cycle goals, test baseline, error states, active file paths
-- **SUMMARIZE:** Previous cycle results to a one-line summary each
-- **DISCARD:** Raw tool output from previous cycles, superseded scan results
+- **Carry forward:** Current cycle goals, test baseline, error states, active file paths
+- **Summarise:** Previous cycle results to a one-line summary each
 
 Display one-line cycle summary: `Cycle N/M | X/Y pts | Z items done | Tests: A -> B`
 
@@ -2059,7 +2118,7 @@ This prevents the campaign from burning budget on items that will predictably fa
 
 ---
 
-### /pan:focus-design (1119 lines)
+### /pan:focus-design (1118 lines)
 
 ````markdown
 ---
@@ -2091,7 +2150,7 @@ Research, design, and specify a new feature with strategic analysis. $ARGUMENTS
 
 ---
 
-## CRITICAL: Project Scope Boundary
+## Project Scope Boundary
 
 This command investigates and designs features for the **host project** — NOT for PAN Wizard itself.
 
@@ -2121,9 +2180,8 @@ Prefer local evidence over web research. Start with the codebase, then broaden.
 ## Context Management Across Phases
 
 This pipeline spans 10+ phases. Manage context to maintain quality:
-- **KEEP:** Problem statement, success criteria, key architectural decisions, file paths being designed for
-- **SUMMARIZE:** Research findings (compress to key takeaways after each research phase), competitive analysis results
-- **DISCARD:** Raw web fetch content after extracting relevant data, superseded design drafts
+- **Carry forward:** Problem statement, success criteria, key architectural decisions, file paths being designed for
+- **Summarise:** Research findings (compress to key takeaways after each research phase), competitive analysis results
 - After Phase 3 (Strategic Analysis), summarize all findings from Phases 0-3 into a compact brief before entering design phases
 
 **Progressive context loading — load only what the current phase needs:**
@@ -5543,7 +5601,7 @@ Present findings in a structured, actionable format.
 
 ---
 
-### /pan:review-deep (125 lines)
+### /pan:review-deep (132 lines)
 
 ````markdown
 ---
@@ -5616,14 +5674,21 @@ Per-item deep review during focus campaigns: focus-exec runs the hardener and me
    - Prompt includes: `<files_to_read>` with both `{directory}/{phase_number}-review.md` AND `.planning/reviews/<N>/hardener.md` (and representative diff snippets); `<output_path>` = `.planning/reviews/<N>/meta.md`.
    - Agent reads both first-pass reports, identifies missed patterns, disputes overstated severities, writes to output path.
 
+3b. **Cross-family lane (only when the project turned it on).** A reviewer from the author's own model family shares its blind spots. Run:
+   ```
+   pan-tools review cross-family <N>
+   ```
+   With `workflow.cross_family_review: off` (the default) it returns `enabled: false` and runs nothing: skip to the merge. With a host set, it runs the review on that host's CLI, read-only, and writes `.planning/reviews/<N>/cross-family-<host>.md`; pass that file to the merge as `--cross-file`. If the host's CLI is missing or fails, say so and merge without it.
+
 4. **Merge** — call:
    ```
    pan-tools review-deep merge <N> \
      --reviewer-file {directory}/{phase_number}-review.md \
      --hardener-file .planning/reviews/<N>/hardener.md \
-     --meta-file .planning/reviews/<N>/meta.md
+     --meta-file .planning/reviews/<N>/meta.md \
+     [--cross-file .planning/reviews/<N>/cross-family-<host>.md]
    ```
-   The merger parses all three, sorts by severity, computes verdict (`ok` | `ok_with_minor` | `fix_before_merge` | `review_required` | `block`), and writes `.planning/reviews/<N>/deep-review.md`.
+   The merger parses every input, sorts by severity, computes verdict (`ok` | `ok_with_minor` | `fix_before_merge` | `review_required` | `block`), and writes `.planning/reviews/<N>/deep-review.md`.
 
 5. **Report back** — echo verdict + finding count + conflict count. If verdict is `block` or `review_required`, recommend the user review `deep-review.md` before proceeding.
 

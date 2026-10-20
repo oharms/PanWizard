@@ -1,5 +1,6 @@
 {
   "verbs": [
+    "autodev",
     "batch-commit",
     "bus",
     "cache",
@@ -277,6 +278,7 @@
     "worktree remove"
   ],
   "case_arms": [
+    "autodev",
     "batch-commit",
     "bus",
     "cache",
@@ -616,6 +618,7 @@
       "add-phase.md",
       "army.md",
       "assumptions.md",
+      "autodev.md",
       "cost.md",
       "debug.md",
       "design-phase.md",

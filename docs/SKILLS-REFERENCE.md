@@ -77,11 +77,24 @@ Initialize a new project with deep context gathering and project.md
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
+| `/pan:autodev` | Read, Bash | Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code |
 | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__* | Design a roadmap phase before planning — architecture, ADR, threat-lite, machine-checkable criteria — verified by an independent checker |
 | `/pan:discuss-phase` | Read, Write, Bash, Glob, Grep, AskUserQuestion, Task | Gather phase context through adaptive questioning before planning |
 | `/pan:exec-phase` | Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion | Execute all plans in a phase with wave-based parallelization |
 | `/pan:plan-phase` | Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__* | Create detailed phase plan (plan.md) with verification loop |
 | `/pan:verify-phase` | Read, Bash, Glob, Grep, Edit, Write, Task | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat |
+
+#### /pan:autodev
+
+Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
+
+```text
+/pan:autodev [run | resume | status] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-turns N] [--run <id>]
+```
+
+**Tools:** Read, Bash  
+**Group:** Phase Lifecycle  
+**Lines:** 53
 
 #### /pan:design-phase
 
@@ -117,7 +130,7 @@ Execute all plans in a phase with wave-based parallelization
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion  
 **Group:** Phase Lifecycle  
-**Lines:** 136
+**Lines:** 135
 
 #### /pan:plan-phase
 
@@ -248,7 +261,7 @@ Continuous scan-plan-exec loop with purpose-driven categories and a layered safe
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Focus  
-**Lines:** 702
+**Lines:** 701
 
 #### /pan:focus-design
 
@@ -260,7 +273,7 @@ Strategic 10-phase feature investigation, design, and specification pipeline
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs  
 **Group:** Focus  
-**Lines:** 1119
+**Lines:** 1118
 
 #### /pan:focus-docs
 
@@ -733,7 +746,7 @@ Security audit + cross-reviewer check. OWASP/STRIDE pass by pan-hardener, then p
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task  
 **Group:** Review  
-**Lines:** 125
+**Lines:** 132
 
 ---
 
@@ -953,6 +966,7 @@ Which tools each shipped skill can use:
 | add-phase | x | x |  | x |  |  |  |  |  |  |  |  |  |  |
 | army | x | x | x | x | x | x | x | x |  |  |  |  |  |  |
 | assumptions | x |  |  | x | x | x |  |  |  |  |  |  |  |  |
+| autodev | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | cost | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | debug | x |  |  | x |  |  |  | x |  | x |  |  |  |  |
 | design-phase | x | x |  | x | x | x |  | x |  |  |  |  | x | x |

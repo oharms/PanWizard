@@ -1967,6 +1967,16 @@ pan-tools progress health [--raw]
 
 ---
 
+### `autodev run|resume|status [--host H] [--max-usd N] [--max-turns N] [--run ID]`
+
+The deterministic outer loop (programs A1a, A1c). A foreground process: each turn reads `.planning/`, asks `next-action` for the next unit, decides in code whether to stop, and runs the unit. Plan, execute and verify units each get a fresh headless session on `--host` (argv from `hosts.cjs`; Copilot CLI has no unattended adapter and is refused with `unsupported_host`); `complete_phase` runs `phase complete` in the engine.
+
+Stop reasons: `done` (the milestone audit is next), `human_needed` (a verification with `status: human_needed`, or no roadmap), `gate_failed` (`phase complete` refused), `budget_usd` (spend reached `--max-usd`), `turns` (`--max-turns` units, 20 by default), `no_progress` (the same unit again with the disk unchanged since it ran).
+
+Writes `.planning/autodev/<run>/run.json` and `ledger.jsonl`: a `started` row before each unit and a `finished` row after it (`argv`, `exit`, `cost_usd` from Claude's JSON envelope, `start_sha`, `end_sha`, `snapshot_after`), and a `stopped` row with the reason. `resume` continues the latest run (or `--run`), relaunching a unit that was in flight when it died. `.planning/autodev/state.json` keeps each phase's `verified` and `merged` facts. `status` reports the latest run.
+
+**Module:** `autodev.cjs`
+
 ### `next-action`
 
 The one router `/pan:progress`, `/pan:resume` and the phase transition ask for the next step. It reads `roadmap.md` and the phase directories into the snapshot the MCP orchestrator's state machine keys on, and prints `{action, phase, reason, command}`.

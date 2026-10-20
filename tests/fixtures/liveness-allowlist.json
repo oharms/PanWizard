@@ -388,10 +388,6 @@
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },
   {
-    "id": "caller:sub:phase gate",
-    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
-  },
-  {
     "id": "caller:sub:review-deep analyze",
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },
@@ -474,5 +470,9 @@
   {
     "id": "reader:config:workflow.phase_reports.theme",
     "reason": "Written as a default but no code or prompt reads it: decide whether to read it or drop the default."
+  },
+  {
+    "id": "command:autodev",
+    "reason": "Driven end to end at tier 0 by tests/autodev.test.cjs with a stand-in host on PATH (every stop reason, resume after a kill). A harness scenario needs the deterministic simulation H8 builds (session 6b), which then removes this entry."
   }
 ]

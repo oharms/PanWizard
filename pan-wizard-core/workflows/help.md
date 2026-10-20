@@ -221,6 +221,7 @@ Every shipped command, by group. This list is generated from each command's own 
 ### Phase Lifecycle
 | Command | Description |
 |---------|-------------|
+| `/pan:autodev` | Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code |
 | `/pan:design-phase` | Design a roadmap phase before planning — architecture, ADR, threat-lite, machine-checkable criteria — verified by an independent checker |
 | `/pan:discuss-phase` | Gather phase context through adaptive questioning before planning |
 | `/pan:exec-phase` | Execute all plans in a phase with wave-based parallelization |
