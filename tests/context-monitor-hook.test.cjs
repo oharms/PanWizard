@@ -436,3 +436,37 @@ describe('pan-context-monitor — which transcript measures the call', () => {
     assert.equal(transcriptForPayload({ session_id: 'sess-0001' }), null, 'no transcript at all');
   });
 });
+
+// ── Registered only where it can measure (market-ideas M50, MI-133) ──────────────
+// The monitor's numbers come from Claude Code's status-line bridge or a Claude-shaped
+// transcript. Copilot sends camelCase `sessionId`, so the hook exited at its
+// session_id check on every call; Codex has no bridge, and its transcripts are not
+// Claude-shaped. Registered there, it spawned on every tool call and measured nothing
+// (reality check 2026-10-19; gsd-core v1.17.0 dropped its monitor the same way).
+describe('context monitor: registered only on runtimes with a metrics source (M50)', () => {
+  const lib = require('../bin/install-lib.cjs');
+  const commands = { contextMonitorCommand: 'node hooks/pan-context-monitor.js', updateCheckCommand: 'node hooks/pan-check-update.js' };
+  const mentions = (obj) => JSON.stringify(obj).includes('pan-context-monitor');
+
+  test('HOOK_EVENT_MAP gives the monitor a slot on Claude only', () => {
+    const withSlot = Object.entries(lib.HOOK_EVENT_MAP).filter(([, spec]) => spec && spec.postToolUse).map(([rt]) => rt);
+    assert.deepEqual(withSlot, ['claude']);
+  });
+
+  test('the Codex and Copilot builders leave it out even when handed the command', () => {
+    assert.equal(mentions(lib.mergeCodexHooksConfig({}, commands)), false, 'Codex hooks.json');
+    assert.equal(mentions(lib.buildCopilotHooksConfig(commands)), false, 'Copilot .github/hooks/pan.json');
+    assert.equal(mentions(lib.buildCopilotPluginHooksConfig(commands)), false, 'Copilot vendor hooks in the Agent Plugins bundle');
+  });
+
+  test('an upgrade drops a monitor an older install wrote into Codex hooks.json, and keeps foreign hooks', () => {
+    const old = { hooks: { PostToolUse: [{ hooks: [{ type: 'command', command: 'node .codex/hooks/pan-context-monitor.js' }, { type: 'command', command: 'node mine.js' }] }, { hooks: [{ type: 'command', command: 'node .codex/hooks/pan-context-monitor.js' }] }] } };
+    const merged = lib.mergeCodexHooksConfig(old, commands);
+    assert.equal(mentions(merged), false);
+    assert.deepEqual(merged.hooks.PostToolUse, [{ hooks: [{ type: 'command', command: 'node mine.js' }] }]);
+  });
+
+  test('the Claude plugin keeps it', () => {
+    assert.equal(mentions(lib.buildPluginHooksConfig()), true);
+  });
+});

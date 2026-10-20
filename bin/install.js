@@ -2795,7 +2795,7 @@ function install(isGlobal, runtime = 'claude') {
       // Print the path we actually wrote. The hardcoded '.codex/hooks.json' was
       // wrong for --global and for --config-dir, telling users to inspect a file
       // that does not exist while the real one sat elsewhere.
-      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksJsonPath)}: update check, context monitor, cost + trace loggers, stop guard, state re-injection)`);
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksJsonPath)}: update check, guard, cost + trace loggers, stop guard, state re-injection)`);
     } catch (e) {
       pushInstallWarning('codexHooks', 'hooks.json', e);
     }
@@ -2812,7 +2812,7 @@ function install(isGlobal, runtime = 'claude') {
       fs.mkdirSync(path.dirname(hooksConfigPath), { recursive: true });
       fs.writeFileSync(hooksConfigPath, JSON.stringify(hooksConfig, null, 2) + '\n');
       // Same as the Codex case: a global Copilot install writes to ~/.copilot/, not .github/.
-      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, context monitor, cost + trace loggers, stop guard, state re-injection)`);
+      console.log(`  ${green}✓${reset} Configured hooks (${displayPath(hooksConfigPath)}: update check, guard, cost + trace loggers, stop guard, state re-injection)`);
     } catch (e) {
       console.error(`  ${yellow}✗${reset} Failed to write Copilot hooks config: ${e.message}`);
     }

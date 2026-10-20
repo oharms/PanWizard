@@ -1203,8 +1203,7 @@ describe('buildCopilotHooksConfig', () => {
     assert.equal(cfg.version, 1);
     assert.equal(cfg.hooks.sessionStart[0].type, 'command');
     assert.equal(cfg.hooks.sessionStart[0].command, 'node .github/hooks/pan-check-update.js');
-    assert.equal(cfg.hooks.postToolUse[0].type, 'command');
-    assert.equal(cfg.hooks.postToolUse[0].command, 'node .github/hooks/pan-context-monitor.js');
+    assert.equal(cfg.hooks.postToolUse, undefined, 'no context monitor on Copilot: it cannot measure there (M50)');
   });
 
   test('omits an event when its command is absent', () => {
@@ -1465,10 +1464,10 @@ describe('mergeCodexHooksConfig', () => {
     stopGuardCommand: 'node .codex/hooks/pan-stop-guard.js',
   };
 
-  test('builds all five registrations from scratch (PascalCase events)', () => {
+  test('builds the registrations from scratch (PascalCase events; no context monitor, M50)', () => {
     const config = lib.mergeCodexHooksConfig(null, COMMANDS);
     assert.equal(config.hooks.SessionStart.length, 1);
-    assert.equal(config.hooks.PostToolUse.length, 1);
+    assert.equal(config.hooks.PostToolUse, undefined, 'the context monitor cannot measure on Codex');
     assert.equal(config.hooks.SubagentStop.length, 2, 'cost + trace loggers');
     assert.equal(config.hooks.SubagentStop[0].hooks[0].type, 'command');
     assert.deepEqual(config.hooks.Stop, [{ hooks: [{ type: 'command', command: COMMANDS.stopGuardCommand }] }],
@@ -1509,12 +1508,11 @@ describe('mergeCodexHooksConfig', () => {
     const merged = lib.mergeCodexHooksConfig(legacy, COMMANDS);
     const handlers = Object.values(merged.hooks).flat().flatMap(g => g.hooks);
     const byMarker = (m) => handlers.find(h => h.command.includes(m));
-    assert.equal(handlers.length, 5, 'no duplicate registrations on upgrade (four kept + the stop guard added)');
+    assert.equal(handlers.length, 4, 'no duplicate registrations on upgrade (three observers kept + the stop guard added; the legacy monitor dropped, M50)');
     for (const observer of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger']) {
       assert.equal(byMarker(observer).async, true, `${observer} gains async on upgrade`);
     }
-    assert.equal(byMarker('pan-context-monitor').async, undefined,
-      'a stray async on the context monitor is cleared — its additionalContext must land this turn');
+    assert.equal(byMarker('pan-context-monitor'), undefined, 'the monitor an older install wrote is dropped on upgrade (M50)');
   });
 });
 
@@ -1816,8 +1814,10 @@ describe('HOOK_EVENT_MAP', () => {
       assert.ok(lib.HOOK_EVENT_MAP[rt].sessionStart, `${rt}: every hook runtime names its session-start event`);
     }
     for (const rt of ['claude', 'codex', 'copilot']) {
-      assert.ok(lib.HOOK_EVENT_MAP[rt].postToolUse && lib.HOOK_EVENT_MAP[rt].subagentStop, `${rt}: tool and subagent events are named`);
+      assert.ok(lib.HOOK_EVENT_MAP[rt].subagentStop, `${rt}: the subagent event is named`);
     }
+    // postToolUse is the context monitor's slot, set only where it can measure (M50).
+    assert.deepEqual(['claude', 'gemini', 'codex', 'copilot'].filter((rt) => lib.HOOK_EVENT_MAP[rt].postToolUse), ['claude']);
   });
 
   test('Gemini uses its own vocabulary: AfterAgent for the stop guard, nothing for the monitor or loggers (R29)', () => {
@@ -1839,7 +1839,7 @@ describe('HOOK_EVENT_MAP', () => {
     assert.deepEqual([lib.HOOK_EVENT_MAP.copilot.compactMark, lib.HOOK_EVENT_MAP.copilot.compactInject], ['preCompact', 'postToolUse']);
     const config = lib.buildCopilotHooksConfig({ contextMonitorCommand: 'node m.js', stateReinjectMarkCommand: 'node r.js --mark', stateReinjectInjectCommand: 'node r.js --inject copilot' });
     assert.deepEqual(config.hooks.preCompact, [{ type: 'command', command: 'node r.js --mark' }]);
-    assert.deepEqual(config.hooks.postToolUse.map((h) => h.command), ['node m.js', 'node r.js --inject copilot'], 'the monitor first, then the re-injection');
+    assert.deepEqual(config.hooks.postToolUse.map((h) => h.command), ['node r.js --inject copilot'], 'only the re-injection: no context monitor on Copilot (M50)');
   });
 
   test('stripPanHookEntries keeps every event in a keep list (a hook registered under two events)', () => {

@@ -239,6 +239,7 @@
     "verify artifacts",
     "verify commits",
     "verify decisions",
+    "verify gates",
     "verify key-links",
     "verify mutate",
     "verify phase-completeness",
@@ -421,12 +422,6 @@
     },
     {
       "runtime": "codex",
-      "hook": "pan-context-monitor.js",
-      "event": "PostToolUse",
-      "surface": "hooks.json"
-    },
-    {
-      "runtime": "codex",
       "hook": "pan-cost-logger.js",
       "event": "SubagentStop",
       "surface": "hooks.json"
@@ -459,12 +454,6 @@
       "runtime": "copilot",
       "hook": "pan-check-update.js",
       "event": "sessionStart",
-      "surface": "hooks/pan.json"
-    },
-    {
-      "runtime": "copilot",
-      "hook": "pan-context-monitor.js",
-      "event": "postToolUse",
       "surface": "hooks/pan.json"
     },
     {

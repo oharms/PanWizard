@@ -1244,3 +1244,47 @@ describe('verify plan-structure — decisions, not code (M32)', () => {
     assert.match(checker, /long code block in `<action>`.*scope_sanity/);
   });
 });
+
+// ── Truncated plans (market-ideas M47, MI-130) ──────────────────────────────────
+// A runtime caps tool output, and a ~450-line plan was cut off mid-tag while the
+// write reported success (gsd-core v1.18.0). The structure check must call it broken.
+describe('verify plan-structure: a truncated plan is invalid (M47)', () => {
+  const { detectPlanTruncation } = require('../pan-wizard-core/bin/lib/verify.cjs');
+  const whole = '<tasks>\n<task type="auto">\n<name>A</name>\n<action>do it</action>\n<verify>npm test</verify>\n<done>done</done>\n<files>a.js</files>\n</task>\n</tasks>\n';
+
+  test('a whole plan has no truncation finding', () => {
+    assert.deepEqual(detectPlanTruncation(whole), []);
+    assert.deepEqual(detectPlanTruncation('# Plan without a tasks block\n'), []);
+  });
+
+  test('a file that ends inside a task is caught, naming the open tags', () => {
+    const cut = whole.slice(0, whole.indexOf('<verify>') + 12);
+    const found = detectPlanTruncation(cut);
+    assert.ok(found.length > 0);
+    assert.match(found.join(' | '), /<verify>/);
+    assert.match(found.join(' | '), /<tasks>/);
+  });
+
+  test('an unclosed <tasks> wrapper and a leftover continuation marker are caught', () => {
+    assert.match(detectPlanTruncation(whole.replace('</tasks>\n', '')).join(' | '), /<tasks>/);
+    assert.match(detectPlanTruncation(whole + '\n[... output truncated ...]\n').join(' | '), /truncat/i);
+  });
+
+  test('tags inside a fenced code block do not count', () => {
+    assert.deepEqual(detectPlanTruncation(whole + '\n```xml\n<task>\n```\n'), []);
+  });
+
+  test('the CLI reports a truncated plan as invalid', () => {
+    const tmp = createTempProject();
+    try {
+      const dir = path.join(tmp, '.planning', 'phases', '01-setup');
+      fs.mkdirSync(dir, { recursive: true });
+      const fm = '---\nphase: 01\nplan: 01\ntype: implementation\nwave: 1\ndepends_on: []\nfiles_modified: [a.js]\nautonomous: true\nmust_haves:\n  artifacts: []\n---\n# Plan\n';
+      fs.writeFileSync(path.join(dir, '01-01-plan.md'), fm + whole.slice(0, whole.indexOf('<done>')));
+      const r = runPanTools('verify plan-structure .planning/phases/01-setup/01-01-plan.md', tmp);
+      const out = JSON.parse(r.output);
+      assert.strictEqual(out.valid, false);
+      assert.ok(out.errors.some((e) => /truncated/i.test(e)), JSON.stringify(out.errors));
+    } finally { cleanup(tmp); }
+  });
+});

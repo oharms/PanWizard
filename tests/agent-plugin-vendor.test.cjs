@@ -59,7 +59,8 @@ describe('Agent Plugins bundle: hooks and vendor directories', () => {
   test('Codex hooks.json: documented default location, matcher-group shape, ${PLUGIN_ROOT} paths that resolve, observers async', () => {
     const cfg = readJson(path.join(OUT, 'hooks', 'hooks.json'));
     assert.deepEqual(Object.keys(cfg), ['hooks'], 'top level is the hooks map only');
-    for (const ev of ['SessionStart', 'PostToolUse', 'SubagentStop']) assert.ok(Array.isArray(cfg.hooks[ev]), `${ev} registered`);
+    for (const ev of ['SessionStart', 'SubagentStop']) assert.ok(Array.isArray(cfg.hooks[ev]), `${ev} registered`);
+    assert.equal(cfg.hooks.PostToolUse, undefined, 'no context monitor: it cannot measure on Codex (M50)');
     const handlers = Object.values(cfg.hooks).flat().flatMap(g => g.hooks || []);
     assert.ok(handlers.length >= 4, 'all four PAN hooks registered');
     for (const h of handlers) {
@@ -71,7 +72,7 @@ describe('Agent Plugins bundle: hooks and vendor directories', () => {
     for (const observer of ['pan-check-update', 'pan-cost-logger', 'pan-trace-logger']) {
       assert.equal(byMarker(observer)?.async, true, `${observer} is a pure observer → async`);
     }
-    assert.equal(byMarker('pan-context-monitor')?.async, undefined, 'the context monitor injects context and must stay synchronous');
+    assert.equal(byMarker('pan-context-monitor'), undefined, 'the context monitor is not registered on Codex (M50)');
   });
 
   test('Copilot hooks.json: flat PascalCase format with ${CLAUDE_PLUGIN_ROOT} paths that resolve', () => {

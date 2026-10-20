@@ -148,3 +148,61 @@ describe('verify decisions (P2)', () => {
     assert.deepEqual([r.code, r.out], [1, 'invalid']);
   });
 });
+
+// ── verify gates (market-ideas M48, MI-131) ─────────────────────────────────────
+// A plan's grep/count gate that already passes before any work, or can never compile,
+// proves nothing about the task (gsd-core v1.18.0 "gate baselines"). Interpreted in
+// Node, never through a shell, so it behaves the same on every platform.
+describe('verify gates (M48)', () => {
+  const gatedTasks = (verifies) => '<tasks>\n' + verifies.map((v, i) =>
+    `<task type="auto">\n  <name>Task ${i + 1}</name>\n  <action>x</action>\n  <verify>${v}</verify>\n  <done>d</done>\n  <files>src/a.js</files>\n</task>\n`).join('') + '</tasks>\n';
+  const gatedPlan = (id, verifies) => {
+    const fm = ['---', 'phase: 03-auth', `plan: ${id}`, 'wave: 1', 'depends_on: []', 'files_modified: [src/a.js]', '---', ''];
+    fs.writeFileSync(path.join(phaseDir, `03-${id}-plan.md`), fm.join('\n') + gatedTasks(verifies));
+  };
+
+  test('the interpreter reads the simple grep forms and refuses the rest', () => {
+    assert.deepEqual(L.parseGateCommand('grep -rn "export function login" src/').pattern, 'export function login');
+    assert.equal(L.parseGateCommand('grep -c login src/a.js | wc -l'), null, 'a pipe is not checkable');
+    assert.equal(L.parseGateCommand('grep -v login src/a.js'), null, 'an inverted grep is not checkable');
+    assert.equal(L.parseGateCommand('npm test'), null);
+    assert.deepEqual(L.parseGateCommand('rg -i "Login" src').flags.i, true);
+    assert.deepEqual(L.parseGateCommand('git grep -F "a.b(" -- src').paths, ['src']);
+  });
+
+  test('a gate that already passes is vacuous; one that fails before the work is sound', () => {
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'src', 'a.js'), 'export function existing() {}\n');
+    gatedPlan('01', ['`grep -q "export function existing" src/a.js`', '`grep -rn "export function login" src/`']);
+    const r = L.checkGates(dir, '3');
+    assert.deepEqual(r.gates.map((g) => g.status), ['passes_now', 'fails_now']);
+    assert.deepEqual(codes(r), ['gate_vacuous']);
+  });
+
+  test('a pattern that cannot compile is invalid; a missing target is expected before the work', () => {
+    gatedPlan('01', ['`grep -E "login(" src/new.js`', '`grep -c login src/new.js`']);
+    const r = L.checkGates(dir, '3');
+    assert.deepEqual(r.gates.map((g) => g.status), ['invalid', 'target_missing']);
+    assert.deepEqual(codes(r), ['gate_invalid']);
+  });
+
+  test('a regression guard may pass before the work, when the plan says so', () => {
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'src', 'a.js'), 'keep me\n');
+    gatedPlan('01', ['`grep -q "keep me" src/a.js` (regression guard: must still pass)']);
+    assert.deepEqual(codes(L.checkGates(dir, '3')), []);
+  });
+
+  test('CLI: exit 1 and `invalid` on a vacuous gate; not-checkable commands are listed, not refused', () => {
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'src', 'a.js'), 'already here\n');
+    gatedPlan('01', ['`grep -q "already here" src/a.js`']);
+    const bad = cli(['verify', 'gates', '3', '--raw']);
+    assert.deepEqual([bad.code, bad.out], [1, 'invalid']);
+    gatedPlan('01', ['`npm test` and `grep -c x src/a.js | wc -l`']);
+    const ok = cli(['verify', 'gates', '3']);
+    assert.equal(ok.code, 0, ok.out);
+    assert.equal(JSON.parse(ok.out).ok, true);
+    assert.equal(JSON.parse(cli(['verify', 'gates', '9']).out).error, 'phase_not_found');
+  });
+});

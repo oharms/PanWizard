@@ -128,13 +128,14 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
     assert.deepEqual(WITHOUT_HOOKS, ['opencode'], 'OpenCode is the only runtime with no hook system');
     // claude: SessionStart + PostToolUse + 2 x SubagentStop + Stop + statusline;
     // plus the compact SessionStart re-injection (M10);
-    // codex: the four event rows + Stop (M14) + compact SessionStart (M10);
-    // copilot: the four + agentStop (M14) + statusline, plus the re-injection's
-    // preCompact marker and postToolUse inject (M33); gemini (R29): SessionStart +
+    // codex: SessionStart + 2 x SubagentStop + Stop (M14) + compact SessionStart (M10),
+    // and no context monitor (M50: it cannot measure on Codex);
+    // copilot: the same three + agentStop (M14) + statusline, plus the re-injection's
+    // preCompact marker and postToolUse inject (M33), and no context monitor (M50); gemini (R29): SessionStart +
     // AfterAgent, plus the re-injection's PreCompress marker and AfterTool inject (M33)
     // — Gemini has no event the context monitor or the loggers could run on, and no
     // statusline command. Plus the pre-tool guard on all four (A7).
-    assert.equal(ROWS.length, 29, `expected 29 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
+    assert.equal(ROWS.length, 27, `expected 27 runtime x hook rows, got ${ROWS.length}: ${ROWS.map((r) => `${r.runtime}/${r.hook}`).join(', ')}`);
     for (const runtime of WITH_HOOKS) {
       const spec = lib.HOOK_EVENT_MAP[runtime];
       assert.ok(spec.sessionStart, `${runtime}: every hook runtime runs the update check at session start`);
@@ -267,7 +268,7 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
       'the registered copilot statusline file must exist');
   });
 
-  test('codex marks the silent observers async and keeps the context monitor synchronous', () => {
+  test('codex marks the silent observers async and registers no context monitor (M50)', () => {
     // An async Codex handler runs off the critical path and cannot inject
     // context. The context monitor returns additionalContext the model must see
     // THIS turn, so it must stay synchronous; the loggers and the update check
@@ -281,8 +282,8 @@ describe('hook registration across every runtime in HOOK_EVENT_MAP', () => {
     assert.equal(flag(spec.sessionStart, 'pan-check-update'), true, 'the update check prints nothing — it must be async');
     assert.equal(flag(spec.subagentStop, 'pan-cost-logger'), true, 'the cost logger only appends a ledger row — it must be async');
     assert.equal(flag(spec.subagentStop, 'pan-trace-logger'), true, 'the trace logger only appends a trace event — it must be async');
-    assert.equal(flag(spec.postToolUse, 'pan-context-monitor'), undefined,
-      'the context monitor injects context the model must read this turn — it must NOT be async');
+    assert.equal(spec.postToolUse, null, 'the context monitor cannot measure on Codex, so it has no slot there');
+    assert.ok(!JSON.stringify(config.codex).includes('pan-context-monitor'), 'and the install registers none');
   });
 
   for (const runtime of WITHOUT_HOOKS) {

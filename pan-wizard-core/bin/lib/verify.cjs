@@ -168,6 +168,36 @@ function checkCheckpointTask(type, attrs, body, errors, warnings) {
   return { name: label, type, auto_select: autoMatch ? autoMatch[1] : null };
 }
 
+// The elements a plan nests. A file that ends with one of them still open was cut
+// off: runtimes cap tool output, and a long plan has been truncated mid-tag while
+// the write reported success (market-ideas M47; gsd-core v1.18.0).
+const PLAN_TAGS = ['tasks', 'task', 'name', 'files', 'action', 'verify', 'done'];
+const TRUNCATION_MARKER = /\[\s*\.{0,3}\s*(?:output\s+)?truncated\b|<!--\s*(?:continue|continued|truncated)\b|\(output truncated\)|\bcontinued in next (?:message|write)\b/i;
+
+/**
+ * Signs that a plan file was cut off. Pure; tags inside fenced code blocks do not count.
+ * @param {string} content - plan file content
+ * @returns {string[]} one message per problem, empty when the file is whole
+ */
+function detectPlanTruncation(content) {
+  const text = String(content || '').replace(/\r\n/g, '\n').replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, '');
+  const out = [];
+  const open = [];
+  const tagRe = new RegExp(`<(/?)(${PLAN_TAGS.join('|')})\\b[^>]*?(/?)>`, 'g');
+  let m;
+  while ((m = tagRe.exec(text)) !== null) {
+    const [, closing, tag, selfClosing] = m;
+    if (selfClosing) continue;
+    if (!closing) { open.push(tag); continue; }
+    const at = open.lastIndexOf(tag);
+    if (at >= 0) open.splice(at);
+  }
+  if (open.length) out.push(`Plan looks truncated: the file ends with ${open.map((t) => `<${t}>`).join(' > ')} still open`);
+  const marker = text.match(TRUNCATION_MARKER);
+  if (marker) out.push(`Plan looks truncated: it contains a continuation marker ("${marker[0].trim()}")`);
+  return out;
+}
+
 /**
  * Validate a plan.md structure: required frontmatter, task elements, and consistency.
  * @param {string} cwd - Working directory path
@@ -184,6 +214,9 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
   const fm = extractFrontmatter(content);
   const errors = [];
   const warnings = [];
+
+  // A cut-off plan first: its task count and fields would mislead (M47).
+  errors.push(...detectPlanTruncation(content));
 
   // Check required frontmatter fields
   const required = ['phase', 'plan', 'type', 'wave', 'depends_on', 'files_modified', 'autonomous', 'must_haves'];
@@ -1625,6 +1658,7 @@ function runFullBuildCheck(cwd) {
 module.exports = {
   cmdVerifySummary,
   cmdVerifyPlanStructure,
+  detectPlanTruncation,
   cmdVerifyPhaseCompleteness,
   cmdVerifyReferences,
   cmdVerifyCommits,

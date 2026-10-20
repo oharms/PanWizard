@@ -162,10 +162,8 @@ describe('Copilot CLI: install structure', () => {
     );
     assert.ok(hasUpdateHook, 'should have pan-check-update in sessionStart');
 
-    const hasContextHook = config.hooks.postToolUse.some(h =>
-      h.type === 'command' && h.command && h.command.includes('pan-context-monitor')
-    );
-    assert.ok(hasContextHook, 'should have pan-context-monitor in postToolUse');
+    // No context monitor: Copilot sends camelCase sessionId, so it measured nothing (M50).
+    assert.ok(!JSON.stringify(config.hooks).includes('pan-context-monitor'), 'pan-context-monitor is not registered on Copilot');
 
     // Multi-runtime hooks layer (2026-06): cost + trace loggers ride
     // Copilot's subagentStop, same as Claude/Gemini's SubagentStop.
