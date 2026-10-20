@@ -199,6 +199,12 @@ If no must_haves in frontmatter AND no Success Criteria in ROADMAP:
 
 For each truth, determine if codebase enables it.
 
+**Requirements with EARS criteria are read against their tests.** Run the trace matrix for the phase's requirement ids:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify traceability <REQ-ID> <REQ-ID> …
+```
+`passed` means the mapped tests pass. `failing` is a gap. `not_checked` means no test is mapped to the requirement, so list it under `not_checked` and never as verified. `legacy` (no criteria) is judged as before.
+
 **Verification status:**
 
 - ✓ VERIFIED: All supporting artifacts pass all checks

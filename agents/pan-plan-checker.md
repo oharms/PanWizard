@@ -591,6 +591,8 @@ done
 
 Parse JSON result: `{ valid, errors, warnings, task_count, tasks: [{name, type, hasFiles, hasAction, hasVerify, hasDone}], frontmatter_fields }`. A checkpoint task's entry is `{name, type}`, plus `auto_select` on a decision.
 
+`verify plan-set` also reports `missing_property_task`: a requirement whose EARS criterion is a validation rule (`IF … THEN … SHALL`, or a claim over any or every input) has no property-test task in the plan that covers it. One example test cannot show a rule over many inputs. It is a blocker under `verification_derivation`.
+
 Then check that each plan's own grep and count gates can fail. The engine runs every read-only `grep`/`rg`/`git grep` it finds in a `<verify>` against the tree as it is now, without a shell:
 
 ```bash

@@ -37,6 +37,7 @@ Think through, in order:
    - Public API changes without changelog entries
    - Documentation that got updated but now contradicts the code
 5. **Be specific.** Every finding you add or dispute needs a file:line citation.
+6. **Prove the serious defects.** A critical or high defect finding is a `candidate` until a catching test proves it. A catching test passes at the phase's base and fails at HEAD, so it shows the defect the phase introduced. For each such finding with a ledger id (`node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings list --phase <N> --status open`), write the smallest test that would catch it under `.planning/reviews/<N>/proofs/`, never in the source tree. Then run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings prove <f_id> --test <that file>`. Report each result as `confirmed` or `candidate` with the proof's status. A finding you cannot write a test for stays a candidate; say why.
 
 </reasoning_protocol>
 

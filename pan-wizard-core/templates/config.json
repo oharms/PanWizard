@@ -10,6 +10,7 @@
     "phase_record_compact": false,
     "phase_gate": "enforce",
     "mutation_gate": "report",
+    "review_mode": "single",
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
   "cost": {

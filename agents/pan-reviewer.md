@@ -132,6 +132,10 @@ Return a structured review report:
 {PASS | PASS_WITH_WARNINGS | NEEDS_FIXES}
 ```
 
+**Lens.** When the prompt names a `<lens>` (`correctness`, `security` or `maintainability`), review only through it. Two other passes cover the other lenses, and a vote keeps the findings at least two passes report. So report what your lens finds, and do not stretch it to cover the others.
+
+**What you declined to judge.** If you set a behaviour aside (no way to run it, outside your lens, outside the diff), name it in the block's `declined` list as `{"behaviour": "...", "reason": "..."}`. Silence about a behaviour reads as a pass; a declined entry says it was not checked.
+
 **Pre-existing problems.** A problem in code this phase did not change, such as an untouched file or untouched lines of a changed file, was there before the phase. Report it, tagged pre-existing, but leave it out of the verdict: it is the project's debt, not this change's defect. `review scope` and `git diff` tell you what the phase changed.
 
 **Verdict rules** (pre-existing findings never count):

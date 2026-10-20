@@ -457,6 +457,16 @@ Task(
 
 3. **Save the report.** Use the Write tool to write the reviewer's returned text, verbatim and in full (including its closing `pan-verdict` block), to `{phase_dir}/{phase_number}-review.md`. The reviewer is read-only by design, so the orchestrator saves the report. `/pan:review-deep` and the findings ledger read this file.
 
+   **Lenses (opt-in).** Check the review mode first:
+   ```bash
+   REVIEW_MODE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.review_mode 2>/dev/null || echo single)
+   ```
+   When it is `lenses`, run step 2 three times instead of once. Each spawn's prompt carries one `<lens>` (`correctness`, `security`, `maintainability`), and each report is saved to `{phase_dir}/{phase_number}-review-{lens}.md`. Then merge them in code. A finding survives only when at least two of the three passes reported it, and the verdict is recomputed from what survives:
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs review vote --phase "${PHASE_NUMBER}" --out "{phase_dir}/{phase_number}-review.md" "{phase_dir}/{phase_number}-review-correctness.md" "{phase_dir}/{phase_number}-review-security.md" "{phase_dir}/{phase_number}-review-maintainability.md"
+   ```
+   Step 4 records the merged `{phase_number}-review.md` as usual. `single`, the default, is the one pass above.
+
 4. **Record the verdict, then act on it.** The record is what this step branches on. It also adds the findings to the ledger (`.planning/findings.jsonl`) and logs the verdict to the trace, so no separate trace call is needed:
 ```bash
 REVIEW_FILE="{phase_dir}/{phase_number}-review.md"

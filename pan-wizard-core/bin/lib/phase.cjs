@@ -741,8 +741,14 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
     const reqIds = roadmapRequirementIds(roadmapContent, phaseNum);
     if (reqIds.length === 0) return;
     let reqContent = reqReadContent;
+    // V8: a requirement with EARS criteria is ticked only when its mapped tests pass;
+    // a legacy one (no criteria) keeps the old tick. Held ones are reported.
+    const decisions = require('./requirements-lint.cjs').tickDecisions(cwd, reqIds);
+    const held = [];
 
     for (const reqId of reqIds) {
+      const d = decisions.get(reqId);
+      if (d && !d.allowed) { held.push({ id: reqId, status: d.status }); continue; }
       const reqEscaped = escapeRegex(reqId);
       reqContent = reqContent.replace(
         new RegExp(`(-\\s*\\[)[ ](\\]\\s*\\*\\*${reqEscaped}\\*\\*)`, 'gi'),
@@ -759,7 +765,7 @@ function markRequirementsCompleteForPhase(cwd, phaseNum, roadmapContent) {
     } catch (e) {
       return { updated: false, error: 'Failed to write requirements.md: ' + e.message };
     }
-    return { updated: true };
+    return { updated: true, held };
   } catch {
     // requirements.md not found or unreadable — skip
     return { updated: false };
@@ -1044,6 +1050,7 @@ module.exports = {
   renumberIntegerPhases,
   updateRoadmapAfterRemoval,
   markPhaseCompleteInRoadmap,
+  markRequirementsCompleteForPhase,
   updateStateAfterPhaseComplete,
   classifyPlanTier,
 };

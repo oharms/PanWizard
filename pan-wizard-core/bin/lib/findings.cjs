@@ -93,6 +93,7 @@ function foldFindings(rows) {
         first_verdict_id: r.verdict_id || null, reports: 0, last_reported: null, _reportedSeq: -1,
         disposition: null, reason: null, disposed_at: null, auto: false, file_sha: null, _disposedSeq: -1, _returnedSeq: -1,
         ...(r.pre_existing === true ? { pre_existing: true } : {}),
+        proof: null,
       });
     } else if (r.kind === 'verdict') {
       verdicts.push({ ...r, _seq: seq });
@@ -108,6 +109,10 @@ function foldFindings(rows) {
         const f = findings.get(id);
         if (f) f._returnedSeq = seq;
       }
+    } else if (r.kind === 'proof' && typeof r.id === 'string') {
+      // R5: the latest catching-test run for a finding.
+      const f = findings.get(r.id);
+      if (f) f.proof = { status: r.status, test: r.test };
     } else if (r.kind === 'disposition' && typeof r.id === 'string') {
       const f = findings.get(r.id);
       if (!f || !V.DISPOSITIONS.includes(r.disposition)) return;
@@ -131,7 +136,8 @@ function foldFindings(rows) {
 /** A finding as the CLI shows it (internal sequence fields removed). */
 function publicFinding(f) {
   const { _reportedSeq, _disposedSeq, _returnedSeq, ...rest } = f;
-  return rest;
+  // R5: confirmed only with a catching test that passed its proof; a candidate otherwise.
+  return { ...rest, confidence: f.proof && f.proof.status === 'confirmed' ? 'confirmed' : 'candidate' };
 }
 
 function countBy(list, key) {
@@ -398,6 +404,7 @@ function recordVerdict(cwd, input) {
     ...(suppressed.length ? { suppressed } : {}),
     by_severity: bySeverity, by_class: byClass, warnings: parsed.warnings,
     ...(notChecked.length ? { not_checked: notChecked } : {}),
+    ...(verdict.declined && verdict.declined.length ? { declined: verdict.declined } : {}),
     // A plan check is bound to the plans it checked (V7): exec-phase compares this
     // hash with the plans it is about to run.
     ...(agent === 'pan-plan-checker' ? { plans_sha: require('./verify-plan-set.cjs').plansShaFor(cwd, phase) } : {}),
@@ -430,7 +437,7 @@ function recordVerdict(cwd, input) {
     });
   }
 
-  return { ...base, recorded: true, duplicate: false, verdict_id: verdictId, attempt, phase, findings: ids.length, new: findingRows.length, rematched, resolved: resolveRows.length, unaddressed, reopened, suppressed, returned: returned.length, pre_existing: preExisting.length, ledger: planningRel(FINDINGS_FILE) };
+  return { ...base, recorded: true, duplicate: false, verdict_id: verdictId, attempt, phase, findings: ids.length, new: findingRows.length, rematched, resolved: resolveRows.length, unaddressed, reopened, suppressed, returned: returned.length, pre_existing: preExisting.length, ...(verdict.declined && verdict.declined.length ? { declined: verdict.declined } : {}), ledger: planningRel(FINDINGS_FILE) };
 }
 
 /**
@@ -583,6 +590,21 @@ function cmdFindingsSuppressions(cwd, opts, raw) {
   output(r, raw, String(r.active));
 }
 
+/**
+ * `findings prove <id> --test <file>` (program R5): run the catching test at the phase's
+ * base and at HEAD, and record the proof. Exit 1 unless it confirms the finding.
+ */
+function cmdFindingsProve(cwd, opts, raw) {
+  if (!requirePlanningTree(cwd)) { output({ error: 'not_a_pan_project', reason: 'no .planning/ directory here' }, raw); return; }
+  const id = opts.id;
+  if (!id || !FINDING_ID_RE.test(id) || !opts.test) error('Usage: findings prove <f_id> --test <test-file> [--timeout <ms>]');
+  const f = foldFindings(readLedger(cwd).rows).findings.get(id);
+  if (!f) { output({ error: 'finding_not_found', id }, raw, 'error', 1); return; }
+  const p = require('./verify-red.cjs').proveFinding(cwd, f.phase, opts.test, { timeoutMs: opts.timeout ? Number(opts.timeout) : undefined });
+  appendRows(cwd, [{ v: LEDGER_V, kind: 'proof', ts: new Date().toISOString(), id, test: p.test, status: p.status }]);
+  output({ id, ...p, confidence: p.status === 'confirmed' ? 'confirmed' : 'candidate' }, raw, p.status, p.status === 'confirmed' ? 0 : 1);
+}
+
 function cmdFindingsDebt(cwd, opts, raw) {
   const r = findingsDebt(cwd, opts);
   output(r, raw, `${r.deferred_count} deferred, ${r.open_count} open`);
@@ -595,6 +617,8 @@ function findingIdsIn(args) {
 
 module.exports = {
   FINDINGS_FILE,
+  sameFinding,
+  cmdFindingsProve,
   STATUSES,
   readLedger,
   foldFindings,

@@ -226,7 +226,7 @@ Every shipped command, by group. This list is generated from each command's own 
 | `/pan:exec-phase` | Execute all plans in a phase with wave-based parallelization |
 | `/pan:plan-phase` | Create detailed phase plan (plan.md) with verification loop |
 | `/pan:research-phase` | Research how to implement a phase (standalone - usually use /pan:plan-phase instead) |
-| `/pan:verify-phase` | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps |
+| `/pan:verify-phase` | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat |
 
 ### Phase Management
 | Command | Description |

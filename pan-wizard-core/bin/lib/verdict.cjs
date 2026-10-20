@@ -36,7 +36,7 @@ const KNOWN_VERDICTS = Object.freeze({
   'pan-design-checker': Object.freeze({ PASS: 'pass', GAPS: 'fail' }),
 });
 
-const LIMITS = Object.freeze({ findings: 100, where: 200, summary: 300, verdict: 40, score: 40, not_checked: 20, check: 80 });
+const LIMITS = Object.freeze({ findings: 100, where: 200, summary: 300, verdict: 40, score: 40, not_checked: 20, check: 80, declined: 20 });
 // What the verifier's test gate can report (verify-phase.md, run_test_suite).
 const TEST_GATE_VALUES = Object.freeze(['passed', 'failed', 'skipped']);
 const RESOLUTION_STATUSES = Object.freeze(['resolved', 'still_present', 'cannot_tell']);
@@ -199,7 +199,8 @@ function validateVerdict(obj, opts = {}) {
 
   const notChecked = normaliseNotChecked(obj.not_checked, warnings);
   const resolutions = normaliseResolutions(obj.resolutions, warnings);
-  return { ok: true, verdict: { contract, agent, outcome, verdict, phase, score, findings, not_checked: notChecked, resolutions }, warnings };
+  const declined = normaliseDeclined(obj.declined, warnings);
+  return { ok: true, verdict: { contract, agent, outcome, verdict, phase, score, findings, not_checked: notChecked, resolutions, ...(declined.length ? { declined } : {}) }, warnings };
 }
 
 /**
@@ -233,6 +234,26 @@ function normaliseResolutions(value, warnings) {
     }
     out.push({ id, summary, status, evidence: evidence || null });
   });
+  return out;
+}
+
+/**
+ * The behaviours a judge set aside, each `{behaviour, reason}` (MI-118, program R2).
+ * A review that names what it declined to judge says where its silence is not a pass.
+ * Accepts bare strings; drops entries that name nothing.
+ */
+function normaliseDeclined(value, warnings) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) { warnings.push('declined_not_an_array'); return []; }
+  const out = [];
+  for (const entry of value.slice(0, LIMITS.declined)) {
+    const obj = typeof entry === 'string' ? { behaviour: entry } : (entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : null);
+    const behaviour = obj ? truncate(cleanText(obj.behaviour ?? obj.behavior ?? ''), LIMITS.summary) : '';
+    if (!behaviour) continue;
+    const reason = obj.reason == null || cleanText(obj.reason) === '' ? null : truncate(cleanText(obj.reason), LIMITS.summary);
+    out.push({ behaviour, reason });
+  }
+  if (value.length > LIMITS.declined) warnings.push(`declined_truncated: ${value.length} reported, ${LIMITS.declined} kept`);
   return out;
 }
 

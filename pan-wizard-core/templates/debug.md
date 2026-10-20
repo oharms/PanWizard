@@ -37,6 +37,7 @@ started: [when it broke / always broken]
 command: [one command you have RUN that fails on the reported symptom, or "none"]
 fails_with: [the output that shows the symptom, secrets redacted]
 deterministic: [yes / rate N of M runs for a flaky bug]
+requirement: [the requirement or UAT truth this reproduces, e.g. REQ-4, when there is one]
 tried: [only when command is "none": what you tried and why it cannot be built]
 
 ## Eliminated

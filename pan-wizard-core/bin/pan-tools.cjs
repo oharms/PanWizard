@@ -390,7 +390,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -707,6 +707,10 @@ async function main() {
         require('./lib/plan-lint.cjs').cmdVerifyDecisions(cwd, args[2], raw);
       } else if (subcommand === 'gates') {
         require('./lib/plan-lint.cjs').cmdVerifyGates(cwd, args[2], raw);
+      } else if (subcommand === 'requirements') {
+        require('./lib/requirements-lint.cjs').cmdVerifyRequirements(cwd, raw);
+      } else if (subcommand === 'traceability') {
+        require('./lib/requirements-lint.cjs').cmdVerifyTrace(cwd, args.slice(2).filter((a) => /^[A-Z][A-Z0-9]*-d+$/.test(a)), raw);
       } else if (subcommand === 'mutate') {
         mutate.cmdVerifyMutate(cwd, {
           phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),
@@ -715,7 +719,7 @@ async function main() {
           timeout: getArgValue(args, '--timeout'),
         }, raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate, review-focus, decisions, gates');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate, review-focus, decisions, gates, requirements, traceability');
       }
       break;
     }
@@ -1320,8 +1324,41 @@ async function main() {
       const subcommand = args[1];
       if (subcommand === 'scope') {
         verifyScope.cmdReviewScope(cwd, args[2], raw);
+      } else if (subcommand === 'vote') {
+        // R2: merge k reviewer passes; a finding survives only with a quorum of votes.
+        const valued = new Set(['--phase', '--quorum', '--out']);
+        const files = args.slice(2).filter((a, i, all) => !a.startsWith('--') && !valued.has(all[i - 1]));
+        require('./lib/review-vote.cjs').cmdReviewVote(cwd, { files, phase: getArgValue(args, '--phase'), quorum: getArgValue(args, '--quorum'), out: getArgValue(args, '--out') }, raw);
       } else {
-        error('Unknown review subcommand. Available: scope');
+        error('Unknown review subcommand. Available: scope, vote');
+      }
+      break;
+    }
+
+    case 'uat': {
+      // L8: UAT results recorded through the engine, so every runtime leaves the same uat.md.
+      const subcommand = args[1];
+      const U = require('./lib/uat.cjs');
+      if (subcommand === 'record') {
+        U.cmdUatRecord(cwd, args[2], { test: getArgValue(args, '--test'), result: getArgValue(args, '--result'), reported: getArgValue(args, '--reported'), severity: getArgValue(args, '--severity'), reason: getArgValue(args, '--reason') }, raw);
+      } else if (subcommand === 'status') {
+        U.cmdUatStatus(cwd, args[2], raw);
+      } else {
+        error('Unknown uat subcommand. Available: record, status');
+      }
+      break;
+    }
+
+    case 'debug': {
+      // P5: a debug session's reproduction as the closing check, and the resolved case base.
+      const subcommand = args[1];
+      const D = require('./lib/debug-cases.cjs');
+      if (subcommand === 'repro') {
+        D.cmdDebugRepro(cwd, args[2], raw, { timeout: getArgValue(args, '--timeout') });
+      } else if (subcommand === 'similar') {
+        D.cmdDebugSimilar(cwd, args[2], raw, { limit: getArgValue(args, '--limit') });
+      } else {
+        error('Unknown debug subcommand. Available: repro, similar');
       }
       break;
     }
@@ -1395,8 +1432,10 @@ async function main() {
         findings.cmdFindingsDebt(cwd, { milestone: filters.milestone }, raw);
       } else if (subcommand === 'suppressions') {
         findings.cmdFindingsSuppressions(cwd, { phase: filters.phase, agent: filters.agent }, raw);
+      } else if (subcommand === 'prove') {
+        findings.cmdFindingsProve(cwd, { id: findings.findingIdsIn(args.slice(2))[0], test: getArgValue(args, '--test'), timeout: getArgValue(args, '--timeout') }, raw);
       } else {
-        error('Unknown findings subcommand. Available: record, list, dispose, debt, suppressions');
+        error('Unknown findings subcommand. Available: record, list, dispose, debt, suppressions, prove');
       }
       break;
     }

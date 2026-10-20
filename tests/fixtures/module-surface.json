@@ -366,6 +366,13 @@
     "resolveRate:function",
     "weeklyLimitStop:function"
   ],
+  "debug-cases.cjs": [
+    "cmdDebugRepro:function",
+    "cmdDebugSimilar:function",
+    "parseDebugSession:function",
+    "reproCheck:function",
+    "similarCases:function"
+  ],
   "distill.cjs": [
     "DEFAULT_BLOAT_THRESHOLD:number",
     "MAX_FUNCTION_LOC:number",
@@ -423,6 +430,7 @@
     "cmdFindingsDebt:function",
     "cmdFindingsDispose:function",
     "cmdFindingsList:function",
+    "cmdFindingsProve:function",
     "cmdFindingsRecord:function",
     "cmdFindingsSuppressions:function",
     "disposeFindings:function",
@@ -777,6 +785,7 @@
     "cmdPhasesList:function",
     "dependencyNames:function",
     "markPhaseCompleteInRoadmap:function",
+    "markRequirementsCompleteForPhase:function",
     "removePhaseFromDisk:function",
     "renumberDecimalPhases:function",
     "renumberIntegerPhases:function",
@@ -828,6 +837,15 @@
     "generateMermaid:function",
     "sampleCompletedPhaseDurations:function"
   ],
+  "requirements-lint.cjs": [
+    "cmdVerifyRequirements:function",
+    "cmdVerifyTrace:function",
+    "isEars:function",
+    "lintRequirements:function",
+    "parseRequirements:function",
+    "tickDecisions:function",
+    "traceMatrix:function"
+  ],
   "research-lint.cjs": [
     "FRESHNESS_DAYS:object",
     "cmdResearchLint:function",
@@ -842,6 +860,11 @@
     "mergeReviews:function",
     "parseReviewFindings:function",
     "writeDeepReview:function"
+  ],
+  "review-vote.cjs": [
+    "LENSES:object",
+    "cmdReviewVote:function",
+    "voteVerdicts:function"
   ],
   "roadmap-compact.cjs": [
     "ROADMAP_COMPACT_KEEP:number",
@@ -966,6 +989,13 @@
     "stripAnsi:function",
     "testRunFacts:function"
   ],
+  "uat.cjs": [
+    "cmdUatRecord:function",
+    "cmdUatStatus:function",
+    "parseUat:function",
+    "recordUatResult:function",
+    "uatStatus:function"
+  ],
   "usage.cjs": [
     "UNFINISHED_AFTER_MS:number",
     "cmdUsage:function",
@@ -1053,6 +1083,7 @@
     "checkRed:function",
     "cmdVerifyRed:function",
     "phaseBase:function",
+    "proveFinding:function",
     "withWorktree:function"
   ],
   "verify-retro.cjs": [

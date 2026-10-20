@@ -59,6 +59,10 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       // V5: the mutation report on a phase's diff. `report` lists surviving mutants and
       // never refuses; `off` skips it; `gate` is reserved for V5G.
       mutation_gate: 'report',
+      // R2: `single` runs one reviewer pass; `lenses` runs one per lens (review-vote.cjs
+      // LENSES) and keeps only the findings a quorum of passes reported. Opt-in until
+      // its paired corpus run decides.
+      review_mode: 'single',
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },

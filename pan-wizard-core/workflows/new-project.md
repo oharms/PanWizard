@@ -813,7 +813,7 @@ Cross-check requirements against Core Value from project.md. If gaps detected, s
 **Generate requirements.md:**
 
 Create `.planning/requirements.md` with:
-- v1 Requirements grouped by category (checkboxes, REQ-IDs)
+- v1 Requirements grouped by category (checkboxes, REQ-IDs), each with at least one acceptance criterion in an EARS form as an indented sub-bullet (`WHEN … THE SYSTEM SHALL …`; see the template's `<ears_criteria>`)
 - v2 Requirements (deferred)
 - Out of Scope (explicit exclusions with reasoning)
 - Traceability section (empty, filled by roadmap)
@@ -857,9 +857,10 @@ Does this capture what you're building? (yes / adjust)
 
 If "adjust": Return to scoping.
 
-**Commit requirements:**
+**Lint, then commit requirements.** A v1 requirement with no EARS criterion fails the lint; add one before committing:
 
 ```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify requirements
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: define v1 requirements" --files .planning/requirements.md
 ```
 

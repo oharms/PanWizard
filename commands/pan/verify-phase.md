@@ -1,8 +1,8 @@
 ---
 name: pan:verify-phase
 group: Phase Lifecycle
-description: Re-run goal-backward verification of a phase with a test-suite gate and list its gaps
-argument-hint: "[phase number, e.g., '4']"
+description: Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat
+argument-hint: "[phase number, e.g., '4'] [--uat]"
 allowed-tools:
   - Read
   - Bash
@@ -23,6 +23,10 @@ Output: {phase_num}-verification.md with a status (passed, gaps_found or human_n
 <execution_context>
 @~/.claude/pan-wizard-core/workflows/verify-phase.md
 </execution_context>
+
+<uat_mode>
+With `--uat` in $ARGUMENTS, run the user acceptance walkthrough instead of the goal-backward verification: @~/.claude/pan-wizard-core/workflows/uat-walkthrough.md. It works on every runtime, records each answer through `pan-tools uat record`, and ends by diagnosing any issues for `/pan:plan-phase N --gaps`.
+</uat_mode>
 
 <context>
 Phase: $ARGUMENTS (optional)

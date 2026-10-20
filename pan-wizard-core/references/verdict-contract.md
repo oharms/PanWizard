@@ -27,6 +27,7 @@ A judging agent ends its report with one fenced `pan-verdict` block. The block i
 | `outcome` | yes | `pass`, `fail` or `needs_human` |
 | `findings` | yes (may be empty) | a list of `{class, severity, where, summary}`, plus `pre_existing: true` on a finding in code the change did not touch (recorded as deferred debt, never a blocker) |
 | `resolutions` | on a re-check | a list of `{id, status, evidence}` answering each earlier open finding you were given in `<open_findings>`: `status` is `resolved` (with `evidence`: what you checked and saw), `still_present` or `cannot_tell`. A finding you leave out stays open, and `resolved` without evidence is recorded as `cannot_tell` |
+| `declined` | when you set a behaviour aside | a list of `{behaviour, reason}`: something in scope you chose not to judge (outside your lens, outside the diff, no way to run it). It is recorded on the verdict, so silence about it is never read as a pass |
 | `not_checked` | when a check could not run | a list of `{check, reason}`: a check you were asked to make and could not run, and why (no test script, no browser, a file you could not read). Never fold it into `pass`: a verdict with entries here says what it did not see |
 
 | Agent | `verdict` → `outcome` |

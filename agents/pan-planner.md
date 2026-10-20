@@ -158,7 +158,9 @@ For niche domains (3D, games, audio, shaders, ML), suggest `/pan:research-phase`
 
 Every task has four required fields:
 
-**<files>:** Exact file paths created or modified.
+**Property tasks.** When a requirement the plan covers has a validation-rule criterion (`IF … THEN … SHALL`, or a claim about any, every or all inputs), add a task marked `property="true"`. It checks the rule over generated inputs with the project's own property library (fast-check, Hypothesis, proptest, …), never one hand-picked example. `verify plan-set` fails the plan set without one.
+
+**<files>:** Exact file paths created or modified. When a task adds a test that checks a requirement's EARS criterion, the task also adds a `Test: <path>` sub-bullet under that requirement in `.planning/requirements.md`. `pan-tools verify traceability` runs those tests, and `phase complete` ticks the requirement only when they pass.
 - Good: `src/app/api/auth/login/route.ts`, `prisma/schema.prisma`
 - Bad: "the auth files", "relevant components"
 
