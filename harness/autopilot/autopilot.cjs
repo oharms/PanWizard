@@ -188,6 +188,15 @@ if (require.main === module) {
   if (argv[0] === 'record') { recordOutcome(argv[1], argv[2]); console.log(`recorded ${argv[1]}: ${argv[2]}`); process.exit(0); }
   const laneId = argv.find((a) => !a.startsWith('--') && a !== val('--approve-usd') && a !== val('--root'));
   const opts = { run: argv.includes('--run'), approveUsd: val('--approve-usd') != null ? Number(val('--approve-usd')) : undefined, root: val('--root') };
+  if (laneId === 'dogfood') {
+    // S6: its own steps (pack, worktree, scratch install, quick task, verification, scope).
+    const D = require('./dogfood.cjs');
+    if (!opts.run) { console.log(JSON.stringify(D.planDogfood({ root: opts.root, approveUsd: opts.approveUsd }), null, 2)); process.exit(0); }
+    const ok = checkRun(lanes, laneId, opts);
+    if (ok.error) { console.log(JSON.stringify(ok, null, 2)); process.exit(1); }
+    console.log(JSON.stringify(D.runDogfood({ root: opts.root, approveUsd: opts.approveUsd }), null, 2));
+    process.exit(0);
+  }
   const plan = planLane(lanes, laneId, opts);
   if (plan.error || !opts.run) { console.log(JSON.stringify(plan, null, 2)); process.exit(plan.error ? 1 : 0); }
   const ok = checkRun(lanes, laneId, opts);

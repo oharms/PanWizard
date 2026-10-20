@@ -133,5 +133,11 @@
     "model": true,
     "fix": true,
     "unlock_after": 3
+  },
+  {
+    "id": "dogfood",
+    "model": true,
+    "dogfood": true,
+    "why": "S6: PAN on PAN. One open harness finding through /pan:quick --full on a worktree of this repository, PAN installed from the packed tarball into a scratch --global --config-dir; harness/autopilot/dogfood.cjs."
   }
 ]
