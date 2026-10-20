@@ -85,6 +85,8 @@ Read, in this order, and note each one's date:
 - `CHANGELOG.md` `[Unreleased]` — built but not shipped; a candidate that is already there is HAVE
 - memory notes `market-scan-*`, `market-fit-*`, `market-ideas-*` under the project memory directory — refuted claims and traps, so the scouts' prompts carry them
 
+Run the model-free watcher first: `node harness/autopilot/market-watch.cjs` evaluates the WATCH rows that carry a predicate in `docs/specs/watch-triggers.json` (npm dist-tags, GitHub releases, `CHANGELOG.md`, harness results) and appends what fired to `harness/autopilot/state/inbox.md`. Read the inbox: each fired trigger is a delta to check at its source in Phase 2, and becomes a candidate row, never a verdict. The watcher never writes the ledger. When a WATCH row's trigger can be checked by a machine and has no predicate yet, add one in Phase 3.
+
 Set the **delta window**: `--since` if given, else the newest run in the ledger's run log, else the newest dated section of the newest review. Under seven days ⇒ doctrine 8 applies.
 
 ### 0.3 Baseline snapshot (chat only)

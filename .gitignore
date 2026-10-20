@@ -138,3 +138,6 @@ dist/
 
 # /investigate raw inputs — third-party text stays local (public repo)
 docs/specs/investigations/sources/
+
+# The autopilot's local state (spend, bot runs, inbox, reports): development only, per machine.
+harness/autopilot/state/

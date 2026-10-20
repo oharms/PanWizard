@@ -118,8 +118,11 @@ Verify installed files are correct.
 ### Stage 6: Session End
 ```powershell
 cd d:\PanWizard
-git add -A
+git status --short
+git add -- <each file this session changed, by name>
 git commit -m "<type>: <summary of changes>"
 ```
+
+Stage the files by name. A whole-tree add sweeps in whatever else is there (a stray build, another session's edits, a bot's files). Check `git status --short` first and leave anything that is not this session's work unstaged.
 
 Report: items completed, tests passing, version.

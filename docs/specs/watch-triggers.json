@@ -1,0 +1,22 @@
+[
+  {
+    "id": "MI-027",
+    "why": "The row waits for MCP Tasks to matter to PAN; PAN's own changelog mentioning it means a verb started using it.",
+    "predicate": { "kind": "changelog_contains", "file": "CHANGELOG.md", "pattern": "MCP Tasks" }
+  },
+  {
+    "id": "MI-040",
+    "why": "The live omitClaudeMd check was last run on Claude Code 2.1.288 (latest on 2026-10-19); a newer release is the cue to re-read its changelog.",
+    "predicate": { "kind": "npm_dist_tag", "package": "@anthropic-ai/claude-code", "tag": "latest", "gt": "2.1.288" }
+  },
+  {
+    "id": "MI-042",
+    "why": "Host-native worktree sessions: Codex 0.154.0 was the release read; a newer one may change --worktree.",
+    "predicate": { "kind": "npm_dist_tag", "package": "@openai/codex", "tag": "latest", "gt": "0.154.0" }
+  },
+  {
+    "id": "MI-044",
+    "why": "The row's trigger: a harness rep where a single-family judge passed a planted defect that a second family caught (the R4 lane's evidence run).",
+    "predicate": { "kind": "harness_result", "scenario": "cross-family-planted-defect", "status": "passed" }
+  }
+]

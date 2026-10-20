@@ -1,0 +1,5 @@
+[
+  { "id": "watch", "model": false, "why": "S1: evaluate the WATCH triggers and write the inbox.", "command": ["node", "harness/autopilot/market-watch.cjs"] },
+  { "id": "state", "model": false, "why": "S5: the weekly State of PAN.", "command": ["node", "harness/autopilot/state-of-pan.cjs"] },
+  { "id": "docs-drift", "model": true, "why": "Fix documentation that drifted from the code. Docs only; evaluator files are out of scope whatever the lane says.", "paths": ["docs/", "README.md"], "prompt": "Run node scripts/test-surface.cjs --liveness and the doc tests (node --test tests/doc*.test.cjs). Fix any documentation under docs/ or README.md that disagrees with the code. Change no other file. Commit with a message starting docs(bot):." }
+]
