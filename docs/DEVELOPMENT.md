@@ -58,7 +58,6 @@ pan-wizard/
         usage.cjs             # `usage`: local census of installed commands and agents (used, never used, unfinished) from the cost ledger and traces
         knowledge.cjs         # Grounded Q&A / discuss / playbook (Y-3)
         whatif.cjs            # Counterfactual phase replay in worktree (Y-4)
-        bridge.cjs            # MCP discovery + recommendation — the CLIENT side (Y-5)
         optimize.cjs          # Circular optimization loop (trace, learn, apply, revert) (v3.5)
         git.cjs               # /pan:git command family (v3.5)
         distill.cjs           # AI code-bloat 5-pass optimizer (v3.5)

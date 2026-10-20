@@ -1,19 +1,4 @@
----
-name: focus-drift-walking
-group: Focus
-description: Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories
-argument-hint: "[--create] [--audit] [--repair] [--report] [--dir <path>] [--depth N] [--severity critical|high|medium|low|info] [--format markdown|json|checklist] [--quick]"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
-  - Agent
----
-
-# /pan:focus-drift-walking — Documentation-Code Drift Detection & Alignment
+# /pan:focus-auto --step drift — Documentation-Code Drift Detection & Alignment
 
 Walk every directory in the project, detect drift between documentation and code reality, create missing documentation, repair drifted files, and synchronize the truth hierarchy. $ARGUMENTS
 
@@ -41,7 +26,7 @@ If a drift finding points to a file inside a PAN or build directory — DROP IT.
 
 ## MANDATORY: Execute ALL Phases Automatically
 
-When `/pan:focus-drift-walking` is invoked, execute ALL phases for the selected mode without stopping. Do NOT ask questions between phases. Do NOT skip phases beyond what the mode specifies. Produce a complete drift report at the end.
+When `/pan:focus-auto --step drift` is invoked, execute ALL phases for the selected mode without stopping. Do NOT ask questions between phases. Do NOT skip phases beyond what the mode specifies. Produce a complete drift report at the end.
 
 **Flags:**
 - `--create` — Create missing documentation files in directories that lack them

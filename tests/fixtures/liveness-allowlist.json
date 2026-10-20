@@ -16,19 +16,11 @@
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
-    "id": "command:dashboard",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
     "id": "command:debug",
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
     "id": "command:design-phase",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:discord",
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
@@ -40,27 +32,7 @@
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
-    "id": "command:focus-doc-audit",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:focus-drift-walking",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:focus-exec",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:focus-plan",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:focus-scan",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:focus-sync",
+    "id": "command:focus-docs",
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
@@ -96,15 +68,7 @@
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
-    "id": "command:mcp-bridge",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
     "id": "command:milestone-audit",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:milestone-cleanup",
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
@@ -112,15 +76,7 @@
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
-    "id": "command:milestone-gaps",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
     "id": "command:milestone-new",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:optimize",
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
@@ -140,10 +96,6 @@
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
-    "id": "command:profile",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
     "id": "command:progress",
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
@@ -153,10 +105,6 @@
   },
   {
     "id": "command:report",
-    "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
-  },
-  {
-    "id": "command:research-phase",
     "reason": "No harness scenario runs this command yet. A scenario that drives it (double-backed at tier 0 once the scripted-user driver H9 lands, or model-tier) removes this entry."
   },
   {
@@ -325,18 +273,6 @@
   },
   {
     "id": "caller:verb:version",
-    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
-  },
-  {
-    "id": "caller:sub:bridge cache",
-    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
-  },
-  {
-    "id": "caller:sub:bridge list",
-    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
-  },
-  {
-    "id": "caller:sub:bridge recommend",
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },
   {

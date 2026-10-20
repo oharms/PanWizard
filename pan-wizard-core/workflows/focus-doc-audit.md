@@ -1,20 +1,4 @@
----
-name: focus-doc-audit
-group: Focus
-description: Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality
-argument-hint: "[file|directory] [--deep] [--links] [--fix] [--all] [--score-only] [--min-score N] [--format markdown|json|checklist]"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
-  - Agent
-  - WebFetch
----
-
-# /pan:focus-doc-audit — Deep Document Audit & Quality Assessment
+# /pan:focus-docs — Deep Document Audit & Quality Assessment
 
 Audit project documentation for accuracy, freshness, broken links, structural quality, cross-document consistency, and code alignment. $ARGUMENTS
 
@@ -41,20 +25,20 @@ If you find yourself auditing a PAN command file — STOP. Refocus on the projec
 
 ## MANDATORY: Execute ALL Phases Automatically
 
-When `/pan:focus-doc-audit` is invoked, execute ALL phases for the selected mode without stopping. Do NOT ask questions between phases. Do NOT skip phases beyond what the mode specifies. Produce a complete audit report at the end.
+When `/pan:focus-docs` is invoked, execute ALL phases for the selected mode without stopping. Do NOT ask questions between phases. Do NOT skip phases beyond what the mode specifies. Produce a complete audit report at the end.
 
 **Usage:**
 ```
-/pan:focus-doc-audit                     # Audit core docs (README, main docs)
-/pan:focus-doc-audit <file>              # Audit a specific file
-/pan:focus-doc-audit <directory>         # Audit all markdown files in directory
-/pan:focus-doc-audit --deep              # Deep audit: verify every claim against code
-/pan:focus-doc-audit --links             # Link validation pass only
-/pan:focus-doc-audit --fix               # Auto-fix simple issues (counts, versions, dates, links)
-/pan:focus-doc-audit --all               # Audit ALL documentation files project-wide
-/pan:focus-doc-audit --score-only        # Skip fix suggestions, just output scores
-/pan:focus-doc-audit --min-score <N>     # Only report files scoring below N% (default: 100 = report all)
-/pan:focus-doc-audit --format <type>     # Output: markdown (default), json, checklist
+/pan:focus-docs                     # Audit core docs (README, main docs)
+/pan:focus-docs <file>              # Audit a specific file
+/pan:focus-docs <directory>         # Audit all markdown files in directory
+/pan:focus-docs --deep              # Deep audit: verify every claim against code
+/pan:focus-docs --links             # Link validation pass only
+/pan:focus-docs --fix               # Auto-fix simple issues (counts, versions, dates, links)
+/pan:focus-docs --all               # Audit ALL documentation files project-wide
+/pan:focus-docs --score-only        # Skip fix suggestions, just output scores
+/pan:focus-docs --min-score <N>     # Only report files scoring below N% (default: 100 = report all)
+/pan:focus-docs --format <type>     # Output: markdown (default), json, checklist
 ```
 
 ---

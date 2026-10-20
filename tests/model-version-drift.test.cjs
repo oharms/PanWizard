@@ -594,7 +594,7 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
   // satisfied by any two files, `targets.includes(...)` by those two only. Every
   // row that IS here carries the churn headroom this comment claims.
   const MIN_SCANNED = [
-    { dir: 'commands/pan', min: 50 },              // 59 today
+    { dir: 'commands/pan', min: 40 },
     { dir: 'agents', min: 20 },                    // 24 today
     { dir: 'pan-wizard-core/workflows', min: 28 }, // 33 today
     { dir: 'pan-wizard-core/templates', min: 38 }, // 42 today (14 of them nested)

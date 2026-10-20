@@ -71,7 +71,8 @@ describe('a --unified-skills install gives Claude Code its own copy of every ski
   });
 
   test('one Claude skill per shipped command', () => {
-    const commands = fs.readdirSync(SOURCE_COMMANDS).filter((f) => f.endsWith('.md')).map((f) => `pan-${f.slice(0, -3)}`).sort();
+    const commands = fs.readdirSync(SOURCE_COMMANDS).filter((f) => f.endsWith('.md')).map((f) => `pan-${f.slice(0, -3)}`)
+      .concat(Object.keys(require('../../pan-wizard-core/bin/lib/constants.cjs').COMMAND_ALIASES).map((n) => `pan-${n}`)).sort();
     assert.deepEqual(panDirs(path.join(dir, '.claude', 'skills')), commands);
   });
 
@@ -134,7 +135,8 @@ describe('Copilot keeps its own skills pipeline (moved from the retired E-5 scen
   test('copilot installs one SKILL.md directory per command under .github/skills', () => {
     const skillsDir = path.join(runner.tmpDir, '.github', 'skills');
     const dirs = panDirs(skillsDir);
-    const commands = fs.readdirSync(SOURCE_COMMANDS).filter((f) => f.endsWith('.md')).map((f) => `pan-${f.slice(0, -3)}`).sort();
+    const commands = fs.readdirSync(SOURCE_COMMANDS).filter((f) => f.endsWith('.md')).map((f) => `pan-${f.slice(0, -3)}`)
+      .concat(Object.keys(require('../../pan-wizard-core/bin/lib/constants.cjs').COMMAND_ALIASES).map((n) => `pan-${n}`)).sort();
     assert.deepEqual(dirs, commands, 'one skill directory per shipped command');
     for (const name of dirs) {
       assert.equal(fs.existsSync(path.join(skillsDir, name, 'SKILL.md')), true, `${name}/SKILL.md should exist`);

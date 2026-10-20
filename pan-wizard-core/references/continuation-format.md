@@ -99,7 +99,7 @@ Add note that this is the last plan and what comes after:
 
 **Also available:**
 - `/pan:discuss-phase 2` — gather context first
-- `/pan:research-phase 2` — investigate unknowns
+- `/pan:plan-phase --research-only 2` — investigate unknowns
 - Review roadmap
 
 ---
@@ -128,7 +128,7 @@ Show completion status before next action:
 
 **Also available:**
 - `/pan:discuss-phase 3` — gather context first
-- `/pan:research-phase 3` — investigate unknowns
+- `/pan:plan-phase --research-only 3` — investigate unknowns
 - Review what Phase 2 built
 
 ---
@@ -149,7 +149,7 @@ When there's no clear primary action:
 
 **To discuss context first:** `/pan:discuss-phase 3`
 
-**To research unknowns:** `/pan:research-phase 3`
+**To research unknowns:** `/pan:plan-phase --research-only 3`
 
 <sub>`/clear` first → fresh context window</sub>
 

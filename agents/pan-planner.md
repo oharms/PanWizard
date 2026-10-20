@@ -148,7 +148,7 @@ Discovery is MANDATORY unless you can prove current context exists.
 - Level 2+: New library not in package.json, external API, "choose/select/evaluate" in description
 - Level 3: "architecture/design/system", multiple external services, data modeling, auth design
 
-For niche domains (3D, games, audio, shaders, ML), suggest `/pan:research-phase` before plan-phase.
+For niche domains (3D, games, audio, shaders, ML), suggest `/pan:plan-phase --research-only` before plan-phase.
 
 </discovery_levels>
 
@@ -1124,7 +1124,7 @@ Use `phase_dir` from init context (already loaded in load_project_state).
 
 ```bash
 cat "$phase_dir"/*-context.md 2>/dev/null   # From /pan:discuss-phase
-cat "$phase_dir"/*-research.md 2>/dev/null   # From /pan:research-phase
+cat "$phase_dir"/*-research.md 2>/dev/null   # From /pan:plan-phase --research-only
 cat "$phase_dir"/*discovery.md 2>/dev/null   # From mandatory discovery
 cat "$phase_dir"/*-design.md 2>/dev/null     # From /pan:design-phase (approved design)
 ```

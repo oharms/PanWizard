@@ -50,7 +50,7 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 - Skip research for familiar domains: `/pan:plan-phase N --skip-research`
 - Disable plan-checker for trusted plans: `workflow.plan_check: false`
 - Disable verifier for prototyping: `workflow.verifier: false`
-- Use `budget` profile for high-volume phases: `/pan:profile budget`
+- Use `budget` profile for high-volume phases: `/pan:settings --profile budget`
 - Use `--prd <file>` to skip discuss-phase when you have specs ready
 
 ### Can PAN search the web?
@@ -61,7 +61,7 @@ Yes. PAN research agents can use Brave Search API for domain research. Setup:
 2. Set the `BRAVE_API_KEY` environment variable — the `websearch` verb reads only the env var. Optionally also create `~/.pan-wizard/brave_api_key`, which pre-sets `brave_search: true` in a config `config-ensure-section` creates (`/pan:new-project` does not set `brave_search`)
 3. Set `brave_search: true` with `pan-tools config-set brave_search true` (`/pan:settings` has no Brave question)
 
-When enabled, the phase researcher (`/pan:plan-phase`, `/pan:research-phase`) uses Brave Search; it reads the setting from `init`. `/pan:new-project` and `/pan:milestone-new` do not pass the setting to their researchers, so those use the built-in web search.
+When enabled, the phase researcher (`/pan:plan-phase`, `/pan:plan-phase --research-only`) uses Brave Search; it reads the setting from `init`. `/pan:new-project` and `/pan:milestone-new` do not pass the setting to their researchers, so those use the built-in web search.
 
 ### Is my code sent anywhere?
 
@@ -175,7 +175,7 @@ It's bounded by design, but treat it like hierarchical exec with a longer leash.
 
 ### How do I watch what the army is doing?
 
-Run `/pan:hud` (or its alias `/pan:dashboard`) — it renders a single self-contained HTML page at `.planning/hud.html` and opens it with `/pan:hud --open`. The dashboard is a *view*, not a new source of truth: every panel aggregates state PAN already tracks. Army campaigns light up extra panels — a command stack (Mission Control over the four squads with per-squad token/call drill-down), the campaign cadence + daily-budget bar, the safety harness (merge gate, abort switch, active worktrees), and the live `army/*` worktree list — alongside the always-present roadmap, telemetry, requirements, and recent-commits panels. The army panels appear only when a campaign is scheduled or army worktrees exist; a plain project still gets a complete page. The file has no server, network, or external dependencies, so you can send `.planning/hud.html` to anyone. Re-run after each cycle for a fresh snapshot. Added in v3.12 (ADR-0035).
+Run `/pan:hud` (or its alias `/pan:hud`) — it renders a single self-contained HTML page at `.planning/hud.html` and opens it with `/pan:hud --open`. The dashboard is a *view*, not a new source of truth: every panel aggregates state PAN already tracks. Army campaigns light up extra panels — a command stack (Mission Control over the four squads with per-squad token/call drill-down), the campaign cadence + daily-budget bar, the safety harness (merge gate, abort switch, active worktrees), and the live `army/*` worktree list — alongside the always-present roadmap, telemetry, requirements, and recent-commits panels. The army panels appear only when a campaign is scheduled or army worktrees exist; a plain project still gets a complete page. The file has no server, network, or external dependencies, so you can send `.planning/hud.html` to anyone. Re-run after each cycle for a fresh snapshot. Added in v3.12 (ADR-0035).
 
 ### How do I ask PAN a question about my project?
 
@@ -185,19 +185,15 @@ Run `/pan:knowledge ask "why does phase 4 have a race condition fix?"`. The comm
 
 Yes. `/pan:preview phase <N>` analyzes the phase's plan files, extracts mentioned file paths, checks for risk keywords (drop / delete / migrate / rename / breaking / auth), and scores the phase 1-10. For cross-phase planning, `/pan:preview phases` emits a mermaid dependency graph + parallelizable-batches recommendation. For milestone-level forecasting, `/pan:preview milestone` projects an ETA with a confidence percentage from historical phase durations.
 
-### What are MCP tools and how does PAN use them?
-
-MCP (Model Context Protocol) tools are external integrations the host runtime provides — e.g. Linear, Slack, databases. In v3.3, `/pan:mcp-bridge list` shows the MCP tools in PAN's cache, `.planning/bridge/available-tools.json`, and `/pan:mcp-bridge recommend <phase>` suggests which apply to a phase plan based on keyword matching. PAN fills that cache only through `/pan:mcp-bridge cache --servers '<json>'`; until then `list` reports `source: "empty"`. This is **discovery-only** — PAN doesn't auto-invoke MCP tools. You see the recommendations and reference them in the phase plan; the executor agent uses them via Claude Code's normal tool-use flow. Auto-injection + auto-invocation remain on the roadmap.
-
 ### Does PAN have an MCP server of its own?
 
-Yes — the other direction. `/pan:mcp-bridge` is PAN as an MCP *client*, discovering tools the host offers. Every install also registers PAN's **MCP bridge** where the runtime's config can be merged safely (a Claude `--global` install prints the `claude mcp add` command for you to run instead, and Codex always gets a printed TOML snippet), a zero-dependency stdio server under `pan-wizard-core/mcp/` that exposes the `pan-tools` engine to any MCP client as tools and read-only resources (`pan://…`). Registration is automatic and non-destructive — `.mcp.json` at the project root for Claude Code, the runtime's own config for Copilot, Gemini and OpenCode, a printed TOML snippet for Codex — and every tool takes an optional `cwd`, so a client that launches the server somewhere else (Agent Plugins hosts start it in the plugin root) still operates on your project. History-rewriting git verbs are refused in code, and the merge gate needs a human-supplied token an agent cannot produce. Details: the "MCP server registration" section of the [User Guide](USER-GUIDE.md) and the bridge section of [ARCHITECTURE.md](ARCHITECTURE.md).
+Yes. Every install registers PAN's **MCP bridge** where the runtime's config can be merged safely (a Claude `--global` install prints the `claude mcp add` command for you to run instead, and Codex always gets a printed TOML snippet), a zero-dependency stdio server under `pan-wizard-core/mcp/` that exposes the `pan-tools` engine to any MCP client as tools and read-only resources (`pan://…`). Registration is automatic and non-destructive — `.mcp.json` at the project root for Claude Code, the runtime's own config for Copilot, Gemini and OpenCode, a printed TOML snippet for Codex — and every tool takes an optional `cwd`, so a client that launches the server somewhere else (Agent Plugins hosts start it in the plugin root) still operates on your project. History-rewriting git verbs are refused in code, and the merge gate needs a human-supplied token an agent cannot produce. Details: the "MCP server registration" section of the [User Guide](USER-GUIDE.md) and the bridge section of [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## v3.5 Features
 
 ### How does the circular optimization loop work?
 
-`/pan:learn` and `/pan:optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:optimize apply` to record its suggestions in `.planning/optimization/suggestions.md`. Each names where it belongs: the project's instructions (`CLAUDE.md` or `AGENTS.md`, outside PAN's section), a test, or the code. Once a person puts it there, the next session's agents read it. PAN's workflows do not load agent memory into agents (ADR-0036, amended `2026-10-04`). `/pan:plan-phase`, `/pan:design-phase`, `/pan:exec-phase` and `/pan:verify-phase` also record each judge's verdict with `pan-tools findings record`, which logs `verdict_passed`, `verdict_failed` or `verdict_needs_human` (and `verdict_retry` after a failed attempt) to the trace, so the optimizer can track real quality signal — not just "tasks completed."
+`/pan:learn` and `/pan:learn --optimize` form a self-improvement cycle. The `pan-trace-logger.js` SubagentStop hook (v3.5+; Claude Code, Codex and Copilot CLI — not Gemini CLI or OpenCode) auto-captures every sub-agent completion into `.planning/optimization/traces/<session>/trace.jsonl` with zero setup — it creates day-scoped sessions automatically. After a phase or campaign, run `/pan:learn` to invoke the `pan-optimizer` agent which clusters error/gap/redundancy patterns and produces a structured report at `.planning/optimization/reports/`. Run `/pan:learn --optimize apply` to record its suggestions in `.planning/optimization/suggestions.md`. Each names where it belongs: the project's instructions (`CLAUDE.md` or `AGENTS.md`, outside PAN's section), a test, or the code. Once a person puts it there, the next session's agents read it. PAN's workflows do not load agent memory into agents (ADR-0036, amended `2026-10-04`). `/pan:plan-phase`, `/pan:design-phase`, `/pan:exec-phase` and `/pan:verify-phase` also record each judge's verdict with `pan-tools findings record`, which logs `verdict_passed`, `verdict_failed` or `verdict_needs_human` (and `verdict_retry` after a failed attempt) to the trace, so the optimizer can track real quality signal — not just "tasks completed."
 
 ### What does `/pan:focus-auto --category distill` do?
 
@@ -223,7 +219,7 @@ Yes. Create a `.md` file in `.claude/commands/` (or `~/.claude/commands/` for a 
 
 Switch profiles globally:
 ```text
-/pan:profile budget
+/pan:settings --profile budget
 ```
 
 Or override specific agents in `.planning/config.json`. The values are tiers, not model ids: `opus` (or `reasoning`) is the model you launched with, `sonnet`/`mid` and `haiku`/`fast` the provider's mid and fast models, and anything else falls back to `mid`:

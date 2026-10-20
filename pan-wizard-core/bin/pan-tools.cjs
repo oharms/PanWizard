@@ -269,7 +269,6 @@ const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
 const whatif = require('./lib/whatif.cjs');
-const bridge = require('./lib/bridge.cjs');
 const optimize = require('./lib/optimize.cjs');
 const git = require('./lib/git.cjs');
 const distill = require('./lib/distill.cjs');
@@ -390,7 +389,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -886,6 +885,11 @@ async function main() {
       break;
     }
 
+    case 'next-action': {
+      require('./lib/next-action.cjs').cmdNextAction(cwd, raw);
+      break;
+    }
+
     case 'progress': {
       const subcommand = args[1] || 'json';
       commands.cmdProgressRender(cwd, subcommand, raw);
@@ -1042,7 +1046,7 @@ async function main() {
             break;
           }
           if (batch.error) {
-            // The newest batch is the one /pan:focus-exec runs; classifying another would
+            // The newest batch is the one /pan:focus-auto --step exec runs; classifying another would
             // hand it waves for the wrong items, so an unusable newest batch is an error.
             output({ error: batch.error }, raw);
             break;
@@ -1198,23 +1202,6 @@ async function main() {
         }, raw);
       } else {
         error('Unknown memory subcommand. Available: read, append, list, compact, select, record, prune, budget, optimize, rebuild');
-      }
-      break;
-    }
-
-    case 'bridge': {
-      const subcommand = args[1];
-      if (subcommand === 'list') {
-        bridge.cmdBridgeList(cwd, raw);
-      } else if (subcommand === 'recommend') {
-        bridge.cmdBridgeRecommend(cwd, args[2], {
-          max_recommendations: Number(getArgValue(args, '--max') || 10),
-          min_score: Number(getArgValue(args, '--min-score') || 1),
-        }, raw);
-      } else if (subcommand === 'cache') {
-        bridge.cmdBridgeCache(cwd, getArgValue(args, '--servers'), getArgValue(args, '--runtime'), raw);
-      } else {
-        error('Unknown bridge subcommand. Available: list, recommend, cache');
       }
       break;
     }

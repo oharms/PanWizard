@@ -4,7 +4,7 @@ Template for `.planning/phases/XX-name/discovery.md` - shallow research for libr
 
 **Purpose:** Answer "which library/option should we use" questions when a phase needs a quick option comparison before planning.
 
-For deep ecosystem research ("how do experts build this"), use `/pan:research-phase` which produces research.md.
+For deep ecosystem research ("how do experts build this"), use `/pan:plan-phase --research-only` which produces research.md.
 
 ---
 
@@ -142,5 +142,5 @@ Create `.planning/phases/XX-name/discovery.md`:
 - Niche/complex domains (3D, games, audio, shaders)
 - Need ecosystem knowledge, not just library choice
 - "How do experts build this" questions
-- Use `/pan:research-phase` for these
+- Use `/pan:plan-phase --research-only` for these
 </guidelines>

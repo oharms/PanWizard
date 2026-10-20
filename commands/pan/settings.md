@@ -2,12 +2,18 @@
 name: pan:settings
 group: System
 description: Configure PAN workflow toggles and model profile
+argument-hint: "[--profile <quality|balanced|budget>]"
 allowed-tools:
   - Read
   - Write
   - Bash
   - AskUserQuestion
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--profile <quality|balanced|budget>` — switch the model profile only: @~/.claude/pan-wizard-core/workflows/profile.md (formerly `profile`)
+</routes>
 
 <objective>
 Interactive configuration of PAN workflow agents and model profile via multi-question prompt.

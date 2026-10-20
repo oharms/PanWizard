@@ -25,9 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Health repairs one class at a time.** `pan-tools validate health` lists `repairs_available`, and `--repair --only <classes>` repairs just those; the health workflow asks per class.
 - **The preview ETA comes from git.** `pan-tools preview` estimates from the commit span of finished phases when there is one, and says which source it used (`eta_source`).
 - **One host table.** `pan-wizard-core/bin/lib/hosts.cjs` holds how PAN runs each host CLI. The autonomous runner and the harness both read it, where each kept its own copy; a test pins the argv per host.
+- **One next-action router.** `pan-tools next-action` reads roadmap.md and the phase directories into the MCP orchestrator's state machine and returns the next step and the command for it (`plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`). `/pan:progress`, resume and the phase transition all ask it, so they no longer disagree.
 
 ### Changed
 
+- **Fewer, broader commands.** Commands that did the same job as another are now a flag of it: `/pan:plan-phase --research-only` (was research-phase), `/pan:learn --optimize` (optimize), `/pan:settings --profile` (profile), `/pan:milestone-done --cleanup` (milestone-cleanup), `/pan:milestone-audit --gaps` (milestone-gaps), `/pan:focus-docs` and `/pan:focus-docs --sync` (focus-doc-audit, focus-sync), and `/pan:focus-auto --step scan|plan|exec|drift` (focus-scan, focus-plan, focus-exec, focus-drift-walking). `/pan:dashboard` was already the same as `/pan:hud`. The old names keep working: the installer writes each one as an alias on all five runtimes, and the Claude and Agent Plugins bundles carry them too.
+- **`/pan:discord` and `/pan:mcp-bridge` are retired.** The bridge command, its `pan-tools bridge` verb and its cache only listed MCP tools that something else had written there. PAN's own MCP server is unchanged.
+- **review-deep no longer publishes to the `review-handoff` bus channel.** Nothing read it; `deep-review.md` is the record.
 - **`cost clear` keeps a backup.** It writes `tokens.jsonl.bak-<timestamp>` before it empties the log.
 - **Settings asks in two batches of four.** No AskUserQuestion call in a shipped prompt offers more than four questions any more; a new prompt-lint rule, `oversized-ask`, fails one that does.
 - **Assumptions feed the plan.** The assumptions workflow saves `{phase}-assumptions.md`, and discuss-phase and plan-phase read it. exec-phase writes the phase's tests and proves them red before the work starts.

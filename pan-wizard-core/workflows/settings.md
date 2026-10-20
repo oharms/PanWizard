@@ -212,7 +212,7 @@ Display:
 These settings apply to future /pan:plan-phase and /pan:exec-phase runs.
 
 Quick commands:
-- /pan:profile <profile> — switch model profile
+- /pan:settings --profile <profile> — switch model profile
 - /pan:plan-phase --research — force research
 - /pan:plan-phase --skip-research — skip research
 - /pan:plan-phase --skip-verify — skip plan check

@@ -96,7 +96,7 @@ Relative cost per tier (fast = 1× baseline):
 | mid | 3× |
 | fast | 1× |
 
-Use `/pan:profile <profile>` to see estimated cost differences before switching.
+Use `/pan:settings --profile <profile>` to see estimated cost differences before switching.
 
 ---
 
@@ -242,7 +242,7 @@ Full routing config in `.planning/config.json`:
 
 ## Switching Profiles
 
-Runtime: `/pan:profile <profile>`
+Runtime: `/pan:settings --profile <profile>`
 
 ### Downgrade Confirmation
 

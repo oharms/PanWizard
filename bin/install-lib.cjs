@@ -612,6 +612,39 @@ function rewriteAgentFileRefs(content, runtime, pathPrefix) {
   return content.replace(new RegExp(`(${prefix}agents/pan-[a-z0-9_-]+)\\.md\\b`, 'g'), (_, base) => base + ext);
 }
 
+/**
+ * Build the alias command for a renamed command (program L7, COMMAND_ALIASES).
+ * The alias is the target command itself under the old name: its frontmatter `name`
+ * becomes the old one, its description says what it was renamed to, and a line after
+ * the frontmatter presets the flags. Carrying the whole body, rather than a pointer to
+ * the target's installed path, is what makes it resolve on every runtime: each one
+ * installs commands at a different path and in a different shape. Pure.
+ * @param {string} targetContent - the target command's source (commands/pan/<to>.md)
+ * @param {string} oldName - the old command name, without prefix
+ * @param {{to: string, args: string}} alias
+ * @returns {string}
+ */
+function renderCommandAlias(targetContent, oldName, alias) {
+  const now = alias.args ? `/pan:${alias.to} ${alias.args}` : `/pan:${alias.to}`;
+  const m = targetContent.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  if (!m) throw new Error(`renderCommandAlias: ${alias.to} has no frontmatter`);
+  const fm = m[1].split(/\r?\n/).map((line) => {
+    const name = line.match(/^name:\s*(pan:)?\S+/);
+    if (name) return `name: ${name[1] || ''}${oldName}`;
+    const desc = line.match(/^description:\s*(.*)$/);
+    if (desc) {
+      const raw = desc[1].trim();
+      const unq = raw.match(/^(["'])([\s\S]*)\1$/);
+      const text = (unq ? unq[2].replace(/\\"/g, '"') : raw).replace(/"/g, '\\"');
+      return `description: "Renamed: now ${now}. ${text}"`;
+    }
+    return line;
+  });
+  const preset = alias.args ? `${alias.args} $ARGUMENTS` : '$ARGUMENTS';
+  const note = `> \`/pan:${oldName}\` is now \`${now}\`. Run the command below with the arguments \`${preset}\`.\n\n`;
+  return `---\n${fm.join('\n')}\n---\n${note}${targetContent.slice(m[0].length)}`;
+}
+
 function rewriteAgentReferenceCopy(content, corePrefix) {
   content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
   content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
@@ -2670,6 +2703,7 @@ const {
 
 module.exports = {
   withClaudeUserInvokedOnly,
+  renderCommandAlias,
   // Constants
   colorNameToHex,
   claudeToOpencodeTools,

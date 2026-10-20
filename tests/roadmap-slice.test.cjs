@@ -200,8 +200,9 @@ describe('the prompts read the slice, not the whole files', () => {
     assert.equal((blocks.match(/\{slice_path\}/g) || []).length, 3);
   });
 
-  test('the researcher reads the slice in both research entry points', () => {
-    for (const rel of ['pan-wizard-core/workflows/research-phase.md', 'commands/pan/research-phase.md']) {
+  test('the researcher reads the slice in the research entry point', () => {
+    // `/pan:plan-phase --research-only` (formerly research-phase) follows this workflow (L7).
+    for (const rel of ['pan-wizard-core/workflows/research-phase.md']) {
       const text = read(rel);
       assert.match(text, /roadmap slice "\$\{(PHASE|phase_number)\}" --write --raw/, rel);
       assert.doesNotMatch(filesToRead(text), /^- \{requirements_path\}/m, rel);

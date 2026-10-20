@@ -1,17 +1,4 @@
----
-name: focus-scan
-group: Focus
-description: Deep-dive strategic work scan with prioritized items and Reality Score filtering
-argument-hint: "[--focus <area>] [--quick] [--refresh] [--lean]"
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Grep
-  - Glob
----
-
-# /pan:focus-scan — Deep-Dive Strategic Work Scan
+# /pan:focus-auto --step scan — Deep-Dive Strategic Work Scan
 
 Survey the project for prioritized work items with evidence-based scoring. $ARGUMENTS
 
@@ -48,7 +35,7 @@ Do not read entire files when Grep can find the relevant lines. Do not use Bash 
 
 ## Execute All Phases Automatically
 
-When `/pan:focus-scan` is invoked, execute all phases without stopping. Do not ask questions between phases or skip phases. The output is a prioritized work list with Reality Score filtering.
+When `/pan:focus-auto --step scan` is invoked, execute all phases without stopping. Do not ask questions between phases or skip phases. The output is a prioritized work list with Reality Score filtering.
 
 **Flags:**
 - `--focus <area>` — Weight items toward a specific area (e.g., `--focus commands`, `--focus hooks`, `--focus tests`)
@@ -237,7 +224,7 @@ Gather items from:
 ## Phase 5: Scan Assembly
 
 ### 5.1 Output
-Write the scan to `.planning/focus/scan-<YYYY-MM-DD>.md`, where `/pan:focus-plan` builds from it and `/pan:focus-exec` updates it (Stage 5.2). `pan-tools focus scan` does not take these items: it lists only incomplete roadmap phases that have a directory, pending todos and `.planning/patterns.md` entries.
+Write the scan to `.planning/focus/scan-<YYYY-MM-DD>.md`, where `/pan:focus-auto --step plan` builds from it and `/pan:focus-auto --step exec` updates it (Stage 5.2). `pan-tools focus scan` does not take these items: it lists only incomplete roadmap phases that have a directory, pending todos and `.planning/patterns.md` entries.
 
 ### 5.2 Document Structure
 

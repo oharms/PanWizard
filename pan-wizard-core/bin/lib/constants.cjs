@@ -165,6 +165,29 @@ const CATEGORY_DEFAULTS = {
 /** Doc files to scan for staleness (focus sync) */
 const DOC_SYNC_FILES = ['README.md', 'docs/DEVELOPMENT.md', 'docs/CLI-REFERENCE.md', 'docs/USER-GUIDE.md', 'docs/ARCHITECTURE.md'];
 
+/**
+ * Commands folded into another (program L7). The installer writes an alias command for
+ * each old name on every runtime, so `/pan:<old>` keeps working: it runs `to` with
+ * `args` in front of whatever the user passed.
+ */
+const COMMAND_ALIASES = {
+  dashboard: { to: 'hud', args: '' },
+  'milestone-cleanup': { to: 'milestone-done', args: '--cleanup' },
+  'milestone-gaps': { to: 'milestone-audit', args: '--gaps' },
+  optimize: { to: 'learn', args: '--optimize' },
+  'research-phase': { to: 'plan-phase', args: '--research-only' },
+  profile: { to: 'settings', args: '--profile' },
+  'focus-doc-audit': { to: 'focus-docs', args: '' },
+  'focus-sync': { to: 'focus-docs', args: '--sync' },
+  'focus-scan': { to: 'focus-auto', args: '--step scan' },
+  'focus-plan': { to: 'focus-auto', args: '--step plan' },
+  'focus-exec': { to: 'focus-auto', args: '--step exec' },
+  'focus-drift-walking': { to: 'focus-auto', args: '--step drift' },
+};
+
+/** Commands removed with no replacement (program L7). */
+const RETIRED_COMMANDS = ['discord', 'mcp-bridge'];
+
 /** Old→new command name mapping for detecting stale docs */
 const COMMAND_RENAME_MAP = {
   'execute-phase': 'exec-phase',
@@ -178,7 +201,8 @@ const COMMAND_RENAME_MAP = {
   'new-milestone': 'milestone-new',
   'complete-milestone': 'milestone-done',
   'audit-milestone': 'milestone-audit',
-  'plan-milestone-gaps': 'milestone-gaps',
+  'plan-milestone-gaps': 'milestone-audit --gaps',
+  ...Object.fromEntries(Object.entries(COMMAND_ALIASES).map(([old, a]) => [old, a.args ? `${a.to} ${a.args}` : a.to])),
 };
 
 /** Default max cycles for auto-runner */
@@ -818,6 +842,8 @@ module.exports = {
   FOCUS_SOURCES,
   DOC_SYNC_FILES,
   COMMAND_RENAME_MAP,
+  COMMAND_ALIASES,
+  RETIRED_COMMANDS,
   CATEGORY_PRIORITY_RANGE,
   CATEGORY_DEFAULTS,
   DEFAULT_MAX_CYCLES,

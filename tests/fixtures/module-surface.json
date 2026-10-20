@@ -9,19 +9,6 @@
     "removeClaudeMdImport:function",
     "upsertAgentsMdSection:function"
   ],
-  "bridge.cjs": [
-    "BRIDGE_DIR:string",
-    "TOOLS_FILE:string",
-    "cmdBridgeCache:function",
-    "cmdBridgeList:function",
-    "cmdBridgeRecommend:function",
-    "flattenTools:function",
-    "listTools:function",
-    "loadToolCache:function",
-    "recommendForPhase:function",
-    "scoreToolForPhase:function",
-    "writeToolCache:function"
-  ],
   "bus.cjs": [
     "BUS_DIR:string",
     "DEFAULT_DRAIN_LIMIT:number",
@@ -149,6 +136,7 @@
     "CATEGORY_PRIORITY_RANGE:object",
     "CHARS_PER_TOKEN:number",
     "CODEBASE_DIR:string",
+    "COMMAND_ALIASES:object",
     "COMMAND_RENAME_MAP:object",
     "COMPLEX_FILE_THRESHOLD:number",
     "COMPLEX_TASK_THRESHOLD:number",
@@ -218,6 +206,7 @@
     "REFLECTION_THRESHOLD:object",
     "REQUIREMENTS_FILE:string",
     "RESEARCH_SUFFIX:string",
+    "RETIRED_COMMANDS:object",
     "ROADMAP_FILE:string",
     "ROADMAP_SLICE_SUFFIX:string",
     "SESSION_HISTORY_FILE:string",
@@ -699,6 +688,11 @@
     "mutationMode:function",
     "mutationsFor:function",
     "sample:function"
+  ],
+  "next-action.cjs": [
+    "cmdNextAction:function",
+    "diskSnapshot:function",
+    "routeNextAction:function"
   ],
   "optimize.cjs": [
     "APPLIED_LOG:string",

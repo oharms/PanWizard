@@ -1,18 +1,4 @@
----
-name: focus-sync
-group: Focus
-description: Synchronize documentation after changes — check staleness and update counts
-argument-hint: "[--readme | --docs | --arch | --all]"
-allowed-tools:
-  - Read
-  - Bash
-  - Grep
-  - Glob
-  - Edit
-  - Write
----
-
-# /pan:focus-sync — Documentation Synchronization
+# /pan:focus-docs --sync — Documentation Synchronization
 
 Synchronize project documentation across all files. $ARGUMENTS
 
@@ -35,11 +21,11 @@ This command synchronizes the **host project's documentation** — NOT PAN Wizar
 ## Usage
 
 ```
-/pan:focus-sync                  # Full sync check: report staleness
-/pan:focus-sync --readme         # Check README.md only
-/pan:focus-sync --docs           # Verify documentation matches implementations
-/pan:focus-sync --arch           # Verify architecture docs match actual structure
-/pan:focus-sync --all            # Full sync of everything + auto-fix
+/pan:focus-docs --sync                  # Full sync check: report staleness
+/pan:focus-docs --sync --readme         # Check README.md only
+/pan:focus-docs --sync --docs           # Verify documentation matches implementations
+/pan:focus-docs --sync --arch           # Verify architecture docs match actual structure
+/pan:focus-docs --sync --all            # Full sync of everything + auto-fix
 ```
 
 ---

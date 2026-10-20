@@ -314,7 +314,7 @@ You are working on a side project and want to minimize token usage.
 ### Switch to the budget profile
 
 ```text
-/pan:profile budget
+/pan:settings --profile budget
 ```
 
 This configures PAN to use cheaper models for research, planning and code-writing agents.

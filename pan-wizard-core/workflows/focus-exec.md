@@ -1,19 +1,4 @@
----
-name: focus-exec
-group: Focus
-description: Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
-argument-hint: "[--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--dry-run] [--no-commit] [--continue] [--deep-review]"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
-  - Agent
----
-
-# /pan:focus-exec — Automated Batch Execution Pipeline
+# /pan:focus-auto --step exec — Automated Batch Execution Pipeline
 
 Execute items from the current focus batch with capacity-based sizing, full session lifecycle, and verification. $ARGUMENTS
 
@@ -36,7 +21,7 @@ Execution FAILS if: test baseline cannot be established (Stage 1), or test count
 ## Pipeline Overview
 
 ```
-/pan:focus-exec
+/pan:focus-auto --step exec
 
   Stage 1: SESSION START
     - Check project status, record baseline
@@ -95,7 +80,7 @@ This command executes work on the **host project's source code** — not on PAN 
 
 ## Execute All Stages Sequentially
 
-When `/pan:focus-exec` is invoked, run all 6 stages in order. Do not skip stages or stop between them unless tests regress.
+When `/pan:focus-auto --step exec` is invoked, run all 6 stages in order. Do not skip stages or stop between them unless tests regress.
 
 <stage_dependencies>
 Stage 1 → Stage 2: Baseline MUST exist before batch loads (regression detection requires it)
@@ -106,7 +91,7 @@ Stage 5 → Stage 6: Docs MUST be updated before commit (commit captures the com
 
 HARD STOP conditions (do not proceed to next stage):
 - Stage 1: Test suite fails → fix tests before proceeding
-- Stage 2: No batch file found → tell user to run /pan:focus-plan
+- Stage 2: No batch file found → tell user to run /pan:focus-auto --step plan
 - Stage 4: Test count below baseline → revert last changes, re-verify
 </stage_dependencies>
 
@@ -235,7 +220,7 @@ baseline_commit: <current HEAD>
 
 ### 2.1 Find Active Batch
 Search for: `.planning/focus/batch-*.json`
-Pick the newest. If none exists, tell user to run `/pan:focus-plan` first.
+Pick the newest. If none exists, tell user to run `/pan:focus-auto --step plan` first.
 
 ### 2.2 Read and Validate the Batch
 Extract all items: ID, Title, Priority, Effort, Points, Tier, Files.
@@ -409,7 +394,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace end 2>/dev/null 
 ### 6.4 Final Report
 
 ```markdown
-## /pan:focus-exec Complete
+## /pan:focus-auto --step exec Complete
 
 | Stage | Status |
 |-------|--------|
@@ -427,8 +412,8 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace end 2>/dev/null 
 - **Tests:** Before N -> After M (+K new)
 
 ### Resume
-Run `/pan:focus-exec --continue` for remaining items.
-Run `/pan:focus-scan` to regenerate the scan.
+Run `/pan:focus-auto --step exec --continue` for remaining items.
+Run `/pan:focus-auto --step scan` to regenerate the scan.
 ```
 
 ---

@@ -27,9 +27,9 @@ That's it. Your project keeps working. You now have access to several new comman
 | `/pan:review-deep` | v3.2 | Security audit (OWASP + STRIDE) + cross-check review |
 | `/pan:knowledge` | v3.2 | Grounded Q&A / multi-turn discussion / playbook generation |
 | `/pan:what-if` | v3.3 | Counterfactual phase replay in isolated git worktree |
-| `/pan:mcp-bridge` | v3.3 | Discover available MCP tools + recommend for a phase |
+| `/pan:mcp-bridge` | v3.3 | Discover available MCP tools + recommend for a phase (retired in a later release, with no replacement) |
 | `/pan:learn` | v3.5 | Analyze trace events, generate optimization report |
-| `/pan:optimize` | v3.5 | Record an optimizer report's suggestions (`apply`), undo them (`revert`), manage trace sessions, view stats |
+| `/pan:optimize` (now `/pan:learn --optimize`) | v3.5 | Record an optimizer report's suggestions (`apply`), undo them (`revert`), manage trace sessions, view stats |
 | `/pan:git` | v3.5 | Phase-aware git workflow with safety guardrails (multiple subcommands) |
 
 All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/pan:exec-phase`, `/pan:verify-phase`, etc.) is unchanged.
@@ -43,7 +43,7 @@ All are opt-in. Default PAN workflow (`/pan:new-project`, `/pan:plan-phase`, `/p
 
 - `/pan:exec-phase <N> --hierarchical` (v3.4) — spawn `pan-conductor` as top-level orchestrator. Claude Code only, because it needs native sub-agent spawning; that is a runtime constraint, not a model one — the conductor runs on whatever model you launched the session with. On the other four runtimes the flag is a no-op that warns and falls back to flat exec.
 - `/pan:exec-phase <N> --deep-review` (v3.4) — auto-invoke `/pan:review-deep` after the normal reviewer step.
-- `/pan:focus-exec --deep-review` (v3.4) — for focus campaigns: after each high-stakes item, runs `pan-hardener` and `pan-meta-reviewer` on that item's changed files and merges their reports with `pan-tools review-deep merge` (no first-pass reviewer; `/pan:review-deep` itself needs a phase).
+- `/pan:focus-auto --step exec --deep-review` (v3.4) — for focus campaigns: after each high-stakes item, runs `pan-hardener` and `pan-meta-reviewer` on that item's changed files and merges their reports with `pan-tools review-deep merge` (no first-pass reviewer; `/pan:review-deep` itself needs a phase).
 
 ### New agents
 
@@ -64,14 +64,14 @@ The following are auto-created on first use. **None of them conflict with existi
 |------|-----------|---------|
 | `.planning/metrics/` | cost hook + `/pan:cost append` | Token usage log (`tokens.jsonl`) |
 | `.planning/bus/` | `pan-tools bus publish` + agent audit trails | Message channels (one file per channel) |
-| `.planning/bridge/` | `pan-tools bridge cache --servers` (no host or hook writes it) | MCP tool discovery cache |
+| `.planning/bridge/` | `pan-tools bridge cache --servers` (retired with `/pan:mcp-bridge`; nothing reads or writes it now) | MCP tool discovery cache |
 | `.planning/counterfactuals/` | `/pan:what-if` | Counterfactual comparison reports |
 | `.planning/conversations/` | `/pan:knowledge discuss` | Multi-turn session state per phase |
 | `.planning/memory/` | `/pan:retro --write-memory` (v2.10+), `pan-tools memory append` / `record`, `memory optimize` (its quarantine and state archive) | Agent memory store (also a v2.10 addition); no workflow loads it into agents |
 | `.planning/architecture/` | `/pan:preview phases` | Generated dependency graph |
 | `.planning/orchestration/` | `/pan:exec-phase --hierarchical` | Conductor trace + abort kill-switch |
 | `.planning/reviews/` | `/pan:review-deep` | Consolidated deep-review reports |
-| `.planning/optimization/` | `pan-trace-logger.js` hook + `/pan:learn` + `/pan:optimize` | Trace sessions, optimization reports, recorded suggestions and the apply log |
+| `.planning/optimization/` | `pan-trace-logger.js` hook + `/pan:learn` + `/pan:learn --optimize` | Trace sessions, optimization reports, recorded suggestions and the apply log |
 
 New top-level files: `.planning/playbook.md` (from `/pan:knowledge playbook`), `.planning/milestones/preview-*.md` (from `/pan:preview milestone`).
 
@@ -121,7 +121,7 @@ New modules in `pan-wizard-core/bin/lib/`. See [ARCHITECTURE.md](ARCHITECTURE.md
 - `review-deep.cjs` (v3.2)
 - `knowledge.cjs` (v3.2)
 - `whatif.cjs` (v3.3)
-- `bridge.cjs` (v3.3)
+- `bridge.cjs` (v3.3; removed with `/pan:mcp-bridge`)
 - `optimize.cjs` (v3.5 — circular optimization loop)
 - `git.cjs` (v3.5 — phase-aware git workflow)
 - `distill.cjs` (v3.5 — AI code-bloat 5-pass optimizer)
@@ -134,7 +134,7 @@ New modules in `pan-wizard-core/bin/lib/`. See [ARCHITECTURE.md](ARCHITECTURE.md
 - `.planning/requirements.md` format
 - Phase directory structure (`.planning/phases/NN-slug/`)
 - Milestone archival flow (`/pan:milestone-done` → `.planning/milestones/vX.Y-roadmap.md` + `vX.Y-requirements.md`)
-- Focus system commands (`/pan:focus-scan`, `/pan:focus-plan`, `/pan:focus-exec`, `/pan:focus-auto`, `/pan:focus-design`, `/pan:focus-doc-audit`, `/pan:focus-drift-walking`, `/pan:focus-sync`) — all behave identically
+- Focus system commands (`/pan:focus-auto --step scan`, `/pan:focus-auto --step plan`, `/pan:focus-auto --step exec`, `/pan:focus-auto`, `/pan:focus-design`, `/pan:focus-docs`, `/pan:focus-auto --step drift`, `/pan:focus-docs --sync`) — all behave identically
 - Workflow command behavior (`/pan:new-project`, `/pan:plan-phase`, `/pan:exec-phase`, `/pan:verify-phase`, `/pan:debug`)
 - Install CLI contracts (flags, runtimes, uninstall)
 
@@ -238,7 +238,7 @@ Partially:
 - `/pan:cost`, `/pan:preview` (phase/milestone modes), `/pan:knowledge`, `/pan:review-deep`: **yes** on all 5 runtimes (`/pan:cost` records spawns automatically only where the cost logger runs — Claude Code, Codex, Copilot CLI; elsewhere `pan-tools cost append` or an external script adds them). Agent quality varies with model capability.
 - `/pan:what-if`: full on Claude Code; partial on the other four — the worktree and report layers work everywhere git does, and spawning the counterfactual agent depends on the runtime's task support.
 - `/pan:preview phases` (single-shot whole-repo pass): the fast path needs a model with a 1M-context window; smaller-context models skip the cross-reference bonus and rely on the data-layer output alone.
-- `/pan:mcp-bridge`: runs on all five runtimes as a cache reader (only `/pan:mcp-bridge cache --servers` populates the cache); Claude Code is the primary target.
+- `/pan:mcp-bridge`: ran on all five runtimes as a cache reader; retired in a later release.
 - `/pan:exec-phase --hierarchical`: Claude Code only — it needs native sub-agent spawning, which is a runtime limit rather than a model one. Elsewhere the flag is a no-op that warns and falls back to flat exec.
 
 ### What if I want to skip v3.0-v3.4 and go straight to v3.5?

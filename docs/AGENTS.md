@@ -46,7 +46,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | `pan-document_code` | Analyzes existing codebase (6 focus areas, or the whole repo in one single-shot pass) | `/pan:map-codebase` (x6 parallel, or one agent in single-shot mode); native `/pan-map-codebase` script on Claude Code (one per discovered area) | Read, Bash, Grep, Glob, Write | cyan |
 | `pan-designer` | Designs a phase before planning — architecture, ADR, threat-lite; records only decisions that pass its three-question test, each with a `DD-N` id plans cite | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
 | `pan-design-checker` | Independently verifies a design before planning; spawned by /pan:design-phase and /pan:focus-design | `/pan:design-phase`, `/pan:focus-design` | Read, Bash, Glob, Grep | green |
-| `pan-phase-researcher` | Investigates how to implement a specific phase | `/pan:plan-phase`, `/pan:research-phase` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
+| `pan-phase-researcher` | Investigates how to implement a specific phase | `/pan:plan-phase`, `/pan:plan-phase --research-only` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
 | `pan-planner` | Creates executable plan.md files with task breakdown | `/pan:plan-phase`, `/pan:quick` | Read, Write, Edit, Bash, Glob, Grep, WebFetch, Context7 | green |
 | `pan-plan-checker` | Validates plans against phase goals across multiple dimensions | `/pan:plan-phase`, `/pan:quick --full` | Read, Bash, Glob, Grep | green |
 | `pan-executor` | Executes plans with atomic commits and deviation handling | `/pan:exec-phase`, `/pan:quick`, `/pan:army`, native `/pan-exec-waves` script (Claude Code) | Read, Write, Edit, Bash, Grep, Glob | yellow |
@@ -60,8 +60,8 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
 | `pan-previewer` | Foresight — blast radius / dependency graph / milestone ETA in one agent (3 modes); a phase preview carries a `## Cost` section (p50 and p10–p90 per phase and per plan) taken only from the cost forecast, which reports `insufficient` below five past runs | `/pan:preview` | Read, Bash, Glob, Grep, Write | cyan |
-| `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase; reports every security finding, since the findings ledger never suppresses one | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`), `/pan:focus-auto` Pass 3, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | red |
-| `pan-meta-reviewer` | Reviews the reviewer + hardener output; flags missed issues, disputes overstated severities | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-exec`, where it reviews the hardener's report alone), native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | pink |
+| `pan-hardener` | OWASP Top 10 + STRIDE security audit on files changed in a phase; reports every security finding, since the findings ledger never suppresses one | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-auto --step exec`), `/pan:focus-auto` Pass 3, native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | red |
+| `pan-meta-reviewer` | Reviews the reviewer + hardener output; flags missed issues, disputes overstated severities | `/pan:review-deep` (also `--deep-review` on exec-phase and `/pan:focus-auto --step exec`, where it reviews the hardener's report alone), native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash, Write | pink |
 | `pan-knowledge` | Grounded Q&A / multi-turn discussion / playbook generation (3 modes) | `/pan:knowledge` | Read, Grep, Glob, Bash, Write | cyan |
 | `pan-counterfactual` | Explores alternative phase approaches in isolated git worktree | `/pan:what-if` | Read, Write, Edit, Bash, Grep, Glob | purple |
 | `pan-conductor` | Top-level orchestrator for hierarchical exec — decomposes a phase, spawns sub-agents in waves, enforces safety harness | `/pan:exec-phase --hierarchical`, `/pan:army` | Read, Write, Bash, Glob, Grep, Task | orange |
@@ -70,7 +70,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
-| `pan-optimizer` | Reads trace events; identifies error/gap/redundancy patterns; writes a ranked optimization report whose suggestions each name where a person should make the fix | `/pan:learn` (`/pan:optimize apply` records its suggestions) | Read, Glob, Grep, Write | cyan |
+| `pan-optimizer` | Reads trace events; identifies error/gap/redundancy patterns; writes a ranked optimization report whose suggestions each name where a person should make the fix | `/pan:learn` (`/pan:learn --optimize apply` records its suggestions) | Read, Glob, Grep, Write | cyan |
 | `pan-distiller` | Read-only LLM judgment on AI code-bloat findings — receives only flagged spans (max 50 lines context per finding); validates pattern, refines safety tier (safe/review_required/risky), proposes minimal diff rewrite | `/pan:focus-auto --category distill` | Read, Grep, Glob | cyan |
 
 ### Self-Improvement Loop agents
@@ -163,7 +163,7 @@ The core logic of the agent lives here.
 </execution_flow>
 ```
 
-The `tools` field in frontmatter controls which tools the agent can access when it is spawned under its own type; the `general-purpose` spawns that tell an agent to read its file first (`/pan:new-project`'s researchers, `/pan:plan-phase`'s researcher and planner, `/pan:research-phase`'s researcher, `/pan:quick`'s revision planner) run with the general-purpose tool set instead. Read-only agents (plan-checker, design-checker, reviewer, integration-checker) don't get Write/Edit access; the verifier holds Write to emit verification.md. Research agents get WebSearch/WebFetch and Context7 for external knowledge.
+The `tools` field in frontmatter controls which tools the agent can access when it is spawned under its own type; the `general-purpose` spawns that tell an agent to read its file first (`/pan:new-project`'s researchers, `/pan:plan-phase`'s researcher and planner, `/pan:plan-phase --research-only`'s researcher, `/pan:quick`'s revision planner) run with the general-purpose tool set instead. Read-only agents (plan-checker, design-checker, reviewer, integration-checker) don't get Write/Edit access; the verifier holds Write to emit verification.md. Research agents get WebSearch/WebFetch and Context7 for external knowledge.
 
 ---
 
@@ -306,7 +306,7 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 
 **Purpose:** Answers "What do I need to know to PLAN this phase well?" Investigates the technical domain specific to one phase and produces research.md consumed by the planner.
 
-**Spawned by:** `/pan:plan-phase` or `/pan:research-phase` (standalone)
+**Spawned by:** `/pan:plan-phase` or `/pan:plan-phase --research-only` (standalone)
 
 **Tools:** Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7
 
@@ -689,11 +689,11 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 **Design rationale (cost reset, 2026-07):**
 - **quality + balanced both inherit** — every agent runs on the model you launched with; PAN no longer demotes agents to cheaper models by default. The exceptions are `pan-reviewer`, `pan-hardener` and `pan-meta-reviewer`, which pin `model: opus` in their own frontmatter. On Claude Code the pin holds where a spawn passes no model (`/pan:review-deep`, `/pan:focus-auto`); `/pan:exec-phase` passes the resolved tier, so under `budget` its review spawns run on the fast tier. The installer drops the pin from the other runtimes' agent files, so there these agents inherit the session model like the rest. Context isolation, not a weaker model, keeps the main conversation clean.
 - **budget is the opt-in cheap mode** — mid for the planning, orchestration and code-writing agents, fast for research, review, verification and the utility agents; choose it explicitly for high-volume work.
-- Tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` (unset → `inherit`).
+- Tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:settings --profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` (unset → `inherit`).
 
 ### Reasoning effort (adaptive-thinking era, v3.9.0+)
 
-Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the within-model reasoning-depth dial on current models, consumed natively by Claude Code. Codex maps it to its native `model_reasoning_effort` field (`convertClaudeAgentToCodexToml`); OpenCode, Gemini CLI and Copilot CLI get an effort-scaled prose preamble injected by the installer (`stripThinkingFrontmatter`; legacy `thinking_budget` directives still translate via a budget→effort mapping). `pan-tools resolve-model` reports a profile-adjusted effort: `budget` steps each agent down one level (floor `low`), and `.planning/config.json → effort_overrides` wins (`resolveEffortInternal()`). No spawn applies it: an agent spawned under its own type runs at the `effort:` in its own file, and on Claude Code a `general-purpose` spawn that only reads the file (`/pan:new-project`'s researchers, `/pan:plan-phase`'s researcher and planner, `/pan:research-phase`'s researcher, `/pan:quick`'s revision planner) does not get that `effort:` at all.
+Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the within-model reasoning-depth dial on current models, consumed natively by Claude Code. Codex maps it to its native `model_reasoning_effort` field (`convertClaudeAgentToCodexToml`); OpenCode, Gemini CLI and Copilot CLI get an effort-scaled prose preamble injected by the installer (`stripThinkingFrontmatter`; legacy `thinking_budget` directives still translate via a budget→effort mapping). `pan-tools resolve-model` reports a profile-adjusted effort: `budget` steps each agent down one level (floor `low`), and `.planning/config.json → effort_overrides` wins (`resolveEffortInternal()`). No spawn applies it: an agent spawned under its own type runs at the `effort:` in its own file, and on Claude Code a `general-purpose` spawn that only reads the file (`/pan:new-project`'s researchers, `/pan:plan-phase`'s researcher and planner, `/pan:plan-phase --research-only`'s researcher, `/pan:quick`'s revision planner) does not get that `effort:` at all.
 
 | Agent | effort | Rationale |
 |-------|--------|-----------|
@@ -732,7 +732,7 @@ The tier resolved by profile can be adjusted by capability hints passed as `pan-
 - `needs_thinking` on a fast-tier agent → upgrade fast → mid
 - `cache_warm + !needs_thinking + context_estimate < 50000` on a mid-tier agent → downgrade mid → fast (cheap, cached, simple)
 
-See `/pan:profile` for the full decision tree.
+See `/pan:settings --profile` for the full decision tree.
 
 ---
 

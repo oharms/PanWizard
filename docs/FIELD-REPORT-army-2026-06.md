@@ -28,7 +28,7 @@ This is the biggest finding, and it took all three projects to see it.
 2. **`cache_read_input_tokens` is cumulative per turn** (each turn re-reads the cached prefix), so summing across N turns multiplies the cached context by N → billions.
 3. The same cumulative total is then **written once per `SubagentStop` firing** → the ledger stores the transcript-sum many times over (hence the byte-identical rows).
 
-Net: `/pan:cost`, the HUD telemetry panels, and `/pan:optimize` all consume garbage wherever capture "works," and get nothing where the army is main-loop driven. Cost-in-USD would be astronomically wrong (trillions of tokens × rate).
+Net: `/pan:cost`, the HUD telemetry panels, and `/pan:learn --optimize` all consume garbage wherever capture "works," and get nothing where the army is main-loop driven. Cost-in-USD would be astronomically wrong (trillions of tokens × rate).
 
 **Fix in PAN:**
 - **Attribute per-subagent deltas, not whole-transcript sums.** Track a per-session high-water mark (last-processed message index / byte offset / ts) under `.planning/metrics/`; on each `SubagentStop` sum only messages appended since the previous firing.

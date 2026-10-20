@@ -1,18 +1,4 @@
----
-name: focus-plan
-group: Focus
-description: Create capacity-budgeted work batch with spec coverage verification and 4 execution modes
-argument-hint: "[--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--lean] [--no-spec-check]"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
----
-
-# /pan:focus-plan — Capacity-Budgeted Work Batch Planner with Spec Coverage Verification
+# /pan:focus-auto --step plan — Capacity-Budgeted Work Batch Planner with Spec Coverage Verification
 
 Create a capacity-budgeted work batch from focus-scan results **with mandatory verification that planned work covers all relevant spec and ADR requirements.** $ARGUMENTS
 
@@ -34,7 +20,7 @@ If a scan item points to a PAN infrastructure file, DROP it from the batch. PAN'
 
 ## MANDATORY: Run focus-scan first
 
-If no recent scan exists, run `/pan:focus-scan` automatically before proceeding.
+If no recent scan exists, run `/pan:focus-auto --step scan` automatically before proceeding.
 
 **Flags:**
 - `--budget N` — Override capacity budget in points (default: 50, min: 5, max: 100)
@@ -215,13 +201,13 @@ For each success criterion in the batch, specify HOW it will be verified after e
 | SC-2 | Keywords >= 500 | `SELECT COUNT(*) FROM stx_keyword` | >= 500 |
 | SC-5 | No regression | `dotnet test` | All pass, count >= N |
 
-This becomes the post-execution checklist for `/pan:focus-exec`.
+This becomes the post-execution checklist for `/pan:focus-auto --step exec`.
 
 ---
 
 ## Phase 5: Output
 
-Write the batch to `.planning/focus/batch-<YYYY-MM-DD>.json` yourself — `{date, mode, budget, allocated, items: [...]}`, each item `{id, title, priority, effort, points, tier, files}` with `tier` one of `MICRO`, `STANDARD`, `FULL` (`focus exec` and `focus classify-stages` group items by it, and an item without it lands in no wave); `focus exec`, `focus classify-stages` and `/pan:focus-exec` read an `items` or `batch` array. Do not hand this step to `pan-tools focus plan`: it ignores the scan and the spec mapping, batches only incomplete roadmap phases, pending todos and `.planning/patterns.md` entries, and overwrites the day's batch file:
+Write the batch to `.planning/focus/batch-<YYYY-MM-DD>.json` yourself — `{date, mode, budget, allocated, items: [...]}`, each item `{id, title, priority, effort, points, tier, files}` with `tier` one of `MICRO`, `STANDARD`, `FULL` (`focus exec` and `focus classify-stages` group items by it, and an item without it lands in no wave); `focus exec`, `focus classify-stages` and `/pan:focus-auto --step exec` read an `items` or `batch` array. Do not hand this step to `pan-tools focus plan`: it ignores the scan and the spec mapping, batches only incomplete roadmap phases, pending todos and `.planning/patterns.md` entries, and overwrites the day's batch file:
 
 ```markdown
 ## Focus Batch — <date>
@@ -267,7 +253,7 @@ Write the batch to `.planning/focus/batch-<YYYY-MM-DD>.json` yourself — `{date
 Execution Order: MICRO first, then STANDARD, then FULL
 ```
 
-Ready for `/pan:focus-exec`.
+Ready for `/pan:focus-auto --step exec`.
 
 ---
 

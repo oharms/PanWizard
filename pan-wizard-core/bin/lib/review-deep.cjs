@@ -14,14 +14,14 @@
  *   - writeDeepReview(cwd, phaseNum, payload) — serialize the merged output
  *     to .planning/reviews/<N>/deep-review.md
  *
- * Agents publish to `review-handoff` channel via bus.cjs for audit trail.
+ * It used to publish each merge to a `review-handoff` bus channel that nothing read;
+ * deep-review.md is the record (program L7).
  */
 
 const fs = require('fs');
 const path = require('path');
 const { output, error, safeReadFile, toPosix, escapeTableCell } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
-const { publish } = require('./bus.cjs');
 const { findVerdictBlocks, validateVerdict } = require('./verdict.cjs');
 
 const REVIEWS_DIR = 'reviews';
@@ -261,19 +261,6 @@ function writeDeepReview(cwd, phaseNum, payload, opts) {
     fs.writeFileSync(file, lines.join('\n'), 'utf-8');
   } catch (e) {
     return { error: `Failed to write ${file}: ${e.message}` };
-  }
-
-  // Audit trail on the review-handoff bus channel (best-effort).
-  if (opts?.audit_channel !== false) {
-    try {
-      publish(cwd, 'review-handoff', {
-        phase: phaseNum,
-        verdict: payload.verdict,
-        finding_count: payload.coverage.total,
-        conflict_count: payload.conflicts.length,
-        file: toPosix(path.relative(cwd, file)),
-      }, { source: 'pan-meta-reviewer' });
-    } catch { /* non-blocking */ }
   }
 
   return { written: true, file: toPosix(path.relative(cwd, file)) };

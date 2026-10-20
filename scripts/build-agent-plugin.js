@@ -98,23 +98,33 @@ function emitSkills(srcDir, skillsDir, prefix) {
       if (entry.isDirectory()) { recurse(srcPath, `${currentPrefix}-${entry.name}`); continue; }
       if (!entry.name.endsWith('.md')) continue;
       const skillName = `${currentPrefix}-${entry.name.replace(/\.md$/, '')}`;
-      const skillDir = path.join(skillsDir, skillName);
-      fs.mkdirSync(skillDir, { recursive: true });
-      let content = fs.readFileSync(srcPath, 'utf8');
-      content = lib.rewriteUnifiedSkillCommandContent(content, REWRITE);
-      content = lib.convertClaudeCommandToUnifiedSkill(content, skillName, { adapterNote: lib.agentPluginSkillAdapterNote() });
-      const { skill, reference } = lib.splitOversizedSkill(content, skillName);
-      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skill);
-      if (reference) {
-        const refPath = path.join(skillDir, ...lib.AGENT_PLUGIN_SKILL_REFERENCE.split('/'));
-        fs.mkdirSync(path.dirname(refPath), { recursive: true });
-        fs.writeFileSync(refPath, reference);
-        split++;
-      }
+      if (emitSkill(fs.readFileSync(srcPath, 'utf8'), skillsDir, skillName)) split++;
       count++;
     }
   })(srcDir, prefix);
+  // Renamed commands keep their old names as aliases, as the installer writes them (L7).
+  const { COMMAND_ALIASES } = require(path.join(ROOT, 'pan-wizard-core', 'bin', 'lib', 'constants.cjs'));
+  for (const [oldName, alias] of Object.entries(COMMAND_ALIASES)) {
+    const target = fs.readFileSync(path.join(srcDir, `${alias.to}.md`), 'utf8');
+    if (emitSkill(lib.renderCommandAlias(target, oldName, alias), skillsDir, `${prefix}-${oldName}`)) split++;
+    count++;
+  }
   return { count, split };
+}
+
+/** One command → skills/<name>/SKILL.md (plus a reference file when split). Returns true when split. */
+function emitSkill(content, skillsDir, skillName) {
+  const skillDir = path.join(skillsDir, skillName);
+  fs.mkdirSync(skillDir, { recursive: true });
+  content = lib.rewriteUnifiedSkillCommandContent(content, REWRITE);
+  content = lib.convertClaudeCommandToUnifiedSkill(content, skillName, { adapterNote: lib.agentPluginSkillAdapterNote() });
+  const { skill, reference } = lib.splitOversizedSkill(content, skillName);
+  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), skill);
+  if (!reference) return false;
+  const refPath = path.join(skillDir, ...lib.AGENT_PLUGIN_SKILL_REFERENCE.split('/'));
+  fs.mkdirSync(path.dirname(refPath), { recursive: true });
+  fs.writeFileSync(refPath, reference);
+  return true;
 }
 
 /** pan-wizard-core → bundle, markdown rewritten, everything else verbatim. */

@@ -387,6 +387,16 @@ The `is_last_phase` field from the phase complete result tells you directly:
 
 The `next_phase` and `next_phase_name` fields give you the next phase details.
 
+To name the next command, ask the router after `phase complete`:
+
+```bash
+NEXT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs next-action)
+```
+
+It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+
+For the next phase it returns `plan` (or `execute` when the phase is already planned); at the milestone boundary it returns `audit_milestone`.
+
 If you need additional context, use:
 ```bash
 ROADMAP=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap analyze)
@@ -530,7 +540,7 @@ Task(
 
 **Also available:**
 - `/pan:plan-phase [X+1]` — skip discussion, plan directly
-- `/pan:research-phase [X+1]` — investigate unknowns
+- `/pan:plan-phase --research-only [X+1]` — investigate unknowns
 
 ---
 ```
@@ -555,7 +565,7 @@ Task(
 
 **Also available:**
 - `/pan:discuss-phase [X+1]` — revisit context
-- `/pan:research-phase [X+1]` — investigate unknowns
+- `/pan:plan-phase --research-only [X+1]` — investigate unknowns
 
 ---
 ```

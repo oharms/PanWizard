@@ -103,11 +103,11 @@ function cmdPreflight(cwd, target, raw) {
           checks.push({ name: 'batch_exists', passed: true, detail: files[files.length - 1] });
         } else {
           checks.push({ name: 'batch_exists', passed: false, detail: 'no batch file found' });
-          blockers.push('No batch file — run /pan:focus-plan first');
+          blockers.push('No batch file — run /pan:focus-auto --step plan first');
         }
       } catch {
         checks.push({ name: 'batch_exists', passed: false, detail: 'focus/ directory not found' });
-        blockers.push('No focus/ directory — run /pan:focus-scan first');
+        blockers.push('No focus/ directory — run /pan:focus-auto --step scan first');
       }
     } else {
       // target is a phase number — check the phase directory exists

@@ -360,8 +360,9 @@ describe('Agent Plugins bundle: every skill fits Codex\'s plugin prompt cut (S8)
     }
     return acc;
   }
-  const fresh = (name, file) => lib.convertClaudeCommandToUnifiedSkill(
-    lib.rewriteUnifiedSkillCommandContent(fs.readFileSync(file, 'utf8'), REWRITE), name, { adapterNote: lib.agentPluginSkillAdapterNote() });
+  const freshContent = (name, content) => lib.convertClaudeCommandToUnifiedSkill(
+    lib.rewriteUnifiedSkillCommandContent(content, REWRITE), name, { adapterNote: lib.agentPluginSkillAdapterNote() });
+  const fresh = (name, file) => freshContent(name, fs.readFileSync(file, 'utf8'));
 
   test('no bundled SKILL.md is longer than the cut', () => {
     const over = fs.readdirSync(skillsDir)
@@ -372,10 +373,16 @@ describe('Agent Plugins bundle: every skill fits Codex\'s plugin prompt cut (S8)
 
   test('each skill is its fresh conversion, whole when it fits, split exactly when it does not', () => {
     const src = sources();
-    assert.equal(src.size, fs.readdirSync(skillsDir).length, 'one skill per command');
+    // Renamed commands are bundled as aliases of their new form too (L7).
+    const { COMMAND_ALIASES } = require('../pan-wizard-core/bin/lib/constants.cjs');
+    const contents = new Map([...src].map(([name, file]) => [name, fs.readFileSync(file, 'utf8')]));
+    for (const [old, a] of Object.entries(COMMAND_ALIASES)) {
+      contents.set(`pan-${old}`, lib.renderCommandAlias(contents.get(`pan-${a.to}`), old, a));
+    }
+    assert.equal(contents.size, fs.readdirSync(skillsDir).length, 'one skill per command and per alias');
     let split = 0;
-    for (const [name, file] of src) {
-      const full = fresh(name, file);
+    for (const [name, content] of contents) {
+      const full = freshContent(name, content);
       const expected = lib.splitOversizedSkill(full, name);
       const dir = path.join(skillsDir, name);
       assert.equal(fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8'), expected.skill, `${name}: SKILL.md`);
