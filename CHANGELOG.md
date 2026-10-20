@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plans that share a file never run at the same time.** `phase-plan-index` splits a wave into sub-waves by the files its plans modify, and `/pan-exec-waves` runs them in turn. With `workflow.worktree_isolation`, each executor works in its own git worktree on Claude Code.
 - **A merge preflight.** `pan-tools worktree preflight --branches a,b` merges branches onto the base in a throwaway worktree and runs the tests: it names a conflict, and catches branches that pass alone but break together. `/pan:exec-phase N --plan <id>` runs a single plan.
 - **Autodev in worktrees and against CI.** `autodev run --worktrees` runs each plan of a phase in its own worktree and session and merges them back behind the preflight. `autodev run --ci` checks each completed phase against the pull request's checks (ignoring checks already failing on the base), runs fix rounds with the failing log, and stops with `ci_failed` after three.
+- **A mutation gate you can turn on.** With `workflow.mutation_gate: gate`, a phase whose tests kill fewer than `workflow.mutation_floor` (0.6) of the sampled mutants does not pass: the verification goes to `gaps_found` with each survivor as a gap, and `verify reconcile` refuses a passed verification over the failed gate. The default stays `report`.
 
 ### Changed
 

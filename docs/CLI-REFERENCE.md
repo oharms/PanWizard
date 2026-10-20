@@ -1851,7 +1851,7 @@ It takes the lines the phase's plan commits changed (`git diff` from the phase's
 
 Before any mutant, the unmutated suite runs twice: if it fails, the report aborts (`suite_fails`), and if one run passes and the other fails, it aborts as `flaky`, since no mutant could be read against it. The record holds `phase`, `mode`, `seed`, `checked`, `base`, `head`, `command`, `candidates`, `sampled`, `killed`, `survived`, `score` and `survivors[]` (each `{file, line, op, before, after}`); an aborted or unchecked run carries `aborted` and/or `reason` in place of `sampled`, `killed`, `survived` and `score`. The printed result adds `record`, the path it wrote. The phase may also be given positionally (`verify mutate 3`). An unknown phase exits 1; every report exits 0.
 
-`workflow.mutation_gate` in config.json: `report` (the default; a report, never a refusal), `off` (runs nothing), `gate` (reserved: survivors becoming gaps is a later step). verify-phase runs it with `--max 5` after a passing test gate and lists survivors under **Test strength**.
+`workflow.mutation_gate` in config.json: `report` (the default; a report, never a refusal), `off` (runs nothing), `gate` (V5G, opt-in: the result carries `gate: {floor, failed}`, the command exits 1 when the score is below `workflow.mutation_floor` (0.6), and `verify reconcile` reports a passed verification over a failed gate as a contradiction, so the phase gate refuses). verify-phase runs it with `--max 5` after a passing test gate and lists survivors under **Test strength**.
 
 ### `test run [--phase N] [--baseline] [--rebaseline] [--command "<cmd>"] [--timeout <ms>]`
 

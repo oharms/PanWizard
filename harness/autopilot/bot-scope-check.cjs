@@ -13,6 +13,7 @@
 const EVALUATOR = [
   /^harness\/(scenarios|sims|corpus|corpus-replays|cassettes|autopilot)\//,
   /^harness\/src\//,
+  /^harness\/evolve\//,
   /^tests\/fixtures\/[^/]*allowlist[^/]*\.json$/,
   /^tests\/fixtures\/coverage-policy\.json$/,
   /^tests\/fixtures\/prompt-rules\.json$/,

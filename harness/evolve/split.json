@@ -1,0 +1,13 @@
+{
+  "why": "Program S4: the scenarios that score an evolved judge prompt. A candidate is reflected from training failures only and accepted only on held-out data, so the two never overlap, and the evolver cannot write this file (harness/src/evolve.cjs EVALUATOR_FILES).",
+  "training": [
+    "plan-phase-checker-loop",
+    "quick-mode",
+    "markdown-exec-phase-chain"
+  ],
+  "heldout": [
+    "evidence-loop",
+    "native-exec-waves-chain",
+    "uat-diagnose-native"
+  ]
+}

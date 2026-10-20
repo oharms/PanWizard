@@ -2665,16 +2665,10 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/verify-phase:fd885bbe",
+   "id": "pan-wizard-core/workflows/verify-phase:3e716d57",
    "file": "pan-wizard-core/workflows/verify-phase.md",
-   "text": "**Measure whether the tests pin the code the phase wrote** (a report, never a gate).",
-   "baseline": true
-  },
-  {
-   "id": "pan-wizard-core/workflows/verify-phase:1319b11d",
-   "file": "pan-wizard-core/workflows/verify-phase.md",
-   "text": "gap: it never changes the status. `aborted: flaky` (the unmutated suite passed once and failed",
-   "baseline": true
+   "text": "gap: in `report` mode it never changes the status. In `gate` mode (`workflow.mutation_gate: gate`) the result carries `gate`: when `gate.failed` is true (the score is below `workflow.mutation_floor`), set the status to `gaps_found` and list each survivor as a gap; `verify reconcile` refuses a passed verification over a failed gate. `aborted: flaky` (the unmutated suite passed once and failed",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/verify-phase:5c66adea",

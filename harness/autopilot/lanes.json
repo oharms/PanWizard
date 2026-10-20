@@ -1,5 +1,137 @@
 [
-  { "id": "watch", "model": false, "why": "S1: evaluate the WATCH triggers and write the inbox.", "command": ["node", "harness/autopilot/market-watch.cjs"] },
-  { "id": "state", "model": false, "why": "S5: the weekly State of PAN.", "command": ["node", "harness/autopilot/state-of-pan.cjs"] },
-  { "id": "docs-drift", "model": true, "why": "Fix documentation that drifted from the code. Docs only; evaluator files are out of scope whatever the lane says.", "paths": ["docs/", "README.md"], "prompt": "Run node scripts/test-surface.cjs --liveness and the doc tests (node --test tests/doc*.test.cjs). Fix any documentation under docs/ or README.md that disagrees with the code. Change no other file. Commit with a message starting docs(bot):." }
+  {
+    "id": "watch",
+    "model": false,
+    "why": "S1: evaluate the WATCH triggers and write the inbox.",
+    "command": [
+      "node",
+      "harness/autopilot/market-watch.cjs"
+    ]
+  },
+  {
+    "id": "state",
+    "model": false,
+    "why": "S5: the weekly State of PAN.",
+    "command": [
+      "node",
+      "harness/autopilot/state-of-pan.cjs"
+    ]
+  },
+  {
+    "id": "docs-drift",
+    "model": true,
+    "why": "Fix documentation that drifted from the code. Docs only; evaluator files are out of scope whatever the lane says.",
+    "paths": [
+      "docs/",
+      "README.md"
+    ],
+    "prompt": "Run node scripts/test-surface.cjs --liveness and the doc tests (node --test tests/doc*.test.cjs). Fix any documentation under docs/ or README.md that disagrees with the code. Change no other file. Commit with a message starting docs(bot):."
+  },
+  {
+    "id": "fix-mutant",
+    "order": 1,
+    "why": "(a) Kill a surviving mutant: the gate is a re-probe at the same seed, as mechanical as it gets.",
+    "gates": [
+      "reprobe",
+      "quality-lint",
+      "suite"
+    ],
+    "paths": [
+      "tests/"
+    ],
+    "prompt": "Run node scripts/mutation-probe.cjs --seed 7 --json and pick one surviving mutant. Add or strengthen a test under tests/ so it fails on that mutant and passes on the real code. Work only on the target named. Commit with a message starting fix(bot):. Change no evaluator file (scenarios, allowlists, lints, coverage policy, CI).",
+    "model": true,
+    "fix": true,
+    "unlock_after": 3
+  },
+  {
+    "id": "fix-surface",
+    "order": 2,
+    "why": "(b) Cover an unreferenced surface row: test-surface --check names it, a test referencing it closes it.",
+    "gates": [
+      "surface",
+      "quality-lint",
+      "suite"
+    ],
+    "paths": [
+      "tests/"
+    ],
+    "prompt": "Run node scripts/test-surface.cjs --scaffold <scratch dir> and pick one unreferenced row. Write a real test for it under tests/. Work only on the target named. Commit with a message starting fix(bot):. Change no evaluator file (scenarios, allowlists, lints, coverage policy, CI).",
+    "model": true,
+    "fix": true,
+    "unlock_after": 3
+  },
+  {
+    "id": "fix-dispatcher",
+    "order": 3,
+    "why": "(c) Cover a dispatcher arm the coverage gate says never ran.",
+    "gates": [
+      "quality-lint",
+      "suite"
+    ],
+    "paths": [
+      "tests/"
+    ],
+    "prompt": "Run npm run test:coverage and pick one dispatcher case arm that never executed. Write a test that runs it and checks its output. Work only on the target named. Commit with a message starting fix(bot):. Change no evaluator file (scenarios, allowlists, lints, coverage policy, CI).",
+    "model": true,
+    "fix": true,
+    "unlock_after": 3
+  },
+  {
+    "id": "fix-docs",
+    "order": 4,
+    "why": "(d) Doc-lint and link fixes: checked by the doc tests.",
+    "gates": [
+      "quality-lint",
+      "suite"
+    ],
+    "paths": [
+      "docs/",
+      "README.md"
+    ],
+    "prompt": "Run the doc tests (node --test tests/doc*.test.cjs) and fix one failing claim or link under docs/ or README.md. Work only on the target named. Commit with a message starting fix(bot):. Change no evaluator file (scenarios, allowlists, lints, coverage policy, CI).",
+    "model": true,
+    "fix": true,
+    "unlock_after": 3
+  },
+  {
+    "id": "fix-harness",
+    "order": 5,
+    "why": "(e) Turn an open harness finding green: needs the harness, a heavier gate.",
+    "gates": [
+      "quality-lint",
+      "suite"
+    ],
+    "paths": [
+      "pan-wizard-core/",
+      "bin/",
+      "hooks/",
+      "agents/",
+      "commands/",
+      "tests/"
+    ],
+    "prompt": "Read harness/ledger.jsonl, pick one open finding (no resolved_at), and fix the cause in PAN's source, with a test. Work only on the target named. Commit with a message starting fix(bot):. Change no evaluator file (scenarios, allowlists, lints, coverage policy, CI).",
+    "model": true,
+    "fix": true,
+    "unlock_after": 3
+  },
+  {
+    "id": "fix-prompt",
+    "order": 6,
+    "why": "(f) Prompt changes: the least mechanical gate, last to unlock.",
+    "gates": [
+      "quality-lint",
+      "suite"
+    ],
+    "paths": [
+      "agents/",
+      "commands/",
+      "pan-wizard-core/workflows/",
+      "pan-wizard-core/references/"
+    ],
+    "prompt": "Run node scripts/prompt-lint.cjs and fix one finding in a shipped prompt. Work only on the target named. Commit with a message starting fix(bot):. Change no evaluator file (scenarios, allowlists, lints, coverage policy, CI).",
+    "model": true,
+    "fix": true,
+    "unlock_after": 3
+  }
 ]

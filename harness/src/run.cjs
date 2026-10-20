@@ -43,7 +43,7 @@ const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 const DEFAULT_MAX_USD = 15;
 
 function parseArgs(argv, env = process.env) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, maxUsdDefaulted: false, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [], promptMutant: null };
+  const a = { scenarios: [], tier: 0, maxUsd: null, maxUsdDefaulted: false, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [], promptMutant: null, variant: null };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -70,6 +70,10 @@ function parseArgs(argv, env = process.env) {
     // --prompt-mutant <rule id> (H6): delete that rule from the packed package and run only
     // the scenarios that cover it. All of them passing means the rule changed nothing.
     else if (k === '--prompt-mutant') { a.promptMutant = v; i++; }
+    // --variant <workspace path>=<file> (S4): an arm given on the command line: after install,
+    // the installed file at <workspace path> is replaced by <file>, which must be under
+    // harness/variants/ (the only place the prompt evolver writes).
+    else if (k === '--variant') { const [p, file] = String(v || '').split('='); a.variant = { path: p, file }; i++; }
     // --require-run <id> (CI1): this scenario must actually run. Skipped, or not selected at
     // all, fails the run: CI installs a host CLI so the double-backed scenarios run there, and
     // a missing CLI must not turn into a quiet skip.
@@ -460,7 +464,8 @@ function main() {
   // One scenario run in a fresh workspace. With a `control`, its sabotage is applied
   // after step `control.after` (-1: before the first step), and the run's failures are
   // the expected outcome, so they are returned rather than recorded as findings.
-  const armOf = (s) => (args.arm ? (s.arms || []).find(a => a.id === args.arm) || null : null);
+  const vArm = args.variant ? variantArm(args.repo, args.variant) : null;
+  const armOf = (s) => (args.arm ? (s.arms || []).find(a => a.id === args.arm) || null : vArm);
   const executeScenario = (s, rep, reps, control) => {
     const arm = armOf(s);
     const label = (reps > 1 ? `${s.id}#${rep}` : s.id) + (arm ? `@${arm.id}` : '') + (control ? `~${control.id}` : '');
@@ -694,6 +699,14 @@ if (require.main === module) {
  * H10: each pair's paired deltas (pan − stock), rep by rep: completion (passed = 1),
  * cost and duration, each with a 95% interval (stats.cjs pairedDelta).
  */
+/** S4: the arm a --variant names, refused unless its file is under harness/variants/. */
+function variantArm(repo, variant) {
+  const base = path.resolve(repo, 'harness', 'variants');
+  const abs = path.resolve(repo, variant.file || '');
+  if (!abs.startsWith(base + path.sep)) throw new Error(`--variant: ${variant.file} is not under harness/variants/`);
+  return { id: `variant:${path.basename(abs, '.md')}`, after: -1, write: { path: variant.path, content: fs.readFileSync(abs, 'utf8') } };
+}
+
 function pairSummary(results, scenarios) {
   const { pairedDelta } = require('./stats.cjs');
   const arms = new Map();
@@ -721,4 +734,4 @@ function pairSummary(results, scenarios) {
   return out;
 }
 
-module.exports = { pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+module.exports = { variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

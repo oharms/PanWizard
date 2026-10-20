@@ -17,7 +17,9 @@
  *             `{NN}-mutation.json`
  *
  * `workflow.mutation_gate`: `off` · `report` (the default: a report, never a refusal) ·
- * `gate` (reserved for V5G, which turns survivors into gaps). No coverage is collected:
+ * `gate` (V5G, opt-in: a score below `workflow.mutation_floor`, 0.6, fails the gate, and
+ * verify reconcile then treats a passed verification as a contradiction, so the phase gate
+ * refuses until the tests are stronger). No coverage is collected:
  * the full suite runs per mutant, so the sample is kept small.
  *
  * The operator table started as scripts/mutation-probe.cjs's, which PAN runs on itself;
@@ -29,6 +31,7 @@ const { execGit, findPhaseInternal, output, error, toPosix } = require('./core.c
 
 const MODES = Object.freeze(['off', 'report', 'gate']);
 const DEFAULT_MAX = 8;
+const DEFAULT_FLOOR = 0.6;
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
 const C_FAMILY_COMPARE = [
@@ -171,6 +174,12 @@ function mutationMode(cwd) {
  * @param {string} phase
  * @param {{max?: number, seed?: number, timeoutMs?: number}} [opts]
  */
+/** `workflow.mutation_floor`: the score gate mode needs, 0..1; 0.6 unless set. */
+function mutationFloor(cwd) {
+  const v = Number((require('./test-gate.cjs').rawConfig(cwd).workflow || {}).mutation_floor);
+  return Number.isFinite(v) && v >= 0 && v <= 1 ? v : DEFAULT_FLOOR;
+}
+
 function mutatePhase(cwd, phase, opts = {}) {
   const TG = require('./test-gate.cjs');
   const { phaseBase, withWorktree } = require('./verify-red.cjs');
@@ -231,16 +240,18 @@ function mutatePhase(cwd, phase, opts = {}) {
   const results = wt.value.results;
   const killed = results.filter((r) => r.killed).length;
   const survivors = results.filter((r) => !r.killed).map(({ file, line, op, before, after }) => ({ file: toPosix(file), line, op, before: before.trim(), after: after.trim() }));
+  const score = results.length ? Number((killed / results.length).toFixed(2)) : null;
+  const gate = mode === 'gate' && score !== null ? { floor: mutationFloor(cwd), failed: score < mutationFloor(cwd) } : undefined;
   return {
     ...base, checked: results.length > 0, base: b.base, head, command: suite.command,
     candidates: candidates.length, sampled: results.length, killed, survived: survivors.length,
-    score: results.length ? Number((killed / results.length).toFixed(2)) : null, survivors,
+    score, survivors, ...(gate ? { gate } : {}),
   };
 }
 
 /**
  * `pan-tools verify mutate --phase N [--max n] [--seed n] [--timeout ms]`: writes
- * `{NN}-mutation.json` and exits 0 (report mode; V5G adds the gate).
+ * `{NN}-mutation.json`. Exits 0, except in gate mode when the score is below the floor (V5G).
  */
 function cmdVerifyMutate(cwd, opts, raw) {
   if (!opts.phase) error('Usage: verify mutate --phase <N> [--max <n>] [--seed <n>] [--timeout <ms>]');
@@ -251,7 +262,7 @@ function cmdVerifyMutate(cwd, opts, raw) {
   const file = path.join(cwd, info.directory, `${prefix}-mutation.json`);
   fs.writeFileSync(file, JSON.stringify(r, null, 2) + '\n');
   r.record = toPosix(path.relative(cwd, file));
-  output(r, raw, r.aborted ? `aborted:${r.aborted}` : (r.checked ? `${r.killed}/${r.sampled} killed` : 'not_checked'));
+  output(r, raw, r.aborted ? `aborted:${r.aborted}` : (r.checked ? `${r.killed}/${r.sampled} killed${r.gate && r.gate.failed ? ' (gate failed)' : ''}` : 'not_checked'), r.gate && r.gate.failed ? 1 : 0);
 }
 
-module.exports = { OPERATORS, MODES, languageOf, mutableLine, mutationsFor, applyMutation, sample, changedLines, mutationMode, mutatePhase, cmdVerifyMutate };
+module.exports = { mutationFloor, DEFAULT_FLOOR, OPERATORS, MODES, languageOf, mutableLine, mutationsFor, applyMutation, sample, changedLines, mutationMode, mutatePhase, cmdVerifyMutate };

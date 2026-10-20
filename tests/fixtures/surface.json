@@ -603,6 +603,7 @@
     "routing.strategy",
     "search_gitignored",
     "workflow.cross_family_review",
+    "workflow.mutation_floor",
     "workflow.mutation_gate",
     "workflow.nyquist_validation",
     "workflow.phase_gate",

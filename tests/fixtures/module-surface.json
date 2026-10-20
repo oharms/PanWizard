@@ -723,6 +723,7 @@
     "cmdRequirementsMarkComplete:function"
   ],
   "mutate.cjs": [
+    "DEFAULT_FLOOR:number",
     "MODES:object",
     "OPERATORS:object",
     "applyMutation:function",
@@ -731,6 +732,7 @@
     "languageOf:function",
     "mutableLine:function",
     "mutatePhase:function",
+    "mutationFloor:function",
     "mutationMode:function",
     "mutationsFor:function",
     "sample:function"
