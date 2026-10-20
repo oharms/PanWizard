@@ -18,7 +18,6 @@ const { createScenarioRunner } = require('../helpers.cjs');
 
 // Commands that are workflow-only (no pan-tools dispatcher route)
 const WORKFLOW_COMMANDS = [
-  'audit-deployment',
   'focus-drift-walking',
   'focus-doc-audit',
   'focus-design',

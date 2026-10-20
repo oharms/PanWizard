@@ -371,7 +371,7 @@ function buildMilestoneETA(cwd) {
   const remaining = phaseList.filter(p => !p.completed);
 
   // Sample phase durations from summary frontmatter or commit metadata.
-  const durations = sampleCompletedPhaseDurations(cwd, completed);
+  const { durations, sources } = sampleCompletedPhaseDurations(cwd, completed, { withSources: true });
   const avg = durations.length > 0
     ? durations.reduce((a, b) => a + b, 0) / durations.length
     : 5.0; // default 5 days per phase when no history
@@ -408,6 +408,9 @@ function buildMilestoneETA(cwd) {
     sample_size: durations.length,
     eta_date: etaDate,
     confidence_pct: confidence,
+    // L6b: where the average came from — dated summaries, the phases' plan commits, or
+    // the 5-day default when there is no history at all.
+    eta_source: durations.length === 0 ? 'default' : (sources.every((s) => s === 'git') ? 'git' : (sources.every((s) => s === 'summary') ? 'summary' : 'mixed')),
     bottleneck,
   };
 }
@@ -420,8 +423,9 @@ function findPhaseDir(dirs, num) {
   return dirs.find(d => d.startsWith(`${num}-`) || d.startsWith(`${padded}-`));
 }
 
-function sampleCompletedPhaseDurations(cwd, completedPhases) {
+function sampleCompletedPhaseDurations(cwd, completedPhases, opts = {}) {
   const durations = [];
+  const sources = [];
   const phasesRoot = phasesPath(cwd);
   let dirs = [];
   try { dirs = fs.readdirSync(phasesRoot); } catch { return durations; }
@@ -441,10 +445,25 @@ function sampleCompletedPhaseDurations(cwd, completedPhases) {
     const completed_at = fm.completed || fm.finished || fm.done;
     if (started && completed_at) {
       const d = daysBetween(started, completed_at);
-      if (d && d > 0 && d < 60) durations.push(d);
+      if (d && d > 0 && d < 60) { durations.push(d); sources.push('summary'); continue; }
     }
+    // No dated summary (most have none): time the phase by its plan commits, oldest to newest.
+    const g = phaseCommitSpanDays(cwd, p.num);
+    if (g && g > 0 && g < 60) { durations.push(g); sources.push('git'); }
   }
-  return durations;
+  return opts.withSources ? { durations, sources } : durations;
+}
+
+/** Days between a phase's oldest and newest plan commit ({type}({phase}-{plan}): …), or null. */
+function phaseCommitSpanDays(cwd, phaseNum) {
+  const n = String(phaseNum);
+  const padded = n.includes('.') ? n.split('.').map((s, i) => (i === 0 ? s.padStart(2, '0') : s)).join('.') : n.padStart(2, '0');
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const r = require('./core.cjs').execGit(cwd, ['log', '--format=%ct', '-E', `--grep=^[a-z]+\\((${esc(padded)}|${esc(n)})-[0-9]+\\):`]);
+  if (!r || r.exitCode !== 0 || !r.stdout) return null;
+  const times = r.stdout.split('\n').map(Number).filter(Number.isFinite);
+  if (times.length < 2) return null;
+  return Math.round(((Math.max(...times) - Math.min(...times)) / 86400) * 10) / 10;
 }
 
 function findBottleneckCandidate(cwd, remainingPhases) {

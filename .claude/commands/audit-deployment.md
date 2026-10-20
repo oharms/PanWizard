@@ -1,6 +1,5 @@
 ---
-name: pan:audit-deployment
-group: System
+name: audit-deployment
 description: Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
 argument-hint: <target-directory> [--enhancements] [--repair]
 allowed-tools:

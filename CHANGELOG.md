@@ -20,9 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A truncated plan is invalid.** `verify plan-structure` reports a plan that ends with a task, action or tasks block still open, or that holds a continuation marker. Hosts cap tool output, and a long plan has been cut off mid-tag while the write reported success. The planner rewrites a cut-off plan, and the plan-checker blocks on it.
 - **Pre-existing review findings are debt, not blockers.** The reviewer tags a problem in code the phase did not change with `pre_existing: true`. `findings record` files it as deferred with the reason, so it never blocks the phase gate, and the milestone audit still lists it.
 - **`x-` config keys are your own metadata.** A key starting with lowercase `x-` in `.planning/config.json` is never reported as unknown, by `config-set` or by health.
+- **A human merge gate from the command line.** `pan-tools merge request <branch>` stages a merge through the MCP merge gate and never prints its token. `pan-tools merge confirm <branch>` runs only in an interactive terminal and asks you to type the branch name; anywhere else it refuses with `human_terminal_required`. The release agent and `/pan:army` use it.
+- **A clarification taxonomy and a question budget.** `references/questioning.md` lists what to clarify (scope, users, behaviour, data, interfaces, errors and edge cases, non-functional needs, constraints, done) and caps a round at five questions, ranked by impact and uncertainty; the rest become recorded `Assumed:` lines. `discuss-phase` and `new-project` follow both.
+- **Health repairs one class at a time.** `pan-tools validate health` lists `repairs_available`, and `--repair --only <classes>` repairs just those; the health workflow asks per class.
+- **The preview ETA comes from git.** `pan-tools preview` estimates from the commit span of finished phases when there is one, and says which source it used (`eta_source`).
+- **One host table.** `pan-wizard-core/bin/lib/hosts.cjs` holds how PAN runs each host CLI. The autonomous runner and the harness both read it, where each kept its own copy; a test pins the argv per host.
 
 ### Changed
 
+- **`cost clear` keeps a backup.** It writes `tokens.jsonl.bak-<timestamp>` before it empties the log.
+- **Settings asks in two batches of four.** No AskUserQuestion call in a shipped prompt offers more than four questions any more; a new prompt-lint rule, `oversized-ask`, fails one that does.
+- **Assumptions feed the plan.** The assumptions workflow saves `{phase}-assumptions.md`, and discuss-phase and plan-phase read it. exec-phase writes the phase's tests and proves them red before the work starts.
+- **`/pan:audit-deployment` is a development command now.** It audits a PAN checkout, not a user's project, and is no longer shipped.
 - **PAN's commands stay out of Claude Code's model listing.** Claude Code listed every PAN command and skill description to the model on every turn: 58 on a default install, 57 on a unified one. PAN's commands are invoked explicitly, so they now carry `disable-model-invocation: true` on Claude Code (commands, the unified skill mirror and the Claude plugin). They still run as `/pan:<name>`. New harness scenarios `skill-listing-claude` and `skill-listing-claude-commands` check both, model-free, against the real CLI.
 - **The context monitor is registered only on Claude Code.** On Copilot CLI its payload names the session `sessionId`, so the monitor exited on every call. On Codex there is no status-line bridge, and its transcript is not in Claude Code's shape. It ran on every tool call and measured nothing. An upgrade removes an older install's Codex entry.
 

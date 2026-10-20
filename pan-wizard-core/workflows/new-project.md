@@ -220,7 +220,7 @@ Consult `questioning.md` for techniques:
 
 **Check context (background, not out loud):**
 
-As you go, mentally check the context checklist from `questioning.md`. If gaps remain, weave questions naturally. Don't suddenly switch to checklist mode.
+As you go, mentally check the context checklist from `questioning.md`, and scan the idea against its `<clarification_taxonomy>`. If gaps remain, weave questions naturally. Don't suddenly switch to checklist mode. Keep to its `<question_budget>`: at most five clarifying questions, ranked by impact × uncertainty, and every gap you did not ask about written into project.md as an `Assumed:` line.
 
 **Decision gate:**
 

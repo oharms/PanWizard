@@ -71,6 +71,11 @@ function attachPhaseArtifactPaths(result, cwd, phaseDirectory) {
     if (uatFile) {
       result.uat_path = toPosix(path.join(phaseDirectory, uatFile));
     }
+    // L6b: the user's corrections to /pan:assumptions, which discuss and plan read.
+    const assumptionsFile = files.find((f) => f.endsWith('-assumptions.md') || f === 'assumptions.md');
+    if (assumptionsFile) {
+      result.assumptions_path = toPosix(path.join(phaseDirectory, assumptionsFile));
+    }
   } catch {
     // Phase directory may not exist yet or may be unreadable
   }

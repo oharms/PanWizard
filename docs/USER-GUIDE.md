@@ -368,7 +368,6 @@ off by default; turn it on for phases where planning test coverage up front matt
 | `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase | After execution, to add test coverage |
 | `/pan:milestone-cleanup` | Archive old phase directories from completed milestones | After completing a milestone |
 | `/pan:retro` | Milestone retrospective — estimation accuracy, gap patterns | After `/pan:milestone-done` |
-| `/pan:audit-deployment <target-directory>` | Audit a PAN installation for integrity | Verify install/update didn't drift |
 | `/pan:links [--strict]` | Validate the doc–code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027, v3.8.0+) | Renamed an ADR or moved a module — catch broken refs |
 
 ### Spec B v2 (v3.0–v3.4)

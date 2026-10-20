@@ -390,7 +390,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -877,7 +877,7 @@ async function main() {
         const fullFlag = args.includes('--full');
         const driftFlag = args.includes('--drift');
         const linksFlag = args.includes('--links');
-        verify.cmdValidateHealth(cwd, { repair: repairFlag, standards: standardsFlag, full: fullFlag, drift: driftFlag, links: linksFlag }, raw);
+        verify.cmdValidateHealth(cwd, { repair: repairFlag, standards: standardsFlag, full: fullFlag, drift: driftFlag, links: linksFlag, only: (getArgValue(args, '--only') || '').split(',').map((s) => s.trim()).filter(Boolean) }, raw);
       } else if (subcommand === 'deployment') {
         verify.cmdValidateDeployment(cwd, raw);
       } else {
@@ -1331,6 +1331,20 @@ async function main() {
         require('./lib/review-vote.cjs').cmdReviewVote(cwd, { files, phase: getArgValue(args, '--phase'), quorum: getArgValue(args, '--quorum'), out: getArgValue(args, '--out') }, raw);
       } else {
         error('Unknown review subcommand. Available: scope, vote');
+      }
+      break;
+    }
+
+    case 'merge': {
+      // L6a: the human merge gate on the CLI; confirm runs only in a person's terminal.
+      const subcommand = args[1];
+      const M = require('./lib/merge.cjs');
+      if (subcommand === 'request') {
+        M.cmdMergeRequest(cwd, args[2], { phase: getArgValue(args, '--phase'), ciGreen: args.includes('--ci-green') }, raw);
+      } else if (subcommand === 'confirm') {
+        M.cmdMergeConfirm(cwd, args[2], raw);
+      } else {
+        error('Unknown merge subcommand. Available: request, confirm');
       }
       break;
     }

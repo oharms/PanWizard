@@ -327,7 +327,6 @@ Every shipped command, by group. This list is generated from each command's own 
 ### System
 | Command | Description |
 |---------|-------------|
-| `/pan:audit-deployment` | Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs |
 | `/pan:debug` | Systematic debugging with persistent state across context resets |
 | `/pan:health` | Diagnose planning directory health and optionally repair issues |
 | `/pan:help` | Show available PAN commands and usage guide |

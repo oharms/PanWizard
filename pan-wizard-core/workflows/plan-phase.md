@@ -261,6 +261,7 @@ Answer: "What do I need to know to PLAN this phase well?"
 
 <files_to_read>
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
+- {assumptions_path} (the user's corrections to /pan:assumptions, when the file exists: `init` reports `assumptions_path`; each correction binds the plan like a decision)
 - {slice_path} (This phase's roadmap and requirements)
 - {state_path} (Project decisions and history)
 </files_to_read>
@@ -351,6 +352,7 @@ Planner prompt:
 - {state_path} (Project State)
 - {slice_path} (This phase's roadmap and requirements — read the whole roadmap.md or requirements.md only for something it leaves out)
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
+- {assumptions_path} (the user's corrections to /pan:assumptions, when the file exists: `init` reports `assumptions_path`; each correction binds the plan like a decision)
 - {research_path} (Technical Research)
 - {verification_path} (Verification Gaps - if --gaps)
 - {uat_path} (UAT Gaps - if --gaps)
@@ -432,6 +434,7 @@ Checker prompt:
 - {PHASE_DIR}/*-plan.md (Plans to verify)
 - {slice_path} (This phase's roadmap and requirements — read the whole roadmap.md or requirements.md only for something it leaves out)
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
+- {assumptions_path} (the user's corrections to /pan:assumptions, when the file exists: `init` reports `assumptions_path`; each correction binds the plan like a decision)
 - {research_path} (Technical Research — includes Validation Architecture)
 </files_to_read>
 
@@ -499,6 +502,7 @@ Revision prompt:
 <files_to_read>
 - {PHASE_DIR}/*-plan.md (Existing plans)
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
+- {assumptions_path} (the user's corrections to /pan:assumptions, when the file exists: `init` reports `assumptions_path`; each correction binds the plan like a decision)
 </files_to_read>
 
 **Checker issues:** {structured_issues_from_checker}

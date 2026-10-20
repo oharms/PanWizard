@@ -905,8 +905,12 @@ function cmdCostAppend(cwd, rec, raw) {
 
 function cmdCostClear(cwd, raw) {
   try {
-    fs.unlinkSync(tokensFile(cwd));
-    output({ cleared: true, file: tokensFile(cwd) }, raw);
+    // L6a: the ledger is the only record of what was spent; keep a copy before deleting it.
+    const file = tokensFile(cwd);
+    const backup = `${file}.bak-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+    fs.copyFileSync(file, backup);
+    fs.unlinkSync(file);
+    output({ cleared: true, file, backup }, raw);
   } catch (e) {
     output({ cleared: false, error: e.message || 'ledger_clear_failed' }, raw);
   }

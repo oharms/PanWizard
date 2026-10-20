@@ -718,7 +718,6 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:learn` | Analyze trace events and write an optimization report. `/pan:optimize apply` records its suggestions; nothing is applied automatically |
 | `/pan:optimize {apply\|revert\|list\|stats\|trace}` | Record a report's suggestions for a person to act on (`apply`: notes in `.planning/optimization/suggestions.md`, config notes in `config-suggestions.md`), undo one apply (`revert <apply_id>` or `revert --last`), list reports, view stats, manage trace sessions |
 | `/pan:git <subcommand>` | Phase-aware git workflow: commit/branch/push/status/log/stash/diff/rollback/tag/sync |
-| `/pan:audit-deployment <target-directory> [--enhancements] [--repair]` | Audit a PAN installation for integrity, project health, and draft enhancement specs |
 
 <sup>¹ Contributed by reddit user OracleGreyBeard</sup>
 

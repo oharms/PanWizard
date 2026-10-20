@@ -217,7 +217,7 @@ Most commands do no heavy work directly: their substantive logic lives in workfl
 | **Milestone** | milestone-new, milestone-done, milestone-audit, milestone-gaps, milestone-cleanup |
 | **Focus** | focus-scan, focus-plan, focus-exec, focus-auto, focus-sync, focus-design, focus-drift-walking, focus-doc-audit |
 | **System** | help, health, settings, update, debug, todo-add, todo-check |
-| **Deployment** | audit-deployment, retro |
+| **Deployment** | retro |
 | **Community** | discord, patches |
 | **Spec B v2 (v3.0-v3.4)** | cost, preview, review-deep, knowledge, what-if, mcp-bridge |
 | **v3.5 — Optimization & Git** | learn, optimize, git |
@@ -226,7 +226,7 @@ Most commands do no heavy work directly: their substantive logic lives in workfl
 
 ### Command-Only Files (No Workflow)
 
-These commands are self-contained in their `.md` file and do not delegate to a separate workflow; so are `army`, `audit-deployment`, `cost`, `dashboard`, `experiment`, `git`, `hud`, `hygiene`, `knowledge`, `links`, `mcp-bridge`, `preview`, `report`, `review-deep` and `what-if`, none of which references a workflow file:
+These commands are self-contained in their `.md` file and do not delegate to a separate workflow; so are `army`, `cost`, `dashboard`, `experiment`, `git`, `hud`, `hygiene`, `knowledge`, `links`, `mcp-bridge`, `preview`, `report`, `review-deep` and `what-if`, none of which references a workflow file:
 
 | Command | Reason |
 |---------|--------|

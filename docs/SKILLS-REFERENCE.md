@@ -84,7 +84,7 @@ Initialize a new project with deep context gathering and project.md
 | `/pan:exec-phase` | Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion | Execute all plans in a phase with wave-based parallelization |
 | `/pan:plan-phase` | Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__* | Create detailed phase plan (plan.md) with verification loop |
 | `/pan:research-phase` | Read, Bash, Task | Research how to implement a phase (standalone - usually use /pan:plan-phase instead) |
-| `/pan:verify-phase` | Read, Bash, Glob, Grep, Edit, Write, Task | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps |
+| `/pan:verify-phase` | Read, Bash, Glob, Grep, Edit, Write, Task | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat |
 
 #### /pan:design-phase
 
@@ -148,15 +148,15 @@ Research how to implement a phase (standalone - usually use /pan:plan-phase inst
 
 #### /pan:verify-phase
 
-Re-run goal-backward verification of a phase with a test-suite gate and list its gaps
+Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat
 
 ```text
-/pan:verify-phase [phase number, e.g., '4']
+/pan:verify-phase [phase number, e.g., '4'] [--uat]
 ```
 
 **Tools:** Read, Bash, Glob, Grep, Edit, Write, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 80
+**Lines:** 84
 
 ---
 
@@ -524,7 +524,6 @@ Resume work from previous session with full context restoration
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
-| `/pan:audit-deployment` | Read, Bash, Write, Glob, Grep, AskUserQuestion | Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs |
 | `/pan:debug` | Read, Bash, Task, AskUserQuestion | Systematic debugging with persistent state across context resets |
 | `/pan:health` | Read, Bash, Write, AskUserQuestion | Diagnose planning directory health and optionally repair issues |
 | `/pan:help` | *(none)* | Show available PAN commands and usage guide |
@@ -534,18 +533,6 @@ Resume work from previous session with full context restoration
 | `/pan:todo-add` | Read, Write, Bash, AskUserQuestion | Capture idea or task as todo from current conversation context |
 | `/pan:todo-check` | Read, Write, Bash, AskUserQuestion | List pending todos and select one to work on |
 | `/pan:update` | Bash, AskUserQuestion | Update PAN to latest version with changelog display |
-
-#### /pan:audit-deployment
-
-Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
-
-```text
-/pan:audit-deployment <target-directory> [--enhancements] [--repair]
-```
-
-**Tools:** Read, Bash, Write, Glob, Grep, AskUserQuestion  
-**Group:** System  
-**Lines:** 386
 
 #### /pan:debug
 
@@ -1118,8 +1105,15 @@ Start a PAN Wizard development session by loading project context and checking s
 
 | Skill | Description |
 |-------|-------------|
+| `/audit-deployment` | Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs |
 | `/investigate` | Analyse something you bring (a news dump, article, paper, changelog, release notes — file path or pasted text) against PAN Wizard's existing features and write ADD / ENHANCE feature write-ups into docs/specs/investigations/ |
 | `/market-ideas` | Market idea scan for PAN Wizard — what shipped in the agent-tooling market (host tools, direct peers, new entrants, standards) since the last scan, triaged against the code and the ideas ledger into adopt / adapt / watch / skip, with a sized queue |
+
+#### /audit-deployment
+
+Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
+
+**Lines:** 385
 
 #### /investigate
 
@@ -1144,7 +1138,6 @@ Which tools each shipped skill can use:
 | add-phase | x | x |  | x |  |  |  |  |  |  |  |  |  |  |
 | army | x | x | x | x | x | x | x | x |  |  |  |  |  |  |
 | assumptions | x |  |  | x | x | x |  |  |  |  |  |  |  |  |
-| audit-deployment | x | x |  | x | x | x |  |  |  | x |  |  |  |  |
 | cost | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | dashboard | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | debug | x |  |  | x |  |  |  | x |  | x |  |  |  |  |

@@ -55,22 +55,8 @@ const { getExperimentManifest, PAN_EXPERIMENTS_ROOT_DEFAULT } = require('./exper
 // claude into `--output-format json` so the trailing usage envelope can be
 // parsed for cost/token metrics. Other runtimes are unchanged — token
 // metering for codex/gemini/opencode is deferred (no equivalent flag).
-const RUNTIME_RUNNERS = Object.freeze({
-  claude:   {
-    bin: 'claude',
-    buildArgs: (prompt, opts) => {
-      const args = ['-p', '--dangerously-skip-permissions'];
-      if (opts && opts.captureMetrics) args.push('--output-format', 'json');
-      args.push(prompt);
-      return args;
-    },
-    shell: 'win32',
-  },
-  codex:    { bin: 'codex',    buildArgs: (prompt) => ['exec', prompt],                                  shell: 'win32' },
-  gemini:   { bin: 'gemini',   buildArgs: (prompt) => ['-p', '--yolo', prompt],                          shell: 'win32' },
-  opencode: { bin: 'opencode', buildArgs: (prompt) => [prompt],                                          shell: 'win32' },
-  copilot:  null,
-});
+// The adapters live in hosts.cjs, the one host table (program A0).
+const RUNTIME_RUNNERS = require('./hosts.cjs').runnerTable();
 
 // ── Stop reasons (enum-ish) ─────────────────────────────────────────────────
 

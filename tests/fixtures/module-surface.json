@@ -502,6 +502,11 @@
     "getCurrentBranch:function",
     "getTagList:function"
   ],
+  "hosts.cjs": [
+    "HOSTS:object",
+    "headlessTable:function",
+    "runnerTable:function"
+  ],
   "hud.cjs": [
     "CHECK_SVG:string",
     "HUD_CSS:string",
@@ -673,6 +678,10 @@
     "scoreEntry:function",
     "selectMemory:function",
     "validateAgentName:function"
+  ],
+  "merge.cjs": [
+    "cmdMergeConfirm:function",
+    "cmdMergeRequest:function"
   ],
   "milestone.cjs": [
     "cmdMilestoneComplete:function",

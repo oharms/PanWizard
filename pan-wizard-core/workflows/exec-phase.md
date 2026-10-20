@@ -363,12 +363,9 @@ TEST_BASELINE=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 2. Invoke phase-tests workflow for the completed phase:
 ```
 Task(
-  prompt="Generate tests for phase ${PHASE_NUMBER}.
+  prompt="Follow the phase-tests workflow (~/.claude/pan-wizard-core/workflows/phase-tests.md) for phase ${PHASE_NUMBER}.
 Phase directory: ${phase_dir}
-Read each summary.md to understand what was built.
-Generate unit and integration tests for the new code.
-Discover the project's existing test patterns, directories, frameworks, and helpers before writing tests.
-Follow whatever conventions the project already uses.",
+It classifies each changed file, discovers the project's test patterns, writes the tests the plan approves, and commits them.",
   subagent_type="general-purpose",
   model="{executor_model}",
 )
@@ -379,7 +376,13 @@ Alternatively, if the user's AI tool supports it, invoke the command directly:
 /pan:phase-tests ${PHASE_NUMBER}
 ```
 
-3. Record new test count:
+3. Prove the new tests catch something (V4). A test that passes without the phase's code is tautological:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify red "${PHASE_NUMBER}"
+```
+Rewrite or drop each test it reports as `not_red`; `not_checked` names a runner that cannot run one file and is reported, not failed.
+
+4. Record new test count:
 ```bash
 TEST_AFTER=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 ```

@@ -75,17 +75,8 @@ function modelArgs(ws, { maxUsd, pluginDir, strictMcp = true, persistSession = f
  * step whose cost cannot be read cannot be capped.
  *   promptVia: 'stdin' | 'arg' — how the prompt reaches the CLI.
  */
-const MODEL_RUNTIMES = {
-  claude: { bin: 'claude', promptVia: 'stdin', parse: true },
-  // `codex exec -` reads the prompt from stdin; --json streams JSONL events.
-  codex: { bin: 'codex', promptVia: 'stdin', args: () => ['exec', '--json', '--skip-git-repo-check', '--dangerously-bypass-approvals-and-sandbox', '-'] },
-  // `-p` takes the prompt as an argument; --output-format json is JSONL.
-  copilot: { bin: 'copilot', promptVia: 'arg', args: (p) => ['-p', p, '--output-format', 'json', '--allow-all-tools', '--allow-all-paths'] },
-  // `-p` runs headless; -o json; --approval-mode yolo auto-approves tools.
-  gemini: { bin: 'gemini', promptVia: 'arg', args: (p) => ['-p', p, '-o', 'json', '--approval-mode', 'yolo'] },
-  // `run <message..>` with --format json (raw JSON events).
-  opencode: { bin: 'opencode', promptVia: 'arg', args: (p) => ['run', '--format', 'json', p] },
-};
+// The hosts' argv live in the core's one host table (program A0).
+const MODEL_RUNTIMES = require('../../pan-wizard-core/bin/lib/hosts.cjs').headlessTable();
 
 /** The argv for a non-Claude model step, or null for an unknown host. Pure. */
 function modelArgsFor(runtime, prompt) {

@@ -38,9 +38,10 @@ function collectVerificationStats(phasesDir) {
       // Extract gap descriptions from ## Gaps section
       const gapsMatch = content.match(/## Gaps[\s\S]*?(?=\n## |$)/);
       if (gapsMatch) {
-        const lines = gapsMatch[0].split('\n').filter(l => l.match(/^[-*]\s+/));
+        // Bullets and numbered items both (L6b: numbered gap lists were dropped).
+        const lines = gapsMatch[0].split('\n').filter(l => l.match(/^(?:[-*]|\d+[.)])\s+/));
         for (const line of lines) {
-          const desc = line.replace(/^[-*]\s+/, '').trim();
+          const desc = line.replace(/^(?:[-*]|\d+[.)])\s+/, '').trim();
           if (desc) stats.gap_patterns.push(desc);
         }
       }

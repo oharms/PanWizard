@@ -1506,9 +1506,13 @@ function cmdValidateHealth(cwd, options, raw) {
   }
 
   // Perform repairs if requested and there are repairable issues
+  // L6a: health asks per repair class. Without --repair the result lists the classes;
+  // --only limits a repair to the ones the user chose.
+  const only = Array.isArray(options.only) && options.only.length ? new Set(options.only) : null;
+  const chosen = only ? repairs.filter((r) => only.has(r)) : repairs;
   let repairActions = [];
-  if (options.repair && repairs.length > 0) {
-    repairActions = repairIssues(cwd, repairs);
+  if (options.repair && chosen.length > 0) {
+    repairActions = repairIssues(cwd, chosen);
   }
 
   // Check 10 (optional): full validation — run tests and build
@@ -1581,6 +1585,7 @@ function cmdValidateHealth(cwd, options, raw) {
     warnings,
     info,
     repairable_count: repairableCount,
+    repairs_available: repairs.length > 0 ? [...new Set(repairs)] : undefined,
     repairs_performed: repairActions.length > 0 ? repairActions : undefined,
   };
   if (options.full) {
