@@ -92,6 +92,7 @@ function foldFindings(rows) {
         severity: r.severity, where: r.where || null, summary: r.summary, first_seen: r.ts,
         first_verdict_id: r.verdict_id || null, reports: 0, last_reported: null, _reportedSeq: -1,
         disposition: null, reason: null, disposed_at: null, auto: false, file_sha: null, _disposedSeq: -1, _returnedSeq: -1,
+        ...(r.pre_existing === true ? { pre_existing: true } : {}),
       });
     } else if (r.kind === 'verdict') {
       verdicts.push({ ...r, _seq: seq });
@@ -324,6 +325,7 @@ function recordVerdict(cwd, input) {
   const supps = learnedSuppressions(cwd, fold);
   const suppressed = [];
   const returned = [];
+  const preExisting = [];
   let rematched = 0;
   for (const f of verdict.findings) {
     let id = V.findingId(phase, agent, f);
@@ -347,7 +349,8 @@ function recordVerdict(cwd, input) {
     }
     ids.push(id);
     if (!fold.findings.has(id)) {
-      findingRows.push({ v: LEDGER_V, kind: 'finding', ts, id, verdict_id: verdictId, phase, milestone, agent, class: f.class, severity: f.severity, where: f.where, summary: f.summary });
+      findingRows.push({ v: LEDGER_V, kind: 'finding', ts, id, verdict_id: verdictId, phase, milestone, agent, class: f.class, severity: f.severity, where: f.where, summary: f.summary, ...(f.pre_existing ? { pre_existing: true } : {}) });
+      if (f.pre_existing) preExisting.push(id);
     }
   }
 
@@ -399,7 +402,10 @@ function recordVerdict(cwd, input) {
     // hash with the plans it is about to run.
     ...(agent === 'pan-plan-checker' ? { plans_sha: require('./verify-plan-set.cjs').plansShaFor(cwd, phase) } : {}),
   });
-  appendRows(cwd, [...findingRows, ...newRows, ...resolveRows]);
+  // A pre-existing finding (M52) is in code the phase did not change: debt the milestone
+  // audit reads, never a blocker for this phase.
+  const deferRows = preExisting.map((id) => ({ v: LEDGER_V, kind: 'disposition', ts, id, disposition: 'deferred', reason: `pre-existing: in code phase ${phase} did not change; recorded as debt, not a blocker`, auto: true, verdict_id: verdictId }));
+  appendRows(cwd, [...findingRows, ...newRows, ...resolveRows, ...deferRows]);
 
   const category = { pass: 'verdict_passed', fail: 'verdict_failed', needs_human: 'verdict_needs_human' }[verdict.outcome];
   const serious = (bySeverity.critical || 0) + (bySeverity.high || 0) > 0;
@@ -424,7 +430,7 @@ function recordVerdict(cwd, input) {
     });
   }
 
-  return { ...base, recorded: true, duplicate: false, verdict_id: verdictId, attempt, phase, findings: ids.length, new: findingRows.length, rematched, resolved: resolveRows.length, unaddressed, reopened, suppressed, returned: returned.length, ledger: planningRel(FINDINGS_FILE) };
+  return { ...base, recorded: true, duplicate: false, verdict_id: verdictId, attempt, phase, findings: ids.length, new: findingRows.length, rematched, resolved: resolveRows.length, unaddressed, reopened, suppressed, returned: returned.length, pre_existing: preExisting.length, ledger: planningRel(FINDINGS_FILE) };
 }
 
 /**

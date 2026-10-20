@@ -673,7 +673,14 @@ function mirrorUnifiedSkillsForClaude(sharedSkillsDir, targetDir, prefix) {
     try {
       fs.mkdirSync(destDir, { recursive: true });
       for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
-        if (entry.isFile()) fs.copyFileSync(path.join(srcDir, entry.name), path.join(destDir, entry.name));
+        if (!entry.isFile()) continue;
+        // SKILL.md gains disable-model-invocation for Claude Code (M49); the shared
+        // tree keeps the plain file, since no other runtime was seen to read the field.
+        if (entry.name === 'SKILL.md') {
+          fs.writeFileSync(path.join(destDir, entry.name), lib.withClaudeUserInvokedOnly(fs.readFileSync(path.join(srcDir, entry.name), 'utf8')));
+        } else {
+          fs.copyFileSync(path.join(srcDir, entry.name), path.join(destDir, entry.name));
+        }
       }
       copied++;
     } catch (err) { pushInstallWarning('claudeSkillMirror', `skills/${name}`, err); }
@@ -907,6 +914,9 @@ function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime, isCommand
           content = convertClaudeToCopilotMarkdown(content);
           fs.writeFileSync(destPath, content);
         } else {
+          // Claude Code: PAN's commands are user-invoked only (M49), so their
+          // descriptions stay out of the listing the model gets every turn.
+          if (runtime === 'claude' && isCommand) content = lib.withClaudeUserInvokedOnly(content);
           fs.writeFileSync(destPath, content);
         }
       } catch (err) {

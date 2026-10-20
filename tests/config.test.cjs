@@ -950,6 +950,16 @@ describe('config keys — known, unknown and nearest (M26)', () => {
     assert.deepEqual(C.unknownConfigKeys({ parallelization: { enabled: true } }), [], 'a scalar default given as an object is not checked below');
   });
 
+  test('`x-` keys are user metadata: never unknown, at the top or inside a section (M51)', () => {
+    // OpenSpec v1.14.2's escape: a lowercase `x-` prefix marks a key as the user's own,
+    // so a team can annotate config.json without health or config-set calling it a typo.
+    assert.deepEqual(C.unknownConfigKeys({ 'x-owner': 'team-a', workflow: { 'x-note': 'reviewed', auto_advnace: true } }), ['workflow.auto_advnace']);
+    assert.equal(C.isKnownConfigPath('x-owner'), true);
+    assert.equal(C.isKnownConfigPath('workflow.x-note'), true);
+    assert.equal(C.isKnownConfigPath('X-owner'), false, 'only the lowercase prefix');
+    assert.equal(C.isKnownConfigPath('xowner'), false);
+  });
+
   test('nearestConfigKey suggests a close known key, and nothing for a far one', () => {
     assert.equal(C.nearestConfigKey('workflow.auto_advnace'), 'workflow.auto_advance');
     assert.equal(C.nearestConfigKey('model-profile'), 'model_profile');

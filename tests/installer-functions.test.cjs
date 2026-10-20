@@ -2014,3 +2014,22 @@ describe('an install that copied no hook scripts registers none (M24)', () => {
     });
   }
 });
+
+describe('withClaudeUserInvokedOnly (M49)', () => {
+  // Claude Code keeps a command or skill marked disable-model-invocation out of the
+  // listing it sends the model every turn; it still runs as /pan:<name>. Seen on 2.1.302
+  // by harness/scenarios/skill-listing-claude*.json.
+  test('adds the field to the frontmatter, once, keeping the line ending', () => {
+    const md = '---\nname: pan:help\ndescription: Show help\n---\nBody\n';
+    const out = lib.withClaudeUserInvokedOnly(md);
+    assert.equal(out, '---\nname: pan:help\ndescription: Show help\ndisable-model-invocation: true\n---\nBody\n');
+    assert.equal(lib.withClaudeUserInvokedOnly(out), out, 'idempotent');
+    assert.match(lib.withClaudeUserInvokedOnly(md.replace(/\n/g, '\r\n')), /description: Show help\r\ndisable-model-invocation: true\r\n---/);
+  });
+
+  test('content without frontmatter, or already marked, is unchanged', () => {
+    assert.equal(lib.withClaudeUserInvokedOnly('plain body\n'), 'plain body\n');
+    const marked = '---\nname: x\ndisable-model-invocation: false\n---\nB\n';
+    assert.equal(lib.withClaudeUserInvokedOnly(marked), marked, 'an explicit value is the author\'s');
+  });
+});

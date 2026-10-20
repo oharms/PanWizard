@@ -130,6 +130,25 @@ function extractFrontmatterAndBody(content) {
   };
 }
 
+/**
+ * Mark a Claude Code command or skill as user-invoked only (market-ideas M49): add
+ * `disable-model-invocation: true` to its frontmatter. Claude Code then keeps it out
+ * of the listing it sends the model on every turn, and it still runs as /pan:<name>.
+ * Seen to work on Claude Code 2.1.302 against the harness model double
+ * (skill-listing-claude, skill-listing-claude-commands; 2026-10-20). Claude only:
+ * no other runtime was seen to read the field (MI-022). Idempotent; content without
+ * frontmatter is returned unchanged.
+ * @param {string} content
+ * @returns {string}
+ */
+function withClaudeUserInvokedOnly(content) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (!m || /^disable-model-invocation:/m.test(m[1])) return content;
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const end = m.index + m[0].length - 3; // the closing ---
+  return content.slice(0, end) + 'disable-model-invocation: true' + eol + content.slice(end);
+}
+
 /** Extract a field value from YAML frontmatter string */
 function extractFrontmatterField(frontmatter, fieldName) {
   const regex = new RegExp(`^${fieldName}:\\s*(.+)$`, 'm');
@@ -2650,6 +2669,7 @@ const {
 // ─── Exports ────────────────────────────────────────────────────────────────
 
 module.exports = {
+  withClaudeUserInvokedOnly,
   // Constants
   colorNameToHex,
   claudeToOpencodeTools,

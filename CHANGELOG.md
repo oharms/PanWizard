@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`verify gates <phase>`: a plan's own grep gates must be able to fail.** The engine reads each task's `<verify>` for simple `grep`, `rg` and `git grep` gates and runs them against the tree as it is, interpreted in Node, never through a shell. A gate that already passes before any work (`gate_vacuous`) proves nothing; a pattern that cannot compile (`gate_invalid`) can never match. A `<verify>` line can mark a gate as a regression guard. The plan-checker treats both as blockers.
+- **A truncated plan is invalid.** `verify plan-structure` reports a plan that ends with a task, action or tasks block still open, or that holds a continuation marker. Hosts cap tool output, and a long plan has been cut off mid-tag while the write reported success. The planner rewrites a cut-off plan, and the plan-checker blocks on it.
+- **Pre-existing review findings are debt, not blockers.** The reviewer tags a problem in code the phase did not change with `pre_existing: true`. `findings record` files it as deferred with the reason, so it never blocks the phase gate, and the milestone audit still lists it.
+- **`x-` config keys are your own metadata.** A key starting with lowercase `x-` in `.planning/config.json` is never reported as unknown, by `config-set` or by health.
+
+### Changed
+
+- **PAN's commands stay out of Claude Code's model listing.** Claude Code listed every PAN command and skill description to the model on every turn: 58 on a default install, 57 on a unified one. PAN's commands are invoked explicitly, so they now carry `disable-model-invocation: true` on Claude Code (commands, the unified skill mirror and the Claude plugin). They still run as `/pan:<name>`. New harness scenarios `skill-listing-claude` and `skill-listing-claude-commands` check both, model-free, against the real CLI.
+- **The context monitor is registered only on Claude Code.** On Copilot CLI its payload names the session `sessionId`, so the monitor exited on every call. On Codex there is no status-line bridge, and its transcript is not in Claude Code's shape. It ran on every tool call and measured nothing. An upgrade removes an older install's Codex entry.
+
 ### Fixed
 
 - **Research synthesis writes its file on Claude Code again.** Claude Code refuses a subagent's write to a file named `summary.md`, `report.md`, `findings.md` or `analysis.md`, in any directory ("Subagents should return findings as text"; reproduced on 2026-10-19). The research synthesizer wrote `.planning/research/summary.md`, and the conductor wrote `.planning/orchestration/summary.md`. They now write `research-summary.md` and `orchestration-summary.md`. The roadmapper and the new-project and milestone workflows still read an older project's `summary.md`. A new prompt-lint rule, `refused-write`, fails any shipped prompt that tells a subagent to write one of those names.
