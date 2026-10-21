@@ -254,7 +254,7 @@ No paid step blocks a later item. If an evidence gate has not run or has not dec
 | R4 (session 5b) | One paid lane run: ledger row with lane id, reps, interval, verdict |
 | M35 (session 5c) | Per changed prompt, non-inferiority at δ 0.10 against baseline |
 | H6 (session 5c) | One mutant run: ledger row with rule id, reps, interval, verdict (live — a mutant drifts every cassette) |
-| H10 (session 7c) | One host, paired reps, delta with an interval |
+| H10 (session 7c) | One host, paired reps, delta with an interval. **Pilot run `2026-10-21`** (owner-approved, `--repeat 3 --max-usd 12`, run `run-20261021-171753-uQjOWG`): `pair-shout-live` against `pair-shout-live-stock` on Claude Code (Opus 5.5), seed `two-plan-phase`, goal "add `src/shout.js` with a `node --test` test", both judged by the seed's `npm test`. All 6 reps passed. Per rep: PAN arm $1.142, $1.105, $1.230 (253 s, 265 s, 338 s); stock arm $0.136, $0.154, $0.153 (22 s, 26 s, 29 s); $3.92 spent in all. Paired deltas, PAN minus stock, 95% t interval over 3 pairs: completion +0.00 [0.00, 0.00]; cost +$1.01 [+$0.85, +$1.17]; duration +260 s [+154 s, +366 s]. Reading: on a task this small the bare host completes every time, so PAN adds about $1 and four minutes with no completion gain to show; the comparison that can show one needs a goal the bare host fails on some reps, with more pairs. Not decided |
 | S4 (session 8a) | A degraded variant recovers to non-inferior (δ 0.05) against baseline on held-out data |
 | S6 (session 8b) | The run itself spends model time |
 
