@@ -107,9 +107,9 @@ function defaultOps(plan) {
     scaffold: () => {
       const p = path.join(plan.worktree, '.planning');
       fs.mkdirSync(path.join(p, 'phases'), { recursive: true });
-      fs.writeFileSync(path.join(p, 'project.md'), '# PAN Wizard\n\n**Core value:** PAN Wizard is a spec-driven development system installed into five AI coding CLIs. Rules: CLAUDE.md at the repository root.\n');
-      fs.writeFileSync(path.join(p, 'config.json'), JSON.stringify({ mode: 'yolo', workflow: { phase_gate: 'enforce' } }, null, 2) + '\n');
-      fs.writeFileSync(path.join(p, 'state.md'), '# Project State\n\n## Current Position\n\n**Status:** Dogfood quick task\n');
+      fs.writeFileSync(path.join(p, 'project.md'), '# PAN Wizard\n\n**Core value:** PAN Wizard is a spec-driven development system installed into five AI coding CLIs. Rules: CLAUDE.md at the repository root.\n', { flag: 'wx', mode: 0o600 });
+      fs.writeFileSync(path.join(p, 'config.json'), JSON.stringify({ mode: 'yolo', workflow: { phase_gate: 'enforce' } }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+      fs.writeFileSync(path.join(p, 'state.md'), '# Project State\n\n## Current Position\n\n**Status:** Dogfood quick task\n', { flag: 'wx', mode: 0o600 });
       return { ok: true };
     },
     session: () => {

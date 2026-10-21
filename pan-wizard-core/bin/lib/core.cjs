@@ -354,15 +354,12 @@ function output(result, raw, rawValue, exitCode) {
  * Write all of `text` to stdout before returning. output() exits right after it writes,
  * and on macOS (and Linux) stdout to a pipe is asynchronous: process.exit() dropped
  * whatever had not drained past the pipe buffer, so a reader got JSON cut at about 8 KB.
- * A non-blocking pipe can refuse a write with EAGAIN; retry until it drains.
+ * Making the stdout handle blocking first turns the write synchronous on a pipe too.
  */
 function writeStdoutSync(text) {
-  const buf = Buffer.from(String(text), 'utf8');
-  let off = 0;
-  while (off < buf.length) {
-    try { off += fs.writeSync(1, buf, off, buf.length - off); }
-    catch (e) { if (e.code !== 'EAGAIN') throw e; }
-  }
+  const handle = process.stdout._handle;
+  if (handle && typeof handle.setBlocking === 'function') handle.setBlocking(true);
+  process.stdout.write(String(text));
 }
 
 /**
