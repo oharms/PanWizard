@@ -6,7 +6,11 @@
 // OpenCode and Copilot CLI read it natively, Claude Code only through the @AGENTS.md
 // import in CLAUDE.md; Gemini CLI reads GEMINI.md by default, not this file. PAN contributes one
 // marker-fenced section so agents in any runtime understand the PAN context
-// when reading the repo. User content outside the markers is never touched.
+// when reading the repo. User content outside the markers is never touched, and
+// neither is a section the project edited inside them: PAN replaces only text it
+// generated itself, this release's or an earlier one's (sectionState). A project
+// whose work does not live in .planning/ said so in its own words there, and an
+// update put PAN's generic text back (field report, 2026-10-21).
 //
 // SSOT NOTE: these builders are the single source of truth for the AGENTS.md
 // PAN section and the CLAUDE.md @AGENTS.md bridge. They live under
@@ -16,6 +20,30 @@
 
 const PAN_AGENTS_BEGIN = '<!-- BEGIN PAN WIZARD -->';
 const PAN_AGENTS_END = '<!-- END PAN WIZARD -->';
+const crypto = require('crypto');
+
+// What earlier releases generated between the markers, by sha256 (first 16 hex) of the
+// text with LF line endings, trimmed. Taken from the builders at every commit that
+// changed them. A section with any other text was written by the project.
+const PRIOR_AGENTS_SECTIONS = Object.freeze([
+  'a92a7488b866611d', // to 2026-10-03: "PAN commands install as pan-* skills/commands"
+  'c66f9afd44d80489', // 2026-10-03 to 2026-10-21: commands named per runtime (M34)
+]);
+const PRIOR_CLAUDE_BRIDGES = Object.freeze([
+  '918b1c90559355ef', // the @AGENTS.md import alone
+  '90d0654c91061ec1', // the import and compact instructions (O8), to 2026-10-21
+]);
+
+const innerHash = (text) => crypto.createHash('sha256').update(String(text).replace(/\r\n/g, '\n').trim()).digest('hex').slice(0, 16);
+
+/** The text between PAN's markers, or null when the markers are absent. */
+function fencedInner(existing) {
+  if (!existing) return null;
+  const b = existing.indexOf(PAN_AGENTS_BEGIN);
+  const e = existing.indexOf(PAN_AGENTS_END);
+  if (b === -1 || e === -1 || e < b) return null;
+  return existing.slice(b + PAN_AGENTS_BEGIN.length, e);
+}
 
 /**
  * Build the PAN section for AGENTS.md (marker-fenced, runtime-neutral).
@@ -28,7 +56,7 @@ function buildAgentsMdSection() {
     '',
     'This project uses PAN Wizard for structured, phase-based planning and execution.',
     '',
-    '- `.planning/` is PAN\'s state directory (state.md, roadmap.md, phase directories). Treat it as the source of truth for planning state and modify it through PAN commands, not by hand.',
+    '- When this project plans with PAN, `.planning/` holds that state (state.md, roadmap.md, phase directories): change it through PAN commands, not by hand. Where this project keeps its work elsewhere, its own instructions say so and win.',
     // One section serves every runtime in the project, so it names each one's form
     // (the README's list); `/pan-help` alone sent Claude Code users to a command
     // that does not exist there (prompt audit, market-ideas M34).
@@ -39,10 +67,26 @@ function buildAgentsMdSection() {
 }
 
 /**
+ * Whose text sits between PAN's markers: 'absent' (no markers), 'pan' (this release's
+ * text or an earlier release's), or 'edited' (the project changed it).
+ * @param {string|null} existing - AGENTS.md (or CLAUDE.md) content
+ * @param {'agents'|'claude'} [kind]
+ */
+function sectionState(existing, kind = 'agents') {
+  const inner = fencedInner(existing);
+  if (inner === null) return 'absent';
+  const known = kind === 'claude'
+    ? [...PRIOR_CLAUDE_BRIDGES, innerHash(fencedInner(buildClaudeMdBridge()))]
+    : [...PRIOR_AGENTS_SECTIONS, innerHash(fencedInner(buildAgentsMdSection()))];
+  return known.includes(innerHash(inner)) ? 'pan' : 'edited';
+}
+
+/**
  * Insert or replace the PAN section in AGENTS.md content.
  * - No existing content (null/empty) → just the section.
- * - Markers present → replace exactly the fenced block, preserving everything
- *   around it.
+ * - Markers present around text PAN generated → replace exactly the fenced block,
+ *   preserving everything around it.
+ * - Markers present around text the project edited → return the content unchanged.
  * - Markers absent → append with a separating blank line.
  * @param {string|null} existing - Current AGENTS.md content, or null if absent
  * @param {string} section - Output of buildAgentsMdSection()
@@ -55,6 +99,7 @@ function upsertAgentsMdSection(existing, section) {
   const beginIdx = existing.indexOf(PAN_AGENTS_BEGIN);
   const endIdx = existing.indexOf(PAN_AGENTS_END);
   if (beginIdx !== -1 && endIdx !== -1 && endIdx > beginIdx) {
+    if (sectionState(existing, 'agents') === 'edited') return existing;
     const before = existing.slice(0, beginIdx);
     const after = existing.slice(endIdx + PAN_AGENTS_END.length);
     return before + section + after;
@@ -101,8 +146,8 @@ function buildClaudeMdBridge() {
     '# Compact instructions',
     '',
     'When this conversation is compacted, keep what PAN work needs to resume where it stopped:',
-    '- the current phase and plan, and the task in progress with its stopping point (`.planning/state.md` records them; keep that path);',
-    '- decisions made in this session that `.planning/state.md` does not yet hold;',
+    '- the current phase and plan, and the task in progress with its stopping point, with the path of the file that records them (`.planning/state.md` when the project keeps one);',
+    '- decisions made in this session that are not yet written down;',
     '- the files changed since the last commit.',
     'Leave out file contents and command output: they can be read again.',
     PAN_AGENTS_END,
@@ -126,8 +171,9 @@ function ensureClaudeMdImport(existing) {
   const beginIdx = existing.indexOf(PAN_AGENTS_BEGIN);
   const endIdx = existing.indexOf(PAN_AGENTS_END);
   if (beginIdx !== -1) {
-    // PAN's own bridge: bring it up to date. Any other PAN block is left alone.
-    if (endIdx > beginIdx && /^@AGENTS\.md\s*$/m.test(existing.slice(beginIdx, endIdx))) {
+    // PAN's own bridge, as some release generated it: bring it up to date. A block the
+    // project edited, or any other PAN block, is left alone.
+    if (endIdx > beginIdx && sectionState(existing, 'claude') === 'pan') {
       const eol = existing.includes('\r\n') ? '\r\n' : '\n';
       return existing.slice(0, beginIdx) + block.replace(/\n/g, eol) + existing.slice(endIdx + PAN_AGENTS_END.length);
     }
@@ -150,6 +196,9 @@ function removeClaudeMdImport(existing) {
 }
 
 module.exports = {
+  sectionState,
+  PRIOR_AGENTS_SECTIONS,
+  PRIOR_CLAUDE_BRIDGES,
   PAN_AGENTS_BEGIN,
   PAN_AGENTS_END,
   buildAgentsMdSection,

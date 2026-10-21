@@ -413,6 +413,8 @@ function driveSessionStart(runtime) {
 function drivePostToolUse(runtime) {
   const script = installedHook(runtime, 'pan-context-monitor.js');
   const project = planningProject(`ctx-${runtime}`);
+  // A PAN project keeps state.md; the note names it (and /pan:pause) only then.
+  fs.writeFileSync(path.join(project, '.planning', 'state.md'), '# Project State\n');
   const tmpdir = mkTemp(`pan-bridge-${runtime}-`);
   const env = tmpdirEnv(tmpdir);
   const sessionId = `ctx-${runtime}-0001`;

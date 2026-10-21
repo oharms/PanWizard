@@ -2705,6 +2705,7 @@ const {
   PAN_AGENTS_END,
   buildAgentsMdSection,
   upsertAgentsMdSection,
+  sectionState,
   removeAgentsMdSection,
   ensureClaudeMdImport,
   removeClaudeMdImport,
@@ -2814,6 +2815,7 @@ module.exports = {
   // AGENTS.md universal rules layer (ADR-0028 Phase 3)
   buildAgentsMdSection,
   upsertAgentsMdSection,
+  sectionState,
   removeAgentsMdSection,
   ensureClaudeMdImport,
   removeClaudeMdImport,

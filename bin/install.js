@@ -2708,15 +2708,23 @@ function install(isGlobal, runtime = 'claude') {
       const agentsMdPath = path.join(process.cwd(), 'AGENTS.md');
       let agentsExisting = null;
       try { agentsExisting = fs.readFileSync(agentsMdPath, 'utf8'); } catch { /* absent */ }
-      fs.writeFileSync(agentsMdPath, lib.upsertAgentsMdSection(agentsExisting, lib.buildAgentsMdSection()));
-      console.log(`  ${green}✓${reset} ${agentsExisting === null ? 'Created' : 'Updated'} AGENTS.md (PAN section)`);
+      if (lib.sectionState(agentsExisting, 'agents') === 'edited') {
+        // The project rewrote PAN's section for itself: an update must not put PAN's
+        // generic text back over it (field report, 2026-10-21).
+        console.log(`  ${yellow}!${reset} AGENTS.md: kept the PAN section this project edited. To take PAN's current text, delete the section between the PAN WIZARD markers and run the installer again.`);
+      } else {
+        fs.writeFileSync(agentsMdPath, lib.upsertAgentsMdSection(agentsExisting, lib.buildAgentsMdSection()));
+        console.log(`  ${green}✓${reset} ${agentsExisting === null ? 'Created' : 'Updated'} AGENTS.md (PAN section)`);
+      }
 
       if (runtime === 'claude') {
         const claudeMdPath = path.join(process.cwd(), 'CLAUDE.md');
         let claudeExisting = null;
         try { claudeExisting = fs.readFileSync(claudeMdPath, 'utf8'); } catch { /* absent */ }
         const bridged = lib.ensureClaudeMdImport(claudeExisting);
-        if (bridged !== claudeExisting) {
+        if (lib.sectionState(claudeExisting, 'claude') === 'edited') {
+          console.log(`  ${yellow}!${reset} CLAUDE.md: kept the PAN block this project edited (the @AGENTS.md import and compact instructions).`);
+        } else if (bridged !== claudeExisting) {
           fs.writeFileSync(claudeMdPath, bridged);
           console.log(`  ${green}✓${reset} Bridged CLAUDE.md to AGENTS.md (@AGENTS.md import)`);
         }
