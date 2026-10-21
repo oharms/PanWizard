@@ -7,7 +7,7 @@ This is the executable form of the program. Every item has a priority class, a s
 
 ## Progress
 
-Updated `2026-10-19`. The superplan's own order holds; nothing has been re-sequenced.
+Updated `2026-10-21`. The superplan's own order holds; nothing has been re-sequenced. Every item in [Items](#items) is built: sprints 4 to 8 merged to `main` in one PR, and the three release-hardening items they carried (HX3, HX4, HX5) were folded into a single release that the owner has not cut yet.
 
 | Session | Items | State | Where |
 |---|---|---|---|
@@ -19,13 +19,23 @@ Updated `2026-10-19`. The superplan's own order holds; nothing has been re-seque
 | — | Fix outside the plan: doc-lint scans an absolute `--doc-dir` instead of silently passing | Merged | PR oharms/PanWizard#46 (`c2b3571`) |
 | — | Owner request: per-phase spend budget ($20, warn only) and a $15 default harness cap | Merged | PR oharms/PanWizard#47 (`da3f493`) |
 | 3c | H9, L5, L9, V1E, HX2 (release 3.36.0) | Released in **3.36.0** (squash-merged as `e7d1011`, PR oharms/PanWizard#48; `7346f93` and the follow-up fixes are in it) | branch `release/v3.36.0` |
-| 4a onward | — | Not started | — |
+| — | Outside the plan: the deprecation sweep reports npm's real error | Merged | PR oharms/PanWizard#49 |
+| — | Outside the plan: market scan and reality check (2026-10-19), with the market-ideas fixes S12, S15 and S16 | Merged | PR oharms/PanWizard#50 |
+| — | Outside the plan: market-ideas S13 and S14 (truncated plans, plan gate baselines, commands out of Claude's model listing, `x-` config keys, pre-existing findings) | Merged | PR oharms/PanWizard#51 (`d42b9a2`) |
+| 4a, 4b | R2, R5, P5; V8, V10, L8 | Merged, not released | PR oharms/PanWizard#52 (`3bccb99`) |
+| 5a, 5b, 5c | L6a, L6b, P1, A0; L7, R4, A7b; M35, H6 (HX3 folded into the one release) | Merged, not released | PR oharms/PanWizard#52 |
+| 6a, 6b | A1a, A1c; A4, A5, A6, H8 | Merged, not released | PR oharms/PanWizard#52 |
+| 7a, 7b, 7c | A2, A3; S1, S2, S5; H10 (HX4 folded) | Merged, not released | PR oharms/PanWizard#52 |
+| 8a, 8b | S3, V5G, S4; S6 (HX5 folded) | Merged, not released | PR oharms/PanWizard#52 |
 
 **Open from finished sessions:**
 
 - **R49** (session 3a) is a paid live re-run and has not run: tier-1/2 runs now default to a $15 cap (`harness/src/run.cjs`), so it needs only the owner's approval to spend; run `memory-not-loaded` on its own or raise `--max-usd`, because one run splits the cap evenly. It blocks nothing.
-- **P6** (session 3b) shipped the forecast in `preview phase`. The design's last clause, the autodev loop stopping when spend passes p90, waits for the autodev loop, which does not exist yet: **A1a** (session 6a) builds its core, and **A6** (session 6b, depends on P6) already carries the stop, as `forecast_exceeded` for a unit past p90.
-- **Evidence gates.** No paid evidence step in [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-approval) has run yet: `harness/ledger.jsonl` holds no evidence-gate row, and the committed corpus replay is synthetic. Under the MI-114 rule, sessions 3a and 3b edited judge prompts (pan-reviewer, pan-hardener, pan-plan-checker), so each owes a paired corpus result once H4's first real baseline is paid for. Those items shipped in their safe defaults, as the rules below allow.
+- **P6** (session 3b) is complete. It shipped the forecast in `preview phase`, and its last clause, the autodev loop stopping when spend passes p90, shipped with **A6** (session 6b, PR oharms/PanWizard#52): an execute unit that costs more than the per-plan p90 times the phase's plans stops `autodev run` with `forecast_exceeded` (`autodev.cjs` `unitForecast`, `tests/autodev-governor.test.cjs`).
+- **Evidence gates.** No paid evidence step in [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-approval) has run yet, sprints 4 to 8 included: `harness/ledger.jsonl` holds no evidence-gate row, and the committed corpus replay and the H10 pair's cassettes are synthetic. Under the MI-114 rule, sessions 3a, 3b, 4a and 4b edited judge prompts, so each owes a paired corpus result once H4's first real baseline is paid for. Every item shipped in its safe default (off or report mode), as the rules below allow.
+- **Deviations recorded in PR oharms/PanWizard#52.** M35 left `agents/pan-executor.md` unchanged, because `harness/cassettes/executor-spawn-claude.json` records that prompt and re-recording it spends (the M35 evidence run re-records it; `tests/prompt-style.test.cjs` exempts the file until then). H8's simulations live in `harness/sims/` and run through `harness/src/sim.cjs`, not as `harness/scenarios/sim-*.json`, because they drive the autodev loop in-process rather than a host CLI. S6's test was written alongside its module rather than proven red first.
+- **Found while building sprint 7:** two new test files deleted their stand-in host binaries between tests, so later tests ran the real `claude` and `gh` CLIs (about $1.18 API-equivalent, 2026-10-20). Fixed in the same PR: stand-ins live for a whole test file, and with `PAN_STANDIN_DIR` set the autodev loop, the CI oracle and the cross-family lane refuse any host CLI that is not a stand-in.
+- **Release.** Sprints 4 to 8 are on `main` (`3bccb99`) and unreleased: the version is still `3.36.0`, and the next release waits for the owner.
 - **Release 3.36.0** shipped: `3.36.0` (tagged `v3.36.0` on `e7d1011`, PR oharms/PanWizard#48, published `2026-10-19`). Sprint 3's exit criterion is released. *(Corrected `2026-10-19` by the reality check; this line said the release was pending push, merge and tag.)*
 
 ## Baseline
