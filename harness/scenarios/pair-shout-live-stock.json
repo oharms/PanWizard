@@ -1,0 +1,45 @@
+{
+  "id": "pair-shout-live-stock",
+  "tier": 2,
+  "description": "The stock arm of the live H10 pair: the same goal on Claude Code with nothing installed, a real model.",
+  "why": "Program H10's evidence run: the same seed and goal with and without PAN, paired rep by rep, on one host. The report's PAN versus the bare host table gives the deltas (completion, cost, duration) with 95% intervals. Run both arms together with --repeat N and an approved --max-usd.",
+  "seed": "two-plan-phase",
+  "install": null,
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 5,
+    "maxMinutes": 30,
+    "maxStepMinutes": 25
+  },
+  "pair": {
+    "id": "shout-live",
+    "arm": "stock",
+    "goal": "add src/shout.js exporting shout(name) that returns the upper-cased greeting HELLO, <NAME>! with a node --test test in tests/shout.test.js"
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "add src/shout.js exporting shout(name) that returns the upper-cased greeting HELLO, <NAME>! with a node --test test in tests/shout.test.js",
+      "expect": [
+        "exit:0",
+        "file:src/shout.js",
+        "file:tests/shout.test.js"
+      ],
+      "why": "The session produces the requested files."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Working code, not files that look right: the same check for both arms."
+    }
+  ]
+}
