@@ -261,8 +261,26 @@ function runStep(step, ctx) {
       return runPan(ws, fill(step.argv, vars), step.runtime || runtime, stepTimeout);
     case 'sh': {
       const script = path.join(HARNESS_ROOT, 'scripts', step.script);
-      const r = spawnSync(process.execPath, [script, ...fill(step.args || [], vars)], { cwd: ws, encoding: 'utf8', timeout: stepTimeout, stdio: ['ignore', 'pipe', 'pipe'] });
-      return { code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') + (r.error ? r.error.message : '') };
+      // `spends: true` (H10's multi-phase pair): the script runs real model sessions itself.
+      // It gets the budget left for this step as PAN_HARNESS_STEP_MAX_USD, and the cost_usd
+      // it prints counts toward the run's cap like a model step's.
+      let env = process.env;
+      if (step.spends) {
+        const remaining = ctx.shareUsd === null ? null : ctx.shareUsd - ctx.spentUsd();
+        const cap = remaining === null ? null : Math.min(remaining, (ctx.budget && ctx.budget.maxUsd) || remaining);
+        if (cap === null) return { code: 2, stdout: '', stderr: 'refused: a spending sh step needs --max-usd', costUsd: 0, refused: true };
+        if (cap < MIN_MODEL_STEP_USD) return { code: 2, stdout: '', stderr: `budget exhausted: $${cap.toFixed(2)} left`, costUsd: 0, budgetExhausted: true };
+        env = { ...process.env, PAN_HARNESS_STEP_MAX_USD: cap.toFixed(2) };
+      }
+      const r = spawnSync(process.execPath, [script, ...fill(step.args || [], vars)], { cwd: ws, encoding: 'utf8', timeout: stepTimeout, env, stdio: ['ignore', 'pipe', 'pipe'] });
+      const res = { code: r.status, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') + (r.error ? r.error.message : '') };
+      if (step.spends) {
+        let cost = 0;
+        try { cost = Number(JSON.parse(res.stdout.trim().split('\n').pop()).cost_usd) || 0; } catch {}
+        ctx.addCost(cost);
+        res.costUsd = cost;
+      }
+      return res;
     }
     case 'build': {
       const script = path.join(repo, 'scripts', step.script);

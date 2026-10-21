@@ -1,0 +1,9 @@
+{
+  "name": "tasks-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Seed project for the PAN Harness H10 multi-phase pair: a two-phase roadmap, nothing built yet.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
