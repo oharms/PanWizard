@@ -1,0 +1,9 @@
+{
+  "name": "invoice-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Seed project for the PAN Harness H10 hard pair: invoice totals in integer cents.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "id": "pair-discounts-live-stock",
+  "tier": 2,
+  "description": "The stock arm of the H10 hard pair: the same discount-code goal on Claude Code with nothing installed, a real model.",
+  "why": "Program H10, the harder comparison: six precise rules on top of working code, judged by an acceptance check neither arm can see (harness/scripts/check-discounts.cjs). The easy pair (pair-shout-live) showed only PAN's overhead because the bare host never failed; this goal leaves room for a rule to be missed. Run both arms together with --repeat N and an approved --max-usd.",
+  "seed": "invoice-discounts",
+  "install": null,
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 6,
+    "maxMinutes": 40,
+    "maxStepMinutes": 35
+  },
+  "pair": {
+    "id": "discounts-live",
+    "arm": "stock",
+    "goal": "Add discount codes to src/invoice.js and export applyDiscount(invoice, code, today), which returns the invoice total in integer cents after the discount. Rules: (1) Codes live in src/codes.json, a JSON object keyed by the upper-case code, each entry with type (percent or fixed), value and expires (a YYYY-MM-DD date), where a percent value is a percentage (10 means 10%) and a fixed value is in cents. Read the file when applyDiscount is called, and create it with at least one code of each type. (2) Match codes case-insensitively, ignoring spaces around the code. (3) The discount applies to the subtotal before tax, and tax is computed on the discounted subtotal with the existing rounding. (4) A percent discount is rounded to the nearest cent, with halves rounded away from zero. (5) A fixed discount never takes the subtotal below zero. (6) A code is valid up to and including its expires date; today is a YYYY-MM-DD string. An unknown or expired code throws an Error whose message contains the code as given. total() and the other existing functions keep their current behaviour. Keep the existing tests passing and add tests for each rule."
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "Add discount codes to src/invoice.js and export applyDiscount(invoice, code, today), which returns the invoice total in integer cents after the discount. Rules: (1) Codes live in src/codes.json, a JSON object keyed by the upper-case code, each entry with type (percent or fixed), value and expires (a YYYY-MM-DD date), where a percent value is a percentage (10 means 10%) and a fixed value is in cents. Read the file when applyDiscount is called, and create it with at least one code of each type. (2) Match codes case-insensitively, ignoring spaces around the code. (3) The discount applies to the subtotal before tax, and tax is computed on the discounted subtotal with the existing rounding. (4) A percent discount is rounded to the nearest cent, with halves rounded away from zero. (5) A fixed discount never takes the subtotal below zero. (6) A code is valid up to and including its expires date; today is a YYYY-MM-DD string. An unknown or expired code throws an Error whose message contains the code as given. total() and the other existing functions keep their current behaviour. Keep the existing tests passing and add tests for each rule.",
+      "expect": [
+        "exit:0",
+        "file:src/codes.json"
+      ],
+      "why": "The session finishes and creates the codes file the rules ask for."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The existing tests and the new ones pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-discounts.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every rule holds, judged by an acceptance check neither arm saw."
+    }
+  ]
+}
