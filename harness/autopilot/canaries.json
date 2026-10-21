@@ -1,0 +1,3 @@
+[
+  { "id": "sim-without-stop-guard", "why": "H8: the autodev simulation must fail when its stop guard is disabled. A bot run after which it passes has weakened the simulation.", "command": "node harness/src/sim.cjs --sim sim-two-phases --seeds 1 --no-stop-guard" }
+]

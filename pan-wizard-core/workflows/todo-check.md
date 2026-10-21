@@ -129,7 +129,7 @@ Use AskUserQuestion:
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs todo complete "[filename]"
 ```
 This moves it out of `.planning/todos/pending/` (the directory `init todos` and `/pan:progress` count) into `.planning/todos/completed/` with a `completed:` date.
-Update state.md todo count. Present problem/solution context. Begin work or ask how to proceed.
+Update the todo count in state.md (the `update_state` step). Present problem/solution context. Begin work or ask how to proceed.
 
 **Add to phase plan:**
 Note todo reference in phase planning notes. Keep in pending. Return to list or exit.
@@ -148,7 +148,11 @@ Return to list_todos step.
 <step name="update_state">
 After any action that changes todo count:
 
-Re-run `init todos` to get updated count, then update state.md "### Pending Todos" section if exists.
+Re-run `init todos` to get the updated count, then set state.md's "### Pending Todos" section through the engine:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state section "Pending Todos" --set "{count} pending — /pan:todo-check to review"
+```
 </step>
 
 <step name="git_commit">

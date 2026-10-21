@@ -17,6 +17,9 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Authentication
 
 - [ ] **AUTH-01**: User can sign up with email and password
+  - WHEN a visitor submits a new email and a valid password THE SYSTEM SHALL create the account
+  - IF the email is already registered THEN THE SYSTEM SHALL refuse the sign-up without revealing the account
+  - Test: tests/auth/signup.test.ts
 - [ ] **AUTH-02**: User receives email verification after signup
 - [ ] **AUTH-03**: User can reset password via email link
 - [ ] **AUTH-04**: User session persists across browser refresh
@@ -73,6 +76,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 ```
 
 </template>
+
+<ears_criteria>
+Each v1 requirement carries at least one acceptance criterion as an indented sub-bullet in an EARS form: `WHEN <trigger> THE SYSTEM SHALL <response>`, `WHILE <state> …`, `WHERE <feature> …`, `IF <unwanted condition> THEN THE SYSTEM SHALL …`, or `THE SYSTEM SHALL …`. `pan-tools verify requirements` fails a v1 requirement with none.
+
+The tests that check a requirement go in `Test:` sub-bullets as the plans add them. `pan-tools verify traceability` runs them. A criterion with no mapped test reads `not_checked`, never met, and `phase complete` ticks a requirement only when its mapped tests pass. A requirement with no criteria at all is treated as legacy and keeps the old tick.
+</ears_criteria>
 
 <guidelines>
 

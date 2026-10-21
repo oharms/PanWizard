@@ -624,7 +624,7 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Cost reduction strategies (ordered by impact):**
 
-1. **Switch profile:** `/pan:profile budget` for prototyping or high-volume work — it is the only profile that lowers spend, since `balanced` and `quality` resolve identically
+1. **Switch profile:** `/pan:settings --profile budget` for prototyping or high-volume work — it is the only profile that lowers spend, since `balanced` and `quality` resolve identically
 2. **Skip research:** `/pan:plan-phase N --skip-research` for familiar domains
 3. **Disable plan checker:** `workflow.plan_check: false` in `/pan:settings` (saves 20-40K per phase)
 4. **Disable verifier:** `workflow.verifier: false` for early prototyping (saves 10-30K per phase)
@@ -881,7 +881,7 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 
 **Fix:**
 
-- Put content containing `$` in a file and pass the file rather than an inline argument -- this avoids shell expansion (`/pan:focus-exec` gives its agents the same advice)
+- Put content containing `$` in a file and pass the file rather than an inline argument -- this avoids shell expansion (`/pan:focus-auto --step exec` gives its agents the same advice)
 - In context.md and plan code examples, use fenced code blocks (the executor reads them as literal text)
 - In custom hooks or scripts, use single quotes to prevent expansion: `'${literal}'`
 - Escape dollar signs with backslash when shell expansion is unavoidable: `\${escaped}`
@@ -1036,15 +1036,6 @@ git worktree remove --force ../pan-army-<slug>
 git branch -D army/<slug>
 git worktree prune
 ```
-
-### `/pan:mcp-bridge list` returns `source: "empty"`
-
-The MCP tool cache at `.planning/bridge/available-tools.json` isn't populated. Causes:
-
-- **Nothing has written the cache.** PAN reads it and never probes MCP servers itself, and inside PAN only `pan-tools bridge cache` writes it, so the list stays empty on any runtime until something seeds it. To see the servers the runtime itself has, check `.mcp.json` at the project root (where PAN registers its own server) or run `claude mcp list`.
-- **Testing without MCP setup.** Seed the cache manually with `pan-tools bridge cache --runtime claude --servers '[{"name":"test","tools":[{"name":"test.x","description":"test"}]}]'`.
-
-This is expected behavior — `bridge list` is designed to report cleanly when no tools are available.
 
 ### The `pan` MCP server is missing on Gemini CLI in a fresh checkout
 

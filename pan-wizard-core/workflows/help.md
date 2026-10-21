@@ -36,26 +36,26 @@ Best for: new projects, structured milestones, large multi-phase builds.
 Best for: existing projects, ongoing maintenance, iterative improvement, batch work sessions.
 
 ```
-/pan:focus-scan            # 1. SCAN — find all work items, prioritize, score
+/pan:focus-auto --step scan            # 1. SCAN — find all work items, prioritize, score
   /clear
-/pan:focus-plan            # 2. PLAN — budget items into a sized batch
+/pan:focus-auto --step plan            # 2. PLAN — budget items into a sized batch
   /clear
-/pan:focus-exec            # 3. EXEC — implement, test, verify, commit
+/pan:focus-auto --step exec            # 3. EXEC — implement, test, verify, commit
   /clear
-/pan:focus-sync            # 4. SYNC — update docs to match changes
+/pan:focus-docs --sync            # 4. SYNC — update docs to match changes
 ```
 
 **focus-design** is a standalone command for deep feature investigation:
 ```
 /pan:focus-design "Add webhook support"  # Research, design, spec, ADR
   /clear
-/pan:focus-scan                          # Re-scan to pick up new tasks
+/pan:focus-auto --step scan                          # Re-scan to pick up new tasks
 ```
 
 **Documentation quality commands:**
 ```
-/pan:focus-drift-walking                 # Walk project tree, detect doc-code drift
-/pan:focus-doc-audit                     # Deep document audit with quality scoring
+/pan:focus-auto --step drift                 # Walk project tree, detect doc-code drift
+/pan:focus-docs                     # Deep document audit with quality scoring
 ```
 
 ---
@@ -68,30 +68,30 @@ Already have a codebase? Here's how to get started:
 |-----------|---------|
 | Quick one-off fix or small feature | `/pan:quick "add logout button"` |
 | Need to design a feature first | `/pan:focus-design "Add webhook support"` |
-| Find and fix bugs, tech debt, gaps | `/pan:focus-scan` → `plan` → `exec` |
+| Find and fix bugs, tech debt, gaps | `/pan:focus-auto --step scan` → `plan` → `exec` |
 | Large feature needing multiple phases | `/pan:milestone-new` |
 | Continuous automated improvement | `/pan:focus-auto` |
 
 **Most common path — iterative improvement:**
 ```
-/pan:focus-scan       # 1. Find work items (bugs, TODOs, gaps, features)
+/pan:focus-auto --step scan       # 1. Find work items (bugs, TODOs, gaps, features)
   /clear
-/pan:focus-plan       # 2. Budget a batch (--mode features for feature work)
+/pan:focus-auto --step plan       # 2. Budget a batch (--mode features for feature work)
   /clear
-/pan:focus-exec       # 3. Implement, test, commit
+/pan:focus-auto --step exec       # 3. Implement, test, commit
   /clear
-/pan:focus-sync       # 4. Update docs to match
+/pan:focus-docs --sync       # 4. Update docs to match
 ```
 
 **Design-first path — new feature on existing codebase:**
 ```
 /pan:focus-design "Add webhook support"   # Research → spec → ADR
   /clear
-/pan:focus-scan                           # Picks up tasks from spec
+/pan:focus-auto --step scan                           # Picks up tasks from spec
   /clear
-/pan:focus-plan --mode features           # Budget toward feature work
+/pan:focus-auto --step plan --mode features           # Budget toward feature work
   /clear
-/pan:focus-exec                           # Build it
+/pan:focus-auto --step exec                           # Build it
 ```
 
 **Large feature path — structured milestone on existing codebase:**
@@ -111,7 +111,7 @@ Already have a codebase? Here's how to get started:
 
 The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step feeds the next.
 
-### Step 1: `/pan:focus-scan`
+### Step 1: `/pan:focus-auto --step scan`
 
 **What it does:** Deep-dives into your entire codebase — reads every module, greps for TODOs/FIXMEs, runs tests, checks coverage gaps, reads your roadmap — then produces a prioritized work list.
 
@@ -119,7 +119,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **Reality Score:** Every P3-P6 item gets scored: `RS = (User Value + Time Criticality + Risk Reduction) / Job Size`. Items below RS 3.0 get deferred, below 1.5 get dropped.
 
-**Output:** the prioritized work list, returned by `pan-tools focus scan` as JSON (`/pan:focus-plan` collects the items again itself).
+**Output:** the prioritized work list, returned by `pan-tools focus scan` as JSON (`/pan:focus-auto --step plan` collects the items again itself).
 
 **Flags:**
 - `--quick` — skip strategic analysis and validation phases
@@ -127,7 +127,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 - `--focus <area>` — weight items toward a specific area
 - `--refresh` — force re-read all files
 
-### Step 2: `/pan:focus-plan`
+### Step 2: `/pan:focus-auto --step plan`
 
 **What it does:** Reads the scan output and selects a right-sized batch of work items that fits within a point budget. Orders items for maximum impact with minimum risk.
 
@@ -143,14 +143,14 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 
 **Point system:** XS=1, S=2, M=4, L=10, XL=20 points.
 
-**Output:** `.planning/focus/batch-<date>.json` — the execution batch that `/pan:focus-exec` reads.
+**Output:** `.planning/focus/batch-<date>.json` — the execution batch that `/pan:focus-auto --step exec` reads.
 
 **Flags:**
 - `--mode <mode>` — select execution mode (default: balanced)
 - `--budget N` — override point budget (5-100)
 - `--lean` — exclude items with RS < 1.5
 
-### Step 3: `/pan:focus-exec`
+### Step 3: `/pan:focus-auto --step exec`
 
 **What it does:** One-command pipeline that implements every item in the batch. Runs 6 stages automatically:
 
@@ -175,7 +175,7 @@ The Focus workflow is a **scan → plan → exec → sync** pipeline. Each step 
 - `--continue` — resume a previously interrupted run
 - `--dry-run` — show stages 1-2 only
 
-### Step 4: `/pan:focus-sync`
+### Step 4: `/pan:focus-docs --sync`
 
 **What it does:** Checks all documentation for staleness and fixes it. Compares actual command counts, module counts, test counts against what docs claim.
 
@@ -221,12 +221,12 @@ Every shipped command, by group. This list is generated from each command's own 
 ### Phase Lifecycle
 | Command | Description |
 |---------|-------------|
+| `/pan:autodev` | Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code |
 | `/pan:design-phase` | Design a roadmap phase before planning — architecture, ADR, threat-lite, machine-checkable criteria — verified by an independent checker |
 | `/pan:discuss-phase` | Gather phase context through adaptive questioning before planning |
 | `/pan:exec-phase` | Execute all plans in a phase with wave-based parallelization |
 | `/pan:plan-phase` | Create detailed phase plan (plan.md) with verification loop |
-| `/pan:research-phase` | Research how to implement a phase (standalone - usually use /pan:plan-phase instead) |
-| `/pan:verify-phase` | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps |
+| `/pan:verify-phase` | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat |
 
 ### Phase Management
 | Command | Description |
@@ -242,7 +242,6 @@ Every shipped command, by group. This list is generated from each command's own 
 | Command | Description |
 |---------|-------------|
 | `/pan:pause` | Create context handoff when pausing work mid-phase |
-| `/pan:profile` | Switch model profile for PAN agents (quality/balanced/budget) |
 | `/pan:progress` | Check project progress, show context, and route to next action (execute or plan) |
 | `/pan:quick` | Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents |
 | `/pan:resume` | Resume work from previous session with full context restoration |
@@ -251,9 +250,7 @@ Every shipped command, by group. This list is generated from each command's own 
 | Command | Description |
 |---------|-------------|
 | `/pan:milestone-audit` | Audit milestone completion against original intent before archiving |
-| `/pan:milestone-cleanup` | Archive accumulated phase directories from completed milestones |
 | `/pan:milestone-done` | Archive completed milestone and prepare for next version |
-| `/pan:milestone-gaps` | Create phases to close all gaps identified by milestone audit |
 | `/pan:milestone-new` | Start a new milestone cycle — update project.md and route to requirements |
 
 ### Milestone Lifecycle
@@ -266,12 +263,7 @@ Every shipped command, by group. This list is generated from each command's own 
 |---------|-------------|
 | `/pan:focus-auto` | Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness |
 | `/pan:focus-design` | Strategic 10-phase feature investigation, design, and specification pipeline |
-| `/pan:focus-doc-audit` | Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality |
-| `/pan:focus-drift-walking` | Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories |
-| `/pan:focus-exec` | Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers |
-| `/pan:focus-plan` | Create capacity-budgeted work batch with spec coverage verification and 4 execution modes |
-| `/pan:focus-scan` | Deep-dive strategic work scan with prioritized items and Reality Score filtering |
-| `/pan:focus-sync` | Synchronize documentation after changes — check staleness and update counts |
+| `/pan:focus-docs` | Documentation audit and sync — accuracy, freshness, links, cross-consistency and structure; --sync updates stale docs after changes |
 
 ### Foresight
 | Command | Description |
@@ -293,7 +285,6 @@ Every shipped command, by group. This list is generated from each command's own 
 | Command | Description |
 |---------|-------------|
 | `/pan:cost` | Show token usage and estimated cost across PAN commands and agents |
-| `/pan:dashboard` | Alias for /pan:hud — generate the single-page HTML dashboard of the bot army and project |
 | `/pan:hud` | Generate a single-page, self-contained HTML dashboard of the bot army and the project's current state |
 | `/pan:report` | Generate a self-contained HTML report for one phase, or a project-level timeline index linking every phase report |
 
@@ -307,7 +298,6 @@ Every shipped command, by group. This list is generated from each command's own 
 |---------|-------------|
 | `/pan:experiment` | Manage external experiments — scaffold, run, harvest, promote findings back to PAN |
 | `/pan:learn` | Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports |
-| `/pan:optimize` | Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions |
 
 ### Git Workflow
 | Command | Description |
@@ -319,15 +309,9 @@ Every shipped command, by group. This list is generated from each command's own 
 |---------|-------------|
 | `/pan:army` | Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a whole-project goal to squads (architecture / build / quality / release), each squad working branch-per-agent worktrees under a hard safety harness, gated by CI + a human merge, looping plan→delegate→execute→review→integrate→learn until the goal ships or a stop condition fires. |
 
-### External tools
-| Command | Description |
-|---------|-------------|
-| `/pan:mcp-bridge` | Discover available MCP tools and recommend which ones apply to a phase. Discovery-only; auto-invocation deferred. |
-
 ### System
 | Command | Description |
 |---------|-------------|
-| `/pan:audit-deployment` | Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs |
 | `/pan:debug` | Systematic debugging with persistent state across context resets |
 | `/pan:health` | Diagnose planning directory health and optionally repair issues |
 | `/pan:help` | Show available PAN commands and usage guide |
@@ -337,11 +321,6 @@ Every shipped command, by group. This list is generated from each command's own 
 | `/pan:todo-add` | Capture idea or task as todo from current conversation context |
 | `/pan:todo-check` | List pending todos and select one to work on |
 | `/pan:update` | Update PAN to latest version with changelog display |
-
-### Community
-| Command | Description |
-|---------|-------------|
-| `/pan:discord` | Join the PAN Discord community |
 <!-- generated:command-index:end -->
 
 ---
@@ -355,12 +334,12 @@ Every shipped command, by group. This list is generated from each command's own 
 
 **Existing project, iterative work:**
 ```
-/pan:focus-scan → /clear → /pan:focus-plan → /clear → /pan:focus-exec → /clear → /pan:focus-sync
+/pan:focus-auto --step scan → /clear → /pan:focus-auto --step plan → /clear → /pan:focus-auto --step exec → /clear → /pan:focus-docs --sync
 ```
 
 **Design a feature, then build it:**
 ```
-/pan:focus-design "feature" → /clear → /pan:focus-scan → /clear → /pan:focus-plan → /clear → /pan:focus-exec
+/pan:focus-design "feature" → /clear → /pan:focus-auto --step scan → /clear → /pan:focus-auto --step plan → /clear → /pan:focus-auto --step exec
 ```
 
 **Resume after a break:**
@@ -381,7 +360,7 @@ Every shipped command, by group. This list is generated from each command's own 
 
 **Complete a milestone:**
 ```
-/pan:milestone-audit → /pan:milestone-gaps → ... fix gaps ... → /pan:milestone-done 1.0.0
+/pan:milestone-audit → /pan:milestone-audit --gaps → ... fix gaps ... → /pan:milestone-done 1.0.0
 ```
 
 **Debug an issue (survives /clear):**
@@ -399,7 +378,7 @@ Every shipped command, by group. This list is generated from each command's own 
 
 **`/pan:discuss-phase <N>`** — Capture your vision for a phase before planning. Creates context.md.
 
-**`/pan:research-phase <N>`** — Deep ecosystem research for specialized domains (3D, ML, audio, etc.). Creates research.md.
+**`/pan:plan-phase --research-only <N>`** — Deep ecosystem research for specialized domains (3D, ML, audio, etc.). Creates research.md.
 
 **`/pan:assumptions <N>`** — See Claude's intended approach before it starts. Conversational only, no files created.
 
@@ -421,9 +400,9 @@ Every shipped command, by group. This list is generated from each command's own 
 
 **`/pan:milestone-audit`** — Reads verification.md files, checks requirements coverage, spawns integration checker. Creates milestone-audit.md.
 
-**`/pan:milestone-gaps`** — Reads audit, groups gaps into phases, adds to roadmap.md.
+**`/pan:milestone-audit --gaps`** — Reads audit, groups gaps into phases, adds to roadmap.md.
 
-**`/pan:milestone-cleanup`** — Moves completed phase directories to `milestones/v{X.Y}-phases/`.
+**`/pan:milestone-done --cleanup`** — Moves completed phase directories to `milestones/v{X.Y}-phases/`.
 
 **`/pan:retro`** — Milestone retrospective. Analyzes estimation accuracy, verification patterns, and common gap types. Run after `/pan:milestone-done` to reflect before the next milestone.
 
@@ -449,7 +428,7 @@ Every shipped command, by group. This list is generated from each command's own 
 
 **`/pan:settings`** — Toggle researcher, plan checker, verifier agents. Select model profile.
 
-**`/pan:profile <name>`** — Quick profile switch: `quality` and `balanced` (reasoning tier for every agent; `balanced` is the default), `budget` (mid tier for writing, fast tier for research/verification).
+**`/pan:settings --profile <name>`** — Quick profile switch: `quality` and `balanced` (reasoning tier for every agent; `balanced` is the default), `budget` (mid tier for writing, fast tier for research/verification).
 
 **Planning config** (`.planning/config.json`):
 - `commit_docs: true` — commit planning artifacts to git (set `false` + add `.planning/` to `.gitignore` for private planning)
@@ -496,5 +475,4 @@ Run `/pan:update` for version comparison and changelog preview before updating.
 - `/pan:progress` — see where you're at
 - `.planning/state.md` — current project context
 - `.planning/roadmap.md` — phase status
-- `/pan:discord` — community support
 </reference>

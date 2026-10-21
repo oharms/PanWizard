@@ -1671,3 +1671,13 @@ describe('resolveModelInternal per-phase override', () => {
     assert.strictEqual(result, 'inherit', 'per-agent opus override should win over phase fast');
   });
 });
+
+describe('output() writes everything before it exits', () => {
+  test('a large result reaches a pipe whole (macOS dropped all past the 8 KB pipe buffer)', () => {
+    const { spawnSync } = require('child_process');
+    const core = require('path').join(__dirname, '..', 'pan-wizard-core', 'bin', 'lib', 'core.cjs');
+    const r = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(core)}).output({ x: 'a'.repeat(40000) })`], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(JSON.parse(r.stdout).x.length, 40000);
+  });
+});

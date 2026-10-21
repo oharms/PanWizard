@@ -1,7 +1,7 @@
 <purpose>
 Surface Claude's assumptions about a phase before planning, enabling users to correct misconceptions early.
 
-Key difference from discuss-phase: This is ANALYSIS of what Claude thinks, not INTAKE of what user knows. No file output - purely conversational to prompt discussion.
+Key difference from discuss-phase: This is ANALYSIS of what Claude thinks, not INTAKE of what user knows. The conversation ends with one file, `{phase_dir}/{phase_num}-assumptions.md`, holding the assumptions and the user's corrections, so discuss-phase and plan-phase start from them instead of losing them with the session.
 </purpose>
 
 <process>
@@ -144,6 +144,24 @@ This changes my understanding significantly. [Summarize new understanding]
 ```
 Assumptions validated.
 ```
+
+**Either way, save them.** Write `{phase_dir}/{phase_num}-assumptions.md` once, in full:
+
+```markdown
+# Phase {phase_num}: Assumptions
+
+**Reviewed:** {date}
+
+## Assumptions
+
+- {each assumption, as presented}
+
+## Corrections
+
+- {each correction, in the user's words; "None: the user confirmed the assumptions" when there were none}
+```
+
+`init phase-op` reports it as `assumptions_path`; discuss-phase and plan-phase read it. Commit it with the phase's docs when `commit_docs` is on.
 
 Continue to offer_next.
 </step>

@@ -16,8 +16,7 @@ You are spawned by:
 
 Your job: Transform requirements into a phase structure that delivers the project. Every v1 requirement maps to exactly one phase. Every phase has observable success criteria.
 
-**CRITICAL: Mandatory Initial Read**
-If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
+**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. This is your primary context.
 
 **Core responsibilities:**
 - Derive phases from requirements (not impose arbitrary structure)
@@ -334,7 +333,7 @@ Reference full template: `~/.claude/pan-wizard-core/templates/roadmap.md`
 
 ## state.md Structure
 
-Use template from `~/.claude/pan-wizard-core/templates/state.md`.
+`pan-tools state init` writes it from the sections of `~/.claude/pan-wizard-core/templates/state.md`; you supply the values.
 
 Key sections:
 - Project Reference (core value, current focus)
@@ -415,7 +414,13 @@ If gaps found, resolve them (see Coverage Validation) and list each gap with the
 
 1. **Write roadmap.md** using output format
 
-2. **Write state.md** using output format
+2. **Initialise state.md through the engine**, not with Write:
+
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state init --core-value "<core value from project.md>" --focus "<first phase name>" --phase <first phase number> --phase-name "<first phase name>" --total-phases <N>
+   ```
+
+   When state.md already exists (a new milestone), add `--force --keep-context`: the old file is backed up and its Accumulated Context carried over. The engine writes every section of the template and keeps the frontmatter in sync; never write state.md with the Write or Edit tool (under `hooks.guard: enforce` the guard denies it).
 
 3. **Update requirements.md traceability section**
 
@@ -500,7 +505,7 @@ After incorporating user feedback and updating files:
 
 **Files updated:**
 - .planning/roadmap.md
-- .planning/state.md (if needed)
+- .planning/state.md (if needed, through `pan-tools state apply` or `state section`)
 - .planning/requirements.md (if traceability changed)
 
 ### Updated Summary

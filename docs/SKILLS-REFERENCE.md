@@ -19,14 +19,12 @@ Each entry shows the command, what it does, what tools it uses, and when to reac
   - [Milestone Lifecycle](#milestone-lifecycle)
   - [Session & Progress](#session--progress)
   - [System](#system)
-  - [Community](#community)
   - [Army](#army)
   - [Observability](#observability)
   - [Self-Improvement](#self-improvement)
   - [Git Workflow](#git-workflow)
   - [Knowledge](#knowledge)
   - [Validation](#validation)
-  - [External tools](#external-tools)
   - [Foresight](#foresight)
   - [Review](#review)
 - [Dev Skills](#dev-skills) — PAN source repo only
@@ -79,12 +77,24 @@ Initialize a new project with deep context gathering and project.md
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
+| `/pan:autodev` | Read, Bash | Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code |
 | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__* | Design a roadmap phase before planning — architecture, ADR, threat-lite, machine-checkable criteria — verified by an independent checker |
 | `/pan:discuss-phase` | Read, Write, Bash, Glob, Grep, AskUserQuestion, Task | Gather phase context through adaptive questioning before planning |
 | `/pan:exec-phase` | Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion | Execute all plans in a phase with wave-based parallelization |
 | `/pan:plan-phase` | Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__* | Create detailed phase plan (plan.md) with verification loop |
-| `/pan:research-phase` | Read, Bash, Task | Research how to implement a phase (standalone - usually use /pan:plan-phase instead) |
-| `/pan:verify-phase` | Read, Bash, Glob, Grep, Edit, Write, Task | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps |
+| `/pan:verify-phase` | Read, Bash, Glob, Grep, Edit, Write, Task | Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat |
+
+#### /pan:autodev
+
+Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
+
+```text
+/pan:autodev [run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]
+```
+
+**Tools:** Read, Bash  
+**Group:** Phase Lifecycle  
+**Lines:** 75
 
 #### /pan:design-phase
 
@@ -115,48 +125,36 @@ Gather phase context through adaptive questioning before planning
 Execute all plans in a phase with wave-based parallelization
 
 ```text
-/pan:exec-phase <phase-number> [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]
+/pan:exec-phase <phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]
 ```
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion  
 **Group:** Phase Lifecycle  
-**Lines:** 136
+**Lines:** 135
 
 #### /pan:plan-phase
 
 Create detailed phase plan (plan.md) with verification loop
 
 ```text
-/pan:plan-phase [phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>]
+/pan:plan-phase [phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only]
 ```
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__*  
 **Group:** Phase Lifecycle  
-**Lines:** 133
-
-#### /pan:research-phase
-
-Research how to implement a phase (standalone - usually use /pan:plan-phase instead)
-
-```text
-/pan:research-phase <phase>
-```
-
-**Tools:** Read, Bash, Task  
-**Group:** Phase Lifecycle  
-**Lines:** 189
+**Lines:** 139
 
 #### /pan:verify-phase
 
-Re-run goal-backward verification of a phase with a test-suite gate and list its gaps
+Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat
 
 ```text
-/pan:verify-phase [phase number, e.g., '4']
+/pan:verify-phase [phase number, e.g., '4'] [--uat]
 ```
 
 **Tools:** Read, Bash, Glob, Grep, Edit, Write, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 80
+**Lines:** 84
 
 ---
 
@@ -251,24 +249,19 @@ Remove a future phase from roadmap and renumber subsequent phases
 |-------|-------|-------------|
 | `/pan:focus-auto` | Read, Write, Edit, Bash, Grep, Glob, Agent | Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness |
 | `/pan:focus-design` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs | Strategic 10-phase feature investigation, design, and specification pipeline |
-| `/pan:focus-doc-audit` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch | Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality |
-| `/pan:focus-drift-walking` | Read, Write, Edit, Bash, Grep, Glob, Agent | Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories |
-| `/pan:focus-exec` | Read, Write, Edit, Bash, Grep, Glob, Agent | Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers |
-| `/pan:focus-plan` | Read, Write, Edit, Bash, Grep, Glob | Create capacity-budgeted work batch with spec coverage verification and 4 execution modes |
-| `/pan:focus-scan` | Read, Write, Bash, Grep, Glob | Deep-dive strategic work scan with prioritized items and Reality Score filtering |
-| `/pan:focus-sync` | Read, Bash, Grep, Glob, Edit, Write | Synchronize documentation after changes — check staleness and update counts |
+| `/pan:focus-docs` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch | Documentation audit and sync — accuracy, freshness, links, cross-consistency and structure; --sync updates stale docs after changes |
 
 #### /pan:focus-auto
 
 Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness
 
 ```text
-/pan:focus-auto [--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal]
+/pan:focus-auto [--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal] [--step scan|plan|exec|drift]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Focus  
-**Lines:** 694
+**Lines:** 701
 
 #### /pan:focus-design
 
@@ -280,79 +273,19 @@ Strategic 10-phase feature investigation, design, and specification pipeline
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs  
 **Group:** Focus  
-**Lines:** 1119
+**Lines:** 1118
 
-#### /pan:focus-doc-audit
+#### /pan:focus-docs
 
-Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality
+Documentation audit and sync — accuracy, freshness, links, cross-consistency and structure; --sync updates stale docs after changes
 
 ```text
-/pan:focus-doc-audit [file|directory] [--deep] [--links] [--fix] [--all] [--score-only] [--min-score N] [--format markdown|json|checklist]
+/pan:focus-docs [file|directory] [--deep] [--links] [--fix] [--all] [--score-only] [--min-score N] [--format markdown|json|checklist] | --sync [--readme | --docs | --arch | --all]
 ```
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch  
 **Group:** Focus  
-**Lines:** 531
-
-#### /pan:focus-drift-walking
-
-Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories
-
-```text
-/pan:focus-drift-walking [--create] [--audit] [--repair] [--report] [--dir <path>] [--depth N] [--severity critical|high|medium|low|info] [--format markdown|json|checklist] [--quick]
-```
-
-**Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
-**Group:** Focus  
-**Lines:** 526
-
-#### /pan:focus-exec
-
-Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
-
-```text
-/pan:focus-exec [--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--dry-run] [--no-commit] [--continue] [--deep-review]
-```
-
-**Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
-**Group:** Focus  
-**Lines:** 458
-
-#### /pan:focus-plan
-
-Create capacity-budgeted work batch with spec coverage verification and 4 execution modes
-
-```text
-/pan:focus-plan [--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--lean] [--no-spec-check]
-```
-
-**Tools:** Read, Write, Edit, Bash, Grep, Glob  
-**Group:** Focus  
-**Lines:** 294
-
-#### /pan:focus-scan
-
-Deep-dive strategic work scan with prioritized items and Reality Score filtering
-
-```text
-/pan:focus-scan [--focus <area>] [--quick] [--refresh] [--lean]
-```
-
-**Tools:** Read, Write, Bash, Grep, Glob  
-**Group:** Focus  
-**Lines:** 287
-
-#### /pan:focus-sync
-
-Synchronize documentation after changes — check staleness and update counts
-
-```text
-/pan:focus-sync [--readme | --docs | --arch | --all]
-```
-
-**Tools:** Read, Bash, Grep, Glob, Edit, Write  
-**Group:** Focus  
-**Lines:** 105
+**Lines:** 24
 
 ---
 
@@ -360,10 +293,8 @@ Synchronize documentation after changes — check staleness and update counts
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
-| `/pan:milestone-audit` | Read, Glob, Grep, Bash, Task, Write | Audit milestone completion against original intent before archiving |
-| `/pan:milestone-cleanup` | *(none)* | Archive accumulated phase directories from completed milestones |
+| `/pan:milestone-audit` | Read, Glob, Grep, Bash, Task, Write, AskUserQuestion | Audit milestone completion against original intent before archiving |
 | `/pan:milestone-done` | Read, Write, Bash | Archive completed milestone and prepare for next version |
-| `/pan:milestone-gaps` | Read, Write, Bash, Glob, Grep, AskUserQuestion | Create phases to close all gaps identified by milestone audit |
 | `/pan:milestone-new` | Read, Write, Bash, Task, AskUserQuestion | Start a new milestone cycle — update project.md and route to requirements |
 
 #### /pan:milestone-audit
@@ -371,48 +302,24 @@ Synchronize documentation after changes — check staleness and update counts
 Audit milestone completion against original intent before archiving
 
 ```text
-/pan:milestone-audit [version] [--track <name>] [--all-tracks]
+/pan:milestone-audit [version] [--track <name>] [--all-tracks] [--gaps]
 ```
 
-**Tools:** Read, Glob, Grep, Bash, Task, Write  
+**Tools:** Read, Glob, Grep, Bash, Task, Write, AskUserQuestion  
 **Group:** Milestone  
-**Lines:** 66
-
-#### /pan:milestone-cleanup
-
-Archive accumulated phase directories from completed milestones
-
-```text
-/pan:milestone-cleanup
-```
-
-**Tools:** *(none)*  
-**Group:** Milestone  
-**Lines:** 19
+**Lines:** 73
 
 #### /pan:milestone-done
 
 Archive completed milestone and prepare for next version
 
 ```text
-/pan:milestone-done <version>
+/pan:milestone-done <version> [--cleanup]
 ```
 
 **Tools:** Read, Write, Bash  
 **Group:** Milestone  
-**Lines:** 149
-
-#### /pan:milestone-gaps
-
-Create phases to close all gaps identified by milestone audit
-
-```text
-/pan:milestone-gaps
-```
-
-**Tools:** Read, Write, Bash, Glob, Grep, AskUserQuestion  
-**Group:** Milestone  
-**Lines:** 35
+**Lines:** 154
 
 #### /pan:milestone-new
 
@@ -453,7 +360,6 @@ Milestone retrospective — analyze estimation accuracy, verification patterns, 
 | Skill | Tools | Description |
 |-------|-------|-------------|
 | `/pan:pause` | Read, Write, Bash | Create context handoff when pausing work mid-phase |
-| `/pan:profile` | Read, Write, Bash | Switch model profile for PAN agents (quality/balanced/budget) |
 | `/pan:progress` | Read, Bash, Grep, Glob, SlashCommand | Check project progress, show context, and route to next action (execute or plan) |
 | `/pan:quick` | Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion | Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents |
 | `/pan:resume` | Read, Bash, Write, AskUserQuestion, SlashCommand | Resume work from previous session with full context restoration |
@@ -469,18 +375,6 @@ Create context handoff when pausing work mid-phase
 **Tools:** Read, Write, Bash  
 **Group:** Session & Progress  
 **Lines:** 80
-
-#### /pan:profile
-
-Switch model profile for PAN agents (quality/balanced/budget)
-
-```text
-/pan:profile <profile>
-```
-
-**Tools:** Read, Write, Bash  
-**Group:** Session & Progress  
-**Lines:** 76
 
 #### /pan:progress
 
@@ -524,7 +418,6 @@ Resume work from previous session with full context restoration
 
 | Skill | Tools | Description |
 |-------|-------|-------------|
-| `/pan:audit-deployment` | Read, Bash, Write, Glob, Grep, AskUserQuestion | Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs |
 | `/pan:debug` | Read, Bash, Task, AskUserQuestion | Systematic debugging with persistent state across context resets |
 | `/pan:health` | Read, Bash, Write, AskUserQuestion | Diagnose planning directory health and optionally repair issues |
 | `/pan:help` | *(none)* | Show available PAN commands and usage guide |
@@ -534,18 +427,6 @@ Resume work from previous session with full context restoration
 | `/pan:todo-add` | Read, Write, Bash, AskUserQuestion | Capture idea or task as todo from current conversation context |
 | `/pan:todo-check` | Read, Write, Bash, AskUserQuestion | List pending todos and select one to work on |
 | `/pan:update` | Bash, AskUserQuestion | Update PAN to latest version with changelog display |
-
-#### /pan:audit-deployment
-
-Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
-
-```text
-/pan:audit-deployment <target-directory> [--enhancements] [--repair]
-```
-
-**Tools:** Read, Bash, Write, Glob, Grep, AskUserQuestion  
-**Group:** System  
-**Lines:** 386
 
 #### /pan:debug
 
@@ -612,12 +493,12 @@ Reapply local modifications after a PAN update
 Configure PAN workflow toggles and model profile
 
 ```text
-/pan:settings
+/pan:settings [--profile <quality|balanced|budget>]
 ```
 
 **Tools:** Read, Write, Bash, AskUserQuestion  
 **Group:** System  
-**Lines:** 37
+**Lines:** 43
 
 #### /pan:todo-add
 
@@ -657,26 +538,6 @@ Update PAN to latest version with changelog display
 
 ---
 
-### Community
-
-| Skill | Tools | Description |
-|-------|-------|-------------|
-| `/pan:discord` | *(none)* | Join the PAN Discord community |
-
-#### /pan:discord
-
-Join the PAN Discord community
-
-```text
-/pan:discord
-```
-
-**Tools:** *(none)*  
-**Group:** Community  
-**Lines:** 19
-
----
-
 ### Army
 
 | Skill | Tools | Description |
@@ -702,7 +563,6 @@ Bot-army campaign — Mission Control (the reasoning-tier conductor) delegates a
 | Skill | Tools | Description |
 |-------|-------|-------------|
 | `/pan:cost` | Read, Bash | Show token usage and estimated cost across PAN commands and agents |
-| `/pan:dashboard` | Read, Bash | Alias for /pan:hud — generate the single-page HTML dashboard of the bot army and project |
 | `/pan:hud` | Read, Bash | Generate a single-page, self-contained HTML dashboard of the bot army and the project's current state |
 | `/pan:report` | Read, Bash | Generate a self-contained HTML report for one phase, or a project-level timeline index linking every phase report |
 
@@ -717,18 +577,6 @@ Show token usage and estimated cost across PAN commands and agents
 **Tools:** Read, Bash  
 **Group:** Observability  
 **Lines:** 164
-
-#### /pan:dashboard
-
-Alias for /pan:hud — generate the single-page HTML dashboard of the bot army and project
-
-```text
-/pan:dashboard [--out <file>] [--open] [--stdout]
-```
-
-**Tools:** Read, Bash  
-**Group:** Observability  
-**Lines:** 22
 
 #### /pan:hud
 
@@ -761,8 +609,7 @@ Generate a self-contained HTML report for one phase, or a project-level timeline
 | Skill | Tools | Description |
 |-------|-------|-------------|
 | `/pan:experiment` | Read, Write, Edit, Bash, Grep, Glob, Agent | Manage external experiments — scaffold, run, harvest, promote findings back to PAN |
-| `/pan:learn` | Read, Bash, Glob, Grep, Task | Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports |
-| `/pan:optimize` | Read, Write, Edit, Bash, Glob, Grep | Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions |
+| `/pan:learn` | Read, Bash, Glob, Grep, Task, Write, Edit | Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports |
 
 #### /pan:experiment
 
@@ -781,24 +628,12 @@ Manage external experiments — scaffold, run, harvest, promote findings back to
 Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports
 
 ```text
-/pan:learn [--session <id> | --sessions <n> | --experiment <slug>] [--apply]
+/pan:learn [--session <id> | --sessions <n> | --experiment <slug>] [--apply] | --optimize <subcommand>
 ```
 
-**Tools:** Read, Bash, Glob, Grep, Task  
+**Tools:** Read, Bash, Glob, Grep, Task, Write, Edit  
 **Group:** Self-Improvement  
-**Lines:** 80
-
-#### /pan:optimize
-
-Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions
-
-```text
-/pan:optimize apply [--report <file>] | revert <apply_id> | revert --last | list | stats | trace init|end|current|list
-```
-
-**Tools:** Read, Write, Edit, Bash, Glob, Grep  
-**Group:** Self-Improvement  
-**Lines:** 115
+**Lines:** 87
 
 ---
 
@@ -862,26 +697,6 @@ Validate the doc-code link graph — inline wiki-style refs, source-comment anch
 
 ---
 
-### External tools
-
-| Skill | Tools | Description |
-|-------|-------|-------------|
-| `/pan:mcp-bridge` | Read, Bash, Write | Discover available MCP tools and recommend which ones apply to a phase. Discovery-only; auto-invocation deferred. |
-
-#### /pan:mcp-bridge
-
-Discover available MCP tools and recommend which ones apply to a phase. Discovery-only; auto-invocation deferred.
-
-```text
-/pan:mcp-bridge list | recommend <phase> [--max N] [--min-score N] | cache [--servers <json>] [--runtime <name>]
-```
-
-**Tools:** Read, Bash, Write  
-**Group:** External tools  
-**Lines:** 143
-
----
-
 ### Foresight
 
 | Skill | Tools | Description |
@@ -931,7 +746,7 @@ Security audit + cross-reviewer check. OWASP/STRIDE pass by pan-hardener, then p
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task  
 **Group:** Review  
-**Lines:** 126
+**Lines:** 132
 
 ---
 
@@ -1118,8 +933,15 @@ Start a PAN Wizard development session by loading project context and checking s
 
 | Skill | Description |
 |-------|-------------|
+| `/audit-deployment` | Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs |
 | `/investigate` | Analyse something you bring (a news dump, article, paper, changelog, release notes — file path or pasted text) against PAN Wizard's existing features and write ADD / ENHANCE feature write-ups into docs/specs/investigations/ |
 | `/market-ideas` | Market idea scan for PAN Wizard — what shipped in the agent-tooling market (host tools, direct peers, new entrants, standards) since the last scan, triaged against the code and the ideas ledger into adopt / adapt / watch / skip, with a sized queue |
+
+#### /audit-deployment
+
+Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
+
+**Lines:** 385
 
 #### /investigate
 
@@ -1144,23 +966,16 @@ Which tools each shipped skill can use:
 | add-phase | x | x |  | x |  |  |  |  |  |  |  |  |  |  |
 | army | x | x | x | x | x | x | x | x |  |  |  |  |  |  |
 | assumptions | x |  |  | x | x | x |  |  |  |  |  |  |  |  |
-| audit-deployment | x | x |  | x | x | x |  |  |  | x |  |  |  |  |
+| autodev | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | cost | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
-| dashboard | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | debug | x |  |  | x |  |  |  | x |  | x |  |  |  |  |
 | design-phase | x | x |  | x | x | x |  | x |  |  |  |  | x | x |
-| discord |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | discuss-phase | x | x |  | x | x | x |  | x |  | x |  |  |  |  |
 | exec-phase | x | x | x | x | x | x |  | x | x | x |  |  |  |  |
 | experiment | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
 | focus-auto | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
 | focus-design | x | x | x | x | x | x | x |  |  |  |  | x | x | x |
-| focus-doc-audit | x | x | x | x | x | x | x |  |  |  |  |  | x |  |
-| focus-drift-walking | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
-| focus-exec | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
-| focus-plan | x | x | x | x | x | x |  |  |  |  |  |  |  |  |
-| focus-scan | x | x |  | x | x | x |  |  |  |  |  |  |  |  |
-| focus-sync | x | x | x | x | x | x |  |  |  |  |  |  |  |  |
+| focus-docs | x | x | x | x | x | x | x |  |  |  |  |  | x |  |
 | git | x | x | x | x | x | x |  |  |  |  |  |  |  |  |
 | health | x | x |  | x |  |  |  |  |  | x |  |  |  |  |
 | help |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
@@ -1168,29 +983,23 @@ Which tools each shipped skill can use:
 | hygiene | x |  |  | x |  |  |  |  |  | x |  |  |  |  |
 | insert-phase | x | x |  | x |  |  |  |  |  |  |  |  |  |  |
 | knowledge | x | x |  | x | x | x |  | x |  |  |  |  |  |  |
-| learn | x |  |  | x | x | x |  | x |  |  |  |  |  |  |
+| learn | x | x | x | x | x | x |  | x |  |  |  |  |  |  |
 | links | x |  |  | x | x |  |  |  |  |  |  |  |  |  |
 | map-codebase | x | x |  | x | x | x |  | x |  |  |  |  |  |  |
-| mcp-bridge | x | x |  | x |  |  |  |  |  |  |  |  |  |  |
-| milestone-audit | x | x |  | x | x | x |  | x |  |  |  |  |  |  |
-| milestone-cleanup |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| milestone-audit | x | x |  | x | x | x |  | x |  | x |  |  |  |  |
 | milestone-done | x | x |  | x |  |  |  |  |  |  |  |  |  |  |
-| milestone-gaps | x | x |  | x | x | x |  |  |  | x |  |  |  |  |
 | milestone-new | x | x |  | x |  |  |  | x |  | x |  |  |  |  |
 | new-project | x | x |  | x |  |  |  | x |  | x |  |  |  |  |
-| optimize | x | x | x | x | x | x |  |  |  |  |  |  |  |  |
 | patches | x | x | x | x | x | x |  |  |  | x |  |  |  |  |
 | pause | x | x |  | x |  |  |  |  |  |  |  |  |  |  |
 | phase-budget | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | phase-tests | x | x | x | x | x | x |  | x |  | x |  |  |  |  |
 | plan-phase | x | x |  | x | x | x |  | x |  |  |  |  | x | x |
 | preview | x | x |  | x | x | x |  | x |  |  |  |  |  |  |
-| profile | x | x |  | x |  |  |  |  |  |  |  |  |  |  |
 | progress | x |  |  | x | x | x |  |  |  |  | x |  |  |  |
 | quick | x | x | x | x | x | x |  | x |  | x |  |  |  |  |
 | remove-phase | x | x |  | x |  | x |  |  |  |  |  |  |  |  |
 | report | x |  |  | x |  |  |  |  |  |  |  |  |  |  |
-| research-phase | x |  |  | x |  |  |  | x |  |  |  |  |  |  |
 | resume | x | x |  | x |  |  |  |  |  | x | x |  |  |  |
 | retro | x |  |  | x | x | x |  |  |  |  |  |  |  |  |
 | review-deep | x | x |  | x | x | x |  | x |  |  |  |  |  |  |

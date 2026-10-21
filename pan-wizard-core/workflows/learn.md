@@ -7,8 +7,8 @@ Analyze the most recent trace session and generate a circular optimization repor
 - A trace session must exist in `.planning/optimization/traces/`
 - If no session exists, instruct the user to start one first:
   ```
-  /pan:optimize trace init --description "what you're building"
-  [run your build: /pan:exec-phase N or /pan:focus-exec]
+  /pan:learn --optimize trace init --description "what you're building"
+  [run your build: /pan:exec-phase N or /pan:focus-auto --step exec]
   /pan:learn
   ```
 
@@ -65,7 +65,7 @@ Present to the user:
 2. **Top 3 findings** — the most impactful recommendations
 3. **Lessons** — how many, and where each belongs: the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test, or a comment at the cited code
 4. **Prompt and workflow changes** — how many, for human review
-5. **Next step** — `/pan:optimize apply` records the suggestions in `.planning/optimization/suggestions.md`; a person makes the changes, because nothing in the report reaches an agent until it is written where the agents read
+5. **Next step** — `/pan:learn --optimize apply` records the suggestions in `.planning/optimization/suggestions.md`; a person makes the changes, because nothing in the report reaches an agent until it is written where the agents read
 
 ## Step 5 — Auto-apply (if --apply flag)
 

@@ -43,7 +43,7 @@ const LEDGER = path.join(HARNESS_ROOT, 'ledger.jsonl');
 const DEFAULT_MAX_USD = 15;
 
 function parseArgs(argv, env = process.env) {
-  const a = { scenarios: [], tier: 0, maxUsd: null, maxUsdDefaulted: false, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [] };
+  const a = { scenarios: [], tier: 0, maxUsd: null, maxUsdDefaulted: false, repeat: 1, stateDir: null, repo: DEFAULT_REPO, keep: false, ledger: true, controls: false, untilDecided: false, arm: null, requireRun: [], record: false, scoreboards: [], promptMutant: null, variant: null };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i]; const v = argv[i + 1];
     if (k === '--scenario') { a.scenarios.push(v); i++; }
@@ -67,6 +67,13 @@ function parseArgs(argv, env = process.env) {
     // --arm <id> (H3, M43): run the scenarios that declare this arm with its change applied
     // (the no-guidance baseline, a deletion arm), for a paired comparison with the plain run.
     else if (k === '--arm') { a.arm = v; i++; }
+    // --prompt-mutant <rule id> (H6): delete that rule from the packed package and run only
+    // the scenarios that cover it. All of them passing means the rule changed nothing.
+    else if (k === '--prompt-mutant') { a.promptMutant = v; i++; }
+    // --variant <workspace path>=<file> (S4): an arm given on the command line: after install,
+    // the installed file at <workspace path> is replaced by <file>, which must be under
+    // harness/variants/ (the only place the prompt evolver writes).
+    else if (k === '--variant') { const [p, file] = String(v || '').split('='); a.variant = { path: p, file }; i++; }
     // --require-run <id> (CI1): this scenario must actually run. Skipped, or not selected at
     // all, fails the run: CI installs a host CLI so the double-backed scenarios run there, and
     // a missing CLI must not turn into a quiet skip.
@@ -424,6 +431,15 @@ function main() {
   log(`artifact ${art.build.tarball} (${art.build.sha256.slice(0, 12)}) from ${art.build.head ? art.build.head.slice(0, 9) : 'no-git'}`);
 
   let scenarios = loadScenarios(path.join(HARNESS_ROOT, 'scenarios'));
+  let mutant = null;
+  if (args.promptMutant) {
+    const PR = require(path.join(args.repo, 'scripts', 'prompt-rules.cjs'));
+    mutant = PR.applyMutant(args.repo, art.packageDir, args.promptMutant);
+    if (mutant.error) { log(`prompt mutant ${args.promptMutant}: ${mutant.reason}`); return 2; }
+    log(`prompt mutant ${mutant.id}: removed ${mutant.file}:${mutant.line} "${mutant.text.slice(0, 70)}"`);
+    scenarios = PR.coveringScenarios(scenarios, mutant.id);
+    if (!scenarios.length) { log(`no scenario covers ${mutant.id}: add it to a scenario's covers first`); return 2; }
+  }
   if (args.scenarios.length) scenarios = scenarios.filter(s => args.scenarios.includes(s.id));
   scenarios = scenarios.filter(s => s.tier <= args.tier);
   if (args.arm) {
@@ -448,7 +464,8 @@ function main() {
   // One scenario run in a fresh workspace. With a `control`, its sabotage is applied
   // after step `control.after` (-1: before the first step), and the run's failures are
   // the expected outcome, so they are returned rather than recorded as findings.
-  const armOf = (s) => (args.arm ? (s.arms || []).find(a => a.id === args.arm) || null : null);
+  const vArm = args.variant ? variantArm(args.repo, args.variant) : null;
+  const armOf = (s) => (args.arm ? (s.arms || []).find(a => a.id === args.arm) || null : vArm);
   const executeScenario = (s, rep, reps, control) => {
     const arm = armOf(s);
     const label = (reps > 1 ? `${s.id}#${rep}` : s.id) + (arm ? `@${arm.id}` : '') + (control ? `~${control.id}` : '');
@@ -614,7 +631,14 @@ function main() {
     controls: controlResults,
     failures, promotable: promotable.map(e => ({ signature: e.signature, scenario: e.scenario, step: e.step, expect: e.expect, detail: e.detail, runs: e.runs.length })),
     scoreboard: args.scoreboards.length ? detectionScoreboard(args.scoreboards) : null,
+    pairs: pairSummary(results, scenarios),
+    promptMutant: mutant ? { ...mutant, verdict: results.some(r => r.status === 'failed') ? 'load_bearing' : (results.some(r => r.status === 'passed') ? 'decorative' : 'undecided') } : null,
   };
+  if (summary.promptMutant && args.ledger) {
+    // H6's record: one row per mutant run, with the reps and each covering scenario's interval.
+    const row = { ts: new Date().toISOString(), run: id, rule: mutant.id, file: mutant.file, verdict: summary.promptMutant.verdict, scenarios: summary.completion.map(b => ({ scenario: b.scenario, passed: b.passed, runs: (b.passed || 0) + (b.failed || 0), interval: b.interval || null })) };
+    fs.appendFileSync(path.join(HARNESS_ROOT, 'prompt-mutants.jsonl'), JSON.stringify(row) + '\n');
+  }
   fs.writeFileSync(path.join(runDir, 'report.json'), JSON.stringify({ ...summary, steps: results }, null, 2));
   const lines = [
     `# PAN Harness run ${id}`, '',
@@ -638,6 +662,11 @@ function main() {
     lines.push('');
   }
   if (summary.scoreboard) lines.push(...renderMarkdown(summary.scoreboard));
+  if (summary.pairs.length) {
+    const fmt = (d, k = 1) => (d.mean == null ? '—' : `${(d.mean * k).toFixed(2)}${d.lower == null ? '' : ` [${(d.lower * k).toFixed(2)}, ${(d.upper * k).toFixed(2)}]`}`);
+    lines.push('', '## PAN versus the bare host (H10)', '', 'Paired deltas, PAN minus the host alone, with 95% intervals.', '', '| Pair | Reps | Completion | Cost ($) | Duration (s) |', '|---|---|---|---|---|');
+    for (const p of summary.pairs) lines.push(`| ${p.pair} | ${p.n} | ${fmt(p.completion)} | ${fmt(p.cost_usd)} | ${fmt(p.duration_ms, 0.001)} |`);
+  }
   if (promotable.length) {
     lines.push('## Promotable findings (ledger)', '');
     for (const e of promotable) lines.push(`- \`${e.signature}\` ${e.scenario} step ${e.step} \`${e.expect}\` — ${e.detail} (${e.runs.length} run${e.runs.length === 1 ? '' : 's'})`);
@@ -666,4 +695,43 @@ if (require.main === module) {
   catch (e) { process.stderr.write(`[harness] fatal: ${e && e.stack || e}\n`); process.exit(2); }
 }
 
-module.exports = { DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+/**
+ * H10: each pair's paired deltas (pan − stock), rep by rep: completion (passed = 1),
+ * cost and duration, each with a 95% interval (stats.cjs pairedDelta).
+ */
+/** S4: the arm a --variant names, refused unless its file is under harness/variants/. */
+function variantArm(repo, variant) {
+  const base = path.resolve(repo, 'harness', 'variants');
+  const abs = path.resolve(repo, variant.file || '');
+  if (!abs.startsWith(base + path.sep)) throw new Error(`--variant: ${variant.file} is not under harness/variants/`);
+  return { id: `variant:${path.basename(abs, '.md')}`, after: -1, write: { path: variant.path, content: fs.readFileSync(abs, 'utf8') } };
+}
+
+function pairSummary(results, scenarios) {
+  const { pairedDelta } = require('./stats.cjs');
+  const arms = new Map();
+  for (const s of scenarios) if (s.pair) arms.set(s.id, s.pair);
+  const byPair = new Map();
+  for (const r of results) {
+    const p = arms.get(r.scenario);
+    if (!p || r.control || r.status === 'skipped') continue;
+    if (!byPair.has(p.id)) byPair.set(p.id, { goal: p.goal, reps: new Map() });
+    const reps = byPair.get(p.id).reps;
+    if (!reps.has(r.rep)) reps.set(r.rep, {});
+    reps.get(r.rep)[p.arm] = r;
+  }
+  const out = [];
+  for (const [id, { goal, reps }] of byPair) {
+    const both = [...reps.values()].filter((x) => x.pan && x.stock);
+    const cost = (r) => (r.steps || []).reduce((n, st) => n + (st.costUsd || 0), 0);
+    out.push({
+      pair: id, goal, n: both.length,
+      completion: pairedDelta(both.map((x) => ({ pan: x.pan.status === 'passed' ? 1 : 0, stock: x.stock.status === 'passed' ? 1 : 0 }))),
+      cost_usd: pairedDelta(both.map((x) => ({ pan: cost(x.pan), stock: cost(x.stock) }))),
+      duration_ms: pairedDelta(both.map((x) => ({ pan: x.pan.durationMs || 0, stock: x.stock.durationMs || 0 }))),
+    });
+  }
+  return out;
+}
+
+module.exports = { variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

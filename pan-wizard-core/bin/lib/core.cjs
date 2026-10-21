@@ -324,7 +324,7 @@ function reportsFailure(result) {
  */
 function output(result, raw, rawValue, exitCode) {
   if (raw && rawValue !== undefined) {
-    process.stdout.write(String(rawValue));
+    writeStdoutSync(String(rawValue));
   } else {
     const json = JSON.stringify(result, null, 2);
     // Large payloads exceed Claude Code's Bash tool buffer (~50KB).
@@ -337,17 +337,29 @@ function output(result, raw, rawValue, exitCode) {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-'));
         const tmpPath = path.join(tmpDir, 'out.json');
         fs.writeFileSync(tmpPath, json, { encoding: 'utf-8', flag: 'wx' });
-        process.stdout.write('@file:' + tmpPath);
+        writeStdoutSync('@file:' + tmpPath);
       } catch {
         // Tmpfile write failed (disk full, permissions) — truncate and write to stdout
         const truncated = json.slice(0, MAX_JSON_SIZE);
-        process.stdout.write(truncated);
+        writeStdoutSync(truncated);
       }
     } else {
-      process.stdout.write(json);
+      writeStdoutSync(json);
     }
   }
   process.exit(exitCode === undefined ? (reportsFailure(result) ? 1 : 0) : exitCode);
+}
+
+/**
+ * Write all of `text` to stdout before returning. output() exits right after it writes,
+ * and on macOS (and Linux) stdout to a pipe is asynchronous: process.exit() dropped
+ * whatever had not drained past the pipe buffer, so a reader got JSON cut at about 8 KB.
+ * Making the stdout handle blocking first turns the write synchronous on a pipe too.
+ */
+function writeStdoutSync(text) {
+  const handle = process.stdout._handle;
+  if (handle && typeof handle.setBlocking === 'function') handle.setBlocking(true);
+  process.stdout.write(String(text));
 }
 
 /**

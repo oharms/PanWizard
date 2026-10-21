@@ -128,6 +128,16 @@ CONTEXT: [✓ if has_context | - if not]
 </step>
 
 <step name="route">
+**Ask the router first.** One verb decides the next step:
+
+```bash
+NEXT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs next-action)
+```
+
+It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+
+Its `action` picks the route below: `execute` → **Route A**, `plan` → **Route B**, `plan_gaps` → **Route E**, `verify` → offer `/pan:verify-phase {phase}`, `complete_phase` → run `command`, then **Route C**, `audit_milestone` → **Route D** (audit before `/pan:milestone-done`), `new_milestone` → **Route F**. The counts below are what the router read; use them to explain the route, not to pick a different one.
+
 **Determine next action based on verified counts.**
 
 **Step 1: Count plans, summaries, and issues in current phase**

@@ -2,7 +2,7 @@
 name: focus-auto
 group: Focus
 description: Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness
-argument-hint: "[--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal]"
+argument-hint: "[--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal] [--step scan|plan|exec|drift]"
 allowed-tools:
   - Read
   - Write
@@ -12,6 +12,14 @@ allowed-tools:
   - Glob
   - Agent
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--step scan` — one deep scan for prioritised work items, no loop: @~/.claude/pan-wizard-core/workflows/focus-scan.md (formerly `focus-scan`)
+- `--step plan` — one capacity-budgeted work batch from the scan: @~/.claude/pan-wizard-core/workflows/focus-plan.md (formerly `focus-plan`)
+- `--step exec` — execute the planned batch once: @~/.claude/pan-wizard-core/workflows/focus-exec.md (formerly `focus-exec`)
+- `--step drift` — documentation-code drift detection and repair: @~/.claude/pan-wizard-core/workflows/focus-drift-walking.md (formerly `focus-drift-walking`)
+</routes>
 
 # /pan:focus-auto — Continuous Autonomous Improvement Campaigns
 
@@ -197,7 +205,7 @@ HARD STOP conditions:
 
 **For each cycle (1 to max_cycles), execute Steps 2.1 through 2.5 without stopping:**
 
-#### Step 2.1: Scan (INLINE — do NOT invoke /pan:focus-scan)
+#### Step 2.1: Scan (INLINE — do NOT invoke /pan:focus-auto --step scan)
 
 Perform a deep codebase scan to find actionable work items with evidence.
 
@@ -254,7 +262,7 @@ Write scan results to `.planning/focus/scan-<YYYY-MM-DD>-<category>.md` with:
 - Items grouped by priority tier, each with: ID, title, symptom, root cause, fix guidance, file paths, effort size
 - Summary: item count by priority, total points
 
-#### Step 2.2: Plan (INLINE — do NOT invoke /pan:focus-plan)
+#### Step 2.2: Plan (INLINE — do NOT invoke /pan:focus-auto --step plan)
 
 Create a capacity-budgeted batch from the scan items found in Step 2.1.
 
@@ -277,7 +285,7 @@ Write batch to `.planning/focus/batch-<YYYY-MM-DD>-<category>.json`:
   "deferred": [{ "id": "...", "title": "...", "reason": "..." }] }
 ```
 
-#### Step 2.3: Execute (INLINE — do NOT invoke /pan:focus-exec)
+#### Step 2.3: Execute (INLINE — do NOT invoke /pan:focus-auto --step exec)
 
 Implement each item from the batch created in Step 2.2. Record `tests_before` by running the test suite first.
 
@@ -364,9 +372,8 @@ Check the response for stop conditions:
 #### Step 2.5: Inter-Cycle Context Management
 
 Between cycles, manage context to prevent quality degradation over long campaigns:
-- **KEEP:** Current cycle goals, test baseline, error states, active file paths
-- **SUMMARIZE:** Previous cycle results to a one-line summary each
-- **DISCARD:** Raw tool output from previous cycles, superseded scan results
+- **Carry forward:** Current cycle goals, test baseline, error states, active file paths
+- **Summarise:** Previous cycle results to a one-line summary each
 
 Display one-line cycle summary: `Cycle N/M | X/Y pts | Z items done | Tests: A -> B`
 

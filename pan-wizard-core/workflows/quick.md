@@ -336,57 +336,22 @@ Store as `$VERIFICATION_STATUS`.
 
 **Step 7: Update state.md**
 
-Update state.md with quick task completion record.
-
-**7a. Check if "Quick Tasks Completed" section exists:**
-
-Read state.md and check for `### Quick Tasks Completed` section.
-
-**7b. If section doesn't exist, create it:**
-
-Insert after `### Blockers/Concerns` section:
+Record the task through the engine. It creates the "### Quick Tasks Completed" table after "### Blockers/Concerns" when it is missing, numbers the row, and keeps an existing table's columns. Pass `description_cell` exactly as init returned it, never `$DESCRIPTION`: init escapes `|` and folds line breaks, and a raw `|` would split the row.
 
 **If `$FULL_MODE`:**
-```markdown
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Status | Directory |
-|---|-------------|------|--------|--------|-----------|
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state quick-task --description "${description_cell}" --date "${date}" --commit "${commit_hash}" --status "${VERIFICATION_STATUS}" --directory "[${next_num}-${slug}](./quick/${next_num}-${slug}/)"
 ```
 
-**If NOT `$FULL_MODE`:**
-```markdown
-### Quick Tasks Completed
+**If NOT `$FULL_MODE`:** the same without `--status`.
 
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
+Then the activity line:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state patch --"Last Activity" "${date}" --"Last Activity Description" "Completed quick task ${next_num}: ${description_cell}"
 ```
 
-**Note:** If the table already exists, match its existing column format. If adding `--full` to a project that already has quick tasks without a Status column, add the Status column to the header and separator rows, and leave Status empty for the new row's predecessors.
-
-**7c. Append new row to table:**
-
-Use `date` and `description_cell` from init. Write `description_cell` exactly as init returned it, never `$DESCRIPTION`: init escapes `|` and folds line breaks, and a raw `|` in a description would split the row into an extra column and break the table for every later read.
-
-**If `$FULL_MODE` (or table has Status column):**
-```markdown
-| ${next_num} | ${description_cell} | ${date} | ${commit_hash} | ${VERIFICATION_STATUS} | [${next_num}-${slug}](./quick/${next_num}-${slug}/) |
-```
-
-**If NOT `$FULL_MODE` (and table has no Status column):**
-```markdown
-| ${next_num} | ${description_cell} | ${date} | ${commit_hash} | [${next_num}-${slug}](./quick/${next_num}-${slug}/) |
-```
-
-**7d. Update "Last activity" line:**
-
-Use `date` and `description_cell` from init (one line, whatever the description held):
-```
-**Last Activity:** ${date}
-**Last Activity Description:** Completed quick task ${next_num}: ${description_cell}
-```
-
-Use Edit tool to make these changes atomically
+Never edit state.md with the Edit tool (under `hooks.guard: enforce` the guard denies it).
 
 ---
 

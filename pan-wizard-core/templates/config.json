@@ -10,6 +10,10 @@
     "phase_record_compact": false,
     "phase_gate": "enforce",
     "mutation_gate": "report",
+    "mutation_floor": 0.6,
+    "review_mode": "single",
+    "cross_family_review": "off",
+    "worktree_isolation": false,
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
   "cost": {

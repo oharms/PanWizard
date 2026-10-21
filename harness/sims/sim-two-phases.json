@@ -1,0 +1,8 @@
+{
+  "id": "sim-two-phases",
+  "why": "Two phases under the real phase gate (enforce), with every fault class the simulated host can raise. The loop must stop with a declared reason, within its caps, and never complete a phase whose verification found gaps.",
+  "phases": 2,
+  "gate": "enforce",
+  "limits": { "maxUsd": 3, "maxTurns": 14 },
+  "faults": { "noop": 0.06, "compile": 0.12, "cost_spike": 0.06, "human": 0.05, "gaps": 0.08 }
+}

@@ -71,6 +71,11 @@ function attachPhaseArtifactPaths(result, cwd, phaseDirectory) {
     if (uatFile) {
       result.uat_path = toPosix(path.join(phaseDirectory, uatFile));
     }
+    // L6b: the user's corrections to /pan:assumptions, which discuss and plan read.
+    const assumptionsFile = files.find((f) => f.endsWith('-assumptions.md') || f === 'assumptions.md');
+    if (assumptionsFile) {
+      result.assumptions_path = toPosix(path.join(phaseDirectory, assumptionsFile));
+    }
   } catch {
     // Phase directory may not exist yet or may be unreadable
   }
@@ -150,6 +155,8 @@ function cmdInitExecutePhase(cwd, phase, raw, opts) {
     // Config flags
     commit_docs: config.commit_docs,
     parallelization: config.parallelization,
+    // A3: each pan-exec-waves executor in its own git worktree (Claude Code's Workflow tool).
+    worktree_isolation: (require('./test-gate.cjs').rawConfig(cwd).workflow || {}).worktree_isolation === true,
     branching_strategy: config.branching_strategy,
     phase_branch_template: config.phase_branch_template,
     milestone_branch_template: config.milestone_branch_template,

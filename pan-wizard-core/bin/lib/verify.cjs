@@ -617,6 +617,16 @@ function reconcilePhase(cwd, phaseNum) {
       contradictions.push(`verification status "${status}" but the engine's test run failed${why}`);
     }
   }
+  // V5G: in gate mode, a mutation score below the floor means the tests do not pin the
+  // code, so a passed verification is a contradiction until they do.
+  const mutFile = files.find((f) => /-mutation\.json$/.test(f));
+  if (claimsPass && mutFile) {
+    let mut = null;
+    try { mut = JSON.parse(safeReadFile(path.join(dir, mutFile)) || 'null'); } catch {}
+    if (mut && mut.mode === 'gate' && mut.gate && mut.gate.failed) {
+      contradictions.push(`verification status "${status}" but the mutation score ${mut.score} is below the floor ${mut.gate.floor} (workflow.mutation_gate: gate): ${mut.survived} of ${mut.sampled} mutants survived`);
+    }
+  }
   return {
     phase: String(phaseNum), found: true, verification_status: status, claims_pass: claimsPass,
     test_run: testRun ? { status: testRun.status, head: testRun.head || null, regressions: (testRun.regressions || []).length } : undefined,
@@ -1506,9 +1516,13 @@ function cmdValidateHealth(cwd, options, raw) {
   }
 
   // Perform repairs if requested and there are repairable issues
+  // L6a: health asks per repair class. Without --repair the result lists the classes;
+  // --only limits a repair to the ones the user chose.
+  const only = Array.isArray(options.only) && options.only.length ? new Set(options.only) : null;
+  const chosen = only ? repairs.filter((r) => only.has(r)) : repairs;
   let repairActions = [];
-  if (options.repair && repairs.length > 0) {
-    repairActions = repairIssues(cwd, repairs);
+  if (options.repair && chosen.length > 0) {
+    repairActions = repairIssues(cwd, chosen);
   }
 
   // Check 10 (optional): full validation — run tests and build
@@ -1581,6 +1595,7 @@ function cmdValidateHealth(cwd, options, raw) {
     warnings,
     info,
     repairable_count: repairableCount,
+    repairs_available: repairs.length > 0 ? [...new Set(repairs)] : undefined,
     repairs_performed: repairActions.length > 0 ? repairActions : undefined,
   };
   if (options.full) {

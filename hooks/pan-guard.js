@@ -12,14 +12,18 @@
 //                         or a long key=value secret)
 //   state_write           a direct write to PAN's own state: state.md, findings.jsonl,
 //                         the token ledger (pan-tools owns those)
+//   judge_write           a judge (verifier, reviewer, plan-checker, design-checker)
+//                         writing outside the planning tree; the payload names the
+//                         agent (`agent_type`) only on hosts that say so
 //   undeclared_test_edit  a test file the phase in flight does not declare in any
 //                         unfinished plan's files_modified
 //
 // Mode, from the planning tree's config.json `hooks.guard`:
 //   off      nothing
 //   report   (default) every match is appended to <planning>/guard.jsonl, the call proceeds
-//   enforce  as report, and a secret_write is denied; the other rules still only report
-//            until the writers of PAN's state go through pan-tools verbs (A7b)
+//   enforce  as report, and secret_write, state_write and judge_write are denied (the
+//            writers of state.md go through pan-tools verbs since A7b);
+//            undeclared_test_edit still only reports
 //
 // Inert outside a PAN project. Fail-open on anything it cannot parse; never fail-open
 // on a matched deny. Never writes outside the planning tree.
@@ -32,6 +36,9 @@ const SECRET_KV_RE = /\b(api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]
 const TEST_PATH_RE = /(^|\/)(tests?|__tests__|specs?)\//i;
 const TEST_FILE_RE = /(\.(test|spec)\.[a-z0-9]+|(^|\/)test_[^/]+\.py|_test\.(py|go)|Tests?\.(java|kt|cs))$/i;
 const MODES = ['off', 'report', 'enforce'];
+// The agents that judge work and must not change it. Their reports go in the planning tree.
+const JUDGES = new Set(['pan-verifier', 'pan-reviewer', 'pan-plan-checker', 'pan-design-checker']);
+const DENIED = ['secret_write', 'state_write', 'judge_write'];
 
 // ─── R39: one run per hook when Claude and Copilot share a project ───────────
 // Copilot CLI also runs the hooks in a repository's .claude/settings.json and
@@ -130,7 +137,8 @@ function normalise(payload) {
       if (cur && line.startsWith('+')) cur.text += line.slice(1) + '\n';
     }
   }
-  return { tool, writes, command };
+  const agent = String(p.agent_type || p.subagent_type || p.agentType || '') || null;
+  return { tool, writes, command, agent };
 }
 
 /** Project-relative POSIX path, or null when the path is outside the project. */
@@ -184,6 +192,7 @@ function evaluate(call, projectDir, planningRel) {
     if (hasSecret(w.text)) hits.push({ rule: 'secret_write', path: r || w.path });
     if (!r) continue;
     if (ownState.has(r)) hits.push({ rule: 'state_write', path: r });
+    if (call.agent && JUDGES.has(call.agent) && !(r === planningRel || r.startsWith(`${planningRel}/`))) hits.push({ rule: 'judge_write', path: r, agent: call.agent });
     if (declared && isTestFile(r) && !declared.has(r)) hits.push({ rule: 'undeclared_test_edit', path: r });
   }
   return hits;
@@ -191,7 +200,11 @@ function evaluate(call, projectDir, planningRel) {
 
 function decide(hits, mode) {
   if (mode !== 'enforce') return null;
-  return hits.find((h) => h.rule === 'secret_write') || null;
+  for (const rule of DENIED) {
+    const hit = hits.find((h) => h.rule === rule);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 /** The host whose deny format this call needs: Copilot by payload shape, else the --host flag. */
@@ -199,6 +212,16 @@ function hostOf(payload, flagHost) {
   const p = payload && typeof payload === 'object' ? payload : {};
   if (typeof p.toolName === 'string' && p.tool_name === undefined) return 'copilot';
   return flagHost;
+}
+
+function denyReason(deny) {
+  if (deny.rule === 'state_write') {
+    return `PAN guard: ${deny.path} is PAN's own state. Write it through pan-tools (\`pan-tools state init|section|apply|patch|update\`, \`findings record\`), which keeps it consistent, then retry. (hooks.guard: enforce)`;
+  }
+  if (deny.rule === 'judge_write') {
+    return `PAN guard: ${deny.agent} is a judge and does not change the work it judges (${deny.path}). Report the defect in your verdict instead; your own report goes in the planning tree. (hooks.guard: enforce)`;
+  }
+  return `PAN guard: this write puts a credential into ${deny.path}. Keep secrets out of the repository (an environment variable or a local, ignored file), then retry. (hooks.guard: enforce)`;
 }
 
 function main() {
@@ -230,7 +253,7 @@ function main() {
     fs.appendFileSync(path.join(planning, 'guard.jsonl'), lines.join('\n') + '\n');
   } catch { /* the log is best effort; a deny below still stands */ }
   if (!deny) return;
-  const reason = `PAN guard: this write puts a credential into ${deny.path}. Keep secrets out of the repository (an environment variable or a local, ignored file), then retry. (hooks.guard: enforce)`;
+  const reason = denyReason(deny);
   if (host === 'copilot') {
     process.stdout.write(JSON.stringify({ permissionDecision: 'deny', permissionDecisionReason: reason }) + '\n');
     return;

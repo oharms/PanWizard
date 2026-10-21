@@ -2,7 +2,7 @@
 // optimize.cjs — Circular optimization loop: trace → learn → apply → repeat.
 //
 // Every agent spawn is logged to a trace session. After a build, /pan:learn
-// invokes pan-optimizer to analyze the trace. /pan:optimize apply writes memory
+// invokes pan-optimizer to analyze the trace. /pan:learn --optimize apply writes memory
 // entries, config notes, and prompt suggestions back into the project, making
 // the next run smarter.
 
@@ -1044,7 +1044,7 @@ function revertApply(cwd, which) {
 const LESSON_TARGET = "the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section)";
 
 // Derive suggestion notes from a raw JSON analysis when no optimizer agent
-// report is available (fallback for /pan:optimize apply on a JSON file).
+// report is available (fallback for /pan:learn --optimize apply on a JSON file).
 function deriveActionsFromAnalysis(analysis) {
   const actions = [];
   const { memory_miss_patterns, gap_patterns, summary } = analysis;

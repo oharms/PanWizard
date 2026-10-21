@@ -53,7 +53,7 @@ describe('pan-debugger reproduces before it theorises', () => {
     assert.deepEqual(sectionOrder(fileStructure), order);
     const tplBlock = template.slice(template.indexOf('```markdown'), template.indexOf('<section_rules>'));
     assert.deepEqual(sectionOrder(tplBlock), order);
-    assert.deepEqual(fields(fileStructure), ['command', 'fails_with', 'deterministic', 'tried']);
+    assert.deepEqual(fields(fileStructure), ['command', 'fails_with', 'deterministic', 'requirement', 'tried'], 'P5: the reproduction names the requirement it stands for');
     assert.deepEqual(fields(tplBlock), fields(fileStructure));
     assert.match(agent, /\| Reproduction \| OVERWRITE to shrink \|/);
     assert.match(template, /\*\*Reproduction:\*\*\n- Written before the first hypothesis/);

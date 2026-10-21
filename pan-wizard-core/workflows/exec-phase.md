@@ -96,6 +96,8 @@ PLAN_INDEX=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase-plan-index "
 
 Parse JSON for: `phase`, `plans[]` (each with `id`, `wave`, `autonomous`, `objective`, `files_modified`, `task_count`, `has_summary`), `waves` (map of wave number → plan IDs), `incomplete`, `has_checkpoints`.
 
+**One plan (`--plan <id>`).** Execute only that plan: skip every other plan, then stop after its summary and commits, with no code review, verification or phase routing. `pan-tools autodev run --worktrees` runs each plan this way in its own git worktree and merges the plans back behind a shadow-merge preflight; the phase-level steps run later on the merged result. If the plan already has a summary, say so and stop.
+
 **Filtering:** Skip plans where `has_summary: true`. If `--gaps-only`: also skip plans whose frontmatter lacks `gap_closure: true` (`phase-plan-index` does not report it; `frontmatter get <plan> --field gap_closure` exits 1 when it is absent). If all filtered: "No matching incomplete plans" → exit.
 
 **If `--gaps-only`:** this run is the fix round after a verification found gaps — a second attempt at work that failed once. Resolve the executor for that attempt and use it in place of `executor_model` for every spawn in this run:
@@ -363,12 +365,9 @@ TEST_BASELINE=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 2. Invoke phase-tests workflow for the completed phase:
 ```
 Task(
-  prompt="Generate tests for phase ${PHASE_NUMBER}.
+  prompt="Follow the phase-tests workflow (~/.claude/pan-wizard-core/workflows/phase-tests.md) for phase ${PHASE_NUMBER}.
 Phase directory: ${phase_dir}
-Read each summary.md to understand what was built.
-Generate unit and integration tests for the new code.
-Discover the project's existing test patterns, directories, frameworks, and helpers before writing tests.
-Follow whatever conventions the project already uses.",
+It classifies each changed file, discovers the project's test patterns, writes the tests the plan approves, and commits them.",
   subagent_type="general-purpose",
   model="{executor_model}",
 )
@@ -379,7 +378,13 @@ Alternatively, if the user's AI tool supports it, invoke the command directly:
 /pan:phase-tests ${PHASE_NUMBER}
 ```
 
-3. Record new test count:
+3. Prove the new tests catch something (V4). A test that passes without the phase's code is tautological:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify red "${PHASE_NUMBER}"
+```
+Rewrite or drop each test it reports as `not_red`; `not_checked` names a runner that cannot run one file and is reported, not failed.
+
+4. Record new test count:
 ```bash
 TEST_AFTER=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 ```
@@ -456,6 +461,16 @@ Task(
 ```
 
 3. **Save the report.** Use the Write tool to write the reviewer's returned text, verbatim and in full (including its closing `pan-verdict` block), to `{phase_dir}/{phase_number}-review.md`. The reviewer is read-only by design, so the orchestrator saves the report. `/pan:review-deep` and the findings ledger read this file.
+
+   **Lenses (opt-in).** Check the review mode first:
+   ```bash
+   REVIEW_MODE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-get workflow.review_mode 2>/dev/null || echo single)
+   ```
+   When it is `lenses`, run step 2 three times instead of once. Each spawn's prompt carries one `<lens>` (`correctness`, `security`, `maintainability`), and each report is saved to `{phase_dir}/{phase_number}-review-{lens}.md`. Then merge them in code. A finding survives only when at least two of the three passes reported it, and the verdict is recomputed from what survives:
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs review vote --phase "${PHASE_NUMBER}" --out "{phase_dir}/{phase_number}-review.md" "{phase_dir}/{phase_number}-review-correctness.md" "{phase_dir}/{phase_number}-review-security.md" "{phase_dir}/{phase_number}-review-maintainability.md"
+   ```
+   Step 4 records the merged `{phase_number}-review.md` as usual. `single`, the default, is the one pass above.
 
 4. **Record the verdict, then act on it.** The record is what this step branches on. It also adds the findings to the ledger (`.planning/findings.jsonl`) and logs the verdict to the trace, so no separate trace call is needed:
 ```bash

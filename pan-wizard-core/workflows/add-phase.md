@@ -60,13 +60,11 @@ Extract from result: `phase_number`, `padded`, `name`, `slug`, `directory`.
 <step name="update_project_state">
 Update state.md to reflect the new phase:
 
-1. Read `.planning/state.md`
-2. Under "## Accumulated Context" → "### Roadmap Evolution" add entry:
-   ```
-   - Phase {N} added: {description}
-   ```
+Append the entry under "## Accumulated Context" → "### Roadmap Evolution" (the engine creates the section when it is missing):
 
-If "Roadmap Evolution" section doesn't exist, create it.
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state section "Roadmap Evolution" --append "- Phase {N} added: {description}"
+```
 </step>
 
 <step name="completion">

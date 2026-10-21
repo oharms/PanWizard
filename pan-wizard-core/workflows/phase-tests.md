@@ -370,6 +370,16 @@ Present next steps:
 ```
 </step>
 
+<step name="prove_red">
+Prove the tests you wrote test what the phase built. Each changed test file runs on its own at the phase's base, where it must fail, and at HEAD, where it must pass:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify red "${PHASE_ARG}"
+```
+
+A `not_red` test passes without the phase's code: rewrite it to assert the new behaviour, or drop it. Report the result with the test plan.
+</step>
+
 </process>
 
 <success_criteria>

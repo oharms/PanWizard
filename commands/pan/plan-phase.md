@@ -2,7 +2,7 @@
 name: pan:plan-phase
 group: Phase Lifecycle
 description: Create detailed phase plan (plan.md) with verification loop
-argument-hint: "[phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>]"
+argument-hint: "[phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only]"
 agent: pan-planner
 allowed-tools:
   - Read
@@ -14,6 +14,12 @@ allowed-tools:
   - WebFetch
   - mcp__context7__*
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--research-only <phase>` — research the phase without planning it (or re-research a planned one): @~/.claude/pan-wizard-core/workflows/research-phase.md, with the phase as its argument (formerly `research-phase`)
+</routes>
+
 <objective>
 Create executable phase prompts (plan.md files) for a roadmap phase with integrated research and verification.
 

@@ -133,7 +133,7 @@ describe('pan-context-monitor — no countdown (O7)', () => {
       const d = buildContextWarning(fresh({ remaining_percentage: remaining, used_pct: 94 }), null, NOW);
       assert.equal(d.action, 'emit');
       assert.doesNotMatch(d.message, /\d|%/, `no number at ${remaining}`);
-      assert.doesNotMatch(d.message, /STOP/, 'no shouted order');
+      assert.doesNotMatch(d.message, /\bSTOP\b/, 'no shouted order');
       assert.doesNotMatch(d.message, /immediately|wrap(ping)? up|exhausted|nearly full/i);
     }
   });

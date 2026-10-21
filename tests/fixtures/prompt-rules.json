@@ -1,0 +1,2962 @@
+{
+ "rules": [
+  {
+   "id": "agents/pan-conductor:fe953ad0",
+   "file": "agents/pan-conductor.md",
+   "text": "You are spawned by `/pan:exec-phase <N> --hierarchical`. Without that flag, the normal flat exec path runs instead — you are never invoked by default.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:6b1a9b84",
+   "file": "agents/pan-conductor.md",
+   "text": "**Before each spawn, you MUST:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:a39cd482",
+   "file": "agents/pan-conductor.md",
+   "text": "**After each sub-agent returns, you MUST:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:c673b4c6",
+   "file": "agents/pan-conductor.md",
+   "text": "**Read the plan first.** Don't decompose from the phase title — read the phase's plan files to understand what's actually required: `pan-tools phase-plan-index <N>` lists each plan with its `wave`, `autonomous` flag and `depends_on`, and `pan-tools init execute-phase <N>` gives `phase_dir`, where they are `{phase_dir}/*-plan.md`.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:93e6e401",
+   "file": "agents/pan-conductor.md",
+   "text": "**Executor sub-agents (up to 6):** one per `-plan.md` file that's marked `autonomous: true` in frontmatter. Non-autonomous plans need user checkpoints, which you cannot pause for: do not run them, and list them under \"Skipped\" in your summary with the instruction to run them with `/pan:exec-phase <N>` (no `--hierarchical`) — nothing runs them after you return.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:7561384c",
+   "file": "agents/pan-conductor.md",
+   "text": "**Respect depth cap.** You spawn executors; they MUST NOT spawn further agents. If an executor's plan would naturally benefit from a sub-sub-agent, that's a signal the phase is too large and should have been split. Flag this as a finding in the trace, don't violate the cap.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:c8c150ee",
+   "file": "agents/pan-conductor.md",
+   "text": "Other runtimes don't support agents-spawn-agents cleanly. The command's `--hierarchical` flag is a **no-op** on Codex / Gemini / OpenCode / Copilot — it falls back to the flat exec-phase path and prints a warning:",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:42c9f5c4",
+   "file": "agents/pan-conductor.md",
+   "text": "**Don't use hierarchical for:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:f0721908",
+   "file": "agents/pan-conductor.md",
+   "text": "**You delegate to squads, not bare agents.** Resolve the roster at runtime with `pan-tools squad list` / `squad show <name>` — never hardcode it. Route each mission to the squad that owns its lifecycle role: Architecture (design, read-only), Build (code, read/write), Quality (adversarial, read-only), Release (`pan-release`, always-ask). Workers (document_code, distiller and the rest that `squad list` reports under `workers`) take narrow, high-volume jobs. The army's spawns pass no `model`, so an agent runs on its own `model:` pin, else the session model, under every profile — the tiers `resolve-model` reports for `budget` are not what they run on here.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:72d1d760",
+   "file": "agents/pan-conductor.md",
+   "text": "**Build parallelizes by worktree — and you tear the worktrees down.** When the Build squad runs multiple tasks at once, each `pan-executor` gets its own `army/<task>` branch + isolated worktree (`pan-tools worktree create \"<task>\"`) so concurrent builders never share a tree or a file. The spawn cap and budget ceiling still bound the fan-out. Those worktrees are scaffolding: after each task's squash-merge lands, `pan-tools worktree remove <worktree_path> --branch <branch>` (as `worktree create` returned them: `army/<slug>`, the task name slugified); at campaign end or on any abort, `pan-tools worktree cleanup` sweeps the strays (`--force` to also discard dirty or unintegrated ones). Leaving `pan-army-*` sibling directories behind is a campaign defect, not residue (P-1815).",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:791ace51",
+   "file": "agents/pan-conductor.md",
+   "text": "**Integration is human-gated.** You never merge to a protected branch. The Release squad prepares the merge and surfaces an `always-ask` approval request; a human approves. Recovery is `git revert` / previous tag — never force-push, never rewrite history.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-conductor:985439ac",
+   "file": "agents/pan-conductor.md",
+   "text": "**The loop carries learnings.** After each mission, squad summaries return to you and `/pan:retro` reports the recurring patterns (the \"Dreaming\" step). You carry them into the next mission's plan. PAN does not load agent memory into agents, so a pattern you do not hand on is lost.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-counterfactual:6d98c948",
+   "file": "agents/pan-counterfactual.md",
+   "text": "**You MUST NOT commit changes in the worktree.** The worktree will be destroyed when the command cleans up. Commits are wasted effort.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-counterfactual:2f8e9a6a",
+   "file": "agents/pan-counterfactual.md",
+   "text": "**You MUST NOT run `git push`, `git merge`, or any remote-affecting operation.** The counterfactual is private to this exploration.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-counterfactual:49813e52",
+   "file": "agents/pan-counterfactual.md",
+   "text": "**You MUST NOT delete files outside the worktree.** The command gives you a `<worktree_path>` — everything outside that path is off-limits.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-counterfactual:d9260b7a",
+   "file": "agents/pan-counterfactual.md",
+   "text": "Don't rebuild the phase. Pick 1-3 representative file changes that best illustrate the counterfactual. Run relevant tests if they exist. Note what broke, what got simpler, what surfaced new risks.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-counterfactual:c8caf413",
+   "file": "agents/pan-counterfactual.md",
+   "text": "You do not need to clean up anything. The worktree is disposable by design.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:9392c3ff",
+   "file": "agents/pan-debugger.md",
+   "text": "The user does NOT know (don't ask):",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:a8505dbf",
+   "file": "agents/pan-debugger.md",
+   "text": "**Embrace not knowing:** \"I don't know why this fails\" = good (now you can investigate). \"It must be X\" = dangerous (you've stopped thinking).",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:defdb243",
+   "file": "agents/pan-debugger.md",
+   "text": "**You can't explain the current behavior** - Don't add changes on top of confusion",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:958418e7",
+   "file": "agents/pan-debugger.md",
+   "text": "**The fix works but you don't know why** - This isn't fixed, this is luck",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:1ae4d6e5",
+   "file": "agents/pan-debugger.md",
+   "text": "**Ask \"What could cause this?\"** - List every possible cause (don't judge yet)",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:12568791",
+   "file": "agents/pan-debugger.md",
+   "text": "If the top hypothesis is confirmed, stop — don't also debug the lower-ranked ones.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:caf90a2d",
+   "file": "agents/pan-debugger.md",
+   "text": "**One mutation at a time.** If you change three things and it works, you don't know which one fixed it. Parallel *investigation* (reading, grepping, logging) is fine — parallel *fixes* are not.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:d2a6cad4",
+   "file": "agents/pan-debugger.md",
+   "text": "**Reproduce reliably?** Either always reproduces, or you understand trigger conditions",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:d5a1ba22",
+   "file": "agents/pan-debugger.md",
+   "text": "**Don't act if:** \"I think it might be X\" or \"Let me try changing Y and see\"",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:5231d24d",
+   "file": "agents/pan-debugger.md",
+   "text": "**Don't get attached** - Being wrong quickly is better than being wrong slowly",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:4db1da19",
+   "file": "agents/pan-debugger.md",
+   "text": "Don't fall in love with your first hypothesis. Generate alternatives.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:f1bd370c",
+   "file": "agents/pan-debugger.md",
+   "text": "Often you'll spot the bug mid-explanation: \"Wait, I never verified that B returns what I think it does.\"",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:58026464",
+   "file": "agents/pan-debugger.md",
+   "text": "**When:** You know correct output, don't know why you're not getting it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:1f45bafd",
+   "file": "agents/pan-debugger.md",
+   "text": "**When:** Always. Before making any fix.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:e323d853",
+   "file": "agents/pan-debugger.md",
+   "text": "You don't know if fix worked",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:05db20db",
+   "file": "agents/pan-debugger.md",
+   "text": "**1. Error messages you don't recognize**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:2e6f2919",
+   "file": "agents/pan-debugger.md",
+   "text": "Learning about edge cases that don't apply to your situation",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:383f133d",
+   "file": "agents/pan-debugger.md",
+   "text": "Keep finding things you don't understand and guessing",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:df9a4c3f",
+   "file": "agents/pan-debugger.md",
+   "text": "Error message is clearly from a library you don't know",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:4179865a",
+   "file": "agents/pan-debugger.md",
+   "text": "Stage and commit code changes (NEVER `git add -A` or `git add .`):",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:4d696ac1",
+   "file": "agents/pan-debugger.md",
+   "text": "Diagnose but don't fix",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-debugger:07fbb2ab",
+   "file": "agents/pan-debugger.md",
+   "text": "[ ] Current Focus always reflects NOW",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-design-checker:6d96b115",
+   "file": "agents/pan-design-checker.md",
+   "text": "**Boundary source** — the fixed scope the design must not exceed:",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-design-checker:647a8cf8",
+   "file": "agents/pan-design-checker.md",
+   "text": "**Scope discipline** — the design stays within its fixed boundary; scope-expanding ideas are captured as \"Deferred\", never designed in; locked `context.md` decisions are honored.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-design-checker:0e8866f9",
+   "file": "agents/pan-design-checker.md",
+   "text": "**Verify claims, don't trust them.** Where a design asserts a fact about the codebase (\"module X already does Y\", \"the convention is Z\"), confirm it with Grep/Glob/Read before accepting it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-design-checker:a301c309",
+   "file": "agents/pan-design-checker.md",
+   "text": "**On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{\"id\":\"f_…\",\"status\":\"resolved\",\"evidence\":\"what you checked and saw\"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-designer:95bc7fb7",
+   "file": "agents/pan-designer.md",
+   "text": "**{phase}-research.md** (if exists) — reference approaches/libraries. Cite, don't recreate.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-designer:6e9a8dec",
+   "file": "agents/pan-designer.md",
+   "text": "**roadmap.md** — the phase boundary is FIXED. The design's scope must not exceed it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-designer:73457de4",
+   "file": "agents/pan-designer.md",
+   "text": "**Deferred** — scope-expanding ideas captured, never designed in.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-designer:baaa5d32",
+   "file": "agents/pan-designer.md",
+   "text": "Self-check against the 7-point quality bar in `design-methodology.md` before returning — but the independent `pan-design-checker` decides pass/fail, not you. In revision mode, address only genuine gaps the checker raised; do not over-revise.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-distiller:06a40efc",
+   "file": "agents/pan-distiller.md",
+   "text": "**safe** (auto-applicable): The rewrite cannot change observable behavior. Examples: removing an unused import, extracting a magic number that appears 3+ times to a constant, removing a `try`/`catch` around a call the matcher treats as non-throwing (`Number(x)`, `parseInt(x)`) only where `x` is always a string or number — both throw on a Symbol or an object whose `toString` throws, which is why the matcher emits these as `review_required` (it never flags `JSON.parse`, whose guard is load-bearing).",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-distiller:609bb376",
+   "file": "agents/pan-distiller.md",
+   "text": "**risky** (never auto-apply): The rewrite changes structure across files, affects public API, or might surface latent bugs. Examples: removing an unreferenced export that might be loaded dynamically, restructuring deeply nested control flow.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-distiller:e90a908d",
+   "file": "agents/pan-distiller.md",
+   "text": "READ-ONLY: Never use Edit or Write tools. You produce diffs, you don't apply them.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-distiller:7340011a",
+   "file": "agents/pan-distiller.md",
+   "text": "SCOPE: Only judge findings in the input. Do not discover new patterns.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:0304d1fb",
+   "file": "agents/pan-document_code.md",
+   "text": "**Do not change modes mid-execution.** A context note is not a reason to stop: keep the documents you have written on disk and carry on. Only if the repo plainly cannot fit your window, say so in `overview.md` and exit cleanly. The orchestrator can re-spawn in sharded mode if needed.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:0292d3f8",
+   "file": "agents/pan-document_code.md",
+   "text": "**Always include file paths:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:afc16b69",
+   "file": "agents/pan-document_code.md",
+   "text": "Vague descriptions like \"UserService handles users\" are not actionable. Always include actual file paths formatted with backticks: `src/services/user.ts`. This allows Claude to navigate directly to relevant code.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:3a8dd185",
+   "file": "agents/pan-document_code.md",
+   "text": "Describe only what IS, never what WAS or what you considered. No temporal language.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:18032975",
+   "file": "agents/pan-document_code.md",
+   "text": "These directories are PAN Wizard infrastructure — NEVER explore, analyze, or include files from them in your documents:",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:ada911a2",
+   "file": "agents/pan-document_code.md",
+   "text": "Use Glob to find `*.env*` files — note EXISTENCE only, NEVER read contents",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:f1263169",
+   "file": "agents/pan-document_code.md",
+   "text": "Always include file paths with backticks",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:a2c83ccb",
+   "file": "agents/pan-document_code.md",
+   "text": "**NEVER read or quote contents from these files (even if they exist):**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:1959dd70",
+   "file": "agents/pan-document_code.md",
+   "text": "NEVER quote their contents, even partially",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:7fcaa183",
+   "file": "agents/pan-document_code.md",
+   "text": "NEVER include values like `API_KEY=...` or `sk-...` in any output",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:8efa2c54",
+   "file": "agents/pan-document_code.md",
+   "text": "Always include a heading before each ```mermaid block",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:2b706912",
+   "file": "agents/pan-document_code.md",
+   "text": "**Security — NEVER include in diagram labels:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:467d15de",
+   "file": "agents/pan-document_code.md",
+   "text": "**WRITE DOCUMENTS DIRECTLY.** Do not return findings to orchestrator. The whole point is reducing context transfer.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:9efb9648",
+   "file": "agents/pan-document_code.md",
+   "text": "**USE THE TEMPLATES.** Fill in the template structure. Don't invent your own format.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:d0f5bb08",
+   "file": "agents/pan-document_code.md",
+   "text": "**GENERATE MERMAID DIAGRAMS.** Every document with a ```mermaid block in the template must have a filled-in diagram with real codebase content. Do not leave placeholder diagrams.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-document_code:53b471f3",
+   "file": "agents/pan-document_code.md",
+   "text": "**BE THOROUGH.** Explore deeply. Read actual files. Don't guess. **But respect <forbidden_files>.**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:a45710d5",
+   "file": "agents/pan-executor.md",
+   "text": "If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:7b54dfda",
+   "file": "agents/pan-executor.md",
+   "text": "Any Edit/Write operation — always sequence these one at a time",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:612ee7e5",
+   "file": "agents/pan-executor.md",
+   "text": "Test files your plan does not list in `files_modified` are read-only. In any test file, never delete or rename a test, add a skip or only marker (`.skip`, `.only`, `xit`, `{ skip: true }`, `@pytest.mark.skip`, `t.Skip`, `#[ignore]`, `@Disabled`), remove an assertion, rewrite an expectation or a snapshot to match what the code now does, or add an assertion that cannot fail. `pan-tools verify test-integrity <phase>` checks the phase's commits for these, and a violation fails the phase gate: exec-phase will not auto-advance, and under `workflow.phase_gate: enforce` the phase cannot be completed without an override.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:5f19ff83",
+   "file": "agents/pan-executor.md",
+   "text": "When a test and your task cannot both be satisfied (the test asserts behaviour the plan changes, or the task is impossible as specified), stop. Do not edit the test. Return:",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:d39ef87e",
+   "file": "agents/pan-executor.md",
+   "text": "**Quick reference:** Users NEVER run CLI commands. Users ONLY visit URLs, click UI, evaluate visuals, provide secrets. Claude does all automation.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:6fb4ac92",
+   "file": "agents/pan-executor.md",
+   "text": "**checkpoint:decision** → If the task carries `auto_select=\"<option id>\"`, take that option. Log `⚡ Auto-selected: [option name] (auto_select)`. Continue to next task. **Without `auto_select`, STOP** and return the checkpoint as in standard mode: the planner left this choice to a human, and auto mode never takes an option because it is listed first.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:0aea6425",
+   "file": "agents/pan-executor.md",
+   "text": "**2. RED:** Read `<behavior>`, create test file, write failing tests, run (MUST fail), commit: `test({phase}-{plan}): add failing test for [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:76bc522b",
+   "file": "agents/pan-executor.md",
+   "text": "**3. GREEN:** Read `<implementation>`, write minimal code to pass, run (MUST pass), commit: `feat({phase}-{plan}): implement [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:bb0b8094",
+   "file": "agents/pan-executor.md",
+   "text": "**4. REFACTOR (if needed):** Clean up, run tests (MUST still pass), commit only if changes: `refactor({phase}-{plan}): clean up [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:de085aad",
+   "file": "agents/pan-executor.md",
+   "text": "**2. Stage task-related files individually** (NEVER `git add .` or `git add -A`):",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:3a3eac1f",
+   "file": "agents/pan-executor.md",
+   "text": "**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:d4b289ba",
+   "file": "agents/pan-executor.md",
+   "text": "**Concerns:** what you finished but are not sure of, such as an assumption you could not check, a path no test reaches, a deviation whose cost if wrong is high, or a requirement you met only in part. List each under the summary's `## Concerns` as `- C-1: <concern>. Why: <what makes you unsure>. Cost if wrong: <low | medium | high> — <what breaks>.`, or write \"None\". Do not hide a concern to return a clean result: a concern stated now costs a review, and one found later costs a fix round.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-executor:7b9bb096",
+   "file": "agents/pan-executor.md",
+   "text": "**If `update-plan-progress` or `mark-complete` changes nothing** (a roadmap without a progress table, an ID not in requirements.md), say so in summary.md and move on. Do not read or hand-edit the whole roadmap.md or requirements.md to make it apply: the orchestrator and `phase complete` reconcile them.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-hardener:9bdff163",
+   "file": "agents/pan-hardener.md",
+   "text": "This is **authorized, defensive** secure-coding review of the user's own codebase — the goal is to find and fix weaknesses before shipping. You report findings for the user to remediate; you never write exploit code, attack tooling, or step-by-step intrusion instructions.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-hardener:3d599312",
+   "file": "agents/pan-hardener.md",
+   "text": "**You NEVER modify source files.** Your one write is the report at the output path your prompt gives. You report findings; the user fixes them.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-hardener:9bc7eb14",
+   "file": "agents/pan-hardener.md",
+   "text": "**Does this touch auth, data, or secrets?** These categories get the most thorough STRIDE pass. Changes to `logger.js` or docs don't.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-hardener:896efe83",
+   "file": "agents/pan-hardener.md",
+   "text": "**How could this be reached and abused?** For every new surface, trace how it could be reached and what the impact would be, so you can prioritize the fix. If you can't identify a realistic path in 30 seconds, note the effort and move on — don't fabricate threats.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-hardener:7e3a3ca0",
+   "file": "agents/pan-hardener.md",
+   "text": "Report every security finding, including ones the project dismissed before. The findings ledger never suppresses a security finding, whoever raised it, so a dismissal never excuses leaving one out.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-hardener:5da22725",
+   "file": "agents/pan-hardener.md",
+   "text": "**Don't security-theatre.** Not every change needs a finding. A phase that touches `docs/README.md` should typically produce zero findings — say so explicitly in the Summary section. Padding the findings list with speculative threats makes real findings harder to spot.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-hardener:c41ff1a1",
+   "file": "agents/pan-hardener.md",
+   "text": "**Frameworks are checklists, not scripts.** If A07 doesn't apply to this phase (no auth changes), say \"skipped — no auth surface changed\" in the Frameworks covered section. Don't fabricate findings to fill columns.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-hardener:de6e2621",
+   "file": "agents/pan-hardener.md",
+   "text": "**Severity is honest.** If you're unsure between high and medium, pick medium. Critical means \"would page oncall\"; don't devalue it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-integration-checker:7639aefe",
+   "file": "agents/pan-integration-checker.md",
+   "text": "MUST map each integration finding to affected requirement IDs where applicable",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-integration-checker:94b0e8dd",
+   "file": "agents/pan-integration-checker.md",
+   "text": "Requirements with no cross-phase wiring MUST be flagged in the Requirements Integration Map",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-knowledge:1ed2d423",
+   "file": "agents/pan-knowledge.md",
+   "text": "**Output:** a markdown answer with inline citations of the form `[file.md:LINE]` or `[ADR-NNNN]`. Cite generously. If the sources don't contain enough to answer, say so — do not fabricate.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-knowledge:3d082a39",
+   "file": "agents/pan-knowledge.md",
+   "text": "**When to skip:** if the draft is already clean (no duplicates, no contradictions, entry count < 10), confirm it's good and don't rewrite. Unnecessary rewrites waste tokens.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-knowledge:655c1aff",
+   "file": "agents/pan-knowledge.md",
+   "text": "**Check the input completeness.** If `<files_to_read>` lists 15 sources but you only get to 3 before your context window fills, say so in the output. Don't answer from a fraction of the evidence and pretend it was comprehensive.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-knowledge:74f3b674",
+   "file": "agents/pan-knowledge.md",
+   "text": "**Admit when you can't answer.** \"The sources don't cover this — the closest I found was [X] which discusses [Y] but not your specific question about [Z].\" Users need this honestly.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-knowledge:01b8b47b",
+   "file": "agents/pan-knowledge.md",
+   "text": "**Don't invent citations.** Every `[file.md:42]` should be a file you actually read. The retrieval layer gave you the full path — use it verbatim.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-knowledge:dfc062d3",
+   "file": "agents/pan-knowledge.md",
+   "text": "**Don't pad.** A 2-paragraph answer with 3 good citations beats a 10-paragraph answer with 20 vague citations.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-knowledge:d3542d38",
+   "file": "agents/pan-knowledge.md",
+   "text": "**Multi-turn: each turn starts fresh.** Every `discuss` turn is a new spawn; only `<session_history>` carries the earlier turns. Read again any file you cite this turn. Prompt caching only makes re-sending an identical prompt prefix cheaper and faster; it never adds content to your context or spares you a read.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-meta-reviewer:b198b47e",
+   "file": "agents/pan-meta-reviewer.md",
+   "text": "**Overstated findings** — severity levels that don't match the evidence.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-meta-reviewer:a3e01dd6",
+   "file": "agents/pan-meta-reviewer.md",
+   "text": "**You NEVER modify source code.** You produce one findings file. This is authorized, defensive review of the user's own codebase — you adjudicate security findings for remediation; never produce exploit code.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-meta-reviewer:948294f3",
+   "file": "agents/pan-meta-reviewer.md",
+   "text": "**Load both reports fully.** Don't meta-review one while skimming the other.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-meta-reviewer:49c244a5",
+   "file": "agents/pan-meta-reviewer.md",
+   "text": "**Severity check.** For each finding, ask: \"Would I pick this severity?\" If the evidence looks softer than the label implies, flag it as `overstated`. If the evidence looks worse, flag it as `underrated`. Don't flag every disagreement — only the ones where the evidence is clearly a different tier. The reviewer's design-smell baseline (\"possible <smell>\") is a judgement call by definition: dispute or drop one where the project's own code endorses the pattern, never raise one above INFO.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-meta-reviewer:c5d8cc70",
+   "file": "agents/pan-meta-reviewer.md",
+   "text": "Tests that got added but don't actually exercise the new code path",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-meta-reviewer:57bd90d4",
+   "file": "agents/pan-meta-reviewer.md",
+   "text": "**Prove the serious defects.** A critical or high defect finding is a `candidate` until a catching test proves it. A catching test passes at the phase's base and fails at HEAD, so it shows the defect the phase introduced. For each such finding with a ledger id (`node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings list --phase <N> --status open`), write the smallest test that would catch it under `.planning/reviews/<N>/proofs/`, never in the source tree. Then run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings prove <f_id> --test <that file>`. Report each result as `confirmed` or `candidate` with the proof's status. A finding you cannot write a test for stays a candidate; say why.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-meta-reviewer:2d2d77ab",
+   "file": "agents/pan-meta-reviewer.md",
+   "text": "**What you're NOT.** You are not a second reviewer or a second hardener. Don't re-run their checks. Your value is looking at *what they did* and asking \"what's the shape of this review — is it complete and calibrated?\"",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-meta-reviewer:4b272641",
+   "file": "agents/pan-meta-reviewer.md",
+   "text": "**Duplicates aren't always bad.** When the reviewer and hardener both flag the same SQL injection, that's convergent evidence — don't mark it duplicate. Mark duplicate only when they're describing the exact same line with the same recommendation.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-optimizer:91b66143",
+   "file": "agents/pan-optimizer.md",
+   "text": "**Do not propose `memory_entry`, `memory` or `memory_append` actions.** PAN's workflows do not load `.planning/memory/` into agents (ADR-0036, amended `2026-10-04`). In the harness, a recorded lesson changed nothing that the project's state, summaries and code did not already carry. A lesson reaches the next run only from a place the agents read.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-optimizer:b84579d7",
+   "file": "agents/pan-optimizer.md",
+   "text": "Write the report as a markdown file at `.planning/optimization/reports/{session}-opt-report.md`. It is the only file you write: `/pan:learn --optimize apply` records the Auto-Apply Actions, so never write `suggestions.md` or a project file yourself.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:7c81edb6",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "If context.md exists, it constrains your research scope. Don't explore alternatives to locked decisions.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:45df060f",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "**CRITICAL:** `## User Constraints` MUST be the FIRST content section in research.md. Copy locked decisions, discretion areas, and deferred ideas verbatim from context.md.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:b987762e",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "**Verify before asserting** — don't state library capabilities without checking Context7 or official docs",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:2ead6051",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "**WebSearch tips:** Always include current year. Use multiple query variations. Cross-verify with authoritative sources.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:151acfb3",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "**WebSearch findings MUST be verified:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:1c842dc4",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "**Never present LOW confidence findings as authoritative.**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:04eb9f18",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "Phase requirement IDs (e.g., AUTH-01, AUTH-02) — the specific requirements this phase MUST address",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:08a1e042",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "User decided \"use library X\" → research X deeply, don't explore alternatives",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:98a2f34e",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "User decided \"simple UI, no animations\" → don't research animation libraries",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:d551154e",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "**Don't Hand-Roll:** Existing solutions for deceptively complex problems",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:18151b50",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "**CRITICAL: If context.md exists, FIRST content section MUST be `<user_constraints>`:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:85e80562",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "**If phase requirement IDs were provided**, MUST include a `<phase_requirements>` section:",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:55105785",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "⚠️ `commit_docs` controls git only, NOT file writing. Always write first.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-phase-researcher:c8acbe11",
+   "file": "agents/pan-phase-researcher.md",
+   "text": "[ ] Don't-hand-roll items listed",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:4febec49",
+   "file": "agents/pan-plan-checker.md",
+   "text": "Tasks exist but don't actually achieve the requirement",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:88141790",
+   "file": "agents/pan-plan-checker.md",
+   "text": "Artifacts don't map to truths",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:ba844d3f",
+   "file": "agents/pan-plan-checker.md",
+   "text": "The plan MUST include a `### Test Tier Strategy` table in its body (the format in `~/.claude/pan-wizard-core/templates/phase-prompt.md`). If missing → **BLOCKER**.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:5076acdb",
+   "file": "agents/pan-plan-checker.md",
+   "text": "**This dimension is advisory only** — issues are `info` or `warning` severity, never `blocker`.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:5f833edb",
+   "file": "agents/pan-plan-checker.md",
+   "text": "**Empirical motivation:** Cognition's \"Don't Build Multi-Agents\" (Jun 2025) named the dominant pipeline failure: agents pass artifacts but lose reasoning, and downstream agents reconcile blindly. PAN's planner→executor handoff is the specific instance. Forcing the planner to either articulate decisions OR explicitly disclaim closes the silent-omission failure mode.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:9d00e710",
+   "file": "agents/pan-plan-checker.md",
+   "text": "**Section presence.** plan.md MUST contain a `## Plan Decisions` heading. If absent → BLOCKER.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:671ab6b5",
+   "file": "agents/pan-plan-checker.md",
+   "text": "`verify plan-set` also reports `missing_property_task`: a requirement whose EARS criterion is a validation rule (`IF … THEN … SHALL`, or a claim over any or every input) has no property-test task in the plan that covers it. One example test cannot show a rule over many inputs. It is a blocker under `verification_derivation`.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:57d484b7",
+   "file": "agents/pan-plan-checker.md",
+   "text": "`gate_vacuous` means the gate already passes before any work, so it cannot show the task did anything. `gate_invalid` means its pattern does not compile, so it can never match. Both are blockers under `verification_derivation`, unless the `<verify>` line marks the gate a regression guard. Gates listed as `not_checkable` (pipes, other tools) are left to your judgement.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-plan-checker:a301c309",
+   "file": "agents/pan-plan-checker.md",
+   "text": "**On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{\"id\":\"f_…\",\"status\":\"resolved\",\"evidence\":\"what you checked and saw\"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:6e6dd6df",
+   "file": "agents/pan-planner.md",
+   "text": "**Design input (if present):** If `{phase}-design.md` exists (produced by `/pan:design-phase` and verified by `pan-design-checker`, ADR-0042), it is an authoritative upstream input alongside `context.md`. Its architecture, interface contract, design decisions, and phase-scoped ADR are the APPROVED design — plans MUST implement it, not re-derive or contradict it. Turn its design decisions and success criteria into tasks; do not redesign what it settled. Its decisions carry ids (`DD-1`, `DD-2` …): cite the id in each plan that implements one (in `## Plan Decisions`, \"Source: design DD-2\"). Every recorded decision must be cited by some plan, and a plan must not cite an id the design does not record; `pan-tools verify decisions` checks both. A design-level choice the design does not record (a storage engine, a protocol, a public interface, a new dependency) is not yours to make inside a plan: raise it as a checkpoint or send it back to `/pan:design-phase`. If no design.md exists, plan as before (it is optional, not a gate).",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:05494238",
+   "file": "agents/pan-planner.md",
+   "text": "**Locked Decisions (from `## Implementation Decisions`)** — MUST be implemented exactly as specified",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:22443f44",
+   "file": "agents/pan-planner.md",
+   "text": "If user said \"use library X\" → task MUST use library X, not an alternative",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:60cdab2f",
+   "file": "agents/pan-planner.md",
+   "text": "If user said \"card layout\" → task MUST implement cards, not tables",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:31a5acac",
+   "file": "agents/pan-planner.md",
+   "text": "If user said \"no animations\" → task MUST NOT include animations",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:32f0ccae",
+   "file": "agents/pan-planner.md",
+   "text": "**Deferred Ideas (from `## Deferred Ideas`)** — MUST NOT appear in plans",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:5bd02718",
+   "file": "agents/pan-planner.md",
+   "text": "**Property tasks.** When a requirement the plan covers has a validation-rule criterion (`IF … THEN … SHALL`, or a claim about any, every or all inputs), add a task marked `property=\"true\"`. It checks the rule over generated inputs with the project's own property library (fast-check, Hypothesis, proptest, …), never one hand-picked example. `verify plan-set` fails the plan set without one.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:ab07a80c",
+   "file": "agents/pan-planner.md",
+   "text": "**Automation-first rule:** If Claude CAN do it via CLI/API, Claude MUST do it. Checkpoints verify AFTER automation, not replace it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:aa8fcd6c",
+   "file": "agents/pan-planner.md",
+   "text": "**Planning is not building.** Write only plan files. Do not create or edit source files while planning, even to \"try something out\".",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:0be349cd",
+   "file": "agents/pan-planner.md",
+   "text": "If ANY truth requires T2+, the plan MUST include infrastructure setup as a Wave 0 task",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:c4c1d2fc",
+   "file": "agents/pan-planner.md",
+   "text": "Docker Compose should be proposed in research.md — reference it, don't recreate it",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:3dcbb693",
+   "file": "agents/pan-planner.md",
+   "text": "Each plan MUST carry a populated `### Test Tier Strategy` table in its body, in the format of `~/.claude/pan-wizard-core/templates/phase-prompt.md` (its Test Tier Strategy section) — plan-checker rejects plans without it",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:f380026b",
+   "file": "agents/pan-planner.md",
+   "text": "Derive plans from actual work. Depth determines compression tolerance, not a target. Don't pad small work to hit a number. Don't compress complex work to look efficient.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:2bedb25a",
+   "file": "agents/pan-planner.md",
+   "text": "Read the `**Requirements:**` line in this phase's section of your roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`). Strip brackets if present (e.g., `[AUTH-01, AUTH-02]` → `AUTH-01, AUTH-02`). Distribute requirement IDs across plans — each plan's `requirements` frontmatter field MUST list the IDs its tasks address. **CRITICAL:** Every requirement ID MUST appear in at least one plan. Plans with an empty `requirements` field are invalid.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:d2593a50",
+   "file": "agents/pan-planner.md",
+   "text": "`auto_select` is the option auto mode takes, and only that. Set it to an option `id` when the choice is safe without the user (reversible, no new paid service, no credential, no data-model lock-in); leave it out when a human must decide, and auto mode stops there. Option order never decides anything.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:e94527ed",
+   "file": "agents/pan-planner.md",
+   "text": "**RED:** Create test file → write test describing expected behavior → run test (MUST fail) → commit: `test({phase}-{plan}): add failing test for [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:b7dc5bdc",
+   "file": "agents/pan-planner.md",
+   "text": "**GREEN:** Write minimal code to pass → run test (MUST pass) → commit: `feat({phase}-{plan}): implement [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:71f79f6f",
+   "file": "agents/pan-planner.md",
+   "text": "**REFACTOR (if needed):** Clean up → run tests (MUST pass) → commit: `refactor({phase}-{plan}): clean up [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:b10e8816",
+   "file": "agents/pan-planner.md",
+   "text": "The phase to plan is in your prompt, and its roadmap slice (`{phase_dir}/{phase}-roadmap-slice.md`) lists every phase in one line each. Do not read the whole roadmap.md: on a long project it is the largest file in `.planning/`, and the slice holds what planning this phase needs from it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:ac167b27",
+   "file": "agents/pan-planner.md",
+   "text": "**If context.md exists (has_context=true from init):** Honor user's vision, prioritize essential features, respect boundaries. Locked decisions — do not revisit.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:bf9a27e8",
+   "file": "agents/pan-planner.md",
+   "text": "**Matched templates** — don't re-describe artifacts a template already defines; reference the template.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:094ef1cb",
+   "file": "agents/pan-planner.md",
+   "text": "Realign wording and granularity only. **Never** add tasks or scope to consume matched skills, and never remove a task because it didn't match.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:3a3eac1f",
+   "file": "agents/pan-planner.md",
+   "text": "**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:d624aa9d",
+   "file": "agents/pan-planner.md",
+   "text": "**Plans** (always update):",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:4489f4c8",
+   "file": "agents/pan-planner.md",
+   "text": "**Plan list** (always update):",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-planner:11694eb5",
+   "file": "agents/pan-planner.md",
+   "text": "Save each change with Edit — never Write roadmap.md whole: you read only this phase's section",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-previewer:d06b2114",
+   "file": "agents/pan-previewer.md",
+   "text": "You NEVER modify source code. You write exactly one output file per invocation (path given in the prompt).",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-previewer:cd80225e",
+   "file": "agents/pan-previewer.md",
+   "text": "`## Cost` (the phase's p50 and p10–p90 range in dollars, and per plan; when `insufficient`, say how many runs it has and that five are needed. Never estimate a figure the forecast does not give)",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-previewer:8339fff9",
+   "file": "agents/pan-previewer.md",
+   "text": "**Be honest about confidence.** `sample_size < 3` means \"this is a guess\" and your Bottom line should say so. `risk_score ≤ 3` on a phase that touches auth files is still a non-trivial phase; don't treat risk_score as infallible.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-previewer:54597f22",
+   "file": "agents/pan-previewer.md",
+   "text": "**Don't invent data.** If `external_deps` isn't in the input payload, don't list any. If the data layer returned `hidden_deps: []`, don't manufacture hidden coupling.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-project-researcher:159c47e9",
+   "file": "agents/pan-project-researcher.md",
+   "text": "**CRITICAL: Write output files directly with the Write tool.** Never create",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-project-researcher:b656673d",
+   "file": "agents/pan-project-researcher.md",
+   "text": "The roadmapper reads them through `research-summary.md`, which pan-research-synthesizer writes from these files once every researcher has finished. You don't write it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-project-researcher:450c7f57",
+   "file": "agents/pan-project-researcher.md",
+   "text": "Never pad findings, state unverified claims as fact, or hide uncertainty",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-project-researcher:c3925998",
+   "file": "agents/pan-project-researcher.md",
+   "text": "Don't find articles supporting your initial guess — find what the ecosystem actually uses and let evidence drive recommendations.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-project-researcher:4626c0f9",
+   "file": "agents/pan-project-researcher.md",
+   "text": "Resolve first (don't guess IDs). Use specific queries. Trust over training data.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-project-researcher:56fb2ecd",
+   "file": "agents/pan-project-researcher.md",
+   "text": "Always include current year. Use multiple query variations. Mark WebSearch-only findings as LOW confidence.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-project-researcher:4e0b0df6",
+   "file": "agents/pan-project-researcher.md",
+   "text": "If your prompt says `brave_search: true` (new-project and milestone-new do not pass it today), use Brave Search for higher quality results:",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-project-researcher:f58891c3",
+   "file": "agents/pan-project-researcher.md",
+   "text": "Never present LOW confidence findings as authoritative.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-release:f6955afe",
+   "file": "agents/pan-release.md",
+   "text": "You are NOT a coder. You do not modify source files. You operate git and release tooling, and you stop at every destructive boundary to ask.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-release:a9d695d9",
+   "file": "agents/pan-release.md",
+   "text": "**Never push to or merge into a protected branch yourself.** Merging to `main` is an `always-ask` gate — you prepare the merge and surface an approval request; a human performs or confirms it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-release:6912f4cc",
+   "file": "agents/pan-release.md",
+   "text": "**Never force-push, never rewrite history.** Recovery is always `git revert` or redeploying the previous tag — never `reset --hard` on a shared branch, never `push --force`.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-release:9867b906",
+   "file": "agents/pan-release.md",
+   "text": "**Respect the project's verification gate.** Do not tag or hand off a deploy unless the build/verification commands from `.planning/config.json` (`build`, `verification`) passed. If they are unset, ask rather than guess.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-release:0869d3e9",
+   "file": "agents/pan-release.md",
+   "text": "Prepare the integration: summarize the squash-merge (branches, commit set), run the project's `verification` command if configured, then stage it through the engine's merge gate: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs merge request <branch> --phase <N> [--ci-green]`. The phase gate decides `verify_pass`. Surface the approval request on the `orchestrator` bus channel with the line the person runs in their own terminal: `pan-tools merge confirm <branch>`. `merge confirm` refuses to run without an interactive terminal, so it is never yours to run.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-release:7e9ea4d3",
+   "file": "agents/pan-release.md",
+   "text": "On a failure signal: execute rollback = `git revert` of the merge, or instruct redeploy of the previous tag. Log the event; never silently patch.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-release:ab65edac",
+   "file": "agents/pan-release.md",
+   "text": "An always-ask approval request for the merge (on the `orchestrator` bus channel).",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-release:0daeb98c",
+   "file": "agents/pan-release.md",
+   "text": "Roll back, never rewrite. History stays intact and auditable.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-research-synthesizer:d708e06d",
+   "file": "agents/pan-research-synthesizer.md",
+   "text": "Commit ALL research files (researchers write but don't commit — you commit everything)",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-research-synthesizer:159c47e9",
+   "file": "agents/pan-research-synthesizer.md",
+   "text": "**CRITICAL: Write output files directly with the Write tool.** Never create",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:f8092154",
+   "file": "agents/pan-reviewer.md",
+   "text": "Your job: Check convention compliance, security patterns, and code quality. You do NOT modify files — you report findings. This is authorized, defensive review of the user's own codebase — surface security-relevant findings for the user to remediate; never produce exploit code.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:aaff7690",
+   "file": "agents/pan-reviewer.md",
+   "text": "These directories are PAN Wizard infrastructure — NEVER review, flag, or suggest changes to files inside them:",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:1e1b55bc",
+   "file": "agents/pan-reviewer.md",
+   "text": "Each is a judgement call: always **INFO**, written as \"possible <smell>\", never a reason for a non-PASS verdict on its own; its Category is `Design smell`.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:6d5e5782",
+   "file": "agents/pan-reviewer.md",
+   "text": "**The project wins.** Where a documented project standard, or an established pattern in the code, endorses what a smell would flag, do not report it. Skip anything a linter or formatter already enforces.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:35ed84c0",
+   "file": "agents/pan-reviewer.md",
+   "text": "**Lens.** When the prompt names a `<lens>` (`correctness`, `security` or `maintainability`), review only through it. Two other passes cover the other lenses, and a vote keeps the findings at least two passes report. So report what your lens finds, and do not stretch it to cover the others.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:1f63c2e8",
+   "file": "agents/pan-reviewer.md",
+   "text": "**Verdict rules** (pre-existing findings never count):",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:a4b174e7",
+   "file": "agents/pan-reviewer.md",
+   "text": "A pre-existing finding carries `\"pre_existing\": true`. The recorder files it as deferred debt with the reason, so it never blocks the phase, and the milestone audit still lists it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:a064e70b",
+   "file": "agents/pan-reviewer.md",
+   "text": "**Dismissed findings are filtered by the recorder, not by you.** When the project dismissed a finding with a reason, recording filters the same finding again for as long as its file is unchanged, and lets it back in once the file changes. Security and logic findings are never filtered. So report everything you find; do not leave out a finding because you think it was dismissed before. To see what is being filtered: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings suppressions --phase {phase_number} --agent pan-reviewer`.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:a301c309",
+   "file": "agents/pan-reviewer.md",
+   "text": "**On a re-check you are given `<open_findings>`:** your earlier open findings on this phase, each with its `id`. Answer every one in a `resolutions` list in the block: `{\"id\":\"f_…\",\"status\":\"resolved\",\"evidence\":\"what you checked and saw\"}` when it is fixed, `still_present` when it is not, `cannot_tell` when you could not check it. A finding you leave out stays open: silence never closes a finding, and `resolved` without evidence closes nothing.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-reviewer:c4ef9e9e",
+   "file": "agents/pan-reviewer.md",
+   "text": "READ-ONLY: Never use Edit or Write tools. You inspect, you do not modify.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:418aff16",
+   "file": "agents/pan-roadmapper.md",
+   "text": "NEVER include phases for:",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:e898123c",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Derive phases from requirements. Don't impose structure.**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:b8be1130",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Key:** Derive phases from work, then apply depth as compression guidance. Don't pad small projects or compress complex ones.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:5771018f",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Do not proceed until coverage = 100%.**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:6c044c12",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**P-1808 — one Write per file.** Steps 1-6 are the composition; the output formats above are the shape. When you reach this step, each document exists in full in your working context — issue exactly one Write per file. Do not write a skeleton and refine it in place, and do not re-read a file you just wrote: field transcripts counted this step rewriting state.md up to 12 times, which is a convergence failure, not diligence. Preparing a second Write to the same file means the first was premature — stop, finish composing, write once.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:35273b3a",
+   "file": "agents/pan-roadmapper.md",
+   "text": "When state.md already exists (a new milestone), add `--force --keep-context`: the old file is backed up and its Accumulated Context carried over. The engine writes every section of the template and keeps the frontmatter in sync; never write state.md with the Write or Edit tool (under `hooks.guard: enforce` the guard denies it).",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:c3693862",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Don't impose arbitrary structure:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:72f792a0",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Don't use horizontal layers:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:0943aea2",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Don't skip coverage validation:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:ac500f80",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Don't write vague success criteria:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:6b7ca7e9",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Don't add project management artifacts:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-roadmapper:c0036dec",
+   "file": "agents/pan-roadmapper.md",
+   "text": "**Don't duplicate requirements across phases:**",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:5d907372",
+   "file": "agents/pan-verifier.md",
+   "text": "Set `is_re_verification = true`. In the frontmatter's `re_verification` block, list every earlier gap you re-checked and found closed under `gaps_closed`, by its truth (add `evidence:` under a truth when one line says what you saw), and every gap still failing under `gaps_remaining`. A gap you leave out of both stays open in the findings ledger: silence never closes a gap",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:af929edd",
+   "file": "agents/pan-verifier.md",
+   "text": "Extract the phase goal from the `get-phase` output — this is the outcome to verify, not the tasks. If your prompt names a roadmap slice, read it for the phase's requirement lines. Do not read roadmap.md or requirements.md whole: `get-phase`, the slice and the greps here carry what verification needs.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:33e7b08e",
+   "file": "agents/pan-verifier.md",
+   "text": "If conventions.md does not exist, skip this step silently. This is brownfield-only signal. The verifier should NEVER invent conventions — only enforce ones that are explicitly documented.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:d5634f16",
+   "file": "agents/pan-verifier.md",
+   "text": "**Open questions for verifier**: for each `Q-N`, spend extra attention on that area. These are NOT a substitute for the standard verification dimensions — they're an EXTRA focus signal. Don't skip a check just because the executor didn't ask.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:a7b3b4cf",
+   "file": "agents/pan-verifier.md",
+   "text": "`passed` means the mapped tests pass. `failing` is a gap. `not_checked` means no test is mapped to the requirement, so list it under `not_checked` and never as verified. `legacy` (no criteria) is judged as before.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:d7c1f684",
+   "file": "agents/pan-verifier.md",
+   "text": "If requirements.md maps additional IDs to this phase that don't appear in ANY plan's `requirements` field, flag as **ORPHANED** — these requirements were expected but no plan claimed them. ORPHANED requirements MUST appear in the verification report.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:051f0dd9",
+   "file": "agents/pan-verifier.md",
+   "text": "Only tick items you have HIGH CONFIDENCE are actually met — never assume",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:e9f0e64a",
+   "file": "agents/pan-verifier.md",
+   "text": "**Auto-tick criteria:** You must have directly verified the code/artifact that satisfies the checklist item during this verification run. Do not tick based on claims in summary.md.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:7f23a49d",
+   "file": "agents/pan-verifier.md",
+   "text": "Unrequested work never changes the status on its own; a phase can pass with it. Keeping it (a decision) or removing it is the user's call, and the recorded finding is how the call gets made.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:f63be515",
+   "file": "agents/pan-verifier.md",
+   "text": "**Always needs human:** Visual appearance, user flow completion, real-time behavior, external service integration, performance feel, error message clarity.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:b8648cdd",
+   "file": "agents/pan-verifier.md",
+   "text": "Run the test suite through the engine, as the verify-phase protocol's `run_test_suite` step says (`~/.claude/pan-wizard-core/workflows/verify-phase.md`): `pan-tools test run --phase <N>` detects the project's test command in any language, runs it, compares it with the phase's baseline and writes the record. Copy its `status` into the frontmatter as `test_gate: passed | failed | skipped`; do not run the suite yourself and do not re-judge the result. A failed record lowers a `passed` verification whatever you write, and reconcile refuses a `test_gate` that disagrees with it.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:3a3eac1f",
+   "file": "agents/pan-verifier.md",
+   "text": "**ALWAYS use the Write tool to create files** — never use `Bash(cat << 'EOF')` or heredoc commands for file creation.",
+   "baseline": true
+  },
+  {
+   "id": "agents/pan-verifier:94af5068",
+   "file": "agents/pan-verifier.md",
+   "text": "Create `{phase_dir}/{phase_number}-verification.md` (`{phase_dir}` is already the full path from the project root, e.g. `.planning/phases/05-auth` or `.planning/tracks/<name>/phases/05-auth`: do not prefix it):",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:b6458f77",
+   "file": "commands/pan/army.md",
+   "text": "**Where each row comes from.** The tier-1 rows mirror the `squads[]` records `pan-tools squad list` prints — label, `tier`, `access` (their member names come from `squad show <name>`, since `squad list` reports only a count). The Tier 0 and Tier 2 rows are PAN's hierarchy positions: the same command names them under its `coordinator` and `workers` keys, but reports nothing else about them, so the Model-tier and Access values on those two rows are written here rather than returned by the command. Resolve the roster at runtime — never hardcode it: `pan-tools squad list` and `pan-tools squad show <name>`.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:37d18f95",
+   "file": "commands/pan/army.md",
+   "text": "Read-only stages fan out; the mutating stage stays isolated, never shared:",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:e9e75081",
+   "file": "commands/pan/army.md",
+   "text": "Capture the baseline (`git status` clean of project source; tests green or STOP). On a brownfield repo, the baseline is the commit you have checked out — every `army/<task>` branch forks from it (`worktree create` bases it on `HEAD`), so the existing code is never edited in place.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:df1a8d4c",
+   "file": "commands/pan/army.md",
+   "text": "Spawn the Quality squad on the built tree (parallel, read-only). Merge findings into one verdict (`/pan:review-deep` if available). `block` / `review_required` → fix serially, then re-review. Never integrate red.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:4f8c0130",
+   "file": "commands/pan/army.md",
+   "text": "Spawn `pan-release`. It prepares the squash-merge, runs the configured `verification`, stages the merge with `pan-tools merge request <branch> --phase <N>`, and surfaces an **always-ask** approval request. A human approves the merge to the protected branch by running `pan-tools merge confirm <branch>` in their own terminal. The command refuses without an interactive terminal, so no agent can approve its own merge. On a runtime where nobody is at a terminal, the campaign stops at this gate; release then tags and records the rollback target. `--push` pushes the approved result.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:b9242323",
+   "file": "commands/pan/army.md",
+   "text": "**Teardown after the merge lands (P-1815):** worktrees are scaffolding, not deliverables — the squash-merge is the permanent artifact. Once the approval lands, remove each integrated task's worktree **and** its branch in one call: `pan-tools worktree remove ../pan-army-<slug> --branch army/<slug>`. The `--branch` half is not optional: a squash-merged branch never looks merged to git, so nothing else will ever clean it. At campaign end — and on **any** abort path — sweep whatever remains: `pan-tools worktree cleanup` (`--force` also discards dirty worktrees and unintegrated branches; without it the sweep keeps anything that might hold the only copy of work, and says exactly why and how to delete it). A campaign that ends with `pan-tools worktree list` non-empty has skipped this step.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:7c28ea35",
+   "file": "commands/pan/army.md",
+   "text": "**Phase report (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the mission's self-contained per-phase HTML report **in the built tree, before staging the squash-merge** — `pan-tools report phase <N>` — so the report rides along in the merge as a phase deliverable. **Never run `report index` inside a squad worktree:** the timeline index is a single shared file that aggregates *all* phases, so a worktree would see only its own phase and concurrent squads would race on it. The index is a single-writer, post-merge concern (Phase 6). Never opens a browser.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:0c989464",
+   "file": "commands/pan/army.md",
+   "text": "branches `army/<task-slug>` — the worktrees' branches (temporary — deleted with their worktree once the squash-merge lands; squash-merged branches never look merged to git and must be deleted explicitly)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:f8e24c9e",
+   "file": "commands/pan/army.md",
+   "text": "PAN is not a daemon — it cannot wake itself while the session is closed. `--schedule` arms a campaign and lets an external trigger drive it; the human merge gate is never relaxed.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:dab561fe",
+   "file": "commands/pan/army.md",
+   "text": "**Verify reserve:** a fraction of `--total-budget` (`--verify-reserve`, default 0.15) is held back so the closing Quality re-review isn't starved. Surfaced always via `campaign status` / `focus auto --status` (`into_verify_reserve`, `new_work_budget_remaining`); under `--enforce-budget` the run stops taking on new missions early (`budget_reserve_reached`) and spends the reserve on the final `--clean-seal` verification before the last INTEGRATE.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/army:a6089086",
+   "file": "commands/pan/army.md",
+   "text": "The campaign is complete when ANY holds: `--max-cycles` reached · backlog empty · abort file present · a mission cannot pass Quality and can't be cleanly reverted (HARD STOP — preserve state, report). (Budget exhaustion is advisory by default — a stop condition only when `budget.enforce`/`--enforce-budget` is set; under enforcement, crossing into the verify reserve (`budget_reserve_reached`) stops new missions but the reserved points still fund the closing re-verification.) Before each new mission, run `pan-tools cost limits --raw`: `weekly_limit_reached` (Claude Code's 7-day usage window at `cost.weekly_limit_stop_pct`, default 90%) is a stop condition too, so the rest of the window stays the user's. Always run `--clean-seal` (unless omitted) after the last item.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/assumptions:e8cf2b41",
+   "file": "commands/pan/assumptions.md",
+   "text": "Do not claim \"the project uses X\" without verifying it in the files.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/assumptions:6f336ee8",
+   "file": "commands/pan/assumptions.md",
+   "text": "Every assumption MUST cite the evidence that supports it.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/cost:adee253f",
+   "file": "commands/pan/cost.md",
+   "text": "`--since` — ISO date lower bound (inclusive). Records without `ts` always pass.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/cost:936dcf19",
+   "file": "commands/pan/cost.md",
+   "text": "Prints `{local_only, commands: {used, never_used, unfinished, installed}, agents: {used, never_used, installed}, sources}`. Each used entry has `calls` and `last_used`, and a command also has `sessions` and `finished`. `unfinished` lists commands that were started but never finished: every trace session for them stopped without ending, the newest more than six hours ago. `--raw` prints a one-line summary. Use it to see which parts of PAN this project actually runs.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/cost:b78db0b4",
+   "file": "commands/pan/cost.md",
+   "text": "Rebuild the ledger from Claude Code's own transcripts (session file plus the per-agent files under `<session>/subagents/`, Workflow-tool subagents one level down). Rows written by hooks before v3.29 booked a slice of the parent session to whichever subagent stopped and counted turns once per content block; the rebuild replaces them with one exact row per agent transcript, typed from the main thread's `Agent` calls, plus one row per session for the main thread's own usage (`--no-main-thread` omits it). Rows whose session transcript is gone, and caller-appended rows, are kept. Dry-run by default — show the user the per-session before → after (and any `warnings`), then apply only on their say-so; the previous ledger is kept beside the new one as `tokens.jsonl.rebuilt-<date>` (a later copy never overwrites an earlier one). Run it **before** `/pan:hygiene --apply` on a poisoned ledger: quarantine moves the whole file aside, and a rebuild afterwards has no rows left to keep. The main-thread row is dated to the session's last record, so `--since`/`--until` windows and the per-day view see a session's own usage on its final day.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/discuss-phase:e013fa58",
+   "file": "commands/pan/discuss-phase.md",
+   "text": "Capture deferred ideas — don't lose them, don't act on them",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/exec-phase:04151537",
+   "file": "commands/pan/exec-phase.md",
+   "text": "HARD STOP conditions (do not proceed to next wave):",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/exec-phase:b8f0f236",
+   "file": "commands/pan/exec-phase.md",
+   "text": "A plan failed and the user chose \"Stop?\" → partial completion report; if they continue, never run a plan that depends on a failed one (`phase-plan-index --failed`)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/exec-phase:a1ad2f09",
+   "file": "commands/pan/exec-phase.md",
+   "text": "Discovery: read-only — do not modify files while figuring out what to execute",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/exec-phase:a37a52e7",
+   "file": "commands/pan/exec-phase.md",
+   "text": "**Task tracking:** where your runtime offers a todo or task-tracking tool, you may keep the wave list in it. Do not depend on one: some runtimes offer none on their newest models (Claude Code gates its task tools behind `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` there). The attention anchor above, the wave summaries and state.md are the record either way.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/exec-phase:10083a41",
+   "file": "commands/pan/exec-phase.md",
+   "text": "Never let a failed task block the rest of the wave.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/exec-phase:64227127",
+   "file": "commands/pan/exec-phase.md",
+   "text": "Implement exactly what the plan says. Do not add features, refactor surrounding code, add comments to unchanged files, or create abstractions for one-time operations.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/experiment:8282f86d",
+   "file": "commands/pan/experiment.md",
+   "text": "**Billing note (Claude runtime):** headless `claude -p` runs bill against the **Claude Agent SDK credit pool** — a monthly allotment separate from your interactive subscription limits (Anthropic split the two effective June 15, 2026). Experiment runs do not consume interactive-session quota, but heavy experimentation can exhaust the SDK pool independently. Note: the CLI `experiment run` does not capture a metrics envelope — the `billing_pool: \"agent_sdk\"` tagging is produced only via the runner module's capture-metrics API, not from the command line, so CLI run-state has no `metrics` key to reconcile against.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/experiment:0896c612",
+   "file": "commands/pan/experiment.md",
+   "text": "**Never inside source repo.** `newExperiment` refuses to write inside PAN's source repository, wherever it is cloned. Mirrors `bin/install.js` `PAN_SOURCE_ROOT` guard.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:b5d9807b",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**These directories are PAN's own tooling installed into the project.** Do not scan PAN files for TODOs, do not report PAN files as lacking coverage, do not modify PAN agents/commands/core as part of a campaign. If a scan finding or batch item targets a PAN infrastructure file — DROP IT.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:170bc2d2",
+   "file": "commands/pan/focus-auto.md",
+   "text": "If `$ARGUMENTS` does NOT contain `--category`, you MUST ask the user before doing anything else.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:dd53f845",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Wait for the user's reply before proceeding. Do not guess or pick a default category.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:e23d6193",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**Score from the CURRENT document — never a hardcoded ID list.** For each item, derive `RS = (UserValue + TimeCriticality + RiskReduction) / Effort` (1–5 each; Effort from the row's size tag). Sort by wave/priority ascending → RS descending → effort ascending. This re-derives the order from whatever the roadmap says today, so it never goes stale.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:e4e384e5",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**Commit-quality gates** (advisory, always on): a *staging-miss guard* (no exec-touched file left unstaged) and an *orphan audit* (HEAD must not reference a symbol defined only in an uncommitted file). With `--clean-seal`, a single clean build + full verification runs after the last item to catch cross-item orphans the per-cycle incremental commits hid.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:db568191",
+   "file": "commands/pan/focus-auto.md",
+   "text": "passing on every one of these flags the user gave: the tooling reads each of them, and a flag left off here never takes effect",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:17a600b4",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Run `git status` to verify clean working tree (warn if dirty, don't block)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:a9d02f77",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Phase 0 → Phase 1: Init MUST succeed before baseline (state tracking requires valid run)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:28488a83",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Phase 1 → Phase 2: Baseline MUST be captured before main loop (regression circuit breaker needs it)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:aec219bb",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Scan MUST complete before plan (plan needs scan items)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:47e11c00",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Plan MUST complete before exec (exec needs batch file)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:1438586a",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Exec MUST complete and tests pass before commit (never commit broken code)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:68c67857",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Phase 1 fails (tests broken): Do not enter main loop — report and exit",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:bd283e43",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**Classification:** Map findings to priorities: OWASP critical/directly-reachable → P0, High/missing-authorization → P1, Medium/defense-in-depth → P2. Drop LOW/INFO — they don't meet the P0-P2 filter.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:4a0af83a",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Read target file(s) — always read before editing",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:3b22aabc",
+   "file": "commands/pan/focus-auto.md",
+   "text": "A failed item never blocks subsequent items.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:f1c8e977",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**Final re-verification pass (spend the verify reserve).** Run `pan-tools focus auto --status` and read `stop_reason` / `into_verify_reserve` / `verify_reserve`. Run one clean build + full verification directly (commands from `config.json → build`/`verification`) — the same pass `--clean-seal` performs — when ANY holds: the stop reason is `budget_reserve_reached`, `--clean-seal` is set, or `into_verify_reserve` is true. This is what the reserved budget is FOR: the run stopped taking on **new** work early (at `budget_reserve_reached`) precisely so this closing verification has headroom and isn't starved. Run the verification commands directly — do NOT `focus auto --update` here (the run is already `completed`; its status update is refused, and the verification agents' spend is captured by the cost hooks automatically). If verification fails, treat it as a HARD STOP (preserve state, report) rather than sealing green. Skip this step only when none of the three conditions hold (advisory run that never entered the reserve and no `--clean-seal`).",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:e2232603",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**Preserve Tests** — Never change test expectations to match broken code.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:62336c3e",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Record the count with `--prompts-remaining N` on the cycle's `focus auto --update` — at 0, `prompts_complete` fires; without the flag the count is null and it never fires",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:5e3133d7",
+   "file": "commands/pan/focus-auto.md",
+   "text": "Execute prompts in document order — NEVER skip ahead or reorder",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:cdee5191",
+   "file": "commands/pan/focus-auto.md",
+   "text": "The prompt document is the plan — do not re-plan or expand scope beyond what each prompt says",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:2f5207c0",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**Pass 1 — Fast grep scan (always runs):**",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:e98ae0a5",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**Pass 2 — Structural check (always runs):**",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:799e5c05",
+   "file": "commands/pan/focus-auto.md",
+   "text": "This is authorized, defensive hardening of the user's own codebase — you assess and remediate weaknesses; you never write exploit code or attack instructions.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-auto:2b22f338",
+   "file": "commands/pan/focus-auto.md",
+   "text": "**Write or update the test** — every security fix MUST have a test that proves the weakness is closed (e.g., send the crafted/invalid input, assert 400/403 not 200)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:01cd60da",
+   "file": "commands/pan/focus-design.md",
+   "text": "**NEVER investigate, design for, or reference these PAN infrastructure directories as part of the project:**",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:83455151",
+   "file": "commands/pan/focus-design.md",
+   "text": "`.planning/` — PAN planning state (read for context, but don't treat as project source code)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:855d4f3d",
+   "file": "commands/pan/focus-design.md",
+   "text": "When `/pan:focus-design` is invoked, execute all phases for the selected mode automatically. Do not stop to ask questions between phases or skip phases beyond what the mode specifies. Complete the full investigation and produce all output artifacts. The only permitted pause is the Strategy Gate in Phase 3 (if the user passed `--gate`).",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:ae987a6a",
+   "file": "commands/pan/focus-design.md",
+   "text": "*Investigate the codebase BEFORE designing anything. Discover, don't assume.*",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:72489ed4",
+   "file": "commands/pan/focus-design.md",
+   "text": "Questions MUST reference specific files, line numbers, or patterns found during investigation (e.g., \"I found your auth uses JWT with RS256 in `auth.cjs:47` — should this feature follow the same pattern?\")",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:4c91ceab",
+   "file": "commands/pan/focus-design.md",
+   "text": "Never ask generic questions (\"Do you want tests?\" — always want tests)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:11ca5a80",
+   "file": "commands/pan/focus-design.md",
+   "text": "[ ] New code respects the project's layer separation (e.g., controllers don't access DB directly, services don't import UI)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:c291f4a8",
+   "file": "commands/pan/focus-design.md",
+   "text": "Write as if teaching this feature to a user who has never seen it:",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:accbd917",
+   "file": "commands/pan/focus-design.md",
+   "text": "The ADR MUST contain ALL of the following sections. Do NOT produce a skeleton with placeholder text — every section must have substantive, project-specific content drawn from the preceding phases.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:e33431d6",
+   "file": "commands/pan/focus-design.md",
+   "text": "**Skeleton ADR:** `[Problem context — what forces are at play?]` — NEVER use placeholder brackets in the output",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:30e60654",
+   "file": "commands/pan/focus-design.md",
+   "text": "Do not proceed to Phase 10 output until the checker PASSES or the 2-iteration cap is reached.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:b825c025",
+   "file": "commands/pan/focus-design.md",
+   "text": "Never pass raw file content to `eval()`, `Function()`, or template strings",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:806bcdc2",
+   "file": "commands/pan/focus-design.md",
+   "text": "Design in isolation — always map dependencies and integration points",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/focus-design:cc46f676",
+   "file": "commands/pan/focus-design.md",
+   "text": "Validate file content structure before processing (never trust disk contents)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/hud:7105056e",
+   "file": "commands/pan/hud.md",
+   "text": "It is a *view*, not a new source of truth: every panel aggregates state PAN already tracks (`state.md`, the roadmap/phases on disk, the squad registry, the campaign schedule, army worktrees, the cost ledger, `requirements.md`, verification artifacts, and git history). The command writes only the rendered file, so it can never corrupt planning data.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/hud:d65a7e0e",
+   "file": "commands/pan/hud.md",
+   "text": "*(army)* panels appear only when a campaign is scheduled or army worktrees exist — graceful degradation per ADR-0035. The *(fallback)* **Planning activity** panel appears only when there is no phase/roadmap layout, so it fills the gap for focus-auto and imported projects instead of leaving a bare page. Telemetry shows an honest advisory (never a fabricated zero-dollar total) when the cost ledger is poisoned or every record is unpriced.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/hygiene:3140de0e",
+   "file": "commands/pan/hygiene.md",
+   "text": "Claude Code's own memory index past or near its load limit, or holding content where a one-line pointer belongs (`host-memory`). PAN only reports this one: it never writes the host's memory.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/hygiene:e0608fd9",
+   "file": "commands/pan/hygiene.md",
+   "text": "**Always state which trees were scanned** — read `roots_scanned[]` and name them. If `summary.total` is 0, report \"Project is clean and aligned\" *together with* the list of trees that were read. A clean verdict without its scope is what let stale debris hide in an unscanned track; never report one without the other.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/hygiene:e6fa246c",
+   "file": "commands/pan/hygiene.md",
+   "text": "Hygiene never runs the installer itself.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/hygiene:5703d5b8",
+   "file": "commands/pan/hygiene.md",
+   "text": "Safe fixes are: lowercase renames of legacy planning filenames, deletion of aged .tmp orphans, memory-log compaction, **memory pruning** (`prune-memory`: stale and expired entries move to `.planning/memory/archive/<agent>.md`), poisoned-ledger quarantine (renamed in place; only the newest quarantined copy is kept, older ones are deleted), pruning of trace sessions **and optimization reports** past retention (newest 5 of each always kept), **state.md compaction** (`compact-state`) — settled history is archived to `state-history.md` so it stops being re-read into every agent call — and **roadmap compaction** (`compact-roadmap`): shipped phases' sections move to `roadmap-history.md`, leaving a stub that `roadmap get-phase` reads back through. None of these deletes anything you wrote: the ledger is renamed, and each archive is written before the file it came from is rewritten. Each fix is applied inside its own tree's scope, so a track's debris is cleaned in that track. Pass through `--trace-age-days N` if provided. With `--track <name>`, use it **in place of** `--all-tracks` in both commands: given both, `--all-tracks` wins and every tree is cleaned.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/hygiene:f0be8bee",
+   "file": "commands/pan/hygiene.md",
+   "text": "Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the token cost its detail names and who pays it: state.md is re-read on **every** agent call, the project's largest recurring expense, while roadmap.md and requirements.md cost only when the roadmapper or milestone work reads them whole. If a `host-memory` finding appeared, name the index and the lines it flags so the user can tidy them: Claude Code loads only the head of that index, and PAN never edits it. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/hygiene:6885949a",
+   "file": "commands/pan/hygiene.md",
+   "text": "[ ] Version drift reported with the exact installer command (never auto-run)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/knowledge:edc65933",
+   "file": "commands/pan/knowledge.md",
+   "text": "The agent should NEVER fabricate citations. The retrieval layer's `sources` list is the allowlist.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/learn:098f4778",
+   "file": "commands/pan/learn.md",
+   "text": "Nothing in the report reaches an agent until a person writes it where the agents read. PAN's workflows do not load `.planning/memory/` into agents.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/links:6bce919f",
+   "file": "commands/pan/links.md",
+   "text": "`--strict` — fail (exit 1) on warnings, not only errors. Default is advisory: warnings do not flip status.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/map-codebase:3d1a5b08",
+   "file": "commands/pan/map-codebase.md",
+   "text": "Record the chosen mode + telemetry in a `.planning/codebase/overview.md` you write yourself. The map-codebase workflow has no single-shot branch — it always spawns the sharded mappers and writes no overview.md — so in `single-shot` mode spawn the one agent in place of its spawn step.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/milestone-audit:93210b46",
+   "file": "commands/pan/milestone-audit.md",
+   "text": "Every coverage judgment in the audit MUST cite evidence from the codebase.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/milestone-audit:c8847982",
+   "file": "commands/pan/milestone-audit.md",
+   "text": "Do not trust summary files at face value. If a verification.md says \"all tests pass\" but you haven't confirmed the test count, that claim is ungrounded. Spot-check at least 2 verification files by running the actual tests.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/milestone-done:350ded9b",
+   "file": "commands/pan/milestone-done.md",
+   "text": "**Archive before deleting:** Always create archive files before updating/deleting originals",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/milestone-new:b6b3c1d3",
+   "file": "commands/pan/milestone-new.md",
+   "text": "**Design altitude (ADR-0042):** product/strategic design — demand validation, competitive intelligence, market positioning — belongs HERE at milestone creation (via the requirements/research cycle, or `/pan:focus-design` for a strategic feature), done ONCE. Per-phase architecture/ADR/threat design is `/pan:design-phase`, run per phase. Do not defer product questions to per-phase design, and do not re-open them there.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/new-project:08aec81b",
+   "file": "commands/pan/new-project.md",
+   "text": "**Layer 1: Manifest (always load first)**",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/pause:d276ef1b",
+   "file": "commands/pan/pause.md",
+   "text": "The `.continue-here.md` file MUST contain ALL of the following sections. Missing sections cause resume failures.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/plan-phase:3675b7f2",
+   "file": "commands/pan/plan-phase.md",
+   "text": "Do not blindly accept all critiques — some may be false positives from missing context",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/preview:2c0abfc5",
+   "file": "commands/pan/preview.md",
+   "text": "**Before committing to a milestone date externally:** run `/pan:preview milestone`. Look at `confidence_pct` and `sample_size`. If sample is <3, don't promise a date.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/preview:2d94af9f",
+   "file": "commands/pan/preview.md",
+   "text": "The command returns the path to the generated preview document. Never paste the report back into conversation output — the file is the deliverable; reference it by path.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/quick:5264c60f",
+   "file": "commands/pan/quick.md",
+   "text": "Implement only what was asked. Do not refactor surrounding code, add unrelated improvements, or create abstractions for one-time fixes.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/report:098c8a0e",
+   "file": "commands/pan/report.md",
+   "text": "Like `pan:hud`, these are *views*, not a new source of truth: every value is read from what PAN already tracks on disk (the phase's `plan`/`summary`/`verification` artifacts and their frontmatter, `roadmap.md`, and the cost ledger). The command only writes the rendered file(s), so it can never corrupt planning data. Reports reuse the HUD's visual language, so they look like part of the same product.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/report:c8012414",
+   "file": "commands/pan/report.md",
+   "text": "Reports are honest by construction: the `verify reconcile` verdict is shown beside the (rubber-stampable) self-reported verification status, status is framed as a current-disk snapshot, and any spend is gated so a poisoned or unpriced ledger never renders a fake zero-dollar spend.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/report:04187552",
+   "file": "commands/pan/report.md",
+   "text": "`--open` — best-effort: launch the written file in the default browser (cross-platform; silently no-ops if no opener is available, and never opens when nothing was written).",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/retro:243f49b8",
+   "file": "commands/pan/retro.md",
+   "text": "This is a reflection command — **read-only by default**: with no flags it does not modify any files. Passing `--write-memory` is the one exception: it appends recurring-pattern entries to the agent logs in `.planning/memory/`, which `/pan:knowledge` reads. PAN's workflows do not load those logs into agents, so a pattern meant to change the next plan goes into that plan's brief or the project's instructions.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/review-deep:81f49014",
+   "file": "commands/pan/review-deep.md",
+   "text": "Verdict is driven by the highest-severity finding across all three sources. Meta-reviewer disputes are listed in the conflict table but change no severity, so they never lower the headline verdict; the meta-reviewer's own findings count toward it like the other two sources'.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/verify-phase:1b074673",
+   "file": "commands/pan/verify-phase.md",
+   "text": "Never claim a feature works or doesn't work without reading the implementation first.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/verify-phase:2b1fc47a",
+   "file": "commands/pan/verify-phase.md",
+   "text": "Do not speculate about code you have not opened.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/verify-phase:eac0f3fe",
+   "file": "commands/pan/verify-phase.md",
+   "text": "Every verdict (PASS, PARTIAL, FAIL) MUST include at least one file:line citation as evidence.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/what-if:1fab0f6c",
+   "file": "commands/pan/what-if.md",
+   "text": "Removes the worktree directory and deletes the counterfactual branch. Pass the `worktree.worktree_path` and `worktree.branch` that `whatif prepare` returned, unchanged. Cleanup refuses (exit 1, nothing removed) a branch outside `pan-whatif/` and a worktree that is not checked out on that branch, so it can never delete your own work. Otherwise best-effort: warnings are surfaced but don't block.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/what-if:f64a708c",
+   "file": "commands/pan/what-if.md",
+   "text": "The worktree dir and branch include a timestamp, so concurrent/repeat runs never collide there. The **report** is keyed on phase+slug only (no timestamp), so re-running what-if on the same phase+scenario **overwrites** the previous report at `.planning/counterfactuals/<phase>-<slug>.md`. Rename or copy a report you want to keep before re-running the same scenario.",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/what-if:93f9a61d",
+   "file": "commands/pan/what-if.md",
+   "text": "The alternative is trivially decidable from reading the plan (don't spawn an agent)",
+   "baseline": true
+  },
+  {
+   "id": "commands/pan/what-if:bcaf0e68",
+   "file": "commands/pan/what-if.md",
+   "text": "The main tree has massive uncommitted changes you don't want reflected in the worktree's base",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/discuss-phase:d9d002bc",
+   "file": "pan-wizard-core/workflows/discuss-phase.md",
+   "text": "The phase boundary comes from roadmap.md and is FIXED. Discussion clarifies HOW to implement what's scoped, never WHETHER to add new capabilities.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/discuss-phase:84bc223a",
+   "file": "pan-wizard-core/workflows/discuss-phase.md",
+   "text": "Capture the idea in a \"Deferred Ideas\" section. Don't lose it, don't act on it.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/discuss-phase:9fa4bd41",
+   "file": "pan-wizard-core/workflows/discuss-phase.md",
+   "text": "**Don't use generic category labels** (UI, UX, Behavior). Generate specific gray areas:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/discuss-phase:685bfe13",
+   "file": "pan-wizard-core/workflows/discuss-phase.md",
+   "text": "**Claude handles these (don't ask):**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/discuss-phase:9061d9c4",
+   "file": "pan-wizard-core/workflows/discuss-phase.md",
+   "text": "**If `assumptions_path` is set**, read it first: it holds the assumptions `/pan:assumptions` surfaced and the user's corrections to them. Treat each correction as already decided; do not ask it again.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/discuss-phase:87546599",
+   "file": "pan-wizard-core/workflows/discuss-phase.md",
+   "text": "**Gray areas by category**: scan the phase against the `<clarification_taxonomy>` in `references/questioning.md` (scope, users, behaviour, data, interfaces, errors and edge cases, non-functional, constraints, done), plus UI, UX, empty states and content for a user-facing phase. Identify the specific ambiguities that would change implementation, then keep to the `<question_budget>`: at most five questions, ranked by impact × uncertainty, and every ambiguity you do not ask about written into context.md as an `Assumed:` line the user can correct.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/discuss-phase:e1ff4514",
+   "file": "pan-wizard-core/workflows/discuss-phase.md",
+   "text": "Spawn plan-phase as Task with direct workflow file reference (do NOT use Skill tool — Skills don't resolve inside Task subagents):",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:7dee7d27",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "**Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent executor --cue \"<phase goal; the files it touches>\" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for execution. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts. Files appear here over time as `pan-tools learn promote` adds findings.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:78ec1ccb",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "**An executor that returned `## DONE_WITH_CONCERNS`** finished its plan: run the same spot-checks and treat it as complete. Keep its concerns (each with why and cost if wrong, also under `## Concerns` in its summary) for the wave report and the phase report. Do not stop the wave for them; a high-cost concern is something the review and the verifier should look at, and the phase report puts it in front of the user.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:b7c0c45e",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "**An executor that returned `## BLOCKED_SPEC_CONFLICT`** found a test it cannot satisfy without weakening it. It is not a failure to retry: show the user its Test, Requirement and Options and ask for a ruling. \"Change the test\" means a revised plan that declares the test file in `files_modified` (`/pan:plan-phase {N} --gaps` or an edit to the plan), then re-run that plan; \"change the requirement\" means updating the requirement and the plan. Never re-run the same plan unchanged: it would meet the same test. Declaring the file permits rewriting its expectations; deleting the test, skipping it or dropping assertions still fails `verify test-integrity`, so a ruling to do that also needs `phase complete --force --reason`.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:23e8f5d0",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "When its `status` is `near` or `over`, add one line to the wave report: \"Spend: ${spent_usd} of the ${budget_usd} phase budget (${pct}%)\", and for `over`, \"over budget: the phase keeps running; change the budget with /pan:settings\". Do not stop, pause or ask: the budget warns, it never blocks. `ok` and `off` add nothing.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:bb45eb0b",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "For real failures: report which plan failed → ask \"Continue?\" or \"Stop?\". If stop, partial completion report. If continue, never run a plan that depends on a failed one; ask the engine which plans are blocked:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:5985063e",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "`${FAILED_PLAN_IDS}` is the comma-separated ids of every plan that failed so far. `blocked` lists each unfinished plan whose `depends_on` reaches a failed plan, directly or through another blocked plan, with the failed plans behind it. Do not spawn those plans in this or any later wave. Name them in the wave report and the final summary (\"Skipped 03-03 and 03-04: they depend on 03-01, which failed\"), and run every other plan as planned. The same applies after \"Continue with remaining waves?\" in step 4.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:c1a3afb3",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "**decision** → The executor already took the plan's `auto_select` option when the task had one, so a decision that comes back has none: present it to the user (standard flow below). If a returned decision's task does carry `auto_select` in the plan file, auto-spawn the continuation agent with `{user_response}` = that option id and log `⚡ Auto-selected: [option] (auto_select)`. Never answer with an option because it is listed first.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:2a0dda15",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "`REVIEW_SCOPE` is JSON. Its `unlisted` array holds the changed files no summary's key-files names. Review them like the others: an executor that changed a file without listing it is exactly what a review must not miss. Its `intent` holds each plan's objective, `must_haves` and Review Focus, and the text of the requirements the plans claim.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:7532fd57",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "**Never continue past findings silently.** Whenever the phase moves on with review findings still open, record why. The reason is what a milestone audit later reports as tech debt:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:231b29c5",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "**Completing past a refusal** is the user's decision, never yours, and needs their reason. It records a `decision` for every open finding the gate counted:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:cd649bbb",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "**Phase reports (opt-in build deliverable):** when `workflow.phase_reports.enabled` is `true`, generate the self-contained per-phase HTML report — and, when `workflow.phase_reports.index` is `true`, the project timeline index — at this verify→complete gate so they ship with the phase and ride the commit below. Disabled by default; phase-less projects are skipped automatically by `report`. Never opens a browser here (that's reserved for a manual `pan-tools report index --open`).",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:e06d476d",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "STOP. Do not proceed to auto-advance or transition.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:0e8d3084",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "STOP — do not auto-advance. Return to user.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:46306aed",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "**Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent executor --cue \"<plan objective; the files it modifies>\" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for execution. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:3c3d430c",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "**Tracking protocol:** On spawn: write agent_id to `current-agent-id.txt`, append to agent-history.json: `{\"agent_id\":\"[id]\",\"task_description\":\"[desc]\",\"phase\":\"[phase]\",\"plan\":\"[plan]\",\"segment\":[num|null],\"timestamp\":\"[ISO]\",\"status\":\"spawned\",\"completion_timestamp\":null}`. On completion: status → \"completed\", set completion_timestamp, delete current-agent-id.txt. Prune: if entries > max_entries, remove oldest \"completed\" (never \"spawned\").",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:7bb29313",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "Summary MUST include deviations section. None? → `## Deviations from Plan\\n\\nNone - plan executed exactly as written.`",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:050f5666",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "**RED:** Read `<behavior>` → failing test(s) → run (MUST fail) → commit: `test({phase}-{plan}): add failing test for [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:af093895",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "**GREEN:** Read `<implementation>` → minimal code → run (MUST pass) → commit: `feat({phase}-{plan}): implement [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:582dd93b",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "**REFACTOR:** Clean up → tests MUST pass → commit: `refactor({phase}-{plan}): clean up [feature]`",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:a58d69fc",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "**2. Stage individually** (NEVER `git add .` or `git add -A`):",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/execute-plan:4a3fbcb9",
+   "file": "pan-wizard-core/workflows/execute-plan.md",
+   "text": "**Frontmatter:** phase, plan, subsystem, tags | requires/provides/affects | tech-stack.added/patterns | key-files.created/modified | key-decisions | requirements-completed (**MUST** copy `requirements` array from plan.md frontmatter verbatim) | duration ($DURATION), completed ($PLAN_END_TIME date).",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-doc-audit:bc89865f",
+   "file": "pan-wizard-core/workflows/focus-doc-audit.md",
+   "text": "**NEVER audit, modify, or report issues in these PAN directories:**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-doc-audit:c614ec2d",
+   "file": "pan-wizard-core/workflows/focus-doc-audit.md",
+   "text": "`.planning/` — PAN planning state (read for context, never audit as project docs)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-doc-audit:f61d126a",
+   "file": "pan-wizard-core/workflows/focus-doc-audit.md",
+   "text": "**Priority 1 — Always audit:**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-doc-audit:b1871244",
+   "file": "pan-wizard-core/workflows/focus-doc-audit.md",
+   "text": "Only modify documentation files (`.md`, `.rst`, `.adoc`) — NEVER source code",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-doc-audit:9757e20f",
+   "file": "pan-wizard-core/workflows/focus-doc-audit.md",
+   "text": "Make minimal changes — don't rewrite paragraphs",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-doc-audit:e066a204",
+   "file": "pan-wizard-core/workflows/focus-doc-audit.md",
+   "text": "Invent ground truth — always extract from actual config/code files",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-drift-walking:ffe76fd8",
+   "file": "pan-wizard-core/workflows/focus-drift-walking.md",
+   "text": "`.planning/` — PAN planning state (read for context, never report as drift)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-drift-walking:4b842b93",
+   "file": "pan-wizard-core/workflows/focus-drift-walking.md",
+   "text": "**Drift direction rule:** Higher layers NEVER override lower layers. If code says X and docs say Y, the docs are wrong.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-drift-walking:e5715935",
+   "file": "pan-wizard-core/workflows/focus-drift-walking.md",
+   "text": "NEVER create docs in build output or generated directories",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-drift-walking:e4e7619e",
+   "file": "pan-wizard-core/workflows/focus-drift-walking.md",
+   "text": "NEVER create docs in directories with < 3 source files (too trivial)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-drift-walking:72e669fa",
+   "file": "pan-wizard-core/workflows/focus-drift-walking.md",
+   "text": "NEVER include secrets, credentials, or API keys",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-drift-walking:e70ad2ad",
+   "file": "pan-wizard-core/workflows/focus-drift-walking.md",
+   "text": "ALWAYS derive content from actual code — never guess",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-drift-walking:5f2db827",
+   "file": "pan-wizard-core/workflows/focus-drift-walking.md",
+   "text": "Never rewrite entire files — patch specific sections",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-drift-walking:4e93b31f",
+   "file": "pan-wizard-core/workflows/focus-drift-walking.md",
+   "text": "Guess at file contents — always read and verify",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:9e9ab7d2",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "**Do not read, modify, or fix files in these PAN directories:**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:109c0759",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "**These directories are PAN's own tooling installed into the project.** If a batch item targets a PAN infrastructure file, SKIP it with reason \"PAN infrastructure — out of scope.\" Never modify PAN's agents, commands, core modules, or dispatcher as part of project work.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:28f5f490",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "When `/pan:focus-auto --step exec` is invoked, run all 6 stages in order. Do not skip stages or stop between them unless tests regress.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:7cc1e531",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Stage 1 → Stage 2: Baseline MUST exist before batch loads (regression detection requires it)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:d9791644",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Stage 2 → Stage 3: Batch MUST be validated before execution begins (prevents working on stale/empty batches)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:c8a5d812",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Stage 3 → Stage 4: All items MUST be processed before verification (partial verification produces false confidence)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:e929ff08",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Stage 4 → Stage 5: Tests MUST pass before doc sync (don't document broken code)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:5bd9c6f3",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Stage 5 → Stage 6: Docs MUST be updated before commit (commit captures the complete state)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:e9f4cac1",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "HARD STOP conditions (do not proceed to next stage):",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:78613c58",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Do not apply surface-level patches. Trace the code path, identify the actual defect.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:4f5f1807",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Implement exactly what the batch says. Do not:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:691299ef",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Never change an existing test's expected output to match broken code.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:787c3b1e",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "**Never let a failed item block other items.** Mark it FAILED with the error classification and move on.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:221e483c",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "Before committing, run through ALL checks. Do not commit until every check passes.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-plan:dd46c517",
+   "file": "pan-wizard-core/workflows/focus-plan.md",
+   "text": "**NEVER include items targeting these PAN directories:**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-plan:a62c4a94",
+   "file": "pan-wizard-core/workflows/focus-plan.md",
+   "text": "Mark as `Partial` if code exists but tests don't, or if the feature is stubbed",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-plan:861eaabc",
+   "file": "pan-wizard-core/workflows/focus-plan.md",
+   "text": "**Spec coverage:** Feature items MUST map to spec requirements — reject unspecified feature work",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-plan:d32662b4",
+   "file": "pan-wizard-core/workflows/focus-plan.md",
+   "text": "Write the batch to `.planning/focus/batch-<YYYY-MM-DD>.json` yourself — `{date, mode, budget, allocated, items: [...]}`, each item `{id, title, priority, effort, points, tier, files}` with `tier` one of `MICRO`, `STANDARD`, `FULL` (`focus exec` and `focus classify-stages` group items by it, and an item without it lands in no wave); `focus exec`, `focus classify-stages` and `/pan:focus-auto --step exec` read an `items` or `batch` array. Do not hand this step to `pan-tools focus plan`: it ignores the scan and the spec mapping, batches only incomplete roadmap phases, pending todos and `.planning/patterns.md` entries, and overwrites the day's batch file:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-scan:9e0ce16a",
+   "file": "pan-wizard-core/workflows/focus-scan.md",
+   "text": "`.planning/` — PAN planning state (read for context, but never report PAN planning files as \"issues\")",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-scan:5edb997c",
+   "file": "pan-wizard-core/workflows/focus-scan.md",
+   "text": "**These directories are PAN's own tooling installed into the project.** Do not report TODO/FIXME items found in PAN files. Do not flag PAN files as lacking test coverage. Do not suggest improvements to PAN's agents, commands, or core modules.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-scan:7e5f78fd",
+   "file": "pan-wizard-core/workflows/focus-scan.md",
+   "text": "Do not read entire files when Grep can find the relevant lines. Do not use Bash for searches that Grep handles.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-scan:92fcffc5",
+   "file": "pan-wizard-core/workflows/focus-scan.md",
+   "text": "When `/pan:focus-auto --step scan` is invoked, execute all phases without stopping. Do not ask questions between phases or skip phases. The output is a prioritized work list with Reality Score filtering.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-scan:66646b0a",
+   "file": "pan-wizard-core/workflows/focus-scan.md",
+   "text": "The project's own command, agent, workflow and hook definitions, if it has any (never PAN's, which the Project Scope Boundary excludes)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-scan:e34f3013",
+   "file": "pan-wizard-core/workflows/focus-scan.md",
+   "text": "**Crashes before correctness** — A thrown error is always higher priority than wrong output",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-sync:290c92de",
+   "file": "pan-wizard-core/workflows/focus-sync.md",
+   "text": "**NEVER sync, modify, or report staleness in these PAN directories:**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/insert-phase:bd90393b",
+   "file": "pan-wizard-core/workflows/insert-phase.md",
+   "text": "Don't use this for planned work at end of milestone (use /pan:add-phase)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/insert-phase:ba87aada",
+   "file": "pan-wizard-core/workflows/insert-phase.md",
+   "text": "Don't insert before Phase 1 (decimal 0.1 makes no sense)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/insert-phase:b4582a61",
+   "file": "pan-wizard-core/workflows/insert-phase.md",
+   "text": "Don't renumber existing phases",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/insert-phase:b17396cf",
+   "file": "pan-wizard-core/workflows/insert-phase.md",
+   "text": "Don't modify the target phase content",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/insert-phase:f0ca388a",
+   "file": "pan-wizard-core/workflows/insert-phase.md",
+   "text": "Don't create plans yet (that's /pan:plan-phase)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/insert-phase:930eda56",
+   "file": "pan-wizard-core/workflows/insert-phase.md",
+   "text": "Don't commit changes (user decides when to commit)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/map-codebase:0292d3f8",
+   "file": "pan-wizard-core/workflows/map-codebase.md",
+   "text": "**Always include file paths:**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/map-codebase:7265e429",
+   "file": "pan-wizard-core/workflows/map-codebase.md",
+   "text": "Documents are reference material for Claude when planning/executing. Always include actual file paths formatted with backticks: `src/services/user.ts`.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-audit:9786c418",
+   "file": "pan-wizard-core/workflows/milestone-audit.md",
+   "text": "**Always state the resolved `planning_root` at the top of the audit report.** If `planning_root_exists` is `false`, STOP — that is a mistyped `--track`, not an empty milestone.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-audit:afdfc4ef",
+   "file": "pan-wizard-core/workflows/milestone-audit.md",
+   "text": "**If `milestone_ambiguous` is `true`, STOP and report the planning-state error.** Do not audit. Two milestones marked current is a roadmap defect the owner must resolve; picking one silently is how an audit ends up describing a milestone that does not exist.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-audit:885b7f05",
+   "file": "pan-wizard-core/workflows/milestone-audit.md",
+   "text": "**`open`** findings were never disposed (no fix, deferral, dismissal or decision). List them under \"Undisposed findings\" in the report. They are not blockers by themselves: the verification gate handles blockers. They do mean the milestone cannot be `passed`, so the status is at least `tech_debt`.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-audit:55dd19f6",
+   "file": "pan-wizard-core/workflows/milestone-audit.md",
+   "text": "MUST cross-reference three independent sources for each requirement:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-audit:9ea4114b",
+   "file": "pan-wizard-core/workflows/milestone-audit.md",
+   "text": "**REQUIRED:** Any `unsatisfied` requirement MUST force `gaps_found` status on the milestone audit.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-audit:380c05cf",
+   "file": "pan-wizard-core/workflows/milestone-audit.md",
+   "text": "**Orphan detection:** Requirements present in requirements.md traceability table but absent from ALL phase verification.md files MUST be flagged as orphaned. Orphaned requirements are treated as `unsatisfied` — they were assigned but never verified by any phase.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-audit:18ce2197",
+   "file": "pan-wizard-core/workflows/milestone-audit.md",
+   "text": "`tech_debt` — no blockers but accumulated deferred items need review, or recorded findings were never disposed",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-new:9b0efcbb",
+   "file": "pan-wizard-core/workflows/milestone-new.md",
+   "text": "The old state.md is backed up first. The engine writes every section of the template and keeps the frontmatter in sync; never write state.md with the Write or Edit tool (under `hooks.guard: enforce` the guard denies it).",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:df3b3dca",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "**Gather everything, then emit.** Do not write a skeleton and refine it in place. Not ready to write the final document = still in the gathering step.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:a56a528d",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "**Do not re-read a file you wrote this step.** You know what it says; re-reading your own output to \"check\" it is the non-convergence loop starting.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:c96ad953",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "**Post-write corrections are targeted Edits for a verified defect** (wrong value, broken parse) — never a rewrite for restructuring you should have composed the first time.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:cdd08d5e",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "**Do NOT proceed** until the user has answered. Do not assume, research, or fill in blanks yourself. The user's intent drives everything — skipping this step leads to wasted scaffolding and mis-aligned implementation.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:1060c6ad",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "Research: Always yes",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:26f59e72",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "As you go, mentally check the context checklist from `questioning.md`, and scan the idea against its `<clarification_taxonomy>`. If gaps remain, weave questions naturally. Don't suddenly switch to checklist mode. Keep to its `<question_budget>`: at most five clarifying questions, ranked by impact × uncertainty, and every gap you did not ask about written into project.md as an `Assumed:` line.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:24c61a18",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "Do not compress. Capture everything gathered.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:8040bac4",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "v1 Requirements grouped by category (checkboxes, REQ-IDs), each with at least one acceptance criterion in an EARS form as an indented sub-bullet (`WHEN … THE SYSTEM SHALL …`; see the template's `<ears_criteria>`)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:6f42ce39",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "Spawn discuss-phase for Phase 1 as a Task subagent, exactly as transition.md Route A does for a phase with no context.md (discuss-phase.md as execution_context, `ARGUMENTS='1 --auto'`); do not call SlashCommand.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/optimize:5b40b637",
+   "file": "pan-wizard-core/workflows/optimize.md",
+   "text": "An older report's memory actions (`memory_entry`, `memory`, `memory_append`) still write to `.planning/memory/`, a `memory_entry` only if it passes the checks of the `memory record` command. The result warns that PAN's workflows do not load that folder into agents",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/optimize:82e727f4",
+   "file": "pan-wizard-core/workflows/optimize.md",
+   "text": "A person makes every change the suggestions describe (never auto-applied):",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/optimize:248575cc",
+   "file": "pan-wizard-core/workflows/optimize.md",
+   "text": "Revert never destroys work someone did since:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/optimize:b96e00c7",
+   "file": "pan-wizard-core/workflows/optimize.md",
+   "text": "If an applied item carries a `warning`, pass it on. An older report's memory actions write to `.planning/memory/`, which PAN's workflows do not load into agents.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/optimize:8fda93a9",
+   "file": "pan-wizard-core/workflows/optimize.md",
+   "text": "Show the user each reverted action and each refused one, with its reason. A refusal means someone edited the file after the apply, or a later apply also wrote it. Revert that later apply first; never force it. The status is `reverted`, `partial`, `refused` or `nothing_to_revert`.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/optimize:cc919041",
+   "file": "pan-wizard-core/workflows/optimize.md",
+   "text": "The key insight: a lesson changes the next run only from a place the next run's agents read: the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test that fails when it is broken, or the code itself. PAN's workflows do not load `.planning/memory/` into agents (ADR-0036, amended `2026-10-04`). In the harness, a lesson recorded there changed nothing that the project's state, summaries and code did not already carry. The report says where each suggestion belongs, and a person puts it there.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/phase-tests:e209462b",
+   "file": "pan-wizard-core/workflows/phase-tests.md",
+   "text": "Read each file to verify classification. Don't classify based on filename alone.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/phase-tests:cedb033f",
+   "file": "pan-wizard-core/workflows/phase-tests.md",
+   "text": "**No-skip rule:** If E2E tests cannot execute (missing dependencies, environment issues), report the blocker and mark the test as incomplete. Never mark success without actually running the test.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:d0028473",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "**Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent planner --cue \"<phase goal; the files it touches>\" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for planning. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:377c9f13",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "**File paths (for <files_to_read> blocks):** `state_path`, `roadmap_path`, `requirements_path`, `context_path`, `research_path`, `verification_path`, `uat_path`. The first three are always set, even when the file is missing; the other four are absent (treat as null) when their file does not exist.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:aa19d040",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "**P-1802 fix (v3.7.7):** in `--auto` mode (or when `workflow.auto_advance` is true) **do not call `AskUserQuestion`** and **do not attempt to spawn `discuss-phase` either** (discuss-phase has its own unguarded AskUserQuestion calls deeper in the workflow — they exit headless `claude -p` immediately). Instead, **proceed without a context.md**: the planner derives implementation decisions from project-level research, requirements, and the original idea.md frontmatter.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:bbeb69b0",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "`state_path`, `roadmap_path`, `requirements_path`, `research_path`, `verification_path`, `uat_path` and `context_path` come straight from the INIT JSON; fill the `{…_path}` placeholders below with them. `state_path`, `roadmap_path` and `requirements_path` are always set, even when the file is missing; the other four are absent from the JSON when their file does not exist.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:adb56fce",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "Exit 1 from `verify plan-set` means the plan set is broken in a way no review can wave through: a roadmap requirement no plan lists, two plans in one wave modifying the same file, a `depends_on` that names no plan or a plan in the same or a later wave, or a cycle. Exit 1 from `verify review-focus` means a plan has no `## Review Focus` section, more than five items, or an item that names no owning task or no test. Exit 1 from `verify decisions` means a plan cites a `DD-N` decision the design does not record, or a recorded decision no plan cites (it exits 0 when there is no design, or a design without ids). On any exit 1, send the `errors` of each failing check to the planner as the revision context (step 12; it counts as an iteration) and do not spawn the checker for this set. All exit 0: continue, and pass any `warnings` to the checker. `RESEARCH_LINT` never blocks planning: it goes to the checker as `<research_claims>` (claims with no source or date, and `stale` ones older than their type's window), and is `{\"error\":\"no_research\"}` when the phase was not researched.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:c9500029",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "In the final status, when the budget's `status` is not `off`, add: \"Budget: ${spent_usd} of ${budget_usd} spent so far\". When `FORECAST`'s `cost_forecast.phase.status` is `ok`, add its p50 and p10–p90, and say so when the p50 alone is above what is left of the budget. When the forecast is `insufficient`, say nothing about it. Never stop or ask on either.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:24e37adc",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "Spawn execute-phase as Task with direct workflow file reference (do NOT use Skill tool — Skills don't resolve inside Task subagents):",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/progress:b5e6303c",
+   "file": "pan-wizard-core/workflows/progress.md",
+   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/quick:4387c189",
+   "file": "pan-wizard-core/workflows/quick.md",
+   "text": "Record the task through the engine. It creates the \"### Quick Tasks Completed\" table after \"### Blockers/Concerns\" when it is missing, numbers the row, and keeps an existing table's columns. Pass `description_cell` exactly as init returned it, never `$DESCRIPTION`: init escapes `|` and folds line breaks, and a raw `|` would split the row.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/quick:9a19f305",
+   "file": "pan-wizard-core/workflows/quick.md",
+   "text": "Never edit state.md with the Edit tool (under `hooks.guard: enforce` the guard denies it).",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/remove-phase:acd1a649",
+   "file": "pan-wizard-core/workflows/remove-phase.md",
+   "text": "Don't remove completed phases (have summary.md files) without --force",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/remove-phase:51a70bde",
+   "file": "pan-wizard-core/workflows/remove-phase.md",
+   "text": "Don't remove current or past phases",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/remove-phase:f8785f7b",
+   "file": "pan-wizard-core/workflows/remove-phase.md",
+   "text": "Don't manually renumber — use `pan-tools phase remove` which handles all renumbering",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/remove-phase:ff0b6100",
+   "file": "pan-wizard-core/workflows/remove-phase.md",
+   "text": "Don't add \"removed phase\" notes to state.md — git commit is the record",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/remove-phase:ae206f08",
+   "file": "pan-wizard-core/workflows/remove-phase.md",
+   "text": "Don't modify completed phase directories",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/research-phase:178dd7d9",
+   "file": "pan-wizard-core/workflows/research-phase.md",
+   "text": "Write this phase's roadmap slice (its section, its dependencies' goals and its requirement lines), then use paths from INIT (do not inline file contents in orchestrator context):",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/resume-project:b5e6303c",
+   "file": "pan-wizard-core/workflows/resume-project.md",
+   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/resume-project:f4e08c1a",
+   "file": "pan-wizard-core/workflows/resume-project.md",
+   "text": "Reconstruct state.md through the engine, never with the Write tool:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/retro:89b17899",
+   "file": "pan-wizard-core/workflows/retro.md",
+   "text": "If the user passed `--write-memory` (and `--max N`), pass them on: `pan-tools retro --write-memory [--max N]`. It is the one flag that writes, appending recurring-pattern entries to the agent logs in `.planning/memory/`, and the JSON then carries `memory.wrote`. Never add it on your own.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/settings:f803f736",
+   "file": "pan-wizard-core/workflows/settings.md",
+   "text": "`cost.phase_budget_usd` — spend per phase PAN warns about, in API-equivalent dollars (default: `20`; `0` = off). It never stops a run",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:0b8843cc",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "Run the steps below to *plan* each state.md update, but **do not write or commit** between them. Hold the changes in memory.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:1fe74cb9",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "It reports any field it could not find in `failed`. Never edit state.md with the Edit tool: the engine keeps the frontmatter in sync, and under `hooks.guard: enforce` the guard denies a direct write.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:ef45fe45",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "If counts don't match: incomplete",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:378445a8",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "**P-1807 (2026-08, PanLoop finding 0):** these gates were previously `mode: yolo` alone. This file never read `--auto` or `workflow.auto_advance`, so on the template-default `mode: interactive`, exec-phase would announce \"AUTO-ADVANCING → TRANSITION\", this workflow would update state to the next phase, then route to the interactive \"Next Up\" menu and exit cleanly — the P-1801 Task spawn below was unreachable, and every autonomous run built exactly one phase while reporting success. Do not narrow these gates back to `mode` alone.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:78961f9e",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "[ ] Resume file confirmed as None (transitions don't use resume files)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:f482b87a",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "**AUTO-mode terminal contract (P-1807):** when AUTO is active (the condition from `verify_completion`), this step has exactly two valid endings — **Route A ends with a `Task(...)` call actually issued** (not described, not deferred: issued), or **Route B reaches the milestone boundary**. Updating state.md and presenting a \"Next Up\" menu is NOT a valid AUTO ending — field runs (PanLoop, 2026-08-08) show that exact exit four times in five even with the gates fixed. If you notice you are composing a menu while AUTO is active, stop and execute the Route A spawn. Do not end your turn between the state update and the spawn.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:b5e6303c",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/transition:3e2d330b",
+   "file": "pan-wizard-core/workflows/transition.md",
+   "text": "**P-1807 (2026-08):** this gate was `mode: yolo` alone, which made the P-1801 spawn unreachable for `--auto` / `workflow.auto_advance` runs on interactive-mode projects — the exact symptom P-1801 fixed, reintroduced one gate higher. If exec-phase announced AUTO-ADVANCING, this branch MUST run and MUST end in the `Task(...)` call below; exiting after the state update is the regression.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/uat-walkthrough:e88b70b6",
+   "file": "pan-wizard-core/workflows/uat-walkthrough.md",
+   "text": "The user is the oracle here. You present what they should be able to observe, they say whether they observed it, and the engine writes it down. Never mark a test passed on their behalf, and never rephrase their report: an issue is recorded in their words.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/verify-phase:6396e8c8",
+   "file": "pan-wizard-core/workflows/verify-phase.md",
+   "text": "**Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent verifier --cue \"<phase goal; the files it touches>\" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for verification. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/verify-phase:8cc6ff87",
+   "file": "pan-wizard-core/workflows/verify-phase.md",
+   "text": "Extract the **phase goal** and success criteria from `get-phase` (the outcome to verify, not tasks), and the phase's **requirements** from `$SLICE_PATH` (its `## Its requirements` lines). Do not read roadmap.md or requirements.md whole: on a long project they are the largest files in `.planning/`, and the slice carries what verification needs from them. If `SLICE_PATH` is empty, grep requirements.md for the phase's IDs instead.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/verify-phase:166feb9d",
+   "file": "pan-wizard-core/workflows/verify-phase.md",
+   "text": "**Copy the status; do not judge it.** Write `test_gate: <status>` into the verification.md",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/verify-phase:9d16f96b",
+   "file": "pan-wizard-core/workflows/verify-phase.md",
+   "text": "A suite that exists and did not run is `failed`, never `skipped`: the engine decides that",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/verify-phase:3e716d57",
+   "file": "pan-wizard-core/workflows/verify-phase.md",
+   "text": "gap: in `report` mode it never changes the status. In `gate` mode (`workflow.mutation_gate: gate`) the result carries `gate`: when `gate.failed` is true (the score is below `workflow.mutation_floor`), set the status to `gaps_found` and list each survivor as a gap; `verify reconcile` refuses a passed verification over a failed gate. `aborted: flaky` (the unmutated suite passed once and failed",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/verify-phase:5c66adea",
+   "file": "pan-wizard-core/workflows/verify-phase.md",
+   "text": "**Always needs human:** Visual appearance, user flow completion, real-time behavior (WebSocket/SSE), external service integration, performance feel, error message clarity.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:a9b88691",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**If Claude can run it, Claude runs it** - Never ask user to execute CLI commands, start servers, or run builds",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:79d3a46a",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**Auto-mode bypasses verification checkpoints, and decisions only where the planner named a default** — When `workflow.auto_advance` is true in config: human-verify auto-approves; a decision with `auto_select=\"<option id>\"` takes that option, and a decision without it stops for a human (auto mode never takes an option because it is listed first); human-action still stops (auth gates cannot be automated)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:ea2653c4",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**Stop immediately** - do not proceed to next task",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:ecac16b8",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**Wait for user response** - do not hallucinate completion",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:111e48e4",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "Stop current task - don't retry repeatedly",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:13eae59d",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**The rule:** If it has CLI/API, Claude does it. Never ask human to perform automatable work.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:3703065c",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**Env files:** Use Write/Edit tools. Never ask human to create .env manually.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:211578a9",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**Never present a checkpoint with broken verification environment.** If `curl localhost:3000` fails, don't ask user to \"visit localhost:3000\".",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:38a2c05a",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**Why bad:** Claude can run these commands. User should never execute CLI commands.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/checkpoints:cdbe6410",
+   "file": "pan-wizard-core/references/checkpoints.md",
+   "text": "**The golden rule:** If Claude CAN automate it, Claude MUST automate it.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/continuation-format:65f35414",
+   "file": "pan-wizard-core/references/continuation-format.md",
+   "text": "**Always show what it is** — name + description, never just a command path",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/continuation-format:7dca17b0",
+   "file": "pan-wizard-core/references/continuation-format.md",
+   "text": "**`/clear` explanation** — always include, keeps it concise but explains why",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/design-methodology:4090055a",
+   "file": "pan-wizard-core/references/design-methodology.md",
+   "text": "**Scope** — in-scope / out-of-scope, and the fixed boundary this design must not exceed (a phase boundary from `roadmap.md`, or a feature boundary).",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/design-methodology:09abef76",
+   "file": "pan-wizard-core/references/design-methodology.md",
+   "text": "**Conventions** — extract the project's actual conventions (module layout, error style, boundaries) from the codebase; do not assume.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/design-methodology:95f7a8c1",
+   "file": "pan-wizard-core/references/design-methodology.md",
+   "text": "**Scope discipline** — the design stays within the fixed boundary; scope-expanding ideas are captured as \"deferred\", never designed in.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/git-integration:c4e8c97f",
+   "file": "pan-wizard-core/references/git-integration.md",
+   "text": "If NO_GIT: Run `git init` silently. PAN projects always get their own repo.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/git-integration:67374bf3",
+   "file": "pan-wizard-core/references/git-integration.md",
+   "text": "**Still don't commit (intermediate artifacts):**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/git-planning-commit:9b130642",
+   "file": "pan-wizard-core/references/git-planning-commit.md",
+   "text": "Always use `pan-tools.cjs commit` for `.planning/` files — it handles `commit_docs` and gitignore checks automatically:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/guardrails:697b8834",
+   "file": "pan-wizard-core/references/guardrails.md",
+   "text": "rename broke it.\" Never silently expand scope.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/guardrails:a9a9f3ed",
+   "file": "pan-wizard-core/references/guardrails.md",
+   "text": "the regression first.** Do not push forward with \"I'll circle back\" —",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/guardrails:c5e4e3c2",
+   "file": "pan-wizard-core/references/guardrails.md",
+   "text": "When something breaks, follow this sequence — don't shotgun fixes:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/handoff-decisions:15d442d7",
+   "file": "pan-wizard-core/references/handoff-decisions.md",
+   "text": "Cognition's \"Don't build multi-agents\" (Jun 2025) named the dominant failure",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/handoff-decisions:bc05039d",
+   "file": "pan-wizard-core/references/handoff-decisions.md",
+   "text": "**Locked** — Constraints the executor MUST follow. If the executor",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/handoff-decisions:3d1d8ee3",
+   "file": "pan-wizard-core/references/handoff-decisions.md",
+   "text": "The schema MUST be machine-parseable. Forbidden:",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/handoff-decisions:2da32c4a",
+   "file": "pan-wizard-core/references/handoff-decisions.md",
+   "text": "Cognition, \"Don't Build Multi-Agents\" (Jun 2025): https://cognition.ai/blog/dont-build-multi-agents",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/model-profiles:28f4a14f",
+   "file": "pan-wizard-core/references/model-profiles.md",
+   "text": "PAN never selects your host model — it recommends a *class*. Because the `reasoning` tier is `inherit`, whichever top-tier model you configure in your runtime (Claude Code, etc.) runs the reasoning-tier agents (planner, conductor, executor…). Since the 2026-07 COST RESET that means *every* agent under `quality` and `balanced` (the default), except the ones that pin a model in their own frontmatter — `grep -l '^model: opus' agents/*.md` lists those, and the pin wins on Claude Code. Only the opt-in `budget` profile drops agents to `mid`/`fast`, which on Anthropic map to Sonnet/Haiku.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/model-profiles:c74d7ea5",
+   "file": "pan-wizard-core/references/model-profiles.md",
+   "text": "**Opus pin (the durable fix).** PAN's security-review agents carry `model: opus` in their frontmatter — `grep -l '^model: opus' agents/*.md` lists the current set — so on **Claude Code** they run on the default Opus model regardless of your session model and never reach Fable's classifier. The `focus-auto` security category routes its vulnerability *assessment* through the Opus-pinned `pan-hardener` for the same reason. This pin is **Claude-Code-only** — it is stripped from the Gemini/OpenCode/Codex/Copilot outputs by the installer, so on the other runtimes run security campaigns on a non-Fable model.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/model-profiles:ea404d17",
+   "file": "pan-wizard-core/references/model-profiles.md",
+   "text": "**Prompting note for Fable.** Fable-class models prefer *less-prescriptive* prompts than earlier generations and run longer per turn. PAN's autonomous-loop guidance (anti-overplanning, grounded progress claims, act-when-you-have-enough) already aligns with this; avoid piling on `CRITICAL: YOU MUST` scaffolding, which can reduce Fable's output quality.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/planning-config:adee4ba4",
+   "file": "pan-wizard-core/references/planning-config.md",
+   "text": "**Branch merges:** PAN never merges branches; when you merge a phase or milestone branch yourself with `commit_docs: false`, keep `.planning/` out of the merge commit.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/questioning:fd911e88",
+   "file": "pan-wizard-core/references/questioning.md",
+   "text": "Don't interrogate. Collaborate. Don't follow a script. Follow the thread.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/questioning:4289299b",
+   "file": "pan-wizard-core/references/questioning.md",
+   "text": "**Start open.** Let them dump their mental model. Don't interrupt with structure.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/questioning:f2093f78",
+   "file": "pan-wizard-core/references/questioning.md",
+   "text": "**Challenge vagueness.** Never accept fuzzy answers. \"Good\" means what? \"Users\" means who? \"Simple\" means how?",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/questioning:f06db66f",
+   "file": "pan-wizard-core/references/questioning.md",
+   "text": "**User skills** — NEVER ask about user's technical experience. Claude builds.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/questioning:1b6703e6",
+   "file": "pan-wizard-core/references/questioning.md",
+   "text": "**Constraints**: stack, platform, deadlines, compliance, what must not change",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/questioning:6860fe98",
+   "file": "pan-wizard-core/references/questioning.md",
+   "text": "Everything you did not ask about is recorded, never silently guessed. Write it into the document you produce as a line the user can correct: `Assumed: <the reading you chose> (<category>)`. A wrong assumption in writing costs the user one correction; a wrong guess in code costs a rework.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/tdd:ec028e92",
+   "file": "pan-wizard-core/references/tdd.md",
+   "text": "Run test - it MUST fail",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/tdd:2076a435",
+   "file": "pan-wizard-core/references/tdd.md",
+   "text": "Run test - it MUST pass",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/tdd:229b887b",
+   "file": "pan-wizard-core/references/tdd.md",
+   "text": "Run tests - MUST still pass",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/tdd:a9bdf8ff",
+   "file": "pan-wizard-core/references/tdd.md",
+   "text": "Don't skip to refactor",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/ui-brand:d8eb4a78",
+   "file": "pan-wizard-core/references/ui-brand.md",
+   "text": "Always at end of major completions.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/verdict-contract:bdb80ba7",
+   "file": "pan-wizard-core/references/verdict-contract.md",
+   "text": "**Same verdict as the prose.** `verdict` is the word your report already uses, and `outcome` is what that word means (see the table below). The block never disagrees with the report.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/verdict-contract:6557f807",
+   "file": "pan-wizard-core/references/verdict-contract.md",
+   "text": "**Findings close on evidence, never on silence.** An earlier finding closes only when the judge answers it `resolved` with evidence (a `resolutions` entry, or a truth in the verifier's `re_verification.gaps_closed`), or, for a `code-fact:` finding, when that fact passes. A finding the new report neither repeats nor answers stays open and is listed as `unaddressed`. A reworded report of an earlier finding (same class family, where `missing` and `partial` count as one; same file; same truth or a similar summary) keeps the earlier id.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/verdict-contract:aad56dfc",
+   "file": "pan-wizard-core/references/verdict-contract.md",
+   "text": "**Code facts only lower a verdict (two-key verdict).** A fact the engine measures can turn a judge's `pass` or `needs_human` into a fail, never the reverse. `test_gate: failed` under `status: passed` records as `gaps_found`: the record keeps the judge's own word as `agent_verdict`, names the fact in `lowered_by`, and adds a high finding at `code-fact:test_gate` for the gap round to close. `findings record --raw` prints the lowered word, so the workflow routes to gap closure.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/verification-patterns:3d1769e6",
+   "file": "pan-wizard-core/references/verification-patterns.md",
+   "text": "Tests do not catch it — they run on the same forgiving Node that hid it.",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/verification-patterns:54968940",
+   "file": "pan-wizard-core/references/verification-patterns.md",
+   "text": "**Always human:**",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/verification-patterns:b6b66a52",
+   "file": "pan-wizard-core/references/verification-patterns.md",
+   "text": "Users never run CLI commands (visit URLs only)",
+   "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/references/verification-patterns:3afbc9a4",
+   "file": "pan-wizard-core/references/verification-patterns.md",
+   "text": "Error handling: fix broken environment before checkpoint, never present checkpoint with failed setup",
+   "baseline": true
+  }
+ ]
+}

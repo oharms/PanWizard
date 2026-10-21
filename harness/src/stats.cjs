@@ -134,6 +134,27 @@ function nonInferiority(a, b, delta, { confidence = 0.95 } = {}) {
   return { diff, lower, upper, delta, nonInferior: lower > -delta };
 }
 
+// Two-sided 95% Student t critical values by degrees of freedom (1..30); normal beyond.
+const T95 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042];
+
+/**
+ * The paired difference pan − stock (program H10): mean and a 95% t interval over the
+ * pairs. With one pair there is no interval (lower and upper are null).
+ * @param {Array<{pan: number, stock: number}>} pairs
+ * @returns {{n, mean, sd, lower, upper}}
+ */
+function pairedDelta(pairs) {
+  const d = pairs.map((p) => Number(p.pan) - Number(p.stock)).filter((x) => Number.isFinite(x));
+  const n = d.length;
+  if (!n) return { n: 0, mean: null, sd: null, lower: null, upper: null };
+  const mean = d.reduce((a, b) => a + b, 0) / n;
+  if (n < 2) return { n, mean, sd: null, lower: null, upper: null };
+  const sd = Math.sqrt(d.reduce((a, x) => a + (x - mean) ** 2, 0) / (n - 1));
+  const t = n - 1 <= 30 ? T95[n - 2] : 1.96;
+  const half = t * sd / Math.sqrt(n);
+  return { n, mean, sd, lower: mean - half, upper: mean + half };
+}
+
 /** Reps per arm to tell p1 from p2: two-sided alpha, unpooled normal approximation. */
 function powerN(p1, p2, { alpha = 0.05, power = 0.8 } = {}) {
   if (p1 === p2) return Infinity;
@@ -142,4 +163,4 @@ function powerN(p1, p2, { alpha = 0.05, power = 0.8 } = {}) {
   return Math.ceil(((za + zb) ** 2) * (p1 * (1 - p1) + p2 * (1 - p2)) / ((p1 - p2) ** 2));
 }
 
-module.exports = { normInv, wilson, choose, passHatK, passAtK, pairedSignTest, sprt, sprtPaired, nonInferiority, powerN };
+module.exports = { normInv, wilson, choose, passHatK, passAtK, pairedSignTest, sprt, sprtPaired, nonInferiority, powerN, pairedDelta };

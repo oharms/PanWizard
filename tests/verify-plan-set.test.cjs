@@ -214,3 +214,37 @@ describe('verify plan-set — CLI', () => {
     assert.equal(good.stdout.trim(), 'valid');
   });
 });
+
+// ── Property tasks for validation-rule truths (program V10) ─────────────────────
+// An EARS criterion that is a validation rule (IF … THEN … SHALL, or a "for any /
+// every / all / never" claim) is a claim over many inputs: one example test cannot
+// show it. The plan that covers such a requirement must carry a property-test task.
+describe('verify plan-set: a validation-rule truth needs a property task (V10)', () => {
+  const reqs = (criterion) => fs.writeFileSync(path.join(dir, '.planning', 'requirements.md'),
+    `# Requirements\n\n## v1 Requirements\n\n- [ ] **AUTH-01**: Passwords are validated\n  - ${criterion}\n- [ ] **AUTH-02**: User can log out\n  - WHEN a user logs out THE SYSTEM SHALL end the session\n`);
+  const planWith = (id, task) => {
+    const fm = ['---', 'phase: 03-auth', `plan: ${id}`, 'wave: 1', 'depends_on: []', 'files_modified: [src/a.ts]', 'requirements: [AUTH-01, AUTH-02]', '---', '', `<objective>plan ${id}</objective>`, '', task, ''];
+    fs.writeFileSync(path.join(phaseDir, `03-${id}-plan.md`), fm.join('\n'));
+  };
+
+  test('a validation rule with no property task is an error naming the requirement', () => {
+    roadmap(['AUTH-01', 'AUTH-02']);
+    reqs('IF a password is shorter than 12 characters THEN THE SYSTEM SHALL reject it');
+    planWith('01', '<task type="auto"><name>Validate passwords</name><action>add the check</action></task>');
+    const r = P.checkPlanSet(dir, '3');
+    assert.deepEqual(r.errors.filter((e) => e.code === 'missing_property_task').map((e) => e.requirement), ['AUTH-01']);
+  });
+
+  test('a property task covers it; an event criterion (WHEN … SHALL) needs none', () => {
+    roadmap(['AUTH-01', 'AUTH-02']);
+    reqs('THE SYSTEM SHALL reject every password shorter than 12 characters');
+    planWith('01', '<task type="auto" property="true"><name>Property test: any short password is rejected</name><action>generate passwords of length 0-11 with the project\'s property library</action></task>');
+    assert.deepEqual(codes(P.checkPlanSet(dir, '3')).filter((c) => c === 'missing_property_task'), []);
+  });
+
+  test('no requirements file, or no validation rule, adds nothing', () => {
+    roadmap(['AUTH-01']);
+    planWith('01', '<task><name>x</name></task>');
+    assert.deepEqual(codes(P.checkPlanSet(dir, '3')).filter((c) => c === 'missing_property_task'), []);
+  });
+});

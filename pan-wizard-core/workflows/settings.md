@@ -30,7 +30,7 @@ Parse current values (when a key is absent, use PAN's default: `true` for resear
 - `workflow.verifier` — spawn verifier during execute-phase
 - `workflow.nyquist_validation` — validation architecture research during plan-phase
 - `model_profile` — which model each agent uses (default: `balanced`)
-- `routing.strategy` — how model tiers are adjusted at runtime (default: `static`)
+- `routing.strategy` — not asked here (default: `static`). The `complexity` strategy reaches no workflow, so offering it would be a choice that changes nothing; `config-set routing.strategy complexity` still sets it for `resolve-model --metadata` callers. A `quality` profile in an existing config keeps working: it is identical to `balanced`
 - `cost.phase_budget_usd` — spend per phase PAN warns about, in API-equivalent dollars (default: `20`; `0` = off). It never stops a run
 - `branching_strategy` — branching approach (default: `"none"`; a top-level key — a nested `git.branching_strategy` is ignored when the top-level key exists, as it does in every config `config-ensure-section` creates — write the top-level key)
 </step>
@@ -45,8 +45,7 @@ AskUserQuestion([
     header: "Model",
     multiSelect: false,
     options: [
-      { label: "Quality", description: "reasoning tier for every agent — identical to balanced, so switching between the two changes nothing" },
-      { label: "Balanced (Recommended)", description: "reasoning tier for every agent (quality and balanced are identical post-COST-RESET); use budget to step down" },
+      { label: "Balanced (Recommended)", description: "reasoning tier for every agent; the quality-first default" },
       { label: "Budget", description: "mid tier for writing, fast tier for research/verification (lowest cost)" }
     ]
   },
@@ -76,7 +75,14 @@ AskUserQuestion([
       { label: "Yes", description: "Verify must-haves after execution" },
       { label: "No", description: "Skip post-execution verification" }
     ]
-  },
+  }
+])
+```
+
+Then the next batch (the host takes at most four questions per call):
+
+```
+AskUserQuestion([
   {
     question: "Auto-advance pipeline? (discuss → plan → execute automatically)",
     header: "Auto",
@@ -106,15 +112,6 @@ AskUserQuestion([
     ]
   },
   {
-    question: "Model routing strategy?",
-    header: "Routing",
-    multiSelect: false,
-    options: [
-      { label: "Static (Recommended)", description: "Profile assigns fixed tiers to each agent. Predictable and simple." },
-      { label: "Complexity", description: "Adjust tiers by task complexity, only where a model is resolved with the task passed (resolve-model --metadata); the *_model values workflows pass are not, so it changes nothing there" }
-    ]
-  },
-  {
     question: "Warn when a phase's spend passes how much? (API-equivalent dollars; warns only, never stops)",
     header: "Phase budget",
     multiSelect: false,
@@ -136,14 +133,13 @@ A dollar amount typed under Other is used as given.
 Write each answer with `config-set`, which keeps every other key in the `workflow` and `routing` objects:
 
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set model_profile <quality|balanced|budget>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set model_profile <balanced|budget>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.research <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.plan_check <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.verifier <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advance <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.nyquist_validation <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set branching_strategy <none|phase|milestone>
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set routing.strategy <static|complexity>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set cost.phase_budget_usd <20|50|10|0|amount>
 ```
 </step>
@@ -216,7 +212,7 @@ Display:
 These settings apply to future /pan:plan-phase and /pan:exec-phase runs.
 
 Quick commands:
-- /pan:profile <profile> — switch model profile
+- /pan:settings --profile <profile> — switch model profile
 - /pan:plan-phase --research — force research
 - /pan:plan-phase --skip-research — skip research
 - /pan:plan-phase --skip-verify — skip plan check

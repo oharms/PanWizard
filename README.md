@@ -175,7 +175,7 @@ npx pan-wizard --all --global      # Install to all directories
 ```
 
 Use `--global` (`-g`) to install into your home config directory; `--local` (`-l`) is the default and may be omitted.
-Use `--claude`, `--opencode`, `--gemini`, `--codex`, `--copilot`, or `--all` to skip the runtime prompt. A local install also writes outside the runtime directory: a marker-fenced PAN section in the project's `AGENTS.md`; for Claude Code, a marker-fenced block in `CLAUDE.md` (the `@AGENTS.md` import, and compact instructions that keep PAN's position through compaction) and a `pan` MCP server in `.mcp.json`; and for Codex or `--unified-skills`, the shared `.agents/` tree (skills, plus a shared core under `--unified-skills`). `--uninstall` removes them (the `AGENTS.md` and `CLAUDE.md` blocks and the `.agents/` tree stay while another PAN runtime in the project still uses them).
+Use `--claude`, `--opencode`, `--gemini`, `--codex`, `--copilot`, or `--all` to skip the runtime prompt. A local install also writes outside the runtime directory: a marker-fenced PAN section in the project's `AGENTS.md`; for Claude Code, a marker-fenced block in `CLAUDE.md` (the `@AGENTS.md` import, and compact instructions that keep PAN's position through compaction) and a `pan` MCP server in `.mcp.json`; and for Codex or `--unified-skills`, the shared `.agents/` tree (skills, plus a shared core under `--unified-skills`). An update rewrites those blocks only while they hold PAN's own text: once your project edits one, PAN keeps your version and says so. `--uninstall` removes them (the `AGENTS.md` and `CLAUDE.md` blocks and the `.agents/` tree stay while another PAN runtime in the project still uses them).
 Add `--unified-skills` to install commands as one shared `.agents/skills/` tree instead of per-runtime formats. Codex, Gemini CLI, OpenCode, Copilot CLI and Antigravity CLI read that tree; Claude Code does not, so for Claude the installer also copies each skill into `.claude/skills/` and the commands become `/pan-<name>`. Gemini CLI gives skills no slash command, so on a unified Gemini install you ask for the task and `/skills list` shows what loaded. See the User Guide for details.
 
 > **Gemini CLI note:** from June 18, 2026, Google's Gemini CLI serves Gemini Code Assist (Standard/Enterprise) customers; individual free / AI Pro / Ultra accounts are directed to Antigravity CLI instead. PAN's `--gemini` target installs for Gemini CLI. Antigravity CLI is not yet a PAN install target, but it reads the shared `.agents/skills/` tree natively — install with `--unified-skills` and PAN's commands are usable from Antigravity in the same project.
@@ -606,11 +606,12 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:new-project [--auto]` | Full initialization: questions → research → requirements → roadmap |
 | `/pan:discuss-phase <N> [--auto]` | Capture implementation decisions before planning |
 | `/pan:design-phase <N>` | Design a phase — architecture, ADR, threat-lite — before planning |
-| `/pan:plan-phase [N] [--auto]` | Research + plan + verify for a phase |
+| `/pan:plan-phase [N] [--auto]` | Research + plan + verify for a phase; `--research-only <N>` runs the research step alone |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves, verify when complete |
 | `/pan:verify-phase [N]` | Re-run goal-backward verification with a test-suite gate; lists gaps for `/pan:plan-phase N --gaps` ¹ |
-| `/pan:milestone-audit` | Verify milestone achieved its definition of done |
-| `/pan:milestone-done <version>` | Archive milestone, tag release |
+| `/pan:autodev [run\|resume\|status]` | Run the roadmap unattended: a deterministic loop plans, executes, verifies and completes each phase, each step in a fresh host session, and stops in code (done, human needed, gate failed, budget, turns, no progress) |
+| `/pan:milestone-audit` | Verify milestone achieved its definition of done; `--gaps` creates phases to close the gaps the audit found |
+| `/pan:milestone-done <version>` | Archive milestone, tag release; `--cleanup` archives accumulated phase directories from completed milestones |
 | `/pan:milestone-new [name]` | Start next version: questions → research → requirements → roadmap |
 
 ### Navigation
@@ -618,11 +619,10 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | Command | What it does |
 |---------|--------------|
 | `/pan:progress` | Where am I? What's next? |
-| `/pan:hud` (alias `/pan:dashboard`) | Render a self-contained HTML dashboard of project + bot-army state to `.planning/hud.html` (`--open`, `--out`, `--stdout`) |
+| `/pan:hud` | Render a self-contained HTML dashboard of project + bot-army state to `.planning/hud.html` (`--open`, `--out`, `--stdout`); the old name `/pan:dashboard` still works |
 | `/pan:report phase <N> \| index \| all` | Self-contained HTML report for one phase, or a timeline index linking every phase report (`--out`, `--open`, `--stdout` on `phase` and `index`; `--bundle` on `index` inlines every phase report into one file; `all` regenerates every phase report plus the index and takes only `--open`) |
 | `/pan:help` | Show all commands and usage guide |
 | `/pan:update` | Update PAN with changelog preview |
-| `/pan:discord` | Join the PAN Discord community |
 
 ### Brownfield
 
@@ -644,7 +644,6 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:insert-phase <after> <description>` | Insert urgent work between phases |
 | `/pan:remove-phase <N>` | Remove future phase, renumber |
 | `/pan:assumptions <N>` | See Claude's intended approach before planning |
-| `/pan:milestone-gaps` | Create phases to close gaps from audit |
 
 ### Session
 
@@ -657,8 +656,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:settings` | Configure model profile, workflow agents, branching and the phase budget |
-| `/pan:profile <profile>` | Switch model profile (quality/balanced/budget) |
+| `/pan:settings` | Configure model profile, workflow agents, branching and the phase budget; `--profile <profile>` switches the model profile (quality/balanced/budget) directly |
 | `/pan:todo-add [desc]` | Capture idea for later |
 | `/pan:todo-check` | List pending todos |
 | `/pan:debug [desc]` | Systematic debugging with persistent state |
@@ -667,10 +665,8 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat and stale or expired memory entries, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs) and Claude Code's own memory index (reported, never edited); `--apply` executes the safe fixes — poisoned ledgers are quarantined by rename (only the newest quarantine copy is kept), and settled `state.md` history, shipped roadmap phases and stale memory entries are archived rather than dropped |
 | `/pan:links [--strict] [--doc-root <dir>] [--source-root <dir>]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027). The default roots are PAN's own source layout, so pass your project's roots |
 | `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase from its summaries, context decisions and verification report |
-| `/pan:milestone-cleanup` | Archive accumulated phase directories from completed milestones |
 | `/pan:retro` | Milestone retrospective — estimation accuracy, verification patterns, gap analysis |
 | `/pan:patches` | Restore local modifications after a PAN update |
-| `/pan:research-phase <N>` | Standalone deep research for a phase (usually part of plan-phase) |
 | `/pan:phase-budget` | Estimate context window utilization for current phase |
 | `/pan:experiment <subcommand>` | Manage external self-improvement experiments — scaffold, run, harvest, promote findings back to PAN (never inside the PAN source repo) |
 
@@ -691,14 +687,9 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:focus-scan` | Collect, classify, and prioritize all work items with Reality Score |
-| `/pan:focus-plan` | Create capacity-budgeted execution batch (modes: bugfix, balanced, features, full) |
-| `/pan:focus-exec` | Execute items from batch with tier-based test cadence |
-| `/pan:focus-auto` | Continuous scan→plan→exec loop with purpose-driven categories and a layered safety harness |
-| `/pan:focus-sync` | Detect stale documentation (counts, missing commands, outdated references); `--all` also fixes it |
+| `/pan:focus-auto` | Continuous scan→plan→exec loop with purpose-driven categories and a layered safety harness; `--step scan\|plan\|exec\|drift` runs one stage: scan collects and prioritizes work items with a Reality Score, plan builds a capacity-budgeted batch (modes: bugfix, balanced, features, full), exec runs the batch with tier-based test cadence, drift walks the tree to find and repair doc-code drift |
 | `/pan:focus-design` | Multi-phase strategic feature investigation pipeline |
-| `/pan:focus-drift-walking` | Walk project tree, detect doc-code drift, score severity, auto-repair |
-| `/pan:focus-doc-audit` | Multi-dimensional document audit with a quality score per dimension |
+| `/pan:focus-docs` | Multi-dimensional document audit with a quality score per dimension; `--sync` detects stale documentation (counts, missing commands, outdated references), and `--sync --all` also fixes it |
 
 ### Cost, Foresight & Review
 
@@ -709,16 +700,13 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:review-deep <phase>` | Security audit (OWASP + STRIDE) + cross-check by meta-reviewer |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook |
 | `/pan:what-if <phase> "scenario"` | Counterfactual phase replay in isolated git worktree |
-| `/pan:mcp-bridge {list\|recommend\|cache}` | List the MCP tools recorded in its cache (only `cache --servers` or an external script writes it) and recommend the ones relevant to a phase |
 
 ### Optimization & Git
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:learn` | Analyze trace events and write an optimization report. `/pan:optimize apply` records its suggestions; nothing is applied automatically |
-| `/pan:optimize {apply\|revert\|list\|stats\|trace}` | Record a report's suggestions for a person to act on (`apply`: notes in `.planning/optimization/suggestions.md`, config notes in `config-suggestions.md`), undo one apply (`revert <apply_id>` or `revert --last`), list reports, view stats, manage trace sessions |
+| `/pan:learn` | Analyze trace events and write an optimization report; nothing is applied automatically. `--optimize {apply\|revert\|list\|stats\|trace}` records a report's suggestions for a person to act on (`apply`: notes in `.planning/optimization/suggestions.md`, config notes in `config-suggestions.md`), undoes one apply (`revert <apply_id>` or `revert --last`), lists reports, shows stats and manages trace sessions |
 | `/pan:git <subcommand>` | Phase-aware git workflow: commit/branch/push/status/log/stash/diff/rollback/tag/sync |
-| `/pan:audit-deployment <target-directory> [--enhancements] [--repair]` | Audit a PAN installation for integrity, project health, and draft enhancement specs |
 
 <sup>¹ Contributed by reddit user OracleGreyBeard</sup>
 
@@ -751,7 +739,7 @@ Control which Claude model each agent uses. Balance quality vs token spend.
 
 Switch profiles:
 ```text
-/pan:profile budget
+/pan:settings --profile budget
 ```
 
 Or configure via `/pan:settings`.

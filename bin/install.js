@@ -852,6 +852,33 @@ function copyCommandsAsCopilotSkills(srcDir, skillsDir, prefix, pathPrefix, runt
  * @param {string} pathPrefix - Path prefix for file references
  * @param {string} runtime - Target runtime ('claude', 'opencode', 'gemini', 'codex', 'copilot')
  */
+/**
+ * The command source every runtime installs from: commands/pan/ plus an alias command
+ * for each renamed command (COMMAND_ALIASES, program L7), so an old name keeps working
+ * on all five runtimes. The aliases are generated into a staging copy in the OS temp
+ * directory, removed when the installer exits; with no aliases it is commands/pan/.
+ */
+let stagedCommandSource = null;
+function stageCommandSource(src) {
+  const panSrc = path.join(src, 'commands', 'pan');
+  if (stagedCommandSource && stagedCommandSource.src === src) return stagedCommandSource.dir;
+  let aliases = {};
+  try { aliases = require(path.join(src, 'pan-wizard-core', 'bin', 'lib', 'constants.cjs')).COMMAND_ALIASES || {}; } catch {}
+  if (Object.keys(aliases).length === 0) return panSrc;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-commands-'));
+  for (const f of fs.readdirSync(panSrc)) {
+    if (f.endsWith('.md')) fs.copyFileSync(path.join(panSrc, f), path.join(dir, f));
+  }
+  for (const [oldName, alias] of Object.entries(aliases)) {
+    const target = path.join(panSrc, `${alias.to}.md`);
+    if (!fs.existsSync(target) || fs.existsSync(path.join(panSrc, `${oldName}.md`))) continue;
+    fs.writeFileSync(path.join(dir, `${oldName}.md`), lib.renderCommandAlias(fs.readFileSync(target, 'utf8'), oldName, alias));
+  }
+  stagedCommandSource = { src, dir };
+  process.on('exit', () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} });
+  return dir;
+}
+
 function copyWithPathReplacement(srcDir, destDir, pathPrefix, runtime, isCommand = false) {
   const isOpencode = runtime === 'opencode';
   const isCodex = runtime === 'codex';
@@ -2274,7 +2301,7 @@ function install(isGlobal, runtime = 'claude') {
       }
       console.log(`  ${green}✓${reset} Installed shared pan-wizard-core to ${isGlobal ? '~/.agents/' : '.agents/'}`);
 
-      const panSrc = path.join(src, 'commands', 'pan');
+      const panSrc = stageCommandSource(src);
       copyCommandsAsUnifiedSkills(panSrc, skillsDir, 'pan', pathPrefix, corePrefix, runtime);
       sweepProprietaryCommandSurfaces(targetDir, runtime);
 
@@ -2303,7 +2330,7 @@ function install(isGlobal, runtime = 'claude') {
       fs.mkdirSync(commandDir, { recursive: true });
 
       // Copy commands/pan/*.md as commands/pan-*.md (flatten structure)
-      const panSrc = path.join(src, 'commands', 'pan');
+      const panSrc = stageCommandSource(src);
       copyFlattenedCommands(panSrc, commandDir, 'pan', pathPrefix, runtime);
 
       // Upgrade path: remove PAN files left in the legacy singular command/
@@ -2327,7 +2354,7 @@ function install(isGlobal, runtime = 'claude') {
       // Codex reads skills from the shared .agents/skills tree (repo or user
       // scope) — $CODEX_HOME/skills is no longer a read location (2026-06).
       const skillsDir = getCodexSkillsRoot(isGlobal);
-      const panSrc = path.join(src, 'commands', 'pan');
+      const panSrc = stageCommandSource(src);
       copyCommandsAsCodexSkills(panSrc, skillsDir, 'pan', pathPrefix, runtime);
 
       // Upgrade path: remove pan-* skills left in the legacy .codex/skills/
@@ -2350,7 +2377,7 @@ function install(isGlobal, runtime = 'claude') {
       }
     } else if (isCopilot) {
       const skillsDir = path.join(targetDir, 'skills');
-      const panSrc = path.join(src, 'commands', 'pan');
+      const panSrc = stageCommandSource(src);
       copyCommandsAsCopilotSkills(panSrc, skillsDir, 'pan', pathPrefix, runtime);
       const installedSkills = fs.readdirSync(skillsDir, { withFileTypes: true })
         .filter(e => e.isDirectory() && e.name.startsWith('pan-'));
@@ -2364,7 +2391,7 @@ function install(isGlobal, runtime = 'claude') {
       const commandsDir = path.join(targetDir, 'commands');
       fs.mkdirSync(commandsDir, { recursive: true });
 
-      const panSrc = path.join(src, 'commands', 'pan');
+      const panSrc = stageCommandSource(src);
       const panDest = path.join(commandsDir, 'pan');
       copyWithPathReplacement(panSrc, panDest, pathPrefix, runtime, true);
       if (verifyInstalled(panDest, 'commands/pan')) {
@@ -2681,15 +2708,23 @@ function install(isGlobal, runtime = 'claude') {
       const agentsMdPath = path.join(process.cwd(), 'AGENTS.md');
       let agentsExisting = null;
       try { agentsExisting = fs.readFileSync(agentsMdPath, 'utf8'); } catch { /* absent */ }
-      fs.writeFileSync(agentsMdPath, lib.upsertAgentsMdSection(agentsExisting, lib.buildAgentsMdSection()));
-      console.log(`  ${green}✓${reset} ${agentsExisting === null ? 'Created' : 'Updated'} AGENTS.md (PAN section)`);
+      if (lib.sectionState(agentsExisting, 'agents') === 'edited') {
+        // The project rewrote PAN's section for itself: an update must not put PAN's
+        // generic text back over it (field report, 2026-10-21).
+        console.log(`  ${yellow}!${reset} AGENTS.md: kept the PAN section this project edited. To take PAN's current text, delete the section between the PAN WIZARD markers and run the installer again.`);
+      } else {
+        fs.writeFileSync(agentsMdPath, lib.upsertAgentsMdSection(agentsExisting, lib.buildAgentsMdSection()));
+        console.log(`  ${green}✓${reset} ${agentsExisting === null ? 'Created' : 'Updated'} AGENTS.md (PAN section)`);
+      }
 
       if (runtime === 'claude') {
         const claudeMdPath = path.join(process.cwd(), 'CLAUDE.md');
         let claudeExisting = null;
         try { claudeExisting = fs.readFileSync(claudeMdPath, 'utf8'); } catch { /* absent */ }
         const bridged = lib.ensureClaudeMdImport(claudeExisting);
-        if (bridged !== claudeExisting) {
+        if (lib.sectionState(claudeExisting, 'claude') === 'edited') {
+          console.log(`  ${yellow}!${reset} CLAUDE.md: kept the PAN block this project edited (the @AGENTS.md import and compact instructions).`);
+        } else if (bridged !== claudeExisting) {
           fs.writeFileSync(claudeMdPath, bridged);
           console.log(`  ${green}✓${reset} Bridged CLAUDE.md to AGENTS.md (@AGENTS.md import)`);
         }

@@ -16,8 +16,7 @@ You are spawned by:
 
 Your job: Find the root cause through hypothesis testing, maintain debug file state, optionally fix and verify (depending on mode).
 
-**CRITICAL: Mandatory Initial Read**
-If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
+**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. This is your primary context.
 
 **Core responsibilities:**
 - Investigate autonomously (user reports symptoms, you find cause)
@@ -782,6 +781,7 @@ started: [when broke / always broken]
 command: [one command you have RUN that fails on the reported symptom, or "none"]
 fails_with: [the output that shows the symptom, secrets redacted]
 deterministic: [yes / rate N of M runs for a flaky bug]
+requirement: [the requirement or UAT truth this reproduces, e.g. REQ-4, when there is one]
 tried: [only when command is "none": what you tried and why it cannot be built]
 
 ## Eliminated
@@ -907,9 +907,14 @@ Gather symptoms through questioning. Update file after EACH answer.
 - Run app/tests to observe behavior
 - APPEND to Evidence after each finding
 
+**Phase 1a: Check the case base.** Before forming any theory, look for a resolved session with the same symptoms. A recurring bug starts from the root cause and fix that worked before. Treat a match as a lead to test, not a conclusion:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs debug similar "<expected vs actual, in the user's words>"
+```
+
 **Phase 1b: Reproduce before you theorise** (no hypothesis until this is written)
 - Build ONE command that drives the reported symptom: a failing test at the closest seam, a CLI call with a fixture, a script. It must assert the user's symptom, not merely run.
-- RUN it and record it in Reproduction (`command`, `fails_with`, secrets redacted). Run it again: the same verdict, or for a flaky bug a recorded rate.
+- RUN it and record it in Reproduction (`command`, `fails_with`, secrets redacted, and `requirement:` naming the requirement or UAT truth it stands for, when there is one; a gap that breaks two requirements gets one reproduction each). Run it again: the same verdict, or for a flaky bug a recorded rate.
 - Shrink it: cut inputs and steps one at a time, re-running after each, while it still fails. Keep the smallest command that fails.
 - If no command can be built, write `command: none` and `tried:` (what you attempted, why it failed). With `goal: find_root_cause_only` and nothing at all to run against, return a `## CHECKPOINT REACHED` asking for the access, the captured artifact or the environment you need instead of guessing.
 - Reading code to build a theory before this is written is the failure this step prevents: a fix aimed at a neighbouring bug.
@@ -1009,6 +1014,12 @@ Update status to "fixing".
 
 <step name="request_human_verification">
 **Require user confirmation before marking resolved.**
+
+First the engine runs your reproduction. It must turn green, or the session is not done, whatever the fix looks like:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs debug repro "{slug}"
+```
+`red` means the fix did not fix the reported symptom, so go back to investigating. `none` (no command could be built) leaves the closing to the human check below.
 
 Update status to "awaiting_human_verify".
 

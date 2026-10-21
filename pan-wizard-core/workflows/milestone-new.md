@@ -55,17 +55,13 @@ Update Active requirements section and "Last updated" footer.
 
 ## 5. Update state.md
 
-```markdown
-## Current Position
+Reset the position for the new milestone through the engine, keeping the Accumulated Context of the last one:
 
-**Current Phase:** Not started (defining requirements)
-**Current Plan:** —
-**Status:** Defining requirements
-**Last Activity:** [today]
-**Last Activity Description:** Milestone v[X.Y] started
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state init --core-value "<core value from project.md>" --focus "Milestone v[X.Y] [Name]" --phase "Not started" --phase-name "Defining requirements" --status "Defining requirements" --activity "Milestone v[X.Y] started" --force --keep-context
 ```
 
-Keep Accumulated Context section from previous milestone.
+The old state.md is backed up first. The engine writes every section of the template and keeps the frontmatter in sync; never write state.md with the Write or Edit tool (under `hooks.guard: enforce` the guard denies it).
 
 ## 6. Cleanup and Commit
 
@@ -288,7 +284,7 @@ Create roadmap for milestone v[X.Y]:
 3. Map every requirement to exactly one phase
 4. Derive 2-5 success criteria per phase (observable user behaviors)
 5. Validate 100% coverage
-6. Write files immediately (roadmap.md, state.md, update requirements.md traceability)
+6. Write roadmap.md immediately; initialise state.md with `pan-tools state init ... --force --keep-context` (it exists from step 5), never the Write tool; update requirements.md traceability
 7. Return ROADMAP CREATED with summary
 
 Write files first, then return.

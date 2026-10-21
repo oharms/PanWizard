@@ -11,7 +11,7 @@ PAN ships a small set of built-in hooks that enhance the development experience 
 | `pan-check-update.js` | `SessionStart` | Checks for PAN updates in the background, caches result |
 | `pan-guard.js` | `PreToolUse` (Gemini CLI: `BeforeTool`; Copilot CLI: `preToolUse`) | Checks each file a tool call is about to write: a credential in the written text, a direct write to PAN's own state (`state.md`, `findings.jsonl`, the token ledger), a test file the phase in flight does not declare. `hooks.guard: report` (the default) logs each match to `.planning/guard.jsonl`; `enforce` also denies a credential write. |
 | `pan-cost-logger.js` (v3.4+) | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
-| `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
+| `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:learn --optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
 | `pan-stop-guard.js` (v3.24+) | `Stop` (Gemini CLI: `AfterAgent`; Copilot CLI: `agentStop`) | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), no failure/gaps/blocker recorded in `state.md`, roadmap phases unbuilt — and tells the agent to continue the chain (P-1809/P-1810/P-1812). |
 | `pan-state-reinject.js` | `SessionStart`, matcher `compact` (Claude Code, Codex); `PreCompress` + `AfterTool` (Gemini CLI); `preCompact` + `postToolUse` (Copilot CLI) | After a context compaction, hands the model the phase, plan, status and stop point from `.planning/state.md` as `additionalContext`, so a summarised session resumes the work in flight instead of re-planning it. Silent without a current phase and an unbuilt roadmap phase; never writes into the project. |
 
@@ -226,7 +226,7 @@ The optimiser learns from failures. Until the evidence loop, the only failures i
 
 Judge verdicts (verifier, plan checker, reviewer, design checker) reach the trace another way. `pan-tools findings record`, which the workflows run to read the verdict they branch on, logs `verdict_passed`, `verdict_failed` or `verdict_needs_human`, plus `verdict_retry` when the same judge's previous verdict on that phase was a failure. That path works on every runtime, because it is a verb rather than a hook.
 
-**Integration:** events flow into the existing `optimize.cjs` analyzer; they're picked up by `/pan:learn` (one session, or the last n pooled with `--sessions <n>`) and `/pan:optimize` (cumulative stats; `apply` records a report's suggestions for a person to act on). The loop is trace → learn → optimize apply → a person writes the lesson where the agents read it → repeat; nothing in a report reaches an agent on its own.
+**Integration:** events flow into the existing `optimize.cjs` analyzer; they're picked up by `/pan:learn` (one session, or the last n pooled with `--sessions <n>`) and `/pan:learn --optimize` (cumulative stats; `apply` records a report's suggestions for a person to act on). The loop is trace → learn → optimize apply → a person writes the lesson where the agents read it → repeat; nothing in a report reaches an agent on its own.
 
 **P-1805 transcript fallback (v3.7.8+):** Same fix as `pan-cost-logger.js`, with the same later reversal: the transcript is read whenever the payload names one and `data.usage` is only the fallback when it names none. `readUsageFromTranscript()` now reads the slice described above (the subagent's own transcript when one resolves, else the parent transcript at `data.transcript_path`) and sums `usage` once per API turn, the last snapshot per `message.id`, over the records whose `sessionId` (or `session_id`), where present, matches the payload's. Trace events now carry real token counts during autonomous runs instead of zeros. There is no timing fallback: `data.usage` carries no timing, so whenever no transcript slice is read, `duration_ms` stays `null` rather than a measured or fabricated span.
 
@@ -320,10 +320,11 @@ Checked live on Copilot CLI 1.0.88 (`2026-10-03`): a manual `/compact` fired `pr
 **What it does:** reads the tool call (`tool_name` and `tool_input` on Claude, Codex and Gemini; `toolName` and the JSON string `toolArgs` on Copilot; Codex's `apply_patch` text for the files a patch adds or updates) and checks each file about to be written:
 
 - **secret_write**: the written text holds a credential, a known token shape (`ghp_`, `sk-ant-`, `AKIA`, a private key block …) or a quoted key=value secret (`api_key`, `password`, `client_secret` …) of twelve or more characters, mixing letters and digits, that is not a placeholder (`process.env`, `${VAR}`, `your-…`); unquoted `.env`-style values are not matched;
-- **state_write**: a direct write to `state.md`, `findings.jsonl` or `metrics/tokens.jsonl`, which pan-tools owns;
+- **state_write**: a direct write to `state.md`, `findings.jsonl` or `metrics/tokens.jsonl`, which pan-tools owns (state.md through `pan-tools state init|section|quick-task|apply|patch|update`);
+- **judge_write**: a judge (`pan-verifier`, `pan-reviewer`, `pan-plan-checker`, `pan-design-checker`) writing outside the planning tree. It needs the agent's name in the payload (`agent_type`, which Claude Code sends inside a subagent); where the host sends none, the rule never matches;
 - **undeclared_test_edit**: a test file that no unfinished plan of the phase in flight (`**Current Phase:**` in state.md) lists in `files_modified`.
 
-**Modes** (`hooks.guard` in `.planning/config.json`): `report` (the default) appends each match to `.planning/guard.jsonl` and lets the call run; `enforce` also denies a secret write, with exit 2 and the reason on stderr on Claude Code, Codex and Gemini, or Copilot's `{"permissionDecision": "deny", "permissionDecisionReason": …}` output; `off` disables it. Under `enforce` the state and test rules still only report, until PAN's own writers of state.md go through pan-tools verbs (program A7b).
+**Modes** (`hooks.guard` in `.planning/config.json`): `report` (the default) appends each match to `.planning/guard.jsonl` and lets the call run; `enforce` also denies a secret write, a state write and a judge write, with exit 2 and the reason on stderr on Claude Code, Codex and Gemini, or Copilot's `{"permissionDecision": "deny", "permissionDecisionReason": …}` output; `off` disables it. Under `enforce` the test rule still only reports. The state rule denies since program A7b moved every shipped writer of state.md onto pan-tools verbs; a denied agent is told which verb to use.
 
 **Failure posture:** inert outside a PAN project; fail-open on a payload it cannot parse; never fail-open on a matched deny. It writes nothing but its log line.
 
@@ -366,7 +367,7 @@ Sub-agent finishes
     +--> Trace Logger (pan-trace-logger.js, SubagentStop, v3.5)
              | appends decision/redundancy/error events
              v
-         .planning/optimization/traces/<session>/trace.jsonl ← consumed by /pan:learn, /pan:optimize
+         .planning/optimization/traces/<session>/trace.jsonl ← consumed by /pan:learn, /pan:learn --optimize
 
 Session restarts after a compaction (Claude Code / Codex SessionStart, matcher compact)
     |

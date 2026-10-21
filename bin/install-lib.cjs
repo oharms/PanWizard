@@ -612,6 +612,39 @@ function rewriteAgentFileRefs(content, runtime, pathPrefix) {
   return content.replace(new RegExp(`(${prefix}agents/pan-[a-z0-9_-]+)\\.md\\b`, 'g'), (_, base) => base + ext);
 }
 
+/**
+ * Build the alias command for a renamed command (program L7, COMMAND_ALIASES).
+ * The alias is the target command itself under the old name: its frontmatter `name`
+ * becomes the old one, its description says what it was renamed to, and a line after
+ * the frontmatter presets the flags. Carrying the whole body, rather than a pointer to
+ * the target's installed path, is what makes it resolve on every runtime: each one
+ * installs commands at a different path and in a different shape. Pure.
+ * @param {string} targetContent - the target command's source (commands/pan/<to>.md)
+ * @param {string} oldName - the old command name, without prefix
+ * @param {{to: string, args: string}} alias
+ * @returns {string}
+ */
+function renderCommandAlias(targetContent, oldName, alias) {
+  const now = alias.args ? `/pan:${alias.to} ${alias.args}` : `/pan:${alias.to}`;
+  const m = targetContent.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+  if (!m) throw new Error(`renderCommandAlias: ${alias.to} has no frontmatter`);
+  const fm = m[1].split(/\r?\n/).map((line) => {
+    const name = line.match(/^name:\s*(pan:)?\S+/);
+    if (name) return `name: ${name[1] || ''}${oldName}`;
+    const desc = line.match(/^description:\s*(.*)$/);
+    if (desc) {
+      const raw = desc[1].trim();
+      const unq = raw.match(/^(["'])([\s\S]*)\1$/);
+      const text = (unq ? unq[2].replace(/\\"/g, '"') : raw).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      return `description: "Renamed: now ${now}. ${text}"`;
+    }
+    return line;
+  });
+  const preset = alias.args ? `${alias.args} $ARGUMENTS` : '$ARGUMENTS';
+  const note = `> \`/pan:${oldName}\` is now \`${now}\`. Run the command below with the arguments \`${preset}\`.\n\n`;
+  return `---\n${fm.join('\n')}\n---\n${note}${targetContent.slice(m[0].length)}`;
+}
+
 function rewriteAgentReferenceCopy(content, corePrefix) {
   content = content.replace(/~\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
   content = content.replace(/\.\/\.claude\/pan-wizard-core\//g, `${corePrefix}pan-wizard-core/`);
@@ -2397,6 +2430,7 @@ const INDEX = {
     phase_name: { type: 'string' },
     phase_dir: { type: 'string' },
     parallelization: { type: 'boolean' },
+    worktree_isolation: { type: 'boolean' },
     verifier_enabled: { type: 'boolean' },
     has_checkpoints: { type: 'boolean' },
     test_baseline: { type: 'string' },
@@ -2408,6 +2442,7 @@ const INDEX = {
           id: { type: 'string' },
           file: { type: 'string' },
           wave: { type: 'integer' },
+          sub_wave: { type: 'integer' },
           autonomous: { type: 'boolean' },
           has_summary: { type: 'boolean' },
           objective: { type: 'string' },
@@ -2419,7 +2454,7 @@ const INDEX = {
   required: ['phase_found', 'has_checkpoints', 'plans'],
 }
 const index = await agent(
-  'Index phase ' + phaseArg + ' for execution using the ' + PAN_TOOLS + ' Run two verbs and merge their JSON: (1) init execute-phase ' + phaseArg + ' — take phase_found, phase_number, phase_name, phase_dir, parallelization, verifier_enabled; (2) phase-plan-index ' + phaseArg + ' — take has_checkpoints and plans[] (id, wave, autonomous, has_summary, objective; include each plan file path as file). Then, only if phase_found is true and has_checkpoints is false, (3) test run --phase ' + phaseArg + ' --baseline — it records what the test suite does before the first wave, so the verifier can tell a failure this phase caused from one it inherited; a phase that already has a baseline keeps it (kept_existing), and a failing or empty baseline is not an error. Put one line describing its result in test_baseline. Do not execute any plan; return only the merged index.',
+  'Index phase ' + phaseArg + ' for execution using the ' + PAN_TOOLS + ' Run two verbs and merge their JSON: (1) init execute-phase ' + phaseArg + ' — take phase_found, phase_number, phase_name, phase_dir, parallelization, worktree_isolation, verifier_enabled; (2) phase-plan-index ' + phaseArg + ' — take has_checkpoints and plans[] (id, wave, sub_wave, autonomous, has_summary, objective; include each plan file path as file). Then, only if phase_found is true and has_checkpoints is false, (3) test run --phase ' + phaseArg + ' --baseline — it records what the test suite does before the first wave, so the verifier can tell a failure this phase caused from one it inherited; a phase that already has a baseline keeps it (kept_existing), and a failing or empty baseline is not an error. Put one line describing its result in test_baseline. Do not execute any plan; return only the merged index.',
   { label: 'index', phase: 'Index', schema: INDEX })
 if (!index || !index.phase_found) return { error: 'phase ' + phaseArg + ' not found' }
 if (index.has_checkpoints) {
@@ -2428,6 +2463,14 @@ if (index.has_checkpoints) {
 const pending = index.plans.filter(p => !p.has_summary)
 if (pending.length === 0) return { phase: phaseArg, done: true, message: 'every plan already has a summary — nothing to execute' }
 const waveNumbers = [...new Set(pending.map(p => p.wave))].sort((a, b) => a - b)
+// A3: plans of one wave that modify the same file are in different sub-waves, run in turn.
+const groups = []
+for (const w of waveNumbers) {
+  const inWave = pending.filter(p => p.wave === w)
+  for (const sw of [...new Set(inWave.map(p => p.sub_wave || 0))].sort((a, b) => a - b)) groups.push({ wave: w, sub: sw, plans: inWave.filter(p => (p.sub_wave || 0) === sw) })
+}
+// workflow.worktree_isolation: each executor works in its own git worktree.
+const iso = index.worktree_isolation === true ? { isolation: 'worktree' } : {}
 const parallelWithinWave = index.parallelization !== false
 log(pending.length + ' plans across ' + waveNumbers.length + ' wave(s)' + (parallelWithinWave ? '' : ', sequential within waves'))
 
@@ -2451,17 +2494,18 @@ const executorPrompt = (p) =>
   + 'Report plan_id, status (complete | failed | checkpoint), summary_path, the number of commits you made, and self_check (passed if your summary carries no "Self-Check: FAILED" marker).'
 const executed = []
 let halted = null
-for (const w of waveNumbers) {
-  const wavePlans = pending.filter(p => p.wave === w)
-  log('wave ' + w + ': ' + wavePlans.map(p => p.id).join(', '))
+for (const g of groups) {
+  const w = g.wave
+  const wavePlans = g.plans
+  log('wave ' + w + (g.sub ? '.' + g.sub : '') + ': ' + wavePlans.map(p => p.id).join(', '))
   let results
   if (parallelWithinWave) {
     results = await parallel(wavePlans.map(p => () =>
-      agent(executorPrompt(p), { agentType: 'pan-executor', label: 'exec:' + p.id, phase: 'Execute', schema: EXEC_RESULT })))
+      agent(executorPrompt(p), { agentType: 'pan-executor', label: 'exec:' + p.id, phase: 'Execute', schema: EXEC_RESULT, ...iso })))
   } else {
     results = []
     for (const p of wavePlans) {
-      results.push(await agent(executorPrompt(p), { agentType: 'pan-executor', label: 'exec:' + p.id, phase: 'Execute', schema: EXEC_RESULT }))
+      results.push(await agent(executorPrompt(p), { agentType: 'pan-executor', label: 'exec:' + p.id, phase: 'Execute', schema: EXEC_RESULT, ...iso }))
     }
   }
   const settled = results.filter(Boolean)
@@ -2661,6 +2705,7 @@ const {
   PAN_AGENTS_END,
   buildAgentsMdSection,
   upsertAgentsMdSection,
+  sectionState,
   removeAgentsMdSection,
   ensureClaudeMdImport,
   removeClaudeMdImport,
@@ -2670,6 +2715,7 @@ const {
 
 module.exports = {
   withClaudeUserInvokedOnly,
+  renderCommandAlias,
   // Constants
   colorNameToHex,
   claudeToOpencodeTools,
@@ -2769,6 +2815,7 @@ module.exports = {
   // AGENTS.md universal rules layer (ADR-0028 Phase 3)
   buildAgentsMdSection,
   upsertAgentsMdSection,
+  sectionState,
   removeAgentsMdSection,
   ensureClaudeMdImport,
   removeClaudeMdImport,

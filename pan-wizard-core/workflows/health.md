@@ -72,6 +72,12 @@ Status: HEALTHY | DEGRADED | BROKEN
 Errors: N | Warnings: N | Info: N
 ```
 
+**Ask per repair class before repairing.** With `--repair`, run `validate health` without it first and read `repairs_available` (for example `resetConfig`, `regenerateState`, `syncRequirements`, `syncRoadmap`). Ask about each class on its own, saying what it rewrites (state.md is backed up before regeneration; config.json is reset to defaults). Then repair only the classes the user accepted:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs validate health --repair --only <class>,<class>
+```
+A class the user declines is not touched.
+
 **If repairs were performed:**
 ```
 ## Repairs Performed

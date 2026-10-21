@@ -51,16 +51,16 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | What | Count |
 |---|---|
 | Version | (see `package.json`) |
-| Commands (`commands/pan/*.md`) | 59 |
+| Commands (`commands/pan/*.md`) | 46 |
 | Agents (`agents/*.md`) | 24 |
-| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 68 |
-| Workflows (`pan-wizard-core/workflows/*.md`) | 33 |
+| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 80 |
+| Workflows (`pan-wizard-core/workflows/*.md`) | 40 |
 | Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 204 |
-| Scenario test files (`tests/scenarios/*.test.cjs`) | 36 |
-| Total tests (npm run test:all) | 5698 |
-| Total test suites | 1211 |
+| Unit test files (`tests/*.test.cjs`) | 229 |
+| Scenario test files (`tests/scenarios/*.test.cjs`) | 37 |
+| Total tests (npm run test:all) | 5973 |
+| Total test suites | 1291 |
 | Hooks (`hooks/*.js`) | 8 |
 | Specs (`docs/specs/*.md`) | 57 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
@@ -164,6 +164,9 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `scripts/mutation-probe.cjs` — **report-only** (`npm run test:mutate`): breaks the code on purpose inside a throwaway `git worktree` and reports which mutations the suite failed to notice. Answers what coverage cannot — not "did the line run" but "would a test fail if it were wrong". Sampled and seeded (`--max`, `--seed`, `--target`); targets the cost and trace logger hooks, `cost.cjs`, `cost-rebuild.cjs` and the dispatcher. Never a gate: release-check and CI do not run it, and `tests/mutation-probe.test.cjs` asserts they do not
 - `scripts/test-quality-lint.cjs` — the assertion shapes that passed while the feature was broken (OR-shaped liveness asserts, in-process `cmd*` calls that exit the process, `assert(true)`, length-only CLI asserts, bare platform returns, tight wall-clock bounds, real-HOME reads, committed todos, OR-of-bare-property existence asserts), applied to the suite by `tests/test-quality.test.cjs` with `tests/fixtures/test-quality-allowlist.json`
 - `scripts/prompt-lint.cjs` — the prompt-contract lint (program L2): every `pan-tools` call in a shipped prompt names a real verb and subcommand, an agent is never told to use a tool it is not granted, no prompt @-includes engine source, no AskUserQuestion offers more than four options, every spawn names its model and role spawns name their agent type, and no shipped prompt sends the user to a dev-only skill. Applied by `tests/prompt-lint.test.cjs` with `tests/fixtures/prompt-lint-allowlist.json` (every entry needs a reason, and a stale entry fails)
+- `scripts/prompt-rules.cjs` — the prompt-rule registry (program H6): every normative line (MUST, NEVER, always, do not …) in a shipped prompt gets a stable id (`<file>:<sha1 prefix of its text>`) in `tests/fixtures/prompt-rules.json`. A harness scenario claims the rules it exercises with `covers: [ids]`. Rules present when the registry was created are `baseline`; any other unclaimed rule fails `--check` (and `test-surface.cjs --check`) unless `tests/fixtures/prompt-rules-allowlist.json` gives a reason. After editing a prompt's normative lines, run `--write`. `harness/src/run.cjs --prompt-mutant <id>` deletes that rule from the packed package and runs only the scenarios that cover it: all passing means the rule is decorative; each run appends a row to `harness/prompt-mutants.jsonl`
+- `harness/autopilot/` — the **autopilot** (programs S1, S2, S5; not shipped, and `tests/autopilot.test.cjs` checks `npm pack` carries nothing under `harness/`). `market-watch.cjs` evaluates the machine predicates in `docs/specs/watch-triggers.json` for the ideas ledger's WATCH rows, model-free (npm dist-tags, GitHub releases by ETag, `CHANGELOG.md`, harness results), and appends fired triggers to `harness/autopilot/state/inbox.md`; it never writes the ledger. `autopilot.cjs <lane>` prints a dry-run plan by default; a model lane (`lanes.json`) runs only with `--run --approve-usd N`, in a worktree under the test directory on a local `bot/<lane>/<id>` branch, and never publishes; `bot-scope-check.cjs` refuses evaluator files and files outside the lane, and the canaries in `canaries.json` must stay red. `PAN_AUTOPILOT_KILL=1` stops every lane; a monthly cap applies. `state-of-pan.cjs` writes the deterministic weekly report. The fix lanes (S3) run in the order their gate is mechanical (mutant, surface row, dispatcher arm, docs, harness finding, prompt); each opens after the one before has three branches the owner merged and none reverted (`autopilot.cjs record <branch> merged|reverted`), and a branch is kept only when it passes its lane's gates (same-seed mutation re-probe, test-quality lint, suite). The dogfood lane (S6, `dogfood.cjs`, `autopilot.cjs dogfood --run --approve-usd N`) runs PAN on PAN: a worktree of this repository, PAN installed from the packed tarball into a scratch `--global --config-dir` (never into the source repo), the oldest open harness finding handed to `/pan:quick --full`, and the branch kept only when that verification passed and the diff passes the scope check. Local state is in `harness/autopilot/state/` (gitignored)
+- `harness/src/evolve.cjs` and `/evolve-prompt` — guarded prompt evolution (program S4): one section of one judge prompt, reflected from training failures only, scored paired against the baseline with a deletion arm, accepted only when non-inferior on held-out data (`harness/evolve/split.json`, δ 0.05). The evolver writes only under `harness/variants/` and aborts if the scorer, corpus, scenarios, cassettes or split change during a generation (`tests/evolve-guard.test.cjs`). `harness/src/run.cjs --variant <installed path>=<harness/variants file>` runs a variant as an arm. Paid; the owner approves each run
 - `scripts/build-help.cjs` — generates the command index in `pan-wizard-core/workflows/help.md` (what `/pan:help` prints) from each `commands/pan/*.md` file's `group` and `description` frontmatter; `--write` refreshes it, `--check` exits 1 when stale, and `tests/help-generated.test.cjs` fails on a stale block or a missing command
 - `marketplace/` — a local `command`-source marketplace (`marketplace/.claude-plugin/marketplace.json`) that installs the plugin from this checkout without publishing. Not shipped — absent from `package.json` `files`. See `marketplace/README.md`
 - `scripts/build-agent-plugin.js` — emits the vendor-neutral **Agent Plugins** bundle to `dist/pan-agent-plugin/` (ADR-0045) for Copilot CLI, Codex, Cursor, Kiro. `.agents/plugins/marketplace.json` (Codex) and `.github/plugin/marketplace.json` (Copilot) point at it

@@ -138,6 +138,16 @@ Present complete project status to user:
 </step>
 
 <step name="determine_next_action">
+An interrupted agent or a `.continue-here` checkpoint comes first (below). Otherwise ask the router:
+
+```bash
+NEXT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs next-action)
+```
+
+It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+
+Offer its `command` as the primary option.
+
 Based on project state, determine the most logical next action:
 
 **If interrupted agent exists:**
@@ -237,7 +247,7 @@ Based on user selection, route to appropriate workflow:
 
   **Also available:**
   - `/pan:discuss-phase [N]` — gather context first
-  - `/pan:research-phase [N]` — investigate unknowns
+  - `/pan:plan-phase --research-only [N]` — investigate unknowns
 
   ---
   ```
@@ -274,7 +284,13 @@ If state.md is missing but other artifacts exist:
 4. Count pending todos in .planning/todos/pending/
 5. Check for .continue-here files → Session continuity
 
-Reconstruct and write state.md, then proceed normally.
+Reconstruct state.md through the engine, never with the Write tool:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state init --core-value "<from project.md>" --focus "<current phase name>" --phase <current phase> --phase-name "<its name>" --total-phases <N> --activity "Reconstructed from artifacts"
+```
+
+Then add what the summaries and todos hold, one section at a time: `state section "Decisions" --append "- [Phase X]: ..."`, `state section "Blockers/Concerns" --append "..."`, `state section "Pending Todos" --set "<N> pending"`. Proceed normally.
 
 This handles cases where:
 

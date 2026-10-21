@@ -269,7 +269,6 @@ const knowledge = require('./lib/knowledge.cjs');
 const skillAlign = require('./lib/skill-align.cjs');
 const hygiene = require('./lib/hygiene.cjs');
 const whatif = require('./lib/whatif.cjs');
-const bridge = require('./lib/bridge.cjs');
 const optimize = require('./lib/optimize.cjs');
 const git = require('./lib/git.cjs');
 const distill = require('./lib/distill.cjs');
@@ -390,7 +389,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, bridge, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -415,6 +414,29 @@ async function main() {
         state.cmdStateUpdate(cwd, args[2], args[3]);
       } else if (subcommand === 'get') {
         state.cmdStateGet(cwd, args[2], raw);
+      } else if (subcommand === 'init' || subcommand === 'section' || subcommand === 'quick-task' || subcommand === 'apply') {
+        // A7b: the wholesale and by-section writers of state.md.
+        const sw = require('./lib/state-write.cjs');
+        if (subcommand === 'init') {
+          sw.cmdStateInit(cwd, {
+            coreValue: getArgValue(args, '--core-value'), focus: getArgValue(args, '--focus'),
+            phase: getArgValue(args, '--phase'), phaseName: getArgValue(args, '--phase-name'),
+            totalPhases: getArgValue(args, '--total-phases'), status: getArgValue(args, '--status'),
+            activity: getArgValue(args, '--activity'),
+            force: args.includes('--force'), keepContext: args.includes('--keep-context'),
+          }, raw);
+        } else if (subcommand === 'section') {
+          sw.cmdStateSection(cwd, args[2] && !args[2].startsWith('--') ? args[2] : null, {
+            append: getArgValue(args, '--append'), set: getArgValue(args, '--set'), under: getArgValue(args, '--under'),
+          }, raw);
+        } else if (subcommand === 'quick-task') {
+          sw.cmdStateQuickTask(cwd, {
+            description: getArgValue(args, '--description'), commit: getArgValue(args, '--commit'),
+            directory: getArgValue(args, '--directory'), status: getArgValue(args, '--status'), date: getArgValue(args, '--date'),
+          }, raw);
+        } else {
+          sw.cmdStateApply(cwd, getArgValue(args, '--json'), raw);
+        }
       } else if (subcommand === 'patch') {
         const patches = {};
         for (let i = 2; i < args.length; i += 2) {
@@ -471,7 +493,7 @@ async function main() {
       } else if (subcommand === 'load' || !subcommand) {
         state.cmdStateLoad(cwd, raw);
       } else {
-        error(`Unknown state subcommand: ${subcommand}. Available: json, update, get, patch, compact, advance-plan, record-metric, update-progress, add-decision, add-blocker, resolve-blocker, record-session, load, snapshot`);
+        error(`Unknown state subcommand: ${subcommand}. Available: json, update, get, patch, init, section, quick-task, apply, compact, advance-plan, record-metric, update-progress, add-decision, add-blocker, resolve-blocker, record-session, load, snapshot`);
       }
       break;
     }
@@ -707,6 +729,10 @@ async function main() {
         require('./lib/plan-lint.cjs').cmdVerifyDecisions(cwd, args[2], raw);
       } else if (subcommand === 'gates') {
         require('./lib/plan-lint.cjs').cmdVerifyGates(cwd, args[2], raw);
+      } else if (subcommand === 'requirements') {
+        require('./lib/requirements-lint.cjs').cmdVerifyRequirements(cwd, raw);
+      } else if (subcommand === 'traceability') {
+        require('./lib/requirements-lint.cjs').cmdVerifyTrace(cwd, args.slice(2).filter((a) => /^[A-Z][A-Z0-9]*-d+$/.test(a)), raw);
       } else if (subcommand === 'mutate') {
         mutate.cmdVerifyMutate(cwd, {
           phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),
@@ -715,7 +741,7 @@ async function main() {
           timeout: getArgValue(args, '--timeout'),
         }, raw);
       } else {
-        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate, review-focus, decisions, gates');
+        error('Unknown verify subcommand. Available: plan-structure, phase-completeness, references, commits, artifacts, key-links, reconcile, stubs, scope, stale, plan-set, test-integrity, red, mutate, review-focus, decisions, gates, requirements, traceability');
       }
       break;
     }
@@ -873,12 +899,27 @@ async function main() {
         const fullFlag = args.includes('--full');
         const driftFlag = args.includes('--drift');
         const linksFlag = args.includes('--links');
-        verify.cmdValidateHealth(cwd, { repair: repairFlag, standards: standardsFlag, full: fullFlag, drift: driftFlag, links: linksFlag }, raw);
+        verify.cmdValidateHealth(cwd, { repair: repairFlag, standards: standardsFlag, full: fullFlag, drift: driftFlag, links: linksFlag, only: (getArgValue(args, '--only') || '').split(',').map((s) => s.trim()).filter(Boolean) }, raw);
       } else if (subcommand === 'deployment') {
         verify.cmdValidateDeployment(cwd, raw);
       } else {
         error('Unknown validate subcommand. Available: consistency, health, deployment');
       }
+      break;
+    }
+
+    case 'autodev': {
+      // A1: the deterministic outer loop — a fresh host session per unit, stops in code.
+      require('./lib/autodev.cjs').cmdAutodev(cwd, args[1], {
+        host: getArgValue(args, '--host'), maxUsd: getArgValue(args, '--max-usd'), maxUsdDay: getArgValue(args, '--max-usd-day'),
+        maxTurns: getArgValue(args, '--max-turns'), run: getArgValue(args, '--run'), worktrees: args.includes('--worktrees'),
+        ci: args.includes('--ci'), ciRounds: getArgValue(args, '--ci-rounds'), ciPush: args.includes('--ci-push'), ciBase: getArgValue(args, '--ci-base'),
+      }, raw);
+      break;
+    }
+
+    case 'next-action': {
+      require('./lib/next-action.cjs').cmdNextAction(cwd, raw);
       break;
     }
 
@@ -1038,7 +1079,7 @@ async function main() {
             break;
           }
           if (batch.error) {
-            // The newest batch is the one /pan:focus-exec runs; classifying another would
+            // The newest batch is the one /pan:focus-auto --step exec runs; classifying another would
             // hand it waves for the wrong items, so an unusable newest batch is an error.
             output({ error: batch.error }, raw);
             break;
@@ -1198,23 +1239,6 @@ async function main() {
       break;
     }
 
-    case 'bridge': {
-      const subcommand = args[1];
-      if (subcommand === 'list') {
-        bridge.cmdBridgeList(cwd, raw);
-      } else if (subcommand === 'recommend') {
-        bridge.cmdBridgeRecommend(cwd, args[2], {
-          max_recommendations: Number(getArgValue(args, '--max') || 10),
-          min_score: Number(getArgValue(args, '--min-score') || 1),
-        }, raw);
-      } else if (subcommand === 'cache') {
-        bridge.cmdBridgeCache(cwd, getArgValue(args, '--servers'), getArgValue(args, '--runtime'), raw);
-      } else {
-        error('Unknown bridge subcommand. Available: list, recommend, cache');
-      }
-      break;
-    }
-
     case 'whatif': {
       const subcommand = args[1];
       if (subcommand === 'prepare') {
@@ -1320,8 +1344,60 @@ async function main() {
       const subcommand = args[1];
       if (subcommand === 'scope') {
         verifyScope.cmdReviewScope(cwd, args[2], raw);
+      } else if (subcommand === 'vote') {
+        // R2: merge k reviewer passes; a finding survives only with a quorum of votes.
+        const valued = new Set(['--phase', '--quorum', '--out']);
+        const files = args.slice(2).filter((a, i, all) => !a.startsWith('--') && !valued.has(all[i - 1]));
+        require('./lib/review-vote.cjs').cmdReviewVote(cwd, { files, phase: getArgValue(args, '--phase'), quorum: getArgValue(args, '--quorum'), out: getArgValue(args, '--out') }, raw);
+      } else if (subcommand === 'cross-family') {
+        // R4: the review on another host's CLI, read-only; off unless the project opts in.
+        require('./lib/cross-family.cjs').cmdReviewCrossFamily(cwd, args[2], {
+          host: getArgValue(args, '--host'), reps: getArgValue(args, '--reps'), dryRun: args.includes('--dry-run'),
+        }, raw);
       } else {
-        error('Unknown review subcommand. Available: scope');
+        error('Unknown review subcommand. Available: scope, vote, cross-family');
+      }
+      break;
+    }
+
+    case 'merge': {
+      // L6a: the human merge gate on the CLI; confirm runs only in a person's terminal.
+      const subcommand = args[1];
+      const M = require('./lib/merge.cjs');
+      if (subcommand === 'request') {
+        M.cmdMergeRequest(cwd, args[2], { phase: getArgValue(args, '--phase'), ciGreen: args.includes('--ci-green') }, raw);
+      } else if (subcommand === 'confirm') {
+        M.cmdMergeConfirm(cwd, args[2], raw);
+      } else {
+        error('Unknown merge subcommand. Available: request, confirm');
+      }
+      break;
+    }
+
+    case 'uat': {
+      // L8: UAT results recorded through the engine, so every runtime leaves the same uat.md.
+      const subcommand = args[1];
+      const U = require('./lib/uat.cjs');
+      if (subcommand === 'record') {
+        U.cmdUatRecord(cwd, args[2], { test: getArgValue(args, '--test'), result: getArgValue(args, '--result'), reported: getArgValue(args, '--reported'), severity: getArgValue(args, '--severity'), reason: getArgValue(args, '--reason') }, raw);
+      } else if (subcommand === 'status') {
+        U.cmdUatStatus(cwd, args[2], raw);
+      } else {
+        error('Unknown uat subcommand. Available: record, status');
+      }
+      break;
+    }
+
+    case 'debug': {
+      // P5: a debug session's reproduction as the closing check, and the resolved case base.
+      const subcommand = args[1];
+      const D = require('./lib/debug-cases.cjs');
+      if (subcommand === 'repro') {
+        D.cmdDebugRepro(cwd, args[2], raw, { timeout: getArgValue(args, '--timeout') });
+      } else if (subcommand === 'similar') {
+        D.cmdDebugSimilar(cwd, args[2], raw, { limit: getArgValue(args, '--limit') });
+      } else {
+        error('Unknown debug subcommand. Available: repro, similar');
       }
       break;
     }
@@ -1350,6 +1426,7 @@ async function main() {
         reviewerFile: getArgValue(args, '--reviewer-file'),
         hardenerFile: getArgValue(args, '--hardener-file'),
         metaFile: getArgValue(args, '--meta-file'),
+        crossFile: getArgValue(args, '--cross-file'),
       };
       if (subcommand === 'merge') {
         reviewDeep.cmdReviewDeepMerge(cwd, phaseNum, opts, raw);
@@ -1395,8 +1472,10 @@ async function main() {
         findings.cmdFindingsDebt(cwd, { milestone: filters.milestone }, raw);
       } else if (subcommand === 'suppressions') {
         findings.cmdFindingsSuppressions(cwd, { phase: filters.phase, agent: filters.agent }, raw);
+      } else if (subcommand === 'prove') {
+        findings.cmdFindingsProve(cwd, { id: findings.findingIdsIn(args.slice(2))[0], test: getArgValue(args, '--test'), timeout: getArgValue(args, '--timeout') }, raw);
       } else {
-        error('Unknown findings subcommand. Available: record, list, dispose, debt, suppressions');
+        error('Unknown findings subcommand. Available: record, list, dispose, debt, suppressions, prove');
       }
       break;
     }
@@ -1489,8 +1568,14 @@ async function main() {
         worktree.cmdWorktreeRemove(cwd, args[2], getArgValue(args, '--branch'), raw, { force: args.includes('--force') });
       } else if (subcommand === 'cleanup') {
         worktree.cmdWorktreeCleanup(cwd, raw, { force: args.includes('--force') });
+      } else if (subcommand === 'preflight') {
+        // A3: shadow-merge branches onto the base in a throwaway worktree and run the oracle.
+        worktree.cmdWorktreePreflight(cwd, {
+          base: getArgValue(args, '--base'), test: getArgValue(args, '--test'),
+          branches: String(getArgValue(args, '--branches') || '').split(',').map((b) => b.trim()).filter(Boolean),
+        }, raw);
       } else {
-        error('Unknown worktree subcommand. Available: list, create, remove, cleanup');
+        error('Unknown worktree subcommand. Available: list, create, remove, cleanup, preflight');
       }
       break;
     }

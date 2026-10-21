@@ -127,6 +127,42 @@ function checkRed(cwd, phase, opts = {}) {
   };
 }
 
+/**
+ * Prove a review finding with a catching test (program R5): the inverse of RED. The
+ * test shows the defect the phase introduced when it PASSES at the phase's base (the
+ * behaviour was right before) and FAILS at HEAD (the phase broke it).
+ *
+ *   confirmed       passes at the base, fails at HEAD
+ *   fails_at_base   fails before the phase too: not specific to the change
+ *   passes_at_head  the defect it claims is not there, or the test does not reach it
+ *   not_checked     no base, no command for the file, or the worktree failed (with why)
+ *
+ * @returns {{status, test, base?, command?, base_exit?, head_exit?, detail?}}
+ */
+function proveFinding(cwd, phase, testFile, opts = {}) {
+  const test = String(testFile || '').split(path.sep).join('/').split('\\').join('/');
+  if (!test || !fs.existsSync(path.join(cwd, test))) return { status: 'not_checked', test, detail: 'the test file does not exist' };
+  const info = findPhaseInternal(cwd, phase);
+  const b = phaseBase(cwd, (info && info.phase_number) || String(phase));
+  if (!b.base) return { status: 'not_checked', test, detail: b.reason };
+  const fc = TG.fileCommand(cwd, test);
+  if (!fc.command) return { status: 'not_checked', test, detail: fc.reason };
+  const timeoutMs = opts.timeoutMs || DEFAULT_FILE_TIMEOUT_MS;
+  let atBase = null;
+  const wt = withWorktree(cwd, b.base, (dir) => {
+    const dest = path.join(dir, test);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(path.join(cwd, test), dest);
+    atBase = TG.runCommand(dir, fc.command, timeoutMs);
+  });
+  if (wt.error) return { status: 'not_checked', test, base: b.base, detail: wt.error };
+  const atHead = TG.runCommand(cwd, fc.command, timeoutMs);
+  const status = atBase.exit !== 0 ? 'fails_at_base' : (atHead.exit === 0 ? 'passes_at_head' : 'confirmed');
+  const detail = status === 'fails_at_base' ? `fails before the phase too: ${tail(atBase.output)}`
+    : status === 'passes_at_head' ? 'passes at HEAD: it does not show the defect the finding claims' : null;
+  return { status, test, base: b.base, command: fc.command, base_exit: atBase.exit, head_exit: atHead.exit, ...(detail ? { detail } : {}) };
+}
+
 /** `pan-tools verify red <phase> [--timeout <ms>]`: exit 1 when a test is not_red or not_green. */
 function cmdVerifyRed(cwd, phase, raw, opts = {}) {
   if (!phase) error('Usage: verify red <phase> [--timeout <ms>]');
@@ -135,4 +171,4 @@ function cmdVerifyRed(cwd, phase, raw, opts = {}) {
   output(r, raw, !r.checked ? 'not_checked' : (r.ok ? 'caught' : 'not_caught'), r.ok ? 0 : 1);
 }
 
-module.exports = { checkRed, cmdVerifyRed, phaseBase, withWorktree };
+module.exports = { checkRed, cmdVerifyRed, phaseBase, withWorktree, proveFinding };

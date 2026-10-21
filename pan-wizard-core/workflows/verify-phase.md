@@ -119,7 +119,7 @@ from the exit code and the runner's output, and you copy it.
 </step>
 
 <step name="mutation_report">
-**Measure whether the tests pin the code the phase wrote** (a report, never a gate).
+**Measure whether the tests pin the code the phase wrote** (a report, unless the project chose gate mode).
 
 Only when the test gate passed: a mutant cannot be read against a suite that already fails.
 With `workflow.mutation_gate: off` the command runs nothing and says so.
@@ -134,7 +134,7 @@ commits changed, in a throwaway worktree at HEAD, and runs the suite against eac
 
 Write a **Test strength** section in verification.md: `killed/sampled`, and each survivor as
 `file:line — before → after`, framed as a test the phase could add. A survivor is a lead, not a
-gap: it never changes the status. `aborted: flaky` (the unmutated suite passed once and failed
+gap: in `report` mode it never changes the status. In `gate` mode (`workflow.mutation_gate: gate`) the result carries `gate`: when `gate.failed` is true (the score is below `workflow.mutation_floor`), set the status to `gaps_found` and list each survivor as a gap; `verify reconcile` refuses a passed verification over a failed gate. `aborted: flaky` (the unmutated suite passed once and failed
 once) is worth reporting as a finding of its own; `checked: false` with its `reason` goes in
 `not_checked` as `check: "mutation"`.
 </step>

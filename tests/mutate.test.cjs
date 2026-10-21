@@ -111,6 +111,41 @@ describe('verify mutate, end to end', () => {
     } finally { fs.rmSync(counter, { force: true }); }
   });
 
+  // V5G: gate mode. A score below workflow.mutation_floor (0.6) turns a passed
+  // verification into gaps: reconcile reports the contradiction and the phase gate refuses.
+  const verification = () => write('.planning/phases/02-rules/02-verification.md', '---\nstatus: passed\n---\n# V\n');
+  const reconcile = () => require('../pan-wizard-core/bin/lib/verify.cjs').reconcilePhase(dir, '2');
+
+  test('gate mode: a weak suite fails the gate, and a passed verification becomes a contradiction', () => {
+    phase(WEAK);
+    write('.planning/config.json', JSON.stringify({ workflow: { mutation_gate: 'gate' } }));
+    const out = spawnSync(process.execPath, [TOOLS_PATH, 'verify', 'mutate', '--phase', '2'], { cwd: dir, encoding: 'utf8' });
+    const r = JSON.parse(out.stdout);
+    assert.equal(r.gate.floor, 0.6);
+    assert.equal(r.gate.failed, true);
+    assert.equal(out.status, 1, 'gate mode exits non-zero below the floor');
+    verification();
+    const rec = reconcile();
+    assert.equal(rec.reconciled, false);
+    assert.match(rec.contradictions.join(' '), /mutation score 0 is below the floor 0\.6/);
+  });
+
+  test('gate mode: a strong suite passes the gate; the floor is configurable', () => {
+    phase(STRONG);
+    write('.planning/config.json', JSON.stringify({ workflow: { mutation_gate: 'gate', mutation_floor: 0.9 } }));
+    const r = M.mutatePhase(dir, '2');
+    assert.deepEqual(r.gate, { floor: 0.9, failed: false });
+  });
+
+  test('report mode (the default) never turns a pass into gaps', () => {
+    phase(WEAK);
+    const out = spawnSync(process.execPath, [TOOLS_PATH, 'verify', 'mutate', '--phase', '2'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(out.status, 0);
+    assert.equal(JSON.parse(out.stdout).gate, undefined);
+    verification();
+    assert.equal(reconcile().reconciled, true);
+  });
+
   test('a suite that already fails aborts; off runs nothing; no plan commits is not checked', () => {
     assert.match(M.mutatePhase(dir, '2').reason, /no plan commits/);
     phase(TEST('  assert.equal(isAdult(1), true);'));

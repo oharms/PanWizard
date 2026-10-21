@@ -3,12 +3,17 @@ type: prompt
 name: pan:milestone-done
 group: Milestone
 description: Archive completed milestone and prepare for next version
-argument-hint: <version>
+argument-hint: "<version> [--cleanup]"
 allowed-tools:
   - Read
   - Write
   - Bash
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--cleanup` — archive the phase directories of completed milestones into `.planning/milestones/v{X.Y}-phases/`, with a dry-run summary first: @~/.claude/pan-wizard-core/workflows/milestone-cleanup.md (formerly `milestone-cleanup`)
+</routes>
 
 <objective>
 Mark milestone {{version}} complete, archive to milestones/, and update roadmap.md and requirements.md.
@@ -45,8 +50,8 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
    - Look for `.planning/v{{version}}-milestone-audit.md`
    - If missing or stale: recommend `/pan:milestone-audit` first
-   - If audit status is `gaps_found`: recommend `/pan:milestone-gaps` first
-   - If audit status is `tech_debt`: present the debt; proceed on the user's say-so (it becomes accepted debt), or recommend `/pan:milestone-gaps` for a cleanup phase
+   - If audit status is `gaps_found`: recommend `/pan:milestone-audit --gaps` first
+   - If audit status is `tech_debt`: present the debt; proceed on the user's say-so (it becomes accepted debt), or recommend `/pan:milestone-audit --gaps` for a cleanup phase
    - If audit status is `passed`: proceed to step 1
 
    ```markdown
@@ -57,7 +62,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
    requirements coverage, cross-phase integration, and E2E flows.
 
    {If audit has gaps:}
-   ⚠ Milestone audit found gaps. Run `/pan:milestone-gaps` to create
+   ⚠ Milestone audit found gaps. Run `/pan:milestone-audit --gaps` to create
    phases that close the gaps, or proceed anyway to accept as tech debt.
 
    {If audit passed:}
@@ -122,7 +127,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn --sessions 5 2>/dev/null || true
    ```
 
-   Present the optimization summary to the user and suggest `/pan:optimize apply` to record its suggestions, each naming where a person should make the change.
+   Present the optimization summary to the user and suggest `/pan:learn --optimize apply` to record its suggestions, each naming where a person should make the change.
 
 </process>
 

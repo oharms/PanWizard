@@ -131,6 +131,37 @@ function validateScenario(s, fileName = '<inline>') {
   return errors;
 }
 
+/**
+ * Pairs (program H10): scenarios that share `pair.id` measure PAN against the bare host.
+ * Exactly one `pan` arm (PAN installed) and one `stock` arm (`install: null`), on the
+ * same seed, host and tier, with the same `pair.goal`.
+ * @returns {string[]} errors
+ */
+function validatePairs(scenarios) {
+  const errors = [];
+  const byPair = new Map();
+  for (const s of scenarios) {
+    if (!s.pair) continue;
+    const p = s.pair;
+    if (!p.id || !['pan', 'stock'].includes(p.arm) || typeof p.goal !== 'string' || !p.goal.trim()) { errors.push(`${s.id}: pair needs id, arm (pan|stock) and goal`); continue; }
+    if (!byPair.has(p.id)) byPair.set(p.id, []);
+    byPair.get(p.id).push(s);
+  }
+  for (const [id, list] of byPair) {
+    const pan = list.filter((s) => s.pair.arm === 'pan');
+    const stock = list.filter((s) => s.pair.arm === 'stock');
+    if (pan.length !== 1 || stock.length !== 1) { errors.push(`pair ${id}: needs exactly one pan arm and one stock arm`); continue; }
+    const [a, b] = [pan[0], stock[0]];
+    if (b.install && b.install.length) errors.push(`pair ${id}: the stock arm (${b.id}) must install nothing (install: null)`);
+    if (!a.install || !a.install.length) errors.push(`pair ${id}: the pan arm (${a.id}) must install PAN`);
+    if ((a.seed || 'empty') !== (b.seed || 'empty')) errors.push(`pair ${id}: the arms run on different seeds`);
+    if (((a.requires || {}).cli || '') !== ((b.requires || {}).cli || '')) errors.push(`pair ${id}: the arms run on different host CLIs`);
+    if (a.tier !== b.tier) errors.push(`pair ${id}: the arms are on different tiers`);
+    if (a.pair.goal !== b.pair.goal) errors.push(`pair ${id}: the arms state different goals`);
+  }
+  return errors;
+}
+
 function loadScenarios(dir) {
   const out = [];
   for (const f of fs.readdirSync(dir).filter(n => n.endsWith('.json')).sort()) {
@@ -139,7 +170,9 @@ function loadScenarios(dir) {
     if (errors.length) throw new Error(`invalid scenario:\n  ${errors.join('\n  ')}`);
     out.push(s);
   }
+  const pairErrors = validatePairs(out);
+  if (pairErrors.length) throw new Error(`invalid scenario pairs:\n  ${pairErrors.join('\n  ')}`);
   return out;
 }
 
-module.exports = { validateScenario, loadScenarios, STEP_KINDS, ASSERTION_RE };
+module.exports = { validateScenario, validatePairs, loadScenarios, STEP_KINDS, ASSERTION_RE };

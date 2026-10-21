@@ -412,12 +412,18 @@ function buildContextWarning(metrics, warnState, nowSeconds, opts = {}) {
   // No figures (O7): a countdown makes a model wrap up early, and a percentage is
   // the thing it would count down. The note names the checkpoint, says compaction
   // is safe, and asks for no shortcuts.
+  // Name .planning/state.md only in a project that keeps one: elsewhere the note sent the
+  // session to update a file the project does not have (field report, 2026-10-21).
+  const where = opts.hasState === false
+    ? 'wherever this project records its progress'
+    : '.planning/state.md';
+  const pause = opts.hasState === false ? '' : '; /pan:pause writes it';
   const message = isCritical
     ? 'PAN context note (from the context-monitor hook, not the user): the host will compact this session soon. ' +
-      'Before your next step, make sure .planning/state.md records where you are — the phase, the plan and task, and what comes next; /pan:pause writes it. ' +
+      `Before your next step, make sure ${where} records where you are — the phase, the plan and task, and what comes next${pause}. ` +
       'Then carry on with the current task as normal. After compaction PAN restores the planning state, so finish the task properly rather than quickly.'
     : 'PAN context note (from the context-monitor hook, not the user): this session\'s context is filling up. ' +
-      'At your next natural stopping point, such as a finished task or a commit, make sure .planning/state.md records where you are; /pan:pause writes it. ' +
+      `At your next natural stopping point, such as a finished task or a commit, make sure ${where} records where you are${pause}. ` +
       'Nothing needs to stop: the host compacts on its own and PAN restores the planning state afterwards, so keep working at full quality, with no shortcuts and no skipped verification.';
 
   return {
@@ -502,6 +508,7 @@ function main() {
       }
 
       const decision = buildContextWarning(metrics, warnData, now, {
+        hasState: fs.existsSync(path.join(data.cwd || process.cwd(), '.planning', 'state.md')),
         env: process.env,
         settings: Number.isFinite(Number(metrics.total_input_tokens)) ? settings : [],
       });

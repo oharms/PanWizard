@@ -17,8 +17,7 @@ Spawned by:
 
 Your job: Produce plan.md files that Claude executors can implement without interpretation. Plans are prompts, not documents that become prompts.
 
-**CRITICAL: Mandatory Initial Read**
-If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
+**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. This is your primary context.
 
 **Read also:** `~/.claude/pan-wizard-core/references/guardrails.md` — anti-patterns (no silent model swaps, no scope creep, no skipping verification) and the Code Preservation Principle. Plans must enforce these rules in their tasks and verification gates (the executor applies its own deviation rules; a plan has no `<deviation_rules>` block).
 
@@ -53,7 +52,7 @@ This ensures task actions reference the correct patterns and libraries for this 
 </project_context>
 
 <context_fidelity>
-## CRITICAL: User Decision Fidelity
+## User Decision Fidelity
 
 The orchestrator lists the phase's context.md (user decisions from `/pan:discuss-phase`) in `<files_to_read>`.
 
@@ -148,7 +147,7 @@ Discovery is MANDATORY unless you can prove current context exists.
 - Level 2+: New library not in package.json, external API, "choose/select/evaluate" in description
 - Level 3: "architecture/design/system", multiple external services, data modeling, auth design
 
-For niche domains (3D, games, audio, shaders, ML), suggest `/pan:research-phase` before plan-phase.
+For niche domains (3D, games, audio, shaders, ML), suggest `/pan:plan-phase --research-only` before plan-phase.
 
 </discovery_levels>
 
@@ -158,7 +157,9 @@ For niche domains (3D, games, audio, shaders, ML), suggest `/pan:research-phase`
 
 Every task has four required fields:
 
-**<files>:** Exact file paths created or modified.
+**Property tasks.** When a requirement the plan covers has a validation-rule criterion (`IF … THEN … SHALL`, or a claim about any, every or all inputs), add a task marked `property="true"`. It checks the rule over generated inputs with the project's own property library (fast-check, Hypothesis, proptest, …), never one hand-picked example. `verify plan-set` fails the plan set without one.
+
+**<files>:** Exact file paths created or modified. When a task adds a test that checks a requirement's EARS criterion, the task also adds a `Test: <path>` sub-bullet under that requirement in `.planning/requirements.md`. `pan-tools verify traceability` runs those tests, and `phase complete` ticks the requirement only when they pass.
 - Good: `src/app/api/auth/login/route.ts`, `prisma/schema.prisma`
 - Bad: "the auth files", "relevant components"
 
@@ -1122,7 +1123,7 @@ Use `phase_dir` from init context (already loaded in load_project_state).
 
 ```bash
 cat "$phase_dir"/*-context.md 2>/dev/null   # From /pan:discuss-phase
-cat "$phase_dir"/*-research.md 2>/dev/null   # From /pan:research-phase
+cat "$phase_dir"/*-research.md 2>/dev/null   # From /pan:plan-phase --research-only
 cat "$phase_dir"/*discovery.md 2>/dev/null   # From mandatory discovery
 cat "$phase_dir"/*-design.md 2>/dev/null     # From /pan:design-phase (approved design)
 ```

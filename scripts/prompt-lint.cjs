@@ -13,6 +13,8 @@
  *   pasted-source       an @-include of engine source (`*.cjs` / `*.js`) into a prompt
  *   oversized-question  an AskUserQuestion block offering more than four options (the
  *                       host's limit: two to four)
+ *   oversized-ask       an AskUserQuestion call asking more than four questions at once
+ *                       (the host's limit; program L6b, settings asked ten)
  *   untyped-spawn       a Task( spawn without `model=`, or a general-purpose spawn told
  *                       to read a role file instead of naming the agent type
  *   dev-skill           a shipped prompt sending the user to a dev-only skill of this
@@ -100,6 +102,20 @@ function lintText(rel, raw, ctx) {
         }
       }
     }
+  }
+
+  // oversized-ask: more than four questions in one call.
+  const askCallRe = /AskUserQuestion\(\s*\[/g;
+  while ((m = askCallRe.exec(text))) {
+    let depth = 0;
+    let end = -1;
+    for (let i = m.index + m[0].length - 1; i < text.length; i++) {
+      if (text[i] === '[') depth++;
+      else if (text[i] === ']') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end < 0) continue;
+    const questions = (text.slice(m.index, end).match(/\bquestion\s*:/g) || []).length;
+    if (questions > 4) hit('oversized-ask', m.index, `${questions} questions in one call`);
   }
 
   // oversized-question

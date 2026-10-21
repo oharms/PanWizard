@@ -176,7 +176,36 @@ function checkPlanSet(cwd, phase) {
     }
   }
 
+  // 5. Property tasks (V10): a requirement whose EARS criterion is a validation rule
+  // (IF … THEN … SHALL, or a claim over any / every / all inputs, or a "never") is a
+  // claim over many inputs, which one example test cannot show. The plan that lists it
+  // must carry a property-test task: property="true" on the task, or "property test" /
+  // "property-based" in its name or action.
+  let reqText = '';
+  try { reqText = fs.readFileSync(planningPath(cwd, 'requirements.md'), 'utf-8'); } catch { /* none */ }
+  if (reqText && required.length) {
+    const RL = require('./requirements-lint.cjs');
+    const byId = new Map(RL.parseRequirements(reqText).map((r) => [key(r.id), r]));
+    for (const id of required) {
+      const r = byId.get(key(id));
+      if (!r || !r.criteria.some(isValidationRule)) continue;
+      const covering = plans.filter((p) => p.requirements.map(key).includes(key(id)));
+      const hasProperty = covering.some((p) => {
+        let text = '';
+        try { text = toLf(fs.readFileSync(path.join(pf.dir, p.file), 'utf-8')); } catch { /* unreadable */ }
+        return /<task\b[^>]*\bproperty=["']?true/i.test(text) || /property[- ]based|property test/i.test(text);
+      });
+      if (!hasProperty) errors.push({ code: 'missing_property_task', requirement: id, detail: `${id} states a validation rule ("${r.criteria.find(isValidationRule).slice(0, 80)}"): a plan covering it needs a property-test task, which checks the rule over generated inputs with the project's own property library` });
+    }
+  }
+
   return { phase: phaseNumber, ok: errors.length === 0, errors, warnings, plans: plans.length, plans_sha: plansSha(pf.dir, pf.planFiles) };
+}
+
+/** A validation-rule criterion (V10): unwanted-behaviour EARS, or a claim over all inputs. */
+function isValidationRule(criterion) {
+  const c = String(criterion || '');
+  return /^IF\b[\s\S]*\bTHEN\b/i.test(c) || /\b(any|every|all|each)\s+\w+/i.test(c) || /\bnever\b/i.test(c);
 }
 
 /**

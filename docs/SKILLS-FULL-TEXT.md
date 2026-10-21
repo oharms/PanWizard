@@ -204,7 +204,7 @@ Spawn the conductor in campaign mode (it plans, it does not code). It decomposes
 Spawn the Quality squad on the built tree (parallel, read-only). Merge findings into one verdict (`/pan:review-deep` if available). `block` / `review_required` → fix serially, then re-review. Never integrate red.
 
 ### Phase 5 — Integrate (Release, human-gated)
-Spawn `pan-release`. It prepares the squash-merge, runs the configured `verification`, and surfaces an **always-ask** approval request. A human approves the merge to the protected branch; release then tags and records the rollback target. `--push` pushes the approved result.
+Spawn `pan-release`. It prepares the squash-merge, runs the configured `verification`, stages the merge with `pan-tools merge request <branch> --phase <N>`, and surfaces an **always-ask** approval request. A human approves the merge to the protected branch by running `pan-tools merge confirm <branch>` in their own terminal. The command refuses without an interactive terminal, so no agent can approve its own merge. On a runtime where nobody is at a terminal, the campaign stops at this gate; release then tags and records the rollback target. `--push` pushes the approved result.
 
 **Teardown after the merge lands (P-1815):** worktrees are scaffolding, not deliverables — the squash-merge is the permanent artifact. Once the approval lands, remove each integrated task's worktree **and** its branch in one call: `pan-tools worktree remove ../pan-army-<slug> --branch army/<slug>`. The `--branch` half is not optional: a squash-merged branch never looks merged to git, so nothing else will ever clean it. At campaign end — and on **any** abort path — sweep whatever remains: `pan-tools worktree cleanup` (`--force` also discards dirty worktrees and unintegrated branches; without it the sweep keeps anything that might hold the only copy of work, and says exactly why and how to delete it). A campaign that ends with `pan-tools worktree list` non-empty has skipped this step.
 
@@ -364,395 +364,84 @@ GOOD: "Assumption: The project uses Express for routing — Evidence: require('e
 
 ---
 
-### /pan:audit-deployment (386 lines)
+### /pan:autodev (75 lines)
 
 ````markdown
 ---
-name: pan:audit-deployment
-group: System
-description: Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
-argument-hint: <target-directory> [--enhancements] [--repair]
+name: pan:autodev
+group: Phase Lifecycle
+description: Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
+argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]"
 allowed-tools:
   - Read
   - Bash
-  - Write
-  - Glob
-  - Grep
-  - AskUserQuestion
 ---
+
 <objective>
-Audit a directory where PAN Wizard was installed and a project was run. Verify installation integrity, validate project artifacts, assess workflow execution quality, and optionally produce a featureAI-format enhancement spec that superplan.md can consume for development planning.
+Drive the project's roadmap with no model in the control loop. `pan-tools autodev` is a foreground Node process: each turn it reads `.planning/` from disk, asks the next-action router for the next unit (plan, execute or verify a phase, or complete a verified one), and runs it. Plan, execute and verify units each get a fresh headless session on the host; `phase complete` runs in the engine, so the phase gate decides.
+
+It stops in code, with one of these reasons:
+
+| Stop | Meaning |
+|------|---------|
+| `done` | Every phase is finished; the milestone audit is next |
+| `human_needed` | A verifier asked for a human check, or there is no roadmap |
+| `gate_failed` | The phase gate refused to complete a phase |
+| `ci_failed` | With `--ci`: the pull request checks still failed after the fix rounds |
+| `forecast_exceeded` | An execute unit cost more than the project's p90 forecast for it |
+| `budget_usd` | Spend reached `--max-usd` (the run) or `--max-usd-day` (today, across runs) |
+| `turns` | `--max-turns` units have run (20 when not given) |
+| `no_progress` | A unit ran and changed nothing on disk |
+
+Two options change how units run:
+
+- `--worktrees`: a phase with two or more plans runs each plan in its own git worktree and session (`/pan:exec-phase N --plan <id>`). Plans of a wave that share a file run one after the other. Before a group of plans is merged back, `pan-tools worktree preflight` merges them onto HEAD in a throwaway worktree and runs the tests: branches that pass alone but break together, or conflict, stop the run for a human.
+- `--ci`: after each completed phase, the pull request's checks (GitHub's `gh` CLI) are the oracle. A check that already fails on the base branch is ignored. A failure starts a fix round, a fresh session given the failing checks and log; after `--ci-rounds` rounds (3) the run stops with `ci_failed`. The checks must be for HEAD: push the branch yourself, or pass `--ci-push` to have autodev push after each phase.
+
+A failed session is classified before anything else happens: a compile or assertion failure is retried with its error in the prompt, then once more at a higher tier; a timeout or an unknown failure is restarted once; a missing CLI or login, a merge conflict, the guard's deny or an undeclared file stops for a human.
 </objective>
 
-<execution_context>
-This command operates on a TARGET directory (not the PAN source repo). The target must be provided as the first argument.
-</execution_context>
-
 <process>
+1. **Check the subcommand** in `$ARGUMENTS`: `run` (the default), `resume`, `status`, `report` or `replay`.
 
-<step name="parse_args">
-**Parse arguments:**
+2. **Status** only reports the latest run (or `--run <id>`):
 
-Extract target directory path from the first argument. It is REQUIRED.
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev status
+   ```
 
-```
-TARGET_DIR = first positional argument
-ENHANCEMENTS_FLAG = "--enhancements" present?
-REPAIR_FLAG = "--repair" present?
-```
+3. **Run or resume.** Say what will happen first: which host runs the sessions (`--host`, Claude Code by default; Copilot CLI has no unattended adapter yet), and the spend and unit caps. Each session spends on that host, so a run needs a spend cap: `--max-usd`, or `budget.max_usd_run` in `.planning/config.json` (and optionally a day cap, `--max-usd-day` or `budget.max_usd_day`). Ask the user for the cap if neither is set; it is their approval. Then run it in the foreground and wait; a run can take hours:
 
-If no target directory is provided, ask the user:
-> Which directory should I audit? Provide the full path to the folder where PAN Wizard was installed and a project was run.
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev run --host claude --max-usd 20 --max-turns 12
+   ```
 
-Validate the directory exists before proceeding.
-</step>
+   Add `--worktrees` or `--ci` only when the user asked for them; `--ci-push` pushes the branch, so name that before running it.
 
-<investigate_before_judging>
-Never report a file as missing, broken, or misconfigured without reading it first.
-For every audit check: read the actual file, verify its contents, then state the finding with evidence.
-Do not speculate about file contents based on filenames alone.
-</investigate_before_judging>
+   After an interrupted run, resume it: the unit that was in flight runs again first.
 
-<step name="installation_audit">
-**Phase 1 — Installation Integrity Audit**
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev resume
+   ```
 
-Check the PAN Wizard installation artifacts in the target directory. Determine which runtime was used (Claude, Gemini, OpenCode, Codex, Copilot) by checking for config directories:
+4. **Write the dossier** and check the record:
 
-```
-Claude:   <target>/.claude/
-Gemini:   <target>/.gemini/
-OpenCode: <target>/.opencode/
-Codex:    <target>/.codex/
-Copilot:  <target>/.github/ (local install) or ~/.copilot/ (global)
-```
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev report
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs autodev replay
+   ```
 
-For the detected runtime config directory (CONFIG_DIR), audit ALL of the following:
+   `report` writes `dossier.md` (a PR body) and `dossier.html` beside the ledger: per phase, the requirements, plans, units and commits, test gate, verdict, findings and cost. `replay` re-runs the stop logic over the recorded decisions and says whether it decides the same; `identical: false` means the record and the code disagree, so say so.
 
-**1.1 Core Files (CRITICAL)**
-- [ ] `CONFIG_DIR/pan-wizard-core/VERSION` exists — read and record version
-- [ ] `CONFIG_DIR/pan-wizard-core/CHANGELOG.md` exists
-- [ ] `CONFIG_DIR/pan-file-manifest.json` exists — parse and validate JSON
-- [ ] `CONFIG_DIR/package.json` exists — should contain `{"type":"commonjs"}`
-
-**1.2 Core Modules**
-- [ ] `CONFIG_DIR/pan-wizard-core/bin/pan-tools.cjs` exists (CLI dispatcher)
-- [ ] `CONFIG_DIR/pan-wizard-core/bin/lib/` directory exists
-- Every `bin/lib/*.cjs` file listed in `pan-file-manifest.json` exists on disk (the manifest is the authoritative expected set — never hardcode a module count)
-
-**1.3 Workflows, Templates, References**
-- [ ] `CONFIG_DIR/pan-wizard-core/workflows/` — non-empty, every manifest-listed workflow present
-- [ ] `CONFIG_DIR/pan-wizard-core/templates/` — non-empty, every manifest-listed template present
-- [ ] `CONFIG_DIR/pan-wizard-core/references/` — non-empty, every manifest-listed reference present
-
-**1.4 Commands**
-- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command file present (a `--unified-skills` install has none: check `./.agents/skills/pan-*/SKILL.md`, and for Claude also `CONFIG_DIR/skills/pan-*/SKILL.md`)
-- For OpenCode: `CONFIG_DIR/commands/` — every manifest-listed `pan-*.md` present (flat, one file per command)
-- For Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
-- For Codex: the SHARED skills tree, not `CONFIG_DIR` — `./.agents/skills/pan-*/SKILL.md` for a local
-  install, `~/.agents/skills/pan-*/SKILL.md` for a global one. Codex has no `skills/` of its own; if you
-  look under `.codex/` you will find no commands and wrongly report a broken install.
-
-**1.5 Agents**
-- [ ] `CONFIG_DIR/agents/` — every manifest-listed agent file present
-- Verify key agents exist: pan-planner, pan-executor, pan-verifier, pan-debugger
-
-**1.6 Hooks** (not OpenCode: its install copies no hooks — check `CONFIG_DIR/plugins/pan-wizard.js` instead)
-- [ ] `CONFIG_DIR/hooks/pan-statusline.js` exists
-- [ ] `CONFIG_DIR/hooks/pan-check-update.js` exists
-- [ ] `CONFIG_DIR/hooks/pan-context-monitor.js` exists
-
-**1.7 Settings/Config**
-- [ ] Settings file exists (settings.json / opencode.json / config.json)
-- [ ] Hooks are registered — Claude `settings.json`: SessionStart, PostToolUse, SubagentStop, Stop, statusLine; Gemini `settings.json`: SessionStart, AfterAgent, PreCompress and AfterTool (the last two for state re-injection; no statusLine); Codex: `.codex/hooks.json`; Copilot: `.github/hooks/pan.json`
-- [ ] Hook commands point to existing files
-
-**1.8 Manifest Integrity**
-- Read `pan-file-manifest.json`
-- For each file in the manifest, verify it exists on disk
-- Flag any MISSING files (manifest says exists, disk says no)
-- Flag any MODIFIED files (hash mismatch) — these are user customizations, not errors
-- Flag any ORPHANED files (on disk but not in manifest)
-
-Record all findings with severity: CRITICAL (missing core), WARNING (missing optional), INFO (modifications).
-</step>
-
-<step name="project_audit">
-**Phase 2 — Project Artifacts Audit**
-
-Check `.planning/` directory in the target:
-
-**2.1 Core Planning Files**
-- [ ] `.planning/config.json` — exists, valid JSON, has expected keys (`model_profile`, `commit_docs`, `workflow`, `budget`)
-- [ ] `.planning/project.md` — exists, has "What This Is", "Core Value", "Requirements" sections
-- [ ] `.planning/state.md` — exists, has "Current Position", "Performance Metrics" sections
-- [ ] `.planning/roadmap.md` — exists, has phase table
-- [ ] `.planning/requirements.md` — exists if project used requirements tracking
-
-**2.2 Phase Directories**
-- Scan `.planning/phases/` for numbered phase directories
-- For each phase directory:
-  - [ ] At least one `*-plan.md` file exists (phase was planned)
-  - [ ] A matching `*-summary.md` file exists (phase was executed)
-  - [ ] A `*-verification.md` file exists (phase was verified)
-- Count: total phases, phases with plans, phases verified, phases with gaps
-
-**2.3 Research Artifacts** (if brownfield/research was enabled)
-- [ ] `.planning/research/` directory exists
-- Check for stack.md, features.md, architecture.md, pitfalls.md
-- [ ] `.planning/codebase/` directory exists (brownfield)
-
-**2.4 State Consistency**
-- Parse state.md "Current Position" — extract phase number
-- Count actual phase directories — do they match?
-- Check roadmap.md phase count vs actual directories
-- Check `.planning/phases/*/.continue-here*.md` (pause writes `.continue-here.md`): resuming does not delete it (only the transition workflow removes a completed phase's handoffs), so its presence alone does not mean the session was never resumed
-
-**2.5 Config Sanity**
-- Validate config.json values are within expected ranges
-- `model_profile`: "quality" | "balanced" | "budget"
-- `commit_docs`: boolean
-- `workflow.*` toggles (research, plan_check, verifier, ...): boolean — except `workflow.phase_reports`, an object (`enabled`, `open`, `theme`, `index`)
-- `budget`: `default_points` numeric, `enforce` boolean
-</step>
-
-<step name="workflow_quality_audit">
-**Phase 3 — Workflow Execution Quality**
-
-Assess how well the project workflow was followed:
-
-**3.1 Planning Quality**
-For each phase with plan files (`*-plan.md`, e.g. `01-01-plan.md`):
-- Does it have clear objectives?
-- Does it reference requirements?
-- Are plans sequential with dependencies noted?
-- Grade: Complete / Partial / Stub
-
-**3.2 Verification Coverage**
-- Count phases with verification.md vs total phases
-- Check if verifications have pass/fail outcomes
-- Flag phases that were executed but never verified
-
-**3.3 Commit History** (if git repo)
-- Check if `.planning/` is tracked in git (config.json commit_docs)
-- Look for atomic commit patterns (one commit per plan)
-- Check for PAN-style commit messages
-
-**3.4 Session Continuity**
-- Check for `.planning/phases/*/.continue-here*.md` files (a pause happened at some point; nothing removes them on resume)
-- Check state.md session logs for gaps
-- Look for evidence of context loss (repeated work, contradictory decisions)
-
-**3.5 Todo Management**
-- Check `.planning/todos/` directory
-- Count pending vs completed
-- Flag stale todos (captured but never addressed)
-</step>
-
-<step name="report">
-**Phase 4 — Generate Audit Report**
-
-Format findings as a structured report:
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PAN Deployment Audit
- Target: <target-directory>
- Date: <YYYY-MM-DD>
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-## Summary
-
-| Category               | Status   | Score |
-|------------------------|----------|-------|
-| Installation Integrity | ✓/⚠/✗   | N/N   |
-| Project Artifacts      | ✓/⚠/✗   | N/N   |
-| Workflow Quality        | ✓/⚠/✗   | N/N   |
-| Overall                | HEALTHY / DEGRADED / BROKEN | N% |
-
-Runtime: <detected runtime>
-PAN Version: <version from VERSION file>
-Phases: <completed>/<total>
-Verification Coverage: <N>%
-
-## Installation Integrity
-
-### Critical Issues
-- [I-C01] <description> — <fix>
-
-### Warnings
-- [I-W01] <description> — <suggestion>
-
-### Info
-- [I-I01] <description>
-
-### Modified Files (User Customizations)
-- <file> — hash mismatch (expected: abc..., actual: def...)
-
-## Project Artifacts
-
-### Critical Issues
-- [P-C01] <description> — <fix>
-
-### Warnings
-- [P-W01] <description> — <suggestion>
-
-### Phase Health
-| Phase | Planned | Plans | Verified | Status |
-|-------|---------|-------|----------|--------|
-| 01    | ✓       | 3     | ✓        | Complete |
-| 02    | ✓       | 5     | ✗        | Unverified |
-
-## Workflow Quality
-
-### Observations
-- Planning quality: <grade>
-- Verification coverage: <N>%
-- Commit discipline: <grade>
-- Session continuity: <grade>
-
-### Recommendations
-1. <actionable recommendation>
-2. <actionable recommendation>
-```
-
-If `--repair` flag was provided, attempt auto-fixes for repairable issues:
-- Regenerate missing settings.json with default hook config
-- Create missing .planning/config.json with defaults
-- Remove `.planning/phases/*/.continue-here*.md` files the user confirms are stale
-
-Report repairs performed.
-</step>
-
-<step name="enhancements">
-**Phase 5 — Enhancement Spec Generation** (only if `--enhancements` flag)
-
-Based on audit findings, generate a featureAI-format enhancement spec at `docs/specs/deployment_audit_findings_featureai.md` in the PAN SOURCE repository (NOT the target directory).
-
-The spec MUST follow this exact format to be consumable by superplan.md:
-
-```markdown
-# [Enhancement Title] — Feature Specification
-
-**Generated:** <YYYY-MM-DD>
-**Version:** 1.0
-**Status:** Proposed
-**Source:** Deployment audit of <target-directory>
-
----
-
-## Problem Statement
-
-[Describe the problems discovered during the audit. What is broken, missing, or suboptimal in PAN Wizard based on real-world deployment evidence?]
-
-## Demand Evidence
-
-| Evidence Type | Source | Finding |
-|---|---|---|
-| Deployment audit | <target-dir> | <specific finding> |
-| ... | ... | ... |
-
-## Success Criteria
-
-~~~
-SC-1: <measurable criterion>
-SC-2: <measurable criterion>
-~~~
-
-## Design
-
-[Proposed changes to PAN Wizard to address the findings]
-
-### Architecture
-
-[How the fix/enhancement integrates with existing PAN architecture]
-
-## Feature Ladder
-
-| Version | Scope | Value | Effort |
-|---|---|---|---|
-| **v0 (MVP)** | <scope> | <value> | <effort> |
-| **v1** | <scope> | <value> | <effort> |
-
-## Implementation Tasks
-
-| # | ID | Title | Files | Effort | Pts | Priority |
-|---|---|---|---|---|---|---|
-| 1 | A.1 | <task> | <files> | S/M/L | N | P1-P4 |
-
-### Dependency Graph
-
-~~~
-A.1 ──> A.2 ──> A.3
-~~~
-
-## Test Plan
-
-| Level | Count | What It Catches |
-|---|---|---|
-| Unit | N+ | <description> |
-| Integration | N+ | <description> |
-
-## Risk Register
-
-| Risk | Probability | Impact | Mitigation |
-|---|---|---|---|
-| <risk> | Low/Med/High | Low/Med/High | <mitigation> |
-
----
-
-*Generated by /pan:audit-deployment — <YYYY-MM-DD>*
-```
-
-Group findings into logical enhancement categories:
-1. **Installer gaps** — Missing files, broken hooks, manifest issues
-2. **Workflow gaps** — Missing verification, planning quality
-3. **Template gaps** — Templates that don't match real-world needs
-4. **Documentation gaps** — Unclear processes discovered during audit
-5. **Tooling gaps** — Features PAN should have but doesn't
-
-For each category with findings, generate a separate featureAI spec OR consolidate into one spec if findings are cohesive.
-
-Ask the user before writing specs:
-> The audit found N enhancement opportunities across M categories. Should I generate featureAI specs for superplan.md to plan development? [Yes/No]
-</step>
-
-<step name="final_summary">
-**Final Summary**
-
-Display a concise summary:
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- Audit Complete
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Score: N% (HEALTHY / DEGRADED / BROKEN)
-Critical: N | Warnings: N | Info: N
-
-Installation: <status>
-Project: <status>
-Workflow: <status>
-
-Enhancements drafted: N specs → docs/specs/
-```
-
-If enhancements were generated:
-> Enhancement specs written. Run superplan.md or /pan:milestone-new to plan development work.
-
-If repairs were performed:
-> N issues auto-repaired. Re-run /pan:audit-deployment to verify.
-</step>
-
+5. **Report** the result: `stop.reason` and `stop.detail`, the units run, `spent_usd`, and the ledger path (`.planning/autodev/<run>/ledger.jsonl`, one `started` and one `finished` row per unit with its argv, exit, cost and commits). Then route on the reason:
+   - `done` → `/pan:milestone-audit`
+   - `human_needed` → show the phase's verification and the human checks it lists
+   - `ci_failed` → show the failing checks and the last fix round from the ledger
+   - `gate_failed` → show the gate's reasons (`pan-tools phase gate <N>`), then `/pan:plan-phase <N> --gaps`
+   - `budget_usd`, `turns` → offer `autodev resume` with a higher cap
+   - `forecast_exceeded` → show the unit's cost and forecast from the ledger; offer `autodev resume` once the user has looked
+   - `no_progress` → show the last unit's `stderr_tail` from the ledger; the session likely could not run the command
 </process>
-
-<constraints>
-- NEVER modify the target directory's .planning/ content unless --repair is explicitly passed
-- NEVER modify the target directory's PAN installation files (read-only audit)
-- Enhancement specs are written to the PAN SOURCE repo docs/specs/, NOT the target directory
-- If the target directory IS the PAN source repo, refuse with: "Cannot audit the PAN source repository. Use a separate deployment directory."
-- All file reads are defensive — missing files are findings, not crashes
-- Do not expose file hashes, absolute paths, or credentials in the report
-</constraints>
 ````
 
 
@@ -925,35 +614,6 @@ If `.planning/metrics/tokens.jsonl` is empty, `/pan:cost` returns zero totals �
 The aggregator is runtime-agnostic. What varies across runtimes is how records *get into* `tokens.jsonl` in the first place.
 
 </runtime_compatibility>
-````
-
-
----
-
-### /pan:dashboard (22 lines)
-
-````markdown
----
-name: pan:dashboard
-group: Observability
-description: Alias for /pan:hud — generate the single-page HTML dashboard of the bot army and project
-argument-hint: "[--out <file>] [--open] [--stdout]"
-allowed-tools:
-  - Read
-  - Bash
----
-
-<objective>
-`/pan:dashboard` is a discoverability alias for **`/pan:hud`** (ADR-0035). It generates the same single-page, self-contained HTML dashboard of the project and its bot army.
-
-Run it exactly like `/pan:hud`:
-
-```
-pan-tools hud [--out <file>] [--open] [--stdout]
-```
-
-See **`/pan:hud`** for the full panel list, flags, JSON result shape, and runtime compatibility. The two commands are interchangeable.
-</objective>
 ````
 
 
@@ -1300,33 +960,6 @@ Design FAILS if: phase not found in roadmap, or the designer returns empty/malfo
 
 ---
 
-### /pan:discord (19 lines)
-
-```markdown
----
-name: pan:discord
-group: Community
-description: Join the PAN Discord community
----
-
-<objective>
-Display the Discord invite link for the PAN community server.
-</objective>
-
-<output>
-# Join the PAN Discord
-
-Connect with other PAN users, get help, share what you're building, and stay updated.
-
-**Invite link:** https://discord.gg/pan-wizard
-
-Click the link or paste it into your browser to join.
-</output>
-```
-
-
----
-
 ### /pan:discuss-phase (86 lines)
 
 ```markdown
@@ -1421,14 +1054,14 @@ Generate 3-4 **phase-specific** gray areas, not generic categories.
 
 ---
 
-### /pan:exec-phase (136 lines)
+### /pan:exec-phase (135 lines)
 
 ````markdown
 ---
 name: pan:exec-phase
 group: Phase Lifecycle
 description: Execute all plans in a phase with wave-based parallelization
-argument-hint: "<phase-number> [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]"
+argument-hint: "<phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]"
 allowed-tools:
   - Read
   - Write
@@ -1515,9 +1148,8 @@ Execute the execute-phase workflow from @~/.claude/pan-wizard-core/workflows/exe
 Preserve all workflow gates (wave execution, checkpoint handling, verification, state updates, routing).
 
 **Context Management Across Waves:**
-- KEEP: Phase goals, test baseline, current wave tasks, file paths being modified
-- SUMMARIZE: Completed wave results to one-line summaries
-- DISCARD: Raw tool output from previous waves
+- Carry forward: Phase goals, test baseline, current wave tasks, file paths being modified
+- Summarise: Completed wave results to one-line summaries
 
 **Attention Anchor — emit after each wave completes:**
 ```
@@ -1799,14 +1431,14 @@ Works in all 5 runtimes (Claude / Codex / Gemini / OpenCode / Copilot). The W2 e
 
 ---
 
-### /pan:focus-auto (694 lines)
+### /pan:focus-auto (701 lines)
 
 ````markdown
 ---
 name: focus-auto
 group: Focus
 description: Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness
-argument-hint: "[--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal]"
+argument-hint: "[--source scan|backlog] [--category CAT] [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N] [--enforce-budget] [--verify-reserve F] [--continue] [--stop] [--status] [--dry-run] [--deep-review] [--parallel-research] [--parallel-verify] [--clean-seal] [--step scan|plan|exec|drift]"
 allowed-tools:
   - Read
   - Write
@@ -1816,6 +1448,14 @@ allowed-tools:
   - Glob
   - Agent
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--step scan` — one deep scan for prioritised work items, no loop: @~/.claude/pan-wizard-core/workflows/focus-scan.md (formerly `focus-scan`)
+- `--step plan` — one capacity-budgeted work batch from the scan: @~/.claude/pan-wizard-core/workflows/focus-plan.md (formerly `focus-plan`)
+- `--step exec` — execute the planned batch once: @~/.claude/pan-wizard-core/workflows/focus-exec.md (formerly `focus-exec`)
+- `--step drift` — documentation-code drift detection and repair: @~/.claude/pan-wizard-core/workflows/focus-drift-walking.md (formerly `focus-drift-walking`)
+</routes>
 
 # /pan:focus-auto — Continuous Autonomous Improvement Campaigns
 
@@ -2001,7 +1641,7 @@ HARD STOP conditions:
 
 **For each cycle (1 to max_cycles), execute Steps 2.1 through 2.5 without stopping:**
 
-#### Step 2.1: Scan (INLINE — do NOT invoke /pan:focus-scan)
+#### Step 2.1: Scan (INLINE — do NOT invoke /pan:focus-auto --step scan)
 
 Perform a deep codebase scan to find actionable work items with evidence.
 
@@ -2058,7 +1698,7 @@ Write scan results to `.planning/focus/scan-<YYYY-MM-DD>-<category>.md` with:
 - Items grouped by priority tier, each with: ID, title, symptom, root cause, fix guidance, file paths, effort size
 - Summary: item count by priority, total points
 
-#### Step 2.2: Plan (INLINE — do NOT invoke /pan:focus-plan)
+#### Step 2.2: Plan (INLINE — do NOT invoke /pan:focus-auto --step plan)
 
 Create a capacity-budgeted batch from the scan items found in Step 2.1.
 
@@ -2081,7 +1721,7 @@ Write batch to `.planning/focus/batch-<YYYY-MM-DD>-<category>.json`:
   "deferred": [{ "id": "...", "title": "...", "reason": "..." }] }
 ```
 
-#### Step 2.3: Execute (INLINE — do NOT invoke /pan:focus-exec)
+#### Step 2.3: Execute (INLINE — do NOT invoke /pan:focus-auto --step exec)
 
 Implement each item from the batch created in Step 2.2. Record `tests_before` by running the test suite first.
 
@@ -2168,9 +1808,8 @@ Check the response for stop conditions:
 #### Step 2.5: Inter-Cycle Context Management
 
 Between cycles, manage context to prevent quality degradation over long campaigns:
-- **KEEP:** Current cycle goals, test baseline, error states, active file paths
-- **SUMMARIZE:** Previous cycle results to a one-line summary each
-- **DISCARD:** Raw tool output from previous cycles, superseded scan results
+- **Carry forward:** Current cycle goals, test baseline, error states, active file paths
+- **Summarise:** Previous cycle results to a one-line summary each
 
 Display one-line cycle summary: `Cycle N/M | X/Y pts | Z items done | Tests: A -> B`
 
@@ -2501,7 +2140,7 @@ This prevents the campaign from burning budget on items that will predictably fa
 
 ---
 
-### /pan:focus-design (1119 lines)
+### /pan:focus-design (1118 lines)
 
 ````markdown
 ---
@@ -2533,7 +2172,7 @@ Research, design, and specify a new feature with strategic analysis. $ARGUMENTS
 
 ---
 
-## CRITICAL: Project Scope Boundary
+## Project Scope Boundary
 
 This command investigates and designs features for the **host project** — NOT for PAN Wizard itself.
 
@@ -2563,9 +2202,8 @@ Prefer local evidence over web research. Start with the codebase, then broaden.
 ## Context Management Across Phases
 
 This pipeline spans 10+ phases. Manage context to maintain quality:
-- **KEEP:** Problem statement, success criteria, key architectural decisions, file paths being designed for
-- **SUMMARIZE:** Research findings (compress to key takeaways after each research phase), competitive analysis results
-- **DISCARD:** Raw web fetch content after extracting relevant data, superseded design drafts
+- **Carry forward:** Problem statement, success criteria, key architectural decisions, file paths being designed for
+- **Summarise:** Research findings (compress to key takeaways after each research phase), competitive analysis results
 - After Phase 3 (Strategic Analysis), summarize all findings from Phases 0-3 into a compact brief before entering design phases
 
 **Progressive context loading — load only what the current phase needs:**
@@ -3556,7 +3194,7 @@ Write ADR to: `docs/decisions/ADR-NNNN-<feature_name>.md`
 
 **ADR completeness gate:** Before saving, verify the ADR passes ALL checks from Phase 5.2. The ADR file must contain every section defined in Phase 5.1 with substantive content — no placeholder brackets, no skeleton sections, no missing tables. If any section would be empty, go back to the relevant phase and extract the content.
 
-**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design to `/pan:focus-plan`.
+**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design to `/pan:focus-auto --step plan`.
 
 **Minimum ADR size:** A proper ADR for a `--full` mode investigation should be 80-200+ lines. If the ADR is under 60 lines, it is almost certainly missing required sections. For `--internal` mode, minimum 60 lines. For `--outward` mode, minimum 70 lines.
 
@@ -3628,14 +3266,14 @@ These rules and ALWAYS DO below apply to the phases your mode actually runs. Any
 
 ---
 
-### /pan:focus-doc-audit (531 lines)
+### /pan:focus-docs (24 lines)
 
-````markdown
+```markdown
 ---
-name: focus-doc-audit
+name: focus-docs
 group: Focus
-description: Multi-dimensional document audit — accuracy, freshness, links, cross-consistency, and structural quality
-argument-hint: "[file|directory] [--deep] [--links] [--fix] [--all] [--score-only] [--min-score N] [--format markdown|json|checklist]"
+description: Documentation audit and sync — accuracy, freshness, links, cross-consistency and structure; --sync updates stale docs after changes
+argument-hint: "[file|directory] [--deep] [--links] [--fix] [--all] [--score-only] [--min-score N] [--format markdown|json|checklist] | --sync [--readme | --docs | --arch | --all]"
 allowed-tools:
   - Read
   - Write
@@ -3647,2232 +3285,15 @@ allowed-tools:
   - WebFetch
 ---
 
-# /pan:focus-doc-audit — Deep Document Audit & Quality Assessment
+# /pan:focus-docs — Documentation audit and sync
 
-Audit project documentation for accuracy, freshness, broken links, structural quality, cross-document consistency, and code alignment. $ARGUMENTS
+One command for a project's documentation. $ARGUMENTS
 
-**Goal:** Produce a confidence-scored audit of every documentation file in the project. Every claim in every document is verified against the actual codebase. Broken links are found. Stale counts are flagged. Contradictions between documents are exposed. The output is a per-file quality score with actionable fix lists, optionally auto-repaired.
+- **Default: audit.** Score documents for accuracy, freshness, links, cross-consistency and structure, and fix what `--fix` allows: follow @~/.claude/pan-wizard-core/workflows/focus-doc-audit.md.
+- **`--sync`: synchronise after changes.** Check staleness and update counts and references in README, docs and architecture: follow @~/.claude/pan-wizard-core/workflows/focus-sync.md with the rest of the arguments.
 
-**Methodology:** Combines claim extraction, fact verification, link validation, cross-reference consistency checking, structural linting, freshness dating, and readability scoring into a comprehensive audit pipeline. Inspired by financial audit methodology — every material claim requires supporting evidence.
-
----
-
-## CRITICAL: Project Scope Boundary
-
-This command audits the **host project's documentation** — NOT PAN Wizard's own infrastructure files.
-
-**NEVER audit, modify, or report issues in these PAN directories:**
-- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
-- `.planning/` — PAN planning state (read for context, never audit as project docs)
-- Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
-
-**These directories are PAN's own tooling.** Documentation audit applies to the project's README, guides, API docs, architecture docs, and code comments — not to PAN's installed agents or command definitions.
-
-If you find yourself auditing a PAN command file — STOP. Refocus on the project's actual documentation.
-
----
-
-## MANDATORY: Execute ALL Phases Automatically
-
-When `/pan:focus-doc-audit` is invoked, execute ALL phases for the selected mode without stopping. Do NOT ask questions between phases. Do NOT skip phases beyond what the mode specifies. Produce a complete audit report at the end.
-
-**Usage:**
-```
-/pan:focus-doc-audit                     # Audit core docs (README, main docs)
-/pan:focus-doc-audit <file>              # Audit a specific file
-/pan:focus-doc-audit <directory>         # Audit all markdown files in directory
-/pan:focus-doc-audit --deep              # Deep audit: verify every claim against code
-/pan:focus-doc-audit --links             # Link validation pass only
-/pan:focus-doc-audit --fix               # Auto-fix simple issues (counts, versions, dates, links)
-/pan:focus-doc-audit --all               # Audit ALL documentation files project-wide
-/pan:focus-doc-audit --score-only        # Skip fix suggestions, just output scores
-/pan:focus-doc-audit --min-score <N>     # Only report files scoring below N% (default: 100 = report all)
-/pan:focus-doc-audit --format <type>     # Output: markdown (default), json, checklist
-```
-
----
-
-## Audit Dimensions
-
-Every document is scored across 8 independent dimensions. The final score is a weighted average.
-
-| Dimension | Weight | What It Measures |
-|-----------|--------|-----------------|
-| **Accuracy** | 25% | Do factual claims match the codebase? |
-| **Freshness** | 15% | Are versions, dates, and counts current? |
-| **Completeness** | 15% | Does it cover all features/files it should? |
-| **Link Integrity** | 15% | Do all internal and external links resolve? |
-| **Cross-Consistency** | 10% | Does it agree with other project docs? |
-| **Structural Quality** | 10% | Proper markdown, tables, code blocks, headings? |
-| **Actionability** | 5% | Are instructions executable? Can a user follow them? |
-| **Readability** | 5% | Clear language, logical flow, appropriate length? |
-
----
-
-## Phase 0: Target Discovery & Truth Extraction
-
-### 0.1 Identify Audit Targets
-If no file/directory argument provided, auto-discover core documentation:
-
-**Priority 1 — Always audit:**
-- `README.md` — Primary project documentation
-- `CLAUDE.md` — AI assistant instructions (if exists)
-- `CONTRIBUTING.md` — Contributor guide (if exists)
-- `CHANGELOG.md` — Version history (if exists)
-
-**Priority 2 — Audit if present:**
-- `docs/` or `Docs/` — Documentation directory
-- `INSTALL.md` or `SETUP.md` — Installation guide
-- `ARCHITECTURE.md` or `docs/ARCHITECTURE.md` — Architecture docs
-- `API.md` or `docs/API.md` — API reference
-- `SECURITY.md` — Security documentation
-- `FAQ.md` — Frequently asked questions
-
-**Priority 3 — Audit with `--all`:**
-- All `*.md` files in the project (excluding PAN directories and `node_modules/`)
-- All `*.rst`, `*.adoc` files (if project uses those formats)
-- Per-directory `README.md` files
-
-### 0.2 Extract Ground Truth
-Before auditing any document, establish facts from code:
-
-**Version Truth:**
-| Source | How to Extract |
-|--------|---------------|
-| `package.json` | `version` field |
-| `Cargo.toml` | `version` under `[package]` |
-| `CMakeLists.txt` | `project(... VERSION X.Y.Z)` |
-| `*.csproj` | `<Version>` or `<PackageVersion>` |
-| `pyproject.toml` | `version` under `[project]` or `[tool.poetry]` |
-| `pubspec.yaml` | `version` field |
-| `build.gradle` | `version` property |
-| `go.mod` | Module path version suffix |
-
-**Count Truth:**
-| Metric | How to Count |
-|--------|-------------|
-| Source files | `find` / `Get-ChildItem` by extension, excluding generated/vendored |
-| Test files | Count test files by project convention (`*.test.*`, `*_test.*`, `test_*.*`, `*Spec.*`) |
-| Test count | Parse test runner output or count `test(` / `it(` / `[Fact]` / `#[test]` / `def test_` |
-| Commands/endpoints | Count route definitions, CLI command registrations |
-| Components/modules | Count directories with source files in `src/` or equivalent |
-| Dependencies | Count entries in lockfile or dependency sections |
-
-**Build Command Truth:**
-- Extract from `Makefile`, `package.json` scripts, `Taskfile`, CI config, or README build section
-- Validate syntax (do commands reference existing scripts/tools?)
-
-### 0.3 Build Truth Cache
-Store extracted truth for cross-reference during audit:
-
-```markdown
-| Fact | Value | Source |
-|------|-------|--------|
-| Project name | {name} | {config file} |
-| Version | {version} | {config file} |
-| Source file count | {N} | Directory scan |
-| Test file count | {N} | Directory scan |
-| Test case count | {N} | Source scan / test runner |
-| Module count | {N} | Directory scan |
-| Dependency count | {N} | Lockfile |
-| Build command | {cmd} | {source} |
-| Test command | {cmd} | {source} |
-```
-
----
-
-## Phase 1: Claim Extraction
-
-For each target document, extract every verifiable claim.
-
-### 1.1 Claim Categories
-
-| Category | Pattern | Example |
-|----------|---------|---------|
-| **Version claim** | `v1.2.3`, `version 1.2`, `Version: X` | "Currently at v3.1.0" |
-| **Count claim** | Number + noun | "42 database tables", "15 API endpoints" |
-| **File path claim** | Path-like strings | "`src/core/handler.ts`" |
-| **Command claim** | Code block with shell prefix or instruction | "`npm run build`" |
-| **Feature claim** | "supports X", "includes Y", "provides Z" | "Supports hot reloading" |
-| **Architecture claim** | Component relationships, data flow | "The API layer calls the service layer" |
-| **Status claim** | "complete", "in progress", "planned", emoji status | "✅ Authentication complete" |
-| **Date claim** | Dates or relative time references | "Last updated March 2026" |
-| **Link claim** | Markdown links, URLs | `[API docs](./docs/api.md)` |
-| **Dependency claim** | Named dependencies or requirements | "Requires Node.js 18+" |
-
-### 1.2 Extraction Protocol
-For each document:
-
-1. Read the entire document
-2. Parse every paragraph, table cell, list item, and code block
-3. Tag each verifiable claim with: `{category, text, line_number, verification_method}`
-4. Count total claims — this becomes the denominator for accuracy scoring
-
----
-
-## Phase 2: Fact Verification
-
-Verify each extracted claim against ground truth.
-
-### 2.1 Version Verification
-```
-For each version claim:
-  1. Find the canonical version source (Phase 0.2)
-  2. Compare: exact match required
-  3. Score: PASS (match) / FAIL (mismatch) / SKIP (no canonical source)
-```
-
-### 2.2 Count Verification
-```
-For each count claim:
-  1. Identify what's being counted
-  2. Run the actual count (Phase 0.2 methods)
-  3. Compare:
-     - Exact match → PASS
-     - Within 10% → WARNING (acceptable drift)
-     - Off by > 10% → FAIL
-     - Cannot verify → SKIP (note why)
-```
-
-### 2.3 File Path Verification
-```
-For each file path claim:
-  1. Resolve path relative to document location
-  2. Check: file/directory exists?
-     - Exists → PASS
-     - Exists at different location → FAIL + suggest correct path
-     - Doesn't exist → FAIL (dead reference)
-```
-
-### 2.4 Command Verification
-```
-For each command claim:
-  1. Parse the command
-  2. Check: referenced tool/script exists? (e.g., does `npm` script exist in package.json?)
-  3. Check: referenced files/paths in command exist?
-  4. If --deep: attempt dry-run validation (syntax check, --help, etc.)
-  5. Score: PASS / WARNING (tool exists but can't validate) / FAIL (tool/path missing)
-```
-
-### 2.5 Feature Verification
-```
-For each feature claim:
-  1. Search codebase for implementation evidence
-  2. Grep for feature keywords, class names, function names
-  3. Score:
-     - Implementation found → PASS
-     - Partial implementation → WARNING
-     - No evidence found → FAIL (aspirational documentation)
-```
-
-### 2.6 Architecture Verification
-```
-For each architecture claim:
-  1. Verify stated components exist as directories/modules
-  2. Verify stated relationships via import/dependency analysis
-  3. Score:
-     - All components exist and relationships hold → PASS
-     - Components exist but relationships differ → WARNING
-     - Components missing → FAIL
-```
-
-### 2.7 Status Verification
-```
-For each status claim:
-  1. Check "complete" claims → verify implementation exists
-  2. Check "in progress" claims → verify partial implementation
-  3. Check "planned" claims → verify NOT implemented (avoid stale "planned" for shipped features)
-  4. Score: PASS / FAIL (wrong status)
-```
-
-### 2.8 Link Verification
-```
-For each link:
-  Internal markdown links:
-    1. Resolve relative to document
-    2. Check file exists
-    3. If anchor (#heading), verify heading exists in target
-    4. Score: PASS / FAIL (broken)
-
-  External URLs (with --deep):
-    1. HTTP HEAD request
-    2. Score: PASS (2xx) / WARNING (3xx redirect) / FAIL (4xx/5xx)
-
-  Without --deep:
-    External URLs scored as SKIP
-```
-
-### 2.9 Date Verification
-```
-For each date claim:
-  1. Calculate age from current date
-  2. Score:
-     - < 30 days → PASS (fresh)
-     - 30-90 days → WARNING (aging)
-     - > 90 days → FAIL (stale, unless historically accurate)
-  3. Exception: changelog dates, historical references → always PASS
-```
-
-### 2.10 Dependency Verification
-```
-For each dependency claim:
-  1. Check if named dependency exists in lockfile/config
-  2. Check if stated version constraint matches actual
-  3. Score: PASS / FAIL (missing or wrong version)
-```
-
----
-
-## Phase 3: Cross-Document Consistency
-
-### 3.1 Build Cross-Reference Matrix
-For all audited documents, extract overlapping claims and check for contradictions:
-
-```markdown
-| Claim | Doc A says | Doc B says | Match? |
-|-------|-----------|-----------|--------|
-| Version | 2.3.1 (README L5) | 2.3.0 (INSTALL L12) | ❌ CONFLICT |
-| Build cmd | npm run build (README L42) | npm run build (CONTRIBUTING L8) | ✅ |
-| Test count | 150 (README L30) | 142 (CLAUDE.md L18) | ⚠️ INCONSISTENT |
-```
-
-### 3.2 Consistency Rules
-
-| Rule | Description |
-|------|-------------|
-| **Version unanimity** | ALL docs must state the same version |
-| **Command unanimity** | Build/test/run commands must be identical across docs |
-| **Count consistency** | Same metric should have same value everywhere |
-| **Feature consistency** | A feature listed as "supported" in one doc can't be "planned" in another |
-| **Architecture consistency** | Component names and relationships must agree |
-
-### 3.3 Source of Truth Resolution
-When documents disagree, determine which is correct:
-
-```
-Config files > README > CLAUDE.md > inline comments > docs/ > CHANGELOG
-```
-
-The document closer to code is more likely correct.
-
----
-
-## Phase 4: Structural & Readability Analysis
-
-### 4.1 Structural Quality Checks
-
-| Check | Verification | Severity |
-|-------|-------------|----------|
-| **Heading hierarchy** | H1 → H2 → H3 (no skipped levels) | LOW |
-| **Table formatting** | All tables render correctly in standard markdown | MEDIUM |
-| **Code block language tags** | Every code block has a language identifier | LOW |
-| **Orphan TOC entries** | Table of contents links resolve to headings | HIGH |
-| **Duplicate headings** | No two headings at same level with identical text | LOW |
-| **Empty sections** | No heading followed immediately by another heading | MEDIUM |
-| **Consistent list style** | All lists use same marker (`-` vs `*` vs `1.`) | LOW |
-| **Line length** | No lines > 200 chars (breaks some renderers) | LOW |
-| **Trailing whitespace** | Trailing spaces except intentional line breaks | INFO |
-| **Missing blank lines** | Blank line before/after headings, code blocks, tables | LOW |
-
-### 4.2 Readability Assessment
-
-| Metric | Assessment Method |
-|--------|-----------------|
-| **Logical flow** | Do sections follow a natural reading order? (intro → concepts → usage → reference → troubleshooting) |
-| **First-contact clarity** | Can someone unfamiliar with the project understand the first 3 paragraphs? |
-| **Instruction completeness** | Do "how to" sections have ALL steps? No assumed knowledge gaps? |
-| **Example quality** | Are code examples complete, copy-pasteable, and correct? |
-| **Jargon density** | Are project-specific terms explained on first use? |
-
-Score each as: GOOD / ACCEPTABLE / POOR
-
----
-
-## Phase 5: Auto-Fix (requires --fix)
-
-### 5.1 Auto-Fixable Issues
-
-| Issue Type | Fix Strategy | Risk |
-|-----------|-------------|------|
-| Wrong version number | Replace with canonical version from config | LOW — version is factual |
-| Wrong count (> 10% drift) | Replace with actual count | LOW — count is factual |
-| Stale date | Update to current date | LOW — date is factual |
-| Broken internal link (file moved) | Update to new path if unambiguous | LOW — path is factual |
-| Broken internal link (file deleted) | Remove link, keep text | MEDIUM — loses reference |
-| Missing language tag on code block | Infer from content, add tag | LOW — cosmetic |
-| Wrong command (script name changed) | Update to current script name | MEDIUM — verify first |
-
-### 5.2 Manual-Review Issues (flagged but NOT auto-fixed)
-
-| Issue Type | Why Not Auto-Fix |
-|-----------|-----------------|
-| Feature accuracy | Requires understanding intent |
-| Architecture descriptions | Complex, may need restructuring |
-| Purpose statements | Subjective |
-| Status claims | May need product owner input |
-| External broken links | May be temporary outage |
-| Cross-document conflicts | Need to determine which doc is authoritative |
-| Command semantics | Syntax correct but intent may differ |
-
-### 5.3 Fix Safety Protocol
-1. Record every change: file, line, before, after
-2. Only modify documentation files (`.md`, `.rst`, `.adoc`) — NEVER source code
-3. Make minimal changes — don't rewrite paragraphs
-4. If a fix is ambiguous, flag for manual review instead
-5. Report all fixes in the audit output
-
----
-
-## Phase 6: Scoring & Report Generation
-
-### 6.1 Per-File Scoring
-
-For each audited file, compute dimension scores:
-
-```
-Accuracy    = (verified_claims_passed / total_verifiable_claims) × 100
-Freshness   = (fresh_items / total_dated_items) × 100
-Completeness = (documented_features / total_features_in_scope) × 100
-Link Integrity = (valid_links / total_links) × 100
-Cross-Consistency = (consistent_claims / total_overlapping_claims) × 100
-Structural Quality = (passed_structural_checks / total_structural_checks) × 100
-Actionability = (executable_instructions / total_instructions) × 100
-Readability = average(flow_score, clarity_score, example_score) as percentage
-```
-
-**Overall File Score:**
-```
-Score = (Accuracy × 0.25) + (Freshness × 0.15) + (Completeness × 0.15) +
-        (Link Integrity × 0.15) + (Cross-Consistency × 0.10) +
-        (Structural Quality × 0.10) + (Actionability × 0.05) + (Readability × 0.05)
-```
-
-### 6.2 Score Interpretation
-
-| Score | Grade | Meaning |
-|-------|-------|---------|
-| 95-100% | A+ | Excellent — documentation is trustworthy |
-| 85-94% | A | Good — minor issues only |
-| 75-84% | B | Acceptable — some claims need updating |
-| 60-74% | C | Below standard — multiple stale/wrong claims |
-| 40-59% | D | Poor — documentation is unreliable |
-| 0-39% | F | Failing — documentation is actively harmful |
-
-### 6.3 Audit Report Structure
-
-```markdown
-## Document Audit Report
-
-**Project:** {name} v{version}
-**Date:** {date}
-**Files audited:** {N}
-**Total claims verified:** {N}
-**Overall project documentation score:** {N}%
-
----
-
-### File Scores
-
-| File | Score | Grade | Accuracy | Freshness | Links | Top Issue |
-|------|-------|-------|----------|-----------|-------|-----------|
-| README.md | 87% | A | 92% | 80% | 100% | Version stale by 1 minor |
-| CONTRIBUTING.md | 71% | C | 65% | 90% | 85% | 7 dead file references |
-| docs/API.md | 43% | D | 30% | 20% | 60% | Major feature undocumented |
-
----
-
-### Critical Findings (must fix)
-
-| ID | File | Line | Category | Finding | Correct Value |
-|----|------|------|----------|---------|---------------|
-| A-01 | README.md | 5 | Version | States v2.1.0 | Actual: v2.3.1 |
-| A-02 | README.md | 42 | Command | `npm run deploy` | Script removed in v2.2 |
-| A-03 | docs/API.md | 15 | Feature | "OAuth support" documented | Not implemented |
-
----
-
-### Warnings (should fix)
-
-| ID | File | Line | Category | Finding |
-|----|------|------|----------|---------|
-| W-01 | README.md | 30 | Count | Test count 150, actual 163 (8.7% drift) |
-| W-02 | CLAUDE.md | 18 | Date | "Last updated Jan 2026" — 79 days old |
-
----
-
-### Cross-Document Conflicts
-
-| Claim | Documents | Values | Resolution |
-|-------|-----------|--------|------------|
-| Version | README vs INSTALL | v2.3.1 vs v2.3.0 | Update INSTALL to v2.3.1 |
-| Build cmd | README vs CONTRIBUTING | `npm build` vs `npm run build` | Verify which works |
-
----
-
-### Fixes Applied (if --fix)
-
-| File | Line | Change | Before | After |
-|------|------|--------|--------|-------|
-| README.md | 5 | Version update | v2.1.0 | v2.3.1 |
-| README.md | 30 | Test count | 150 tests | 163 tests |
-```
-
-### 6.4 Project-Wide Summary
-
-```markdown
-### Documentation Health Summary
-
-| Dimension | Project Average | Worst File | Best File |
-|-----------|----------------|-----------|-----------|
-| Accuracy | 78% | docs/API.md (30%) | CHANGELOG.md (100%) |
-| Freshness | 85% | INSTALL.md (60%) | README.md (95%) |
-| Completeness | 72% | docs/API.md (40%) | README.md (90%) |
-| Link Integrity | 91% | CONTRIBUTING.md (85%) | README.md (100%) |
-| Cross-Consistency | 88% | — | — |
-| Structural Quality | 95% | docs/API.md (80%) | README.md (100%) |
-| Actionability | 82% | INSTALL.md (70%) | CONTRIBUTING.md (95%) |
-| Readability | 88% | — | — |
-
-**Recommended priority:** Fix docs/API.md (Grade D) → Fix CONTRIBUTING.md (Grade C) → Update INSTALL.md freshness
-```
-
----
-
-## NEVER DO
-
-- Audit PAN infrastructure files (`.claude/`, `.planning/`, `pan-wizard-core/`)
-- Modify source code files — only documentation files
-- Auto-fix ambiguous issues (purpose statements, architecture descriptions)
-- Report claims as FAIL without checking against actual code first
-- Count external link failures during outages as permanent failures
-- Invent ground truth — always extract from actual config/code files
-- Skip the claim extraction step — every finding must trace to a specific claim
-- Give a file 100% score without verifying at least the version, counts, and links
-- Report findings without file path and line number
-
-## ALWAYS DO
-
-- Extract ground truth from config/code BEFORE auditing documents
-- Verify every factual claim against the codebase
-- Include line numbers for every finding
-- Score every file across all 8 dimensions
-- Sort critical findings first
-- Check cross-document consistency when auditing multiple files
-- Provide the correct value alongside every FAIL finding
-- Distinguish between "wrong" (FAIL) and "stale" (WARNING) and "missing" (INFO)
-- Report total claims verified — this gives confidence in audit thoroughness
-- Produce a project-wide health summary when auditing multiple files
-````
-
-
----
-
-### /pan:focus-drift-walking (526 lines)
-
-````markdown
----
-name: focus-drift-walking
-group: Focus
-description: Deep documentation-code drift detection, CLAUDE.md alignment, and auto-repair across all project directories
-argument-hint: "[--create] [--audit] [--repair] [--report] [--dir <path>] [--depth N] [--severity critical|high|medium|low|info] [--format markdown|json|checklist] [--quick]"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
-  - Agent
----
-
-# /pan:focus-drift-walking — Documentation-Code Drift Detection & Alignment
-
-Walk every directory in the project, detect drift between documentation and code reality, create missing documentation, repair drifted files, and synchronize the truth hierarchy. $ARGUMENTS
-
-**Goal:** Eliminate the #1 cause of AI assistant hallucination — stale documentation. Walk the entire project tree, compare what documentation *claims* against what code *does*, score drift severity, and produce a complete alignment report with optional auto-repair. Every finding is evidence-based with file paths and line numbers.
-
-**Methodology:** Combines directory-walking inventory, content fingerprinting, cross-reference validation, semantic drift scoring, and layered truth reconciliation into a single automated pipeline.
-
----
-
-## CRITICAL: Project Scope Boundary
-
-This command walks the **host project's directories and documentation** — NOT PAN Wizard's own infrastructure.
-
-**ALWAYS EXCLUDE these directories from walking:**
-- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
-- `.planning/` — PAN planning state (read for context, never report as drift)
-- Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
-- Build output directories: `build/`, `dist/`, `out/`, `target/`, `bin/`, `obj/`, `node_modules/`, `.git/`, `__pycache__/`, `.next/`, `.nuxt/`
-
-**ALSO EXCLUDE:** Any directory listed in the project's `.gitignore` that represents generated output.
-
-If a drift finding points to a file inside a PAN or build directory — DROP IT.
-
----
-
-## MANDATORY: Execute ALL Phases Automatically
-
-When `/pan:focus-drift-walking` is invoked, execute ALL phases for the selected mode without stopping. Do NOT ask questions between phases. Do NOT skip phases beyond what the mode specifies. Produce a complete drift report at the end.
-
-**Flags:**
-- `--create` — Create missing documentation files in directories that lack them
-- `--audit` — Audit all existing documentation files for drift against code
-- `--repair` — Auto-fix drifted documentation (update counts, paths, versions)
-- `--report` — Dry run: detect and report drift without modifying anything
-- `--dir <path>` — Target a specific directory subtree only
-- `--depth <n>` — Limit walk depth (default: unlimited)
-- `--severity <level>` — Filter report: `critical`, `high`, `medium`, `low`, `info` (default: all)
-- `--format <type>` — Output format: `markdown` (default), `json`, `checklist`
-- `--quick` — Skip Phase 4 (deep semantic analysis) and Phase 7 (cross-project sync)
-
-**Default mode (no flags):** `--audit --report` — full audit with report, no modifications.
-
----
-
-## Truth Hierarchy
-
-Documentation has layers. Drift detection must understand which layer is the source of truth for what:
-
-```
-Layer 0: CODE (absolute truth)
-  │  Source files, config files, build scripts — what the project actually IS
-  │
-Layer 1: PROJECT ROOT DOCS (primary documentation)
-  │  README.md, CLAUDE.md, package.json, Cargo.toml, CMakeLists.txt
-  │  Source of truth for: version, project name, top-level architecture, build commands
-  │
-Layer 2: DIRECTORY-LEVEL DOCS (local documentation)
-  │  Per-directory README.md, CLAUDE.md, or equivalent
-  │  Source of truth for: directory purpose, local conventions, key files
-  │
-Layer 3: INLINE DOCS (code-level documentation)
-  │  Comments, docstrings, JSDoc, XML docs
-  │  Source of truth for: function behavior, parameter semantics
-  │
-Layer 4: EXTERNAL DOCS (generated/published documentation)
-     docs/, wiki/, guides, API references
-     Source of truth for: NOTHING (must be derived from Layers 0-3)
-```
-
-**Drift direction rule:** Higher layers NEVER override lower layers. If code says X and docs say Y, the docs are wrong.
-
----
-
-## Phase 0: Initialization & Project Discovery
-
-### 0.1 Detect Project Type
-Automatically detect the project's technology stack and structure:
-
-| Signal File | Indicates |
-|------------|-----------|
-| `package.json` | Node.js / JavaScript / TypeScript |
-| `Cargo.toml` | Rust |
-| `CMakeLists.txt` | C / C++ (CMake) |
-| `*.csproj` / `*.sln` | .NET / C# |
-| `go.mod` | Go |
-| `pyproject.toml` / `setup.py` / `requirements.txt` | Python |
-| `pom.xml` / `build.gradle` | Java / Kotlin |
-| `pubspec.yaml` | Dart / Flutter |
-| `Makefile` | Generic build system |
-| `Dockerfile` | Containerized application |
-| `terraform/` / `*.tf` | Infrastructure as Code |
-
-Record all detected stacks — projects can be polyglot.
-
-### 0.2 Extract Root Truth
-Read the project's root-level documentation and extract canonical facts:
-
-**From build/config files:**
-- Project name and version
-- Entry points and main modules
-- Dependencies (count and key ones)
-- Build commands
-- Test commands
-
-**From README.md / CLAUDE.md:**
-- Stated architecture and component list
-- Stated feature list
-- Stated test counts
-- Stated build/run instructions
-- Stated directory structure
-
-### 0.3 Build Directory Manifest
-Walk the project tree and build a complete manifest:
-
-```markdown
-| Directory | Depth | Files | Has Docs | Doc Type | Key Content |
-|-----------|-------|-------|----------|----------|-------------|
-| src/ | 1 | 42 | ✅ | README.md | Application source |
-| src/api/ | 2 | 18 | ❌ | — | API endpoints |
-| tests/ | 1 | 31 | ✅ | README.md | Test suites |
-| ... | | | | | |
-```
-
-### 0.4 Establish Baseline Snapshot
-
-```markdown
-| Metric | Value | Source |
-|--------|-------|--------|
-| Project version | X.Y.Z | {config file} |
-| Total source files | N | Directory walk |
-| Total test files | N | Directory walk |
-| Directories with docs | N/M | Directory walk |
-| Documentation coverage | N% | Dirs with docs / total dirs |
-| Root doc files | N | README, CLAUDE, etc. |
-```
-
----
-
-## Phase 1: Directory-Level Analysis
-
-For each directory in the manifest, perform deep content analysis.
-
-### 1.1 Content Fingerprinting
-For each directory, extract:
-
-| Artifact | How to Extract |
-|----------|---------------|
-| **Purpose** | Infer from filenames, imports, exports, README |
-| **Key files** | Files with most imports/references, entry points |
-| **Public API** | Exported functions, classes, endpoints, commands |
-| **Dependencies** | Import statements, require calls, use declarations |
-| **Dependents** | What imports/references this directory |
-| **Tech stack** | File extensions, framework imports |
-| **Test coverage** | Corresponding test directory or test files |
-| **Conventions** | Naming patterns, file organization, code style |
-
-### 1.2 Documentation Inventory
-For each directory that HAS documentation, catalog:
-
-| Field | Extract From Doc |
-|-------|-----------------|
-| Stated purpose | First paragraph / "Purpose" section |
-| Stated key files | "Key Files" table or list |
-| Stated dependencies | "Dependencies" section |
-| Stated conventions | "Conventions" / "Rules" section |
-| Stated build commands | "Build" / "Usage" section |
-| Version references | Any version numbers mentioned |
-| File paths mentioned | All `path/to/file` references |
-| Counts mentioned | Any numeric claims (N files, N tests, N endpoints) |
-
-### 1.3 Importance Classification
-Classify each directory for documentation priority:
-
-| Tier | Criteria | Documentation Requirement |
-|------|----------|--------------------------|
-| **Tier 1: Core** | Contains primary application logic, public API, or critical infrastructure | MUST have comprehensive docs |
-| **Tier 2: Supporting** | Contains utilities, helpers, internal services, tests | SHOULD have docs |
-| **Tier 3: Config/Infra** | Contains configuration, CI/CD, build scripts | MAY have docs |
-| **Tier 4: Generated/Vendored** | Contains generated code, vendored deps, build output | SKIP — no docs needed |
-
----
-
-## Phase 2: Drift Detection Engine
-
-For each directory with existing documentation, run ALL drift checks.
-
-### 2.1 Structural Drift Checks
-
-| Check ID | Check | How |
-|----------|-------|-----|
-| SD-01 | **File existence** | Every file path in docs → verify file exists |
-| SD-02 | **File absence** | Important files in directory → verify mentioned in docs |
-| SD-03 | **Directory structure** | Stated structure → compare to actual `ls` output |
-| SD-04 | **Dead references** | File paths in docs that point to deleted/moved files |
-| SD-05 | **Orphan files** | Key files not mentioned in any documentation |
-
-### 2.2 Semantic Drift Checks
-
-| Check ID | Check | How |
-|----------|-------|-----|
-| SM-01 | **Purpose drift** | Stated purpose vs. actual content — does the description match? |
-| SM-02 | **API drift** | Documented exports/functions vs. actual code exports |
-| SM-03 | **Dependency drift** | Stated deps vs. actual import/require statements |
-| SM-04 | **Convention drift** | Stated patterns vs. actual code patterns |
-| SM-05 | **Architecture drift** | Stated architecture vs. actual file organization |
-
-### 2.3 Numeric Drift Checks
-
-| Check ID | Check | How |
-|----------|-------|-----|
-| ND-01 | **Version drift** | Version in docs vs. version in config files |
-| ND-02 | **Count drift** | Stated file/test/endpoint counts vs. actual counts |
-| ND-03 | **Metric drift** | Stated performance/size claims vs. verifiable reality |
-
-### 2.4 Command Drift Checks
-
-| Check ID | Check | How |
-|----------|-------|-----|
-| CD-01 | **Build command drift** | Documented build commands → attempt to validate syntax |
-| CD-02 | **Test command drift** | Documented test commands → attempt to validate syntax |
-| CD-03 | **CLI usage drift** | Documented CLI flags → verify against actual CLI help/source |
-
-### 2.5 Cross-Reference Drift Checks
-
-| Check ID | Check | How |
-|----------|-------|-----|
-| XR-01 | **Root alignment** | Sub-directory docs contradict root docs |
-| XR-02 | **Sibling alignment** | Directory A's docs claim about directory B → verify with B |
-| XR-03 | **Circular contradiction** | A says X depends on Y, Y says it doesn't export to A |
-| XR-04 | **Stale link targets** | Internal markdown links → verify targets exist and anchors resolve |
-
----
-
-## Phase 3: Drift Severity Scoring
-
-### 3.1 Severity Classification
-
-| Level | Code | Meaning | Impact |
-|-------|------|---------|--------|
-| **CRITICAL** | `C` | Documentation will cause wrong code generation | AI assistants will hallucinate, developers will write bugs |
-| **HIGH** | `H` | Documentation is significantly misleading | Developers waste significant time following wrong instructions |
-| **MEDIUM** | `M` | Documentation is incomplete or partially wrong | Developers eventually figure it out but waste time |
-| **LOW** | `L` | Documentation is stale but not actively misleading | Cosmetic / completeness issue |
-| **INFO** | `I` | Suggestion for improvement, not actual drift | Nice-to-have |
-
-### 3.2 Severity Assignment Rules
-
-| Condition | Severity |
-|-----------|----------|
-| Wrong version number for a tool, SDK, or framework | CRITICAL |
-| Wrong build command | CRITICAL |
-| Referenced file does not exist | HIGH |
-| Stated API/export that doesn't exist in code | HIGH |
-| Wrong dependency direction | HIGH |
-| Count off by > 20% | MEDIUM |
-| Missing newly added key file from docs | MEDIUM |
-| Convention described but code uses different pattern | MEDIUM |
-| Count off by < 20% | LOW |
-| Purpose statement is vaguely correct but imprecise | LOW |
-| Missing optional section in docs | INFO |
-
-### 3.3 Drift Score Formula
-
-```
-Directory Drift Score = Σ(severity_weight × check_count) / total_checks
-
-Weights: CRITICAL=10, HIGH=5, MEDIUM=2, LOW=1, INFO=0
-```
-
-| Score | Rating | Action |
-|-------|--------|--------|
-| 0 | ALIGNED | No action needed |
-| 0.1 - 1.0 | MINOR DRIFT | Low priority updates |
-| 1.1 - 3.0 | MODERATE DRIFT | Schedule updates this session |
-| 3.1 - 5.0 | SIGNIFICANT DRIFT | Update before next feature work |
-| 5.1+ | SEVERE DRIFT | STOP — update immediately, docs are dangerous |
-
----
-
-## Phase 4: Deep Semantic Analysis (skip with --quick)
-
-For directories with MODERATE+ drift, perform deeper investigation.
-
-### 4.1 Code-to-Doc Alignment Scan
-For each public function/class/endpoint in the directory:
-
-1. Read the implementation
-2. Read the corresponding documentation
-3. Compare: parameter names, return types, side effects, error conditions
-4. Flag any semantic mismatch
-
-### 4.2 Convention Archaeology
-When docs claim a convention but code doesn't follow it:
-
-1. `git log` the directory — did the convention change recently?
-2. Count files following vs. not following the convention
-3. Determine: is the doc wrong, or is the code drifting from convention?
-
-### 4.3 Dependency Graph Verification
-Build an actual dependency graph from import statements and compare to documented dependencies:
-
-```
-Actual: A → B → C → D
-Stated: A → B → D (missing C in the chain)
-```
-
----
-
-## Phase 5: Missing Documentation Creation (requires --create)
-
-For Tier 1 and Tier 2 directories without documentation:
-
-### 5.1 Generic Documentation Template
-
-```markdown
-# {Directory Name}
-
-> Part of [{Project Name}]({relative path to root README or CLAUDE.md})
-
-## Purpose
-{1-3 sentences derived from actual file contents and directory name}
-
-## Tech Stack
-| Component | Value |
-|-----------|-------|
-| Language | {detected from file extensions} |
-| Framework | {detected from imports/config} |
-| Build | {detected from build files} |
-
-## Key Files
-| File | Purpose |
-|------|---------|
-| {entry point or main file} | {description} |
-| {config file if present} | {description} |
-| {most-imported file} | {description} |
-
-## Architecture
-{How code is organized — inferred from file structure and imports}
-
-## Dependencies
-- **Depends on:** {extracted from import statements}
-- **Depended on by:** {extracted from reverse import search}
-
-## Conventions
-{Observed patterns: naming, file organization, code style}
-
-## Build & Test
-{Commands specific to this directory, if any}
-```
-
-### 5.2 Creation Rules
-- NEVER create docs in build output or generated directories
-- NEVER create docs in directories with < 3 source files (too trivial)
-- NEVER include secrets, credentials, or API keys
-- ALWAYS derive content from actual code — never guess
-- ALWAYS include relative path back to root docs
-
----
-
-## Phase 6: Drift Repair (requires --repair)
-
-### 6.1 Auto-Fixable Drift
-These can be repaired automatically:
-
-| Drift Type | Fix |
-|-----------|-----|
-| Wrong version number | Update to match config file |
-| Wrong file count | Update to match actual count |
-| Dead file reference | Remove reference or update path |
-| Missing key file | Add to "Key Files" table |
-| Wrong test count | Update to match actual count |
-| Stale "last updated" date | Update to today |
-| Broken internal link | Fix path or remove link |
-
-### 6.2 Manual-Review Drift
-These are flagged but NOT auto-fixed:
-
-| Drift Type | Why |
-|-----------|-----|
-| Purpose statement drift | Subjective — needs human judgment |
-| Architecture description | Complex — may need redesign of docs |
-| Convention changes | Need team consensus on which is right |
-| Dependency direction disputes | Need architectural review |
-| Build command changes | Could break if wrong — verify first |
-
-### 6.3 Repair Safety Protocol
-Before modifying any file:
-1. Record the original content of lines being changed
-2. Make only minimal, targeted changes
-3. Never rewrite entire files — patch specific sections
-4. Add a comment or note indicating the drift repair date
-
----
-
-## Phase 7: Cross-Project Synchronization (skip with --quick)
-
-### 7.1 Root Document Sync
-After all directories are walked, sync findings back to root documentation:
-
-1. **README.md** — Verify component/module counts, feature lists, directory descriptions
-2. **CLAUDE.md** — Verify architecture claims, test counts, build commands, conventions
-3. **CHANGELOG.md** — Verify latest version entry matches actual version
-
-### 7.2 Truth Cascade
-When root docs and sub-docs disagree:
-
-| Disagreement Type | Resolution |
-|-------------------|-----------|
-| Root says version X, sub says version Y | Root wins — update sub |
-| Root says build cmd X, sub says build cmd Y | Verify which works — update loser |
-| Root says A depends on B, sub-B says no | Check actual imports — update wrong doc |
-| Root lists N modules, actual count is M | Update root to M |
-| Sub has local convention not in root | Keep in sub — local conventions are sub's truth |
-
----
-
-## Phase 8: Report Generation
-
-### 8.1 Executive Summary
-
-```markdown
-## Drift Walking Report
-
-**Project:** {name} v{version}
-**Date:** {date}
-**Directories walked:** {N}
-**Documentation coverage:** {N}% ({dirs with docs} / {total meaningful dirs})
-
-### Overall Health
-| Rating | Count | % |
-|--------|-------|---|
-| ALIGNED | N | N% |
-| MINOR DRIFT | N | N% |
-| MODERATE DRIFT | N | N% |
-| SIGNIFICANT DRIFT | N | N% |
-| SEVERE DRIFT | N | N% |
-| NO DOCS (Tier 1-2) | N | N% |
-```
-
-### 8.2 Directory Detail Table
-
-```markdown
-| Directory | Tier | Has Docs | Drift Score | Rating | Top Issue |
-|-----------|------|----------|-------------|--------|-----------|
-| src/core/ | 1 | ✅ | 0.5 | MINOR | Count drift (tests: 42 → 48) |
-| src/api/ | 1 | ❌ | — | NO DOCS | Tier 1 directory needs documentation |
-| src/utils/ | 2 | ✅ | 3.2 | SIGNIFICANT | 4 dead file references |
-| tests/ | 2 | ✅ | 0 | ALIGNED | — |
-```
-
-### 8.3 Critical Findings (CRITICAL + HIGH severity)
-
-```markdown
-### Critical Findings
-
-| ID | Directory | Check | Finding | Fix |
-|----|-----------|-------|---------|-----|
-| CF-01 | src/core/ | SD-01 | `handler.ts` referenced but was renamed to `router.ts` | Update reference |
-| CF-02 | README.md | ND-01 | States v2.1.0, actual is v2.3.1 | Update version |
-```
-
-### 8.4 Repair Log (if --repair was used)
-
-```markdown
-### Repairs Made
-
-| File | Change | Before | After |
-|------|--------|--------|-------|
-| src/core/README.md | Version update | v2.1.0 | v2.3.1 |
-| src/core/README.md | File count | 12 files | 15 files |
-| README.md | Module count | 8 modules | 10 modules |
-```
-
-### 8.5 Recommendations
-
-```markdown
-### Recommended Actions (by priority)
-
-1. **IMMEDIATE:** Fix {N} CRITICAL findings — these cause wrong AI output
-2. **THIS SESSION:** Fix {N} HIGH findings — these waste developer time
-3. **NEXT SESSION:** Create docs for {N} Tier 1 directories without documentation
-4. **BACKLOG:** Address {N} MEDIUM findings, {N} LOW findings
-```
-
----
-
-## NEVER DO
-
-- Walk build output directories (`build/`, `dist/`, `node_modules/`, `target/`, `obj/`, `__pycache__/`, `.git/`)
-- Report PAN infrastructure files as project drift
-- Auto-fix purpose statements, architecture descriptions, conventions, dependency directions or build commands — even `--repair` only flags these (Phase 6.2)
-- Create documentation for trivial directories (< 3 source files)
-- Include secrets, credentials, or API keys in any generated documentation
-- Guess at file contents — always read and verify
-- Modify code files — this command only touches documentation files
-- Override root documentation truth based on sub-directory claims (root is source of truth for project-wide facts)
-- Report drift without evidence (file path + line number for every finding)
-
-## ALWAYS DO
-
-- Read actual source files before claiming drift — evidence-based only
-- Include file paths and line numbers for every finding
-- Score every drifted directory with the drift score formula
-- Sort critical findings first in the report
-- Respect the truth hierarchy (code > root docs > directory docs > inline docs > external docs)
-- Walk ALL directories at the specified depth unless `--dir` constrains scope
-- Report documentation coverage percentage
-- Distinguish between "docs are wrong" and "docs are missing"
-- Provide specific, actionable fix guidance for every finding
-- Record repairs made if `--repair` is active
-````
-
-
----
-
-### /pan:focus-exec (458 lines)
-
-````markdown
----
-name: focus-exec
-group: Focus
-description: Automated batch execution pipeline with 6 stages, behavioral rules, 3 execution tiers
-argument-hint: "[--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--dry-run] [--no-commit] [--continue] [--deep-review]"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
-  - Agent
----
-
-# /pan:focus-exec — Automated Batch Execution Pipeline
-
-Execute items from the current focus batch with capacity-based sizing, full session lifecycle, and verification. $ARGUMENTS
-
-**Goal:** One-command pipeline that starts a session, loads the planned batch, implements items with tier-based execution protocols, verifies the work, syncs documentation, and closes the session cleanly.
-
-<completion_contract>
-Execution is complete when ALL conditions are met:
-1. All batch items processed (each marked DONE or FAILED with reason)
-2. Full test suite passes with count >= Stage 1 baseline
-3. Stage 6 pre-commit checklist passes (all 6 checks)
-4. Commit created listing only VERIFIED items
-5. Session recorded with before/after test counts and budget usage
-6. Active scan file updated with item statuses
-
-Execution FAILS if: test baseline cannot be established (Stage 1), or test count drops below baseline after all reverts.
-</completion_contract>
-
----
-
-## Pipeline Overview
-
-```
-/pan:focus-exec
-
-  Stage 1: SESSION START
-    - Check project status, record baseline
-
-  Stage 2: BATCH LOADING + VALIDATION
-    - Read batch file, validate items, confirm budget
-
-  Stage 3: EXECUTION (tier-based)
-    - Implement items with read->understand->code
-    - Build + test cadence per tier
-
-  Stage 4: VERIFICATION
-    - Verify all implemented items actually work
-    - Full test suite must pass
-
-  Stage 5: DOCUMENTATION SYNC
-    - Update docs, README, CHANGELOG
-
-  Stage 6: SESSION END
-    - Commit, record session, generate summary
-```
-
-<action_gating>
-Each stage has a restricted set of appropriate actions. Using the wrong tool at the wrong stage causes regressions.
-
-| Stage | Read | Grep/Glob | Edit/Write | Bash (tests) | Bash (git) |
-|-------|------|-----------|------------|--------------|------------|
-| 1. Session Start | YES | YES | NO | YES | YES |
-| 2. Batch Loading | YES | YES | NO | NO | NO |
-| 3. Execution | YES | YES | YES | YES | NO |
-| 4. Verification | YES | YES | NO | YES | NO |
-| 5. Doc Sync | YES | YES | YES | NO | NO |
-| 6. Session End | YES | NO | YES | NO | YES |
-
-**Key constraints:**
-- Stage 1: NO Edit/Write — you are establishing baseline, not changing code
-- Stage 2: Read-only — validating the batch, not modifying anything
-- Stage 4: NO Edit/Write — you are verifying work, not doing more work. If tests fail, go back to Stage 3 to fix.
-- Stage 5: Edit docs only — no code changes during doc sync
-- Stage 6: Git operations + session recording only — all work must be done
-</action_gating>
-
----
-
-## Project Scope Boundary
-
-This command executes work on the **host project's source code** — not on PAN Wizard's own infrastructure.
-
-**Do not read, modify, or fix files in these PAN directories:**
-- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
-- Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
-
-**These directories are PAN's own tooling installed into the project.** If a batch item targets a PAN infrastructure file, SKIP it with reason "PAN infrastructure — out of scope." Never modify PAN's agents, commands, core modules, or dispatcher as part of project work.
-
----
-
-## Execute All Stages Sequentially
-
-When `/pan:focus-exec` is invoked, run all 6 stages in order. Do not skip stages or stop between them unless tests regress.
-
-<stage_dependencies>
-Stage 1 → Stage 2: Baseline MUST exist before batch loads (regression detection requires it)
-Stage 2 → Stage 3: Batch MUST be validated before execution begins (prevents working on stale/empty batches)
-Stage 3 → Stage 4: All items MUST be processed before verification (partial verification produces false confidence)
-Stage 4 → Stage 5: Tests MUST pass before doc sync (don't document broken code)
-Stage 5 → Stage 6: Docs MUST be updated before commit (commit captures the complete state)
-
-HARD STOP conditions (do not proceed to next stage):
-- Stage 1: Test suite fails → fix tests before proceeding
-- Stage 2: No batch file found → tell user to run /pan:focus-plan
-- Stage 4: Test count below baseline → revert last changes, re-verify
-</stage_dependencies>
-
-**Flags:**
-- `--budget N` — Override capacity budget in points (default: 50, min: 5, max: 100)
-- `--mode MODE` — Execution mode (bugfix/balanced/features/full)
-- `--priority P0-P6` — Only pick items from these priority tiers
-- `--dry-run` — Run Stages 1-2 only (show what WOULD be executed)
-- `--no-commit` — Skip the commit step in Stage 6
-- `--continue` — Resume a previously interrupted execution
-- `--deep-review` (v3.4+) — After each high-stakes item's execution, run the deep pass on that item's changed files: spawn pan-hardener (`<output_path>` `.planning/reviews/<item-id>/hardener.md`), then pan-meta-reviewer on its report (`.planning/reviews/<item-id>/meta.md`), and merge with `pan-tools review-deep merge <item-id> --hardener-file … --meta-file …` (no first-pass review, so no `--reviewer-file`; `/pan:review-deep` itself needs a phase). Slows the campaign by roughly 3× per item that triggers the deep pass; use for batches touching auth/payment/migrations.
-
----
-
-## Capacity Budget System
-
-| Size | Points | Per Session | Meaning |
-|------|--------|-------------|---------|
-| **XS** | 1 | Up to 40 | Config tweak, typo fix |
-| **S** | 2 | Up to 20 | Single-file bug fix, add tests |
-| **M** | 4 | Up to 10 | Multi-file feature, new test suite |
-| **L** | 10 | Up to 4 | Multi-module change, new command |
-| **XL** | 20 | Up to 2 | New subsystem, major refactor |
-
----
-
-## AI Behavioral Rules
-
-### Rule 1: Read Before You Write
-Before changing any file, read it first. Understand context, callers, and invariants.
-
-**Violation example:**
-```
-BAD:  Rename parameter `opts` → `options` in utils.cjs without reading callers
-      → 3 callers in api.cjs, workers.cjs break silently
-GOOD: Grep for "utils\." → read all 3 callers → confirm param name is safe to change → edit
-```
-
-### Rule 2: Understand the Root Cause
-Do not apply surface-level patches. Trace the code path, identify the actual defect.
-
-**Violation example:**
-```
-BAD:  Test fails with "Cannot read property 'name' of undefined"
-      → Add `if (!obj) return null` at the crash site
-      → Root cause: caller passes wrong argument order — still broken
-GOOD: Trace the call chain → find caller passes (id, name) but function expects (name, id) → fix caller
-```
-
-### Rule 3: One Change, One Test
-Every code change must be tested before moving to the next item.
-
-Test cadence by tier:
-- **MICRO (XS/S):** Run specific test after implementing. Batch up to 3 independent items before smoke.
-- **STANDARD (M):** Full test suite after each item.
-- **FULL (L/XL):** The project's build step (if it has one) + full test suite after each item.
-
-### Rule 4: Don't Invent — Follow the Plan
-Implement exactly what the batch says. Do not:
-- Add features not in the batch item
-- Refactor surrounding code that isn't broken
-- Add comments or docstrings to unchanged files
-- Create abstractions for one-time operations
-- Add error handling for scenarios that cannot happen
-
-### Rule 5: Cross-Platform Awareness
-- Use platform-agnostic path APIs (no hardcoded separators)
-- Follow the project's module format conventions (discover from existing code)
-- Use file-based input for shell-sensitive content when needed
-
-### Rule 6: Revert Fast, Don't Dig Deep
-If a fix doesn't work within 5 minutes, revert and move on. Failed items carry forward.
-
-### Rule 7: Verify Understanding Before Coding
-For M/L/XL items, state your understanding before writing code:
-```
-Item P2-3 — Add tests for billing module
-Understanding: billing module has 3 exported functions. Need to test
-generateInvoice, processPayment, and getBalance edge cases.
-Files: billing.ts, tests/billing.test.ts
-Confidence: HIGH
-```
-
-### Rule 8: Preserve Existing Test Expectations
-Never change an existing test's expected output to match broken code.
-
-### Rule 9: Commit Messages Must Be Accurate
-List only items that are verified (passed tests). Include actual test counts.
-
-### Rule 10: Vary Approach for Similar Items
-When a batch contains 3+ items of the same type (e.g., "add null check to X", "add null check to Y"), deliberately vary your approach to avoid tunnel vision:
-- Item 1: Fix as planned
-- Item 2: Before fixing, re-read the module's error handling pattern — does the same fix apply or does this module handle errors differently?
-- Item 3+: Check if the first fixes introduced a pattern that should be extracted (shared helper) or if each case is genuinely independent
-
-This catches emergent interactions: 5 "add try-catch" fixes might reveal the module needs a centralized error boundary, not 5 scattered try-catches.
-
----
-
-## Stage 1: Session Start
-
-1. **Check Project Status** — git status, recent commits
-2. **Test Baseline** — run test suite, record current counts
-3. **Create rollback snapshot** — git tag for safety
-4. **Report** — Output session start summary
-
-**Circular optimization — init trace:**
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace init \
-  --description "focus-exec session" --command "focus-exec" 2>/dev/null || true
-```
-
-**Record baseline:**
-```
-baseline_version: <from package.json>
-baseline_tests: <N/N passing>
-baseline_build: <pass/fail>
-baseline_commit: <current HEAD>
-```
-
-**Failure Gate:** If tests fail, STOP. Fix tests before proceeding.
-
----
-
-## Stage 2: Batch Loading + Validation
-
-### 2.1 Find Active Batch
-Search for: `.planning/focus/batch-*.json`
-Pick the newest. If none exists, tell user to run `/pan:focus-plan` first.
-
-### 2.2 Read and Validate the Batch
-Extract all items: ID, Title, Priority, Effort, Points, Tier, Files.
-Verify total points within budget.
-
-### 2.3 Show Batch Table
-Display the execution batch to user, then continue automatically.
-
----
-
-## Stage 3: Execution
-
-### 3.0 Pre-Execution Setup
-1. Cache project facts — do NOT re-read later
-2. Create/update progress tracker with the batch table
-3. Classify stages for parallel tool use:
-   ```
-   pan-tools focus classify-stages --raw
-   ```
-   The CLI reads the latest batch and returns `{waves, parallelism_hint}`. When `parallelism_hint` is `emit-micro-in-parallel` or `emit-standard-in-parallel`, all reads and greps for items in the current wave SHOULD be emitted in a single assistant turn (parallel tool calls). Current frontier models are markedly better at emitting parallel tool calls than earlier generations; use that to collapse Stage 3 latency on MICRO-heavy batches.
-
-   Serialize on `FULL` tier items — each is its own wave.
-
-### 3.1 Process Items by Tier
-
-#### MICRO Items (XS/S)
-```
-1. READ target file(s)
-2. IMPLEMENT the fix
-3. TEST — run specific test file
-4. CONFIRM — pass -> DONE | fail -> one fix attempt -> REVERT -> FAILED
-```
-
-#### STANDARD Items (M)
-```
-1. STATE UNDERSTANDING (Rule 7)
-2. READ target files + test files
-3. STATE INTENT — "I will modify [files], adding [what], to achieve [goal]"
-4. IMPLEMENT across necessary files
-5. TEST — full test suite
-6. CONFIRM — pass -> DONE | regresses -> REVERT -> FAILED
-```
-
-#### FULL Items (L/XL)
-```
-1. STATE UNDERSTANDING (detailed)
-2. READ WIDELY — target files, callers, tests, related code
-3. DESIGN — outline approach before coding
-4. STATE INTENT — "I will modify [files]. Risk: [what could break]"
-5. IMPLEMENT in logical chunks
-6. BUILD — run the project's build step if the item changed what it builds
-7. TEST — full test suite
-8. CONFIRM — all pass -> DONE | fail -> investigate (15 min max) -> REVERT -> FAILED
-```
-
-### 3.2 Failure Handling
-
-Classify every error before acting. The classification determines the recovery protocol.
-
-**RECOVERABLE (retry with analysis, max 3 attempts):**
-- Test failure after code change — read the error output, fix the root cause, re-test
-- File not found — search for moved/renamed paths via Grep/Glob
-- Build failure from syntax error — fix the typo, rebuild
-- Merge conflict in a non-critical file — attempt auto-resolution
-
-**UNRECOVERABLE (halt the item, mark FAILED, move to next):**
-- Same test failure persists after 3 fix attempts — revert all changes for this item
-- Permission or auth error on a critical path — cannot proceed without user action
-- State corruption (malformed JSON in planning files) — stop, report to user
-- Persistent build failure unrelated to current item — stop execution, report
-- Test regression in unrelated code — revert, flag for investigation
-
-**Never let a failed item block other items.** Mark it FAILED with the error classification and move on.
-
-### 3.3 Failure Pattern Detection
-When marking an item FAILED, check if its error matches a previous failure in this batch:
-- Same error type or root cause category
-- Same file or module involved
-
-If a pattern repeats (2+ items fail the same way), log it in the session record:
-```
-FAILURE PATTERN: {description} — Items {ID1}, {ID2} — Root cause: {cause}
-Suggested avoidance: {what to check before similar items}
-```
-Before executing remaining items, check if they match the pattern. If so, skip with reason "matches known failure pattern" rather than burning budget on predictable failures.
-
-### 3.4 Progress Tracking
-Update progress tracker after each item with status and budget tracking.
-
-**Attention anchor — emit after each item completes:**
-```
-Item {N}/{total} {DONE|FAILED} | Budget: {used}/{budget} pts | Tests: {baseline} → {current}
-Remaining: {count} items [{IDs with sizes}]
-Next: {next item ID} — {title} ({tier})
-```
-This prevents lost-in-the-middle drift in large batches where the agent forgets budget limits or remaining items.
-
----
-
-## Stage 4: Verification
-
-### 4.1 Full Suite Verification
-Run full test suite. All tests must pass. Compare against Stage 1 baseline.
-
-### 4.2 Build Verification (if applicable)
-Build hooks or compile step if applicable. All must pass.
-
-### 4.3 Verification Report
-```markdown
-## Verification Report
-
-### Item Results
-| # | ID | Title | Tests | Verdict |
-|---|----|-------|-------|---------|
-| 1 | P0-1 | Fix crash | pass | VERIFIED |
-| 2 | P2-3 | Add tests | pass | VERIFIED |
-
-### Regression Check
-| Test Suite | Before | After | Delta |
-|------------|--------|-------|-------|
-| Tests | N/N | M/M | +K |
-| Build | pass | pass | -- |
-```
-
----
-
-## Stage 5: Documentation Sync
-
-### 5.1 Update Docs
-- Update README.md if public API changed
-- Update CHANGELOG.md with new entries
-- Update command/workflow files if behavior changed
-
-### 5.2 Update Scan
-Edit the active scan file:
-- Mark completed items with completed status
-- Mark failed items with failed status and reason
-
----
-
-## Stage 6: Session End
-
-### 6.1 Pre-Commit Verification Checklist
-
-Before committing, run through ALL checks. Do not commit until every check passes.
-
-1. Every modified file was read before editing (no blind writes)
-2. `git diff --stat` contains only files related to batch items (no stray changes)
-3. Full test suite passes — count matches or exceeds baseline from Stage 1
-4. No `TODO`, `FIXME`, or `HACK` introduced without a matching batch item tracking it
-5. Commit message lists only items that are VERIFIED (tests ran, tests passed)
-6. No secrets, credentials, or `.env` files staged
-
-If any check fails: fix the issue and re-run all checks. Only proceed to commit when all 6 pass.
-
-### 6.2 Commit Changes
-Unless `--no-commit`:
-1. Stage modified files (specific paths, not `git add -A`)
-2. Create commit with accurate message listing verified items
-3. Verify commit succeeded
-
-### 6.3 Record Session
-- Record session summary (items completed, tests before/after, budget used)
-- Append error patterns if any failures occurred
-
-### 6.3.5 Circular optimization — end trace
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace end 2>/dev/null || true
-```
-
-### 6.4 Final Report
-
-```markdown
-## /pan:focus-exec Complete
-
-| Stage | Status |
-|-------|--------|
-| 1. Session Start | Baseline: N/N tests |
-| 2. Batch Loading | Mode: balanced, N items |
-| 3. Execution | N/M items completed |
-| 4. Verification | All verified |
-| 5. Doc Sync | Updated N docs |
-| 6. Session End | Committed |
-
-### Results
-- **Budget:** X/50 points used
-- **Items completed:** N (X pts)
-- **Items failed:** K (Y pts returned)
-- **Tests:** Before N -> After M (+K new)
-
-### Resume
-Run `/pan:focus-exec --continue` for remaining items.
-Run `/pan:focus-scan` to regenerate the scan.
-```
-
----
-
-## NEVER DO
-
-- Skip reading files before editing them — blind edits break callers, miss invariants, and create regressions (Rule 1)
-- Apply symptom patches instead of root cause fixes — surface patches recur and erode trust in the codebase (Rule 2)
-- Batch implement without testing between items — a silent failure in item 2 corrupts items 3-5 before you detect it (Rule 3)
-- Expand scope beyond the batch item — unplanned changes bypass the budget system and risk compounding failures (Rule 4)
-- Ignore cross-platform path issues — hardcoded separators break on Windows or vice versa (Rule 5)
-- Spend more than 5 minutes debugging a single failure — diminishing returns; revert preserves budget for remaining items (Rule 6)
-- Start coding without stating understanding for M+ items — misunderstanding the problem wastes the entire implementation (Rule 7)
-- Change test expectations to match broken code — this hides bugs instead of fixing them (Rule 8)
-- Claim items are fixed without running tests — unverified claims erode the entire verification pipeline (Rule 9)
-
-## ALWAYS DO
-
-- Read before write, understand before implement
-- Test after every item
-- Stay within budget and plan scope
-- Use platform-agnostic paths, file-based input for shell-sensitive content
-- Revert fast when stuck
-- Record baseline test counts BEFORE making changes
-- Save progress after each item
-- Record session at end
-- Report results with before/after comparison and budget usage
-````
-
-
----
-
-### /pan:focus-plan (294 lines)
-
-````markdown
----
-name: focus-plan
-group: Focus
-description: Create capacity-budgeted work batch with spec coverage verification and 4 execution modes
-argument-hint: "[--budget N] [--mode bugfix|balanced|features|full] [--priority P0-P6] [--lean] [--no-spec-check]"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Grep
-  - Glob
----
-
-# /pan:focus-plan — Capacity-Budgeted Work Batch Planner with Spec Coverage Verification
-
-Create a capacity-budgeted work batch from focus-scan results **with mandatory verification that planned work covers all relevant spec and ADR requirements.** $ARGUMENTS
-
-**Goal:** Select a right-sized batch of work items that (a) fits within the session's point budget, (b) is ordered for maximum impact with minimum risk, and (c) demonstrably covers the requirements from any associated specs, ADRs, and success criteria — flagging coverage gaps BEFORE execution begins.
-
----
-
-## CRITICAL: Project Scope Boundary
-
-This command plans work batches for the **host project** — NOT for PAN Wizard's own infrastructure.
-
-**NEVER include items targeting these PAN directories:**
-- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
-- Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
-
-If a scan item points to a PAN infrastructure file, DROP it from the batch. PAN's files are not the project's responsibility.
-
----
-
-## MANDATORY: Run focus-scan first
-
-If no recent scan exists, run `/pan:focus-scan` automatically before proceeding.
-
-**Flags:**
-- `--budget N` — Override capacity budget in points (default: 50, min: 5, max: 100)
-- `--mode MODE` — Execution mode. Default: `balanced`
-  - `bugfix` — one pass over P0-P4 in priority order, smallest-first within each; P5-P6 left out (40 pts)
-  - `balanced` — **Default.** Mix of stability fixes + feature development, 60/40 split (50 pts)
-  - `features` — Feature-focused: P0 crashes mandatory, then 80% of what that leaves on P3-P5 (50 pts)
-  - `full` — Full-spectrum: one pass over every priority, P0 first and smallest-first within each; budget raised to at least 60 (60 pts)
-- `--priority PN` — Only pick items at priority PN or higher (P0 through PN), e.g. `--priority P2`
-- `--lean` — Apply RS filtering: exclude items with RS < 1.5
-- `--no-spec-check` — Skip spec coverage verification (NOT recommended — use only for pure bugfix batches)
-
----
-
-## Phase 1: Spec & ADR Discovery (MANDATORY)
-
-> *Before planning work, understand what has been designed and promised.*
-
-### 1.1 Scan for Specifications
-Search the project for feature specifications and design documents:
-- `docs/specs/*.md` or `docs/specs/**/*.md`
-- `.planning/specs/` or `.planning/designs/`
-- Any `*_featureai.md`, `*_spec.md`, `*_design.md` files
-- README sections describing planned features
-
-For each spec found, extract:
-
-| Spec File | Feature Name | Status | Requirements Count | Success Criteria Count |
-|-----------|-------------|--------|-------------------|----------------------|
-| [path] | [name] | Proposed/In Progress/Complete | [N] | [N] |
-
-### 1.2 Scan for ADRs
-Search for Architecture Decision Records:
-- `docs/decisions/ADR-*.md`
-- `.planning/decisions/`
-
-For each ADR, extract:
-
-| ADR | Decision | Status | Success Criteria | Implementation Tasks |
-|-----|----------|--------|-----------------|---------------------|
-| [ADR-NNNN] | [summary] | Proposed/Accepted/Implemented | [count or "none defined"] | [count or "none defined"] |
-
-### 1.3 Extract Requirement Inventory
-From every spec and ADR found, build a **master requirements list**:
-
-| Req ID | Source | Requirement | Type | Implemented? |
-|--------|--------|-------------|------|-------------|
-| SC-1 | ADR-0015 | JWT auth with 4-role RBAC | Feature | Yes/No/Partial |
-| SC-2 | spec/extraction.md | Image extraction for JPG/PNG | Feature | Yes/No/Partial |
-| T-3 | ADR-0018 §Task 6 | Unmatched description table | Task | Yes/No/Partial |
-| BRK-1 | ADR-0018 §Breaking | Hierarchy roll-up for backward compat | Migration | Yes/No/Partial |
-
-**Verification method for "Implemented?":**
-- Search the codebase for files, classes, functions, routes, or tests matching each requirement
-- Check if tests exist that verify the requirement
-- Mark as `Partial` if code exists but tests don't, or if the feature is stubbed
-
-### 1.4 Identify Unimplemented Requirements
-Filter the master list to requirements where `Implemented? = No` or `Partial`:
-
-| Req ID | Source | Requirement | Gap Type | Estimated Effort |
-|--------|--------|-------------|----------|-----------------|
-| SC-2 | ADR-0018 | Keyword count >= 500 | Not started | M |
-| T-6 | ADR-0018 | Unmatched description table | Not started | M |
-| BRK-1 | ADR-0018 | Hierarchy roll-up | Partial (code, no tests) | S |
-
-This becomes the **spec gap backlog** — items that specs/ADRs promised but the codebase doesn't deliver yet.
-
----
-
-## Phase 2: Capacity Budget System
-
-| Size | Points | Per Session | Meaning |
-|------|--------|-------------|---------|
-| **XS** | 1 | Up to 40 | Config tweak, typo fix |
-| **S** | 2 | Up to 20 | Single-file bug fix, add tests |
-| **M** | 4 | Up to 10 | Multi-file feature, new test suite |
-| **L** | 10 | Up to 4 | Multi-module change, new command |
-| **XL** | 20 | Up to 2 | New subsystem, major refactor |
-
----
-
-## Phase 3: Execution Modes & Batch Selection
-
-### `bugfix` — Stability-First
-- **Budget:** 40 pts
-- **Algorithm:** P0 mandatory -> P1 -> P2-P4 smallest-first
-- **Feature allocation:** None
-- **Spec coverage:** Verify P0/P1 items close spec gaps where applicable
-
-### `balanced` — Mix of Fixes + Features (DEFAULT)
-- **Budget:** 50 pts
-- **Stability pass (60%):** 30 pts for P0-P2
-- **Feature pass (40%):** 20 pts for P3-P6
-- **Spec coverage:** Cross-reference feature items against spec gap backlog — prefer items that close gaps
-
-### `features` — Feature-Focused Sprint
-- **Budget:** 50 pts
-- **Mandatory pass:** All P0 items
-- **Feature pass (80%):** 80% of what the P0 pass left, for P3-P5 (40 pts when there are no P0 items)
-- **Stability pass (20%):** the rest of it, for P1-P2 quick wins (10 pts when there are no P0 items)
-- **Spec coverage:** Feature items MUST map to spec requirements — reject unspecified feature work
-
-### `full` — Full-Spectrum Marathon
-- **Budget:** 60 pts
-- **One pass over every priority in priority order, smallest-first within each**
-- **Spec coverage:** Full traceability — every item maps to a spec/ADR requirement or is flagged as unspecified
-
-### Batch Selection Algorithm
-1. Build candidate list from focus-scan results
-2. **For each candidate, attempt to map it to a spec/ADR requirement** (by keyword match, file overlap, or feature area)
-3. Score candidates: `impact_score = base_priority_score + spec_coverage_bonus`
-   - Items that close spec gaps get +2 priority bonus
-   - Items that close success criteria get +3 priority bonus
-   - Items with no spec mapping get +0 (no penalty, but no bonus)
-4. Apply mode-specific budget allocation
-5. Select items greedily by score until budget exhausted
-
----
-
-## Phase 4: Spec Coverage Analysis (MANDATORY unless `--no-spec-check`)
-
-> *The most important output of focus-plan: does the batch actually deliver against what was designed?*
-
-### 4.1 Coverage Matrix
-For each spec/ADR requirement, show whether the batch covers it:
-
-| Req ID | Source | Requirement | Batch Item | Coverage |
-|--------|--------|-------------|-----------|----------|
-| SC-1 | ADR-0018 | Category count >= 65 | #3: Expand categories | COVERED |
-| SC-2 | ADR-0018 | Keyword count >= 500 | #4: Expand keywords | COVERED |
-| SC-3 | ADR-0018 | Unmatched queue API | — | **GAP** |
-| SC-4 | ADR-0018 | NCA affordability output | — | **GAP (deferred to v1)** |
-| SC-5 | ADR-0018 | No regression | #1: Run existing tests | COVERED |
-
-### 4.2 Coverage Score
-```
-Spec Coverage: X / Y requirements covered (Z%)
-├── Fully covered:    N items
-├── Partially covered: N items (code but no tests, or tests but incomplete)
-├── Gaps:             N items (not in batch)
-└── Deferred:         N items (explicitly deferred to future version)
-```
-
-### 4.3 Gap Analysis & Justification
-For every **GAP** in the coverage matrix, provide:
-
-| Gap | Requirement | Why Not In This Batch | When Will It Be Addressed |
-|-----|------------|----------------------|--------------------------|
-| SC-3 | Unmatched queue API | Exceeds budget (M=4pts, only 2pts remaining) | Next batch (features mode) |
-| SC-4 | NCA affordability | Depends on SC-1 + SC-2 (must complete first) | After category expansion |
-
-**CRITICAL:** If the coverage score is < 50% for a spec that has `Status: In Progress`, flag this prominently:
-```
-⚠️ WARNING: Batch covers only X% of [spec name] requirements.
-   Y requirements remain unaddressed. Consider:
-   - Increasing budget (--budget N)
-   - Switching to features mode (--mode features)
-   - Breaking spec into smaller milestones
-```
-
-### 4.4 Dependency Verification
-Check that batch items respect dependency ordering from specs:
-
-| Batch Item | Depends On | Dependency In Batch? | Order Correct? |
-|-----------|-----------|---------------------|----------------|
-| #4: Keywords | #3: Categories | Yes | Yes (#3 before #4) |
-| #6: Suggestions | #5: Unmatched API | No — #5 not in batch | **BLOCKED** |
-
-**If any item is BLOCKED:** Either add the dependency to the batch (if budget allows) or remove the blocked item and flag it.
-
-### 4.5 Success Criteria Verification Plan
-For each success criterion in the batch, specify HOW it will be verified after execution:
-
-| SC ID | Criterion | Verification Command | Expected Result |
-|-------|-----------|---------------------|-----------------|
-| SC-1 | Category count >= 65 | `SELECT COUNT(*) FROM stx_category` | >= 65 |
-| SC-2 | Keywords >= 500 | `SELECT COUNT(*) FROM stx_keyword` | >= 500 |
-| SC-5 | No regression | `dotnet test` | All pass, count >= N |
-
-This becomes the post-execution checklist for `/pan:focus-exec`.
-
----
-
-## Phase 5: Output
-
-Write the batch to `.planning/focus/batch-<YYYY-MM-DD>.json` yourself — `{date, mode, budget, allocated, items: [...]}`, each item `{id, title, priority, effort, points, tier, files}` with `tier` one of `MICRO`, `STANDARD`, `FULL` (`focus exec` and `focus classify-stages` group items by it, and an item without it lands in no wave); `focus exec`, `focus classify-stages` and `/pan:focus-exec` read an `items` or `batch` array. Do not hand this step to `pan-tools focus plan`: it ignores the scan and the spec mapping, batches only incomplete roadmap phases, pending todos and `.planning/patterns.md` entries, and overwrites the day's batch file:
-
-```markdown
-## Focus Batch — <date>
-**Mode:** balanced | **Budget:** 50 pts | **Allocated:** N pts
-**Specs referenced:** N specs, M ADRs
-**Spec coverage:** X/Y requirements (Z%)
-
-### Batch Items
-
-| # | ID | Title | Priority | Size | Pts | Tier | Track | Spec Req |
-|---|----|-------|----------|------|-----|------|-------|----------|
-| 1 | P0-1 | Fix crash in state cmd | P0 | S | 2 | MICRO | Stability | ADR-0005 SC-3 |
-| 2 | P2-3 | Add tests for milestone | P2 | M | 4 | STANDARD | Stability | — |
-| 3 | P3-1 | Expand category taxonomy | P3 | M | 4 | STANDARD | Feature | ADR-0018 SC-1 |
-
-### Spec Coverage Summary
-
-| Source | Total Reqs | Covered | Gaps | Deferred |
-|--------|-----------|---------|------|----------|
-| ADR-0018 | 7 | 3 | 2 | 2 |
-| spec/extraction.md | 5 | 5 | 0 | 0 |
-| **Total** | **12** | **8 (67%)** | **2** | **2** |
-
-### Uncovered Requirements (Gaps)
-
-| Req | Source | Reason | Next Batch? |
-|-----|--------|--------|-------------|
-| Unmatched queue API | ADR-0018 SC-3 | Budget exceeded | Yes — features mode |
-| NCA affordability | ADR-0018 SC-4 | Blocked by SC-1, SC-2 | After this batch |
-
-### Dependency Order
-~~~
-#1 (P0 crash fix) → independent
-#3 (categories) → #4 (keywords) → #5 (match types)
-#2 (tests) → independent
-~~~
-
-### Post-Execution Verification Checklist
-- [ ] SC-1: Category count >= 65 → `SELECT COUNT(*) FROM stx_category`
-- [ ] SC-2: Keywords >= 500 → `SELECT COUNT(*) FROM stx_keyword`
-- [ ] SC-5: All existing tests pass → `dotnet test`
-
-Execution Order: MICRO first, then STANDARD, then FULL
-```
-
-Ready for `/pan:focus-exec`.
-
----
-
-## NEVER DO
-
-- Plan a batch without checking specs and ADRs for coverage gaps
-- Include a feature item that contradicts or conflicts with an accepted ADR
-- Ignore dependency ordering defined in specs (Task A before Task B)
-- Claim 100% spec coverage without actually verifying each requirement against the codebase
-- Include blocked items (items whose dependencies are not in the batch and not yet implemented)
-- Silently drop spec requirements — every gap must be justified and scheduled
-- Plan implementation tasks that aren't traceable to a spec, ADR, scan finding, or user request
-- Exceed the capacity budget (hard limit — not "approximately")
-
-## ALWAYS DO
-
-- Discover ALL specs and ADRs before selecting batch items
-- Cross-reference every batch item against spec requirements where applicable
-- Flag coverage gaps prominently with justification and scheduling
-- Verify dependency ordering matches spec-defined task dependencies
-- Include a post-execution verification checklist with concrete commands
-- Prefer items that close spec gaps over items with no spec mapping (when priority is equal)
-- State the coverage score as a percentage in the batch header
-- Report unimplemented success criteria that aren't addressed by this batch
-````
-
-
----
-
-### /pan:focus-scan (287 lines)
-
-````markdown
----
-name: focus-scan
-group: Focus
-description: Deep-dive strategic work scan with prioritized items and Reality Score filtering
-argument-hint: "[--focus <area>] [--quick] [--refresh] [--lean]"
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Grep
-  - Glob
----
-
-# /pan:focus-scan — Deep-Dive Strategic Work Scan
-
-Survey the project for prioritized work items with evidence-based scoring. $ARGUMENTS
-
-**Goal:** Produce a comprehensive, evidence-based prioritized work list by deep-diving into ALL project files, code, and test results. Every item must link to source files and be actionable.
-
----
-
-## Project Scope Boundary
-
-This command scans the **host project's source code** for work items — not PAN Wizard's own infrastructure.
-
-**Exclude these directories from scanning:**
-- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
-- `.planning/` — PAN planning state (read for context, but never report PAN planning files as "issues")
-- Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
-
-**These directories are PAN's own tooling installed into the project.** Do not report TODO/FIXME items found in PAN files. Do not flag PAN files as lacking test coverage. Do not suggest improvements to PAN's agents, commands, or core modules.
-
-If a scan finding points to a file in one of the PAN paths listed above — DROP IT. It is not the project's responsibility.
-
----
-
-## Tool Selection Priority
-
-Use the simplest sufficient tool for each scanning operation:
-1. **Grep** — for finding patterns (TODO, FIXME, error-prone code) across the codebase
-2. **Glob** — for discovering files by name pattern (test files, config files, modules)
-3. **Read** — for examining specific files identified by Grep/Glob
-4. **Bash** — only for commands that dedicated tools cannot do (git log, test runners)
-
-Do not read entire files when Grep can find the relevant lines. Do not use Bash for searches that Grep handles.
-
----
-
-## Execute All Phases Automatically
-
-When `/pan:focus-scan` is invoked, execute all phases without stopping. Do not ask questions between phases or skip phases. The output is a prioritized work list with Reality Score filtering.
-
-**Flags:**
-- `--focus <area>` — Weight items toward a specific area (e.g., `--focus commands`, `--focus hooks`, `--focus tests`)
-- `--quick` — Skip Phase 2 (strategic context) and Phase 6 (validation protocol)
-- `--refresh` — Force re-read all files even if recently cached
-- `--lean` — Apply aggressive Reality Score filtering: DROP items with RS < 1.5, DEFER items with RS < 3.0
-
----
-
-## Phase 0: Orientation & Baseline Snapshot
-
-**Circular optimization — init trace:**
-```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace init \
-  --description "focus-scan" --command "focus-scan" 2>/dev/null || true
-```
-
-### 0.1 Read Current State
-Read these files to establish baseline:
-
-**Core Status:**
-- `package.json` — Version, description, entry points
-- `README.md` — Public documentation
-
-**Project Structure:**
-- All core modules in the project's source directories
-- The project's own command, agent, workflow and hook definitions, if it has any (never PAN's, which the Project Scope Boundary excludes)
-
-**Planning State:**
-- `.planning/state.md` — Current state
-- `.planning/roadmap.md` — Phase progress
-- `.planning/config.json` — Project configuration
-- `.planning/patterns.md` — Known error patterns (if exists)
-
-### 0.2 Scan for Real Issues
-Run targeted code searches to find actual problems:
-
-```
-Search for: "TODO", "FIXME", "HACK", "STUB", "stub"
-In: source directories, hooks, tests
-```
-
-Cross-reference found issues with documented items — flag any UNDOCUMENTED issues as new findings.
-
-### 0.3 Check Test Results
-Run the project's test suite: the commands in `.planning/config.json → verification` when set, otherwise the test command discovered from `package.json` scripts, `Makefile`, or project docs.
-Record: total tests, passing, failing, suites.
-
-### 0.4 Baseline Snapshot Table
-
-```markdown
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Version | X.Y.Z | |
-| Tests | N/N | M suites |
-| Build | OK/FAIL | |
-| Commands | N | |
-| Phases | N total, M incomplete | |
-| TODOs Found | N | |
-| Error Patterns | N | |
-```
-
----
-
-## Phase 1: Priority Classification
-
-### Priority Framework (STRICT ORDER)
-
-| Priority | Focus | Criteria |
-|----------|-------|----------|
-| **P0: CRASH/ERROR** | Runtime errors, uncaught exceptions | Any command that throws or produces wrong output |
-| **P1: WRONG RESULTS** | Silent data corruption, incorrect output | Commands that succeed but produce bad data |
-| **P2: TEST GAPS** | Missing test coverage | Features without tests or low assertion density |
-| **P3: INCOMPLETE FEATURES** | Partially implemented commands or workflows | Commands that exist but lack full functionality |
-| **P4: NEW FEATURES** | Net-new functionality from roadmap | Features not yet started |
-| **P5: TOOLING** | Developer experience improvements | Hooks, CLI UX, error messages |
-| **P6: DOCUMENTATION** | Docs sync, reference updates | Documentation-only changes |
-
-### Classification Rules
-- **Crashes before correctness** — A thrown error is always higher priority than wrong output
-- **Correctness before coverage** — Wrong results are worse than missing tests
-- **Quick wins first within each tier** — S-effort items before L-effort items
-
----
-
-## Phase 2: Strategic Context (skip with --quick)
-
-### 2.1 Read Strategy Documents
-- `README.md` — What's the public-facing story?
-- User guide / docs — What's documented for users?
-- `CHANGELOG.md` — What's the recent trajectory?
-
-### 2.2 Strategic Alignment Check
-For each P4+ item, note whether it:
-- Is on the critical path to the next milestone
-- Enables other high-value work (dependency unblocking)
-- Has been deferred multiple times
-
----
-
-## Phase 2.5: Feature Reality Check (Market-Fit Scoring)
-
-Every feature-tier item (P3-P6) must pass a reality check.
-
-### Reality Score (RS)
-
-```
-RS = (User Value + Time Criticality + Risk Reduction) / Job Size
-```
-
-#### User Value (UV): 1-5
-| Score | Meaning |
-|-------|---------|
-| 5 | Core workflow feature — every user needs this |
-| 4 | Common usage — most projects need it |
-| 3 | Significant audience — power users need it |
-| 2 | Niche audience — specific use case |
-| 1 | Academic / completion-only |
-
-#### Time Criticality (TC): 1-5
-| Score | Meaning |
-|-------|---------|
-| 5 | Blocks users from adopting the tool |
-| 4 | Competitive table-stakes — other tools have it |
-| 3 | Unlocks a significant new use case |
-| 2 | Nice to have, users can work around |
-| 1 | No urgency |
-
-#### Risk Reduction (RR): 1-5
-| Score | Meaning |
-|-------|---------|
-| 5 | Removes a crash or correctness bug |
-| 4 | Unblocks 3+ downstream features |
-| 3 | Unblocks 1-2 features |
-| 2 | Incremental improvement |
-| 1 | Polish / docs |
-
-#### Job Size (JS)
-| Effort | JS Value |
-|--------|----------|
-| XS | 1 |
-| S | 2 |
-| M | 3 |
-| L | 5 |
-| XL | 8 |
-
-```
-RS >= 3.0  ->  DO       — Include in next sessions
-RS 1.5-2.9 ->  DEFER    — Include as deferred
-RS < 1.5   ->  BACKLOG  — Move to backlog appendix
-```
-
----
-
-## Phase 3: Item Collection & Deduplication
-
-### 3.1 Collect ALL Items
-Gather items from:
-
-1. **Test failures** — each failure = 1 item
-2. **TODO/FIXME scan** — each finding = 1 item
-3. **Missing test coverage** — each uncovered module = 1 item
-4. **Incomplete commands** — each gap = 1 item
-5. **Missing features** — from roadmap/README promises
-6. **Documentation gaps** — each stale/missing doc = 1 item
-7. **Error pattern prevention** — from patterns.md
-
-### 3.2 Deduplicate
-- Same file + same issue = same item
-- Same feature described differently = same item
-
----
-
-## Phase 4: Effort Estimation
-
-| Size | Time | Lines Changed | Files |
-|------|------|---------------|-------|
-| XS | < 15 min | < 20 | 1 |
-| S | 15-60 min | 20-100 | 1-2 |
-| M | 1-4 hours | 100-500 | 2-5 |
-| L | 4-8 hours | 500-2000 | 5-10 |
-| XL | 8+ hours | 2000+ | 10+ |
-
----
-
-## Phase 5: Scan Assembly
-
-### 5.1 Output
-Write the scan to `.planning/focus/scan-<YYYY-MM-DD>.md`, where `/pan:focus-plan` builds from it and `/pan:focus-exec` updates it (Stage 5.2). `pan-tools focus scan` does not take these items: it lists only incomplete roadmap phases that have a directory, pending todos and `.planning/patterns.md` entries.
-
-### 5.2 Document Structure
-
-The scan output includes:
-- Status Snapshot table
-- Items grouped by priority tier (P0-P6)
-- Each item: ID, title, symptom, root cause, fix guidance, files, effort
-- Summary statistics (items by priority x effort)
-- Recommended execution order (quick wins -> core fixes -> feature work)
-- Feature Reality Check table (RS scores for P3-P6 items)
-- Deferred items with rationale
-
----
-
-## Phase 6: Validation Protocol (skip with --quick)
-
-### 6.1 Cross-Check Completeness
-Verify the scan covers:
-- [ ] All failing tests (if any)
-- [ ] All TODO/FIXME items from code scan
-- [ ] All modules without test coverage
-- [ ] All commands listed in README but not implemented
-- [ ] All error patterns that need prevention
-
-### 6.2 Sanity Check
-- No item should appear twice
-- Every P0-P2 item should have a specific file path
-- Deferred items should have clear "revisit when" criteria
-
----
-
-## NEVER DO
-
-- Skip reading source files — the scan must be evidence-based
-- List items without file paths (for code items)
-- Create items with vague descriptions
-- Include items that are already complete
-- Include P3-P6 feature items without an RS score
-
-## ALWAYS DO
-
-- Deep-dive into actual code (grep for TODOs, read modules)
-- Cross-reference tests against implementations
-- Link every item to its source file
-- Provide specific fix guidance
-- Score every P3-P6 item with the RS formula
-- Sort the Feature Reality Check table by RS descending
-````
-
-
----
-
-### /pan:focus-sync (105 lines)
-
-````markdown
----
-name: focus-sync
-group: Focus
-description: Synchronize documentation after changes — check staleness and update counts
-argument-hint: "[--readme | --docs | --arch | --all]"
-allowed-tools:
-  - Read
-  - Bash
-  - Grep
-  - Glob
-  - Edit
-  - Write
----
-
-# /pan:focus-sync — Documentation Synchronization
-
-Synchronize project documentation across all files. $ARGUMENTS
-
-**Goal:** Detect stale documentation (wrong counts, missing commands, outdated references) and optionally fix it. Documentation should reflect the actual codebase at all times.
-
----
-
-## CRITICAL: Project Scope Boundary
-
-This command synchronizes the **host project's documentation** — NOT PAN Wizard's own infrastructure files.
-
-**NEVER sync, modify, or report staleness in these PAN directories:**
-- `.claude/`, `.codex/`, `.gemini/`, `.opencode/`, `.agents/`, and the Copilot runtime paths PAN installs into under `.github/` (`agents/`, `skills/`, `hooks/`, `copilot/`, `pan-wizard-core/`, `pan-local-patches/`, `mcp.json`, `package.json`, `pan-file-manifest.json`) — PAN runtime directories
-- Any `pan-wizard-core/`, `pan-tools`, agent `.md`, or command `.md` files within PAN runtime directories
-
-**These directories are PAN's own tooling.** Documentation sync applies to the project's README, docs, guides, and code comments — not to PAN's installed agents or command definitions.
-
----
-
-## Usage
-
-```
-/pan:focus-sync                  # Full sync check: report staleness
-/pan:focus-sync --readme         # Check README.md only
-/pan:focus-sync --docs           # Verify documentation matches implementations
-/pan:focus-sync --arch           # Verify architecture docs match actual structure
-/pan:focus-sync --all            # Full sync of everything + auto-fix
-```
-
----
-
-## Sync Operations
-
-### README Sync
-1. Read `README.md`
-2. Cross-reference with `package.json` (or equivalent) for version, description
-3. Verify counts mentioned in README match actual project artifacts (e.g., source modules, API endpoints, components, commands)
-4. Update any stale counts or descriptions
-
-### Documentation Sync
-1. Read the project's primary documentation files (e.g., docs/, wiki, guides)
-2. Verify all public features/APIs are documented
-3. Verify descriptions match actual implementations
-4. Flag any missing or outdated entries
-
-### Source-to-Docs Cross-Reference
-1. List the project's main source modules/components
-2. Cross-reference with documentation references
-3. Verify each documented feature has a corresponding implementation
-4. Report orphaned documentation or undocumented features
-
-### Architecture Sync
-1. Read architecture documentation (if it exists)
-2. Verify component/module/service counts match actual
-3. Verify described patterns match implemented patterns
-4. Flag structural drift
-
-### CHANGELOG Sync
-1. Verify latest version entry matches `package.json` (or equivalent) version
-2. Check all recent features are documented
-
----
-
-## Source of Truth Hierarchy
-
-```
-package.json              <- Version, description, entry points
-  |
-README.md                 <- Public documentation
-  |
-docs/USER-GUIDE.md        <- Detailed user guide
-  |
-CHANGELOG.md              <- Version history
-```
-
----
-
-## Report
-
-Report in this shape (`pan-tools focus sync` itself returns only JSON — `actuals` (counts of commands, agents and modules), `stale` / `current` entries for those counts, any `--tests` / `--suites` counts, renamed `/pan:` commands and the package.json-vs-CHANGELOG version, plus `stale_count` and `needs_sync`):
-
-```
-| Area | Status | Finding |
-|------|--------|---------|
-| README | stale | Components: documented 12, actual 15 |
-| Docs | stale | Missing 3 recently added features |
-| Architecture | stale | Modules: documented 8, actual 10 |
-| CHANGELOG | current | Version matches |
-| Source-Docs | current | All features documented |
+The old `focus-doc-audit` and `focus-sync` names run this command as aliases.
 ```
-````
 
 
 ---
@@ -6534,21 +3955,28 @@ before starting a `discuss` session. Session turns are not auto-encrypted.
 
 ---
 
-### /pan:learn (80 lines)
+### /pan:learn (87 lines)
 
 ````markdown
 ---
 name: pan:learn
 group: Self-Improvement
 description: Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports
-argument-hint: "[--session <id> | --sessions <n> | --experiment <slug>] [--apply]"
+argument-hint: "[--session <id> | --sessions <n> | --experiment <slug>] [--apply] | --optimize <subcommand>"
 allowed-tools:
   - Read
   - Bash
   - Glob
   - Grep
   - Task
+  - Write
+  - Edit
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--optimize <apply|revert|list|stats|trace …>` — manage the optimisation loop: record a report's suggestions, undo them, list reports, view stats, manage trace sessions: @~/.claude/pan-wizard-core/workflows/optimize.md (formerly `optimize`)
+</routes>
 
 # /pan:learn
 
@@ -6567,7 +3995,7 @@ Analyze the most recent trace session and generate an optimization report.
 - `--session <id>` — analyze a specific session instead of the most recent
 - `--sessions <n>` — pool the last n sessions into one analysis, so recommendations rest on failures that recur across runs
 - `--experiment <slug>` *(v3.7.0+, W3)* — analyze a harvested experiment instead of the current project's traces: the workflow runs its `pan-tools` steps with `--cwd` set to the harvest folder (the `harvest_path` `/pan:experiment harvest <slug>` printed, `<source-repo>/experiments/<slug>/` by default), so the analysis and the optimizer's report land in that folder's `.planning/optimization/reports/`. Used by the self-improvement loop. Run `/pan:experiment harvest <slug>` first.
-- `--apply` — record the report's suggestions right after generating it (equivalent to running `/pan:optimize apply` immediately after)
+- `--apply` — record the report's suggestions right after generating it (equivalent to running `/pan:learn --optimize apply` immediately after)
 
 **What it does:**
 
@@ -6575,11 +4003,11 @@ Analyze the most recent trace session and generate an optimization report.
 2. Performs local analysis (error/gap/redundancy patterns, agent stats)
 3. Writes `.planning/optimization/reports/{session}-analysis.json`
 4. Invokes `pan-optimizer` agent to produce `.planning/optimization/reports/{session}-opt-report.md`
-5. If `--apply` flag: immediately runs `/pan:optimize apply` on the new report
+5. If `--apply` flag: immediately runs `/pan:learn --optimize apply` on the new report
 6. Prints the optimization summary
 
 **When to run:**
-- After any `/pan:exec-phase` or `/pan:focus-exec` that had a trace session active
+- After any `/pan:exec-phase` or `/pan:focus-auto --step exec` that had a trace session active
 - After a full build cycle to capture all decisions and errors
 - On demand to understand what PAN did and how to make it smarter
 
@@ -6598,7 +4026,7 @@ The optimization report in `.planning/optimization/reports/` contains:
 - Redundancy analysis with token waste estimates
 - Prompt improvement suggestions (require human review before applying)
 - Workflow gap suggestions (require human review)
-- An `## Auto-Apply Actions` JSON block, which `/pan:optimize apply` records in `.planning/optimization/suggestions.md`
+- An `## Auto-Apply Actions` JSON block, which `/pan:learn --optimize apply` records in `.planning/optimization/suggestions.md`
 - A circular optimization score (0–100)
 
 Nothing in the report reaches an agent until a person writes it where the agents read. PAN's workflows do not load `.planning/memory/` into agents.
@@ -6614,7 +4042,7 @@ Nothing in the report reaches an agent until a person writes it where the agents
 → Needs review: 2 prompt improvements, 1 workflow gap
 ```
 
-**See also:** `/pan:optimize`, `/pan:exec-phase`, `/pan:experiment` (v3.7.0+ self-improvement loop)
+**See also:** `/pan:learn --optimize`, `/pan:exec-phase`, `/pan:experiment` (v3.7.0+ self-improvement loop)
 
 Follow the workflow at `~/.claude/pan-wizard-core/workflows/learn.md`.
 ````
@@ -6858,165 +4286,14 @@ The orchestrator loads context in layers — NOT everything upfront. Mapper agen
 
 ---
 
-### /pan:mcp-bridge (143 lines)
-
-````markdown
----
-name: pan:mcp-bridge
-group: External tools
-description: Discover available MCP tools and recommend which ones apply to a phase. Discovery-only; auto-invocation deferred.
-argument-hint: "list | recommend <phase> [--max N] [--min-score N] | cache [--servers <json>] [--runtime <name>]"
-allowed-tools:
-  - Read
-  - Bash
-  - Write
----
-
-<objective>
-Surface Model Context Protocol (MCP) tools visible to the host runtime and recommend which ones might apply to a specific phase plan.
-
-Reduced scope from Spec B v1's X-7: **discovery and recommendation only**. Auto-injection of MCP tools into planner context and auto-invocation from executor agents are deliberately deferred and still unscheduled (the v3.5 target passed without them). This kept v3.3 narrow and avoids coupling PAN to Claude Code's MCP schema stability.
-</objective>
-
-Each subcommand runs `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs bridge <list|recommend|cache> [flags]`. The CLI verb is `bridge`, not `mcp-bridge`: `pan-tools mcp-bridge` is an unknown command.
-
-<subcommands>
-
-### `list`
-
-Show cached MCP tools with server grouping and schemas.
-
-```
-/pan:mcp-bridge list
-```
-
-**Output (JSON):**
-```json
-{
-  "cached_at": "2026-04-18T12:34:56Z",
-  "runtime": "claude",
-  "server_count": 3,
-  "tool_count": 12,
-  "tools": [
-    { "server": "linear", "name": "linear.updateTicket", "description": "...", "schema": {...} },
-    ...
-  ],
-  "source": "cache" | "empty"
-}
-```
-
-When `source: "empty"`, nothing has seeded the cache yet: no hook or host writes it, only `cache --servers` (or an external script). See the `cache` subcommand for manual seeding.
-
-### `recommend <phase>`
-
-Given a phase number, match cached MCP tools against the phase's plan text and return tools ranked by keyword relevance.
-
-```
-/pan:mcp-bridge recommend 7
-/pan:mcp-bridge recommend 12 --max 5 --min-score 2
-```
-
-**Flags:**
-- `--max N` — cap recommendations (default 10)
-- `--min-score N` — minimum keyword hit count (default 1)
-
-**Output (JSON):**
-```json
-{
-  "phase": "7",
-  "phase_name": "API refactor",
-  "runtime": "claude",
-  "total_candidates": 12,
-  "recommendations": [
-    {
-      "server": "linear",
-      "name": "linear.updateTicket",
-      "description": "Update a Linear issue",
-      "score": 3,
-      "hits": ["linear", "ticket", "update"]
-    }
-  ]
-}
-```
-
-Scoring is naive keyword frequency with word boundaries — not semantic embeddings. A tool's name and description are tokenized into keywords (≥3 chars); each match in the phase plan text scores 1 point.
-
-### `cache`
-
-Write or inspect the MCP tools cache at `.planning/bridge/available-tools.json`.
-
-```
-# Inspect current cache (prints the same JSON as `list`)
-/pan:mcp-bridge cache
-
-# Seed cache from scripted discovery (for testing or external pipeline)
-/pan:mcp-bridge cache --runtime claude --servers '[{"name":"linear","tools":[{"name":"linear.updateTicket","description":"Update ticket"}]}]'
-```
-
-Nothing else writes this file: no hook or installer step populates it, so `list` and `recommend` see only what this command (or an external script) has recorded.
-
-</subcommands>
-
-<workflow>
-
-**New to a project with MCP tools?** Run `/pan:mcp-bridge list` to see what's available. If empty, nothing has seeded the cache: record each server with its tools, `/pan:mcp-bridge cache --servers '[{"name":"<server>","tools":[{"name":"<tool>","description":"…"}]}]'`, taking the tool names and descriptions from the MCP tools your session has loaded. A server recorded without `tools` adds no tool to `list` (only `server_count` counts it, and `source` then reads `cache`) and nothing to `recommend`, and the host runtime's MCP config names only the servers and how to start them. Each runtime keeps that config somewhere different: Claude Code in `.mcp.json` at the project root (project scope) or `~/.claude.json` (user and local scopes), OpenCode in `opencode.json`, Copilot in `.github/mcp.json`, Codex in its own config, Gemini in its settings file.
-
-**Planning a phase that might touch external systems?** Run `/pan:mcp-bridge recommend <phase>` to get a ranked shortlist. Copy relevant tool names into the phase plan's "External tools" section so the executor knows to invoke them.
-
-**Pre-milestone review:** walk through each remaining phase with `/pan:mcp-bridge recommend` to catch "we should have automated this via Linear/Slack/etc." realizations before shipping.
-
-</workflow>
-
-<caveats>
-
-**Discovery is a cache, not a live probe.** Only `cache --servers` (or an external script) populates `.planning/bridge/available-tools.json`; no hook or host writes it. PAN does not query MCP servers directly — that would require runtime-specific HTTP or IPC integration this command deliberately avoids.
-
-**Keyword scoring is crude.** "Postgres" and "PostgreSQL" are different tokens; `postgresql` in a plan won't match a `postgres.query` tool unless the plan also says "postgres." Tune your plan language or expand tool descriptions to improve matches.
-
-**No runtime is special.** Each runtime PAN installs into reads MCP servers from its own config (see the workflow section above); the cache schema is generic, so whatever lists a runtime's servers can populate the same file.
-
-**No automatic invocation.** This command never calls MCP tools. It tells you what's available and what might apply. The actual invocation happens via the host runtime's normal tool-use flow (Claude Code's tool calls, etc.) when the executor agent decides to use a recommended tool.
-
-</caveats>
-
-<runtime_compatibility>
-
-| Runtime | list | recommend | cache |
-|---------|------|-----------|-------|
-| Claude Code | Full once seeded | Full once seeded | Full |
-| OpenCode | Full once seeded | Full once seeded | Full |
-| Gemini CLI | Full once seeded | Full once seeded | Full |
-| Codex CLI | Full once seeded | Full once seeded | Full |
-| Copilot CLI | Full once seeded | Full once seeded | Full |
-
-On every runtime, `list` reports zero tools (`source: "empty"`) and `recommend` an empty `recommendations` list with a `reason` until `cache --servers` (or an external script) populates the cache; no host or hook writes it.
-
-</runtime_compatibility>
-
-<future_scope>
-
-Explicitly deferred from v3.3 (documented in ADR-0024 / Spec B v2 notes):
-
-1. **Auto-inject recommended tools into planner context** — requires a stable MCP schema contract and a plan-template extension. Unscheduled.
-2. **Auto-invoke MCP tools from executor agent** — requires permission-gating and per-tool safety review. Unscheduled.
-3. **Cross-runtime tool discovery** — filling the cache automatically from each runtime's own MCP config and servers. No timeline; needs ecosystem signal.
-
-Until those land, this command is the minimum viable integration: you see what's there, you get suggestions, you decide manually.
-
-</future_scope>
-````
-
-
----
-
-### /pan:milestone-audit (66 lines)
+### /pan:milestone-audit (73 lines)
 
 ````markdown
 ---
 name: pan:milestone-audit
 group: Milestone
 description: Audit milestone completion against original intent before archiving
-argument-hint: "[version] [--track <name>] [--all-tracks]"
+argument-hint: "[version] [--track <name>] [--all-tracks] [--gaps]"
 allowed-tools:
   - Read
   - Glob
@@ -7024,7 +4301,14 @@ allowed-tools:
   - Bash
   - Task
   - Write
+  - AskUserQuestion
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--gaps` — create the phases that close the gaps of the most recent audit (`.planning/v*-milestone-audit.md`), grouped, with your confirmation: @~/.claude/pan-wizard-core/workflows/milestone-gaps.md (formerly `milestone-gaps`)
+</routes>
+
 <objective>
 Verify milestone achieved its definition of done. Check requirements coverage, cross-phase integration, and end-to-end flows.
 
@@ -7083,34 +4367,7 @@ Two gates are non-negotiable because they guard against auditing the wrong thing
 
 ---
 
-### /pan:milestone-cleanup (19 lines)
-
-```markdown
----
-name: pan:milestone-cleanup
-group: Milestone
-description: Archive accumulated phase directories from completed milestones
----
-<objective>
-Archive phase directories from completed milestones into `.planning/milestones/v{X.Y}-phases/`.
-
-Use when `.planning/phases/` has accumulated directories from past milestones.
-</objective>
-
-<execution_context>
-@~/.claude/pan-wizard-core/workflows/milestone-cleanup.md
-</execution_context>
-
-<process>
-Follow the cleanup workflow at @~/.claude/pan-wizard-core/workflows/milestone-cleanup.md.
-Identify completed milestones, show a dry-run summary, and archive on confirmation.
-</process>
-```
-
-
----
-
-### /pan:milestone-done (149 lines)
+### /pan:milestone-done (154 lines)
 
 ````markdown
 ---
@@ -7118,12 +4375,17 @@ type: prompt
 name: pan:milestone-done
 group: Milestone
 description: Archive completed milestone and prepare for next version
-argument-hint: <version>
+argument-hint: "<version> [--cleanup]"
 allowed-tools:
   - Read
   - Write
   - Bash
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--cleanup` — archive the phase directories of completed milestones into `.planning/milestones/v{X.Y}-phases/`, with a dry-run summary first: @~/.claude/pan-wizard-core/workflows/milestone-cleanup.md (formerly `milestone-cleanup`)
+</routes>
 
 <objective>
 Mark milestone {{version}} complete, archive to milestones/, and update roadmap.md and requirements.md.
@@ -7160,8 +4422,8 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 
    - Look for `.planning/v{{version}}-milestone-audit.md`
    - If missing or stale: recommend `/pan:milestone-audit` first
-   - If audit status is `gaps_found`: recommend `/pan:milestone-gaps` first
-   - If audit status is `tech_debt`: present the debt; proceed on the user's say-so (it becomes accepted debt), or recommend `/pan:milestone-gaps` for a cleanup phase
+   - If audit status is `gaps_found`: recommend `/pan:milestone-audit --gaps` first
+   - If audit status is `tech_debt`: present the debt; proceed on the user's say-so (it becomes accepted debt), or recommend `/pan:milestone-audit --gaps` for a cleanup phase
    - If audit status is `passed`: proceed to step 1
 
    ```markdown
@@ -7172,7 +4434,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
    requirements coverage, cross-phase integration, and E2E flows.
 
    {If audit has gaps:}
-   ⚠ Milestone audit found gaps. Run `/pan:milestone-gaps` to create
+   ⚠ Milestone audit found gaps. Run `/pan:milestone-audit --gaps` to create
    phases that close the gaps, or proceed anyway to accept as tech debt.
 
    {If audit passed:}
@@ -7237,7 +4499,7 @@ The full milestone-done workflow is inlined in <process> below — there is no s
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize learn --sessions 5 2>/dev/null || true
    ```
 
-   Present the optimization summary to the user and suggest `/pan:optimize apply` to record its suggestions, each naming where a person should make the change.
+   Present the optimization summary to the user and suggest `/pan:learn --optimize apply` to record its suggestions, each naming where a person should make the change.
 
 </process>
 
@@ -7263,49 +4525,6 @@ The full milestone-done workflow is inlined in <process> below — there is no s
 - **Fresh requirements:** Next milestone starts with `/pan:milestone-new` which includes requirements definition
   </critical_rules>
 ````
-
-
----
-
-### /pan:milestone-gaps (35 lines)
-
-```markdown
----
-name: pan:milestone-gaps
-group: Milestone
-description: Create phases to close all gaps identified by milestone audit
-allowed-tools:
-  - Read
-  - Write
-  - Bash
-  - Glob
-  - Grep
-  - AskUserQuestion
----
-<objective>
-Create all phases necessary to close gaps identified by `/pan:milestone-audit`.
-
-Reads milestone-audit.md, groups gaps into logical phases, creates phase entries in roadmap.md, and offers to plan each phase.
-
-One command creates all fix phases — no manual `/pan:add-phase` per gap.
-</objective>
-
-<execution_context>
-@~/.claude/pan-wizard-core/workflows/milestone-gaps.md
-</execution_context>
-
-<context>
-**Audit results:**
-Glob: .planning/v*-milestone-audit.md (use most recent)
-
-Original intent and current planning state are loaded on demand inside the workflow.
-</context>
-
-<process>
-Execute the plan-milestone-gaps workflow from @~/.claude/pan-wizard-core/workflows/milestone-gaps.md end-to-end.
-Preserve all workflow gates (audit loading, prioritization, phase grouping, user confirmation, roadmap updates).
-</process>
-```
 
 
 ---
@@ -7475,129 +4694,6 @@ IF codebase already has substantial code: suggest skipping research (existing co
 Execute the new-project workflow from @~/.claude/pan-wizard-core/workflows/new-project.md end-to-end.
 Preserve all workflow gates (validation, approvals, commits, routing).
 </process>
-````
-
-
----
-
-### /pan:optimize (115 lines)
-
-````markdown
----
-name: pan:optimize
-group: Self-Improvement
-description: Manage the circular optimization loop — record a report's suggestions, undo them, view stats, list reports, manage trace sessions
-argument-hint: "apply [--report <file>] | revert <apply_id> | revert --last | list | stats | trace init|end|current|list"
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - Glob
-  - Grep
----
-
-# /pan:optimize
-
-Manage the circular optimization loop: record a report's suggestions, view stats, list reports.
-
-**Usage:**
-```
-/pan:optimize apply
-/pan:optimize apply --report <filename>
-/pan:optimize revert <apply_id>
-/pan:optimize revert --last
-/pan:optimize list
-/pan:optimize stats
-/pan:optimize trace init [--description "what you're building"]
-/pan:optimize trace end
-/pan:optimize trace current
-/pan:optimize trace list
-```
-
-**Subcommands:**
-
-### apply
-Record the suggestions from the most recent (or specified) optimization report.
-
-Recorded automatically:
-- Suggestions appended to `.planning/optimization/suggestions.md`: lessons, prompt changes and workflow changes, each naming where it belongs
-- Config notes appended to `.planning/optimization/config-suggestions.md`
-- An older report's memory actions (`memory_entry`, `memory`, `memory_append`) still write to `.planning/memory/`, a `memory_entry` only if it passes the checks of the `memory record` command. The result warns that PAN's workflows do not load that folder into agents
-
-A person makes every change the suggestions describe (never auto-applied):
-- Lessons, written into the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test, or a comment at the cited code
-- Agent prompt changes
-- Workflow step additions
-- Structural changes to commands
-
-After applying, the report lists what was applied and what still needs review, plus the `apply_id` that undoes it. Every apply is recorded action by action in `.planning/optimization/applied.jsonl`: the path, whether the file was created or appended to, the exact text, and a hash of the file after the write. Applying the same report a second time writes nothing: each action names the apply that already wrote it.
-
-### revert
-Undo one apply exactly: delete the files it created and cut the text it appended (`revert --last` for the newest).
-
-Revert never destroys work someone did since:
-- It refuses a file whose content changed after the apply. The comparison ignores line endings, so a CRLF checkout still matches.
-- It refuses a file that a later apply also wrote. Revert that later apply first.
-- It says which files it refused, and why.
-
-A CRLF file comes back CRLF. Applies logged before apply records existed cannot be reverted. After a revert, the same report can be applied again.
-
-### list
-List all optimization reports in `.planning/optimization/reports/`, most recent first.
-
-### stats
-Show cumulative optimization statistics:
-- Total trace sessions run
-- Total events traced
-- Total errors seen (`total_errors_traced`; gaps and redundancies are not totalled)
-- Total optimizations applied across all runs, the apply runs, the reverted runs, and the last `apply_id`
-- Current active trace session (if any)
-
-### trace init
-Start a trace session before running a build — or join the active one: `trace init` reuses an unended session started within the last hour (`reused: true`, keeping that session's description) instead of opening a new one. The hook fires automatically on SubagentStop, but calling `trace init` first lets you attach a description to a new session.
-
-```
-/pan:optimize trace init --description "building express web server"
-/pan:exec-phase 1
-/pan:learn
-```
-
-### trace end
-Finalize the current trace session (writes summary stats to session.json).
-
-### trace current
-Show the active trace session ID (`optimize trace current` returns only `session_id` and `active`; `trace list` carries each session's event count).
-
-### trace list
-List all trace sessions, most recent first.
-
----
-
-**The circular loop:**
-
-```
-┌─────────────────────────────────────────────────────┐
-│                                                     │
-│  /pan:optimize trace init                           │
-│         ↓                                          │
-│  /pan:exec-phase N    ← agents run, hook traces    │
-│         ↓                                          │
-│  /pan:learn           ← analyze + report           │
-│         ↓                                          │
-│  /pan:optimize apply  ← record suggestions         │
-│         ↓                                          │
-│  You make the changes ← instructions, tests, code  │
-│         ↑                                          │
-│         └──────────────────────────────────────────┘
-└─────────────────────────────────────────────────────┘
-```
-
-Each iteration puts what the last run lacked where the next run's agents read it: fewer repeated errors and gaps.
-
-**See also:** `/pan:learn`, `/pan:exec-phase`
-
-Follow the workflow at `~/.claude/pan-wizard-core/workflows/optimize.md`. Each subcommand runs `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize <subcommand> [flags]` — e.g. `optimize apply --report <path>`, `optimize revert --last`, `optimize trace init --description "..."`.
 ````
 
 
@@ -7893,14 +4989,14 @@ Preserve all workflow gates (classification approval, test plan approval, RED-GR
 
 ---
 
-### /pan:plan-phase (133 lines)
+### /pan:plan-phase (139 lines)
 
 ````markdown
 ---
 name: pan:plan-phase
 group: Phase Lifecycle
 description: Create detailed phase plan (plan.md) with verification loop
-argument-hint: "[phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>]"
+argument-hint: "[phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only]"
 agent: pan-planner
 allowed-tools:
   - Read
@@ -7912,6 +5008,12 @@ allowed-tools:
   - WebFetch
   - mcp__context7__*
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--research-only <phase>` — research the phase without planning it (or re-research a planned one): @~/.claude/pan-wizard-core/workflows/research-phase.md, with the phase as its argument (formerly `research-phase`)
+</routes>
+
 <objective>
 Create executable phase prompts (plan.md files) for a roadmap phase with integrated research and verification.
 
@@ -8155,90 +5257,6 @@ The data layer (`pan-tools preview …`) works identically on all runtimes. What
 
 ---
 
-### /pan:profile (76 lines)
-
-````markdown
----
-name: pan:profile
-group: Session & Progress
-description: Switch model profile for PAN agents (quality/balanced/budget)
-argument-hint: <profile>
-allowed-tools:
-  - Read
-  - Write
-  - Bash
----
-
-<objective>
-Switch the model profile used by PAN agents. Sets the model tier PAN's workflows pass when they spawn an agent (mapped to the detected provider's models), balancing quality vs token spend. `/pan:army` and `pan-conductor` spawn with no model, so the agents they run use their own `model:` pin, else the session model, under every profile.
-
-Routes to the profile workflow which handles:
-- Argument validation (quality/balanced/budget)
-- Downgrade confirmation (quality → balanced → budget requires 'yes')
-- Config file creation if missing
-- Profile update in config.json
-- Confirmation with model table display
-</objective>
-
-<execution_context>
-@~/.claude/pan-wizard-core/workflows/profile.md
-</execution_context>
-
-<process>
-**Follow the profile workflow** from `@~/.claude/pan-wizard-core/workflows/profile.md`.
-
-The workflow handles all logic including:
-1. Profile argument validation
-2. Config file ensuring
-3. Config reading and updating
-4. Model table generation from MODEL_PROFILES
-5. Cost estimation display (relative cost multiplier per profile)
-6. Confirmation display
-</process>
-
-<tier_decision_tree>
-**Capability-aware routing** (shipped v2.10.0 — E-7). `resolveModel` can adjust the profile's tier per call from three hints — context estimate, whether the task needs extended thinking, and whether prompt cache is warm — but only when the caller passes them (`resolve-model <agent> --metadata '{…}'`). No shipped workflow, command or agent passes them, so the tree and the quick guide below describe what a caller's hints would do.
-
-The decision order `resolveModel` applies after the baseline profile pick:
-
-```
-Baseline tier (from MODEL_PROFILES[agent][profile])
-        │
-        ▼
-┌─────────────────────────────────────────────┐
-│ context_estimate > 700K tokens?             │── yes ──▶ force reasoning (widest ctx tier)
-└─────────────────────────────────────────────┘
-        │ no
-        ▼
-┌─────────────────────────────────────────────┐
-│ needs_thinking AND tier == fast?            │── yes ──▶ upgrade fast → mid
-└─────────────────────────────────────────────┘
-        │ no
-        ▼
-┌─────────────────────────────────────────────┐
-│ cache_warm AND !needs_thinking              │── yes ──▶ downgrade mid → fast
-│ AND context_estimate < 50K AND tier == mid  │
-└─────────────────────────────────────────────┘
-        │ no
-        ▼
-Final tier → provider-native model name
-```
-
-**Quick guide:**
-- Heavy verification (plan-checker, verifier, integration-checker, reviewer, debugger): `needs_thinking: true` — baseline upgrades fast→mid.
-- Whole-repo context estimates above the large-context threshold (`context_estimate > 700K` tokens — `LARGE_CONTEXT_TOKEN_THRESHOLD`): forced to reasoning, which inherits the model you launched with. Note the direction: `/pan:map-codebase` picks `single-shot` **at or below** 700K and `sharded` above it, so the repos that trip this rule are the ones the mapper is already sharding.
-- Routine exec tasks with project.md cached: `cache_warm + small ctx` — mid gets downgraded to fast for a cost win.
-- All rules are additive to the `quality` / `balanced` / `budget` profile you pick here — profile sets the floor, capability hints adjust upward or downward within that floor's band.
-
-**Inspecting routing:** use `pan-tools resolve-model <agent> --metadata '{"context_estimate":900000,"needs_thinking":true}'` to see what tier a given hint set resolves to.
-
-**Effort dimension (2026-06):** `resolve-model` also returns an `effort` level (`low`/`medium`/`high`/`xhigh`) per agent — the within-model reasoning-depth dial on current models. Profiles modulate it: `budget` steps each agent's base effort down one level (floor `low`); `quality`/`balanced` keep the base. Per-agent override: `.planning/config.json` → `"effort_overrides": { "pan-verifier": "xhigh" }`.
-</tier_decision_tree>
-````
-
-
----
-
 ### /pan:progress (25 lines)
 
 ```markdown
@@ -8452,203 +5470,6 @@ pan-tools report all        [--open]
 
 ---
 
-### /pan:research-phase (189 lines)
-
-````markdown
----
-name: pan:research-phase
-group: Phase Lifecycle
-description: Research how to implement a phase (standalone - usually use /pan:plan-phase instead)
-argument-hint: "<phase>"
-allowed-tools:
-  - Read
-  - Bash
-  - Task
----
-
-<objective>
-Research how to implement a phase. Spawns pan-phase-researcher agent with phase context.
-
-**Note:** This is a standalone research command. For most workflows, use `/pan:plan-phase` which integrates research automatically.
-
-**Use this command when:**
-- You want to research without planning yet
-- You want to re-research after planning is complete
-- You need to investigate before deciding if a phase is feasible
-
-**Orchestrator role:** Parse phase, validate against roadmap, check existing research, gather context, spawn researcher agent, present results.
-
-**Why subagent:** Research burns context fast (WebSearch, Context7 queries, source verification). A fresh context window for investigation. Main context stays lean for user interaction.
-</objective>
-
-<context>
-Phase number: $ARGUMENTS (required)
-
-Normalize phase input in step 1 before any directory lookups.
-</context>
-
-<process>
-
-## 0. Initialize Context
-
-```bash
-INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "$ARGUMENTS")
-```
-
-Extract from init JSON: `phase_dir`, `padded_phase`, `phase_slug`, `phase_number`, `phase_name`, `phase_found`, `commit_docs`, `has_research`, `state_path`, `requirements_path`, `context_path`, `research_path`. `phase_dir` is null when the phase is in the roadmap but has no directory yet: create it (`mkdir -p ".planning/phases/${padded_phase}-${phase_slug}"`) and use that path as `phase_dir`, as discuss-phase does.
-
-Resolve researcher model:
-```bash
-RESEARCHER_MODEL=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-phase-researcher --raw)
-```
-
-## 1. Validate Phase
-
-```bash
-PHASE_INFO=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${phase_number}")
-```
-
-**If `found` is false:** Error and exit. **If `found` is true:** Extract `phase_number`, `phase_name`, `goal` from JSON.
-
-## 2. Check Existing Research
-
-Use `has_research` and `research_path` from INIT.
-
-**If exists:** Offer: 1) Update research, 2) View existing (`research_path`), 3) Skip. Wait for response.
-
-**If doesn't exist:** Continue.
-
-## 3. Gather Phase Context
-
-Write this phase's roadmap slice (its section, its dependencies' goals and its requirement lines), then use paths from INIT (do not inline file contents in orchestrator context):
-```bash
-SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${phase_number}" --write --raw)
-```
-- `slice_path` (from the command above; `requirements_path` if it is empty)
-- `context_path`
-- `state_path`
-
-Present summary with phase description and what files the researcher will load.
-
-## 4. Spawn pan-phase-researcher Agent
-
-Research mode: the prompt below names `ecosystem`; pan-phase-researcher defines no modes, so treat it as context, not a switch.
-
-```markdown
-<research_type>
-Phase Research — investigating HOW to implement a specific phase well.
-</research_type>
-
-<key_insight>
-The question is NOT "which library should I use?"
-
-The question is: "What do I not know that I don't know?"
-
-For this phase, discover:
-- What's the established architecture pattern?
-- What libraries form the standard stack?
-- What problems do people commonly hit?
-- What's SOTA vs what Claude's training thinks is SOTA?
-- What should NOT be hand-rolled?
-</key_insight>
-
-<objective>
-Research implementation approach for Phase {phase_number}: {phase_name}
-Mode: ecosystem
-</objective>
-
-<files_to_read>
-- {slice_path} (This phase's roadmap and requirements)
-- {context_path} (Phase context from discuss-phase, if exists)
-- {state_path} (Prior project decisions and blockers)
-</files_to_read>
-
-<additional_context>
-**Phase description:** {phase_description}
-</additional_context>
-
-<downstream_consumer>
-Your research.md will be loaded by `/pan:plan-phase` which uses specific sections:
-- `## Standard Stack` → Plans use these libraries
-- `## Architecture Patterns` → Task structure follows these
-- `## Don't Hand-Roll` → Tasks NEVER build custom solutions for listed problems
-- `## Common Pitfalls` → Verification steps check for these
-- `## Code Examples` → Task actions reference these patterns
-
-Be prescriptive, not exploratory. "Use X" not "Consider X or Y."
-</downstream_consumer>
-
-<quality_gate>
-Before declaring complete, verify:
-- [ ] All domains investigated (not just some)
-- [ ] Negative claims verified with official docs
-- [ ] Multiple sources for critical claims
-- [ ] Confidence levels assigned honestly
-- [ ] Section names match what plan-phase expects
-</quality_gate>
-
-<output>
-Write to: {phase_dir}/{padded_phase}-research.md
-</output>
-```
-
-```
-Task(
-  prompt=filled_prompt,
-  subagent_type="pan-phase-researcher",
-  model="{researcher_model}",
-  description="Research Phase {phase}"
-)
-```
-
-## 5. Handle Agent Return
-
-**`## RESEARCH COMPLETE`:** Display summary, offer: Plan phase, Dig deeper, Review full, Done.
-
-**`## RESEARCH BLOCKED`:** Show the blocker and what was attempted, offer: Provide context (then spawn a continuation, step 6), Skip research, Abort.
-
-## 6. Spawn Continuation Agent
-
-```markdown
-<objective>
-Continue research for Phase {phase_number}: {phase_name}
-</objective>
-
-<prior_state>
-<files_to_read>
-- {phase_dir}/{padded_phase}-research.md (Existing research)
-</files_to_read>
-</prior_state>
-
-<checkpoint_response>
-**Type:** {checkpoint_type}
-**Response:** {user_response}
-</checkpoint_response>
-```
-
-```
-Task(
-  prompt=continuation_prompt,
-  subagent_type="pan-phase-researcher",
-  model="{researcher_model}",
-  description="Continue research Phase {phase}"
-)
-```
-
-</process>
-
-<success_criteria>
-- [ ] Phase validated against roadmap
-- [ ] Existing research checked
-- [ ] pan-phase-researcher spawned with context
-- [ ] Checkpoints handled correctly
-- [ ] User knows next steps
-</success_criteria>
-````
-
-
----
-
 ### /pan:resume (99 lines)
 
 ````markdown
@@ -8802,7 +5623,7 @@ Present findings in a structured, actionable format.
 
 ---
 
-### /pan:review-deep (126 lines)
+### /pan:review-deep (132 lines)
 
 ````markdown
 ---
@@ -8825,7 +5646,7 @@ Run a deeper review pass on a phase than `pan-reviewer` alone provides. Two new 
 1. **pan-hardener** — OWASP Top 10 (2025) + STRIDE threat model on files changed in the phase.
 2. **pan-meta-reviewer** — reads both the reviewer's and hardener's output, flags things both missed, disputes overstated severities.
 
-Outputs are merged by `review-deep.cjs` into a single `.planning/reviews/<phase>/deep-review.md` with verdict, coverage stats, and conflict table. An audit entry is published to the `review-handoff` bus channel for traceability.
+Outputs are merged by `review-deep.cjs` into a single `.planning/reviews/<phase>/deep-review.md` with verdict, coverage stats, and conflict table.
 
 Consolidates Spec B v1's X-4 (self-review) + X-12 (harden) into a single command.
 </objective>
@@ -8856,7 +5677,7 @@ Runs the normal exec → reviewer pipeline, then runs this command's process inl
 ### Integrated with focus-exec
 
 ```
-/pan:focus-exec --deep-review
+/pan:focus-auto --step exec --deep-review
 ```
 
 Per-item deep review during focus campaigns: focus-exec runs the hardener and meta-reviewer on the item's changed files and merges them under the item's id (`review-deep merge <item-id>` with no `--reviewer-file`), since an item has no phase or first-pass review. Useful for high-stakes batches.
@@ -8875,14 +5696,21 @@ Per-item deep review during focus campaigns: focus-exec runs the hardener and me
    - Prompt includes: `<files_to_read>` with both `{directory}/{phase_number}-review.md` AND `.planning/reviews/<N>/hardener.md` (and representative diff snippets); `<output_path>` = `.planning/reviews/<N>/meta.md`.
    - Agent reads both first-pass reports, identifies missed patterns, disputes overstated severities, writes to output path.
 
+3b. **Cross-family lane (only when the project turned it on).** A reviewer from the author's own model family shares its blind spots. Run:
+   ```
+   pan-tools review cross-family <N>
+   ```
+   With `workflow.cross_family_review: off` (the default) it returns `enabled: false` and runs nothing: skip to the merge. With a host set, it runs the review on that host's CLI, read-only, and writes `.planning/reviews/<N>/cross-family-<host>.md`; pass that file to the merge as `--cross-file`. If the host's CLI is missing or fails, say so and merge without it.
+
 4. **Merge** — call:
    ```
    pan-tools review-deep merge <N> \
      --reviewer-file {directory}/{phase_number}-review.md \
      --hardener-file .planning/reviews/<N>/hardener.md \
-     --meta-file .planning/reviews/<N>/meta.md
+     --meta-file .planning/reviews/<N>/meta.md \
+     [--cross-file .planning/reviews/<N>/cross-family-<host>.md]
    ```
-   The merger parses all three, sorts by severity, computes verdict (`ok` | `ok_with_minor` | `fix_before_merge` | `review_required` | `block`), writes `.planning/reviews/<N>/deep-review.md`, and publishes an audit record to the `review-handoff` bus channel.
+   The merger parses every input, sorts by severity, computes verdict (`ok` | `ok_with_minor` | `fix_before_merge` | `review_required` | `block`), and writes `.planning/reviews/<N>/deep-review.md`.
 
 5. **Report back** — echo verdict + finding count + conflict count. If verdict is `block` or `review_required`, recommend the user review `deep-review.md` before proceeding.
 
@@ -8908,7 +5736,6 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 - `.planning/reviews/<N>/hardener.md` — pan-hardener output (new)
 - `.planning/reviews/<N>/meta.md` — pan-meta-reviewer output (new)
 - `.planning/reviews/<N>/deep-review.md` — merged consolidated report (final deliverable)
-- `.planning/bus/review-handoff.jsonl` — audit trail entry (append-only)
 
 </output_files>
 
@@ -8936,19 +5763,25 @@ Deep review is opt-in for a reason: it costs roughly 3× a normal review (harden
 
 ---
 
-### /pan:settings (37 lines)
+### /pan:settings (43 lines)
 
 ```markdown
 ---
 name: pan:settings
 group: System
 description: Configure PAN workflow toggles and model profile
+argument-hint: "[--profile <quality|balanced|budget>]"
 allowed-tools:
   - Read
   - Write
   - Bash
   - AskUserQuestion
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--profile <quality|balanced|budget>` — switch the model profile only: @~/.claude/pan-wizard-core/workflows/profile.md (formerly `profile`)
+</routes>
 
 <objective>
 Interactive configuration of PAN workflow agents and model profile via multi-question prompt.
@@ -9137,14 +5970,14 @@ The workflow handles all logic including:
 
 ---
 
-### /pan:verify-phase (80 lines)
+### /pan:verify-phase (84 lines)
 
 ````markdown
 ---
 name: pan:verify-phase
 group: Phase Lifecycle
-description: Re-run goal-backward verification of a phase with a test-suite gate and list its gaps
-argument-hint: "[phase number, e.g., '4']"
+description: Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat
+argument-hint: "[phase number, e.g., '4'] [--uat]"
 allowed-tools:
   - Read
   - Bash
@@ -9165,6 +5998,10 @@ Output: {phase_num}-verification.md with a status (passed, gaps_found or human_n
 <execution_context>
 @~/.claude/pan-wizard-core/workflows/verify-phase.md
 </execution_context>
+
+<uat_mode>
+With `--uat` in $ARGUMENTS, run the user acceptance walkthrough instead of the goal-backward verification: @~/.claude/pan-wizard-core/workflows/uat-walkthrough.md. It works on every runtime, records each answer through `pan-tools uat record`, and ends by diagnosing any issues for `/pan:plan-phase N --gaps`.
+</uat_mode>
 
 <context>
 Phase: $ARGUMENTS (optional)
@@ -9381,6 +6218,399 @@ The worktree and report layers are pure Node.js + git and work everywhere git is
 ## Part 2: Dev Skills
 
 These exist only in the PAN source repository and are NOT shipped to end users.
+
+---
+
+### /audit-deployment (385 lines)
+
+````markdown
+---
+name: audit-deployment
+description: Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
+argument-hint: <target-directory> [--enhancements] [--repair]
+allowed-tools:
+  - Read
+  - Bash
+  - Write
+  - Glob
+  - Grep
+  - AskUserQuestion
+---
+<objective>
+Audit a directory where PAN Wizard was installed and a project was run. Verify installation integrity, validate project artifacts, assess workflow execution quality, and optionally produce a featureAI-format enhancement spec that superplan.md can consume for development planning.
+</objective>
+
+<execution_context>
+This command operates on a TARGET directory (not the PAN source repo). The target must be provided as the first argument.
+</execution_context>
+
+<process>
+
+<step name="parse_args">
+**Parse arguments:**
+
+Extract target directory path from the first argument. It is REQUIRED.
+
+```
+TARGET_DIR = first positional argument
+ENHANCEMENTS_FLAG = "--enhancements" present?
+REPAIR_FLAG = "--repair" present?
+```
+
+If no target directory is provided, ask the user:
+> Which directory should I audit? Provide the full path to the folder where PAN Wizard was installed and a project was run.
+
+Validate the directory exists before proceeding.
+</step>
+
+<investigate_before_judging>
+Never report a file as missing, broken, or misconfigured without reading it first.
+For every audit check: read the actual file, verify its contents, then state the finding with evidence.
+Do not speculate about file contents based on filenames alone.
+</investigate_before_judging>
+
+<step name="installation_audit">
+**Phase 1 — Installation Integrity Audit**
+
+Check the PAN Wizard installation artifacts in the target directory. Determine which runtime was used (Claude, Gemini, OpenCode, Codex, Copilot) by checking for config directories:
+
+```
+Claude:   <target>/.claude/
+Gemini:   <target>/.gemini/
+OpenCode: <target>/.opencode/
+Codex:    <target>/.codex/
+Copilot:  <target>/.github/ (local install) or ~/.copilot/ (global)
+```
+
+For the detected runtime config directory (CONFIG_DIR), audit ALL of the following:
+
+**1.1 Core Files (CRITICAL)**
+- [ ] `CONFIG_DIR/pan-wizard-core/VERSION` exists — read and record version
+- [ ] `CONFIG_DIR/pan-wizard-core/CHANGELOG.md` exists
+- [ ] `CONFIG_DIR/pan-file-manifest.json` exists — parse and validate JSON
+- [ ] `CONFIG_DIR/package.json` exists — should contain `{"type":"commonjs"}`
+
+**1.2 Core Modules**
+- [ ] `CONFIG_DIR/pan-wizard-core/bin/pan-tools.cjs` exists (CLI dispatcher)
+- [ ] `CONFIG_DIR/pan-wizard-core/bin/lib/` directory exists
+- Every `bin/lib/*.cjs` file listed in `pan-file-manifest.json` exists on disk (the manifest is the authoritative expected set — never hardcode a module count)
+
+**1.3 Workflows, Templates, References**
+- [ ] `CONFIG_DIR/pan-wizard-core/workflows/` — non-empty, every manifest-listed workflow present
+- [ ] `CONFIG_DIR/pan-wizard-core/templates/` — non-empty, every manifest-listed template present
+- [ ] `CONFIG_DIR/pan-wizard-core/references/` — non-empty, every manifest-listed reference present
+
+**1.4 Commands**
+- For Claude/Gemini: `CONFIG_DIR/commands/pan/` — every manifest-listed command file present (a `--unified-skills` install has none: check `./.agents/skills/pan-*/SKILL.md`, and for Claude also `CONFIG_DIR/skills/pan-*/SKILL.md`)
+- For OpenCode: `CONFIG_DIR/commands/` — every manifest-listed `pan-*.md` present (flat, one file per command)
+- For Copilot: `CONFIG_DIR/skills/pan-*/SKILL.md` — every manifest-listed skill directory present
+- For Codex: the SHARED skills tree, not `CONFIG_DIR` — `./.agents/skills/pan-*/SKILL.md` for a local
+  install, `~/.agents/skills/pan-*/SKILL.md` for a global one. Codex has no `skills/` of its own; if you
+  look under `.codex/` you will find no commands and wrongly report a broken install.
+
+**1.5 Agents**
+- [ ] `CONFIG_DIR/agents/` — every manifest-listed agent file present
+- Verify key agents exist: pan-planner, pan-executor, pan-verifier, pan-debugger
+
+**1.6 Hooks** (not OpenCode: its install copies no hooks — check `CONFIG_DIR/plugins/pan-wizard.js` instead)
+- [ ] `CONFIG_DIR/hooks/pan-statusline.js` exists
+- [ ] `CONFIG_DIR/hooks/pan-check-update.js` exists
+- [ ] `CONFIG_DIR/hooks/pan-context-monitor.js` exists
+
+**1.7 Settings/Config**
+- [ ] Settings file exists (settings.json / opencode.json / config.json)
+- [ ] Hooks are registered — Claude `settings.json`: SessionStart, PostToolUse, SubagentStop, Stop, statusLine; Gemini `settings.json`: SessionStart, AfterAgent, PreCompress and AfterTool (the last two for state re-injection; no statusLine); Codex: `.codex/hooks.json`; Copilot: `.github/hooks/pan.json`
+- [ ] Hook commands point to existing files
+
+**1.8 Manifest Integrity**
+- Read `pan-file-manifest.json`
+- For each file in the manifest, verify it exists on disk
+- Flag any MISSING files (manifest says exists, disk says no)
+- Flag any MODIFIED files (hash mismatch) — these are user customizations, not errors
+- Flag any ORPHANED files (on disk but not in manifest)
+
+Record all findings with severity: CRITICAL (missing core), WARNING (missing optional), INFO (modifications).
+</step>
+
+<step name="project_audit">
+**Phase 2 — Project Artifacts Audit**
+
+Check `.planning/` directory in the target:
+
+**2.1 Core Planning Files**
+- [ ] `.planning/config.json` — exists, valid JSON, has expected keys (`model_profile`, `commit_docs`, `workflow`, `budget`)
+- [ ] `.planning/project.md` — exists, has "What This Is", "Core Value", "Requirements" sections
+- [ ] `.planning/state.md` — exists, has "Current Position", "Performance Metrics" sections
+- [ ] `.planning/roadmap.md` — exists, has phase table
+- [ ] `.planning/requirements.md` — exists if project used requirements tracking
+
+**2.2 Phase Directories**
+- Scan `.planning/phases/` for numbered phase directories
+- For each phase directory:
+  - [ ] At least one `*-plan.md` file exists (phase was planned)
+  - [ ] A matching `*-summary.md` file exists (phase was executed)
+  - [ ] A `*-verification.md` file exists (phase was verified)
+- Count: total phases, phases with plans, phases verified, phases with gaps
+
+**2.3 Research Artifacts** (if brownfield/research was enabled)
+- [ ] `.planning/research/` directory exists
+- Check for stack.md, features.md, architecture.md, pitfalls.md
+- [ ] `.planning/codebase/` directory exists (brownfield)
+
+**2.4 State Consistency**
+- Parse state.md "Current Position" — extract phase number
+- Count actual phase directories — do they match?
+- Check roadmap.md phase count vs actual directories
+- Check `.planning/phases/*/.continue-here*.md` (pause writes `.continue-here.md`): resuming does not delete it (only the transition workflow removes a completed phase's handoffs), so its presence alone does not mean the session was never resumed
+
+**2.5 Config Sanity**
+- Validate config.json values are within expected ranges
+- `model_profile`: "quality" | "balanced" | "budget"
+- `commit_docs`: boolean
+- `workflow.*` toggles (research, plan_check, verifier, ...): boolean — except `workflow.phase_reports`, an object (`enabled`, `open`, `theme`, `index`)
+- `budget`: `default_points` numeric, `enforce` boolean
+</step>
+
+<step name="workflow_quality_audit">
+**Phase 3 — Workflow Execution Quality**
+
+Assess how well the project workflow was followed:
+
+**3.1 Planning Quality**
+For each phase with plan files (`*-plan.md`, e.g. `01-01-plan.md`):
+- Does it have clear objectives?
+- Does it reference requirements?
+- Are plans sequential with dependencies noted?
+- Grade: Complete / Partial / Stub
+
+**3.2 Verification Coverage**
+- Count phases with verification.md vs total phases
+- Check if verifications have pass/fail outcomes
+- Flag phases that were executed but never verified
+
+**3.3 Commit History** (if git repo)
+- Check if `.planning/` is tracked in git (config.json commit_docs)
+- Look for atomic commit patterns (one commit per plan)
+- Check for PAN-style commit messages
+
+**3.4 Session Continuity**
+- Check for `.planning/phases/*/.continue-here*.md` files (a pause happened at some point; nothing removes them on resume)
+- Check state.md session logs for gaps
+- Look for evidence of context loss (repeated work, contradictory decisions)
+
+**3.5 Todo Management**
+- Check `.planning/todos/` directory
+- Count pending vs completed
+- Flag stale todos (captured but never addressed)
+</step>
+
+<step name="report">
+**Phase 4 — Generate Audit Report**
+
+Format findings as a structured report:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ PAN Deployment Audit
+ Target: <target-directory>
+ Date: <YYYY-MM-DD>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+## Summary
+
+| Category               | Status   | Score |
+|------------------------|----------|-------|
+| Installation Integrity | ✓/⚠/✗   | N/N   |
+| Project Artifacts      | ✓/⚠/✗   | N/N   |
+| Workflow Quality        | ✓/⚠/✗   | N/N   |
+| Overall                | HEALTHY / DEGRADED / BROKEN | N% |
+
+Runtime: <detected runtime>
+PAN Version: <version from VERSION file>
+Phases: <completed>/<total>
+Verification Coverage: <N>%
+
+## Installation Integrity
+
+### Critical Issues
+- [I-C01] <description> — <fix>
+
+### Warnings
+- [I-W01] <description> — <suggestion>
+
+### Info
+- [I-I01] <description>
+
+### Modified Files (User Customizations)
+- <file> — hash mismatch (expected: abc..., actual: def...)
+
+## Project Artifacts
+
+### Critical Issues
+- [P-C01] <description> — <fix>
+
+### Warnings
+- [P-W01] <description> — <suggestion>
+
+### Phase Health
+| Phase | Planned | Plans | Verified | Status |
+|-------|---------|-------|----------|--------|
+| 01    | ✓       | 3     | ✓        | Complete |
+| 02    | ✓       | 5     | ✗        | Unverified |
+
+## Workflow Quality
+
+### Observations
+- Planning quality: <grade>
+- Verification coverage: <N>%
+- Commit discipline: <grade>
+- Session continuity: <grade>
+
+### Recommendations
+1. <actionable recommendation>
+2. <actionable recommendation>
+```
+
+If `--repair` flag was provided, attempt auto-fixes for repairable issues:
+- Regenerate missing settings.json with default hook config
+- Create missing .planning/config.json with defaults
+- Remove `.planning/phases/*/.continue-here*.md` files the user confirms are stale
+
+Report repairs performed.
+</step>
+
+<step name="enhancements">
+**Phase 5 — Enhancement Spec Generation** (only if `--enhancements` flag)
+
+Based on audit findings, generate a featureAI-format enhancement spec at `docs/specs/deployment_audit_findings_featureai.md` in the PAN SOURCE repository (NOT the target directory).
+
+The spec MUST follow this exact format to be consumable by superplan.md:
+
+```markdown
+# [Enhancement Title] — Feature Specification
+
+**Generated:** <YYYY-MM-DD>
+**Version:** 1.0
+**Status:** Proposed
+**Source:** Deployment audit of <target-directory>
+
+---
+
+## Problem Statement
+
+[Describe the problems discovered during the audit. What is broken, missing, or suboptimal in PAN Wizard based on real-world deployment evidence?]
+
+## Demand Evidence
+
+| Evidence Type | Source | Finding |
+|---|---|---|
+| Deployment audit | <target-dir> | <specific finding> |
+| ... | ... | ... |
+
+## Success Criteria
+
+~~~
+SC-1: <measurable criterion>
+SC-2: <measurable criterion>
+~~~
+
+## Design
+
+[Proposed changes to PAN Wizard to address the findings]
+
+### Architecture
+
+[How the fix/enhancement integrates with existing PAN architecture]
+
+## Feature Ladder
+
+| Version | Scope | Value | Effort |
+|---|---|---|---|
+| **v0 (MVP)** | <scope> | <value> | <effort> |
+| **v1** | <scope> | <value> | <effort> |
+
+## Implementation Tasks
+
+| # | ID | Title | Files | Effort | Pts | Priority |
+|---|---|---|---|---|---|---|
+| 1 | A.1 | <task> | <files> | S/M/L | N | P1-P4 |
+
+### Dependency Graph
+
+~~~
+A.1 ──> A.2 ──> A.3
+~~~
+
+## Test Plan
+
+| Level | Count | What It Catches |
+|---|---|---|
+| Unit | N+ | <description> |
+| Integration | N+ | <description> |
+
+## Risk Register
+
+| Risk | Probability | Impact | Mitigation |
+|---|---|---|---|
+| <risk> | Low/Med/High | Low/Med/High | <mitigation> |
+
+---
+
+*Generated by /pan:audit-deployment — <YYYY-MM-DD>*
+```
+
+Group findings into logical enhancement categories:
+1. **Installer gaps** — Missing files, broken hooks, manifest issues
+2. **Workflow gaps** — Missing verification, planning quality
+3. **Template gaps** — Templates that don't match real-world needs
+4. **Documentation gaps** — Unclear processes discovered during audit
+5. **Tooling gaps** — Features PAN should have but doesn't
+
+For each category with findings, generate a separate featureAI spec OR consolidate into one spec if findings are cohesive.
+
+Ask the user before writing specs:
+> The audit found N enhancement opportunities across M categories. Should I generate featureAI specs for superplan.md to plan development? [Yes/No]
+</step>
+
+<step name="final_summary">
+**Final Summary**
+
+Display a concise summary:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Audit Complete
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Score: N% (HEALTHY / DEGRADED / BROKEN)
+Critical: N | Warnings: N | Info: N
+
+Installation: <status>
+Project: <status>
+Workflow: <status>
+
+Enhancements drafted: N specs → docs/specs/
+```
+
+If enhancements were generated:
+> Enhancement specs written. Run superplan.md or /pan:milestone-new to plan development work.
+
+If repairs were performed:
+> N issues auto-repaired. Re-run /pan:audit-deployment to verify.
+</step>
+
+</process>
+
+<constraints>
+- NEVER modify the target directory's .planning/ content unless --repair is explicitly passed
+- NEVER modify the target directory's PAN installation files (read-only audit)
+- Enhancement specs are written to the PAN SOURCE repo docs/specs/, NOT the target directory
+- If the target directory IS the PAN source repo, refuse with: "Cannot audit the PAN source repository. Use a separate deployment directory."
+- All file reads are defensive — missing files are findings, not crashes
+- Do not expose file hashes, absolute paths, or credentials in the report
+</constraints>
+````
+
 
 ---
 

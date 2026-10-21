@@ -113,6 +113,12 @@ function main() {
   // 2. Commands (Claude flavor, plugin-root-relative paths)
   // Commands are user-invoked only on Claude Code (M49): out of the model's listing.
   copyTree(path.join(ROOT, 'commands', 'pan'), path.join(OUT, 'commands', 'pan'), (c) => lib.withClaudeUserInvokedOnly(rewriteContent(c)));
+  // Renamed commands keep their old names as aliases, as the installer writes them (L7).
+  const { COMMAND_ALIASES } = require(path.join(ROOT, 'pan-wizard-core', 'bin', 'lib', 'constants.cjs'));
+  for (const [oldName, alias] of Object.entries(COMMAND_ALIASES)) {
+    const target = fs.readFileSync(path.join(ROOT, 'commands', 'pan', `${alias.to}.md`), 'utf8');
+    fs.writeFileSync(path.join(OUT, 'commands', 'pan', `${oldName}.md`), lib.withClaudeUserInvokedOnly(rewriteContent(lib.renderCommandAlias(target, oldName, alias))));
+  }
 
   // 3. Agents
   copyTree(path.join(ROOT, 'agents'), path.join(OUT, 'agents'), rewriteContent);

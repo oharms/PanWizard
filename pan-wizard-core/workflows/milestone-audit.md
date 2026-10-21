@@ -274,7 +274,7 @@ All requirements covered. Cross-phase integration verified. E2E flows complete.
 
 **Plan gap closure** — create phases to complete milestone
 
-/pan:milestone-gaps
+/pan:milestone-audit --gaps
 
 <sub>/clear first → fresh context window</sub>
 
@@ -316,7 +316,7 @@ All requirements met. No critical blockers. Accumulated tech debt needs review.
 
 **B. Plan cleanup phase** — address debt before completing
 
-/pan:milestone-gaps
+/pan:milestone-audit --gaps
 
 <sub>/clear first → fresh context window</sub>
 

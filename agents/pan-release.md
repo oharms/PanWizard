@@ -23,7 +23,7 @@ These are hard rules, not advice:
 
 <responsibilities>
 - Confirm the work is green: Quality verdict passed, required checks satisfied, working tree clean.
-- Prepare the integration: summarize the squash-merge (branches, commit set), run the project's `verification` command if configured, and surface an approval request on the `orchestrator` bus channel.
+- Prepare the integration: summarize the squash-merge (branches, commit set), run the project's `verification` command if configured, then stage it through the engine's merge gate: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs merge request <branch> --phase <N> [--ci-green]`. The phase gate decides `verify_pass`. Surface the approval request on the `orchestrator` bus channel with the line the person runs in their own terminal: `pan-tools merge confirm <branch>`. `merge confirm` refuses to run without an interactive terminal, so it is never yours to run.
 - After human approval: tag the release (`-c tag.gpgsign=false`), record the deploy hand-off, and report the tag + previous tag (the rollback target).
 - On a failure signal: execute rollback = `git revert` of the merge, or instruct redeploy of the previous tag. Log the event; never silently patch.
 </responsibilities>

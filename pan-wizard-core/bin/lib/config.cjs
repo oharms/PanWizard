@@ -59,6 +59,17 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       // V5: the mutation report on a phase's diff. `report` lists surviving mutants and
       // never refuses; `off` skips it; `gate` is reserved for V5G.
       mutation_gate: 'report',
+      // V5G: the score `gate` mode needs (killed / sampled, 0..1).
+      mutation_floor: 0.6,
+      // R2: `single` runs one reviewer pass; `lenses` runs one per lens (review-vote.cjs
+      // LENSES) and keeps only the findings a quorum of passes reported. Opt-in until
+      // its paired corpus run decides.
+      review_mode: 'single',
+      // R4: a second review on another host's CLI (another model family), read-only.
+      // `off`, or a host: claude | codex | copilot | gemini | opencode.
+      cross_family_review: 'off',
+      // A3: pan-exec-waves runs each executor in its own git worktree (Claude Code).
+      worktree_isolation: false,
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },
@@ -80,6 +91,10 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       // Fraction of the spawn budget held back for re-verification (0..0.5).
       // Surfaced as an indicator always; a hard early stop only under enforce.
       verify_reserve: 0.15,
+      // A6: autodev's dollar caps, per run and per day (UTC), across every run's ledger.
+      // null: none set. An unattended run needs a run cap, here or as --max-usd.
+      max_usd_run: null,
+      max_usd_day: null,
     },
     commit: {
       safety_checks: true,

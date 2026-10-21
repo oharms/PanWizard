@@ -27,7 +27,7 @@ Research, design, and specify a new feature with strategic analysis. $ARGUMENTS
 
 ---
 
-## CRITICAL: Project Scope Boundary
+## Project Scope Boundary
 
 This command investigates and designs features for the **host project** — NOT for PAN Wizard itself.
 
@@ -57,9 +57,8 @@ Prefer local evidence over web research. Start with the codebase, then broaden.
 ## Context Management Across Phases
 
 This pipeline spans 10+ phases. Manage context to maintain quality:
-- **KEEP:** Problem statement, success criteria, key architectural decisions, file paths being designed for
-- **SUMMARIZE:** Research findings (compress to key takeaways after each research phase), competitive analysis results
-- **DISCARD:** Raw web fetch content after extracting relevant data, superseded design drafts
+- **Carry forward:** Problem statement, success criteria, key architectural decisions, file paths being designed for
+- **Summarise:** Research findings (compress to key takeaways after each research phase), competitive analysis results
 - After Phase 3 (Strategic Analysis), summarize all findings from Phases 0-3 into a compact brief before entering design phases
 
 **Progressive context loading — load only what the current phase needs:**
@@ -1050,7 +1049,7 @@ Write ADR to: `docs/decisions/ADR-NNNN-<feature_name>.md`
 
 **ADR completeness gate:** Before saving, verify the ADR passes ALL checks from Phase 5.2. The ADR file must contain every section defined in Phase 5.1 with substantive content — no placeholder brackets, no skeleton sections, no missing tables. If any section would be empty, go back to the relevant phase and extract the content.
 
-**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design to `/pan:focus-plan`.
+**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design to `/pan:focus-auto --step plan`.
 
 **Minimum ADR size:** A proper ADR for a `--full` mode investigation should be 80-200+ lines. If the ADR is under 60 lines, it is almost certainly missing required sections. For `--internal` mode, minimum 60 lines. For `--outward` mode, minimum 70 lines.
 

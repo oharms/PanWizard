@@ -1,0 +1,165 @@
+{
+  "id": "uat-walkthrough-scripted-user",
+  "tier": 0,
+  "description": "Run /pan:verify-phase 1 --uat in the real Claude Code CLI against the model double, with a scripted user answering two UAT tests in one resumed session: a pass, then an issue. Each answer goes through pan-tools uat record, and the engine rebuilds the summary and the gaps.",
+  "why": "Program L8: UAT that runs on every runtime. The walkthrough is portable markdown and every answer is recorded by the engine, so the file a session leaves does not depend on the host. This drives the conversation the way a user does (the command expands, the question comes back, the answer reaches the same session) and checks the uat.md the engine wrote, at tier 0. Each rule requires the Bash tool in the request: Claude Code 2.1.302 also sends tool-less status-summary requests that quote the last user message, and those must not consume the script.",
+  "seed": "uat-pending",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 10,
+    "maxStepMinutes": 3
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:verify-phase 1 --uat",
+      "persistSession": true,
+      "double": {
+        "script": {
+          "rules": [],
+          "fallback": {
+            "text": "Test 1: greet returns the greeting. Run greet('Ada'): do you see Hello, Ada!?"
+          }
+        }
+      },
+      "expect": [
+        "exit:0",
+        "stdout~Test 1:"
+      ],
+      "why": "The walkthrough starts and asks the first test."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "Test 1:",
+          "reply": "Pass."
+        }
+      ],
+      "double": {
+        "script": {
+          "rules": [
+            {
+              "when": {
+                "toolsInclude": [
+                  "Bash"
+                ],
+                "messagesInclude": [
+                  "Pass."
+                ]
+              },
+              "turns": [
+                {
+                  "tool": {
+                    "name": "Bash",
+                    "input": {
+                      "command": "node .claude/pan-wizard-core/bin/pan-tools.cjs uat record 1 --test 1 --result pass",
+                      "description": "Record UAT test 1"
+                    }
+                  }
+                },
+                {
+                  "text": "Test 2: farewell punctuation. Run farewell('Ada'): do you see Goodbye, Ada.?"
+                }
+              ]
+            }
+          ],
+          "fallback": {
+            "text": "UNEXPECTED"
+          }
+        }
+      },
+      "expect": [
+        "exit:0",
+        "stdout~Test 2:"
+      ],
+      "why": "The pass is recorded and the next test comes back in the same session."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "Test 2:",
+          "reply": "Issue: it prints Goodbye, Ada! with an exclamation mark."
+        }
+      ],
+      "double": {
+        "script": {
+          "rules": [
+            {
+              "when": {
+                "toolsInclude": [
+                  "Bash"
+                ],
+                "messagesInclude": [
+                  "Pass.",
+                  "exclamation mark"
+                ]
+              },
+              "turns": [
+                {
+                  "tool": {
+                    "name": "Bash",
+                    "input": {
+                      "command": "node .claude/pan-wizard-core/bin/pan-tools.cjs uat record 1 --test 2 --result issue --reported \"it prints Goodbye, Ada! with an exclamation mark\" --severity major",
+                      "description": "Record UAT test 2"
+                    }
+                  }
+                },
+                {
+                  "tool": {
+                    "name": "Bash",
+                    "input": {
+                      "command": "node .claude/pan-wizard-core/bin/pan-tools.cjs uat status 1",
+                      "description": "UAT status"
+                    }
+                  }
+                },
+                {
+                  "text": "UAT-DONE: 1 passed, 1 issue. Next: /pan:plan-phase 1 --gaps"
+                }
+              ]
+            }
+          ],
+          "fallback": {
+            "text": "UNEXPECTED"
+          }
+        }
+      },
+      "expect": [
+        "exit:0",
+        "stdout~UAT-DONE"
+      ],
+      "why": "The issue is recorded in the user's words and the walkthrough reports the gap."
+    },
+    {
+      "kind": "fs",
+      "read": ".planning/phases/01-greetings/01-uat.md",
+      "expect": [
+        "stdout~status: complete",
+        "stdout~result: pass",
+        "stdout~result: issue",
+        "stdout~exclamation mark",
+        "stdout~test: 2"
+      ],
+      "why": "The engine wrote both results, completed the session and rebuilt the gaps for plan-phase --gaps."
+    }
+  ],
+  "controls": [
+    {
+      "id": "answers-lost",
+      "replace": {
+        "path": ".planning/phases/01-greetings/01-uat.md",
+        "find": "### 2. farewell punctuation",
+        "with": "### 3. farewell punctuation"
+      },
+      "why": "With test 2 renamed, recording it fails, so the gap and the completed status never appear and the fs step must turn red."
+    }
+  ]
+}

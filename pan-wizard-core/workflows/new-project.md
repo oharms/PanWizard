@@ -220,7 +220,7 @@ Consult `questioning.md` for techniques:
 
 **Check context (background, not out loud):**
 
-As you go, mentally check the context checklist from `questioning.md`. If gaps remain, weave questions naturally. Don't suddenly switch to checklist mode.
+As you go, mentally check the context checklist from `questioning.md`, and scan the idea against its `<clarification_taxonomy>`. If gaps remain, weave questions naturally. Don't suddenly switch to checklist mode. Keep to its `<question_budget>`: at most five clarifying questions, ranked by impact × uncertainty, and every gap you did not ask about written into project.md as an `Assumed:` line.
 
 **Decision gate:**
 
@@ -813,7 +813,7 @@ Cross-check requirements against Core Value from project.md. If gaps detected, s
 **Generate requirements.md:**
 
 Create `.planning/requirements.md` with:
-- v1 Requirements grouped by category (checkboxes, REQ-IDs)
+- v1 Requirements grouped by category (checkboxes, REQ-IDs), each with at least one acceptance criterion in an EARS form as an indented sub-bullet (`WHEN … THE SYSTEM SHALL …`; see the template's `<ears_criteria>`)
 - v2 Requirements (deferred)
 - Out of Scope (explicit exclusions with reasoning)
 - Traceability section (empty, filled by roadmap)
@@ -857,9 +857,10 @@ Does this capture what you're building? (yes / adjust)
 
 If "adjust": Return to scoping.
 
-**Commit requirements:**
+**Lint, then commit requirements.** A v1 requirement with no EARS criterion fails the lint; add one before committing:
 
 ```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify requirements
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: define v1 requirements" --files .planning/requirements.md
 ```
 
@@ -895,7 +896,7 @@ Create roadmap:
 2. Map every v1 requirement to exactly one phase
 3. Derive 2-5 success criteria per phase (observable user behaviors)
 4. Validate 100% coverage
-5. Compose each file in full, then write each exactly once — one Write per file, no draft-then-refine (P-1808): roadmap.md, state.md, update requirements.md traceability
+5. Compose roadmap.md in full and write it exactly once, no draft-then-refine (P-1808); initialise state.md with `pan-tools state init --core-value ... --focus ... --phase ... --phase-name ... --total-phases ...`, never the Write tool; update requirements.md traceability
 6. Return ROADMAP CREATED with summary
 
 Write files first, then return — before the return, not early and often. One complete Write per file persists the artifacts without the rewrite churn (P-1808).

@@ -2,14 +2,21 @@
 name: pan:learn
 group: Self-Improvement
 description: Analyze trace sessions or harvested experiments via pan-optimizer; generate ranked optimization reports
-argument-hint: "[--session <id> | --sessions <n> | --experiment <slug>] [--apply]"
+argument-hint: "[--session <id> | --sessions <n> | --experiment <slug>] [--apply] | --optimize <subcommand>"
 allowed-tools:
   - Read
   - Bash
   - Glob
   - Grep
   - Task
+  - Write
+  - Edit
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--optimize <apply|revert|list|stats|trace …>` — manage the optimisation loop: record a report's suggestions, undo them, list reports, view stats, manage trace sessions: @~/.claude/pan-wizard-core/workflows/optimize.md (formerly `optimize`)
+</routes>
 
 # /pan:learn
 
@@ -28,7 +35,7 @@ Analyze the most recent trace session and generate an optimization report.
 - `--session <id>` — analyze a specific session instead of the most recent
 - `--sessions <n>` — pool the last n sessions into one analysis, so recommendations rest on failures that recur across runs
 - `--experiment <slug>` *(v3.7.0+, W3)* — analyze a harvested experiment instead of the current project's traces: the workflow runs its `pan-tools` steps with `--cwd` set to the harvest folder (the `harvest_path` `/pan:experiment harvest <slug>` printed, `<source-repo>/experiments/<slug>/` by default), so the analysis and the optimizer's report land in that folder's `.planning/optimization/reports/`. Used by the self-improvement loop. Run `/pan:experiment harvest <slug>` first.
-- `--apply` — record the report's suggestions right after generating it (equivalent to running `/pan:optimize apply` immediately after)
+- `--apply` — record the report's suggestions right after generating it (equivalent to running `/pan:learn --optimize apply` immediately after)
 
 **What it does:**
 
@@ -36,11 +43,11 @@ Analyze the most recent trace session and generate an optimization report.
 2. Performs local analysis (error/gap/redundancy patterns, agent stats)
 3. Writes `.planning/optimization/reports/{session}-analysis.json`
 4. Invokes `pan-optimizer` agent to produce `.planning/optimization/reports/{session}-opt-report.md`
-5. If `--apply` flag: immediately runs `/pan:optimize apply` on the new report
+5. If `--apply` flag: immediately runs `/pan:learn --optimize apply` on the new report
 6. Prints the optimization summary
 
 **When to run:**
-- After any `/pan:exec-phase` or `/pan:focus-exec` that had a trace session active
+- After any `/pan:exec-phase` or `/pan:focus-auto --step exec` that had a trace session active
 - After a full build cycle to capture all decisions and errors
 - On demand to understand what PAN did and how to make it smarter
 
@@ -59,7 +66,7 @@ The optimization report in `.planning/optimization/reports/` contains:
 - Redundancy analysis with token waste estimates
 - Prompt improvement suggestions (require human review before applying)
 - Workflow gap suggestions (require human review)
-- An `## Auto-Apply Actions` JSON block, which `/pan:optimize apply` records in `.planning/optimization/suggestions.md`
+- An `## Auto-Apply Actions` JSON block, which `/pan:learn --optimize apply` records in `.planning/optimization/suggestions.md`
 - A circular optimization score (0–100)
 
 Nothing in the report reaches an agent until a person writes it where the agents read. PAN's workflows do not load `.planning/memory/` into agents.
@@ -75,6 +82,6 @@ Nothing in the report reaches an agent until a person writes it where the agents
 → Needs review: 2 prompt improvements, 1 workflow gap
 ```
 
-**See also:** `/pan:optimize`, `/pan:exec-phase`, `/pan:experiment` (v3.7.0+ self-improvement loop)
+**See also:** `/pan:learn --optimize`, `/pan:exec-phase`, `/pan:experiment` (v3.7.0+ self-improvement loop)
 
 Follow the workflow at `~/.claude/pan-wizard-core/workflows/learn.md`.

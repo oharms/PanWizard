@@ -608,7 +608,7 @@ function listBatchFiles(cwd) {
  *
  * Newest, not oldest. v2.10.0 (E-12) sorted ascending so "older unfinished batches
  * execute before newer ones", but nothing ever marks a batch finished, so it returned
- * the first batch a project planned, every time. `/pan:focus-exec` executes the newest
+ * the first batch a project planned, every time. `/pan:focus-auto --step exec` executes the newest
  * batch, so its `classify-stages` step was classifying a different batch from the one it
  * ran. A batch is a snapshot of the backlog: a newer plan already carries whatever an
  * older one left undone.

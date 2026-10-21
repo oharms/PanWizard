@@ -925,7 +925,7 @@ describe('router error paths', () => {
     const result = runPanTools('');
     assert.strictEqual(result.success, false);
     // A representative sample of the ~29 previously-omitted routed commands.
-    for (const cmd of ['git', 'experiment', 'memory', 'optimize', 'learn', 'hygiene', 'cost', 'worktree', 'bridge']) {
+    for (const cmd of ['git', 'experiment', 'memory', 'optimize', 'learn', 'hygiene', 'cost', 'worktree']) {
       assert.ok(result.error.includes(cmd), `usage should mention "${cmd}"`);
     }
   });

@@ -25,7 +25,7 @@ Mark current phase complete and advance to next. This is the natural point where
 **Required pattern from v3.7.5 onward:**
 
 1. Run the steps below to *plan* each state.md update, but **do not write or commit** between them. Hold the changes in memory.
-2. After `update_session_continuity_after_transition` (the last state.md-touching step before `offer_next_phase`), perform a **single Edit** that applies all four section updates (Project Reference, Accumulated Context, Session Continuity, plus the progress bar from `update_current_position_after_transition`).
+2. After `update_session_continuity_after_transition` (the last state.md-touching step before `offer_next_phase`), make a **single `pan-tools state apply` call** that applies all four section updates in one write (Project Reference, Accumulated Context, Session Continuity, plus the progress bar from `update_current_position_after_transition`).
 3. Then issue **one** commit:
    ```bash
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs(transition): phase ${current_phase} → ${next_phase} (state, progress, context)"
@@ -33,6 +33,14 @@ Mark current phase complete and advance to next. This is the natural point where
    The `phase complete` call inside `update_roadmap_and_state` makes its own commit (roadmap + state position) — that one stays separate, since it must run first to compute `next_phase`.
 
 Net result per transition: 2 commits instead of 5. Reduces git noise and keeps `/pan:learn` overhead metrics (commits_per_minute) honest. Substantive content of each step below is unchanged — only the **timing of the write** changes.
+
+The batched call, with the values the steps below planned (fields are bold `**Name:**` lines; a section is appended to or replaced):
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state apply --json '{"fields": {"Progress": "<bar from progress bar --raw>", "Current focus": "<next phase name>", "Core value": "<current core value>", "Last session": "<YYYY-MM-DD HH:MM>", "Resume File": "None"}, "sections": {"Decisions": {"append": ["- [Phase X]: <decision>"]}, "Blockers/Concerns": {"set": "<the reviewed list>"}}}'
+```
+
+It reports any field it could not find in `failed`. Never edit state.md with the Edit tool: the engine keeps the frontmatter in sync, and under `hooks.guard: enforce` the guard denies a direct write.
 
 </state_write_policy>
 
@@ -355,7 +363,7 @@ Update Session Continuity section in state.md to reflect transition completion.
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs state update "Stopped at" "Phase ${current_phase} complete, ready to plan Phase ${next_phase}"
 ```
 
-Then Edit state.md (still under the P-1604 batched-write policy — fold this Edit into the final batched Edit at the end of the workflow):
+Then fold the other two lines into the batched `state apply` call at the end of the workflow (P-1604):
 
 **Format:**
 
@@ -386,6 +394,16 @@ The `is_last_phase` field from the phase complete result tells you directly:
 - `is_last_phase: true` → Milestone complete → Go to **Route B**
 
 The `next_phase` and `next_phase_name` fields give you the next phase details.
+
+To name the next command, ask the router after `phase complete`:
+
+```bash
+NEXT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs next-action)
+```
+
+It returns `{action, phase, reason, command}`, read from roadmap.md and the phase directories by the same state machine the MCP `pan_next_action` tool uses, so progress, resume and transition never disagree about what comes next. `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` or `stop`, and `command` is the command that carries it out.
+
+For the next phase it returns `plan` (or `execute` when the phase is already planned); at the milestone boundary it returns `audit_milestone`.
 
 If you need additional context, use:
 ```bash
@@ -530,7 +548,7 @@ Task(
 
 **Also available:**
 - `/pan:plan-phase [X+1]` — skip discussion, plan directly
-- `/pan:research-phase [X+1]` — investigate unknowns
+- `/pan:plan-phase --research-only [X+1]` — investigate unknowns
 
 ---
 ```
@@ -555,7 +573,7 @@ Task(
 
 **Also available:**
 - `/pan:discuss-phase [X+1]` — revisit context
-- `/pan:research-phase [X+1]` — investigate unknowns
+- `/pan:plan-phase --research-only [X+1]` — investigate unknowns
 
 ---
 ```

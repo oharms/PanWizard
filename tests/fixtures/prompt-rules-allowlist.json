@@ -1,0 +1,6 @@
+[
+  {
+    "id": "pan-wizard-core/workflows/verify-phase:3e716d57",
+    "reason": "V5G: report mode never changes the verification status and gate mode turns a failed gate into gaps_found. Enforced in code, not only in the prompt: verify reconcile refuses a passed verification over a failed mutation gate (tests/mutate.test.cjs, 'gate mode' tests)."
+  }
+]

@@ -116,7 +116,9 @@ Phase number from argument (required).
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init phase-op "${PHASE}")
 ```
 
-Parse JSON for: `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `has_verification`, `plan_count`, `roadmap_exists`, `planning_exists`.
+Parse JSON for: `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phase_name`, `phase_slug`, `padded_phase`, `has_research`, `has_context`, `has_plans`, `has_verification`, `plan_count`, `roadmap_exists`, `planning_exists`, `assumptions_path`.
+
+**If `assumptions_path` is set**, read it first: it holds the assumptions `/pan:assumptions` surfaced and the user's corrections to them. Treat each correction as already decided; do not ask it again.
 
 **If `phase_found` is false:**
 ```
@@ -283,7 +285,7 @@ Analyze the phase to identify gray areas worth discussing.
 
 1. **Domain boundary** — What capability is this phase delivering? State it clearly.
 
-2. **Gray areas by category** — For each relevant category (UI, UX, Behavior, Empty States, Content), identify 1-2 specific ambiguities that would change implementation.
+2. **Gray areas by category**: scan the phase against the `<clarification_taxonomy>` in `references/questioning.md` (scope, users, behaviour, data, interfaces, errors and edge cases, non-functional, constraints, done), plus UI, UX, empty states and content for a user-facing phase. Identify the specific ambiguities that would change implementation, then keep to the `<question_budget>`: at most five questions, ranked by impact × uncertainty, and every ambiguity you do not ask about written into context.md as an `Assumed:` line the user can correct.
 
 3. **Skip assessment** — If no meaningful gray areas exist (pure infrastructure, clear-cut implementation), the phase may not need discussion.
 

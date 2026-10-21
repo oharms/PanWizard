@@ -142,4 +142,28 @@ Loop until "Create project.md" selected.
 
 </anti_patterns>
 
+<clarification_taxonomy>
+
+Before asking anything, scan the idea or the phase against these categories and note where it is ambiguous: where two reasonable readings would build different things. A category with no ambiguity needs no question.
+
+- **Scope**: what is in, what is explicitly out, where this ends
+- **Users** and roles: who acts, with what permissions, how many of them
+- **Behaviour** and flows: the main path, its order, what triggers it
+- **Data** and state: what is stored, its shape, its lifetime, who owns it
+- **Interfaces**: other systems, files, APIs and formats this touches
+- **Errors and edge cases**: empty, missing, duplicate, too large, offline, concurrent
+- **Non-functional**: speed, scale, security, accessibility, cost
+- **Constraints**: stack, platform, deadlines, compliance, what must not change
+- **Done**: how the user will know it works; what they would check first
+
+</clarification_taxonomy>
+
+<question_budget>
+
+Ask at most five clarifying questions in one questioning session (a new-project round, or one discuss-phase). Rank the ambiguities by impact × uncertainty: how much the build would differ between readings, times how unsure you are which reading the user means. Ask the top ones, one question per call unless two are independent and short.
+
+Everything you did not ask about is recorded, never silently guessed. Write it into the document you produce as a line the user can correct: `Assumed: <the reading you chose> (<category>)`. A wrong assumption in writing costs the user one correction; a wrong guess in code costs a rework.
+
+</question_budget>
+
 </questioning_guide>

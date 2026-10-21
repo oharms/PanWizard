@@ -104,7 +104,7 @@ PAN re-runs goal-backward verification with a test-suite gate — checking that 
 /pan:progress
 ```
 
-Shows your overall project status and tells you what to do next — plan the next phase, execute remaining plans, or verify completed work.
+Shows your overall project status and tells you what to do next — plan the next phase, execute remaining plans, or verify completed work. `/pan:progress`, `/pan:resume` and the phase transition all get that next step from one router, `pan-tools next-action`, which reads `roadmap.md` and the phase directories; run it yourself to see the suggestion as JSON.
 
 **Typical flow from here:**
 - Plan the next phase: `/pan:plan-phase 2`
@@ -139,25 +139,24 @@ On lower tiers (mid/fast models) and non-Claude runtimes, features degrade grace
 
 ### Spec B v2 features (v3.0-v3.4)
 
-Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purpose. None modify the focus system. v3.5 added `/pan:learn`, `/pan:optimize` and `/pan:git`, and the `security` and `distill` focus-auto categories.
+Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purpose. None modify the focus system. v3.5 added `/pan:learn`, `/pan:learn --optimize` and `/pan:git`, and the `security` and `distill` focus-auto categories.
 
 - **`/pan:cost` (v3.0)** — token usage + estimated cost across all PAN invocations. Three output formats (`json`/`table`/`chart`). Auto-populated since v3.4 by the SubagentStop hook on Claude Code, Codex and Copilot CLI (not Gemini CLI or OpenCode); no manual instrumentation needed. Time-windowed with `--since YYYY-MM-DD --until YYYY-MM-DD`. `pan-tools cost budget --phase N` shows a phase's spend against `cost.phase_budget_usd` ($20 by default, warn only).
 - **`/pan:preview phase <N> | phases | milestone` (v3.1)** — read-only foresight. Three modes:
   - `phase N` — blast radius (files likely touched, tests at risk, risk score 1-10, migration flags) and a cost forecast (p10/p50/p90 per plan and per phase from this project's own cost ledger; `insufficient` until there are enough observations)
   - `phases` — dependency graph (mermaid DAG + parallel batches + hidden coupling)
   - `milestone` — ETA with confidence + bottleneck identification
-- **`/pan:review-deep <phase>` (v3.2)** — security audit (OWASP + STRIDE via `pan-hardener`) + cross-check by `pan-meta-reviewer`. Merges reviewer + hardener + meta findings into one verdict ladder. Recommended for phases touching auth/payment/PII/migrations/public APIs. Also invokable as `/pan:exec-phase <N> --deep-review`; `/pan:focus-exec --deep-review` runs the hardener and meta-reviewer on each high-stakes item's changed files and merges them under the item's id. Costs ~3× a normal review.
+- **`/pan:review-deep <phase>` (v3.2)** — security audit (OWASP + STRIDE via `pan-hardener`) + cross-check by `pan-meta-reviewer`. Merges reviewer + hardener + meta findings into one verdict ladder. Recommended for phases touching auth/payment/PII/migrations/public APIs. Also invokable as `/pan:exec-phase <N> --deep-review`; `/pan:focus-auto --step exec --deep-review` runs the hardener and meta-reviewer on each high-stakes item's changed files and merges them under the item's id. Costs ~3× a normal review.
 - **`/pan:knowledge {ask|discuss|playbook}` (v3.2)** — three modes in one command:
   - `ask "question"` — grounded Q&A with inline citations. Example: `/pan:knowledge ask "why does phase 4 have a race condition fix?"`
   - `discuss <phase> "topic"` — multi-turn refinement with session state persistence. Benefits from prompt caching where the runtime and model support it.
   - `playbook` — aggregate all agents' memory into `.planning/playbook.md` categorized by Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps.
 - **`/pan:what-if <phase> "scenario"` (v3.3)** — counterfactual phase replay in an isolated git worktree. Agent explores the alternative, report lands in `.planning/counterfactuals/<phase>-<slug>.md`, worktree auto-deleted. Requires git.
-- **`/pan:mcp-bridge {list|recommend <phase>|cache}` (v3.3)** — list the MCP tools recorded in `.planning/bridge/available-tools.json` (only `/pan:mcp-bridge cache --servers` writes it; nothing probes the host) and recommend which apply to a phase plan. Discovery-only; auto-invocation deferred.
 
 #### Advanced flags and logging (v3.4)
 
 - **`--hierarchical` flag on `/pan:exec-phase` (v3.4)** — spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in waves. Bounded by a safety harness (2-level nesting, 12-spawn cap, budget ceiling, abort file). Claude Code only — agents-spawn-agents needs native sub-agent spawning; on the other four runtimes the flag is a no-op that warns and falls back to flat exec. No model gate: `pan-conductor` inherits the model you launched the session with. Use for phases with ≥4 autonomous plans where wall-clock reduction justifies the ~20-30% orchestration tax.
-- **`--deep-review` flag on `/pan:exec-phase` and `/pan:focus-exec` (v3.4)** — on `/pan:exec-phase`, run the `/pan:review-deep` process inline after the normal reviewer step, before verification; on `/pan:focus-exec`, run the hardener and meta-reviewer on each high-stakes item's changed files and merge them under the item's id (no first-pass review). Recommended for high-stakes batches.
+- **`--deep-review` flag on `/pan:exec-phase` and `/pan:focus-auto --step exec` (v3.4)** — on `/pan:exec-phase`, run the `/pan:review-deep` process inline after the normal reviewer step, before verification; on `/pan:focus-auto --step exec`, run the hardener and meta-reviewer on each high-stakes item's changed files and merge them under the item's id (no first-pass review). Recommended for high-stakes batches.
 - **Automatic cost logging (v3.4)** — `hooks/pan-cost-logger.js` registered as a SubagentStop hook. Every sub-agent completion appends a record to `.planning/metrics/tokens.jsonl`. Visible in `/pan:cost report` without any manual `cost append` calls.
 
 All Spec B v2 commands interoperate with the focus system via read boundaries and optional flags — no focus command was modified.
@@ -313,6 +312,24 @@ off by default; turn it on for phases where planning test coverage up front matt
 
 ## Command Reference
 
+### Renamed commands
+
+Some commands were folded into flags of another command. The old names keep working: the installer generates them as aliases.
+
+| Old command | Now |
+|-------------|-----|
+| `/pan:dashboard` | `/pan:hud` |
+| `/pan:milestone-cleanup` | `/pan:milestone-done --cleanup` |
+| `/pan:milestone-gaps` | `/pan:milestone-audit --gaps` |
+| `/pan:optimize` | `/pan:learn --optimize` |
+| `/pan:research-phase` | `/pan:plan-phase --research-only` |
+| `/pan:profile` | `/pan:settings --profile` |
+| `/pan:focus-doc-audit` | `/pan:focus-docs` |
+| `/pan:focus-sync` | `/pan:focus-docs --sync` |
+| `/pan:focus-scan`, `/pan:focus-plan`, `/pan:focus-exec`, `/pan:focus-drift-walking` | `/pan:focus-auto --step scan`, `plan`, `exec`, `drift` |
+
+`/pan:discord` and `/pan:mcp-bridge` were retired with no replacement. PAN's own MCP server is unaffected (see [MCP server registration](#mcp-server-registration)).
+
 ### Core Workflow
 
 | Command | Purpose | When to Use |
@@ -321,11 +338,12 @@ off by default; turn it on for phases where planning test coverage up front matt
 | `/pan:new-project --auto @idea.md` | Automated init from document | Have a PRD or idea doc ready |
 | `/pan:discuss-phase <N>` | Capture implementation decisions | Before planning, to shape how it gets built |
 | `/pan:design-phase <N>` | Design a phase — architecture, ADR, threat-lite — before planning | After discussing, before planning |
-| `/pan:plan-phase [N]` | Research + plan + verify | Before executing a phase |
+| `/pan:plan-phase [N]` | Research + plan + verify; `--research-only <N>` runs the research step alone | Before executing a phase; research only for a complex or unfamiliar domain |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves | After planning is complete |
 | `/pan:verify-phase [N]` | Goal-backward re-verification with a test-suite gate; lists gaps for `--gaps` | After execution completes |
-| `/pan:milestone-audit` | Verify milestone met its definition of done | Before completing milestone |
-| `/pan:milestone-done <version>` | Archive milestone, tag release | All phases verified |
+| `/pan:autodev [run\|resume\|status]` | Unattended loop over the roadmap: a fresh host session per plan, execute and verify step, `phase complete` in the engine, stop reasons in code, a ledger per run in `.planning/autodev/` | When the roadmap is settled and you want phases built without supervision |
+| `/pan:milestone-audit` | Verify milestone met its definition of done; `--gaps` creates phases for the gaps it found | Before completing milestone |
+| `/pan:milestone-done <version>` | Archive milestone, tag release; `--cleanup` archives old phase directories from completed milestones | All phases verified |
 | `/pan:milestone-new [name]` | Start next version cycle | After completing a milestone |
 
 ### Navigation
@@ -337,7 +355,6 @@ off by default; turn it on for phases where planning test coverage up front matt
 | `/pan:pause` | Save context handoff | Stopping mid-phase |
 | `/pan:help` | Show all commands | Quick reference |
 | `/pan:update` | Update PAN with changelog preview, reinstalling the runtime it runs in (for a `--config-dir` or `--unified-skills` install, re-run the installer with your original flags) | Check for new versions |
-| `/pan:discord` | Open Discord community invite | Questions or community |
 
 ### Phase Management
 
@@ -347,8 +364,6 @@ off by default; turn it on for phases where planning test coverage up front matt
 | `/pan:insert-phase <after> <description>` | Insert urgent work (decimal numbering) | Urgent fix mid-milestone |
 | `/pan:remove-phase <N>` | Remove future phase and renumber | Descoping a feature |
 | `/pan:assumptions <N>` | Preview Claude's intended approach | Before planning, to validate direction |
-| `/pan:milestone-gaps` | Create phases for audit gaps | After audit finds missing items |
-| `/pan:research-phase <N>` | Deep ecosystem research only | Complex or unfamiliar domain |
 
 ### Brownfield & Utilities
 
@@ -359,16 +374,13 @@ off by default; turn it on for phases where planning test coverage up front matt
 | `/pan:debug [desc]` | Systematic debugging with persistent state | When something breaks |
 | `/pan:todo-add [desc]` | Capture an idea for later | Think of something during a session |
 | `/pan:todo-check` | List pending todos | Review captured ideas |
-| `/pan:settings` | Configure workflow toggles, model profile, branching and the phase budget | Change model, toggle agents, change the spend warning |
-| `/pan:profile <profile>` | Quick profile switch | Change cost/quality tradeoff |
+| `/pan:settings` | Configure workflow toggles, model profile, branching and the phase budget; `--profile <profile>` is a quick profile switch | Change model, toggle agents, change the spend warning or the cost/quality tradeoff |
 | `/pan:patches` | Restore local modifications after update | After `/pan:update` if you had local edits |
 | `/pan:phase-budget` | Estimate context window utilization | Monitor context health during execution |
 | `/pan:health [--repair]` | Validate `.planning/` directory integrity | Diagnose and auto-repair directory issues |
 | `/pan:hygiene [--apply]` | Scan for PAN version drift + stale artifacts (legacy filenames, memory bloat and stale memory entries, poisoned ledgers, trace debris, an oversized state.md or roadmap.md, Claude Code's memory index); `--apply` executes the safe fixes, `state compact` and `roadmap compact` among them | Keep older projects aligned with the latest PAN |
 | `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase | After execution, to add test coverage |
-| `/pan:milestone-cleanup` | Archive old phase directories from completed milestones | After completing a milestone |
 | `/pan:retro` | Milestone retrospective — estimation accuracy, gap patterns | After `/pan:milestone-done` |
-| `/pan:audit-deployment <target-directory>` | Audit a PAN installation for integrity | Verify install/update didn't drift |
 | `/pan:links [--strict]` | Validate the doc–code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027, v3.8.0+) | Renamed an ADR or moved a module — catch broken refs |
 
 ### Spec B v2 (v3.0–v3.4)
@@ -380,14 +392,12 @@ off by default; turn it on for phases where planning test coverage up front matt
 | `/pan:review-deep <phase>` | Security audit (OWASP+STRIDE) + cross-checked by meta-reviewer | High-stakes phases (auth/payments/PII) |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook | Reflection or design discussion |
 | `/pan:what-if <phase> "scenario"` | Counterfactual phase replay in isolated git worktree | Explore an alternative approach safely |
-| `/pan:mcp-bridge {list\|recommend\|cache}` | List the MCP tools recorded in its cache (only `cache --servers` writes it; nothing probes the host) and recommend the ones that fit a phase | Before phases that might need external integrations |
 
 ### Optimization & Git (v3.5)
 
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
-| `/pan:learn` | Analyze the most recent trace session, generate optimization report | After a phase or campaign — "what can PAN learn?" |
-| `/pan:optimize {apply\|revert\|list\|stats\|trace}` | Apply optimizer recommendations, undo an apply, list reports, view stats, manage trace sessions | Record the report's suggestions, each naming where a person should make the fix |
+| `/pan:learn` | Analyze the most recent trace session, generate optimization report; `--optimize {apply\|revert\|list\|stats\|trace}` records the report's suggestions, undoes an apply, lists reports, shows stats and manages trace sessions | After a phase or campaign — "what can PAN learn?" |
 | `/pan:git <subcommand>` | Phase-aware git workflow with safety guardrails (commit/branch/push/status/log/stash/diff/rollback/tag/sync) | Day-to-day git ops with branch-name conventions and safety checks |
 
 ### Operations (Pre-Flight, Dashboard, Learnings, Dependencies)
@@ -416,16 +426,11 @@ pan-tools learnings list --raw   # Review what's been learned
 
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
-| `/pan:focus-scan` | Collect and classify all work items with priority and Reality Score | Strategic planning: "what needs doing?" |
-| `/pan:focus-plan` | Create capacity-budgeted execution batch | Session planning: "what should I do next?" |
-| `/pan:focus-exec` | Execute items from batch with tier-based cadence | Session execution: guided implementation |
-| `/pan:focus-auto` | Continuous scan→plan→exec loop with a layered safety harness | Hands-off batch work across categories |
-| `/pan:focus-sync` | Detect stale documentation counts | After changes: verify docs match code |
+| `/pan:focus-auto` | Continuous scan→plan→exec loop with a layered safety harness; `--step scan\|plan\|exec\|drift` runs one stage (classify work items, budget a batch, execute it, or repair doc-code drift) | Hands-off batch work across categories, or one stage at a time |
 | `/pan:focus-design` | Multi-phase strategic feature investigation | Before building a new feature |
-| `/pan:focus-drift-walking` | Walk project tree, detect doc-code drift, score severity, auto-repair | Documentation hygiene: "are my docs lying?" |
-| `/pan:focus-doc-audit` | Multi-dimensional document audit with weighted multi-dimension quality scoring | Quality assurance: "how trustworthy are my docs?" |
+| `/pan:focus-docs` | Multi-dimensional document audit with weighted quality scoring; `--sync` detects stale documentation counts | Quality assurance: "how trustworthy are my docs?", or after changes to check docs match code |
 
-**Focus workflow:** `focus-scan` → `focus-plan` → `focus-exec` → `focus-sync`. Scan collects work from phases, todos, and error patterns. Plan budgets items using one of 4 modes (bugfix/balanced/features/full). Exec provides the execution pipeline. Sync verifies documentation stays current. Or use `focus-auto` to run continuous scan→plan→exec cycles across the supported categories (cleanup, tests, stability, features, docs, optimize, prompts, security, distill). Use `focus-drift-walking` to detect and repair documentation-code drift across all directories. Use `focus-doc-audit` for deep quality audits with per-file scoring. The `security` category targets OWASP Top 10 + STRIDE issues; the `distill` category targets AI-generated code bloat with a 5-pass deterministic→AST→graph→LLM→memory pipeline.
+**Focus workflow:** `/pan:focus-auto --step scan` → `--step plan` → `--step exec`, then `/pan:focus-docs --sync`. Scan collects work from phases, todos, and error patterns. Plan budgets items using one of 4 modes (bugfix/balanced/features/full). Exec provides the execution pipeline. Sync verifies documentation stays current. Or use `focus-auto` to run continuous scan→plan→exec cycles across the supported categories (cleanup, tests, stability, features, docs, optimize, prompts, security, distill). Use `/pan:focus-auto --step drift` to detect and repair documentation-code drift across all directories. Use `/pan:focus-docs` for deep quality audits with per-file scoring. The `security` category targets OWASP Top 10 + STRIDE issues; the `distill` category targets AI-generated code bloat with a 5-pass deterministic→AST→graph→LLM→memory pipeline.
 
 ### Standards Integration
 
@@ -543,7 +548,7 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `depth` | `quick`, `standard`, `comprehensive` | asked by `/pan:new-project` (`--auto`: `quick`) | Planning thoroughness: 3-5, 5-8, or 8-12 phases |
 | `model_profile` | `quality`, `balanced`, `budget` | `balanced` | Model tier for each agent (see table below) |
 | `parallelization` | `true`, `false` | `true` | Execute independent plans within a wave in parallel |
-| `brave_search` | `true`, `false` | `false`; `true` in a config `config-ensure-section` creates while a Brave key is detected (`/pan:new-project` does not set it) | Make the phase researcher (`/pan:plan-phase`, `/pan:research-phase`) search with Brave instead of the built-in web search; the `/pan:new-project` and `/pan:milestone-new` researchers never read it (the search needs the `BRAVE_API_KEY` env var; `~/.pan-wizard/brave_api_key` only pre-sets this key) |
+| `brave_search` | `true`, `false` | `false`; `true` in a config `config-ensure-section` creates while a Brave key is detected (`/pan:new-project` does not set it) | Make the phase researcher (`/pan:plan-phase`, `/pan:plan-phase --research-only`) search with Brave instead of the built-in web search; the `/pan:new-project` and `/pan:milestone-new` researchers never read it (the search needs the `BRAVE_API_KEY` env var; `~/.pan-wizard/brave_api_key` only pre-sets this key) |
 | `routing.strategy` | `static`, `complexity` | `static` | How model tiers are adjusted at runtime |
 | `routing.provider` | `auto`, `anthropic`, `openai`, `google` | `auto` | LLM provider for tier→model mapping |
 | `routing.max_escalations` | `0` or more | `1` | How many tiers a retry after a failure may climb (`fast → mid → reasoning`, never above the agent's quality tier). Only the `budget` profile runs agents low enough for it to matter; `/pan:exec-phase --gaps-only` retries on the escalated tier |
@@ -568,9 +573,14 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `workflow.verifier` | `true`, `false` | `true` | Post-execution verification against phase goals |
 | `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; at a phase boundary a chain that `/pan:plan-phase` drives stops (it runs exec-phase with `--no-transition`) and prints the next command; PAN's stop guard then blocks the session's stop once and tells the agent to spawn the next phase; a direct `/pan:exec-phase --auto` hands over to `transition.md`, which spawns the next phase as a Task subagent and, at the end of the milestone, turns `auto_advance` off and stops, showing `/pan:milestone-done` as the next step. Equivalent to passing `--auto` to `/pan:discuss-phase`, `/pan:plan-phase` and `/pan:exec-phase`. |
-| `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write. |
+| `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write, the direct state write (state.md goes through `pan-tools state` verbs), and a judge agent's write outside `.planning/`. |
 | `workflow.phase_gate` | `enforce`, `warn` | `enforce` | The phase gate `phase complete` runs first: summaries for every plan, a passing and fresh verification, approved human items, a clean reconcile, no open critical or high finding, no committed stub, no weakened test. `warn` marks the phase complete and reports what failed (exec-phase then does not auto-advance); `enforce` refuses until each reason is fixed, or until `phase complete <N> --force --reason "<why>"`, which records the override. `pan-tools phase gate <N>` runs the gate alone. |
-| `workflow.mutation_gate` | `off`, `report`, `gate` | `report` | The mutation report `/pan:verify-phase` runs on the phase's changed lines once the test gate passes (`pan-tools verify mutate`). `report` lists the mutants the suite did not kill and never refuses; `off` runs nothing; `gate` is reserved |
+| `workflow.mutation_gate` | `off`, `report`, `gate` | `report` | The mutation report `/pan:verify-phase` runs on the phase's changed lines once the test gate passes (`pan-tools verify mutate`). `report` lists the mutants the suite did not kill and never refuses; `off` runs nothing; `gate` (opt-in) turns a score below `workflow.mutation_floor` into gaps: the verification goes to `gaps_found`, and `verify reconcile` refuses a passed one |
+| `workflow.mutation_floor` | 0 to 1 | `0.6` | The share of sampled mutants the suite must kill in `gate` mode |
+| `workflow.review_mode` | `single`, `lenses` | `single` | `lenses` runs the code reviewer once per lens (correctness, security, maintainability) and keeps the findings a quorum of passes reported (`pan-tools review vote`) |
+| `workflow.cross_family_review` | `off`, `claude`, `codex`, `copilot`, `gemini`, `opencode` | `off` | A host to run one more, read-only review on during `/pan:review-deep`, so a second model family checks the change (`pan-tools review cross-family`). The host's CLI must be installed and signed in; the run spends on that host |
+| `workflow.worktree_isolation` | `true`, `false` | `false` | On Claude Code, the native `/pan-exec-waves` script runs each executor in its own git worktree (`agent({isolation: "worktree"})`). Plans of a wave that share a file always run one after the other |
+| `budget.max_usd_run`, `budget.max_usd_day` | dollars or `null` | `null` | `/pan:autodev`'s spend caps per run and per day; a run needs a run cap, here or as `--max-usd` |
 | `workflow.phase_record_compact` | `true`, `false` | `false` | When combined with the lightweight-phase bypass (1-plan trivial phases, which already skip per-phase research), plan-phase writes one `${N}-record.md` (goal, locked decisions, plan summary, must_haves) in place of a per-phase context.md; execution still writes each plan's summary.md. Substantive phases (more than one plan, or more than scaffolding, config, docs or a single-file feature) ignore this flag. |
 | `workflow.phase_reports` | object: `enabled`, `open`, `theme`, `index` | `{ "enabled": false, "open": false, "theme": "auto", "index": true }` | With `enabled: true`, `/pan:exec-phase` writes the phase's HTML report (as `/pan:report phase` does) at the verify→complete gate, plus the timeline index `.planning/report-index.html` when `index` is true, and adds them to the completion commit; `/pan:focus-auto` checkpoints and `/pan:army` missions render them too. `open` and `theme` are written but not read, and no automatic run opens a browser. |
 | `workflow.stop_guard` | `true`, `false` | absent (guard on) | `false` turns off PAN's stop guard, which otherwise blocks a session's stop once while `workflow.auto_advance` is true or `mode` is `yolo` and unbuilt roadmap phases remain, unless state.md records failed verification, gaps or a blocker (Claude Code, Codex, Gemini CLI, Copilot CLI) |
@@ -647,7 +657,7 @@ The table shows the core agents. Every other agent is on `reasoning` under `qual
 - **quality** and **balanced** -- Every agent runs on the `reasoning` tier, i.e. **`inherit` — the model you launched with** (a few review agents pin their own model; see the note below). PAN respects your model choice by default and does not silently demote agents to cheaper models; context isolation (each subagent in its own window), not a weaker model, is what keeps the main conversation clean.
 - **budget** -- The opt-in cheap mode: mid for code-writing agents, fast for research and verification. Choose it explicitly for high-volume or less-critical work. Cheapness is opt-in, not the default.
 
-> Model tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` — unset means `inherit`. A few security-review agents deliberately pin `model: opus` in their own frontmatter; `grep -l '^model: opus' .claude/agents/*.md` lists them (`~/.claude/agents/` in a global install).
+> Model tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:settings --profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` — unset means `inherit`. A few security-review agents deliberately pin `model: opus` in their own frontmatter; `grep -l '^model: opus' .claude/agents/*.md` lists them (`~/.claude/agents/` in a global install).
 
 ### Routing Strategies
 
@@ -658,7 +668,7 @@ The `routing.strategy` setting controls how tiers are adjusted at runtime:
 
 ### Cost Estimation
 
-Run `pan-tools estimate-cost` to see relative cost multipliers before switching (`/pan:profile <profile>` shows them after it switches). Cost tiers: reasoning = 15×, mid = 3×, fast = 1×.
+Run `pan-tools estimate-cost` to see relative cost multipliers before switching (`/pan:settings --profile <profile>` shows them after it switches). Cost tiers: reasoning = 15×, mid = 3×, fast = 1×.
 
 ### Per-Phase Model Override
 
@@ -728,7 +738,7 @@ claude --dangerously-skip-permissions
 
 ```bash
 /pan:milestone-audit        # Check requirements coverage, detect stubs
-/pan:milestone-gaps    # If audit found gaps, create phases to close them
+/pan:milestone-audit --gaps    # If audit found gaps, create phases to close them
 /pan:milestone-done 1.0 # Archive, tag, done
 ```
 
@@ -789,7 +799,7 @@ PAN's judges decide whether work passed: the plan checker, the reviewer, the des
 - **Milestone audits read the record.** `/pan:milestone-audit` takes its tech debt from `pan-tools findings debt`, the deferred findings with their reasons. It lists the findings nobody disposed, instead of reconstructing either from prose.
 - **Unrequested work is a finding.** The verifier runs `pan-tools verify scope <phase>`, which lists the files the phase changed that no plan declared. Whatever it judges to be work nobody asked for is recorded as `unrequested`. That finding does not fail the phase; keeping or removing the work is your decision.
 - **Failures inside subagents reach `/pan:learn`.** On Claude Code the trace hook records the failed tool calls in a subagent's own transcript, redacted and grouped by tool and message (capped per spawn; the completion keeps the total): a failing test run, a missing file, a refused permission. `/pan:learn` ranks them by how often they recur across spawns and sessions. `/pan:learn --sessions 5` pools the last five sessions, so a suggestion rests on a pattern, not on one run's accident.
-- **Applies can be undone.** `/pan:optimize apply` records exactly what it wrote. `/pan:optimize revert <apply_id>` (or `--last`) undoes one apply byte for byte, and refuses files someone edited since. Applying the same report twice writes nothing the second time.
+- **Applies can be undone.** `/pan:learn --optimize apply` records exactly what it wrote. `/pan:learn --optimize revert <apply_id>` (or `--last`) undoes one apply byte for byte, and refuses files someone edited since. Applying the same report twice writes nothing the second time.
 
 `pan-tools findings list` shows the ledger, filtered by phase, agent, status, class or milestone. MCP clients read the same data as `pan://findings`.
 
@@ -1005,7 +1015,7 @@ This writes a schedule descriptor (`.planning/orchestration/schedule.json`) — 
 
 ### Army & project dashboard (`/pan:hud`)
 
-`/pan:hud` (alias `/pan:dashboard`) renders the whole picture of your project and its bot army as a **single, self-contained HTML page** — no server, no network, no external CSS or JS. It's a read-only *view*: every panel aggregates state PAN already tracks (`state.md`, the roadmap/phases on disk, the squad registry, the campaign schedule, army worktrees, the cost ledger, `requirements.md`, verification artifacts, and git history). The command writes only the rendered file, so it can never corrupt planning data.
+`/pan:hud` (the old name `/pan:dashboard` still works) renders the whole picture of your project and its bot army as a **single, self-contained HTML page** — no server, no network, no external CSS or JS. It's a read-only *view*: every panel aggregates state PAN already tracks (`state.md`, the roadmap/phases on disk, the squad registry, the campaign schedule, army worktrees, the cost ledger, `requirements.md`, verification artifacts, and git history). The command writes only the rendered file, so it can never corrupt planning data.
 
 ```text
 /pan:hud                  # write .planning/hud.html
@@ -1105,7 +1115,7 @@ Example `~/.pan-wizard/defaults.json`:
 
 A config seeded from this file starts on the budget profile, with sequential execution and per-phase research off. Individual projects can override these in their own config.json.
 
-**Brave Search API key:** a file at `~/.pan-wizard/brave_api_key` (one line, the key only) makes a config that `config-ensure-section` creates (`/pan:settings` or `/pan:profile` in a project with no config.json) start with `brave_search: true`; `/pan:new-project` does not set `brave_search`, so enable it with `pan-tools config-set brave_search true`. The search itself still needs `BRAVE_API_KEY` in the environment.
+**Brave Search API key:** a file at `~/.pan-wizard/brave_api_key` (one line, the key only) makes a config that `config-ensure-section` creates (`/pan:settings` or `/pan:settings --profile` in a project with no config.json) start with `brave_search: true`; `/pan:new-project` does not set `brave_search`, so enable it with `pan-tools config-set brave_search true`. The search itself still needs `BRAVE_API_KEY` in the environment.
 
 ### Web Search
 
@@ -1117,7 +1127,7 @@ PAN research agents can search the web via Brave Search API.
 2. Set the `BRAVE_API_KEY` environment variable — the only place the `websearch` verb reads it
 3. Turn it on with `pan-tools config-set brave_search true` (`/pan:new-project` does not set it; saving the key to `~/.pan-wizard/brave_api_key` only pre-sets it in a config `config-ensure-section` creates)
 
-When configured, the phase researcher (`/pan:plan-phase`, `/pan:research-phase`) searches with Brave instead of the built-in web search; the `/pan:new-project` and `/pan:milestone-new` researchers never receive the setting. The `brave_search` config option (default `false`; `true` only in a config `config-ensure-section` creates while a key is detected) controls whether this is enabled.
+When configured, the phase researcher (`/pan:plan-phase`, `/pan:plan-phase --research-only`) searches with Brave instead of the built-in web search; the `/pan:new-project` and `/pan:milestone-new` researchers never receive the setting. The `brave_search` config option (default `false`; `true` only in a config `config-ensure-section` creates while a key is detected) controls whether this is enabled.
 
 ### Debug Logging
 
@@ -1159,7 +1169,7 @@ Do not re-run `/pan:exec-phase`. Use `/pan:quick` for targeted fixes, or `/pan:v
 
 ### Model Costs Too High
 
-Switch to budget profile: `/pan:profile budget`. Disable research and plan-check agents via `/pan:settings` if the domain is familiar. Pin one agent to a cheaper tier with `model_overrides` in config.json, for example `"model_overrides": {"pan-verifier": "fast"}`. Complexity routing and per-phase `<!-- model_tier: fast -->` comments are no cost lever today: no workflow passes the task metadata or the phase they need. Complexity routing's one effect on a workflow is under `budget`, where it keeps a `/pan:exec-phase --gaps-only` retry on the tier that left the gaps instead of escalating it.
+Switch to budget profile: `/pan:settings --profile budget`. Disable research and plan-check agents via `/pan:settings` if the domain is familiar. Pin one agent to a cheaper tier with `model_overrides` in config.json, for example `"model_overrides": {"pan-verifier": "fast"}`. Complexity routing and per-phase `<!-- model_tier: fast -->` comments are no cost lever today: no workflow passes the task metadata or the phase they need. Complexity routing's one effect on a workflow is under `budget`, where it keeps a `/pan:exec-phase --gaps-only` retry on the tier that left the gaps instead of escalating it.
 
 ### Working on a Sensitive/Private Project
 
@@ -1176,7 +1186,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Phase Execution Hangs or Takes Too Long
 
 **Cause:** Complex plans with many dependencies, or agent model too weak for the task.
-**Fix:** Check the plan complexity (number of tasks, wave count). If you're on the `budget` profile, the executor is running a mid-tier model — switch back to `balanced` (`/pan:profile balanced`) so it inherits your session model, or lift just that agent with `"model_overrides": {"pan-executor": "opus"}` in `.planning/config.json` (override values are tiers: `opus` means the reasoning tier, so the executor inherits your session model rather than switching to Opus). Conversely, if simple tasks feel slow, the reasoning tier is the cost: the `budget` profile or a `model_overrides` entry trades depth for speed. (`quality` and `balanced` resolve identically, so switching between those two changes nothing.)
+**Fix:** Check the plan complexity (number of tasks, wave count). If you're on the `budget` profile, the executor is running a mid-tier model — switch back to `balanced` (`/pan:settings --profile balanced`) so it inherits your session model, or lift just that agent with `"model_overrides": {"pan-executor": "opus"}` in `.planning/config.json` (override values are tiers: `opus` means the reasoning tier, so the executor inherits your session model rather than switching to Opus). Conversely, if simple tasks feel slow, the reasoning tier is the cost: the `budget` profile or a `model_overrides` entry trades depth for speed. (`quality` and `balanced` resolve identically, so switching between those two changes nothing.)
 
 ### Plan Rejected by Checker Multiple Times
 
@@ -1206,7 +1216,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Wrong Model Being Used for Agents
 
 **Cause:** Profile override or stale config.
-**Fix:** Check current profile: review `.planning/config.json` for `model_profile`, `model_overrides`, and `routing` settings. Switch profiles with `/pan:profile balanced`. Per-agent overrides in `model_overrides` take precedence over profile, per-phase overrides, and routing strategy.
+**Fix:** Check current profile: review `.planning/config.json` for `model_profile`, `model_overrides`, and `routing` settings. Switch profiles with `/pan:settings --profile balanced`. Per-agent overrides in `model_overrides` take precedence over profile, per-phase overrides, and routing strategy.
 
 ### Phase Will Not Complete (Phase Gate Refused)
 
@@ -1227,11 +1237,11 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 | Lost context / new session | `/pan:resume` or `/pan:progress` |
 | Phase went wrong | `git revert` the phase commits, then re-plan |
 | Need to change scope | `/pan:add-phase`, `/pan:insert-phase`, or `/pan:remove-phase` |
-| Milestone audit found gaps | `/pan:milestone-gaps` |
+| Milestone audit found gaps | `/pan:milestone-audit --gaps` |
 | Something broke | `/pan:debug "description"` |
 | Quick targeted fix | `/pan:quick` |
 | Plan doesn't match your vision | `/pan:discuss-phase N` then re-plan |
-| Costs running high | `/pan:profile budget`, `model_overrides` for one agent, toggle agents off via `/pan:settings` |
+| Costs running high | `/pan:settings --profile budget`, `model_overrides` for one agent, toggle agents off via `/pan:settings` |
 | Update broke local changes | `/pan:patches` |
 | Phase gate refused completion | `pan-tools phase gate <N>`, fix the reasons; or `phase complete <N> --force --reason "<why>"` |
 
@@ -1394,13 +1404,13 @@ For reference, here is what PAN creates in your project:
 | `memory/` | `memory append` / `memory record`, `/pan:retro --write-memory`, `memory optimize` | Agent memory logs, their `archive/`, and PAN's archives (`quarantine.md`, `state-archive.md`). No workflow loads them into agents; `/pan:knowledge` reads the logs. | `/pan:hygiene` reports stale entries |
 | `config.json` | `/pan:new-project` | Workflow configuration (mode, depth, profile, toggles). See [Configuration Reference](#configuration-reference). | Auto-managed |
 | `milestones.md` + `milestones/` | `/pan:milestone-done` | Index of completed milestones with dates and summaries, plus the per-version `v{version}-roadmap.md` / `v{version}-requirements.md` archives. | Append-only |
-| `patterns.md` | Nothing PAN ships (`appendErrorPattern()` has no caller); `learnings extract`, `preflight` and `/pan:focus-scan` read it when it exists | Error patterns (PAT-NNN) for cross-session learning. | Append-only, auto-increment |
+| `patterns.md` | Nothing PAN ships (`appendErrorPattern()` has no caller); `learnings extract`, `preflight` and `/pan:focus-auto --step scan` read it when it exists | Error patterns (PAT-NNN) for cross-session learning. | Append-only, auto-increment |
 | `session-history.md` | Nothing PAN ships (`appendSessionSummary()` has no caller); `pan-tools progress health` counts its entries when it exists | Session summaries with phase, test counts, decisions. | Keeps last 20 entries |
 | `research/` | `/pan:new-project` | Parallel research outputs (stack, features, architecture, pitfalls) plus synthesis. | Read-only after creation |
 | `codebase/` | `/pan:map-codebase` | Brownfield analysis — the codebase-map documents (`stack.md`, `integrations.md`, `architecture.md`, `structure.md`, `conventions.md`, `testing.md`, `concerns.md`, `relationships.md`, `best-practices.md`). | Read-only after creation |
 | `XX-context.md` | `/pan:discuss-phase` | Your implementation preferences for a phase. Feeds into research and planning. | No set limit |
 | `XX-research.md` | `/pan:plan-phase` | Ecosystem research for a phase (libraries, patterns, pitfalls). | Read-only after creation |
-| `XX-roadmap-slice.md` | `/pan:plan-phase`, `/pan:research-phase`, `/pan:exec-phase`, `/pan:verify-phase` | The phase's section of roadmap.md, its dependencies' goals and its requirement lines; the researcher, planner, checker, executors and verifier read it instead of the whole files. | Rewritten when it changes |
+| `XX-roadmap-slice.md` | `/pan:plan-phase`, `/pan:plan-phase --research-only`, `/pan:exec-phase`, `/pan:verify-phase` | The phase's section of roadmap.md, its dependencies' goals and its requirement lines; the researcher, planner, checker, executors and verifier read it instead of the whole files. | Rewritten when it changes |
 | `XX-YY-plan.md` | `/pan:plan-phase` | Atomic execution plan with XML-structured tasks, verification steps. | 2-3 tasks per plan |
 | `XX-validation.md` | `/pan:plan-phase` | Test coverage mapping — which tests verify which requirements. | Auto-generated |
 | `XX-YY-summary.md` | `/pan:exec-phase` | What was built, files changed, decisions made during execution. | Auto-generated |

@@ -16,7 +16,7 @@ Transform raw execution traces into concrete, ranked improvements. Every recomme
 1. **Specific** — name the file, agent, or workflow step to change
 2. **Actionable** — tell the implementer exactly what to add/change/remove
 3. **Prioritized** — critical/major/minor based on frequency × impact
-4. **Placed** — name where the fix belongs, so the next run's agents read it: the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test, a comment at the cited code, an agent prompt, or a workflow step. A person makes the change; `/pan:optimize apply` only records your suggestions
+4. **Placed** — name where the fix belongs, so the next run's agents read it: the project's instructions (CLAUDE.md or AGENTS.md, outside PAN's section), a test, a comment at the cited code, an agent prompt, or a workflow step. A person makes the change; `/pan:learn --optimize apply` only records your suggestions
 
 ## Inputs
 
@@ -92,7 +92,7 @@ Produce ranked recommendations in these categories:
 
 ### Step 5: Derive Auto-Apply Actions
 
-Each recommendation becomes a `note` action in the `## Auto-Apply Actions` block; a config change is a `planning_note`. `/pan:optimize apply` records notes in `.planning/optimization/suggestions.md` and config notes in `config-suggestions.md`. Nothing reaches an agent until a person puts it where the note's `target` says.
+Each recommendation becomes a `note` action in the `## Auto-Apply Actions` block; a config change is a `planning_note`. `/pan:learn --optimize apply` records notes in `.planning/optimization/suggestions.md` and config notes in `config-suggestions.md`. Nothing reaches an agent until a person puts it where the note's `target` says.
 
 ```json
 [
@@ -115,7 +115,7 @@ Each recommendation becomes a `note` action in the `## Auto-Apply Actions` block
 
 ## Output Format
 
-Write the report as a markdown file at `.planning/optimization/reports/{session}-opt-report.md`. It is the only file you write: `/pan:optimize apply` records the Auto-Apply Actions, so never write `suggestions.md` or a project file yourself.
+Write the report as a markdown file at `.planning/optimization/reports/{session}-opt-report.md`. It is the only file you write: `/pan:learn --optimize apply` records the Auto-Apply Actions, so never write `suggestions.md` or a project file yourself.
 
 ````markdown
 # Optimization Report — {session_id}
@@ -198,7 +198,7 @@ Write the report as a markdown file at `.planning/optimization/reports/{session}
 
 ## Auto-Apply Actions
 
-`/pan:optimize apply` records the following actions as suggestions for a person; none of them changes what an agent is told:
+`/pan:learn --optimize apply` records the following actions as suggestions for a person; none of them changes what an agent is told:
 
 ```json
 [

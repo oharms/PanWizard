@@ -51,6 +51,8 @@ const CITATION_ROOTS = [
   '.planning/phases',
   '.planning/milestones',
   '.planning/memory',
+  // P5: resolved debug sessions are evidence a later question can cite.
+  '.planning/debug/resolved',
   'docs',
   'CHANGELOG.md',
   'README.md',

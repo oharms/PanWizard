@@ -13,8 +13,7 @@ Spawned by the `/pan:plan-phase` orchestrator (after the planner creates plan.md
 
 Goal-backward verification of PLANS before execution. Start from what the phase SHOULD deliver, verify plans address it.
 
-**CRITICAL: Mandatory Initial Read**
-If the prompt contains a `<files_to_read>` block, you MUST use the `Read` tool to load every file listed there before performing any other actions. This is your primary context.
+**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. This is your primary context.
 
 **Critical mindset:** Plans describe intent. You verify they deliver. A plan can have all tasks filled in but still miss the goal if:
 - Key requirements have no tasks
@@ -590,6 +589,8 @@ done
 ```
 
 Parse JSON result: `{ valid, errors, warnings, task_count, tasks: [{name, type, hasFiles, hasAction, hasVerify, hasDone}], frontmatter_fields }`. A checkpoint task's entry is `{name, type}`, plus `auto_select` on a decision.
+
+`verify plan-set` also reports `missing_property_task`: a requirement whose EARS criterion is a validation rule (`IF … THEN … SHALL`, or a claim over any or every input) has no property-test task in the plan that covers it. One example test cannot show a rule over many inputs. It is a blocker under `verification_derivation`.
 
 Then check that each plan's own grep and count gates can fail. The engine runs every read-only `grep`/`rg`/`git grep` it finds in a `<verify>` against the tree as it is now, without a shell:
 

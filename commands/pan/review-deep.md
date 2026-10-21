@@ -18,7 +18,7 @@ Run a deeper review pass on a phase than `pan-reviewer` alone provides. Two new 
 1. **pan-hardener** — OWASP Top 10 (2025) + STRIDE threat model on files changed in the phase.
 2. **pan-meta-reviewer** — reads both the reviewer's and hardener's output, flags things both missed, disputes overstated severities.
 
-Outputs are merged by `review-deep.cjs` into a single `.planning/reviews/<phase>/deep-review.md` with verdict, coverage stats, and conflict table. An audit entry is published to the `review-handoff` bus channel for traceability.
+Outputs are merged by `review-deep.cjs` into a single `.planning/reviews/<phase>/deep-review.md` with verdict, coverage stats, and conflict table.
 
 Consolidates Spec B v1's X-4 (self-review) + X-12 (harden) into a single command.
 </objective>
@@ -49,7 +49,7 @@ Runs the normal exec → reviewer pipeline, then runs this command's process inl
 ### Integrated with focus-exec
 
 ```
-/pan:focus-exec --deep-review
+/pan:focus-auto --step exec --deep-review
 ```
 
 Per-item deep review during focus campaigns: focus-exec runs the hardener and meta-reviewer on the item's changed files and merges them under the item's id (`review-deep merge <item-id>` with no `--reviewer-file`), since an item has no phase or first-pass review. Useful for high-stakes batches.
@@ -68,14 +68,21 @@ Per-item deep review during focus campaigns: focus-exec runs the hardener and me
    - Prompt includes: `<files_to_read>` with both `{directory}/{phase_number}-review.md` AND `.planning/reviews/<N>/hardener.md` (and representative diff snippets); `<output_path>` = `.planning/reviews/<N>/meta.md`.
    - Agent reads both first-pass reports, identifies missed patterns, disputes overstated severities, writes to output path.
 
+3b. **Cross-family lane (only when the project turned it on).** A reviewer from the author's own model family shares its blind spots. Run:
+   ```
+   pan-tools review cross-family <N>
+   ```
+   With `workflow.cross_family_review: off` (the default) it returns `enabled: false` and runs nothing: skip to the merge. With a host set, it runs the review on that host's CLI, read-only, and writes `.planning/reviews/<N>/cross-family-<host>.md`; pass that file to the merge as `--cross-file`. If the host's CLI is missing or fails, say so and merge without it.
+
 4. **Merge** — call:
    ```
    pan-tools review-deep merge <N> \
      --reviewer-file {directory}/{phase_number}-review.md \
      --hardener-file .planning/reviews/<N>/hardener.md \
-     --meta-file .planning/reviews/<N>/meta.md
+     --meta-file .planning/reviews/<N>/meta.md \
+     [--cross-file .planning/reviews/<N>/cross-family-<host>.md]
    ```
-   The merger parses all three, sorts by severity, computes verdict (`ok` | `ok_with_minor` | `fix_before_merge` | `review_required` | `block`), writes `.planning/reviews/<N>/deep-review.md`, and publishes an audit record to the `review-handoff` bus channel.
+   The merger parses every input, sorts by severity, computes verdict (`ok` | `ok_with_minor` | `fix_before_merge` | `review_required` | `block`), and writes `.planning/reviews/<N>/deep-review.md`.
 
 5. **Report back** — echo verdict + finding count + conflict count. If verdict is `block` or `review_required`, recommend the user review `deep-review.md` before proceeding.
 
@@ -101,7 +108,6 @@ Verdict is driven by the highest-severity finding across all three sources. Meta
 - `.planning/reviews/<N>/hardener.md` — pan-hardener output (new)
 - `.planning/reviews/<N>/meta.md` — pan-meta-reviewer output (new)
 - `.planning/reviews/<N>/deep-review.md` — merged consolidated report (final deliverable)
-- `.planning/bus/review-handoff.jsonl` — audit trail entry (append-only)
 
 </output_files>
 

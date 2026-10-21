@@ -290,24 +290,13 @@ describe('review-deep — writeDeepReview', () => {
     assert.ok(content.includes('meta_addition'));
   });
 
-  test('publishes audit entry to bus channel by default', () => {
+  test('publishes nothing to the bus: deep-review.md is the record (L7)', () => {
     const payload = mergeReviews(
       [{ source: 'reviewer', severity: 'low', category: 'x', description: 'y', file: 'a.js', line: null, rationale: null }],
       []
     );
     writeDeepReview(tmpDir, '03', payload);
-    const busFile = path.join(tmpDir, '.planning', 'bus', 'review-handoff.jsonl');
-    assert.ok(fs.existsSync(busFile));
-    const entry = JSON.parse(fs.readFileSync(busFile, 'utf-8').trim());
-    assert.equal(entry.source, 'pan-meta-reviewer');
-    assert.equal(entry.payload.phase, '03');
-    assert.equal(entry.payload.finding_count, 1);
-  });
-
-  test('audit_channel: false skips bus publish', () => {
-    writeDeepReview(tmpDir, '04', mergeReviews([], []), { audit_channel: false });
-    const busFile = path.join(tmpDir, '.planning', 'bus', 'review-handoff.jsonl');
-    assert.equal(fs.existsSync(busFile), false);
+    assert.equal(fs.existsSync(path.join(tmpDir, '.planning', 'bus', 'review-handoff.jsonl')), false);
   });
 });
 

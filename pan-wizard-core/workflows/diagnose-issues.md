@@ -98,6 +98,8 @@ Template placeholders (see `debug-subagent-prompt.md`):
 - `{timeline}`: "Discovered during UAT"
 - `{true_or_false}`: `true` (symptoms are prefilled from the UAT gap)
 - `{goal}`: `find_root_cause_only` (UAT flow - plan-phase --gaps handles fixes)
+
+Each gap gets its own reproduction, one per requirement or UAT truth it breaks (the debugger records `requirement:` beside the command). That command is the gap's closing check: the fix plan from `/pan:plan-phase --gaps` is done only when `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs debug repro <slug>` turns green.
 - `{slug}`: Generated from the issue summary
 </step>
 

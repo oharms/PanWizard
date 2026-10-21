@@ -141,7 +141,9 @@ describe('table-row templates in shipped prose', () => {
         }
       }
     }
-    assert.ok(rows > 0, 'non-vacuity: the quick workflow writes templated table rows');
+    // Since A7b the quick workflow's rows go through `state quick-task`, which escapes the
+    // cells itself; a shipped prose template, where one remains, is still linted here.
+    if (rows === 0) assert.match(fs.readFileSync(path.join(ROOT, 'pan-wizard-core', 'workflows', 'quick.md'), 'utf8'), /state quick-task/, 'non-vacuity: quick writes its rows through the engine');
     assert.deepEqual(offenders, [], 'free text must reach a table row through an escaped *_cell field from the engine:\n' + offenders.join('\n'));
   });
 });

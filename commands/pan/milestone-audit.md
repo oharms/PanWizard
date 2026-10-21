@@ -2,7 +2,7 @@
 name: pan:milestone-audit
 group: Milestone
 description: Audit milestone completion against original intent before archiving
-argument-hint: "[version] [--track <name>] [--all-tracks]"
+argument-hint: "[version] [--track <name>] [--all-tracks] [--gaps]"
 allowed-tools:
   - Read
   - Glob
@@ -10,7 +10,14 @@ allowed-tools:
   - Bash
   - Task
   - Write
+  - AskUserQuestion
 ---
+<routes>
+These flags select another mode of this command. Each was a separate command, and its old name still runs this one as an alias. When one is present, follow the named workflow instead of the steps below, with the rest of the arguments as its `$ARGUMENTS`, and stop when it ends.
+
+- `--gaps` — create the phases that close the gaps of the most recent audit (`.planning/v*-milestone-audit.md`), grouped, with your confirmation: @~/.claude/pan-wizard-core/workflows/milestone-gaps.md (formerly `milestone-gaps`)
+</routes>
+
 <objective>
 Verify milestone achieved its definition of done. Check requirements coverage, cross-phase integration, and end-to-end flows.
 

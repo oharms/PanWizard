@@ -1425,10 +1425,14 @@ describe('AGENTS.md section builders', () => {
     assert.ok(out.includes(lib.PAN_AGENTS_BEGIN));
   });
 
-  test('upsert replaces an existing PAN block in place (idempotent)', () => {
-    const user = `# Rules\n\n${lib.PAN_AGENTS_BEGIN}\nold pan stuff\n${lib.PAN_AGENTS_END}\n\n## After\n`;
+  test('upsert replaces an existing PAN block in place (idempotent); a block the project edited is kept', () => {
+    // An earlier release's text (PRIOR_AGENTS_SECTIONS) is PAN's to replace.
+    const old = "## PAN Wizard\n\nThis project uses PAN Wizard for structured, phase-based planning and execution.\n\n- `.planning/` is PAN's state directory (state.md, roadmap.md, phase directories). Treat it as the source of truth for planning state and modify it through PAN commands, not by hand.\n- PAN commands install as `pan-*` skills/commands (for example `/pan-help`, `/pan-new-project`, `/pan-exec-phase`). Start with `/pan-help`.\n- The `pan-tools` dispatcher backs every command; it lives under `pan-wizard-core/` inside the runtime's config directory (or `.agents/` for unified installs).";
+    const user = `# Rules\n\n${lib.PAN_AGENTS_BEGIN}\n${old}\n${lib.PAN_AGENTS_END}\n\n## After\n`;
     const out = lib.upsertAgentsMdSection(user, section);
-    assert.ok(!out.includes('old pan stuff'), 'old block content should be replaced');
+    assert.ok(!out.includes('PAN commands install as'), 'old block content should be replaced');
+    const edited = `# Rules\n\n${lib.PAN_AGENTS_BEGIN}\nold pan stuff, rewritten by the project\n${lib.PAN_AGENTS_END}\n`;
+    assert.equal(lib.upsertAgentsMdSection(edited, section), edited, 'a block the project edited is kept');
     assert.ok(out.startsWith('# Rules'));
     assert.ok(out.includes('## After'), 'content after the block must survive');
     assert.equal(lib.upsertAgentsMdSection(out, section), out, 'second upsert is a no-op');
@@ -1899,7 +1903,7 @@ describe('CLAUDE.md @AGENTS.md bridge', () => {
   test('the block tells the compaction summary what PAN work needs to resume', () => {
     const out = lib.ensureClaudeMdImport(null);
     assert.match(out, /^<!-- BEGIN PAN WIZARD -->\n@AGENTS\.md\n\n# Compact instructions\n/);
-    assert.match(out, /the current phase and plan, and the task in progress with its stopping point \(`\.planning\/state\.md` records them; keep that path\)/);
+    assert.match(out, /the current phase and plan, and the task in progress with its stopping point, with the path of the file that records them \(`\.planning\/state\.md` when the project keeps one\)/);
     assert.match(out, /decisions made in this session/);
     assert.match(out, /Leave out file contents and command output/);
     const { isSuspiciousDirective } = require('../pan-wizard-core/bin/lib/memory-optimize.cjs');
