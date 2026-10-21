@@ -65,7 +65,7 @@ function buildReport({ root = ROOT, now, surfaceDrift: drift } = {}) {
   out.push('', '## Open harness findings');
   if (open.length) {
     out.push('| Scenario | Detail | Age (days) |', '|---|---|---|');
-    for (const f of open) out.push(`| ${f.scenario} | ${String(f.detail || '').replace(/\|/g, '\\|')} | ${Math.floor((t - Date.parse(f.first_seen)) / DAY)} |`);
+    for (const f of open) out.push(`| ${f.scenario} | ${String(f.detail || '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|')} | ${Math.floor((t - Date.parse(f.first_seen)) / DAY)} |`);
   } else out.push('- none');
 
   const fired = (json(path.join(st, 'market-watch.json'), {}).fired || []).filter((f) => inWeek(`${f.at}T00:00:00Z`));

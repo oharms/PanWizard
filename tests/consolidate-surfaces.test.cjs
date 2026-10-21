@@ -101,7 +101,7 @@ describe('the absorbing commands route the old behaviour (L7)', () => {
   test('no shipped prompt still sends the user to an old or retired name', () => {
     const { COMMAND_ALIASES, RETIRED_COMMANDS } = require('../pan-wizard-core/bin/lib/constants.cjs');
     const names = [...Object.keys(COMMAND_ALIASES), ...RETIRED_COMMANDS];
-    const re = new RegExp(`/pan[:-](${names.map((n) => n.replace(/-/g, '\\-')).join('|')})(?![\\w-])`);
+    const re = new RegExp(`/pan[:-](${names.map((n) => n.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')).join('|')})(?![\\w-])`);
     const offenders = [];
     const walk = (dir) => {
       for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {

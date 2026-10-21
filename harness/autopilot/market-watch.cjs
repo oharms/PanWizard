@@ -42,7 +42,7 @@ function cmpVersion(a, b) {
 }
 
 function urlFor(p) {
-  if (p.kind === 'npm_dist_tag') return `https://registry.npmjs.org/${String(p.package).replace('/', '%2f')}`;
+  if (p.kind === 'npm_dist_tag') return `https://registry.npmjs.org/${String(p.package).replace(/\//g, '%2f')}`;
   if (p.kind === 'github_release') return `https://api.github.com/repos/${p.repo}/releases?per_page=20`;
   return null;
 }
@@ -124,8 +124,11 @@ function runWatch(o) {
     fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n');
     if (fired.length) {
       const inbox = path.join(root, INBOX);
-      const head = fs.existsSync(inbox) ? '' : '# Market watch inbox\n\nDeltas from `harness/autopilot/market-watch.cjs`. Each is a WATCH trigger that fired: read the source, then decide the ledger row in `/market-ideas`. Nothing here is a verdict.\n';
-      fs.appendFileSync(inbox, `${head}\n## ${now}\n\n${fired.map((f) => `- **${f.id}**: ${f.note}`).join('\n')}\n`);
+      fs.mkdirSync(path.dirname(inbox), { recursive: true });
+      const fd = fs.openSync(inbox, 'a');
+      const head = fs.fstatSync(fd).size ? '' : '# Market watch inbox\n\nDeltas from `harness/autopilot/market-watch.cjs`. Each is a WATCH trigger that fired: read the source, then decide the ledger row in `/market-ideas`. Nothing here is a verdict.\n';
+      fs.writeSync(fd, `${head}\n## ${now}\n\n${fired.map((f) => `- **${f.id}**: ${f.note}`).join('\n')}\n`);
+      fs.closeSync(fd);
     }
   }
   return { results, fired };
@@ -136,7 +139,7 @@ function httpsGet(url, etag) {
   return new Promise((resolve) => {
     const headers = { 'user-agent': 'pan-wizard-market-watch', accept: 'application/json' };
     if (etag) headers['if-none-match'] = etag;
-    if (process.env.GITHUB_TOKEN && url.includes('api.github.com')) headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+    if (process.env.GITHUB_TOKEN && new URL(url).hostname === 'api.github.com') headers.authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
     const req = https.get(url, { headers, timeout: 20000 }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });

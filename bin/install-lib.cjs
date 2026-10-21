@@ -635,7 +635,7 @@ function renderCommandAlias(targetContent, oldName, alias) {
     if (desc) {
       const raw = desc[1].trim();
       const unq = raw.match(/^(["'])([\s\S]*)\1$/);
-      const text = (unq ? unq[2].replace(/\\"/g, '"') : raw).replace(/"/g, '\\"');
+      const text = (unq ? unq[2].replace(/\\"/g, '"') : raw).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       return `description: "Renamed: now ${now}. ${text}"`;
     }
     return line;

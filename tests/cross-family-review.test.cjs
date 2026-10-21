@@ -116,14 +116,14 @@ describe('a lane run against a stand-in host CLI (R4, tier 0)', () => {
     const answer = path.join(binDir, 'answer.txt');
     fs.writeFileSync(answer, 'Review done.\n\n\u0060\u0060\u0060pan-verdict\n' + verdict + '\n\u0060\u0060\u0060\n');
     const js = path.join(binDir, 'codex-stand-in.js');
-    fs.writeFileSync(js, `process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(require('fs').readFileSync(${JSON.stringify(answer)},'utf8')));`);
+    fs.writeFileSync(js, `process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(require('fs').readFileSync(process.env.FAKE_ANSWER,'utf8')));`);
     if (process.platform === 'win32') fs.writeFileSync(path.join(binDir, 'codex.cmd'), `@"${process.execPath}" "${js}" %*\r\n`);
     else { fs.writeFileSync(path.join(binDir, 'codex'), `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`); fs.chmodSync(path.join(binDir, 'codex'), 0o755); }
   });
   after(() => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(binDir, { recursive: true, force: true }); });
 
   test('the verdict is parsed, reported per rep, and written for review-deep', () => {
-    const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, PAN_STANDIN_DIR: binDir };
+    const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, PAN_STANDIN_DIR: binDir, FAKE_ANSWER: path.join(binDir, 'answer.txt') };
     const res = spawnSync(process.execPath, [TOOLS, 'review', 'cross-family', '1', '--reps', '2', '--cwd', dir], { encoding: 'utf8', env });
     const r = JSON.parse(res.stdout);
     assert.equal(r.lane, 'cross-family:codex');

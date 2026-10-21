@@ -71,7 +71,7 @@ function snapshotHash(cwd) {
     for (const e of entries) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p, `${rel}/${e.name}`);
-      else { try { const st = fs.statSync(p); h.update(`${rel}/${e.name}\0${st.size}\0${fs.readFileSync(p, 'utf8')}`); } catch {} }
+      else { try { const body = fs.readFileSync(p); h.update(`${rel}/${e.name}\0${body.length}\0`); h.update(body); } catch {} }
     }
   };
   walk(phases, 'phases');

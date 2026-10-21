@@ -44,7 +44,8 @@ function pickFinding(repo = REPO) {
 function defaultRoot() {
   if (process.env.PAN_AUTOPILOT_ROOT) return process.env.PAN_AUTOPILOT_ROOT;
   for (const c of ['C:\\Project\\pantesting', 'D:\\pantesting']) if (process.platform === 'win32' && fs.existsSync(c)) return c;
-  return os.tmpdir();
+  // A private directory, never a shared path in the temp dir another user could plant.
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'pan-autopilot-'));
 }
 
 function planDogfood(o = {}) {

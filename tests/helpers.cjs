@@ -145,7 +145,9 @@ function createScenarioRunner(runtime) {
         cwd: cwd || tmpDir,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
-        timeout: 15000,
+        // A verb takes well under a second; 15 s was too tight on a loaded Windows CI
+        // runner (Node 22, 2026-10-21), where three scenario files timed out together.
+        timeout: 60000,
       });
       return { success: true, output: result.trim() };
     } catch (err) {

@@ -34,14 +34,21 @@ function stripFrontmatter(text) {
 
 /** [start, end) of a section's body: the lines after its heading up to the next heading of its level or higher. */
 function findSection(text, name) {
-  const re = new RegExp(`^(#{2,3}) ${escapeRegex(name)}[ \\t]*$`, 'm');
-  const m = re.exec(text);
-  if (!m) return null;
-  const level = m[1].length;
-  const bodyStart = m.index + m[0].length + 1;
-  const rest = text.slice(bodyStart);
-  const next = new RegExp(`^#{2,${level}} `, 'm').exec(rest);
-  return { level, headingStart: m.index, bodyStart, bodyEnd: next ? bodyStart + next.index : text.length };
+  const lines = text.split('\n');
+  let offset = 0;
+  let start = -1;
+  let level = 0;
+  let bodyStart = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{2,3}) (.*?)[ \t]*$/);
+    if (start < 0 && m && m[2] === name) { start = offset; level = m[1].length; bodyStart = offset + lines[i].length + 1; }
+    else if (start >= 0) {
+      const h = lines[i].match(/^(#+) /);
+      if (h && h[1].length <= level) return { level, headingStart: start, bodyStart, bodyEnd: offset };
+    }
+    offset += lines[i].length + 1;
+  }
+  return start < 0 ? null : { level, headingStart: start, bodyStart: Math.min(bodyStart, text.length), bodyEnd: text.length };
 }
 
 const PLACEHOLDER_RE = /^(None yet\.|None\.?|\[.*\])\s*$/;

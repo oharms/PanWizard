@@ -126,8 +126,9 @@ function applyMutant(root, packageDir, id) {
   const rule = (readJson(path.join(root, REGISTRY), { rules: [] }).rules || []).find((r) => r.id === id) || extractRules(root).find((r) => r.id === id);
   if (!rule) return { error: 'unknown_rule', reason: `no rule ${id} in ${REGISTRY}` };
   const target = path.join(packageDir, rule.file);
-  if (!fs.existsSync(target)) return { error: 'file_not_in_package', reason: `${rule.file} is not in the package` };
-  const m = generateMutant(fs.readFileSync(target, 'utf8'), rule.text);
+  let content;
+  try { content = fs.readFileSync(target, 'utf8'); } catch { return { error: 'file_not_in_package', reason: `${rule.file} is not in the package` }; }
+  const m = generateMutant(content, rule.text);
   if (!m) return { error: 'rule_not_found', reason: `${rule.file} no longer holds the rule` };
   fs.writeFileSync(target, m.content);
   return { id, file: rule.file, line: m.removed, text: rule.text };

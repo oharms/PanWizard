@@ -13,7 +13,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { output } = require('./core.cjs');
+const { output, escapeRegex, escapeTableCell } = require('./core.cjs');
 const { planningPath } = require('./utils.cjs');
 const { decideStop } = require('./autodev.cjs');
 
@@ -49,7 +49,7 @@ function replayRun(cwd, runId) {
 const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
 
 function phaseSection(roadmap, num) {
-  const re = new RegExp(`^#{2,4} Phase ${String(num).replace(/\./g, '\\.')}:([^\\n]*)\\n([\\s\\S]*?)(?=^#{2,4} Phase |(?![\\s\\S]))`, 'm');
+  const re = new RegExp(`^#{2,4} Phase ${escapeRegex(String(num))}:([^\\n]*)\\n([\\s\\S]*?)(?=^#{2,4} Phase |(?![\\s\\S]))`, 'm');
   const m = roadmap.match(re);
   return m ? { name: m[1].trim(), body: m[2] } : { name: '', body: '' };
 }
@@ -138,7 +138,7 @@ function buildDossier(cwd, runId) {
     ];
     sections.push({ title: `Phase ${num}${sec.name ? `: ${sec.name}` : ''}`, rows: rowsTable });
     lines.push('', `## Phase ${num}${sec.name ? `: ${sec.name}` : ''}`, '', '| | |', '|---|---|');
-    for (const [k, v] of rowsTable) lines.push(`| ${k} | ${String(v).replace(/\|/g, '\\|')} |`);
+    for (const [k, v] of rowsTable) lines.push(`| ${k} | ${escapeTableCell(String(v))} |`);
   }
   return { run: id, markdown: lines.join('\n') + '\n', sections, header: lines.slice(2, 6) };
 }
