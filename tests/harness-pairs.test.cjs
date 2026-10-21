@@ -50,7 +50,9 @@ describe('H10: pair validation', () => {
     const paired = all.filter((s) => s.pair);
     assert.ok(paired.length >= 2, 'non-vacuity: at least one pair is committed');
     assert.deepEqual(S.validatePairs(all), []);
-    for (const s of paired) {
+    // Tier-0 pairs replay synthetic cassettes; a live pair (tier 1 or 2, the evidence run) reaches a real model.
+    for (const s of paired.filter((x) => x.tier >= 1)) assert.ok(s.steps.every((st) => !st.double), `${s.id}: a live pair has no double`);
+    for (const s of paired.filter((x) => x.tier === 0)) {
       const replays = s.steps.filter((st) => st.double && st.double.cassette);
       assert.ok(replays.length, `${s.id}: replays from a cassette`);
       for (const st of replays) {
@@ -58,7 +60,6 @@ describe('H10: pair validation', () => {
         assert.ok(fs.existsSync(file), `${s.id}: cassette ${file} is committed`);
         assert.ok(JSON.parse(fs.readFileSync(file, 'utf8')).length > 0);
       }
-      assert.equal(s.tier, 0, `${s.id}: a replay is tier 0`);
     }
   });
 });
