@@ -157,7 +157,7 @@ and rejects the shapes that have passed while the feature they named was broken:
   file as **one passing test**. This once hid fifteen tests behind a green check. Always
   go through `runPanTools`
 - `assert(true)`, CLI output asserted only by its length, a platform conditional that
-  bare-`return`s instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read
+  bare-`return`s instead of `t.skip(reason)`, a wall-clock bound of two seconds or less, a read
   of the real home directory (use the `withFakeHome` helper), a committed `test.todo`, an
   `assert.ok(a.x || a.y)` that only asks whether one of several fields exists
 

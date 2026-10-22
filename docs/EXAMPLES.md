@@ -336,7 +336,7 @@ PAN: Spawn Plan Checker? (verifies plans before execution)
 You: No
 PAN: Spawn Execution Verifier? (verifies phase completion)
 You: Yes
-(auto-advance, Nyquist, branching, routing and phase-budget questions follow, each with your current value pre-selected)
+(auto-advance, Nyquist, branching and phase-budget questions follow, each with your current value pre-selected)
 ```
 
 With these off, `plan-phase` skips the researcher agent and the
@@ -551,7 +551,6 @@ Right after the normal review, before the verifier, exec-phase runs the `/pan:re
 1. **pan-hardener** (OWASP + STRIDE) writes `.planning/reviews/04/hardener.md`. Looks for missing authorization checks, credential storage weaknesses, session management gaps.
 2. **pan-meta-reviewer** reads both reviewer + hardener, writes `.planning/reviews/04/meta.md`. Flags what either missed, disputes overstated severities.
 3. Merge writes `.planning/reviews/04/deep-review.md` with verdict (`ok` / `ok_with_minor` / `fix_before_merge` / `review_required` / `block`) + findings table.
-4. Audit entry published to `.planning/bus/review-handoff.jsonl` for traceability.
 
 Verdict `block` means a critical issue was found — don't merge until resolved. `review_required` means a high finding needs human sign-off.
 

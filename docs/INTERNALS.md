@@ -459,7 +459,7 @@ PAN's agents and workflows load knowledge from reference files at runtime, by pa
 | File | Topic | Relevance |
 |------|-------|-----------|
 | `checkpoints.md` | Checkpoint types, automation philosophy, auth gates | High |
-| `guardrails.md` (v3.6.0+) | Behavioral guardrails — anti-patterns, Code Preservation, Stop-the-Line | High |
+| `guardrails.md` | Behavioral guardrails — anti-patterns, Code Preservation, Stop-the-Line | High |
 | `tdd.md` | Test-driven development cycle, when to apply | High |
 | `verification-patterns.md` | Stub detection, wiring checks, verification scripts | High |
 | `handoff-decisions.md` | Decisions-trace schema for planner/executor/verifier handoff | High |

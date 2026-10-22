@@ -124,7 +124,7 @@ Diagram types implemented: Flowchart, Sequence, ER, Quadrant chart.
 |------|------|-----------|
 | @playwright/test | VSCode integration test driver (devDependency) | Standard automation harness |
 | @vscode/test-electron | VSCode extension host for integration tests (devDependency) | Official VS Code test runner |
-| GitHub Actions | CI/CD matrix (Linux, Windows and macOS, each on several Node versions) | Native to GitHub hosting |
+| GitHub Actions | macOS test matrix on several Node versions, and the npm release; the other gates run locally (`npm run ci:local`) | Native to GitHub hosting |
 | node:test | Test framework | Built-in, zero dependency, Node 18+ |
 | node:assert/strict | Assertions | Built-in, zero dependency |
 

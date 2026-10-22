@@ -517,7 +517,7 @@ def generate_reference(shipped: list[Skill], dev: list[Skill], version: str) -> 
     w("| Continuous improvement | `focus-auto --category <cat>` |")
     w("| Execute micro-prompts | `focus-auto --category prompts` |")
     w("| Feature investigation | `focus-design \"description\"` |")
-    w("| Doc hygiene | `focus-drift-walking` or `focus-doc-audit` |")
+    w("| Doc hygiene | `focus-auto --step drift` or `focus-docs` |")
     w("")
 
     return "\n".join(lines)

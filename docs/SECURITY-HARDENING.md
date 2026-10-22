@@ -1,6 +1,6 @@
 # Security Hardening — Manual Actions
 
-The code changes that can land in git are now committed (CI/CodeQL/Dependabot, narrowed `.gitignore`, sanitised `.claude/settings.json`, refreshed [SECURITY.md](../SECURITY.md), esbuild upgrade — esbuild has since been removed; hooks are copied, not bundled). The items in this file **require a human in front of a browser or terminal** — Claude Code can't do them.
+The code changes that can land in git are now committed (CI, narrowed `.gitignore`, sanitised `.claude/settings.json`, refreshed [SECURITY.md](../SECURITY.md), esbuild upgrade — esbuild has since been removed; hooks are copied, not bundled; the CodeQL workflow and `dependabot.yml` have since been replaced by local checks, see docs/DEVELOPMENT.md, Local CI). The items in this file **require a human in front of a browser or terminal** — Claude Code can't do them.
 
 Work top-down. Each section says what to do and why.
 
@@ -130,9 +130,10 @@ Only if you publish `pan-wizard` to npm. Skip if you don't.
    How to ship a release from now on:
 
    ```powershell
-   # 1. Release PR (main is protected — see docs/DEVELOPMENT.md → Release Process): bump package.json,
+   # 1. Release branch (see docs/DEVELOPMENT.md → Release Process): bump package.json,
    #    package-lock.json and .github/plugin/marketplace.json, turn CHANGELOG [Unreleased] into the
-   #    version heading, merge once the required checks are green, then tag the merge commit.
+   #    version heading, run the full `npm run ci:local`, land it with
+   #    `npm run land -- release/v<version>`, then tag the landed commit.
    git switch main; git pull; git tag -a v<version> -m "release(<version>): <summary>"
 
    # 2. Push the tag by explicit refspec. This repo's remote.origin.push is
@@ -181,7 +182,7 @@ Only if you publish `pan-wizard` to npm. Skip if you don't.
   `pan-file-manifest.json` and test-fixture filenames).
   Bypass once with `SKIP_GITLEAKS=1 git commit -m "..."` if you ever need to
   (the hook only prints that the scan was bypassed; nothing is recorded in the commit).
-- **Secret-scan the whole history** (already clean; CI runs this on every push to main and every PR):
+- **Secret-scan the whole history** (already clean; the `gitleaks` gate of `npm run ci:local` runs this before every land):
   ```bash
   gitleaks detect --no-banner --config .gitleaks.toml --report-path d:/tmp/gitleaks-report.json
   ```

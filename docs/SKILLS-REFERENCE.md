@@ -89,12 +89,12 @@ Initialize a new project with deep context gathering and project.md
 Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
 
 ```text
-/pan:autodev [run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]
+/pan:autodev [run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [local] [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]
 ```
 
 **Tools:** Read, Bash  
 **Group:** Phase Lifecycle  
-**Lines:** 75
+**Lines:** 76
 
 #### /pan:design-phase
 
@@ -769,7 +769,7 @@ These exist only in the PAN source repository (`.claude/commands/`) and are NOT 
 
 /execplan — Execute Work Plan Items
 
-**Lines:** 125
+**Lines:** 128
 
 #### /featureAI
 
@@ -934,6 +934,7 @@ Start a PAN Wizard development session by loading project context and checking s
 | Skill | Description |
 |-------|-------------|
 | `/audit-deployment` | Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs |
+| `/evolve-prompt` | Guarded prompt evolution (program S4) — evolve one section of one PAN judge prompt against training scenarios, accept it only on held-out data, with a deletion arm always run. Development only; paid. |
 | `/investigate` | Analyse something you bring (a news dump, article, paper, changelog, release notes — file path or pasted text) against PAN Wizard's existing features and write ADD / ENHANCE feature write-ups into docs/specs/investigations/ |
 | `/market-ideas` | Market idea scan for PAN Wizard — what shipped in the agent-tooling market (host tools, direct peers, new entrants, standards) since the last scan, triaged against the code and the ideas ledger into adopt / adapt / watch / skip, with a sized queue |
 
@@ -942,6 +943,12 @@ Start a PAN Wizard development session by loading project context and checking s
 Audit a PAN Wizard deployment — verify installation integrity, project health, and draft enhancement specs
 
 **Lines:** 385
+
+#### /evolve-prompt
+
+Guarded prompt evolution (program S4) — evolve one section of one PAN judge prompt against training scenarios, accept it only on held-out data, with a deletion arm always run. Development only; paid.
+
+**Lines:** 34
 
 #### /investigate
 
@@ -953,7 +960,7 @@ Analyse something you bring (a news dump, article, paper, changelog, release not
 
 Market idea scan for PAN Wizard — what shipped in the agent-tooling market (host tools, direct peers, new entrants, standards) since the last scan, triaged against the code and the ideas ledger into adopt / adapt / watch / skip, with a sized queue
 
-**Lines:** 222
+**Lines:** 224
 
 ---
 
@@ -1027,4 +1034,4 @@ Which tools each shipped skill can use:
 | Continuous improvement | `focus-auto --category <cat>` |
 | Execute micro-prompts | `focus-auto --category prompts` |
 | Feature investigation | `focus-design "description"` |
-| Doc hygiene | `focus-drift-walking` or `focus-doc-audit` |
+| Doc hygiene | `focus-auto --step drift` or `focus-docs` |

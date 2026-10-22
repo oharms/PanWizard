@@ -227,17 +227,30 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `planning-root.cjs` | **(v3.27)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
 | `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
-| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose`, `findings debt` and `findings suppressions`, and the MCP resource `pan://findings`. It is append-only and folded on read. A finding closes only on evidence (a judge's `resolved` answer, the verifier's `gaps_closed`, or a passing code fact); one a report neither repeats nor answers stays open as `unaddressed`. A regressed fix reopens, and deliberate dispositions stick, except that a dismissal only suppresses its finding until the file changes, and never a security or logic finding. Each recorded verdict is logged to the trace. |
+| `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose`, `findings debt`, `findings suppressions` and `findings prove`, and the MCP resource `pan://findings`. It is append-only and folded on read. A finding closes only on evidence (a judge's `resolved` answer, the verifier's `gaps_closed`, or a passing code fact); one a report neither repeats nor answers stays open as `unaddressed`. A regressed fix reopens, and deliberate dispositions stick, except that a dismissal only suppresses its finding until the file changes, and never a security or logic finding. Each recorded verdict is logged to the trace. |
 | `phase-gate.cjs` | **(program V1)** `phase gate <N>`: whether a phase may be marked complete, in code. Refuses (one reason code each) on a plan without a summary, no verification, a failed one (with code facts applied), `human_needed` without a recorded approval, a stale verification, a reconcile contradiction, a failed test gate, open critical/high findings, committed stubs, or a test-integrity violation; what it could not check is listed in `not_checked`. `phase complete`, the native `pan-exec-waves` script and the MCP merge request all use it. |
 | `verify-integrity.cjs` | **(program V3)** `verify test-integrity <phase>`: walks the phase's plan commits and reports a deleted test, a skip or only marker added (JS, Python, Go, Rust, Java), assertions dropped, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail; a renamed test is a warning. Uses verify-scope's `committedFiles()`. |
 | `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
 | `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. `review scope <phase>` (program R1): the files a reviewer reads (the phase's commits plus uncommitted and untracked work) and the plans' intent. Re-exported through verify.cjs. |
-| `plan-lint.cjs` | **(program P4, P2)** `verify review-focus <phase>`: every plan has a `## Review Focus` of at most five items, each naming its owning task and a test, or one `None — <reason>` line. `verify decisions <phase>`: plans cite only `DD-N` decision ids the phase design records, and every recorded decision is cited. `/pan:plan-phase` runs both with `verify plan-set` before the plan checker. |
+| `plan-lint.cjs` | **(program P4, P2)** `verify review-focus <phase>`: every plan has a `## Review Focus` of at most five items, each naming its owning task and a test, or one `None — <reason>` line. `verify decisions <phase>`: plans cite only `DD-N` decision ids the phase design records, and every recorded decision is cited. `/pan:plan-phase` runs both with `verify plan-set` before the plan checker. `verify gates <phase>`: a task's `<verify>` command that already passes before any work is flagged. |
 | `research-lint.cjs` | **(program P3)** `research lint <phase|path>`: the research file's `## Claims` table (claim · type · source · checked). A claim with no source or no date is an error; one older than its type's freshness window is `stale`. |
 | `usage.cjs` | **(program L9)** `usage`: a local census of the installed commands and agents against the project's cost ledger and trace sessions: used (calls, last use), never used, and commands started but never finished. Local files only. |
 | `test-gate.cjs` | **(program V2)** `test run` and `test detect`: finds the project's test command in any language (or `workflow.test_command`), runs it, parses the runner's output into stable failing-test ids, and compares a phase's run with its baseline (`{NN}-test-baseline.json`, `{NN}-test-run.json`). The phase gate and the verdict recorder read the run record. |
 | `verify-red.cjs` | **(program V4)** `verify red <phase>`: runs each test file the phase changed at the phase's base (in a throwaway worktree) and at HEAD; a test that passes before the phase's code exists is `not_red`. Also exports the phase-base and worktree helpers `verify mutate` uses. |
-| `mutate.cjs` | **(program V5)** `verify mutate --phase N`: a seeded sample of single-operator mutations on the lines the phase changed, each run against the whole suite in a worktree at HEAD; writes `{NN}-mutation.json`. Report-only under `workflow.mutation_gate`. |
+| `mutate.cjs` | **(program V5)** `verify mutate --phase N`: a seeded sample of single-operator mutations on the lines the phase changed, each run against the whole suite in a worktree at HEAD; writes `{NN}-mutation.json`. Report-only unless `workflow.mutation_gate` is `gate`. |
+| `autodev.cjs` | **(program A1)** `autodev run/resume/status`: the deterministic outer loop — reads `.planning/`, asks `next-action` for the next unit, decides in code whether to stop, runs each unit in a fresh headless host session; ledger and state under `.planning/autodev/`. |
+| `autodev-report.cjs` | **(program A5)** `autodev replay` (re-runs the stop logic over `blackbox.jsonl`) and `autodev report` (`dossier.md`/`dossier.html` beside the ledger). |
+| `failure-class.cjs` | **(program A4)** Classifies a failed autodev unit and routes it: retry with the error tail, fresh restart, tier escalation, quarantine, ask a human, or stop on budget. No CLI surface. |
+| `ci.cjs` | **(program A2)** CI as autodev's oracle: `gh pr checks` (`--ci`), or the project's own `npm run ci:local`/`npm test` (`--ci local`); fix rounds and a breaker. No CLI surface of its own. |
+| `hosts.cjs` | **(program A0)** One table of how PAN runs each host CLI: the autonomous runner argv, the model family, the read-only review argv, the headless harness argv. No CLI surface. |
+| `next-action.cjs` | **(program L7)** `next-action`: reads roadmap.md and the phase directories into the MCP orchestrator's snapshot and maps its decision to a command. |
+| `cross-family.cjs` | **(program R4)** `review cross-family <phase>`: one read-only review on another host's CLI, off unless `workflow.cross_family_review` names a host. |
+| `review-vote.cjs` | **(program R2)** `review vote`: merges k reviewer passes; a finding survives only with a quorum. |
+| `merge.cjs` | **(program L6a)** `merge request` / `merge confirm`: the human merge gate on the CLI; confirm only in an interactive terminal. |
+| `uat.cjs` | **(program L8)** `uat record` / `uat status`: UAT results written through the engine into `{phase}-uat.md`. |
+| `debug-cases.cjs` | **(program P5)** `debug repro <slug>` / `debug similar "<symptom>"`: a debug session's reproduction as its closing check, and the resolved case base. |
+| `state-write.cjs` | **(program A7b)** `state init`, `state section`, `state quick-task`, `state apply`: the writers of state.md as a whole or by section. |
+| `requirements-lint.cjs` | **(program V8)** `verify requirements` (EARS criteria) and `verify traceability` (runs each requirement's mapped tests); `phase complete` ticks through it. |
 
 ---
 
@@ -474,6 +487,28 @@ Quick reference of all CLI commands grouped by category.
 | 225 | `state snapshot` (alias of `state-snapshot`) | State | state.cjs |
 | 226 | `cost budget` | Cost | cost.cjs |
 | 227 | `usage` | Observability | usage.cjs |
+| 228 | `autodev run` | Autonomy | autodev.cjs |
+| 229 | `autodev resume` | Autonomy | autodev.cjs |
+| 230 | `autodev status` | Autonomy | autodev.cjs |
+| 231 | `autodev report` | Autonomy | autodev-report.cjs |
+| 232 | `autodev replay` | Autonomy | autodev-report.cjs |
+| 233 | `worktree preflight` | Autonomy | worktree.cjs |
+| 234 | `review cross-family` | Verification | cross-family.cjs |
+| 235 | `review vote` | Verification | review-vote.cjs |
+| 236 | `findings prove` | Evidence loop | findings.cjs |
+| 237 | `verify gates` | Verification | plan-lint.cjs |
+| 238 | `verify requirements` | Verification | requirements-lint.cjs |
+| 239 | `verify traceability` | Verification | requirements-lint.cjs |
+| 240 | `state init` | State | state-write.cjs |
+| 241 | `state section` | State | state-write.cjs |
+| 242 | `state quick-task` | State | state-write.cjs |
+| 243 | `state apply` | State | state-write.cjs |
+| 244 | `merge request` | Bot Army | merge.cjs |
+| 245 | `merge confirm` | Bot Army | merge.cjs |
+| 246 | `uat record` | Verification | uat.cjs |
+| 247 | `uat status` | Verification | uat.cjs |
+| 248 | `debug repro` | Verification | debug-cases.cjs |
+| 249 | `debug similar` | Verification | debug-cases.cjs |
 
 ---
 
@@ -822,6 +857,21 @@ pan-tools state record-session --stopped-at "Mid-task" --resume-file .planning/p
 ```
 
 The fields are `**Field:** value` lines (`Last session` or `Last Date`, `Stopped At`, `Resume File`); only the ones present are updated. When none is present it prints `{ "recorded": false, "reason": "No session fields found in state.md", "error": "session_fields_missing" }` and exits 1. `--raw` prints `true` or `false`.
+
+### `state init` · `state section <name>` · `state quick-task` · `state apply` (program A7b)
+
+The writers of state.md as a whole or by section; every shipped writer goes through them, so the pre-tool guard's `enforce` can deny a direct write.
+
+```bash
+pan-tools state init [--core-value V] [--focus F] [--phase N] [--phase-name S] [--total-phases N] [--status S] [--activity A] [--force] [--keep-context]
+pan-tools state section "<name>" (--append "<line>" | --set "<text>") [--under "<section>"]
+pan-tools state quick-task --description D --commit SHA --directory DIR [--status S] [--date YYYY-MM-DD]
+pan-tools state apply --json '{"fields": {...}, "sections": {"Name": {"append": [...]} | {"set": "..."}}}'
+```
+
+`init` writes a fresh state.md from the template's sections and refuses over an existing one (`state_exists`) unless `--force` (a backup is kept; `--keep-context` carries the old context over): `{written, path, backup, kept_context}`. `section` appends to or sets one section, creating it when missing. `quick-task` adds one row to the Quick Tasks Completed table (`--raw`: the row number). `apply` writes bold fields and sections in one write (`{written, updated[], failed[]}`). All but `init` need state.md (`state_missing`).
+
+**Module:** `state-write.cjs`
 
 ---
 
@@ -1359,7 +1409,7 @@ pan-tools validate consistency [--raw]
 
 ---
 
-### `validate health [--repair] [--standards] [--full] [--drift] [--links]`
+### `validate health [--repair [--only <class>,...]] [--standards] [--full] [--drift] [--links]`
 
 Comprehensive `.planning/` integrity check. Validates project.md, roadmap.md, state.md, config.json, phase directory naming, and orphaned plans. With `--standards`, also checks standards compliance. With `--drift`, runs convention drift analysis. With `--links`, attaches a doc-code link-graph summary (ADR-0027).
 
@@ -1378,6 +1428,7 @@ pan-tools validate health --links
 - `--full` — Run tests and build checks (slower, includes test_status and build_status)
 - `--drift` — Run convention drift analysis (includes drift_status with score and violations)
 - `--links` *(v3.8.0+)* — Attach `link_graph` summary (ADR-0027). Errors degrade health to a `LINKS_ERR` warning (advisory, non-blocking). Run `pan-tools links validate` standalone for the full finding list.
+- `--only <class>,...` — With `--repair`, run only the named repair classes (`regenerateState`, `createConfig`, `resetConfig`, `syncRequirements`, `syncRoadmap`); the result lists the available classes as `repairs_available`.
 
 **Exit code:** `1` when `status` is `broken` (a missing `.planning/` included), `0` for `healthy` and `degraded` — warnings are not failures. This is a verdict command: it sets the code explicitly instead of deriving it from an `error` key (see "Error Shape" above), so gate on the exit code, not on `errors.length`.
 
@@ -1764,6 +1815,40 @@ pan-tools verify decisions 3 --raw    # valid | invalid
 
 **Errors** (exit 1): `decision_unrecorded` (a plan cites an id the design does not record), `decision_uncited` (a recorded decision no plan cites), `decision_duplicate` (an id recorded twice). `status` is `checked`, `no_design` (nothing to check) or `legacy` (a design whose decisions carry no ids: a `decisions_without_ids` warning, never a refusal).
 
+### `verify gates <phase>`
+
+Runs each backticked command in every task's `<verify>` before any work. A gate that already passes (`gate_vacuous`, unless the verify text marks it a regression guard) or whose pattern does not compile (`gate_invalid`) is an error (exit 1).
+
+```bash
+pan-tools verify gates 3          # {phase, ok, gates: [{plan, task, command, status, regression_guard?}], errors[]}
+pan-tools verify gates 3 --raw    # valid | invalid
+```
+
+**Module:** `plan-lint.cjs`
+
+### `verify requirements` · `verify traceability [<REQ-ID> ...]` (program V8)
+
+`verify requirements` fails a v1 requirement in `requirements.md` with no EARS acceptance criterion (`req_no_scenario`, exit 1). `verify traceability` runs the tests each requirement's `Test:` sub-bullets name: `passed`, `failing` (exit 1; a missing test file counts), `not_checked` (a criterion with no mapped test) or `legacy` (no criteria). `phase complete` ticks a requirement with criteria only when its trace passes.
+
+```bash
+pan-tools verify requirements        # {ok, requirements: [{id, criteria, tests}], errors[]}; --raw valid | invalid
+pan-tools verify traceability        # {requirements: [{id, status, tests}], passed, failing, not_checked, legacy}; --raw passed | failing | not_checked
+```
+
+**Module:** `requirements-lint.cjs`
+
+### `uat record <phase> --test N --result pass|issue|skipped [--reported "..."] [--severity S] [--reason "..."]` · `uat status <phase>` (program L8)
+
+`record` sets one test's result in the phase's `{phase}-uat.md` and rebuilds `## Summary` and `## Gaps` (diagnosis fields a gap already carries survive); the session becomes `complete` when no test is pending. `--severity` is `blocker`, `major` (the default for an issue), `minor` or `cosmetic`. `status` prints the counts and the gaps (`--raw`: `N passed, M issues, K pending`). Exit 1 with `uat_not_found`, `invalid_result`, `invalid_severity` or `test_not_found`.
+
+**Module:** `uat.cjs`
+
+### `debug repro <slug> [--timeout <ms>]` · `debug similar "<symptom>" [--limit N]` (program P5)
+
+`repro` runs the `command:` in a debug session's `## Reproduction` (`.planning/debug/<slug>.md`, or `resolved/`): `{slug, result, closable, requirement, command, exit}`; `result` is `green` (exit 0), `red` or `none` (no command recorded; exit 1 unless green). `similar` ranks the resolved sessions by token overlap with the symptom: `{symptom, cases: [{slug, score, root_cause, fix, reproduction}]}` (top 5 by default; `--raw`: the slugs).
+
+**Module:** `debug-cases.cjs`
+
 ### `usage`
 
 Which of the installed commands and agents this project has used (program L9), from its own files only: the cost ledger (`command`, `agent` per row) and the trace sessions (`command`, `ended_at`). The inventory is the install `pan-tools` ships in: its `commands/pan/*.md` or `skills/pan-*`, and its `agents/pan-*`.
@@ -1817,6 +1902,12 @@ Off unless `workflow.cross_family_review` names a host (`claude`, `codex`, `copi
 Writes `.planning/reviews/<NN>/cross-family-<host>.md` with the host's answer. `review-deep merge … --cross-file <that file>` merges its findings as a fourth source (`coverage.by_source.cross_family`).
 
 **Module:** `cross-family.cjs`
+
+### `review vote [--phase N] [--quorum K] [--out <file>] <pass-file>...` (program R2)
+
+Merges k reviewer passes (`workflow.review_mode: lenses`): a finding survives only when a quorum of passes reported it (default: half the passes, rounded up), at the highest severity any pass gave it, and the verdict is recomputed from what survived. `--out` writes the merged report, which carries a normal `pan-verdict` block for `findings record`. Prints `{ok, passes, quorum, kept, dropped, verdict, out}` (`--raw`: the verdict); exit 1 on a pass with no readable block (`unreadable_pass`).
+
+**Module:** `review-vote.cjs`
 
 ### `verify red <phase> [--timeout <ms>]`
 
@@ -1967,11 +2058,11 @@ pan-tools progress health [--raw]
 
 ---
 
-### `autodev run|resume|status [--host H] [--max-usd N] [--max-turns N] [--run ID]`
+### `autodev run|resume|status|report|replay [--host H] [--max-usd N] [--max-usd-day N] [--max-turns N] [--run ID] [--worktrees] [--ci [local]] [--ci-rounds N] [--ci-push] [--ci-base REF]`
 
 The deterministic outer loop (programs A1a, A1c). A foreground process: each turn reads `.planning/`, asks `next-action` for the next unit, decides in code whether to stop, and runs the unit. Plan, execute and verify units each get a fresh headless session on `--host` (argv from `hosts.cjs`; Copilot CLI has no unattended adapter and is refused with `unsupported_host`); `complete_phase` runs `phase complete` in the engine.
 
-Stop reasons: `done` (the milestone audit is next), `human_needed` (a verification with `status: human_needed`, or no roadmap), `gate_failed` (`phase complete` refused), `budget_usd` (spend reached `--max-usd`), `turns` (`--max-turns` units, 20 by default), `no_progress` (the same unit again with the disk unchanged since it ran).
+Stop reasons: `done` (the milestone audit is next), `human_needed` (a verification with `status: human_needed`, or no roadmap), `gate_failed` (`phase complete` refused), `budget_usd` (spend reached `--max-usd`), `turns` (`--max-turns` units, 20 by default), `no_progress` (the same unit again with the disk unchanged since it ran), plus `forecast_exceeded` and `ci_failed` (below). `run` defaults to `--host claude`.
 
 Writes `.planning/autodev/<run>/run.json` and `ledger.jsonl`: a `started` row before each unit and a `finished` row after it (`argv`, `exit`, `cost_usd` from Claude's JSON envelope, `start_sha`, `end_sha`, `snapshot_after`), and a `stopped` row with the reason. `resume` continues the latest run (or `--run`), relaunching a unit that was in flight when it died. `.planning/autodev/state.json` keeps each phase's `verified` and `merged` facts. `status` reports the latest run.
 
@@ -1997,13 +2088,13 @@ The shadow-merge preflight (program A3). In a throwaway worktree at `--base` (HE
 
 ### `next-action`
 
-The one router `/pan:progress`, `/pan:resume` and the phase transition ask for the next step. It reads `roadmap.md` and the phase directories into the snapshot the MCP orchestrator's state machine keys on, and prints `{action, phase, reason, command}`.
+The one router `/pan:progress`, `/pan:resume` and the phase transition ask for the next step. It reads `roadmap.md` and the phase directories into the snapshot the MCP orchestrator's state machine keys on, and prints `{action, phase, reason, command, done}` (`--raw`: the command, or the action when there is none).
 
 ```bash
 pan-tools next-action
 ```
 
-`action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone` or `stop`; `command` is the command that carries it out (for example `/pan:plan-phase 3`).
+`action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` (no roadmap) or `stop`; `command` is the command that carries it out (for example `/pan:plan-phase 3`).
 
 **Module:** `next-action.cjs`
 
@@ -4385,6 +4476,7 @@ pan-tools findings dispose f_81ab3c9d20 --as dismissed --reason "generated file,
 pan-tools findings dispose --phase 3 --agent pan-reviewer --open --as deferred --reason "accepted at review: PASS_WITH_WARNINGS"
 pan-tools findings debt [--milestone v1.1] [--raw]
 pan-tools findings suppressions [--phase N] [--agent A] [--raw]
+pan-tools findings prove f_81ab3c9d20 --test .planning/reviews/3/proofs/catch.test.js [--timeout <ms>]
 ```
 
 **`findings record`** takes exactly one of `--file`, `--text` or `--stdin`, plus `--phase` and optionally `--agent`.
@@ -4403,6 +4495,8 @@ pan-tools findings suppressions [--phase N] [--agent A] [--raw]
 **Learned suppressions.** While the dismissed finding's file is unchanged, `findings record` filters the same judge's report of the same finding (same class family, same file, same truth or a similar summary). It is not one of the verdict's findings and is listed under `suppressed` as `{id, scope, summary}`. A suppression is a `candidate` in the phase it was dismissed in, and `promoted` to every phase once the same judge's finding was dismissed in two phases. Once the file changes, the suppression retires: a report of the finding reopens it, counted in `returned`. Logic findings (`defect`, `contradicts`, `missing`, `partial`), security findings (any `pan-hardener` finding, or a summary naming injection, auth, secrets, crypto and the like) and findings with no project file are never suppressed: a report of one reopens it. **`findings suppressions`** prints `{contract, suppressions[], active}`, each suppression `{id, agent, phase, class, file, summary, reason, scope, active}`; `--agent` keeps one judge's, `--phase` keeps that phase's candidates and every promoted one, and `--raw` prints the active count.
 
 **`findings debt`** is what `/pan:milestone-audit` reads for tech debt. For one milestone (default: the current one), it groups the `deferred` findings, each with the reason recorded at the time, and the `open` ones nobody disposed, by phase: `{contract, milestone, phases: [{phase, deferred[], open[]}], deferred_count, open_count}` (`--raw`: `N deferred, M open`).
+
+**`findings prove`** runs a catching test for a finding (program R5): it should pass at the phase's base and fail at HEAD. Prints `{id, status, test, base, command, base_exit, head_exit, detail?, confidence}`; `status` is `confirmed` (exit 0; `confidence: confirmed`), `fails_at_base`, `passes_at_head` or `not_checked` (exit 1; `confidence: candidate`). Each run appends a `proof` row to the ledger.
 
 **Finding vocabulary.** `class` is one of `missing`, `partial`, `contradicts`, `unrequested`, `defect`, `risk`, `quality`, `human`. `severity` is one of `critical`, `high`, `medium`, `low`, `info`. The shipped reference `pan-wizard-core/references/verdict-contract.md` maps each judge's own terms onto them.
 
@@ -4425,6 +4519,12 @@ Branch-per-agent git worktrees for the Build squad — each builder gets its own
 `worktree cleanup [--force]` is the campaign teardown sweep: removes every registered army worktree, prunes stale registrations, and deletes `army/*` branches — but a branch whose tip is **not reachable from HEAD** (squash-merged, or aborted work that exists nowhere else) is *kept* by default and listed with the exact command to delete it; a dirty worktree is likewise kept. `--force` sweeps both. The result reports `removed_worktrees`, `deleted_branches`, `kept` (each with a reason), `pruned`, and `clean`. Run it at campaign end and on any abort path; the per-task `worktree remove <path> --branch <name>` right after a squash-merge lands is the always-correct deletion, since at that moment the merge is the permanent artifact.
 
 **Module:** `worktree.cjs`
+
+### `merge request <branch> [--phase N] [--ci-green]` · `merge confirm <branch>` (program L6a)
+
+The human merge gate on the CLI, the same gate the MCP bridge uses. `request` stages the merge and prints the record without its approval token (`status: awaiting_approval`, `verify_pass`, `verify_source`, plus `gate` when `--phase` is given, in which case `verify_pass` is the phase gate's verdict, not the caller's word). `confirm` squash-merges only in an interactive terminal after the person types the branch name; without a TTY it exits 1 with `human_terminal_required`. There is no flag or environment variable that skips this.
+
+**Module:** `merge.cjs`
 
 ### `campaign schedule | status | due | record-run` (v3.12, ADR-0034)
 

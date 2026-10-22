@@ -47,7 +47,7 @@ must_haves: []
 
 **Common causes:**
 
-- Missing `wave` field (added in v0.1.0)
+- Missing `wave` field
 - `autonomous: true` but plan contains checkpoint tasks
 - Note: `verify plan-structure` checks that each field is present, not its format, so an unpadded phase number or an unquoted plan number does not cause this error
 

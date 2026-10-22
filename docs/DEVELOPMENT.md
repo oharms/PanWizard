@@ -45,7 +45,7 @@ pan-wizard/
         memory.cjs            # Agent memory store: cited, expiring entries, not loaded into agents (ADR-0036); memory-optimize.cjs and memory-rebuild.cjs (ADR-0040)
         agents-md.cjs         # AGENTS.md PAN section + CLAUDE.md block: the @AGENTS.md import and a Compact instructions section (shared by the installer and memory rebuild)
         cost.cjs              # Token ledger, dated rate table, managed modelPricing (Y-6); models check; the p10/p50/p90 cost forecast `preview phase` reports
-        cost-rebuild.cjs      # `cost rebuild`: the ledger regenerated from Claude Code transcripts (v3.29)
+        cost-rebuild.cjs      # `cost rebuild`: the ledger regenerated from Claude Code transcripts
         bus.cjs               # Agent message channels (Y-7)
         preview.cjs           # Foresight: phase blast radius, dependency graph (Y-1)
         review-deep.cjs       # Deep review merge (reviewer + hardener + meta) (Y-2)
@@ -58,9 +58,9 @@ pan-wizard/
         usage.cjs             # `usage`: local census of installed commands and agents (used, never used, unfinished) from the cost ledger and traces
         knowledge.cjs         # Grounded Q&A / discuss / playbook (Y-3)
         whatif.cjs            # Counterfactual phase replay in worktree (Y-4)
-        optimize.cjs          # Circular optimization loop (trace, learn, apply, revert) (v3.5)
-        git.cjs               # /pan:git command family (v3.5)
-        distill.cjs           # AI code-bloat 5-pass optimizer (v3.5)
+        optimize.cjs          # Circular optimization loop (trace, learn, apply, revert)
+        git.cjs               # /pan:git command family
+        distill.cjs           # AI code-bloat 5-pass optimizer
         doc-lint.cjs          # Markdown frontmatter+structure linter; `doc-lint counts` is release Gate 4
         links.cjs             # Doc–code link graph: `links validate` (ADR-0027); release Gate 5
         suggest.cjs           # "Did you mean" for unknown commands — error path only
@@ -71,7 +71,7 @@ pan-wizard/
         worktree.cjs          # Branch-per-agent git worktree isolation for parallel builders (ADR-0033)
         campaign.cjs          # Scheduled self-resuming army campaigns ("dreaming") (ADR-0034)
         hud.cjs               # Single self-contained HTML dashboard of project + bot army (ADR-0035)
-        phase-report.cjs      # Per-phase HTML report + timeline index (v3.15)
+        phase-report.cjs      # Per-phase HTML report + timeline index
         skill-align.cjs       # Skill-Aligned Decomposition pass for the planner (ADR-0038)
         hygiene.cjs           # Project cleanup + version alignment (scan/clean)
     mcp/                      # MCP bridge — the SERVER side: zero-dep JSON-RPC stdio server over pan-tools (ADR-0041)
@@ -86,10 +86,10 @@ pan-wizard/
       pan-statusline.js       # Writes context metrics bridge file
       pan-context-monitor.js  # PostToolUse hook — injects a context note before the host compacts (bridge file, else the session transcript)
       pan-check-update.js     # Periodic update check (spawns `npm view pan-wizard version`)
-      pan-cost-logger.js      # SubagentStop hook — appends cost record to tokens.jsonl (v3.4)
-      pan-trace-logger.js     # SubagentStop hook — circular optimization tracing (v3.5)
+      pan-cost-logger.js      # SubagentStop hook — appends cost record to tokens.jsonl
+      pan-trace-logger.js     # SubagentStop hook — circular optimization tracing
       pan-guard.js            # PreToolUse hook (BeforeTool on Gemini CLI, preToolUse on Copilot CLI) — reports or denies credential writes (A7)
-      pan-stop-guard.js       # Stop hook (AfterAgent on Gemini CLI, agentStop on Copilot CLI) — blocks the auto-advance boundary drop once (v3.24)
+      pan-stop-guard.js       # Stop hook (AfterAgent on Gemini CLI, agentStop on Copilot CLI) — blocks the auto-advance boundary drop once
       pan-state-reinject.js   # SessionStart hook, matcher compact (Claude Code, Codex); PreCompress then AfterTool on Gemini CLI, preCompact then postToolUse on Copilot CLI — re-injects the planning position after a compaction
   scripts/
     build-hooks.js            # Copy hooks/ → hooks/dist/ (no bundling)
@@ -223,8 +223,8 @@ describe('your feature', () => {
 The checks below decide this from the code rather than from the tests — the registry and the two lints run with the rest of the suite, the coverage gate as a run of its own (the plan is `docs/specs/testing-system-redesign-2026-09.md`):
 
 - **The surface registry.** `node scripts/test-surface.cjs --write` derives every shipped surface — verbs from the dispatcher's usage line, subcommands from its `Unknown … subcommand. Available:` strings, dispatcher `case` arms, installer flag literals, hook × runtime registrations from `HOOK_EVENT_MAP`, MCP tools and resources, config default keys, the content directories — into `tests/fixtures/surface.json`, which is committed and reviewed like code. `tests/surface-map.test.cjs` fails when the registry drifts from the code (`npm run test:surface`) and when a row is named by no test: a verb quoted or after `pan-tools`, a subcommand as `<verb> <sub>` (a comment counts), a flag as a literal, a hook together with its runtime, an MCP tool by name, a config key as a key. A row without a test goes in `tests/fixtures/surface-allowlist.json` **with a reason**, and the entry fails once a test names it. `node scripts/test-surface.cjs --scaffold <dir>` writes one todo stub per unreferenced row; that is how a suite rebuilt from an empty directory starts.
-- **The coverage gate.** `npm run test:coverage` runs the suite under Node's own instrumentation (Node 22+; the processes tests spawn are captured through the inherited `NODE_V8_COVERAGE`) and fails when a dispatcher `case` arm never executed, or when overall line or function coverage, or a module group's line coverage, falls below its floor in `tests/fixtures/coverage-policy.json` (set a point below the measured baseline). An arm no test dispatches yet is allowlisted there with a reason, and the entry fails once a test dispatches it. Release-check Gate 9 runs it; CI runs it as an advisory (`continue-on-error`) step on the Node 22 jobs.
-- **The quality lint.** `tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file and fails on the shapes that have passed while the feature they named was broken: an OR between result-status fields (`output || error` — a crash satisfies it), an in-process call to a lib module's `cmd*` function (they end in `output()`/`error()`, which exit the process, so the test child dies and `node --test` reports the file as one passing test — always go through `runPanTools`), `assert(true)`, CLI output asserted only by its length, a platform conditional that bare-returns instead of `t.skip(reason)`, a wall-clock bound under two seconds, a read of the real home directory, a committed `test.todo`, and an `assert.ok(a.x || a.y)` that only asks whether one of several fields exists. Exceptions live in `tests/fixtures/test-quality-allowlist.json` per file and rule with a count and a reason; an entry that allows more than the file has is stale and fails too.
+- **The coverage gate.** `npm run test:coverage` runs the suite under Node's own instrumentation (Node 22+; the processes tests spawn are captured through the inherited `NODE_V8_COVERAGE`) and fails when a dispatcher `case` arm never executed, or when overall line or function coverage, or a module group's line coverage, falls below its floor in `tests/fixtures/coverage-policy.json` (set a point below the measured baseline). An arm no test dispatches yet is allowlisted there with a reason, and the entry fails once a test dispatches it. Release-check Gate 9 runs it, and so does the `coverage` gate of `npm run ci:local`.
+- **The quality lint.** `tests/test-quality.test.cjs` applies `scripts/test-quality-lint.cjs` to every test file and fails on the shapes that have passed while the feature they named was broken: an OR between result-status fields (`output || error` — a crash satisfies it), an in-process call to a lib module's `cmd*` function (they end in `output()`/`error()`, which exit the process, so the test child dies and `node --test` reports the file as one passing test — always go through `runPanTools`), `assert(true)`, CLI output asserted only by its length, a platform conditional that bare-returns instead of `t.skip(reason)`, a wall-clock bound of two seconds or less, a read of the real home directory, a committed `test.todo`, and an `assert.ok(a.x || a.y)` that only asks whether one of several fields exists. Exceptions live in `tests/fixtures/test-quality-allowlist.json` per file and rule with a count and a reason; an entry that allows more than the file has is stale and fails too.
 - **The prompt-contract lint.** `tests/prompt-lint.test.cjs` applies `scripts/prompt-lint.cjs` to `commands/pan`, `agents` and `pan-wizard-core/workflows` and fails when a `pan-tools` call names a verb or subcommand the engine does not have, an agent is told to use a tool it is not granted, a prompt @-includes engine source, an AskUserQuestion offers more than four options, a spawn names no model (or a role spawn no agent type), or a shipped prompt sends the user to a dev-only skill. Exceptions live in `tests/fixtures/prompt-lint-allowlist.json` with a reason; a stale entry fails.
 
 The allowlists are the debt register: seeded from the suite as it stood on 2026-09-17 and burned down in the spec's phase 2 — the never-dispatched CLI arms and verbs and every "Unknown <group> subcommand" arm are now covered by `tests/dispatcher-arms.test.cjs`, which is driven from the dispatcher's own source rather than a hand-kept list.
@@ -245,7 +245,7 @@ npm run test:mutate                         # Report-only: which deliberate brea
 
 ## Local CI
 
-`npm run ci:local` (`scripts/local-ci.cjs`) runs the gates GitHub CI runs, on this machine and in parallel, so a change can be verified without a pull request. Each gate writes its log to `.ci-local/logs/<gate>.log`; the run writes `.ci-local/report.json` (gitignored) and prints a one-screen summary.
+`npm run ci:local` (`scripts/local-ci.cjs`) runs the gates GitHub CI used to run, on this machine and in parallel, so a change can be verified without a pull request. Each gate writes its log to `.ci-local/logs/<gate>.log`; the run writes `.ci-local/report.json` (gitignored) and prints a one-screen summary.
 
 | Gate | What it runs | Needs |
 |---|---|---|
@@ -386,7 +386,7 @@ References are knowledge documents in `pan-wizard-core/references/` that agents 
 | `design-methodology.md` | Shared design method — depth tiers and the quality bar that `pan-designer` (via `/pan:design-phase`) and `focus-design` both hold design artifacts to, and that `pan-design-checker` verifies against |
 | `git-integration.md` | Commit points, commit message formats, why per-task commits |
 | `git-planning-commit.md` | How pan-tools commits planning docs |
-| `guardrails.md` (v3.6.0+) | Behavioral guardrails — anti-patterns, Code Preservation Principle, Stop-the-Line Rule |
+| `guardrails.md` | Behavioral guardrails — anti-patterns, Code Preservation Principle, Stop-the-Line Rule |
 | `handoff-decisions.md` | Planner→executor decision-trace handoff (locked/open/rejected decisions) |
 | `model-profile-resolution.md` | Agent → model mapping with inherit logic |
 | `model-profiles.md` | quality/balanced/budget profile definitions |
@@ -434,7 +434,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full internal architecture guide.
 
 Quick summary: Commands -> Workflows -> Agents -> Core Library -> .planning/ state files
 
-### Bot Army subsystem (v3.11+)
+### Bot Army subsystem
 
 The army turns PAN's agents into a coordinated, role-scoped army. The substrate lives in core modules — `squads.cjs` (the role registry: architecture / build / quality / release), `worktree.cjs` (branch-per-agent git-worktree isolation so parallel builders never collide), `campaign.cjs` (scheduled, self-resuming "dreaming" campaigns), and `hud.cjs` (the single-file HTML dashboard) — driven by the `/pan:army` command, the `pan-conductor` agent (Mission Control — instructed to delegate rather than implement; its `tools:` grant is not narrowed to enforce that), and the `pan-release` agent (the human merge gate). The design rationale is recorded in [ADR-0032 (squad model)](decisions/ADR-0032-squad-model.md), [ADR-0033 (army campaign)](decisions/ADR-0033-army-campaign.md), [ADR-0034 (scheduled campaigns)](decisions/ADR-0034-scheduled-campaigns.md), and [ADR-0035 (army HUD dashboard)](decisions/ADR-0035-army-hud-dashboard.md).
 

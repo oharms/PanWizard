@@ -732,7 +732,7 @@ async function main() {
       } else if (subcommand === 'requirements') {
         require('./lib/requirements-lint.cjs').cmdVerifyRequirements(cwd, raw);
       } else if (subcommand === 'traceability') {
-        require('./lib/requirements-lint.cjs').cmdVerifyTrace(cwd, args.slice(2).filter((a) => /^[A-Z][A-Z0-9]*-d+$/.test(a)), raw);
+        require('./lib/requirements-lint.cjs').cmdVerifyTrace(cwd, args.slice(2).filter((a) => /^[A-Z][A-Z0-9]*-\d+$/.test(a)), raw);
       } else if (subcommand === 'mutate') {
         mutate.cmdVerifyMutate(cwd, {
           phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),

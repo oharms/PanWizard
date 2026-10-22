@@ -9,7 +9,7 @@ PAN ships a small set of built-in hooks that enhance the development experience 
 | `pan-statusline.js` | `statusLine` | Displays context window usage in the status bar and writes metrics to a bridge file |
 | `pan-context-monitor.js` | `PostToolUse` | Reads the bridge file, or the session transcript when there is none, and injects a note into the agent's context when the host will compact it soon |
 | `pan-check-update.js` | `SessionStart` | Checks for PAN updates in the background, caches result |
-| `pan-guard.js` | `PreToolUse` (Gemini CLI: `BeforeTool`; Copilot CLI: `preToolUse`) | Checks each file a tool call is about to write: a credential in the written text, a direct write to PAN's own state (`state.md`, `findings.jsonl`, the token ledger), a test file the phase in flight does not declare. `hooks.guard: report` (the default) logs each match to `.planning/guard.jsonl`; `enforce` also denies a credential write. |
+| `pan-guard.js` | `PreToolUse` (Gemini CLI: `BeforeTool`; Copilot CLI: `preToolUse`) | Checks each file a tool call is about to write: a credential in the written text, a direct write to PAN's own state (`state.md`, `findings.jsonl`, the token ledger), a judge agent writing outside the planning tree, a test file the phase in flight does not declare. `hooks.guard: report` (the default) logs each match to `.planning/guard.jsonl`; `enforce` also denies a credential write, a state write and a judge write. |
 | `pan-cost-logger.js` (v3.4+) | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
 | `pan-trace-logger.js` (v3.5+) | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:learn --optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
 | `pan-stop-guard.js` (v3.24+) | `Stop` (Gemini CLI: `AfterAgent`; Copilot CLI: `agentStop`) | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), no failure/gaps/blocker recorded in `state.md`, roadmap phases unbuilt — and tells the agent to continue the chain (P-1809/P-1810/P-1812). |
@@ -59,7 +59,7 @@ When Claude Code's payload carries `rate_limits` (a subscription's 5-hour and 7-
 
 **What it says — no countdown.** The note carries no figure. Vendor guidance is that a visible remaining-context number makes a model wrap up early and cut corners, and a STOP order after a tool result reads like an injection. So the note:
 - says it comes from the hook, not the user;
-- asks for a checkpoint in `.planning/state.md` (`/pan:pause` writes it);
+- asks for a checkpoint in `.planning/state.md` (`/pan:pause` writes it), or, in a project with no `.planning/state.md`, "wherever this project records its progress", with no `/pan:pause` hint;
 - says compaction is safe, because PAN restores the planning state afterwards;
 - asks for no shortcuts.
 
@@ -76,7 +76,7 @@ When Claude Code's payload carries `rate_limits` (a subscription's 5-hour and 7-
 - **After a compaction:** a `compact_boundary` record after the newest call means the context was just rebuilt, so there is no note until the next call measures it.
 - **The window:** from the model id on that record, by the rules of Claude Code's model-config page. On the Anthropic API, the models it lists with a native 1M window get 1M; the hook keeps that list in `modelWindowFor()`. Opus and Sonnet models without a native 1M window have 200K unless their `[1m]` variant is configured (`model` in settings, or `ANTHROPIC_MODEL`), and Haiku has 200K. A context past 200K can only be a 1M window, and that rule comes first. Otherwise `CLAUDE_CODE_DISABLE_1M_CONTEXT=1` means 200K everywhere. On Bedrock, Google Cloud or Foundry a native-1M model's window is unknown, and an unknown window gives no note rather than a guess.
 - **Subagents:** a tool call inside a subagent carries `agent_id`, and its payload still names the main transcript. The monitor measures the subagent's own file and never the main session's bridge: `agent_transcript_path` when the payload carries one, else `<session>/subagents/agent-<id>.jsonl`, or for a subagent the Workflow tool spawned, `<session>/subagents/workflows/<run>/agent-<id>.jsonl`. It debounces each subagent apart.
-- **Codex and Copilot:** Codex's transcript has another shape, so without a bridge the monitor stays silent there, as before. Copilot's documented payload is camelCase (`sessionId`, `transcriptPath`) and the monitor reads only `session_id`, so PAN's own Copilot registration (`.github/hooks/pan.json`) stays silent with or without a bridge; in a project that also has the Claude Code install, that copy steps aside for the `.claude/settings.json` registration, and what Copilot passes that one has not been observed.
+- **Codex and Copilot:** PAN does not register the monitor there. Codex has no status-line bridge and its transcript has another shape, and Copilot's documented payload is camelCase (`sessionId`, `transcriptPath`) while the monitor reads only `session_id`, so it could never measure on either; an upgrade removes an older install's entry. In a project that also has the Claude Code install, Copilot runs the `.claude/settings.json` registration, and what Copilot passes that one has not been observed.
 
 A fresh bridge still wins for a main-thread call: it is the status line's own reading. The harness scenario `context-note-headless` checks the fallback in a real `claude -p` session.
 
@@ -355,7 +355,7 @@ Tool call about to write a file (PreToolUse; Gemini BeforeTool, Copilot preToolU
     |
     v
 Guard (pan-guard.js)
-    | appends each match → .planning/guard.jsonl; under hooks.guard: enforce, denies a credential write
+    | appends each match → .planning/guard.jsonl; under hooks.guard: enforce, denies a credential, state or judge write
 
 Sub-agent finishes
     |

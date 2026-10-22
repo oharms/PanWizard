@@ -133,7 +133,7 @@ PAN emits all of these unconditionally. They pay off in full on Claude Code with
   - **Inspect and trim:** `pan-tools memory list` shows the logs, and `pan-tools memory compact <agent> <max>` trims one (the entries it drops are kept in `.planning/memory/archive/<agent>.md`).
 - **Milestone retrospective** — `/pan:retro` reports estimation accuracy, verification pass rates and the gap patterns that recur. Take a pattern that matters into the next milestone's plans or the project's instructions. Run after every `/pan:milestone-done`.
 - **Capability-aware routing** — when a task needs thinking, the fast tier upgrades to mid; when cache is warm and context is small, mid downgrades to fast. The rules live in `adjustTierForCapabilities()` in `core.cjs`, which `resolveModelDetailed()` applies when a hint is present. They act only on hints passed to `pan-tools resolve-model --metadata`, and no workflow passes them today.
-- **Commands the model can invoke** — Claude Code exposes the `/pan:<name>` commands to the model the same way it exposes skills, with their descriptions, so it can invoke them when relevant. (Installs by PAN 3.29.0 and earlier also wrote flat `.claude/skills/pan-*.md` shims for this; Claude Code only loads `skills/<name>/SKILL.md` directories, so the shims were never read, and upgrading removes them.)
+- **Commands stay out of the model's listing** — on Claude Code PAN's commands carry `disable-model-invocation: true`, so their descriptions are not sent to the model on every turn; you invoke them as `/pan:<name>`. (Installs by PAN 3.29.0 and earlier also wrote flat `.claude/skills/pan-*.md` shims for this; Claude Code only loads `skills/<name>/SKILL.md` directories, so the shims were never read, and upgrading removes them.)
 
 On lower tiers (mid/fast models) and non-Claude runtimes, features degrade gracefully: on OpenCode, Gemini CLI and Copilot CLI the installer turns each agent's `effort:` into a prose "think step-by-step" preamble (Codex gets it as its native `model_reasoning_effort`, and Claude Code reads `effort:` natively whatever the tier), caching is a no-op, and the map-codebase command's `estimate-size --threshold 700000` call decides the map mode (lower it in the command to force the sharded path). None of this is gated at runtime — no feature, mode, or routing decision checks your model name before choosing a code path. (`/pan:cost` does look up the model ID recorded in the metrics log to price your token usage, but that only affects the number in a cost report, not what PAN runs. On Claude Code the context monitor reads the model ID to know the window it measures against; that decides only whether and when its note appears.) The one model-name check you'll notice is advisory and runs once: at the end of install, the installer looks up the `model` field in your `settings.json` against a hand-maintained table of known model IDs (`detectModelCapabilities()` in `bin/install-lib.cjs`) and prints a note if that model is known to lack 1M context or extended thinking. The table recognizes the current generations by name and deliberately fails forward — the per-family threshold is the last reduced-capability release it records, not the newest release it lists, so any Claude ID newer than that boundary (a new major, or a later point release inside a major it already lists) inherits that family's modern profile rather than reading as capability-less, and upgrading to a new flagship doesn't produce a bogus warning. An ID resolves either by matching an explicit branch in the table or — for Claude names — by carrying a family plus a readable release number strictly newer than that family's last reduced-capability release; anything that resolves neither way reads as `tier: 'unknown'` with every capability flag false. That result may trigger the note spuriously. Either way it's a hint, never a block. Pass `--skip-warnings` to silence it.
 
@@ -505,6 +505,10 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "phase_record_compact": false,
     "phase_gate": "enforce",
     "mutation_gate": "report",
+    "mutation_floor": 0.6,
+    "review_mode": "single",
+    "cross_family_review": "off",
+    "worktree_isolation": false,
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
   "parallelization": true,
@@ -516,7 +520,9 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "micro_threshold_tasks": 3,
     "micro_threshold_files": 2,
     "enforce": false,
-    "verify_reserve": 0.15
+    "verify_reserve": 0.15,
+    "max_usd_run": null,
+    "max_usd_day": null
   },
   "commit": {
     "safety_checks": true,
@@ -1177,7 +1183,7 @@ Set `commit_docs: false` during `/pan:new-project` or with `pan-tools config-set
 
 ### PAN Update Overwrote My Local Changes
 
-Since v1.17, the installer backs up locally modified files to `pan-local-patches/`. Run `/pan:patches` to merge your changes back.
+The installer backs up locally modified files to `pan-local-patches/`. Run `/pan:patches` to merge your changes back.
 
 ### Subagent Appears to Fail but Work Was Done
 

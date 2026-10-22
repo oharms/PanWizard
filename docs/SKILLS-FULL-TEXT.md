@@ -364,14 +364,14 @@ GOOD: "Assumption: The project uses Express for routing — Evidence: require('e
 
 ---
 
-### /pan:autodev (75 lines)
+### /pan:autodev (76 lines)
 
 ````markdown
 ---
 name: pan:autodev
 group: Phase Lifecycle
 description: Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
-argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]"
+argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [local] [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]"
 allowed-tools:
   - Read
   - Bash
@@ -387,7 +387,7 @@ It stops in code, with one of these reasons:
 | `done` | Every phase is finished; the milestone audit is next |
 | `human_needed` | A verifier asked for a human check, or there is no roadmap |
 | `gate_failed` | The phase gate refused to complete a phase |
-| `ci_failed` | With `--ci`: the pull request checks still failed after the fix rounds |
+| `ci_failed` | With `--ci`: the pull request checks (or, with `--ci local`, the project's own gate) still failed after the fix rounds |
 | `forecast_exceeded` | An execute unit cost more than the project's p90 forecast for it |
 | `budget_usd` | Spend reached `--max-usd` (the run) or `--max-usd-day` (today, across runs) |
 | `turns` | `--max-turns` units have run (20 when not given) |
@@ -397,6 +397,7 @@ Two options change how units run:
 
 - `--worktrees`: a phase with two or more plans runs each plan in its own git worktree and session (`/pan:exec-phase N --plan <id>`). Plans of a wave that share a file run one after the other. Before a group of plans is merged back, `pan-tools worktree preflight` merges them onto HEAD in a throwaway worktree and runs the tests: branches that pass alone but break together, or conflict, stop the run for a human.
 - `--ci`: after each completed phase, the pull request's checks (GitHub's `gh` CLI) are the oracle. A check that already fails on the base branch is ignored. A failure starts a fix round, a fresh session given the failing checks and log; after `--ci-rounds` rounds (3) the run stops with `ci_failed`. The checks must be for HEAD: push the branch yourself, or pass `--ci-push` to have autodev push after each phase.
+- `--ci local`: the same rounds with no pull request: the oracle is the project's own gate, run here after each completed phase — `npm run ci:local` when `package.json` has that script, else `npm test`. Its exit code decides, and its output is the fix round's feedback.
 
 A failed session is classified before anything else happens: a compile or assertion failure is retried with its error in the prompt, then once more at a higher tier; a timeout or an unknown failure is restarted once; a missing CLI or login, a merge conflict, the guard's deny or an undeclared file stops for a human.
 </objective>
@@ -7404,7 +7405,49 @@ Read each doc and verify claims match the actual codebase:
 
 ---
 
-### /execplan (125 lines)
+### /evolve-prompt (34 lines)
+
+````markdown
+---
+name: evolve-prompt
+description: Guarded prompt evolution (program S4) — evolve one section of one PAN judge prompt against training scenarios, accept it only on held-out data, with a deletion arm always run. Development only; paid.
+argument-hint: "<agents/pan-x.md#Section> [--generations N] [--approve-usd N]"
+---
+
+# /evolve-prompt — guarded prompt evolution
+
+Evolve one section of one judge prompt (the verifier, reviewer, plan-checker or design-checker) and keep the change only if it holds on scenarios it was never shown. $ARGUMENTS
+
+## Rules that make it safe
+
+- **The evaluator is out of reach.** The evolver writes only under `harness/variants/` (`guardedWrite` in `harness/src/evolve.cjs`). It never edits the scorer (`harness/src/`), the corpus, the scenarios, the cassettes or the split (`harness/evolve/split.json`). A generation aborts if any of them changes while it runs. Do not edit them yourself during a run either.
+- **Held-out stays held out.** Reflection sees only the training scenarios' failing transcripts. The held-out scenarios decide acceptance and nothing else.
+- **A deletion arm always runs.** If removing the section scores the same as keeping it, the section is decorative: say so, and propose deleting it instead of evolving it.
+- **The owner approves the spend.** Reflection and scoring run a real model. Nothing runs without `--approve-usd` given by the owner for this run.
+
+## Steps
+
+1. **Plan.** Print the plan and show it to the owner:
+
+   ```bash
+   node harness/src/evolve.cjs --target <file>#<Section>
+   ```
+
+   It names the arms (baseline, candidate, deletion), the split, the acceptance rule (non-inferior on held-out data at δ 0.05, no worse on training) and that only `harness/variants/` is written. Ask for the dollar cap.
+
+2. **Baseline transcripts.** Run the training scenarios once at tier 1 with the approved cap (`node harness/src/run.cjs --tier 1 --max-usd <part of the cap> --scenario <each training id> --repeat 3`) and collect the failing steps from `report.json`.
+
+3. **Reflect.** Write one candidate section from those failures only: what the judge missed, and the smallest change to the section that would have caught it. Save it with `guardedWrite` as `harness/variants/<agent>.<section>.g<N>.md`.
+
+4. **Score.** Run each arm on training, then on held-out, paired, with `--variant <installed agent path>=<variant file>` for the candidate, the section removed for the deletion arm, and nothing for the baseline. Feed the counts to `runGeneration` (or read them off the reports) and report its result: rates per arm, the held-out interval, `section_matters`, accepted or the reason.
+
+5. **Keep or drop.** An accepted variant is a proposal: show the diff of the section and the numbers. The owner decides whether to copy it into the agent and open a PR. Repeat up to `--generations`, ranking accepted variants with `paretoFront` (pass rate, cost, turns).
+````
+
+
+---
+
+### /execplan (128 lines)
 
 ````markdown
 # /execplan — Execute Work Plan Items
@@ -7527,9 +7570,12 @@ Verify installed files are correct.
 ### Stage 6: Session End
 ```powershell
 cd d:\PanWizard
-git add -A
+git status --short
+git add -- <each file this session changed, by name>
 git commit -m "<type>: <summary of changes>"
 ```
+
+Stage the files by name. A whole-tree add sweeps in whatever else is there (a stray build, another session's edits, a bot's files). Check `git status --short` first and leave anything that is not this session's work unstaged.
 
 Report: items completed, tests passing, version.
 ````
@@ -7938,7 +7984,7 @@ Do not commit unless asked (`/commit`).
 
 ---
 
-### /market-ideas (222 lines)
+### /market-ideas (224 lines)
 
 ````markdown
 ---
@@ -8027,6 +8073,8 @@ Read, in this order, and note each one's date:
 - the four newest `docs/decisions/ADR-*.md` — decisions since the last scan, each a potential SKIP reason or a revisit trigger
 - `CHANGELOG.md` `[Unreleased]` — built but not shipped; a candidate that is already there is HAVE
 - memory notes `market-scan-*`, `market-fit-*`, `market-ideas-*` under the project memory directory — refuted claims and traps, so the scouts' prompts carry them
+
+Run the model-free watcher first: `node harness/autopilot/market-watch.cjs` evaluates the WATCH rows that carry a predicate in `docs/specs/watch-triggers.json` (npm dist-tags, GitHub releases, `CHANGELOG.md`, harness results) and appends what fired to `harness/autopilot/state/inbox.md`. Read the inbox: each fired trigger is a delta to check at its source in Phase 2, and becomes a candidate row, never a verdict. The watcher never writes the ledger. When a WATCH row's trigger can be checked by a machine and has no predicate yet, add one in Phase 3.
 
 Set the **delta window**: `--since` if given, else the newest run in the ledger's run log, else the newest dated section of the newest review. Under seven days ⇒ doctrine 8 applies.
 

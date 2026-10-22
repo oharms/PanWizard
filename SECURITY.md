@@ -7,7 +7,7 @@ PAN Wizard is a fast-moving project. Only the latest minor release receives secu
 | Version | Supported          |
 |---------|--------------------|
 | Latest minor release | :white_check_mark: |
-| Older releases | :x: — upgrade to the latest 3.x |
+| Older releases | :x: — upgrade to the latest release |
 
 Run `npm view pan-wizard version` to check the current release.
 
@@ -64,4 +64,4 @@ We coordinate disclosure with the reporter:
 - Hooks ship via `hooks/dist/`, a build-time copy of [hooks/](hooks/), as pure Node.js — copy-only, no bundler — auditable in one place.
 - The installer refuses to run inside its own source repo (`PAN_SOURCE_ROOT` guard in `bin/install.js`).
 - Every change to `main` passes the local gate first (`npm run ci:local`: the suite on Windows and Linux under Node 18, 20 and 22, the harness, gitleaks, `npm audit`, the coverage gate); `npm run land` refuses a commit without a full pass. GitHub CI then runs the suite on macOS.
-- CodeQL's `security-extended` suite runs weekly on the maintainer's machine (`npm run ci:schedule`) and on demand with `npm run ci:local -- --codescan`; a weekly `npm outdated` and `npm audit` job replaces Dependabot's pull requests. GitHub's Dependabot *alerts* stay on.
+- A weekly whole-tree code scan (the CodeQL CLI's `security-extended` suite when installed, else Semgrep in Docker) runs on the maintainer's machine from the tasks `npm run ci:schedule -- --install` registers, and on demand with `npm run ci:local -- --codescan`; a weekly `npm outdated` job replaces Dependabot's pull requests (`npm audit` runs in every `ci:local`). GitHub's Dependabot *alerts* stay on.
