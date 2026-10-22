@@ -226,10 +226,11 @@ describe('Agent Plugins bundle (ADR-0045): emitted tree conforms to the pinned s
     // These are the forms that mean "where PAN was installed" and can only be
     // wrong in a bundle. A bare `.claude/` in a sentence that lists all five
     // runtime directories is a description of a project layout, not a path
-    // PAN will resolve — the installer leaves those too.
+    // PAN will resolve — the installer leaves those too. CHANGELOG.md is the release
+    // history, copied verbatim for `/pan:update` to point at: it quotes old paths.
     const bad = [/~\/\.claude\//, /\.\/\.claude\//, /\.claude\/pan-wizard-core/, /\.agents\/pan-wizard-core/, /\$\{CLAUDE_PLUGIN_ROOT\}/];
     const leaks = [];
-    for (const file of [...walkMd(skillsDir), ...walkMd(coreDir)]) {
+    for (const file of [...walkMd(skillsDir), ...walkMd(coreDir)].filter(f => path.basename(f) !== 'CHANGELOG.md')) {
       const text = fs.readFileSync(file, 'utf8');
       for (const re of bad) if (re.test(text)) leaks.push(`${path.relative(OUT, file)}: ${re}`);
     }

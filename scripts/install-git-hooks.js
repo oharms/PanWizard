@@ -57,12 +57,14 @@ try {
 //    through `prepare`, every Linux and macOS checkout was left with a one-bit dirty
 //    tree that nothing looked at until CI began asserting the tree is unchanged
 //    (2026-09-17).
-const hookFile = path.join(REPO_ROOT, HOOKS_DIR, 'pre-commit');
+// pre-push is tracked here too but stays inert until `npm run hooks:pre-push` opts in.
 if (process.platform !== 'win32') {
-  try {
-    fs.chmodSync(hookFile, 0o755);
-  } catch {
-    // Best effort.
+  for (const name of ['pre-commit', 'pre-push']) {
+    try {
+      fs.chmodSync(path.join(REPO_ROOT, HOOKS_DIR, name), 0o755);
+    } catch {
+      // Best effort.
+    }
   }
 }
 

@@ -101,6 +101,8 @@ pan-wizard/
     npm-dist-tag.js           # Prints the npm dist-tag a version publishes under (next for a prerelease, latest otherwise)
     run-tests.cjs             # Glob-free test runner (the CI matrix shells do not expand test globs)
     install-git-hooks.js      # `prepare` script — points core.hooksPath at scripts/git-hooks/ (the gitleaks pre-commit scan)
+    local-ci.cjs              # The CI gates on this machine (`npm run ci:local`); see Local CI
+    install-pre-push.cjs      # Opt-in switch for the pre-push hook (`npm run hooks:pre-push`, `-- --off`)
     generate-skills-docs.py   # Regenerates docs/SKILLS-REFERENCE.md and docs/SKILLS-FULL-TEXT.md
     test-surface.cjs          # Shipped-surface registry → tests/fixtures/surface.json (--write/--check/--map/--scaffold); also the liveness registry (--liveness)
     coverage-gate.cjs         # Suite under Node coverage: dispatcher arms + floors (release Gate 9)
@@ -108,7 +110,7 @@ pan-wizard/
     prompt-lint.cjs           # Prompt-contract lint over shipped prompts, applied by tests/prompt-lint.test.cjs
     build-help.cjs            # Writes /pan:help's command index from command frontmatter (--write, --check); tests/help-generated.test.cjs fails when stale
     mutation-probe.cjs        # Report-only mutation probe (npm run test:mutate)
-    git-hooks/                # Tracked pre-commit hook (gitleaks)
+    git-hooks/                # Tracked hooks: pre-commit (gitleaks), pre-push (local CI fast subset; inert until opted in)
   harness/                    # PAN Harness — behavioural scenarios against installs built from a packed artifact (ADR-0047); not shipped
   marketplace/                # Local command-source Claude plugin marketplace for the dev loop; not shipped
   .agents/plugins/marketplace.json   # Codex marketplace → ./dist/pan-agent-plugin (build first)
@@ -135,6 +137,7 @@ npm run test:all     # Run all tests (unit + scenario)
 npm run build:hooks  # Copy hooks from hooks/ to hooks/dist/ (no bundling — pure Node.js)
 npm run release:check   # The release gates — what `npm publish` runs via prepublishOnly (see Release Process)
 npm run harness         # Tier 0 of the behavioural harness: model-free, free (see Behavioural Harness)
+npm run ci:local        # Every CI gate on this machine, in parallel (see Local CI)
 ```
 
 ### Local Testing
@@ -237,6 +240,43 @@ npm run test:coverage                       # The suite under coverage: dispatch
 npm run harness                             # Tier 0 of the PAN Harness: behavioural, model-free, free
 npm run test:mutate                         # Report-only: which deliberate breakages the suite fails to notice
 ```
+
+## Local CI
+
+`npm run ci:local` (`scripts/local-ci.cjs`) runs the gates GitHub CI runs, on this machine and in parallel, so a change can be verified without a pull request. Each gate writes its log to `.ci-local/logs/<gate>.log`; the run writes `.ci-local/report.json` (gitignored) and prints a one-screen summary.
+
+| Gate | What it runs | Needs |
+|---|---|---|
+| `host-node18`, `-20`, `-22` | The unit and scenario suite on the host, once per Node version | fnm with those versions; without fnm, the suite runs once on the current Node (`host-node<current>`) and the others are reported skipped |
+| `linux-node18`, `-20`, `-22` | The suite in `node:<N>-bookworm` containers: the checkout is mounted read-only, copied in without `node_modules` and `.git`, given its own one-commit repo, then `npm ci`, `build:hooks` and `test:all` as the unprivileged `node` user (as root, the tests that force a failed write on a read-only file cannot fail the write) | Docker running |
+| `harness` | The PAN Harness at tier 0 with `--no-ledger` | — |
+| `gitleaks` | `gitleaks detect` over the history with `.gitleaks.toml` | gitleaks |
+| `audit` | `npm audit --omit=dev --audit-level=high` | network |
+| `links` | `pan-tools links validate` | — |
+| `surface` | `scripts/test-surface.cjs --check` (the suite checks it too; this gate names the failure) | — |
+| `coverage` | `scripts/coverage-gate.cjs` | Node 22+ |
+| `codescan` | Only with `--codescan`: Semgrep in Docker (`p/javascript`, `p/nodejs`) on the JavaScript files changed against `main` (`--codescan-all` for the whole tree), or the CodeQL CLI's `security-extended` suite with `--codescan=codeql` | Docker, or the CodeQL CLI |
+| `clean-tree` | After every other gate: the working tree is as it was when the run started. Work you had not committed is fine; a gate that writes into the checkout is not | git |
+
+Whole-suite runs are scheduled so they do not starve each other: the three containers run first, together, then the host suite runs (one per Node version, then the coverage gate, which runs the suite again under instrumentation) one at a time. A host suite run beside another one, or beside the containers, times its 30-second setup hooks out. The harness and the light gates run beside all of it. Each gate gets its own temp directory, so a test that uses a fixed name under the OS temp directory never meets another gate's copy of itself; a failed gate's temp directory is kept. One run per checkout: `.ci-local/run.lock` refuses a second.
+
+A tool that is not installed is reported **SKIP** with how to install it, never PASS, and the summary says skipped gates did not run. Any FAIL exits 1; `--strict` makes a skip fail too. Other flags: `--only host,gitleaks` (gates whose id starts with a listed name), `--no-docker`, `--jobs N` (light gates at once, default 6), `--root <dir>`, `--json`.
+
+What stays on GitHub: the macOS jobs (no local substitute; they caught the 8 KB stdout truncation in PR #52) and the npm release, which publishes with provenance through OIDC trusted publishing.
+
+**Tools.** Install once (`winget` on Windows):
+
+```bash
+winget install gitleaks.gitleaks
+```
+
+```bash
+winget install Schniz.fnm
+```
+
+then, in a new shell, `fnm install 18`, `fnm install 20` and `fnm install 22`. The pre-commit hook starts scanning as soon as gitleaks is on `PATH`.
+
+**Pre-push hook.** `scripts/git-hooks/pre-push` runs `local-ci.cjs --fast`: the suite on the current Node, the harness at tier 0 and gitleaks. It is tracked, but does nothing until you opt in for your clone with `npm run hooks:pre-push` (sets `git config pan.prePush true`; `npm run hooks:pre-push -- --off` clears it). Bypass once with `SKIP_PREPUSH=1 git push` or `git push --no-verify`.
 
 ## Cross-Platform Considerations
 

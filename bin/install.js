@@ -2281,6 +2281,8 @@ function install(isGlobal, runtime = 'claude') {
       // With its newline, as the per-runtime core writes it: `/pan:update` cats the file
       // and prints the runtime flag next, which glued onto a bare version.
       try { fs.writeFileSync(path.join(sharedCoreDest, 'VERSION'), pkg.version + '\n'); } catch { /* non-fatal */ }
+      // `/pan:update` points at the changelog beside VERSION, so the shared core carries it too.
+      try { fs.copyFileSync(path.join(src, 'CHANGELOG.md'), path.join(sharedCoreDest, 'CHANGELOG.md')); } catch { /* non-fatal */ }
 
       // Canonical agent-definition reference copies (ADR-0028 agent-ref
       // canonicalization): shared content references these instead of the

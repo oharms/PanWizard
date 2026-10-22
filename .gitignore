@@ -42,6 +42,9 @@ test_output.txt
 .claude/scheduled_tasks.lock
 .claude/*.lock
 
+# Local CI reports and logs (scripts/local-ci.cjs)
+.ci-local/
+
 # Build artifacts
 hooks/dist/
 *.tgz

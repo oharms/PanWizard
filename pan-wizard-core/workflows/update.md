@@ -197,7 +197,7 @@ Format completion message (changelog was already shown in confirmation step):
 
 ⚠️  Restart your AI coding tool to pick up the new commands.
 
-[View full changelog](https://github.com/oharms/PanWizard/blob/main/CHANGELOG.md)
+Full changelog: ~/.claude/pan-wizard-core/CHANGELOG.md
 ```
 </step>
 
