@@ -227,8 +227,10 @@ function list({ root, exec = schtasks }) {
   for (const job of JOBS) {
     const q = exec(['/Query', '/TN', taskName(job), '/FO', 'LIST', '/V']);
     const field = (k) => ((q.stdout || '').match(new RegExp(`^${k}:\\s*(.*)$`, 'm')) || [])[1] || '—';
+    // 267011 is SCHED_S_TASK_HAS_NOT_RUN; its Last Run Time is a 1999 placeholder.
+    const last = field('Last Result') === '267011' ? 'never run' : `${field('Last Run Time')} (result ${field('Last Result')})`;
     lines.push(q.status === 0
-      ? `${taskName(job)}  ${DAYS[job.day]} ${job.time}  next: ${field('Next Run Time')}  last: ${field('Last Run Time')} (result ${field('Last Result')})`
+      ? `${taskName(job)}  ${DAYS[job.day]} ${job.time}  next: ${field('Next Run Time')}  last: ${last}`
       : `${taskName(job)}  not installed`);
     const l = latest[job.id];
     lines.push(`  latest report: ${l ? `${l.at.slice(0, 16)} ${l.status} — ${l.report}` : 'none yet'}`);

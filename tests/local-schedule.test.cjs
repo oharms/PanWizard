@@ -103,7 +103,7 @@ describe('local-schedule: against a fake schtasks', () => {
     fs.mkdirSync(S.reportDir(root, 'outdated'), { recursive: true });
     fs.writeFileSync(path.join(S.reportDir(root, 'outdated'), 'last-run.json'), JSON.stringify({ job: 'outdated', status: 'report', at: '2026-10-19T09:00:04.000Z', report: '.ci-local/scheduled/outdated/x.md' }));
     const out = S.list({ root, exec: f.exec });
-    assert.match(out, /PanWizard-codescan {2}Sunday 03:00 {2}next: 25\/10\/2026 03:00:00/);
+    assert.match(out, /PanWizard-codescan {2}Sunday 03:00 {2}next: 25\/10\/2026 03:00:00 {2}last: never run/);
     assert.match(out, /PanWizard-outdated {2}not installed/);
     assert.match(out, /latest report: 2026-10-19T09:00 report — \.ci-local\/scheduled\/outdated\/x\.md/);
     fs.rmSync(root, { recursive: true, force: true });
