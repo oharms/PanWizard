@@ -101,6 +101,10 @@ pan-wizard/
     npm-dist-tag.js           # Prints the npm dist-tag a version publishes under (next for a prerelease, latest otherwise)
     run-tests.cjs             # Glob-free test runner (the CI matrix shells do not expand test globs)
     install-git-hooks.js      # `prepare` script — points core.hooksPath at scripts/git-hooks/ (the gitleaks pre-commit scan)
+    local-ci.cjs              # The CI gates on this machine (`npm run ci:local`); see Local CI
+    install-pre-push.cjs      # Opt-in switch for the pre-push hook (`npm run hooks:pre-push`, `-- --off`)
+    land.cjs                  # Squash-land a branch on main after a passing ci:local (`npm run land -- <branch>`)
+    local-schedule.cjs        # Weekly Task Scheduler checks: code scan, npm outdated, market watch (`npm run ci:schedule`)
     generate-skills-docs.py   # Regenerates docs/SKILLS-REFERENCE.md and docs/SKILLS-FULL-TEXT.md
     test-surface.cjs          # Shipped-surface registry → tests/fixtures/surface.json (--write/--check/--map/--scaffold); also the liveness registry (--liveness)
     coverage-gate.cjs         # Suite under Node coverage: dispatcher arms + floors (release Gate 9)
@@ -108,7 +112,7 @@ pan-wizard/
     prompt-lint.cjs           # Prompt-contract lint over shipped prompts, applied by tests/prompt-lint.test.cjs
     build-help.cjs            # Writes /pan:help's command index from command frontmatter (--write, --check); tests/help-generated.test.cjs fails when stale
     mutation-probe.cjs        # Report-only mutation probe (npm run test:mutate)
-    git-hooks/                # Tracked pre-commit hook (gitleaks)
+    git-hooks/                # Tracked hooks: pre-commit (gitleaks), pre-push (local CI fast subset; inert until opted in)
   harness/                    # PAN Harness — behavioural scenarios against installs built from a packed artifact (ADR-0047); not shipped
   marketplace/                # Local command-source Claude plugin marketplace for the dev loop; not shipped
   .agents/plugins/marketplace.json   # Codex marketplace → ./dist/pan-agent-plugin (build first)
@@ -135,6 +139,7 @@ npm run test:all     # Run all tests (unit + scenario)
 npm run build:hooks  # Copy hooks from hooks/ to hooks/dist/ (no bundling — pure Node.js)
 npm run release:check   # The release gates — what `npm publish` runs via prepublishOnly (see Release Process)
 npm run harness         # Tier 0 of the behavioural harness: model-free, free (see Behavioural Harness)
+npm run ci:local        # Every CI gate on this machine, in parallel (see Local CI)
 ```
 
 ### Local Testing
@@ -237,6 +242,71 @@ npm run test:coverage                       # The suite under coverage: dispatch
 npm run harness                             # Tier 0 of the PAN Harness: behavioural, model-free, free
 npm run test:mutate                         # Report-only: which deliberate breakages the suite fails to notice
 ```
+
+## Local CI
+
+`npm run ci:local` (`scripts/local-ci.cjs`) runs the gates GitHub CI runs, on this machine and in parallel, so a change can be verified without a pull request. Each gate writes its log to `.ci-local/logs/<gate>.log`; the run writes `.ci-local/report.json` (gitignored) and prints a one-screen summary.
+
+| Gate | What it runs | Needs |
+|---|---|---|
+| `host-node18`, `-20`, `-22` | The unit and scenario suite on the host, once per Node version | fnm with those versions; without fnm, the suite runs once on the current Node (`host-node<current>`) and the others are reported skipped |
+| `linux-node18`, `-20`, `-22` | The suite in `node:<N>-bookworm` containers: the checkout is mounted read-only, copied in without `node_modules` and `.git`, given its own one-commit repo, then `npm ci`, `build:hooks` and `test:all` as the unprivileged `node` user (as root, the tests that force a failed write on a read-only file cannot fail the write) | Docker running |
+| `harness` | The PAN Harness at tier 0 with `--no-ledger`, requiring the double-backed scenarios to run (`--require-run`), so a missing Claude Code CLI fails instead of skipping | the Claude Code CLI |
+| `gitleaks` | `gitleaks detect` over the history with `.gitleaks.toml` | gitleaks |
+| `audit` | `npm audit --omit=dev --audit-level=high` | network |
+| `links` | `pan-tools links validate` | — |
+| `surface` | `scripts/test-surface.cjs --check` (the suite checks it too; this gate names the failure) | — |
+| `coverage` | `scripts/coverage-gate.cjs` | Node 22+ |
+| `codescan` | Only with `--codescan`: the CodeQL CLI's `security-extended` suite over the whole tree when it is installed, failing on a result at error level or with a security severity of high or above (what GitHub's code-scanning check blocked on) unless its rule and file are accepted, with a reason, in `.codeql-accepted.json` (seeded from the alerts dismissed on GitHub; an acceptance that no longer matches is reported stale); else Semgrep in Docker (`p/javascript`, `p/nodejs`) on the JavaScript files changed against `main` (`--codescan-all` for the whole tree). `--codescan=codeql` or `=semgrep` picks one | the CodeQL CLI, or Docker |
+| `clean-tree` | After every other gate: the working tree is as it was when the run started. Work you had not committed is fine; a gate that writes into the checkout is not | git |
+
+Whole-suite runs are scheduled so they do not starve each other: the three containers run first, together, then the host suite runs (one per Node version, then the coverage gate, which runs the suite again under instrumentation) one at a time. A host suite run beside another one, or beside the containers, times its 30-second setup hooks out. The harness and the light gates run beside all of it. Each host suite run also caps how many test files run at once (`PAN_TEST_CONCURRENCY`, read by `scripts/run-tests.cjs`; half the cores, at most 16): Node's default of one file per core but one made the Node 22 suite's wall-clock checks miss their bounds on a 40-core machine even alone, which GitHub's 4-core runners never saw. Each gate gets its own temp directory, so a test that uses a fixed name under the OS temp directory never meets another gate's copy of itself; a failed gate's temp directory is kept. One run per checkout: `.ci-local/run.lock` refuses a second.
+
+A tool that is not installed is reported **SKIP** with how to install it, never PASS, and the summary says skipped gates did not run. Any FAIL exits 1; `--strict` makes a skip fail too. Other flags: `--only host,gitleaks` (gates whose id starts with a listed name), `--no-docker`, `--jobs N` (light gates at once, default 6), `--root <dir>`, `--out <dir>` (report, logs and lock somewhere other than `.ci-local/`), `--json`.
+
+A full run (no `--only`, no `--fast`) also records its verdict for the commit it ran on in the git directory (`pan-ci-local/<sha>.json`, shared by every worktree). That record is what `npm run land` checks.
+
+What stays on GitHub: the macOS jobs in `.github/workflows/ci.yml` (no Mac here; they caught the 8 KB stdout truncation in PR #52) and the npm release (`release.yml`), which publishes with provenance through OIDC trusted publishing.
+
+**Tools.** Install once (`winget` on Windows):
+
+```bash
+winget install --id Gitleaks.Gitleaks -e
+```
+
+```bash
+winget install --id Schniz.fnm -e
+```
+
+then, in a new shell, `fnm install 18`, `fnm install 20` and `fnm install 22`. The pre-commit hook starts scanning as soon as gitleaks is on `PATH`. For CodeQL (free for this public repository), download `codeql-bundle-win64.tar.gz` from the latest `codeql-bundle-v*` release of `github/codeql-action`, check it against the `.checksum.txt` beside it, and unpack it to `%USERPROFILE%\.codeql-cli`, where `local-ci.cjs` finds `codeql\codeql.exe` without a `PATH` entry. Keep tool data out of `AppData` when installing from a packaged app's terminal (the Claude desktop app's included): its writes there go to a private, virtualised copy that your own shells and Task Scheduler never see. That is why the bundle goes under `%USERPROFILE%`, and why `FNM_DIR` is set to `%USERPROFILE%\.fnm` (`setx FNM_DIR %USERPROFILE%\.fnm`) before `fnm install`. The CodeQL download:
+
+```bash
+gh release download -R github/codeql-action -p "codeql-bundle-win64.tar.gz*"
+```
+
+### Landing a change
+
+With no pull request, a change goes branch → `ci:local` → `land`:
+
+1. Work on a branch. Keep it up to date with `origin/main` (merge or rebase).
+2. Commit everything, then run the full `npm run ci:local` on that commit. It has to start from a clean tree: uncommitted work means the gates did not test the commit alone, and `land` refuses that verdict.
+3. `npm run land -- <branch>` (`scripts/land.cjs`). It refuses unless the full run passed on the branch's current HEAD with no gate skipped (`--allow-skips` overrides that one) and the branch contains `origin/main`. Then it fetches, fast-forwards `main` to `origin/main` in the checkout that has `main` (or a temporary worktree), squash-merges the branch, checks that the result is exactly the tree `ci:local` passed, commits it with the branch's summary (the first commit's subject, or `--title`; the body lists every commit), and pushes `main` to `origin`. It never force-pushes; a rejected push leaves the commit on the local `main` and says so. `--dry-run` shows the commit without making it, `--no-push` stops before the push.
+
+GitHub is the mirror and the publisher. Branch protection on `main` that requires checks GitHub no longer runs will reject `land`'s push until those required checks are changed in the repository settings (only the macOS `test` jobs still report).
+
+### Scheduled checks
+
+`npm run ci:schedule -- --install` (`scripts/local-schedule.cjs`) registers three weekly Windows Task Scheduler tasks for the current user (no admin), in place of GitHub's scheduled workflows and Dependabot:
+
+| Task | When | Runs |
+|---|---|---|
+| `PanWizard-codescan` | Sunday 03:00 | `local-ci.cjs --only codescan --codescan-all`: CodeQL over the whole tree when installed, else Semgrep in Docker |
+| `PanWizard-outdated` | Monday 09:00 | `npm outdated`, as a table of current, wanted and latest versions |
+| `PanWizard-market-watch` | Monday 09:10 | `harness/autopilot/market-watch.cjs` |
+
+A run missed while the machine was off starts when it is next on. The tasks run in the repository's main worktree (`--root` picks another checkout; `--node` another `node.exe`) and write to `.ci-local/scheduled/<task>/` there: a dated `.md` summary, its `.log`, and `last-run.json`, which the weekly State of PAN (`harness/autopilot/state-of-pan.cjs`) links. `--list` shows the tasks, their last result and the latest reports; `--uninstall` removes exactly the tasks `--install` added; `--run <codescan|outdated|market-watch>` runs one by hand. Off Windows, `--install` prints the equivalent crontab lines.
+
+**Pre-push hook.** `scripts/git-hooks/pre-push` runs `local-ci.cjs --fast`: the suite on the current Node, the harness at tier 0 and gitleaks. It is tracked, but does nothing until you opt in for your clone with `npm run hooks:pre-push` (sets `git config pan.prePush true`; `npm run hooks:pre-push -- --off` clears it). Bypass once with `SKIP_PREPUSH=1 git push` or `git push --no-verify`.
 
 ## Cross-Platform Considerations
 
@@ -404,7 +474,7 @@ Releases are published by CI from a tag; nothing is published from a laptop. The
 2. **Refresh the counts table** in `CLAUDE.md` with the snippet it carries — the only place counts live — and, if any command or dev skill changed, regenerate the skills docs: `python scripts/generate-skills-docs.py`.
 3. **Bump the version** in `package.json` and `package-lock.json` — and the `version` of the `pan-wizard` entry in `.github/plugin/marketplace.json`, which a test pins to it.
 4. **Turn `## [Unreleased]` into `## [x.y.z] - YYYY-MM-DD`** in `CHANGELOG.md`.
-5. **Commit as `release(x.y.z): …`** on a `release/vx.y.z` branch and open a PR to `main`. The required checks (secret scan, audit, the OS × Node test matrix) must be green before merge; CodeQL also runs but is not a required check.
+5. **Commit as `release(x.y.z): …`** on a `release/vx.y.z` branch, run the full `npm run ci:local` on it, and land it with `npm run land -- release/vx.y.z` (see Landing a change). The macOS jobs in `ci.yml` run on the push to `main`.
 6. **Tag the merge commit and push the tag by explicit refspec:**
 
    ```bash

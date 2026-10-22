@@ -14,7 +14,10 @@
     "hooks/dist",
     "scripts",
     "assets",
-    "pan-zcode"
+    "pan-zcode",
+    "docs",
+    "!docs/branding/assets",
+    "CHANGELOG.md"
   ],
   "keywords": [
     "claude",
@@ -73,6 +76,11 @@
     "test:coverage": "node scripts/coverage-gate.cjs",
     "test:surface": "node scripts/test-surface.cjs --check",
     "test:mutate": "node scripts/mutation-probe.cjs",
+    "ci:local": "node scripts/local-ci.cjs",
+    "ci:local:fast": "node scripts/local-ci.cjs --fast",
+    "hooks:pre-push": "node scripts/install-pre-push.cjs",
+    "ci:schedule": "node scripts/local-schedule.cjs",
+    "land": "node scripts/land.cjs",
     "build:plugin": "node scripts/build-plugin.js",
     "build:agent-plugin": "node scripts/build-agent-plugin.js",
     "harness": "node harness/src/run.cjs --tier 0",

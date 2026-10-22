@@ -29,6 +29,18 @@ describe('package.json contract (R8)', () => {
     }
   });
 
+  test('docs/ and CHANGELOG.md ship, so users can read them without GitHub; the brand images do not', () => {
+    assert.ok(pkg.files.includes('docs'), 'docs/ must ship');
+    assert.ok(pkg.files.includes('CHANGELOG.md'), 'CHANGELOG.md must ship — the installer copies it into each core');
+    assert.ok(pkg.files.includes('!docs/branding/assets'), 'the brand images would double the tarball');
+  });
+
+  test('/pan:update points at the installed changelog, not github.com', () => {
+    const md = require('fs').readFileSync(path.join(__dirname, '..', 'pan-wizard-core', 'workflows', 'update.md'), 'utf8');
+    assert.match(md, /~\/\.claude\/pan-wizard-core\/CHANGELOG\.md/);
+    assert.doesNotMatch(md, /github\.com\/[^\s)]*CHANGELOG/);
+  });
+
   test('bin points at the installer entry point', () => {
     const bin = typeof pkg.bin === 'string' ? pkg.bin : Object.values(pkg.bin || {})[0];
     assert.ok(bin && /install\.js$/.test(bin), `bin should be bin/install.js, got ${bin}`);

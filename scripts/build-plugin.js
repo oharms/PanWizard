@@ -159,6 +159,8 @@ function main() {
   copyTree(path.join(ROOT, 'pan-wizard-core'), path.join(OUT, 'pan-wizard-core'), rewriteContent);
   fs.rmSync(path.join(OUT, 'pan-wizard-core', 'learnings', 'internal'), { recursive: true, force: true });
   fs.writeFileSync(path.join(OUT, 'pan-wizard-core', 'VERSION'), pkg.version);
+  // `/pan:update` points at the installed changelog, as a loose-file install carries it.
+  fs.copyFileSync(path.join(ROOT, 'CHANGELOG.md'), path.join(OUT, 'pan-wizard-core', 'CHANGELOG.md'));
 
   // 6. Native workflows. A plugin loads `workflows/` at its root and exposes each
   // script as `/<plugin>:<meta.name>`. Until 2026-09 the builder never wrote this

@@ -1,0 +1,501 @@
+#!/usr/bin/env node
+/**
+ * local-ci.cjs — run the GitHub CI gates on this machine (`npm run ci:local`).
+ *
+ * Runs in parallel, each gate with its own log and temp directory (whole-suite runs are
+ * staged so they do not starve each other: containers first, then the host runs one at a time):
+ *
+ *   host-node<N>    the unit + scenario suite on the host, once per Node version fnm
+ *                  has installed (18, 20, 22); without fnm, once on the current Node
+ *                  and the other versions are reported skipped
+ *   linux-node<N>  the suite under Node 18, 20 and 22 in node:<N>-bookworm containers,
+ *                  the repo mounted read-only and copied in (needs Docker)
+ *   harness        the PAN Harness at tier 0 with --no-ledger
+ *   gitleaks       secret scan of the history with .gitleaks.toml
+ *   audit          npm audit --omit=dev --audit-level=high
+ *   links          pan-tools links validate
+ *   surface        scripts/test-surface.cjs --check (the suite checks it too; this
+ *                  names the failure)
+ *   coverage       scripts/coverage-gate.cjs
+ *   codescan       only with --codescan: the CodeQL CLI's security-extended suite when
+ *                  installed (on PATH, or %USERPROFILE%\.codeql-cli\codeql), else Semgrep in
+ *                  Docker; --codescan=codeql or =semgrep picks one
+ *   clean-tree     after every other gate: the working tree is as it was before the
+ *                  run (the local form of CI's `git diff --exit-code`, which tolerates
+ *                  uncommitted work you started with)
+ *
+ * A tool that is not installed is reported SKIP, never PASS. Any FAIL exits 1;
+ * --strict makes a SKIP fail too. The report goes to .ci-local/report.json; a full run
+ * (no --only, no --fast) also records its verdict for the commit it ran on in the git
+ * directory (pan-ci-local/<sha>.json, shared by every worktree), which scripts/land.cjs
+ * requires before it lands a branch.
+ *
+ * Usage:
+ *   node scripts/local-ci.cjs                     every gate
+ *   node scripts/local-ci.cjs --fast              the pre-push subset: host suite on the
+ *                                                 current Node, harness, gitleaks
+ *   node scripts/local-ci.cjs --only host,gitleaks gates whose id starts with a listed name
+ *   node scripts/local-ci.cjs --codescan          add code scanning; Semgrep scans the files
+ *                                                 changed against main, or all with
+ *                                                 --codescan-all; CodeQL always scans the tree
+ *   node scripts/local-ci.cjs --out <dir>         report, logs and lock there, not .ci-local/
+ *   node scripts/local-ci.cjs --no-docker         skip the container gates
+ *   node scripts/local-ci.cjs --jobs 4            at most 4 light gates at once (default 6)
+ *   node scripts/local-ci.cjs --root <dir>        run against another checkout
+ *   node scripts/local-ci.cjs --strict            a skipped gate fails the run
+ */
+
+'use strict';
+
+const { spawn, spawnSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const crypto = require('crypto');
+
+const NODE_VERSIONS = ['18', '20', '22'];
+// Pinned like the CI actions are: a moving tag would change the scan under you.
+const SEMGREP_IMAGE = process.env.PAN_CI_SEMGREP_IMAGE || 'semgrep/semgrep:1.90.0';
+const CODE_EXT = /\.(c?js|mjs)$/;
+const GATE_TIMEOUT_MS = 30 * 60 * 1000;
+const FAST_IDS = ['host-current', 'harness', 'gitleaks'];
+// Measured on a 40-core Windows machine: Node's default (a file per core but one) made the
+// Node 22 suite's wall-clock checks miss their bounds even with nothing else running.
+// PAN_TEST_CONCURRENCY overrides it.
+const HOST_TEST_CONCURRENCY = Math.max(2, Math.min(16, Math.floor(os.cpus().length / 2)));
+
+function parseArgs(argv) {
+  const a = { fast: false, only: null, codescan: null, codescanAll: false, docker: true, jobs: 6, root: path.resolve(__dirname, '..'), out: null, strict: false, json: false, help: false };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--fast') a.fast = true;
+    else if (k === '--only') a.only = String(argv[++i] || '').split(',').map(s => s.trim()).filter(Boolean);
+    else if (k === '--codescan') a.codescan = 'auto';
+    else if (k.startsWith('--codescan=')) a.codescan = k.slice('--codescan='.length);
+    else if (k === '--codescan-all') { a.codescanAll = true; a.codescan = a.codescan || 'auto'; }
+    else if (k === '--no-docker') a.docker = false;
+    else if (k === '--jobs') a.jobs = Math.max(1, Number(argv[++i]) || 1);
+    else if (k === '--root') a.root = path.resolve(argv[++i] || '.');
+    else if (k === '--out') a.out = path.resolve(argv[++i] || '.ci-local');
+    else if (k === '--strict') a.strict = true;
+    else if (k === '--json') a.json = true;
+    else if (k === '--help' || k === '-h') a.help = true;
+    else throw new Error(`unknown option: ${k}`);
+  }
+  if (a.codescan && !['auto', 'semgrep', 'codeql'].includes(a.codescan)) throw new Error(`--codescan takes semgrep or codeql, got ${a.codescan}`);
+  return a;
+}
+
+// PATH lookup without a shell, honouring PATHEXT on Windows. Returns the full path or null.
+function which(cmd, env = process.env) {
+  const dirs = String(env.PATH || env.Path || '').split(path.delimiter).filter(Boolean);
+  const exts = process.platform === 'win32' ? ['', ...String(env.PATHEXT || '.EXE;.CMD;.BAT').toLowerCase().split(';')] : [''];
+  for (const d of dirs) {
+    for (const e of exts) {
+      const p = path.join(d, cmd + e);
+      try { if (fs.statSync(p).isFile()) return p; } catch { /* next */ }
+    }
+  }
+  return null;
+}
+
+// The CodeQL CLI: on PATH, else where docs/DEVELOPMENT.md unpacks the codeql-bundle,
+// %USERPROFILE%\.codeql-cli\codeql (not under AppData, which a packaged app such as the
+// Claude desktop app sees through a private, virtualised copy).
+function findCodeql(env = process.env) {
+  const onPath = which('codeql', env);
+  if (onPath) return onPath;
+  const home = env.USERPROFILE || env.HOME;
+  const base = home ? path.join(home, '.codeql-cli', 'codeql') : null;
+  for (const f of base ? ['codeql.exe', 'codeql'] : []) {
+    if (fs.existsSync(path.join(base, f))) return path.join(base, f);
+  }
+  return null;
+}
+
+// What fails a CodeQL run, as GitHub's code-scanning check does by default: a result at
+// error level, or one whose rule has a security severity of high or critical (7.0+), unless
+// it was accepted on review (`accepted`: [{rule, path, reason}], from .codeql-accepted.json —
+// the alerts dismissed on GitHub, matched by rule and file since lines move).
+function judgeSarif(doc, accepted = []) {
+  const severity = new Map();
+  const results = [];
+  for (const run of doc.runs || []) {
+    const rules = [...((run.tool && run.tool.driver && run.tool.driver.rules) || []), ...((run.tool && run.tool.extensions) || []).flatMap(e => e.rules || [])];
+    for (const r of rules) severity.set(r.id, Number((r.properties || {})['security-severity']) || 0);
+    results.push(...(run.results || []));
+  }
+  const where = (r) => (((r.locations || [])[0] || {}).physicalLocation || {});
+  const file = (r) => String((where(r).artifactLocation || {}).uri || '').replace(/\\/g, '/');
+  const isAccepted = (r) => accepted.some(a => a.rule === r.ruleId && a.path === file(r));
+  const serious = results.filter(r => r.level === 'error' || (severity.get(r.ruleId) || 0) >= 7);
+  const blocking = serious.filter(r => !isAccepted(r));
+  const stale = accepted.filter(a => !results.some(r => a.rule === r.ruleId && a.path === file(r)));
+  const shown = blocking.slice(0, 3).map(r => `${r.ruleId} ${file(r)}:${(where(r).region || {}).startLine || '?'}`);
+  return {
+    status: blocking.length ? 'fail' : 'pass',
+    detail: `${results.length} result(s), ${blocking.length} blocking (error level or security severity high+), ${serious.length - blocking.length} accepted${stale.length ? `, ${stale.length} stale acceptance(s)` : ''}${shown.length ? `: ${shown.join('; ')}` : ''}`,
+    blocking: blocking.map(r => ({ rule: r.ruleId, path: file(r), line: (where(r).region || {}).startLine })),
+    stale,
+  };
+}
+
+function readAccepted(root) {
+  try {
+    return (JSON.parse(fs.readFileSync(path.join(root, '.codeql-accepted.json'), 'utf8')).accepted || []).filter(a => a.rule && a.path && a.reason);
+  } catch { return []; }
+}
+
+function quick(cmd, args, opts = {}) {
+  const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: 60000, windowsHide: true, ...opts });
+  return { status: r.error ? null : r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+// Majors fnm has installed, e.g. ['18', '22']. `fnm list` prints "* v18.20.4 default".
+function fnmMajors(fnm, env) {
+  const r = quick(fnm, ['list'], { env });
+  if (r.status !== 0) return [];
+  return [...new Set([...r.stdout.matchAll(/v(\d+)\.\d+\.\d+/g)].map(m => m[1]))];
+}
+
+function dockerUp(docker, env) {
+  return !!docker && quick(docker, ['info', '--format', '{{.ServerVersion}}'], { env }).status === 0;
+}
+
+// Fingerprint of the working tree: tracked changes plus untracked, non-ignored files.
+function treeState(root, env) {
+  const st = quick('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root, env, maxBuffer: 64 * 1024 * 1024 });
+  if (st.status !== 0) return null;
+  const diff = quick('git', ['diff', 'HEAD', '--binary'], { cwd: root, env, maxBuffer: 256 * 1024 * 1024 });
+  return { lines: st.stdout.split('\n').filter(Boolean), hash: crypto.createHash('sha256').update(st.stdout + '\0' + diff.stdout).digest('hex') };
+}
+
+function changedCodeFiles(root, env) {
+  const base = quick('git', ['merge-base', 'HEAD', 'main'], { cwd: root, env }).stdout.trim();
+  const tracked = base ? quick('git', ['diff', '--name-only', '--diff-filter=ACMR', base], { cwd: root, env }).stdout : '';
+  const untracked = quick('git', ['ls-files', '--others', '--exclude-standard'], { cwd: root, env }).stdout;
+  return [...new Set((tracked + '\n' + untracked).split('\n').map(s => s.trim()).filter(f => CODE_EXT.test(f) && fs.existsSync(path.join(root, f))))];
+}
+
+// Every gate is { id, title, cmd, args, opts, skip?, interpret? }. A gate with `skip` set is
+// reported SKIP with that reason and never runs. `interpret(result)` may turn an exit-0 run
+// into a skip (coverage on old Node) or add a detail line.
+function planGates(o, env = process.env) {
+  const root = o.root;
+  const node = process.execPath;
+  const cur = process.versions.node.split('.')[0];
+  const suite = ['scripts/run-tests.cjs', 'tests', 'tests/scenarios'];
+  const gates = [];
+  const want = (id) => {
+    if (o.fast) return FAST_IDS.some(f => id === f || (f === 'host-current' && id === `host-node${cur}`));
+    if (!o.only) return true;
+    return o.only.some(p => id.startsWith(p));
+  };
+  const shell = process.platform === 'win32';
+
+  // Host suite, per Node version.
+  const fnm = which('fnm', env);
+  const majors = fnm ? fnmMajors(fnm, env) : [];
+  if (o.fast || !fnm) {
+    gates.push({ id: `host-node${cur}`, title: `${process.platform} suite · node ${process.versions.node} (current${fnm ? '' : '; fnm not installed'})`, cmd: node, args: suite });
+    if (!o.fast) for (const v of NODE_VERSIONS) {
+      if (v !== cur) gates.push({ id: `host-node${v}`, title: `${process.platform} suite · node ${v}`, skip: 'fnm not installed — winget install Schniz.fnm, then fnm install ' + v });
+    }
+  } else {
+    for (const v of NODE_VERSIONS) {
+      gates.push(majors.includes(v)
+        ? { id: `host-node${v}`, title: `${process.platform} suite · node ${v} (fnm)`, cmd: fnm, args: ['exec', `--using=${v}`, 'node', ...suite] }
+        : { id: `host-node${v}`, title: `${process.platform} suite · node ${v}`, skip: `fnm has no Node ${v} — fnm install ${v}` });
+    }
+  }
+
+  // Linux suite in containers.
+  const docker = which('docker', env);
+  const haveDocker = o.docker && !o.fast && NODE_VERSIONS.some(v => want(`linux-node${v}`)) && dockerUp(docker, env);
+  for (const v of NODE_VERSIONS) {
+    const id = `linux-node${v}`;
+    if (!o.docker) { gates.push({ id, title: `linux suite · node ${v}`, skip: '--no-docker' }); continue; }
+    if (!haveDocker) { gates.push({ id, title: `linux suite · node ${v}`, skip: docker ? 'Docker is not running' : 'Docker not installed' }); continue; }
+    // Copy without node_modules and .git (a worktree's .git is a Windows path), give the copy
+    // its own one-commit repo so git-reading tests see a checkout, then do what ci.yml does.
+    // As the image's unprivileged `node` user, like a CI runner: as root, the tests that make
+    // a file read-only to force a failed write see the write succeed.
+    const script = [
+      'set -e',
+      'mkdir -p ~/work',
+      'tar -C /src --exclude=./node_modules --exclude=./.git --exclude=./.ci-local --exclude=./hooks/dist -cf - . | tar -C ~/work -xf -',
+      'cd ~/work',
+      'git init -q && git add -A && git -c user.email=ci@local -c user.name=local-ci commit -qm snapshot',
+      'npm ci --no-audit --no-fund',
+      'npm run build:hooks',
+      'npm run test:all',
+    ].join(' && ').replace('set -e && ', 'set -e; ');
+    gates.push({
+      id, title: `linux suite · node ${v} (node:${v}-bookworm)`, cmd: docker,
+      args: ['run', '--rm', '-u', 'node', '-e', 'HOME=/home/node', '-v', `${root}:/src:ro`, `node:${v}-bookworm`, 'bash', '-c', script],
+    });
+  }
+
+  // The double-backed scenarios drive the real Claude Code CLI against the harness's model
+  // double (no key, no spend). --require-run makes a missing CLI a failure, not a skip, as
+  // the GitHub harness job did before this gate replaced it.
+  gates.push({
+    id: 'harness', title: 'PAN Harness · tier 0', cmd: node,
+    args: ['harness/src/run.cjs', '--tier', '0', '--no-ledger', '--require-run', 'double-executor-body-claude', '--require-run', 'cassette-drift-claude', '--require-run', 'discuss-phase-scripted-user'],
+  });
+
+  const gitleaks = which('gitleaks', env);
+  const leakArgs = ['detect', '--no-banner', '--redact', '--verbose', '--source', '.'];
+  if (fs.existsSync(path.join(root, '.gitleaks.toml'))) leakArgs.push('--config', '.gitleaks.toml');
+  gates.push(gitleaks
+    ? { id: 'gitleaks', title: 'gitleaks · history', cmd: gitleaks, args: leakArgs }
+    : { id: 'gitleaks', title: 'gitleaks · history', skip: 'gitleaks not installed — winget install gitleaks.gitleaks' });
+
+  gates.push({ id: 'audit', title: 'npm audit · production, high+', cmd: shell ? 'npm audit --omit=dev --audit-level=high' : 'npm', args: shell ? [] : ['audit', '--omit=dev', '--audit-level=high'], opts: { shell } });
+  gates.push({ id: 'links', title: 'links validate', cmd: node, args: ['pan-wizard-core/bin/pan-tools.cjs', 'links', 'validate', '--raw'] });
+  gates.push({ id: 'surface', title: 'surface registry', cmd: node, args: ['scripts/test-surface.cjs', '--check'] });
+  gates.push({
+    id: 'coverage', title: 'coverage gate', cmd: node, args: ['scripts/coverage-gate.cjs'],
+    interpret: (r) => /coverage gate — skipped/.test(r.output) ? { status: 'skip', detail: 'needs Node 22+' } : null,
+  });
+
+  const codeql = o.codescan ? findCodeql(env) : null;
+  const tool = o.codescan === 'auto' ? (codeql ? 'codeql' : 'semgrep') : o.codescan;
+  if (tool === 'semgrep') {
+    const files = o.codescanAll ? [] : changedCodeFiles(root, env);
+    const base = { id: 'codescan', title: `semgrep · ${o.codescanAll ? 'whole repo' : 'changed files'}` };
+    if (!dockerUp(docker, env)) gates.push({ ...base, skip: docker ? 'Docker is not running' : 'Docker not installed' });
+    else if (!o.codescanAll && files.length === 0) gates.push({ ...base, skip: 'no changed JS files against main' });
+    else gates.push({
+      ...base, cmd: docker,
+      args: ['run', '--rm', '-v', `${root}:/src:ro`, '-w', '/src', '-e', 'HOME=/tmp', SEMGREP_IMAGE,
+        'semgrep', 'scan', '--config', 'p/javascript', '--config', 'p/nodejs', '--error', '--metrics=off', '--disable-version-check',
+        ...(o.codescanAll ? ['.'] : files.map(f => f.replace(/\\/g, '/')))],
+    });
+  } else if (tool === 'codeql') {
+    const base = { id: 'codescan', title: 'CodeQL · security-extended · whole tree' };
+    if (!codeql) gates.push({ ...base, skip: 'codeql CLI not installed — the codeql-bundle from github.com/github/codeql-action/releases, unpacked to %USERPROFILE%\\.codeql-cli' });
+    else {
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-local-ci-codeql-'));
+      const db = path.join(work, 'db');
+      const config = path.join(work, 'config.yml');
+      // Build output and this script's own output are copies of, or reports on, the source.
+      fs.writeFileSync(config, 'paths-ignore:\n  - node_modules\n  - dist\n  - hooks/dist\n  - .ci-local\n');
+      const sarif = path.join(o.out || path.join(root, '.ci-local'), 'codeql.sarif');
+      gates.push({
+        ...base, cmd: codeql,
+        args: ['database', 'create', db, '--language=javascript', `--source-root=${root}`, `--codescanning-config=${config}`, '--overwrite'],
+        then: { cmd: codeql, args: ['database', 'analyze', db, 'codeql/javascript-queries:codeql-suites/javascript-security-extended.qls', '--format=sarif-latest', `--output=${sarif}`, '--download'] },
+        interpret: () => {
+          let doc;
+          try { doc = JSON.parse(fs.readFileSync(sarif, 'utf8')); } catch { return { status: 'fail', detail: 'no SARIF written' }; }
+          try { fs.rmSync(work, { recursive: true, force: true }); } catch { /* the database is large but disposable */ }
+          const v = judgeSarif(doc, readAccepted(root));
+          return { status: v.status, detail: `${v.detail} — ${path.relative(root, sarif)}` };
+        },
+      });
+    }
+  }
+
+  return gates.filter(g => want(g.id));
+}
+
+function fmtMs(ms) {
+  const s = Math.round(ms / 1000);
+  return s >= 60 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s` : `${s}s`;
+}
+
+function runOne(cmd, args, opts, logStream) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(cmd, args, { ...opts, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+      logStream.write(`spawn failed: ${e.message}\n`);
+      return resolve({ code: null, error: e.message });
+    }
+    let tail = '';
+    const keep = (d) => { logStream.write(d); tail = (tail + d.toString()).slice(-16000); };
+    child.stdout.on('data', keep);
+    child.stderr.on('data', keep);
+    const timer = setTimeout(() => { keep(`\n[local-ci] timed out after ${fmtMs(GATE_TIMEOUT_MS)}\n`); child.kill(); }, GATE_TIMEOUT_MS);
+    child.on('error', (e) => { clearTimeout(timer); keep(`\n[local-ci] ${e.message}\n`); resolve({ code: null, error: e.message, tail }); });
+    child.on('close', (code) => { clearTimeout(timer); resolve({ code, tail }); });
+  });
+}
+
+// Last line that says something, for the one-line detail of a failed gate.
+function lastSignal(text) {
+  const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const hit = [...lines].reverse().find(l => /(^ℹ fail|not ok|error|fail|leaks found|stale|drift|vulnerabilit)/i.test(l));
+  return (hit || lines[lines.length - 1] || '').slice(0, 160);
+}
+
+async function runGate(g, o, env, logDir) {
+  const started = Date.now();
+  if (g.skip) return { id: g.id, title: g.title, status: 'skip', detail: g.skip, durationMs: 0 };
+  const log = path.join(logDir, `${g.id}.log`);
+  const stream = fs.createWriteStream(log);
+  // Its own temp directory: tests that use a fixed name under os.tmpdir() must not meet
+  // another gate's run of the same test.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `pan-lci-${g.id}-`));
+  // The host suite runs at most HOST_TEST_CONCURRENCY files at once (scripts/run-tests.cjs).
+  const cap = /^host-/.test(g.id) ? { PAN_TEST_CONCURRENCY: env.PAN_TEST_CONCURRENCY || String(HOST_TEST_CONCURRENCY) } : {};
+  const opts = { cwd: o.root, env: { ...env, ...cap, TEMP: tmp, TMP: tmp, TMPDIR: tmp }, ...(g.opts || {}) };
+  stream.write(`$ ${[g.cmd, ...g.args].join(' ')}\n\n`);
+  let r = await runOne(g.cmd, g.args, opts, stream);
+  if (r.code === 0 && g.then) {
+    stream.write(`\n$ ${[g.then.cmd, ...g.then.args].join(' ')}\n\n`);
+    r = await runOne(g.then.cmd, g.then.args, opts, stream);
+  }
+  await new Promise(res => stream.end(res));
+  // Kept on failure: a gate's own logs (the coverage gate's spec log) may live there.
+  if (r.code === 0) try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort: a child may still hold a file */ }
+  let output = r.tail || '';
+  try { output = fs.readFileSync(log, 'utf8'); } catch { /* the tail is enough for a verdict */ }
+  let status = r.code === 0 ? 'pass' : 'fail';
+  let detail = r.code === 0 ? '' : (r.error ? r.error : `exit ${r.code} — ${lastSignal(r.tail || output)}`);
+  if (g.interpret && (r.code === 0 || g.then)) {
+    const v = g.interpret({ output, code: r.code });
+    if (v) { status = v.status; detail = v.detail; }
+  }
+  return { id: g.id, title: g.title, status, detail, durationMs: Date.now() - started, command: [g.cmd, ...g.args].join(' '), log: path.relative(o.root, log).replace(/\\/g, '/') };
+}
+
+async function pool(items, n, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i]); }
+  }));
+  return out;
+}
+
+function summary(report, out = '.ci-local') {
+  const mark = { pass: 'PASS', fail: 'FAIL', skip: 'SKIP' };
+  const w = Math.max(...report.gates.map(g => g.id.length), 8);
+  const lines = [`local CI — ${report.head || 'no git'} · node ${report.node} · ${process.platform}`, ''];
+  for (const g of report.gates) {
+    lines.push(`  ${mark[g.status]}  ${g.id.padEnd(w)}  ${(g.status === 'skip' ? '' : fmtMs(g.durationMs)).padStart(6)}  ${g.detail || g.title}`);
+  }
+  const c = report.counts;
+  lines.push('', `${report.status === 'pass' ? 'PASSED' : 'FAILED'} — ${c.pass} passed, ${c.fail} failed, ${c.skip} skipped in ${fmtMs(report.durationMs)}${c.skip && report.status === 'pass' ? ' (skipped gates did not run: they are not a pass)' : ''}`);
+  lines.push(`report: ${path.join(out, 'report.json')}  logs: ${path.join(out, 'logs')}`);
+  return lines.join('\n');
+}
+
+async function main(argv, env = process.env) {
+  let o;
+  try { o = parseArgs(argv); } catch (e) { console.error(`local-ci: ${e.message}`); return 2; }
+  if (o.help) { console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0].replace(/^#!.*\n\/\*\*?/, '').replace(/^ \* ?/gm, '')); return 0; }
+  // Run from inside a node --test process, a gate's own `node --test` would see the parent's
+  // context and report to it instead of running its files: the gates start from a clean slate.
+  env = { ...env };
+  delete env.NODE_TEST_CONTEXT;
+
+  const outDir = o.out || path.join(o.root, '.ci-local');
+  const logDir = path.join(outDir, 'logs');
+  // One run per checkout: a second one would wipe the logs the first is writing.
+  const lock = path.join(outDir, 'run.lock');
+  fs.mkdirSync(outDir, { recursive: true });
+  try {
+    fs.writeFileSync(lock, String(process.pid), { flag: 'wx' });
+  } catch {
+    const pid = Number(fs.readFileSync(lock, 'utf8'));
+    let alive = false;
+    try { process.kill(pid, 0); alive = true; } catch { /* stale lock */ }
+    if (alive && pid !== process.pid) { console.error(`local-ci: another run (pid ${pid}) is using ${path.relative(o.root, outDir)} — wait for it, or delete ${path.relative(o.root, lock)} if it is gone`); return 2; }
+    fs.writeFileSync(lock, String(process.pid));
+  }
+  try {
+    return await runAll(o, env, outDir, logDir);
+  } finally {
+    fs.rmSync(lock, { force: true });
+  }
+}
+
+async function runAll(o, env, outDir, logDir) {
+  fs.rmSync(logDir, { recursive: true, force: true });
+  fs.mkdirSync(logDir, { recursive: true });
+
+  const started = Date.now();
+  const before = treeState(o.root, env);
+  const gates = planGates(o, env);
+  const wantsClean = !o.only || o.only.some(p => 'clean-tree'.startsWith(p));
+  if (gates.length === 0 && !wantsClean) { console.error('local-ci: no gate matches --only'); return 2; }
+
+  // The suite and the harness read hooks/dist (gitignored), as CI's build:hooks step provides.
+  const needsHooks = gates.some(g => !g.skip && /^(host-|harness|coverage)/.test(g.id));
+  const results = [];
+  if (needsHooks && fs.existsSync(path.join(o.root, 'scripts', 'build-hooks.js'))) {
+    const b = await runGate({ id: 'build-hooks', title: 'build:hooks', cmd: process.execPath, args: ['scripts/build-hooks.js'] }, o, env, logDir);
+    if (b.status === 'fail') results.push(b);
+  }
+  if (!o.json) process.stderr.write(`local-ci: ${gates.filter(g => !g.skip).length} gate(s), ${o.jobs} at a time — logs in ${path.join(path.relative(o.root, outDir) || '.', 'logs')}\n`);
+  // Whole-suite runs are heavy. Measured here: a host suite run beside another host suite, or
+  // beside the three containers, times its 30-second setup hooks out; beside the harness alone
+  // it is fine. So the containers go first, together, and the host suite runs (one per Node
+  // version, then the coverage gate's) follow one at a time. The harness and the light gates
+  // run beside all of it.
+  const one = async (g) => {
+    const r = await runGate(g, o, env, logDir);
+    if (!o.json && r.status !== 'skip') process.stderr.write(`  ${r.status === 'pass' ? 'pass' : r.status} ${r.id} (${fmtMs(r.durationMs)})\n`);
+    return r;
+  };
+  const byGate = new Map();
+  const containers = gates.filter(g => !g.skip && g.id.startsWith('linux-'));
+  const lane = gates.filter(g => !g.skip && (g.id.startsWith('host-') || g.id === 'coverage'));
+  const heavy = async () => {
+    await Promise.all(containers.map(async g => byGate.set(g, await one(g))));
+    for (const g of lane) byGate.set(g, await one(g));
+  };
+  const rest = gates.filter(g => !containers.includes(g) && !lane.includes(g));
+  await Promise.all([heavy(), pool(rest, Math.max(1, o.jobs - 1), async g => byGate.set(g, await one(g)))]);
+  results.push(...gates.map(g => byGate.get(g)));
+
+  if (wantsClean) {
+    const after = treeState(o.root, env);
+    if (!before || !after) results.push({ id: 'clean-tree', title: 'working tree unchanged', status: 'skip', detail: 'not a git checkout', durationMs: 0 });
+    else {
+      const changed = [...new Set([...after.lines.filter(l => !before.lines.includes(l)), ...before.lines.filter(l => !after.lines.includes(l))])];
+      const ok = before.hash === after.hash;
+      results.push({ id: 'clean-tree', title: 'working tree unchanged', status: ok ? 'pass' : 'fail', durationMs: 0,
+        detail: ok ? (before.lines.length ? `unchanged (${before.lines.length} path(s) were already modified before the run)` : 'clean') : `the run changed the tree: ${changed.slice(0, 5).join('; ') || 'content of already-modified files'}` });
+    }
+  }
+
+  const counts = { pass: 0, fail: 0, skip: 0 };
+  for (const r of results) counts[r.status]++;
+  const failed = counts.fail > 0 || (o.strict && counts.skip > 0);
+  const headFull = quick('git', ['rev-parse', 'HEAD'], { cwd: o.root, env }).stdout.trim();
+  const report = {
+    status: failed ? 'fail' : 'pass', startedAt: new Date(started).toISOString(), durationMs: Date.now() - started,
+    root: o.root, head: headFull.slice(0, 7), headFull, node: process.versions.node, platform: process.platform,
+    // Uncommitted work at the start means the gates ran on something other than HEAD.
+    dirtyAtStart: before ? before.lines.length > 0 : null,
+    options: { fast: o.fast, only: o.only, codescan: o.codescan, docker: o.docker, strict: o.strict, jobs: o.jobs },
+    counts, gates: results,
+  };
+  fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2) + '\n');
+  const recorded = o.only || o.fast || !headFull ? null : recordVerdict(o.root, report, env);
+  console.log(o.json ? JSON.stringify(report, null, 2) : summary(report, path.relative(o.root, outDir) || '.') + (recorded ? `\nverdict for ${report.head} recorded for land: ${recorded}` : ''));
+  return failed ? 1 : 0;
+}
+
+// Where land.cjs looks for a commit's verdict: the git directory every worktree shares.
+function verdictFile(root, sha, env = process.env) {
+  const common = quick('git', ['rev-parse', '--git-common-dir'], { cwd: root, env }).stdout.trim();
+  return common ? path.join(path.resolve(root, common), 'pan-ci-local', `${sha}.json`) : null;
+}
+
+function recordVerdict(root, report, env) {
+  const file = verdictFile(root, report.headFull, env);
+  if (!file) return null;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(report, null, 2) + '\n');
+  return file;
+}
+
+module.exports = { parseArgs, planGates, which, findCodeql, judgeSarif, treeState, lastSignal, verdictFile, main };
+
+if (require.main === module) main(process.argv.slice(2)).then(code => process.exit(code));

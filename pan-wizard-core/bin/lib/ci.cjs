@@ -8,6 +8,9 @@
  * is `unavailable`). A check that already fails on the base branch is not this change's
  * doing and is ignored. The failing log tail is what a fix round gets as feedback, and a
  * breaker stops after N rounds.
+ *
+ * `autodev run --ci local` needs no pull request: the oracle is the project's own gate,
+ * run here — `npm run ci:local` when package.json has that script, else `npm test`.
  */
 
 const { spawnSync } = require('child_process');
@@ -97,8 +100,44 @@ function waitForCi(cwd, opts = {}) {
   }
 }
 
+/** The project's own gate: its `ci:local` script, else its `test` script, else none. */
+function localGate(cwd) {
+  let scripts = {};
+  try { scripts = JSON.parse(require('fs').readFileSync(require('path').join(cwd, 'package.json'), 'utf8')).scripts || {}; } catch { /* no package.json */ }
+  if (scripts['ci:local']) return { name: 'ci:local', args: ['run', 'ci:local'] };
+  if (scripts.test) return { name: 'test', args: ['test'] };
+  return null;
+}
+
+/**
+ * The local CI oracle: run the project's gate in `cwd` and judge it by its exit code.
+ * With ci:local, the failing gate ids come from .ci-local/report.json.
+ * @param {string} cwd
+ * @param {{exec?: Function, timeoutMs?: number}} opts
+ * @returns {{status: 'passed'|'failed'|'unavailable', failed: string[], ignored: string[], tail: string, reason?: string}}
+ */
+function localOracle(cwd, opts = {}) {
+  const res = { status: 'unavailable', failed: [], ignored: [], tail: '' };
+  const gate = localGate(cwd);
+  if (!gate) return { ...res, reason: 'package.json has neither a ci:local nor a test script' };
+  const exec = opts.exec || ((args) => spawnSync('npm', args, { cwd, encoding: 'utf8', shell: process.platform === 'win32', timeout: opts.timeoutMs || 60 * 60 * 1000, maxBuffer: 256 * 1024 * 1024 }));
+  const r = exec(gate.args);
+  if (!r || r.error || r.status == null) return { ...res, reason: `npm ${gate.args.join(' ')} did not run${r && r.error ? `: ${r.error.message}` : ''}` };
+  const tail = `${r.stdout || ''}${r.stderr || ''}`.trim().split(/\r?\n/).slice(-40).join('\n');
+  if (r.status === 0) return { ...res, status: 'passed', tail };
+  let failed = [gate.name];
+  if (gate.name === 'ci:local') {
+    try {
+      const report = JSON.parse(require('fs').readFileSync(require('path').join(cwd, '.ci-local', 'report.json'), 'utf8'));
+      const ids = (report.gates || []).filter((g) => g.status === 'fail').map((g) => g.id);
+      if (ids.length) failed = ids;
+    } catch { /* the exit code is the verdict; the gate names are a courtesy */ }
+  }
+  return { ...res, status: 'failed', failed, tail };
+}
+
 function breakerTripped(rounds, max = DEFAULT_CI_ROUNDS) {
   return rounds >= max;
 }
 
-module.exports = { ciOracle, waitForCi, breakerTripped, baseFailing, bucketOf, DEFAULT_CI_ROUNDS };
+module.exports = { ciOracle, waitForCi, localOracle, localGate, breakerTripped, baseFailing, bucketOf, DEFAULT_CI_ROUNDS };

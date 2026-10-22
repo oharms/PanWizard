@@ -334,7 +334,9 @@ function runPlansInWorktrees(cwd, unit, host, groups, ctx) {
 }
 
 // ─── CI in the loop (program A2) ────────────────────────────────────────────
-// With --ci, each completed phase is checked against the pull request's checks (ci.cjs).
+// With --ci, each completed phase is checked against the pull request's checks (ci.cjs);
+// with --ci local, against the project's own gate run here (`npm run ci:local`, else its
+// test script), with no pull request and no push.
 // A failure starts a fix round, a fresh session given the failing names and log tail;
 // the breaker stops the run after --ci-rounds rounds (3). The session's own account of
 // its tests never decides: the checks do.
@@ -346,14 +348,17 @@ function ciBase(cwd, opts) {
 }
 
 function runCiRounds(cwd, unit, host, ctx) {
-  const { waitForCi, breakerTripped, DEFAULT_CI_ROUNDS } = require('./ci.cjs');
+  const { waitForCi, localOracle, breakerTripped, DEFAULT_CI_ROUNDS } = require('./ci.cjs');
+  const local = ctx.opts.ci === 'local';
   const max = Number(ctx.opts.ciRounds) > 0 ? Number(ctx.opts.ciRounds) : DEFAULT_CI_ROUNDS;
   for (let round = 0; ; round++) {
     if (ctx.opts.ciPush) {
       const p = git(cwd, ['push']);
       if (!p.ok) return { stop: { reason: 'human_needed', detail: `--ci-push: git push failed: ${p.err.slice(0, 200)}` } };
     }
-    const ci = waitForCi(cwd, { head: gitHead(cwd) || undefined, base: ciBase(cwd, ctx.opts), timeoutMs: ctx.opts.ciTimeoutMs, pollMs: ctx.opts.ciPollMs });
+    const ci = local
+      ? localOracle(cwd, { timeoutMs: ctx.opts.ciTimeoutMs })
+      : waitForCi(cwd, { head: gitHead(cwd) || undefined, base: ciBase(cwd, ctx.opts), timeoutMs: ctx.opts.ciTimeoutMs, pollMs: ctx.opts.ciPollMs });
     ctx.append({ status: 'ci', phase: unit.phase, round, ci: { status: ci.status, failed: ci.failed, ignored: ci.ignored, reason: ci.reason } });
     if (ci.status === 'passed') return {};
     if (ci.status !== 'failed') return { stop: { reason: 'human_needed', detail: `CI for phase ${unit.phase} is ${ci.status}${ci.reason ? `: ${ci.reason}` : ''}` } };
@@ -532,7 +537,7 @@ function cmdAutodev(cwd, sub, flags, raw) {
   const r = runAutodev(cwd, {
     host: flags.host || (sub === 'run' ? 'claude' : undefined), maxUsd: numOrNull(flags.maxUsd), maxUsdDay: numOrNull(flags.maxUsdDay), maxTurns: numOrNull(flags.maxTurns),
     runId: flags.run, resume: sub === 'resume', worktrees: !!flags.worktrees,
-    ci: !!flags.ci, ciRounds: numOrNull(flags.ciRounds), ciPush: !!flags.ciPush, ciBase: flags.ciBase || undefined,
+    ci: flags.ci === 'local' ? 'local' : !!flags.ci, ciRounds: numOrNull(flags.ciRounds), ciPush: !!flags.ciPush, ciBase: flags.ciBase || undefined,
   });
   output(r, raw, r.stop ? r.stop.reason : r.error);
 }

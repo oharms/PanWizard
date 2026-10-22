@@ -61,6 +61,40 @@ describe('A2: reading CI (fixture gh output)', () => {
   });
 });
 
+describe('A2: the local oracle (--ci local)', () => {
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pan-ci-local-'));
+  const pkg = (dir, scripts) => fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'p', scripts }));
+
+  test('picks ci:local over test, test without it, and nothing without either', () => {
+    const d = tmp();
+    assert.equal(CI.localGate(d), null);
+    assert.equal(CI.localOracle(d, { exec: () => { throw new Error('must not run'); } }).status, 'unavailable');
+    pkg(d, { test: 'x' });
+    assert.deepEqual(CI.localGate(d), { name: 'test', args: ['test'] });
+    pkg(d, { test: 'x', 'ci:local': 'y' });
+    assert.deepEqual(CI.localGate(d), { name: 'ci:local', args: ['run', 'ci:local'] });
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  test('the exit code decides; a ci:local report names the failing gates', () => {
+    const d = tmp();
+    pkg(d, { 'ci:local': 'y' });
+    let ran;
+    const ok = CI.localOracle(d, { exec: (args) => { ran = args; return { status: 0, stdout: 'PASSED', stderr: '' }; } });
+    assert.equal(ok.status, 'passed');
+    assert.deepEqual(ran, ['run', 'ci:local']);
+    assert.equal(CI.localOracle(d, { exec: () => ({ status: 1, stdout: 'FAILED', stderr: '' }) }).failed[0], 'ci:local');
+    fs.mkdirSync(path.join(d, '.ci-local'));
+    fs.writeFileSync(path.join(d, '.ci-local', 'report.json'), JSON.stringify({ gates: [{ id: 'gitleaks', status: 'fail' }, { id: 'audit', status: 'pass' }, { id: 'linux-node18', status: 'fail' }] }));
+    const bad = CI.localOracle(d, { exec: () => ({ status: 1, stdout: 'x\nFAILED', stderr: '' }) });
+    assert.equal(bad.status, 'failed');
+    assert.deepEqual(bad.failed, ['gitleaks', 'linux-node18']);
+    assert.match(bad.tail, /FAILED/);
+    assert.equal(CI.localOracle(d, { exec: () => ({ status: null, error: new Error('ENOENT') }) }).status, 'unavailable');
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+});
+
 describe('A2: CI in the loop, end to end', () => {
   const dirs = [];
   let binDir;
@@ -91,6 +125,7 @@ process.stdout.write(JSON.stringify({ result: 'ok', total_cost_usd: 0.1 }) + '\\
     fs.writeFileSync(gh, `
 const fs = require('fs');
 const a = process.argv.slice(2);
+if (process.env.PAN_FAKE_GH_LOG) fs.appendFileSync(process.env.PAN_FAKE_GH_LOG, a.join(' ') + '\\n');
 const fixes = (() => { try { return fs.readFileSync(process.env.FAKE_FIXES, 'utf8').length; } catch { return 0; } })();
 const passAfter = Number(process.env.FAKE_PASS_AFTER || 99);
 if (a[0] === 'pr' && a[1] === 'checks') {
@@ -145,6 +180,23 @@ if (a[0] === 'pr' && a[1] === 'checks') {
     const { json, sessions } = run(dir, ['--ci', '--ci-rounds', '2']);
     assert.equal(json.stop.reason, 'ci_failed');
     assert.equal(sessions.filter((s) => /CI fix round/.test(s)).length, 2);
+  });
+
+  test('--ci local: the project\'s own gate is the oracle, with no pull request and no gh', () => {
+    const dir = project();
+    // The gate fails until a fix round has run, like the stand-in checks above.
+    fs.writeFileSync(path.join(dir, 'gate.js'), "const n = (() => { try { return require('fs').readFileSync(process.env.FAKE_FIXES, 'utf8').length; } catch { return 0; } })();\nif (n < 1) { console.log('not ok 1 - totals round half up'); process.exit(1); }\nconsole.log('ok');\n");
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'p', version: '0.0.0', scripts: { 'ci:local': 'node gate.js', test: 'node -e "process.exit(3)"' } }));
+    const ghLog = path.join(dir, 'gh-called.txt');
+    const { json, sessions } = run(dir, ['--ci', 'local'], { FAKE_PASS_AFTER: '0', PAN_FAKE_GH_LOG: ghLog });
+    assert.equal(json.stop.reason, 'done', JSON.stringify(json));
+    const fix = sessions.find((s) => /CI fix round/.test(s));
+    assert.ok(fix, sessions.join('\n'));
+    assert.match(fix, /Failing checks: ci:local/);
+    assert.match(fix, /totals round half up/, 'the gate\'s own output is the feedback');
+    const ledger = fs.readFileSync(path.join(dir, json.ledger), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(ledger.filter((r) => r.status === 'ci').map((r) => r.ci.status), ['failed', 'passed']);
+    assert.equal(fs.existsSync(ghLog), false, 'gh must not be asked: FAKE_PASS_AFTER=0 would have passed the pull request at once');
   });
 
   test('ci_failed is a declared stop reason', () => {

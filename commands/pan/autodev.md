@@ -2,7 +2,7 @@
 name: pan:autodev
 group: Phase Lifecycle
 description: Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
-argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]"
+argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [local] [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]"
 allowed-tools:
   - Read
   - Bash
@@ -18,7 +18,7 @@ It stops in code, with one of these reasons:
 | `done` | Every phase is finished; the milestone audit is next |
 | `human_needed` | A verifier asked for a human check, or there is no roadmap |
 | `gate_failed` | The phase gate refused to complete a phase |
-| `ci_failed` | With `--ci`: the pull request checks still failed after the fix rounds |
+| `ci_failed` | With `--ci`: the pull request checks (or, with `--ci local`, the project's own gate) still failed after the fix rounds |
 | `forecast_exceeded` | An execute unit cost more than the project's p90 forecast for it |
 | `budget_usd` | Spend reached `--max-usd` (the run) or `--max-usd-day` (today, across runs) |
 | `turns` | `--max-turns` units have run (20 when not given) |
@@ -28,6 +28,7 @@ Two options change how units run:
 
 - `--worktrees`: a phase with two or more plans runs each plan in its own git worktree and session (`/pan:exec-phase N --plan <id>`). Plans of a wave that share a file run one after the other. Before a group of plans is merged back, `pan-tools worktree preflight` merges them onto HEAD in a throwaway worktree and runs the tests: branches that pass alone but break together, or conflict, stop the run for a human.
 - `--ci`: after each completed phase, the pull request's checks (GitHub's `gh` CLI) are the oracle. A check that already fails on the base branch is ignored. A failure starts a fix round, a fresh session given the failing checks and log; after `--ci-rounds` rounds (3) the run stops with `ci_failed`. The checks must be for HEAD: push the branch yourself, or pass `--ci-push` to have autodev push after each phase.
+- `--ci local`: the same rounds with no pull request: the oracle is the project's own gate, run here after each completed phase — `npm run ci:local` when `package.json` has that script, else `npm test`. Its exit code decides, and its output is the fix round's feedback.
 
 A failed session is classified before anything else happens: a compile or assertion failure is retried with its error in the prompt, then once more at a higher tier; a timeout or an unknown failure is restarted once; a missing CLI or login, a merge conflict, the guard's deny or an undeclared file stops for a human.
 </objective>

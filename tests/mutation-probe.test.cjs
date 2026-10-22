@@ -138,5 +138,7 @@ describe('mutation probe — sampling and targets', () => {
     assert.equal(release.includes('mutation-probe'), false, 'release-check must not run the probe');
     const ci = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf-8');
     assert.equal(ci.includes('mutation-probe'), false, 'CI must not run the probe');
+    const local = fs.readFileSync(path.join(ROOT, 'scripts', 'local-ci.cjs'), 'utf-8');
+    assert.equal(local.includes('mutation-probe'), false, 'the local CI must not run the probe');
   });
 });

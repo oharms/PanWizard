@@ -18,7 +18,7 @@ Open https://github.com/oharms/PanWizard/settings.
 | Dependabot alerts | Enable | Email when a published vuln hits one of your deps |
 | Dependabot security updates | Enable | Auto-open PRs that bump to a fixed version |
 | Grouped security updates | Enable | Less PR noise (one PR per advisory group) |
-| Code scanning (CodeQL) | Default → "Disable default setup" if shown | We ship our own `.github/workflows/codeql.yml` |
+| Code scanning (CodeQL) | Leave default setup disabled | CodeQL runs locally: `npm run ci:local -- --codescan`, and weekly through `scripts/local-schedule.cjs` (docs/DEVELOPMENT.md, Local CI). The repository no longer has a CodeQL workflow or a `dependabot.yml`; Dependabot *alerts* and *security updates* are repository settings and still work without it |
 | Secret scanning | Enable | Catches accidental token commits already in the repo |
 | **Push protection** | Enable | Blocks the push when secret patterns are detected — single best win here |
 | Private vulnerability reporting | Enable | Replaces the old `security@pan-wizard.dev` email |
@@ -33,10 +33,7 @@ Add a rule for `main` with:
 - [x] Require status checks to pass before merging
   - Require branches to be up to date before merging
   - Required checks (search for these once CI runs at least once):
-    - `test (<os> · node <version>)` for each of ubuntu-latest, windows-latest, macos-latest × node 18, 20, 22
-    - `npm audit (production)`
-    - `Analyze JavaScript` — optional: CodeQL runs on every push and pull request to `main`, but docs/DEVELOPMENT.md (Release Process) lists it as not required
-    - `gitleaks secret scan`
+    - `test (macos-latest · node <version>)` for node 18, 20, 22 — the only jobs `ci.yml` still runs. Every other gate (Windows and Linux test matrix, harness, gitleaks, npm audit, CodeQL) runs locally in `npm run ci:local`, and `npm run land` pushes the squashed commit straight to `main`. A required check GitHub no longer runs blocks every push, and a "require a pull request" rule blocks `land` too: change these when moving to the local flow
 - [x] Require signed commits — depends on local commit signing (see below)
 - [x] Require linear history (optional; prevents merge commits)
 - [x] Do not allow bypassing the above settings — even for admins
@@ -221,7 +218,7 @@ These ship in PAN and need no manual setup; listed so the threats PAN already de
 
 ## Accepted CodeQL findings
 
-Alerts dismissed in the GitHub UI carry a 280-character reason. The full argument lives here, so a future reader can re-examine the judgment rather than trust a truncated note.
+Alerts dismissed in the GitHub UI carry a 280-character reason. The full argument lives here, so a future reader can re-examine the judgment rather than trust a truncated note. Since CodeQL moved to the local CI, the dismissals live in `.codeql-accepted.json` (rule, file, reason, and the GitHub alert number they came from); the local `codescan` gate does not fail on a result that matches one, and reports an acceptance that no longer matches as stale. Accepting a new finding means adding an entry there, with its reason, in the same change.
 
 ### `js/insecure-temporary-file` — the hook IPC bridge
 

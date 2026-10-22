@@ -178,11 +178,13 @@ describe('CI runs the double-backed scenario, never skips it (CI1)', () => {
     assert.ok(out.every((f) => f.step === 'require-run'));
   });
 
-  test('the CI harness job installs a pinned Claude Code and requires the double scenario to run', () => {
-    const ci = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
-    assert.match(ci, /npm install -g @anthropic-ai\/claude-code@\d+\.\d+\.\d+\b/, 'pinned to an exact version');
-    assert.match(ci, /npm run harness -- --no-ledger --require-run double-executor-body-claude/);
-    assert.ok(ci.indexOf('@anthropic-ai/claude-code@') < ci.indexOf('--require-run double-executor-body-claude'), 'installed before the harness runs');
+  // The harness job moved from GitHub to the local CI (scripts/local-ci.cjs), which runs it
+  // with the Claude Code CLI installed on the machine.
+  test('the local CI harness gate requires the double scenario to run', () => {
+    const { planGates, parseArgs } = require('../scripts/local-ci.cjs');
+    const h = planGates(parseArgs(['--only', 'harness', '--root', ROOT]))[0];
+    assert.deepEqual(h.args.slice(0, 4), ['harness/src/run.cjs', '--tier', '0', '--no-ledger']);
+    assert.match(h.args.join(' '), /--require-run double-executor-body-claude/);
   });
 
   test('a run-level failure (a survived control, an unmet --require-run) makes the harness exit 1', () => {
@@ -369,7 +371,7 @@ describe('cassettes: replay at $0, drift as prompt impact (H2)', () => {
     assert.ok(models[0].expect.includes('drift:none'));
     assert.ok(models[1].expect.includes('drift:^pan-executor$'));
     assert.ok(models[0].double.record && models[0].double.record.script, 'the synthetic recipe the cassette is re-recorded from');
-    assert.match(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8'), /--require-run cassette-drift-claude/, 'CI runs it, never skips it');
+    assert.match(fs.readFileSync(path.join(ROOT, 'scripts', 'local-ci.cjs'), 'utf8'), /'--require-run', 'cassette-drift-claude'/, 'the local CI runs it, never skips it');
   });
 });
 
@@ -407,8 +409,8 @@ describe('a scripted user (H9): rules on what the user said and what the convers
 });
 
 describe('CI requires the scripted-user scenario (H9)', () => {
-  test('ci.yml names discuss-phase-scripted-user with --require-run, so a missing CLI fails rather than skips', () => {
-    assert.match(fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8'), /--require-run discuss-phase-scripted-user/);
+  test('the local CI names discuss-phase-scripted-user with --require-run, so a missing CLI fails rather than skips', () => {
+    assert.match(fs.readFileSync(path.join(ROOT, 'scripts', 'local-ci.cjs'), 'utf8'), /'--require-run', 'discuss-phase-scripted-user'/);
     const s = loadScenarios(path.join(ROOT, 'harness', 'scenarios')).find((x) => x.id === 'discuss-phase-scripted-user');
     assert.ok(s, 'the scenario exists');
     assert.deepEqual(s.steps.map((st) => st.kind), ['model', 'user', 'user', 'user', 'fs']);

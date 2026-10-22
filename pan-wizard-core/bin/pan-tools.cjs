@@ -913,7 +913,7 @@ async function main() {
       require('./lib/autodev.cjs').cmdAutodev(cwd, args[1], {
         host: getArgValue(args, '--host'), maxUsd: getArgValue(args, '--max-usd'), maxUsdDay: getArgValue(args, '--max-usd-day'),
         maxTurns: getArgValue(args, '--max-turns'), run: getArgValue(args, '--run'), worktrees: args.includes('--worktrees'),
-        ci: args.includes('--ci'), ciRounds: getArgValue(args, '--ci-rounds'), ciPush: args.includes('--ci-push'), ciBase: getArgValue(args, '--ci-base'),
+        ci: args.includes('--ci') ? (getArgValue(args, '--ci') === 'local' ? 'local' : 'pr') : false, ciRounds: getArgValue(args, '--ci-rounds'), ciPush: args.includes('--ci-push'), ciBase: getArgValue(args, '--ci-base'),
       }, raw);
       break;
     }

@@ -46,6 +46,12 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-const nodeArgs = watch ? ['--test', '--watch', ...files] : ['--test', ...files];
+// PAN_TEST_CONCURRENCY caps how many test files run at once (scripts/local-ci.cjs sets it).
+// Node's default is one per core but one: on a 40-core machine that is 39 files at a time,
+// and the suite's wall-clock checks were never meant for that. The flag needs Node 20.10+.
+const [major, minor] = process.versions.node.split('.').map(Number);
+const cap = Number(process.env.PAN_TEST_CONCURRENCY);
+const concurrency = cap > 0 && (major > 20 || (major === 20 && minor >= 10)) ? [`--test-concurrency=${cap}`] : [];
+const nodeArgs = watch ? ['--test', '--watch', ...concurrency, ...files] : ['--test', ...concurrency, ...files];
 const result = spawnSync(process.execPath, nodeArgs, { stdio: 'inherit' });
 process.exit(result.status ?? 1);

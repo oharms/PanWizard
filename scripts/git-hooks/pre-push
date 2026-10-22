@@ -1,0 +1,27 @@
+#!/bin/sh
+# PAN Wizard pre-push hook — the fast subset of the local CI (scripts/local-ci.cjs --fast):
+# the suite on the current Node, the harness at tier 0, and gitleaks.
+#
+# Opt-in. core.hooksPath points every clone at this directory, so the hook is always
+# present; it does nothing until you turn it on for this clone:
+#   npm run hooks:pre-push              (git config pan.prePush true)
+#   npm run hooks:pre-push -- --off     (turn it off again)
+#
+# Bypass once:  SKIP_PREPUSH=1 git push   or   git push --no-verify
+#
+# Exit codes:
+#   0  off, bypassed, or every gate passed (a skipped gate is listed, not passed)
+#   1  a gate failed — read the summary and .ci-local/logs/ before pushing
+
+if [ "$(git config --bool pan.prePush 2>/dev/null)" != "true" ]; then
+  exit 0
+fi
+
+if [ "${SKIP_PREPUSH:-}" = "1" ]; then
+  echo "[pre-push] SKIP_PREPUSH=1 — local CI bypassed." >&2
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+echo "[pre-push] local CI, fast subset (SKIP_PREPUSH=1 to bypass)…" >&2
+exec node "$REPO_ROOT/scripts/local-ci.cjs" --fast

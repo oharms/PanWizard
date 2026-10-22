@@ -151,6 +151,8 @@ function emitCore(srcDir, destDir) {
     if (err.code !== 'ENOENT') throw err;
   }
   fs.writeFileSync(path.join(destDir, 'VERSION'), pkg.version);
+  // `/pan:update` points at the installed changelog, as a loose-file install carries it.
+  fs.copyFileSync(path.join(ROOT, 'CHANGELOG.md'), path.join(destDir, 'CHANGELOG.md'));
 }
 
 /** Canonical agent reference copies under <core>/agents/ (ADR-0028). */

@@ -190,6 +190,8 @@ describe('S5: the weekly State of PAN', () => {
     w('harness/autopilot/state/market-watch.json', [{ fired: [{ id: 'MI-040', at: '2026-10-17', note: 'latest 2.2.0' }] }]);
     w('harness/autopilot/state/bot-runs.jsonl', [{ ts: '2026-10-15T00:00:00Z', lane: 'docs', branch: 'bot/docs/r1', outcome: 'opened' }, { ts: '2026-10-16T00:00:00Z', lane: 'docs', branch: 'bot/docs/r1', outcome: 'merged' }]);
     w('harness/autopilot/state/spend.jsonl', [{ ts: '2026-10-15T00:00:00Z', lane: 'docs', usd: 1.25 }, { ts: '2026-09-15T00:00:00Z', lane: 'docs', usd: 9 }]);
+    fs.mkdirSync(path.join(d, '.ci-local', 'scheduled', 'outdated'), { recursive: true });
+    w('.ci-local/scheduled/outdated/last-run.json', [{ job: 'outdated', status: 'report', at: '2026-10-19T09:00:04.000Z', report: '.ci-local/scheduled/outdated/20261019-090004.md' }]);
     return d;
   }
 
@@ -221,6 +223,11 @@ Trend: +111 tests, coverage +0.8 points over 3 runs.
 
 ## Bot branches
 - opened 1, merged 1, reverted 0
+
+## Scheduled checks
+- codescan: no run yet (\`npm run ci:schedule -- --install\`)
+- outdated: report on 2026-10-19 — [report](../../../.ci-local/scheduled/outdated/20261019-090004.md)
+- market-watch: no run yet (\`npm run ci:schedule -- --install\`)
 
 ## Autopilot spend
 - this month: $1.25
