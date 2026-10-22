@@ -58,7 +58,8 @@ function startBoundary(day, time, from = new Date()) {
 
 /** The Task Scheduler definition for one job. Pure. */
 function taskXml(job, { root, node, from }) {
-  const script = path.join(root, 'scripts', 'local-schedule.cjs');
+  // A Task Scheduler definition is a Windows path whichever host builds it.
+  const script = path.win32.join(root, 'scripts', 'local-schedule.cjs');
   return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
