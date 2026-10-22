@@ -67,6 +67,8 @@
     "breakerTripped:function",
     "bucketOf:function",
     "ciOracle:function",
+    "localGate:function",
+    "localOracle:function",
     "waitForCi:function"
   ],
   "codebase.cjs": [

@@ -7,7 +7,9 @@
  * Reads: harness/autopilot/state/history.jsonl (suite runs: tests, failing, line
  * coverage), harness/prompt-mutants.jsonl (H6), the surface check, harness/ledger.jsonl
  * (open findings and their age), harness/autopilot/state/market-watch.json (fired
- * triggers), state/bot-runs.jsonl and state/spend.jsonl (the autopilot).
+ * triggers), state/bot-runs.jsonl and state/spend.jsonl (the autopilot), and the latest
+ * weekly local check of each kind (.ci-local/scheduled/<job>/last-run.json, written by
+ * scripts/local-schedule.cjs), which it links.
  *
  *   node harness/autopilot/state-of-pan.cjs [--now YYYY-MM-DD]   writes state/state-of-pan-<date>.md
  */
@@ -74,6 +76,15 @@ function buildReport({ root = ROOT, now, surfaceDrift: drift } = {}) {
   const bots = rows(path.join(st, 'bot-runs.jsonl')).filter((r) => inWeek(r.ts));
   const count = (o) => bots.filter((r) => r.outcome === o).length;
   out.push('', '## Bot branches', `- opened ${count('opened')}, merged ${count('merged')}, reverted ${count('reverted')}`);
+
+  // The weekly local checks (scripts/local-schedule.cjs): the latest report of each.
+  const { JOBS, latestReports } = require('../../scripts/local-schedule.cjs');
+  const latest = latestReports(root);
+  out.push('', '## Scheduled checks');
+  for (const job of JOBS) {
+    const l = latest[job.id];
+    out.push(l ? `- ${job.id}: ${l.status} on ${String(l.at).slice(0, 10)} — [report](${path.relative(st, path.join(root, l.report)).replace(/\\/g, '/')})` : `- ${job.id}: no run yet (\`npm run ci:schedule -- --install\`)`);
+  }
 
   const month = today.slice(0, 7);
   const spend = rows(path.join(st, 'spend.jsonl')).filter((r) => String(r.ts).startsWith(month)).reduce((n, r) => n + (Number(r.usd) || 0), 0);

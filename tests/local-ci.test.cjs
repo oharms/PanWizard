@@ -13,7 +13,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCRIPT = path.join(ROOT, 'scripts', 'local-ci.cjs');
-const { parseArgs, planGates, which, lastSignal } = require(SCRIPT);
+const { parseArgs, planGates, which, findCodeql, judgeSarif, lastSignal, verdictFile } = require(SCRIPT);
 
 function git(cwd, ...args) {
   const r = spawnSync('git', ['-c', 'user.email=t@local', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' });
@@ -46,7 +46,9 @@ describe('local-ci: options and planning', () => {
     assert.equal(o.jobs, 3);
     assert.equal(o.strict, true);
     assert.equal(o.docker, false);
-    assert.equal(parseArgs(['--codescan']).codescan, 'semgrep');
+    assert.equal(parseArgs(['--codescan']).codescan, 'auto', 'CodeQL when installed, else Semgrep');
+    assert.equal(parseArgs(['--codescan-all']).codescan, 'auto');
+    assert.equal(parseArgs(['--out', 'x']).out, path.resolve('x'));
     assert.throws(() => parseArgs(['--codescan=sonar']), /semgrep or codeql/);
     assert.throws(() => parseArgs(['--bogus']), /unknown option/);
   });
@@ -78,6 +80,55 @@ describe('local-ci: options and planning', () => {
     assert.ok(skipped.length >= 2, 'without fnm, the Node versions other than the current one are skipped');
     for (const g of skipped) assert.match(g.skip, /fnm/);
     fs.rmSync(empty, { recursive: true, force: true });
+  });
+
+  test('CodeQL is found on PATH or where the bundle is unpacked, and preferred by --codescan', () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-lci-cq-'));
+    const env = { ...process.env, PATH: empty, Path: empty, USERPROFILE: empty, HOME: empty };
+    assert.equal(findCodeql(env), null);
+    assert.equal(planGates(parseArgs(['--codescan', '--only', 'codescan', '--root', ROOT]), env)[0].title.startsWith('semgrep'), true, 'no CodeQL: Semgrep');
+    const exe = path.join(empty, '.codeql-cli', 'codeql', process.platform === 'win32' ? 'codeql.exe' : 'codeql');
+    fs.mkdirSync(path.dirname(exe), { recursive: true });
+    fs.writeFileSync(exe, '');
+    assert.equal(findCodeql(env), exe);
+    const g = planGates(parseArgs(['--codescan', '--only', 'codescan', '--root', ROOT]), env)[0];
+    assert.match(g.title, /CodeQL/);
+    assert.equal(g.cmd, exe);
+    assert.ok(g.then.args.some(a => /security-extended/.test(a)));
+    fs.rmSync(empty, { recursive: true, force: true });
+  });
+
+  test('a CodeQL result blocks at error level or security severity high+, as GitHub\'s check does', () => {
+    const doc = (results) => ({ runs: [{ tool: { driver: { rules: [{ id: 'js/high', properties: { 'security-severity': '7.5' } }, { id: 'js/low', properties: { 'security-severity': '3.1' } }, { id: 'js/note' }] } }, results }] });
+    assert.equal(judgeSarif(doc([])).status, 'pass');
+    assert.equal(judgeSarif(doc([{ ruleId: 'js/low', level: 'warning' }, { ruleId: 'js/note', level: 'note' }])).status, 'pass');
+    const high = judgeSarif(doc([{ ruleId: 'js/high', level: 'warning' }]));
+    assert.equal(high.status, 'fail');
+    assert.match(high.detail, /js\/high/);
+    assert.equal(judgeSarif(doc([{ ruleId: 'js/note', level: 'error' }])).status, 'fail');
+  });
+
+  test('a finding accepted on review (rule and file) does not block; a new one in the same file does; a dead acceptance is stale', () => {
+    const at = (ruleId, uri, line) => ({ ruleId, level: 'warning', locations: [{ physicalLocation: { artifactLocation: { uri }, region: { startLine: line } } }] });
+    const doc = { runs: [{ tool: { driver: { rules: [{ id: 'js/high', properties: { 'security-severity': '7.5' } }, { id: 'js/other', properties: { 'security-severity': '8.0' } }] } }, results: [at('js/high', 'bin/a.js', 10)] }] };
+    const accepted = [{ rule: 'js/high', path: 'bin/a.js', reason: 'reviewed' }, { rule: 'js/gone', path: 'bin/b.js', reason: 'fixed since' }];
+    const v = judgeSarif(doc, accepted);
+    assert.equal(v.status, 'pass');
+    assert.match(v.detail, /0 blocking.*1 accepted.*1 stale/);
+    doc.runs[0].results.push(at('js/other', 'bin/a.js', 3));
+    const red = judgeSarif(doc, accepted);
+    assert.equal(red.status, 'fail');
+    assert.deepEqual(red.blocking, [{ rule: 'js/other', path: 'bin/a.js', line: 3 }]);
+  });
+
+  test('every committed CodeQL acceptance names a rule, a file that exists, and a reason', () => {
+    const { accepted } = JSON.parse(fs.readFileSync(path.join(ROOT, '.codeql-accepted.json'), 'utf8'));
+    assert.ok(accepted.length > 0);
+    for (const a of accepted) {
+      assert.match(a.rule, /^js\//);
+      assert.ok(fs.existsSync(path.join(ROOT, a.path)), `${a.path} does not exist`);
+      assert.ok(String(a.reason).length > 20, `${a.rule} ${a.path} needs a reason`);
+    }
   });
 
   test('lastSignal picks the failing line out of a log', () => {
@@ -129,6 +180,24 @@ describe('local-ci: the suite gate', () => {
     assert.equal(fs.existsSync(lock), false, 'the lock is released when the run ends');
   });
 
+  test('--out puts the report elsewhere; only a full run records a verdict for land', () => {
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-lci-out-'));
+    const head = git(repo, 'rev-parse', 'HEAD').trim();
+    const file = verdictFile(repo, head);
+    fs.rmSync(file, { force: true });
+    const partial = localCi(repo, ['--only', 'clean-tree', '--out', out]);
+    assert.equal(partial.status, 0, partial.out);
+    assert.ok(fs.existsSync(path.join(out, 'report.json')));
+    assert.equal(fs.existsSync(file), false, 'an --only run is not a verdict on the commit');
+
+    const full = localCi(repo, []);
+    const v = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.equal(v.headFull, head);
+    assert.equal(v.status, full.status === 0 ? 'pass' : 'fail');
+    assert.equal(typeof v.dirtyAtStart, 'boolean');
+    fs.rmSync(out, { recursive: true, force: true });
+  });
+
   test('a skipped gate is reported SKIP, and --strict makes it fail the run', () => {
     const r = localCi(repo, ['--only', 'linux']);
     assert.equal(r.status, 0, r.out);
@@ -178,7 +247,7 @@ describe('local-ci: gitleaks', () => {
 
     // Assembled at run time so this file never holds a token-shaped string itself.
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    const body = [...crypto.randomBytes(36)].map(b => alphabet[b % alphabet.length]).join('');
+    const body = Array.from({ length: 36 }, () => alphabet[crypto.randomInt(alphabet.length)]).join('');
     fs.writeFileSync(path.join(repo, 'config.js'), `module.exports = { token: '${'gh' + 'p_'}${body}' };\n`);
     git(repo, 'add', '-A');
     git(repo, 'commit', '-qm', 'leak');

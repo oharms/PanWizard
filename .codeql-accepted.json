@@ -1,0 +1,77 @@
+{
+  "_about": "CodeQL findings accepted on review, carried over from the alerts dismissed on GitHub (code scanning) when the scan moved to scripts/local-ci.cjs. A result whose rule and file match an entry does not fail the codescan gate; it is counted as accepted. Every entry needs a reason; an entry that no longer matches any result is reported as stale. See docs/SECURITY-HARDENING.md, Accepted CodeQL findings.",
+  "accepted": [
+    {
+      "rule": "js/file-system-race",
+      "path": "bin/install.js",
+      "reason": "won't fix: Local single-user CLI: this reads then writes the invoking user's own config/learnings files in their own tree. No trust boundary or privileged context, so the TOCTOU window is not exploitable.",
+      "github_alert": 23
+    },
+    {
+      "rule": "js/insecure-temporary-file",
+      "path": "hooks/pan-context-monitor.js",
+      "reason": "false positive: Per-uid bridge dir, created 0700 then verified: not a symlink, owned by us, no group/other bits, fail-closed. The name must be predictable - statusline writes it, context-monitor reads it, separate processes; mkdtemp breaks the IPC. CodeQL accepts no sanitizer but randomness.",
+      "github_alert": 48
+    },
+    {
+      "rule": "js/insecure-temporary-file",
+      "path": "hooks/pan-statusline.js",
+      "reason": "false positive: Per-uid bridge dir, created 0700 then verified: not a symlink, owned by us, no group/other bits, fail-closed. The name must be predictable - statusline writes it, context-monitor reads it, separate processes; mkdtemp breaks the IPC. CodeQL accepts no sanitizer but randomness.",
+      "github_alert": 51
+    },
+    {
+      "rule": "js/prototype-pollution-utility",
+      "path": "pan-wizard-core/bin/lib/config.cjs",
+      "reason": "false positive: Guarded + verified: config-set rejects any key path with __proto__/constructor/prototype (inline check over all segments, early return) before assignment. Tested nested vectors; Object.prototype stays clean. CodeQL flags the path-walk shape, cannot see the guard.",
+      "github_alert": 6
+    },
+    {
+      "rule": "js/http-to-file-access",
+      "path": "pan-wizard-core/bin/lib/core.cjs",
+      "reason": "false positive: No HTTP in output(): this writes a local command-result object to a private mkdtemp directory. CodeQL over-approximates a taint path; there is no network-sourced data reaching this sink.",
+      "github_alert": 42
+    },
+    {
+      "rule": "js/regex-injection",
+      "path": "pan-wizard-core/bin/lib/doc-lint/walk.js",
+      "reason": "false positive: globToRegex is a glob-to-regex compiler that escapes every regex metacharacter (.+?^$()|{}[] and backslash) before emitting; only intended wildcard translations pass through. Input is a trusted internal glob pattern, not attacker data.",
+      "github_alert": 9
+    },
+    {
+      "rule": "js/file-system-race",
+      "path": "pan-wizard-core/bin/lib/optimize.cjs",
+      "reason": "won't fix: Local single-user CLI: this reads then writes the invoking user's own config/learnings files in their own tree. No trust boundary or privileged context, so the TOCTOU window is not exploitable.",
+      "github_alert": 25
+    },
+    {
+      "rule": "js/file-system-race",
+      "path": "tests/copilot-install.test.cjs",
+      "reason": "used in tests: Test-file only (not in the npm files allowlist, never shipped); fixture temp dirs / assertions on the developer's own machine — no runtime attack surface.",
+      "github_alert": 26
+    },
+    {
+      "rule": "js/shell-command-injection-from-environment",
+      "path": "tests/e2e-install.test.cjs",
+      "reason": "used in tests: Test-file only (not in the npm files allowlist, never shipped); fixture temp dirs / assertions on the developer's own machine — no runtime attack surface.",
+      "github_alert": 8
+    },
+    {
+      "rule": "js/insecure-temporary-file",
+      "path": "tests/error-patterns.test.cjs",
+      "reason": "used in tests: Test-file only (not in the npm files allowlist, never shipped); fixture temp dirs / assertions on the developer's own machine — no runtime attack surface.",
+      "github_alert": 38
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/standards.test.cjs",
+      "reason": "used in tests: Test-file only (not in the npm files allowlist, never shipped); fixture temp dirs / assertions on the developer's own machine — no runtime attack surface.",
+      "github_alert": 5
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/workflows-v3-7-9.test.cjs",
+      "reason": "used in tests: Test-file only; not shipped.",
+      "github_alert": 39
+    }
+  ]
+}

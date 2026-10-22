@@ -1,8 +1,15 @@
 name: CI
 
-# Run unit + scenario tests across Linux, macOS, Windows and Node 18/20/22.
+# macOS only. Every other gate runs on the owner's machine: `npm run ci:local`
+# (scripts/local-ci.cjs) runs the suite on Windows under Node 18, 20 and 22 and on Linux in
+# node:*-bookworm containers, the harness at tier 0, gitleaks, npm audit, the links check,
+# the surface registry, the coverage gate and a clean-tree check, and `npm run land` lands a
+# branch only after it passed (docs/DEVELOPMENT.md, Local CI). There is no Mac there, and the
+# macOS jobs have caught a real bug the others missed (an 8 KB stdout truncation, PR #52), so
+# they stay here.
+#
 # Hardening notes:
-#   - Top-level permissions default to read-only; jobs grant more only if needed.
+#   - Top-level permissions default to read-only.
 #   - Third-party actions are pinned by full commit SHA (not by tag) to defeat
 #     tag-substitution attacks. Comments next to each SHA give the human version
 #     tag at time of pinning — update both together when bumping.
@@ -31,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [macos-latest]
         node: [18, 20, 22]
 
     steps:
@@ -62,103 +69,3 @@ jobs:
 
       - name: Scenario tests
         run: npm run test:scenarios
-
-      # Did the shipped code RUN? Every dispatcher arm executed, coverage floors per
-      # module group (scripts/coverage-gate.cjs). Node's coverage include/exclude flags
-      # exist from 22; advisory for one release, then required — see the testing-system
-      # spec in docs/specs.
-      - name: Coverage gate (advisory)
-        if: matrix.node == 22
-        continue-on-error: true
-        run: node scripts/coverage-gate.cjs
-
-      - name: Doc↔code link graph (anti-fake — docs can't reference code that doesn't exist)
-        run: node pan-wizard-core/bin/pan-tools.cjs links validate --raw
-
-      # Did the shipped artifact BEHAVE? Tier 0 of the PAN Harness (ADR-0047) packs this
-      # checkout, installs it into a throwaway directory and drives real scenarios — the
-      # layer a unit test cannot reach. Tier 0 is model-free and costs nothing; the model
-      # tiers need --max-usd and stay a local/manual call. One job only: it builds and
-      # installs an artifact, so running it on all nine would buy nothing. --no-ledger
-      # keeps harness/ledger.jsonl (a tracked file) out of it; the run reports through its
-      # own report.md under the runner's temp directory.
-      # The double-backed scenarios (program H1) drive the real Claude Code CLI against the
-      # harness's local model double: no key, no spend. Pinned to the version they were proven on,
-      # and the version the committed cassette (H2) was recorded against.
-      - name: Claude Code CLI for the double-backed harness scenarios
-        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
-        run: npm install -g @anthropic-ai/claude-code@2.1.288
-
-      - name: PAN Harness (tier 0, model-free)
-        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
-        run: npm run harness -- --no-ledger --require-run double-executor-body-claude --require-run cassette-drift-claude --require-run discuss-phase-scripted-user
-
-      # The suite and the harness must both leave the tree as they found it. A gate that
-      # writes into the checkout hides its own side effects from review.
-      - name: Working tree is unchanged
-        if: matrix.os == 'ubuntu-latest' && matrix.node == 22
-        run: git diff --exit-code
-
-  audit:
-    name: npm audit (production)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: Harden runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-
-      - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-        with:
-          persist-credentials: false
-
-      - name: Setup Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version: 22
-
-      - name: Audit production deps (fail on high+)
-        run: npm audit --omit=dev --audit-level=high
-
-  gitleaks:
-    name: gitleaks secret scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Harden runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
-        with:
-          egress-policy: audit
-
-      - name: Checkout (full history)
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Install gitleaks
-        # Avoid a third-party Action — fetch the official release tarball and
-        # verify its sha256 against the upstream checksum file. Pin the version
-        # explicitly so a malicious latest-release can't slip in silently.
-        env:
-          GITLEAKS_VERSION: 8.21.2
-        run: |
-          set -euo pipefail
-          curl -sSL -o gitleaks.tar.gz \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          curl -sSL -o gitleaks.checksums.txt \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
-          # The checksum file lists multiple platforms; grep ours and verify.
-          grep "linux_x64.tar.gz" gitleaks.checksums.txt | sed "s|gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz|gitleaks.tar.gz|" | sha256sum -c -
-          tar -xzf gitleaks.tar.gz gitleaks
-          chmod +x gitleaks
-          ./gitleaks version
-
-      - name: Scan repo
-        # --verbose prints each finding's file, line, commit and rule; --redact keeps the
-        # matched value out of the log. Without --verbose a failure says only "leaks found".
-        run: ./gitleaks detect --no-banner --config .gitleaks.toml --redact --verbose
