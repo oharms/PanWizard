@@ -1,13 +1,13 @@
 # Product Excellence Superplan
 
-**Date:** `2026-10-12` · **Status:** In progress: sprints 1–3 released (`3.35.0`, `3.36.0` (tagged `v3.36.0` on `e7d1011`, PR oharms/PanWizard#48, published `2026-10-19`)); sprint 4 not started (see [Progress](#progress); reviewed `2026-10-12`, review folded in) · **Source program:** `docs/specs/product_excellence_program_2026_q4_featureai.md` (item design and evidence) · **Owner decisions:** that program's §3.4
+**Date:** `2026-10-12` · **Status:** In progress: sprints 1–3 released (`3.35.0`, `3.36.0` (tagged `v3.36.0` on `e7d1011`, PR oharms/PanWizard#48, published `2026-10-19`)); sprints 4–8 merged to `main` (PR oharms/PanWizard#52), not released (see [Progress](#progress); reviewed `2026-10-12`, review folded in) · **Source program:** `docs/specs/product_excellence_program_2026_q4_featureai.md` (item design and evidence) · **Owner decisions:** that program's §3.4
 **Tree (when written):** `feat/memory-optimization-2026-10` @ `4994ed5` (`3.34.0`) plus the uncommitted audit work. This superplan **supersedes the program's §3.3 wave ordering** with a dependency-checked session order. Item ids are the program's and local to it (write "program R2" outside these two files); W0, X1, CI1, A0, A1a/A1c, A7b, L6a/L6b, V1E, V5G and HX1–HX5 are added here.
 
 This is the executable form of the program. Every item has a priority class, a size, the files it touches, the items it depends on, a **code gate** (free, blocking: the item is not done until it is green) and, where the claim needs a model, a separate **evidence gate** (non-blocking: it runs on a per-run `--max-usd` approval and never holds up later items). `/execplan` consumes it one session at a time.
 
 ## Progress
 
-Updated `2026-10-21`. The superplan's own order holds; nothing has been re-sequenced. Every item in [Items](#items) is built: sprints 4 to 8 merged to `main` in one PR, and the three release-hardening items they carried (HX3, HX4, HX5) were folded into a single release that the owner has not cut yet.
+Updated `2026-10-22`. The superplan's own order holds; nothing has been re-sequenced. Every item in [Items](#items) is built: sprints 4 to 8 merged to `main` in one PR, and the three release-hardening items they carried (HX3, HX4, HX5) were folded into a single release that the owner has not cut yet.
 
 | Session | Items | State | Where |
 |---|---|---|---|
@@ -27,15 +27,21 @@ Updated `2026-10-21`. The superplan's own order holds; nothing has been re-seque
 | 6a, 6b | A1a, A1c; A4, A5, A6, H8 | Merged, not released | PR oharms/PanWizard#52 |
 | 7a, 7b, 7c | A2, A3; S1, S2, S5; H10 (HX4 folded) | Merged, not released | PR oharms/PanWizard#52 |
 | 8a, 8b | S3, V5G, S4; S6 (HX5 folded) | Merged, not released | PR oharms/PanWizard#52 |
+| — | Progress table for sprints 4 to 8; P6 closed by A6 | Merged | PR oharms/PanWizard#53 (`82baab2`) |
+| 7c (H10 evidence) | The live PAN-vs-bare-host pair and its pilot result | Merged | PR oharms/PanWizard#54 (`a9986ee`) |
+| 7c (H10 evidence) | The hard pair (discount codes, hidden acceptance check) and its 5-rep result | Landed locally | `0bb48b7` (was PR oharms/PanWizard#55) |
+| 7c (H10 evidence) | The multi-phase pair (autodev across a two-phase roadmap) and the spending `sh` step; validated model-free, not run | Landed locally | `45323c9` (was PR oharms/PanWizard#56) |
+| — | Outside the plan: local-first CI (`ci:local`, `land`, scheduled scans, `autodev --ci local`; `ci.yml` cut down to macOS, CodeQL and Dependabot workflows removed) | Merged | PR oharms/PanWizard#57 (`75bdb74`); [local-first-ci.md](local-first-ci.md) |
 
 **Open from finished sessions:**
 
 - **R49** (session 3a) is a paid live re-run and has not run: tier-1/2 runs now default to a $15 cap (`harness/src/run.cjs`), so it needs only the owner's approval to spend; run `memory-not-loaded` on its own or raise `--max-usd`, because one run splits the cap evenly. It blocks nothing.
 - **P6** (session 3b) is complete. It shipped the forecast in `preview phase`, and its last clause, the autodev loop stopping when spend passes p90, shipped with **A6** (session 6b, PR oharms/PanWizard#52): an execute unit that costs more than the per-plan p90 times the phase's plans stops `autodev run` with `forecast_exceeded` (`autodev.cjs` `unitForecast`, `tests/autodev-governor.test.cjs`).
-- **Evidence gates.** No paid evidence step in [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-approval) has run yet, sprints 4 to 8 included: `harness/ledger.jsonl` holds no evidence-gate row, and the committed corpus replay and the H10 pair's cassettes are synthetic. Under the MI-114 rule, sessions 3a, 3b, 4a and 4b edited judge prompts, so each owes a paired corpus result once H4's first real baseline is paid for. Every item shipped in its safe default (off or report mode), as the rules below allow.
+- **Evidence gates.** The only paid evidence steps run so far are H10's: the pilot pair and the hard pair (`2026-10-21`; results in the H10 row of [Paid steps](#paid-steps-each-needs-a-per-run---max-usd-approval-there-is-no-standing-approval)). The multi-phase pair is built and validated model-free, and it waits for an approved cap (about $60 for three pairs). No other evidence step has run: `harness/ledger.jsonl` holds no other evidence-gate row, and the committed corpus replay is synthetic. Under the MI-114 rule, sessions 3a, 3b, 4a and 4b edited judge prompts, so each owes a paired corpus result once H4's first real baseline is paid for. Every item shipped in its safe default (off or report mode), as the rules below allow.
 - **Deviations recorded in PR oharms/PanWizard#52.** M35 left `agents/pan-executor.md` unchanged, because `harness/cassettes/executor-spawn-claude.json` records that prompt and re-recording it spends (the M35 evidence run re-records it; `tests/prompt-style.test.cjs` exempts the file until then). H8's simulations live in `harness/sims/` and run through `harness/src/sim.cjs`, not as `harness/scenarios/sim-*.json`, because they drive the autodev loop in-process rather than a host CLI. S6's test was written alongside its module rather than proven red first.
 - **Found while building sprint 7:** two new test files deleted their stand-in host binaries between tests, so later tests ran the real `claude` and `gh` CLIs (about $1.18 API-equivalent, 2026-10-20). Fixed in the same PR: stand-ins live for a whole test file, and with `PAN_STANDIN_DIR` set the autodev loop, the CI oracle and the cross-family lane refuse any host CLI that is not a stand-in.
 - **Release.** Sprints 4 to 8 are on `main` (`3bccb99`) and unreleased: the version is still `3.36.0`, and the next release waits for the owner.
+- **How HX items run now.** Since PR oharms/PanWizard#57, the "CI green" and "CodeQL no new alerts" exits in the HX rows mean a full `npm run ci:local` pass (with `--codescan`) plus GitHub's macOS jobs. Changes land with `npm run land` rather than through a pull request ([local-first-ci.md](local-first-ci.md)).
 - **Release 3.36.0** shipped: `3.36.0` (tagged `v3.36.0` on `e7d1011`, PR oharms/PanWizard#48, published `2026-10-19`). Sprint 3's exit criterion is released. *(Corrected `2026-10-19` by the reality check; this line said the release was pending push, merge and tag.)*
 
 ## Baseline

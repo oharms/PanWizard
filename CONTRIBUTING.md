@@ -29,6 +29,8 @@ Thank you for your interest in contributing to PAN Wizard!
 7. Commit with clear messages
 8. Push and create PR
 
+GitHub CI runs only the macOS suite on a pull request. The maintainer runs the full gate (`npm run ci:local`) on the branch before landing it, so a pull request from a fork is landed with `npm run land` rather than merged on GitHub; see [Local CI](docs/DEVELOPMENT.md#local-ci).
+
 ## Development Setup
 
 ```bash

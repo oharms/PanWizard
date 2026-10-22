@@ -27,13 +27,11 @@ Open https://github.com/oharms/PanWizard/settings.
 
 Add a rule for `main` with:
 
-- [x] Require a pull request before merging
-  - Required approvals: 1 (or 0 if you're solo and want to self-merge after CI)
-  - Dismiss stale pull request approvals when new commits are pushed
+- [ ] Require a pull request before merging — **off**: `npm run land` pushes the squashed commit straight to `main` after a full local gate (set `2026-10-22`)
 - [x] Require status checks to pass before merging
   - Require branches to be up to date before merging
   - Required checks (search for these once CI runs at least once):
-    - `test (macos-latest · node <version>)` for node 18, 20, 22 — the only jobs `ci.yml` still runs. Every other gate (Windows and Linux test matrix, harness, gitleaks, npm audit, CodeQL) runs locally in `npm run ci:local`, and `npm run land` pushes the squashed commit straight to `main`. A required check GitHub no longer runs blocks every push, and a "require a pull request" rule blocks `land` too: change these when moving to the local flow
+    - `test (macos-latest · node <version>)` for node 18, 20, 22 — the only jobs `ci.yml` still runs. Every other gate (Windows and Linux test matrix, harness, gitleaks, npm audit, CodeQL) runs locally in `npm run ci:local`, and `npm run land` pushes the squashed commit straight to `main`. A required check GitHub no longer runs blocks every push. Set to these three on `2026-10-22`
 - [x] Require signed commits — depends on local commit signing (see below)
 - [x] Require linear history (optional; prevents merge commits)
 - [x] Do not allow bypassing the above settings — even for admins

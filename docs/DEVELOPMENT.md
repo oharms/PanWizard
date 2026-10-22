@@ -292,7 +292,7 @@ With no pull request, a change goes branch → `ci:local` → `land`:
 2. Commit everything, then run the full `npm run ci:local` on that commit. It has to start from a clean tree: uncommitted work means the gates did not test the commit alone, and `land` refuses that verdict.
 3. `npm run land -- <branch>` (`scripts/land.cjs`). It refuses unless the full run passed on the branch's current HEAD with no gate skipped (`--allow-skips` overrides that one) and the branch contains `origin/main`. Then it fetches, fast-forwards `main` to `origin/main` in the checkout that has `main` (or a temporary worktree), squash-merges the branch, checks that the result is exactly the tree `ci:local` passed, commits it with the branch's summary (the first commit's subject, or `--title`; the body lists every commit), and pushes `main` to `origin`. It never force-pushes; a rejected push leaves the commit on the local `main` and says so. `--dry-run` shows the commit without making it, `--no-push` stops before the push.
 
-GitHub is the mirror and the publisher. Branch protection on `main` that requires checks GitHub no longer runs will reject `land`'s push until those required checks are changed in the repository settings (only the macOS `test` jobs still report).
+GitHub is the mirror and the publisher. Since `2026-10-22`, branch protection on `main` requires only the three macOS `test` jobs, and no pull request, so `land` can push; a required check GitHub no longer runs would reject every push. The first changes landed this way were the H10 pairs (`0bb48b7`, `45323c9`).
 
 ### Scheduled checks
 

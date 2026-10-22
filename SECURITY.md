@@ -63,5 +63,5 @@ We coordinate disclosure with the reporter:
 - `npm audit --omit=dev` is enforced as a release gate in [scripts/release-check.js](scripts/release-check.js).
 - Hooks ship via `hooks/dist/`, a build-time copy of [hooks/](hooks/), as pure Node.js — copy-only, no bundler — auditable in one place.
 - The installer refuses to run inside its own source repo (`PAN_SOURCE_ROOT` guard in `bin/install.js`).
-- CI runs CodeQL JavaScript analysis on every push to `main`, on every pull request to `main`, and weekly.
-- Dependabot opens PRs for npm dev-deps and GitHub Actions weekly.
+- Every change to `main` passes the local gate first (`npm run ci:local`: the suite on Windows and Linux under Node 18, 20 and 22, the harness, gitleaks, `npm audit`, the coverage gate); `npm run land` refuses a commit without a full pass. GitHub CI then runs the suite on macOS.
+- CodeQL's `security-extended` suite runs weekly on the maintainer's machine (`npm run ci:schedule`) and on demand with `npm run ci:local -- --codescan`; a weekly `npm outdated` and `npm audit` job replaces Dependabot's pull requests. GitHub's Dependabot *alerts* stay on.

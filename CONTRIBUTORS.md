@@ -12,7 +12,7 @@ Everyone who has contributed to PAN Wizard, in any capacity.
 
 ## Automated Contributors
 
-- **dependabot[bot]** (GitHub, `support@github.com`) — Automated dependency updates: weekly pull requests for the npm dev-dependencies and the pinned GitHub Actions.
+- **dependabot[bot]** (GitHub, `support@github.com`) — Automated dependency updates: weekly pull requests for the npm dev-dependencies and the pinned GitHub Actions, until `2026-10-22`, when dependency checks moved to a local weekly job.
 
 ## Ancestor Projects
 
