@@ -59,6 +59,10 @@ const SEMGREP_IMAGE = process.env.PAN_CI_SEMGREP_IMAGE || 'semgrep/semgrep:1.90.
 const CODE_EXT = /\.(c?js|mjs)$/;
 const GATE_TIMEOUT_MS = 30 * 60 * 1000;
 const FAST_IDS = ['host-current', 'harness', 'gitleaks'];
+// Measured on a 40-core Windows machine: Node's default (a file per core but one) made the
+// Node 22 suite's wall-clock checks miss their bounds even with nothing else running.
+// PAN_TEST_CONCURRENCY overrides it.
+const HOST_TEST_CONCURRENCY = Math.max(2, Math.min(16, Math.floor(os.cpus().length / 2)));
 
 function parseArgs(argv) {
   const a = { fast: false, only: null, codescan: null, codescanAll: false, docker: true, jobs: 6, root: path.resolve(__dirname, '..'), out: null, strict: false, json: false, help: false };
@@ -335,7 +339,9 @@ async function runGate(g, o, env, logDir) {
   // Its own temp directory: tests that use a fixed name under os.tmpdir() must not meet
   // another gate's run of the same test.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `pan-lci-${g.id}-`));
-  const opts = { cwd: o.root, env: { ...env, TEMP: tmp, TMP: tmp, TMPDIR: tmp }, ...(g.opts || {}) };
+  // The host suite runs at most HOST_TEST_CONCURRENCY files at once (scripts/run-tests.cjs).
+  const cap = /^host-/.test(g.id) ? { PAN_TEST_CONCURRENCY: env.PAN_TEST_CONCURRENCY || String(HOST_TEST_CONCURRENCY) } : {};
+  const opts = { cwd: o.root, env: { ...env, ...cap, TEMP: tmp, TMP: tmp, TMPDIR: tmp }, ...(g.opts || {}) };
   stream.write(`$ ${[g.cmd, ...g.args].join(' ')}\n\n`);
   let r = await runOne(g.cmd, g.args, opts, stream);
   if (r.code === 0 && g.then) {

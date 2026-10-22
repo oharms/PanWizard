@@ -167,6 +167,28 @@ describe('local-ci: the suite gate', () => {
     for (const g of green.report.gates.filter(x => x.id.startsWith('host-') && x.status !== 'skip')) assert.equal(g.status, 'pass');
   });
 
+  test('PAN_TEST_CONCURRENCY=1 makes run-tests run one file at a time (Node 20.10+)', (t) => {
+    const [major, minor] = process.versions.node.split('.').map(Number);
+    if (!(major > 20 || (major === 20 && minor >= 10))) { t.skip('--test-concurrency needs Node 20.10+'); return; }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-lci-conc-'));
+    const trace = path.join(dir, 'trace.txt');
+    for (const n of ['a', 'b']) {
+      fs.writeFileSync(path.join(dir, `${n}.test.cjs`), `const fs = require('fs');
+require('node:test')('${n}', async () => {
+  fs.appendFileSync(${JSON.stringify(trace)}, 'start ${n}\\n');
+  await new Promise((r) => setTimeout(r, 400));
+  fs.appendFileSync(${JSON.stringify(trace)}, 'end ${n}\\n');
+});\n`);
+    }
+    const env = { ...process.env, PAN_TEST_CONCURRENCY: '1' };
+    delete env.NODE_TEST_CONTEXT;
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'run-tests.cjs'), dir], { encoding: 'utf8', env });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const lines = fs.readFileSync(trace, 'utf8').trim().split('\n');
+    assert.deepEqual(lines.map(l => l.split(' ')[0]), ['start', 'end', 'start', 'end'], `files overlapped: ${lines.join(', ')}`);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('a second run on the same checkout is refused while the first is alive; a stale lock is taken over', () => {
     const lock = path.join(repo, '.ci-local', 'run.lock');
     fs.mkdirSync(path.dirname(lock), { recursive: true });
