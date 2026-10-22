@@ -1,0 +1,57 @@
+{
+  "id": "pair-roadmap-live-stock",
+  "tier": 2,
+  "description": "The stock arm of the H10 multi-phase pair: one Claude Code session with nothing installed is asked to implement the same two-phase roadmap, a real model.",
+  "why": "Program H10, multi-phase: the claim PAN makes is about work that spans phases, where phase 2 depends on phase 1 holding its rules across restarts. Both arms see the same roadmap and requirements and are judged by the same hidden acceptance check (harness/scripts/check-tasks.cjs, one case per requirement edge). Run both arms together with --repeat N and an approved --max-usd.",
+  "seed": "tasks-roadmap",
+  "install": null,
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 25,
+    "maxMinutes": 150,
+    "maxStepMinutes": 140
+  },
+  "pair": {
+    "id": "roadmap-live",
+    "arm": "stock",
+    "goal": "Implement both phases of the roadmap in .planning/roadmap.md, meeting every requirement in .planning/requirements.md, with tests."
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "Implement both phases of the roadmap in .planning/roadmap.md, meeting every requirement in .planning/requirements.md, with tests. Do not ask questions.",
+      "expect": [
+        "exit:0",
+        "file:src/store.js",
+        "file:src/report.js"
+      ],
+      "why": "The session finishes and the files the roadmap names exist."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-tasks.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every requirement edge holds, across restarts, judged by a check neither arm saw."
+    }
+  ]
+}

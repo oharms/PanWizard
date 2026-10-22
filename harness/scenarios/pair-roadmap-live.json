@@ -1,0 +1,66 @@
+{
+  "id": "pair-roadmap-live",
+  "tier": 2,
+  "description": "The PAN arm of the H10 multi-phase pair: PAN's autodev loop plans, executes, verifies and completes each of the two phases, a fresh Claude Code session per unit, a real model.",
+  "why": "Program H10, multi-phase: the claim PAN makes is about work that spans phases, where phase 2 depends on phase 1 holding its rules across restarts. Both arms see the same roadmap and requirements and are judged by the same hidden acceptance check (harness/scripts/check-tasks.cjs, one case per requirement edge). Run both arms together with --repeat N and an approved --max-usd.",
+  "seed": "tasks-roadmap",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 25,
+    "maxMinutes": 150,
+    "maxStepMinutes": 140
+  },
+  "pair": {
+    "id": "roadmap-live",
+    "arm": "pan",
+    "goal": "Implement both phases of the roadmap in .planning/roadmap.md, meeting every requirement in .planning/requirements.md, with tests."
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "autodev-run.cjs",
+      "args": [
+        "<ws>",
+        "--max-turns",
+        "12"
+      ],
+      "spends": true,
+      "expect": [
+        "exit:0",
+        "json:stop=done",
+        "file:src/store.js",
+        "file:src/report.js"
+      ],
+      "why": "autodev runs both phases to done, each unit in a fresh session, and the files the roadmap names exist."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-tasks.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every requirement edge holds, across restarts, judged by a check neither arm saw."
+    }
+  ]
+}
