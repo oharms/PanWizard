@@ -510,7 +510,7 @@ function main() {
     }
     const seedDir = s.seed && s.seed !== 'empty' ? path.join(HARNESS_ROOT, 'seeds', s.seed) : null;
     if (seedDir && !fs.existsSync(seedDir)) throw new Error(`${s.id}: seed ${s.seed} not found`);
-    const wsName = label.replace('#', '-').replace('@', '-at-').replace('~', '--');
+    const wsName = workspaceName(label);
     const ws = createWorkspace(runDir, wsName, seedDir);
     const other = path.join(runDir, 'ws', `${wsName}-other`);
     fs.mkdirSync(other, { recursive: true });
@@ -715,6 +715,11 @@ function main() {
   return (failed || errors || runLevel) ? 1 : 0;
 }
 
+/** A folder name for a scenario label: `quick-mode#2@variant:x` holds a colon, which Windows refuses. */
+function workspaceName(label) {
+  return label.replace('#', '-').replace('@', '-at-').replace('~', '--').replace(/[^A-Za-z0-9._-]/g, '-');
+}
+
 /**
  * What a run leaves behind: its reports and step records. The extracted package (`artifact`)
  * and the workspaces (`ws`, the installs and seeded projects) go, unless `keep`.
@@ -770,4 +775,4 @@ function pairSummary(results, scenarios) {
   return out;
 }
 
-module.exports = { defaultStateDir, TEST_ROOTS, pruneRun, variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+module.exports = { defaultStateDir, TEST_ROOTS, workspaceName, pruneRun, variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

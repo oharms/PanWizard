@@ -44,7 +44,9 @@ describe('S6: the plan', () => {
     const s = plan.steps.find((x) => x.step === 'session');
     assert.equal(s.env.CLAUDE_CONFIG_DIR, plan.configDir);
     assert.ok(s.args.includes('--max-budget-usd') && s.args.includes('3'));
-    assert.match(s.args[s.args.length - 1], /^\/pan:quick --full .*quick-mode exits 1/);
+    // On stdin, not as an argument: on Windows the shell split the prompt into words.
+    assert.match(s.input, /^\/pan:quick --full .*quick-mode exits 1/);
+    assert.ok(!s.args.some((a) => a.startsWith('/pan:')), 'the prompt is not an argument');
   });
 
   test('nothing in the lane publishes a branch', () => {
@@ -99,6 +101,13 @@ describe('S6: the run, with stand-in steps', () => {
     const r = runWith({ changedFiles: () => ['pan-wizard-core/bin/lib/runner.cjs', 'harness/scenarios/quick-mode.json'] });
     assert.equal(r.outcome, 'refused');
     assert.equal(r.reason, 'scope');
+  });
+
+  test('a session that fails is refused with its reason, not as an unverified run', () => {
+    const r = runWith({ session: () => ({ ok: false, usd: 0, reason: 'error: unknown option' }) });
+    assert.equal(r.outcome, 'refused');
+    assert.equal(r.reason, 'session_failed');
+    assert.equal(r.detail, 'error: unknown option');
   });
 
   test('no passing verification, no branch', () => {

@@ -37,6 +37,8 @@ Or `npm run harness` (tier 0) and `npm run harness:model -- --max-usd <n>`.
 
 Run state defaults to `<test dir>\harness-runs\<run-id>\` on Windows, the test directory being the
 first of `C:\Project\pantesting` and `D:\pantesting` that exists (`<os temp>/pan-harness-runs/` otherwise; `--state-dir` or `PAN_HARNESS_STATE` overrides it).
+The `two-plan-phase` seed sets `workflow.plan_check: false`: its plans are a fixture that never went through `/pan:plan-phase`, and exec-phase stops on plans with no recorded plan check, so the scenarios that run exec-phase on it would stop and ask instead.
+
 A finished run keeps only `report.md`, `report.json` and `steps/`: the extracted package and the
 workspaces (about 200 MB a run) are deleted once the reports are written. `--keep` leaves them,
 for debugging a failed step.

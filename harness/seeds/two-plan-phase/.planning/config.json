@@ -3,6 +3,7 @@
   "commit_docs": true,
   "workflow": {
     "auto_advance": false,
+    "plan_check": false,
     "parallelization": true
   }
 }

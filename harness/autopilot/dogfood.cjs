@@ -130,7 +130,7 @@ function planDogfood(o = {}) {
       { step: 'install', cwd: worktree, installer, cmd: process.execPath, args: [installer, '--claude', '--global', '--config-dir', configDir] },
       { step: 'login', ...login },
       { step: 'scaffold', cwd: worktree, files: ['.planning/project.md', '.planning/config.json', '.planning/state.md'] },
-      { step: 'session', cwd: worktree, env: { CLAUDE_CONFIG_DIR: configDir }, cmd: 'claude', args: ['-p', '--dangerously-skip-permissions', '--output-format', 'json', '--max-budget-usd', String(o.approveUsd ?? '<approved>'), `/pan:quick --full Fix this PAN finding and add a test that fails without the fix: ${clean(finding && finding.summary)}`] },
+      { step: 'session', cwd: worktree, env: { CLAUDE_CONFIG_DIR: configDir }, cmd: 'claude', args: ['-p', '--dangerously-skip-permissions', '--output-format', 'json', '--max-budget-usd', String(o.approveUsd ?? '<approved>')], input: `/pan:quick --full Fix this PAN finding and add a test that fails without the fix: ${clean(finding && finding.summary)}` },
       { step: 'verify', cwd: worktree, reads: '.planning/quick/*/*-verification.md' },
       { step: 'scope', cwd: worktree, paths: DOGFOOD_PATHS },
     ],
@@ -185,7 +185,8 @@ function defaultOps(plan) {
     },
     session: () => {
       const s = step('session');
-      const r = run(s, { env: { ...process.env, ...s.env } });
+      // The prompt goes on stdin: on Windows the shell would split an argument into words.
+      const r = run(s, { env: { ...process.env, ...s.env }, input: s.input });
       let usd = 0;
       try { usd = Number(JSON.parse(r.stdout.trim().split('\n').pop()).total_cost_usd) || 0; } catch {}
       return { ok: r.status === 0, usd, reason: (r.stderr || '').slice(-400) };
@@ -230,6 +231,7 @@ function runDogfood(o = {}) {
   let s;
   try { s = ops.session(); } catch (e) { return finish('refused', { reason: 'session_failed', detail: e.message }); }
   result.usd = (s && s.usd) || 0;
+  if (!s || !s.ok) return finish('refused', { reason: 'session_failed', detail: s && s.reason });
   const verification = latestVerification(o.worktree || plan.worktree);
   if (verification !== 'passed') return finish('refused', { reason: 'no_passing_verification', verification });
   const scope = scopeCheck(ops.changedFiles(), { paths: DOGFOOD_PATHS });

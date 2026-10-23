@@ -1254,3 +1254,12 @@ describe('a finished run deletes its package and workspaces (pruneRun)', () => {
     } finally { cleanup(run); }
   });
 });
+
+describe('workspace names are valid folder names on Windows (workspaceName)', () => {
+  const { workspaceName } = require('../harness/src/run.cjs');
+  test('a variant arm label loses its colon', () => {
+    assert.equal(workspaceName('plan-phase-checker-loop@variant:zz-test'), 'plan-phase-checker-loop-at-variant-zz-test');
+    assert.equal(workspaceName('quick-mode#2@no-guidance'), 'quick-mode-2-at-no-guidance');
+  });
+});
+
