@@ -1227,3 +1227,30 @@ describe('the scripted user (H9): a lost session is red, not a harness fault', (
     assert.match(String(modelStepNeverRan({ ...lost, resumed: false })), /never reached the model double/);
   });
 });
+
+describe('a finished run deletes its package and workspaces (pruneRun)', () => {
+  const { pruneRun } = require('../harness/src/run.cjs');
+  const layout = () => {
+    const run = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-prune-run-'));
+    for (const d of ['artifact/package', 'ws/s-1/node_modules', 'steps']) fs.mkdirSync(path.join(run, d), { recursive: true });
+    for (const f of ['report.md', 'report.json', 'steps/s-1-1.json']) fs.writeFileSync(path.join(run, f), '{}');
+    return run;
+  };
+
+  test('the reports and step records stay; artifact and ws go', () => {
+    const run = layout();
+    try {
+      pruneRun(run);
+      assert.deepEqual(fs.readdirSync(run).sort(), ['report.json', 'report.md', 'steps']);
+      assert.ok(fs.existsSync(path.join(run, 'steps', 's-1-1.json')));
+    } finally { cleanup(run); }
+  });
+
+  test('--keep leaves everything', () => {
+    const run = layout();
+    try {
+      pruneRun(run, true);
+      assert.deepEqual(fs.readdirSync(run).sort(), ['artifact', 'report.json', 'report.md', 'steps', 'ws']);
+    } finally { cleanup(run); }
+  });
+});

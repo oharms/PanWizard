@@ -10,7 +10,7 @@ node harness/src/run.cjs                       # tier 0: model-free, free, ~a mi
 node harness/src/run.cjs --tier 1 --max-usd 2 --scenario plugin-agent-scope  # one tier-1 scenario, capped spend
 node harness/src/run.cjs --tier 2 --max-usd 50 --repeat 5 --scenario native-exec-waves-chain --scenario markdown-exec-phase-chain   # the chain pair, five reps each
 node harness/src/run.cjs --scenario install-matrix          # one scenario
-node harness/src/run.cjs --repo <dir> --keep                 # pack another checkout; keep the extracted artifact after the run
+node harness/src/run.cjs --repo <dir> --keep                 # pack another checkout; keep the extracted artifact and workspaces after the run
 node harness/src/run.cjs --no-ledger                        # leave the tracked harness/ledger.jsonl untouched (CI)
 node harness/src/run.cjs --controls                         # also run every control: each sabotage must turn its scenario red
 node harness/src/run.cjs --require-run double-executor-body-claude   # fail, never skip, when this scenario cannot run (CI)
@@ -37,6 +37,9 @@ Or `npm run harness` (tier 0) and `npm run harness:model -- --max-usd <n>`.
 
 Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on Windows when `D:\pantesting` exists
 (`<os temp>/pan-harness-runs/` otherwise; `--state-dir` or `PAN_HARNESS_STATE` overrides it).
+A finished run keeps only `report.md`, `report.json` and `steps/`: the extracted package and the
+workspaces (about 200 MB a run) are deleted once the reports are written. `--keep` leaves them,
+for debugging a failed step.
 
 ## Tiers and spend
 

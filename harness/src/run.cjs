@@ -14,7 +14,9 @@
  *
  * Every run: pack the repo → extract → install from the package (never the source
  * tree) → for each scenario: workspace + seed → install → steps → assertions.
- * Output: <state>/<run-id>/report.md + report.json, and harness/ledger.jsonl merged.
+ * Output: <state>/<run-id>/report.md + report.json, and harness/ledger.jsonl merged. After the
+ * reports are written, the run's extracted package and workspaces are deleted (about 200 MB a
+ * run); --keep leaves them for debugging.
  * Exit 1 when any step failed. Skips (missing CLI) are recorded, never green.
  */
 
@@ -691,7 +693,7 @@ function main() {
     lines.push('');
   }
   fs.writeFileSync(path.join(runDir, 'report.md'), lines.join('\n'));
-  if (!args.keep) { try { fs.rmSync(path.join(runDir, 'artifact'), { recursive: true, force: true }); } catch { /* best effort */ } }
+  pruneRun(runDir, args.keep);
 
   const failed = summary.scenarios.filter(r => r.status === 'failed').length;
   const skipped = summary.scenarios.filter(r => r.status === 'skipped').length;
@@ -706,6 +708,17 @@ function main() {
   process.stdout.write(JSON.stringify({ run: id, passed, failed, budget, skipped, errors, drifted, runLevel, spentUsd: spent, report: path.join(runDir, 'report.md') }) + '\n');
   // An error is not green: the run could not measure what it set out to.
   return (failed || errors || runLevel) ? 1 : 0;
+}
+
+/**
+ * What a run leaves behind: its reports and step records. The extracted package (`artifact`)
+ * and the workspaces (`ws`, the installs and seeded projects) go, unless `keep`.
+ */
+function pruneRun(runDir, keep = false) {
+  if (keep) return;
+  for (const d of ['artifact', 'ws']) {
+    try { fs.rmSync(path.join(runDir, d), { recursive: true, force: true }); } catch { /* best effort */ }
+  }
 }
 
 if (require.main === module) {
@@ -752,4 +765,4 @@ function pairSummary(results, scenarios) {
   return out;
 }
 
-module.exports = { variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+module.exports = { pruneRun, variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
