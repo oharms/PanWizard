@@ -1,13 +1,18 @@
 {
-  "why": "Program S4: the scenarios that score an evolved judge prompt. A candidate is reflected from training failures only and accepted only on held-out data, so the two never overlap, and the evolver cannot write this file (harness/src/evolve.cjs EVALUATOR_FILES).",
+  "why": "Program S4: the scenarios that score an evolved judge prompt. A candidate is reflected from training failures only and accepted only on held-out data, so the two never overlap, and the evolver cannot write this file (harness/src/evolve.cjs EVALUATOR_FILES). Every scenario here is tier 2 and spawns at least one judge; `exercises` names which, and evolve.cjs refuses a target that no training or no held-out scenario spawns.",
+  "changed": "2026-10-23, by hand in a reviewed commit (the only way this file changes; never during a generation): quick-mode (planner and executor only, no judge) left training; evidence-loop (tier 0, no model) and uat-diagnose-native (the debugger, not a judge) left held-out; pair-discounts-live (/pan:quick --full: plan-checker and verifier, judged by a hidden acceptance check) joined held-out.",
   "training": [
     "plan-phase-checker-loop",
-    "quick-mode",
     "markdown-exec-phase-chain"
   ],
   "heldout": [
-    "evidence-loop",
     "native-exec-waves-chain",
-    "uat-diagnose-native"
-  ]
+    "pair-discounts-live"
+  ],
+  "exercises": {
+    "plan-phase-checker-loop": ["pan-plan-checker"],
+    "markdown-exec-phase-chain": ["pan-reviewer", "pan-verifier"],
+    "native-exec-waves-chain": ["pan-reviewer", "pan-verifier"],
+    "pair-discounts-live": ["pan-plan-checker", "pan-verifier"]
+  }
 }

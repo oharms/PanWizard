@@ -104,6 +104,8 @@ function validateScenario(s, fileName = '<inline>') {
     // `persistSession: true` lets a model step's host write transcripts (see model.cjs).
     if (st.persistSession !== undefined && (st.kind !== 'model' || st.persistSession !== true)) err(`${at}: persistSession is only \`true\`, and only on model steps`);
   });
+  // `covers` (H6): the prompt rules this scenario exercises, ids from tests/fixtures/prompt-rules.json.
+  if (s.covers !== undefined && !(Array.isArray(s.covers) && s.covers.every((id) => typeof id === 'string' && /^[^\s:]+:[0-9a-f]{8}$/.test(id)))) err('covers must be an array of prompt-rule ids (<file>:<8 hex>)');
   if (s.tier >= 1 && !s.steps.some(st => (st.kind === 'model' && !st.double) || st.paid === true || st.spends === true)) err('a tier ≥1 scenario should contain a model step, a paid cli step or a spending sh step (else it is tier 0)');
   // Controls (H5): a tier-0 scenario declares at least one sabotage that must turn it
   // red, so a scenario whose assertions measure nothing cannot stay in the suite.

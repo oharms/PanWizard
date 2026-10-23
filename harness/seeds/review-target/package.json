@@ -1,0 +1,9 @@
+{
+  "name": "shop-cart-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Seed project for the PAN Harness: an executed phase with a diff to review (V6, R4).",
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "rate-limit-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Seed project for the PAN Harness: one vague phase with open questions (P1).",
+  "scripts": {
+    "test": "node --test"
+  }
+}

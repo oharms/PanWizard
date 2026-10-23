@@ -38,7 +38,22 @@
         "json:passed=true"
       ],
       "why": "Working code, not files that look right."
+    },
+    {
+      "kind": "sh",
+      "script": "quick-task-recorded.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:recorded=true"
+      ],
+      "why": "quick.md Step 7 (rule pan-wizard-core/workflows/quick:4387c189): the task is recorded through the engine as a numbered row of the Quick Tasks Completed table in state.md, linking its .planning/quick/ directory. A --prompt-mutant run deletes that rule and shows whether the row still appears."
     }
+  ],
+  "covers": [
+    "pan-wizard-core/workflows/quick:4387c189"
   ],
   "arms": [
     {"id":"no-guidance","write":{"path":".claude/agents/pan-executor.md","content":"---\nname: pan-executor\ndescription: Executes a PAN plan.\ntools: Read, Write, Edit, Bash, Grep, Glob\n---\n\nImplement the plan you are given, run its verification, write its summary, and commit your work.\n"},"why":"The no-guidance baseline (M43, MI-114): the executor reduced to a one-line role. A paired run against the plain scenario shows whether PAN's executor guidance earns its tokens; a prompt change to the executor is measured against this arm as well as the baseline."}

@@ -60,6 +60,34 @@ function buildPrompt(cwd, phase) {
   return { phase: scope.phase, prompt, truncated };
 }
 
+/**
+ * How to launch a host binary on this platform. Off Windows: by name, no shell. On Windows
+ * a binary that resolves to an .exe (Copilot CLI's installer, say) is launched directly by
+ * its path, so Node quotes each argument and a multi-line prompt arrives whole. Anything
+ * else (an npm .cmd shim, a stand-in) needs cmd.exe, which joins arguments unquoted and
+ * ends the command at a newline: there the prompt goes through a file and each argument
+ * with whitespace or a quote is quoted (2026-10-23: `-p <prompt>` reached cmd.exe as words).
+ */
+function launchPlan(bin, platform = process.platform, env = process.env) {
+  if (platform !== 'win32') return { file: bin, shell: false, promptFile: false };
+  const exts = String(env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean).map((e) => e.toLowerCase());
+  for (const dir of String(env.PATH || env.Path || '').split(path.delimiter).filter(Boolean)) {
+    for (const ext of exts) {
+      const p = path.join(dir, bin + ext);
+      if (!fs.existsSync(p)) continue;
+      if (ext === '.exe' || ext === '.com') return { file: p, shell: false, promptFile: false };
+      return { file: bin, shell: true, promptFile: true };
+    }
+  }
+  return { file: bin, shell: true, promptFile: true };
+}
+
+/** One argument for cmd.exe's command line: quoted when it holds whitespace or a quote. Pure. */
+function quoteForCmd(arg) {
+  const s = String(arg);
+  return /[\s"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 function parseVerdict(text) {
   const blocks = findVerdictBlocks(text || '');
   const last = blocks.filter((b) => b.closed).pop();
@@ -86,7 +114,8 @@ function crossFamilyReview(cwd, phase, opts = {}) {
   const dir = planningPath(cwd, 'reviews', nn);
   let prompt = built.prompt;
   let promptFile = null;
-  if (h.review.promptVia === 'arg' && prompt.length > MAX_ARG_PROMPT) {
+  const launch = launchPlan(h.bin);
+  if (h.review.promptVia === 'arg' && (prompt.length > MAX_ARG_PROMPT || launch.promptFile)) {
     promptFile = path.join(dir, `cross-family-${host}-prompt.md`);
     prompt = `Read ${toPosix(path.relative(cwd, promptFile))} and follow it exactly. Do not edit anything.`;
   }
@@ -105,9 +134,9 @@ function crossFamilyReview(cwd, phase, opts = {}) {
   const refused = require('./autodev.cjs').standinMissing(h.bin);
   if (refused) return { ...base, error: 'standin_missing', reason: refused };
   for (let i = 0; i < reps; i++) {
-    const r = spawnSync(h.bin, argv, {
+    const r = spawnSync(launch.file, launch.shell ? argv.map(quoteForCmd) : argv, {
       cwd, encoding: 'utf8', input: h.review.promptVia === 'stdin' ? built.prompt : undefined,
-      shell: process.platform === 'win32', timeout: Number(opts.timeoutMs) || 15 * 60 * 1000, maxBuffer: 32 * 1024 * 1024,
+      shell: launch.shell, timeout: Number(opts.timeoutMs) || 15 * 60 * 1000, maxBuffer: 32 * 1024 * 1024,
     });
     if (r.error) return { ...base, error: 'spawn_failed', reason: r.error.message };
     const v = parseVerdict(r.stdout);
@@ -129,4 +158,4 @@ function cmdReviewCrossFamily(cwd, phase, opts, raw) {
   output(r, raw, r.file || r.reason || r.error);
 }
 
-module.exports = { crossFamilyReview, cmdReviewCrossFamily, buildPrompt, parseVerdict };
+module.exports = { crossFamilyReview, cmdReviewCrossFamily, buildPrompt, parseVerdict, launchPlan, quoteForCmd };

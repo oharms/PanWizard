@@ -397,7 +397,9 @@
     "buildPrompt:function",
     "cmdReviewCrossFamily:function",
     "crossFamilyReview:function",
-    "parseVerdict:function"
+    "launchPlan:function",
+    "parseVerdict:function",
+    "quoteForCmd:function"
   ],
   "debug-cases.cjs": [
     "cmdDebugRepro:function",

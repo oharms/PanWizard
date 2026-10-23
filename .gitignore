@@ -88,6 +88,10 @@ tmp/
 # harness run did (2026-09-17).
 !harness/seeds/*/.planning/
 !harness/seeds/*/.planning/**
+# The overlays' planning files too: an overlay commit that drops its summary is a phase
+# with no record of its own work.
+!harness/overlays/*/commits/*/.planning/
+!harness/overlays/*/commits/*/.planning/**
 .tmp/
 
 # v3.7.0+ self-improvement loop: harvested experiment data IS part of the
@@ -144,3 +148,6 @@ docs/specs/investigations/sources/
 
 # The autopilot's local state (spend, bot runs, inbox, reports): development only, per machine.
 harness/autopilot/state/
+
+# S4: the arm files of a generation in progress (evolve.cjs deletes them when it ends).
+harness/variants/.evolve-*/

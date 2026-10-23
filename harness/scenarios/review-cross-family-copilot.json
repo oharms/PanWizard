@@ -1,0 +1,88 @@
+{
+  "id": "review-cross-family-copilot",
+  "tier": 1,
+  "description": "Live R4 evidence: one cross-family reviewer lane run on GitHub Copilot CLI, three reps, on an executed phase with a real diff; the record gives the lane id, reps, the parseable-verdict interval and the majority verdict.",
+  "why": "Program R4's evidence gate: one paid lane run. `pan-tools review cross-family 1 --host copilot --reps 3` runs the read-only review on Copilot (a different model family) three times. Copilot spends premium requests, not USD: the lane runs as a cli step marked paid, which counts as the scenario's model step and spends none of --max-usd, and nothing parses a cost from it.",
+  "seed": "review-target",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "copilot"
+  },
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 50,
+    "maxStepMinutes": 45
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "apply-overlay.cjs",
+      "args": [
+        "<ws>",
+        "<repo>/harness/overlays/review-target-phase1"
+      ],
+      "expect": [
+        "exit:0",
+        "json:applied=true",
+        "json:commits.1.subject=docs(01-01): complete cart total plan"
+      ],
+      "fatal": true,
+      "why": "Phase 1's work lands as its own commits on top of the seed, so the review has a base and a non-empty diff."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "review",
+        "scope",
+        "1"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~\"base\":\\s*\"[0-9a-f]{40}\"",
+        "stdout~src/cart\\.js"
+      ],
+      "fatal": true,
+      "why": "The engine finds the phase base and src/cart.js in scope: without it the reviewer would be handed nothing to review."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "review",
+        "cross-family",
+        "1",
+        "--host",
+        "copilot",
+        "--dry-run"
+      ],
+      "expect": [
+        "exit:0",
+        "json:lane=cross-family:copilot",
+        "json:dry_run=true",
+        "stdout~diff --git"
+      ],
+      "why": "Free check before the paid step: the lane is wired for Copilot and its prompt carries the phase diff."
+    },
+    {
+      "kind": "cli",
+      "bin": "node",
+      "paid": true,
+      "args": [
+        "<repo>/harness/scripts/cross-family-lane.cjs",
+        "<ws>",
+        "copilot",
+        "3"
+      ],
+      "expect": [
+        "exit:0",
+        "json:lane=cross-family:copilot",
+        "json:reps=3",
+        "json:interval.lower",
+        "stdout~\"verdict\":\"[A-Z_]+\"",
+        "file:.planning/reviews/01/cross-family-copilot.md"
+      ],
+      "why": "Three reps on Copilot CLI: each returns a pan-verdict block, the lane keeps one for review-deep, and the record has the lane id, reps, the interval over parseable reps and the majority verdict."
+    }
+  ]
+}

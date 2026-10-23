@@ -141,3 +141,139 @@ describe('S4: the harness runs a variant arm', () => {
     assert.throws(() => variantArm(ROOT, { path: '.claude/agents/x.md', file: 'harness/src/stats.cjs' }), /harness\/variants/);
   });
 });
+
+describe('S4: a target must name a section that exists', () => {
+  test('a section the agent does not have is refused, naming the headings it does have', () => {
+    assert.throws(() => E.resolveTarget(ROOT, 'agents/pan-verifier.md#Scope'), /pan-verifier\.md has no heading "Scope"\. Its headings: .*Step 7c: Check Scope/);
+    assert.throws(() => E.resolveTarget(ROOT, 'agents/pan-verifier.md'), /must be <agents\/pan-x\.md>#<Section>/);
+    assert.throws(() => E.resolveTarget(ROOT, 'agents/pan-nope.md#Scope'), /does not exist/);
+    assert.throws(() => E.resolveTarget(ROOT, 'harness/src/stats.cjs#x'), /not a shipped agent/);
+  });
+
+  test('the CLI exits 1 with that error and spends nothing', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'harness', 'src', 'evolve.cjs'), '--target', 'agents/pan-verifier.md#Scope'], { encoding: 'utf8', timeout: 30000 });
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /has no heading "Scope"/);
+  });
+
+  test('a unique heading prefix resolves; an ambiguous one is refused', () => {
+    const t = E.resolveTarget(ROOT, 'agents/pan-reviewer.md#Scope');
+    assert.equal(t.sectionTitle, 'Scope (unrequested work)');
+    assert.match(t.baseline, /^## Scope \(unrequested work\)\r?\n/);
+    assert.throws(() => E.resolveTarget(ROOT, 'agents/pan-plan-checker.md#Dimension 8'), /names 2 headings/);
+  });
+
+  test('a # comment inside a code fence neither starts nor ends a section', () => {
+    const text = '# A\n\n## Keep\nx\n```bash\n# Import check\ngrep x\n```\ny\n## Next\nz\n';
+    assert.equal(E.findSection(text, 'Import check'), null);
+    assert.equal(E.findSection(text, 'Keep').text, '## Keep\nx\n```bash\n# Import check\ngrep x\n```\ny\n');
+    assert.equal(E.removeSection(text, 'Keep'), '# A\n\n## Next\nz\n');
+    assert.equal(E.replaceSection(text, 'Keep', '## Keep\nnew\n'), '# A\n\n## Keep\nnew\n## Next\nz\n');
+  });
+});
+
+describe('S4: the split scores judges at tier 2', () => {
+  const split = JSON.parse(fs.readFileSync(path.join(ROOT, 'harness', 'evolve', 'split.json'), 'utf8'));
+
+  test('every split scenario exists, is tier 2 and is mapped to the judges it spawns', () => {
+    const ids = [...split.training, ...split.heldout];
+    assert.deepEqual(Object.keys(split.exercises).sort(), [...ids].sort(), 'exercises maps exactly the split scenarios');
+    for (const id of ids) {
+      const s = JSON.parse(fs.readFileSync(path.join(ROOT, 'harness', 'scenarios', `${id}.json`), 'utf8'));
+      assert.equal(s.tier, E.SCORING_TIER, `${id} is tier ${s.tier}: a tier-0 scenario runs no model and cannot tell judge prompts apart`);
+      assert.ok(split.exercises[id].length > 0, id);
+      for (const agent of split.exercises[id]) assert.ok(fs.existsSync(path.join(ROOT, 'agents', `${agent}.md`)), `${id}: ${agent}`);
+    }
+  });
+
+  test('a judge no training or no held-out scenario spawns is refused', () => {
+    assert.throws(() => E.checkCoverage(split, 'pan-design-checker'), /does not exercise pan-design-checker/);
+    for (const judge of ['pan-verifier', 'pan-reviewer', 'pan-plan-checker']) assert.doesNotThrow(() => E.checkCoverage(split, judge), judge);
+  });
+
+  test('the /evolve-prompt skill scores at the tier the split runs at', () => {
+    const skill = fs.readFileSync(path.join(ROOT, '.claude', 'commands', 'evolve-prompt.md'), 'utf8');
+    assert.doesNotMatch(skill, /--tier 1\b/);
+  });
+});
+
+describe('S4: one generation end to end, under a hard cap', () => {
+  function fixture() {
+    const r = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-evolve-e2e-'));
+    dirs.push(r);
+    fs.mkdirSync(path.join(r, 'agents'), { recursive: true });
+    fs.mkdirSync(path.join(r, 'harness', 'scenarios'), { recursive: true });
+    fs.writeFileSync(path.join(r, 'agents', 'pan-reviewer.md'), '---\nname: pan-reviewer\n---\n# Reviewer\n\n## Scope\nRead ~/.claude/pan-wizard-core/x.md and run pan-tools review scope 1.\n\n## Verdict\nPASS\n');
+    for (const id of ['t1', 'h1', 'other']) fs.writeFileSync(path.join(r, 'harness', 'scenarios', `${id}.json`), JSON.stringify({ id, tier: 2, budget: { maxUsd: 4 } }));
+    return { root: r, split: { training: ['t1'], heldout: ['h1', 'other'], exercises: { t1: ['pan-reviewer'], h1: ['pan-reviewer'], other: ['pan-verifier'] } } };
+  }
+  function ops(root, calls, over = {}) {
+    return {
+      reflect: (prompt, cap) => { calls.push({ reflect: prompt, cap }); return { text: '<<<SECTION\n## Scope\nRead the diff and nothing else.\nSECTION>>>', usd: 0.3 }; },
+      runArm: (a) => {
+        calls.push({ ...a, content: fs.readFileSync(path.join(root, a.variantFile), 'utf8') });
+        const scores = Object.fromEntries(a.scenarios.map((s) => [s, { pass: a.repeat, n: a.repeat }]));
+        const failures = a.split === 'training' ? [{ scenario: 't1', step: 0, expect: 'exit:0', failure: 'T1 MISSED' }] : [{ scenario: 'h1', step: 0, expect: 'x', failure: 'H1 SECRET' }];
+        return { scores, failures, usd: a.capUsd / 2 };
+      },
+      ...over,
+    };
+  }
+
+  test('refused before any spend: no approval, a cap under the estimate, or reps that cannot accept without --smoke', () => {
+    const { root, split } = fixture();
+    const calls = [];
+    assert.equal(E.runEvolution({ root, split, target: 'agents/pan-reviewer.md#Scope', ops: ops(root, calls) }).error, 'approval_required');
+    assert.equal(E.runEvolution({ root, split, target: 'agents/pan-reviewer.md#Scope', approveUsd: 5, smoke: true, ops: ops(root, calls) }).error, 'cap_below_estimate');
+    const r = E.runEvolution({ root, split, target: 'agents/pan-reviewer.md#Scope', approveUsd: 100, ops: ops(root, calls) });
+    assert.equal(r.error, 'cannot_accept');
+    assert.match(r.reason, /--heldout-repeat \d+/);
+    assert.throws(() => E.runEvolution({ root, split, target: 'agents/pan-reviewer.md#Nope', approveUsd: 100, ops: ops(root, calls) }), /no heading "Nope"/);
+    assert.equal(calls.length, 0, 'nothing ran');
+  });
+
+  test('a smoke generation runs every arm on the target\'s scenarios, within the approved dollars, and leaves only an accepted variant', () => {
+    const { root, split } = fixture();
+    const calls = [];
+    assert.equal(E.estimate(root, { training: ['t1'], heldout: ['h1'] }, 1).expected, 3 * (2 + 2) + 1, 'three arms × (t1 + h1) at half budget, plus the reflection');
+    const r = E.runEvolution({ root, split, target: 'agents/pan-reviewer.md#Scope', approveUsd: 20, smoke: true, id: 'x1', ops: ops(root, calls) });
+    assert.equal(r.error, undefined, JSON.stringify(r));
+    const runs = calls.filter((c) => c.arm);
+    assert.deepEqual(runs.map((c) => `${c.arm}/${c.split}`).sort(), ['baseline/heldout', 'baseline/training', 'candidate/heldout', 'candidate/training', 'deletion/heldout', 'deletion/training'], 'the baseline training run is reused, not repeated');
+    for (const c of runs) {
+      assert.deepEqual(c.scenarios, c.split === 'training' ? ['t1'] : ['h1'], 'only the scenarios that spawn the target');
+      assert.equal(c.installedPath, '.claude/agents/pan-reviewer.md');
+      assert.match(c.variantFile, /^harness\/variants\/\.evolve-x1\//);
+      assert.doesNotMatch(c.content, /~\/\.claude\//, 'the arm is in installed form');
+    }
+    assert.match(runs.find((c) => c.arm === 'baseline').content, /node \.\/\.claude\/pan-wizard-core\/bin\/pan-tools\.cjs review/, 'paths rewritten as a local Claude install writes them');
+    assert.match(runs.find((c) => c.arm === 'candidate').content, /Read the diff and nothing else/);
+    assert.doesNotMatch(runs.find((c) => c.arm === 'deletion').content, /## Scope/);
+    assert.match(runs.find((c) => c.arm === 'deletion').content, /## Verdict/);
+    const reflect = calls.find((c) => c.reflect);
+    assert.match(reflect.reflect, /T1 MISSED/);
+    assert.doesNotMatch(reflect.reflect, /H1 SECRET/, 'held-out failures never reach the reflection');
+    assert.ok(r.caps.total <= 20, `caps add up to ${r.caps.total}`);
+    assert.ok(r.spent_usd <= 20, String(r.spent_usd));
+    assert.equal(r.smoke, true);
+    assert.equal(fs.existsSync(path.join(root, 'harness', 'variants', '.evolve-x1')), false, 'arm files are deleted');
+    assert.equal(r.accepted, false, 'one rep per arm cannot show non-inferiority');
+  });
+
+  test('a reflection that loses the section heading stops the generation before the candidate arms run', () => {
+    const { root, split } = fixture();
+    const calls = [];
+    const r = E.runEvolution({ root, split, target: 'agents/pan-reviewer.md#Scope', approveUsd: 20, smoke: true, ops: ops(root, calls, { reflect: () => ({ text: 'sure! here it is', usd: 0.2 }) }) });
+    assert.equal(r.error, 'reflection_failed');
+    assert.equal(calls.filter((c) => c.arm).length, 1, 'only the baseline training run spent');
+  });
+
+  test('acceptance needs dozens of held-out reps per arm at δ 0.05, and the estimate says so', () => {
+    const n = E.minAcceptReps(0.05);
+    assert.ok(n > 50 && n < 100, String(n));
+    const est = E.estimate(ROOT, { training: ['plan-phase-checker-loop'], heldout: ['pair-discounts-live'] }, 1);
+    assert.equal(est.acceptance_possible, false);
+    assert.equal(est.deciding.heldout_repeat, n);
+  });
+});

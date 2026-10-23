@@ -1,0 +1,115 @@
+{
+  "id": "review-churn-live",
+  "tier": 2,
+  "description": "Live V6 evidence: pan-reviewer reviews the same executed phase five times (exec-phase's code_review step, recorded in the findings ledger each time), then the engine reports the reviewer's findings churn across the five reports.",
+  "why": "Program V6's evidence gate: churn over five live repeated reviews. Findings close only on evidence and keep stable ids, so a judge whose findings appear and vanish while the code does not change is not measuring the code. The seed's diff carries two real defects (an off-by-one bulk threshold, an unknown code priced as NaN). The churn figure is a measurement, not a pass mark: the scenario passes when all five reviews were recorded and the figure exists; read the rate from the last step's JSON in report.json.",
+  "seed": "review-target",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 2,
+    "maxMinutes": 75,
+    "maxStepMinutes": 12
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "apply-overlay.cjs",
+      "args": [
+        "<ws>",
+        "<repo>/harness/overlays/review-target-phase1"
+      ],
+      "expect": [
+        "exit:0",
+        "json:applied=true",
+        "json:commits.1.subject=docs(01-01): complete cart total plan"
+      ],
+      "fatal": true,
+      "why": "Phase 1's work lands as its own commits on top of the seed, so the review has a base and a non-empty diff."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "review",
+        "scope",
+        "1"
+      ],
+      "expect": [
+        "exit:0",
+        "stdout~\"base\":\\s*\"[0-9a-f]{40}\"",
+        "stdout~src/cart\\.js"
+      ],
+      "fatal": true,
+      "why": "The engine finds the phase base and src/cart.js in scope: without it the reviewer would be handed nothing to review."
+    },
+    {
+      "kind": "model",
+      "prompt": "Review phase 1 of this project exactly as the `code_review` step of `.claude/pan-wizard-core/workflows/exec-phase.md` says, steps 1 to 4 only: collect the review scope, collect the reviewer's open findings on phase 1, spawn the pan-reviewer agent with them, save its report verbatim to `.planning/phases/01-cart-total/01-review.md`, and record it with `findings record --phase 1 --agent pan-reviewer`. This is an unattended run: do not fix anything, do not edit source files, do not dispose of any finding, and do not go on to verification. End by printing the verdict the record returned.",
+      "expect": [
+        "exit:0",
+        "file:.planning/phases/01-cart-total/01-review.md"
+      ],
+      "why": "One review of the unchanged diff by pan-reviewer, recorded in the findings ledger. Repeated five times on the same code, the ids that appear and disappear between reports are the churn V6 measures."
+    },
+    {
+      "kind": "model",
+      "prompt": "Review phase 1 of this project exactly as the `code_review` step of `.claude/pan-wizard-core/workflows/exec-phase.md` says, steps 1 to 4 only: collect the review scope, collect the reviewer's open findings on phase 1, spawn the pan-reviewer agent with them, save its report verbatim to `.planning/phases/01-cart-total/01-review.md`, and record it with `findings record --phase 1 --agent pan-reviewer`. This is an unattended run: do not fix anything, do not edit source files, do not dispose of any finding, and do not go on to verification. End by printing the verdict the record returned.",
+      "expect": [
+        "exit:0",
+        "file:.planning/phases/01-cart-total/01-review.md"
+      ],
+      "why": "One review of the unchanged diff by pan-reviewer, recorded in the findings ledger. Repeated five times on the same code, the ids that appear and disappear between reports are the churn V6 measures."
+    },
+    {
+      "kind": "model",
+      "prompt": "Review phase 1 of this project exactly as the `code_review` step of `.claude/pan-wizard-core/workflows/exec-phase.md` says, steps 1 to 4 only: collect the review scope, collect the reviewer's open findings on phase 1, spawn the pan-reviewer agent with them, save its report verbatim to `.planning/phases/01-cart-total/01-review.md`, and record it with `findings record --phase 1 --agent pan-reviewer`. This is an unattended run: do not fix anything, do not edit source files, do not dispose of any finding, and do not go on to verification. End by printing the verdict the record returned.",
+      "expect": [
+        "exit:0",
+        "file:.planning/phases/01-cart-total/01-review.md"
+      ],
+      "why": "One review of the unchanged diff by pan-reviewer, recorded in the findings ledger. Repeated five times on the same code, the ids that appear and disappear between reports are the churn V6 measures."
+    },
+    {
+      "kind": "model",
+      "prompt": "Review phase 1 of this project exactly as the `code_review` step of `.claude/pan-wizard-core/workflows/exec-phase.md` says, steps 1 to 4 only: collect the review scope, collect the reviewer's open findings on phase 1, spawn the pan-reviewer agent with them, save its report verbatim to `.planning/phases/01-cart-total/01-review.md`, and record it with `findings record --phase 1 --agent pan-reviewer`. This is an unattended run: do not fix anything, do not edit source files, do not dispose of any finding, and do not go on to verification. End by printing the verdict the record returned.",
+      "expect": [
+        "exit:0",
+        "file:.planning/phases/01-cart-total/01-review.md"
+      ],
+      "why": "One review of the unchanged diff by pan-reviewer, recorded in the findings ledger. Repeated five times on the same code, the ids that appear and disappear between reports are the churn V6 measures."
+    },
+    {
+      "kind": "model",
+      "prompt": "Review phase 1 of this project exactly as the `code_review` step of `.claude/pan-wizard-core/workflows/exec-phase.md` says, steps 1 to 4 only: collect the review scope, collect the reviewer's open findings on phase 1, spawn the pan-reviewer agent with them, save its report verbatim to `.planning/phases/01-cart-total/01-review.md`, and record it with `findings record --phase 1 --agent pan-reviewer`. This is an unattended run: do not fix anything, do not edit source files, do not dispose of any finding, and do not go on to verification. End by printing the verdict the record returned.",
+      "expect": [
+        "exit:0",
+        "file:.planning/phases/01-cart-total/01-review.md"
+      ],
+      "why": "One review of the unchanged diff by pan-reviewer, recorded in the findings ledger. Repeated five times on the same code, the ids that appear and disappear between reports are the churn V6 measures."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "findings",
+        "list",
+        "--phase",
+        "1",
+        "--agent",
+        "pan-reviewer"
+      ],
+      "expect": [
+        "exit:0",
+        "json:churn.reports",
+        "json:churn.transitions",
+        "json:churn.rate",
+        "json:churn.added",
+        "json:churn.dropped"
+      ],
+      "why": "The reviewer's churn over its recorded reports on phase 1 (findings.cjs findingsChurn): reports, transitions, ids added and dropped, and the rate."
+    }
+  ]
+}

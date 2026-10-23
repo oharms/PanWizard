@@ -1,0 +1,181 @@
+{
+  "id": "clarify-budget-greeting",
+  "tier": 2,
+  "description": "Live P1 evidence on the discuss-needed seed (a greet command whose style, letter case and missing-name exit code are open): /pan:discuss-phase 1 with a real model and a scripted user that answers every question, then count the questions the session asked.",
+  "why": "Program P1's evidence gate: at most five clarifying questions per questioning session, on three live seeds (references/questioning.md <question_budget>). The tier-0 discuss-phase-scripted-user scenario proves the plumbing with a scripted model; only a real model shows whether the budget holds. Run the three together with --tier 2 and an approved --max-usd.",
+  "seed": "discuss-needed",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 3,
+    "maxMinutes": 45,
+    "maxStepMinutes": 10
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:discuss-phase 1",
+      "persistSession": true,
+      "expect": [
+        "exit:0"
+      ],
+      "why": "The command runs headless; its first reply is the boundary and the first question (AskUserQuestion is not answerable in claude -p, so questions arrive as text)."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "which areas|areas (do you|would you like|to discuss|should we)",
+          "reply": "All of them."
+        },
+        {
+          "match": "more questions|next area",
+          "reply": "Next area."
+        },
+        {
+          "match": "ready for context|remain unclear|explore more",
+          "reply": "I'm ready for context."
+        },
+        {
+          "match": ".",
+          "reply": "Go with your recommended option."
+        }
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "A real user answers the question the session asked (the first matching answer; the last falls back to the recommended option), and the session resumes with it."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "which areas|areas (do you|would you like|to discuss|should we)",
+          "reply": "All of them."
+        },
+        {
+          "match": "more questions|next area",
+          "reply": "Next area."
+        },
+        {
+          "match": "ready for context|remain unclear|explore more",
+          "reply": "I'm ready for context."
+        },
+        {
+          "match": ".",
+          "reply": "Go with your recommended option."
+        }
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "A real user answers the question the session asked (the first matching answer; the last falls back to the recommended option), and the session resumes with it."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "which areas|areas (do you|would you like|to discuss|should we)",
+          "reply": "All of them."
+        },
+        {
+          "match": "more questions|next area",
+          "reply": "Next area."
+        },
+        {
+          "match": "ready for context|remain unclear|explore more",
+          "reply": "I'm ready for context."
+        },
+        {
+          "match": ".",
+          "reply": "Go with your recommended option."
+        }
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "A real user answers the question the session asked (the first matching answer; the last falls back to the recommended option), and the session resumes with it."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "which areas|areas (do you|would you like|to discuss|should we)",
+          "reply": "All of them."
+        },
+        {
+          "match": "more questions|next area",
+          "reply": "Next area."
+        },
+        {
+          "match": "ready for context|remain unclear|explore more",
+          "reply": "I'm ready for context."
+        },
+        {
+          "match": ".",
+          "reply": "Go with your recommended option."
+        }
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "A real user answers the question the session asked (the first matching answer; the last falls back to the recommended option), and the session resumes with it."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "which areas|areas (do you|would you like|to discuss|should we)",
+          "reply": "All of them."
+        },
+        {
+          "match": "more questions|next area",
+          "reply": "Next area."
+        },
+        {
+          "match": "ready for context|remain unclear|explore more",
+          "reply": "I'm ready for context."
+        },
+        {
+          "match": ".",
+          "reply": "Go with your recommended option."
+        }
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "The user closes the round: whatever is still open is the assistant's call, recorded as an Assumed: line, and the context is written."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": ".",
+          "reply": "That's all from me. Go with your recommended options for anything still open and write the context file now."
+        }
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "The user closes the round: whatever is still open is the assistant's call, recorded as an Assumed: line, and the context is written."
+    },
+    {
+      "kind": "sh",
+      "script": "count-questions.cjs",
+      "args": [
+        "<ws>",
+        "clarify-budget-greeting"
+      ],
+      "expect": [
+        "exit:0",
+        "json:within_budget=true",
+        "json:context_written=true"
+      ],
+      "why": "At most five questions over the whole session (lines of the replies that end in a question mark, per round in the output), and the session ended with a context.md: a session that never finished would be under budget for the wrong reason."
+    }
+  ]
+}

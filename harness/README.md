@@ -35,8 +35,8 @@ Or `npm run harness` (tier 0) and `npm run harness:model -- --max-usd <n>`.
 4. Write `report.md` and `report.json` under the run directory and print a one-line JSON
    summary. Exit 1 when any step failed or a model step never reached the model (recorded as `error`, with no assertion evaluated and no finding filed). **A skipped scenario is never counted as passed:** the report records it as `skipped` with its reason, but a skip does not by itself make the run exit 1 (a scenario named by `--require-run` that does not run does, as does a control a scenario survives).
 
-Run state defaults to `D:\pantesting\harness-runs\<run-id>\` on Windows when `D:\pantesting` exists
-(`<os temp>/pan-harness-runs/` otherwise; `--state-dir` or `PAN_HARNESS_STATE` overrides it).
+Run state defaults to `<test dir>\harness-runs\<run-id>\` on Windows, the test directory being the
+first of `C:\Project\pantesting` and `D:\pantesting` that exists (`<os temp>/pan-harness-runs/` otherwise; `--state-dir` or `PAN_HARNESS_STATE` overrides it).
 A finished run keeps only `report.md`, `report.json` and `steps/`: the extracted package and the
 workspaces (about 200 MB a run) are deleted once the reports are written. `--keep` leaves them,
 for debugging a failed step.
@@ -91,7 +91,7 @@ Five reps cannot separate two variants: 4/5 passes has a 95% interval of [0.38, 
 - **Autopilot** (S1, S2, S5): `harness/autopilot/` holds the market watcher, the autopilot spine and the weekly State of PAN; see the `harness/autopilot/` entry in `CLAUDE.md`. Model lanes spend only with a per-run `--approve-usd`.
 - **Pairs** (H10): two scenarios with the same `pair: {id, arm, goal}`, one `pan` arm (PAN installed) and one `stock` arm (`install: null`, the host alone), on the same seed, host and tier, measure PAN against the bare host. `loadScenarios` refuses an inconsistent pair. The report adds a **PAN versus the bare host** table: paired deltas (completion, cost, duration), PAN minus the host alone, with 95% t intervals (`stats.cjs pairedDelta`). `pair-add-function` replays synthetic cassettes at tier 0; the evidence run re-records both arms from a real model with paired reps (`--repeat` at tier 1).
 - **Simulations** (H8): `node harness/src/sim.cjs [--sim <id>] [--seeds N] [--no-stop-guard]` runs the real autodev loop and phase gate against a simulated host with a seeded fault schedule (no-op sessions, compile failures, cost spikes, verifications that need a human or find gaps), declared in `harness/sims/sim-*.json`, and checks the loop's invariants: a declared stop reason, within the unit and spend caps, no phase completed past the gate. `tests/autodev-sim.test.cjs` runs every sim on 20 seeds, and checks that one fails with the stop guard disabled. Model-free.
-- **Prompt mutants** (H6): `--prompt-mutant <rule id>` deletes one rule (an id from `tests/fixtures/prompt-rules.json`, built by `scripts/prompt-rules.cjs`) from the packed package before install, and runs only the scenarios whose `covers` names it. If all of them still pass, the rule is decorative; a failure makes it load-bearing. Each mutant run appends `{rule, verdict, scenarios: [{passed, runs, interval}]}` to `harness/prompt-mutants.jsonl` (not with `--no-ledger`). A mutant drifts every cassette, so it runs live.
+- **Prompt mutants** (H6): `--prompt-mutant <rule id>` deletes one rule (an id from `tests/fixtures/prompt-rules.json`, built by `scripts/prompt-rules.cjs`) from the packed package before install, and runs only the scenarios whose `covers` names it (a scenario's top-level `covers: [<rule id>...]`; `quick-mode` covers `pan-wizard-core/workflows/quick:4387c189`, quick.md's Step 7, and checks it with `scripts/quick-task-recorded.cjs`). If all of them still pass, the rule is decorative; a failure makes it load-bearing. Each mutant run appends `{rule, verdict, scenarios: [{passed, runs, interval}]}` to `harness/prompt-mutants.jsonl` (not with `--no-ledger`). A mutant drifts every cassette, so it runs live.
 - **Arms** are declared variants of a scenario, the same shape as a control (`arms: [{id, why, delete|write|replace, after?}]`), applied after install and measured rather than expected to fail. `--arm <id>` runs the scenarios that declare it. `quick-mode` carries `no-guidance`, the executor reduced to a one-line role: the baseline a change to the executor prompt is measured against (M43).
 - **Ledger classes.** A model-free finding promotes at once (tier 0 is deterministic). A model-tier finding counts every failure and every pass of its step, and promotes once it has failed at least twice and its failure rate's 95% lower bound reaches 0.2; with passes on record below that, it is `flaky`. An entry from before the counts keeps the old two-run rule.
 
@@ -103,6 +103,26 @@ A pass rate says a chain finished; it does not say the judges at the end of it w
 - **Entries from mutation operators.** `scripts/corpus-generate.cjs` applies V5's operator table (`verify mutate`) to a base (`corpus/_base-<name>/`) and keeps a mutant only when the catching test kills it and the base's own suite does not, so an equivalent mutant is dropped rather than filed as a defect. `--write` writes the kept entries; the test asserts the committed ones are exactly what it keeps.
 - **The scoreboard.** `scripts/catch-rate.cjs <results.jsonl>...` reads judge runs (`{corpus, twin, judge, host, profile, report}`), reads each verdict the way PAN does (`parseVerdictText`), and reports per judge × host × profile the catch rate on defective twins and the false-alarm rate on clean ones, each with its Wilson interval, a located count (a finding names the truth file) and a per-category breakdown. A report with no readable verdict is counted as unreadable, never as a catch or a miss. `--compare <baseline-key> <candidate-key>` runs the paired catch-rate SPRT. `run.cjs --scoreboard <results.jsonl>` adds the table to a run's report.
 - **What is measured today.** `corpus-replays/synthetic-reviewer.jsonl` is a scripted replay, not a model: it pins the scoreboard and the comparison at $0 (a weakened judge scores lower and loses the SPRT). Real baselines for the verifier and the reviewer, and the weakened-verifier check against them, are the program's paid evidence step and need `--max-usd`.
+
+### Producing live judge rows (`scripts/corpus-run.cjs`)
+
+`catch-rate.cjs` only scores rows; `scripts/corpus-run.cjs` produces them, on a Claude Code login (no API key). For each selected entry and each twin it builds a workspace under the state dir (`C:\Project\pantesting\corpus-runs` when that directory exists, else the OS temp directory; `--state-dir`): a PAN project whose phase 1 was given the entry's task, with PAN installed from a packed artifact (`src/artifact.cjs`, never the source tree). The base commit is the planning tree; the second commit is the twin plus a plan summary, so `git diff HEAD~1` is the change under judgement (the install is git-excluded). One headless `claude -p` session (`src/model.cjs`: its argv, `--max-budget-usd <--session-usd>`, cost from the JSON result) spawns the judge, and its verdict (the reply's `pan-verdict` block, or the verifier's `verification.md`) becomes one row, appended to `--out`: catch-rate's fields plus `arm`, `variant`, `model`, `cost_usd`, `duration_ms` and the build identity.
+
+```bash
+node harness/scripts/corpus-run.cjs --judge verifier --dry-run                     # plan: sessions and spend ceiling, $0
+node harness/scripts/corpus-run.cjs --judge verifier --max-usd 40 --out rows.jsonl # live
+node harness/scripts/corpus-run.cjs --judge verifier --max-usd 40 --out rows.jsonl \
+  --arm weak-verifier --variant .claude/agents/pan-verifier.md=harness/variants/pan-verifier-weakened.md
+node harness/scripts/catch-rate.cjs rows.jsonl --compare "pan-verifier × claude × balanced" "pan-verifier × claude × balanced:weak-verifier"
+```
+
+- `--judge verifier|reviewer|plan-checker|meta-reviewer`; `--entry <id>` (repeatable), `--limit N`, `--profile` (default `balanced`, written to the workspace's config).
+- `--arm <label>` keys the rows apart (`profile` becomes `<profile>:<label>`); `--variant <installed path>=<file>` replaces an installed file after install, with `run.cjs --variant`'s rule (the file must be under `harness/variants/`). `variants/pan-verifier-weakened.md` is H4's deliberately weakened verifier: existence checks only, summaries trusted.
+- `--lenses k` (reviewer only, R2): k sessions per twin, one `<lens>` each, merged by the installed `pan-tools review vote`; the voted report is the row's report.
+- `--max-usd N` is required for a live run and caps the whole run: a twin starts only while the remaining cap covers all its sessions at `--session-usd` (default 2) each. A session whose cost cannot be read is charged at its ceiling.
+- Each twin's workspace is deleted once its row is written, and the extracted package at the end; `--keep` leaves them. With `--out` outside the state dir nothing is left there.
+- The meta-reviewer session runs the review-deep first pass (reviewer and hardener) before the meta-reviewer, so it costs about three judges. The plan-checker judges a plan, and every twin of an entry shares one plan, so its rows measure only how it reads the committed code against the plan; a plan-defect corpus would be needed to measure it properly.
+- `tests/corpus-run.test.cjs` drives it against a stand-in `claude` (`PAN_STANDIN_DIR`) and a stand-in package, at $0.
 
 ## Headless background-wait ceiling
 
@@ -197,10 +217,23 @@ The full set lives in `harness/scenarios/` (`ls harness/scenarios`); this table 
 | `uat-diagnose-native` | 2 | `/pan-diagnose-issues` on a phase with one failed UAT truth and the matching real defect |
 | `evidence-loop` | 0 | The evidence loop through a deployed Claude install, model-free: the installed trace hook captures failing tool calls from a subagent transcript, the installed engine records verdicts and a deferral, `optimize learn` sees the captured failures and the verifier's retry, and `optimize revert` undoes an apply byte for byte (ADR-0049) |
 | `tool-error-capture` | 1 | A real subagent's failing `npm test` is recorded by the installed trace hook as an `error/tool_error` event read from that subagent's own transcript; the model step sets `persistSession: true` |
+| `review-churn-live` | 2 | V6's evidence step: pan-reviewer reviews the same executed phase five times (exec-phase's `code_review` step, each report recorded), then `findings list --phase 1 --agent pan-reviewer` reports the churn. A measurement: read `churn` from the last step in `report.json` |
+| `clarify-budget-greeting` / `-export` / `-ratelimit` | 2 | P1's evidence step: `/pan:discuss-phase 1` with a real model on three seeds, a scripted user with fallback answers, and `scripts/count-questions.cjs` summing the questions over the kept step records (lines ending in `?`): at most five, and a `context.md` at the end |
+| `review-cross-family-copilot` | 1 | R4's evidence step: one cross-family lane run on Copilot CLI, three reps, through `scripts/cross-family-lane.cjs` (lane id, reps, Wilson interval over parseable verdicts, majority verdict). A `cli` step marked `paid`: Copilot spends premium requests, never `--max-usd`, so run it with `--max-usd 0` |
+
+The three paid evidence steps above, and H6's mutant run, are run one at a time on the owner's
+approval:
+
+```bash
+node harness/src/run.cjs --tier 2 --max-usd 10 --scenario review-churn-live
+node harness/src/run.cjs --tier 2 --max-usd 10 --scenario clarify-budget-greeting --scenario clarify-budget-export --scenario clarify-budget-ratelimit
+node harness/src/run.cjs --tier 1 --max-usd 0 --scenario review-cross-family-copilot
+node harness/src/run.cjs --tier 2 --max-usd 15 --repeat 3 --prompt-mutant pan-wizard-core/workflows/quick:4387c189
+```
 
 ## Seeds
 
-`harness/seeds/<name>/` is copied into the workspace before install (`"seed": "empty"` is reserved and means no seed). Seeds are written the
+`harness/seeds/<name>/` is copied into the workspace before install and committed as one commit (`"seed": "empty"` is reserved and means no seed). A scenario that needs history, such as a phase with a base and its own commits so `review scope` finds a diff, applies an overlay as its first step: `scripts/apply-overlay.cjs <ws> <repo>/harness/overlays/<name>` copies each `commits/<NN>-<name>/` directory over the workspace, in order, and commits only those files with the message in its `COMMIT_MSG` (`review-target-phase1` on the `review-target` seed). Seeds are written the
 way PAN's own templates write them (roadmap checklist lines, the state template's `**Field:**` lines, plan files
 with the `wave` / `autonomous` frontmatter `phase-plan-index` parses) — a fixture in a
 format PAN never emits verifies nothing. The seeds' `state.md` does not yet meet that below its `**Field:**` lines: `## Key Decisions`, `## Active Blockers` and `## Session History` are not the template's `### Decisions`, `### Blockers/Concerns` and `## Session Continuity`, and the seeds' decision bullet lacks the template's `- [Phase N]:` prefix, so `state-snapshot` reads no decisions from them (renaming the heading alone does not change that).

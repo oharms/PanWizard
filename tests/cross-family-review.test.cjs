@@ -152,3 +152,51 @@ describe('review-deep merges the lane as a fourth source (R4)', () => {
     assert.match(t, /--cross-file/);
   });
 });
+
+describe('an argument-prompt host gets its prompt as one argument (R4, Windows cmd.exe)', () => {
+  const { launchPlan, quoteForCmd } = require('../pan-wizard-core/bin/lib/cross-family.cjs');
+  let dir;
+  let binDir;
+  before(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-xfam-arg-'));
+    const p = path.join(dir, '.planning');
+    fs.mkdirSync(path.join(p, 'phases', '01-a'), { recursive: true });
+    fs.writeFileSync(path.join(p, 'roadmap.md'), '# Roadmap\n\n### Phase 1: A\n**Goal:** g\n');
+    fs.writeFileSync(path.join(p, 'phases', '01-a', '01-01-plan.md'), '---\nphase: 01\n---\n<objective>\nAdd a.\n</objective>\n');
+    binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-xfam-argbin-'));
+    // A stand-in `copilot` that answers with a verdict only when it got exactly `-p <prompt>`,
+    // the prompt being the whole review prompt or the pointer to its file.
+    const verdict = JSON.stringify({ contract: '1.0', agent: 'cross-family-reviewer', phase: '01', verdict: 'APPROVED', outcome: 'pass', findings: [] });
+    const fence = '```';
+    const js = path.join(binDir, 'copilot-stand-in.js');
+    fs.writeFileSync(js, [
+      'const a = process.argv.slice(2);',
+      "const ok = a.length === 2 && a[0] === '-p' && (/pan-verdict/.test(a[1]) || /^Read \\S+cross-family-copilot-prompt\\.md and follow it exactly\\. Do not edit anything\\.$/.test(a[1]));",
+      `process.stdout.write(ok ? ${JSON.stringify(fence + 'pan-verdict\n' + verdict + '\n' + fence + '\n')} : 'ARGV ' + JSON.stringify(a));`,
+    ].join('\n'));
+    if (process.platform === 'win32') fs.writeFileSync(path.join(binDir, 'copilot.cmd'), `@"${process.execPath}" "${js}" %*\r\n`);
+    else { fs.writeFileSync(path.join(binDir, 'copilot'), `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`); fs.chmodSync(path.join(binDir, 'copilot'), 0o755); }
+  });
+  after(() => { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(binDir, { recursive: true, force: true }); });
+
+  test('the stand-in receives -p and one prompt argument, and the verdict parses', () => {
+    const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH, PAN_STANDIN_DIR: binDir };
+    const res = spawnSync(process.execPath, [TOOLS, 'review', 'cross-family', '1', '--host', 'copilot', '--cwd', dir], { encoding: 'utf8', env });
+    const r = JSON.parse(res.stdout);
+    assert.deepEqual(r.runs.map((x) => x.verdict), ['APPROVED'], JSON.stringify(r));
+  });
+
+  test('launchPlan: an .exe is spawned by path without a shell; a .cmd shim goes through cmd.exe and a prompt file', () => {
+    const exeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-xfam-exe-'));
+    try {
+      fs.writeFileSync(path.join(exeDir, 'hostx.exe'), '');
+      fs.writeFileSync(path.join(exeDir, 'hosty.cmd'), '');
+      const env = { PATH: exeDir, PATHEXT: '.COM;.EXE;.BAT;.CMD' };
+      assert.deepEqual(launchPlan('hostx', 'win32', env), { file: path.join(exeDir, 'hostx.exe'), shell: false, promptFile: false });
+      assert.deepEqual(launchPlan('hosty', 'win32', env), { file: 'hosty', shell: true, promptFile: true });
+      assert.deepEqual(launchPlan('hostx', 'linux', env), { file: 'hostx', shell: false, promptFile: false });
+    } finally { fs.rmSync(exeDir, { recursive: true, force: true }); }
+    assert.equal(quoteForCmd('-p'), '-p');
+    assert.equal(quoteForCmd('Read a.md and go'), '"Read a.md and go"');
+  });
+});

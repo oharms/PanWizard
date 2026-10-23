@@ -99,9 +99,14 @@ function parseArgs(argv, env = process.env) {
   return a;
 }
 
-function defaultStateDir() {
-  if (process.env.PAN_HARNESS_STATE) return process.env.PAN_HARNESS_STATE;
-  return process.platform === 'win32' && fs.existsSync('D:\\pantesting') ? 'D:\\pantesting\\harness-runs' : path.join(os.tmpdir(), 'pan-harness-runs');
+// The test directories, in order, as harness/autopilot/dogfood.cjs defaultRoot() knows them.
+const TEST_ROOTS = ['C:\\Project\\pantesting', 'D:\\pantesting'];
+
+/** Where run state goes: PAN_HARNESS_STATE, else the first test directory that exists (Windows), else the OS temp. */
+function defaultStateDir(env = process.env, platform = process.platform, exists = fs.existsSync) {
+  if (env.PAN_HARNESS_STATE) return env.PAN_HARNESS_STATE;
+  if (platform === 'win32') for (const root of TEST_ROOTS) if (exists(root)) return path.win32.join(root, 'harness-runs');
+  return path.join(os.tmpdir(), 'pan-harness-runs');
 }
 
 /**
@@ -765,4 +770,4 @@ function pairSummary(results, scenarios) {
   return out;
 }
 
-module.exports = { pruneRun, variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+module.exports = { defaultStateDir, TEST_ROOTS, pruneRun, variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

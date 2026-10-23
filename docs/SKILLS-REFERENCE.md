@@ -948,7 +948,7 @@ Audit a PAN Wizard deployment — verify installation integrity, project health,
 
 Guarded prompt evolution (program S4) — evolve one section of one PAN judge prompt against training scenarios, accept it only on held-out data, with a deletion arm always run. Development only; paid.
 
-**Lines:** 34
+**Lines:** 38
 
 #### /investigate
 
