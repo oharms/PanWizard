@@ -334,7 +334,9 @@ function runStep(step, ctx) {
       }
       // Cap = what is left of THIS scenario's share, bounded by its own budget.maxUsd.
       const remaining = ctx.shareUsd === null ? null : ctx.shareUsd - ctx.spentUsd();
-      const cap = remaining === null ? null : Math.min(remaining, budget.maxUsd || remaining);
+      // A step's own `maxUsd` (H10's per-phase sessions) bounds it further, so one step cannot
+      // spend what the steps after it need.
+      const cap = remaining === null ? null : Math.min(remaining, budget.maxUsd || remaining, step.maxUsd || Infinity);
       if (cap !== null && cap < MIN_MODEL_STEP_USD) {
         return { code: 2, stdout: '', stderr: `budget exhausted: $${cap.toFixed(2)} of this scenario's $${ctx.shareUsd.toFixed(2)} share left (floor $${MIN_MODEL_STEP_USD})`, costUsd: 0, budgetExhausted: true };
       }

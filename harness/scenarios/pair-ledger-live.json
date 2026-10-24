@@ -1,0 +1,73 @@
+{
+  "id": "pair-ledger-live",
+  "tier": 2,
+  "description": "The PAN arm of the H10 large-project pair: PAN's autodev loop plans, executes, verifies and completes each of the six ledger phases, a fresh Claude Code session per unit, a real model.",
+  "why": "Program H10, large project: the claim PAN makes is that planning across many phases and fresh sessions keeps a project working where the bare host, also phase by phase in fresh sessions, breaks earlier work. Phase 5 changes the storage format under phases 1-4 and must migrate their files; phase 6 must reuse phases 3 and 4. Both arms see the same roadmap and requirements and are judged by the same hidden acceptance check (harness/scripts/check-ledger.cjs: every phase plus cross-phase regressions). Run both arms together with --repeat N and an approved --max-usd of at least 60 per rep (the run splits it equally between the arms).",
+  "seed": "ledger-roadmap",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 30,
+    "maxMinutes": 360,
+    "maxStepMinutes": 350
+  },
+  "pair": {
+    "id": "ledger-live",
+    "arm": "pan",
+    "goal": "Implement the six phases of the roadmap in .planning/roadmap.md in order, one phase per fresh session, meeting every requirement in .planning/requirements.md, with tests."
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "autodev-run.cjs",
+      "args": [
+        "<ws>",
+        "--max-usd",
+        "25",
+        "--max-turns",
+        "40",
+        "--timeout-minutes",
+        "345"
+      ],
+      "spends": true,
+      "expect": [
+        "exit:0",
+        "json:stop=done",
+        "file:src/ledger.js",
+        "file:src/import.js",
+        "file:src/categories.js",
+        "file:src/report.js",
+        "file:src/budget.js"
+      ],
+      "why": "autodev runs all six phases to done, each unit in a fresh session, and the files the requirements name exist."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-ledger.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every phase's requirements hold, and phases 1-4 still work after the phase 5 format change, judged by a check neither arm saw."
+    }
+  ]
+}

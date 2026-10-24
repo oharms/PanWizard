@@ -1,0 +1,69 @@
+{
+  "id": "ledger-live-quality",
+  "tier": 2,
+  "description": "PAN's autodev on the H10 large-project seed with --quality: the full ceremony (research, a planner and the plan-checker for every phase, every agent on the launch model), against the same hidden check as the pair-ledger-live arms.",
+  "why": "Program H10, large project: pair-ledger-live's phases are precise enough to be sized lean, so its PAN arm measures the right-sized path, not PAN's planning. This arm runs the same roadmap with the full planning ceremony, so the three results (bare host, PAN default, PAN quality) show what planning buys on a large project. Run with an approved --max-usd.",
+  "seed": "ledger-roadmap",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 50,
+    "maxMinutes": 360,
+    "maxStepMinutes": 350
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "autodev-run.cjs",
+      "args": [
+        "<ws>",
+        "--max-usd",
+        "45",
+        "--max-turns",
+        "40",
+        "--timeout-minutes",
+        "345",
+        "--quality"
+      ],
+      "spends": true,
+      "expect": [
+        "exit:0",
+        "json:stop=done",
+        "file:src/ledger.js",
+        "file:src/import.js",
+        "file:src/categories.js",
+        "file:src/report.js",
+        "file:src/budget.js"
+      ],
+      "why": "autodev runs all six phases to done, each unit in a fresh session, and the files the requirements name exist."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-ledger.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every phase's requirements hold, and phases 1-4 still work after the phase 5 format change, judged by a check neither arm saw."
+    }
+  ]
+}

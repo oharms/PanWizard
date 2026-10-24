@@ -1,0 +1,64 @@
+{
+  "id": "pair-vague-live",
+  "tier": 2,
+  "description": "The PAN arm of the H10 vague-goal pair: PAN's autodev loop plans (in a session: the vague phase sizes to the full ceremony), executes, verifies and completes the one-phase roadmap, unattended, Claude Code, a real model.",
+  "why": "Program H10, a vague goal: the request says only 'Finance needs an export of expenses'; the eight constraints that decide whether finance can use it (entry points, inclusive range and order, semicolon delimiter, amount format, columns, cost centre, soft deletes, file naming) are scattered through the seed's docs/, not in the requirement text. An implementer that investigates and plans before coding should find them; one that codes from the request should miss some. No human answers questions in either arm, so everything is discoverable in the repository. Judged by a check neither arm can see (harness/scripts/check-vague-export.cjs). Run both arms together with --repeat N and an approved --max-usd.",
+  "seed": "vague-export",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 8,
+    "maxMinutes": 60,
+    "maxStepMinutes": 55
+  },
+  "pair": {
+    "id": "vague-live",
+    "arm": "pan",
+    "goal": "Finance needs an export of expenses. Implement phase 1 of .planning/roadmap.md."
+  },
+  "steps": [
+    {
+      "kind": "sh",
+      "script": "autodev-run.cjs",
+      "args": [
+        "<ws>",
+        "--max-turns",
+        "8"
+      ],
+      "spends": true,
+      "expect": [
+        "exit:0",
+        "json:stop=done"
+      ],
+      "why": "autodev takes the phase to done unattended: a planning session (the vague requirements are not lean), execution, verification and completion, each unit in a fresh session."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests and the new ones pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-vague-export.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every constraint the docs set holds, judged by a check neither arm saw."
+    }
+  ]
+}

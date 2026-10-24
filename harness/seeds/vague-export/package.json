@@ -1,0 +1,9 @@
+{
+  "name": "expenses-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Seed project for the PAN Harness H10 vague-goal pair: an expenses store; the export's rules live in docs/.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

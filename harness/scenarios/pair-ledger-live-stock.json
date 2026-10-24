@@ -1,0 +1,107 @@
+{
+  "id": "pair-ledger-live-stock",
+  "tier": 2,
+  "description": "The stock arm of the H10 large-project pair: Claude Code with nothing installed implements the six ledger phases one per fresh session (six model steps, no session carried between them), a real model.",
+  "why": "Program H10, large project: the claim PAN makes is that planning across many phases and fresh sessions keeps a project working where the bare host, also phase by phase in fresh sessions, breaks earlier work. Each step is a new headless session (no --resume, session persistence off), so a later phase knows the earlier ones only from the repository, as in a real multi-session project. Both arms see the same roadmap and requirements and are judged by the same hidden acceptance check (harness/scripts/check-ledger.cjs: every phase plus cross-phase regressions). Run both arms together with --repeat N and an approved --max-usd of at least 60 per rep.",
+  "seed": "ledger-roadmap",
+  "install": null,
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 15,
+    "maxMinutes": 240,
+    "maxStepMinutes": 40
+  },
+  "pair": {
+    "id": "ledger-live",
+    "arm": "stock",
+    "goal": "Implement the six phases of the roadmap in .planning/roadmap.md in order, one phase per fresh session, meeting every requirement in .planning/requirements.md, with tests."
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "Implement phase 1 of the roadmap in .planning/roadmap.md, meeting its requirements in .planning/requirements.md, with tests. Do not ask questions.",
+      "maxUsd": 2.5,
+      "expect": [
+        "exit:0",
+        "file:src/ledger.js"
+      ],
+      "why": "Phase 1 (ledger), a fresh session: the session finishes and the file its requirements name exists."
+    },
+    {
+      "kind": "model",
+      "prompt": "Implement phase 2 of the roadmap in .planning/roadmap.md, meeting its requirements in .planning/requirements.md, with tests. Earlier phases are already implemented in this repository. Do not ask questions.",
+      "maxUsd": 2.5,
+      "expect": [
+        "exit:0",
+        "file:src/import.js"
+      ],
+      "why": "Phase 2 (CSV import), a fresh session that knows phase 1 only from the repository."
+    },
+    {
+      "kind": "model",
+      "prompt": "Implement phase 3 of the roadmap in .planning/roadmap.md, meeting its requirements in .planning/requirements.md, with tests. Earlier phases are already implemented in this repository. Do not ask questions.",
+      "maxUsd": 2.5,
+      "expect": [
+        "exit:0",
+        "file:src/categories.js"
+      ],
+      "why": "Phase 3 (categories), a fresh session."
+    },
+    {
+      "kind": "model",
+      "prompt": "Implement phase 4 of the roadmap in .planning/roadmap.md, meeting its requirements in .planning/requirements.md, with tests. Earlier phases are already implemented in this repository. Do not ask questions.",
+      "maxUsd": 2.5,
+      "expect": [
+        "exit:0",
+        "file:src/report.js"
+      ],
+      "why": "Phase 4 (monthly reports), a fresh session."
+    },
+    {
+      "kind": "model",
+      "prompt": "Implement phase 5 of the roadmap in .planning/roadmap.md, meeting its requirements in .planning/requirements.md, with tests. Earlier phases are already implemented in this repository. Do not ask questions.",
+      "maxUsd": 2.5,
+      "expect": [
+        "exit:0",
+        "file:src/ledger.js"
+      ],
+      "why": "Phase 5 (integer cents and the migration), a fresh session: it changes the storage under phases 1-4."
+    },
+    {
+      "kind": "model",
+      "prompt": "Implement phase 6 of the roadmap in .planning/roadmap.md, meeting its requirements in .planning/requirements.md, with tests. Earlier phases are already implemented in this repository. Do not ask questions.",
+      "maxUsd": 2.5,
+      "expect": [
+        "exit:0",
+        "file:src/budget.js"
+      ],
+      "why": "Phase 6 (budgets), a fresh session that must reuse phases 3 and 4."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-ledger.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every phase's requirements hold, and phases 1-4 still work after the phase 5 format change, judged by a check neither arm saw."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "ledger-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Seed project for the PAN Harness H10 large-project pair: a six-phase household budget ledger roadmap, nothing built yet.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

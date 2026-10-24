@@ -103,6 +103,8 @@ function validateScenario(s, fileName = '<inline>') {
     }
     // `persistSession: true` lets a model step's host write transcripts (see model.cjs).
     if (st.persistSession !== undefined && (st.kind !== 'model' || st.persistSession !== true)) err(`${at}: persistSession is only \`true\`, and only on model steps`);
+    // `maxUsd` caps one model step below the scenario's budget (H10: one session per phase).
+    if (st.maxUsd !== undefined && (st.kind !== 'model' || !(typeof st.maxUsd === 'number' && st.maxUsd > 0))) err(`${at}: maxUsd is a positive number, and only on model steps`);
   });
   // `covers` (H6): the prompt rules this scenario exercises, ids from tests/fixtures/prompt-rules.json.
   if (s.covers !== undefined && !(Array.isArray(s.covers) && s.covers.every((id) => typeof id === 'string' && /^[^\s:]+:[0-9a-f]{8}$/.test(id)))) err('covers must be an array of prompt-rule ids (<file>:<8 hex>)');
