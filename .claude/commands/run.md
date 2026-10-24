@@ -5,20 +5,20 @@ Test the PAN Wizard installer in the external test directory.
 ## ⛔ CRITICAL: Self-Protection Gate
 
 **NEVER run the installer from d:\PanWizard.** The installer has a hard guard that rejects this.
-ALL installation testing MUST happen in `d:\pantesting`.
+ALL installation testing MUST happen in `C:\Project\pantesting`.
 
 ---
 
 ## Usage
 
 ```
-/run                     # Install all runtimes to d:\pantesting
+/run                     # Install all runtimes to C:\Project\pantesting
 /run --claude            # Install Claude runtime only
 /run --codex             # Install Codex runtime only
 /run --gemini            # Install Gemini runtime only
 /run --opencode          # Install OpenCode runtime only
 /run --copilot           # Install Copilot (.github) runtime only
-/run --clean             # Clean d:\pantesting first, then install all
+/run --clean             # Clean C:\Project\pantesting first, then install all
 ```
 
 ## Execution
@@ -27,17 +27,17 @@ ALL installation testing MUST happen in `d:\pantesting`.
 
 ```powershell
 # Clean previous installs
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 
 # Install all runtimes
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --all --local
 ```
 
 ### Single Runtime
 
 ```powershell
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --claude --local
 ```
 
@@ -45,11 +45,11 @@ node d:\PanWizard\bin\install.js --claude --local
 
 ```powershell
 # Check Claude runtime
-Write-Host "Commands: $((Get-ChildItem d:\pantesting\.claude\commands\pan\*.md -ErrorAction SilentlyContinue).Count)"
-Write-Host "Agents: $((Get-ChildItem d:\pantesting\.claude\agents\*.md -ErrorAction SilentlyContinue).Count)"
-Write-Host "Core: $(Test-Path d:\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs)"
-Write-Host "Hooks: $((Get-ChildItem d:\pantesting\.claude\hooks\*.js -ErrorAction SilentlyContinue).Count)"
-Write-Host "Manifest: $(Test-Path d:\pantesting\.claude\pan-file-manifest.json)"
+Write-Host "Commands: $((Get-ChildItem C:\Project\pantesting\.claude\commands\pan\*.md -ErrorAction SilentlyContinue).Count)"
+Write-Host "Agents: $((Get-ChildItem C:\Project\pantesting\.claude\agents\*.md -ErrorAction SilentlyContinue).Count)"
+Write-Host "Core: $(Test-Path C:\Project\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs)"
+Write-Host "Hooks: $((Get-ChildItem C:\Project\pantesting\.claude\hooks\*.js -ErrorAction SilentlyContinue).Count)"
+Write-Host "Manifest: $(Test-Path C:\Project\pantesting\.claude\pan-file-manifest.json)"
 ```
 
 ### Expected Counts (verify against source)
@@ -59,5 +59,5 @@ Verify the installed counts match the source repo — compare against **CLAUDE.m
 ## Never Do
 
 - Run installer from `d:\PanWizard` — it will exit code 1
-- Modify `d:\pantesting` and expect changes to persist (it's a test directory)
+- Modify `C:\Project\pantesting` and expect changes to persist (it's a test directory)
 - Skip verification after installation

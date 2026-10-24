@@ -11,7 +11,7 @@ This skill is the sibling of `/reality-check`. That one asks *where does PAN sta
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. Reading, triage and doc writing happen here.
-NEVER run `bin/install.js` from this directory. NEVER create `.planning/` here. Any `pan-tools` call with `--cwd` goes to `d:\pantesting`. This skill needs no install at all — if you find yourself installing, you have drifted into `/reality-check`'s job.
+NEVER run `bin/install.js` from this directory. NEVER create `.planning/` here. Any `pan-tools` call with `--cwd` goes to `C:\Project\pantesting`. This skill needs no install at all — if you find yourself installing, you have drifted into `/reality-check`'s job.
 
 ---
 

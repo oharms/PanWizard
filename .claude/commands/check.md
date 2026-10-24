@@ -5,7 +5,7 @@ Verify that PAN Wizard features actually work, not just exist.
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. NEVER install PAN here.
-Installation verification goes to `d:\pantesting`.
+Installation verification goes to `C:\Project\pantesting`.
 
 ---
 
@@ -42,7 +42,7 @@ Installation verification goes to `d:\pantesting`.
    Exits non-zero on errors; warnings are advisory.
 7. **Manual verification** if needed — install to test directory:
    ```powershell
-   cd d:\pantesting && node d:\PanWizard\bin\install.js --all --local
+   cd C:\Project\pantesting && node d:\PanWizard\bin\install.js --all --local
    ```
 8. **Report** verified vs. failing features with evidence
 
@@ -63,10 +63,10 @@ Verify all 5 runtimes install correctly:
 
 ```powershell
 # Clean slate
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 
 # Install each runtime
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --claude --local
 node d:\PanWizard\bin\install.js --codex --local
 node d:\PanWizard\bin\install.js --gemini --local

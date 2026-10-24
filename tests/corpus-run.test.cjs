@@ -214,3 +214,20 @@ describe('judge prompts', () => {
     assert.match(CR.judgePrompt('reviewer', entry, { model: 'sonnet' }), /model `sonnet`/);
   });
 });
+
+describe('readReport: a pass is scored only with what it wrote', () => {
+  test('a review file older than the session is not taken as this pass\'s report', () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-corpus-rr-'));
+    try {
+      const dir = path.join(ws, '.planning', 'phases', '01-corpus');
+      fs.mkdirSync(dir, { recursive: true });
+      const block = '```pan-verdict\n' + JSON.stringify({ contract: '1.0', agent: 'pan-reviewer', phase: '01', outcome: 'fail', findings: [{ class: 'defect', severity: 'high', where: 'src/a.js:1', summary: 'old' }] }) + '\n```\n';
+      const f = path.join(dir, '01-review.md');
+      fs.writeFileSync(f, block);
+      const old = Date.now() - 60000;
+      fs.utimesSync(f, old / 1000, old / 1000);
+      assert.equal(CR.readReport(ws, 'no verdict here', 'pan-reviewer', Date.now() - 1000).report, 'no verdict here');
+      assert.equal(CR.readReport(ws, 'no verdict here', 'pan-reviewer', 0).source, '.planning/phases/01-corpus/01-review.md');
+    } finally { fs.rmSync(ws, { recursive: true, force: true }); }
+  });
+});

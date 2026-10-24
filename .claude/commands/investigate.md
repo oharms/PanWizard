@@ -19,7 +19,7 @@ this command files can never be re-proposed by `/market-ideas`, and vice versa.
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY, and it is **public**. NEVER run `bin/install.js` here, never create
-`.planning/` here. Probes that need an install go to `d:\pantesting`. Nothing this command writes may carry a client
+`.planning/` here. Probes that need an install go to `C:\Project\pantesting`. Nothing this command writes may carry a client
 codename or content from an external client project (the no-external-project-harvest rule in project memory).
 
 ---
@@ -98,7 +98,7 @@ LOW/NONE items get a row and nothing else. Do not pad: a run with zero ADD/ENHAN
 - A verb exists only if it is **wired end to end**: module function → dispatcher `case` arm → a row in
   `tests/fixtures/surface.json` (`node scripts/test-surface.cjs --map` shows it). A per-runtime feature exists only for
   the runtimes whose install path emits it — say which of the five.
-- Where it is cheap (≤ ~2 min), **probe it**: `node pan-wizard-core/bin/pan-tools.cjs <verb> … --cwd d:/pantesting/<dir>`,
+- Where it is cheap (≤ ~2 min), **probe it**: `node pan-wizard-core/bin/pan-tools.cjs <verb> … --cwd C:/Project/pantesting/<dir>`,
   or a scratchpad script that `require`s the module (use `D:/…` paths — `/d/…` does not resolve in Node). Never probe
   against this repo's own tree. Record the command and its output.
 - Absence claims: canary the grep (search for a name you know exists with the same pattern) before trusting "No matches".

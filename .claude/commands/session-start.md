@@ -17,7 +17,7 @@ description: Start a PAN Wizard development session by loading project context a
 
 This is the PAN Wizard SOURCE REPOSITORY (`d:\PanWizard`).
 - Unit/scenario tests run here: `npm test`, `npm run test:all`
-- Installation testing goes to `d:\pantesting`
+- Installation testing goes to `C:\Project\pantesting`
 - NEVER run installer from source directory
 
 ---
@@ -60,7 +60,7 @@ Test baseline: <X tests, Y suites>
 
 Key paths:
   Source: d:\PanWizard
-  Test target: d:\pantesting
+  Test target: C:\Project\pantesting
   Tests: npm test / npm run test:all
 
 Ready to continue.
@@ -82,7 +82,7 @@ Based on context:
 |--------|---------|
 | Run tests | `npm test` |
 | Build hooks | `npm run build:hooks` |
-| Test install | `cd d:\pantesting && node d:\PanWizard\bin\install.js --all --local` |
+| Test install | `cd C:\Project\pantesting && node d:\PanWizard\bin\install.js --all --local` |
 | Check changes | `git diff --stat` |
 | Start fresh | "What would you like to work on?" |
 

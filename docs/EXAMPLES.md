@@ -518,7 +518,7 @@ is detailed enough to answer implementation questions.
 
 ---
 
-## Spec B v2 worked examples (v3.0-v3.4)
+## Spec B v2 worked examples
 
 ### Preview a risky phase before committing
 

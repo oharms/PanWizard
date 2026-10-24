@@ -80,9 +80,17 @@ describe('review-target + its overlay: a phase with a base and a real diff (V6, 
 });
 
 describe('count-questions (P1)', () => {
-  test('counts the lines of a reply that end in a question mark', () => {
-    assert.equal(questionLines('Phase 1: X\n\n1. **Which delimiter?**\n2. Header row? (recommended: yes)\nDone.\n- Should dates be ISO 8601?').length, 2);
+  test('counts the lines that end in a question mark, and numbered items holding one', () => {
+    assert.equal(questionLines('Phase 1: X\n\n1. **Which delimiter?**\n2. Header row? (recommended: yes)\nDone.\n- Should dates be ISO 8601?').length, 3);
     assert.equal(questionLines('No questions here.').length, 0);
+  });
+  test('a numbered question with text after it on the same line is counted (P1 run, 2026-10-24)', () => {
+    // The shape discuss-phase asked in: two of its five questions continued after the "?".
+    const reply = ['**1. Which spreadsheet program and region does finance use?** This decides the delimiter and the encoding.',
+      '- **a) Excel, English locale** *(recommended)*', '**2. How should the export be narrowed?**',
+      '**3. What columns, in what order?** No expense data exists yet, so this shapes the record too.',
+      '**4. How should amounts appear?**', '**5. How is the export run, and where does the file go?**'].join('\n');
+    assert.equal(questionLines(reply).length, 5);
   });
   test('finds the rep from the workspace name', () => {
     assert.equal(repOf('clarify-budget-export', 'clarify-budget-export'), 1);
@@ -114,6 +122,13 @@ describe('quick-task-recorded (H6: quick-mode covers quick.md Step 7)', () => {
     assert.equal(quickTaskRecord(`# Project State\n\n${table}`).recorded, true);
     assert.equal(quickTaskRecord('# Project State\n\n## Current Position\n').recorded, false);
     assert.equal(quickTaskRecord(table.replace('[1-add-shout](./quick/1-add-shout/)', 'n/a')).recorded, false);
+  });
+  test('a row split by a raw | in the description is not a record (the rule H6 deletes)', () => {
+    const table = '### Quick Tasks Completed\n\n| # | Description | Date | Commit | Directory |\n|---|---|---|---|---|\n';
+    const split = table + '| 1 | add a | b | 2026-10-23 | abc1234 | [1-add](./quick/1-add/) |\n';
+    const escaped = table + '| 1 | add a \\| b | 2026-10-23 | abc1234 | [1-add](./quick/1-add/) |\n';
+    assert.deepEqual([quickTaskRecord(split).recorded, quickTaskRecord(split).split], [false, 1]);
+    assert.equal(quickTaskRecord(escaped).recorded, true);
   });
 });
 
@@ -201,4 +216,21 @@ describe('run state goes to the test directory this machine has', () => {
   test('elsewhere: the OS temp, whatever exists', () => {
     assert.equal(defaultStateDir({}, 'linux', () => true), path.join(os.tmpdir(), 'pan-harness-runs'));
   });
+});
+
+describe('P1: the scripted user stops the session after the discussion', () => {
+  const offers = ['## ▶ Next Up', 'Do you want me to start planning here anyway?', 'Want me to plan it now?', 'Would you like me to proceed?', 'Shall we move on to planning?'];
+  const questions = ["Once you reply, I'll write the context file and point you to `/pan:plan-phase 1`.", '**2. How should the export be narrowed?**'];
+  for (const id of ['clarify-budget-greeting', 'clarify-budget-export', 'clarify-budget-ratelimit']) {
+    test(`${id}: an offer to start the next stage is declined, a question is answered`, () => {
+      // 2026-10-24: a catch-all "Go with your recommended option" approved each offer, and two
+      // sessions ran through planning, execution and the milestone audit.
+      const s = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'harness', 'scenarios', `${id}.json`), 'utf8'));
+      for (const st of s.steps.filter((x) => x.kind === 'user')) {
+        const pick = (text) => st.answers.find((a) => new RegExp(a.match, 'i').test(text)).reply;
+        for (const o of offers) assert.match(pick(o), /^Stop here/, o);
+        for (const q of questions) assert.doesNotMatch(pick(q), /^Stop here/, q);
+      }
+    });
+  }
 });

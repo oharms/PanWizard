@@ -5,7 +5,7 @@ Run PAN Wizard tests with configurable scope.
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. NEVER run `node bin/install.js` from here.
-Unit/scenario tests are safe to run here. Installation testing goes to `d:\pantesting`.
+Unit/scenario tests are safe to run here. Installation testing goes to `C:\Project\pantesting`.
 
 ---
 
@@ -16,7 +16,7 @@ Unit/scenario tests are safe to run here. Installation testing goes to `d:\pante
 /test unit               # Unit tests only (tests/*.test.cjs)
 /test scenarios          # Scenario tests only (tests/scenarios/*.test.cjs)
 /test all                # All tests (unit + scenarios)
-/test install            # Integration: install to d:\pantesting and verify
+/test install            # Integration: install to C:\Project\pantesting and verify
 /test <pattern>          # Run tests matching pattern
 ```
 
@@ -61,17 +61,17 @@ npm run test:all
 
 ```powershell
 # Clean and test fresh install (all 5 runtimes)
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
-cd d:\pantesting
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --all --local
 ```
 
 Then verify:
 ```powershell
 # Check installed files
-Get-ChildItem d:\pantesting\.claude\commands\pan\*.md | Measure-Object | Select-Object Count
-Get-ChildItem d:\pantesting\.claude\agents\*.md | Measure-Object | Select-Object Count
-Test-Path d:\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs
+Get-ChildItem C:\Project\pantesting\.claude\commands\pan\*.md | Measure-Object | Select-Object Count
+Get-ChildItem C:\Project\pantesting\.claude\agents\*.md | Measure-Object | Select-Object Count
+Test-Path C:\Project\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs
 ```
 
 ## Running Specific Tests

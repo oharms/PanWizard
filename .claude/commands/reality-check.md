@@ -11,7 +11,7 @@ This skill is the repeatable form of the reviews that produced `docs/ECOSYSTEM-R
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. Analysis and doc writing happen here.
-Every install, harness run, or `pan-tools` invocation with `--cwd` goes to `d:\pantesting`. NEVER run `bin/install.js` from this directory. NEVER create `.planning/` here.
+Every install, harness run, or `pan-tools` invocation with `--cwd` goes to `C:\Project\pantesting`. NEVER run `bin/install.js` from this directory. NEVER create `.planning/` here.
 
 ---
 
@@ -42,11 +42,11 @@ Execute every phase that the flags leave enabled. Do NOT stop between phases. Th
 2. **Model names in live docs are written by capability, not version.** `tests/model-version-drift.test.cjs` rejects version-pinned model names in `docs/` and `README.md`. Dated `docs/ECOSYSTEM-REVIEW-YYYY-MM.md` files, `docs/specs/*`, ADRs, CHANGELOG and `docs/IMPROVEMENT-TODO.md` are among the exempt files — the review doc MAY name versions; the pointers you add to evergreen docs MAY NOT.
 3. **A status column is a claim, not evidence.** Every "Done", "Shipped", "Closed" inherited from an older plan is re-verified by grep or by running the thing. The August review found two MCP resources dead since their first milestone because every test injected a fake spawn; a superplan item can be marked done and still be wrong.
 4. **Primary sources only for market claims.** Official docs, changelogs, spec repos, pricing pages. Aggregators, blog posts and marketplace self-reported figures are **secondary** and flagged as such. Each external claim carries `source URL · date read`. A changelog line is a release note, **not a tested claim** — say which.
-5. **Measure the emitted artifact, not the source.** Skill body sizes are measured on `.agents/skills/*/SKILL.md` after an install (the adapter header adds tokens). MCP resources are read through the **real engine**, not the protocol layer. Installed config paths are checked on disk in `d:\pantesting`, where a dead path looks exactly like a live one until you read it.
-6. **Enumeration traps on record.** `grep "name: 'pan-…'"` over `bin/install-lib.cjs` also matches the plugin manifest; `sed`/`awk` ranges over `buildNativeWorkflowScripts` close early on a `}` inside a template literal — read by line number. `.planning/` gets created wherever a `pan-tools` verb runs with `--cwd .` — always `cd d:/pantesting` first.
+5. **Measure the emitted artifact, not the source.** Skill body sizes are measured on `.agents/skills/*/SKILL.md` after an install (the adapter header adds tokens). MCP resources are read through the **real engine**, not the protocol layer. Installed config paths are checked on disk in `C:\Project\pantesting`, where a dead path looks exactly like a live one until you read it.
+6. **Enumeration traps on record.** `grep "name: 'pan-…'"` over `bin/install-lib.cjs` also matches the plugin manifest; `sed`/`awk` ranges over `buildNativeWorkflowScripts` close early on a `}` inside a template literal — read by line number. `.planning/` gets created wherever a `pan-tools` verb runs with `--cwd .` — always `cd C:/Project/pantesting` first.
 7. **Never propose retiring what the "What not to do" list protects** without a new finding that overturns the recorded reason. The list is carried forward in Phase 5 and re-affirmed item by item.
 8. **No secrets leave the machine.** This skill reads public docs; it never posts anything, never opens PRs, never pushes. `--write` writes files in the checkout and nothing else.
-9. **Run the installed engine from the install directory.** `cd d:/pantesting/<run>` before any `node .claude/pan-wizard-core/...` call: the same relative path typed from the source root resolves against the source tree, fails, and looks like a product error. Measure footprints there too — a `cd` in the middle of a compound command silently re-roots every `find` after it. And `npm run harness` appends to the tracked `harness/ledger.jsonl`; that diff is expected, list it.
+9. **Run the installed engine from the install directory.** `cd C:/Project/pantesting/<run>` before any `node .claude/pan-wizard-core/...` call: the same relative path typed from the source root resolves against the source tree, fails, and looks like a product error. Measure footprints there too — a `cd` in the middle of a compound command silently re-roots every `find` after it. And `npm run harness` appends to the tracked `harness/ledger.jsonl`; that diff is expected, list it.
 10. **A scout's number is a lead until a second read of the raw page agrees.** On `2026-09-22` a scout reported a new model's prices at double the page and a Codex default that moved the same day; both were caught only because the queue re-read the raw pricing arrays before writing a rate row. Before encoding any price, default model id or event name, re-read it from the raw primary text (curl the page, parse the table or the embedded JSON) on the day you write it.
 11. **A runtime-integration test derived from PAN's own table agrees with PAN, not with the runtime.** Every Gemini hook test passed while Gemini skipped three of PAN's four hook keys, because the tests read their event names from `HOOK_EVENT_MAP`. Check emitted config against the runtime's documented vocabulary (`tests/fixtures/hook-vocabulary.json`) and emitted model ids against its documented defaults (`tests/fixtures/documented-default-models.json`), and add a fixture of the same kind for any new integration surface.
 
@@ -134,7 +134,7 @@ Rules: read the source the claim points at, do not infer from the doc. A claim t
 Mirror the harness's artifact-first rule: install from a **packed** tarball, never from the source tree.
 
 ```bash
-cd d:/pantesting && rm -rf reality-check && mkdir reality-check && cd reality-check
+cd C:/Project/pantesting && rm -rf reality-check && mkdir reality-check && cd reality-check
 npm pack d:/PanWizard --pack-destination . >/dev/null && tar -xzf pan-wizard-*.tgz
 git init -q . && node package/bin/install.js --claude --codex --gemini --opencode --copilot --local
 ```
@@ -293,8 +293,8 @@ One paragraph, with evidence: did the window's changes move the market **onto** 
 ```bash
 # description budget: what every session loads before doing anything
 node -e "…sum chars of the description: line across commands/pan/*.md and agents/*.md, /4 → tokens…"
-# body budget offenders — measure the EMITTED skill after an install in d:/pantesting with --unified-skills
-for f in d:/pantesting/reality-check/.agents/skills/*/SKILL.md; do t=$(( $(wc -c < "$f") / 4 )); [ $t -gt 5000 ] && printf "%6d  %s\n" "$t" "$f"; done | sort -rn
+# body budget offenders — measure the EMITTED skill after an install in C:/Project/pantesting with --unified-skills
+for f in C:/Project/pantesting/reality-check/.agents/skills/*/SKILL.md; do t=$(( $(wc -c < "$f") / 4 )); [ $t -gt 5000 ] && printf "%6d  %s\n" "$t" "$f"; done | sort -rn
 ```
 
 Cross-check with `/skill-doctor` if a live Claude Code session is available (it reports unused loaded skills and their context cost). Read ADR-0044 and the `context-budget` verb's `cache` section: is the cache posture PAN recommends still the right one for the current default model's cache pricing and the runtime's per-bucket TTL controls?
@@ -302,7 +302,7 @@ Cross-check with `/skill-doctor` if a live Claude Code session is available (it 
 ### 4.2 Install footprint and duplication
 
 ```bash
-cd d:/pantesting/reality-check && for d in .claude .codex .gemini .opencode .github .agents; do [ -d $d ] && echo "$d: $(find $d -type f | wc -l) files, $(du -sk $d | cut -f1) KB"; done
+cd C:/Project/pantesting/reality-check && for d in .claude .codex .gemini .opencode .github .agents; do [ -d $d ] && echo "$d: $(find $d -type f | wc -l) files, $(du -sk $d | cut -f1) KB"; done
 node -e "…read the pan-file-manifest.json(s), group by extension and by top-level dir, print shares…"
 ```
 

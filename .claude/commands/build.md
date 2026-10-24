@@ -5,7 +5,7 @@ Copy the PAN Wizard hook scripts to `hooks/dist/`. PAN's hooks are pure Node.js 
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. NEVER run `node bin/install.js` from here.
-Installation testing goes to `d:\pantesting`.
+Installation testing goes to `C:\Project\pantesting`.
 
 ---
 

@@ -119,7 +119,7 @@ Shows your overall project status and tells you what to do next — plan the nex
 - **Use the `balanced` profile** (default) — every agent is on the reasoning tier, which inherits the model you launched with (a few review agents pin their own model — see Model Profiles); switch to `budget` only when cost matters more than depth
 - **Run `/clear`** between major commands to keep context fresh
 
-### Capability-aware features (v2.10.0+)
+### Capability-aware features
 
 PAN emits all of these unconditionally. They pay off in full on Claude Code with a frontier reasoning model (Opus, for example); elsewhere they degrade rather than error, as described below the list:
 
@@ -137,7 +137,7 @@ PAN emits all of these unconditionally. They pay off in full on Claude Code with
 
 On lower tiers (mid/fast models) and non-Claude runtimes, features degrade gracefully: on OpenCode, Gemini CLI and Copilot CLI the installer turns each agent's `effort:` into a prose "think step-by-step" preamble (Codex gets it as its native `model_reasoning_effort`, and Claude Code reads `effort:` natively whatever the tier), caching is a no-op, and the map-codebase command's `estimate-size --threshold 700000` call decides the map mode (lower it in the command to force the sharded path). None of this is gated at runtime — no feature, mode, or routing decision checks your model name before choosing a code path. (`/pan:cost` does look up the model ID recorded in the metrics log to price your token usage, but that only affects the number in a cost report, not what PAN runs. On Claude Code the context monitor reads the model ID to know the window it measures against; that decides only whether and when its note appears.) The one model-name check you'll notice is advisory and runs once: at the end of install, the installer looks up the `model` field in your `settings.json` against a hand-maintained table of known model IDs (`detectModelCapabilities()` in `bin/install-lib.cjs`) and prints a note if that model is known to lack 1M context or extended thinking. The table recognizes the current generations by name and deliberately fails forward — the per-family threshold is the last reduced-capability release it records, not the newest release it lists, so any Claude ID newer than that boundary (a new major, or a later point release inside a major it already lists) inherits that family's modern profile rather than reading as capability-less, and upgrading to a new flagship doesn't produce a bogus warning. An ID resolves either by matching an explicit branch in the table or — for Claude names — by carrying a family plus a readable release number strictly newer than that family's last reduced-capability release; anything that resolves neither way reads as `tier: 'unknown'` with every capability flag false. That result may trigger the note spuriously. Either way it's a hint, never a block. Pass `--skip-warnings` to silence it.
 
-### Spec B v2 features (v3.0-v3.4)
+### Spec B v2 features
 
 Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purpose. None modify the focus system. v3.5 added `/pan:learn`, `/pan:learn --optimize` and `/pan:git`, and the `security` and `distill` focus-auto categories.
 
@@ -153,7 +153,7 @@ Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purp
   - `playbook` — aggregate all agents' memory into `.planning/playbook.md` categorized by Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps.
 - **`/pan:what-if <phase> "scenario"` (v3.3)** — counterfactual phase replay in an isolated git worktree. Agent explores the alternative, report lands in `.planning/counterfactuals/<phase>-<slug>.md`, worktree auto-deleted. Requires git.
 
-#### Advanced flags and logging (v3.4)
+#### Advanced flags and logging
 
 - **`--hierarchical` flag on `/pan:exec-phase` (v3.4)** — spawn `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns executor/reviewer/verifier sub-agents in waves. Bounded by a safety harness (2-level nesting, 12-spawn cap, budget ceiling, abort file). Claude Code only — agents-spawn-agents needs native sub-agent spawning; on the other four runtimes the flag is a no-op that warns and falls back to flat exec. No model gate: `pan-conductor` inherits the model you launched the session with. Use for phases with ≥4 autonomous plans where wall-clock reduction justifies the ~20-30% orchestration tax.
 - **`--deep-review` flag on `/pan:exec-phase` and `/pan:focus-auto --step exec` (v3.4)** — on `/pan:exec-phase`, run the `/pan:review-deep` process inline after the normal reviewer step, before verification; on `/pan:focus-auto --step exec`, run the hardener and meta-reviewer on each high-stakes item's changed files and merge them under the item's id (no first-pass review). Recommended for high-stakes batches.
@@ -341,7 +341,7 @@ Some commands were folded into flags of another command. The old names keep work
 | `/pan:plan-phase [N]` | Research + plan + verify; `--research-only <N>` runs the research step alone | Before executing a phase; research only for a complex or unfamiliar domain |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves | After planning is complete |
 | `/pan:verify-phase [N]` | Goal-backward re-verification with a test-suite gate; lists gaps for `--gaps` | After execution completes |
-| `/pan:autodev [run\|resume\|status]` | Unattended loop over the roadmap: a fresh host session per plan, execute and verify step, `phase complete` in the engine, stop reasons in code, a ledger per run in `.planning/autodev/` | When the roadmap is settled and you want phases built without supervision |
+| `/pan:autodev [run\|resume\|status\|report\|replay]` | Unattended loop over the roadmap: a fresh host session per plan, execute and verify step, `phase complete` in the engine, stop reasons in code, a ledger per run in `.planning/autodev/` | When the roadmap is settled and you want phases built without supervision |
 | `/pan:milestone-audit` | Verify milestone met its definition of done; `--gaps` creates phases for the gaps it found | Before completing milestone |
 | `/pan:milestone-done <version>` | Archive milestone, tag release; `--cleanup` archives old phase directories from completed milestones | All phases verified |
 | `/pan:milestone-new [name]` | Start next version cycle | After completing a milestone |
@@ -381,9 +381,9 @@ Some commands were folded into flags of another command. The old names keep work
 | `/pan:hygiene [--apply]` | Scan for PAN version drift + stale artifacts (legacy filenames, memory bloat and stale memory entries, poisoned ledgers, trace debris, an oversized state.md or roadmap.md, Claude Code's memory index); `--apply` executes the safe fixes, `state compact` and `roadmap compact` among them | Keep older projects aligned with the latest PAN |
 | `/pan:phase-tests <N> [instructions]` | Generate tests for a completed phase | After execution, to add test coverage |
 | `/pan:retro` | Milestone retrospective — estimation accuracy, gap patterns | After `/pan:milestone-done` |
-| `/pan:links [--strict]` | Validate the doc–code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027, v3.8.0+) | Renamed an ADR or moved a module — catch broken refs |
+| `/pan:links [--strict]` | Validate the doc–code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027) | Renamed an ADR or moved a module — catch broken refs |
 
-### Spec B v2 (v3.0–v3.4)
+### Spec B v2
 
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
@@ -393,7 +393,7 @@ Some commands were folded into flags of another command. The old names keep work
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook | Reflection or design discussion |
 | `/pan:what-if <phase> "scenario"` | Counterfactual phase replay in isolated git worktree | Explore an alternative approach safely |
 
-### Optimization & Git (v3.5)
+### Optimization & Git
 
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
@@ -455,7 +455,7 @@ pan-tools standards tools owasp-top10  # Tools for a specific standard
 
 **Available standards:** OWASP Top 10, OWASP ASVS L1, OWASP LLM Top 10, OWASP Agentic Top 10, WCAG 2.2, NIST SSDF, ISO 25010, STRIDE, CWE Top 25, SOC 2 Dev Controls, TOGAF ADM, Conventional Commits.
 
-### Doc-Code Link Graph (v3.8.0+)
+### Doc-Code Link Graph
 
 PAN treats your planning surface — ADRs, specs, learnings, references, workflows — as an explicit graph and lints its integrity. Renaming an ADR or moving a module no longer silently strands references.
 
@@ -898,7 +898,7 @@ The experiment runner uses `spawnSync` to invoke external AI runtimes headlessly
 
 ### AI Agent Guardrails
 
-PAN Wizard ships `references/guardrails.md` (v3.6.0+) — a consolidated rules doc that the phase workflows (`new-project`, `plan-phase`, `exec-phase`, `execute-plan`, `verify-phase`) and the planner, designer and reviewer agents load. It encodes anti-patterns (silent model swaps, skipping verification, scope creep), the **Code Preservation Principle** (surgical edits only — preserve config values, comments, formatting outside the user's explicit target), and the **Stop-the-Line Rule** (regressions halt feature work, no "I'll circle back").
+PAN Wizard ships `references/guardrails.md` — a consolidated rules doc that the phase workflows (`new-project`, `plan-phase`, `exec-phase`, `execute-plan`, `verify-phase`) and the planner, designer and reviewer agents load. It encodes anti-patterns (silent model swaps, skipping verification, scope creep), the **Code Preservation Principle** (surgical edits only — preserve config values, comments, formatting outside the user's explicit target), and the **Stop-the-Line Rule** (regressions halt feature work, no "I'll circle back").
 
 This doc is read by your AI coding agent (Claude, Codex, Gemini, OpenCode, Copilot) at the start of every phase. You don't need to interact with it directly, but you can review the installed copy at:
 

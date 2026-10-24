@@ -5,7 +5,7 @@ Audit a PAN Wizard feature for completeness and correctness: $ARGUMENTS
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. Audits examine source code here.
-Installation verification goes to `d:\pantesting`.
+Installation verification goes to `C:\Project\pantesting`.
 
 ---
 
@@ -64,7 +64,7 @@ Does the feature work for all 5 runtimes?
 ### 2.5 Install Verification
 Test the feature end-to-end:
 ```powershell
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --all --local
 # Then verify the feature in the installed output
 ```

@@ -225,14 +225,18 @@ function runDogfood(o = {}) {
     return r;
   };
   for (const name of ['pack', 'worktree', 'install', 'login', 'scaffold']) {
-    const r = ops[name]();
+    // A step that throws still ends through finish(): the login copy is removed, the run recorded.
+    let r;
+    try { r = ops[name](); } catch (e) { r = { ok: false, reason: e.message }; }
     if (!r || !r.ok) return finish('refused', { reason: `${name}_failed`, detail: r && r.reason });
   }
   let s;
   try { s = ops.session(); } catch (e) { return finish('refused', { reason: 'session_failed', detail: e.message }); }
   result.usd = (s && s.usd) || 0;
-  if (!s || !s.ok) return finish('refused', { reason: 'session_failed', detail: s && s.reason });
   const verification = latestVerification(o.worktree || plan.worktree);
+  // claude -p exits non-zero when it reaches --max-budget-usd, possibly after the work and its
+  // verification are written: a failed session is refused only when nothing passed.
+  if ((!s || !s.ok) && verification !== 'passed') return finish('refused', { reason: 'session_failed', detail: s && s.reason, verification });
   if (verification !== 'passed') return finish('refused', { reason: 'no_passing_verification', verification });
   const scope = scopeCheck(ops.changedFiles(), { paths: DOGFOOD_PATHS });
   if (!scope.ok) return finish('refused', { reason: 'scope', refused: scope.refused, verification });

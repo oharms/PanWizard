@@ -29,55 +29,9 @@
       "kind": "user",
       "answers": [
         {
-          "match": "which areas|areas (do you|would you like|to discuss|should we)",
-          "reply": "All of them."
+          "match": "Next Up|(do you want|would you like|want) me to (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|(shall|should) (I|we) (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|ready to (plan|execute|move on)|your go-ahead|say the word",
+          "reply": "Stop here: the discussion is all I want in this session. Do not start planning or any later stage."
         },
-        {
-          "match": "more questions|next area",
-          "reply": "Next area."
-        },
-        {
-          "match": "ready for context|remain unclear|explore more",
-          "reply": "I'm ready for context."
-        },
-        {
-          "match": ".",
-          "reply": "Go with your recommended option."
-        }
-      ],
-      "expect": [
-        "exit:0"
-      ],
-      "why": "A real user answers the question the session asked (the first matching answer; the last falls back to the recommended option), and the session resumes with it."
-    },
-    {
-      "kind": "user",
-      "answers": [
-        {
-          "match": "which areas|areas (do you|would you like|to discuss|should we)",
-          "reply": "All of them."
-        },
-        {
-          "match": "more questions|next area",
-          "reply": "Next area."
-        },
-        {
-          "match": "ready for context|remain unclear|explore more",
-          "reply": "I'm ready for context."
-        },
-        {
-          "match": ".",
-          "reply": "Go with your recommended option."
-        }
-      ],
-      "expect": [
-        "exit:0"
-      ],
-      "why": "A real user answers the question the session asked (the first matching answer; the last falls back to the recommended option), and the session resumes with it."
-    },
-    {
-      "kind": "user",
-      "answers": [
         {
           "match": "which areas|areas (do you|would you like|to discuss|should we)",
           "reply": "All of them."
@@ -104,6 +58,10 @@
       "kind": "user",
       "answers": [
         {
+          "match": "Next Up|(do you want|would you like|want) me to (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|(shall|should) (I|we) (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|ready to (plan|execute|move on)|your go-ahead|say the word",
+          "reply": "Stop here: the discussion is all I want in this session. Do not start planning or any later stage."
+        },
+        {
           "match": "which areas|areas (do you|would you like|to discuss|should we)",
           "reply": "All of them."
         },
@@ -128,6 +86,68 @@
     {
       "kind": "user",
       "answers": [
+        {
+          "match": "Next Up|(do you want|would you like|want) me to (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|(shall|should) (I|we) (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|ready to (plan|execute|move on)|your go-ahead|say the word",
+          "reply": "Stop here: the discussion is all I want in this session. Do not start planning or any later stage."
+        },
+        {
+          "match": "which areas|areas (do you|would you like|to discuss|should we)",
+          "reply": "All of them."
+        },
+        {
+          "match": "more questions|next area",
+          "reply": "Next area."
+        },
+        {
+          "match": "ready for context|remain unclear|explore more",
+          "reply": "I'm ready for context."
+        },
+        {
+          "match": ".",
+          "reply": "Go with your recommended option."
+        }
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "A real user answers the question the session asked (the first matching answer; the last falls back to the recommended option), and the session resumes with it."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "Next Up|(do you want|would you like|want) me to (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|(shall|should) (I|we) (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|ready to (plan|execute|move on)|your go-ahead|say the word",
+          "reply": "Stop here: the discussion is all I want in this session. Do not start planning or any later stage."
+        },
+        {
+          "match": "which areas|areas (do you|would you like|to discuss|should we)",
+          "reply": "All of them."
+        },
+        {
+          "match": "more questions|next area",
+          "reply": "Next area."
+        },
+        {
+          "match": "ready for context|remain unclear|explore more",
+          "reply": "I'm ready for context."
+        },
+        {
+          "match": ".",
+          "reply": "Go with your recommended option."
+        }
+      ],
+      "expect": [
+        "exit:0"
+      ],
+      "why": "A real user answers the question the session asked (the first matching answer; the last falls back to the recommended option), and the session resumes with it."
+    },
+    {
+      "kind": "user",
+      "answers": [
+        {
+          "match": "Next Up|(do you want|would you like|want) me to (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|(shall|should) (I|we) (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|ready to (plan|execute|move on)|your go-ahead|say the word",
+          "reply": "Stop here: the discussion is all I want in this session. Do not start planning or any later stage."
+        },
         {
           "match": "which areas|areas (do you|would you like|to discuss|should we)",
           "reply": "All of them."
@@ -153,6 +173,10 @@
     {
       "kind": "user",
       "answers": [
+        {
+          "match": "Next Up|(do you want|would you like|want) me to (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|(shall|should) (I|we) (start|plan|run|execute|continue|proceed|move on|go ahead|kick off)|ready to (plan|execute|move on)|your go-ahead|say the word",
+          "reply": "Stop here: the discussion is all I want in this session. Do not start planning or any later stage."
+        },
         {
           "match": ".",
           "reply": "That's all from me. Go with your recommended options for anything still open and write the context file now."

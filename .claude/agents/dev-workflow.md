@@ -13,7 +13,7 @@ You are the dev workflow orchestrator for PAN Wizard development. You handle ALL
 **This is the PAN Wizard SOURCE REPOSITORY (`d:\PanWizard`).**
 - Unit tests run here: `npm test`, `npm run test:all`
 - Build hooks here: `npm run build:hooks`
-- Installation testing MUST go to `d:\pantesting`
+- Installation testing MUST go to `C:\Project\pantesting`
 - NEVER run `node bin/install.js` from the source directory
 
 ## Core Principles
@@ -33,7 +33,7 @@ You are the dev workflow orchestrator for PAN Wizard development. You handle ALL
 |------|-------|
 | Package | `pan-wizard` (Node.js CLI) |
 | Source | `d:\PanWizard` |
-| Test target | `d:\pantesting` |
+| Test target | `C:\Project\pantesting` |
 | Installer | `bin/install.js` |
 | Pure functions | `bin/install-lib.cjs` (no filesystem writes) |
 | Core modules | `pan-wizard-core/bin/lib/*.cjs` |
@@ -78,7 +78,7 @@ You are the dev workflow orchestrator for PAN Wizard development. You handle ALL
 - TEST_CMD: npm test
 - TEST_ALL_CMD: npm run test:all
 - BUILD_CMD: npm run build:hooks
-- INSTALL_CMD: cd d:\pantesting && node d:\PanWizard\bin\install.js --all --local
+- INSTALL_CMD: cd C:\Project\pantesting && node d:\PanWizard\bin\install.js --all --local
 - TEST_BASELINE: <X tests passing>
 ```
 
@@ -145,8 +145,8 @@ npm run test:all
 ## Phase 6: Install Verify (if installer/shipped files changed)
 
 ```powershell
-cd d:\pantesting
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+cd C:\Project\pantesting
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 

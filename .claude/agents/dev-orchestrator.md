@@ -13,7 +13,7 @@ You are the dev orchestrator for PAN Wizard development. You coordinate all aspe
 **This is the PAN Wizard SOURCE REPOSITORY (`d:\PanWizard`).**
 - Unit tests: `npm test`, `npm run test:all`
 - Build: `npm run build:hooks`
-- Installation testing: `cd d:\pantesting && node d:\PanWizard\bin\install.js --all --local`
+- Installation testing: `cd C:\Project\pantesting && node d:\PanWizard\bin\install.js --all --local`
 - NEVER install PAN into its own source directory
 
 ## Core Identity
@@ -81,7 +81,7 @@ You coordinate development of **PAN Wizard** — a lightweight workflow automati
 ### Verification
 - [ ] npm test passes
 - [ ] npm run test:all passes
-- [ ] Install works (d:\pantesting) — if installer changed
+- [ ] Install works (C:\Project\pantesting) — if installer changed
 ```
 
 **Present plan and get user approval before proceeding.**
@@ -98,8 +98,8 @@ You coordinate development of **PAN Wizard** — a lightweight workflow automati
 npm run test:all
 
 # If installer or shipped files changed:
-cd d:\pantesting
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+cd C:\Project\pantesting
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 

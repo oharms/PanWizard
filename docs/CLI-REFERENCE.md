@@ -32,14 +32,14 @@ node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
 - [18. Focus Commands](#18-focus-commands)
 - [19. Standards Commands](#19-standards-commands)
 - [20. Operations Commands](#20-operations-commands)
-- [20.1 Capability-Aware Commands](#201-capability-aware-commands-v2100)
+- [20.1 Capability-Aware Commands](#201-capability-aware-commands)
 - [21. Codebase Commands](#21-codebase-commands)
-- [22. Spec B v2 Commands](#22-spec-b-v2-commands-v30-v34)
+- [22. Spec B v2 Commands](#22-spec-b-v2-commands)
 - [23. Self-Improvement Loop Commands](#23-self-improvement-loop-commands)
 - [24. Doc-Lint Commands](#24-doc-lint-commands)
 - [25. Skill-Aligned Decomposition Commands](#25-skill-aligned-decomposition-commands)
 - [26. Hygiene Commands](#26-hygiene-commands)
-- [27. Optimization, Git and Distill Commands](#27-optimization-git-and-distill-commands-v35)
+- [27. Optimization, Git and Distill Commands](#27-optimization-git-and-distill-commands)
 - [28. Evidence Loop Commands](#28-evidence-loop-commands)
 - [29. Bot Army and Report Commands](#29-bot-army-and-report-commands)
 
@@ -143,7 +143,7 @@ A gate whose verdict has no `error` key sets its code explicitly instead: `links
 
 Override the working directory. Accepts `--cwd /path` or `--cwd=/path`. Useful when subagents run outside the project root.
 
-### Planning root: `--track` / `--planning-dir` / `--all-tracks` (v3.27)
+### Planning root: `--track` / `--planning-dir` / `--all-tracks`
 
 `--cwd` moves the *project* root. These move the *planning* root inside it, so a repo holding several planning trees (several independently-planned products in one repo, a monorepo, a spike kept beside the mainline) can address any of them. See [ADR-0043](decisions/ADR-0043-addressable-planning-roots.md).
 
@@ -172,11 +172,11 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | Module | Purpose |
 |--------|---------|
 | `state.cjs` | state.md read/write/parse |
-| `state-compact.cjs` | **(v3.27)** `state compact` — moves settled history out of state.md into state-history.md so it stops being re-read into every agent call. Archive-first, dry-run by default. |
+| `state-compact.cjs` | `state compact` — moves settled history out of state.md into state-history.md so it stops being re-read into every agent call. Archive-first, dry-run by default. |
 | `commands.cjs` | Utility commands (slug, timestamp, commit, batch-commit, estimate-cost, rollback, progress, etc.) |
 | `phase.cjs` | Phase directory and plan operations |
 | `init.cjs` | Compound workflow context gathering |
-| `verify.cjs` | Verification, validation, and retrospective (v2.10.0: `retro --write-memory`); facade over the verify-* submodules |
+| `verify.cjs` | Verification, validation, and retrospective (including `retro --write-memory`); facade over the verify-* submodules |
 | `verify-drift.cjs` | Convention-drift detection (`drift-check`); extracted from verify.cjs, re-exported through it |
 | `verify-retro.cjs` | Milestone retrospective (`retro`); extracted from verify.cjs, re-exported through it |
 | `verify-deploy.cjs` | Deployment validation (`validate deployment`); extracted from verify.cjs, re-exported through it |
@@ -190,41 +190,41 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `config.cjs` | config.json management |
 | `template.cjs` | Template selection and filling |
 | `milestone.cjs` | Milestone archival and requirements |
-| `context-budget.cjs` | Context window utilization (v2.10.0: cache metrics surfaced in health output; v3.27: cache block classified `ok`/`warn`/`critical`/`absent` with remediation advice) |
-| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto (the dispatcher answers `focus design` itself) + v2.10.0: `focus classify-stages`, `focus reflection` |
-| `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices + v2.10.0: `codebase estimate-size` |
-| `memory.cjs` | **(v2.10.0, E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact`, `memory select`, `memory record`, `memory prune`, `memory budget` |
+| `context-budget.cjs` | Context window utilization (cache metrics surfaced in health output; cache block classified `ok`/`warn`/`critical`/`absent` with remediation advice) |
+| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto (the dispatcher answers `focus design` itself), `focus classify-stages`, `focus reflection` |
+| `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices, `codebase estimate-size` |
+| `memory.cjs` | **(E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact`, `memory select`, `memory record`, `memory prune`, `memory budget` |
 | `memory-optimize.cjs` | Reconcile the always-loaded project memory: `memory optimize [--apply] [--keep N]` (dedupe / placeholder-strip / cap-with-archive state.md); also runs automatically in the focus + normal flows |
 | `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply]` (AGENTS.md PAN section, CLAUDE.md bridge, state.md frontmatter) |
 | `agents-md.cjs` | Single source for the AGENTS.md PAN section and PAN's CLAUDE.md block (the `@AGENTS.md` import plus a `# Compact instructions` section Claude Code reads when it compacts), shared by the installer and `memory rebuild` |
-| `core.cjs` (CLI surface) | **(v2.10.0, E-1)** Cached context: `cache prime [--summary]` lists the stable planning files agents re-read (wraps `buildCachedContext`). It measures them and primes nothing: the host caches each agent's prompt prefix itself. |
-| `cost.cjs` | **(v3.0, Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, `cost limits` (the host's usage-limit windows as the status line last saw them), plus `models check` rate-table staleness (v3.9). Log at `.planning/metrics/tokens.jsonl`. |
-| `cost-rebuild.cjs` | **(v3.29)** `cost rebuild`: rebuilds the ledger from Claude Code's session and per-agent transcripts (usage deduped per turn, agents typed from the main thread's `Agent` calls, Workflow-tool subagents included, one main-thread row per session); supersedes hook rows of rebuilt sessions, keeps the rest, moves the old ledger aside. |
-| `bus.cjs` | **(v3.0, Y-7)** Agent message channels: `bus publish`, `bus drain`, `bus list`. Channels at `.planning/bus/<channel>.jsonl`. |
-| `preview.cjs` | **(v3.1, Y-1)** Foresight: `preview phase <N>`, `preview phases`, `preview milestone`. |
-| `review-deep.cjs` | **(v3.2, Y-2)** Deep review merge: `review-deep merge`, `review-deep analyze`. |
-| `knowledge.cjs` | **(v3.2, Y-3)** Grounded Q&A: `knowledge ask`, `knowledge discuss`, `knowledge playbook`. |
-| `whatif.cjs` | **(v3.3, Y-4)** Counterfactual worktree: `whatif prepare`, `whatif report`, `whatif cleanup`. |
-| `optimize.cjs` | **(v3.5)** Circular optimization loop: `optimize trace init/end/current/list/show/log/reconcile`, `optimize learn`, `optimize apply`, `optimize revert`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` (v3.21) rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
-| `git.cjs` | **(v3.5)** Phase-aware git workflow: `git commit/branch/push/status/log/stash/diff/rollback/tag/sync`. Reuses `runCommitSafetyChecks` for commit hardening. |
-| `distill.cjs` | **(v3.5)** AI code-bloat optimizer (multi-pass pipeline): `distill scan/analyze/report`. Cross-session memory at `.planning/memory/distill-patterns.md`. |
+| `core.cjs` (CLI surface) | **(E-1)** Cached context: `cache prime [--summary]` lists the stable planning files agents re-read (wraps `buildCachedContext`). It measures them and primes nothing: the host caches each agent's prompt prefix itself. |
+| `cost.cjs` | **(Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, `cost limits` (the host's usage-limit windows as the status line last saw them), plus `models check` rate-table staleness. Log at `.planning/metrics/tokens.jsonl`. |
+| `cost-rebuild.cjs` | `cost rebuild`: rebuilds the ledger from Claude Code's session and per-agent transcripts (usage deduped per turn, agents typed from the main thread's `Agent` calls, Workflow-tool subagents included, one main-thread row per session); supersedes hook rows of rebuilt sessions, keeps the rest, moves the old ledger aside. |
+| `bus.cjs` | **(Y-7)** Agent message channels: `bus publish`, `bus drain`, `bus list`. Channels at `.planning/bus/<channel>.jsonl`. |
+| `preview.cjs` | **(Y-1)** Foresight: `preview phase <N>`, `preview phases`, `preview milestone`. |
+| `review-deep.cjs` | **(Y-2)** Deep review merge: `review-deep merge`, `review-deep analyze`. |
+| `knowledge.cjs` | **(Y-3)** Grounded Q&A: `knowledge ask`, `knowledge discuss`, `knowledge playbook`. |
+| `whatif.cjs` | **(Y-4)** Counterfactual worktree: `whatif prepare`, `whatif report`, `whatif cleanup`. |
+| `optimize.cjs` | Circular optimization loop: `optimize trace init/end/current/list/show/log/reconcile`, `optimize learn`, `optimize apply`, `optimize revert`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
+| `git.cjs` | Phase-aware git workflow: `git commit/branch/push/status/log/stash/diff/rollback/tag/sync`. Reuses `runCommitSafetyChecks` for commit hardening. |
+| `distill.cjs` | AI code-bloat optimizer (multi-pass pipeline): `distill scan/analyze/report`. Cross-session memory at `.planning/memory/distill-patterns.md`. |
 | `doc-lint.cjs` | Markdown frontmatter + structure linter: `doc-lint <dir>`, `doc-lint schema-check`, `doc-lint counts <dir>`, `doc-lint flags`. |
 | `experiment.cjs` | Self-improvement loop scaffolding: `experiment new/list/manifest/harvest/prune`. |
 | `runner.cjs` | External agent runner: `experiment run/status/stop`. Spawns Claude/Codex/Gemini/OpenCode via `spawnSync`. |
 | `learn-lint.cjs` | Learnings-store integrity linter: `learn lint`. Checks L-001..L-007 (duplicate IDs, dangling cross-refs, empty source_experiments, PAN-internal terms in universal-scope rules, revision marker without `superseded_by`, universal-scope pattern citing an internal pattern id, a `cites` entry whose file or symbol is gone). |
 | `learn-index.cjs` | Learnings index + queries: `learn build-index` (writes `pan-wizard-core/learnings/index.json` with topic→agent-relevance map), `learn topics-for --agent <role> [--cue <text>]` (budget-aware topic selection per agent role; with a cue, topics are ranked by how well they match it, falling back to the role when nothing matches). Replaces "skim universal/" with targeted load. |
-| `squads.cjs` | **(v3.11, ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Role-scoped squads (`squad list` enumerates them), each carrying a model tier + an **advisory** access contract — the module's own header says it "modifies no agent and changes no execution path", so those labels are the contract the conductor is instructed to honour and the enforced grant stays each agent's `tools:` frontmatter. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
-| `worktree.cjs` | **(v3.11, ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`), `worktree cleanup` (`--force`; campaign teardown sweep, v3.25+). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
-| `campaign.cjs` | **(v3.12, ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--source`/`--pause`/`--resume`/`--disable`/`--enforce-budget`/`--advisory-budget`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
-| `hud.cjs` | **(v3.12, ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
-| `skill-align.cjs` | **(v3.13, ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
-| `hygiene.cjs` | **(v3.13)** Project cleanup + version alignment: `hygiene scan` (version drift per runtime manifest, legacy uppercase filenames, .tmp orphans, memory bloat, stale or expired agent-memory entries, memory files PAN does not read as memory, the size of Claude Code's own memory index (report-only), poisoned ledgers, stale traces and optimization reports, oversized cached context, fragment planning dirs, foreign and shared planning trees), `hygiene clean [--apply]` (dry-run by default; safe fixes only — renames, compaction of state.md, roadmap.md and agent memory, memory pruning, quarantine-by-rename, trace pruning; installer re-runs and fragment removal stay manual). |
-| `phase-report.cjs` | **(v3.15)** Per-phase HTML report + project timeline index: `report phase <N>` and `report index` (`--out`/`--open`/`--stdout`; `index` also `--bundle` for one self-contained inlined file), `report all` (`--open` opens the index; writes every phase report plus the index to their default paths). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`; bundle `.planning/report-bundle.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. Opt-in auto-generation at the verify→complete gate, focus-auto checkpoints, and army INTEGRATE via `workflow.phase_reports`. |
+| `squads.cjs` | **(ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Role-scoped squads (`squad list` enumerates them), each carrying a model tier + an **advisory** access contract — the module's own header says it "modifies no agent and changes no execution path", so those labels are the contract the conductor is instructed to honour and the enforced grant stays each agent's `tools:` frontmatter. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
+| `worktree.cjs` | **(ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`), `worktree cleanup` (`--force`; campaign teardown sweep, v3.25+). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
+| `campaign.cjs` | **(ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--source`/`--pause`/`--resume`/`--disable`/`--enforce-budget`/`--advisory-budget`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
+| `hud.cjs` | **(ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
+| `skill-align.cjs` | **(ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
+| `hygiene.cjs` | Project cleanup + version alignment: `hygiene scan` (version drift per runtime manifest, legacy uppercase filenames, .tmp orphans, memory bloat, stale or expired agent-memory entries, memory files PAN does not read as memory, the size of Claude Code's own memory index (report-only), poisoned ledgers, stale traces and optimization reports, oversized cached context, fragment planning dirs, foreign and shared planning trees), `hygiene clean [--apply]` (dry-run by default; safe fixes only — renames, compaction of state.md, roadmap.md and agent memory, memory pruning, quarantine-by-rename, trace pruning; installer re-runs and fragment removal stay manual). |
+| `phase-report.cjs` | Per-phase HTML report + project timeline index: `report phase <N>` and `report index` (`--out`/`--open`/`--stdout`; `index` also `--bundle` for one self-contained inlined file), `report all` (`--open` opens the index; writes every phase report plus the index to their default paths). Reuses `hud.cjs` rendering to produce self-contained files (per-phase `.planning/phases/<NN-slug>/<NN>-report.html`; index `.planning/report-index.html`; bundle `.planning/report-bundle.html`). Read-only view — writes only its rendered file(s), no new state; deterministic (unchanged phase data rewrites nothing); a phase-less project has nothing to report. Opt-in auto-generation at the verify→complete gate, focus-auto checkpoints, and army INTEGRATE via `workflow.phase_reports`. |
 | `links.cjs` | Doc-Code Link Graph engine behind `links validate` (ADR-0027): parses frontmatter link declarations, resolves doc↔code references, and reports dangling/stale links. |
 | `constants.cjs` | Shared constants used across the dispatcher — e.g. `COMMAND_RENAME_MAP` (legacy→current command names) and `FOCUS_CATEGORIES`. No CLI surface; imported by other modules. |
 | `lock.cjs` | Advisory file-locking helper serializing concurrent writes to shared `.planning/` state. No CLI surface; imported where write races are possible. |
 | `utils.cjs` | Planning-root path builders (`planningPath()`, `planningRel()`, `phasesPath()`, `milestonesPath()`), `fileAccessible()`/`readJsonFile()`, plan/summary file filters and `classifyPhaseStatus()`, shared by the other modules. No CLI surface. (`toPosix()` and `safeReadFile()` live in `core.cjs`.) |
-| `planning-root.cjs` | **(v3.27)** Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
+| `planning-root.cjs` | Resolves WHICH planning tree a command acts on (`--track` / `--planning-dir` / `PAN_TRACK` / `PAN_PLANNING_DIR`, default `.planning`), discovers tracks under `.planning/tracks/`, and reports each resolution's provenance. Leaf module — requires only `fs`/`path`. `utils.planningPath()` / `utils.planningRel()` are the only path constructors built on it. No CLI surface. |
 | `foreign-planning.cjs` | **(2026-09)** Detects a `.planning/` that another tool writes to, from markers PAN never writes. **gsd-core owns its tree:** its markers are `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted config keys. `hygiene scan`/`clean` raises one `foreign-planning-tree` warning and refuses the rename fix, `validate health` reports `E006` and stops before `E002`–`E005`, and `init new-project` refuses with an error payload; the remedy is `--planning-dir <dir>`. **planning-with-files shares the tree:** its markers are `.active_plan`, `.attestation`, `ledger-*.jsonl`, a dated task directory holding `task_plan.md`, or two of its directories (`sessions/`, dated task directories without the plan file). PAN keeps working: `hygiene` raises a `shared-planning-tree` info finding, `validate health` reports `I004`, and `init new-project` returns `shared_planning_tree`. No CLI surface of its own. |
 | `verdict.cjs` | **(evidence loop)** The `pan-verdict` contract: parses the last fenced `pan-verdict` block of a judge's report, validates it (outcome, finding classes and severities, limits), reads a verification.md frontmatter through an adapter, and derives finding ids and artifact signatures. Pure; no CLI surface of its own. |
 | `findings.cjs` | **(evidence loop)** The findings ledger `.planning/findings.jsonl` behind `findings record`, `findings list`, `findings dispose`, `findings debt`, `findings suppressions` and `findings prove`, and the MCP resource `pan://findings`. It is append-only and folded on read. A finding closes only on evidence (a judge's `resolved` answer, the verifier's `gaps_closed`, or a passing code fact); one a report neither repeats nor answers stays open as `unaddressed`. A regressed fix reopens, and deliberate dispositions stick, except that a dismissal only suppresses its finding until the file changes, and never a security or logic finding. Each recorded verdict is logged to the trace. |
@@ -363,71 +363,71 @@ Quick reference of all CLI commands grouped by category.
 | 101 | `codebase detect-languages` | Codebase | codebase.cjs |
 | 102 | `codebase analyze-imports` | Codebase | codebase.cjs |
 | 103 | `codebase best-practices` | Codebase | codebase.cjs |
-| 104 | `codebase estimate-size` | Spec A E-2 (v2.10.0) | codebase.cjs |
-| 105 | `memory read` | Spec A E-4 (v2.10.0) | memory.cjs |
-| 106 | `memory append` | Spec A E-4 (v2.10.0) | memory.cjs |
-| 107 | `memory list` | Spec A E-4 (v2.10.0) | memory.cjs |
-| 108 | `memory compact` | Spec A E-4 (v2.10.0) | memory.cjs |
-| 109 | `cache prime` | Spec A E-1 (v2.10.0) | core.cjs |
-| 110 | `focus classify-stages` | Spec A E-6 (v2.10.0) | focus.cjs |
-| 111 | `focus reflection` | Spec A E-10 (v2.10.0) | focus.cjs |
-| 112 | `cost report` | Spec B v2 Y-6 (v3.0) | cost.cjs |
-| 113 | `cost append` | Spec B v2 Y-6 (v3.0) | cost.cjs |
-| 114 | `cost clear` | Spec B v2 Y-6 (v3.0) | cost.cjs |
-| 115 | `bus publish` | Spec B v2 Y-7 (v3.0) | bus.cjs |
-| 116 | `bus drain` | Spec B v2 Y-7 (v3.0) | bus.cjs |
-| 117 | `bus list` | Spec B v2 Y-7 (v3.0) | bus.cjs |
-| 118 | `preview phase` | Spec B v2 Y-1 (v3.1) | preview.cjs |
-| 119 | `preview phases` | Spec B v2 Y-1 (v3.1) | preview.cjs |
-| 120 | `preview milestone` | Spec B v2 Y-1 (v3.1) | preview.cjs |
-| 121 | `review-deep merge` | Spec B v2 Y-2 (v3.2) | review-deep.cjs |
-| 122 | `review-deep analyze` | Spec B v2 Y-2 (v3.2) | review-deep.cjs |
-| 123 | `knowledge ask` | Spec B v2 Y-3 (v3.2) | knowledge.cjs |
-| 124 | `knowledge discuss` | Spec B v2 Y-3 (v3.2) | knowledge.cjs |
-| 125 | `knowledge playbook` | Spec B v2 Y-3 (v3.2) | knowledge.cjs |
-| 126 | `whatif prepare` | Spec B v2 Y-4 (v3.3) | whatif.cjs |
-| 127 | `whatif report` | Spec B v2 Y-4 (v3.3) | whatif.cjs |
-| 128 | `whatif cleanup` | Spec B v2 Y-4 (v3.3) | whatif.cjs |
-| 129 | `optimize trace init` | Optimization (v3.5) | optimize.cjs |
-| 130 | `optimize trace end` | Optimization (v3.5) | optimize.cjs |
-| 131 | `optimize trace current` | Optimization (v3.5) | optimize.cjs |
-| 132 | `optimize trace list` | Optimization (v3.5) | optimize.cjs |
-| 133 | `optimize trace log` | Optimization (v3.5) | optimize.cjs |
-| 134 | `optimize learn` | Optimization (v3.5) | optimize.cjs |
-| 135 | `optimize apply` | Optimization (v3.5) | optimize.cjs |
-| 136 | `optimize list` | Optimization (v3.5) | optimize.cjs |
-| 137 | `optimize stats` | Optimization (v3.5) | optimize.cjs |
-| 138 | `learn` (alias) | Optimization (v3.5) | optimize.cjs |
-| 139 | `git commit` | Git (v3.5) | git.cjs |
-| 140 | `git branch` | Git (v3.5) | git.cjs |
-| 141 | `git push` | Git (v3.5) | git.cjs |
-| 142 | `git status` | Git (v3.5) | git.cjs |
-| 143 | `git log` | Git (v3.5) | git.cjs |
-| 144 | `git stash` | Git (v3.5) | git.cjs |
-| 145 | `git diff` | Git (v3.5) | git.cjs |
-| 146 | `git rollback` | Git (v3.5) | git.cjs |
-| 147 | `git tag` | Git (v3.5) | git.cjs |
-| 148 | `git sync` | Git (v3.5) | git.cjs |
-| 149 | `distill scan` | Distill (v3.5) | distill.cjs |
-| 150 | `distill analyze` | Distill (v3.5) | distill.cjs |
-| 151 | `distill report` | Distill (v3.5) | distill.cjs |
-| 152 | `experiment new` | Self-Improvement Loop (v3.7.0) | experiment.cjs |
-| 153 | `experiment list` | Self-Improvement Loop (v3.7.0) | experiment.cjs |
-| 154 | `experiment manifest` | Self-Improvement Loop (v3.7.0) | experiment.cjs |
-| 155 | `experiment run` | Self-Improvement Loop (v3.7.0) | runner.cjs |
-| 156 | `experiment status` | Self-Improvement Loop (v3.7.0) | runner.cjs |
-| 157 | `experiment stop` | Self-Improvement Loop (v3.7.0) | runner.cjs |
-| 158 | `experiment harvest` | Self-Improvement Loop (v3.7.0) | experiment.cjs |
-| 159 | `experiment prune` | Self-Improvement Loop (v3.7.0) | experiment.cjs |
-| 160 | `doc-lint <dir>` | Doc-Lint (v3.7.1) | doc-lint.cjs |
-| 161 | `doc-lint schema-check` | Doc-Lint (v3.7.1) | doc-lint.cjs |
+| 104 | `codebase estimate-size` | Spec A E-2 | codebase.cjs |
+| 105 | `memory read` | Spec A E-4 | memory.cjs |
+| 106 | `memory append` | Spec A E-4 | memory.cjs |
+| 107 | `memory list` | Spec A E-4 | memory.cjs |
+| 108 | `memory compact` | Spec A E-4 | memory.cjs |
+| 109 | `cache prime` | Spec A E-1 | core.cjs |
+| 110 | `focus classify-stages` | Spec A E-6 | focus.cjs |
+| 111 | `focus reflection` | Spec A E-10 | focus.cjs |
+| 112 | `cost report` | Spec B v2 Y-6 | cost.cjs |
+| 113 | `cost append` | Spec B v2 Y-6 | cost.cjs |
+| 114 | `cost clear` | Spec B v2 Y-6 | cost.cjs |
+| 115 | `bus publish` | Spec B v2 Y-7 | bus.cjs |
+| 116 | `bus drain` | Spec B v2 Y-7 | bus.cjs |
+| 117 | `bus list` | Spec B v2 Y-7 | bus.cjs |
+| 118 | `preview phase` | Spec B v2 Y-1 | preview.cjs |
+| 119 | `preview phases` | Spec B v2 Y-1 | preview.cjs |
+| 120 | `preview milestone` | Spec B v2 Y-1 | preview.cjs |
+| 121 | `review-deep merge` | Spec B v2 Y-2 | review-deep.cjs |
+| 122 | `review-deep analyze` | Spec B v2 Y-2 | review-deep.cjs |
+| 123 | `knowledge ask` | Spec B v2 Y-3 | knowledge.cjs |
+| 124 | `knowledge discuss` | Spec B v2 Y-3 | knowledge.cjs |
+| 125 | `knowledge playbook` | Spec B v2 Y-3 | knowledge.cjs |
+| 126 | `whatif prepare` | Spec B v2 Y-4 | whatif.cjs |
+| 127 | `whatif report` | Spec B v2 Y-4 | whatif.cjs |
+| 128 | `whatif cleanup` | Spec B v2 Y-4 | whatif.cjs |
+| 129 | `optimize trace init` | Optimization | optimize.cjs |
+| 130 | `optimize trace end` | Optimization | optimize.cjs |
+| 131 | `optimize trace current` | Optimization | optimize.cjs |
+| 132 | `optimize trace list` | Optimization | optimize.cjs |
+| 133 | `optimize trace log` | Optimization | optimize.cjs |
+| 134 | `optimize learn` | Optimization | optimize.cjs |
+| 135 | `optimize apply` | Optimization | optimize.cjs |
+| 136 | `optimize list` | Optimization | optimize.cjs |
+| 137 | `optimize stats` | Optimization | optimize.cjs |
+| 138 | `learn` (alias) | Optimization | optimize.cjs |
+| 139 | `git commit` | Git | git.cjs |
+| 140 | `git branch` | Git | git.cjs |
+| 141 | `git push` | Git | git.cjs |
+| 142 | `git status` | Git | git.cjs |
+| 143 | `git log` | Git | git.cjs |
+| 144 | `git stash` | Git | git.cjs |
+| 145 | `git diff` | Git | git.cjs |
+| 146 | `git rollback` | Git | git.cjs |
+| 147 | `git tag` | Git | git.cjs |
+| 148 | `git sync` | Git | git.cjs |
+| 149 | `distill scan` | Distill | distill.cjs |
+| 150 | `distill analyze` | Distill | distill.cjs |
+| 151 | `distill report` | Distill | distill.cjs |
+| 152 | `experiment new` | Self-Improvement Loop | experiment.cjs |
+| 153 | `experiment list` | Self-Improvement Loop | experiment.cjs |
+| 154 | `experiment manifest` | Self-Improvement Loop | experiment.cjs |
+| 155 | `experiment run` | Self-Improvement Loop | runner.cjs |
+| 156 | `experiment status` | Self-Improvement Loop | runner.cjs |
+| 157 | `experiment stop` | Self-Improvement Loop | runner.cjs |
+| 158 | `experiment harvest` | Self-Improvement Loop | experiment.cjs |
+| 159 | `experiment prune` | Self-Improvement Loop | experiment.cjs |
+| 160 | `doc-lint <dir>` | Doc-Lint | doc-lint.cjs |
+| 161 | `doc-lint schema-check` | Doc-Lint | doc-lint.cjs |
 | 162 | `learn promote` | Learnings | optimize.cjs |
 | 163 | `learn unpromote` | Learnings | optimize.cjs |
 | 164 | `learn list-promoted` | Learnings | optimize.cjs |
 | 165 | `learn lint` | Learnings | learn-lint.cjs |
 | 166 | `learn build-index` | Learnings | learn-index.cjs |
 | 167 | `learn topics-for` | Learnings | learn-index.cjs |
-| 168 | `links validate` | Doc-Code Link Graph (v3.8.0) | links.cjs |
+| 168 | `links validate` | Doc-Code Link Graph | links.cjs |
 | 169 | `squad list` | Bot Army | squads.cjs |
 | 170 | `squad show` | Bot Army | squads.cjs |
 | 171 | `worktree list` | Bot Army | worktree.cjs |
@@ -458,7 +458,7 @@ Quick reference of all CLI commands grouped by category.
 | 196 | `doc-lint flags` | Linting | doc-lint.cjs |
 | 197 | `state compact` | State Progression | state-compact.cjs |
 | 198 | `optimize trace show` | Optimization | optimize.cjs |
-| 199 | `cost rebuild` | Cost (v3.29) | cost-rebuild.cjs |
+| 199 | `cost rebuild` | Cost | cost-rebuild.cjs |
 | 200 | `findings record` | Evidence loop | findings.cjs |
 | 201 | `findings list` | Evidence loop | findings.cjs |
 | 202 | `findings dispose` | Evidence loop | findings.cjs |
@@ -689,7 +689,7 @@ pan-tools state snapshot            # equivalent alias — the spaced form dispa
 
 Commands for advancing workflow state — plan counters, metrics, decisions, blockers, and session continuity.
 
-### `state compact [--apply] [--keep-days N]` (v3.27)
+### `state compact [--apply] [--keep-days N]`
 
 Move settled history out of `state.md` into `state-history.md`. See [ADR-0044](decisions/ADR-0044-bound-the-cached-context.md).
 
@@ -1427,7 +1427,7 @@ pan-tools validate health --links
 - `--standards` — Include standards compliance check (reads standards.md, reports per-standard coverage)
 - `--full` — Run tests and build checks (slower, includes test_status and build_status)
 - `--drift` — Run convention drift analysis (includes drift_status with score and violations)
-- `--links` *(v3.8.0+)* — Attach `link_graph` summary (ADR-0027). Errors degrade health to a `LINKS_ERR` warning (advisory, non-blocking). Run `pan-tools links validate` standalone for the full finding list.
+- `--links` — Attach `link_graph` summary (ADR-0027). Errors degrade health to a `LINKS_ERR` warning (advisory, non-blocking). Run `pan-tools links validate` standalone for the full finding list.
 - `--only <class>,...` — With `--repair`, run only the named repair classes (`regenerateState`, `createConfig`, `resetConfig`, `syncRequirements`, `syncRoadmap`); the result lists the available classes as `repairs_available`.
 
 **Exit code:** `1` when `status` is `broken` (a missing `.planning/` included), `0` for `healthy` and `degraded` — warnings are not failures. This is a verdict command: it sets the code explicitly instead of deriving it from an `error` key (see "Error Shape" above), so gate on the exit code, not on `errors.length`.
@@ -1828,7 +1828,7 @@ pan-tools verify gates 3 --raw    # valid | invalid
 
 ### `verify requirements` · `verify traceability [<REQ-ID> ...]` (program V8)
 
-`verify requirements` fails a v1 requirement in `requirements.md` with no EARS acceptance criterion (`req_no_scenario`, exit 1). `verify traceability` runs the tests each requirement's `Test:` sub-bullets name: `passed`, `failing` (exit 1; a missing test file counts), `not_checked` (a criterion with no mapped test) or `legacy` (no criteria). `phase complete` ticks a requirement with criteria only when its trace passes.
+`verify requirements` fails a v1 requirement in `requirements.md` with no EARS acceptance criterion (`req_no_scenario`, exit 1). `verify traceability` runs the tests each requirement's `Test:` sub-bullets name: `passed`, `failing` (exit 1; a missing test file counts), `not_checked` (a criterion with no mapped test) or `legacy` (no criteria). Named ids (`AUTH-01`) trace only those requirements; an argument that is not a requirement id (`auth-01`) is an error (exit 1, `not a requirement id`), not a fallback to every requirement. A missing `requirements.md` is `requirements_not_found` (exit 1) for both. `phase complete` ticks a requirement with criteria only when its trace passes.
 
 ```bash
 pan-tools verify requirements        # {ok, requirements: [{id, criteria, tests}], errors[]}; --raw valid | invalid
@@ -1897,7 +1897,9 @@ pan-tools review scope 3 --raw    # the file paths, one per line
 
 The cross-family reviewer lane (program R4). Runs the phase review once more on another host's CLI, so a model from a different family checks the change. The run is read-only: the argv comes from `hosts.cjs` (`review`) and carries no write or auto-approve flag. The prompt holds the verdict contract, the plans' intent, the files in scope and the phase's diff.
 
-Off unless `workflow.cross_family_review` names a host (`claude`, `codex`, `copilot`, `gemini`, `opencode`); then it returns `{enabled: false, reason: "lane_off"}` and runs nothing. `--host` overrides the configured host for one run. `--dry-run` prints `lane`, `host`, `family`, `bin`, `argv` and the prompt and spawns nothing. `--reps N` (at most 10) runs it N times and reports each run's verdict, and `verdict` is the most common one.
+Off unless `workflow.cross_family_review` names a host (`claude`, `codex`, `copilot`, `gemini`, `opencode`); while it is off it returns `{enabled: false, reason: "lane_off"}` and runs nothing. `--host` overrides the configured host for one run. `--dry-run` prints `lane`, `host`, `family`, `bin`, `argv`, the prompt and `prompt_file` (when it would use one) and spawns nothing. `--reps N` (at most 10) runs it N times and reports each run's verdict, and `verdict` is the most common one.
+
+On Windows a host binary that resolves to an `.exe` or `.com` is launched directly by its path; anything else (an npm `.cmd` shim) goes through cmd.exe, with each argument holding whitespace, a quote or a cmd operator quoted. A prompt passed as an argument goes through `cross-family-<host>-prompt.md` (the argument tells the host to read it) when it runs through cmd.exe or is too long for a command line.
 
 Writes `.planning/reviews/<NN>/cross-family-<host>.md` with the host's answer. `review-deep merge … --cross-file <that file>` merges its findings as a fourth source (`coverage.by_source.cross_family`).
 
@@ -2504,7 +2506,7 @@ pan-tools config-ensure-section [--raw]
 | `budget.verify_reserve` | `0.15` | Fraction of the spawn budget (0–0.5) held back for re-verification so it can't be starved. Surfaced as `new_work_budget_remaining` / `into_verify_reserve` always; a hard early stop (`budget_reserve_reached`) only under `budget.enforce` / `--enforce-budget`. Override per-run with `--verify-reserve`. |
 | `cost.rates` | (built-in rate table) | Per-model `$/1M` overrides for cost estimates, e.g. `{ "<model-id>": { "input": 5, "output": 25, "cache_read": 0.5, "cache_write": 6.25, "cache_write_1h": 10 } }`. `cache_write` is the five-minute cache write; the optional `cache_write_1h` prices the one-hour share of a row that recorded the split, which otherwise bills at `cache_write`. The optional `long` block (`{ "above": 100000, "input": …, "output": …, "cache_read": …, "cache_write": …, "cache_write_1h": … }`) prices the part of a row recorded as `long_prompt` (requests whose prompt was over 100,000 tokens); `above` must be 100000, the figure the logger records at. An override row replaces the built-in row whole, so an override for a model with a long-prompt tier needs its own `long` block, or those requests bill at the base rates. Applied to both `cost append` and aggregate reporting, exactly as written. Precedence: this key, then a Claude Code managed `modelPricing` block (its `overrides` rows, times its `multiplier`), then the built-in table (times the managed `multiplier` when one is set). |
 | `routing.max_escalations` | `1` | How many tiers a retry may climb under `resolve-model --attempt` (failure-tier escalation). `0` turns escalation off. |
-| `cache.extra_files` | (not written; absent = no extra files) | **(v3.27)** Extra planning-root-relative docs to include in the cached context block, e.g. `["research/api-contract.md"]`. The built-in list is the *phase-model* spine (project/requirements/roadmap/state/standards), so a focus-model project measures an empty block. The block is what `cache prime`, `context-budget` and `hygiene scan` measure. It does not decide what the host caches: the host caches each agent's prompt prefix by itself. Entries are appended after the built-ins, so the `sha` of a project that sets nothing does not change; absolute paths, drive paths, and `..` segments are ignored. |
+| `cache.extra_files` | (not written; absent = no extra files) | Extra planning-root-relative docs to include in the cached context block, e.g. `["research/api-contract.md"]`. The built-in list is the *phase-model* spine (project/requirements/roadmap/state/standards), so a focus-model project measures an empty block. The block is what `cache prime`, `context-budget` and `hygiene scan` measure. It does not decide what the host caches: the host caches each agent's prompt prefix by itself. Entries are appended after the built-ins, so the `sha` of a project that sets nothing does not change; absolute paths, drive paths, and `..` segments are ignored. |
 | `brave_search` | auto-detected | Brave Search API availability |
 
 ---
@@ -3054,7 +3056,7 @@ pan-tools init milestone-op --all-tracks
 **Key output fields:**
 - `planning_root`, `track`, `planning_root_source`, `planning_root_exists` — which tree this came from
 - `milestone_version`, `milestone_name`, `milestone_slug` — Current milestone
-- `milestone_status`, `milestone_basis`, `milestone_ambiguous`, `milestone_candidates` — **how** the milestone was decided (v3.27)
+- `milestone_status`, `milestone_basis`, `milestone_ambiguous`, `milestone_candidates` — **how** the milestone was decided
 - `phase_count`, `completed_phases`, `all_phases_complete` — Phase progress
 - `archived_milestones[]`, `archive_count` — Archive info
 
@@ -3534,7 +3536,7 @@ pan-tools learnings prune --id LEARN-NNN [--raw]
 }
 ```
 
-### `links validate` (v3.8.0+)
+### `links validate`
 
 Validate the doc–code link graph (ADR-0027). Walks `docs/`, `pan-wizard-core/{workflows,templates,references,learnings}/`, `commands/`, `agents/` for inline `[[<id>]]` refs, and `pan-wizard-core/`, `bin/`, `hooks/`, `scripts/` for `// @pan: <id>` source-comment anchors. Reports broken refs, stale anchors, and uncovered backlink contracts.
 
@@ -3635,7 +3637,7 @@ pan-tools drift-check [--since <ref>] [--threshold <0.0-1.0>] [--files <path,...
 
 ### `retro`
 
-Milestone retrospective — analyze estimation accuracy, verification patterns, and common gap types. **(v2.10.0: adds `--write-memory`.)**
+Milestone retrospective — analyze estimation accuracy, verification patterns, and common gap types.
 
 **Module:** `verify-retro.cjs` (re-exported by `verify.cjs`)
 
@@ -3673,7 +3675,7 @@ The `memory` field is omitted unless `--write-memory` is set.
 
 ---
 
-## 20.1 Capability-Aware Commands (v2.10.0)
+## 20.1 Capability-Aware Commands
 
 Commands added for Spec A (frontier-model capability enhancements). All degrade gracefully rather than error on models and runtimes that lack the underlying capability: the installer turns each agent's `effort:` into `model_reasoning_effort` in Codex's agent TOML and into a prose preamble for OpenCode, Gemini CLI and Copilot CLI. Cache priming is withdrawn: `cache prime` only measures (ADR-0023, amended). Nothing here inspects the model at runtime — in particular `codebase estimate-size` picks single-shot vs sharded from repo size alone, so on a smaller-context model you get the sharded path by lowering `--threshold` yourself; there is no automatic fallback.
 
@@ -4050,11 +4052,11 @@ pan-tools codebase best-practices [--raw]
 
 ---
 
-## 22. Spec B v2 Commands (v3.0-v3.4)
+## 22. Spec B v2 Commands
 
 Commands added across the five Spec B v2 waves. See [ADR-0024](decisions/ADR-0024-spec-b-v2-completion.md) for the design rationale. All modules are runtime-agnostic; agent quality varies by model capability.
 
-### `cost report [--format json|table|chart]` (v3.0, Y-6)
+### `cost report [--format json|table|chart]` (Y-6)
 
 Aggregate per-call cost across all PAN invocations in the project.
 
@@ -4071,7 +4073,7 @@ Three formats:
 - `table` — aligned columns with section-by-section breakdown
 - `chart` — ASCII bar chart of per-day cost
 
-### `cost append --model X --input-tokens N --output-tokens N ...` (v3.0, Y-6)
+### `cost append --model X --input-tokens N --output-tokens N ...` (Y-6)
 
 Manually append a cost record. Used by explicit callers; the hook path handles automatic capture.
 
@@ -4085,11 +4087,11 @@ pan-tools cost append \
 
 Missing fields default to `null` or `0`. Cost is auto-computed when `model` or `tier` resolves to a known rate.
 
-### `cost clear` (v3.0, Y-6)
+### `cost clear` (Y-6)
 
 Delete the cost log. Useful at the start of a billing cycle.
 
-### `cost rebuild [--apply] [--no-main-thread] [--claude-dir <path>]` (v3.29)
+### `cost rebuild [--apply] [--no-main-thread] [--claude-dir <path>]`
 
 **Module:** `cost-rebuild.cjs`
 
@@ -4126,7 +4128,7 @@ pan-tools cost budget 3 --raw            # off | ok | near | over
 
 Returns `{phase, budget_usd, spent_usd, pct, status, mode, warn_at_pct, unpriced}`. `spent_usd` sums the phase's priced ledger rows (suspect and empty rows left out, `phase: "03"` and `"3"` alike); `unpriced` counts its rows with no known rate. `status` is `near` from `warn_at_pct` (80) of the budget and `over` once spend reaches it. `mode` is always `warn`: exec-phase reports `near` and `over` after a wave and plan-phase in its final status, and nothing stops on it. Exits 0 whatever the status; exits 1 without a phase.
 
-### `models check` (v3.9)
+### `models check`
 
 Report whether the built-in model rate table is stale.
 
@@ -4140,7 +4142,7 @@ Returns `{rates_verified_at, age_days, stale_after_days, stale, models, tiers, m
 
 `managed_model_pricing` lists the model ids of the usable `overrides` rows in a Claude Code managed `modelPricing` block (contracted per-model rates an organisation deploys through managed settings; each row carries `input`, `output`, `cacheRead` and `cacheWrite`, and a row missing one is dropped, as Claude Code drops it), and `managed_pricing_multiplier` the block's `multiplier` — above 0 and at most 10, a discount below 1 and a markup above — or `null`. A multiplier PAN could not apply is reported as `managed_pricing_multiplier_ignored`. PAN prices with those rates, times the multiplier, when present, and applies the multiplier to the built-in rates of every model no row covers, as Claude Code does — see the `cost.rates` config key for the precedence. It reads them from the directory Claude Code documents for each OS; `PAN_MANAGED_SETTINGS_DIR` redirects the lookup. An empty list means no usable row was found, not that the setting is unsupported.
 
-### `bus publish <channel> <payload> [--source <name>]` (v3.0, Y-7)
+### `bus publish <channel> <payload> [--source <name>]` (Y-7)
 
 Append a message to a file-backed channel at `.planning/bus/<channel>.jsonl`.
 
@@ -4148,7 +4150,7 @@ Append a message to a file-backed channel at `.planning/bus/<channel>.jsonl`.
 
 Channel and source names validated against `^[a-zA-Z0-9_-]+$` (path-traversal safe). Payload is any JSON-serializable value; if not valid JSON, stored as a raw string. Returns `{published: true, ts, file, size}` (`file` is the channel file's absolute path, `size` its size in bytes after the append); an invalid channel or source name exits 1 with `error: "Invalid channel: …"` (or `"Invalid source: …"`).
 
-### `bus drain <channel> [--mode peek|consume|archive] [--limit N] [--offset N]` (v3.0, Y-7)
+### `bus drain <channel> [--mode peek|consume|archive] [--limit N] [--offset N]` (Y-7)
 
 Read messages from a channel.
 
@@ -4158,11 +4160,11 @@ Read messages from a channel.
 
 Returns `{entries, total, offset, more, mode}`; `--limit` defaults to 1000. A malformed line comes back as `{malformed: true, raw, …}`. An unknown `--mode` on a non-empty channel exits 1, as does a failed write or rename (`drain_error`).
 
-### `bus list` (v3.0, Y-7)
+### `bus list` (Y-7)
 
 List all channels with message counts + byte sizes + active/archive flag.
 
-### `preview phase <N>` (v3.1, Y-1)
+### `preview phase <N>` (Y-1)
 
 Blast-radius analysis for a single phase.
 
@@ -4176,15 +4178,15 @@ Returns `{phase, phase_name, directory, status, plan_count, summary_count, goal,
 
 `cost_forecast` (program P6) is `{agent, tier, plans, min_samples, per_plan, phase}`, from the project's cost ledger with this phase's own rows (and suspect or empty rows) left out. `per_plan` is `{status: "ok", n, p10, p50, p90}`, the dollars of a `pan-executor` call at one tier (the tier of the latest executor call); tiers are never pooled. `phase` is `{status: "ok", n_phases, p10, p50, p90}`: it resamples, 2,000 times and seeded, one past phase's other agents (planner, checkers, verifier, reviewer) plus one executor call per plan. Either is `{status: "insufficient", n, needed: 5}` when fewer than five observations back it (`phase` then also carries `n_phases` and a `reason`): no forecast is better than a guess from two runs.
 
-### `preview phases` (v3.1, Y-1)
+### `preview phases` (Y-1)
 
 Cross-phase dependency graph with mermaid source + Kahn-style parallel batches + hidden-coupling detection.
 
-### `preview milestone` (v3.1, Y-1)
+### `preview milestone` (Y-1)
 
 Milestone completion ETA with velocity + confidence + bottleneck identification.
 
-### `review-deep merge <phase> --reviewer-file X --hardener-file Y [--meta-file Z]` (v3.2, Y-2)
+### `review-deep merge <phase> --reviewer-file X --hardener-file Y [--meta-file Z]` (Y-2)
 
 Merge reviewer + hardener + meta-reviewer findings into a consolidated `.planning/reviews/<phase>/deep-review.md` with verdict ladder (ok < ok_with_minor < fix_before_merge < review_required < block).
 
@@ -4192,11 +4194,11 @@ Merge reviewer + hardener + meta-reviewer findings into a consolidated `.plannin
 
 Publishes an audit entry to the `review-handoff` bus channel via `bus.cjs`.
 
-### `review-deep analyze <phase> ...` (v3.2, Y-2)
+### `review-deep analyze <phase> ...` (Y-2)
 
 Same merge logic as above but returns the payload without writing a file. Useful for piping.
 
-### `knowledge ask <question> [--max-sources N] [--recall-cue <text>]` (v3.2, Y-3)
+### `knowledge ask <question> [--max-sources N] [--recall-cue <text>]` (Y-3)
 
 Retrieve candidate source files for a natural-language question, scored by keyword frequency across `CITATION_ROOTS`: `.planning/`'s project, requirements, roadmap, state, standards and patterns files and its `phases/`, `milestones/` and `memory/` folders, plus `docs/` and the top-level `README/CHANGELOG/CLAUDE.md`. PAN's own archives in `.planning/memory/` (`quarantine.md`, `state-archive.md`, `distill-patterns.md` and `archive/`) are never offered as sources.
 
@@ -4209,20 +4211,20 @@ pan-tools knowledge ask "how is auth wired?" --recall-cue "session tokens"
 
 Returns `{question, sources: [{file, score, bytes}], total_candidates, returned}`. Keeps `project.md` and `requirements.md` among the sources even when they score zero, though they still count against `--max-sources` (default 20) and rank last at a zero score. `--recall-cue <text>` re-scores the same candidates against a second cue and adds a `recall_cue` + `recall_sources` view to the payload (no extra filesystem walk).
 
-### `knowledge discuss <phase> --subcmd read|append ...` (v3.2, Y-3)
+### `knowledge discuss <phase> --subcmd read|append ...` (Y-3)
 
 Multi-turn session state at `.planning/conversations/<phase>/session.json`.
 
 - `--subcmd read` — load current session (empty if new)
 - `--subcmd append --role user|agent --content "..." [--cites a,b]` — append a turn
 
-### `knowledge playbook [--preview]` (v3.2, Y-3)
+### `knowledge playbook [--preview]` (Y-3)
 
 Cluster the agent logs in `.planning/memory/` (those `memory list` lists; PAN's archives and files with no `## Entries` list are left out) into a categorized `.planning/playbook.md` with sections: Conventions / Gotchas / Decisions / Tool choices / Anti-patterns / Recurring gaps / General.
 
 `--preview` returns the structured payload without writing the file.
 
-### `whatif prepare <phase> <scenario>` (v3.3, Y-4)
+### `whatif prepare <phase> <scenario>` (Y-4)
 
 Creates an isolated git worktree for counterfactual phase replay. Returns `{phase, scenario, slug, worktree: {worktree_path, branch, base}}`.
 
@@ -4230,13 +4232,13 @@ Creates an isolated git worktree for counterfactual phase replay. Returns `{phas
 
 Requires git repo. Worktree default location: sibling of main repo, branch prefixed `pan-whatif/`.
 
-### `whatif report <phase> <scenario> --comparison <json>` (v3.3, Y-4)
+### `whatif report <phase> <scenario> --comparison <json>` (Y-4)
 
 Write the counterfactual comparison report to `.planning/counterfactuals/<phase>-<slug>.md` in the main tree (not the worktree — the worktree is disposable).
 
 Comparison JSON shape: `{summary, differences[], recommendations[], risks[], verdict}`.
 
-### `whatif cleanup --worktree <path> [--branch <name>] [--force]` (v3.3, Y-4)
+### `whatif cleanup --worktree <path> [--branch <name>] [--force]` (Y-4)
 
 Remove the worktree and, with `--branch`, delete that branch. It refuses (exit 1, nothing touched) anything what-if did not create: a `--branch` that does not start with `pan-whatif/`, or a registered worktree that is not on that branch (on any `pan-whatif/*` branch when `--branch` is omitted), or a cwd that is not a git repo. Past that check, removal is best-effort: git failures come back in `warnings[]` and the result is `{removed: true, warnings}`. `--force` applies to `git worktree remove`; the branch is always deleted with `-D`.
 
@@ -4248,19 +4250,19 @@ The autonomous external-build loop: scaffold an experiment folder, drive an exte
 
 **Modules:** `experiment.cjs` (lifecycle), `runner.cjs` (execution); the `learn` verbs below are in `optimize.cjs` (`promote`, `unpromote`, `list-promoted`), `learn-lint.cjs` (`lint`) and `learn-index.cjs` (`build-index`, `topics-for`).
 
-### `experiment new <slug> --idea <path> [--root <dir>] [--runtime <name>] [--budget N] [--skip-installer]` (v3.7.0)
+### `experiment new <slug> --idea <path> [--root <dir>] [--runtime <name>] [--budget N] [--skip-installer]`
 
 Scaffold a new experiment folder at `<root>/<slug>/`. Copies `<idea>` to `<root>/<slug>/.planning/idea.md`, writes the `experiment.json` manifest, initialises a git repository in the folder with a local commit identity, and (unless `--skip-installer`) runs the PAN installer for the chosen runtime inside the experiment dir (in an installed, non-source PAN the installer is unavailable and the result carries `installer_skipped`). Default root: `~/pan-experiments/`. Default runtime: `claude`. Hard `PAN_SOURCE_ROOT` guard refuses to scaffold inside the source repo.
 
-### `experiment list [--root <dir>] [--include-archived]` (v3.7.0)
+### `experiment list [--root <dir>] [--include-archived]`
 
 Enumerate experiments under root with `{experiment_id, runtime, status, created_at, path, …}` per entry (the full `experiment.json` manifest plus `path`). By default archived experiments are omitted; pass `--include-archived` to list them too.
 
-### `experiment manifest <slug> [--root <dir>]` (v3.7.0)
+### `experiment manifest <slug> [--root <dir>]`
 
 Print the experiment's `experiment.json` manifest.
 
-### `experiment run <slug> [--root <dir>] [--prompt <text>] [--timeout <seconds>]` (v3.7.0+)
+### `experiment run <slug> [--root <dir>] [--prompt <text>] [--timeout <seconds>]`
 
 Spawn the runtime adapter against the experiment via `spawnSync`, observe via `run-state.json`, return final status. Adapters live in `runner.cjs#RUNTIME_RUNNERS` — claude/codex/gemini/opencode supported, copilot is null. Default prompt: `/pan:new-project --auto @.planning/idea.md`. `--timeout` is in seconds; default 3600 (60 min).
 
@@ -4268,19 +4270,19 @@ Spawn the runtime adapter against the experiment via `spawnSync`, observe via `r
 
 **Billing note (Claude runtime):** since June 15, 2026, headless `claude -p` / Agent SDK usage draws from a separate monthly **Agent SDK credit pool** on Claude subscriptions — it does not count against interactive session limits, and vice versa. The `billing_pool: "agent_sdk"` tag (and the rest of the `runState.metrics` envelope) is produced only by the runner module's capture-metrics API, **not** by the `experiment run` CLI path — a CLI run's `run-state.json` has no `metrics` key. Callers needing billing reconciliation must invoke the runner module directly with metrics capture enabled.
 
-### `experiment status <slug> [--root <dir>]` (v3.7.0)
+### `experiment status <slug> [--root <dir>]`
 
 Read snapshot from `<expPath>/.planning/run-state.json`: status, started_at, ended_at, pid, exit_code, stop_reason, elapsed_ms, events — and `metrics` only when the runner module captured them (a CLI run records none).
 
-### `experiment stop <slug> [--root <dir>]` (v3.7.0)
+### `experiment stop <slug> [--root <dir>]`
 
 Finalize/record a stopped experiment in `run-state.json`. This **cannot** terminate an already-running synchronous experiment: the runner blocks while a run is in flight and no pid is recorded to signal, so `stop` only reconciles the run-state after the run has exited. If no pid is recorded (an in-flight run), it returns an error and writes nothing.
 
-### `experiment harvest <slug> [--root <dir>] [--source-root <dir>] [--force]` (v3.7.0)
+### `experiment harvest <slug> [--root <dir>] [--source-root <dir>] [--force]`
 
 Copy `.planning/idea.md`, `experiment.json`, `state.md`, `run-state.json`, `agent-history.json`, `optimization/` (traces + reports) and `phases/` back into a fixed destination at `<source-root>/experiments/<slug>/`. `--source-root` selects the PAN source root (destination base); `--force` overwrites an existing harvest at that path. Non-destructive — leaves the experiment folder intact for re-runs.
 
-### `experiment prune <slug> [--root <dir>] [--hard]` (v3.7.0)
+### `experiment prune <slug> [--root <dir>] [--hard]`
 
 Remove the experiment. Default is a soft prune — the experiment folder is archive-renamed (preserved, not deleted). With `--hard`, the folder is permanently deleted.
 
@@ -4327,19 +4329,19 @@ Markdown frontmatter + structure linter, vendored from the whooo experiment. Val
 
 > Corrected in this version: the JSON paths used to exit `0` unconditionally, because `output()` exits the process and the `process.exit(<verdict>)` line below each call was unreachable. `doc-lint --format json` therefore never failed, and `doc-lint schema-check` never failed in *either* format. Earlier revisions of this page documented the JSON path as merely "reporting `schema_errors` in the body" — that described the defect, not an intended design. If you pinned a version to that behaviour, the linter was not gating.
 
-### `doc-lint <dir> [--schema <path>] [--format human|json] [--strict] [--exclude <glob>]` (v3.7.1)
+### `doc-lint <dir> [--schema <path>] [--format human|json] [--strict] [--exclude <glob>]`
 
 Walk `<dir>` for `.md` files, validate each against the named schema (default: `pan-command.schema.yml`, whatever the directory). Reports violations: missing required frontmatter fields, schema-type mismatches, structural issues. `--format` applies under `--raw` (a human report, or the violations as JSON); without `--raw` the result is always the JSON payload, suitable for CI gates. Exits `1` when any violation has `severity: error` (warnings alone exit `0`), `2` if the schema could not be parsed.
 
-### `doc-lint schema-check <path>` (v3.7.1)
+### `doc-lint schema-check <path>`
 
 Verify the YAML schema at `<path>` is syntactically valid before it's used to lint anything. `<path>` is a required positional argument. Schemas live at `pan-wizard-core/references/schemas/*.schema.yml`. Exits `1` when `ok` is false.
 
-### `doc-lint counts <dir> [--exclude <glob>]` (v3.7.10)
+### `doc-lint counts <dir> [--exclude <glob>]`
 
 Scan `<dir>` for embedded numeric counts that violate the single-source-of-truth policy (counts belong only in `CLAUDE.md`). Repeat `--exclude` to skip paths. Reports each offending count with its file and line.
 
-### `doc-lint flags [--doc-dir <dir>]` (v3.14)
+### `doc-lint flags [--doc-dir <dir>]`
 
 Detect aspirational or stale `--flags` documented for the PAN CLI that never appear as literals in the source (`pan-wizard-core/bin`, `bin`). `--doc-dir <dir>` (repeatable; a path relative to the project root, or an absolute path) replaces the default `docs`, so list `docs` again to keep it; a missing directory is skipped. Only lines that mention `pan-tools` are checked, and findings are reported relative to the project root. Exits 1 when any doc-only flag is found. Reports each doc-only flag with its file and line.
 
@@ -4351,7 +4353,7 @@ SAD pass (ADR-0038, spec `docs/specs/skill-aligned-decomposition.md`): the plann
 
 **Module:** `skill-align.cjs`
 
-### `skills index [--source-root <path>]` (v3.13, ADR-0038)
+### `skills index [--source-root <path>]` (ADR-0038)
 
 Build (on the fly — nothing persisted) and print the skill index: `commands/pan/*.md`, `pan-wizard-core/templates/**` (recursive), `pan-wizard-core/references/*.md`, plus learnings topics via `learn-index.cjs`. Returns `{entries, total, by_kind, skipped_roots}`. Missing roots are skipped and reported, never thrown — partial installs and non-Claude runtime layouts degrade gracefully. Default root is the install root (resolved relative to the module); `--source-root` exists for tests.
 
@@ -4359,7 +4361,7 @@ Build (on the fly — nothing persisted) and print the skill index: `commands/pa
 pan-tools skills index --raw
 ```
 
-### `skills align (--draft "<text>" | --draft-file <path>) [--top <k>] [--min-score <n>] [--token-budget <n>] [--source-root <path>]` (v3.13, ADR-0038)
+### `skills align (--draft "<text>" | --draft-file <path>) [--top <k>] [--min-score <n>] [--token-budget <n>] [--source-root <path>]` (ADR-0038)
 
 Score each draft task (bullets/numbered/checkbox lines all accepted) against the skill index using `scoreRelevance`, after stripping planning glue words from the cue. Returns per-task top-k matches (names only), `coverage`, and a deduplicated `vocabulary` hint list ranked by aggregate score and greedy-packed into the token budget (default 1500) — overflow lands in `dropped`, never silently truncated. A draft that yields no tasks, or one over the max-task threshold, is reported as an `{error}` JSON body on stdout at **exit 1** (per "Error Shape"); omitting both `--draft` and `--draft-file` is a usage error on stderr, also exit 1.
 
@@ -4377,17 +4379,17 @@ Project cleanup + version alignment (see `docs/FIELD-HARVEST-2026-07.md` follow-
 
 **Module:** `hygiene.cjs`
 
-Both subcommands accept the planning-root flags (`--track`, `--planning-dir`, `--all-tracks`) documented under [Global Flags](#planning-root---track----planning-dir----all-tracks-v327). Without them, only `.planning/` is scanned — and the scan says so, since a "clean" verdict is only meaningful alongside a statement of what was looked at.
+Both subcommands accept the planning-root flags (`--track`, `--planning-dir`, `--all-tracks`) documented under [Global Flags](#planning-root---track----planning-dir----all-tracks). Without them, only `.planning/` is scanned — and the scan says so, since a "clean" verdict is only meaningful alongside a statement of what was looked at.
 
-### `hygiene scan [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
+### `hygiene scan [--trace-age-days N] [--track <name>] [--all-tracks]`
 
-Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** (v3.27) — the stable planning files `cache prime` lists, warned at 15k tokens and critical at 25k, with any single file over 6k called out: `state.md`, re-read on every agent call, carries the `compact-state` remedy while it has settled history to archive, and `roadmap.md`, read whole only by the roadmapper and milestone work (phase agents read `roadmap slice`), carries `compact-roadmap` while shipped phases can move to `roadmap-history.md`; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; a **`shared-planning-tree`** info finding when another tool writes into the tree beside PAN (planning-with-files markers), after which PAN's own checks still run; and, under `cache-context` at `info` (`warn` once the re-written context is large), the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Memory: `memory-stale` (entries `memory select` leaves out because their cited code is gone or they went unused past the expiry window; fix `prune-memory`) and `memory-format` (a file in `.planning/memory/` with no `## Entries` list, or whose name is not a valid agent name, which `memory select` and `knowledge playbook` never read as memory (`knowledge ask` can still offer it as a source)). Once per project, read-only, `host-memory`: Claude Code's auto-memory index (`~/.claude/projects/<project>/memory/MEMORY.md`, under `CLAUDE_CONFIG_DIR` instead of `~/.claude` when that is set, or `autoMemoryDirectory`). It reports an index past the 200-line / 25 KB session-start load limit (`warn`) or near it (`info`), and index lines that hold content where a one-line pointer belongs (`info`). PAN never writes that store. Returns `{findings, installs, latest_version, host_memory, planning_exists, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fix` (the action `hygiene clean` would take, e.g. `{"action": "prune-memory", "agent": "pan-executor"}`, or `null`), `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
+Read-only findings report. Checks: per-runtime `pan-file-manifest.json` version vs the latest seen (including the executing core's own version); untracked installs (`pan-wizard-core` without a manifest); legacy uppercase planning filenames (pre-v2.2); orphaned atomic-write `.tmp` files older than 1h; per-agent memory logs past the compaction cap; **poisoned cost ledgers** — ≥50% suspect records *or* ≥50% of the token **mass** in suspect records, once the ledger holds at least 20 records (v3.27: a count-only gate passed a ledger whose 24% bad rows held 89% of the tokens); trace sessions older than retention (default 30d, newest 5 always kept); **optimization reports** past the same retention (v3.27 — traces aged out while the analysis JSON beside them never did); **cached context bloat** — the stable planning files `cache prime` lists, warned at 15k tokens and critical at 25k, with any single file over 6k called out: `state.md`, re-read on every agent call, carries the `compact-state` remedy while it has settled history to archive, and `roadmap.md`, read whole only by the roadmapper and milestone work (phase agents read `roadmap slice`), carries `compact-roadmap` while shipped phases can move to `roadmap-history.md`; fragment `.planning/` dirs with no workflow spine (phase, focus, and orchestration layouts all count as spines); a **`foreign-planning-tree`** warning when the tree carries markers of another tool (gsd-core's `HANDOFF.json`, `.gsd-allow-shrink`, two or more gsd-only directories, or its flat dotted `config.json` keys) — that tree gets the one warning and no per-tree checks, since its uppercase files would otherwise read as legacy PAN filenames; a **`shared-planning-tree`** info finding when another tool writes into the tree beside PAN (planning-with-files markers), after which PAN's own checks still run; and, under `cache-context` at `info` (`warn` once the re-written context is large), the prompt-cache lifetime recommendation that `context-budget` reports as `cache.ttl`. Memory: `memory-stale` (entries `memory select` leaves out because their cited code is gone or they went unused past the expiry window; fix `prune-memory`) and `memory-format` (a file in `.planning/memory/` with no `## Entries` list, or whose name is not a valid agent name, which `memory select` and `knowledge playbook` never read as memory (`knowledge ask` can still offer it as a source)). Once per project, read-only, `host-memory`: Claude Code's auto-memory index (`~/.claude/projects/<project>/memory/MEMORY.md`, under `CLAUDE_CONFIG_DIR` instead of `~/.claude` when that is set, or `autoMemoryDirectory`). It reports an index past the 200-line / 25 KB session-start load limit (`warn`) or near it (`info`), and index lines that hold content where a one-line pointer belongs (`info`). PAN never writes that store. Returns `{findings, installs, latest_version, host_memory, planning_exists, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}` — each finding has `check`, `severity` (`critical|warn|info`), `path`, `detail`, `fix` (the action `hygiene clean` would take, e.g. `{"action": "prune-memory", "agent": "pan-executor"}`, or `null`), `fixable`, and `track` (the tree it came from; `null` for the root tree or a project-wide check). `summary.by_track` breaks findings down per tree. Version alignment is a project property and is reported once no matter how many trees are swept.
 
 ```bash
 pan-tools hygiene scan --raw
 ```
 
-### `hygiene clean [--apply] [--trace-age-days N] [--track <name>] [--all-tracks]` (v3.13)
+### `hygiene clean [--apply] [--trace-age-days N] [--track <name>] [--all-tracks]`
 
 Dry-run by default (lists what would change); `--apply` executes the safe subset: two-step case-hop renames of legacy filenames, `.tmp` orphan deletion, memory-log compaction (`compactMemory`), poisoned-ledger **quarantine-by-rename** (`tokens.jsonl.quarantined-<date>` — the poisoned rows are kept, but only the newest quarantine file survives; the hook's `.cost-cursor.json` is kept, since it tracks transcripts rather than the ledger), stale-trace and stale-report pruning, `state.md` compaction (`compact-state`, archiving settled sections to `.planning/state-history.md`, beside state.md), roadmap compaction (`compact-roadmap`), and archiving stale or expired memory entries (`prune-memory`). Version drift (remediation = re-run the installer) and fragment dirs (manual review) are never auto-fixed, and the legacy-filename rename refuses outright on a tree the scan flagged as `foreign-planning-tree` — PAN never renames another tool's state. Returns `{dry_run, applied, skipped, planning_root, track, planning_root_source, planning_root_exists, all_tracks, roots_scanned, summary}`. Under `--all-tracks` each fix is applied within its own tree's scope, so a track's bloated memory log is compacted in that track rather than in the root tree.
 
@@ -4399,7 +4401,7 @@ Wrapped by the `/pan:hygiene` command: scan → present by severity → version-
 
 ---
 
-## 27. Optimization, Git and Distill Commands (v3.5)
+## 27. Optimization, Git and Distill Commands
 
 Verbs the Command Index lists that had no section of their own. Wrapped by `/pan:learn --optimize`, `/pan:learn`, `/pan:git` and the `distill` focus-auto category.
 
@@ -4413,7 +4415,7 @@ pan-tools optimize trace log --agent pan-executor --type decision --category dev
 pan-tools optimize trace current                    # the open session
 pan-tools optimize trace list                       # every session on disk (open and ended)
 pan-tools optimize trace show --session <id>        # one session's events
-pan-tools optimize trace reconcile [--session <id> | --all]   # rewrite session.json counters from trace.jsonl — the open session by default, one by id, or all (v3.21)
+pan-tools optimize trace reconcile [--session <id> | --all]   # rewrite session.json counters from trace.jsonl — the open session by default, one by id, or all
 pan-tools optimize trace end [--session <id>]
 pan-tools optimize learn [--session <id>]           # analyse events → report
 pan-tools optimize learn --sessions <n>             # pool the last n sessions into one analysis
@@ -4506,13 +4508,13 @@ pan-tools findings prove f_81ab3c9d20 --test .planning/reviews/3/proofs/catch.te
 
 The bot-army registry, worktree isolation and campaign scheduling behind `/pan:army`, and the read-only HTML views (`hud`, `report`).
 
-### `squad list | show <name>` (v3.11, ADR-0032)
+### `squad list | show <name>` (ADR-0032)
 
 Bot-army squad registry. `squad list` shows every squad (architecture / build / quality / release) with their model tier, tool-access contract, and member count; `squad show <name>` shows one squad's full roster. Read by `pan-conductor` campaign mode and `/pan:army` to resolve the roster at runtime instead of hardcoding it.
 
 **Module:** `squads.cjs`
 
-### `worktree list | create <task> | remove <path> | cleanup` (v3.11, ADR-0033; `cleanup` v3.25+)
+### `worktree list | create <task> | remove <path> | cleanup` (ADR-0033)
 
 Branch-per-agent git worktrees for the Build squad — each builder gets its own `army/<task>` branch + isolated tree so concurrent agents never collide. Worktrees are created as **siblings of the project directory** (`../pan-army-<slug>/`). `create` accepts `--base <ref>`; `remove` accepts `--branch <name>` `--force` and refuses to delete non-`army/` branches.
 
@@ -4526,7 +4528,7 @@ The human merge gate on the CLI, the same gate the MCP bridge uses. `request` st
 
 **Module:** `merge.cjs`
 
-### `campaign schedule | status | due | record-run` (v3.12, ADR-0034)
+### `campaign schedule | status | due | record-run` (ADR-0034)
 
 Scheduled, self-resuming bot-army campaigns. PAN is not a daemon: this module owns the schedule **descriptor** and the decision of whether a run is **due** — an external trigger (host scheduler, cron, `/loop`, or a human) polls `campaign due` and fires `/pan:army --continue`. The always-ask human merge gate is never affected by scheduling. Descriptor lives at `.planning/orchestration/schedule.json`.
 
@@ -4537,13 +4539,13 @@ Scheduled, self-resuming bot-army campaigns. PAN is not a daemon: this module ow
 - `campaign due` — host-scheduler gate: returns `{due, reason, next_due}`. `reason` is one of `no_schedule`, `disabled`, `paused`, `budget_exhausted_today` (only when the descriptor's `enforce_budget` is `true` — the daily budget is advisory otherwise), `due`, `not_yet`. **Exit codes:** `0` — due; `1` — not due. The payload has no `error` key, so the code is set explicitly; a `cron`/`&&` trigger can gate on it without parsing the body. "Not due" is a negative *answer*, not a failure, so pair the exit code with `reason` if you need to distinguish it from a broken descriptor.
 - `campaign record-run` — record a completed run and advance `next_due`. Flags: `--items <N>`, `--points <N>`.
 
-### `hud [--out <file>] [--open] [--stdout]` (v3.12, ADR-0035)
+### `hud [--out <file>] [--open] [--stdout]` (ADR-0035)
 
 Generates a single self-contained HTML dashboard of the project + bot army (default `.planning/hud.html`). Aggregates existing state — `state.md`, roadmap/phases, the squad registry, the campaign schedule, army worktrees, the cost ledger, `requirements.md`, verification artifacts, and git history — into one page of panels. It is a read-only **view**: it writes only its own rendered file and creates no new state. Army-only panels (command stack, campaign, safety harness, worktrees) self-hide on plain (non-army) projects. `--out` overrides the path, `--open` launches the default browser, `--stdout` prints HTML instead of writing. The file is dependency-free (inlined CSS, no `<script>`, no network) and identical on every runtime. Distinct from the JSON `pan-tools dashboard` command (`state.cjs`), which prints a compact project overview rather than HTML.
 
 **Module:** `hud.cjs`
 
-### `report phase <N> [--out <file>] [--open] [--stdout] | index [--bundle] [--out <file>] [--open] [--stdout] | all [--open]` (v3.15)
+### `report phase <N> [--out <file>] [--open] [--stdout] | index [--bundle] [--out <file>] [--open] [--stdout] | all [--open]`
 
 `report all` writes every phase report plus the index to their default paths; its one flag, `--open`, opens the index in the default browser (only when the index was written or changed), and the result reports it as `opened`. Generates self-contained HTML reports for a project's phases, reusing the HUD's rendering. `report phase <N>` writes one phase's report (objective, roadmap position, what changed, verification verdict and gaps) to `.planning/phases/<NN-slug>/<NN>-report.html`; `report index` writes the project timeline to `.planning/report-index.html`, where each row links to a phase report; `report all` regenerates every phase report plus the index in one pass. Like `hud`, these are read-only **views** — every value is read from what PAN already tracks on disk (phase `plan`/`summary`/`verification` artifacts and their frontmatter, `roadmap.md`, and the cost ledger), and the command writes only its rendered file(s), so it can never corrupt planning data. Writes are deterministic: re-running with unchanged phase data rewrites nothing (the volatile generated-at timestamp is ignored when comparing), so reports produce no git churn. `--out` overrides the path, `--open` best-effort launches the default browser (only when the file was written or changed), `--stdout` prints HTML instead of writing (for `phase`/`index`). `--bundle` (on `index`) instead writes one self-contained `.planning/report-bundle.html` with every phase inlined under in-page anchors and no links to sibling files — the form to email or attach. A phase-less (focus-auto) project has nothing to report; `index` exits with a message pointing to `pan-tools hud` instead.
 

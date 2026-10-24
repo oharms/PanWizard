@@ -198,5 +198,16 @@ describe('an argument-prompt host gets its prompt as one argument (R4, Windows c
     } finally { fs.rmSync(exeDir, { recursive: true, force: true }); }
     assert.equal(quoteForCmd('-p'), '-p');
     assert.equal(quoteForCmd('Read a.md and go'), '"Read a.md and go"');
+    assert.equal(quoteForCmd('a&b'), '"a&b"', 'cmd operators are literal only inside quotes');
+    assert.equal(quoteForCmd('x|y>z'), '"x|y>z"');
+  });
+
+  test('launchPlan: a quoted PATH entry still finds the .exe', () => {
+    const exeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-xfam-q-'));
+    try {
+      fs.writeFileSync(path.join(exeDir, 'hostq.exe'), '');
+      const env = { PATH: `"${exeDir}"`, PATHEXT: '.EXE;.CMD' };
+      assert.deepEqual(launchPlan('hostq', 'win32', env), { file: path.join(exeDir, 'hostq.exe'), shell: false, promptFile: false });
+    } finally { fs.rmSync(exeDir, { recursive: true, force: true }); }
   });
 });

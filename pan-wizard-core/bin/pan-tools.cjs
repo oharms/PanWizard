@@ -732,7 +732,11 @@ async function main() {
       } else if (subcommand === 'requirements') {
         require('./lib/requirements-lint.cjs').cmdVerifyRequirements(cwd, raw);
       } else if (subcommand === 'traceability') {
-        require('./lib/requirements-lint.cjs').cmdVerifyTrace(cwd, args.slice(2).filter((a) => /^[A-Z][A-Z0-9]*-\d+$/.test(a)), raw);
+        const named = args.slice(2).filter((a) => !a.startsWith('--'));
+        const ids = named.filter((a) => /^[A-Z][A-Z0-9]*-\d+$/.test(a));
+        // A misspelt id (auth-01) must not silently trace every requirement instead.
+        if (ids.length < named.length) error(`verify traceability: not a requirement id: ${named.filter((a) => !ids.includes(a)).join(', ')} (expected e.g. AUTH-01)`);
+        require('./lib/requirements-lint.cjs').cmdVerifyTrace(cwd, ids, raw);
       } else if (subcommand === 'mutate') {
         mutate.cmdVerifyMutate(cwd, {
           phase: getArgValue(args, '--phase') || (args[2] && !args[2].startsWith('--') ? args[2] : null),

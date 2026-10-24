@@ -59,9 +59,10 @@ function git(cwd, args) {
   return r.stdout;
 }
 
-function defaultStateDir() {
-  const testDir = process.platform === 'win32' ? 'C:\\Project\\pantesting' : null;
-  return testDir && fs.existsSync(testDir) ? path.join(testDir, 'corpus-runs') : path.join(os.tmpdir(), 'pan-corpus-runs');
+function defaultStateDir(platform = process.platform, exists = fs.existsSync) {
+  const { TEST_ROOTS } = require('../src/run.cjs');
+  if (platform === 'win32') for (const root of TEST_ROOTS) if (exists(root)) return path.win32.join(root, 'corpus-runs');
+  return path.join(os.tmpdir(), 'pan-corpus-runs');
 }
 
 function parseArgs(argv) {
@@ -225,11 +226,13 @@ function judgePrompt(judge, entry, { lens = null, pass = null, model = null } = 
  * The judge's report: the session's reply when it carries a readable verdict, else a
  * judge-written file in the phase dir (a verification.md, a review) that does.
  */
-function readReport(ws, reply, agent) {
+function readReport(ws, reply, agent, sinceMs = 0) {
   if (parseVerdictText(String(reply || ''), { agent }).ok) return { report: String(reply), source: 'reply' };
   const dir = path.join(ws, PHASE_DIR);
   let names = [];
-  try { names = fs.readdirSync(dir).filter((n) => /\.md$/.test(n) && !/-(plan|summary)\.md$|^pass-/.test(n)).sort(); } catch { /* no phase dir */ }
+  // Only files this session wrote: with --lenses, an earlier pass's review is in the same dir.
+  const fresh = (n) => { try { return fs.statSync(path.join(dir, n)).mtimeMs >= sinceMs; } catch { return false; } };
+  try { names = fs.readdirSync(dir).filter((n) => /\.md$/.test(n) && !/-(plan|summary)\.md$|^pass-/.test(n) && fresh(n)).sort(); } catch { /* no phase dir */ }
   const pref = (n) => (/verification/.test(n) ? 0 : /meta/.test(n) ? 1 : 2);
   for (const n of names.sort((x, y) => pref(x) - pref(y))) {
     const text = fs.readFileSync(path.join(dir, n), 'utf8');
@@ -302,7 +305,7 @@ function runCorpus(entries, opts, log = (s) => process.stderr.write(s + '\n')) {
           cost += r.costUsd || 0; spent += charged;
           durationMs += r.durationMs != null ? r.durationMs : Date.now() - s0;
           if (r.code !== 0) { exit = r.code; stderr = String(r.stderr || '').slice(-300); }
-          passes.push(readReport(ws, r.stdout, agent));
+          passes.push(readReport(ws, r.stdout, agent, s0 - 2000));
         }
         let report; let source;
         if (opts.lenses > 1) {

@@ -4,7 +4,7 @@ Run the fast unit test suite for rapid development feedback.
 
 ## ⛔ Self-Protection Gate
 
-This is the PAN Wizard SOURCE REPOSITORY. Tests run here; installs go to `d:\pantesting`.
+This is the PAN Wizard SOURCE REPOSITORY. Tests run here; installs go to `C:\Project\pantesting`.
 
 ---
 
@@ -37,5 +37,5 @@ npm run test:all
 
 - Unit tests use OS temp directories — safe to run from source repo
 - Scenario tests use OS temp directories — also safe
-- Integration install testing MUST go to `d:\pantesting`
+- Integration install testing MUST go to `C:\Project\pantesting`
 - Expected: all tests passing, 0 failures (see CLAUDE.md counts table for the current total)

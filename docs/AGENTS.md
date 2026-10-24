@@ -9,7 +9,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 ## Table of Contents
 
 - [Agent Inventory](#agent-inventory)
-- [Squad model](#squad-model-v311-adr-0032)
+- [Squad model](#squad-model-adr-0032)
 - [Agent Lifecycle](#agent-lifecycle)
 - [Agent Architecture](#agent-architecture)
 - [Agent Deep Dives](#agent-deep-dives)
@@ -26,8 +26,8 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
   - [pan-integration-checker](#pan-integration-checker)
   - [pan-debugger](#pan-debugger)
 - [Model Profiles](#model-profiles)
-- [Cross-Phase Agent Memory](#cross-phase-agent-memory-e-4-since-v2100)
-- [Hierarchical Orchestration](#hierarchical-orchestration-v34)
+- [Cross-Phase Agent Memory](#cross-phase-agent-memory-e-4)
+- [Hierarchical Orchestration](#hierarchical-orchestration)
 - [Per-agent profile override](#per-agent-profile-override)
 - [How Agents Collaborate](#how-agents-collaborate)
 - [Parallel Execution Patterns](#parallel-execution-patterns)
@@ -55,7 +55,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | `pan-integration-checker` | Verifies cross-phase wiring and E2E flows | `/pan:milestone-audit` | Read, Bash, Grep, Glob | blue |
 | `pan-debugger` | Systematic bug investigation with persistent state | `/pan:debug`, native `/pan-diagnose-issues` script (Claude Code) | Read, Write, Edit, Bash, Grep, Glob, WebSearch | orange |
 
-### Spec B v2 agents (v3.0-v3.4)
+### Spec B v2 agents
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
@@ -66,7 +66,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | `pan-counterfactual` | Explores alternative phase approaches in isolated git worktree | `/pan:what-if` | Read, Write, Edit, Bash, Grep, Glob | purple |
 | `pan-conductor` | Top-level orchestrator for hierarchical exec — decomposes a phase, spawns sub-agents in waves, enforces safety harness | `/pan:exec-phase --hierarchical`, `/pan:army` | Read, Write, Bash, Glob, Grep, Task | orange |
 
-### Optimization agents (v3.5)
+### Optimization agents
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
@@ -79,7 +79,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 |-------|---------|-----------|-------|-------|
 | `pan-experiment-runner` | Drives an external AI coding session against an experiment folder. Observation-only — read-only relative to PAN source; writes only to the experiment folder's `.planning/`. Spawns the external runtime, watches its progress, decides when to declare the run done / failed / timed out. | — (no shipped command spawns it directly; `/pan:experiment run` drives the runtime through `runner.cjs`; listed among the tier-2 `workers` Mission Control may delegate to under `/pan:army`) | Read, Bash, Glob, Grep | orange |
 
-### Bot-army agents (v3.11, ADR-0032/0033)
+### Bot-army agents (ADR-0032/0033)
 
 | Agent | Purpose | Spawned by | Tools | Color |
 |-------|---------|-----------|-------|-------|
@@ -87,7 +87,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 
 ---
 
-## Squad model (v3.11, ADR-0032)
+## Squad model (ADR-0032)
 
 For a bot-army campaign (`/pan:army`), the agents are organized into role-scoped **squads** under the `pan-conductor` coordinator. A squad is a named grouping with an `access` label and a model tier; resolve it at runtime with `pan-tools squad list` / `squad show <name>` rather than hardcoding rosters.
 
@@ -671,16 +671,16 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 | pan-plan-checker | reasoning | reasoning | fast |
 | pan-integration-checker | reasoning | reasoning | fast |
 | pan-reviewer | reasoning | reasoning | fast |
-| pan-conductor (v3.4+) | reasoning | reasoning | mid |
-| pan-counterfactual (v3.3+) | reasoning | reasoning | mid |
-| pan-hardener (v3.2+) | reasoning | reasoning | fast |
-| pan-meta-reviewer (v3.2+) | reasoning | reasoning | fast |
-| pan-knowledge (v3.2+) | reasoning | reasoning | fast |
-| pan-previewer (v3.1+) | reasoning | reasoning | fast |
-| pan-optimizer (v3.5+) | reasoning | reasoning | fast |
-| pan-distiller (v3.5+) | reasoning | reasoning | fast |
+| pan-conductor | reasoning | reasoning | mid |
+| pan-counterfactual | reasoning | reasoning | mid |
+| pan-hardener | reasoning | reasoning | fast |
+| pan-meta-reviewer | reasoning | reasoning | fast |
+| pan-knowledge | reasoning | reasoning | fast |
+| pan-previewer | reasoning | reasoning | fast |
+| pan-optimizer | reasoning | reasoning | fast |
+| pan-distiller | reasoning | reasoning | fast |
 | pan-experiment-runner | reasoning | reasoning | fast |
-| pan-release (v3.11+) | reasoning | reasoning | fast |
+| pan-release | reasoning | reasoning | fast |
 
 **Resolution order** (`resolveModelDetailed()` in `core.cjs`): a `model_overrides` entry for the agent wins, then a per-phase tier from the roadmap, then the profile column above (an agent missing from the table gets `mid`, unadjusted). Only a profile-derived tier is then adjusted — by `routing.strategy: complexity`, by the capability hints below, and on a retry (`attempt > 1`) by escalation toward the agent's `quality` tier; a pinned tier is never adjusted.
 
@@ -691,7 +691,7 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 - **budget is the opt-in cheap mode** — mid for the planning, orchestration and code-writing agents, fast for research, review, verification and the utility agents; choose it explicitly for high-volume work.
 - Tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:settings --profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` (unset → `inherit`).
 
-### Reasoning effort (adaptive-thinking era, v3.9.0+)
+### Reasoning effort (adaptive-thinking era)
 
 Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the within-model reasoning-depth dial on current models, consumed natively by Claude Code. Codex maps it to its native `model_reasoning_effort` field (`convertClaudeAgentToCodexToml`); OpenCode, Gemini CLI and Copilot CLI get an effort-scaled prose preamble injected by the installer (`stripThinkingFrontmatter`; legacy `thinking_budget` directives still translate via a budget→effort mapping). `pan-tools resolve-model` reports a profile-adjusted effort: `budget` steps each agent down one level (floor `low`), and `.planning/config.json → effort_overrides` wins (`resolveEffortInternal()`). No spawn applies it: an agent spawned under its own type runs at the `effort:` in its own file, and on Claude Code a `general-purpose` spawn that only reads the file (`/pan:new-project`'s researchers, `/pan:plan-phase`'s researcher and planner, `/pan:plan-phase --research-only`'s researcher, `/pan:quick`'s revision planner) does not get that `effort:` at all.
 
@@ -699,18 +699,18 @@ Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the 
 |-------|--------|-----------|
 | `pan-plan-checker` | xhigh | Highest — catching logic gaps before execution avoids the most rework |
 | `pan-debugger` | xhigh | Hypothesis-tree generation and Bayesian prior ranking |
-| `pan-conductor` (v3.4+) | xhigh | Decomposition + safety-harness enforcement decisions |
+| `pan-conductor` | xhigh | Decomposition + safety-harness enforcement decisions |
 | `pan-designer` | xhigh | Architecture, ADR, and threat-lite design before planning |
 | `pan-design-checker` | xhigh | Independent design verification before planning |
 | `pan-verifier` | high | Goal-backward analysis across phase artifacts |
 | `pan-integration-checker` | high | Cross-phase wiring verification |
-| `pan-previewer` (v3.1+) | high | Multi-mode synthesis of structured foresight inputs |
-| `pan-hardener` (v3.2+) | high | Threat-model reasoning across OWASP + STRIDE frameworks |
-| `pan-counterfactual` (v3.3+) | high | Comparison reasoning in isolated worktree |
-| `pan-release` (v3.11+) | high | Release-safety judgment: merge readiness, rollback targets |
+| `pan-previewer` | high | Multi-mode synthesis of structured foresight inputs |
+| `pan-hardener` | high | Threat-model reasoning across OWASP + STRIDE frameworks |
+| `pan-counterfactual` | high | Comparison reasoning in isolated worktree |
+| `pan-release` | high | Release-safety judgment: merge readiness, rollback targets |
 | `pan-reviewer` | medium | Convention + security review on changed files |
-| `pan-meta-reviewer` (v3.2+) | medium | Cross-check of reviewer + hardener output |
-| `pan-knowledge` (v3.2+) | medium | Retrieval ranking + citation synthesis |
+| `pan-meta-reviewer` | medium | Cross-check of reviewer + hardener output |
+| `pan-knowledge` | medium | Retrieval ranking + citation synthesis |
 | `pan-planner` | xhigh | Task decomposition, wave assignment and decision traces |
 | `pan-executor` | high | Thorough but bounded implementation of one plan |
 | `pan-roadmapper` | high | Phase breakdown against requirements |
@@ -724,7 +724,7 @@ Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the 
 
 The table mirrors `AGENT_BASE_EFFORT` in `core.cjs`; an agent absent from it resolves to `medium` (`resolveEffortInternal`). The older `THINKING_BUDGETS` table in `constants.cjs` is no longer consumed by any code path.
 
-### Capability-aware routing (E-7, since v2.10.0)
+### Capability-aware routing (E-7)
 
 The tier resolved by profile can be adjusted by capability hints passed as `pan-tools resolve-model <agent> --metadata '{"context_estimate":…,"needs_thinking":…,"cache_warm":…}'` (applied by `adjustTierForCapabilities` in `core.cjs`):
 
@@ -736,7 +736,7 @@ See `/pan:settings --profile` for the full decision tree.
 
 ---
 
-## Cross-Phase Agent Memory (E-4, since v2.10.0)
+## Cross-Phase Agent Memory (E-4)
 
 Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<agent>.md` managed by the `memory.cjs` core module.
 
@@ -762,7 +762,7 @@ Since v2.10.0, each agent has an append-only memory log at `.planning/memory/<ag
 
 ---
 
-## Hierarchical Orchestration (v3.4+)
+## Hierarchical Orchestration
 
 Since v3.4.0, `/pan:exec-phase <N> --hierarchical` spawns `pan-conductor` as a top-level orchestrator that decomposes the phase and spawns sub-agents (executors, reviewers, verifiers) in waves. **This is opt-in behind a flag, not the default.** Flat exec remains the standard path.
 
@@ -791,7 +791,7 @@ Since v3.4.0, `/pan:exec-phase <N> --hierarchical` spawns `pan-conductor` as a t
 
 See [commands/pan/exec-phase.md](../commands/pan/exec-phase.md) for the flag documentation, and [agents/pan-conductor.md](../agents/pan-conductor.md) for the agent's full contract including decomposition strategy.
 
-### Campaign mode (the army coordinator, v3.11, ADR-0033)
+### Campaign mode (the army coordinator, ADR-0033)
 
 When invoked by `/pan:army`, `pan-conductor` runs as **Mission Control** for a whole-project campaign rather than a single phase — same safety harness, wider scope. In this mode it delegates to **squads, not bare agents**, resolving the roster at runtime via `pan-tools squad list` / `squad show <name>`. Each mission is routed to the squad that owns its lifecycle role: Architecture (design), Build (code, read/write/bash), Quality (adversarial review), Release (`pan-release`, always-ask). Those role labels are the contract the conductor's prompt assigns — `squads.cjs` publishes them as advisory metadata and "changes no execution path", so the binding grant stays each agent's own `tools:` frontmatter.
 

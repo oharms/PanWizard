@@ -59,6 +59,7 @@ describe('S6: the run, with stand-in steps', () => {
   function runWith(over) {
     const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-dogfood-ws-'));
     dirs.push(ws);
+    if (over && over.worktreeHook) over.worktreeHook(ws);
     const ops = {
       pack: () => ({ ok: true, packageDir: path.join(ws, 'pkg') }),
       worktree: () => ({ ok: true }),
@@ -108,6 +109,27 @@ describe('S6: the run, with stand-in steps', () => {
     assert.equal(r.outcome, 'refused');
     assert.equal(r.reason, 'session_failed');
     assert.equal(r.detail, 'error: unknown option');
+  });
+
+  test('a session that exits non-zero after its verification passed is scope-checked, not refused', () => {
+    // claude -p exits 1 on reaching --max-budget-usd, which can come after the work is verified.
+    let wsDir = null;
+    const r = runWith({ session: () => {
+      const d = path.join(wsDir, '.planning', 'quick', '1-fix'); fs.mkdirSync(d, { recursive: true });
+      fs.writeFileSync(path.join(d, '1-verification.md'), '---\nstatus: passed\n---\n');
+      return { ok: false, usd: 3, reason: 'error_max_budget_usd' };
+    }, worktreeHook: (ws) => { wsDir = ws; } });
+    assert.equal(r.outcome, 'kept');
+    assert.equal(r.verification, 'passed');
+  });
+
+  test('a step that throws still ends through finish: logout, record and cleanup run', () => {
+    const calls = [];
+    const r = runWith({ login: () => { throw new Error('EPERM: scratch locked'); }, logout: () => { calls.push('logout'); return 'none'; }, record: () => calls.push('record'), cleanup: () => calls.push('cleanup') });
+    assert.equal(r.outcome, 'refused');
+    assert.equal(r.reason, 'login_failed');
+    assert.equal(r.detail, 'EPERM: scratch locked');
+    assert.deepEqual(calls, ['logout', 'record', 'cleanup']);
   });
 
   test('no passing verification, no branch', () => {

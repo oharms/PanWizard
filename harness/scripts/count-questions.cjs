@@ -4,23 +4,30 @@
  * Harness `sh` step (program P1): how many clarifying questions did one questioning session
  * ask? Reads the step records the runner kept for this scenario's rep
  * (`<run>/steps/<scenario>-<rep>-<step>.json`, the model step and each scripted-user turn)
- * and counts, per reply, the lines that end in a question mark. The budget in
+ * and counts, per reply, the lines that ask a question (ending in a question mark, or a
+ * numbered item holding one with more text after it). The budget in
  * references/questioning.md is at most five per session.
  *
  *   node count-questions.cjs <workspace> <scenario id> [--max 5]
  *
  * Prints JSON `{ questions, rounds, per_round, max_per_round, max, within_budget,
  * context_written }` and exits 0 when the records were found (the expect list judges the
- * numbers), 1 when there were none to read. A heuristic: a question asked mid-line that does
- * not end the line is missed, a rhetorical one is counted; the per-round list is in the
+ * numbers), 1 when there were none to read. A heuristic: a question asked mid-line outside a
+ * numbered item is missed, a rhetorical one is counted; the per-round list is in the
  * output so a reader can check it against the step records.
  */
 const fs = require('fs');
 const path = require('path');
 
-/** Lines of a reply that end in a question mark (markdown emphasis and quotes allowed after it). Pure. */
+/**
+ * Lines of a reply that ask a question: those that end in a question mark (markdown emphasis
+ * and quotes allowed after it), and numbered items that hold one with more text after it
+ * (`**1. Which delimiter?** This decides the encoding.`). Pure.
+ */
 function questionLines(text) {
-  return String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => /\?[*_`"')\]]*\s*$/.test(l));
+  const ends = /\?[*_`"')\]]*\s*$/;
+  const numbered = /^[*_]*\d+[.)][*_]*\s.*\?/;
+  return String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => ends.test(l) || numbered.test(l));
 }
 
 /** The rep a workspace belongs to: `<id>-<rep>` when the run had reps, else 1. Pure. */

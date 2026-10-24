@@ -71,7 +71,7 @@ function buildPrompt(cwd, phase) {
 function launchPlan(bin, platform = process.platform, env = process.env) {
   if (platform !== 'win32') return { file: bin, shell: false, promptFile: false };
   const exts = String(env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean).map((e) => e.toLowerCase());
-  for (const dir of String(env.PATH || env.Path || '').split(path.delimiter).filter(Boolean)) {
+  for (const dir of String(env.PATH || env.Path || '').split(path.delimiter).map((d) => d.trim().replace(/^"(.*)"$/, '$1')).filter(Boolean)) {
     for (const ext of exts) {
       const p = path.join(dir, bin + ext);
       if (!fs.existsSync(p)) continue;
@@ -82,10 +82,13 @@ function launchPlan(bin, platform = process.platform, env = process.env) {
   return { file: bin, shell: true, promptFile: true };
 }
 
-/** One argument for cmd.exe's command line: quoted when it holds whitespace or a quote. Pure. */
+/**
+ * One argument for cmd.exe's command line: quoted when it holds whitespace, a quote or one of
+ * cmd's operators (& | < > ^), which are literal inside quotes. Pure.
+ */
 function quoteForCmd(arg) {
   const s = String(arg);
-  return /[\s"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return /[\s"&|<>^]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 function parseVerdict(text) {

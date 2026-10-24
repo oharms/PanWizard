@@ -181,6 +181,7 @@ builder therefore ships each longer skill as a short `SKILL.md` that points at
 `references/instructions.md` in the same directory (ADR-0045 D9). Re-probed live,
 the pointer page reaches the model whole.
 
-Anything on Antigravity (no CLI on the machine that built the bundle) has not run,
-so treat the vendor directories as conformance-tested rather than field-verified
-beyond those gates.
+Nothing has run on Cursor or Kiro (no harness gate covers them) or on Antigravity
+(`live-gate-antigravity` skips without its CLI, and the bundle emits no Antigravity
+variant), so treat the vendor directories as conformance-tested rather than
+field-verified beyond those gates.

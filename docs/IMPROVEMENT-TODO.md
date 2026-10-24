@@ -147,7 +147,7 @@ Remaining (open):
 
 ### P2: Hook Build Naming and Dependency Cleanup — DONE
 
-> **Status:** copy-only chosen. `build:hooks` copies the hooks listed in `HOOKS_TO_COPY` (`scripts/build-hooks.js`) to `hooks/dist/`; ARCHITECTURE, DEVELOPMENT, HOOKS and CONTRIBUTING all say so; no bundler remains in `devDependencies` (only the VS Code e2e harness).
+> **Status:** copy-only chosen. `build:hooks` copies the hooks listed in `HOOKS_TO_COPY` (`scripts/build-hooks.js`) to `hooks/dist/`; ARCHITECTURE, DEVELOPMENT, HOOKS and CONTRIBUTING all say so; no bundler remains in `devDependencies` (only `@playwright/test` and `@vscode/test-electron`).
 
 Current issue: docs and dependencies imply hooks are compiled with esbuild, but the build script currently copies pure Node.js files.
 
@@ -164,9 +164,9 @@ Acceptance criteria:
 - Build docs, script behavior, and dependencies agree.
 - Contributors do not need to infer whether hook files are copied or bundled.
 
-### P2: Package Documentation Policy — open (policy implicit)
+### P2: Package Documentation Policy — DONE
 
-> **Status:** the `files` allowlist in `package.json` ships `bin`, `commands`, `agents`, `pan-wizard-core` (minus internal learnings), `hooks/dist`, `scripts`, `assets` and `pan-zcode`; `docs/` is not in the package and the README's Documentation table links to `docs/` by relative path, which resolves on GitHub but not in an installed package. That is the de-facto policy; making it explicit in the README remains open. `tests/package-contract.test.cjs` now asserts that `files` is an explicit allowlist that keeps `dist`, `harness`, `marketplace` and `tests` out of the package; the rest of the list is not pinned.
+> **Status:** decided yes (`2026-10-22`): the `files` allowlist in `package.json` now ships `docs/` (minus the brand images under `docs/branding/assets/`) and `CHANGELOG.md` beside `bin`, `commands`, `agents`, `pan-wizard-core` (minus internal learnings), `hooks/dist`, `scripts`, `assets` and `pan-zcode`, so the README's relative `docs/` links resolve in an installed package too. `tests/package-contract.test.cjs` asserts that `files` is an explicit allowlist that keeps `dist`, `harness`, `marketplace` and `tests` out, and that `docs/` and `CHANGELOG.md` ship without the brand images.
 
 Current issue: the npm package includes `README.md` automatically, but not the full `docs/` directory. That may be intentional, but the policy should be explicit.
 
@@ -210,7 +210,7 @@ Reference: Claude Code's `/goal` ([docs](https://code.claude.com/docs/en/goal)) 
 
 ## Suggested Execution Order
 
-> Shipped except: the dispatcher split (P2 decomposition), the copy-failure regression test (P0 manifest verification), the explicit package-docs policy (P2), and the optional LLM evaluator (P2, ADR awaiting review) — see the statuses above. Kept for the record.
+> Shipped except: the dispatcher split (P2 decomposition), the copy-failure regression test (P0 manifest verification) and the optional LLM evaluator (P2, ADR awaiting review) — see the statuses above. Kept for the record.
 
 1. Add runtime artifact ignore rules and clean stale local artifacts.
 2. Fix or remove stale test-result files.

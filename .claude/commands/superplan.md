@@ -5,7 +5,7 @@ Generate a comprehensive work plan for PAN Wizard development. $ARGUMENTS
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. The plan covers development of PAN itself.
-Installation testing goes to `d:\pantesting`.
+Installation testing goes to `C:\Project\pantesting`.
 
 ---
 

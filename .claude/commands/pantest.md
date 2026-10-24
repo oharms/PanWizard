@@ -8,7 +8,7 @@ This is the PAN Wizard SOURCE REPOSITORY.
 - Unit tests: `npm test` (tests/*.test.cjs)
 - Scenario tests: `npm run test:scenarios` (tests/scenarios/*.test.cjs)
 - All: `npm run test:all`
-- Install verification goes to `d:\pantesting`
+- Install verification goes to `C:\Project\pantesting`
 
 ---
 

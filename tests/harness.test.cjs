@@ -1263,3 +1263,27 @@ describe('workspace names are valid folder names on Windows (workspaceName)', ()
   });
 });
 
+
+describe('agent variants are written as the installer writes agents (installedAgentText)', () => {
+  const { installedAgentText, variantArm } = require('../harness/src/run.cjs');
+  const { installInto, withFakeHome, cleanup } = require('./helpers.cjs');
+  test('the transform of a source agent equals the file a local install writes', () => {
+    withFakeHome(() => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-variant-install-'));
+      try {
+        const r = installInto(dir, ['--claude', '--local']);
+        assert.ok(r.success, r.error);
+        for (const agent of ['pan-verifier', 'pan-reviewer', 'pan-meta-reviewer']) {
+          const src = fs.readFileSync(path.join(__dirname, '..', 'agents', `${agent}.md`), 'utf8');
+          const installed = fs.readFileSync(path.join(dir, '.claude', 'agents', `${agent}.md`), 'utf8');
+          assert.equal(installedAgentText(src), installed, agent);
+        }
+      } finally { cleanup(dir); }
+    });
+  });
+  test('a variant saved from the source tree loses its ~/.claude/ references (V8 arm, 2026-10-24)', () => {
+    const v = variantArm(path.join(__dirname, '..'), { path: '.claude/agents/pan-verifier.md', file: 'harness/variants/pan-verifier.pre-v8.md' });
+    assert.equal((v.write.content.match(/~\/\.claude\//g) || []).length, 0);
+    assert.equal(installedAgentText(v.write.content), v.write.content, 'idempotent');
+  });
+});

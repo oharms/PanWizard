@@ -78,6 +78,12 @@ describe('verify traceability: the truth→test matrix (V8)', () => {
     assert.equal(cli.status, 0, cli.stderr);
     assert.deepEqual(JSON.parse(cli.stdout).requirements.map((r) => [r.id, r.status]), [['AUTH-01', 'passed']]);
   });
+
+  test('a misspelt id is an error, not a trace of every requirement', () => {
+    const cli = spawnSync(process.execPath, [TOOLS_PATH, 'verify', 'traceability', 'auth-01'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(cli.status, 1);
+    assert.match(cli.stderr, /not a requirement id: auth-01/);
+  });
 });
 
 describe('phase complete ticks a requirement only on passing tests (V8)', () => {

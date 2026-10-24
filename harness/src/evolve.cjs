@@ -183,10 +183,9 @@ function checkCoverage(split, agent) {
   return { training: tr, heldout: ho };
 }
 
-/** An agent's source text as a local Claude install writes it (bin/install.js agent copy). */
+/** An agent's source text as a local Claude install writes it: run.cjs installedAgentText, the installer's own rewrites. */
 function toInstalled(content) {
-  const prefix = './.claude/';
-  return content.replace(/~\/\.claude\//g, prefix).replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${prefix}pan-wizard-core/bin/pan-tools.cjs`);
+  return require('./run.cjs').installedAgentText(content);
 }
 
 function rate(scores) {
@@ -329,7 +328,8 @@ function defaultEvolveOps(root) {
           '--repeat', String(repeat), '--max-usd', String(capUsd), '--no-ledger', '--state-dir', state, '--variant', `${installedPath}=${variantFile}`];
         spawnSync(process.execPath, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], timeout: 12 * 60 * 60 * 1000 });
         const dir = fs.readdirSync(state).find((d) => fs.existsSync(path.join(state, d, 'report.json')));
-        if (!dir) return { error: 'no report.json from run.cjs', scores: {}, failures: [], usd: 0 };
+        // No report: what the run spent is unknown, so the whole cap counts against the approval.
+        if (!dir) return { error: 'no report.json from run.cjs', scores: {}, failures: [], usd: capUsd };
         return readReport(JSON.parse(fs.readFileSync(path.join(state, dir, 'report.json'), 'utf8')));
       } finally { fs.rmSync(state, { recursive: true, force: true }); }
     },

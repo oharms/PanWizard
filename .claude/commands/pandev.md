@@ -7,7 +7,7 @@ Structured development workflow with batch planning, verification gates, and pro
 This is the PAN Wizard SOURCE REPOSITORY.
 - Tests run here: `npm test`, `npm run test:all`
 - Build hooks here: `npm run build:hooks`
-- Install testing goes to `d:\pantesting`
+- Install testing goes to `C:\Project\pantesting`
 - NEVER run installer from this directory
 
 ---
@@ -70,7 +70,7 @@ This is the PAN Wizard SOURCE REPOSITORY.
 ### Verification
 - [ ] npm test passes
 - [ ] npm run test:all passes
-- [ ] Install to d:\pantesting works (if installer changed)
+- [ ] Install to C:\Project\pantesting works (if installer changed)
 ```
 
 ### Phase 3: Implement
@@ -96,8 +96,8 @@ npm run test:all
 
 ### Phase 7: Install Verify (if installer/shipped files changed)
 ```powershell
-cd d:\pantesting
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+cd C:\Project\pantesting
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 

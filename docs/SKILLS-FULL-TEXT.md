@@ -6625,7 +6625,7 @@ Audit a PAN Wizard feature for completeness and correctness: $ARGUMENTS
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. Audits examine source code here.
-Installation verification goes to `d:\pantesting`.
+Installation verification goes to `C:\Project\pantesting`.
 
 ---
 
@@ -6684,7 +6684,7 @@ Does the feature work for all 5 runtimes?
 ### 2.5 Install Verification
 Test the feature end-to-end:
 ```powershell
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --all --local
 # Then verify the feature in the installed output
 ```
@@ -6725,7 +6725,7 @@ Copy the PAN Wizard hook scripts to `hooks/dist/`. PAN's hooks are pure Node.js 
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. NEVER run `node bin/install.js` from here.
-Installation testing goes to `d:\pantesting`.
+Installation testing goes to `C:\Project\pantesting`.
 
 ---
 
@@ -6780,7 +6780,7 @@ Verify PAN Wizard works across all supported platforms and runtimes.
 
 ## ⛔ Self-Protection Gate
 
-This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `d:\pantesting`.
+This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `C:\Project\pantesting`.
 
 ---
 
@@ -6804,7 +6804,7 @@ This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `d:\pante
 
 4. **Verify all 5 runtimes** install correctly:
    ```powershell
-   cd d:\pantesting
+   cd C:\Project\pantesting
    node d:\PanWizard\bin\install.js --claude --local
    node d:\PanWizard\bin\install.js --codex --local
    node d:\PanWizard\bin\install.js --gemini --local
@@ -6848,7 +6848,7 @@ Verify that PAN Wizard features actually work, not just exist.
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. NEVER install PAN here.
-Installation verification goes to `d:\pantesting`.
+Installation verification goes to `C:\Project\pantesting`.
 
 ---
 
@@ -6885,7 +6885,7 @@ Installation verification goes to `d:\pantesting`.
    Exits non-zero on errors; warnings are advisory.
 7. **Manual verification** if needed — install to test directory:
    ```powershell
-   cd d:\pantesting && node d:\PanWizard\bin\install.js --all --local
+   cd C:\Project\pantesting && node d:\PanWizard\bin\install.js --all --local
    ```
 8. **Report** verified vs. failing features with evidence
 
@@ -6906,10 +6906,10 @@ Verify all 5 runtimes install correctly:
 
 ```powershell
 # Clean slate
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 
 # Install each runtime
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --claude --local
 node d:\PanWizard\bin\install.js --codex --local
 node d:\PanWizard\bin\install.js --gemini --local
@@ -7462,7 +7462,7 @@ Execute items from the current work plan with capacity budgeting. $ARGUMENTS
 
 This is the PAN Wizard SOURCE REPOSITORY.
 - Unit tests run here: `npm test`, `npm run test:all`
-- Installation testing MUST go to `d:\pantesting`
+- Installation testing MUST go to `C:\Project\pantesting`
 - NEVER run installer from this directory
 
 ---
@@ -7484,7 +7484,7 @@ Stage 1: SESSION START → Load context, check status
 Stage 2: PLAN LOADING → Find active plan, select items by budget
 Stage 3: EXECUTION → Implement with read→understand→code→test cadence
 Stage 4: VERIFICATION → Run full test suite
-Stage 5: INSTALL CHECK → Verify installer still works (d:\pantesting)
+Stage 5: INSTALL CHECK → Verify installer still works (C:\Project\pantesting)
 Stage 6: SESSION END → Commit, generate summary
 ```
 
@@ -7530,7 +7530,7 @@ When changing installer or core logic, verify all runtime targets:
 ### Rule 6: Verify Install (MANDATORY)
 After changes to installer or shipped files:
 ```powershell
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --all --local
 ```
 
@@ -7565,8 +7565,8 @@ All tests must pass. If not, fix before proceeding.
 
 ### Stage 5: Install Check
 ```powershell
-cd d:\pantesting
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+cd C:\Project\pantesting
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 Verify installed files are correct.
@@ -7768,7 +7768,7 @@ this command files can never be re-proposed by `/market-ideas`, and vice versa.
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY, and it is **public**. NEVER run `bin/install.js` here, never create
-`.planning/` here. Probes that need an install go to `d:\pantesting`. Nothing this command writes may carry a client
+`.planning/` here. Probes that need an install go to `C:\Project\pantesting`. Nothing this command writes may carry a client
 codename or content from an external client project (the no-external-project-harvest rule in project memory).
 
 ---
@@ -7847,7 +7847,7 @@ LOW/NONE items get a row and nothing else. Do not pad: a run with zero ADD/ENHAN
 - A verb exists only if it is **wired end to end**: module function → dispatcher `case` arm → a row in
   `tests/fixtures/surface.json` (`node scripts/test-surface.cjs --map` shows it). A per-runtime feature exists only for
   the runtimes whose install path emits it — say which of the five.
-- Where it is cheap (≤ ~2 min), **probe it**: `node pan-wizard-core/bin/pan-tools.cjs <verb> … --cwd d:/pantesting/<dir>`,
+- Where it is cheap (≤ ~2 min), **probe it**: `node pan-wizard-core/bin/pan-tools.cjs <verb> … --cwd C:/Project/pantesting/<dir>`,
   or a scratchpad script that `require`s the module (use `D:/…` paths — `/d/…` does not resolve in Node). Never probe
   against this repo's own tree. Record the command and its output.
 - Absence claims: canary the grep (search for a name you know exists with the same pattern) before trusting "No matches".
@@ -8004,7 +8004,7 @@ This skill is the sibling of `/reality-check`. That one asks *where does PAN sta
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. Reading, triage and doc writing happen here.
-NEVER run `bin/install.js` from this directory. NEVER create `.planning/` here. Any `pan-tools` call with `--cwd` goes to `d:\pantesting`. This skill needs no install at all — if you find yourself installing, you have drifted into `/reality-check`'s job.
+NEVER run `bin/install.js` from this directory. NEVER create `.planning/` here. Any `pan-tools` call with `--cwd` goes to `C:\Project\pantesting`. This skill needs no install at all — if you find yourself installing, you have drifted into `/reality-check`'s job.
 
 ---
 
@@ -8232,7 +8232,7 @@ Structured development workflow with batch planning, verification gates, and pro
 This is the PAN Wizard SOURCE REPOSITORY.
 - Tests run here: `npm test`, `npm run test:all`
 - Build hooks here: `npm run build:hooks`
-- Install testing goes to `d:\pantesting`
+- Install testing goes to `C:\Project\pantesting`
 - NEVER run installer from this directory
 
 ---
@@ -8295,7 +8295,7 @@ This is the PAN Wizard SOURCE REPOSITORY.
 ### Verification
 - [ ] npm test passes
 - [ ] npm run test:all passes
-- [ ] Install to d:\pantesting works (if installer changed)
+- [ ] Install to C:\Project\pantesting works (if installer changed)
 ```
 
 ### Phase 3: Implement
@@ -8321,8 +8321,8 @@ npm run test:all
 
 ### Phase 7: Install Verify (if installer/shipped files changed)
 ```powershell
-cd d:\pantesting
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+cd C:\Project\pantesting
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 
@@ -8369,7 +8369,7 @@ This is the PAN Wizard SOURCE REPOSITORY.
 - Unit tests: `npm test` (tests/*.test.cjs)
 - Scenario tests: `npm run test:scenarios` (tests/scenarios/*.test.cjs)
 - All: `npm run test:all`
-- Install verification goes to `d:\pantesting`
+- Install verification goes to `C:\Project\pantesting`
 
 ---
 
@@ -8518,7 +8518,7 @@ Run the fast unit test suite for rapid development feedback.
 
 ## ⛔ Self-Protection Gate
 
-This is the PAN Wizard SOURCE REPOSITORY. Tests run here; installs go to `d:\pantesting`.
+This is the PAN Wizard SOURCE REPOSITORY. Tests run here; installs go to `C:\Project\pantesting`.
 
 ---
 
@@ -8551,7 +8551,7 @@ npm run test:all
 
 - Unit tests use OS temp directories — safe to run from source repo
 - Scenario tests use OS temp directories — also safe
-- Integration install testing MUST go to `d:\pantesting`
+- Integration install testing MUST go to `C:\Project\pantesting`
 - Expected: all tests passing, 0 failures (see CLAUDE.md counts table for the current total)
 ````
 
@@ -8574,7 +8574,7 @@ This skill is the repeatable form of the reviews that produced `docs/ECOSYSTEM-R
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. Analysis and doc writing happen here.
-Every install, harness run, or `pan-tools` invocation with `--cwd` goes to `d:\pantesting`. NEVER run `bin/install.js` from this directory. NEVER create `.planning/` here.
+Every install, harness run, or `pan-tools` invocation with `--cwd` goes to `C:\Project\pantesting`. NEVER run `bin/install.js` from this directory. NEVER create `.planning/` here.
 
 ---
 
@@ -8605,11 +8605,11 @@ Execute every phase that the flags leave enabled. Do NOT stop between phases. Th
 2. **Model names in live docs are written by capability, not version.** `tests/model-version-drift.test.cjs` rejects version-pinned model names in `docs/` and `README.md`. Dated `docs/ECOSYSTEM-REVIEW-YYYY-MM.md` files, `docs/specs/*`, ADRs, CHANGELOG and `docs/IMPROVEMENT-TODO.md` are among the exempt files — the review doc MAY name versions; the pointers you add to evergreen docs MAY NOT.
 3. **A status column is a claim, not evidence.** Every "Done", "Shipped", "Closed" inherited from an older plan is re-verified by grep or by running the thing. The August review found two MCP resources dead since their first milestone because every test injected a fake spawn; a superplan item can be marked done and still be wrong.
 4. **Primary sources only for market claims.** Official docs, changelogs, spec repos, pricing pages. Aggregators, blog posts and marketplace self-reported figures are **secondary** and flagged as such. Each external claim carries `source URL · date read`. A changelog line is a release note, **not a tested claim** — say which.
-5. **Measure the emitted artifact, not the source.** Skill body sizes are measured on `.agents/skills/*/SKILL.md` after an install (the adapter header adds tokens). MCP resources are read through the **real engine**, not the protocol layer. Installed config paths are checked on disk in `d:\pantesting`, where a dead path looks exactly like a live one until you read it.
-6. **Enumeration traps on record.** `grep "name: 'pan-…'"` over `bin/install-lib.cjs` also matches the plugin manifest; `sed`/`awk` ranges over `buildNativeWorkflowScripts` close early on a `}` inside a template literal — read by line number. `.planning/` gets created wherever a `pan-tools` verb runs with `--cwd .` — always `cd d:/pantesting` first.
+5. **Measure the emitted artifact, not the source.** Skill body sizes are measured on `.agents/skills/*/SKILL.md` after an install (the adapter header adds tokens). MCP resources are read through the **real engine**, not the protocol layer. Installed config paths are checked on disk in `C:\Project\pantesting`, where a dead path looks exactly like a live one until you read it.
+6. **Enumeration traps on record.** `grep "name: 'pan-…'"` over `bin/install-lib.cjs` also matches the plugin manifest; `sed`/`awk` ranges over `buildNativeWorkflowScripts` close early on a `}` inside a template literal — read by line number. `.planning/` gets created wherever a `pan-tools` verb runs with `--cwd .` — always `cd C:/Project/pantesting` first.
 7. **Never propose retiring what the "What not to do" list protects** without a new finding that overturns the recorded reason. The list is carried forward in Phase 5 and re-affirmed item by item.
 8. **No secrets leave the machine.** This skill reads public docs; it never posts anything, never opens PRs, never pushes. `--write` writes files in the checkout and nothing else.
-9. **Run the installed engine from the install directory.** `cd d:/pantesting/<run>` before any `node .claude/pan-wizard-core/...` call: the same relative path typed from the source root resolves against the source tree, fails, and looks like a product error. Measure footprints there too — a `cd` in the middle of a compound command silently re-roots every `find` after it. And `npm run harness` appends to the tracked `harness/ledger.jsonl`; that diff is expected, list it.
+9. **Run the installed engine from the install directory.** `cd C:/Project/pantesting/<run>` before any `node .claude/pan-wizard-core/...` call: the same relative path typed from the source root resolves against the source tree, fails, and looks like a product error. Measure footprints there too — a `cd` in the middle of a compound command silently re-roots every `find` after it. And `npm run harness` appends to the tracked `harness/ledger.jsonl`; that diff is expected, list it.
 10. **A scout's number is a lead until a second read of the raw page agrees.** On `2026-09-22` a scout reported a new model's prices at double the page and a Codex default that moved the same day; both were caught only because the queue re-read the raw pricing arrays before writing a rate row. Before encoding any price, default model id or event name, re-read it from the raw primary text (curl the page, parse the table or the embedded JSON) on the day you write it.
 11. **A runtime-integration test derived from PAN's own table agrees with PAN, not with the runtime.** Every Gemini hook test passed while Gemini skipped three of PAN's four hook keys, because the tests read their event names from `HOOK_EVENT_MAP`. Check emitted config against the runtime's documented vocabulary (`tests/fixtures/hook-vocabulary.json`) and emitted model ids against its documented defaults (`tests/fixtures/documented-default-models.json`), and add a fixture of the same kind for any new integration surface.
 
@@ -8697,7 +8697,7 @@ Rules: read the source the claim points at, do not infer from the doc. A claim t
 Mirror the harness's artifact-first rule: install from a **packed** tarball, never from the source tree.
 
 ```bash
-cd d:/pantesting && rm -rf reality-check && mkdir reality-check && cd reality-check
+cd C:/Project/pantesting && rm -rf reality-check && mkdir reality-check && cd reality-check
 npm pack d:/PanWizard --pack-destination . >/dev/null && tar -xzf pan-wizard-*.tgz
 git init -q . && node package/bin/install.js --claude --codex --gemini --opencode --copilot --local
 ```
@@ -8856,8 +8856,8 @@ One paragraph, with evidence: did the window's changes move the market **onto** 
 ```bash
 # description budget: what every session loads before doing anything
 node -e "…sum chars of the description: line across commands/pan/*.md and agents/*.md, /4 → tokens…"
-# body budget offenders — measure the EMITTED skill after an install in d:/pantesting with --unified-skills
-for f in d:/pantesting/reality-check/.agents/skills/*/SKILL.md; do t=$(( $(wc -c < "$f") / 4 )); [ $t -gt 5000 ] && printf "%6d  %s\n" "$t" "$f"; done | sort -rn
+# body budget offenders — measure the EMITTED skill after an install in C:/Project/pantesting with --unified-skills
+for f in C:/Project/pantesting/reality-check/.agents/skills/*/SKILL.md; do t=$(( $(wc -c < "$f") / 4 )); [ $t -gt 5000 ] && printf "%6d  %s\n" "$t" "$f"; done | sort -rn
 ```
 
 Cross-check with `/skill-doctor` if a live Claude Code session is available (it reports unused loaded skills and their context cost). Read ADR-0044 and the `context-budget` verb's `cache` section: is the cache posture PAN recommends still the right one for the current default model's cache pricing and the runtime's per-bucket TTL controls?
@@ -8865,7 +8865,7 @@ Cross-check with `/skill-doctor` if a live Claude Code session is available (it 
 ### 4.2 Install footprint and duplication
 
 ```bash
-cd d:/pantesting/reality-check && for d in .claude .codex .gemini .opencode .github .agents; do [ -d $d ] && echo "$d: $(find $d -type f | wc -l) files, $(du -sk $d | cut -f1) KB"; done
+cd C:/Project/pantesting/reality-check && for d in .claude .codex .gemini .opencode .github .agents; do [ -d $d ] && echo "$d: $(find $d -type f | wc -l) files, $(du -sk $d | cut -f1) KB"; done
 node -e "…read the pan-file-manifest.json(s), group by extension and by top-level dir, print shares…"
 ```
 
@@ -9068,20 +9068,20 @@ Test the PAN Wizard installer in the external test directory.
 ## ⛔ CRITICAL: Self-Protection Gate
 
 **NEVER run the installer from d:\PanWizard.** The installer has a hard guard that rejects this.
-ALL installation testing MUST happen in `d:\pantesting`.
+ALL installation testing MUST happen in `C:\Project\pantesting`.
 
 ---
 
 ## Usage
 
 ```
-/run                     # Install all runtimes to d:\pantesting
+/run                     # Install all runtimes to C:\Project\pantesting
 /run --claude            # Install Claude runtime only
 /run --codex             # Install Codex runtime only
 /run --gemini            # Install Gemini runtime only
 /run --opencode          # Install OpenCode runtime only
 /run --copilot           # Install Copilot (.github) runtime only
-/run --clean             # Clean d:\pantesting first, then install all
+/run --clean             # Clean C:\Project\pantesting first, then install all
 ```
 
 ## Execution
@@ -9090,17 +9090,17 @@ ALL installation testing MUST happen in `d:\pantesting`.
 
 ```powershell
 # Clean previous installs
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 
 # Install all runtimes
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --all --local
 ```
 
 ### Single Runtime
 
 ```powershell
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --claude --local
 ```
 
@@ -9108,11 +9108,11 @@ node d:\PanWizard\bin\install.js --claude --local
 
 ```powershell
 # Check Claude runtime
-Write-Host "Commands: $((Get-ChildItem d:\pantesting\.claude\commands\pan\*.md -ErrorAction SilentlyContinue).Count)"
-Write-Host "Agents: $((Get-ChildItem d:\pantesting\.claude\agents\*.md -ErrorAction SilentlyContinue).Count)"
-Write-Host "Core: $(Test-Path d:\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs)"
-Write-Host "Hooks: $((Get-ChildItem d:\pantesting\.claude\hooks\*.js -ErrorAction SilentlyContinue).Count)"
-Write-Host "Manifest: $(Test-Path d:\pantesting\.claude\pan-file-manifest.json)"
+Write-Host "Commands: $((Get-ChildItem C:\Project\pantesting\.claude\commands\pan\*.md -ErrorAction SilentlyContinue).Count)"
+Write-Host "Agents: $((Get-ChildItem C:\Project\pantesting\.claude\agents\*.md -ErrorAction SilentlyContinue).Count)"
+Write-Host "Core: $(Test-Path C:\Project\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs)"
+Write-Host "Hooks: $((Get-ChildItem C:\Project\pantesting\.claude\hooks\*.js -ErrorAction SilentlyContinue).Count)"
+Write-Host "Manifest: $(Test-Path C:\Project\pantesting\.claude\pan-file-manifest.json)"
 ```
 
 ### Expected Counts (verify against source)
@@ -9122,7 +9122,7 @@ Verify the installed counts match the source repo — compare against **CLAUDE.m
 ## Never Do
 
 - Run installer from `d:\PanWizard` — it will exit code 1
-- Modify `d:\pantesting` and expect changes to persist (it's a test directory)
+- Modify `C:\Project\pantesting` and expect changes to persist (it's a test directory)
 - Skip verification after installation
 ````
 
@@ -9272,7 +9272,7 @@ description: Start a PAN Wizard development session by loading project context a
 
 This is the PAN Wizard SOURCE REPOSITORY (`d:\PanWizard`).
 - Unit/scenario tests run here: `npm test`, `npm run test:all`
-- Installation testing goes to `d:\pantesting`
+- Installation testing goes to `C:\Project\pantesting`
 - NEVER run installer from source directory
 
 ---
@@ -9315,7 +9315,7 @@ Test baseline: <X tests, Y suites>
 
 Key paths:
   Source: d:\PanWizard
-  Test target: d:\pantesting
+  Test target: C:\Project\pantesting
   Tests: npm test / npm run test:all
 
 Ready to continue.
@@ -9337,7 +9337,7 @@ Based on context:
 |--------|---------|
 | Run tests | `npm test` |
 | Build hooks | `npm run build:hooks` |
-| Test install | `cd d:\pantesting && node d:\PanWizard\bin\install.js --all --local` |
+| Test install | `cd C:\Project\pantesting && node d:\PanWizard\bin\install.js --all --local` |
 | Check changes | `git diff --stat` |
 | Start fresh | "What would you like to work on?" |
 
@@ -9359,7 +9359,7 @@ Generate a comprehensive work plan for PAN Wizard development. $ARGUMENTS
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. The plan covers development of PAN itself.
-Installation testing goes to `d:\pantesting`.
+Installation testing goes to `C:\Project\pantesting`.
 
 ---
 
@@ -9590,7 +9590,7 @@ Run PAN Wizard tests with configurable scope.
 ## ⛔ Self-Protection Gate
 
 This is the PAN Wizard SOURCE REPOSITORY. NEVER run `node bin/install.js` from here.
-Unit/scenario tests are safe to run here. Installation testing goes to `d:\pantesting`.
+Unit/scenario tests are safe to run here. Installation testing goes to `C:\Project\pantesting`.
 
 ---
 
@@ -9601,7 +9601,7 @@ Unit/scenario tests are safe to run here. Installation testing goes to `d:\pante
 /test unit               # Unit tests only (tests/*.test.cjs)
 /test scenarios          # Scenario tests only (tests/scenarios/*.test.cjs)
 /test all                # All tests (unit + scenarios)
-/test install            # Integration: install to d:\pantesting and verify
+/test install            # Integration: install to C:\Project\pantesting and verify
 /test <pattern>          # Run tests matching pattern
 ```
 
@@ -9646,17 +9646,17 @@ npm run test:all
 
 ```powershell
 # Clean and test fresh install (all 5 runtimes)
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
-cd d:\pantesting
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --all --local
 ```
 
 Then verify:
 ```powershell
 # Check installed files
-Get-ChildItem d:\pantesting\.claude\commands\pan\*.md | Measure-Object | Select-Object Count
-Get-ChildItem d:\pantesting\.claude\agents\*.md | Measure-Object | Select-Object Count
-Test-Path d:\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs
+Get-ChildItem C:\Project\pantesting\.claude\commands\pan\*.md | Measure-Object | Select-Object Count
+Get-ChildItem C:\Project\pantesting\.claude\agents\*.md | Measure-Object | Select-Object Count
+Test-Path C:\Project\pantesting\.claude\pan-wizard-core\bin\pan-tools.cjs
 ```
 
 ## Running Specific Tests

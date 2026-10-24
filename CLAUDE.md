@@ -73,7 +73,7 @@ These are a snapshot of the **current working tree**, not of any released tag �
 
 **This is the PAN Wizard source code repository.** Do NOT install PAN into this directory.
 
-- NEVER run `node bin/install.js` from `d:/PanWizard/` (or wherever this repo is cloned)
+- NEVER run `node bin/install.js` from this repository's checkout (wherever it is cloned)
 - NEVER create `.claude/pan-wizard-core/`, `.claude/pan-file-manifest.json`, or `.claude/package.json` in this repo
 - NEVER copy source files into `.codex/`, `.gemini/`, `.opencode/`, or `.github/` (Copilot's project dir) within this repo
 - The installer has a hard guard (`PAN_SOURCE_ROOT` check in `bin/install.js` — search for the constant) that refuses to run from the source directory
@@ -85,16 +85,16 @@ Use a **separate directory** for testing PAN installations:
 
 ```bash
 # Correct — install into a test directory (single runtime)
-cd d:/pantesting && node d:/PanWizard/bin/install.js --claude --local
+cd /c/Project/pantesting && node /c/Project/panwizard/bin/install.js --claude --local
 
 # Correct — full deployment (all 5 runtimes)
-cd d:/pantesting && node d:/PanWizard/bin/install.js --claude --codex --gemini --opencode --copilot --local
+cd /c/Project/pantesting && node /c/Project/panwizard/bin/install.js --claude --codex --gemini --opencode --copilot --local
 
 # Wrong — this will be rejected by the installer
-cd d:/PanWizard && node bin/install.js --claude --local
+cd /c/Project/panwizard && node bin/install.js --claude --local
 ```
 
-The test directory is `d:\pantesting`. All manual installation testing goes there.
+The test directory is `C:\Project\pantesting` (or `D:\pantesting` on a machine that has that instead; the harness, `corpus-run.cjs` and the autopilot try `C:` first, then `D:`). All manual installation testing goes there.
 
 Automated tests (`npm test`, `npm run test:scenarios`) use OS temp directories via `os.tmpdir()` and are safe to run from the source repo.
 

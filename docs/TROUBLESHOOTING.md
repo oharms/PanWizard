@@ -20,7 +20,7 @@ This guide covers root causes, diagnostic steps, and recovery procedures for sce
 - [Context and Sessions](#context-and-sessions)
 - [Cross-Platform Issues](#cross-platform-issues)
 - [Diagnostic Commands](#diagnostic-commands)
-- [Spec B v2 Troubleshooting (v3.0-v3.4)](#spec-b-v2-troubleshooting-v30-v34)
+- [Spec B v2 Troubleshooting](#spec-b-v2-troubleshooting)
 
 ---
 
@@ -997,7 +997,7 @@ If none of the above resolves your issue:
 
 ---
 
-## Spec B v2 Troubleshooting (v3.0-v3.4)
+## Spec B v2 Troubleshooting
 
 ### `/pan:what-if` worktree won't clean up
 

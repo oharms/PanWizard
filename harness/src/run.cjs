@@ -741,11 +741,29 @@ if (require.main === module) {
  * cost and duration, each with a 95% interval (stats.cjs pairedDelta).
  */
 /** S4: the arm a --variant names, refused unless its file is under harness/variants/. */
+/**
+ * An agent file's text as a local Claude Code install writes it: the installer's own
+ * rewrites (bin/install.js agent copy, through bin/install-lib.cjs), so a variant saved from
+ * the source tree (`git show <sha>:agents/x.md`) points at the workspace's install and not
+ * at ~/.claude, where the harness machine may have another PAN or none. Idempotent.
+ */
+function installedAgentText(content, prefix = './.claude/') {
+  const lib = require('../../bin/install-lib.cjs');
+  let t = String(content).replace(/~\/\.claude\//g, prefix);
+  t = t.replace(/\bpan-tools\b(?=\s+[a-z])/g, `node ${prefix}pan-wizard-core/bin/pan-tools.cjs`);
+  t = lib.rewriteAgentFileRefs(t, 'claude', prefix);
+  return lib.stripThinkingFrontmatter(t, 'claude');
+}
+
 function variantArm(repo, variant) {
   const base = path.resolve(repo, 'harness', 'variants');
   const abs = path.resolve(repo, variant.file || '');
   if (!abs.startsWith(base + path.sep)) throw new Error(`--variant: ${variant.file} is not under harness/variants/`);
-  return { id: `variant:${path.basename(abs, '.md')}`, after: -1, write: { path: variant.path, content: fs.readFileSync(abs, 'utf8') } };
+  const raw = fs.readFileSync(abs, 'utf8');
+  // An agent variant gets the installer's rewrites (2026-10-24: a pre-edit verifier saved from
+  // git kept 13 ~/.claude/ references and bare pan-tools calls, so that arm's judge was broken).
+  const content = /^\.claude\/agents\/[^/]+\.md$/.test(String(variant.path || '').replace(/\\/g, '/')) ? installedAgentText(raw) : raw;
+  return { id: `variant:${path.basename(abs, '.md')}`, after: -1, write: { path: variant.path, content } };
 }
 
 function pairSummary(results, scenarios) {
@@ -775,4 +793,4 @@ function pairSummary(results, scenarios) {
   return out;
 }
 
-module.exports = { defaultStateDir, TEST_ROOTS, workspaceName, pruneRun, variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };
+module.exports = { installedAgentText, defaultStateDir, TEST_ROOTS, workspaceName, pruneRun, variantArm, pairSummary, DEFAULT_MAX_USD, pickAnswer, parseArgs, fill, stepEnv, quoteCmdArg, runStep, applyControl, completionRow, unmetRuns, driftNote, allocateBudget, interleave, modelStepNeverRan, detectionScoreboard, MIN_MODEL_STEP_USD };

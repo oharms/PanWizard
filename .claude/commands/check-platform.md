@@ -4,7 +4,7 @@ Verify PAN Wizard works across all supported platforms and runtimes.
 
 ## ⛔ Self-Protection Gate
 
-This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `d:\pantesting`.
+This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `C:\Project\pantesting`.
 
 ---
 
@@ -28,7 +28,7 @@ This is the PAN Wizard SOURCE REPOSITORY. Installation testing goes to `d:\pante
 
 4. **Verify all 5 runtimes** install correctly:
    ```powershell
-   cd d:\pantesting
+   cd C:\Project\pantesting
    node d:\PanWizard\bin\install.js --claude --local
    node d:\PanWizard\bin\install.js --codex --local
    node d:\PanWizard\bin\install.js --gemini --local

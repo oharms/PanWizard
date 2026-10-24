@@ -6,7 +6,7 @@ Execute items from the current work plan with capacity budgeting. $ARGUMENTS
 
 This is the PAN Wizard SOURCE REPOSITORY.
 - Unit tests run here: `npm test`, `npm run test:all`
-- Installation testing MUST go to `d:\pantesting`
+- Installation testing MUST go to `C:\Project\pantesting`
 - NEVER run installer from this directory
 
 ---
@@ -28,7 +28,7 @@ Stage 1: SESSION START → Load context, check status
 Stage 2: PLAN LOADING → Find active plan, select items by budget
 Stage 3: EXECUTION → Implement with read→understand→code→test cadence
 Stage 4: VERIFICATION → Run full test suite
-Stage 5: INSTALL CHECK → Verify installer still works (d:\pantesting)
+Stage 5: INSTALL CHECK → Verify installer still works (C:\Project\pantesting)
 Stage 6: SESSION END → Commit, generate summary
 ```
 
@@ -74,7 +74,7 @@ When changing installer or core logic, verify all runtime targets:
 ### Rule 6: Verify Install (MANDATORY)
 After changes to installer or shipped files:
 ```powershell
-cd d:\pantesting
+cd C:\Project\pantesting
 node d:\PanWizard\bin\install.js --all --local
 ```
 
@@ -109,8 +109,8 @@ All tests must pass. If not, fix before proceeding.
 
 ### Stage 5: Install Check
 ```powershell
-cd d:\pantesting
-Remove-Item d:\pantesting\.claude, d:\pantesting\.codex, d:\pantesting\.gemini, d:\pantesting\.opencode, d:\pantesting\.github, d:\pantesting\.agents, d:\pantesting\AGENTS.md, d:\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
+cd C:\Project\pantesting
+Remove-Item C:\Project\pantesting\.claude, C:\Project\pantesting\.codex, C:\Project\pantesting\.gemini, C:\Project\pantesting\.opencode, C:\Project\pantesting\.github, C:\Project\pantesting\.agents, C:\Project\pantesting\AGENTS.md, C:\Project\pantesting\.mcp.json -Recurse -Force -ErrorAction SilentlyContinue
 node d:\PanWizard\bin\install.js --all --local
 ```
 Verify installed files are correct.
