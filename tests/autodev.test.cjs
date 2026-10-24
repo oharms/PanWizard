@@ -122,8 +122,9 @@ describe('A1a: the ledger and resume', () => {
 
   test('the unit prompt names one command and forbids questions and other phases', () => {
     const p = A.unitPrompt('claude', unit('execute', '3'));
-    assert.match(p, /\/pan:exec-phase 3/);
-    assert.match(p, /Do not ask/);
+    // The command first, so the host expands it instead of the session hunting for the workflow.
+    assert.match(p, /^\/pan:exec-phase 3 \(/);
+    assert.match(p, /do not ask questions/);
     assert.doesNotMatch(p, /[\r\n&|<>%]/, 'one shell-safe line');
     assert.match(A.unitPrompt('opencode', unit('plan', '2')), /\/pan-plan-phase 2/);
     assert.match(A.unitPrompt('codex', unit('verify', '2')), /\$pan-verify-phase 2/);

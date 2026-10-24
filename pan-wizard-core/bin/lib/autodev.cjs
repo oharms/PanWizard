@@ -147,7 +147,10 @@ function unitPrompt(host, unit, note) {
   // --quality (the full ceremony, sizing.cjs) is passed to every phase command the loop runs.
   const args = `${unit.phase}${unit.action === 'plan_gaps' ? ' --gaps' : ''}${unit.plan ? ` --plan ${unit.plan}` : ''}${unit.quality ? ' --quality' : ''}`;
   const cmd = host === 'codex' ? `$pan-${name} ${args}` : host === 'opencode' ? `/pan-${name} ${args}` : `/pan:${name} ${args}`;
-  const base = `PAN autodev unit: run ${cmd} unattended. Do not ask questions: take the recommended default and record what you assumed. Do not start another phase or command when it ends.`;
+  // The command comes first so the host expands it as a command (2026-10-24: inside a
+  // sentence it was not expanded, and each session spent turns finding and reading the
+  // workflow file). What follows reaches the workflow as part of its arguments.
+  const base = `${cmd} (PAN autodev unit, unattended: do not ask questions, take the recommended default and record what you assumed; do not start another phase or command when it ends.)`;
   return note ? `${base} ${String(note).replace(/[\r\n&|<>%^"]/g, ' ').replace(/\s+/g, ' ').trim()}` : base;
 }
 

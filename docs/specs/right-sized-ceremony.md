@@ -52,3 +52,20 @@ Autodev per unit after: plan-phase 1 $1.29 (256 s), exec-phase 1 $1.85 (466 s), 
 **Step 2 re-measured (`2026-10-24`, owner-approved $5 cap):** autodev on the same two-phase roadmap finished both phases (`done`) for **$3.09 in 691 s**, passing every hidden acceptance case: plan 1 by the engine ($0, 1 s), execute 1 $1.65 (353 s), plan 2 by the engine ($0, 1 s), execute 2 $1.44 (334 s). Against the bare host's $0.54 and 121 s that is **5.7× cost and 5.7× time, down from about 30×** ($19.19 and 4,659 s before right-sizing). What remains is the exec-phase session itself (the executor, the verifier and the orchestrating workflow), about $1.50 and six minutes a phase.
 
 **Bug found by the run, fixed:** when the cap was spent mid-unit, a retry started a session with `--max-budget-usd 0.00`, which Claude Code refuses; a retry now stops with `budget_usd` first.
+
+## Optimisation set 2 and the regression check (`2026-10-24`, owner-approved $10 cap)
+
+**Change:** autodev's unit prompt now starts with the command (`/pan:exec-phase 1 (PAN autodev unit, unattended: …)`). The earlier transcript showed each unit spending its first turns finding the command, because inside a sentence Claude Code did not expand it; now the host expands it and the session starts at `init`. **Effect on cost: within noise** ($2.89 against $3.09 for the two-phase roadmap; units ran engine plan $0, execute $1.87, engine plan $0, execute $1.02). The exploration turns were cheap; what each session pays is its fixed context: about 90k tokens of cache writes (Claude Code's system prompt and tools, the workflow, the agents' results), about $0.45 a session, and PAN's MCP tool list is only about 2,300 tokens of it.
+
+**Regression check, live:**
+
+| Check | Result |
+|---|---|
+| Lean autodev, two phases | `done`, $2.89, 745 s; hidden acceptance check passed |
+| `/pan:quick --full --quality` (the old path) | planner, plan-checker and verifier all ran; $2.00, 618 s; hidden check passed |
+| `/pan:plan-phase 1` on a vague phase (`clarify-export`) | sized `full` by itself: the planner wrote two plans, no engine plan; the plan-checker did not run before the session's $2.50 cap |
+
+Plus a fresh packed install on all five runtimes (no errors; `size` answers in each runtime's core; the engine plans a lean phase and exec-phase reads its plan check as `ok`) and the full local CI.
+
+**Where the rest of autodev's cost is:** per phase, an orchestrating session (about $0.85: mostly that fixed context), the executor (about $0.40) and the verifier (about $0.17). Plain Claude Code pays one session's fixed context for the whole job. The levers left are structural: run consecutive lean phases in one execute session, or let the engine's gates stand in for the verifier on a lean phase (a quality trade the H4 corpus cannot yet price, since its defects are too easy).
+
