@@ -941,6 +941,11 @@ async function main() {
         if (!text.trim()) error('Usage: size task "<description>" [--quality] [--full]');
         const r = S.sizeTask(cwd, text, opts);
         output(r, raw, r.path);
+      } else if (subcommand === 'phase-plan') {
+        // size phase-plan <N>: the lean phase's plan, checked and recorded, with no planner.
+        if (!args[2] || args[2].startsWith('--')) error('Usage: size phase-plan <N> [--quality] [--full]');
+        const r = S.planLeanPhase(cwd, args[2], opts);
+        output(r, raw, r.ok ? r.path : (r.error || 'failed'), r.ok ? 0 : 1);
       } else if (subcommand === 'quick-plan') {
         // size quick-plan --out <file> --num <N> "<description>": the lean quick task's plan.
         const out = getArgValue(args, '--out');
@@ -962,7 +967,7 @@ async function main() {
         }
         output(r, raw, r.ok ? 'passed' : 'failed', r.ok && r.recorded ? 0 : 1);
       } else {
-        error('Unknown size subcommand. Available: phase, task, quick-plan, plan-check');
+        error('Unknown size subcommand. Available: phase, task, phase-plan, quick-plan, plan-check');
       }
       break;
     }

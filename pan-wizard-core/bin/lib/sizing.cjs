@@ -151,4 +151,87 @@ function leanQuickPlan(cwd, description, num) {
   ].join('\n');
 }
 
-module.exports = { leanQuickPlan, ceremonyMode, requirementSpecified, taskSpecified, sizeTask, sizePhase, engineCheckPlans, recordEngineCheck, DEFAULT_LEAN_MAX_REQUIREMENTS };
+const FILE_RE = /\b[\w./-]+\.(?:c?js|mjs|tsx?|jsx|py|json|md|go|rs|java|rb|cs|php|sh|ya?ml|toml|sql|html|css)\b/g;
+
+/**
+ * Write a lean phase's plan from its requirements (autodev step 2): one plan, one task per
+ * requirement, each task's action the requirement's own text. The requirements already say
+ * what to build, so a planner session would only restate them. Refuses a phase that is not
+ * lean, or that already has plans. Creates the phase directory when it is missing.
+ * @returns {{written, path, plan_dir, requirements}|{error, reason}}
+ */
+function writeLeanPhasePlan(cwd, phase, opts = {}) {
+  const path = require('path');
+  const C = require('./core.cjs');
+  const size = sizePhase(cwd, phase, opts);
+  if (size.path !== 'lean') return { error: 'not_lean', reason: size.reasons.join('; ') };
+  const rp = C.getRoadmapPhaseInternal(cwd, String(phase));
+  if (!rp || !rp.found) return { error: 'phase_not_found', reason: `phase ${phase} is not in roadmap.md` };
+  const padded = C.normalizePhaseName(String(phase));
+  let info = C.findPhaseInternal(cwd, String(phase));
+  let dir;
+  if (info && info.found) dir = path.join(cwd, info.directory);
+  else {
+    dir = path.join(planningPath(cwd, 'phases'), `${padded}-${C.generateSlugInternal(rp.phase_name || 'phase')}`);
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  if (fs.readdirSync(dir).some((f) => /-plan\.md$/i.test(f))) return { error: 'has_plans', reason: `phase ${phase} already has plans` };
+  let reqText = '';
+  try { reqText = fs.readFileSync(planningPath(cwd, REQUIREMENTS_FILE), 'utf8'); } catch { /* sized lean, so present */ }
+  const all = require('./requirements-lint.cjs').parseRequirements(reqText);
+  const ids = roadmapRequirementIds(fs.readFileSync(planningPath(cwd, ROADMAP_FILE), 'utf8'), String(phase));
+  const reqs = ids.map((id) => all.find((r) => String(r.id).toUpperCase() === String(id).toUpperCase()) || { id, text: '', criteria: [] });
+  const one = (t) => String(t || '').replace(/\s+/g, ' ').trim().replace(/^[—–:-]+\s*/, '');
+  const filesOf = (t) => [...new Set((String(t).match(FILE_RE) || []).filter((f) => !/^\d/.test(f)))];
+  const files = [...new Set(reqs.flatMap((r) => filesOf(r.text)))];
+  const test = require('./test-gate.cjs').detectTestCommand(cwd);
+  const verify = (test && test.command) || 'the project\'s tests';
+  const head = C.execGit(cwd, ['rev-parse', 'HEAD']);
+  const slug = path.basename(dir).replace(/^\d+(?:\.\d+)*-/, '');
+  const esc = (t) => t.replace(/</g, '&lt;');
+  const tasks = reqs.map((r) => {
+    const own = filesOf(r.text);
+    const criteria = (r.criteria || []).map((c) => `\n    - ${esc(one(c))}`).join('');
+    return ['<task type="auto">', `  <name>${r.id}: ${esc(one(r.text).slice(0, 70))}</name>`, `  <files>${(own.length ? own : files).join(', ') || 'the files the requirement names'}</files>`,
+      `  <action>Implement ${r.id} exactly as requirements.md states it, with a test for each rule in it: ${esc(one(r.text))}${criteria}</action>`,
+      `  <verify>${verify}</verify>`, `  <done>${r.id} holds and a test covers each rule in it; the tests pass.</done>`, '</task>'].join('\n');
+  });
+  const text = [
+    '---', `phase: ${padded}-${slug}`, 'plan: 01', 'type: execute', 'wave: 1', 'depends_on: []', `files_modified: [${files.join(', ')}]`, 'autonomous: true',
+    `requirements: [${reqs.map((r) => r.id).join(', ')}]`, ...(head.exitCode === 0 ? [`planned_commit: ${head.stdout.trim()}`] : []),
+    'must_haves:', '  truths:', ...reqs.map((r) => `    - ${JSON.stringify(`${r.id}: ${one(r.text).slice(0, 240)}`)}`),
+    '---', '', '<objective>', esc(one(rp.goal || '')), '', `Written by the engine (lean path): the phase's requirements (${reqs.map((r) => r.id).join(', ')}) say precisely what to build, so each is one task. The requirements are the specification: do not widen them.`, '</objective>', '',
+    '<tasks>', '', tasks.join('\n\n'), '', '</tasks>', '',
+  ].join('\n');
+  const file = path.join(dir, `${padded}-01-plan.md`);
+  fs.writeFileSync(file, text);
+  const rel = require('./core.cjs').toPosix(path.relative(cwd, file));
+  return { written: true, path: rel, plan_dir: require('./core.cjs').toPosix(path.relative(cwd, dir)), requirements: reqs.map((r) => r.id) };
+}
+
+/**
+ * The lean phase's whole planning step, in code: write the plan, check it, record the plan
+ * check, and commit the plan when commit_docs is on. No model session.
+ */
+function planLeanPhase(cwd, phase, opts = {}) {
+  const w = writeLeanPhasePlan(cwd, phase, opts);
+  if (w.error) return w;
+  const check = engineCheckPlans(cwd, phase);
+  if (!check.ok) return { ...w, ok: false, errors: check.errors };
+  const rec = recordEngineCheck(cwd, phase, check);
+  if (rec.error) return { ...w, ok: false, errors: [rec.reason || rec.error] };
+  const config = loadConfig(cwd);
+  let commit = null;
+  if (config.commit_docs !== false) {
+    const C = require('./core.cjs');
+    const add = C.execGit(cwd, ['add', '--', w.path]);
+    const msg = `docs(${C.normalizePhaseName(String(phase))}): lean plan written by the engine`;
+    const c = add.exitCode === 0 ? C.execGit(cwd, ['commit', '-q', '-m', msg, '--', w.path]) : add;
+    commit = c.exitCode === 0 ? (C.execGit(cwd, ['rev-parse', '--short', 'HEAD']).stdout || '').trim() : null;
+    // The plan stands without its commit (exec-phase commits as it goes); say why it is missing.
+    if (!commit) return { ...w, ok: true, plan_check: 'recorded', commit: null, commit_error: String(c.stderr || c.stdout || 'git commit failed').trim().slice(0, 300) };
+  }
+  return { ...w, ok: true, plan_check: 'recorded', commit };
+}
+
+module.exports = { writeLeanPhasePlan, planLeanPhase, leanQuickPlan, ceremonyMode, requirementSpecified, taskSpecified, sizeTask, sizePhase, engineCheckPlans, recordEngineCheck, DEFAULT_LEAN_MAX_REQUIREMENTS };

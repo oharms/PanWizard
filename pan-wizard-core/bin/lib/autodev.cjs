@@ -192,6 +192,14 @@ function sessionArgv(host, prompt, opts = {}) {
 function executeUnit(cwd, unit, host, opts = {}) {
   if (typeof opts.execute === 'function') return opts.execute(cwd, unit, host, opts);
   const t0 = Date.now();
+  // Right-sized ceremony, step 2: a lean phase is planned by the engine (sizing.cjs
+  // planLeanPhase: plan written from the requirements, checked, recorded, committed), with
+  // no session. When the engine declines (not lean, plans already there, the check failed),
+  // the unit falls through to a planning session as before.
+  if (unit.action === 'plan' && !unit.quality) {
+    const r = spawnSync(process.execPath, [TOOLS, 'size', 'phase-plan', String(unit.phase)], { cwd, encoding: 'utf8' });
+    if (r.status === 0) return { exit: 0, cost_usd: 0, argv: ['size', 'phase-plan', String(unit.phase)], engine: true, error: null, duration_ms: Date.now() - t0 };
+  }
   if (unit.action === 'complete_phase') {
     const r = spawnSync(process.execPath, [TOOLS, 'phase', 'complete', String(unit.phase)], { cwd, encoding: 'utf8' });
     let res = null;

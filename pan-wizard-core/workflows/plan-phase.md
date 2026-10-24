@@ -56,7 +56,7 @@ SIZING=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size phase "$PHASE" [-
 
 `SIZING.path` is `lean` or `full`, and `SIZING.mode` is `auto` or `full`. Show it in one line: `Ceremony: {path} ({reasons joined by "; "})`.
 
-- **`lean`** (a small phase whose requirements say precisely what to build): no research (step 5), one short plan (step 8), the engine's plan check instead of the plan-checker agent (step 10).
+- **`lean`** (a small phase whose requirements say precisely what to build): no research (step 5), and the engine plans the phase (step 8: one task per requirement, checked and recorded in code). A planner and the plan-checker run only if the engine declines.
 - **`full`**: the whole path below.
 - **`mode` `auto`** (any profile but `quality`, and `workflow.ceremony` not `full`): the plan-checker gets an output budget (step 10) and the revision loop stops after one revision (step 12). **`mode` `full`** keeps the unbudgeted checker and two revisions.
 
@@ -343,6 +343,14 @@ ls "${PHASE_DIR}"/*-plan.md 2>/dev/null
 `state_path`, `roadmap_path`, `requirements_path`, `research_path`, `verification_path`, `uat_path` and `context_path` come straight from the INIT JSON; fill the `{…_path}` placeholders below with them. `state_path`, `roadmap_path` and `requirements_path` are always set, even when the file is missing; the other four are absent from the JSON when their file does not exist.
 
 ## 8. Spawn pan-planner Agent
+
+**Lean path (`SIZING.path` is `lean`, not `--gaps`): the engine plans the phase.**
+
+```bash
+LEAN_PLAN=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size phase-plan "${PHASE_NUMBER}")
+```
+
+Exit 0: the plan is written (one task per requirement, each task's action the requirement's own text), checked, recorded as the phase's plan check and committed. Show its `path` and go to step 13. Exit 1 (`has_plans`, `not_lean`, or a check that failed): continue below with the planner.
 
 Display banner:
 ```

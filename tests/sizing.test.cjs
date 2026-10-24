@@ -143,3 +143,41 @@ describe('autodev passes --quality to every unit', () => {
     assert.doesNotMatch(unitPrompt('claude', { action: 'plan', phase: '2' }), /--quality/);
   });
 });
+
+describe('step 2: the engine plans a lean phase (no planner session)', () => {
+  function gitSeed(name) {
+    const t = seed(name);
+    const g = (a) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: t, encoding: 'utf8' });
+    g(['init', '-q']); g(['config', 'user.name', 't']); g(['config', 'user.email', 't@t']); g(['add', '-A']); g(['commit', '-qm', 'seed']);
+    return { t, g };
+  }
+  test('size phase-plan writes one task per requirement, records the plan check and commits the plan', () => {
+    const { t, g } = gitSeed('tasks-roadmap');
+    const r = cli(t, ['size', 'phase-plan', '1']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual([out.ok, out.plan_check, out.requirements], [true, 'recorded', ['STORE-01', 'STORE-02', 'STORE-03', 'STORE-04']]);
+    const plan = fs.readFileSync(path.join(t, out.path), 'utf8');
+    const st = planStructure(plan);
+    assert.deepEqual([st.valid, st.task_count], [true, 4], JSON.stringify(st.errors));
+    assert.match(plan, /<name>STORE-02: Every change is written/, 'the requirement text, without its leading dash');
+    assert.equal(planCheckStatus(t, '1').status, 'ok');
+    assert.match(g(['log', '--oneline', '-1']).stdout, /lean plan written by the engine/);
+  });
+  test('a phase that already has plans, or is not lean, is declined (exit 1) and nothing is written', () => {
+    const { t } = gitSeed('tasks-roadmap');
+    assert.equal(cli(t, ['size', 'phase-plan', '1']).status, 0);
+    const again = cli(t, ['size', 'phase-plan', '1']);
+    assert.deepEqual([again.status, JSON.parse(again.stdout).error], [1, 'has_plans']);
+    const q = cli(t, ['size', 'phase-plan', '2', '--quality']);
+    assert.deepEqual([q.status, JSON.parse(q.stdout).error], [1, 'not_lean']);
+    assert.equal(fs.readdirSync(path.join(t, '.planning', 'phases')).length, 1, 'no phase 2 directory');
+  });
+  test('autodev: a lean plan unit runs in the engine at $0, with no host session', () => {
+    const { t } = gitSeed('tasks-roadmap');
+    const { executeUnit } = require('../pan-wizard-core/bin/lib/autodev.cjs');
+    const res = executeUnit(t, { action: 'plan', phase: '1' }, 'claude', {});
+    assert.deepEqual([res.exit, res.cost_usd, res.engine, res.argv], [0, 0, true, ['size', 'phase-plan', '1']]);
+    assert.equal(planCheckStatus(t, '1').status, 'ok');
+  });
+});

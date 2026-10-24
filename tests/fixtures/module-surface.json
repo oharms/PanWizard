@@ -966,11 +966,13 @@
     "ceremonyMode:function",
     "engineCheckPlans:function",
     "leanQuickPlan:function",
+    "planLeanPhase:function",
     "recordEngineCheck:function",
     "requirementSpecified:function",
     "sizePhase:function",
     "sizeTask:function",
-    "taskSpecified:function"
+    "taskSpecified:function",
+    "writeLeanPhasePlan:function"
   ],
   "skill-align.cjs": [
     "SAD_STOPWORDS:object",

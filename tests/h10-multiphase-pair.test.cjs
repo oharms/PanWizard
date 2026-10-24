@@ -102,7 +102,9 @@ process.stdout.write(JSON.stringify({ result: 'ok', total_cost_usd: 0.25 }) + '\
     assert.equal(out.stop, 'done', JSON.stringify(out) + r.stderr);
     assert.equal(r.status, 0);
     assert.deepEqual(out.units, ['plan:1', 'execute:1', 'verify:1', 'complete_phase:1', 'plan:2', 'execute:2', 'verify:2', 'complete_phase:2']);
-    assert.equal(out.cost_usd, 1.5, 'six sessions at $0.25');
+    // Right-sized ceremony step 2: both phases are lean, so the engine plans them at $0 and
+    // only the execute and verify units are sessions.
+    assert.equal(out.cost_usd, 1.0, 'four sessions at $0.25: the two plan units ran in the engine');
     const c = check(ws);
     assert.equal(c.passed, true, JSON.stringify(c.cases.filter((x) => !x.ok)));
   });

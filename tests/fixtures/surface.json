@@ -213,6 +213,7 @@
     "roadmap slice",
     "roadmap update-plan-progress",
     "size phase",
+    "size phase-plan",
     "size plan-check",
     "size quick-plan",
     "size task",

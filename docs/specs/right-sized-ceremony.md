@@ -47,6 +47,8 @@ Every run passed its project's tests and every case of the hidden acceptance che
 
 Autodev per unit after: plan-phase 1 $1.29 (256 s), exec-phase 1 $1.85 (466 s), plan-phase 2 $0.77 (143 s), exec-phase 2 $0.47 (109 s). No research and no plan-checker ran; one planner per phase and one executor per phase did.
 
-**What is left for autodev.** Each lean phase still starts a planner session, and every unit is a fresh session that reloads the orchestration workflow. Next: the engine writes a lean phase's plan from its requirements (as `size quick-plan` does for a quick task), and a lean phase runs as one unit instead of plan, execute and verify.
+**Step 2 (built after this measurement).** A lean phase is planned by the engine: `pan-tools size phase-plan` writes one task per requirement from the requirements' own text, checks the plan in code, records the plan check and commits it, and `autodev` runs it for a lean phase's `plan` unit with no session, so a lean phase costs one exec-phase session. `/pan:plan-phase` uses it too.
+
+**Step 2 re-measured (`2026-10-24`, owner-approved $5 cap):** autodev on the same two-phase roadmap finished both phases (`done`) for **$3.09 in 691 s**, passing every hidden acceptance case: plan 1 by the engine ($0, 1 s), execute 1 $1.65 (353 s), plan 2 by the engine ($0, 1 s), execute 2 $1.44 (334 s). Against the bare host's $0.54 and 121 s that is **5.7× cost and 5.7× time, down from about 30×** ($19.19 and 4,659 s before right-sizing). What remains is the exec-phase session itself (the executor, the verifier and the orchestrating workflow), about $1.50 and six minutes a phase.
 
 **Bug found by the run, fixed:** when the cap was spent mid-unit, a retry started a session with `--max-budget-usd 0.00`, which Claude Code refuses; a retry now stops with `budget_usd` first.
