@@ -184,6 +184,14 @@ function writeLeanPhasePlan(cwd, phase, opts = {}) {
   const one = (t) => String(t || '').replace(/\s+/g, ' ').trim().replace(/^[—–:-]+\s*/, '');
   const filesOf = (t) => [...new Set((String(t).match(FILE_RE) || []).filter((f) => !/^\d/.test(f)))];
   const files = [...new Set(reqs.flatMap((r) => filesOf(r.text)))];
+  // A requirement that changes behaviour earlier phases built (a migration, a new format, a
+  // rename) supersedes the tests that pin the old behaviour. Declare them, so the executor
+  // updates their expectations with a recorded deviation instead of stopping on a "spec
+  // conflict" (2026-10-24: autodev --quality halted at a format-change phase on its own
+  // earlier tests).
+  const changing = reqs.filter((r) => CHANGE_RE.test(String(r.text || '')));
+  const superseded = changing.length ? testsCovering(cwd, files) : [];
+  const declared = [...new Set([...files, ...superseded])];
   const test = require('./test-gate.cjs').detectTestCommand(cwd);
   const verify = (test && test.command) || 'the project\'s tests';
   const head = C.execGit(cwd, ['rev-parse', 'HEAD']);
@@ -192,13 +200,18 @@ function writeLeanPhasePlan(cwd, phase, opts = {}) {
   const tasks = reqs.map((r) => {
     const own = filesOf(r.text);
     const criteria = (r.criteria || []).map((c) => `\n    - ${esc(one(c))}`).join('');
-    return ['<task type="auto">', `  <name>${r.id}: ${esc(one(r.text).slice(0, 70))}</name>`, `  <files>${(own.length ? own : files).join(', ') || 'the files the requirement names'}</files>`,
-      `  <action>Implement ${r.id} exactly as requirements.md states it, with a test for each rule in it: ${esc(one(r.text))}${criteria}</action>`,
+    const supersedes = superseded.length && changing.includes(r)
+      ? ` This requirement changes behaviour earlier phases built: where ${superseded.join(', ')} assert the old behaviour, update those expectations to what ${r.id} requires and record each change as a deviation in the summary. Do not delete, skip or weaken a test.`
+      : '';
+    const taskFiles = [...new Set([...(own.length ? own : files), ...(supersedes ? superseded : [])])];
+    return ['<task type="auto">', `  <name>${r.id}: ${esc(one(r.text).slice(0, 70))}</name>`, `  <files>${taskFiles.join(', ') || 'the files the requirement names'}</files>`,
+      `  <action>Implement ${r.id} exactly as requirements.md states it, with a test for each rule in it: ${esc(one(r.text))}${criteria}${supersedes}</action>`,
       `  <verify>${verify}</verify>`, `  <done>${r.id} holds and a test covers each rule in it; the tests pass.</done>`, '</task>'].join('\n');
   });
   const text = [
-    '---', `phase: ${padded}-${slug}`, 'plan: 01', 'type: execute', 'wave: 1', 'depends_on: []', `files_modified: [${files.join(', ')}]`, 'autonomous: true',
+    '---', `phase: ${padded}-${slug}`, 'plan: 01', 'type: execute', 'wave: 1', 'depends_on: []', `files_modified: [${declared.join(', ')}]`, 'autonomous: true',
     `requirements: [${reqs.map((r) => r.id).join(', ')}]`, ...(head.exitCode === 0 ? [`planned_commit: ${head.stdout.trim()}`] : []),
+    ...(superseded.length ? [`supersedes_tests: [${superseded.join(', ')}]`, `supersedes_requirements: [${changing.map((r) => r.id).join(', ')}]`] : []),
     'must_haves:', '  truths:', ...reqs.map((r) => `    - ${JSON.stringify(`${r.id}: ${one(r.text).slice(0, 240)}`)}`),
     '---', '', '<objective>', esc(one(rp.goal || '')), '', `Written by the engine (lean path): the phase's requirements (${reqs.map((r) => r.id).join(', ')}) say precisely what to build, so each is one task. The requirements are the specification: do not widen them.`, '</objective>', '',
     '<tasks>', '', tasks.join('\n\n'), '', '</tasks>', '',
@@ -206,7 +219,40 @@ function writeLeanPhasePlan(cwd, phase, opts = {}) {
   const file = path.join(dir, `${padded}-01-plan.md`);
   fs.writeFileSync(file, text);
   const rel = require('./core.cjs').toPosix(path.relative(cwd, file));
-  return { written: true, path: rel, plan_dir: require('./core.cjs').toPosix(path.relative(cwd, dir)), requirements: reqs.map((r) => r.id) };
+  return { written: true, path: rel, plan_dir: require('./core.cjs').toPosix(path.relative(cwd, dir)), requirements: reqs.map((r) => r.id), ...(superseded.length ? { supersedes_tests: superseded } : {}) };
+}
+
+// Wording that marks a requirement as changing behaviour already built.
+const CHANGE_RE = /\b(migrat\w*|format change|new format|version \d+|v\d+ format|replac\w*|instead of|no longer|renam\w*|deprecat\w*|breaking)\b/i;
+
+/**
+ * The existing test files that exercise any of `files`: a test file under the project
+ * (outside node_modules, .git and the planning tree) whose text names one of the files'
+ * module names. Pure apart from reads; sorted.
+ */
+function testsCovering(cwd, files) {
+  const path = require('path');
+  const names = [...new Set(files.map((f) => path.basename(f).replace(/\.[^.]+$/, '')).filter((n) => n.length > 2))];
+  if (!names.length) return [];
+  const isTest = (rel) => /(^|\/)(tests?|__tests__|spec)\//.test(rel) || /\.(test|spec)\.[^.]+$/.test(rel);
+  const out = [];
+  const walk = (dir, depth) => {
+    if (depth > 6) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (['node_modules', '.git', '.planning', '.claude', '.codex', '.gemini', '.opencode', '.github', '.agents', 'dist', 'coverage'].includes(e.name)) continue;
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(abs, depth + 1); continue; }
+      const rel = path.relative(cwd, abs).split(path.sep).join('/');
+      if (!isTest(rel) || !/\.(c?js|mjs|tsx?|jsx|py|go|rs|java|rb|cs)$/.test(rel) || files.includes(rel)) continue;
+      let text = '';
+      try { text = fs.readFileSync(abs, 'utf8'); } catch { continue; }
+      if (names.some((n) => new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(text))) out.push(rel);
+    }
+  };
+  walk(cwd, 0);
+  return out.sort();
 }
 
 /**

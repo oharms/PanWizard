@@ -171,6 +171,25 @@ function parseCost(stdout) {
 }
 
 /**
+ * Whether a session reported that it is blocked on a ruling only a person can give: an
+ * executor's BLOCKED_SPEC_CONFLICT (a test the plan does not declare asserts behaviour the
+ * task changes). Read from the session's result text. Pure.
+ * @returns {string|null} a short excerpt, or null
+ */
+function blockedReport(stdout) {
+  const text = String(stdout || '');
+  let result = text;
+  const lines = text.trim().split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].trim().startsWith('{')) continue;
+    try { const o = JSON.parse(lines.slice(i).join('\n')); if (o && typeof o.result === 'string') { result = o.result; break; } } catch {}
+  }
+  const m = result.match(/BLOCKED_SPEC_CONFLICT|BLOCKED:\s*SPEC CONFLICT/i);
+  if (!m) return null;
+  return result.slice(m.index, m.index + 400).replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Test safety: with PAN_STANDIN_DIR set, a host CLI must be a stand-in in that directory.
  * A test whose stand-in went missing would otherwise reach the real CLI, and spend.
  */
@@ -225,6 +244,7 @@ function executeUnit(cwd, unit, host, opts = {}) {
   if (r.error && !timedOut) return { exit: 127, cost_usd: 0, argv, error: `spawn_failed: ${r.error.message}`, stderr_tail: r.error.message, duration_ms: Date.now() - t0 };
   return {
     exit: timedOut ? 124 : (r.status == null ? 1 : r.status), cost_usd: parseCost(r.stdout) || 0, argv, duration_ms: Date.now() - t0,
+    blocked: blockedReport(r.stdout) || undefined,
     timed_out: timedOut || undefined, stderr_tail: (r.stderr || '').slice(-500) || undefined, stdout_tail: r.status ? (r.stdout || '').slice(-500) || undefined : undefined,
   };
 }
@@ -487,6 +507,13 @@ function runAutodev(cwd, opts = {}) {
         row.forecast_p90 = unitForecast(cwd, unit);
         if (routed) row.recovered_from = routed.cls;
         append(row);
+        // A session that stopped for a person's ruling is not "no progress" (2026-10-24: an
+        // executor's spec conflict was reported as execute:5 changed nothing on disk).
+        if (res.blocked) {
+          append({ status: 'stopped', reason: 'human_needed', detail: `${unitKey(unit)} is blocked on a ruling: ${res.blocked}` });
+          persistRunFacts(cwd);
+          return finish('human_needed');
+        }
         if (opts.ci && unit.action === 'complete_phase') {
           const ci = runCiRounds(cwd, unit, host, { append, opts, nextSeq: () => new Set(readRows(ledger).filter((r) => r.status === 'started').map((r) => r.seq)).size + 1 });
           if (ci.stop) { append({ status: 'stopped', ...ci.stop }); persistRunFacts(cwd); return finish(); }
@@ -562,4 +589,4 @@ function cmdAutodev(cwd, sub, flags, raw) {
   output(r, raw, r.stop ? r.stop.reason : r.error);
 }
 
-module.exports = { standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };
+module.exports = { blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };

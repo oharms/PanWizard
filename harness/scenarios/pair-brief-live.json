@@ -1,0 +1,81 @@
+{
+  "id": "pair-brief-live",
+  "tier": 2,
+  "description": "The PAN arm of the H10 project-definition pair: from a one-paragraph product brief, /pan:new-project --auto defines the project (requirements and roadmap), then PAN's autodev loop builds every phase it planned, a fresh Claude Code session per unit, a real model.",
+  "why": "Program H10, project definition: earlier pairs handed both arms a ready roadmap and requirements, so they measured building, not defining. Here both arms start from the same paragraph (seed brief-shop, BRIEF.md: a stock and order library with reservations, partial shipments, cancellations, low-stock alerts, a daily report and persistence, with several rules that interact) and no .planning/. PAN must turn the brief into requirements and phases itself; the bare host gets the same brief and four fresh sessions with no structure given. Both are judged by the same hidden check (harness/scripts/check-shop.cjs: every behaviour the brief states, the interactions and persistence across restarts). Run both arms together with --repeat N and an approved --max-usd of at least 60 per rep (the run splits it equally between the arms).",
+  "seed": "brief-shop",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 30,
+    "maxMinutes": 420,
+    "maxStepMinutes": 350
+  },
+  "pair": {
+    "id": "brief-live",
+    "arm": "pan",
+    "goal": "Build the product described in the one-paragraph brief BRIEF.md, with tests, across fresh sessions, starting from no project structure."
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:new-project --auto @BRIEF.md (unattended: do not ask questions, take the recommended default and record what you assumed; stop once the requirements and roadmap are committed and do not continue into phase 1, which later sessions build.)",
+      "maxUsd": 8,
+      "expect": [
+        "exit:0",
+        "file:.planning/project.md",
+        "file:.planning/requirements.md",
+        "file:.planning/roadmap.md"
+      ],
+      "why": "new-project defines the project from the brief alone, unattended: a project, requirements and a roadmap of phases. The suffix stops the auto-advance chain at the roadmap, as autodev's own units stop at their command, so every phase is built by the loop in fresh sessions."
+    },
+    {
+      "kind": "sh",
+      "script": "autodev-run.cjs",
+      "args": [
+        "<ws>",
+        "--max-usd",
+        "20",
+        "--max-turns",
+        "40",
+        "--timeout-minutes",
+        "340"
+      ],
+      "spends": true,
+      "expect": [
+        "exit:0",
+        "json:stop=done",
+        "file:src/shop.js"
+      ],
+      "why": "autodev runs every phase new-project planned to done, each unit in a fresh session, and the module the brief names exists."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-shop.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every behaviour the brief states holds, the interacting rules and persistence across restarts included, judged by a check neither arm saw."
+    }
+  ]
+}

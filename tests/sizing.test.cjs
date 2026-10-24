@@ -181,3 +181,57 @@ describe('step 2: the engine plans a lean phase (no planner session)', () => {
     assert.equal(planCheckStatus(t, '1').status, 'ok');
   });
 });
+
+describe('a later requirement supersedes earlier tests (2026-10-24 false stop)', () => {
+  const A = require('../pan-wizard-core/bin/lib/autodev.cjs');
+  test('the engine declares the existing tests a behaviour-changing requirement supersedes', () => {
+    const t = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-sup-'));
+    dirs.push(t);
+    fs.cpSync(path.join(ROOT, 'tests', 'fixtures', 'h10-ledger', 'reference'), t, { recursive: true });
+    fs.cpSync(path.join(ROOT, 'harness', 'seeds', 'ledger-roadmap', '.planning'), path.join(t, '.planning'), { recursive: true });
+    const g = (a) => spawnSync('git', a, { cwd: t, encoding: 'utf8' });
+    g(['init', '-q']); g(['config', 'user.name', 't']); g(['config', 'user.email', 't@t']); g(['add', '-A']); g(['commit', '-qm', 'x']);
+    const r = cli(t, ['size', 'phase-plan', '5']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.supersedes_tests, ['tests/ledger.test.js']);
+    const plan = fs.readFileSync(path.join(t, out.path), 'utf8');
+    assert.match(plan, /^files_modified: \[.*tests\/ledger\.test\.js.*\]$/m, 'declared, so the executor may update it');
+    assert.match(plan, /^supersedes_requirements: \[CENTS-/m);
+    assert.match(plan, /update those expectations to what CENTS-\d+ requires and record each change as a deviation/);
+    assert.equal(planStructure(plan).valid, true);
+  });
+  test('a phase that changes nothing already built declares no superseded tests', () => {
+    const t = seed('tasks-roadmap');
+    const g = (a) => spawnSync('git', a, { cwd: t, encoding: 'utf8' });
+    g(['init', '-q']); g(['config', 'user.name', 't']); g(['config', 'user.email', 't@t']); g(['add', '-A']); g(['commit', '-qm', 'x']);
+    const out = JSON.parse(cli(t, ['size', 'phase-plan', '1']).stdout);
+    assert.equal(out.supersedes_tests, undefined);
+  });
+  test('exec-phase hands a plan\'s superseded tests to its executor', () => {
+    const s = fs.readFileSync(path.join(ROOT, 'pan-wizard-core', 'workflows', 'exec-phase.md'), 'utf8');
+    assert.match(s, /<superseded_tests>[\s\S]*not a spec conflict[\s\S]*<\/superseded_tests>/);
+  });
+  test('blockedReport reads an executor\'s spec conflict from the session result', () => {
+    const json = JSON.stringify({ type: 'result', result: 'Phase 5 is not finished.\n## BLOCKED_SPEC_CONFLICT\n**Test:** tests/a.test.js:3', total_cost_usd: 1 });
+    assert.match(A.blockedReport(json), /^BLOCKED_SPEC_CONFLICT/);
+    assert.equal(A.blockedReport(JSON.stringify({ result: 'all done', total_cost_usd: 1 })), null);
+  });
+  test('autodev stops with human_needed, not no_progress, when a unit is blocked on a ruling', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-blk-'));
+    dirs.push(dir);
+    const p = path.join(dir, '.planning');
+    fs.mkdirSync(path.join(p, 'phases', '01-login'), { recursive: true });
+    fs.writeFileSync(path.join(p, 'project.md'), '# P\n');
+    fs.writeFileSync(path.join(p, 'requirements.md'), '# R\n');
+    fs.writeFileSync(path.join(p, 'config.json'), JSON.stringify({ workflow: { phase_gate: 'warn' } }));
+    fs.writeFileSync(path.join(p, 'roadmap.md'), '# Roadmap\n\n- [ ] **Phase 1: Login**\n\n### Phase 1: Login\n**Goal:** users sign in\n**Requirements**: AUTH-01\n');
+    const execute = (cwd, unit) => {
+      if (unit.action === 'plan') fs.writeFileSync(path.join(p, 'phases', '01-login', '01-01-plan.md'), '---\nphase: 01\n---\n');
+      return { exit: 0, cost_usd: 0.1, argv: ['-p', 'sim'], duration_ms: 1, blocked: unit.action === 'execute' ? 'BLOCKED_SPEC_CONFLICT Test: tests/a.test.js' : undefined };
+    };
+    const r = A.runAutodev(dir, { host: 'claude', execute, maxUsd: 5 });
+    assert.equal(r.stop.reason, 'human_needed', JSON.stringify(r.stop));
+    assert.match(r.stop.detail, /execute:1 is blocked on a ruling: BLOCKED_SPEC_CONFLICT/);
+  });
+});

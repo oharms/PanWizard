@@ -1,0 +1,77 @@
+{
+  "id": "brief-live-quality",
+  "tier": 2,
+  "description": "PAN on the H10 project-definition seed with the full ceremony: /pan:new-project --auto with the quality profile and standard depth, then autodev with --quality (research, a planner and the plan-checker for every phase, every agent on the launch model), against the same hidden check as the pair-brief-live arms.",
+  "why": "Program H10, project definition: pair-brief-live's PAN arm runs new-project's auto defaults (balanced profile, quick depth) and autodev's right-sized path, so a phase whose requirements came out precise is planned lean by the engine. This arm runs the same brief through the full ceremony, so the three results (bare host, PAN default, PAN quality) show what definition plus planning buys. new-project takes its auto-mode overrides from idea-document frontmatter only; BRIEF.md has none (both arms read the same file), so the overrides are stated in the prompt in that frontmatter's own keys, and autodev's --quality forces the full ceremony whatever the config says. Run with an approved --max-usd.",
+  "seed": "brief-shop",
+  "install": [
+    "--claude"
+  ],
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 40,
+    "maxMinutes": 420,
+    "maxStepMinutes": 350
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "/pan:new-project --auto @BRIEF.md (unattended: do not ask questions, take the recommended default and record what you assumed. Auto-mode overrides, as the idea document's frontmatter would give them: model_profile: quality, planning_depth: standard. Stop once the requirements and roadmap are committed and do not continue into phase 1, which later sessions build.)",
+      "maxUsd": 10,
+      "expect": [
+        "exit:0",
+        "file:.planning/project.md",
+        "file:.planning/requirements.md",
+        "file:.planning/roadmap.md"
+      ],
+      "why": "new-project defines the project from the brief alone, unattended, with the quality profile and standard depth."
+    },
+    {
+      "kind": "sh",
+      "script": "autodev-run.cjs",
+      "args": [
+        "<ws>",
+        "--max-usd",
+        "30",
+        "--max-turns",
+        "40",
+        "--timeout-minutes",
+        "340",
+        "--quality"
+      ],
+      "spends": true,
+      "expect": [
+        "exit:0",
+        "json:stop=done",
+        "file:src/shop.js"
+      ],
+      "why": "autodev runs every phase new-project planned to done with the full ceremony, each unit in a fresh session, and the module the brief names exists."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-shop.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every behaviour the brief states holds, the interacting rules and persistence across restarts included, judged by a check neither arm saw."
+    }
+  ]
+}

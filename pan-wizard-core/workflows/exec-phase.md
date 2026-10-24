@@ -196,6 +196,11 @@ Execute each wave in sequence. Within a wave: parallel if `PARALLELIZATION=true`
        - .agents/skills/ (Project skills, if exists — list skills, read SKILL.md for each, follow relevant rules during implementation)
        </files_to_read>
 
+       {Only when the plan's frontmatter has `supersedes_tests`, include:}
+       <superseded_tests>
+       This plan changes behaviour earlier phases built ({supersedes_requirements}). These test files assert the old behaviour and the plan declares them: {supersedes_tests}. Updating their expectations to what those requirements now require is part of the task, not a spec conflict. Record each changed expectation as a deviation in the summary (file, what it asserted, what it asserts now, which requirement). Deleting, skipping or weakening a test is still forbidden, and `verify test-integrity` still checks it.
+       </superseded_tests>
+
        If the plan's `<context>` names `@.planning/roadmap.md`, read `{slice_path}` in its place: it carries this phase's section, its dependencies' goals and its requirements, and the whole roadmap is the largest file in `.planning/` on a long project. Open the whole file only for something the slice leaves out.
 
        <success_criteria>

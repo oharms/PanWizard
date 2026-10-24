@@ -1,0 +1,84 @@
+{
+  "id": "pair-brief-live-stock",
+  "tier": 2,
+  "description": "The stock arm of the H10 project-definition pair: Claude Code with nothing installed builds the product in the one-paragraph brief over four fresh sessions (four model steps, no session carried between them), with no structure given, a real model.",
+  "why": "Program H10, project definition: the claim PAN makes is that defining a project (requirements, phases) before building it keeps a multi-session build on track where the bare host, given the same brief, plans as it sees fit. Each step is a new headless session (no --resume, session persistence off), so a later session knows the earlier ones only from the repository and whatever notes they left in it. Both arms see the same brief (seed brief-shop, BRIEF.md) and are judged by the same hidden check (harness/scripts/check-shop.cjs). Run both arms together with --repeat N and an approved --max-usd of at least 60 per rep.",
+  "seed": "brief-shop",
+  "install": null,
+  "requires": {
+    "cli": "claude"
+  },
+  "budget": {
+    "maxUsd": 18,
+    "maxMinutes": 200,
+    "maxStepMinutes": 45
+  },
+  "pair": {
+    "id": "brief-live",
+    "arm": "stock",
+    "goal": "Build the product described in the one-paragraph brief BRIEF.md, with tests, across fresh sessions, starting from no project structure."
+  },
+  "steps": [
+    {
+      "kind": "model",
+      "prompt": "Read BRIEF.md and build this product. It is too large for one session: you will get four sessions, and nothing carries over between them except this repository. Plan as you see fit, leave yourself whatever notes you need in the repo, write tests, and do not ask questions.",
+      "maxUsd": 4,
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Session 1 of 4, fresh: the host reads the brief and decides its own plan and notes."
+    },
+    {
+      "kind": "model",
+      "prompt": "Continue building the product described in BRIEF.md from where the repository stands. Session 2 of 4: nothing carries over between sessions except this repository, so read whatever notes earlier sessions left, keep the tests passing, write tests for what you add, and do not ask questions.",
+      "maxUsd": 4,
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Session 2 of 4, fresh: it knows session 1 only from the repository."
+    },
+    {
+      "kind": "model",
+      "prompt": "Continue building the product described in BRIEF.md from where the repository stands. Session 3 of 4: nothing carries over between sessions except this repository, so read whatever notes earlier sessions left, keep the tests passing, write tests for what you add, and do not ask questions.",
+      "maxUsd": 4,
+      "expect": [
+        "exit:0"
+      ],
+      "why": "Session 3 of 4, fresh."
+    },
+    {
+      "kind": "model",
+      "prompt": "Continue building the product described in BRIEF.md from where the repository stands. Session 4 of 4, the last: finish the product and make sure every behaviour in the brief works and is tested, with the tests passing. Nothing carries over between sessions except this repository, so read whatever notes earlier sessions left, and do not ask questions.",
+      "maxUsd": 4,
+      "expect": [
+        "exit:0",
+        "file:src/shop.js"
+      ],
+      "why": "Session 4 of 4, fresh: the build is finished and the module the brief names exists."
+    },
+    {
+      "kind": "sh",
+      "script": "seed-tests.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "The project's own tests pass."
+    },
+    {
+      "kind": "sh",
+      "script": "check-shop.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:passed=true"
+      ],
+      "why": "Every behaviour the brief states holds, the interacting rules and persistence across restarts included, judged by a check neither arm saw."
+    }
+  ]
+}

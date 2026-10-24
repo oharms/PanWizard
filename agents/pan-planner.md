@@ -515,6 +515,8 @@ After completion, create `.planning/phases/XX-name/{phase}-{plan}-summary.md`
 | `wave` | Yes | Execution wave number |
 | `depends_on` | Yes | Plan IDs this plan requires |
 | `files_modified` | Yes | Files this plan touches |
+| `supersedes_tests` | When a requirement changes behaviour already built | The existing test files that assert the old behaviour (a format, a schema, an API being changed or migrated). List them in `files_modified` too, and name the requirements in `supersedes_requirements`: the executor then updates their expectations with a recorded deviation instead of stopping on a spec conflict. Find them by searching the tests for the modules the change touches |
+| `supersedes_requirements` | With `supersedes_tests` | The requirement ids that make the old expectations wrong |
 | `autonomous` | Yes | `true` if no checkpoints |
 | `requirements` | Yes | **MUST** list requirement IDs from ROADMAP. Every roadmap requirement ID MUST appear in at least one plan. |
 | `planned_commit` | Yes | The output of `git rev-parse HEAD` when you write the plan (omit it outside a git repository) |

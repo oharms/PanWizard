@@ -1,0 +1,9 @@
+{
+  "name": "shopkeep",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Seed project for the PAN Harness H10 project-definition pair: a one-paragraph product brief, nothing defined or built yet.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
