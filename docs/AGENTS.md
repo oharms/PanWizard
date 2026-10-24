@@ -653,7 +653,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 Each agent is assigned a model tier based on the active profile in `.planning/config.json`. PAN uses abstract tiers (`reasoning`, `mid`, `fast`) that map to provider-specific models:
 
-**Source of truth:** `MODEL_PROFILES` in `pan-wizard-core/bin/lib/core.cjs`. The table below mirrors that source by hand — no script or test regenerates it — so when in doubt, `core.cjs` wins.
+**Source of truth:** `MODEL_PROFILES` in `pan-wizard-core/bin/lib/core.cjs`. Since right-sized ceremony (`docs/specs/right-sized-ceremony.md`), `balanced` runs the plan-checker and the researchers on the mid tier and `quality` keeps every agent on the reasoning tier, with the full ceremony on every piece of work. The table below mirrors that source by hand — no script or test regenerates it — so when in doubt, `core.cjs` wins.
 
 | Agent | `quality` | `balanced` | `budget` |
 |-------|-----------|------------|----------|
@@ -662,13 +662,13 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 | pan-executor | reasoning | reasoning | mid |
 | pan-designer | reasoning | reasoning | mid |
 | pan-design-checker | reasoning | reasoning | fast |
-| pan-phase-researcher | reasoning | reasoning | fast |
-| pan-project-researcher | reasoning | reasoning | fast |
+| pan-phase-researcher | reasoning | mid | fast |
+| pan-project-researcher | reasoning | mid | fast |
 | pan-research-synthesizer | reasoning | reasoning | fast |
 | pan-debugger | reasoning | reasoning | mid |
 | pan-document_code | reasoning | reasoning | fast |
 | pan-verifier | reasoning | reasoning | fast |
-| pan-plan-checker | reasoning | reasoning | fast |
+| pan-plan-checker | reasoning | mid | fast |
 | pan-integration-checker | reasoning | reasoning | fast |
 | pan-reviewer | reasoning | reasoning | fast |
 | pan-conductor | reasoning | reasoning | mid |

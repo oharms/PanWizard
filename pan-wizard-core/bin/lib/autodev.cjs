@@ -144,7 +144,8 @@ function unitPrompt(host, unit, note) {
     return `PAN autodev CI fix round ${unit.round} for phase ${unit.phase}: the pull request checks failed. ${clean(note)} Fix the code so they pass and commit the fix. Do not ask questions. Do not start another phase or command.`;
   }
   const name = SESSION_ACTIONS[unit.action];
-  const args = `${unit.phase}${unit.action === 'plan_gaps' ? ' --gaps' : ''}${unit.plan ? ` --plan ${unit.plan}` : ''}`;
+  // --quality (the full ceremony, sizing.cjs) is passed to every phase command the loop runs.
+  const args = `${unit.phase}${unit.action === 'plan_gaps' ? ' --gaps' : ''}${unit.plan ? ` --plan ${unit.plan}` : ''}${unit.quality ? ' --quality' : ''}`;
   const cmd = host === 'codex' ? `$pan-${name} ${args}` : host === 'opencode' ? `/pan-${name} ${args}` : `/pan:${name} ${args}`;
   const base = `PAN autodev unit: run ${cmd} unattended. Do not ask questions: take the recommended default and record what you assumed. Do not start another phase or command when it ends.`;
   return note ? `${base} ${String(note).replace(/[\r\n&|<>%^"]/g, ' ').replace(/\s+/g, ' ').trim()}` : base;
@@ -304,7 +305,7 @@ function runPlansInWorktrees(cwd, unit, host, groups, ctx) {
         const add = git(cwd, ['worktree', 'add', '-b', branch, dir, 'HEAD']);
         if (!add.ok) return { stop: { reason: 'human_needed', detail: `could not create a worktree for plan ${plan}: ${add.err}` } };
         made.push({ plan, branch, dir });
-        const u = { action: 'execute', phase: unit.phase, plan, command: `/pan:exec-phase ${unit.phase} --plan ${plan}` };
+        const u = { action: 'execute', phase: unit.phase, plan, command: `/pan:exec-phase ${unit.phase} --plan ${plan}`, quality: !!ctx.opts.quality };
         const seq = ctx.nextSeq();
         ctx.append({ seq, attempt: 1, status: 'started', unit: u, host, worktree: branch, start_sha: gitHead(dir) });
         const res = executeUnit(dir, u, host, ctx.opts);
@@ -453,14 +454,22 @@ function runAutodev(cwd, opts = {}) {
       }
     }
     const seq = pending ? pending.seq : new Set(rows.filter((r) => r.status === 'started').map((r) => r.seq)).size + 1;
-    const u = { action: unit.action, phase: unit.phase, command: unit.command };
+    const u = { action: unit.action, phase: unit.phase, command: unit.command, quality: !!opts.quality };
     let note = null;
     let model = null;
     let routed = null;
     for (let attempt = 1; ; attempt++) {
-      if (!(pending && attempt === 1)) append({ seq, attempt, status: 'started', unit: u, host, start_sha: gitHead(cwd) });
       const spentRun = readRows(ledger).filter((r) => r.status === 'finished').reduce((n, r) => n + (Number(r.cost_usd) || 0), 0);
       const remainingUsd = Math.min(limits.maxUsd != null ? limits.maxUsd - spentRun : Infinity, limits.maxUsdDay != null ? limits.maxUsdDay - daySpend(cwd) : Infinity);
+      // A retry can find the cap already spent (the first attempt is gated by decideStop):
+      // stop here rather than start a session with
+      // --max-budget-usd 0.00, which Claude Code refuses (2026-10-24).
+      if (attempt > 1 && remainingUsd < 0.01) {
+        append({ status: 'stopped', reason: 'budget_usd', detail: `the cap was spent before ${unitKey(unit)} attempt ${attempt}` });
+        persistRunFacts(cwd);
+        return finish('budget_usd');
+      }
+      if (!(pending && attempt === 1)) append({ seq, attempt, status: 'started', unit: u, host, start_sha: gitHead(cwd) });
       const res = executeUnit(cwd, unit, host, { ...opts, note, model, remainingUsd: Number.isFinite(remainingUsd) ? remainingUsd : undefined });
       const row = { seq, attempt, status: 'finished', unit: u, host, ...res, end_sha: gitHead(cwd), snapshot_after: snapshotHash(cwd), resumed: pending && attempt === 1 ? true : undefined };
       if (res.exit === 0) {
@@ -536,7 +545,7 @@ function cmdAutodev(cwd, sub, flags, raw) {
   if (sub !== 'run' && sub !== 'resume') { output({ error: 'unknown_subcommand', reason: 'Usage: autodev run|resume|status|report|replay [--host H] [--max-usd N] [--max-usd-day N] [--max-turns N] [--run ID]' }, raw); return; }
   const r = runAutodev(cwd, {
     host: flags.host || (sub === 'run' ? 'claude' : undefined), maxUsd: numOrNull(flags.maxUsd), maxUsdDay: numOrNull(flags.maxUsdDay), maxTurns: numOrNull(flags.maxTurns),
-    runId: flags.run, resume: sub === 'resume', worktrees: !!flags.worktrees,
+    runId: flags.run, resume: sub === 'resume', worktrees: !!flags.worktrees, quality: !!flags.quality,
     ci: flags.ci === 'local' ? 'local' : !!flags.ci, ciRounds: numOrNull(flags.ciRounds), ciPush: !!flags.ciPush, ciBase: flags.ciBase || undefined,
   });
   output(r, raw, r.stop ? r.stop.reason : r.error);

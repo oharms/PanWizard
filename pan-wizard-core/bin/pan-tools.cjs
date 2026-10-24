@@ -389,7 +389,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -916,7 +916,7 @@ async function main() {
       // A1: the deterministic outer loop — a fresh host session per unit, stops in code.
       require('./lib/autodev.cjs').cmdAutodev(cwd, args[1], {
         host: getArgValue(args, '--host'), maxUsd: getArgValue(args, '--max-usd'), maxUsdDay: getArgValue(args, '--max-usd-day'),
-        maxTurns: getArgValue(args, '--max-turns'), run: getArgValue(args, '--run'), worktrees: args.includes('--worktrees'),
+        maxTurns: getArgValue(args, '--max-turns'), run: getArgValue(args, '--run'), worktrees: args.includes('--worktrees'), quality: args.includes('--quality'),
         ci: args.includes('--ci') ? (getArgValue(args, '--ci') === 'local' ? 'local' : 'pr') : false, ciRounds: getArgValue(args, '--ci-rounds'), ciPush: args.includes('--ci-push'), ciBase: getArgValue(args, '--ci-base'),
       }, raw);
       break;
@@ -924,6 +924,46 @@ async function main() {
 
     case 'next-action': {
       require('./lib/next-action.cjs').cmdNextAction(cwd, raw);
+      break;
+    }
+
+    case 'size': {
+      // Right-sized ceremony: lean or full for a phase or a quick task (sizing.cjs).
+      const S = require('./lib/sizing.cjs');
+      const subcommand = args[1];
+      const opts = { quality: args.includes('--quality'), full: args.includes('--full') };
+      if (subcommand === 'phase') {
+        if (!args[2] || args[2].startsWith('--')) error('Usage: size phase <N> [--quality] [--full]');
+        const r = S.sizePhase(cwd, args[2], opts);
+        output(r, raw, r.path);
+      } else if (subcommand === 'task') {
+        const text = args.slice(2).filter((a) => a !== '--quality' && a !== '--full').join(' ');
+        if (!text.trim()) error('Usage: size task "<description>" [--quality] [--full]');
+        const r = S.sizeTask(cwd, text, opts);
+        output(r, raw, r.path);
+      } else if (subcommand === 'quick-plan') {
+        // size quick-plan --out <file> --num <N> "<description>": the lean quick task's plan.
+        const out = getArgValue(args, '--out');
+        const num = getArgValue(args, '--num');
+        const skip = new Set(['--out', out, '--num', num]);
+        const text = args.slice(2).filter((a) => !skip.has(a)).join(' ');
+        if (!out || !text.trim()) error('Usage: size quick-plan --out <file> [--num N] "<description>"');
+        const outPath = require('path').resolve(cwd, out);
+        fs.mkdirSync(require('path').dirname(outPath), { recursive: true });
+        fs.writeFileSync(outPath, S.leanQuickPlan(cwd, text, num));
+        output({ written: true, path: out }, raw, out);
+      } else if (subcommand === 'plan-check') {
+        if (!args[2] || args[2].startsWith('--')) error('Usage: size plan-check <N>');
+        const r = S.engineCheckPlans(cwd, args[2]);
+        if (r.ok) {
+          const rec = S.recordEngineCheck(cwd, args[2], r);
+          r.recorded = !rec.error;
+          if (rec.error) r.record_error = rec.reason || rec.error;
+        }
+        output(r, raw, r.ok ? 'passed' : 'failed', r.ok && r.recorded ? 0 : 1);
+      } else {
+        error('Unknown size subcommand. Available: phase, task, quick-plan, plan-check');
+      }
       break;
     }
 

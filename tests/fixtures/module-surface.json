@@ -961,6 +961,17 @@
     "stopExperiment:function",
     "tailExperimentState:function"
   ],
+  "sizing.cjs": [
+    "DEFAULT_LEAN_MAX_REQUIREMENTS:number",
+    "ceremonyMode:function",
+    "engineCheckPlans:function",
+    "leanQuickPlan:function",
+    "recordEngineCheck:function",
+    "requirementSpecified:function",
+    "sizePhase:function",
+    "sizeTask:function",
+    "taskSpecified:function"
+  ],
   "skill-align.cjs": [
     "SAD_STOPWORDS:object",
     "SKILL_ROOTS:object",
@@ -1209,6 +1220,7 @@
     "getChangedFiles:function",
     "groupGapPatterns:function",
     "parseConventionRules:function",
+    "planStructure:function",
     "reconcilePhase:function",
     "scanStubs:function",
     "scopePhase:function",

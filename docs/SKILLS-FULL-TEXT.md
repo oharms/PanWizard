@@ -371,7 +371,7 @@ GOOD: "Assumption: The project uses Express for routing — Evidence: require('e
 name: pan:autodev
 group: Phase Lifecycle
 description: Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
-argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [local] [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]"
+argument-hint: "[run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--quality] [--ci [local] [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]"
 allowed-tools:
   - Read
   - Bash
@@ -1062,7 +1062,7 @@ Generate 3-4 **phase-specific** gray areas, not generic categories.
 name: pan:exec-phase
 group: Phase Lifecycle
 description: Execute all plans in a phase with wave-based parallelization
-argument-hint: "<phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]"
+argument-hint: "<phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto] [--quality]"
 allowed-tools:
   - Read
   - Write
@@ -4997,7 +4997,7 @@ Preserve all workflow gates (classification approval, test plan approval, RED-GR
 name: pan:plan-phase
 group: Phase Lifecycle
 description: Create detailed phase plan (plan.md) with verification loop
-argument-hint: "[phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only]"
+argument-hint: "[phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only] [--quality]"
 agent: pan-planner
 allowed-tools:
   - Read
@@ -5298,7 +5298,7 @@ Preserve all routing logic (Routes A through F) and edge case handling.
 name: pan:quick
 group: Session & Progress
 description: Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents
-argument-hint: "[--full] [description]"
+argument-hint: "[--full] [--quality] [description]"
 allowed-tools:
   - Read
   - Write

@@ -210,7 +210,12 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
   const fullPath = path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath);
   const content = safeReadFile(fullPath);
   if (!content) { output({ error: 'File not found', path: filePath }, raw); return; }
+  const r = planStructure(content);
+  output(r, raw, r.valid ? 'valid' : 'invalid');
+}
 
+/** A plan's structure check (cmdVerifyPlanStructure without the output). Pure. */
+function planStructure(content) {
   const fm = extractFrontmatter(content);
   const errors = [];
   const warnings = [];
@@ -279,14 +284,14 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
     errors.push('Has checkpoint tasks but autonomous is not false');
   }
 
-  output({
+  return {
     valid: errors.length === 0,
     errors,
     warnings,
     task_count: tasks.length,
     tasks,
     frontmatter_fields: Object.keys(fm),
-  }, raw, errors.length === 0 ? 'valid' : 'invalid');
+  };
 }
 
 /**
@@ -1671,6 +1676,7 @@ function runFullBuildCheck(cwd) {
 // ─── Deployment validation — extracted to verify-deploy.cjs (re-exported below)
 
 module.exports = {
+  planStructure,
   cmdVerifySummary,
   cmdVerifyPlanStructure,
   detectPlanTruncation,

@@ -436,9 +436,9 @@ questions: [
     question: "Which AI models for planning agents?",
     multiSelect: false,
     options: [
-      { label: "Balanced (Recommended)", description: "reasoning tier for every agent — the default (identical to quality post-COST-RESET)" },
-      { label: "Quality", description: "reasoning tier for every agent — identical to balanced, so switching between the two changes nothing" },
-      { label: "Budget", description: "mid tier for writing, fast tier for research/verification — fastest, lowest cost" }
+      { label: "Balanced (Recommended)", description: "right-sized: a small, well-specified phase or quick task skips research and the planner/checker loop; plan-checker and researchers on the mid tier" },
+      { label: "Quality", description: "the full ceremony on every piece of work, every agent on the reasoning tier: the behaviour before right-sizing, several times the cost and time" },
+      { label: "Budget", description: "right-sized, plus mid tier for writing and fast tier for research/verification — fastest, lowest cost" }
     ]
   }
 ]

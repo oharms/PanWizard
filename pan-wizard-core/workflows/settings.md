@@ -29,7 +29,7 @@ Parse current values (when a key is absent, use PAN's default: `true` for resear
 - `workflow.plan_check` — spawn plan checker during plan-phase
 - `workflow.verifier` — spawn verifier during execute-phase
 - `workflow.nyquist_validation` — validation architecture research during plan-phase
-- `model_profile` — which model each agent uses (default: `balanced`)
+- `model_profile` — how much ceremony and which model each agent uses (default: `balanced`; `quality` keeps the full ceremony everywhere)
 - `routing.strategy` — not asked here (default: `static`). The `complexity` strategy reaches no workflow, so offering it would be a choice that changes nothing; `config-set routing.strategy complexity` still sets it for `resolve-model --metadata` callers. A `quality` profile in an existing config keeps working: it is identical to `balanced`
 - `cost.phase_budget_usd` — spend per phase PAN warns about, in API-equivalent dollars (default: `20`; `0` = off). It never stops a run
 - `branching_strategy` — branching approach (default: `"none"`; a top-level key — a nested `git.branching_strategy` is ignored when the top-level key exists, as it does in every config `config-ensure-section` creates — write the top-level key)
@@ -45,8 +45,9 @@ AskUserQuestion([
     header: "Model",
     multiSelect: false,
     options: [
-      { label: "Balanced (Recommended)", description: "reasoning tier for every agent; the quality-first default" },
-      { label: "Budget", description: "mid tier for writing, fast tier for research/verification (lowest cost)" }
+      { label: "Balanced (Recommended)", description: "right-sized: a small, well-specified phase or quick task skips research and the planner/checker loop; plan-checker and researchers on the mid tier; one plan revision" },
+      { label: "Quality", description: "the full ceremony on every piece of work, every agent on the reasoning tier (the behaviour before right-sizing; costs several times more)" },
+      { label: "Budget", description: "right-sized like balanced, plus mid tier for writing and fast tier for research/verification (lowest cost)" }
     ]
   },
   {
@@ -133,7 +134,7 @@ A dollar amount typed under Other is used as given.
 Write each answer with `config-set`, which keeps every other key in the `workflow` and `routing` objects:
 
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set model_profile <balanced|budget>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set model_profile <balanced|quality|budget>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.research <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.plan_check <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.verifier <true|false>

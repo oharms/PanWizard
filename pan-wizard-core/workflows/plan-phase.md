@@ -48,6 +48,18 @@ Parse JSON for: `researcher_model`, `planner_model`, `checker_model`, `research_
 
 **If `planning_exists` is false:** Error — run `/pan:new-project` first.
 
+**Size the ceremony** (the engine decides; pass `--quality` or `--full` through when `$ARGUMENTS` has them):
+
+```bash
+SIZING=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size phase "$PHASE" [--quality] [--full])
+```
+
+`SIZING.path` is `lean` or `full`, and `SIZING.mode` is `auto` or `full`. Show it in one line: `Ceremony: {path} ({reasons joined by "; "})`.
+
+- **`lean`** (a small phase whose requirements say precisely what to build): no research (step 5), one short plan (step 8), the engine's plan check instead of the plan-checker agent (step 10).
+- **`full`**: the whole path below.
+- **`mode` `auto`** (any profile but `quality`, and `workflow.ceremony` not `full`): the plan-checker gets an output budget (step 10) and the revision loop stops after one revision (step 12). **`mode` `full`** keeps the unbudgeted checker and two revisions.
+
 **Circular optimization — ensure trace session active:**
 ```bash
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace init \
@@ -57,7 +69,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace init \
 
 ## 2. Parse and Normalize Arguments
 
-Extract from $ARGUMENTS: phase number (integer or decimal like `2.1`), flags (`--research`, `--skip-research`, `--gaps`, `--skip-verify`, `--prd <filepath>`).
+Extract from $ARGUMENTS: phase number (integer or decimal like `2.1`), flags (`--research`, `--skip-research`, `--gaps`, `--skip-verify`, `--prd <filepath>`, `--quality`, `--full`). `--quality` and `--full` force the full ceremony for this run (`size phase` above).
 
 Extract `--prd <filepath>` from $ARGUMENTS. If present, set PRD_FILE to the filepath.
 
@@ -218,7 +230,7 @@ If "Run discuss-phase first": Display `/pan:discuss-phase {X}` and exit workflow
 
 ## 5. Handle Research
 
-**Skip if:** `--gaps` flag, `--skip-research` flag, or `research_enabled` is false (from init) without `--research` override.
+**Skip if:** `--gaps` flag, `--skip-research` flag, `research_enabled` is false (from init) without `--research` override, or `SIZING.path` is `lean` (the requirements already say what to build) without `--research`.
 
 **P-1401 lightweight-phase bypass (v3.7.3+):** Also skip per-phase research when ALL three are true:
 
@@ -364,6 +376,11 @@ Planner prompt:
 **Project skills:** Check .agents/skills/ directory (if exists) — read SKILL.md files, plans should account for project skill rules
 </planning_context>
 
+<ceremony>
+{Only when SIZING.path is lean, include:}
+Lean path: this phase's requirements already name what to build. Write ONE plan, as short as the requirements allow: no research section, no restating of the requirements, decisions only (signatures, values, assertions, the verify command). The engine checks the plan in code instead of a plan-checker.
+</ceremony>
+
 <downstream_consumer>
 Output consumed by /pan:exec-phase. Plans need:
 - Frontmatter (wave, depends_on, files_modified, autonomous)
@@ -400,7 +417,15 @@ Task(
 
 ## 10. Spawn pan-plan-checker Agent
 
-**First, the checks code can make.** Run them before spending a checker:
+**Lean path (`SIZING.path` is `lean`): the engine checks the plans.**
+
+```bash
+ENGINE_CHECK=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size plan-check "${PHASE_NUMBER}")
+```
+
+Exit 0 (`ok`, `recorded`): the plan set, every plan's structure and the plans' grep gates pass, and the engine has recorded the phase's plan check. Skip the checker and go to step 13. Exit 1: send its `errors` to the planner as the revision context (step 12; it counts as an iteration) and run `size plan-check` again; when it still fails, continue below with the plan-checker agent.
+
+**Full path. First, the checks code can make.** Run them before spending a checker:
 
 ```bash
 PLAN_SET=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-set "${PHASE_NUMBER}")
@@ -456,6 +481,11 @@ Checker prompt:
 - ## VERIFICATION PASSED — all checks pass
 - ## ISSUES FOUND — structured issue list
 </expected_output>
+
+<output_budget>
+{Only when SIZING.mode is auto, include:}
+Report the verdict and the blocking issues only: one line per issue (plan, task, what is wrong, the fix), at most 300 words before the pan-verdict block. No summary of what passed.
+</output_budget>
 ```
 
 ```
@@ -486,11 +516,11 @@ Each re-check in the revision loop overwrites the same file and is recorded agai
 
 ## 12. Revision Loop (At Most 2 Revisions, 3 Checks)
 
-Track `iteration_count` (starts at 1 after initial plan + check).
+Track `iteration_count` (starts at 1 after initial plan + check). `MAX_CHECKS` is 2 when `SIZING.mode` is `auto` (one revision: a second failure goes to the user, not another paid round) and 3 when it is `full`.
 
-**If iteration_count < 3:**
+**If iteration_count < MAX_CHECKS:**
 
-Display: `Sending back to planner for revision... (iteration {N}/3)`
+Display: `Sending back to planner for revision... (iteration {N}/{MAX_CHECKS})`
 
 Revision prompt:
 
@@ -526,7 +556,7 @@ Task(
 
 After planner returns -> spawn checker again (step 10), increment iteration_count.
 
-**If iteration_count >= 3:**
+**If iteration_count >= MAX_CHECKS:**
 
 Display: `Max iterations reached. {N} issues remain:` + issue list
 
@@ -534,7 +564,7 @@ Offer: 1) Force proceed, 2) Provide guidance and retry, 3) Abandon
 
 **On "Force proceed":** record that planning continues past the remaining issues. Execution and the milestone audit will see them as deferred, with this reason:
 ```bash
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "${PHASE_NUMBER}" --agent pan-plan-checker --open --as deferred --reason "force proceed after 3 plan checks"
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "${PHASE_NUMBER}" --agent pan-plan-checker --open --as deferred --reason "force proceed after ${MAX_CHECKS} plan checks"
 ```
 
 ## 13. Present Final Status

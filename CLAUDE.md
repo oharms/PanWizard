@@ -53,16 +53,16 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Version | (see `package.json`) |
 | Commands (`commands/pan/*.md`) | 46 |
 | Agents (`agents/*.md`) | 24 |
-| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 80 |
+| Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 81 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 40 |
 | Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 236 |
+| Unit test files (`tests/*.test.cjs`) | 237 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 37 |
 | Total tests (npm run test:all) | 6092 |
 | Total test suites | 1322 |
 | Hooks (`hooks/*.js`) | 8 |
-| Specs (`docs/specs/*.md`) | 58 |
+| Specs (`docs/specs/*.md`) | 59 |
 | ADRs (`docs/decisions/ADR-*.md`) | 49 |
 
 These are a snapshot of the **current working tree**, not of any released tag — a branch mid-audit carries files `main` does not (test files especially). They drift; refresh via the snippet above when needed. **Never propagate them to another doc.**

@@ -244,6 +244,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `ci.cjs` | **(program A2)** CI as autodev's oracle: `gh pr checks` (`--ci`), or the project's own `npm run ci:local`/`npm test` (`--ci local`); fix rounds and a breaker. No CLI surface of its own. |
 | `hosts.cjs` | **(program A0)** One table of how PAN runs each host CLI: the autonomous runner argv, the model family, the read-only review argv, the headless harness argv. No CLI surface. |
 | `next-action.cjs` | **(program L7)** `next-action`: reads roadmap.md and the phase directories into the MCP orchestrator's snapshot and maps its decision to a command. |
+| `sizing.cjs` | Right-sized ceremony: `size phase/task` decide lean or full per piece of work, `size quick-plan` writes a lean quick task's plan, `size plan-check` is the lean path's plan check in code. |
 | `cross-family.cjs` | **(program R4)** `review cross-family <phase>`: one read-only review on another host's CLI, off unless `workflow.cross_family_review` names a host. |
 | `review-vote.cjs` | **(program R2)** `review vote`: merges k reviewer passes; a finding survives only with a quorum. |
 | `merge.cjs` | **(program L6a)** `merge request` / `merge confirm`: the human merge gate on the CLI; confirm only in an interactive terminal. |
@@ -2087,6 +2088,18 @@ Writes `.planning/autodev/<run>/run.json` and `ledger.jsonl`: a `started` row be
 The shadow-merge preflight (program A3). In a throwaway worktree at `--base` (HEAD), merges each branch in order and runs the test command (`--test`, else the project's). `verdict`: `clean`, `conflict` (with `conflict.branch` and `conflict.files`), `break_together` (each branch passes alone, `alone` says so, but merged they fail), `branch_fails` (`failing` lists the branches red on their own), `base_failing`, or `no_test`. The checkout is never touched.
 
 **Module:** `worktree.cjs`
+
+### `size phase <N>` · `size task "<description>"` · `size quick-plan --out <file> [--num N] "<description>"` · `size plan-check <N>` (right-sized ceremony)
+
+Decides in code how much process a piece of work gets (`docs/specs/right-sized-ceremony.md`). `phase` and `task` print `{path, mode, reasons}` (`--raw`: `lean` or `full`): a phase mapping one to `workflow.lean_max_requirements` (5) requirements, each with an acceptance criterion or naming what to build, is `lean`, and so is a quick task whose description names an artifact and runs to 15 words or more. `mode` is `full` under the `quality` profile, `workflow.ceremony: full` or `--quality`, and then the path is always `full`; `--full` makes one call `full`. `quick-plan` writes the lean quick task's one-task plan from its description. `plan-check` runs the plan set, every plan's structure and the plans' grep gates; when all pass it records the phase's plan check from the engine (exit 0, `recorded: true`), otherwise it records nothing and exits 1 with `errors`.
+
+```bash
+pan-tools size phase 2 --raw        # lean
+pan-tools size task "add src/shout.js exporting shout(name) ..." --raw
+pan-tools size plan-check 2         # {ok, errors, plans, recorded}
+```
+
+**Module:** `sizing.cjs`
 
 ### `next-action`
 

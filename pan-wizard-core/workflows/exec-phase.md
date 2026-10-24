@@ -52,6 +52,14 @@ Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_do
 
 **Drift.** For each `plan_drift` entry, tell the executor of that plan, in its prompt, which of its `files_modified` changed since it was planned (`files`), so it re-reads them before editing. An entry with `error` means its `planned_commit` is unknown: say so and continue.
 
+**Size the ceremony** (pass `--quality` or `--full` through when `$ARGUMENTS` has them):
+
+```bash
+SIZING=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size phase "${PHASE_ARG}" [--quality] [--full])
+```
+
+Show `Ceremony: {path} ({reasons joined by "; "})`. When `SIZING.path` is `lean`, the phase runs as with `--fast`: no test-generation agent (`generate_tests`) and no code review (`code_review`); the executor's own tests, the engine's test gate and the verifier (`verify_phase_goal`) still run, and the phase gate still decides.
+
 When `parallelization` is false, plans within a wave execute sequentially.
 
 **Circular optimization — start trace session for this exec:**
@@ -355,7 +363,7 @@ Concerns go into the review too: the code_review step passes them to the reviewe
 <step name="generate_tests">
 **Auto-invoke test generation after execution completes.**
 
-**Skip if** `--skip-tests` or `--fast` flag is present in $ARGUMENTS.
+**Skip if** `--skip-tests` or `--fast` flag is present in $ARGUMENTS, or `SIZING.path` is `lean`.
 
 1. Record baseline test count:
 ```bash
@@ -405,7 +413,7 @@ TEST_AFTER=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 <step name="code_review">
 **Spawn pan-reviewer agent to review changed files.**
 
-**Skip if** `--skip-review` or `--fast` flag is present in $ARGUMENTS.
+**Skip if** `--skip-review` or `--fast` flag is present in $ARGUMENTS, or `SIZING.path` is `lean`.
 
 1. Collect the review scope: the files the phase's commits changed plus any uncommitted or untracked work, whether or not a summary lists them, and the intent to judge them against:
 ```bash

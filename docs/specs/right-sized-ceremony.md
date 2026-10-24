@@ -1,0 +1,52 @@
+# Right-sized ceremony: PAN's cost and time on well-specified work
+
+**Date:** `2026-10-24` · **Status:** Built (this change); re-measurement below · **Owner decisions:** `2026-10-24` (right-sized by default; `quality` keeps the old behaviour; `--quality` per run)
+
+## The problem
+
+Three paired H10 runs (`docs/specs/product-excellence-superplan.md`, H10 row) compared PAN with Claude Code on its own, both on Opus 5.5, on precisely specified work. The bare host completed every rep. PAN completed the same work and cost much more:
+
+| Pair | Bare host | PAN | PAN ÷ bare |
+|---|---|---|---|
+| Single module, `/pan:quick --full` (discount codes) | $0.32, 72 s | $2.82, 748 s | about 9× cost, 10× time |
+| Two-phase roadmap, `autodev` | $0.62, 144 s | $19.19, 4,659 s (one rep; the next ran out of budget) | about 30× cost, 32× time |
+
+## Where it went (instrumented runs, `2026-10-24`)
+
+PAN's cost logger (`.planning/metrics/tokens.jsonl`) and autodev's ledger, on the same seeds, with PAN `3.36.0`:
+
+**`/pan:quick --full`, $2.67, 585 s.** Planner 214 s and 22k output tokens; plan-checker 111 s; executor 123 s (the work itself); verifier 48 s. The orchestrating session cost about $1.44, $1.10 of it cache writes (each new agent context re-caches its prompt and the project files).
+
+**One autodev phase pair, $10.00, 40 min.** plan-phase 1: $5.24 and 21 min. exec-phase 1: $2.86 and 9 min. plan-phase 2: $1.75 and 10 min. Per agent: the plan-checker ran four times (91k output tokens, about $2.06, 12 min) and the planner three times (68k, about $2.00, 12 min), because the checker sent the plans back for revision; the executor cost $0.63.
+
+**Reading.** About 70% of PAN's cost and time was planning ceremony on work whose requirements already said exactly what to build: research, then a planner and a plan-checker revising a plan, serially, every agent on the launch model at high effort. A cheaper model alone helps less than it seems: Sonnet 5.5 is half Opus 5.5's price, not a fifth.
+
+## What changed
+
+| Lever | `balanced` (default) and `budget` | `quality` |
+|---|---|---|
+| Ceremony | **Auto-sized** (`pan-wizard-core/bin/lib/sizing.cjs`): a phase that maps one to `workflow.lean_max_requirements` (5) requirements, each with an acceptance criterion or naming the artifact to build, is **lean**: no research, one short plan, the engine's plan check instead of the plan-checker agent (`pan-tools size plan-check`, which records the plan check exec-phase needs), and exec-phase without the test-generation agent and code review. A quick task whose description names an artifact and runs to 15 words or more is lean: the engine writes its one-task plan (`pan-tools size quick-plan`) and no planner runs. Anything else is **full** | Full everywhere |
+| Revision loop | One revision, then the user decides | Two revisions |
+| Checker output | Verdict and blocking issues only, a word budget | Unbudgeted |
+| Models | Plan-checker and researchers on the mid tier (Sonnet 5.5 on Claude) | Every agent on the reasoning tier |
+
+`--quality` on `/pan:quick`, `/pan:plan-phase`, `/pan:exec-phase` and `autodev run` (passed to every unit) gives one run the full ceremony; `--full` does the same for one command. `workflow.ceremony: full` keeps the full ceremony for a project without changing its models. `/pan:new-project` and `/pan:settings` describe the choice.
+
+**Not done: lower effort on checks.** Claude Code reads an agent's `effort:` from its file, and no workflow passes effort per run, so lowering it there would change `quality` too. It stays as it was.
+
+**Unchanged on purpose:** the executor's prompt (a tier-0 cassette records it, and re-recording needs an API key), the verifier on every phase (the phase gate needs its verdict), and every deterministic gate.
+
+## Re-measurement (`2026-10-24`, the same seeds, owner-approved $8 cap)
+
+Every run passed its project's tests and every case of the hidden acceptance check (`check-discounts.cjs`, `check-tasks.cjs`).
+
+| Task | PAN before | PAN after | Bare host | PAN ÷ bare, after |
+|---|---|---|---|---|
+| Discount codes | $2.67, 585 s (`/pan:quick --full`) | $0.44, 90 s (`/pan:quick`, lean: no planner, no checker) | $0.32, 76 s | 1.4× cost, 1.2× time |
+| Two-phase roadmap, `autodev` | $19.19, 4,659 s (H10 rep 1) | $4.52, 1,003 s (both phases built; stopped at the $4.50 cap before phase 2's separate verify unit) | $0.54, 121 s | 8× cost, 8× time |
+
+Autodev per unit after: plan-phase 1 $1.29 (256 s), exec-phase 1 $1.85 (466 s), plan-phase 2 $0.77 (143 s), exec-phase 2 $0.47 (109 s). No research and no plan-checker ran; one planner per phase and one executor per phase did.
+
+**What is left for autodev.** Each lean phase still starts a planner session, and every unit is a fresh session that reloads the orchestration workflow. Next: the engine writes a lean phase's plan from its requirements (as `size quick-plan` does for a quick task), and a lean phase runs as one unit instead of plan, execute and verify.
+
+**Bug found by the run, fixed:** when the cap was spent mid-unit, a retry started a session with `--max-budget-usd 0.00`, which Claude Code refuses; a retry now stops with `budget_usd` first.

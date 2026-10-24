@@ -1552,11 +1552,11 @@ describe('estimateCostMultiplier', () => {
     }
   });
 
-  test('quality and balanced cost the same (both inherit after reset); budget is cheaper', () => {
+  test('quality > balanced > budget: balanced runs the plan-checker and researchers on the mid tier (right-sized ceremony)', () => {
     const q = estimateCostMultiplier('quality');
     const b = estimateCostMultiplier('balanced');
     const bg = estimateCostMultiplier('budget');
-    assert.strictEqual(q.average, b.average, 'quality and balanced both inherit the main model after the cost reset');
+    assert.ok(q.average > b.average, 'quality keeps every agent on the launch model; balanced moves the checker and researchers to mid');
     assert.ok(b.average > bg.average, 'the opt-in budget profile still costs less');
   });
 });

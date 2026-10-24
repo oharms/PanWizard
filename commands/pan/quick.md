@@ -2,7 +2,7 @@
 name: pan:quick
 group: Session & Progress
 description: Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents
-argument-hint: "[--full] [description]"
+argument-hint: "[--full] [--quality] [description]"
 allowed-tools:
   - Read
   - Write

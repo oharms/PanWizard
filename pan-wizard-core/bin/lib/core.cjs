@@ -132,13 +132,15 @@ const MODEL_PROFILES = {
   'pan-designer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-roadmapper':           { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-executor':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
-  'pan-phase-researcher':     { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
-  'pan-project-researcher':   { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  // Right-sized ceremony (2026-10-24): balanced runs the researchers and the plan-checker
+  // on the mid tier, about half the launch model's price; quality keeps them on reasoning.
+  'pan-phase-researcher':     { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
+  'pan-project-researcher':   { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   'pan-research-synthesizer': { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-debugger':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-document_code':        { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-verifier':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
-  'pan-plan-checker':         { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
+  'pan-plan-checker':         { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   'pan-design-checker':       { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-integration-checker':  { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-reviewer':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },

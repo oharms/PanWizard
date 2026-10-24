@@ -34,9 +34,11 @@ describe('settings: host-sized batches, no choice that changes nothing (L6b)', (
     assert.deepEqual(L.lintText('pan-wizard-core/workflows/x.md', q(4), ctx).map((f) => f.rule), []);
   });
 
-  test('settings offers neither Quality nor the complexity routing strategy', () => {
+  test('settings offers Quality as the full ceremony, and not the complexity routing strategy', () => {
     const s = read('pan-wizard-core/workflows/settings.md');
-    assert.ok(!/label: "Quality"/.test(s), 'Quality is identical to Balanced: a choice that changes nothing');
+    // Since right-sized ceremony (2026-10-24) Quality differs from Balanced: the full
+    // ceremony everywhere, every agent on the reasoning tier.
+    assert.match(s, /label: "Quality", description: "the full ceremony/);
     assert.ok(!/label: "Complexity"/.test(s), 'the complexity routing strategy reaches no workflow');
     assert.deepEqual(L.lintText('pan-wizard-core/workflows/settings.md', s, ctx).filter((f) => f.rule === 'oversized-ask'), []);
   });

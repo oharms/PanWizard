@@ -104,8 +104,8 @@ describe('workflows record verdicts on the critical path and dispose what they c
   });
 
   test('plan-phase records a force-proceed past the remaining issues as a deferral', () => {
-    const s = plan.slice(plan.indexOf('**If iteration_count >= 3:**'), plan.indexOf('## 13. Present Final Status'));
-    assert.match(s, /findings dispose --phase "\$\{PHASE_NUMBER\}" --agent pan-plan-checker --open --as deferred --reason "force proceed after 3 plan checks"/);
+    const s = plan.slice(plan.indexOf('**If iteration_count >= MAX_CHECKS:**'), plan.indexOf('## 13. Present Final Status'));
+    assert.match(s, /findings dispose --phase "\$\{PHASE_NUMBER\}" --agent pan-plan-checker --open --as deferred --reason "force proceed after \$\{MAX_CHECKS\} plan checks"/);
   });
 
   test('verify-phase records its report; design-phase records each check and defers its final caveats', () => {

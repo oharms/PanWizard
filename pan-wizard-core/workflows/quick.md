@@ -2,6 +2,8 @@
 Execute small, ad-hoc tasks with PAN guarantees (atomic commits, state.md tracking). Quick mode spawns pan-planner (quick mode) + pan-executor(s), tracks tasks in `.planning/quick/`, and updates state.md's "Quick Tasks Completed" table.
 
 With `--full` flag: enables plan-checking (max 2 iterations) and post-execution verification for quality guarantees without full milestone ceremony.
+
+Without `--full`, a task whose description already says precisely what to build takes the lean path: the engine writes its one-task plan (`pan-tools size quick-plan`) and no planner runs. `--quality`, the `quality` profile or `workflow.ceremony: full` keep the planner.
 </purpose>
 
 <required_reading>
@@ -13,6 +15,7 @@ Read all files referenced by the invoking prompt's execution_context before star
 
 Parse `$ARGUMENTS` for:
 - `--full` flag → store as `$FULL_MODE` (true/false)
+- `--quality` flag → store as `$QUALITY` (true/false): the full ceremony for this run
 - Remaining text → use as `$DESCRIPTION` if non-empty
 
 If `$DESCRIPTION` is empty after parsing, prompt user interactively:
@@ -49,6 +52,14 @@ INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init quick "$DESCRIPTION
 Parse JSON for: `planner_model`, `executor_model`, `checker_model`, `verifier_model`, `commit_docs`, `next_num`, `slug`, `description_cell`, `date`, `timestamp`, `quick_dir`, `task_dir`, `roadmap_exists`, `planning_exists`.
 
 **If `roadmap_exists` is false:** Error — Quick mode requires an active project with roadmap.md. Run `/pan:new-project` first.
+
+**Size the ceremony** (pass `--full` and `--quality` through when set):
+
+```bash
+SIZING=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size task "$DESCRIPTION" [--full] [--quality])
+```
+
+`SIZING.path` is `lean` (the description names what to build and how to check it) or `full`; `SIZING.mode` is `auto` or `full`. Show it in one line: `Ceremony: {path} ({reasons joined by "; "})`.
 
 Quick tasks can run mid-phase - validation only checks roadmap.md exists, not phase status.
 
@@ -89,6 +100,16 @@ Store `$QUICK_DIR` for use in orchestration.
 ---
 
 **Step 5: Spawn planner (quick mode)**
+
+**If `SIZING.path` is `lean`:** the engine writes the plan and no planner runs:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size quick-plan --out "${QUICK_DIR}/${next_num}-plan.md" --num "${next_num}" "$DESCRIPTION"
+```
+
+Report `Plan written by the engine (lean path): ${QUICK_DIR}/${next_num}-plan.md` and go to Step 6.
+
+**Otherwise**, spawn the planner:
 
 **If `$FULL_MODE`:** Use `quick-full` mode with stricter constraints.
 
@@ -167,6 +188,11 @@ Checker prompt:
 
 **Scope:** This is a quick task, not a full phase. Skip checks that require a ROADMAP phase goal.
 </verification_context>
+
+<output_budget>
+{Only when SIZING.mode is auto, include:}
+Report the verdict and the blocking issues only: one line per issue (task, what is wrong, the fix), at most 200 words before the pan-verdict block. No summary of what passed.
+</output_budget>
 
 <check_dimensions>
 - Requirement coverage: Does the plan address the task description?

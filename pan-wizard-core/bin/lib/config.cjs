@@ -70,6 +70,12 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
       cross_family_review: 'off',
       // A3: pan-exec-waves runs each executor in its own git worktree (Claude Code).
       worktree_isolation: false,
+      // Right-sized ceremony (sizing.cjs): `auto` sizes each phase and quick task and gives a
+      // small, well-specified one the lean path; `full` always runs the whole ceremony. The
+      // `quality` profile also means full.
+      ceremony: 'auto',
+      // The most requirements a phase can map and still be sized lean.
+      lean_max_requirements: 5,
       // M2: opt-in per-phase HTML reports at the verify→complete gate.
       phase_reports: { enabled: false, open: false, theme: 'auto', index: true },
     },

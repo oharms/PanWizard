@@ -509,6 +509,8 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
     "review_mode": "single",
     "cross_family_review": "off",
     "worktree_isolation": false,
+    "ceremony": "auto",
+    "lean_max_requirements": 5,
     "phase_reports": { "enabled": false, "open": false, "theme": "auto", "index": true }
   },
   "parallelization": true,
@@ -552,7 +554,9 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 |---------|---------|---------|------------------|
 | `mode` | `interactive`, `yolo` | asked by `/pan:new-project` (`--auto`: `yolo`) | `yolo` auto-approves decisions; `interactive` confirms at each step |
 | `depth` | `quick`, `standard`, `comprehensive` | asked by `/pan:new-project` (`--auto`: `quick`) | Planning thoroughness: 3-5, 5-8, or 8-12 phases |
-| `model_profile` | `quality`, `balanced`, `budget` | `balanced` | Model tier for each agent (see table below) |
+| `model_profile` | `quality`, `balanced`, `budget` | `balanced` | Model tier for each agent (see table below), and how much ceremony: `balanced` and `budget` size each phase and quick task (a small, well-specified one skips research and the planner/checker loop); `quality` runs the full ceremony on everything, every agent on the reasoning tier |
+| `workflow.ceremony` | `auto`, `full` | `auto` | `full` keeps the full ceremony on every piece of work without changing models; `--quality` does it for one run |
+| `workflow.lean_max_requirements` | number | `5` | The most requirements a phase can map and still take the lean path |
 | `parallelization` | `true`, `false` | `true` | Execute independent plans within a wave in parallel |
 | `brave_search` | `true`, `false` | `false`; `true` in a config `config-ensure-section` creates while a Brave key is detected (`/pan:new-project` does not set it) | Make the phase researcher (`/pan:plan-phase`, `/pan:plan-phase --research-only`) search with Brave instead of the built-in web search; the `/pan:new-project` and `/pan:milestone-new` researchers never read it (the search needs the `BRAVE_API_KEY` env var; `~/.pan-wizard/brave_api_key` only pre-sets this key) |
 | `routing.strategy` | `static`, `complexity` | `static` | How model tiers are adjusted at runtime |

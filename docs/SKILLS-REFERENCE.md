@@ -89,7 +89,7 @@ Initialize a new project with deep context gathering and project.md
 Run the roadmap unattended — a deterministic loop that plans, executes, verifies and completes phase after phase, each step in a fresh host session, and stops in code
 
 ```text
-/pan:autodev [run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--ci [local] [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]
+/pan:autodev [run | resume | status | report | replay] [--host claude|codex|gemini|opencode] [--max-usd N] [--max-usd-day N] [--max-turns N] [--worktrees] [--quality] [--ci [local] [--ci-rounds N] [--ci-push] [--ci-base B]] [--run <id>]
 ```
 
 **Tools:** Read, Bash  
@@ -125,7 +125,7 @@ Gather phase context through adaptive questioning before planning
 Execute all plans in a phase with wave-based parallelization
 
 ```text
-/pan:exec-phase <phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto]
+/pan:exec-phase <phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto] [--quality]
 ```
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion  
@@ -137,7 +137,7 @@ Execute all plans in a phase with wave-based parallelization
 Create detailed phase plan (plan.md) with verification loop
 
 ```text
-/pan:plan-phase [phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only]
+/pan:plan-phase [phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only] [--quality]
 ```
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__*  
@@ -393,7 +393,7 @@ Check project progress, show context, and route to next action (execute or plan)
 Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents
 
 ```text
-/pan:quick [--full] [description]
+/pan:quick [--full] [--quality] [description]
 ```
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion  
