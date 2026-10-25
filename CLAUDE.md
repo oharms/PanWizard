@@ -54,7 +54,7 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 | Commands (`commands/pan/*.md`) | 46 |
 | Agents (`agents/*.md`) | 23 |
 | Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 81 |
-| Workflows (`pan-wizard-core/workflows/*.md`) | 40 |
+| Workflows (`pan-wizard-core/workflows/*.md`) | 41 |
 | Templates (`pan-wizard-core/templates/**/*.md`) | 37 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
 | Unit test files (`tests/*.test.cjs`) | 241 |

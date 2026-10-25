@@ -129,6 +129,24 @@ describe('A1a: the ledger and resume', () => {
     assert.match(A.unitPrompt('opencode', unit('plan', '2')), /\/pan-plan-phase 2/);
     assert.match(A.unitPrompt('codex', unit('verify', '2')), /\$pan-verify-phase 2/);
   });
+
+  test('a lean phase executes in one session through exec-lean.md', () => {
+    const p = A.unitPrompt('claude', { ...unit('execute', '3'), lean: true });
+    assert.match(p, /^PAN autodev unit, lean phase 3: read \S+\/workflows\/exec-lean\.md and follow it for phase 3\./);
+    assert.match(p, /do not ask questions/);
+    assert.doesNotMatch(p, /\/pan:exec-phase/);
+    assert.ok(fs.existsSync(A.LEAN_WORKFLOW), 'the workflow the prompt names ships in the core');
+    const wf = fs.readFileSync(A.LEAN_WORKFLOW, 'utf8');
+    // The rules a lean execute keeps: the plan is the spec, tests are not weakened, a
+    // superseded test is a recorded deviation, the verifier still runs, autodev completes the phase.
+    assert.match(wf, /The plan is the specification/);
+    assert.match(wf, /BLOCKED_SPEC_CONFLICT/);
+    assert.match(wf, /supersedes_tests/);
+    assert.match(wf, /subagent_type="pan-verifier"/);
+    assert.match(wf, /findings record/);
+    assert.match(wf, /Do not run `phase complete`/);
+    assert.match(wf, /EXECUTION HALTED: plan check/);
+  });
 });
 
 describe('A1c: end to end with a stand-in host', () => {

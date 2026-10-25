@@ -166,7 +166,7 @@ describe('H10 project-definition pair: the PAN arm runs end to end against a sta
 const fs = require('fs'), path = require('path');
 const cwd = process.cwd();
 let prompt = process.argv[process.argv.length - 1];
-if (!/\\/pan:/.test(prompt)) { try { prompt = fs.readFileSync(0, 'utf8'); } catch {} }
+if (!/\\/pan:|lean phase/.test(prompt)) { try { prompt = fs.readFileSync(0, 'utf8'); } catch {} }
 const P = (...p) => path.join(cwd, '.planning', ...p);
 const log = (s) => fs.appendFileSync(path.join(process.env.H10_STANDIN_LOG), s + '\\n');
 if (/^\\/pan:new-project --auto @BRIEF\\.md /.test(prompt)) {
@@ -195,7 +195,7 @@ if (/^\\/pan:new-project --auto @BRIEF\\.md /.test(prompt)) {
   process.stdout.write(JSON.stringify({ result: 'defined', is_error: false, total_cost_usd: 0.5, num_turns: 9, session_id: 'np' }));
   process.exit(0);
 }
-const m = prompt.match(/\\/pan:(plan|exec|verify)-phase (\\d+)/);
+const lm = prompt.match(/lean phase (\\d+)/); const m = prompt.match(/\\/pan:(plan|exec|verify)-phase (\\d+)/) || (lm ? [lm[0], 'exec', lm[1]] : null);
 const NAMES = { 1: 'catalogue-and-orders', 2: 'fulfilment-and-reporting' };
 if (m) {
   log(m[1] + ':' + m[2]);

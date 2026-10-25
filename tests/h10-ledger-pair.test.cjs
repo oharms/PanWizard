@@ -137,7 +137,7 @@ describe('H10 large-project pair: the PAN arm runs end to end against a stand-in
     fs.writeFileSync(js, `
 const fs = require('fs'), path = require('path');
 const prompt = process.argv[process.argv.length - 1];
-const m = prompt.match(/\\/pan:(plan|exec|verify)-phase (\\d+)/);
+const lm = prompt.match(/lean phase (\\d+)/); const m = prompt.match(/\\/pan:(plan|exec|verify)-phase (\\d+)/) || (lm ? [lm[0], 'exec', lm[1]] : null);
 const NAMES = { 1: 'ledger', 2: 'csv-import', 3: 'categories', 4: 'monthly-reports', 5: 'integer-cents', 6: 'budgets' };
 const FILES = { 1: ['ledger.js', 'categories.js'], 2: ['import.js'], 3: ['categories.js'], 4: ['report.js'], 5: ['ledger.js'], 6: ['budget.js'] };
 if (m) {

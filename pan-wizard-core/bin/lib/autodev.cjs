@@ -138,8 +138,17 @@ function decideStop({ unit, rows = [], limits = {}, snapshot, daySpent = 0 }) {
 }
 
 /** One shell-safe line: the command to run, unattended, and nothing else. */
+/** The lean-phase workflow in the installed core: one session executes and verifies (exec-lean.md). */
+const LEAN_WORKFLOW = path.join(__dirname, '..', '..', 'workflows', 'exec-lean.md').split(path.sep).join('/');
+
 function unitPrompt(host, unit, note) {
   const clean = (t) => String(t || '').replace(/[\r\n&|<>%^"]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (unit.action === 'execute' && unit.lean) {
+    // A lean phase runs in one session (2026-10-25: the orchestrator, a separate executor and
+    // the verifier cost about $1.40 a phase, the orchestrator's 11k-token workflow most of it).
+    const base = `PAN autodev unit, lean phase ${unit.phase}: read ${LEAN_WORKFLOW} and follow it for phase ${unit.phase}${unit.plan ? ` (plan ${unit.plan} only)` : ''}. Unattended: do not ask questions, take the recommended default and record what you assumed; do not start another phase or command.`;
+    return note ? `${base} ${clean(note)}` : base;
+  }
   if (unit.action === 'ci_fix') {
     return `PAN autodev CI fix round ${unit.round} for phase ${unit.phase}: the pull request checks failed. ${clean(note)} Fix the code so they pass and commit the fix. Do not ask questions. Do not start another phase or command.`;
   }
@@ -262,7 +271,12 @@ function executeUnit(cwd, unit, host, opts = {}) {
   const h = HOSTS[host];
   const refused = standinMissing(h.runner.bin);
   if (refused) return { exit: 127, cost_usd: 0, argv: [], error: refused, stderr_tail: refused, duration_ms: 0 };
-  const prompt = unitPrompt(host, unit, opts.note);
+  // A lean phase executes through exec-lean.md in this one session (sizing.cjs decides).
+  let lean = false;
+  if (unit.action === 'execute' && !unit.quality) {
+    try { lean = require('./sizing.cjs').sizePhase(cwd, String(unit.phase)).path === 'lean'; } catch { lean = false; }
+  }
+  const prompt = unitPrompt(host, lean ? { ...unit, lean: true } : unit, opts.note);
   const argv = sessionArgv(host, prompt, { remainingUsd: opts.remainingUsd, model: opts.model });
   const useShell = h.runner.shell === 'win32' && process.platform === 'win32';
   const quoted = useShell ? argv.map((a) => (/\s/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : a)) : argv;
@@ -625,4 +639,4 @@ function cmdAutodev(cwd, sub, flags, raw) {
   output(r, raw, r.stop ? r.stop.reason : r.error);
 }
 
-module.exports = { budgetStopReport, blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };
+module.exports = { LEAN_WORKFLOW, budgetStopReport, blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };

@@ -65,7 +65,7 @@ describe('H10 multi-phase pair: the PAN arm runs end to end against a stand-in h
     fs.writeFileSync(js, `
 const fs = require('fs'), path = require('path');
 const prompt = process.argv[process.argv.length - 1];
-const m = prompt.match(/\\/pan:(plan|exec|verify)-phase (\\d+)/);
+const lm = prompt.match(/lean phase (\\d+)/); const m = prompt.match(/\\/pan:(plan|exec|verify)-phase (\\d+)/) || (lm ? [lm[0], 'exec', lm[1]] : null);
 if (m) {
   const n = m[2], pad = '0' + n;
   const phases = path.join(process.cwd(), '.planning', 'phases');

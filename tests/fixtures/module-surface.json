@@ -21,6 +21,7 @@
     "writeDossier:function"
   ],
   "autodev.cjs": [
+    "LEAN_WORKFLOW:string",
     "STOP_REASONS:object",
     "blockedReport:function",
     "budgetStopReport:function",

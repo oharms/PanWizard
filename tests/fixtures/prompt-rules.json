@@ -1849,6 +1849,30 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/exec-lean:806116f5",
+   "file": "pan-wizard-core/workflows/exec-lean.md",
+   "text": "**The plan is the specification.** Do what each task's `<action>` says, nothing more. Do not widen scope; log anything else to `{phase_dir}/deferred-items.md`.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-lean:bbd8d64d",
+   "file": "pan-wizard-core/workflows/exec-lean.md",
+   "text": "**Tests are the spec.** Test files the plan does not list in `files_modified` are read-only. Never delete, rename or skip a test, remove an assertion, or add one that cannot fail. A plan's `supersedes_tests` are the exception it declares: update their expectations to what the named requirements now require, and record each change as a deviation. A test you cannot satisfy without weakening it means stop and reply `## BLOCKED_SPEC_CONFLICT` with the test, the requirement and why both cannot hold.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-lean:fcc7181a",
+   "file": "pan-wizard-core/workflows/exec-lean.md",
+   "text": "**Unattended:** do not ask questions; take the recommended default and record what you assumed in the summary. Do not start another phase or command.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-lean:7d43d89e",
+   "file": "pan-wizard-core/workflows/exec-lean.md",
+   "text": "**Reply** in a few lines: the plans executed, the commits, the verification status, and any deviation, assumption or issue. Do not run `phase complete`: autodev runs it next and the phase gate decides.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/exec-phase:7dee7d27",
    "file": "pan-wizard-core/workflows/exec-phase.md",
    "text": "**Also see:** `~/.claude/pan-wizard-core/learnings/universal/` — AI-derived patterns from prior experiments. **Don't skim the whole folder.** Run `pan-tools learn topics-for --agent executor --cue \"<phase goal; the files it touches>\" --token-budget 5000 --raw` to load the topics that match this task, within the budget; if none matches, it falls back to the topics tagged relevant for execution. Per P-RES-002 (distractor-density research), reading every topic degrades reasoning even at modest token counts. Files appear here over time as `pan-tools learn promote` adds findings.",

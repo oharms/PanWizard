@@ -272,12 +272,13 @@ Some workflows have different names than their corresponding commands. This is i
 
 ### Internal Workflows
 
-No user command runs these workflows: `execute-plan.md` and `transition.md` are invoked by other workflows, and no command or workflow references the others:
+No user command runs these workflows: `execute-plan.md` and `transition.md` are invoked by other workflows, `exec-lean.md` by autodev's execute unit for a lean phase, and no command or workflow references the others:
 
 | Workflow | Purpose |
 |----------|---------|
 | `execute-plan.md` | Per-plan execution worker (spawned by `exec-phase.md` per plan) |
 | `transition.md` | Phase-to-phase transition logic |
+| `exec-lean.md` | A lean phase in one session: the executor's work, then the verifier (autodev's execute unit, `autodev.cjs`) |
 | `diagnose-issues.md` | One debugger per failed UAT truth, root cause only; ported to the native `/pan-diagnose-issues` script — no command references it directly |
 
 ---
