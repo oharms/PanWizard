@@ -482,7 +482,15 @@ Use models from init: `researcher_model`, `synthesizer_model`, `roadmapper_model
 
 ## 6. Research Decision
 
-**If auto mode:** Default to "Research first" without asking.
+**Size the brief (auto mode with an idea document):** pass the document to the engine:
+
+```bash
+BRIEF_SIZE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size task --file "{idea document path}" --raw)
+```
+
+`lean` means the document names what to build (its modules, functions or files) and how it behaves: it is the scope. Then skip research, and in steps 7 and 8 keep to the document (`BRIEF_PRECISE` below). `full` means it leaves the work open: research and define as below.
+
+**If auto mode:** Default to "Research first" without asking, unless `BRIEF_SIZE` is `lean` (then "Skip research").
 
 Use AskUserQuestion:
 - header: "Research"
@@ -736,7 +744,12 @@ Read project.md and extract:
 
 **If research exists:** Read research/features.md and extract feature categories.
 
-**If auto mode:**
+**If auto mode and `BRIEF_SIZE` is `lean` (`BRIEF_PRECISE`):** the document is the scope.
+- One v1 requirement per behaviour the document states, written in its own terms and naming the module, function or file it names, so each requirement says exactly what to build
+- Nothing the document does not ask for goes into v1: table stakes it does not mention, extra validation, hardening, tooling and infrastructure go under v2 or Out of Scope
+- Skip the per-category questions, the "Any additions?" question and the approval gate; generate requirements.md and commit directly
+
+**If auto mode otherwise:**
 - Auto-include all table stakes features (users expect these)
 - Include features explicitly mentioned in provided document
 - Auto-defer differentiators not mentioned in document
@@ -892,6 +905,7 @@ Task(prompt="
 
 <instructions>
 Create roadmap:
+0. Size it to the requirements: the fewest phases that deliver them (a brief for one library or tool is usually one to three phases), one plan per phase unless a phase truly needs more, and no phase for hardening, validation or infrastructure the requirements do not ask for. Over-scoping spends the run's budget on work nobody asked for (2026-10-25: a one-paragraph brief became a roadmap whose third phase built load-time validation the brief never mentioned, and the product's core API was never written)
 1. Derive phases from requirements (don't impose structure)
 2. Map every v1 requirement to exactly one phase
 3. Derive 2-5 success criteria per phase (observable user behaviors)

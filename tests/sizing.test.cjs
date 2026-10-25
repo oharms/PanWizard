@@ -235,3 +235,42 @@ describe('a later requirement supersedes earlier tests (2026-10-24 false stop)',
     assert.match(r.stop.detail, /execute:1 is blocked on a ruling: BLOCKED_SPEC_CONFLICT/);
   });
 });
+
+describe('new-project keeps to a precise brief (2026-10-25 brief test)', () => {
+  const A = require('../pan-wizard-core/bin/lib/autodev.cjs');
+  test('size task --file sizes a document: the brief-shop brief is precise, a vague one is not', () => {
+    assert.equal(cli(ROOT, ['size', 'task', '--file', 'harness/seeds/brief-shop/BRIEF.md', '--raw']).stdout.trim(), 'lean');
+    const t = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-brief-'));
+    dirs.push(t);
+    fs.writeFileSync(path.join(t, 'IDEA.md'), 'An app that helps small shops run better.\n');
+    assert.equal(cli(t, ['size', 'task', '--file', 'IDEA.md', '--raw']).stdout.trim(), 'full');
+  });
+  test('new-project: a precise brief skips research, v1 is what the brief states, the roadmap is the fewest phases', () => {
+    const s = fs.readFileSync(path.join(ROOT, 'pan-wizard-core', 'workflows', 'new-project.md'), 'utf8');
+    assert.match(s, /size task --file/);
+    assert.match(s, /unless `BRIEF_SIZE` is `lean` \(then "Skip research"\)/);
+    assert.match(s, /Nothing the document does not ask for goes into v1/);
+    assert.match(s, /the fewest phases that deliver them/);
+  });
+  test('budgetStopReport reads a session that stopped on its budget', () => {
+    assert.match(A.budgetStopReport(JSON.stringify({ result: 'I stopped before 03-02 because the run\'s cost budget would not cover them.' })), /cost budget would not cover/);
+    assert.equal(A.budgetStopReport(JSON.stringify({ result: 'Done; the budget report is written.' })), null);
+  });
+  test('autodev stops with budget_usd, not no_progress, when a unit stops on its budget', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-bud-'));
+    dirs.push(dir);
+    const p = path.join(dir, '.planning');
+    fs.mkdirSync(path.join(p, 'phases', '01-login'), { recursive: true });
+    fs.writeFileSync(path.join(p, 'project.md'), '# P\n');
+    fs.writeFileSync(path.join(p, 'requirements.md'), '# R\n');
+    fs.writeFileSync(path.join(p, 'config.json'), JSON.stringify({ workflow: { phase_gate: 'warn' } }));
+    fs.writeFileSync(path.join(p, 'roadmap.md'), '# Roadmap\n\n- [ ] **Phase 1: Login**\n\n### Phase 1: Login\n**Goal:** users sign in\n**Requirements**: AUTH-01\n');
+    const execute = (cwd, unit) => {
+      if (unit.action === 'plan') fs.writeFileSync(path.join(p, 'phases', '01-login', '01-01-plan.md'), '---\nphase: 01\n---\n');
+      return { exit: 0, cost_usd: 0.1, argv: ['-p', 'sim'], duration_ms: 1, budget_stopped: unit.action === 'execute' ? 'the cost budget would not cover 01-02' : undefined };
+    };
+    const r = A.runAutodev(dir, { host: 'claude', execute, maxUsd: 5 });
+    assert.equal(r.stop.reason, 'budget_usd', JSON.stringify(r.stop));
+    assert.match(r.stop.detail, /execute:1 stopped on its budget/);
+  });
+});

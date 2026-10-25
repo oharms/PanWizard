@@ -937,8 +937,10 @@ async function main() {
         const r = S.sizePhase(cwd, args[2], opts);
         output(r, raw, r.path);
       } else if (subcommand === 'task') {
-        const text = args.slice(2).filter((a) => a !== '--quality' && a !== '--full').join(' ');
-        if (!text.trim()) error('Usage: size task "<description>" [--quality] [--full]');
+        // --file <path>: size a document (new-project's idea or brief) instead of a description.
+        const file = getArgValue(args, '--file');
+        const text = file ? fs.readFileSync(require('path').resolve(cwd, file), 'utf8') : args.slice(2).filter((a) => a !== '--quality' && a !== '--full').join(' ');
+        if (!text.trim()) error('Usage: size task "<description>" | --file <path> [--quality] [--full]');
         const r = S.sizeTask(cwd, text, opts);
         output(r, raw, r.path);
       } else if (subcommand === 'phase-plan') {

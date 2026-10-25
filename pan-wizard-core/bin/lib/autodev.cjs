@@ -190,6 +190,25 @@ function blockedReport(stdout) {
 }
 
 /**
+ * Whether a session stopped itself because its budget would not cover the rest of the
+ * unit (2026-10-25: "I stopped before 03-02 because the run's cost budget would not cover
+ * them" was logged as no_progress). Read from the session's result text. Pure.
+ * @returns {string|null} a short excerpt, or null
+ */
+function budgetStopReport(stdout) {
+  const text = String(stdout || '');
+  let result = '';
+  const lines = text.trim().split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].trim().startsWith('{')) continue;
+    try { const o = JSON.parse(lines.slice(i).join('\n')); if (o && typeof o.result === 'string') { result = o.result; break; } } catch {}
+  }
+  const m = result.match(/budget (?:would|will|could) not (?:cover|allow|stretch)|(?:cost|run's|remaining|spend) budget (?:would|will|could|did) not|out of budget|budget (?:is|was|has been) (?:spent|exhausted|used up)|stopp(?:ed|ing) [^.\n]{0,60}\bbudget\b/i);
+  if (!m) return null;
+  return result.slice(Math.max(0, m.index - 120), m.index + 200).replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Test safety: with PAN_STANDIN_DIR set, a host CLI must be a stand-in in that directory.
  * A test whose stand-in went missing would otherwise reach the real CLI, and spend.
  */
@@ -245,6 +264,7 @@ function executeUnit(cwd, unit, host, opts = {}) {
   return {
     exit: timedOut ? 124 : (r.status == null ? 1 : r.status), cost_usd: parseCost(r.stdout) || 0, argv, duration_ms: Date.now() - t0,
     blocked: blockedReport(r.stdout) || undefined,
+    budget_stopped: budgetStopReport(r.stdout) || undefined,
     timed_out: timedOut || undefined, stderr_tail: (r.stderr || '').slice(-500) || undefined, stdout_tail: r.status ? (r.stdout || '').slice(-500) || undefined : undefined,
   };
 }
@@ -514,6 +534,11 @@ function runAutodev(cwd, opts = {}) {
           persistRunFacts(cwd);
           return finish('human_needed');
         }
+        if (res.budget_stopped) {
+          append({ status: 'stopped', reason: 'budget_usd', detail: `${unitKey(unit)} stopped on its budget: ${res.budget_stopped}` });
+          persistRunFacts(cwd);
+          return finish('budget_usd');
+        }
         if (opts.ci && unit.action === 'complete_phase') {
           const ci = runCiRounds(cwd, unit, host, { append, opts, nextSeq: () => new Set(readRows(ledger).filter((r) => r.status === 'started').map((r) => r.seq)).size + 1 });
           if (ci.stop) { append({ status: 'stopped', ...ci.stop }); persistRunFacts(cwd); return finish(); }
@@ -589,4 +614,4 @@ function cmdAutodev(cwd, sub, flags, raw) {
   output(r, raw, r.stop ? r.stop.reason : r.error);
 }
 
-module.exports = { blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };
+module.exports = { budgetStopReport, blockedReport, standinMissing, STOP_REASONS, selectUnit, decideStop, pendingUnit, snapshotHash, unitPrompt, sessionArgv, executeUnit, runAutodev, runStatus, cmdAutodev, verificationStatus, daySpend, unitForecast };

@@ -23,6 +23,7 @@
   "autodev.cjs": [
     "STOP_REASONS:object",
     "blockedReport:function",
+    "budgetStopReport:function",
     "cmdAutodev:function",
     "daySpend:function",
     "decideStop:function",
