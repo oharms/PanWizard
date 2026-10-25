@@ -24,6 +24,7 @@ const { ROADMAP_FILE, REQUIREMENTS_FILE } = require('./constants.cjs');
 const { planningPath } = require('./utils.cjs');
 
 const DEFAULT_LEAN_MAX_REQUIREMENTS = 5;
+const isValidationRule = (c) => require('./verify-plan-set.cjs').isValidationRule(c);
 
 // loadConfig flattens the workflow section away; the ceremony keys are read from the raw file.
 function ceremonyConfig(cwd) {
@@ -126,7 +127,10 @@ function engineCheckPlans(cwd, phase) {
 function recordEngineCheck(cwd, phase, result) {
   const F = require('./findings.cjs');
   const block = '```pan-verdict\n' + JSON.stringify({ contract: '1.0', agent: 'pan-plan-checker', phase: String(phase), outcome: 'pass', verdict: 'PASSED', findings: [] }) + '\n```\n';
-  const text = `Plan check by the engine (lean path): plan set, plan structure and grep gates all pass for ${result.plans} plan(s).\n\n${block}`;
+  // The plans' hash makes each checked plan set its own record: an identical text is a
+  // duplicate verdict, so a re-check after a revision would never be recorded.
+  const sha = require('./verify-plan-set.cjs').plansShaFor(cwd, phase);
+  const text = `Plan check by the engine (lean path): plan set, plan structure and grep gates all pass for ${result.plans} plan(s) (plans ${sha}).\n\n${block}`;
   return F.recordVerdict(cwd, { phase: String(phase), agent: 'pan-plan-checker', text, source: 'engine:lean-plan-check' });
 }
 
@@ -170,8 +174,10 @@ function writeLeanPhasePlan(cwd, phase, opts = {}) {
   const padded = C.normalizePhaseName(String(phase));
   let info = C.findPhaseInternal(cwd, String(phase));
   let dir;
+  let createdDir = false;
   if (info && info.found) dir = path.join(cwd, info.directory);
   else {
+    createdDir = true;
     dir = path.join(planningPath(cwd, 'phases'), `${padded}-${C.generateSlugInternal(rp.phase_name || 'phase')}`);
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -204,8 +210,14 @@ function writeLeanPhasePlan(cwd, phase, opts = {}) {
       ? ` This requirement changes behaviour earlier phases built: where ${superseded.join(', ')} assert the old behaviour, update those expectations to what ${r.id} requires and record each change as a deviation in the summary. Do not delete, skip or weaken a test.`
       : '';
     const taskFiles = [...new Set([...(own.length ? own : files), ...(supersedes ? superseded : [])])];
-    return ['<task type="auto">', `  <name>${r.id}: ${esc(one(r.text).slice(0, 70))}</name>`, `  <files>${taskFiles.join(', ') || 'the files the requirement names'}</files>`,
-      `  <action>Implement ${r.id} exactly as requirements.md states it, with a test for each rule in it: ${esc(one(r.text))}${criteria}${supersedes}</action>`,
+    // A requirement that states a validation rule (IF ... THEN, a claim over every input, a
+    // "never") needs a property-test task, as the plan check requires (V10): one example
+    // test cannot show a rule over many inputs (2026-10-25: the engine's plan failed its own
+    // check here and the phase never ran).
+    const rule = (r.criteria || []).some(isValidationRule);
+    const property = rule ? ' Add a property-based test that checks the rule over generated inputs, with the project\'s own property helper or a seeded loop and no new dependency.' : '';
+    return [rule ? '<task type="auto" property="true">' : '<task type="auto">', `  <name>${r.id}: ${esc(one(r.text).slice(0, 70))}</name>`, `  <files>${taskFiles.join(', ') || 'the files the requirement names'}</files>`,
+      `  <action>Implement ${r.id} exactly as requirements.md states it, with a test for each rule in it: ${esc(one(r.text))}${criteria}${supersedes}${property}</action>`,
       `  <verify>${verify}</verify>`, `  <done>${r.id} holds and a test covers each rule in it; the tests pass.</done>`, '</task>'].join('\n');
   });
   const text = [
@@ -219,7 +231,7 @@ function writeLeanPhasePlan(cwd, phase, opts = {}) {
   const file = path.join(dir, `${padded}-01-plan.md`);
   fs.writeFileSync(file, text);
   const rel = require('./core.cjs').toPosix(path.relative(cwd, file));
-  return { written: true, path: rel, plan_dir: require('./core.cjs').toPosix(path.relative(cwd, dir)), requirements: reqs.map((r) => r.id), ...(superseded.length ? { supersedes_tests: superseded } : {}) };
+  return { written: true, path: rel, abs: file, created_dir: createdDir ? dir : null, plan_dir: require('./core.cjs').toPosix(path.relative(cwd, dir)), requirements: reqs.map((r) => r.id), ...(superseded.length ? { supersedes_tests: superseded } : {}) };
 }
 
 // Wording that marks a requirement as changing behaviour already built.
@@ -263,7 +275,12 @@ function planLeanPhase(cwd, phase, opts = {}) {
   const w = writeLeanPhasePlan(cwd, phase, opts);
   if (w.error) return w;
   const check = engineCheckPlans(cwd, phase);
-  if (!check.ok) return { ...w, ok: false, errors: check.errors };
+  if (!check.ok) {
+    // Decline writes nothing: a failed plan left on disk was picked up by the next session.
+    try { fs.unlinkSync(w.abs); } catch { /* already gone */ }
+    if (w.created_dir) { try { fs.rmdirSync(w.created_dir); } catch { /* not empty */ } }
+    return { phase: String(phase), ok: false, error: 'check_failed', errors: check.errors };
+  }
   const rec = recordEngineCheck(cwd, phase, check);
   if (rec.error) return { ...w, ok: false, errors: [rec.reason || rec.error] };
   const config = loadConfig(cwd);

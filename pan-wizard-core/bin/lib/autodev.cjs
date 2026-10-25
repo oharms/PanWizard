@@ -184,7 +184,7 @@ function blockedReport(stdout) {
     if (!lines[i].trim().startsWith('{')) continue;
     try { const o = JSON.parse(lines.slice(i).join('\n')); if (o && typeof o.result === 'string') { result = o.result; break; } } catch {}
   }
-  const m = result.match(/BLOCKED_SPEC_CONFLICT|BLOCKED:\s*SPEC CONFLICT/i);
+  const m = result.match(/BLOCKED_SPEC_CONFLICT|BLOCKED:\s*SPEC CONFLICT|EXECUTION HALTED|changed after they passed the plan check/i);
   if (!m) return null;
   return result.slice(m.index, m.index + 400).replace(/\s+/g, ' ').trim();
 }
@@ -240,6 +240,17 @@ function executeUnit(cwd, unit, host, opts = {}) {
   if (unit.action === 'plan' && !unit.quality) {
     const r = spawnSync(process.execPath, [TOOLS, 'size', 'phase-plan', String(unit.phase)], { cwd, encoding: 'utf8' });
     if (r.status === 0) return { exit: 0, cost_usd: 0, argv: ['size', 'phase-plan', String(unit.phase)], engine: true, error: null, duration_ms: Date.now() - t0 };
+  }
+  // A lean phase's plans are checked in code, so a plan check that went stale (a session
+  // revised the plan after the check was recorded) is re-run here rather than stopping the
+  // phase (2026-10-25). The full path's checker is a model and is not replaced.
+  if (unit.action === 'execute' && !unit.quality) {
+    try {
+      const st = require('./verify-plan-set.cjs').planCheckStatus(cwd, String(unit.phase)).status;
+      if (['stale', 'missing', 'failed'].includes(st) && require('./sizing.cjs').sizePhase(cwd, String(unit.phase)).path === 'lean') {
+        spawnSync(process.execPath, [TOOLS, 'size', 'plan-check', String(unit.phase)], { cwd, encoding: 'utf8' });
+      }
+    } catch { /* the session's own gate decides */ }
   }
   if (unit.action === 'complete_phase') {
     const r = spawnSync(process.execPath, [TOOLS, 'phase', 'complete', String(unit.phase)], { cwd, encoding: 'utf8' });

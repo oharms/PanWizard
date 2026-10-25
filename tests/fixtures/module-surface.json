@@ -1155,6 +1155,7 @@
     "PLAN_CHECKER:string",
     "checkPlanSet:function",
     "cmdVerifyPlanSet:function",
+    "isValidationRule:function",
     "phaseFiles:function",
     "planCheckStatus:function",
     "planDrift:function",

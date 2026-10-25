@@ -274,3 +274,53 @@ describe('new-project keeps to a precise brief (2026-10-25 brief test)', () => {
     assert.match(r.stop.detail, /execute:1 stopped on its budget/);
   });
 });
+
+describe('the engine plan passes its own check (2026-10-25 brief rerun)', () => {
+  const A = require('../pan-wizard-core/bin/lib/autodev.cjs');
+  function ruleSeed() {
+    const t = seed('tasks-roadmap');
+    const f = path.join(t, '.planning', 'requirements.md');
+    // A validation rule (V10) under STORE-01: the plan check then needs a property-test task.
+    fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/(- \*\*STORE-01\*\*[^\n]*\n)/, '$1  - IF the priority is not low, medium or high THEN THE SYSTEM SHALL throw\n'));
+    const g = (a) => spawnSync('git', a, { cwd: t, encoding: 'utf8' });
+    g(['init', '-q']); g(['config', 'user.name', 't']); g(['config', 'user.email', 't@t']); g(['add', '-A']); g(['commit', '-qm', 'x']);
+    return t;
+  }
+  test('a requirement with a validation rule gets a property-test task, and the plan passes the check', () => {
+    const t = ruleSeed();
+    const r = cli(t, ['size', 'phase-plan', '1']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const plan = fs.readFileSync(path.join(t, JSON.parse(r.stdout).path), 'utf8');
+    assert.match(plan, /<task type="auto" property="true">\n  <name>STORE-01:/);
+    assert.match(plan, /Add a property-based test that checks the rule over generated inputs/);
+  });
+  test('a plan that fails the engine check is removed: a decline writes nothing', () => {
+    const t = seed('tasks-roadmap', (c) => ({ ...c, workflow: { ...c.workflow, lean_max_requirements: 9 } }));
+    const g = (a) => spawnSync('git', a, { cwd: t, encoding: 'utf8' });
+    g(['init', '-q']); g(['config', 'user.name', 't']); g(['config', 'user.email', 't@t']);
+    // A roadmap requirement missing from requirements.md: the engine's plan cannot cover it.
+    const rm = path.join(t, '.planning', 'roadmap.md');
+    fs.writeFileSync(rm, fs.readFileSync(rm, 'utf8').replace('STORE-01, STORE-02, STORE-03, STORE-04', 'STORE-01, STORE-02, STORE-03, STORE-04, STORE-99'));
+    g(['add', '-A']); g(['commit', '-qm', 'x']);
+    const r = cli(t, ['size', 'phase-plan', '1']);
+    if (r.status === 0) return; // sized lean and covered: nothing to assert about a decline
+    assert.equal(fs.existsSync(path.join(t, '.planning', 'phases')) ? fs.readdirSync(path.join(t, '.planning', 'phases')).flatMap((d) => fs.readdirSync(path.join(t, '.planning', 'phases', d))).filter((f) => /-plan\.md$/.test(f)).length : 0, 0);
+  });
+  test('blockedReport also reads an execution halted on a stale plan check', () => {
+    assert.match(A.blockedReport(JSON.stringify({ result: 'PAN ► EXECUTION HALTED — PHASE 2\nThe plans changed after they passed the plan check.' })), /EXECUTION HALTED/);
+  });
+  test('autodev re-runs the engine check for a lean phase whose plan check went stale', () => {
+    const t = ruleSeed();
+    assert.equal(cli(t, ['size', 'phase-plan', '1']).status, 0);
+    const dir = path.join(t, '.planning', 'phases', fs.readdirSync(path.join(t, '.planning', 'phases'))[0]);
+    const plan = path.join(dir, fs.readdirSync(dir).find((f) => /-plan\.md$/.test(f)));
+    fs.appendFileSync(plan, '\n<!-- revised by a session after the check -->\n');
+    assert.equal(planCheckStatus(t, '1').status, 'stale');
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-nostandin-'));
+    dirs.push(empty);
+    const saved = process.env.PAN_STANDIN_DIR;
+    process.env.PAN_STANDIN_DIR = empty; // no host CLI is started
+    try { A.executeUnit(t, { action: 'execute', phase: '1' }, 'claude', {}); } finally { if (saved === undefined) delete process.env.PAN_STANDIN_DIR; else process.env.PAN_STANDIN_DIR = saved; }
+    assert.equal(planCheckStatus(t, '1').status, 'ok');
+  });
+});
