@@ -165,7 +165,12 @@ describe('S2: the autopilot spine', () => {
 describe('nothing under harness/autopilot ships', () => {
   test('npm pack --dry-run lists no harness file', () => {
     const out = execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: ROOT, encoding: 'utf8', shell: process.platform === 'win32', stdio: ['ignore', 'pipe', 'pipe'] });
-    const files = JSON.parse(out)[0].files.map((f) => f.path.replace(/\\/g, '/'));
+    // npm 11 prints an array of pack results; npm 12 (`latest` since 2026-10) an object keyed
+    // by package name. The 3.37.0 publish failed on the runner's npm@latest at `[0].files`.
+    const parsed = JSON.parse(out);
+    const entry = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];
+    assert.ok(entry && Array.isArray(entry.files), `npm pack --json gave no pack result: ${out.slice(0, 200)}`);
+    const files = entry.files.map((f) => f.path.replace(/\\/g, '/'));
     assert.ok(files.length > 100, 'non-vacuity');
     assert.deepEqual(files.filter((f) => f.startsWith('harness/')), []);
   });
