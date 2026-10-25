@@ -225,7 +225,7 @@ Most commands do no heavy work directly: their substantive logic lives in workfl
 
 ### Command-Only Files (No Workflow)
 
-These commands are self-contained in their `.md` file and do not delegate to a separate workflow; so are `army`, `cost`, `experiment`, `git`, `hud`, `hygiene`, `knowledge`, `links`, `preview`, `report`, `review-deep` and `what-if`, none of which references a workflow file:
+These commands are self-contained in their `.md` file and do not delegate to a separate workflow; so are `army`, `autodev`, `cost`, `experiment`, `git`, `hud`, `hygiene`, `knowledge`, `links`, `preview`, `report`, `review-deep` and `what-if`, none of which references a workflow file (`autodev` runs `pan-tools autodev`, whose lean execute unit reads `exec-lean.md` in its own session):
 
 | Command | Reason |
 |---------|--------|
@@ -262,7 +262,8 @@ Some workflows have different names than their corresponding commands. This is i
 | `resume.md` | `resume-project.md` | Command is user action; workflow is system operation |
 | `exec-phase.md` | `exec-phase.md` + `execute-plan.md` | Orchestrator + per-plan worker |
 | (no command) | `transition.md` | Internal phase-to-phase transition logic |
-| `plan-phase.md --research-only` | `research-phase.md` | Folded-in command keeps its workflow behind a flag |
+| `verify-phase.md --uat` | `uat-walkthrough.md` (which follows `diagnose-issues.md` for the gaps it finds) | Folded-in command keeps its workflow behind a flag |
+| `plan-phase.md --research-only` | `research-phase.md` | Same |
 | `milestone-done.md --cleanup` | `milestone-cleanup.md` | Same |
 | `milestone-audit.md --gaps` | `milestone-gaps.md` | Same |
 | `learn.md --optimize` | `optimize.md` | Same |
@@ -272,14 +273,14 @@ Some workflows have different names than their corresponding commands. This is i
 
 ### Internal Workflows
 
-No user command runs these workflows: `execute-plan.md` and `transition.md` are invoked by other workflows, `exec-lean.md` by autodev's execute unit for a lean phase, and no command or workflow references the others:
+No user command runs these workflows directly: `execute-plan.md`, `transition.md` and `diagnose-issues.md` are invoked by other workflows, and `exec-lean.md` by autodev's execute unit for a lean phase:
 
 | Workflow | Purpose |
 |----------|---------|
 | `execute-plan.md` | Per-plan execution worker (spawned by `exec-phase.md` per plan) |
 | `transition.md` | Phase-to-phase transition logic |
 | `exec-lean.md` | A lean phase in one session: the executor's work, then one reviewer pass and the verifier (autodev's execute unit, `autodev.cjs`) |
-| `diagnose-issues.md` | One debugger per failed UAT truth, root cause only; ported to the native `/pan-diagnose-issues` script — no command references it directly |
+| `diagnose-issues.md` | One debugger per failed UAT truth, root cause only; followed by `uat-walkthrough.md` (`/pan:verify-phase --uat`) for the gaps it records, and ported to the native `/pan-diagnose-issues` script on Claude Code |
 
 ---
 
@@ -296,17 +297,17 @@ Agents are Markdown files that define specialized AI roles. Each agent runs as a
 | `pan-document_code` | Analyzes existing codebase (one focus area per mapper, or the whole repo in single-shot mode) | `/pan:map-codebase` (parallel when sharded; one agent in single-shot mode) |
 | `pan-designer` | Designs specs before planning | `/pan:design-phase` |
 | `pan-design-checker` | Validates design specs | `/pan:design-phase`, `/pan:focus-design` |
-| `pan-phase-researcher` | Investigates how to implement a phase | `/pan:plan-phase`, `/pan:plan-phase --research-only` |
+| `pan-phase-researcher` | Answers at most five open questions that block planning a phase (opt-in: `--research` or `workflow.research`) | `/pan:plan-phase`, `/pan:plan-phase --research-only` |
 | `pan-planner` | Creates executable plan.md files | `/pan:plan-phase`, `/pan:quick` |
 | `pan-plan-checker` | Validates plans against goals across multiple dimensions | `/pan:plan-phase`, `/pan:quick --full` |
 | `pan-executor` | Executes plans with atomic commits | `/pan:exec-phase`, `/pan:quick`, `/pan:army` (Build squad) |
-| `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase`, `/pan:quick --full` |
-| `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase` |
+| `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase`, `/pan:quick --full`, autodev's `exec-lean.md` (lean phase) |
+| `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase` (kept on a lean phase, which skips only test generation), autodev's `exec-lean.md` |
 | `pan-integration-checker` | Verifies cross-phase wiring and E2E flows | `/pan:milestone-audit` |
-| `pan-debugger` | Systematic bug investigation | `/pan:debug`, native `/pan-diagnose-issues` script (Claude Code) |
+| `pan-debugger` | Systematic bug investigation | `/pan:debug`, `/pan:verify-phase --uat` (the `diagnose-issues` workflow, one debugger per failed truth), native `/pan-diagnose-issues` script (Claude Code) |
 | `pan-previewer` | Foresight — blast radius / dependency graph / milestone ETA | `/pan:preview` |
-| `pan-hardener` | OWASP Top 10 + STRIDE security audit | `/pan:review-deep`, `/pan:exec-phase --deep-review`, `/pan:focus-auto` (security category) |
-| `pan-meta-reviewer` | Reviews reviewer + hardener output; flags missed issues | `/pan:review-deep`, `/pan:exec-phase --deep-review` |
+| `pan-hardener` | OWASP Top 10 + STRIDE security audit | `/pan:review-deep`, `/pan:exec-phase --deep-review`, `/pan:focus-auto` (security category Pass 3, and `--step exec --deep-review`) |
+| `pan-meta-reviewer` | Reviews reviewer + hardener output; flags missed issues | `/pan:review-deep`, `/pan:exec-phase --deep-review`, `/pan:focus-auto --step exec --deep-review` |
 | `pan-knowledge` | Grounded Q&A / multi-turn discussion / playbook generation | `/pan:knowledge` |
 | `pan-counterfactual` | Explores alternative phase approaches in isolated worktree | `/pan:what-if` |
 | `pan-conductor` | Top-level hierarchical exec orchestrator with safety harness | `/pan:exec-phase --hierarchical`, `/pan:army` (Mission Control) |
@@ -351,7 +352,8 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | **Scaffold** | `scaffold context`, `scaffold uat`, `scaffold verification`, `scaffold phase-dir` |
 | **Verify** | `verify plan-structure`, `verify phase-completeness`, `verify references`, `verify commits`, `verify artifacts`, `verify key-links`, `verify reconcile`, `verify stubs`, `verify scope`, `verify stale`, `verify plan-set`, `verify test-integrity`, `verify red`, `verify mutate`, `verify review-focus`, `verify decisions`, `verify gates`, `verify requirements`, `verify traceability` |
 | **Test** | `test run [--baseline]`, `test detect` |
-| **Review / Research** | `review scope <phase>`, `review cross-family <phase>`, `review vote`, `research lint <phase\|path>` |
+| **Review / Research** | `review scope <phase>`, `review cross-family <phase>`, `review vote`, `research lint <phase\|path>`, `research check <questions> <research> [--market]` |
+| **Size** (right-sized ceremony) | `size phase <N> [--quality] [--full]`, `size task "<description>" \| --file <path>`, `size phase-plan <N>`, `size quick-plan --out <file> [--num N] "<description>"`, `size plan-check <N>` |
 | **Validate** | `validate consistency`, `validate health`, `validate deployment` |
 | **Init** | `init execute-phase`, `init plan-phase`, `init new-project`, `init quick`, `init progress` (compound commands for each major workflow) |
 | **Milestone** | `milestone complete`, `requirements mark-complete` |
@@ -452,13 +454,13 @@ The dispatcher in `pan-tools.cjs` routes top-level commands (plus `init` sub-cas
 | `verify-integrity.cjs` | **(program V3)** `verify test-integrity <phase>`: walks the phase's plan commits and reports a deleted test, a skip or only marker added (JS, Python, Go, Rust, Java), assertions dropped, an assertion edited in a test no plan declares, a rewritten snapshot, or an assertion that cannot fail; a renamed test is a warning. Uses verify-scope's `committedFiles()`. |
 | `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
 | `verify-scope.cjs` | **(evidence loop)** `scopePhase()`: the files a phase changed (plan commits by subject, plus summary key-files) that its plans did not declare in `files_modified`. The planning tree, lockfiles and PAN's runtime directories are excluded. Backs `verify scope`. `reviewScope()` backs `review scope <phase>`: the changed files with each plan's objective, must_haves and Review Focus, the claimed requirements' text, and `unlisted` files no summary lists, for the reviewer's `<intent>` block. Also `verificationFreshness()`: whether a phase's verification still describes the code (`fresh`, `stale`, `unverified` or `unknown`, from the covered files changed since `verified_commit`), which backs `verify stale` and the per-phase `verification` state in `progress` output. Re-exported by verify.cjs; commands.cjs reads `verificationFreshness` directly. |
-| `autodev.cjs` | **(program A1)** `autodev run/resume/status`: the deterministic outer loop — reads `.planning/`, asks `next-action` for the next unit, decides in code whether to stop, runs each unit in a fresh headless host session; ledger and state under `.planning/autodev/`. |
+| `autodev.cjs` | **(program A1)** `autodev run/resume/status`: the deterministic outer loop — reads `.planning/`, asks `next-action` for the next unit, decides in code whether to stop, runs each unit in a fresh headless host session; ledger and state under `.planning/autodev/`. A phase `sizing.cjs` sizes lean runs its execute unit in one session through `workflows/exec-lean.md` (`LEAN_WORKFLOW`, `unitPrompt`): the session does the executor's work, then one `pan-reviewer` pass, then the verifier; the cost and trace hooks attribute that session to command `exec-lean`. |
 | `autodev-report.cjs` | **(program A5)** `autodev replay` (re-runs the stop logic over `blackbox.jsonl`) and `autodev report` (`dossier.md`/`dossier.html` beside the ledger). |
 | `failure-class.cjs` | **(program A4)** Classifies a failed autodev unit and routes it: retry with the error tail, fresh restart, tier escalation, quarantine, ask a human, or stop on budget. No CLI surface. |
 | `ci.cjs` | **(program A2)** CI as autodev's oracle: `gh pr checks` (`--ci`), or the project's own `npm run ci:local`/`npm test` (`--ci local`); fix rounds and a breaker. No CLI surface of its own. |
 | `hosts.cjs` | **(program A0)** One table of how PAN runs each host CLI: the autonomous runner argv, the model family, the read-only review argv, the headless harness argv. No CLI surface. |
 | `next-action.cjs` | **(program L7)** `next-action`: reads roadmap.md and the phase directories into the MCP orchestrator's snapshot and maps its decision to a command. |
-| `sizing.cjs` | Right-sized ceremony: decides lean or full per phase and quick task (`size phase/task`), writes a lean quick task's plan (`size quick-plan`) and checks lean plans in code (`size plan-check`). The `quality` profile, `workflow.ceremony: full` and `--quality` keep the full path. |
+| `sizing.cjs` | Right-sized ceremony: decides lean or full per phase and quick task (`size phase/task`). A phase is lean when every requirement mapped to it is precisely specified (an acceptance criterion or a named artifact) and there are at most `LEAN_CEILING_FACTOR` (3) × `workflow.lean_max_requirements` (default 5) of them; above `lean_max_requirements` the engine splits the lean phase into plans of at most that many tasks, each in its own wave (`size phase-plan`, `planLeanPhase`). Writes a lean quick task's plan (`size quick-plan`) and checks lean plans in code (`size plan-check`). The `quality` profile, `workflow.ceremony: full`, `--quality` and `--full` keep the full path. |
 | `cross-family.cjs` | **(program R4)** `review cross-family <phase>`: one read-only review on another host's CLI, off unless `workflow.cross_family_review` names a host. |
 | `review-vote.cjs` | **(program R2)** `review vote`: merges k reviewer passes; a finding survives only with a quorum. |
 | `merge.cjs` | **(program L6a)** `merge request` / `merge confirm`: the human merge gate on the CLI; confirm only in an interactive terminal. |
@@ -487,12 +489,9 @@ The tree below shows the core files. Depending on which features a project has u
   milestones.md         Completed milestone archive
   patterns.md           Error patterns (PAT-NNN); read when present, no verb or hook writes it
   session-history.md    Session summaries (last 20 entries); read when present, no verb or hook writes it
-  research/             Domain research from /pan:new-project
-    summary.md          Synthesized findings
-    stack.md            Recommended tech stack
-    features.md         Feature prioritization
-    architecture.md     Architecture patterns
-    pitfalls.md         Common pitfalls and warnings
+  research/             Opt-in research from /pan:new-project --research or /pan:milestone-new
+    questions.md        At most five open questions that block building, written by the orchestrator
+    research-summary.md One answer row per question (pan-project-researcher; older projects: summary.md)
   codebase/             Brownfield analysis from /pan:map-codebase
     stack.md            Current tech stack
     integrations.md     External services and APIs
@@ -641,7 +640,7 @@ User                  Command                 Workflow
   |                     |       |  model assignments     |  |
   |                     |       |<---------------------------|
   |                     |                       |
-  |                     |  spawn                |    Agents
+  |                     |  spawn (opt-in)       |    Agents
   |                     |  pan-phase-researcher |        |
   |                     |       +--------------------------->|
   |                     |       |  write research.md     |  |
@@ -663,7 +662,7 @@ User                  Command                 Workflow
   |                     |       |<---------------------------|
   |                     |                       |
   |                     |  if fail: loop back   |
-  |                     |  to planner (max 2x)  |
+  |                     |  to planner (1 or 2x) |
   |                     |                       |
   |  Plans approved     |                       |
   |<--------------------|                       |
@@ -676,12 +675,12 @@ User                  Command                 Workflow
 3. Command references workflow: `pan-wizard-core/workflows/plan-phase.md`
 4. Workflow calls `pan-tools.cjs init plan-phase "1"` to bootstrap context
 5. pan-tools returns JSON with all file paths, config, and model assignments
-6. Workflow spawns `pan-phase-researcher` agent to investigate the phase's domain
-7. Researcher writes research.md; if Nyquist is enabled the workflow then writes validation.md from the template using the researcher's Validation Architecture section
-8. Workflow spawns `pan-planner` with state.md + the phase's roadmap slice (`XX-roadmap-slice.md`, from `pan-tools roadmap slice <N> --write`) + context.md + research.md
+6. Only when research was asked for (`--research`, or `workflow.research: true`, off by default): the workflow writes the phase's open questions and spawns one `pan-phase-researcher` to answer them
+7. Researcher writes research.md (`pan-tools research check` verifies it); if Nyquist is enabled the workflow then writes validation.md from the template using the researcher's Validation Architecture section
+8. On a lean phase (`pan-tools size phase` — every requirement precisely specified) the engine writes and checks the plans itself (`size phase-plan`, `size plan-check`) and steps 8–11 run only if it declines. Otherwise the workflow spawns `pan-planner` with state.md + the phase's roadmap slice (`XX-roadmap-slice.md`, from `pan-tools roadmap slice <N> --write`) + context.md + research.md
 9. Planner creates plan.md files (typically 2-3 per phase)
 10. Workflow spawns `pan-plan-checker` to validate plans across multiple dimensions
-11. If checker finds blockers, loop back to planner with feedback (at most 2 revisions; the checker runs up to 3 times)
+11. If checker finds blockers, loop back to planner with feedback (`MAX_CHECKS` in `plan-phase.md`: 2 checks, one revision, on the sized ceremony; 3 checks, two revisions, under the `quality` profile, `workflow.ceremony: full` or `--quality`)
 12. Plans approved — phase is ready for `/pan:exec-phase`
 
 ### Example: `/pan:exec-phase 1`

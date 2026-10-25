@@ -109,7 +109,7 @@ must_haves: []
 
 ### Plan checker enters infinite rejection loop
 
-**Symptom:** The planner generates a plan, the checker rejects it, the planner regenerates, the checker rejects again -- repeating up to the maximum of 3 checker iterations (hard-coded in the plan-phase workflow; two revisions).
+**Symptom:** The planner generates a plan, the checker rejects it, the planner regenerates, the checker rejects again -- repeating up to the maximum number of checks (2 on the sized ceremony, one revision; 3 under `quality`, `workflow.ceremony: full` or `--quality`, two revisions).
 
 **Root cause:** The planner and checker have conflicting expectations. Common triggers:
 
@@ -605,18 +605,18 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Token usage by stage (approximate):**
 
-| Stage | `budget` | `balanced` / `quality` |
-|-------|---------------|-----------------|
-| Research | 10-20K | 30-50K |
-| Planning | 10-20K | 20-40K |
-| Execution (per plan) | 10-40K | 20-80K |
-| Verification | 5-10K | 10-20K |
+| Stage | `budget` | `balanced` | `quality` |
+|-------|---------------|-----------------|-----------------|
+| Research (opt-in) | 10-20K | 30-50K (on the mid tier) | 30-50K |
+| Planning | 10-20K | 20-40K (checker on the mid tier) | 20-40K |
+| Execution (per plan) | 10-40K | 20-80K | 20-80K |
+| Verification | 5-10K | 10-20K | 10-20K |
 
-`quality` and `balanced` are `inherit` for **every** agent — the two columns are identical, so switching between them changes nothing. `budget` is the only profile that down-tiers. Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
+`quality` and `balanced` are `inherit` for every agent except the researchers and the plan-checker, which `balanced` runs on the mid tier; `balanced` also sizes the ceremony (a precisely specified small phase skips the planner and the checker), where `quality` runs the full ceremony. `budget` is the only profile that down-tiers the rest. Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth.
 
 **Common causes of higher-than-expected usage:**
 
-- Plan checker rejection loop (the planner runs up to 3 times, the first plan and at most 2 revisions = up to 3x planning cost)
+- Plan checker rejection loop (the first plan and one revision on the sized ceremony, two under `quality` = up to 3x planning cost)
 - Executor auto-fix loops (each Rule 1-3 attempt costs additional tokens)
 - Plans with too many tasks (4+ tasks per plan increases per-plan cost)
 - Staying on the default profile for high-volume work `budget` would have absorbed
@@ -624,8 +624,8 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **Cost reduction strategies (ordered by impact):**
 
-1. **Switch profile:** `/pan:settings --profile budget` for prototyping or high-volume work — it is the only profile that lowers spend, since `balanced` and `quality` resolve identically
-2. **Skip research:** `/pan:plan-phase N --skip-research` for familiar domains
+1. **Switch profile:** `/pan:settings --profile budget` for prototyping or high-volume work — it lowers every agent's tier; `balanced` (the default) already runs the researchers and the plan-checker on the mid tier and sizes the ceremony, where `quality` spends the most
+2. **Leave research off:** it is off by default; `/pan:plan-phase N --research` turns it on for one phase, and `--skip-research` leaves it out when `workflow.research` is `true`
 3. **Disable plan checker:** `workflow.plan_check: false` in `/pan:settings` (saves 20-40K per phase)
 4. **Disable verifier:** `workflow.verifier: false` for early prototyping (saves 10-30K per phase)
 5. **Smaller plans:** Keep plans to 2-3 tasks each (reduces per-plan context usage)
@@ -645,17 +645,17 @@ Each arrow is a "wire." The verifier checks that these connections exist in the 
 
 **How model selection works:**
 
-| Agent type | `budget` | `balanced` / `quality` |
-|-----------|--------|----------|
-| Research | fast | reasoning |
-| Planning | mid | reasoning |
-| Execution | mid | reasoning |
-| Verification | fast | reasoning |
-| Plan checker | fast | reasoning |
+| Agent type | `budget` | `balanced` | `quality` |
+|-----------|--------|----------|----------|
+| Research | fast | mid | reasoning |
+| Planning | mid | reasoning | reasoning |
+| Execution | mid | reasoning | reasoning |
+| Verification | fast | reasoning | reasoning |
+| Plan checker | fast | mid | reasoning |
 
-`quality` and `balanced` are `inherit` for **every** agent — the two columns are identical, so switching between them changes nothing. `budget` is the only profile that down-tiers. `inherit` → the reasoning tier, i.e. the model the session was launched with; `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth, and `pan-tools estimate-cost` prints the relative multiplier per profile.
+`quality` and `balanced` are `inherit` for every agent except the researchers and the plan-checker, which `balanced` runs on the mid tier. `budget` is the only profile that down-tiers the rest. `inherit` → the reasoning tier, i.e. the model the session was launched with; `mid` and `fast` map to the provider's mid/fast models (Sonnet and Haiku on Anthropic). Derived from `MODEL_PROFILES` in `core.cjs` — that table is the source of truth, and `pan-tools estimate-cost` prints the relative multiplier per profile.
 
-So if the symptom is "an agent ran on a weaker model", the profile to look at is `budget`; moving between `balanced` and `quality` will not change it.
+So if the symptom is "an agent ran on a weaker model", the profile to look at is `budget`, or `balanced` when the agent was a researcher or the plan-checker; moving to `quality` puts those back on the reasoning tier.
 
 **Override precedence:** Per-agent override (`model_overrides`) > per-phase roadmap model tier (read only by `resolve-model --metadata`, which no workflow passes) > profile default > hardcoded `mid`
 
@@ -721,7 +721,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Symptom:** After updating Claude Code, a PAN phase uses noticeably more of the plan's allowance, or the cost report's model column moves from a Sonnet-tier id to an Opus-tier one.
 
-**Root cause:** Claude Code `2.1.280` changed the default model on the Pro and Team Standard plans from Sonnet to the newest Opus-tier model, matching the other plans. PAN's `quality` and `balanced` profiles resolve every agent to the session's own model (`inherit`), so a change of default moves those agents at once — nothing in PAN changed. The exception is an agent spawned with no model, as `/pan:army` spawns them: it runs on its own `model:` pin where its file has one (the reviewer-class agents pin `opus`).
+**Root cause:** Claude Code `2.1.280` changed the default model on the Pro and Team Standard plans from Sonnet to the newest Opus-tier model, matching the other plans. PAN's `quality` and `balanced` profiles resolve the agents that plan, write and judge code to the session's own model (`inherit`; under `balanced` only the researchers and the plan-checker run on the mid tier), so a change of default moves those agents at once — nothing in PAN changed. The exception is an agent spawned with no model, as `/pan:army` spawns them: it runs on its own `model:` pin where its file has one (the reviewer-class agents pin `opus`).
 
 **Fix:** Choose the session model yourself with `/model`, or switch PAN to the `budget` profile (planning and execution on the mid tier, verification and research on the fast tier), or pin individual agents with `model_overrides` in `.planning/config.json`.
 
@@ -745,7 +745,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 - Run `/clear` between major commands (e.g., after plan-phase completes, before exec-phase)
 - Avoid reading large files in the main session -- let subagents handle file reading
-- Use the `budget` profile (its mid/fast agents produce shorter output, consuming less context); `balanced` and `quality` are identical, so switching between those two will not help here
+- Use the `budget` profile (its mid/fast agents produce shorter output, consuming less context); `balanced` and `quality` differ only in the researchers and the plan-checker, so switching between those two will not help much here
 - Keep plans to 2-3 tasks each to reduce executor output size
 
 ### resume restores incomplete context

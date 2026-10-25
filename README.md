@@ -302,7 +302,7 @@ One command, one flow. The system:
 
 You approve the roadmap. Now you're ready to build.
 
-**Creates:** `project.md`, `requirements.md`, `roadmap.md`, `state.md`, `.planning/research/`
+**Creates:** `project.md`, `requirements.md`, `roadmap.md`, `state.md`, and `.planning/research/` when research was asked for
 
 ---
 
@@ -325,7 +325,7 @@ The system analyzes the phase and identifies gray areas based on what's being bu
 
 For each area you select, it asks until you're satisfied. The output — `context.md` — feeds directly into the next two steps:
 
-1. **Researcher reads it** — Knows what patterns to investigate ("user wants card layout" → research card component libraries)
+1. **Researcher reads it** (when research is on) — Knows what patterns to investigate ("user wants card layout" → research card component libraries)
 2. **Planner reads it** — Knows what decisions are locked ("infinite scroll decided" → plan includes scroll handling)
 
 The deeper you go here, the more the system builds what you actually want. Skip it and you get reasonable defaults. Use it and you get *your* vision.
@@ -344,11 +344,11 @@ The system:
 
 1. **Researches (opt-in)** — With `--research` or `workflow.research: true`, answers the open questions that block planning this phase, guided by your context.md decisions
 2. **Plans** — Creates atomic plans of 2-3 tasks each, with XML structure
-3. **Verifies** — Checks plans against requirements; up to three checker passes (two revisions), then the remaining issues come to you
+3. **Verifies** — Checks plans against requirements: two checker passes (one revision) by default, three (two revisions) under the `quality` profile, `workflow.ceremony: full` or `--quality`; then the remaining issues come to you. A small phase whose requirements each say precisely what to build is planned and checked by the engine instead, with no planner or checker
 
 Each plan is small enough to execute in a fresh context window. No degradation, no "I'll be more concise now."
 
-**Creates:** `{phase_num}-research.md`, `{phase_num}-{N}-plan.md`, `{phase_num}-plan-check.md` (the checker's report, when the checker runs)
+**Creates:** `{phase_num}-{N}-plan.md`, `{phase_num}-plan-check.md` (the checker's report, when the checker runs), `{phase_num}-research.md` (only with `--research` or `workflow.research: true`)
 
 ---
 
@@ -423,7 +423,7 @@ The system:
 3. **Reports the gaps** — a verification report with a per-truth status and the recommended fix plans
 4. **Hands the gaps to the planner** — `/pan:plan-phase N --gaps` writes the fix plans (`gap_closure: true`); `/pan:exec-phase N --gaps-only` runs just those
 
-On Claude Code, `/pan-diagnose-issues <phase>` spawns one debugger per failed UAT truth to find root causes. Manual acceptance testing stays yours: use the feature and record what you find in the phase's UAT file.
+Manual acceptance testing stays yours, and `/pan:verify-phase 1 --uat` walks you through it on every runtime: one acceptance test at a time, each answer recorded through the engine into the phase's UAT file, and the issues you report diagnosed (one debugger per failed truth; on Claude Code the native `/pan-diagnose-issues <phase>` script does the same in parallel) for `/pan:plan-phase N --gaps`.
 
 **Creates:** `{phase_num}-verification.md`; fix plans follow from `/pan:plan-phase N --gaps`
 
@@ -443,7 +443,7 @@ On Claude Code, `/pan-diagnose-issues <phase>` spawns one debugger per failed UA
 
 Loop **discuss → plan → execute → verify** until milestone complete.
 
-Each phase gets your input (discuss), proper research (plan), clean execution (execute), and goal-backward verification (verify). Context stays fresh. Quality stays high.
+Each phase gets your input (discuss), a checked plan (plan; research only when you ask for it), clean execution (execute), and goal-backward verification (verify). Context stays fresh. Quality stays high.
 
 When all phases are done, `/pan:milestone-done` archives the milestone and tags the release.
 
@@ -461,8 +461,8 @@ Then `/pan:milestone-new` starts the next version — same flow as `new-project`
 
 Quick mode gives you PAN guarantees (atomic commits, state tracking) with a faster path:
 
-- **Same agents** — Planner + executor, same quality
-- **Skips optional steps** — No research, no plan checker, no verifier
+- **Same agents** — Planner + executor, same quality; a task whose description already says precisely what to build gets its one-task plan from the engine, with no planner
+- **Skips optional steps** — No research, no plan checker, no verifier (`--full` adds the plan checker and the verifier)
 - **Separate tracking** — Lives in `.planning/quick/`, not phases
 
 Use for: bug fixes, small features, config changes, one-off tasks.
@@ -525,13 +525,13 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 | Stage | Orchestrator does | Agents do |
 |-------|------------------|-----------|
 | Research (opt-in) | Writes the open questions, checks the answers | One researcher answers each question with a source, or records an assumption |
-| Planning | Validates, manages iteration | Planner creates plans, checker verifies, up to three passes |
+| Planning | Validates, manages iteration | Planner creates plans, checker verifies (one revision on the sized ceremony; up to three passes under `quality` or `--quality`); a precisely specified small phase is planned and checked by the engine instead |
 | Execution | Groups into waves, tracks progress | Executors implement in parallel, each in a fresh context (native sub-agents on Claude Code, each runtime's own delegation elsewhere) |
 | Verification | Presents results, routes next | Verifier checks codebase against goals; on Claude Code, `/pan-diagnose-issues` sends one debugger per failed UAT truth |
 
 The orchestrator never does heavy lifting. It spawns agents, waits, integrates results.
 
-**The result:** You can run an entire phase — deep research, multiple plans created and verified, thousands of lines of code written across parallel executors, automated verification against goals — and your main context window stays small, because the work happens in fresh subagent contexts. Your session stays fast and responsive.
+**The result:** You can run an entire phase — research when you ask for it, multiple plans created and verified, thousands of lines of code written across parallel executors, automated verification against goals — and your main context window stays small, because the work happens in fresh subagent contexts. Your session stays fast and responsive.
 
 ### Reasoning-Trace Handoff
 
@@ -585,13 +585,13 @@ You're never locked in. The system adapts.
 |---|---|---|---|---|
 | **Context rot prevention** | Phase-scoped fresh context windows (native sub-agents on Claude Code) | No — context degrades over time | No (Cline: condensing) | No |
 | **Multi-agent** | Specialized agents, parallel waves | Parallel agents in worktrees (Cursor) | Single agent (Cline: subagents) | Custom agents as subagents |
-| **Plan → Verify loop** | Research → plan → verify with iteration | Agent generates plan | Plan mode (Cline) | Plan step |
-| **Post-execution verification** | Auto verifier with a test-suite gate (UAT is a template no command runs) | Iterative error-fix | Manual test runs | Auto-fix loop |
+| **Plan → Verify loop** | Plan → verify with iteration (research opt-in), right-sized in code: a precisely specified phase is planned and checked by the engine | Agent generates plan | Plan mode (Cline) | Plan step |
+| **Post-execution verification** | Auto verifier with a test-suite gate, plus a UAT walkthrough (`/pan:verify-phase N --uat`) | Iterative error-fix | Manual test runs | Auto-fix loop |
 | **Session persistence** | state.md + pause/resume + handoff | Memory tool / transcripts | None / checkpoints (Cline) | Copilot Memory, CLI session recovery |
 | **Runtime support** | Claude Code, OpenCode, Gemini CLI, Codex, Copilot CLI | IDE-locked | Terminal / VS Code | VS Code + CLI |
 | **Zero dependencies** | Yes (Node builtins only) | No (Electron) | No (Python / Node) | No |
 
-PAN is not a replacement for your IDE or AI agent — it's the orchestration layer that handles everything *around* them: breaking work into context-safe chunks, researching before planning, verifying after execution, and maintaining state across sessions.
+PAN is not a replacement for your IDE or AI agent — it's the orchestration layer that handles everything *around* them: breaking work into context-safe chunks, answering the open questions before planning when you ask it to, verifying after execution, and maintaining state across sessions.
 
 > For the full comparison across the major AI coding tools and many dimensions, see [COMPARISON.md](docs/COMPARISON.md).
 
@@ -608,11 +608,11 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:design-phase <N>` | Design a phase — architecture, ADR, threat-lite — before planning |
 | `/pan:plan-phase [N] [--auto]` | Plan + verify for a phase (research with `--research`); `--research-only <N>` runs the research step alone |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves, verify when complete |
-| `/pan:verify-phase [N]` | Re-run goal-backward verification with a test-suite gate; lists gaps for `/pan:plan-phase N --gaps` ¹ |
-| `/pan:autodev [run\|resume\|status]` | Run the roadmap unattended: a deterministic loop plans, executes, verifies and completes each phase, each step in a fresh host session, and stops in code (done, human needed, gate failed, budget, turns, no progress) |
+| `/pan:verify-phase [N] [--uat]` | Re-run goal-backward verification with a test-suite gate; lists gaps for `/pan:plan-phase N --gaps` ¹. `--uat` walks you through the phase's acceptance tests instead, on every runtime |
+| `/pan:autodev [run\|resume\|status]` | Run the roadmap unattended: a deterministic loop plans, executes, verifies and completes each phase, each step in a fresh host session (a lean phase is planned by the engine and built, reviewed and verified in one session), and stops in code (done, human needed, gate failed, CI failed, forecast exceeded, budget, turns, no progress) |
 | `/pan:milestone-audit` | Verify milestone achieved its definition of done; `--gaps` creates phases to close the gaps the audit found |
 | `/pan:milestone-done <version>` | Archive milestone, tag release; `--cleanup` archives accumulated phase directories from completed milestones |
-| `/pan:milestone-new [name]` | Start next version: questions → research → requirements → roadmap |
+| `/pan:milestone-new [name]` | Start next version: questions → research (opt-in) → requirements → roadmap |
 
 ### Navigation
 
@@ -660,7 +660,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:todo-add [desc]` | Capture idea for later |
 | `/pan:todo-check` | List pending todos |
 | `/pan:debug [desc]` | Systematic debugging with persistent state |
-| `/pan:quick [--full]` | Execute ad-hoc task with PAN guarantees (`--full` adds plan-checking and verification) |
+| `/pan:quick [--full] [--quality]` | Execute ad-hoc task with PAN guarantees (`--full` adds plan-checking and verification; `--quality` gives one run the full ceremony, with a planner even for a precisely described task) |
 | `/pan:health [--repair]` | Validate `.planning/` directory integrity; `--repair` fixes the issues it marks repairable |
 | `/pan:hygiene [--apply] [--trace-age-days N] [--all-tracks]` | Scan for PAN version drift and stale project artifacts (legacy filenames, .tmp orphans, memory bloat and stale or expired memory entries, poisoned cost ledgers, trace and report debris, cached-context bloat, fragment planning dirs) and Claude Code's own memory index (reported, never edited); `--apply` executes the safe fixes — poisoned ledgers are quarantined by rename (only the newest quarantine copy is kept), and settled `state.md` history, shipped roadmap phases and stale memory entries are archived rather than dropped |
 | `/pan:links [--strict] [--doc-root <dir>] [--source-root <dir>]` | Validate the doc-code link graph: inline `[[<id>]]` refs, `// @pan:` source anchors, `require-code-mention` contracts (ADR-0027). The default roots are PAN's own source layout, so pass your project's roots |
@@ -732,10 +732,10 @@ Control which Claude model each agent uses. Balance quality vs token spend.
 | Profile | Planning | Execution | Verification |
 |---------|----------|-----------|--------------|
 | `quality` | reasoning | reasoning | reasoning |
-| `balanced` (default) | reasoning | reasoning | reasoning |
+| `balanced` (default) | reasoning (planner); Sonnet for the plan-checker and the researchers | reasoning | reasoning |
 | `budget` | Sonnet | Sonnet | Haiku |
 
-> `reasoning` = the session model (inherit) — every agent runs on the model you launched the session with, except the reviewer-class agents (reviewer, hardener, meta-reviewer), which pin a reasoning-tier model on Claude Code. The other runtimes' agent files drop the pin, so there those agents inherit the session model too. Both `quality` and `balanced` resolve this way; only `budget` steps down — to a Sonnet/Haiku mix on Claude Code, and to the provider's own mid and fast models where PAN detects OpenAI (Codex) or Google (Gemini CLI) — under OpenCode, as `provider/model` ids for the provider of OpenCode's configured `model`, or, when that names none PAN routes for, the provider the runtime directories suggest (`.opencode/` alone counts as OpenAI); `pan-tools resolve-model <agent>` prints the id. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
+> `reasoning` = the session model (inherit) — the agent runs on the model you launched the session with, except the reviewer-class agents (reviewer, hardener, meta-reviewer), which pin a reasoning-tier model on Claude Code. The other runtimes' agent files drop the pin, so there those agents inherit the session model too. `quality` resolves every agent this way and runs the full ceremony on every phase; `balanced` moves only the plan-checker and the two researchers to the mid tier and sizes the ceremony (a precisely specified phase is planned and checked by the engine); `budget` steps every agent down — to a Sonnet/Haiku mix on Claude Code, and to the provider's own mid and fast models where PAN detects OpenAI (Codex) or Google (Gemini CLI) — under OpenCode, as `provider/model` ids for the provider of OpenCode's configured `model`, or, when that names none PAN routes for, the provider the runtime directories suggest (`.opencode/` alone counts as OpenAI); `pan-tools resolve-model <agent>` prints the id. Actual assignment varies by agent role — see [User Guide](docs/USER-GUIDE.md#model-profiles-per-agent-breakdown) for the full per-agent breakdown.
 
 Switch profiles:
 ```text
@@ -750,7 +750,7 @@ These spawn additional agents during planning/execution. They improve quality bu
 
 | Setting | Default | What it does |
 |---------|---------|--------------|
-| `workflow.research` | `true` | Researches domain before planning each phase |
+| `workflow.research` | `false` | Research before planning each phase (opt-in: one researcher answers at most five open questions that block building); `/pan:plan-phase N --research` researches one phase |
 | `workflow.plan_check` | `true` | Verifies plans achieve phase goals before execution |
 | `workflow.verifier` | `true` | Confirms must-haves were delivered after execution |
 | `workflow.auto_advance` | `false` | Auto-chain discuss → plan → execute without stopping |

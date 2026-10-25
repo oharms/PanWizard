@@ -440,7 +440,7 @@ function detectionScoreboard(files) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id] [--require-run id]... [--record] [--scoreboard results.jsonl]...\n');
+    process.stdout.write('node harness/src/run.cjs [--scenario id]... [--tier 0|1|2] [--max-usd n] [--repeat n] [--state-dir dir] [--repo dir] [--keep] [--no-ledger] [--controls] [--until-decided] [--arm id] [--require-run id]... [--record] [--scoreboard results.jsonl]... [--variant <installed path>=<harness/variants file>]... [--prompt-mutant <rule id>]\n');
     return 0;
   }
   const stateDir = args.stateDir || defaultStateDir();

@@ -24,7 +24,7 @@ PAN Wizard's current workflow treats all work identically: every task gets the f
 
 ### Success Criteria
 
-```
+```text
 SC-1: XS/S tasks complete in 1 pan-tools round-trip (no agent spawn)
 SC-2: Execution budget prevents context exhaustion before phase completion
 SC-3: Commit safety checks catch sensitive files and unintended deletions
@@ -41,7 +41,7 @@ SC-8: Zero new runtime dependencies
 
 ### Gap Map — Where Capabilities Are Missing
 
-```
+```text
 CURRENT FLOW:                    MISSING CAPABILITY:
 
 new-project                      (no gaps — flow is solid)
@@ -107,7 +107,7 @@ Every integration point below modifies an existing workflow, command, or pan-too
 
 ### The Redesigned End-to-End Flow
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     PAN WIZARD v0.3 — REDESIGNED FLOW                   │
 │                                                                         │
@@ -410,7 +410,7 @@ Want more control? Three new optional flags:
 
 #### Tier Classification Algorithm
 
-```
+```text
 function classifyPlanTier(plan):
   if plan.autonomous == false:
     return 'full'
@@ -451,7 +451,7 @@ This saves ~30 seconds of agent spawn overhead and ~200K tokens of context alloc
 
 Added to `cmdCommit()` before git operations:
 
-```
+```text
 1. git status --porcelain → parse for deleted files (^D or ^ D)
 2. If deleted files AND not --force: return { error: "Deleted files detected", files: [...], hint: "Use --force to confirm" }
 3. git diff --cached --name-only → match against config.commit.sensitive_patterns
@@ -623,7 +623,7 @@ No new attack surface. All inputs are CLI flags with strict validation. No new f
 
 ### Dependency Graph
 
-```
+```text
 Wave 1 (foundation)
   ├── 1.1 classifyPlanTier
   ├── 1.2 frontmatter fields

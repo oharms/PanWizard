@@ -17,6 +17,7 @@ node harness/src/run.cjs --require-run double-executor-body-claude   # fail, nev
 node harness/src/run.cjs --scenario cassette-drift-claude --record   # re-record a synthetic cassette after an intended prompt change
 node harness/src/run.cjs --tier 2 --max-usd 50 --repeat 12 --until-decided --scenario quick-mode   # stop the reps once SPRT decides
 node harness/src/run.cjs --tier 2 --max-usd 25 --repeat 5 --arm no-guidance --scenario quick-mode # the no-guidance baseline arm
+node harness/src/run.cjs --tier 2 --max-usd 10 --scenario quick-mode --variant .claude/agents/pan-verifier.md=harness/variants/pan-verifier-weakened.md   # one arm from the command line (S4; the file must be under harness/variants/)
 node harness/src/run.cjs --help
 ```
 

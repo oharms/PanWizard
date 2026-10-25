@@ -11,7 +11,7 @@
       "description": "PAN Wizard as a Claude Code plugin, built from this checkout on demand. Installs commands, agents, hooks and the MCP bridge as one versioned unit.",
       "source": {
         "source": "command",
-        "command": "node D:/PanWizard/scripts/plugin-path.js",
+        "command": "node C:/Project/panwizard/scripts/plugin-path.js",
         "mode": "copy",
         "timeout": 120
       }

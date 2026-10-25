@@ -23,7 +23,7 @@ The suite is large and green, and it still let three things through in one week:
 
 ### 0.3 Success criteria (measurable)
 
-```
+```text
 SC-1  Every dispatcher case arm (verbs, subcommands, unknown-subcommand errors) is executed by at least one
       test under coverage; the gate fails on the first arm that is not — measured from lcov, not from grep.
 SC-2  Every installer flag, every hook×runtime registration, every MCP tool and resource, every config
@@ -44,7 +44,7 @@ SC-8  Documentation: DEVELOPMENT.md "Writing Tests" describes the layers, the do
 
 ### 0.4 User stories
 
-```
+```text
 As the maintainer, I want the suite to tell me which shipped surface has no test,
 so that a new verb or hook cannot ship unexercised, instead of finding out from a field ledger.
 
@@ -129,7 +129,7 @@ Four new pieces, one gate, one migration.
 
 ### 3.2 Implementation plan
 
-```
+```text
 P1  Lints and gate (no behaviour change)
  1. scripts/test-surface.cjs            — extractor + --check/--scaffold/--map; commits tests/fixtures/surface.json
  2. tests/surface-map.test.cjs          — static map; initial allowlist = today's uncovered rows, each with a reason,
@@ -198,7 +198,7 @@ Runtime-specific
 
 ## Phase 4 — Specification Output
 
-```
+```markdown
 ## Feature: Surface-derived test coverage and quality gates
 
 ### Files to Create/Modify

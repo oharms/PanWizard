@@ -38,7 +38,7 @@ Reported observation — `init milestone-op` returned `milestone_version: "v4.2"
 
 **Confirmed worse than reported.** The defect fires on PAN's **own** documented roadmap format (`templates/roadmap.md`, "Milestone-Grouped Roadmap"), not only on the reporter's `###`-style layout:
 
-```
+```markdown
 ## Milestones
 - ✅ **v1.0 MVP** - Phases 1-4 (shipped)
 - 🚧 **v1.1 Hardening** - Phases 5-6 (in progress)
@@ -101,7 +101,7 @@ Status is read from the markers PAN's own template emits — `✅`/shipped, `�
 
 ## CLI surface
 
-```
+```text
 pan-tools <command> [args] [--raw] [--cwd <path>]
                     [--track <name> | --planning-dir <path>] [--all-tracks]
 ```

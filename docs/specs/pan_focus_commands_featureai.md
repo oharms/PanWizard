@@ -86,7 +86,7 @@ so that README/CHANGELOG/docs stay accurate, instead of forgetting to update the
 | Metric | Before | After | Delta |
 |--------|--------|-------|-------|
 | Commands a new user must learn | 32 | 37 | +5 |
-| New concepts introduced | 0 | 3 (priority tiers, effort sizing, capacity budgets) |
+| New concepts introduced | 0 | 3 (priority tiers, effort sizing, capacity budgets) | +3 |
 | Score | -- | -- | +1 (adds complexity) |
 
 **Justification:** The +5 commands are grouped under "Focus" — a single new group name. The 3 concepts (priority, effort, budget) are optional metadata on existing plan.md files, not new file types. Users can ignore Focus commands entirely and use the existing phase workflow. Focus is additive, not disruptive.

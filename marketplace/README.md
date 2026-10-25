@@ -24,7 +24,7 @@ From **any directory that is not inside `dist/pan-wizard-plugin/`** — Claude C
 refuses a printed path that is the session's own directory or one of its parents.
 
 The marketplace's `command` (`marketplace/.claude-plugin/marketplace.json`) names the
-script by absolute path, `node D:/PanWizard/scripts/plugin-path.js`, because Claude Code
+script by absolute path, `node C:/Project/panwizard/scripts/plugin-path.js`, because Claude Code
 runs it from your HOME. In a checkout anywhere else, point that path at your own
 `scripts/plugin-path.js` first (and do not commit the change), or the install fails.
 

@@ -47,8 +47,8 @@ When the conversation is complete PAN creates:
 
 PAN picks the gray areas of Phase 1 that would change what you get, such as
 output format, flag design and error handling, and asks about those. It does not
-ask about technical choices like the database schema or the CLI library; research
-and planning settle those unless you state a preference. Your answers are
+ask about technical choices like the database schema or the CLI library; planning
+(and research, when you ask for it) settles those unless you state a preference. Your answers are
 recorded in `.planning/phases/01-{name}/01-context.md` as decisions.
 
 ```text
@@ -65,14 +65,17 @@ You: Rich tables for list view, plain text for single-task view.
 /pan:plan-phase 1
 ```
 
-PAN spawns a researcher agent that investigates the phase's domain —
-Typer best practices, SQLite schema patterns for task managers, Rich table
-formatting, and Python project structure conventions. A planner agent
-synthesizes research into a concrete plan, with a `## Review Focus` section
+A planner agent turns the phase's requirements and your context decisions
+into a concrete plan (research is opt-in: with `--research`, a researcher first
+answers at most five open questions that block building, such as which Typer
+pattern to use, each with a source), with a `## Review Focus` section
 naming the untested inputs the reviewer should check. Code checks
 (`verify plan-set`, `verify review-focus`, `verify decisions`) send a broken
 plan set back first; a plan-checker agent then reviews the plan for gaps,
-contradictions, and missing edge cases.
+contradictions, and missing edge cases (one revision round by default; two
+under the `quality` profile or `--quality`). A phase whose requirements each
+say precisely what to build skips both agents: the engine writes one task per
+requirement and checks the plans in code.
 
 Result: `.planning/phases/01-{name}/01-01-plan.md` (and additional plans) containing ordered implementation steps,
 file-by-file change descriptions, and dependency notes.
@@ -108,8 +111,10 @@ PAN re-runs goal-backward verification with a test-suite gate and writes
 `.planning/phases/01-{name}/01-verification.md`. If it reports `gaps_found`,
 run `/pan:plan-phase 1 --gaps` to plan the fixes, then `/pan:exec-phase 1 --gaps-only` to execute them.
 Manual acceptance testing (for example `doto add 'Buy milk' --priority high`
-followed by `doto list`) is yours to run; `/pan:verify-phase` does not walk you
-through it.
+followed by `doto list`) is yours to run: `/pan:verify-phase 1 --uat` walks you
+through it one test at a time on any runtime, records each answer in
+`01-uat.md` through `pan-tools uat record`, and diagnoses the issues you
+report for `/pan:plan-phase 1 --gaps`.
 
 ### Step 6 -- Continue through the remaining phases
 
@@ -330,7 +335,7 @@ parallel sub-agents use lighter ones.
 ```text
 PAN: Which model profile for agents?
 You: Budget
-PAN: Spawn Plan Researcher? (researches domain before planning)
+PAN: Spawn Plan Researcher? (off by default; answers up to 5 open questions before planning)
 You: No
 PAN: Spawn Plan Checker? (verifies plans before execution)
 You: No
@@ -339,7 +344,7 @@ You: Yes
 (auto-advance, Nyquist, branching and phase-budget questions follow, each with your current value pre-selected)
 ```
 
-With these off, `plan-phase` skips the researcher agent and the
+With these off (research is already off by default), `plan-phase` skips the researcher agent and the
 plan-checker agent (the code checks on the plans still run; they cost no model call). Planning still happens, but it relies on the model's
 built-in knowledge instead of dedicated research passes.
 
@@ -472,8 +477,8 @@ pip-installable, Python 3.10+.
 ```
 
 PAN reads the PRD, extracts goals, requirements, constraints, and technical
-decisions. Instead of asking you questions, it researches the domain (`.planning/research/`) and generates all planning
-artifacts directly:
+decisions. Instead of asking you questions, it generates all planning
+artifacts directly (research only with `--research` or idea frontmatter `research_enabled: true`):
 
 ```text
 PAN: Read prd.md (847 tokens). Extracting project structure...

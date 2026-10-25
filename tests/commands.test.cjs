@@ -642,7 +642,8 @@ describe('scaffold command', () => {
       'utf-8'
     );
     assert.ok(content.includes('User Acceptance Testing'), 'should have UAT heading');
-    assert.ok(content.includes('Test Results'), 'should have test results section');
+    assert.ok(content.includes('## Tests'), 'the stub carries the section uat.cjs parseUat reads (2026-10-25: it wrote "Test Results", which the parser never read)');
+    assert.ok(content.includes('## Gaps'), 'and the gaps section uat record fills');
   });
 
   test('scaffolds verification file', () => {

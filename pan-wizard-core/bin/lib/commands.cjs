@@ -941,7 +941,7 @@ function cmdScaffold(cwd, type, options, raw) {
     }
     case 'uat': {
       filePath = path.join(phaseDir, `${padded}${UAT_SUFFIX}`);
-      content = `---\nphase: "${padded}"\nname: "${name || phaseInfo?.phase_name || 'Unnamed'}"\ncreated: ${today}\nstatus: pending\n---\n\n# Phase ${phase}: ${name || phaseInfo?.phase_name || 'Unnamed'} -- User Acceptance Testing\n\n## Test Results\n\n| # | Test | Status | Notes |\n|---|------|--------|-------|\n\n## Summary\n\n_Pending UAT_\n`;
+      content = `---\nphase: "${padded}"\nname: "${name || phaseInfo?.phase_name || 'Unnamed'}"\ncreated: ${today}\nstatus: pending\n---\n\n# Phase ${phase}: ${name || phaseInfo?.phase_name || 'Unnamed'} -- User Acceptance Testing\n\n## Tests\n\n_One \`### N. <name>\` per user-observable truth, with \`expected:\` and \`result: [pending]\` (the walkthrough writes them; \`uat record\` fills the results)_\n\n## Gaps\n\n## Summary\n\n_Pending UAT_\n`;
       break;
     }
     case 'verification': {

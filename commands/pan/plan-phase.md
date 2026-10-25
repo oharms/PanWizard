@@ -55,14 +55,14 @@ During the plan-checker verification iteration:
 2. For each identified gap: verify it is a genuine gap by re-reading the relevant requirement
 3. Do not blindly accept all critiques — some may be false positives from missing context
 4. Revise the plan to address genuine gaps only
-5. At most 2 revisions: the workflow checks up to three times (plan → check → revise → check → revise → check); after the third check the user chooses force proceed, guidance or abandon
+5. Bounded revisions: by default (sized ceremony) the workflow checks twice (plan → check → revise → check), and under the full ceremony (`quality`, `workflow.ceremony: full`, `--quality`) three times; after the last check the user chooses force proceed, guidance or abandon. A lean phase is planned and checked by the engine, with no planner or checker
 This prevents over-revision while ensuring real gaps are closed.
 </reflexion_loop>
 
 <completion_contract>
 Planning is complete when ALL conditions are met:
 1. At least one plan.md file created in the phase directory
-2. Plan-checker passed (or max 2 revision iterations exhausted with final approval)
+2. Plan-checker passed (or the revision limit reached, one by default and two under the full ceremony, with final approval), or the engine's plan check recorded for a lean phase
 3. Each plan contains: objective, task breakdown with estimates, dependency ordering, and key file links
 4. Research.md exists only when research was asked for (`--research` or `workflow.research: true`) and a question blocked building
 5. User presented with results and next-step options
@@ -129,7 +129,7 @@ ELSE:
   → IF checker PASSES: done
   → IF checker finds gaps (check 1 or 2): revise plan, re-check
   → IF checker finds gaps (check 3): stop revising; the user chooses force proceed (open issues recorded as deferred), guidance and retry, or abandon
-  → Max 2 revisions, so at most 3 checks
+  → One revision by default (two checks), two under the full ceremony (three checks)
 ```
 </routing_decision_tree>
 

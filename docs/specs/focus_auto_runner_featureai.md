@@ -444,7 +444,7 @@ Genesis ──────── Custom-Built ──────── Product �
 | Output feeds another command | Yes | `focus auto --status` JSON feeds CI/CD status checks |
 | Callable from an agent | Yes | `pan-tools focus auto --category cleanup --max-cycles 3` |
 | Usable in a hook pipeline | Yes | Post-commit hook could trigger `focus auto --status` to check if campaign is running |
-| Works in --raw mode | Yes | Human-readable campaign dashboard: "Cycle 3/5 | 47/200 pts | 12 items | +3 tests" |
+| Works in --raw mode | Yes | Human-readable campaign dashboard: "Cycle 3/5 \| 47/200 pts \| 12 items \| +3 tests" |
 | Composable with existing focus commands | Yes | `focus scan --lean` still works independently; auto-runner calls it internally |
 
 ### 3.5.7 Performance Budget
@@ -667,7 +667,7 @@ const CATEGORY_PRIORITY_RANGE = {
 | How does the user discover this feature? | Natural progression: after running scan→plan→exec 2+ times, user wants automation. `/pan:help` lists focus-auto. README documents campaign workflow. The command name "auto" is intuitive given "scan", "plan", "exec" are already known. |
 | What's the learning curve? | Minimal — if you know focus-exec, auto is "do it in a loop". One new flag (`--category`) is the key concept. Category names are self-documenting: cleanup, tests, stability, features, docs. |
 | Does it require changing existing workflows? | No. Manual scan→plan→exec continues to work independently. Auto-runner is additive. Users who don't want continuous execution lose nothing. |
-| What's the "aha moment"? | Running `/pan:focus-auto --category cleanup --max-cycles 5` and watching 50+ cleanup items get resolved across 5 cycles with per-cycle commits, test verification, and a final campaign summary — all from one command. The dashboard showing "Cycle 5/5 | 47 items | 142 pts | Tests: 1169→1175 (+6)" makes the value tangible. |
+| What's the "aha moment"? | Running `/pan:focus-auto --category cleanup --max-cycles 5` and watching 50+ cleanup items get resolved across 5 cycles with per-cycle commits, test verification, and a final campaign summary — all from one command. The dashboard showing "Cycle 5/5 \| 47 items \| 142 pts \| Tests: 1169→1175 (+6)" makes the value tangible. |
 | What's the "power user moment"? | Discovering that `--category stability --mode bugfix` automatically restricts to P0-P2 items with conservative 40pt budget — no manual flag tuning needed. Category→defaults chain eliminates 80% of flag decisions. |
 
 ---

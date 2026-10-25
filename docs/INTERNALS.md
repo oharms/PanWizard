@@ -224,11 +224,13 @@ Legacy names (`opus` → `reasoning`, `sonnet` → `mid`, `haiku` → `fast`) ar
 | Agent Role | Quality | Balanced | Budget |
 |-----------|---------|----------|--------|
 | Planner | reasoning | reasoning | mid |
-| Researcher | reasoning | reasoning | fast |
+| Researcher | reasoning | mid | fast |
 | Executor | reasoning | reasoning | mid |
 | Verifier | reasoning | reasoning | fast |
-| Plan Checker | reasoning | reasoning | fast |
+| Plan Checker | reasoning | mid | fast |
 | Codebase Mapper (`pan-document_code`) | reasoning | reasoning | fast |
+
+The full per-agent matrix is `MODEL_PROFILES` in `core.cjs` (mirrored in [AGENTS.md](AGENTS.md#model-profiles)). Since right-sized ceremony (`docs/specs/right-sized-ceremony.md`, 2026-10-24) `balanced` runs the researchers and the plan checker on the mid tier; `quality` keeps every agent on the reasoning tier.
 
 ### Routing Pipeline
 
@@ -258,12 +260,12 @@ Relative cost per tier: reasoning = 15×, mid = 3×, fast = 1×. The `estimate-c
 ### When to Use Each
 
 - **Quality:** Complex architectural work, critical production code, unfamiliar domains
-- **Balanced (default):** Most projects -- both quality and balanced run every agent at the reasoning tier
+- **Balanced (default):** Most projects -- the writing agents (planner, executor, verifier, reviewer, …) at the reasoning tier, the researchers and the plan checker at the mid tier, and the lean path (right-sized ceremony) for precisely specified work
 - **Budget:** Prototyping, familiar patterns, cost-sensitive work
 
 ### Design Rationale
 
-Both the quality and balanced profiles run every agent at the reasoning tier — planning, execution, research, and verification all benefit from top-tier reasoning by default. Cost savings come only from the opt-in `budget` profile, which steps agents down to mid/fast tiers for prototyping, familiar patterns, and cost-sensitive work.
+The quality profile runs every agent at the reasoning tier and keeps the full ceremony on every piece of work. Balanced keeps the reasoning tier for the agents that plan, write and judge code, and since right-sized ceremony (2026-10-24) steps the researchers and the plan checker down to the mid tier, where the brief showed no quality loss; it also takes the lean path for a phase or quick task whose requirements already say precisely what to build (`sizing.cjs`). The opt-in `budget` profile steps agents down further, to mid/fast tiers, for prototyping, familiar patterns, and cost-sensitive work.
 
 ### Per-Agent Overrides
 
@@ -368,7 +370,7 @@ Check that the login page renders correctly at http://localhost:3000/login
 
 62-character width. The action prompt varies by type: `→ Type "approved" or describe issues` (Verification Required), `→ Select: option-a / option-b` (Decision Required), `→ Type "done" when complete` (Action Required).
 
-### Anti-Patterns
+### UI Anti-Patterns
 
 - Don't vary box widths within the same workflow
 - Don't use random symbols -- stick to the defined symbol set
@@ -404,7 +406,7 @@ PAN's project initialization uses a collaborative discussion model, not a requir
 | Clarification | Resolve ambiguity | "Should users upload files or just paste text?" |
 | Success | Define done | "How will you know Phase 1 succeeded?" |
 
-### Anti-Patterns
+### Discussion Anti-Patterns
 
 - **Checklist walking:** Don't ask generic questions in order
 - **Interrogation:** Don't fire questions without building on the answers

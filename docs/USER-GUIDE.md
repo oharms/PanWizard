@@ -63,7 +63,7 @@ PAN asks you questions about your project — what you're building, who it's for
 /pan:plan-phase 1
 ```
 
-PAN researches how to implement Phase 1, creates detailed execution plans with specific tasks, and validates them through a quality checker. Each plan targets a single concern with 2-3 atomic tasks, and carries a `## Review Focus` section: at most five untested inputs or failure modes, each tied to a task and a test (or `None — <reason>`). Before the checker runs, code checks send a broken plan set straight back to the planner: `verify plan-set`, `verify review-focus` and `verify decisions` (plans cite only the `DD-N` design decisions the design records, and every recorded one is cited). When the checker runs, `research lint` runs before it but never blocks: claims in the research's `## Claims` table with no source or checked date, and stale ones, go to the checker.
+PAN creates detailed execution plans for Phase 1 with specific tasks and validates them through a quality checker (with `--research`, or `workflow.research: true`, a researcher first answers the open questions that block building). Each plan targets a single concern with 2-3 atomic tasks, and carries a `## Review Focus` section: at most five untested inputs or failure modes, each tied to a task and a test (or `None — <reason>`). Before the checker runs, code checks send a broken plan set straight back to the planner: `verify plan-set`, `verify review-focus` and `verify decisions` (plans cite only the `DD-N` design decisions the design records, and every recorded one is cited). When the checker runs, `research lint` runs before it but never blocks: claims in the research's `## Claims` table with no source or checked date, and stale ones, go to the checker.
 
 **What gets created:**
 - `.planning/phases/01-{name}/01-01-plan.md` — First execution plan
@@ -116,7 +116,7 @@ Shows your overall project status and tells you what to do next — plan the nex
 - **Start small** — Pick a project with 3-5 phases for your first run
 - **Use `/pan:discuss-phase`** before planning if you're unsure about approach
 - **Check `/pan:progress`** whenever you lose track of where you are
-- **Use the `balanced` profile** (default) — every agent is on the reasoning tier, which inherits the model you launched with (a few review agents pin their own model — see Model Profiles); switch to `budget` only when cost matters more than depth
+- **Use the `balanced` profile** (default) — the agents that plan, write and judge code are on the reasoning tier, which inherits the model you launched with (the researchers and the plan-checker run on the mid tier, and a few review agents pin their own model — see Model Profiles); switch to `budget` only when cost matters more than depth
 - **Run `/clear`** between major commands to keep context fresh
 
 ### Capability-aware features
@@ -171,7 +171,7 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
   ┌──────────────────────────────────────────────────┐
   │                   NEW PROJECT                    │
   │  /pan:new-project                                │
-  │  Questions -> Research -> Requirements -> Roadmap│
+  │  Questions -> Requirements -> Roadmap (+research)│
   └─────────────────────────┬────────────────────────┘
                             │
              ┌──────────────▼─────────────┐
@@ -186,7 +186,7 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
              │  └──────────┬─────────┘    │
              │             │              │
              │  ┌──────────▼─────────┐    │
-             │  │ /pan:plan-phase    │    │  <- Research + Plan + Verify
+             │  │ /pan:plan-phase    │    │  <- Plan + Verify (research opt-in)
              │  └──────────┬─────────┘    │
              │             │              │
              │  ┌──────────▼─────────┐    │
@@ -220,7 +220,7 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
 ```text
   /pan:plan-phase N
          │
-         ├── Phase Researcher
+         ├── Phase Researcher (opt-in: --research)
          │           │
          │     ┌──────▼──────┐
          │     │ research.md │
@@ -237,7 +237,7 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
          │                                  │
          │                             Yes  │  No
          │                              │   │   │
-         │                              │   └───┘  (revise, max 2x)
+         │                              │   └───┘  (revise: once by default, 2x under quality)
          │                              │
          │                        ┌─────▼──────┐
          │                        │ PLAN files │
@@ -248,8 +248,10 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
 ### Validation Architecture (Nyquist Layer)
 
 When the Nyquist layer is enabled (`workflow.nyquist_validation` — **off by
-default**; see below), plan-phase research maps automated test coverage to each
-phase requirement before any code is written. This ensures that when Claude's
+default**; see below) and the phase is researched (`--research`, or
+`workflow.research: true`; research is off by default), plan-phase research maps
+automated test coverage to each phase requirement before any code is written.
+Without research the plan-phase warns and continues without a validation strategy. This ensures that when Claude's
 executor commits a task, a feedback mechanism already exists to verify it within seconds.
 
 The researcher detects your existing test infrastructure, maps each requirement to
@@ -334,14 +336,14 @@ Some commands were folded into flags of another command. The old names keep work
 
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
-| `/pan:new-project` | Full project init: questions, research, requirements, roadmap | Start of a new project |
+| `/pan:new-project` | Full project init: questions, research (opt-in), requirements, roadmap | Start of a new project |
 | `/pan:new-project --auto @idea.md` | Automated init from document | Have a PRD or idea doc ready |
 | `/pan:discuss-phase <N>` | Capture implementation decisions | Before planning, to shape how it gets built |
 | `/pan:design-phase <N>` | Design a phase — architecture, ADR, threat-lite — before planning | After discussing, before planning |
-| `/pan:plan-phase [N]` | Research + plan + verify; `--research-only <N>` runs the research step alone | Before executing a phase; research only for a complex or unfamiliar domain |
+| `/pan:plan-phase [N]` | Plan + verify (research with `--research`); `--research-only <N>` runs the research step alone | Before executing a phase; research only for a complex or unfamiliar domain |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves | After planning is complete |
-| `/pan:verify-phase [N]` | Goal-backward re-verification with a test-suite gate; lists gaps for `--gaps` | After execution completes |
-| `/pan:autodev [run\|resume\|status\|report\|replay]` | Unattended loop over the roadmap: a fresh host session per plan, execute and verify step, `phase complete` in the engine, stop reasons in code, a ledger per run in `.planning/autodev/` | When the roadmap is settled and you want phases built without supervision |
+| `/pan:verify-phase [N] [--uat]` | Goal-backward re-verification with a test-suite gate; lists gaps for `--gaps`. `--uat` walks you through the phase's acceptance tests instead (every runtime; answers recorded through `pan-tools uat record`) | After execution completes |
+| `/pan:autodev [run\|resume\|status\|report\|replay]` | Unattended loop over the roadmap: a fresh host session per plan, execute and verify step (a lean phase: the engine plans it, then one session builds, reviews and verifies it), `phase complete` in the engine, stop reasons in code, a ledger per run in `.planning/autodev/` | When the roadmap is settled and you want phases built without supervision |
 | `/pan:milestone-audit` | Verify milestone met its definition of done; `--gaps` creates phases for the gaps it found | Before completing milestone |
 | `/pan:milestone-done <version>` | Archive milestone, tag release; `--cleanup` archives old phase directories from completed milestones | All phases verified |
 | `/pan:milestone-new [name]` | Start next version cycle | After completing a milestone |
@@ -554,7 +556,7 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 |---------|---------|---------|------------------|
 | `mode` | `interactive`, `yolo` | asked by `/pan:new-project` (`--auto`: `yolo`) | `yolo` auto-approves decisions; `interactive` confirms at each step |
 | `depth` | `quick`, `standard`, `comprehensive` | asked by `/pan:new-project` (`--auto`: `quick`) | Planning thoroughness: 3-5, 5-8, or 8-12 phases |
-| `model_profile` | `quality`, `balanced`, `budget` | `balanced` | Model tier for each agent (see table below), and how much ceremony: `balanced` and `budget` size each phase and quick task (a small, well-specified one skips research and the planner/checker loop); `quality` runs the full ceremony on everything, every agent on the reasoning tier |
+| `model_profile` | `quality`, `balanced`, `budget` | `balanced` | Model tier for each agent (see table below), and how much ceremony: `balanced` and `budget` size each phase and quick task (a precisely specified one gets its plan from the engine, with no planner, plan-checker or test-generation agent; one code review pass, the verifier and every gate still run); `quality` runs the full ceremony on everything, every agent on the reasoning tier |
 | `workflow.ceremony` | `auto`, `full` | `auto` | `full` keeps the full ceremony on every piece of work without changing models; `--quality` does it for one run |
 | `workflow.lean_max_requirements` | number | `5` | The most tasks in one engine-written lean plan; a lean phase with more requirements is split into several plans run in order. Above three times this (15) a phase goes to the planner, since one session holds a lean phase |
 | `parallelization` | `true`, `false` | `true` | Execute independent plans within a wave in parallel |
@@ -579,7 +581,7 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | Setting | Options | Default | What it Controls |
 |---------|---------|---------|------------------|
 | `workflow.research` | `true`, `false` | `false` | Research before planning each phase (opt-in): the workflow writes at most 5 open questions that block building and one researcher answers them, each with a source or a recorded assumption. A config that already says `true` keeps it; `/pan:plan-phase N --research` researches one phase |
-| `workflow.plan_check` | `true`, `false` | `true` | Plan verification loop (up to 3 checks, at most 2 revisions) |
+| `workflow.plan_check` | `true`, `false` | `true` | Plan verification loop: 2 checks (one revision) on the sized ceremony, 3 checks (2 revisions) under `quality`, `workflow.ceremony: full` or `--quality`; a lean phase is checked by the engine instead |
 | `workflow.verifier` | `true`, `false` | `true` | Post-execution verification against phase goals |
 | `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; at a phase boundary a chain that `/pan:plan-phase` drives stops (it runs exec-phase with `--no-transition`) and prints the next command; PAN's stop guard then blocks the session's stop once and tells the agent to spawn the next phase; a direct `/pan:exec-phase --auto` hands over to `transition.md`, which spawns the next phase as a Task subagent and, at the end of the milestone, turns `auto_advance` off and stops, showing `/pan:milestone-done` as the next step. Equivalent to passing `--auto` to `/pan:discuss-phase`, `/pan:plan-phase` and `/pan:exec-phase`. |
@@ -651,19 +653,19 @@ PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-s
 | pan-planner | reasoning | reasoning | mid |
 | pan-roadmapper | reasoning | reasoning | mid |
 | pan-executor | reasoning | reasoning | mid |
-| pan-phase-researcher | reasoning | reasoning | fast |
-| pan-project-researcher | reasoning | reasoning | fast |
+| pan-phase-researcher | reasoning | mid | fast |
+| pan-project-researcher | reasoning | mid | fast |
 | pan-debugger | reasoning | reasoning | mid |
 | pan-document_code | reasoning | reasoning | fast |
 | pan-verifier | reasoning | reasoning | fast |
-| pan-plan-checker | reasoning | reasoning | fast |
+| pan-plan-checker | reasoning | mid | fast |
 | pan-integration-checker | reasoning | reasoning | fast |
 | pan-reviewer | reasoning | reasoning | fast |
 
-The table shows the core agents. Every other agent is on `reasoning` under `quality` and `balanced` too; `MODEL_PROFILES` in `core.cjs` has each one's `budget` tier.
+The table shows the core agents. Every other agent is on `reasoning` under `quality` and `balanced` too; `MODEL_PROFILES` in `core.cjs` has each one's `budget` tier. `balanced` differs from `quality` only in the researchers and the plan-checker (mid tier) and in the ceremony it runs (see `model_profile` above).
 
 **Profile philosophy (cost reset):**
-- **quality** and **balanced** -- Every agent runs on the `reasoning` tier, i.e. **`inherit` — the model you launched with** (a few review agents pin their own model; see the note below). PAN respects your model choice by default and does not silently demote agents to cheaper models; context isolation (each subagent in its own window), not a weaker model, is what keeps the main conversation clean.
+- **quality** and **balanced** -- Every agent runs on the `reasoning` tier, i.e. **`inherit` — the model you launched with** (under `balanced`, the researchers and the plan-checker run on the mid tier; a few review agents pin their own model; see the note below). PAN respects your model choice by default and does not silently demote agents to cheaper models; context isolation (each subagent in its own window), not a weaker model, is what keeps the main conversation clean.
 - **budget** -- The opt-in cheap mode: mid for code-writing agents, fast for research and verification. Choose it explicitly for high-volume or less-critical work. Cheapness is opt-in, not the default.
 
 > Model tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:settings --profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` — unset means `inherit`. A few security-review agents deliberately pin `model: opus` in their own frontmatter; `grep -l '^model: opus' .claude/agents/*.md` lists them (`~/.claude/agents/` in a global install).
@@ -702,7 +704,7 @@ claude --dangerously-skip-permissions
 /pan:new-project            # Answer questions, configure, approve roadmap
 /clear
 /pan:discuss-phase 1        # Lock in your preferences
-/pan:plan-phase 1           # Research + plan + verify
+/pan:plan-phase 1           # Plan + verify (add --research to research first)
 /pan:exec-phase 1        # Parallel execution
 /pan:verify-phase 1          # Goal-backward verify + test gate
 /clear
@@ -715,7 +717,7 @@ claude --dangerously-skip-permissions
 ### New Project from Existing Document
 
 ```bash
-/pan:new-project --auto @prd.md   # Research, requirements and roadmap from your doc, then chains discuss → plan → execute → verify for phase 1
+/pan:new-project --auto @prd.md   # Requirements and roadmap from your doc (research only with --research), then chains discuss → plan → execute → verify for phase 1
 /clear
 /pan:discuss-phase 2 --auto       # the next command the chain prints, if the run stopped at the boundary (the stop guard first blocks one stop and tells the agent to spawn the next phase); for step-by-step runs set Auto-advance to No in /pan:settings and workflow.stop_guard to false (--auto writes mode: yolo, which keeps the stop guard armed)
 ```
@@ -756,8 +758,8 @@ claude --dangerously-skip-permissions
 | Scenario | Mode | Depth | Profile | Research | Plan Check | Verifier |
 |----------|------|-------|---------|----------|------------|----------|
 | Prototyping | `yolo` | `quick` | `budget` | off | off | off |
-| Normal dev | `interactive` | `standard` | `balanced` | on | on | on |
-| Production | `interactive` | `comprehensive` | `quality` (same tiers as `balanced`) | on | on | on |
+| Normal dev | `interactive` | `standard` | `balanced` | off (the default) | on | on |
+| Production | `interactive` | `comprehensive` | `quality` (full ceremony, every agent on the reasoning tier) | on (`workflow.research: true`) | on | on |
 
 ### Mid-Milestone Scope Changes
 
@@ -782,7 +784,7 @@ Claude Code can run orchestration as a **script** rather than as prose the model
 | `/pan-review-pipeline [phase or change set]` | `/pan:review-deep` | Reviewer and security hardener in parallel, then the meta-reviewer merges and issues one verdict |
 | `/pan-map-codebase` | `/pan:map-codebase` | Discovers the top-level areas, documents each in parallel, synthesises one overview |
 | `/pan-exec-waves <phase>` | `/pan:exec-phase` wave dispatch | Reads the plan index, runs one executor per plan wave by wave (parallel within a wave unless `parallelization` is off), halts before the next wave on a failed plan, then runs the phase verifier unless `workflow.verifier` is off (then it says verification was skipped) |
-| `/pan-diagnose-issues <phase>` | the `diagnose-issues` protocol (`workflows/diagnose-issues.md`; on the markdown path nothing wires it into `/pan:verify-phase` today) | One debugger per failed UAT truth, in parallel, root cause only; writes the diagnoses back into the UAT gaps |
+| `/pan-diagnose-issues <phase>` | the `diagnose-issues` protocol (`workflows/diagnose-issues.md`, which `/pan:verify-phase N --uat` follows on every runtime for the gaps it records) | One debugger per failed UAT truth, in parallel, root cause only; writes the diagnoses back into the UAT gaps |
 
 Two rules govern them. **They are additive**: the markdown commands remain the portable path and the only path on the other four runtimes, and the scripts never replace them. **They only port protocols whose control flow is known before the run** — a fixed fan-out, a wave that is genuinely a barrier. A step that depends on reading the last result stays in markdown, and a script never pretends to pause for you: `/pan-exec-waves` refuses a phase that contains checkpoint plans and tells you to run `/pan:exec-phase` instead.
 
@@ -925,7 +927,7 @@ The `/pan:plan-phase` command accepts several flags to customize planning behavi
 |------|---------|
 | `--prd <file>` | Use a PRD/acceptance criteria file instead of discuss-phase. Parses requirements into context.md automatically. Skips discussion entirely. |
 | `--skip-research` | Skip research phase, go straight to planning (useful for familiar domains) |
-| `--research` | Force re-research even if research.md already exists |
+| `--research` | Research this phase (research is opt-in); also re-researches when research.md already exists |
 | `--gaps` | Gap closure mode: reads verification.md and creates fix plans |
 | `--skip-verify` | Skip the plan verification loop |
 
@@ -1178,7 +1180,7 @@ Do not re-run `/pan:exec-phase`. Use `/pan:quick` for targeted fixes, or `/pan:v
 
 ### Model Costs Too High
 
-Switch to budget profile: `/pan:settings --profile budget`. Disable research and plan-check agents via `/pan:settings` if the domain is familiar. Pin one agent to a cheaper tier with `model_overrides` in config.json, for example `"model_overrides": {"pan-verifier": "fast"}`. Complexity routing and per-phase `<!-- model_tier: fast -->` comments are no cost lever today: no workflow passes the task metadata or the phase they need. Complexity routing's one effect on a workflow is under `budget`, where it keeps a `/pan:exec-phase --gaps-only` retry on the tier that left the gaps instead of escalating it.
+Switch to budget profile: `/pan:settings --profile budget`. Research is already off by default; disable the plan-check agent via `/pan:settings` if the domain is familiar. Pin one agent to a cheaper tier with `model_overrides` in config.json, for example `"model_overrides": {"pan-verifier": "fast"}`. Complexity routing and per-phase `<!-- model_tier: fast -->` comments are no cost lever today: no workflow passes the task metadata or the phase they need. Complexity routing's one effect on a workflow is under `budget`, where it keeps a `/pan:exec-phase --gaps-only` retry on the tier that left the gaps instead of escalating it.
 
 ### Working on a Sensitive/Private Project
 
@@ -1195,7 +1197,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Phase Execution Hangs or Takes Too Long
 
 **Cause:** Complex plans with many dependencies, or agent model too weak for the task.
-**Fix:** Check the plan complexity (number of tasks, wave count). If you're on the `budget` profile, the executor is running a mid-tier model — switch back to `balanced` (`/pan:settings --profile balanced`) so it inherits your session model, or lift just that agent with `"model_overrides": {"pan-executor": "opus"}` in `.planning/config.json` (override values are tiers: `opus` means the reasoning tier, so the executor inherits your session model rather than switching to Opus). Conversely, if simple tasks feel slow, the reasoning tier is the cost: the `budget` profile or a `model_overrides` entry trades depth for speed. (`quality` and `balanced` resolve identically, so switching between those two changes nothing.)
+**Fix:** Check the plan complexity (number of tasks, wave count). If you're on the `budget` profile, the executor is running a mid-tier model — switch back to `balanced` (`/pan:settings --profile balanced`) so it inherits your session model, or lift just that agent with `"model_overrides": {"pan-executor": "opus"}` in `.planning/config.json` (override values are tiers: `opus` means the reasoning tier, so the executor inherits your session model rather than switching to Opus). Conversely, if simple tasks feel slow, the reasoning tier is the cost: the `budget` profile or a `model_overrides` entry trades depth for speed. (`quality` and `balanced` resolve the executor identically; the two differ only in the researchers and the plan-checker, and in how much ceremony a phase gets.)
 
 ### Plan Rejected by Checker Multiple Times
 
@@ -1205,7 +1207,7 @@ A known workaround exists for a Claude Code classification bug. PAN's orchestrat
 ### Research Phase Returns Irrelevant Results
 
 **Cause:** Phase goal is too vague, or domain is highly specialized.
-**Fix:** Run `/pan:discuss-phase N` first to sharpen requirements. Or skip research with `/pan:plan-phase N --skip-research` if you already know the domain well.
+**Fix:** Run `/pan:discuss-phase N` first to sharpen requirements. Or leave research off (it is off by default; `--research` turns it on for one phase) if you already know the domain well.
 
 ### Verification Found Issues After Execution
 
@@ -1376,7 +1378,7 @@ For reference, here is what PAN creates in your project:
   milestones/             # Per-version archives (v{version}-roadmap.md, v{version}-requirements.md) from /pan:milestone-done
   patterns.md             # Error patterns (PAT-NNN), read when present; nothing PAN ships writes it
   session-history.md      # Session summaries, counted when present; nothing PAN ships writes it
-  research/               # Domain research from /pan:new-project
+  research/               # Answers to open questions, only with /pan:new-project --research
   todos/
     pending/              # Captured ideas awaiting work
     completed/            # Todos completed via /pan:todo-check or `pan-tools todo complete`
@@ -1389,11 +1391,11 @@ For reference, here is what PAN creates in your project:
       XX-YY-plan.md       # Atomic execution plans
       XX-YY-summary.md    # Execution outcomes and decisions
       XX-context.md       # Your implementation preferences
-      XX-research.md      # Ecosystem research findings
+      XX-research.md      # Answers to the phase's open questions (only with --research)
       XX-roadmap-slice.md # This phase's roadmap and requirements lines, read by phase agents
       XX-validation.md    # Test coverage mapping (Nyquist layer)
       XX-verification.md  # Post-execution verification results
-      XX-uat.md           # User acceptance testing results
+      XX-uat.md           # User acceptance testing results (/pan:verify-phase --uat)
       XX-review.md        # Code review report, saved by exec-phase
       XX-plan-check.md    # Plan-checker report, saved by plan-phase
       XX-design.md        # Phase design (architecture, phase ADR, threat-lite), written by /pan:design-phase
@@ -1418,13 +1420,13 @@ For reference, here is what PAN creates in your project:
 | `research/` | `/pan:new-project --research` | `questions.md` (at most 5 open questions that block building) and `research-summary.md` (one answer per question, with its source, plus v2 ideas). Only when research was asked for. | Read-only after creation |
 | `codebase/` | `/pan:map-codebase` | Brownfield analysis — the codebase-map documents (`stack.md`, `integrations.md`, `architecture.md`, `structure.md`, `conventions.md`, `testing.md`, `concerns.md`, `relationships.md`, `best-practices.md`). | Read-only after creation |
 | `XX-context.md` | `/pan:discuss-phase` | Your implementation preferences for a phase. Feeds into research and planning. | No set limit |
-| `XX-research.md` | `/pan:plan-phase` | Ecosystem research for a phase (libraries, patterns, pitfalls). | Read-only after creation |
+| `XX-research.md` | `/pan:plan-phase --research` (or `workflow.research: true`) | Answers to the phase's open questions, each with a source or a recorded assumption. | Read-only after creation |
 | `XX-roadmap-slice.md` | `/pan:plan-phase`, `/pan:plan-phase --research-only`, `/pan:exec-phase`, `/pan:verify-phase` | The phase's section of roadmap.md, its dependencies' goals and its requirement lines; the researcher, planner, checker, executors and verifier read it instead of the whole files. | Rewritten when it changes |
 | `XX-YY-plan.md` | `/pan:plan-phase` | Atomic execution plan with XML-structured tasks, verification steps. | 2-3 tasks per plan |
 | `XX-validation.md` | `/pan:plan-phase` | Test coverage mapping — which tests verify which requirements. | Auto-generated |
 | `XX-YY-summary.md` | `/pan:exec-phase` | What was built, files changed, decisions made during execution. | Auto-generated |
 | `XX-verification.md` | `/pan:exec-phase`, `/pan:verify-phase` | Goal-backward check — did the phase deliver what it promised? | Auto-generated |
-| `XX-uat.md` | You, from `templates/uat.md`; the native `/pan-diagnose-issues` script writes root causes into its gaps | Manual acceptance-test record. | Manual |
+| `XX-uat.md` | `/pan:verify-phase --uat` (the walkthrough scaffolds it and records each of your answers through `pan-tools uat record`); its diagnosis step, or the native `/pan-diagnose-issues` script on Claude Code, writes root causes into its gaps | Manual acceptance-test record. | One entry per acceptance test |
 
 ### Privacy
 

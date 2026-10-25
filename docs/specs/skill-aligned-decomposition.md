@@ -35,7 +35,7 @@ SkillWeaver measured exactly this failure mode at scale: one-shot decomposition 
 
 ## 3. Architecture
 
-```
+```text
 pan-planner (LLM)                          pan-tools (deterministic)
 ─────────────────                          ─────────────────────────
 break_into_tasks                            skills align
@@ -77,7 +77,7 @@ New core module (the learn-index analog for the whole skill surface). Exports:
 
 ### 3.2 CLI
 
-```
+```text
 pan-tools skills index [--source-root <path>] [--raw]
 pan-tools skills align (--draft "<text>" | --draft-file <path>)
                        [--top <k=3>] [--min-score <n=1>]

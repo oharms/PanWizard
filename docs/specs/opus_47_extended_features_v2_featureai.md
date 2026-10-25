@@ -32,9 +32,9 @@ decisions:
 
 | User intent | Spec B v1 items folded in | Spec B v2 entry point |
 |-------------|---------------------------|-----------------------|
-| See the future before committing | X-1 architect, X-5 simulate, X-11 predict-milestone | **Y-1** `/pan:preview {phases|milestone|phase N}` |
+| See the future before committing | X-1 architect, X-5 simulate, X-11 predict-milestone | **Y-1** `/pan:preview {phases\|milestone\|phase N}` |
 | Catch more in code review | X-4 self-review, X-12 harden | **Y-2** `/pan:review-deep` |
-| Q&A, refine, teach | X-3 converse, X-6 teach, X-10 explain | **Y-3** `/pan:knowledge {ask|discuss|playbook}` |
+| Q&A, refine, teach | X-3 converse, X-6 teach, X-10 explain | **Y-3** `/pan:knowledge {ask\|discuss\|playbook}` |
 | Explore alternatives | X-9 what-if | **Y-4** `/pan:what-if` (unchanged) |
 | Discover external tools | X-7 bridge | **Y-5** `/pan:mcp-bridge` (reduced to discover+report) |
 | See what PAN costs | X-14 cost | **Y-6** `/pan:cost` (unchanged) |
