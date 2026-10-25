@@ -73,6 +73,16 @@ describe('sizing a phase', () => {
     assert.match(r.reasons.join(' '), /split into plans of at most 3/);
     assert.equal(S.sizePhase(t, '2').path, 'lean');
   });
+  test('above the lean ceiling (3 x lean_max_requirements) a precise phase goes to the planner', () => {
+    // One session holds a lean phase; one session loses the thread on too much work, which is
+    // what PAN exists to prevent (2026-10-25 intent check). lean_max 1 makes the ceiling 3.
+    const t = seed('tasks-roadmap', (c) => ({ ...c, workflow: { ...c.workflow, lean_max_requirements: 1 } }));
+    const r = S.sizePhase(t, '1');
+    assert.equal(r.path, 'full', 'four precise requirements, ceiling three');
+    assert.match(r.reasons.join(' '), /more than one session should hold \(over 3, 3 x workflow\.lean_max_requirements\)/);
+    assert.equal(S.LEAN_CEILING_FACTOR, 3);
+    assert.equal(S.sizePhase(seed('tasks-roadmap'), '1').path, 'lean', 'four is within the default ceiling of fifteen');
+  });
   test('the quality profile, workflow.ceremony full and --quality keep the full ceremony', () => {
     assert.equal(S.sizePhase(seed('tasks-roadmap', (c) => ({ ...c, model_profile: 'quality' })), '1').path, 'full');
     assert.equal(S.sizePhase(seed('tasks-roadmap', (c) => ({ ...c, workflow: { ...c.workflow, ceremony: 'full' } })), '1').path, 'full');

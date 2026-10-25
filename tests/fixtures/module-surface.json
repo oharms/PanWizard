@@ -970,6 +970,7 @@
   ],
   "sizing.cjs": [
     "DEFAULT_LEAN_MAX_REQUIREMENTS:number",
+    "LEAN_CEILING_FACTOR:number",
     "ceremonyMode:function",
     "engineCheckPlans:function",
     "leanQuickPlan:function",

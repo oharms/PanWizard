@@ -147,6 +147,15 @@ describe('pan-cost-logger — readCommandFromTranscript', () => {
     assert.equal(readCommandFromTranscript(jsonl(cmd('/pan:plan-phase'), cmd('/pan:exec-phase'))), 'exec-phase');
   });
 
+  test('autodev\'s lean execute unit is attributed to exec-lean, though it types no slash command', () => {
+    const { unitPrompt } = require('../pan-wizard-core/bin/lib/autodev.cjs');
+    const lean = unitPrompt('claude', { action: 'execute', phase: '3', lean: true });
+    assert.equal(readCommandFromTranscript(jsonl(typed(lean))), 'exec-lean');
+    // The same words inside a host reply are not a typed turn, and plain prose stays unattributed.
+    assert.equal(readCommandFromTranscript(jsonl(toolResult(lean))), null);
+    assert.equal(readCommandFromTranscript(jsonl(typed('please continue with the lean phase 3 work'))), null);
+  });
+
   test('a plain typed turn after the command does not erase the attribution', () => {
     // A mid-run "continue", or an injected reminder, arrives as a typed user turn with
     // no command of its own. The agent is still doing the command's work.

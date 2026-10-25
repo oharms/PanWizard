@@ -24,6 +24,8 @@ const { ROADMAP_FILE, REQUIREMENTS_FILE } = require('./constants.cjs');
 const { planningPath } = require('./utils.cjs');
 
 const DEFAULT_LEAN_MAX_REQUIREMENTS = 5;
+/** A lean phase holds at most this many times lean_max_requirements; above it the planner runs. */
+const LEAN_CEILING_FACTOR = 3;
 const isValidationRule = (c) => require('./verify-plan-set.cjs').isValidationRule(c);
 
 // loadConfig flattens the workflow section away; the ceremony keys are read from the raw file.
@@ -93,6 +95,9 @@ function sizePhase(cwd, phase, opts = {}) {
   const reasons = [];
   if (!reqs.length) reasons.push('the roadmap maps no requirements to this phase, so nothing pins down the work');
   if (unspecified.length) reasons.push(`not precisely specified: ${unspecified.join(', ')} (no acceptance criterion and no named artifact)`);
+  // One session holds a lean phase, and one session loses the thread on too much work, which
+  // is what PAN exists to prevent. Above the ceiling the planner designs the phase (2026-10-25).
+  if (reqs.length > max * LEAN_CEILING_FACTOR) reasons.push(`${reqs.length} requirements is more than one session should hold (over ${max * LEAN_CEILING_FACTOR}, ${LEAN_CEILING_FACTOR} x workflow.lean_max_requirements); the planner designs it`);
   return reasons.length
     ? { phase: String(phase), path: 'full', mode: m.mode, reasons, metrics }
     : { phase: String(phase), path: 'lean', mode: m.mode, reasons: [`${reqs.length} requirement(s), each naming what to build${reqs.length > max ? `; split into plans of at most ${max} (workflow.lean_max_requirements)` : ''}`], metrics };
@@ -348,4 +353,4 @@ function planLeanPhase(cwd, phase, opts = {}) {
   return { ...w, ok: true, plan_check: 'recorded', commit };
 }
 
-module.exports = { writeLeanPhasePlan, planLeanPhase, leanQuickPlan, ceremonyMode, requirementSpecified, taskSpecified, sizeTask, sizePhase, engineCheckPlans, recordEngineCheck, DEFAULT_LEAN_MAX_REQUIREMENTS };
+module.exports = { LEAN_CEILING_FACTOR, writeLeanPhasePlan, planLeanPhase, leanQuickPlan, ceremonyMode, requirementSpecified, taskSpecified, sizeTask, sizePhase, engineCheckPlans, recordEngineCheck, DEFAULT_LEAN_MAX_REQUIREMENTS };

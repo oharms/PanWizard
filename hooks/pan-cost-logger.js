@@ -227,6 +227,10 @@ const COMMAND_TAIL_BYTES = 262144;
 // so only these are attributed — a host UI command (`/model`, `/compact`) and a plain
 // typed prompt leave the row honestly unattributed instead of borrowing a name.
 const PAN_COMMAND_RE = /<command-name>\s*\/?pan[:-]([a-z0-9][a-z0-9-]*)\s*<\/command-name>/i;
+// Autodev's lean execute unit types no slash command: its prompt names the exec-lean
+// workflow (autodev.cjs unitPrompt). Without this the lean sessions, most of a lean
+// project's spend, carried `command: null` (2026-10-25).
+const LEAN_UNIT_RE = /^PAN autodev unit, lean phase \d/i;
 
 /**
  * The PAN command in whose turn this agent ran, read from the PARENT session transcript.
@@ -286,6 +290,7 @@ function readCommandFromTranscript(transcriptPath) {
       if (!typed) continue;
       const m = typed.match(PAN_COMMAND_RE);
       if (m) return m[1].toLowerCase();
+      if (LEAN_UNIT_RE.test(typed.trim())) return 'exec-lean';
     }
     return null;
   } catch {
