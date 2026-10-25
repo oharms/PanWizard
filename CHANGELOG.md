@@ -5,7 +5,9 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.37.0] - 2026-10-25
+
+Right-sized ceremony and the roadmap run unattended. Measured against Claude Code on its own, PAN cost many times as much for the same result on well-specified work; the engine now sizes each phase and quick task, plans a precise phase itself, executes a lean phase in one session with one code review pass and the verifier, and leaves the full ceremony to the `quality` profile and `--quality` (`docs/specs/right-sized-ceremony.md`). `/pan:autodev` runs a roadmap end to end with every stop decided in code and every dollar approved in advance. Research is opt-in and answers questions instead of surveying. Also: review lenses with voting, proven findings, a debug case base, EARS requirements with a trace matrix, UAT on every runtime, gates that must be able to fail, a human merge gate, and the stop guard that never turns itself off.
 
 ### Added
 
