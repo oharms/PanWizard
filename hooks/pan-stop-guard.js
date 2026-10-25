@@ -59,7 +59,11 @@
 // Copilot also ends the turn itself after eight consecutive blocks.
 //
 // Escape hatch: set workflow.stop_guard to false in .planning/config.json to
-// disable the guard entirely without turning off auto_advance.
+// disable the guard entirely without turning off auto_advance. That is the user's
+// setting: the block reason tells an agent that was asked to stop to end its turn
+// again (the guard is one-shot), never to change it (2026-10-25: a harness session
+// told to stop after /pan:new-project followed the old reason's advice and
+// committed workflow.stop_guard: false into the project, disarming every later run).
 //
 // Fail-open everywhere: no .planning, unparseable config/state/roadmap, bad
 // stdin — exit 0 silently. This guard must never block a stop on uncertainty;
@@ -72,10 +76,6 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-
-// The CLI the block reason tells the agent to run. Installs and the plugin put the
-// core beside hooks/; no `pan-tools` bin is on PATH.
-const PAN_TOOLS = `node "${path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'pan-tools.cjs').split(path.sep).join('/')}"`;
 
 // ─── R39: one run per hook when Claude and Copilot share a project ───────────
 // Copilot CLI also runs the hooks in a repository's .claude/settings.json and
@@ -209,10 +209,10 @@ function buildStopDecision({ stopHookActive, config, stateContent, roadmapConten
       `Continue the chain now: if the current phase is finished, follow transition.md's ` +
       `offer_next_phase Route A and spawn Phase ${nextPhase} as a Task subagent ` +
       `(plan-phase orchestrator, ARGUMENTS='${nextPhase} --auto'); if the current phase is ` +
-      `mid-flight, resume it instead. If the user explicitly asked to stop, first run ` +
-      `\`${PAN_TOOLS} config-set workflow.auto_advance false\` (under mode: yolo, which arms this ` +
-      `guard by itself, set \`workflow.stop_guard false\` the same way instead) — then stop. ` +
-      `(Disable this guard permanently with workflow.stop_guard: false.)`
+      `mid-flight, resume it instead. If the user or the command you are running explicitly ` +
+      `said to stop here, end your turn again: this guard blocks a stop only once, so the next ` +
+      `stop goes through. Do not change workflow.auto_advance, workflow.stop_guard or mode to ` +
+      `get past it: they are the user's settings and every later session reads them.`
   };
 }
 

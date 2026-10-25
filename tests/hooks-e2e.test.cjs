@@ -618,12 +618,10 @@ function driveStopGuard(runtime) {
   const decision = JSON.parse(blocked.stdout);
   assert.equal(decision.decision, 'block', 'the boundary-drop fingerprint must block the stop once');
   assert.match(decision.reason, /next: Phase 2\b/, 'the reason must name the phase the roadmap leaves unticked');
-  // The stop command names the installed pan-tools by path: no runtime puts a bare
-  // `pan-tools` on PATH, so the old advice could not be run as written.
-  const stopCmd = decision.reason.match(/`node "([^"]+\/pan-tools\.cjs)" config-set workflow\.auto_advance false`/);
-  assert.ok(stopCmd, `the reason must tell the user how to stop deliberately: ${decision.reason}`);
-  assert.ok(fs.existsSync(stopCmd[1]), `the stop command must name the installed pan-tools.cjs on ${runtime}: ${stopCmd[1]}`);
-  assert.match(decision.reason, /workflow\.stop_guard false/, 'the reason must name the escape hatch that also disarms mode: yolo');
+  // A deliberate stop is the second stop, which the one-shot rule below lets through; the
+  // reason never tells the agent to change the user's settings to get past the guard.
+  assert.match(decision.reason, /end your turn again/, `the reason must tell the agent how to stop deliberately: ${decision.reason}`);
+  assert.doesNotMatch(decision.reason, /config-set/, 'the reason must not tell the agent to change a setting');
 
   // One-shot: the host sets stop_hook_active on the stop attempt that follows a block,
   // and the guard must always let that one through or the session is trapped.

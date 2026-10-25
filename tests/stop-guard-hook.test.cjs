@@ -73,7 +73,11 @@ describe('buildStopDecision — the boundary-drop fingerprint blocks, everything
     assert.equal(d.decision, 'block');
     assert.match(d.reason, /Phase 2/, 'reason should name the next unbuilt phase');
     assert.match(d.reason, /Task/, 'reason should instruct a Task spawn');
-    assert.match(d.reason, /auto_advance false/, 'reason should give the opt-out for a deliberate stop');
+    // A deliberate stop is a second stop (the guard is one-shot), never a settings change:
+    // a session that followed the old advice committed stop_guard: false into the project.
+    assert.match(d.reason, /end your turn again: this guard blocks a stop only once/, 'reason should give the deliberate stop');
+    assert.match(d.reason, /Do not change workflow\.auto_advance, workflow\.stop_guard or mode/);
+    assert.doesNotMatch(d.reason, /config-set/, 'the reason never tells an agent to change the user\'s settings');
   });
 
   test('stop_hook_active → allow (one-shot: a post-block stop is never re-blocked)', () => {
