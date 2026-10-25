@@ -64,9 +64,13 @@ describe('sizing a phase', () => {
     assert.equal(r.path, 'full');
     assert.match(r.reasons.join(' '), /not precisely specified/);
   });
-  test('more requirements than workflow.lean_max_requirements is full', () => {
+  test('size alone never makes a precise phase full: above lean_max_requirements it is split', () => {
+    // 2026-10-25: the brief's 9- and 13-requirement phases, every requirement precise, went
+    // to the full ceremony on their size alone (a planner and a plan-checker twice each).
     const t = seed('tasks-roadmap', (c) => ({ ...c, workflow: { ...c.workflow, lean_max_requirements: 3 } }));
-    assert.equal(S.sizePhase(t, '1').path, 'full');
+    const r = S.sizePhase(t, '1');
+    assert.equal(r.path, 'lean');
+    assert.match(r.reasons.join(' '), /split into plans of at most 3/);
     assert.equal(S.sizePhase(t, '2').path, 'lean');
   });
   test('the quality profile, workflow.ceremony full and --quality keep the full ceremony', () => {
@@ -163,6 +167,24 @@ describe('step 2: the engine plans a lean phase (no planner session)', () => {
     assert.match(plan, /<name>STORE-02: Every change is written/, 'the requirement text, without its leading dash');
     assert.equal(planCheckStatus(t, '1').status, 'ok');
     assert.match(g(['log', '--oneline', '-1']).stdout, /lean plan written by the engine/);
+  });
+  test('a phase above lean_max_requirements gets plans of at most that many tasks, in waves, checked and committed', () => {
+    const t = seed('tasks-roadmap', (c) => ({ ...c, workflow: { ...c.workflow, lean_max_requirements: 3 } }));
+    const g = (a) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: t, encoding: 'utf8' });
+    // The engine commits the plans with the repository's own identity (a CI container has none).
+    g(['init', '-q']); g(['config', 'user.name', 't']); g(['config', 'user.email', 't@t']); g(['add', '-A']); g(['commit', '-qm', 'seed']);
+    const r = cli(t, ['size', 'phase-plan', '1']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const out = JSON.parse(r.stdout);
+    assert.equal(out.paths.length, 2, 'four requirements, three a plan');
+    const [p1, p2] = out.paths.map((p) => fs.readFileSync(path.join(t, p), 'utf8'));
+    assert.deepEqual([planStructure(p1).task_count, planStructure(p2).task_count], [3, 1]);
+    assert.match(p1, /^wave: 1$/m);
+    assert.match(p2, /^wave: 2$/m);
+    assert.match(p2, /^depends_on: \[01-01\]$/m, 'the second plan runs after the first');
+    assert.match(p2, /^requirements: \[STORE-04\]$/m);
+    assert.equal(planCheckStatus(t, '1').status, 'ok', 'the split plan set passes the engine check');
+    assert.equal(g(['status', '--porcelain', '--', '.planning/phases']).stdout.trim(), '', 'both plans are committed');
   });
   test('a phase that already has plans, or is not lean, is declined (exit 1) and nothing is written', () => {
     const { t } = gitSeed('tasks-roadmap');

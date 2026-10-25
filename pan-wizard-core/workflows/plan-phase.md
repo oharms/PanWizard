@@ -351,7 +351,7 @@ ls "${PHASE_DIR}"/*-plan.md 2>/dev/null
 LEAN_PLAN=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size phase-plan "${PHASE_NUMBER}")
 ```
 
-Exit 0: the plan is written (one task per requirement, each task's action the requirement's own text), checked, recorded as the phase's plan check and committed. Show its `path` and go to step 13. Exit 1 (`has_plans`, `not_lean`, or a check that failed): continue below with the planner.
+Exit 0: the plans are written (one task per requirement, each task's action the requirement's own text, at most `workflow.lean_max_requirements` tasks a plan), checked, recorded as the phase's plan check and committed. Show its `paths` and go to step 13. Exit 1 (`has_plans`, `not_lean`, or a check that failed): continue below with the planner.
 
 Display banner:
 ```

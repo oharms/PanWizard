@@ -92,11 +92,10 @@ function sizePhase(cwd, phase, opts = {}) {
   if (opts.full) return { phase: String(phase), path: 'full', mode: m.mode, reasons: ['--full was passed'], metrics };
   const reasons = [];
   if (!reqs.length) reasons.push('the roadmap maps no requirements to this phase, so nothing pins down the work');
-  if (reqs.length > max) reasons.push(`${reqs.length} requirements is above workflow.lean_max_requirements (${max})`);
   if (unspecified.length) reasons.push(`not precisely specified: ${unspecified.join(', ')} (no acceptance criterion and no named artifact)`);
   return reasons.length
     ? { phase: String(phase), path: 'full', mode: m.mode, reasons, metrics }
-    : { phase: String(phase), path: 'lean', mode: m.mode, reasons: [`${reqs.length} requirement(s), each naming what to build`], metrics };
+    : { phase: String(phase), path: 'lean', mode: m.mode, reasons: [`${reqs.length} requirement(s), each naming what to build${reqs.length > max ? `; split into plans of at most ${max} (workflow.lean_max_requirements)` : ''}`], metrics };
 }
 
 /**
@@ -158,8 +157,8 @@ function leanQuickPlan(cwd, description, num) {
 const FILE_RE = /\b[\w./-]+\.(?:c?js|mjs|tsx?|jsx|py|json|md|go|rs|java|rb|cs|php|sh|ya?ml|toml|sql|html|css)\b/g;
 
 /**
- * Write a lean phase's plan from its requirements (autodev step 2): one plan, one task per
- * requirement, each task's action the requirement's own text. The requirements already say
+ * Write a lean phase's plans from its requirements (autodev step 2): one task per
+ * requirement, at most lean_max_requirements tasks a plan, each task's action the requirement's own text. The requirements already say
  * what to build, so a planner session would only restate them. Refuses a phase that is not
  * lean, or that already has plans. Creates the phase directory when it is missing.
  * @returns {{written, path, plan_dir, requirements}|{error, reason}}
@@ -219,22 +218,39 @@ function writeLeanPhasePlan(cwd, phase, opts = {}) {
     // check here and the phase never ran).
     const rule = (r.criteria || []).some(isValidationRule);
     const property = rule ? ' Add a property-based test that checks the rule over generated inputs, with the project\'s own property helper or a seeded loop and no new dependency.' : '';
-    return [rule ? '<task type="auto" property="true">' : '<task type="auto">', `  <name>${r.id}: ${esc(one(r.text).slice(0, 70))}</name>`, `  <files>${taskFiles.join(', ') || 'the files the requirement names'}</files>`,
+    const text = [rule ? '<task type="auto" property="true">' : '<task type="auto">', `  <name>${r.id}: ${esc(one(r.text).slice(0, 70))}</name>`, `  <files>${taskFiles.join(', ') || 'the files the requirement names'}</files>`,
       `  <action>Implement ${r.id} exactly as requirements.md states it, with a test for each rule in it: ${esc(one(r.text))}${criteria}${supersedes}${property}</action>`,
       `  <verify>${verify}</verify>`, `  <done>${r.id} holds and a test covers each rule in it; the tests pass.</done>`, '</task>'].join('\n');
+    return { r, text, files: taskFiles, supersedes: Boolean(supersedes) };
   });
-  const text = [
-    '---', `phase: ${padded}-${slug}`, 'plan: 01', 'type: execute', 'wave: 1', 'depends_on: []', `files_modified: [${declared.join(', ')}]`, 'autonomous: true',
-    `requirements: [${reqs.map((r) => r.id).join(', ')}]`, ...(head.exitCode === 0 ? [`planned_commit: ${head.stdout.trim()}`] : []),
-    ...(superseded.length ? [`supersedes_tests: [${superseded.join(', ')}]`, `supersedes_requirements: [${changing.map((r) => r.id).join(', ')}]`] : []),
-    'must_haves:', '  truths:', ...reqs.map((r) => `    - ${JSON.stringify(`${r.id}: ${one(r.text).slice(0, 240)}`)}`),
-    '---', '', '<objective>', esc(one(rp.goal || '')), '', `Written by the engine (lean path): the phase's requirements (${reqs.map((r) => r.id).join(', ')}) say precisely what to build, so each is one task. The requirements are the specification: do not widen them.`, '</objective>', '',
-    '<tasks>', '', tasks.join('\n\n'), '', '</tasks>', '',
-  ].join('\n');
-  const file = path.join(dir, `${padded}-01-plan.md`);
-  fs.writeFileSync(file, text);
-  const rel = require('./core.cjs').toPosix(path.relative(cwd, file));
-  return { written: true, path: rel, abs: file, created_dir: createdDir ? dir : null, plan_dir: require('./core.cjs').toPosix(path.relative(cwd, dir)), requirements: reqs.map((r) => r.id), ...(superseded.length ? { supersedes_tests: superseded } : {}) };
+  // A large phase of precise requirements is split into plans of at most
+  // lean_max_requirements tasks, each in its own wave after the one before, so the one
+  // execute session takes them in order and commits a summary between them (2026-10-25:
+  // the brief's 9- and 13-requirement phases went to the full ceremony on their size alone,
+  // a planner and a plan-checker twice each, about $3 and 13 minutes a phase).
+  const per = Math.max(1, Number(size.metrics.lean_max_requirements) || DEFAULT_LEAN_MAX_REQUIREMENTS);
+  const chunks = [];
+  for (let i = 0; i < tasks.length; i += per) chunks.push(tasks.slice(i, i + per));
+  const written = [];
+  chunks.forEach((chunk, i) => {
+    const nn = String(i + 1).padStart(2, '0');
+    const ids = chunk.map((t) => t.r.id);
+    const own = [...new Set(chunk.flatMap((t) => t.files))];
+    const sup = chunk.some((t) => t.supersedes);
+    const text = [
+      '---', `phase: ${padded}-${slug}`, `plan: ${nn}`, 'type: execute', `wave: ${i + 1}`, `depends_on: [${i ? `${padded}-${String(i).padStart(2, '0')}` : ''}]`, `files_modified: [${(own.length ? own : declared).join(', ')}]`, 'autonomous: true',
+      `requirements: [${ids.join(', ')}]`, ...(head.exitCode === 0 ? [`planned_commit: ${head.stdout.trim()}`] : []),
+      ...(sup ? [`supersedes_tests: [${superseded.join(', ')}]`, `supersedes_requirements: [${chunk.filter((t) => t.supersedes).map((t) => t.r.id).join(', ')}]`] : []),
+      'must_haves:', '  truths:', ...chunk.map((t) => `    - ${JSON.stringify(`${t.r.id}: ${one(t.r.text).slice(0, 240)}`)}`),
+      '---', '', '<objective>', esc(one(rp.goal || '')), '', `Written by the engine (lean path): the phase's requirements say precisely what to build, so each is one task${chunks.length > 1 ? `; this is plan ${i + 1} of ${chunks.length} (${ids.join(', ')})` : ''}. The requirements are the specification: do not widen them.`, '</objective>', '',
+      '<tasks>', '', chunk.map((t) => t.text).join('\n\n'), '', '</tasks>', '',
+    ].join('\n');
+    const file = path.join(dir, `${padded}-${nn}-plan.md`);
+    fs.writeFileSync(file, text);
+    written.push(file);
+  });
+  const rels = written.map((f) => C.toPosix(path.relative(cwd, f)));
+  return { written: true, path: rels[0], paths: rels, abs: written[0], abs_all: written, created_dir: createdDir ? dir : null, plan_dir: C.toPosix(path.relative(cwd, dir)), requirements: reqs.map((r) => r.id), ...(superseded.length ? { supersedes_tests: superseded } : {}) };
 }
 
 // Wording that marks a requirement as changing behaviour already built.
@@ -312,7 +328,7 @@ function planLeanPhase(cwd, phase, opts = {}) {
   const check = engineCheckPlans(cwd, phase);
   if (!check.ok) {
     // Decline writes nothing: a failed plan left on disk was picked up by the next session.
-    try { fs.unlinkSync(w.abs); } catch { /* already gone */ }
+    for (const f of w.abs_all) { try { fs.unlinkSync(f); } catch { /* already gone */ } }
     if (w.created_dir) { try { fs.rmdirSync(w.created_dir); } catch { /* not empty */ } }
     return { phase: String(phase), ok: false, error: 'check_failed', errors: check.errors };
   }
@@ -322,9 +338,9 @@ function planLeanPhase(cwd, phase, opts = {}) {
   let commit = null;
   if (config.commit_docs !== false) {
     const C = require('./core.cjs');
-    const add = C.execGit(cwd, ['add', '--', w.path]);
+    const add = C.execGit(cwd, ['add', '--', ...w.paths]);
     const msg = `docs(${C.normalizePhaseName(String(phase))}): lean plan written by the engine`;
-    const c = add.exitCode === 0 ? C.execGit(cwd, ['commit', '-q', '-m', msg, '--', w.path]) : add;
+    const c = add.exitCode === 0 ? C.execGit(cwd, ['commit', '-q', '-m', msg, '--', ...w.paths]) : add;
     commit = c.exitCode === 0 ? (C.execGit(cwd, ['rev-parse', '--short', 'HEAD']).stdout || '').trim() : null;
     // The plan stands without its commit (exec-phase commits as it goes); say why it is missing.
     if (!commit) return { ...w, ok: true, plan_check: 'recorded', commit: null, commit_error: String(c.stderr || c.stdout || 'git commit failed').trim().slice(0, 300) };
