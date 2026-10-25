@@ -498,7 +498,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
   "phase_branch_template": "pan/phase-{phase}-{slug}",
   "milestone_branch_template": "pan/{milestone}-{slug}",
   "workflow": {
-    "research": true,
+    "research": false,
     "plan_check": true,
     "verifier": true,
     "nyquist_validation": false,
@@ -578,7 +578,7 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 
 | Setting | Options | Default | What it Controls |
 |---------|---------|---------|------------------|
-| `workflow.research` | `true`, `false` | `true` | Domain investigation before planning |
+| `workflow.research` | `true`, `false` | `false` | Research before planning each phase (opt-in): the workflow writes at most 5 open questions that block building and one researcher answers them, each with a source or a recorded assumption. A config that already says `true` keeps it; `/pan:plan-phase N --research` researches one phase |
 | `workflow.plan_check` | `true`, `false` | `true` | Plan verification loop (up to 3 checks, at most 2 revisions) |
 | `workflow.verifier` | `true`, `false` | `true` | Post-execution verification against phase goals |
 | `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
@@ -653,7 +653,6 @@ PAN uses abstract tier names (`reasoning`, `mid`, `fast`) that map to provider-s
 | pan-executor | reasoning | reasoning | mid |
 | pan-phase-researcher | reasoning | reasoning | fast |
 | pan-project-researcher | reasoning | reasoning | fast |
-| pan-research-synthesizer | reasoning | reasoning | fast |
 | pan-debugger | reasoning | reasoning | mid |
 | pan-document_code | reasoning | reasoning | fast |
 | pan-verifier | reasoning | reasoning | fast |
@@ -1416,7 +1415,7 @@ For reference, here is what PAN creates in your project:
 | `milestones.md` + `milestones/` | `/pan:milestone-done` | Index of completed milestones with dates and summaries, plus the per-version `v{version}-roadmap.md` / `v{version}-requirements.md` archives. | Append-only |
 | `patterns.md` | Nothing PAN ships (`appendErrorPattern()` has no caller); `learnings extract`, `preflight` and `/pan:focus-auto --step scan` read it when it exists | Error patterns (PAT-NNN) for cross-session learning. | Append-only, auto-increment |
 | `session-history.md` | Nothing PAN ships (`appendSessionSummary()` has no caller); `pan-tools progress health` counts its entries when it exists | Session summaries with phase, test counts, decisions. | Keeps last 20 entries |
-| `research/` | `/pan:new-project` | Parallel research outputs (stack, features, architecture, pitfalls) plus synthesis. | Read-only after creation |
+| `research/` | `/pan:new-project --research` | `questions.md` (at most 5 open questions that block building) and `research-summary.md` (one answer per question, with its source, plus v2 ideas). Only when research was asked for. | Read-only after creation |
 | `codebase/` | `/pan:map-codebase` | Brownfield analysis — the codebase-map documents (`stack.md`, `integrations.md`, `architecture.md`, `structure.md`, `conventions.md`, `testing.md`, `concerns.md`, `relationships.md`, `best-practices.md`). | Read-only after creation |
 | `XX-context.md` | `/pan:discuss-phase` | Your implementation preferences for a phase. Feeds into research and planning. | No set limit |
 | `XX-research.md` | `/pan:plan-phase` | Ecosystem research for a phase (libraries, patterns, pitfalls). | Read-only after creation |

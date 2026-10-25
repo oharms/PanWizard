@@ -233,7 +233,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `verify-plan-set.cjs` | **(program V7)** `verify plan-set <phase>`: the plan checks code can make, before the plan checker runs (requirement coverage, same-wave file overlap, missing, self and future references, cycles, wave gaps). `planCheckStatus()` binds a passing plan check to the plans it checked through the `plans_sha` the recorder stores with every plan-checker verdict; `planDrift()` lists planned files changed since a plan's `planned_commit`. `init execute-phase` carries both as `plan_check` and `plan_drift`. |
 | `verify-scope.cjs` | **(evidence loop)** `verify scope <phase>`: the files a phase changed that its plans did not declare in `files_modified`, taken from its plan commits and summary key-files, for the verifier's unrequested-work check. `verify stale <phase>`: whether the files a verification covered changed since its `verified_commit`. `review scope <phase>` (program R1): the files a reviewer reads (the phase's commits plus uncommitted and untracked work) and the plans' intent. Re-exported through verify.cjs. |
 | `plan-lint.cjs` | **(program P4, P2)** `verify review-focus <phase>`: every plan has a `## Review Focus` of at most five items, each naming its owning task and a test, or one `None — <reason>` line. `verify decisions <phase>`: plans cite only `DD-N` decision ids the phase design records, and every recorded decision is cited. `/pan:plan-phase` runs both with `verify plan-set` before the plan checker. `verify gates <phase>`: a task's `<verify>` command that already passes before any work is flagged. |
-| `research-lint.cjs` | **(program P3)** `research lint <phase|path>`: the research file's `## Claims` table (claim · type · source · checked). A claim with no source or no date is an error; one older than its type's freshness window is `stale`. |
+| `research-lint.cjs` | **(program P3)** `research lint <phase|path>`: the research file's `## Claims` table (claim · type · source · checked), or the answered rows of its answers table. A claim with no source or no date is an error; one older than its type's freshness window is `stale`. `research check <questions> <research> [--market]`: at most five questions, each answered with a source or `unknown` with an assumption, at most five comparable products. |
 | `usage.cjs` | **(program L9)** `usage`: a local census of the installed commands and agents against the project's cost ledger and trace sessions: used (calls, last use), never used, and commands started but never finished. Local files only. |
 | `test-gate.cjs` | **(program V2)** `test run` and `test detect`: finds the project's test command in any language (or `workflow.test_command`), runs it, parses the runner's output into stable failing-test ids, and compares a phase's run with its baseline (`{NN}-test-baseline.json`, `{NN}-test-run.json`). The phase gate and the verdict recorder read the run record. |
 | `verify-red.cjs` | **(program V4)** `verify red <phase>`: runs each test file the phase changed at the phase's base (in a throwaway worktree) and at HEAD; a test that passes before the phase's code exists is `not_red`. Also exports the phase-base and worktree helpers `verify mutate` uses. |
@@ -510,6 +510,7 @@ Quick reference of all CLI commands grouped by category.
 | 247 | `uat status` | Verification | uat.cjs |
 | 248 | `debug repro` | Verification | debug-cases.cjs |
 | 249 | `debug similar` | Verification | debug-cases.cjs |
+| 250 | `research check` | Verification | research-lint.cjs |
 
 ---
 
@@ -1863,14 +1864,25 @@ A used command is `{name, calls, last_used, sessions, finished}`, a used agent `
 
 ### `research lint <phase|path> [--now YYYY-MM-DD]`
 
-Research claims with provenance and freshness (program P3). The phase's research file (or the file at the path) lists the claims plans will rest on in a `## Claims` table with the columns Claim, Type, Source and Checked.
+Research claims with provenance and freshness (program P3). The phase's research file (or the file at the path) lists the claims plans will rest on in a `## Claims` table with the columns Claim, Type, Source and Checked. A research file with no `## Claims` table but an answers table (`research check`, below) is read from its answered rows: each answer is a `general` claim, its source is the Source cell and its checked date is the `YYYY-MM-DD` date in that cell; `unknown` rows are not claims.
 
 ```bash
 pan-tools research lint 3                                  # {file, ok, claims, errors[], warnings[], stale[], windows}
 pan-tools research lint .planning/research/stack.md --raw  # valid | invalid
 ```
 
-**Errors** (exit 1), each `{code, row, claim, detail}` (`claims_missing` carries only `code` and `detail`): `claims_missing` (no `## Claims` section), `claim_no_source` (empty, or a placeholder such as `[Official docs URL]`), `claim_no_date` (not `YYYY-MM-DD`), `claim_future_date`. **Warnings:** `claim_unknown_type` (read as `general`). **`stale`** lists `{row, claim, type, checked, age_days, window_days}` for each claim older than its type's window: `version`, `pricing` and `security` 30 days, `api` 90, `general` 180, `practice` 365. Stale is not an error: `/pan:plan-phase` passes the lint to the plan checker, which flags the stale claims a plan depends on. `--now` fixes today's date. Exits 1 with `{error, reason}` for an unknown phase (`phase_not_found`), a phase with no research file (`no_research`), a missing path (`file_not_found`) or a `--now` that is not `YYYY-MM-DD` (`invalid_now`).
+**Errors** (exit 1), each `{code, row, claim, detail}` (`claims_missing` carries only `code` and `detail`): `claims_missing` (no `## Claims` section and no answers table), `claim_no_source` (empty, or a placeholder such as `[Official docs URL]`), `claim_no_date` (not `YYYY-MM-DD`), `claim_future_date`. **Warnings:** `claim_unknown_type` (read as `general`). **`stale`** lists `{row, claim, type, checked, age_days, window_days}` for each claim older than its type's window: `version`, `pricing` and `security` 30 days, `api` 90, `general` 180, `practice` 365. Stale is not an error: `/pan:plan-phase` passes the lint to the plan checker, which flags the stale claims a plan depends on. `--now` fixes today's date. Exits 1 with `{error, reason}` for an unknown phase (`phase_not_found`), a phase with no research file (`no_research`), a missing path (`file_not_found`) or a `--now` that is not `YYYY-MM-DD` (`invalid_now`).
+
+### `research check <questions file> <research file> [--market]`
+
+Research answers questions, bounded. The workflows that research (`/pan:new-project --research`, `/pan:plan-phase --research`, `/pan:milestone-new`) write at most five open questions that block building as a numbered list (`1. …`), one researcher answers them in a table `| # | Question | Answer | Source | Confidence | Decision it settles |`, and the workflow runs this check after the researcher, sends its errors back once, then proceeds with the unknowns recorded.
+
+```bash
+pan-tools research check .planning/research/questions.md .planning/research/research-summary.md   # {questions_file, research_file, ok, questions, answered, unknown, products, limits, errors[], warnings[]}
+pan-tools research check q.md r.md --market --raw                                                  # valid | invalid
+```
+
+**Errors** (exit 1), each `{code, detail}` (with `question` when it names one): `no_questions` (the questions file lists none: no research should run), `too_many_questions` (more than five), `answers_missing` (no table with Question, Answer and Source columns), `question_unanswered` (a question with no row, or an empty answer), `answer_no_source` (an answer whose source is empty or a placeholder), `unknown_without_assumption` (an answer starting `unknown` that names no assumption, as in `unknown — assume: …`), `too_many_products` (a table whose first column is `Product` with more than five rows), `products_missing` (`--market` and no such table). **Warnings:** `answer_no_confidence` (not HIGH, MEDIUM or LOW), `extra_row` (a row that answers no listed question). Exits 1 with `{error, reason}` when either file is missing (`file_not_found`).
 
 ### `verify test-integrity <phase>`
 
@@ -2511,7 +2523,7 @@ pan-tools config-ensure-section [--raw]
 | `commit_docs` | `true` | Auto-commit planning docs after state changes |
 | `parallelization` | `true` | Enable parallel wave execution |
 | `branching_strategy` | `"none"` | Git branching: `none`, `phase`, `milestone` |
-| `workflow.research` | `true` | Enable research phase before planning |
+| `workflow.research` | `false` | Research before planning each phase (opt-in; a config that says `true` keeps it) |
 | `workflow.plan_check` | `true` | Enable plan-checker agent verification loop |
 | `workflow.phase_reports` | `{ enabled: false, open: false, theme: "auto", index: true }` | Opt-in HTML phase reports as a build deliverable. When `enabled`, the verify→complete gate, focus-auto checkpoints, and army INTEGRATE regenerate per-phase reports; the verify→complete gate and army's post-merge Phase 6 (LEARN) also rebuild the timeline index when `index` is set, while the focus-auto checkpoint rebuilds it whatever `index` says; default off. |
 | `memory.auto_optimize` | (not written; absent = `true`) | Reconcile the always-loaded project memory automatically at the focus-auto checkpoint and the normal-flow session record. No-op when state.md is already lean. Set `false` to opt out and reconcile only via `memory optimize`. |
@@ -2957,7 +2969,7 @@ pan-tools init new-project [--raw]
 ```
 
 **Key output fields:**
-- `researcher_model`, `synthesizer_model`, `roadmapper_model` — Model names
+- `researcher_model`, `roadmapper_model` — Model names
 - `project_exists`, `has_codebase_map`, `planning_exists` — Existing state
 - `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map` — Brownfield detection
 - `has_git` — **runs `git init` when the project is not yet a repository** and reports the result; `brave_search_available` — environment detection; `shared_planning_tree` — `{tool, evidence}` when another tool shares the planning tree (planning-with-files), else `null`. A tree another tool owns (gsd-core) is refused instead: `{error, evidence, fix}` at exit 1.
@@ -2973,7 +2985,7 @@ pan-tools init new-milestone [--raw]
 ```
 
 **Key output fields:**
-- `researcher_model`, `synthesizer_model`, `roadmapper_model` — Model names
+- `researcher_model`, `roadmapper_model` — Model names
 - `current_milestone`, `current_milestone_name` — Current milestone info
 - File existence checks for project.md, roadmap.md, state.md
 

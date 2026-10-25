@@ -136,7 +136,6 @@ const MODEL_PROFILES = {
   // on the mid tier, about half the launch model's price; quality keeps them on reasoning.
   'pan-phase-researcher':     { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
   'pan-project-researcher':   { quality: 'reasoning', balanced: 'mid', budget: 'fast' },
-  'pan-research-synthesizer': { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-debugger':             { quality: 'reasoning', balanced: 'reasoning', budget: 'mid' },
   'pan-document_code':        { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
   'pan-verifier':             { quality: 'reasoning', balanced: 'reasoning', budget: 'fast' },
@@ -195,7 +194,6 @@ const AGENT_BASE_EFFORT = {
   // Research/synthesis/review — moderate depth
   'pan-phase-researcher':     'medium',
   'pan-project-researcher':   'medium',
-  'pan-research-synthesizer': 'medium',
   'pan-knowledge':            'medium',
   'pan-distiller':            'medium',
   'pan-meta-reviewer':        'medium',
@@ -448,7 +446,7 @@ function loadConfig(cwd) {
     branching_strategy: 'none',
     phase_branch_template: 'pan/phase-{phase}-{slug}',
     milestone_branch_template: 'pan/{milestone}-{slug}',
-    research: true,
+    research: false, // opt-in: a config that says true keeps it
     plan_checker: true,
     verifier: true,
     nyquist_validation: false,

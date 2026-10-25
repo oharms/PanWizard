@@ -86,13 +86,11 @@ Plans: 3/5 complete
 ```
 ◆ Spawning researcher...
 
-◆ Spawning 4 researchers in parallel...
-  → Stack research
-  → Features research
-  → Architecture research
-  → Pitfalls research
+◆ Spawning 2 mappers in parallel...
+  → Tech mapper
+  → Architecture mapper
 
-✓ Researcher complete: STACK.md written
+✓ Researcher complete: 3 questions answered
 ```
 
 ---

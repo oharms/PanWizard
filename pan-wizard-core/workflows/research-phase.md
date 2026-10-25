@@ -1,7 +1,7 @@
 <objective>
-Research how to implement a phase. Spawns pan-phase-researcher agent with phase context.
+Answer the open questions that block planning a phase (at most 5). Spawns one pan-phase-researcher agent with the questions and the phase context.
 
-**Note:** This is a standalone research command. For most workflows, use `/pan:plan-phase` which integrates research automatically.
+**Note:** This is the standalone research mode. `/pan:plan-phase` researches only with `--research` or `workflow.research: true`.
 
 **Use this command when:**
 - You want to research without planning yet
@@ -10,7 +10,7 @@ Research how to implement a phase. Spawns pan-phase-researcher agent with phase 
 
 **Orchestrator role:** Parse phase, validate against roadmap, check existing research, gather context, spawn researcher agent, present results.
 
-**Why subagent:** Research burns context fast (WebSearch, Context7 queries, source verification). A fresh context window for investigation. Main context stays lean for user interaction.
+**Why subagent:** Searching burns context. A fresh context window answers the questions, at most 4 searches or fetches each; the main context stays lean for user interaction.
 </objective>
 
 <context>
@@ -62,65 +62,32 @@ SLICE_PATH=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap slice "${p
 
 Present summary with phase description and what files the researcher will load.
 
-## 4. Spawn pan-phase-researcher Agent
+## 4. Write the Questions and Spawn pan-phase-researcher
 
-Research mode: the prompt below names `ecosystem`; pan-phase-researcher defines no modes, so treat it as context, not a switch.
+Research answers questions; it does not survey the phase's domain. List at most **5** open questions the phase's requirements leave unanswered and that block building (a technology choice, an external API's behaviour, a data format, a limit or rule), as a numbered list in `{phase_dir}/{padded_phase}-research-questions.md`:
 
 ```markdown
-<research_type>
-Phase Research — investigating HOW to implement a specific phase well.
-</research_type>
+# Phase {phase_number} research questions
 
-<key_insight>
-The question is NOT "which library should I use?"
+1. [question] — blocks: [the task or decision it settles]
+```
 
-The question is: "What do I not know that I don't know?"
+**No questions → no research.** If nothing blocks building, write no file, say `No open questions block Phase {phase_number} — research skipped`, and stop.
 
-For this phase, discover:
-- What's the established architecture pattern?
-- What libraries form the standard stack?
-- What problems do people commonly hit?
-- What's SOTA vs what Claude's training thinks is SOTA?
-- What should NOT be hand-rolled?
-</key_insight>
-
+```markdown
 <objective>
-Research implementation approach for Phase {phase_number}: {phase_name}
-Mode: ecosystem
+Answer the research questions for Phase {phase_number}: {phase_name}, and nothing else.
 </objective>
 
 <files_to_read>
+- {phase_dir}/{padded_phase}-research-questions.md (The questions)
 - {slice_path} (This phase's roadmap and requirements)
 - {context_path} (Phase context from discuss-phase, if exists)
-- {state_path} (Prior project decisions and blockers)
 </files_to_read>
-
-<additional_context>
-**Phase description:** {phase_description}
-</additional_context>
-
-<downstream_consumer>
-Your research.md will be loaded by `/pan:plan-phase` which uses specific sections:
-- `## Standard Stack` → Plans use these libraries
-- `## Architecture Patterns` → Task structure follows these
-- `## Don't Hand-Roll` → Tasks NEVER build custom solutions for listed problems
-- `## Common Pitfalls` → Verification steps check for these
-- `## Code Examples` → Task actions reference these patterns
-
-Be prescriptive, not exploratory. "Use X" not "Consider X or Y."
-</downstream_consumer>
-
-<quality_gate>
-Before declaring complete, verify:
-- [ ] All domains investigated (not just some)
-- [ ] Negative claims verified with official docs
-- [ ] Multiple sources for critical claims
-- [ ] Confidence levels assigned honestly
-- [ ] Section names match what plan-phase expects
-</quality_gate>
 
 <output>
 Write to: {phase_dir}/{padded_phase}-research.md
+One row per question: | # | Question | Answer | Source | Confidence | Decision it settles |, or `unknown — assume: …`. At most 4 searches or fetches per question. Anything that suggests new scope goes under ## Ideas (v2 candidates).
 </output>
 ```
 
@@ -133,9 +100,17 @@ Task(
 )
 ```
 
+Then check the answers:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs research check "{phase_dir}/{padded_phase}-research-questions.md" "{phase_dir}/{padded_phase}-research.md"
+```
+
+Exit 1: send its `errors` to the researcher once as a revision. One revision at most; then proceed, with each question still unsourced recorded under `## Unknowns` in the research file with the assumption the plan uses.
+
 ## 5. Handle Agent Return
 
-**`## RESEARCH COMPLETE`:** Display summary, offer: Plan phase, Dig deeper, Review full, Done.
+**`## RESEARCH COMPLETE`:** Display the decisions it settled and any unknowns, offer: Plan phase, Review full, Done.
 
 **`## RESEARCH BLOCKED`:** Show the blocker and what was attempted, offer: Provide context (then spawn a continuation, step 6), Skip research, Abort.
 
@@ -172,7 +147,9 @@ Task(
 <success_criteria>
 - [ ] Phase validated against roadmap
 - [ ] Existing research checked
-- [ ] pan-phase-researcher spawned with context
+- [ ] At most 5 questions written (none: no research)
+- [ ] One pan-phase-researcher spawned with the questions
+- [ ] `research check` run, one revision at most
 - [ ] Checkpoints handled correctly
 - [ ] User knows next steps
 </success_criteria>

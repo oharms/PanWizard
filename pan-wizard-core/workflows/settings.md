@@ -24,8 +24,8 @@ Creates `.planning/config.json` with defaults if missing and loads current confi
 cat .planning/config.json
 ```
 
-Parse current values (when a key is absent, use PAN's default: `true` for research, plan_check and verifier; `false` for nyquist_validation):
-- `workflow.research` — spawn researcher during plan-phase
+Parse current values (when a key is absent, use PAN's default: `false` for research and nyquist_validation; `true` for plan_check and verifier):
+- `workflow.research` — spawn researcher during plan-phase (off by default: research is opt-in, and when on it answers at most 5 open questions per phase)
 - `workflow.plan_check` — spawn plan checker during plan-phase
 - `workflow.verifier` — spawn verifier during execute-phase
 - `workflow.nyquist_validation` — validation architecture research during plan-phase
@@ -51,12 +51,12 @@ AskUserQuestion([
     ]
   },
   {
-    question: "Spawn Plan Researcher? (researches domain before planning)",
+    question: "Spawn Plan Researcher? (off by default; answers up to 5 open questions before planning)",
     header: "Research",
     multiSelect: false,
     options: [
-      { label: "Yes", description: "Research phase goals before planning" },
-      { label: "No", description: "Skip research, plan directly" }
+      { label: "No (default)", description: "Plan directly from requirements; /pan:plan-phase N --research researches one phase" },
+      { label: "Yes", description: "Before each phase, answer up to 5 open questions that block building, each with a source" }
     ]
   },
   {
@@ -214,7 +214,7 @@ These settings apply to future /pan:plan-phase and /pan:exec-phase runs.
 
 Quick commands:
 - /pan:settings --profile <profile> — switch model profile
-- /pan:plan-phase --research — force research
+- /pan:plan-phase --research — research one phase (up to 5 open questions)
 - /pan:plan-phase --skip-research — skip research
 - /pan:plan-phase --skip-verify — skip plan check
 ```

@@ -89,7 +89,7 @@ const SCAN_DIRS = [
   'commands/pan',
   'agents',
   'pan-wizard-core/workflows',
-  'pan-wizard-core/templates', // walked recursively (codebase/, research-project/)
+  'pan-wizard-core/templates', // walked recursively (codebase/)
   'pan-wizard-core/references',
   'docs', // walked recursively; historical subtrees are excluded below
   // package.json `files` ships pan-zcode, and pan-zcode/README.md +
@@ -568,7 +568,7 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
     // recursing, these disappear. If any is legitimately renamed, replace it
     // with another file at the same depth; never delete the assertion.
     'pan-wizard-core/templates/codebase/architecture.md',
-    'pan-wizard-core/templates/research-project/summary.md',
+    'pan-wizard-core/templates/codebase/concerns.md', // replaced research-project/summary.md, retired with the survey research (2026-10-25)
     // docs/ has exactly one nested subtree (docs/branding/, incl. handoff/), so
     // the docs floor alone cannot prove the docs walk recursed. This file sits
     // TWO levels down, which pins both levels at once.
@@ -579,7 +579,7 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
   // number is derived from today's RECURSIVE count minus a little churn
   // headroom, and must stay clear of the count a NON-recursive walk produces —
   // otherwise adding top-level files silently re-enables the broken walk:
-  //   pan-wizard-core/templates — 42 recursive / 28 flat → floor 38 (10 clear)
+  //   pan-wizard-core/templates — 37 recursive / 28 flat → floor 34 (6 clear; was 42/38 before research-project/ was retired)
   //   docs (after exemptions)   — 19 recursive / 14 flat → floor 17 (3 clear)
   // The docs margin is the tight one; NESTED_MUST_SCAN above is its real guard.
   // If a floor legitimately fails because content was archived, lower it and
@@ -595,9 +595,9 @@ describe('model-version drift lint (capability-based phrasing — audit 2026-08)
   // row that IS here carries the churn headroom this comment claims.
   const MIN_SCANNED = [
     { dir: 'commands/pan', min: 40 },
-    { dir: 'agents', min: 20 },                    // 24 today
+    { dir: 'agents', min: 20 },                    // 23 today
     { dir: 'pan-wizard-core/workflows', min: 28 }, // 33 today
-    { dir: 'pan-wizard-core/templates', min: 38 }, // 42 today (14 of them nested)
+    { dir: 'pan-wizard-core/templates', min: 34 }, // 37 today (9 of them nested)
     { dir: 'pan-wizard-core/references', min: 13 }, // 16 today
     { dir: 'docs', min: 17 },                      // 19 today after exemptions (5 nested)
   ];

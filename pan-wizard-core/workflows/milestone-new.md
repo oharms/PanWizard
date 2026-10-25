@@ -77,108 +77,63 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: start milestone v
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init new-milestone)
 ```
 
-Extract from init JSON: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `research_enabled`, `current_milestone`, `project_exists`, `roadmap_exists`.
+Extract from init JSON: `researcher_model`, `roadmapper_model`, `commit_docs`, `research_enabled`, `current_milestone`, `project_exists`, `roadmap_exists`.
 
 ## 8. Research Decision
 
-AskUserQuestion: "Research the domain ecosystem for new features before defining requirements?"
-- "Research first (Recommended)" — Discover patterns, features, architecture for NEW capabilities
-- "Skip research" — Go straight to requirements
+Research is **off by default** and answers questions; it never surveys a domain or adds scope (the same contract as `/pan:new-project` step 6).
 
-**Persist choice to config** (so future `/pan:plan-phase` honors it):
+AskUserQuestion: "Research open questions for the new features before defining requirements?"
+- "Skip research (Recommended)" — Go straight to requirements
+- "Research open questions" — Answer up to 5 questions that block building the new features, each with a source
 
-```bash
-# If "Research first": persist true
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.research true
+`/pan:plan-phase` keeps its own setting (`workflow.research`, off by default; `/pan:settings` changes it).
 
-# If "Skip research": persist false
-node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.research false
+**If "Research open questions":**
+
+List at most **5** open questions the milestone's goals leave unanswered and that block building the NEW features (a technology choice, an external API's behaviour, a data format, a limit or rule; never what already exists). Write them as a numbered list to `.planning/research/questions.md` (`mkdir -p .planning/research` first):
+
+```markdown
+# Research questions — milestone v[X.Y]
+
+1. [question] — blocks: [the decision it settles]
 ```
 
-**If "Research first":**
+**No questions → no research.** If nothing blocks building, write no file, say so, and continue to Step 9.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PAN ► RESEARCHING
+ PAN ► RESEARCHING {N} QUESTIONS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-◆ Spawning 4 researchers in parallel...
-  → Stack, Features, Architecture, Pitfalls
 ```
 
-```bash
-mkdir -p .planning/research
-```
-
-Spawn 4 parallel pan-project-researcher agents. Each uses this template with dimension-specific fields:
-
-**Common structure for all 4 researchers:**
 ```
 Task(prompt="
-<research_type>Project Research — {DIMENSION} for [new features].</research_type>
-
-<milestone_context>
-SUBSEQUENT MILESTONE — Adding [target features] to existing app.
-{EXISTING_CONTEXT}
-Focus ONLY on what's needed for the NEW features.
-</milestone_context>
-
-<question>{QUESTION}</question>
-
 <files_to_read>
-- .planning/project.md (Project context)
+- .planning/research/questions.md (The questions: answer these and nothing else)
+- .planning/project.md (Project context; what exists is not a question)
 </files_to_read>
-
-<downstream_consumer>{CONSUMER}</downstream_consumer>
-
-<quality_gate>{GATES}</quality_gate>
 
 <output>
-Write to: .planning/research/{FILE}
-Use template: ~/.claude/pan-wizard-core/templates/research-project/{FILE}
-</output>
-", subagent_type="pan-project-researcher", model="{researcher_model}", description="{DIMENSION} research")
-```
-
-**Dimension-specific fields:**
-
-| Field | Stack | Features | Architecture | Pitfalls |
-|-------|-------|----------|-------------|----------|
-| EXISTING_CONTEXT | Existing validated capabilities (DO NOT re-research): [from project.md] | Existing features (already built): [from project.md] | Existing architecture: [from project.md or codebase map] | Focus on common mistakes when ADDING these features to existing system |
-| QUESTION | What stack additions/changes are needed for [new features]? | How do [target features] typically work? Expected behavior? | How do [target features] integrate with existing architecture? | Common mistakes when adding [target features] to [domain]? |
-| CONSUMER | Specific libraries with versions for NEW capabilities, integration points, what NOT to add | Table stakes vs differentiators vs anti-features, complexity noted, dependencies on existing | Integration points, new components, data flow changes, suggested build order | Warning signs, prevention strategy, which phase should address it |
-| GATES | Versions current (verify with Context7), rationale explains WHY, integration considered | Categories clear, complexity noted, dependencies identified | Integration points identified, new vs modified explicit, build order considers deps | Pitfalls specific to adding these features, integration pitfalls covered, prevention actionable |
-| FILE | stack.md | features.md | architecture.md | pitfalls.md |
-
-After all 4 complete, spawn synthesizer:
-
-```
-Task(prompt="
-Synthesize research outputs into research-summary.md.
-
-<files_to_read>
-- .planning/research/stack.md
-- .planning/research/features.md
-- .planning/research/architecture.md
-- .planning/research/pitfalls.md
-</files_to_read>
-
 Write to: .planning/research/research-summary.md
-Use template: ~/.claude/pan-wizard-core/templates/research-project/summary.md
-Commit after writing.
-", subagent_type="pan-research-synthesizer", model="{synthesizer_model}", description="Synthesize research")
+One row per question: | # | Question | Answer | Source | Confidence | Decision it settles |, or `unknown — assume: …`. At most 4 searches or fetches per question. Anything that suggests new scope goes under ## Ideas (v2 candidates). Do not commit.
+</output>
+", subagent_type="pan-project-researcher", model="{researcher_model}", description="Answer research questions")
 ```
 
-Display key findings from research-summary.md:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PAN ► RESEARCH COMPLETE ✓
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Check the answers:
 
-**Stack additions:** [from research-summary.md]
-**Feature table stakes:** [from research-summary.md]
-**Watch Out For:** [from research-summary.md]
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs research check .planning/research/questions.md .planning/research/research-summary.md
 ```
+
+Exit 1: send its `errors` to the researcher once as a revision. One revision at most; then proceed, with each question still unsourced recorded under `## Unknowns` in research-summary.md with the assumption you will use. Commit:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: answer milestone research questions" --files .planning/research/questions.md .planning/research/research-summary.md
+```
+
+Display the decisions settled, the unknowns with their assumptions, and the number of ideas (offered in Step 9 as future candidates, never added to this milestone by themselves).
 
 **If "Skip research":** Continue to Step 9.
 
@@ -192,27 +147,19 @@ Display key findings from research-summary.md:
 
 Read project.md: core value, current milestone goals, validated requirements (what exists).
 
-**If research exists:** Read features.md, extract feature categories.
+**If research exists:** Read `.planning/research/research-summary.md`. Its answers settle decisions the requirements use; its `## Ideas (v2 candidates)` are offered as future candidates the user may promote, never added to this milestone by themselves.
 
-Present features by category:
-```
-## [Category 1]
-**Table stakes:** Feature A, Feature B
-**Differentiators:** Feature C, Feature D
-**Research notes:** [any relevant notes]
-```
-
-**If no research:** Gather requirements through conversation. Ask: "What are the main things users need to do with [new features]?" Clarify, probe for related capabilities, group into categories.
+Gather requirements through conversation. Ask: "What are the main things users need to do with [new features]?" Clarify, probe for related capabilities, group into categories.
 
 **Scope each category** via AskUserQuestion (multiSelect: true, header max 12 chars):
 - "[Feature 1]" — [brief description]
 - "[Feature 2]" — [brief description]
 - "None for this milestone" — Defer entire category
 
-Track: Selected → this milestone. Unselected table stakes → future. Unselected differentiators → out of scope.
+Track: Selected → this milestone. Unselected → future or out of scope (ask which when unclear).
 
 **Identify gaps** via AskUserQuestion:
-- "No, research covered it" — Proceed
+- "No, that covers it" — Proceed
 - "Yes, let me add some" — Capture additions
 
 **Generate requirements.md:**

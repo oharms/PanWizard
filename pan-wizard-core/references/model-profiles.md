@@ -65,7 +65,6 @@ Since the 2026-07 **COST RESET**, `quality` and `balanced` are identical — bot
 | pan-executor | reasoning | reasoning | mid |
 | pan-phase-researcher | reasoning | reasoning | fast |
 | pan-project-researcher | reasoning | reasoning | fast |
-| pan-research-synthesizer | reasoning | reasoning | fast |
 | pan-debugger | reasoning | reasoning | mid |
 | pan-document_code | reasoning | reasoning | fast |
 | pan-verifier | reasoning | reasoning | fast |

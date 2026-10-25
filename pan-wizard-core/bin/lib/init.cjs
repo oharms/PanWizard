@@ -344,7 +344,6 @@ function cmdInitNewProject(cwd, raw) {
   const result = {
     // Models
     researcher_model: resolveModelInternal(cwd, 'pan-project-researcher'),
-    synthesizer_model: resolveModelInternal(cwd, 'pan-research-synthesizer'),
     roadmapper_model: resolveModelInternal(cwd, 'pan-roadmapper'),
 
     // Config
@@ -393,7 +392,6 @@ function cmdInitNewMilestone(cwd, raw) {
   const result = {
     // Models
     researcher_model: resolveModelInternal(cwd, 'pan-project-researcher'),
-    synthesizer_model: resolveModelInternal(cwd, 'pan-research-synthesizer'),
     roadmapper_model: resolveModelInternal(cwd, 'pan-roadmapper'),
 
     // Config

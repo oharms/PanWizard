@@ -70,7 +70,9 @@ describe('loadConfig', () => {
     assert.equal(config.model_profile, 'balanced');
     assert.equal(config.commit_docs, true);
     assert.equal(config.branching_strategy, 'none');
-    assert.equal(config.research, true);
+    // Research is opt-in since 2026-10-25 (it never finished and grew the scope); the
+    // default was true.
+    assert.equal(config.research, false);
     assert.equal(config.plan_checker, true);
     assert.equal(config.verifier, true);
     assert.equal(config.parallelization, true);

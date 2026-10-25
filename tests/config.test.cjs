@@ -43,7 +43,9 @@ describe('config-ensure-section command', () => {
     assert.strictEqual(config.branching_strategy, 'none', 'default branching_strategy should be none');
     assert.strictEqual(config.parallelization, true, 'default parallelization should be true');
     assert.strictEqual(typeof config.workflow, 'object', 'workflow should be an object');
-    assert.strictEqual(config.workflow.research, true, 'default workflow.research should be true');
+    // Research is opt-in since 2026-10-25 (it never finished and grew the scope); the
+    // default was true.
+    assert.strictEqual(config.workflow.research, false, 'default workflow.research should be false (opt-in)');
     assert.strictEqual(config.workflow.plan_check, true, 'default workflow.plan_check should be true');
     assert.strictEqual(config.workflow.verifier, true, 'default workflow.verifier should be true');
     assert.strictEqual(config.workflow.nyquist_validation, false, 'default workflow.nyquist_validation should be false');

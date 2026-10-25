@@ -38,8 +38,8 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 
 | Stage | Agents spawned | Approximate tokens | Skippable? |
 |-------|---------------|-------------------|------------|
-| Research (new-project) | Parallel researchers + synthesizer | 30-50K total | Yes (answer "Skip research" to the research question; `--auto` always researches — `research_enabled: false` in the idea frontmatter only turns off per-phase research) |
-| Research (plan-phase) | 1 phase researcher | 10-20K | Yes (`--skip-research`) |
+| Research (new-project) | 1 project researcher, at most 5 questions | small, bounded | Off by default: runs only with `--research` (or `--research market`) or idea frontmatter `research_enabled: true` |
+| Research (plan-phase) | 1 phase researcher, at most 5 questions | small, bounded | Off by default: runs only with `--research` or `workflow.research: true` |
 | Planning | 1 planner + 1 plan-checker (up to 3 checks, at most 2 revisions) | 20-40K | Checker skippable (`plan_check: false`) |
 | Execution | 1 executor per plan (fresh context each) | 20-80K per plan | No |
 | Verification | 1 verifier | 10-20K | Yes (`verifier: false`) |

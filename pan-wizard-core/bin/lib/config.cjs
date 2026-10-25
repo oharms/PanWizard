@@ -48,7 +48,9 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
     phase_branch_template: 'pan/phase-{phase}-{slug}',
     milestone_branch_template: 'pan/{milestone}-{slug}',
     workflow: {
-      research: true,
+      // Research is opt-in (2026-10-25): `--research` on new-project or plan-phase, or
+      // this key set true. A config that already says true keeps it.
+      research: false,
       plan_check: true,
       verifier: true,
       nyquist_validation: false,

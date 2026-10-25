@@ -296,7 +296,7 @@ If you prefer not to use that flag, add this to your project's `.claude/settings
 One command, one flow. The system:
 
 1. **Questions** — Asks until it understands your idea completely (goals, constraints, tech preferences, edge cases)
-2. **Research** — Spawns parallel agents to investigate the domain (optional but recommended)
+2. **Research** — Off by default. With `--research`, one agent answers the few open questions that block building, each with a source; `--research market` also compares a handful of comparable products
 3. **Requirements** — Extracts what's v1, v2, and out of scope
 4. **Roadmap** — Creates phases mapped to requirements
 
@@ -342,7 +342,7 @@ The deeper you go here, the more the system builds what you actually want. Skip 
 
 The system:
 
-1. **Researches** — Investigates how to implement this phase, guided by your context.md decisions
+1. **Researches (opt-in)** — With `--research` or `workflow.research: true`, answers the open questions that block planning this phase, guided by your context.md decisions
 2. **Plans** — Creates atomic plans of 2-3 tasks each, with XML structure
 3. **Verifies** — Checks plans against requirements; up to three checker passes (two revisions), then the remaining issues come to you
 
@@ -447,7 +447,7 @@ Each phase gets your input (discuss), proper research (plan), clean execution (e
 
 When all phases are done, `/pan:milestone-done` archives the milestone and tags the release.
 
-Then `/pan:milestone-new` starts the next version — same flow as `new-project` but for your existing codebase. You describe what you want to build next, the system researches the domain, you scope requirements, and it creates a fresh roadmap. Each milestone is a clean cycle: define → build → ship.
+Then `/pan:milestone-new` starts the next version — same flow as `new-project` but for your existing codebase. You describe what you want to build next, the system answers any open questions if you ask it to research, you scope requirements, and it creates a fresh roadmap. Each milestone is a clean cycle: define → build → ship.
 
 ---
 
@@ -487,7 +487,7 @@ PAN handles it for you:
 | File | What it does |
 |------|--------------|
 | `project.md` | Project vision, read when PAN plans, researches or resumes work |
-| `research/` | Ecosystem knowledge (stack, features, architecture, pitfalls) |
+| `research/` | Answers to the open questions that blocked building (only with `--research`) |
 | `requirements.md` | Scoped v1/v2 requirements with phase traceability |
 | `roadmap.md` | Where you're going, what's done |
 | `state.md` | Decisions, blockers, position — memory across sessions |
@@ -524,7 +524,7 @@ Every stage uses the same pattern: a thin orchestrator spawns specialized agents
 
 | Stage | Orchestrator does | Agents do |
 |-------|------------------|-----------|
-| Research | Coordinates, presents findings | Parallel researchers investigate stack, features, architecture and pitfalls |
+| Research (opt-in) | Writes the open questions, checks the answers | One researcher answers each question with a source, or records an assumption |
 | Planning | Validates, manages iteration | Planner creates plans, checker verifies, up to three passes |
 | Execution | Groups into waves, tracks progress | Executors implement in parallel, each in a fresh context (native sub-agents on Claude Code, each runtime's own delegation elsewhere) |
 | Verification | Presents results, routes next | Verifier checks codebase against goals; on Claude Code, `/pan-diagnose-issues` sends one debugger per failed UAT truth |
@@ -603,10 +603,10 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:new-project [--auto]` | Full initialization: questions → research → requirements → roadmap |
+| `/pan:new-project [--auto] [--research [market]]` | Full initialization: questions → research (opt-in) → requirements → roadmap |
 | `/pan:discuss-phase <N> [--auto]` | Capture implementation decisions before planning |
 | `/pan:design-phase <N>` | Design a phase — architecture, ADR, threat-lite — before planning |
-| `/pan:plan-phase [N] [--auto]` | Research + plan + verify for a phase; `--research-only <N>` runs the research step alone |
+| `/pan:plan-phase [N] [--auto]` | Plan + verify for a phase (research with `--research`); `--research-only <N>` runs the research step alone |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves, verify when complete |
 | `/pan:verify-phase [N]` | Re-run goal-backward verification with a test-suite gate; lists gaps for `/pan:plan-phase N --gaps` ¹ |
 | `/pan:autodev [run\|resume\|status]` | Run the roadmap unattended: a deterministic loop plans, executes, verifies and completes each phase, each step in a fresh host session, and stops in code (done, human needed, gate failed, budget, turns, no progress) |

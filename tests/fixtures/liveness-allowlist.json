@@ -208,10 +208,6 @@
     "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
   },
   {
-    "id": "agent:pan-research-synthesizer",
-    "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
-  },
-  {
     "id": "agent:pan-roadmapper",
     "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
   },

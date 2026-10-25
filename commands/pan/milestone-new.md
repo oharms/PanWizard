@@ -11,13 +11,13 @@ allowed-tools:
   - AskUserQuestion
 ---
 <objective>
-Start a new milestone: questioning → research (optional) → requirements → roadmap.
+Start a new milestone: questioning → research (opt-in, at most 5 open questions) → requirements → roadmap.
 
 Brownfield equivalent of new-project. Project exists, project.md has history. Gathers "what's next", updates project.md, then runs requirements → roadmap cycle.
 
 **Creates/Updates:**
 - `.planning/project.md` — updated with new milestone goals
-- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/research/` — answers to at most 5 open questions (only with research, NEW features only)
 - `.planning/requirements.md` — scoped requirements for this milestone
 - `.planning/roadmap.md` — phase structure (continues numbering)
 - `.planning/state.md` — reset for new milestone

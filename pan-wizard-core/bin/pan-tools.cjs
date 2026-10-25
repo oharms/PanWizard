@@ -1464,8 +1464,11 @@ async function main() {
       const subcommand = args[1];
       if (subcommand === 'lint') {
         require('./lib/research-lint.cjs').cmdResearchLint(cwd, args[2], { now: getArgValue(args, '--now') }, raw);
+      } else if (subcommand === 'check') {
+        // Research answers at most five blocking questions, each with a source or an assumption.
+        require('./lib/research-lint.cjs').cmdResearchCheck(cwd, args[2], args[3], { market: args.includes('--market') }, raw);
       } else {
-        error('Unknown research subcommand. Available: lint');
+        error('Unknown research subcommand. Available: lint, check');
       }
       break;
     }

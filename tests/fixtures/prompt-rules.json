@@ -643,88 +643,34 @@
    "baseline": true
   },
   {
-   "id": "agents/pan-phase-researcher:7c81edb6",
+   "id": "agents/pan-phase-researcher:a8d09084",
    "file": "agents/pan-phase-researcher.md",
-   "text": "If context.md exists, it constrains your research scope. Don't explore alternatives to locked decisions.",
-   "baseline": true
+   "text": "You do not survey the phase's domain, list a standard stack, catalogue pitfalls or collect code examples: research that tried to be comprehensive never finished and grew the scope (2026-10-25), so your job is bounded by the list.",
+   "baseline": false
   },
   {
-   "id": "agents/pan-phase-researcher:45df060f",
+   "id": "agents/pan-phase-researcher:1210839b",
    "file": "agents/pan-phase-researcher.md",
-   "text": "**CRITICAL:** `## User Constraints` MUST be the FIRST content section in research.md. Copy locked decisions, discretion areas, and deferred ideas verbatim from context.md.",
-   "baseline": true
+   "text": "**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. It always names `{phase_dir}/{padded_phase}-research-questions.md`: at most five numbered questions the phase's requirements leave unanswered and that block building (a technology choice, an external API's behaviour, a data format, a limit or rule).",
+   "baseline": false
   },
   {
-   "id": "agents/pan-phase-researcher:b987762e",
+   "id": "agents/pan-phase-researcher:dd29e1ce",
    "file": "agents/pan-phase-researcher.md",
-   "text": "**Verify before asserting** — don't state library capabilities without checking Context7 or official docs",
-   "baseline": true
+   "text": "\"I could not find this\" is an answer: mark the question `unknown` and name the assumption the plan should use. Never pad an answer, state an unverified claim as fact, or hide uncertainty.",
+   "baseline": false
   },
   {
-   "id": "agents/pan-phase-researcher:2ead6051",
+   "id": "agents/pan-phase-researcher:dcf296ab",
    "file": "agents/pan-phase-researcher.md",
-   "text": "**WebSearch tips:** Always include current year. Use multiple query variations. Cross-verify with authoritative sources.",
-   "baseline": true
+   "text": "An answer settles a decision the requirements left open. Anything that suggests new scope goes in `## Ideas (v2 candidates)`, never into an answer. The planner plans the phase's requirements, not your ideas.",
+   "baseline": false
   },
   {
-   "id": "agents/pan-phase-researcher:151acfb3",
+   "id": "agents/pan-phase-researcher:968afd8d",
    "file": "agents/pan-phase-researcher.md",
-   "text": "**WebSearch findings MUST be verified:**",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:1c842dc4",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "**Never present LOW confidence findings as authoritative.**",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:04eb9f18",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "Phase requirement IDs (e.g., AUTH-01, AUTH-02) — the specific requirements this phase MUST address",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:08a1e042",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "User decided \"use library X\" → research X deeply, don't explore alternatives",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:98a2f34e",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "User decided \"simple UI, no animations\" → don't research animation libraries",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:d551154e",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "**Don't Hand-Roll:** Existing solutions for deceptively complex problems",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:18151b50",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "**CRITICAL: If context.md exists, FIRST content section MUST be `<user_constraints>`:**",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:85e80562",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "**If phase requirement IDs were provided**, MUST include a `<phase_requirements>` section:",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:55105785",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "⚠️ `commit_docs` controls git only, NOT file writing. Always write first.",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-phase-researcher:c8acbe11",
-   "file": "agents/pan-phase-researcher.md",
-   "text": "[ ] Don't-hand-roll items listed",
-   "baseline": true
+   "text": "Do not add questions of your own. A question you think the list should have had goes under Ideas.",
+   "baseline": false
   },
   {
    "id": "agents/pan-plan-checker:4febec49",
@@ -961,52 +907,46 @@
    "baseline": true
   },
   {
-   "id": "agents/pan-project-researcher:159c47e9",
+   "id": "agents/pan-project-researcher:0a50bd54",
    "file": "agents/pan-project-researcher.md",
-   "text": "**CRITICAL: Write output files directly with the Write tool.** Never create",
-   "baseline": true
+   "text": "You answer a short list of questions. You do not survey a domain, map a feature landscape or catalogue pitfalls: research that tried to be comprehensive never finished and grew the scope (2026-10-25), so your job is bounded by the list.",
+   "baseline": false
   },
   {
-   "id": "agents/pan-project-researcher:b656673d",
+   "id": "agents/pan-project-researcher:5c3a0f45",
    "file": "agents/pan-project-researcher.md",
-   "text": "The roadmapper reads them through `research-summary.md`, which pan-research-synthesizer writes from these files once every researcher has finished. You don't write it.",
-   "baseline": true
+   "text": "**Initial read.** If the prompt contains a `<files_to_read>` block, read every file it lists before doing anything else. It always names `.planning/research/questions.md`: at most five numbered questions the brief leaves unanswered and that block building (a technology choice, an external API's behaviour, a data format, a limit or rule).",
+   "baseline": false
   },
   {
-   "id": "agents/pan-project-researcher:450c7f57",
+   "id": "agents/pan-project-researcher:2bfc638a",
    "file": "agents/pan-project-researcher.md",
-   "text": "Never pad findings, state unverified claims as fact, or hide uncertainty",
-   "baseline": true
+   "text": "**CRITICAL: Write output files directly with the Write tool.** Never create helper scripts, temp files, or scratch artifacts inside `.planning/`: the orchestrator commits `.planning/research/`, so any litter ships into the project history.",
+   "baseline": false
   },
   {
-   "id": "agents/pan-project-researcher:c3925998",
+   "id": "agents/pan-project-researcher:dd29e1ce",
    "file": "agents/pan-project-researcher.md",
-   "text": "Don't find articles supporting your initial guess — find what the ecosystem actually uses and let evidence drive recommendations.",
-   "baseline": true
+   "text": "\"I could not find this\" is an answer: mark the question `unknown` and name the assumption the plan should use. Never pad an answer, state an unverified claim as fact, or hide uncertainty.",
+   "baseline": false
   },
   {
-   "id": "agents/pan-project-researcher:4626c0f9",
+   "id": "agents/pan-project-researcher:72cee3ac",
    "file": "agents/pan-project-researcher.md",
-   "text": "Resolve first (don't guess IDs). Use specific queries. Trust over training data.",
-   "baseline": true
+   "text": "An answer settles a decision the brief left open. Anything you find that suggests new scope (a feature, a competitor's capability, an \"also consider\") goes in `## Ideas (v2 candidates)`, never into an answer. The orchestrator never moves an idea into v1 on its own.",
+   "baseline": false
   },
   {
-   "id": "agents/pan-project-researcher:56fb2ecd",
+   "id": "agents/pan-project-researcher:968afd8d",
    "file": "agents/pan-project-researcher.md",
-   "text": "Always include current year. Use multiple query variations. Mark WebSearch-only findings as LOW confidence.",
-   "baseline": true
+   "text": "Do not add questions of your own. A question you think the list should have had goes under Ideas.",
+   "baseline": false
   },
   {
-   "id": "agents/pan-project-researcher:4e0b0df6",
+   "id": "agents/pan-project-researcher:eaca4edb",
    "file": "agents/pan-project-researcher.md",
-   "text": "If your prompt says `brave_search: true` (new-project and milestone-new do not pass it today), use Brave Search for higher quality results:",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-project-researcher:f58891c3",
-   "file": "agents/pan-project-researcher.md",
-   "text": "Never present LOW confidence findings as authoritative.",
-   "baseline": true
+   "text": "Each gap the brief does not cover goes under `## Ideas (v2 candidates)` for the user to accept or not; it never enters v1 by itself. The same budget applies: at most 4 searches or fetches per product.",
+   "baseline": false
   },
   {
    "id": "agents/pan-release:f6955afe",
@@ -1054,18 +994,6 @@
    "id": "agents/pan-release:0daeb98c",
    "file": "agents/pan-release.md",
    "text": "Roll back, never rewrite. History stays intact and auditable.",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-research-synthesizer:d708e06d",
-   "file": "agents/pan-research-synthesizer.md",
-   "text": "Commit ALL research files (researchers write but don't commit — you commit everything)",
-   "baseline": true
-  },
-  {
-   "id": "agents/pan-research-synthesizer:159c47e9",
-   "file": "agents/pan-research-synthesizer.md",
-   "text": "**CRITICAL: Write output files directly with the Write tool.** Never create",
    "baseline": true
   },
   {
@@ -1759,6 +1687,12 @@
    "baseline": true
   },
   {
+   "id": "commands/pan/new-project:f6478262",
+   "file": "commands/pan/new-project.md",
+   "text": "`--research` — Research is off by default. With this flag the workflow lists at most 5 open questions that block building and one researcher answers them, each with a source or a recorded assumption; findings settle decisions and never add v1 scope. A precise brief skips research anyway.",
+   "baseline": false
+  },
+  {
    "id": "commands/pan/new-project:08aec81b",
    "file": "commands/pan/new-project.md",
    "text": "**Layer 1: Manifest (always load first)**",
@@ -1769,6 +1703,12 @@
    "file": "commands/pan/pause.md",
    "text": "The `.continue-here.md` file MUST contain ALL of the following sections. Missing sections cause resume failures.",
    "baseline": true
+  },
+  {
+   "id": "commands/pan/plan-phase:6a6c69b6",
+   "file": "commands/pan/plan-phase.md",
+   "text": "**Default flow:** Plan → Verify → Done. Research is opt-in (`--research`, or `workflow.research: true`): it answers at most 5 open questions that block building, with one researcher, and never adds scope",
+   "baseline": false
   },
   {
    "id": "commands/pan/plan-phase:3675b7f2",
@@ -2365,6 +2305,30 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/milestone-new:0e959a2f",
+   "file": "pan-wizard-core/workflows/milestone-new.md",
+   "text": "Research is **off by default** and answers questions; it never surveys a domain or adds scope (the same contract as `/pan:new-project` step 6).",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-new:c31c6a4d",
+   "file": "pan-wizard-core/workflows/milestone-new.md",
+   "text": "List at most **5** open questions the milestone's goals leave unanswered and that block building the NEW features (a technology choice, an external API's behaviour, a data format, a limit or rule; never what already exists). Write them as a numbered list to `.planning/research/questions.md` (`mkdir -p .planning/research` first):",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-new:51ac59ea",
+   "file": "pan-wizard-core/workflows/milestone-new.md",
+   "text": "Display the decisions settled, the unknowns with their assumptions, and the number of ideas (offered in Step 9 as future candidates, never added to this milestone by themselves).",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/milestone-new:3b179de2",
+   "file": "pan-wizard-core/workflows/milestone-new.md",
+   "text": "**If research exists:** Read `.planning/research/research-summary.md`. Its answers settle decisions the requirements use; its `## Ideas (v2 candidates)` are offered as future candidates the user may promote, never added to this milestone by themselves.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/new-project:df3b3dca",
    "file": "pan-wizard-core/workflows/new-project.md",
    "text": "**Gather everything, then emit.** Do not write a skeleton and refine it in place. Not ready to write the final document = still in the gathering step.",
@@ -2389,10 +2353,10 @@
    "baseline": true
   },
   {
-   "id": "pan-wizard-core/workflows/new-project:1060c6ad",
+   "id": "pan-wizard-core/workflows/new-project:ff9ca91a",
    "file": "pan-wizard-core/workflows/new-project.md",
-   "text": "Research: Always yes",
-   "baseline": true
+   "text": "Requirements: the features the provided document asks for; research findings settle decisions and never add v1 requirements",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/new-project:26f59e72",
@@ -2407,6 +2371,30 @@
    "baseline": true
   },
   {
+   "id": "pan-wizard-core/workflows/new-project:4dd9aad2",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "Research is **off by default**. It runs only when asked: `--research` (or `--research market`, below) in `$ARGUMENTS`, idea-document frontmatter `research_enabled: true`, or the user choosing it at the question below. When it runs it answers at most five questions, with one researcher, and settles decisions; it never adds scope (2026-10-25: research that surveyed the domain never finished, and its catalogue grew v1).",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:4f8bbe11",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "`lean` means the document names what to build (its modules, functions or files) and how it behaves: it is the scope, and in steps 7 and 8 you keep to it (`BRIEF_PRECISE` below). A precise brief never needs research: skip it, even when asked, and say so (`the brief names what to build; research skipped — /pan:plan-phase N --research still researches a phase`). `full` means it leaves the work open: research runs only if it was asked for.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:4fa8e167",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "**If auto mode:** Do not ask. \"Research open questions\" when `--research` was passed or the frontmatter says `research_enabled: true` (and `BRIEF_SIZE` is not `lean`); otherwise \"Skip research\".",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:6f3df0d1",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "Exit 1: send its `errors` to the researcher once as a revision (`Task` with the same `subagent_type`, the errors and the file to fix). One revision at most: if the check still fails, proceed, and record each question still without a sourced answer as `unknown` with the assumption you will use, in a `## Unknowns` list at the end of research-summary.md. Research never blocks the project.",
+   "baseline": false
+  },
+  {
    "id": "pan-wizard-core/workflows/new-project:8040bac4",
    "file": "pan-wizard-core/workflows/new-project.md",
    "text": "v1 Requirements grouped by category (checkboxes, REQ-IDs), each with at least one acceptance criterion in an EARS form as an indented sub-bullet (`WHEN … THE SYSTEM SHALL …`; see the template's `<ears_criteria>`)",
@@ -2417,6 +2405,12 @@
    "file": "pan-wizard-core/workflows/new-project.md",
    "text": "Spawn discuss-phase for Phase 1 as a Task subagent, exactly as transition.md Route A does for a phase with no context.md (discuss-phase.md as execution_context, `ARGUMENTS='1 --auto'`); do not call SlashCommand.",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/new-project:77fa60b6",
+   "file": "pan-wizard-core/workflows/new-project.md",
+   "text": "[ ] Requirements gathered (from the brief and conversation; research settles decisions, never adds v1 scope)",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/optimize:5b40b637",
@@ -2483,6 +2477,24 @@
    "file": "pan-wizard-core/workflows/plan-phase.md",
    "text": "**P-1802 fix (v3.7.7):** in `--auto` mode (or when `workflow.auto_advance` is true) **do not call `AskUserQuestion`** and **do not attempt to spawn `discuss-phase` either** (discuss-phase has its own unguarded AskUserQuestion calls deeper in the workflow — they exit headless `claude -p` immediately). Instead, **proceed without a context.md**: the planner derives implementation decisions from project-level research, requirements, and the original idea.md frontmatter.",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:161f7ec1",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "Research is **opt-in**: it runs only with `--research`, or when `research_enabled` (from init: `workflow.research`, false by default) is true. When it runs it answers at most five questions with one researcher and settles decisions; it never adds scope to the phase.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:60117f09",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "Exit 1: send its `errors` to the researcher once as a revision (the same `subagent_type` and model, with the errors and the file to fix). One revision at most: if the check still fails, proceed, and add a `## Unknowns` list to the research file naming each question still without a sourced answer and the assumption the plan uses. Research never blocks planning.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/plan-phase:09b0daa9",
+   "file": "pan-wizard-core/workflows/plan-phase.md",
+   "text": "The planner uses the answers to settle decisions. It never plans an item from `## Ideas (v2 candidates)`: those are for the user, through `/pan:todo-add` or a later phase.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/plan-phase:bbeb69b0",

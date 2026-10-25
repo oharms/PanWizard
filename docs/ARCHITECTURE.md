@@ -290,8 +290,7 @@ Agents are Markdown files that define specialized AI roles. Each agent runs as a
 
 | Agent | Role | Spawned By |
 |-------|------|-----------|
-| `pan-project-researcher` | Researches domain ecosystem | `/pan:new-project`, `/pan:milestone-new` |
-| `pan-research-synthesizer` | Synthesizes parallel research outputs | `/pan:new-project`, `/pan:milestone-new` |
+| `pan-project-researcher` | Answers at most five open questions that block building (opt-in research) | `/pan:new-project`, `/pan:milestone-new` |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` |
 | `pan-document_code` | Analyzes existing codebase (one focus area per mapper, or the whole repo in single-shot mode) | `/pan:map-codebase` (parallel when sharded; one agent in single-shot mode) |
 | `pan-designer` | Designs specs before planning | `/pan:design-phase` |
@@ -513,7 +512,7 @@ The tree below shows the core files. Depending on which features a project has u
   phases/
     XX-<slug>/
       XX-context.md     Implementation preferences from discuss-phase
-      XX-research.md    Phase research (stack, features, arch, pitfalls)
+      XX-research.md    Phase research: answers to at most 5 open questions (opt-in)
       XX-roadmap-slice.md  This phase's roadmap and requirements lines (`pan-tools roadmap slice <N> --write`), read by phase agents
       XX-validation.md  Test coverage mapping (Nyquist layer)
       XX-YY-plan.md     Atomic execution plans

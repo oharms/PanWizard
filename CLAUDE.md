@@ -33,7 +33,7 @@ console.log({
   agents: ls('agents'),
   modules: lib,
   workflows: ls('pan-wizard-core/workflows'),
-  templates: walkMd('pan-wizard-core/templates'),    // recursive — counts research-project/, codebase/ subtrees
+  templates: walkMd('pan-wizard-core/templates'),    // recursive — counts the codebase/ subtree
   references: ls('pan-wizard-core/references'),
   unitTests: ls('tests', /\.test\.cjs$/),
   scenarioTests: ls('tests/scenarios', /\.test\.cjs$/),
@@ -52,12 +52,12 @@ Then run `npm run test:all 2>&1 | grep -E '^ℹ (tests|suites)'` to refresh the 
 |---|---|
 | Version | (see `package.json`) |
 | Commands (`commands/pan/*.md`) | 46 |
-| Agents (`agents/*.md`) | 24 |
+| Agents (`agents/*.md`) | 23 |
 | Core modules (`pan-wizard-core/bin/lib/*.cjs`) | 81 |
 | Workflows (`pan-wizard-core/workflows/*.md`) | 40 |
-| Templates (`pan-wizard-core/templates/**/*.md`) | 42 |
+| Templates (`pan-wizard-core/templates/**/*.md`) | 37 |
 | References (`pan-wizard-core/references/*.md`) | 17 |
-| Unit test files (`tests/*.test.cjs`) | 240 |
+| Unit test files (`tests/*.test.cjs`) | 241 |
 | Scenario test files (`tests/scenarios/*.test.cjs`) | 37 |
 | Total tests (npm run test:all) | 6108 |
 | Total test suites | 1326 |
@@ -128,7 +128,7 @@ PAN Wizard installs into 5 AI coding tool runtimes:
 - `pan-wizard-core/bin/pan-tools.cjs` — CLI dispatcher
 - `pan-wizard-core/bin/lib/*.cjs` — Core CJS modules
 - `pan-wizard-core/workflows/*.md` — Multi-step workflow definitions
-- `pan-wizard-core/templates/` — Scaffolding templates (`*.md`, the `codebase/` and `research-project/` subdirectories, and `config.json`)
+- `pan-wizard-core/templates/` — Scaffolding templates (`*.md`, the `codebase/` subdirectory, and `config.json`)
 - `pan-wizard-core/references/*.md` — Agent-loaded reference docs
 - `pan-wizard-core/opencode/pan-wizard.js` — OpenCode plugin. An OpenCode install copies it to `plugins/pan-wizard.js` in its config dir, where it keeps PAN's position through a compaction
 - `pan-wizard-core/mcp/*.cjs` — **MCP bridge (canonical home).** Zero-dep dual-era JSON-RPC stdio server exposing `pan-tools` verbs as MCP tools/resources, plus the registry, the `next-action` state machine, and the human merge gate. Lives under the core so it ships to every install and every runtime. `pan-zcode/` is a **consumer**, not the owner — never fork a copy back under it.

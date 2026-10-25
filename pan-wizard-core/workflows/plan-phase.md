@@ -1,5 +1,5 @@
 <purpose>
-Create executable phase prompts (plan.md files) for a roadmap phase with integrated research and verification. Default flow: Research (if needed) -> Plan -> Verify -> Done. Orchestrates pan-phase-researcher, pan-planner, and pan-plan-checker agents with a revision loop (at most 2 revisions, up to 3 checks).
+Create executable phase prompts (plan.md files) for a roadmap phase with verification, and research only when asked for. Default flow: Plan -> Verify -> Done; research (opt-in: `--research` or `workflow.research: true`) answers at most five blocking questions first. Orchestrates pan-phase-researcher, pan-planner, and pan-plan-checker agents with a revision loop (at most 2 revisions, up to 3 checks).
 </purpose>
 
 <required_reading>
@@ -214,7 +214,7 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs optimize trace log \
 
 2. Display: `Auto-mode: no Phase ${PHASE} context.md — planning from project-level research + requirements + idea.md`
 
-3. Proceed to step 5 (Handle Research). The `pan-planner` agent reads project-level `.planning/research/architecture.md`, `features.md`, `stack.md` and the original `.planning/idea.md` to derive phase-scoped decisions itself.
+3. Proceed to step 5 (Handle Research). The `pan-planner` agent reads the project-level answers (`.planning/research/research-summary.md`, when research ran) and the original `.planning/idea.md` to derive phase-scoped decisions itself.
 
 **Interactive-mode decision tree (the original behavior; runs when neither `--auto` nor `workflow.auto_advance` is set):**
 
@@ -230,64 +230,55 @@ If "Run discuss-phase first": Display `/pan:discuss-phase {X}` and exit workflow
 
 ## 5. Handle Research
 
-**Skip if:** `--gaps` flag, `--skip-research` flag, `research_enabled` is false (from init) without `--research` override, or `SIZING.path` is `lean` (the requirements already say what to build) without `--research`.
+Research is **opt-in**: it runs only with `--research`, or when `research_enabled` (from init: `workflow.research`, false by default) is true. When it runs it answers at most five questions with one researcher and settles decisions; it never adds scope to the phase.
 
-**P-1401 lightweight-phase bypass (v3.7.3+):** Also skip per-phase research when ALL three are true:
+**Skip if:** `--gaps` flag, `--skip-research` flag, `research_enabled` is false without `--research`, or `SIZING.path` is `lean` (the requirements already say what to build) without `--research`.
 
-1. The phase's roadmap section expects no more than one plan (`**Plans:** 1 plan`, or the `TBD` / `0 plans` the roadmapper and `phase add`/`insert` write before any planning); init's `plan_count` counts plans already written, which is 0 before the first planning run
-2. The phase is scaffolding, config, docs or a single-file feature with ≤3 tasks (judge from its goal; no plan field records this)
-3. Project-level `research/architecture.md`, `features.md`, `stack.md` already exist (so the planner has broad context to draw from)
+**P-1401 lightweight-phase bypass (v3.7.3+):** With `research_enabled` true but no `--research`, also skip when the phase's roadmap section expects no more than one plan (`**Plans:** 1 plan`, or the `TBD` / `0 plans` the roadmapper and `phase add`/`insert` write before any planning) and it is scaffolding, config, docs or a single-file feature with ≤3 tasks (judge from its goal). Log a `decision` trace event (`type: "decision", category: "skip-research-trivial"`) and proceed to step 6.
 
-In that case, log a `decision` trace event (`type: "decision", category: "skip-research-trivial"`) and proceed directly to step 6 (planning). Saves ~3 commits and ~5 minutes per trivial phase. Surfaced by panloop run: Phase 1 (project setup, scaffolding only) over-ceremonialized.
-
-This is a workflow-level optimization — the planner still produces a plan, just without per-phase research.md. Phase 2+ phases with substantive build work still go through full research.
-
-**P-1602 phase_record_compact (v3.7.5+):** When `workflow.phase_record_compact: true` AND the lightweight-phase bypass above triggers, also skip per-phase context.md creation (step 4) and emit a single combined `${padded_phase}-record.md` after planning containing: goal, locked decisions (from project-level context), plan summary, must_haves. Reduces the planning output (context, research, plan) to a record and a plan for trivial phases; execution still writes the plan's summary. Off by default — opt-in via `pan-tools config-set workflow.phase_record_compact true`. Substantive phases (more than one plan, or more than scaffolding, config, docs or a single-file feature) still produce full per-phase artifacts regardless of this flag.
+**P-1602 phase_record_compact (v3.7.5+):** When `workflow.phase_record_compact: true` AND the lightweight-phase bypass above triggers, also skip per-phase context.md creation (step 4) and emit a single combined `${padded_phase}-record.md` after planning containing: goal, locked decisions (from project-level context), plan summary, must_haves. Off by default — opt-in via `pan-tools config-set workflow.phase_record_compact true`.
 
 **If `has_research` is true (from init) AND no `--research` flag:** Use existing, skip to step 6.
 
-**If research.md missing OR `--research` flag:**
+**Otherwise:**
 
-Display banner:
+**5a. Write the questions.** Read `{slice_path}` (and `{context_path}` when it exists) and list at most **5** open questions the phase's requirements leave unanswered and that block building: a technology choice, an external API's behaviour, a data format, a limit or rule. A question qualifies only if a task cannot be written without its answer; a decision context.md already locks is not open. If `.planning/research/research-summary.md` already answers one, it is not open either.
+
+Write `{phase_dir}/{padded_phase}-research-questions.md` as a numbered list:
+
+```markdown
+# Phase {X} research questions
+
+1. [question] — blocks: [the task or decision it settles]
+```
+
+**No questions → no research.** If nothing blocks building, write no file, display `No open questions block Phase {X} — research skipped`, and continue to step 6.
+
+**5b. Spawn one researcher.**
+
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PAN ► RESEARCHING PHASE {X}
+ PAN ► RESEARCHING PHASE {X} ({N} QUESTIONS)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-◆ Spawning researcher...
-```
-
-### Spawn pan-phase-researcher
-
-```bash
-PHASE_DESC=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs roadmap get-phase "${PHASE}" --raw)   # --raw prints the phase's section
 ```
 
 Research prompt:
 
 ```markdown
 <objective>
-Research how to implement Phase {phase_number}: {phase_name}
-Answer: "What do I need to know to PLAN this phase well?"
+Answer the research questions for Phase {phase_number}: {phase_name}, and nothing else.
 </objective>
 
 <files_to_read>
+- {phase_dir}/{padded_phase}-research-questions.md (The questions)
 - {context_path} (USER DECISIONS from /pan:discuss-phase)
 - {assumptions_path} (the user's corrections to /pan:assumptions, when the file exists: `init` reports `assumptions_path`; each correction binds the plan like a decision)
 - {slice_path} (This phase's roadmap and requirements)
-- {state_path} (Project decisions and history)
 </files_to_read>
-
-<additional_context>
-**Phase description:** {phase_description}
-**Phase requirement IDs (MUST address):** {phase_req_ids}
-
-**Project instructions:** Read ./CLAUDE.md if exists — follow project-specific guidelines
-**Project skills:** Check .agents/skills/ directory (if exists) — read SKILL.md files, research should account for project skill patterns
-</additional_context>
 
 <output>
 Write to: {phase_dir}/{padded_phase}-research.md
+One row per question: | # | Question | Answer | Source | Confidence | Decision it settles |, or `unknown — assume: …`. At most 4 searches or fetches per question. Anything that suggests new scope goes under ## Ideas (v2 candidates).
 </output>
 ```
 
@@ -300,9 +291,19 @@ Task(
 )
 ```
 
+**5c. Check the answers.**
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs research check "${PHASE_DIR}/${PADDED_PHASE}-research-questions.md" "${PHASE_DIR}/${PADDED_PHASE}-research.md"
+```
+
+Exit 1: send its `errors` to the researcher once as a revision (the same `subagent_type` and model, with the errors and the file to fix). One revision at most: if the check still fails, proceed, and add a `## Unknowns` list to the research file naming each question still without a sourced answer and the assumption the plan uses. Research never blocks planning.
+
+The planner uses the answers to settle decisions. It never plans an item from `## Ideas (v2 candidates)`: those are for the user, through `/pan:todo-add` or a later phase.
+
 ### Handle Researcher Return
 
-- **`## RESEARCH COMPLETE`:** Display confirmation, continue to step 6
+- **`## RESEARCH COMPLETE`:** Display the decisions it settled, run 5c, continue to step 6
 - **`## RESEARCH BLOCKED`:** Display blocker, offer: 1) Provide context, 2) Skip research, 3) Abort
 
 ## 5.5. Create Validation Strategy (if Nyquist enabled)
@@ -724,7 +725,7 @@ Verification: {Passed | Passed with override | Skipped}
 
 **Also available:**
 - cat .planning/phases/{phase-dir}/*-plan.md — review plans
-- /pan:plan-phase {X} --research — re-research first
+- /pan:plan-phase {X} --research — answer open questions first, then replan
 
 ───────────────────────────────────────────────────────────────
 </offer_next>
@@ -734,8 +735,8 @@ Verification: {Passed | Passed with override | Skipped}
 - [ ] Phase validated against roadmap
 - [ ] Phase directory created if needed
 - [ ] context.md loaded early (step 4) and passed to ALL agents
-- [ ] Research completed (unless --skip-research or --gaps or exists)
-- [ ] pan-phase-researcher spawned with context.md
+- [ ] Research only when asked for (`--research` or `workflow.research: true`): at most 5 questions, one pan-phase-researcher, `research check` run
+- [ ] No idea from research planned into the phase
 - [ ] Existing plans checked
 - [ ] pan-planner spawned with context.md + research.md
 - [ ] Plans created (PLANNING COMPLETE or CHECKPOINT handled)

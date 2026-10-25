@@ -1,5 +1,5 @@
 <purpose>
-Initialize a new project through unified flow: questioning, research (optional), requirements, roadmap. This is the most leveraged moment in any project — deep questioning here means better plans, better execution, better outcomes. One workflow takes you from idea to ready-for-planning.
+Initialize a new project through unified flow: questioning, research (opt-in: `--research`), requirements, roadmap. This is the most leveraged moment in any project — deep questioning here means better plans, better execution, better outcomes. One workflow takes you from idea to ready-for-planning.
 </purpose>
 
 <required_reading>
@@ -48,8 +48,8 @@ Check if `--auto` flag is present in $ARGUMENTS.
 - Skip deep questioning (extract context from provided document)
 - Config: YOLO mode is implicit; depth, git and agents take their defaults (or idea.md frontmatter overrides) silently in Step 2a — no questions
 - After config: run Steps 6-9 automatically with smart defaults:
-  - Research: Always yes
-  - Requirements: Include all table stakes + features from provided document
+  - Research: off, unless `--research` (or `--research market`) was passed or the idea frontmatter says `research_enabled: true`
+  - Requirements: the features the provided document asks for; research findings settle decisions and never add v1 requirements
   - Requirements approval: Auto-approve
   - Roadmap approval: Auto-approve
 
@@ -81,7 +81,7 @@ The document should describe what you want to build.
 INIT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs init new-project)
 ```
 
-Parse JSON for: `researcher_model`, `synthesizer_model`, `roadmapper_model`, `commit_docs`, `project_exists`, `has_codebase_map`, `planning_exists`, `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map`, `has_git`, `project_path`.
+Parse JSON for: `researcher_model`, `roadmapper_model`, `commit_docs`, `project_exists`, `has_codebase_map`, `planning_exists`, `has_existing_code`, `has_package_file`, `is_brownfield`, `needs_codebase_map`, `has_git`, `project_path`.
 
 **If `project_exists` is true:** Error — project already initialized. Use `/pan:progress`.
 
@@ -122,7 +122,7 @@ Exit command.
 | Depth | `quick` (3-5 phases, 1-3 plans each) | idea.md frontmatter `planning_depth: standard\|comprehensive` |
 | Execution | `parallel` | idea.md frontmatter `parallelization: false` to switch to sequential |
 | Git Tracking | `yes` (commit_planning_docs: true) | idea.md frontmatter `commit_planning_docs: false` |
-| Research | `yes` (each phase researched before planning) | idea.md frontmatter `research_enabled: false` |
+| Research | `no` (opt-in: no project research, and no research before each phase) | `--research`, or idea.md frontmatter `research_enabled: true` |
 | Plan Check | `yes` (verify plans before exec) | idea.md frontmatter `plan_checker_enabled: false` |
 | Verifier | `yes` (verify work after each phase) | idea.md frontmatter `verifier_enabled: false` |
 | AI Models | `balanced` profile | idea.md frontmatter `model_profile: quality\|budget` |
@@ -138,7 +138,7 @@ priority: medium
 # Optional auto-mode overrides:
 planning_depth: standard
 parallelization: false
-research_enabled: false
+research_enabled: true
 model_profile: quality
 ---
 ```
@@ -396,21 +396,21 @@ These spawn additional agents during planning/execution. They add tokens and tim
 
 | Agent | When it runs | What it does |
 |-------|--------------|--------------|
-| **Researcher** | Before planning each phase | Investigates domain, finds patterns, surfaces gotchas |
+| **Researcher** | Before planning each phase (off by default) | Answers up to 5 open questions that block planning, each with a source |
 | **Plan Checker** | After plan is created | Verifies plan actually achieves the phase goal |
 | **Verifier** | After phase execution | Confirms must-haves were delivered |
 
-All recommended for important projects. Skip for quick experiments.
+Plan Check and Verifier are recommended for important projects. Research is off by default: turn it on only when phases depend on things nobody on the project knows yet.
 
 ```
 questions: [
   {
     header: "Research",
-    question: "Research before planning each phase? (adds tokens/time)",
+    question: "Research before planning each phase? (off by default; adds tokens/time)",
     multiSelect: false,
     options: [
-      { label: "Yes (Recommended)", description: "Investigate domain, find patterns, surface gotchas" },
-      { label: "No", description: "Plan directly from requirements" }
+      { label: "No (Recommended)", description: "Plan directly from requirements; /pan:plan-phase N --research researches one phase" },
+      { label: "Yes", description: "Answer up to 5 open questions per phase, each with a source" }
     ]
   },
   {
@@ -478,9 +478,11 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "chore: add project conf
 
 ## 5.5. Resolve Model Profile
 
-Use models from init: `researcher_model`, `synthesizer_model`, `roadmapper_model`.
+Use models from init: `researcher_model`, `roadmapper_model`.
 
 ## 6. Research Decision
+
+Research is **off by default**. It runs only when asked: `--research` (or `--research market`, below) in `$ARGUMENTS`, idea-document frontmatter `research_enabled: true`, or the user choosing it at the question below. When it runs it answers at most five questions, with one researcher, and settles decisions; it never adds scope (2026-10-25: research that surveyed the domain never finished, and its catalogue grew v1).
 
 **Size the brief (auto mode with an idea document):** pass the document to the engine:
 
@@ -488,243 +490,93 @@ Use models from init: `researcher_model`, `synthesizer_model`, `roadmapper_model
 BRIEF_SIZE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size task --file "{idea document path}" --raw)
 ```
 
-`lean` means the document names what to build (its modules, functions or files) and how it behaves: it is the scope. Then skip research, and in steps 7 and 8 keep to the document (`BRIEF_PRECISE` below). `full` means it leaves the work open: research and define as below.
+`lean` means the document names what to build (its modules, functions or files) and how it behaves: it is the scope, and in steps 7 and 8 you keep to it (`BRIEF_PRECISE` below). A precise brief never needs research: skip it, even when asked, and say so (`the brief names what to build; research skipped — /pan:plan-phase N --research still researches a phase`). `full` means it leaves the work open: research runs only if it was asked for.
 
-**If auto mode:** Default to "Research first" without asking, unless `BRIEF_SIZE` is `lean` (then "Skip research").
+**If auto mode:** Do not ask. "Research open questions" when `--research` was passed or the frontmatter says `research_enabled: true` (and `BRIEF_SIZE` is not `lean`); otherwise "Skip research".
 
-Use AskUserQuestion:
+**If interactive mode and `--research` was passed:** "Research open questions" without asking. Otherwise use AskUserQuestion:
 - header: "Research"
-- question: "Research the domain ecosystem before defining requirements?"
+- question: "Research open questions before defining requirements?"
 - options:
-  - "Research first (Recommended)" — Discover standard stacks, expected features, architecture patterns
-  - "Skip research" — I know this domain well, go straight to requirements
+  - "Skip research (Recommended)" — Define requirements from what you told me
+  - "Research open questions" — Answer up to 5 questions that block building, each with a source
+  - "Questions + market" — Also compare up to 5 comparable products; gaps become v2 candidates
 
-**If "Research first":**
+`MARKET` is true when `--research market` was passed or the user chose "Questions + market".
 
-Display stage banner:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PAN ► RESEARCHING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**If "Skip research":** Continue to Step 7.
 
-Researching [domain] ecosystem...
-```
+**If researching:**
 
-Create research directory:
+**6a. Write the questions.** List at most **5** open questions that project.md (and the idea document) leave unanswered and that block building: a technology choice, an external API's behaviour, a data format, a limit or rule. Not "what features do users expect", not "best practices for X": a question qualifies only if a requirement or the roadmap cannot be written without its answer. Write them as a numbered list:
+
 ```bash
 mkdir -p .planning/research
 ```
 
-**Determine milestone context:**
+Write `.planning/research/questions.md`:
 
-Check if this is greenfield or subsequent milestone:
-- If no "Validated" requirements in project.md → Greenfield (building from scratch)
-- If "Validated" requirements exist → Subsequent milestone (adding to existing app)
+```markdown
+# Research questions
 
-Display spawning indicator:
-```
-◆ Spawning 4 researchers in parallel...
-  → Stack research
-  → Features research
-  → Architecture research
-  → Pitfalls research
+1. [question] — blocks: [the decision it settles]
+2. ...
 ```
 
-Spawn 4 parallel pan-project-researcher agents with path references:
+**No questions → no research.** If nothing blocks building, write no file, say `No open questions block building — research skipped`, and continue to Step 7.
+
+**6b. Spawn one researcher.**
 
 ```
-Task(prompt="<research_type>
-Project Research — Stack dimension for [domain].
-</research_type>
-
-<milestone_context>
-[greenfield OR subsequent]
-
-Greenfield: Research the standard stack for building [domain] from scratch.
-Subsequent: Research what's needed to add [target features] to an existing [domain] app. Don't re-research the existing system.
-</milestone_context>
-
-<question>
-What's the standard 2025 stack for [domain]?
-</question>
-
-<files_to_read>
-- {project_path} (Project context and goals)
-</files_to_read>
-
-<downstream_consumer>
-Your stack.md feeds into roadmap creation. Be prescriptive:
-- Specific libraries with versions
-- Clear rationale for each choice
-- What NOT to use and why
-</downstream_consumer>
-
-<quality_gate>
-- [ ] Versions are current (verify with Context7/official docs, not training data)
-- [ ] Rationale explains WHY, not just WHAT
-- [ ] Confidence levels assigned to each recommendation
-</quality_gate>
-
-<output>
-Write to: .planning/research/stack.md
-Use template: ~/.claude/pan-wizard-core/templates/research-project/stack.md
-</output>
-", subagent_type="pan-project-researcher", model="{researcher_model}", description="Stack research")
-
-Task(prompt="<research_type>
-Project Research — Features dimension for [domain].
-</research_type>
-
-<milestone_context>
-[greenfield OR subsequent]
-
-Greenfield: What features do [domain] products have? What's table stakes vs differentiating?
-Subsequent: How do [target features] typically work? What's expected behavior?
-</milestone_context>
-
-<question>
-What features do [domain] products have? What's table stakes vs differentiating?
-</question>
-
-<files_to_read>
-- {project_path} (Project context)
-</files_to_read>
-
-<downstream_consumer>
-Your features.md feeds into requirements definition. Categorize clearly:
-- Table stakes (must have or users leave)
-- Differentiators (competitive advantage)
-- Anti-features (things to deliberately NOT build)
-</downstream_consumer>
-
-<quality_gate>
-- [ ] Categories are clear (table stakes vs differentiators vs anti-features)
-- [ ] Complexity noted for each feature
-- [ ] Dependencies between features identified
-</quality_gate>
-
-<output>
-Write to: .planning/research/features.md
-Use template: ~/.claude/pan-wizard-core/templates/research-project/features.md
-</output>
-", subagent_type="pan-project-researcher", model="{researcher_model}", description="Features research")
-
-Task(prompt="<research_type>
-Project Research — Architecture dimension for [domain].
-</research_type>
-
-<milestone_context>
-[greenfield OR subsequent]
-
-Greenfield: How are [domain] systems typically structured? What are major components?
-Subsequent: How do [target features] integrate with existing [domain] architecture?
-</milestone_context>
-
-<question>
-How are [domain] systems typically structured? What are major components?
-</question>
-
-<files_to_read>
-- {project_path} (Project context)
-</files_to_read>
-
-<downstream_consumer>
-Your architecture.md informs phase structure in roadmap. Include:
-- Component boundaries (what talks to what)
-- Data flow (how information moves)
-- Suggested build order (dependencies between components)
-</downstream_consumer>
-
-<quality_gate>
-- [ ] Components clearly defined with boundaries
-- [ ] Data flow direction explicit
-- [ ] Build order implications noted
-</quality_gate>
-
-<output>
-Write to: .planning/research/architecture.md
-Use template: ~/.claude/pan-wizard-core/templates/research-project/architecture.md
-</output>
-", subagent_type="pan-project-researcher", model="{researcher_model}", description="Architecture research")
-
-Task(prompt="<research_type>
-Project Research — Pitfalls dimension for [domain].
-</research_type>
-
-<milestone_context>
-[greenfield OR subsequent]
-
-Greenfield: What do [domain] projects commonly get wrong? Critical mistakes?
-Subsequent: What are common mistakes when adding [target features] to [domain]?
-</milestone_context>
-
-<question>
-What do [domain] projects commonly get wrong? Critical mistakes?
-</question>
-
-<files_to_read>
-- {project_path} (Project context)
-</files_to_read>
-
-<downstream_consumer>
-Your pitfalls.md prevents mistakes in roadmap/planning. For each pitfall:
-- Warning signs (how to detect early)
-- Prevention strategy (how to avoid)
-- Which phase should address it
-</downstream_consumer>
-
-<quality_gate>
-- [ ] Pitfalls are specific to this domain (not generic advice)
-- [ ] Prevention strategies are actionable
-- [ ] Phase mapping included where relevant
-</quality_gate>
-
-<output>
-Write to: .planning/research/pitfalls.md
-Use template: ~/.claude/pan-wizard-core/templates/research-project/pitfalls.md
-</output>
-", subagent_type="pan-project-researcher", model="{researcher_model}", description="Pitfalls research")
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ PAN ► RESEARCHING {N} QUESTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
-
-After all 4 agents complete, spawn synthesizer to create research-summary.md:
 
 ```
 Task(prompt="
-<task>
-Synthesize research outputs into research-summary.md.
-</task>
-
 <files_to_read>
-- .planning/research/stack.md
-- .planning/research/features.md
-- .planning/research/architecture.md
-- .planning/research/pitfalls.md
+- .planning/research/questions.md (The questions: answer these and nothing else)
+- .planning/project.md (Project context)
 </files_to_read>
+
+<market>
+{Only if MARKET: compare at most 5 comparable products in a `| Product | What users get | What the brief does not cover |` table; every gap goes under Ideas (v2 candidates).}
+</market>
 
 <output>
 Write to: .planning/research/research-summary.md
-Use template: ~/.claude/pan-wizard-core/templates/research-project/summary.md
-Commit after writing.
+One row per question: | # | Question | Answer | Source | Confidence | Decision it settles |, or `unknown — assume: …`. At most 4 searches or fetches per question. Anything that suggests new scope goes under ## Ideas (v2 candidates). Do not commit.
 </output>
-", subagent_type="pan-research-synthesizer", model="{synthesizer_model}", description="Synthesize research")
+", subagent_type="pan-project-researcher", model="{researcher_model}", description="Answer research questions")
 ```
 
-Display research complete banner and key findings:
+Leave out the `<market>` block when `MARKET` is false.
+
+**6c. Check the answers.**
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs research check .planning/research/questions.md .planning/research/research-summary.md [--market]
+```
+
+Exit 1: send its `errors` to the researcher once as a revision (`Task` with the same `subagent_type`, the errors and the file to fix). One revision at most: if the check still fails, proceed, and record each question still without a sourced answer as `unknown` with the assumption you will use, in a `## Unknowns` list at the end of research-summary.md. Research never blocks the project.
+
+Commit `.planning/research/`:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: answer research questions" --files .planning/research/questions.md .planning/research/research-summary.md
+```
+
+Display:
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  PAN ► RESEARCH COMPLETE ✓
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-## Key Findings
-
-**Stack:** [from research-summary.md]
-**Table Stakes:** [from research-summary.md]
-**Watch Out For:** [from research-summary.md]
-
-Files: `.planning/research/`
+**Decisions settled:** [one line per answered question]
+**Unknown (assumed):** [question → assumption]
+**Ideas (v2 candidates):** [count; offered in Step 7, never added to v1 by themselves]
 ```
-
-**If "Skip research":** Continue to Step 7.
 
 ## 7. Define Requirements
 
@@ -742,7 +594,7 @@ Read project.md and extract:
 - Stated constraints (budget, timeline, tech limitations)
 - Any explicit scope boundaries
 
-**If research exists:** Read research/features.md and extract feature categories.
+**If research exists:** Read `.planning/research/research-summary.md`. Its answers settle decisions (a technology, an API's behaviour, a format, a limit) that the requirements and their acceptance criteria use; its `## Ideas (v2 candidates)` are not requirements. No finding moves into v1 by itself: in interactive mode offer the ideas as v2 candidates the user may promote; in auto mode they go under v2.
 
 **If auto mode and `BRIEF_SIZE` is `lean` (`BRIEF_PRECISE`):** the document is the scope.
 - One v1 requirement per behaviour the document states, written in its own terms and naming the module, function or file it names, so each requirement says exactly what to build
@@ -750,40 +602,14 @@ Read project.md and extract:
 - Skip the per-category questions, the "Any additions?" question and the approval gate; generate requirements.md and commit directly
 
 **If auto mode otherwise:**
-- Auto-include all table stakes features (users expect these)
-- Include features explicitly mentioned in provided document
-- Auto-defer differentiators not mentioned in document
+- Include the features the provided document asks for
+- Defer everything else to v2, including research ideas and anything users of similar products might expect
 - Skip per-category AskUserQuestion loops
 - Skip "Any additions?" question
 - Skip requirements approval gate
 - Generate requirements.md and commit directly
 
-**Present features by category (interactive mode only):**
-
-```
-Here are the features for [domain]:
-
-## Authentication
-**Table stakes:**
-- Sign up with email/password
-- Email verification
-- Password reset
-- Session management
-
-**Differentiators:**
-- Magic link login
-- OAuth (Google, GitHub)
-- 2FA
-
-**Research notes:** [any relevant notes]
-
----
-
-## [Next Category]
-...
-```
-
-**If no research:** Gather requirements through conversation instead.
+**Gather requirements through conversation (interactive mode only):**
 
 Ask: "What are the main things users need to be able to do?"
 
@@ -807,16 +633,16 @@ For each category, use AskUserQuestion:
 
 Track responses:
 - Selected features → v1 requirements
-- Unselected table stakes → v2 (users expect these)
-- Unselected differentiators → out of scope
+- Unselected features → v2 or out of scope (ask which when unclear)
+- Research ideas the user did not promote → v2
 
 **Identify gaps:**
 
 Use AskUserQuestion:
 - header: "Additions"
-- question: "Any requirements research missed? (Features specific to your vision)"
+- question: "Any requirements missing? (Features specific to your vision)"
 - options:
-  - "No, research covered it" — Proceed
+  - "No, that covers it" — Proceed
   - "Yes, let me add some" — Capture additions
 
 **Validate core value:**
@@ -897,7 +723,7 @@ Task(prompt="
 <files_to_read>
 - .planning/project.md (Project context)
 - .planning/requirements.md (v1 Requirements)
-- .planning/research/research-summary.md (Research findings - if exists; older projects: .planning/research/summary.md)
+- .planning/research/research-summary.md (Answers to the research questions - if exists; older projects: .planning/research/summary.md)
 - .planning/config.json (Depth and mode settings)
 </files_to_read>
 
@@ -1146,11 +972,8 @@ Spawn discuss-phase for Phase 1 as a Task subagent, exactly as transition.md Rou
 
 - `.planning/project.md`
 - `.planning/config.json`
-- `.planning/research/` (if research selected)
-  - `stack.md`
-  - `features.md`
-  - `architecture.md`
-  - `pitfalls.md`
+- `.planning/research/` (only if research was asked for and a question blocked building)
+  - `questions.md`
   - `research-summary.md`
 - `.planning/requirements.md`
 - `.planning/roadmap.md`
@@ -1167,8 +990,8 @@ Spawn discuss-phase for Phase 1 as a Task subagent, exactly as transition.md Rou
 - [ ] Deep questioning completed (threads followed, not rushed)
 - [ ] project.md captures full context → **committed**
 - [ ] config.json has workflow mode, depth, parallelization → **committed**
-- [ ] Research completed (if selected) — 4 parallel agents spawned → **committed**
-- [ ] Requirements gathered (from research or conversation)
+- [ ] Research only if asked for: at most 5 questions, one researcher, `research check` run → **committed**
+- [ ] Requirements gathered (from the brief and conversation; research settles decisions, never adds v1 scope)
 - [ ] User scoped each category (v1/v2/out of scope)
 - [ ] requirements.md created with REQ-IDs → **committed**
 - [ ] pan-roadmapper spawned with context

@@ -21,13 +21,13 @@ These flags select another mode of this command. Each was a separate command, an
 </routes>
 
 <objective>
-Create executable phase prompts (plan.md files) for a roadmap phase with integrated research and verification.
+Create executable phase prompts (plan.md files) for a roadmap phase with verification, and research only when asked for.
 
-**Default flow:** Research (if needed) → Plan → Verify → Done
+**Default flow:** Plan → Verify → Done. Research is opt-in (`--research`, or `workflow.research: true`): it answers at most 5 open questions that block building, with one researcher, and never adds scope
 
 **Design input (ADR-0042):** if `{phase}-design.md` exists (from `/pan:design-phase`, verified by `pan-design-checker`), it is an authoritative upstream input — `pan-planner` implements its approved architecture/decisions and `pan-plan-checker` verifies conformance (Design Conformance dimension). It is optional: a phase without a design.md plans exactly as before. The plan-phase workflow does not list it in the planner's or checker's `<files_to_read>`, so they use it only when they find it in the phase directory themselves.
 
-**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn pan-planner, verify with pan-plan-checker, iterate until pass or max iterations, present results.
+**Orchestrator role:** Parse arguments, validate phase, answer open questions (only when research was asked for), spawn pan-planner, verify with pan-plan-checker, iterate until pass or max iterations, present results.
 </objective>
 
 <execution_context>
@@ -39,7 +39,7 @@ Create executable phase prompts (plan.md files) for a roadmap phase with integra
 Phase number: $ARGUMENTS (optional — auto-detects next unplanned phase if omitted)
 
 **Flags:**
-- `--research` — Force re-research even if research.md exists
+- `--research` — Research this phase (off by default): write at most 5 blocking questions, one researcher answers them, `pan-tools research check` verifies; re-researches even if research.md exists
 - `--skip-research` — Skip research, go straight to planning
 - `--gaps` — Gap closure mode (reads verification.md, skips research)
 - `--skip-verify` — Skip verification loop
@@ -64,7 +64,7 @@ Planning is complete when ALL conditions are met:
 1. At least one plan.md file created in the phase directory
 2. Plan-checker passed (or max 2 revision iterations exhausted with final approval)
 3. Each plan contains: objective, task breakdown with estimates, dependency ordering, and key file links
-4. Research.md exists, unless research was skipped (`--skip-research`, `--gaps`, `workflow.research: false`, or the single-plan lightweight-phase bypass)
+4. Research.md exists only when research was asked for (`--research` or `workflow.research: true`) and a question blocked building
 5. User presented with results and next-step options
 
 Planning FAILS if: phase not found in roadmap, or planner agent returns empty/malformed output after retries.

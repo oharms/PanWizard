@@ -909,6 +909,10 @@
   ],
   "research-lint.cjs": [
     "FRESHNESS_DAYS:object",
+    "MAX_PRODUCTS:number",
+    "MAX_QUESTIONS:number",
+    "checkResearch:function",
+    "cmdResearchCheck:function",
     "cmdResearchLint:function",
     "lintResearch:function"
   ],

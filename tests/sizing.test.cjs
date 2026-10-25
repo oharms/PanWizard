@@ -248,7 +248,9 @@ describe('new-project keeps to a precise brief (2026-10-25 brief test)', () => {
   test('new-project: a precise brief skips research, v1 is what the brief states, the roadmap is the fewest phases', () => {
     const s = fs.readFileSync(path.join(ROOT, 'pan-wizard-core', 'workflows', 'new-project.md'), 'utf8');
     assert.match(s, /size task --file/);
-    assert.match(s, /unless `BRIEF_SIZE` is `lean` \(then "Skip research"\)/);
+    // Research is opt-in since 2026-10-25, so auto mode no longer defaults to "Research
+    // first" unless lean; a precise brief skips research even when it was asked for.
+    assert.match(s, /A precise brief never needs research: skip it, even when asked/);
     assert.match(s, /Nothing the document does not ask for goes into v1/);
     assert.match(s, /the fewest phases that deliver them/);
   });

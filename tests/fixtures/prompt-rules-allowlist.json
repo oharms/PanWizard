@@ -2,5 +2,113 @@
   {
     "id": "pan-wizard-core/workflows/verify-phase:3e716d57",
     "reason": "V5G: report mode never changes the verification status and gate mode turns a failed gate into gaps_found. Enforced in code, not only in the prompt: verify reconcile refuses a passed verification over a failed mutation gate (tests/mutate.test.cjs, 'gate mode' tests)."
+  },
+  {
+    "id": "agents/pan-phase-researcher:a8d09084",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-phase-researcher:1210839b",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-phase-researcher:dd29e1ce",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-phase-researcher:dcf296ab",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-phase-researcher:968afd8d",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-project-researcher:0a50bd54",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-project-researcher:5c3a0f45",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-project-researcher:2bfc638a",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-project-researcher:dd29e1ce",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-project-researcher:72cee3ac",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-project-researcher:968afd8d",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "agents/pan-project-researcher:eaca4edb",
+    "reason": "Research opt-in and question-driven (2026-10-25): researcher contract text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs. No harness scenario spawns a researcher yet (research is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "commands/pan/new-project:f6478262",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "commands/pan/plan-phase:6a6c69b6",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/milestone-new:0e959a2f",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/milestone-new:c31c6a4d",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/milestone-new:51ac59ea",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/milestone-new:3b179de2",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/new-project:ff9ca91a",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/new-project:4dd9aad2",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/new-project:4f8bbe11",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/new-project:4fa8e167",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/new-project:6f3df0d1",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/new-project:77fa60b6",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/plan-phase:161f7ec1",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/plan-phase:60117f09",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
+  },
+  {
+    "id": "pan-wizard-core/workflows/plan-phase:09b0daa9",
+    "reason": "Research opt-in and question-driven (2026-10-25): workflow text pinned by tests/research-questions.test.cjs; the bound is enforced in code by `pan-tools research check` (at most five questions, every question a sourced answer or an unknown with an assumption, at most five products), exercised in tests/research-questions.test.cjs; workflow.research defaults to false in config.cjs and core.cjs. No harness scenario runs research yet (it is off by default and a live run spends model time); a scenario that runs `--research` claims this rule."
   }
 ]

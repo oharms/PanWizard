@@ -64,12 +64,12 @@ Analyze codebase with parallel mapper agents to produce .planning/codebase/ docu
 Initialize a new project with deep context gathering and project.md
 
 ```text
-/pan:new-project [--auto]
+/pan:new-project [--auto] [--research [market]]
 ```
 
 **Tools:** Read, Bash, Write, Task, AskUserQuestion  
 **Group:** Getting Started  
-**Lines:** 107
+**Lines:** 110
 
 ---
 

@@ -73,7 +73,7 @@ const SQUADS = Object.freeze({
     summary: 'Designs the system before code — contract-first.',
     agents: Object.freeze([
       'pan-roadmapper', 'pan-planner', 'pan-designer', 'pan-plan-checker', 'pan-design-checker',
-      'pan-project-researcher', 'pan-phase-researcher', 'pan-research-synthesizer',
+      'pan-project-researcher', 'pan-phase-researcher',
     ]),
   }),
   build: Object.freeze({

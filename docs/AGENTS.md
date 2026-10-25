@@ -14,7 +14,6 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 - [Agent Architecture](#agent-architecture)
 - [Agent Deep Dives](#agent-deep-dives)
   - [pan-project-researcher](#pan-project-researcher)
-  - [pan-research-synthesizer](#pan-research-synthesizer)
   - [pan-roadmapper](#pan-roadmapper)
   - [pan-document_code](#pan-document_code)
   - [pan-phase-researcher](#pan-phase-researcher)
@@ -40,13 +39,12 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 
 | Agent | Role | Spawned By | Tools | Color |
 |-------|------|-----------|-------|-------|
-| `pan-project-researcher` | Researches domain ecosystem before roadmap | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
-| `pan-research-synthesizer` | Synthesizes parallel research into research-summary.md | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash | purple |
+| `pan-project-researcher` | Answers at most five open questions a brief leaves unanswered and that block building (only when research is asked for) | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
 | `pan-roadmapper` | Creates phased roadmaps from requirements | `/pan:new-project`, `/pan:milestone-new` | Read, Write, Bash, Glob, Grep | purple |
 | `pan-document_code` | Analyzes existing codebase (6 focus areas, or the whole repo in one single-shot pass) | `/pan:map-codebase` (x6 parallel, or one agent in single-shot mode); native `/pan-map-codebase` script on Claude Code (one per discovered area) | Read, Bash, Grep, Glob, Write | cyan |
 | `pan-designer` | Designs a phase before planning — architecture, ADR, threat-lite; records only decisions that pass its three-question test, each with a `DD-N` id plans cite | `/pan:design-phase` | Read, Write, Bash, Glob, Grep, WebFetch, Context7 | green |
 | `pan-design-checker` | Independently verifies a design before planning; spawned by /pan:design-phase and /pan:focus-design | `/pan:design-phase`, `/pan:focus-design` | Read, Bash, Glob, Grep | green |
-| `pan-phase-researcher` | Investigates how to implement a specific phase | `/pan:plan-phase`, `/pan:plan-phase --research-only` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
+| `pan-phase-researcher` | Answers at most five open questions that block planning a phase (only when research is asked for) | `/pan:plan-phase`, `/pan:plan-phase --research-only` | Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7 | cyan |
 | `pan-planner` | Creates executable plan.md files with task breakdown | `/pan:plan-phase`, `/pan:quick` | Read, Write, Edit, Bash, Glob, Grep, WebFetch, Context7 | green |
 | `pan-plan-checker` | Validates plans against phase goals across multiple dimensions | `/pan:plan-phase`, `/pan:quick --full` | Read, Bash, Glob, Grep | green |
 | `pan-executor` | Executes plans with atomic commits and deviation handling | `/pan:exec-phase`, `/pan:quick`, `/pan:army`, native `/pan-exec-waves` script (Claude Code) | Read, Write, Edit, Bash, Grep, Glob | yellow |
@@ -93,7 +91,7 @@ For a bot-army campaign (`/pan:army`), the agents are organized into role-scoped
 
 | Squad | Role | Tier | `access` | Agents |
 |-------|------|------|--------|--------|
-| Architecture | Design before code, contract-first | reasoning | `read-only` | roadmapper, planner, designer, plan-checker, design-checker, project/phase researchers, research-synthesizer |
+| Architecture | Design before code, contract-first | reasoning | `read-only` | roadmapper, planner, designer, plan-checker, design-checker, project/phase researchers |
 | Build | Turn design into committed code | reasoning | `read-write-bash` | executor (one `army/<task>` branch + worktree per agent) |
 | Quality | Adversarially break what Build makes | mid | `read-only` | reviewer, hardener, meta-reviewer, verifier, integration-checker, debugger |
 | Release | Ship safely behind a human gate | mid | `always-ask` | `pan-release` |
@@ -163,7 +161,7 @@ The core logic of the agent lives here.
 </execution_flow>
 ```
 
-The `tools` field in frontmatter controls which tools the agent can access when it is spawned under its own type; the `general-purpose` spawns that tell an agent to read its file first (`/pan:new-project`'s researchers, `/pan:plan-phase`'s researcher and planner, `/pan:plan-phase --research-only`'s researcher, `/pan:quick`'s revision planner) run with the general-purpose tool set instead. Read-only agents (plan-checker, design-checker, reviewer, integration-checker) don't get Write/Edit access; the verifier holds Write to emit verification.md. Research agents get WebSearch/WebFetch and Context7 for external knowledge.
+The `tools` field in frontmatter controls which tools the agent can access when it is spawned under its own type; the `general-purpose` spawns that tell an agent to read its file first (`/pan:new-project`'s researcher, `/pan:plan-phase`'s researcher and planner, `/pan:plan-phase --research-only`'s researcher, `/pan:quick`'s revision planner) run with the general-purpose tool set instead. Read-only agents (plan-checker, design-checker, reviewer, integration-checker) don't get Write/Edit access; the verifier holds Write to emit verification.md. Research agents get WebSearch/WebFetch and Context7 for external knowledge.
 
 ---
 
@@ -175,66 +173,22 @@ Agents are ordered by workflow stage: project init → brownfield → phase plan
 
 ### pan-project-researcher
 
-**Purpose:** Answers "What does this domain ecosystem look like?" before roadmap creation. Investigates the technical landscape, standard stacks, architecture patterns, and common pitfalls for the project's domain.
+**Purpose:** Answers the open questions a project brief leaves unanswered and that block building, at most five, which the orchestrator writes to `.planning/research/questions.md`. Research is opt-in (`/pan:new-project --research`, or idea frontmatter `research_enabled: true`); it settles decisions and never adds scope. It replaced a four-way parallel survey (stack, features, architecture, pitfalls) and the `pan-research-synthesizer` that merged it, whose catalogue never finished and grew v1 (2026-10-25).
 
-**Spawned by:** `/pan:new-project`, `/pan:milestone-new` (their Research Decision step: 6 in new-project, 8 in milestone-new)
+**Spawned by:** `/pan:new-project` (step 6) and `/pan:milestone-new` (step 8), one researcher, only when research was asked for
 
 **Tools:** Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7
 
-**Inputs:**
-- Project description from orchestrator prompt
-- Existing codebase files (if brownfield)
+**Inputs:** `.planning/research/questions.md`, `.planning/project.md`
 
-**Outputs** (all written to `.planning/research/`):
-| File | Contents |
-|------|----------|
-| `stack.md` | Recommended stack (core, database, infrastructure, supporting), alternatives considered |
-| `features.md` | Table stakes, differentiators, anti-features, MVP recommendation |
-| `architecture.md` | Recommended architecture, component boundaries, data flow, patterns, anti-patterns |
-| `pitfalls.md` | Critical/moderate/minor pitfalls with phase-specific warnings |
-| `comparison.md` | Created in comparison mode — quick comparison table with detailed analysis |
-| `feasibility.md` | Created in feasibility mode — verdict (YES/NO/MAYBE) with blockers |
-| `research-summary.md` | Not written by the researcher: each researcher writes only its own dimension, and `pan-research-synthesizer` writes `research-summary.md` once all four finish |
+**Outputs:** `.planning/research/research-summary.md` — a table `| # | Question | Answer | Source | Confidence | Decision it settles |`, one row per question (or `unknown — assume: …`), and a separate `## Ideas (v2 candidates)` list. In market mode (`--research market`) also a `| Product | What users get | What the brief does not cover |` table of at most five comparable products, whose gaps become v2 candidates for the user to accept.
 
 **Key Behaviors:**
-- Opinionated recommendations: "Use X because Y" — not "Options are X, Y, Z"
-- Treats Claude's training data as hypothesis (it may be out of date) — verifies before asserting
-- Reports honestly when something couldn't be found or confidence is LOW
-- Records each fact the roadmap or a plan rests on in a `## Claims` table (type, source, checked date) and runs `pan-tools research lint` on the file before returning
-- Three research modes: Ecosystem (default), Feasibility, Comparison
-
-**Tool Strategy:**
-1. **Context7** (first priority) — up-to-date library docs
-2. **Official docs** (second) — framework/language references
-3. **WebSearch** (third) — community knowledge, blog posts, recent changes
-
-Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (verified web), LOW (unverified web).
-
----
-
-### pan-research-synthesizer
-
-**Purpose:** Synthesizes outputs from 4 parallel researcher agents into a cohesive research-summary.md that informs roadmap creation. Integrates findings — doesn't just concatenate.
-
-**Spawned by:** `/pan:new-project` and `/pan:milestone-new` (after all 4 researchers complete)
-
-**Tools:** Read, Write, Bash
-
-**Inputs:**
-- `.planning/research/stack.md`
-- `.planning/research/features.md`
-- `.planning/research/architecture.md`
-- `.planning/research/pitfalls.md`
-
-**Outputs:**
-- `.planning/research/research-summary.md` — Executive summary, key findings, roadmap implications, confidence assessment, gaps to address
-
-**Key Behaviors:**
-- Synthesizes across research files (identifies cross-cutting concerns, dependencies between findings)
-- Suggests phase structure based on architecture dependencies and feature groupings
-- Flags which phases need deeper phase-specific research during `plan-phase`
-- Provides confidence assessment table for each research area
-- Commits ALL research files (researchers write but don't commit — synthesizer bundles the commit)
+- At most 4 searches or fetches per question, then stop: an unsettled question is marked `unknown` with the assumption the plan should use
+- Done means every listed question has a row; no surveys, no catalogues, no questions of its own
+- Runs `pan-tools research check` before returning; the orchestrator runs it again, sends the errors back once, then proceeds with the unknowns recorded
+- Findings settle decisions only: no idea moves into v1 by itself
+- Tool order per question: Context7 → official docs → WebSearch; confidence HIGH, MEDIUM or LOW by source
 
 ---
 
@@ -304,30 +258,25 @@ Sources are categorized by confidence: HIGH (Context7, official docs), MEDIUM (v
 
 ### pan-phase-researcher
 
-**Purpose:** Answers "What do I need to know to PLAN this phase well?" Investigates the technical domain specific to one phase and produces research.md consumed by the planner.
+**Purpose:** Answers the open questions a phase's requirements leave unanswered and that block planning, at most five, which the plan-phase orchestrator writes to `{phase_dir}/{padded_phase}-research-questions.md`. Research is opt-in: `/pan:plan-phase N --research`, `workflow.research: true` (false by default), or `/pan:plan-phase --research-only`.
 
-**Spawned by:** `/pan:plan-phase` or `/pan:plan-phase --research-only` (standalone)
+**Spawned by:** `/pan:plan-phase` (one researcher, only when research was asked for) or `/pan:plan-phase --research-only`
 
 **Tools:** Read, Write, Bash, Grep, Glob, WebSearch, WebFetch, Context7
 
 **Inputs:**
-- The phase's roadmap slice (`{phase}-roadmap-slice.md`: its section, its dependencies' goals and its requirement lines)
-- `context.md` (if exists) — locked user decisions constrain research scope
-- Existing codebase (if brownfield)
+- The questions file, the phase's roadmap slice and `context.md` (if it exists: locked decisions are not open questions)
+- `.planning/research/research-summary.md` (if it exists: a question it already answers is copied, not searched again)
 
 **Outputs:**
-- `.planning/phases/XX-name/{phase_num}-research.md` — User Constraints (first, copied from context.md when present), Summary, Standard Stack, Architecture Patterns, Don't Hand-Roll, Common Pitfalls, Code Examples, State of the Art, Open Questions, Validation Architecture (Nyquist only), Claims, Sources, Infrastructure Dependencies, Metadata
-- A `## Validation Architecture` section inside research.md (if `nyquist_validation` enabled) — the plan-phase orchestrator (step 5.5) then writes `{padded_phase}-validation.md` from `templates/validation.md`
+- `.planning/phases/XX-name/{phase_num}-research.md` — `<user_constraints>` (when context.md exists), the answers table `| # | Question | Answer | Source | Confidence | Decision it settles |`, `## Ideas (v2 candidates)`, and `## Validation Architecture` only when `nyquist_validation` is on (the plan-phase orchestrator, step 5.5, then writes `{padded_phase}-validation.md` from `templates/validation.md`)
 
 **Key Behaviors:**
-- Reads context.md first — locked user decisions are non-negotiable constraints on research
-- Confidence levels on all findings: HIGH, MEDIUM, LOW (based on source quality)
-- Treats Claude's training as hypothesis — verifies through Context7 and official docs
-- Reports honestly when uncertain or when sources contradict
-- Same tool strategy as project-researcher: Context7 → Official Docs → WebSearch
-- Records each fact a plan rests on in research.md's `## Claims` table (type, source, checked date) and runs `pan-tools research lint <phase|path> [--now YYYY-MM-DD]` (exit 1 on a claim with no source or date; `stale` per type window: 30 days for versions, prices and security, 90 for APIs, 180 for general claims, 365 for practices): unsourced or undated claims are fixed before returning, stale ones rechecked or named in Open Questions
-
-**Validation Architecture (Nyquist Layer):** When `nyquist_validation` is enabled, the researcher maps each requirement to specific test commands, identifies test scaffolding needed before implementation (Wave 0 tasks), and emits the `## Validation Architecture` section of research.md, from which the plan-phase orchestrator writes validation.md — the feedback contract for the phase.
+- At most 4 searches or fetches per question, then stop: an unsettled question is `unknown` with the assumption the plan uses
+- Done means every listed question has a row; no standard-stack survey, pitfall catalogue or code-example collection
+- Runs `pan-tools research check <questions> <research>`; the orchestrator sends its errors back once, then plans with the unknowns recorded
+- `pan-tools research lint` reads the answered rows as claims (the date in the source cell), so `/pan:plan-phase` still hands the plan-checker stale or undated claims
+- The planner uses the answers to settle decisions and never plans an item from the Ideas list
 
 ---
 
@@ -664,7 +613,6 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 | pan-design-checker | reasoning | reasoning | fast |
 | pan-phase-researcher | reasoning | mid | fast |
 | pan-project-researcher | reasoning | mid | fast |
-| pan-research-synthesizer | reasoning | reasoning | fast |
 | pan-debugger | reasoning | reasoning | mid |
 | pan-document_code | reasoning | reasoning | fast |
 | pan-verifier | reasoning | reasoning | fast |
@@ -716,9 +664,8 @@ Agents declare `effort:` in frontmatter (`low`/`medium`/`high`/`xhigh`) — the 
 | `pan-roadmapper` | high | Phase breakdown against requirements |
 | `pan-experiment-runner` | high | Observing and judging an external run |
 | `pan-optimizer` | high | Clustering trace events into patterns |
-| `pan-phase-researcher` | medium | Scoped ecosystem research for one phase |
-| `pan-project-researcher` | medium | One research dimension of a new project |
-| `pan-research-synthesizer` | medium | Merging the parallel research outputs |
+| `pan-phase-researcher` | medium | At most five bounded questions for one phase |
+| `pan-project-researcher` | medium | At most five bounded questions for a project or milestone |
 | `pan-distiller` | medium | Judging flagged bloat spans only |
 | `pan-document_code` | low | Mechanical, scoped documentation pass |
 
@@ -841,9 +788,8 @@ Verifier   ───────────────────────
 ```text
 /pan:new-project
   │
-  ├── pan-project-researcher (x4 parallel: stack, features, arch, pitfalls)
-  ├── pan-research-synthesizer (after researchers complete)
-  └── pan-roadmapper (after synthesis)
+  ├── pan-project-researcher (one, only with --research: at most 5 questions)
+  └── pan-roadmapper
 
 /pan:map-codebase (existing code; re-run to refresh)
   │
@@ -851,8 +797,8 @@ Verifier   ───────────────────────
 
 /pan:plan-phase N
   │
-  ├── pan-phase-researcher (produces research.md)
-  ├── pan-planner (after research)
+  ├── pan-phase-researcher (only with --research or workflow.research: at most 5 questions → research.md)
+  ├── pan-planner
   └── pan-plan-checker (after planner; up to 3 checks, at most 2 revisions)
 
 /pan:exec-phase N

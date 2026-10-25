@@ -4546,13 +4546,13 @@ allowed-tools:
   - AskUserQuestion
 ---
 <objective>
-Start a new milestone: questioning → research (optional) → requirements → roadmap.
+Start a new milestone: questioning → research (opt-in, at most 5 open questions) → requirements → roadmap.
 
 Brownfield equivalent of new-project. Project exists, project.md has history. Gathers "what's next", updates project.md, then runs requirements → roadmap cycle.
 
 **Creates/Updates:**
 - `.planning/project.md` — updated with new milestone goals
-- `.planning/research/` — domain research (optional, NEW features only)
+- `.planning/research/` — answers to at most 5 open questions (only with research, NEW features only)
 - `.planning/requirements.md` — scoped requirements for this milestone
 - `.planning/roadmap.md` — phase structure (continues numbering)
 - `.planning/state.md` — reset for new milestone
@@ -4585,14 +4585,14 @@ Preserve all workflow gates (validation, questioning, research, requirements, ro
 
 ---
 
-### /pan:new-project (107 lines)
+### /pan:new-project (110 lines)
 
 ````markdown
 ---
 name: pan:new-project
 group: Getting Started
 description: Initialize a new project with deep context gathering and project.md
-argument-hint: "[--auto]"
+argument-hint: "[--auto] [--research [market]]"
 allowed-tools:
   - Read
   - Bash
@@ -4602,16 +4602,18 @@ allowed-tools:
 ---
 <context>
 **Flags:**
-- `--auto` — Automatic mode. Asks no questions: applies the auto-mode defaults (idea.md frontmatter can override them), then runs research → requirements → roadmap without interaction. Needs an idea document — an @ reference, or the idea pasted after the flag.
+- `--auto` — Automatic mode. Asks no questions: applies the auto-mode defaults (idea.md frontmatter can override them), then runs requirements → roadmap without interaction (research only when asked for). Needs an idea document — an @ reference, or the idea pasted after the flag.
+- `--research` — Research is off by default. With this flag the workflow lists at most 5 open questions that block building and one researcher answers them, each with a source or a recorded assumption; findings settle decisions and never add v1 scope. A precise brief skips research anyway.
+- `--research market` — Research, plus a comparison of at most 5 comparable products; what the brief does not cover becomes v2 candidates for you to accept.
 </context>
 
 <objective>
-Initialize a new project through unified flow: questioning → research (optional) → requirements → roadmap.
+Initialize a new project through unified flow: questioning → research (opt-in) → requirements → roadmap.
 
 **Creates:**
 - `.planning/project.md` — project context
 - `.planning/config.json` — workflow preferences
-- `.planning/research/` — domain research (optional)
+- `.planning/research/` — answers to at most 5 open questions (only with research)
 - `.planning/requirements.md` — scoped requirements
 - `.planning/roadmap.md` — phase structure
 - `.planning/state.md` — project memory
@@ -4640,7 +4642,7 @@ Load context in layers — do NOT read everything upfront. Each layer builds on 
 - Entry points — main files, index files, server files
 - Test infrastructure — test framework, test directory
 
-**Layer 3: Hotspots (load during research, if research is enabled)**
+**Layer 3: Hotspots (brownfield only, when writing requirements)**
 - Most-changed files (git log --name-only) — where active work happens
 - Largest files — complexity centers
 - Import graph roots — most-depended-on modules
@@ -4664,8 +4666,8 @@ IF .planning/ already exists AND contains project.md:
 ELSE IF --auto flag AND an idea document provided (@ reference or pasted text):
   → ASK nothing: apply the auto-mode defaults (workflow step 2a; idea.md frontmatter can override them)
   → SKIP interactive questioning (use the document as project context)
-  → RUN research automatically
-  → GENERATE requirements from research + the document
+  → RESEARCH only with --research or frontmatter research_enabled: true (never for a precise brief)
+  → GENERATE requirements from the document (research settles decisions, never adds v1 scope)
   → GENERATE roadmap from requirements
   → No further interaction until complete
 
@@ -4675,9 +4677,9 @@ ELSE IF --auto flag WITHOUT an idea document:
 
 ELSE (interactive mode — default):
   → RUN questioning flow (freeform deep questioning — references/questioning.md)
-  → ASK: "Should I research the domain ecosystem?" (Y/N)
-    → IF Y: spawn researchers → synthesize → continue
-    → IF N: skip research → continue
+  → IF --research: research; ELSE ASK: "Research open questions?" (default: Skip research)
+    → IF research: write ≤5 blocking questions → one pan-project-researcher → research check → continue
+    → IF skip (or no question blocks building): continue
   → PRESENT requirements for approval
   → PRESENT roadmap for approval
   → COMMIT if commit_docs=true
@@ -4685,8 +4687,9 @@ ELSE (interactive mode — default):
 
 **Research routing:**
 ```
-IF user says research: spawn pan-project-researcher agents
-IF user declines research: skip directly to requirements generation
+IF user asks for research: write at most 5 open questions, spawn ONE pan-project-researcher
+IF user declines research (the default): skip directly to requirements generation
+IF no question blocks building: no research, say so
 IF codebase already has substantial code: suggest skipping research (existing code IS the context)
 ```
 </routing_decision_tree>
@@ -5016,13 +5019,13 @@ These flags select another mode of this command. Each was a separate command, an
 </routes>
 
 <objective>
-Create executable phase prompts (plan.md files) for a roadmap phase with integrated research and verification.
+Create executable phase prompts (plan.md files) for a roadmap phase with verification, and research only when asked for.
 
-**Default flow:** Research (if needed) → Plan → Verify → Done
+**Default flow:** Plan → Verify → Done. Research is opt-in (`--research`, or `workflow.research: true`): it answers at most 5 open questions that block building, with one researcher, and never adds scope
 
 **Design input (ADR-0042):** if `{phase}-design.md` exists (from `/pan:design-phase`, verified by `pan-design-checker`), it is an authoritative upstream input — `pan-planner` implements its approved architecture/decisions and `pan-plan-checker` verifies conformance (Design Conformance dimension). It is optional: a phase without a design.md plans exactly as before. The plan-phase workflow does not list it in the planner's or checker's `<files_to_read>`, so they use it only when they find it in the phase directory themselves.
 
-**Orchestrator role:** Parse arguments, validate phase, research domain (unless skipped), spawn pan-planner, verify with pan-plan-checker, iterate until pass or max iterations, present results.
+**Orchestrator role:** Parse arguments, validate phase, answer open questions (only when research was asked for), spawn pan-planner, verify with pan-plan-checker, iterate until pass or max iterations, present results.
 </objective>
 
 <execution_context>
@@ -5034,7 +5037,7 @@ Create executable phase prompts (plan.md files) for a roadmap phase with integra
 Phase number: $ARGUMENTS (optional — auto-detects next unplanned phase if omitted)
 
 **Flags:**
-- `--research` — Force re-research even if research.md exists
+- `--research` — Research this phase (off by default): write at most 5 blocking questions, one researcher answers them, `pan-tools research check` verifies; re-researches even if research.md exists
 - `--skip-research` — Skip research, go straight to planning
 - `--gaps` — Gap closure mode (reads verification.md, skips research)
 - `--skip-verify` — Skip verification loop
@@ -5059,7 +5062,7 @@ Planning is complete when ALL conditions are met:
 1. At least one plan.md file created in the phase directory
 2. Plan-checker passed (or max 2 revision iterations exhausted with final approval)
 3. Each plan contains: objective, task breakdown with estimates, dependency ordering, and key file links
-4. Research.md exists, unless research was skipped (`--skip-research`, `--gaps`, `workflow.research: false`, or the single-plan lightweight-phase bypass)
+4. Research.md exists only when research was asked for (`--research` or `workflow.research: true`) and a question blocked building
 5. User presented with results and next-step options
 
 Planning FAILS if: phase not found in roadmap, or planner agent returns empty/malformed output after retries.
