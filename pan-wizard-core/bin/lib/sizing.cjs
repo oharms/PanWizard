@@ -196,7 +196,10 @@ function writeLeanPhasePlan(cwd, phase, opts = {}) {
   // conflict" (2026-10-24: autodev --quality halted at a format-change phase on its own
   // earlier tests).
   const changing = reqs.filter((r) => CHANGE_RE.test(String(r.text || '')));
-  const superseded = changing.length ? testsCovering(cwd, files) : [];
+  // A changing requirement often names the function that holds the old behaviour (`openLedger`)
+  // and not its file, so its tests are looked for there too (2026-10-25: a live phase 5 stopped
+  // on tests/ledger.test.js, which no requirement's named file reached).
+  const superseded = changing.length ? testsCovering(cwd, [...new Set([...files, ...definingFiles(cwd, changing.flatMap((r) => identifiersOf(r.text)))])]) : [];
   const declared = [...new Set([...files, ...superseded])];
   const test = require('./test-gate.cjs').detectTestCommand(cwd);
   const verify = (test && test.command) || 'the project\'s tests';
@@ -242,6 +245,38 @@ const CHANGE_RE = /\b(migrat\w*|format change|new format|version \d+|v\d+ format
  * (outside node_modules, .git and the planning tree) whose text names one of the files'
  * module names. Pure apart from reads; sorted.
  */
+/** The code identifiers a requirement names in backticks (`openLedger`, `importCSV`). */
+function identifiersOf(text) {
+  return [...new Set([...String(text || '').matchAll(/`([A-Za-z_$][\w$]{3,})`/g)].map((m) => m[1]))];
+}
+
+/** The project's source files (not tests) that define any of `names` as a function, method or binding. */
+function definingFiles(cwd, names) {
+  const path = require('path');
+  if (!names.length) return [];
+  const esc = (n) => n.replace(/[$]/g, '\\$&');
+  const def = new RegExp(`(?:function\\s*\\*?\\s*|def\\s+|func\\s+|fn\\s+|(?:const|let|var)\\s+)(?:${names.map(esc).join('|')})\\b|\\b(?:${names.map(esc).join('|')})\\s*(?:[:=]\\s*(?:async\\s*)?(?:function|\\()|\\([^)]*\\)\\s*\\{)`);
+  const isTest = (rel) => /(^|\/)(tests?|__tests__|spec)\//.test(rel) || /\.(test|spec)\.[^.]+$/.test(rel);
+  const out = [];
+  const walk = (dir, depth) => {
+    if (depth > 6) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (['node_modules', '.git', '.planning', '.claude', '.codex', '.gemini', '.opencode', '.github', '.agents', 'dist', 'coverage'].includes(e.name)) continue;
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) { walk(abs, depth + 1); continue; }
+      const rel = path.relative(cwd, abs).split(path.sep).join('/');
+      if (isTest(rel) || !/\.(c?js|mjs|tsx?|jsx|py|go|rs|java|rb|cs)$/.test(rel)) continue;
+      let text = '';
+      try { text = fs.readFileSync(abs, 'utf8'); } catch { continue; }
+      if (def.test(text)) out.push(rel);
+    }
+  };
+  walk(cwd, 0);
+  return out.sort();
+}
+
 function testsCovering(cwd, files) {
   const path = require('path');
   const names = [...new Set(files.map((f) => path.basename(f).replace(/\.[^.]+$/, '')).filter((n) => n.length > 2))];

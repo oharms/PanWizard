@@ -201,6 +201,25 @@ describe('a later requirement supersedes earlier tests (2026-10-24 false stop)',
     assert.match(plan, /update those expectations to what CENTS-\d+ requires and record each change as a deviation/);
     assert.equal(planStructure(plan).valid, true);
   });
+  test('a test of the file that defines a function the changing requirement names is superseded too', () => {
+    // The live run's shape (2026-10-25): the executor-written tests/ledger.test.js names only
+    // `ledger`, and no CENTS requirement names src/ledger.js; CENTS-02 names `openLedger`.
+    const t = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-sup-id-'));
+    dirs.push(t);
+    fs.cpSync(path.join(ROOT, 'harness', 'seeds', 'ledger-roadmap', '.planning'), path.join(t, '.planning'), { recursive: true });
+    fs.mkdirSync(path.join(t, 'src'));
+    fs.mkdirSync(path.join(t, 'tests'));
+    fs.writeFileSync(path.join(t, 'package.json'), JSON.stringify({ scripts: { test: 'node --test tests/' } }));
+    fs.writeFileSync(path.join(t, 'src', 'ledger.js'), 'function openLedger(file) { return { file }; }\nmodule.exports = { openLedger };\n');
+    fs.writeFileSync(path.join(t, 'src', 'util.js'), 'const openLedgerish = 1;\nmodule.exports = { openLedgerish };\n');
+    fs.writeFileSync(path.join(t, 'tests', 'ledger.test.js'), "const { openLedger } = require('../src/ledger');\n");
+    fs.writeFileSync(path.join(t, 'tests', 'util.test.js'), "require('../src/util');\n");
+    const g = (a) => spawnSync('git', a, { cwd: t, encoding: 'utf8' });
+    g(['init', '-q']); g(['config', 'user.name', 't']); g(['config', 'user.email', 't@t']); g(['add', '-A']); g(['commit', '-qm', 'x']);
+    const r = cli(t, ['size', 'phase-plan', '5']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(JSON.parse(r.stdout).supersedes_tests, ['tests/ledger.test.js'], 'util.test.js tests no file that defines a named function');
+  });
   test('a phase that changes nothing already built declares no superseded tests', () => {
     const t = seed('tasks-roadmap');
     const g = (a) => spawnSync('git', a, { cwd: t, encoding: 'utf8' });
