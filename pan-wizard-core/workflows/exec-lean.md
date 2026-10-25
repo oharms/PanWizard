@@ -1,5 +1,5 @@
 <purpose>
-Execute a lean phase in this one session: you do the work the executor agent would do, then a verifier checks it. Autodev runs this for a phase the engine sized lean (its requirements say precisely what to build, and the engine wrote and checked its plan), so the full exec-phase orchestration (an orchestrating session, a separate executor, test generation, code review) is not needed. The phase gate still decides when autodev runs `phase complete`.
+Execute a lean phase in this one session: you do the work the executor agent would do, then one reviewer pass and a verifier check it. Autodev runs this for a phase the engine sized lean (its requirements say precisely what to build, and the engine wrote and checked its plan), so the full exec-phase orchestration (an orchestrating session, a separate executor, test generation) is not needed. The reviewer stays: on the brief test (2026-10-25) a lean build and a bare host's build each carried one high-severity defect the hidden checks could not see, and the reviewer found both. The phase gate still decides when autodev runs `phase complete`.
 </purpose>
 
 <rules>
@@ -30,7 +30,29 @@ Execute a lean phase in this one session: you do the work the executor agent wou
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs({padded}-{plan}): complete plan" --files {phase_dir}/{padded}-{plan}-summary.md .planning/state.md .planning/roadmap.md .planning/requirements.md
    ```
 
-4. **Verify** (skip only when `verifier_enabled` is false, and say so). Spawn the verifier; it is a second pair of eyes, so give it paths, not your conclusions:
+4. **Review.** One pass of the code reviewer over what the phase changed; it looks for what the tests and the verifier do not (a save that is not crash-safe, unchecked arithmetic, state left wrong after an error). Collect the scope, then spawn it:
+   ```bash
+   REVIEW_SCOPE=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs review scope "{phase_number}")
+   CHANGED_FILES_LIST=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs review scope "{phase_number}" --raw)
+   ```
+   ```
+   Task(
+     subagent_type="pan-reviewer",
+     model="{reviewer_model from: node ~/.claude/pan-wizard-core/bin/pan-tools.cjs resolve-model pan-reviewer --raw}",
+     prompt="<objective>Review the code changed in phase {phase_number} for defects: behaviour that contradicts the requirements, data loss or corruption (including a crash mid-write), inputs that must throw and do not, state left wrong after an error, security problems. Real defects only, each with a concrete input that shows it.</objective> <files_to_read>./CLAUDE.md (if it exists); changed files: ${CHANGED_FILES_LIST}</files_to_read> <intent>${REVIEW_SCOPE}</intent> <executor_concerns>{what you finished but were not sure of, with why; empty when none}</executor_concerns>"
+   )
+   ```
+   Write its returned text, verbatim and in full with its `pan-verdict` block, to `{phase_dir}/{phase_number}-review.md` (the reviewer is read-only), then record it:
+   ```bash
+   REVIEW_VERDICT=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "{phase_number}" --agent pan-reviewer --file "{phase_dir}/{phase_number}-review.md" --raw)
+   ```
+   `PASS`: go on. `PASS_WITH_WARNINGS`: go on, recording that the phase continues past them:
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings dispose --phase "{phase_number}" --agent pan-reviewer --open --as deferred --reason "accepted at review: PASS_WITH_WARNINGS"
+   ```
+   `NEEDS_FIXES`: fix each ERROR finding (the tests stay the spec: a fix adds a test for the defect, never weakens one), commit the fixes as `fix({padded}): review findings`, and run the review once more. A second `NEEDS_FIXES` does not loop: record what stays open with `findings dispose ... --as deferred --reason "open after one fix round (unattended)"`, go on to verification, and name those findings in the reply. Never continue past findings silently: an open finding without a recorded reason is what the milestone audit cannot see.
+
+5. **Verify** (skip only when `verifier_enabled` is false, and say so). Spawn the verifier; it is a second pair of eyes, so give it paths, not your conclusions:
    ```
    Task(
      subagent_type="pan-verifier",
@@ -43,5 +65,5 @@ Execute a lean phase in this one session: you do the work the executor agent wou
    node ~/.claude/pan-wizard-core/bin/pan-tools.cjs findings record --phase "{phase_number}" --file "$(ls {phase_dir}/*-verification.md | head -1)" --raw
    ```
 
-5. **Reply** in a few lines: the plans executed, the commits, the verification status, and any deviation, assumption or issue. Do not run `phase complete`: autodev runs it next and the phase gate decides.
+6. **Reply** in a few lines: the plans executed, the commits, the review verdict and any finding left open, the verification status, and any deviation, assumption or issue. Do not run `phase complete`: autodev runs it next and the phase gate decides.
 </process>

@@ -278,7 +278,7 @@ No user command runs these workflows: `execute-plan.md` and `transition.md` are 
 |----------|---------|
 | `execute-plan.md` | Per-plan execution worker (spawned by `exec-phase.md` per plan) |
 | `transition.md` | Phase-to-phase transition logic |
-| `exec-lean.md` | A lean phase in one session: the executor's work, then the verifier (autodev's execute unit, `autodev.cjs`) |
+| `exec-lean.md` | A lean phase in one session: the executor's work, then one reviewer pass and the verifier (autodev's execute unit, `autodev.cjs`) |
 | `diagnose-issues.md` | One debugger per failed UAT truth, root cause only; ported to the native `/pan-diagnose-issues` script — no command references it directly |
 
 ---

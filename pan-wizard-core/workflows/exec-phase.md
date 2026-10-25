@@ -58,7 +58,7 @@ Parse JSON for: `executor_model`, `verifier_model`, `reviewer_model`, `commit_do
 SIZING=$(node ~/.claude/pan-wizard-core/bin/pan-tools.cjs size phase "${PHASE_ARG}" [--quality] [--full])
 ```
 
-Show `Ceremony: {path} ({reasons joined by "; "})`. When `SIZING.path` is `lean`, the phase runs as with `--fast`: no test-generation agent (`generate_tests`) and no code review (`code_review`); the executor's own tests, the engine's test gate and the verifier (`verify_phase_goal`) still run, and the phase gate still decides.
+Show `Ceremony: {path} ({reasons joined by "; "})`. When `SIZING.path` is `lean`, the phase runs without the test-generation agent (`generate_tests`); the executor's own tests, the engine's test gate, one code review pass (`code_review`) and the verifier (`verify_phase_goal`) still run, and the phase gate still decides.
 
 When `parallelization` is false, plans within a wave execute sequentially.
 
@@ -418,7 +418,7 @@ TEST_AFTER=$(npm test 2>&1 | grep -E "^(ℹ|#) tests" | awk '{print $NF}')
 <step name="code_review">
 **Spawn pan-reviewer agent to review changed files.**
 
-**Skip if** `--skip-review` or `--fast` flag is present in $ARGUMENTS, or `SIZING.path` is `lean`.
+**Skip if** `--skip-review` or `--fast` flag is present in $ARGUMENTS. A lean phase (`SIZING.path`) keeps this step: the review finds what the tests and the verifier do not.
 
 1. Collect the review scope: the files the phase's commits changed plus any uncommitted or untracked work, whether or not a summary lists them, and the intent to judge them against:
 ```bash

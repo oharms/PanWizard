@@ -144,6 +144,17 @@ describe('A1a: the ledger and resume', () => {
     assert.match(wf, /supersedes_tests/);
     assert.match(wf, /subagent_type="pan-verifier"/);
     assert.match(wf, /findings record/);
+    // One reviewer pass stays on the lean path (2026-10-25: on the brief, a lean build and a
+    // bare build each carried a high-severity defect the hidden checks could not see; the
+    // reviewer found both). Its verdict is recorded, a fix round is bounded, and nothing
+    // continues past an open finding silently.
+    assert.match(wf, /review scope "\{phase_number\}"/);
+    assert.match(wf, /subagent_type="pan-reviewer"/);
+    assert.match(wf, /findings record --phase "\{phase_number\}" --agent pan-reviewer/);
+    assert.match(wf, /A second `NEEDS_FIXES` does not loop/);
+    assert.match(wf, /findings dispose[^\n]*--as deferred/);
+    assert.match(wf, /Never continue past findings silently/);
+    assert.ok(wf.indexOf('subagent_type="pan-reviewer"') < wf.indexOf('subagent_type="pan-verifier"'), 'review before verification, so the verifier sees the fixed code');
     assert.match(wf, /Do not run `phase complete`/);
     assert.match(wf, /EXECUTION HALTED: plan check/);
   });

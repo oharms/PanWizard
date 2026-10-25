@@ -1867,9 +1867,21 @@
    "baseline": false
   },
   {
-   "id": "pan-wizard-core/workflows/exec-lean:7d43d89e",
+   "id": "pan-wizard-core/workflows/exec-lean:7f73f7d5",
    "file": "pan-wizard-core/workflows/exec-lean.md",
-   "text": "**Reply** in a few lines: the plans executed, the commits, the verification status, and any deviation, assumption or issue. Do not run `phase complete`: autodev runs it next and the phase gate decides.",
+   "text": "**Review.** One pass of the code reviewer over what the phase changed; it looks for what the tests and the verifier do not (a save that is not crash-safe, unchecked arithmetic, state left wrong after an error). Collect the scope, then spawn it:",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-lean:1ac8e0c2",
+   "file": "pan-wizard-core/workflows/exec-lean.md",
+   "text": "`NEEDS_FIXES`: fix each ERROR finding (the tests stay the spec: a fix adds a test for the defect, never weakens one), commit the fixes as `fix({padded}): review findings`, and run the review once more. A second `NEEDS_FIXES` does not loop: record what stays open with `findings dispose ... --as deferred --reason \"open after one fix round (unattended)\"`, go on to verification, and name those findings in the reply. Never continue past findings silently: an open finding without a recorded reason is what the milestone audit cannot see.",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-lean:43821cb2",
+   "file": "pan-wizard-core/workflows/exec-lean.md",
+   "text": "**Reply** in a few lines: the plans executed, the commits, the review verdict and any finding left open, the verification status, and any deviation, assumption or issue. Do not run `phase complete`: autodev runs it next and the phase gate decides.",
    "baseline": false
   },
   {
@@ -1913,6 +1925,12 @@
    "file": "pan-wizard-core/workflows/exec-phase.md",
    "text": "**decision** → The executor already took the plan's `auto_select` option when the task had one, so a decision that comes back has none: present it to the user (standard flow below). If a returned decision's task does carry `auto_select` in the plan file, auto-spawn the continuation agent with `{user_response}` = that option id and log `⚡ Auto-selected: [option] (auto_select)`. Never answer with an option because it is listed first.",
    "baseline": true
+  },
+  {
+   "id": "pan-wizard-core/workflows/exec-phase:430bbcd2",
+   "file": "pan-wizard-core/workflows/exec-phase.md",
+   "text": "**Skip if** `--skip-review` or `--fast` flag is present in $ARGUMENTS. A lean phase (`SIZING.path`) keeps this step: the review finds what the tests and the verifier do not.",
+   "baseline": false
   },
   {
    "id": "pan-wizard-core/workflows/exec-phase:2a0dda15",

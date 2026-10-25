@@ -249,6 +249,13 @@ describe('a later requirement supersedes earlier tests (2026-10-24 false stop)',
     const out = JSON.parse(cli(t, ['size', 'phase-plan', '1']).stdout);
     assert.equal(out.supersedes_tests, undefined);
   });
+  test('exec-phase: a lean phase skips test generation but keeps one code review pass', () => {
+    const s = fs.readFileSync(path.join(ROOT, 'pan-wizard-core', 'workflows', 'exec-phase.md'), 'utf8');
+    const step = (name) => { const at = s.indexOf('<step name="' + name + '">'); return s.slice(at, s.indexOf('</step>', at)); };
+    assert.match(step('generate_tests'), /\*\*Skip if\*\*[^\n]*`SIZING\.path` is `lean`/);
+    assert.doesNotMatch(step('code_review'), /\*\*Skip if\*\*[^\n]*`SIZING\.path` is `lean`/, 'the reviewer runs on a lean phase (2026-10-25)');
+    assert.match(step('code_review'), /A lean phase[^\n]*keeps this step/);
+  });
   test('exec-phase hands a plan\'s superseded tests to its executor', () => {
     const s = fs.readFileSync(path.join(ROOT, 'pan-wizard-core', 'workflows', 'exec-phase.md'), 'utf8');
     assert.match(s, /<superseded_tests>[\s\S]*not a spec conflict[\s\S]*<\/superseded_tests>/);
