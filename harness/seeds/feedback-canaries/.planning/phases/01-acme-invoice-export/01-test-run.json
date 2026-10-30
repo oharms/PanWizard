@@ -1,0 +1,11 @@
+{
+  "status": "failed",
+  "source": "package.json",
+  "command": "npm test -- C:\\Users\\jane\\acme",
+  "output_tail": "AssertionError in src/acme/billing-secret.js at 10.11.12.13",
+  "regressions": [
+    "acme invoices total"
+  ],
+  "preexisting": [],
+  "timed_out": false
+}

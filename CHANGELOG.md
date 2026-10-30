@@ -5,6 +5,12 @@ All notable changes to PAN Wizard will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`/pan:feedback`: share what PAN learned on your project, safely.** It prints a report into the chat that you can paste into a GitHub issue for the PAN developers (new `feedback` issue template); nothing is sent. It covers phase-gate refusals, what each judge found and what you did with it (the classes you dismiss as noise are the main signal), test runs, mutation scores, spend, phase-budget status and forecast accuracy, the commands you used or never finished, guard hits and, with `--tool-errors`, tool-error signatures, plus suggested learnings from fixed rules and a versioned `pan-feedback/1` JSON block. It is built in code (`pan-tools feedback`) from counts, codes and PAN's own names only, counts and money are coarsened, and the finished text is scanned for credentials, e-mails, URLs, paths, addresses and the project's own names (directory, git remote, branch, git user, host, phase names); any hit refuses the report instead of printing it. `--note` adds your own words, checked the same way. For the developers, `harness/scripts/feedback-intake.cjs` aggregates pasted reports and surfaces what recurs across three or more.
+
 ## [3.37.0] - 2026-10-25
 
 Right-sized ceremony and the roadmap run unattended. Measured against Claude Code on its own, PAN cost many times as much for the same result on well-specified work; the engine now sizes each phase and quick task, plans a precise phase itself, executes a lean phase in one session with one code review pass and the verifier, and leaves the full ceremony to the `quality` profile and `--quality` (`docs/specs/right-sized-ceremony.md`). `/pan:autodev` runs a roadmap end to end with every stop decided in code and every dollar approved in advance. Research is opt-in and answers questions instead of surveying. Also: review lenses with voting, proven findings, a debug case base, EARS requirements with a trace matrix, UAT on every runtime, gates that must be able to fail, a human merge gate, and the stop guard that never turns itself off.

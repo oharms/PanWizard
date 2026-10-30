@@ -1,0 +1,36 @@
+{
+  "id": "feedback-report",
+  "tier": 0,
+  "description": "Run /pan:feedback's engine (pan-tools feedback) from an installed package on a project with a canary planted in every place PAN keeps free text. The report counts what happened and carries none of them; a control that leaks phase names into the installed renderer is refused by the report's own privacy scan.",
+  "why": "The learning report exists to be shared. Its promise is that it cannot carry the project: allowlist construction, coarse counts, and a fail-closed scan. Unit tests prove it in the source tree; this proves it in the packed install a user runs, and the control proves the scan still stands when the allowlist is broken.",
+  "seed": "feedback-canaries",
+  "install": ["--claude"],
+  "budget": { "maxUsd": 0, "maxMinutes": 4, "maxStepMinutes": 2 },
+  "steps": [
+    {
+      "kind": "pan",
+      "argv": ["feedback", "--tool-errors", "--days", "100000"],
+      "expect": ["exit:0", "stdout~## PAN learning report", "stdout~pan-feedback/1", "stdout~pan-reviewer \\| quality \\| 5 \\| 0 \\| 0 \\| 5", "stdout~Nothing was sent", "stdout~Test runs <3: failed <3; runner package.json <3"],
+      "why": "The installed engine builds the report: the reviewer's five quality findings, all dismissed, are counted, and the machine block is there."
+    },
+    {
+      "kind": "sh",
+      "script": "feedback-no-leak.cjs",
+      "args": ["<ws>", ".claude"],
+      "expect": ["exit:0", "json:report=true", "json:leaks=0"],
+      "why": "None of the planted canaries (a token, a password, an e-mail, a client name in the phase directory and roadmap, a file path, home paths, an IP, a custom model id and config key) appears in the report."
+    }
+  ],
+  "controls": [
+    {
+      "id": "renderer-leaks-phase-names",
+      "after": -1,
+      "replace": {
+        "path": ".claude/pan-wizard-core/bin/lib/feedback.cjs",
+        "find": "L.push('## PAN learning report', '');",
+        "with": "L.push('## PAN learning report ' + require('fs').readdirSync(require('path').join(process.cwd(), '.planning', 'phases')).join(' '), '');"
+      },
+      "why": "A renderer that copies a phase directory name (the client's name) into the report must be refused by the scan: exit 1, no report printed."
+    }
+  ]
+}

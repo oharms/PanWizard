@@ -419,6 +419,7 @@ Resume work from previous session with full context restoration
 | Skill | Tools | Description |
 |-------|-------|-------------|
 | `/pan:debug` | Read, Bash, Task, AskUserQuestion | Systematic debugging with persistent state across context resets |
+| `/pan:feedback` | Bash | Print a privacy-safe report of what PAN learned on this project, to paste into a GitHub issue for the PAN developers (nothing is sent) |
 | `/pan:health` | Read, Bash, Write, AskUserQuestion | Diagnose planning directory health and optionally repair issues |
 | `/pan:help` | *(none)* | Show available PAN commands and usage guide |
 | `/pan:hygiene` | Read, Bash, AskUserQuestion | Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat and stale entries, poisoned ledgers, trace debris, oversized planning files) and apply safe cleanups |
@@ -439,6 +440,18 @@ Systematic debugging with persistent state across context resets
 **Tools:** Read, Bash, Task, AskUserQuestion  
 **Group:** System  
 **Lines:** 240
+
+#### /pan:feedback
+
+Print a privacy-safe report of what PAN learned on this project, to paste into a GitHub issue for the PAN developers (nothing is sent)
+
+```text
+/pan:feedback [--note \"<your words>\"] [--tool-errors] [--days <N>] [--format json]
+```
+
+**Tools:** Bash  
+**Group:** System  
+**Lines:** 34
 
 #### /pan:health
 
@@ -980,6 +993,7 @@ Which tools each shipped skill can use:
 | discuss-phase | x | x |  | x | x | x |  | x |  | x |  |  |  |  |
 | exec-phase | x | x | x | x | x | x |  | x | x | x |  |  |  |  |
 | experiment | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
+| feedback |  |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | focus-auto | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
 | focus-design | x | x | x | x | x | x | x |  |  |  |  | x | x | x |
 | focus-docs | x | x | x | x | x | x | x |  |  |  |  |  | x |  |

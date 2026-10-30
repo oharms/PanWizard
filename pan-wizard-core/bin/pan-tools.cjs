@@ -102,6 +102,9 @@
  *                                      each naming its task and test (P4)
  *   verify decisions <phase>           Plans cite only DD-N ids the design records,
  *                                      and every recorded one is cited (P2)
+ *   feedback [--note <text>]           Learning report to share: counts and codes only,
+ *     [--tool-errors] [--days N]       scanned before it prints; nothing is sent
+ *     [--format md|json] [--self-check]
  *   usage                              Local census: installed commands and agents
  *                                      used, never used, unfinished (L9)
  *   research lint <phase|path>         Claims table: source and date on every claim,
@@ -389,7 +392,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -1450,6 +1453,19 @@ async function main() {
       } else {
         error('Unknown debug subcommand. Available: repro, similar');
       }
+      break;
+    }
+
+    case 'feedback': {
+      // What PAN learned here, as a report the user may share; built from counts and codes
+      // only and refused rather than printed if the privacy scan matches anything.
+      require('./lib/feedback.cjs').cmdFeedback(cwd, {
+        note: getArgValue(args, '--note'),
+        toolErrors: args.includes('--tool-errors'),
+        days: getArgValue(args, '--days'),
+        format: getArgValue(args, '--format'),
+        selfCheck: args.includes('--self-check'),
+      }, raw);
       break;
     }
 

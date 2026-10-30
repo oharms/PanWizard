@@ -142,5 +142,25 @@
   {
     "id": "pan-wizard-core/workflows/exec-phase:430bbcd2",
     "reason": "Lean review (2026-10-25): exec-phase keeps the code_review step on a lean phase (only generate_tests is skipped); pinned by tests/sizing.test.cjs (\"exec-phase: a lean phase skips test generation but keeps one code review pass\"). No tier-0 harness scenario runs a model session."
+  },
+  {
+    "id": "commands/pan/feedback:da10abe6",
+    "reason": "/pan:feedback (2026-10-30): how the host presents the engine's report. The privacy guarantee does not rest on these lines: pan-tools feedback builds the report from closed vocabularies and refuses to print when its scan matches (tests/feedback.test.cjs canaries and property test; harness feedback-report with a leaking-renderer control). A double-backed scenario cannot test a model following them; a tier-2 scenario would."
+  },
+  {
+    "id": "commands/pan/feedback:c4038b38",
+    "reason": "/pan:feedback (2026-10-30): how the host presents the engine's report. The privacy guarantee does not rest on these lines: pan-tools feedback builds the report from closed vocabularies and refuses to print when its scan matches (tests/feedback.test.cjs canaries and property test; harness feedback-report with a leaking-renderer control). A double-backed scenario cannot test a model following them; a tier-2 scenario would."
+  },
+  {
+    "id": "commands/pan/feedback:5fd37dfa",
+    "reason": "/pan:feedback (2026-10-30): how the host presents the engine's report. The privacy guarantee does not rest on these lines: pan-tools feedback builds the report from closed vocabularies and refuses to print when its scan matches (tests/feedback.test.cjs canaries and property test; harness feedback-report with a leaking-renderer control). A double-backed scenario cannot test a model following them; a tier-2 scenario would."
+  },
+  {
+    "id": "commands/pan/feedback:fd15fac9",
+    "reason": "/pan:feedback (2026-10-30): how the host presents the engine's report. The privacy guarantee does not rest on these lines: pan-tools feedback builds the report from closed vocabularies and refuses to print when its scan matches (tests/feedback.test.cjs canaries and property test; harness feedback-report with a leaking-renderer control). A double-backed scenario cannot test a model following them; a tier-2 scenario would."
+  },
+  {
+    "id": "commands/pan/feedback:d01b8950",
+    "reason": "/pan:feedback (2026-10-30): how the host presents the engine's report. The privacy guarantee does not rest on these lines: pan-tools feedback builds the report from closed vocabularies and refuses to print when its scan matches (tests/feedback.test.cjs canaries and property test; harness feedback-report with a leaking-renderer control). A double-backed scenario cannot test a model following them; a tier-2 scenario would."
   }
 ]

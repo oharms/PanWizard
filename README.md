@@ -696,6 +696,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | Command | What it does |
 |---------|--------------|
 | `/pan:cost` | Token usage + estimated cost across PAN invocations (json/table/chart), and `budget`: a phase's spend against its budget (`cost.phase_budget_usd`, $20 by default, warn only; change it with `/pan:settings`); `pan-tools usage` is a local census of which installed commands and agents this project has used |
+| `/pan:feedback` | Print a report of what PAN learned on this project (gate refusals, findings you dismissed as noise, test and cost outcomes, unfinished commands) to paste into a GitHub issue for the PAN developers. Built from counts and codes only, checked before it prints; nothing is sent |
 | `/pan:preview phase <N>\|phases\|milestone` | Read-only foresight: blast radius, a p10/p50/p90 cost forecast from the project's own cost ledger, dependency graph, milestone ETA |
 | `/pan:review-deep <phase>` | Security audit (OWASP + STRIDE) + cross-check by meta-reviewer |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook |

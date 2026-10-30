@@ -56,6 +56,8 @@ pan-wizard/
         plan-lint.cjs         # `verify review-focus` and `verify decisions`: a plan's Review Focus and its design-decision citations, checked in code
         research-lint.cjs     # `research lint`: research claims carry a source and a checked date, and go stale by type
         usage.cjs             # `usage`: local census of installed commands and agents (used, never used, unfinished) from the cost ledger and traces
+        feedback.cjs          # `feedback`: the shareable learning report, closed vocabularies only, scanned and refused on a hit
+        redact.cjs            # scanText/projectCanaries: what must never appear in a shared report
         knowledge.cjs         # Grounded Q&A / discuss / playbook (Y-3)
         whatif.cjs            # Counterfactual phase replay in worktree (Y-4)
         optimize.cjs          # Circular optimization loop (trace, learn, apply, revert)

@@ -235,6 +235,8 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `plan-lint.cjs` | **(program P4, P2)** `verify review-focus <phase>`: every plan has a `## Review Focus` of at most five items, each naming its owning task and a test, or one `None — <reason>` line. `verify decisions <phase>`: plans cite only `DD-N` decision ids the phase design records, and every recorded decision is cited. `/pan:plan-phase` runs both with `verify plan-set` before the plan checker. `verify gates <phase>`: a task's `<verify>` command that already passes before any work is flagged. |
 | `research-lint.cjs` | **(program P3)** `research lint <phase\|path>`: the research file's `## Claims` table (claim · type · source · checked), or the answered rows of its answers table. A claim with no source or no date is an error; one older than its type's freshness window is `stale`. `research check <questions> <research> [--market]`: at most five questions, each answered with a source or `unknown` with an assumption, at most five comparable products. |
 | `usage.cjs` | **(program L9)** `usage`: a local census of the installed commands and agents against the project's cost ledger and trace sessions: used (calls, last use), never used, and commands started but never finished. Local files only. |
+| `feedback.cjs` | `feedback`: the learning report a user may share (`/pan:feedback`). Built from closed vocabularies (PAN's shipped command and agent names, finding classes, gate codes, tool-error classes …), counts coarsened, then scanned with `redact.cjs` and refused rather than printed on any hit. Reads the findings, cost, guard and trace ledgers, test-run and mutation records, config and the usage census; writes nothing. |
+| `redact.cjs` | `scanText()`: the rules a text breaks (credential shapes from both hooks, Bearer headers, long mixed runs, e-mails, URLs, paths, IP addresses, project canaries), naming rules, never the text; `projectCanaries()`: the project directory, git remote owner, repository and host, branch, git user and e-mail, OS user, host name and phase slugs. Detection only. |
 | `test-gate.cjs` | **(program V2)** `test run` and `test detect`: finds the project's test command in any language (or `workflow.test_command`), runs it, parses the runner's output into stable failing-test ids, and compares a phase's run with its baseline (`{NN}-test-baseline.json`, `{NN}-test-run.json`). The phase gate and the verdict recorder read the run record. |
 | `verify-red.cjs` | **(program V4)** `verify red <phase>`: runs each test file the phase changed at the phase's base (in a throwaway worktree) and at HEAD; a test that passes before the phase's code exists is `not_red`. Also exports the phase-base and worktree helpers `verify mutate` uses. |
 | `mutate.cjs` | **(program V5)** `verify mutate --phase N`: a seeded sample of single-operator mutations on the lines the phase changed, each run against the whole suite in a worktree at HEAD; writes `{NN}-mutation.json`. Report-only unless `workflow.mutation_gate` is `gate`. |
@@ -511,6 +513,7 @@ Quick reference of all CLI commands grouped by category.
 | 248 | `debug repro` | Verification | debug-cases.cjs |
 | 249 | `debug similar` | Verification | debug-cases.cjs |
 | 250 | `research check` | Verification | research-lint.cjs |
+| 251 | `feedback` | Observability | feedback.cjs |
 
 ---
 
@@ -1850,6 +1853,22 @@ pan-tools verify traceability        # {requirements: [{id, status, tests}], pas
 `repro` runs the `command:` in a debug session's `## Reproduction` (`.planning/debug/<slug>.md`, or `resolved/`): `{slug, result, closable, requirement, command, exit}`; `result` is `green` (exit 0), `red` or `none` (no command recorded; exit 1 unless green). `similar` ranks the resolved sessions by token overlap with the symptom: `{symptom, cases: [{slug, score, root_cause, fix, reproduction}]}` (top 5 by default; `--raw`: the slugs).
 
 **Module:** `debug-cases.cjs`
+
+### `feedback`
+
+What PAN learned on this project, as a report the user reads in the chat and may paste into a GitHub issue (`/pan:feedback`). Nothing is sent.
+
+```bash
+pan-tools feedback                                   # markdown report ending in a pan-feedback/1 JSON block
+pan-tools feedback --note "your words" --tool-errors # add your note, and tool-error signatures
+pan-tools feedback --days 30                         # the window (default 90 days)
+pan-tools feedback --format json                     # the machine block alone
+pan-tools feedback --self-check                      # {ok, canaries_checked, canaries_skipped, bytes}
+```
+
+The report covers the settings (known keys only: enum values, booleans, money bucketed; other keys counted), the phase gate as it stands now (refusal codes, unchecked checks), each judge's findings by class and folded status (fixed, deferred, dismissed, decision, open) with learned suppressions and code-fact lowering, test runs by status and runner source, mutation score buckets, spend by tier and agent (bucketed), phase-budget status and forecast accuracy (below p10, within, above p90), the commands used, never used and unfinished, guard rules, trace event types, tool errors (with `--tool-errors`: tool, class, exit code, message signature) and suggested learnings derived by fixed rules (for example a judge class dismissed in at least 60% of ten or more findings).
+
+**What it never contains:** every value is a number, a boolean, a semver, an ISO week, or a member of a closed vocabulary; anything else is counted as `other`. Counts of 1 or 2 read `<3`; money is bucketed in 1-2-5 steps; phases are counted, never named. The rendered text is then scanned (`redact.cjs`) for credentials, e-mails, URLs, paths, IP addresses and this project's canaries (directory name, git remote, branch, git user, OS user, host, phase names); a canary that is one of PAN's own words is skipped. **Any hit refuses the report:** exit 1 with `{error: "feedback_refused", rules, reason}`, naming the rules and never the matched text. A hit from `--note` asks for a rephrase; any other is a PAN bug to report by rule name. Exits 1 with `not_a_pan_project` without `.planning/`, and with `invalid_days` for a non-positive `--days`.
 
 ### `usage`
 

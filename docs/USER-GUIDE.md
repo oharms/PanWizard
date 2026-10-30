@@ -390,6 +390,7 @@ Some commands were folded into flags of another command. The old names keep work
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
 | `/pan:cost` | Token usage + estimated cost report (json/table/chart); `budget` (a phase's spend against `cost.phase_budget_usd`), `limits` (Claude Code's usage windows), and the `usage` census (`pan-tools usage`: which installed commands and agents this project has used) | Track AI costs across phases |
+| `/pan:feedback` | A privacy-safe learning report (counts, codes and PAN's own names only, scanned before it prints) to paste into a GitHub issue; `--note` adds your words, `--tool-errors` tool-error signatures. Nothing is sent | Help the PAN developers improve PAN from what happened on your project |
 | `/pan:preview phase <N>\|phases\|milestone` | Read-only foresight: blast radius / dependency graph / milestone ETA | Before exec — "what will this touch?" |
 | `/pan:review-deep <phase>` | Security audit (OWASP+STRIDE) + cross-checked by meta-reviewer | High-stakes phases (auth/payments/PII) |
 | `/pan:knowledge {ask\|discuss\|playbook}` | Grounded Q&A, multi-turn discussion, or aggregate memory into playbook | Reflection or design discussion |

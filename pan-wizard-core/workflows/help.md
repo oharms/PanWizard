@@ -313,6 +313,7 @@ Every shipped command, by group. This list is generated from each command's own 
 | Command | Description |
 |---------|-------------|
 | `/pan:debug` | Systematic debugging with persistent state across context resets |
+| `/pan:feedback` | Print a privacy-safe report of what PAN learned on this project, to paste into a GitHub issue for the PAN developers (nothing is sent) |
 | `/pan:health` | Diagnose planning directory health and optionally repair issues |
 | `/pan:help` | Show available PAN commands and usage guide |
 | `/pan:hygiene` | Scan the project for PAN version drift and stale artifacts (legacy filenames, memory bloat and stale entries, poisoned ledgers, trace debris, oversized planning files) and apply safe cleanups |

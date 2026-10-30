@@ -1,0 +1,11 @@
+{"kind":"finding","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000000","phase":"01","agent":"pan-reviewer","class":"quality","severity":"low","where":"src/acme/billing-secret.js:0","summary":"AcmeInvoiceExport naming seed-hunter2-password"}
+{"kind":"finding","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000001","phase":"01","agent":"pan-reviewer","class":"quality","severity":"low","where":"src/acme/billing-secret.js:1","summary":"AcmeInvoiceExport naming seed-hunter2-password"}
+{"kind":"finding","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000002","phase":"01","agent":"pan-reviewer","class":"quality","severity":"low","where":"src/acme/billing-secret.js:2","summary":"AcmeInvoiceExport naming seed-hunter2-password"}
+{"kind":"finding","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000003","phase":"01","agent":"pan-reviewer","class":"quality","severity":"low","where":"src/acme/billing-secret.js:3","summary":"AcmeInvoiceExport naming seed-hunter2-password"}
+{"kind":"finding","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000004","phase":"01","agent":"pan-reviewer","class":"quality","severity":"low","where":"src/acme/billing-secret.js:4","summary":"AcmeInvoiceExport naming seed-hunter2-password"}
+{"kind":"verdict","ts":"2026-10-28T10:00:00.000Z","verdict_id":"v_seed1","phase":"01","agent":"pan-reviewer","outcome":"fail","finding_ids":["f_seed000000","f_seed000001","f_seed000002","f_seed000003","f_seed000004"]}
+{"kind":"disposition","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000000","disposition":"dismissed","reason":"jane.seed@acme-corp.example: style only"}
+{"kind":"disposition","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000001","disposition":"dismissed","reason":"jane.seed@acme-corp.example: style only"}
+{"kind":"disposition","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000002","disposition":"dismissed","reason":"jane.seed@acme-corp.example: style only"}
+{"kind":"disposition","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000003","disposition":"dismissed","reason":"jane.seed@acme-corp.example: style only"}
+{"kind":"disposition","ts":"2026-10-28T10:00:00.000Z","id":"f_seed000004","disposition":"dismissed","reason":"jane.seed@acme-corp.example: style only"}

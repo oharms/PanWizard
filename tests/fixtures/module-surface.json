@@ -469,6 +469,19 @@
     "errorTail:function",
     "routeFailure:function"
   ],
+  "feedback.cjs": [
+    "ISSUE_URL:string",
+    "SCHEMA:string",
+    "buildReport:function",
+    "cmdFeedback:function",
+    "collect:function",
+    "finalize:function",
+    "isoWeek:function",
+    "render:function",
+    "small:function",
+    "suggestions:function",
+    "usdBucket:function"
+  ],
   "findings.cjs": [
     "FINDINGS_FILE:string",
     "STATUSES:object",
@@ -898,6 +911,13 @@
     "findBottleneckCandidate:function",
     "generateMermaid:function",
     "sampleCompletedPhaseDurations:function"
+  ],
+  "redact.cjs": [
+    "RULE_NAMES:object",
+    "SECRET_KV_RE:object",
+    "TOKEN_RE:object",
+    "projectCanaries:function",
+    "scanText:function"
   ],
   "requirements-lint.cjs": [
     "cmdVerifyRequirements:function",

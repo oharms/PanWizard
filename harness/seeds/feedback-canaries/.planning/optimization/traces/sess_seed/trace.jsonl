@@ -1,0 +1,1 @@
+{"ts":"2026-10-28T10:00:00.000Z","type":"error","category":"tool_error","agent":"pan-executor","description":"Bash failed in /home/jane/acme","context":{"tool":"Bash","error_class":"exit_code","exit_code":1,"message":"seed-hunter2-password","message_sig":"0123456789ab","count":3}}

@@ -1,0 +1,1 @@
+{ "model_profile": "balanced", "commit_docs": true, "workflow": { "phase_gate": "warn" }, "cost": { "phase_budget_usd": 20, "rates": { "acme-internal-llm-v9": { "input": 1, "output": 2 } } }, "acmeSeedKey": "seed-hunter2-password" }

@@ -1,0 +1,110 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * Developer intake for PAN learning reports (`/pan:feedback`). Not shipped.
+ *
+ *   node harness/scripts/feedback-intake.cjs <file>... [--json] [--inbox]
+ *   gh issue list --label feedback --json body -q '.[].body' | node harness/scripts/feedback-intake.cjs -
+ *
+ * Reads pasted reports (issue bodies, files, or stdin with `-`), takes each fenced
+ * `pan-feedback` block, rejects any block whose schema is not `pan-feedback/1` or
+ * whose top-level fields differ from the schema's, drops exact duplicates, and prints
+ * what recurs across reports: gate refusals, judge classes users dismiss, forecast
+ * misses, unfinished commands, and the suggested learnings that at least
+ * MIN_REPORTS reports share. `--inbox` appends those to
+ * harness/autopilot/state/inbox.md, the inbox the market watcher feeds; it never
+ * writes the ideas ledger or the learnings store (promotion stays `learn promote`).
+ * A count a report gives as `<3` is read as 1.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const SCHEMA = 'pan-feedback/1';
+const FIELDS = ['schema', 'pan', 'env', 'window', 'config', 'gate', 'judges', 'execution', 'cost', 'usage', 'guard', 'trace', 'suggestions'];
+const MIN_REPORTS = 3;
+const INBOX = path.join(__dirname, '..', 'autopilot', 'state', 'inbox.md');
+
+const num = (v) => (typeof v === 'number' ? v : v === '<3' ? 1 : 0);
+
+/** Every pan-feedback block in a text, parsed and checked. */
+function extract(text) {
+  const out = [];
+  const re = /```pan-feedback\s*\n([\s\S]*?)\n```/g;
+  let m;
+  while ((m = re.exec(String(text)))) {
+    let block;
+    try { block = JSON.parse(m[1]); } catch { out.push({ ok: false, why: 'not JSON' }); continue; }
+    if (!block || block.schema !== SCHEMA) { out.push({ ok: false, why: `schema ${block && block.schema}` }); continue; }
+    const keys = Object.keys(block).filter((k) => k !== 'tool_errors');
+    const extra = keys.filter((k) => !FIELDS.includes(k));
+    const missing = FIELDS.filter((k) => !keys.includes(k));
+    if (extra.length || missing.length) { out.push({ ok: false, why: `fields: extra ${extra.join(',') || '-'}, missing ${missing.join(',') || '-'}` }); continue; }
+    out.push({ ok: true, block, hash: crypto.createHash('sha256').update(JSON.stringify(block)).digest('hex').slice(0, 16) });
+  }
+  return out;
+}
+
+/** Aggregate accepted reports. Pure. */
+function aggregate(blocks) {
+  const add = (o, k, n = 1) => { o[k] = (o[k] || 0) + n; };
+  const a = { reports: blocks.length, versions: {}, runtimes: {}, gate_refusals: {}, judge_classes: {}, forecast: { checked: 0, above_p90: 0 }, unfinished: {}, suggestions: {} };
+  for (const b of blocks) {
+    add(a.versions, b.pan.version);
+    for (const r of b.pan.runtimes || []) add(a.runtimes, r);
+    for (const [code, n] of Object.entries((b.gate && b.gate.refusals) || {})) add(a.gate_refusals, code, num(n));
+    for (const [agent, j] of Object.entries(b.judges || {})) {
+      for (const [cls, c] of Object.entries(j.by_class || {})) {
+        const key = `${agent} ${cls}`;
+        if (!a.judge_classes[key]) a.judge_classes[key] = { total: 0, dismissed: 0, reports: 0 };
+        a.judge_classes[key].total += num(c.total);
+        a.judge_classes[key].dismissed += num(c.dismissed);
+        a.judge_classes[key].reports++;
+      }
+    }
+    a.forecast.checked += num(b.cost && b.cost.forecast && b.cost.forecast.checked);
+    a.forecast.above_p90 += num(b.cost && b.cost.forecast && b.cost.forecast.above_p90);
+    for (const c of (b.usage && b.usage.commands_unfinished) || []) add(a.unfinished, c);
+    const seen = new Set();
+    for (const s of b.suggestions || []) {
+      const key = s.id + (s.evidence && s.evidence.agent ? ` ${s.evidence.agent} ${s.evidence.class}` : s.evidence && s.evidence.code ? ` ${s.evidence.code}` : s.evidence && s.evidence.command ? ` ${s.evidence.command}` : '');
+      if (!seen.has(key)) { seen.add(key); add(a.suggestions, key); }
+    }
+  }
+  a.recurring = Object.entries(a.suggestions).filter(([, n]) => n >= MIN_REPORTS).sort((x, y) => y[1] - x[1]).map(([key, reports]) => ({ key, reports }));
+  return a;
+}
+
+function main(argv) {
+  const json = argv.includes('--json');
+  const inbox = argv.includes('--inbox');
+  const inputs = argv.filter((x) => !x.startsWith('--'));
+  if (!inputs.length) { process.stderr.write('usage: feedback-intake.cjs <file>... | - [--json] [--inbox]\n'); process.exitCode = 2; return; }
+  const texts = inputs.map((f) => (f === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(f, 'utf8')));
+  const found = texts.flatMap(extract);
+  const rejected = found.filter((f) => !f.ok);
+  const unique = new Map();
+  for (const f of found.filter((x) => x.ok)) unique.set(f.hash, f.block);
+  const a = aggregate([...unique.values()]);
+  a.rejected = rejected.map((r) => r.why);
+  a.duplicates = found.filter((x) => x.ok).length - unique.size;
+  if (inbox && a.recurring.length) {
+    const lines = a.recurring.map((r) => `- [feedback] ${r.key} — in ${r.reports} of ${a.reports} learning reports (${new Date().toISOString().slice(0, 10)})`);
+    fs.mkdirSync(path.dirname(INBOX), { recursive: true });
+    fs.appendFileSync(INBOX, lines.join('\n') + '\n');
+  }
+  if (json) { process.stdout.write(JSON.stringify(a, null, 2) + '\n'); return; }
+  const L = [`${a.reports} report(s), ${a.duplicates} duplicate(s), ${a.rejected.length} rejected`];
+  L.push(`Versions: ${Object.entries(a.versions).map(([k, v]) => `${k} ${v}`).join(', ') || '-'}`);
+  L.push(`Gate refusals: ${Object.entries(a.gate_refusals).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join(', ') || '-'}`);
+  for (const [k, c] of Object.entries(a.judge_classes).sort((x, y) => y[1].dismissed - x[1].dismissed).slice(0, 10)) L.push(`Judge ${k}: dismissed ${c.dismissed} of ${c.total} across ${c.reports} report(s)`);
+  if (a.forecast.checked) L.push(`Forecast above p90: ${a.forecast.above_p90} of ${a.forecast.checked} phases`);
+  L.push(`Recurring suggestions (>= ${MIN_REPORTS} reports): ${a.recurring.map((r) => `${r.key} (${r.reports})`).join('; ') || 'none yet'}`);
+  process.stdout.write(L.join('\n') + '\n');
+}
+
+if (require.main === module) main(process.argv.slice(2));
+
+module.exports = { extract, aggregate, SCHEMA, FIELDS, MIN_REPORTS };
