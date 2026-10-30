@@ -21,17 +21,35 @@ const UNFINISHED_AFTER_MS = 6 * 60 * 60 * 1000;
 // The install this engine ships in: <runtime dir>/pan-wizard-core/bin/lib → <runtime dir>.
 const DEFAULT_INVENTORY = path.resolve(__dirname, '..', '..', '..');
 
+/**
+ * Whether a row's timestamp is inside a window that starts at `since` (epoch ms). A row with
+ * no timestamp, or one that does not parse, is kept: dropping it would hide the row silently.
+ */
+function inWindow(ts, since) {
+  if (!ts) return true;
+  const t = Date.parse(ts);
+  return !Number.isFinite(t) || t >= since;
+}
+
 /** A command name as the inventory spells it: `/pan:quick`, `pan-quick`, `pan:quick` → `quick`. */
 function commandName(s) {
   return String(s || '').trim().replace(/^\//, '').replace(/^pan[:-]/, '');
 }
 
-/** The installed commands and agents: commands/pan/*.md or skills/pan-*, and agents/pan-*. */
+/**
+ * The installed commands and agents, in every runtime's layout: commands/pan/*.md (Claude),
+ * commands/pan/*.toml (Gemini), commands/pan-*.md (OpenCode), skills/pan-* (Copilot), the
+ * shared .agents/skills/pan-* beside the runtime directory (Codex, and every runtime under
+ * --unified-skills), and agents/pan-*.md, .toml or .agent.md (Copilot).
+ */
 function readInventory(root) {
   const list = (d, re) => { try { return fs.readdirSync(d).filter((f) => re.test(f)); } catch { return []; } };
-  const commands = new Set(list(path.join(root, 'commands', 'pan'), /\.md$/).map((f) => f.replace(/\.md$/, '')));
-  for (const d of list(path.join(root, 'skills'), /^pan-/)) commands.add(commandName(d));
-  const agents = new Set(list(path.join(root, 'agents'), /^pan-.*\.(md|toml)$/).map((f) => f.replace(/\.(md|toml)$/, '')));
+  const commands = new Set(list(path.join(root, 'commands', 'pan'), /\.(md|toml)$/).map((f) => f.replace(/\.(md|toml)$/, '')));
+  for (const f of list(path.join(root, 'commands'), /^pan-.*\.md$/)) commands.add(commandName(f.replace(/\.md$/, '')));
+  for (const skills of [path.join(root, 'skills'), path.join(root, '..', '.agents', 'skills')]) {
+    for (const d of list(skills, /^pan-/)) commands.add(commandName(d));
+  }
+  const agents = new Set(list(path.join(root, 'agents'), /^pan-.*\.(md|toml)$/).map((f) => f.replace(/(\.agent)?\.(md|toml)$/, '')));
   return { commands: [...commands].sort(), agents: [...agents].sort() };
 }
 
@@ -48,23 +66,26 @@ function readSessions(cwd) {
 
 /**
  * @param {string} cwd
- * @param {{inventory?: string, now?: string}} [opts]
+ * @param {{inventory?: string, inv?: {commands: string[], agents: string[]}, now?: string, since?: number}} [opts]
+ *   inv: the inventory already read; since: epoch ms, older rows and sessions are left out
  */
 function usageCensus(cwd, opts = {}) {
-  const inventory = readInventory(opts.inventory || DEFAULT_INVENTORY);
+  const inventory = opts.inv || readInventory(opts.inventory || DEFAULT_INVENTORY);
   const now = opts.now ? Date.parse(opts.now) : Date.now();
   const cmds = new Map(inventory.commands.map((n) => [n, { name: n, calls: 0, last_used: null, sessions: 0, finished: 0, _lastStart: null }]));
   const agents = new Map(inventory.agents.map((n) => [n, { name: n, calls: 0, last_used: null }]));
   const later = (a, b) => (!a || (b && b > a) ? b : a);
 
-  const rows = readRecords(cwd);
+  const since = Number.isFinite(opts.since) ? opts.since : null;
+  const kept = (ts) => since === null || inWindow(ts, since);
+  const rows = readRecords(cwd).filter((r) => kept(r.ts));
   for (const r of rows) {
     const c = cmds.get(commandName(r.command));
     if (c) { c.calls++; c.last_used = later(c.last_used, r.ts || null); }
     const a = agents.get(String(r.agent || ''));
     if (a) { a.calls++; a.last_used = later(a.last_used, r.ts || null); }
   }
-  const sessions = readSessions(cwd);
+  const sessions = readSessions(cwd).filter((s) => kept(s.started_at));
   for (const s of sessions) {
     const c = cmds.get(commandName(s.command));
     if (!c) continue;
@@ -101,4 +122,4 @@ function cmdUsage(cwd, raw) {
   output(r, raw, `${r.commands.used.length} of ${r.commands.installed} commands used, ${r.commands.unfinished.length} unfinished; ${r.agents.used.length} of ${r.agents.installed} agents used`);
 }
 
-module.exports = { usageCensus, readInventory, commandName, cmdUsage, UNFINISHED_AFTER_MS };
+module.exports = { usageCensus, readInventory, commandName, inWindow, cmdUsage, UNFINISHED_AFTER_MS };

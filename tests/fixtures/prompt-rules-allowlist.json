@@ -124,10 +124,6 @@
     "reason": "One-session lean execute (2026-10-25): exec-lean.md is the prompt autodev gives a lean phase; its rules are pinned by tests/autodev.test.cjs (\"a lean phase executes in one session through exec-lean.md\") and run end to end with stand-in hosts in tests/h10-*-pair.test.cjs; the phase gate and `phase complete` stay in autodev code. No tier-0 harness scenario runs a model session, and the paid H10 pairs exercise it live."
   },
   {
-    "id": "pan-wizard-core/workflows/exec-lean:7d43d89e",
-    "reason": "One-session lean execute (2026-10-25): exec-lean.md is the prompt autodev gives a lean phase; its rules are pinned by tests/autodev.test.cjs (\"a lean phase executes in one session through exec-lean.md\") and run end to end with stand-in hosts in tests/h10-*-pair.test.cjs; the phase gate and `phase complete` stay in autodev code. No tier-0 harness scenario runs a model session, and the paid H10 pairs exercise it live."
-  },
-  {
     "id": "pan-wizard-core/workflows/exec-lean:1ac8e0c2",
     "reason": "Lean review (2026-10-25): exec-lean runs one pan-reviewer pass, records its verdict, bounds the fix round and never continues past an open finding silently; pinned by tests/autodev.test.cjs (\"a lean phase executes in one session through exec-lean.md\"). The record and dispose paths are engine code covered by tests/findings*.test.cjs. No tier-0 harness scenario runs a model session."
   },
@@ -162,5 +158,9 @@
   {
     "id": "commands/pan/feedback:d01b8950",
     "reason": "/pan:feedback (2026-10-30): how the host presents the engine's report. The privacy guarantee does not rest on these lines: pan-tools feedback builds the report from closed vocabularies and refuses to print when its scan matches (tests/feedback.test.cjs canaries and property test; harness feedback-report with a leaking-renderer control). A double-backed scenario cannot test a model following them; a tier-2 scenario would."
+  },
+  {
+    "id": "commands/pan/feedback:176d9dc7",
+    "reason": "/pan:feedback (2026-10-30 review): how the host quotes the user's note so the shell reads none of it. tests/feedback.test.cjs pins the prompt text (no $ARGUMENTS, single quotes, the escape for an apostrophe) and the engine refuses a --note with no value; a model following the quoting can only be tested at tier 2."
   }
 ]

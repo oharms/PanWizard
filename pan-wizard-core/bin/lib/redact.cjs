@@ -15,7 +15,7 @@
  */
 const os = require('os');
 const path = require('path');
-const { execGit } = require('./core.cjs');
+const { execGit, escapeRegex } = require('./core.cjs');
 
 // Every token shape either hook recognises.
 const TOKEN_RE = /\b(?:sk-ant-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,})|-----BEGIN (?:RSA |EC |OPENSSH |)PRIVATE KEY-----/;
@@ -36,8 +36,6 @@ const RULES = [
   { rule: 'ipv4', re: /\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b/ },
   { rule: 'ipv6', re: /\b(?:[0-9a-f]{1,4}:){4,7}[0-9a-f]{1,4}\b/i },
 ];
-
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * The names of the rules `text` breaks (each once), plus `canary:<kind>` for each
@@ -61,7 +59,7 @@ function scanText(text, opts = {}) {
   }
   for (const c of opts.canaries || []) {
     if (!c || !c.value) continue;
-    if (new RegExp(`(^|[^A-Za-z0-9])${escapeRe(c.value)}($|[^A-Za-z0-9])`, 'i').test(t)) hits.push(`canary:${c.kind}`);
+    if (new RegExp(`(^|[^A-Za-z0-9])${escapeRegex(c.value)}($|[^A-Za-z0-9])`, 'i').test(t)) hits.push(`canary:${c.kind}`);
   }
   return [...new Set(hits)];
 }

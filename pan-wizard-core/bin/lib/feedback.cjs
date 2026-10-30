@@ -22,19 +22,27 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { output } = require('./core.cjs');
-const { planningPath } = require('./utils.cjs');
+const { planningPath, readJsonFile: readJson } = require('./utils.cjs');
 const { scanText, projectCanaries } = require('./redact.cjs');
+const { readInventory, usageCensus, inWindow } = require('./usage.cjs');
 
 const SCHEMA = 'pan-feedback/1';
 const ISSUE_URL = 'https://github.com/oharms/PanWizard/issues/new?template=feedback.md';
 const DEFAULT_DAYS = 90;
+// About 270 years: far enough back for every ledger, near enough to stay a valid date.
+const MAX_DAYS = 100000;
 const NOTE_MAX = 600;
 const INVENTORY_ROOT = path.resolve(__dirname, '..', '..', '..');
 
 // ─── Vocabularies ────────────────────────────────────────────────────────────
 
 const RUNTIMES = ['claude', 'codex', 'gemini', 'opencode', 'copilot'];
+// A project's local install directory per runtime.
 const RUNTIME_DIRS = { '.claude': 'claude', '.codex': 'codex', '.gemini': 'gemini', '.opencode': 'opencode', '.github': 'copilot' };
+// The directory names an install the engine runs from may have: local, or global
+// (~/.config/opencode, ~/.copilot). Any other name (--config-dir) is told by its layout.
+const INSTALL_DIRS = { ...RUNTIME_DIRS, opencode: 'opencode', '.copilot': 'copilot' };
+const SCOPES = ['local', 'global', 'source'];
 const OS_FAMILIES = ['win32', 'darwin', 'linux'];
 const TIERS = ['reasoning', 'mid', 'fast'];
 const TEST_STATUSES = ['passed', 'failed', 'skipped'];
@@ -60,6 +68,9 @@ const CONFIG_ENUMS = {
   'execution.default_mode': ['wave_order', 'sequential'],
 };
 const CONFIG_NUMBERS = ['cost.phase_budget_usd', 'cost.weekly_limit_stop_pct', 'budget.default_points', 'budget.verify_reserve', 'routing.max_escalations'];
+const OUTCOMES = ['pass', 'fail', 'needs_human'];
+const BUDGET_STATUSES = ['off', 'ok', 'near', 'over'];
+const MUTATION_BUCKETS = ['80–100%', '50–80%', '<50%', 'not_scored'];
 
 // ─── Coarsening ──────────────────────────────────────────────────────────────
 
@@ -107,32 +118,55 @@ function readJsonl(file) {
   }
   return out;
 }
-const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf-8')); } catch { return null; } };
 
+/** The phase directories, each with its number (null when the name has none). */
 function phaseDirs(cwd) {
   const root = planningPath(cwd, 'phases');
-  try { return fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => ({ name: e.name, abs: path.join(root, e.name) })); } catch { return []; }
+  let entries = [];
+  try { entries = fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()); } catch { return []; }
+  return entries.map((e) => ({ name: e.name, abs: path.join(root, e.name), num: (e.name.match(/^(\d+(?:\.\d+)*)/) || [])[1] || null }));
 }
 
 // ─── Collect ─────────────────────────────────────────────────────────────────
 
-function panVersion() {
-  for (const f of [path.join(INVENTORY_ROOT, 'pan-wizard-core', 'VERSION'), path.join(INVENTORY_ROOT, 'VERSION')]) {
+function panVersion(root) {
+  for (const f of [path.join(root, 'pan-wizard-core', 'VERSION'), path.join(root, 'VERSION')]) {
     try { const v = fs.readFileSync(f, 'utf-8').trim(); if (/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/.test(v)) return v; } catch { /* next */ }
   }
-  const pkg = readJson(path.join(INVENTORY_ROOT, 'package.json'));
+  const pkg = readJson(path.join(root, 'package.json'));
   return pkg && /^\d+\.\d+\.\d+/.test(pkg.version || '') ? pkg.version : 'unknown';
 }
 
-function collectInstall(cwd) {
+/** The runtime an install directory belongs to: by its name, else by its layout. */
+function installRuntime(root) {
+  if (INSTALL_DIRS[path.basename(root)]) return INSTALL_DIRS[path.basename(root)];
+  const any = (dir, re) => { try { return fs.readdirSync(path.join(root, dir)).some((f) => re.test(f)); } catch { return false; } };
+  if (any('agents', /^pan-.*\.agent\.md$/)) return 'copilot';
+  if (any(path.join('commands', 'pan'), /\.toml$/)) return 'gemini';
+  if (any('commands', /^pan-.*\.md$/) || fs.existsSync(path.join(root, 'plugins', 'pan-wizard.js'))) return 'opencode';
+  if (fs.existsSync(path.join(root, 'config.toml'))) return 'codex';
+  if (any(path.join('commands', 'pan'), /\.md$/) || fs.existsSync(path.join(root, 'settings.json'))) return 'claude';
+  return null;
+}
+
+/**
+ * Which runtimes this project has PAN installed for, and where the running engine is:
+ * `local` (inside the project), `global`, or `source` (a checkout: no install manifest).
+ * @param {string} cwd
+ * @param {string} [root] the directory the engine runs from (its runtime directory)
+ */
+function collectInstall(cwd, root = INVENTORY_ROOT) {
   const runtimes = new Set();
   for (const [dir, rt] of Object.entries(RUNTIME_DIRS)) {
     if (fs.existsSync(path.join(cwd, dir, 'pan-file-manifest.json'))) runtimes.add(rt);
   }
-  const engine = RUNTIME_DIRS[path.basename(INVENTORY_ROOT)];
+  // A --unified-skills core lives in .agents/ and carries no manifest of its own.
+  const installed = fs.existsSync(path.join(root, 'pan-file-manifest.json')) || path.basename(root) === '.agents';
+  const engine = installed ? installRuntime(root) : null;
   if (engine) runtimes.add(engine);
-  const local = path.resolve(INVENTORY_ROOT).startsWith(path.resolve(cwd) + path.sep);
-  return { version: panVersion(), runtimes: RUNTIMES.filter((r) => runtimes.has(r)), scope: engine ? (local ? 'local' : 'global') : 'source' };
+  const norm = (p) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
+  const local = norm(root).startsWith(norm(cwd) + path.sep);
+  return { version: panVersion(root), runtimes: RUNTIMES.filter((r) => runtimes.has(r)), scope: installed ? (local ? 'local' : 'global') : 'source' };
 }
 
 function collectConfig(cwd) {
@@ -150,14 +184,16 @@ function collectConfig(cwd) {
     if (v === undefined) continue;
     out[key] = typeof v === 'number' && Number.isFinite(v) ? (key.endsWith('_usd') ? usdBucket(v) : v) : (typeof v === 'boolean' ? v : 'set');
   }
-  // Any other key PAN knows (config.cjs) with a boolean value: the key name is PAN's, the value says nothing.
-  const { isKnownConfigPath } = require('./config.cjs');
+  // Any other key PAN itself defines (config.cjs) with a boolean value: the key name is PAN's,
+  // the value says nothing. Not a user's `x-` key, and nothing inside an open section
+  // (model_overrides, focus …), whose key names the user chooses: those are counted.
+  const { isKnownConfigPath, OPEN_CONFIG_SECTIONS } = require('./config.cjs');
   const walk = (o, prefix, depth) => {
     for (const [k, v] of Object.entries(o || {})) {
       const key = prefix ? `${prefix}.${k}` : k;
       if (Object.prototype.hasOwnProperty.call(out, key)) continue;
       if (v && typeof v === 'object' && !Array.isArray(v) && depth < 1) { walk(v, key, depth + 1); continue; }
-      if (typeof v === 'boolean' && /^[a-z_]+(.[a-z_]+)?$/.test(key) && isKnownConfigPath(key)) out[key] = v;
+      if (typeof v === 'boolean' && /^[a-z_]+(\.[a-z_]+)?$/.test(key) && !OPEN_CONFIG_SECTIONS.includes(key.split('.')[0]) && isKnownConfigPath(key)) out[key] = v;
       else other++;
     }
   };
@@ -165,31 +201,36 @@ function collectConfig(cwd) {
   return { values: out, other_keys: small(other) };
 }
 
-function collectGate(cwd) {
+/** The phase gate as it stands now (not windowed), with the commit log read once for all phases. */
+function collectGate(cwd, dirs) {
   const { phaseGate } = require('./phase-gate.cjs');
+  const { withCommitLogCache } = require('./verify-scope.cjs');
   const refusals = {};
   const notChecked = {};
   let phases = 0;
   let ok = 0;
-  for (const d of phaseDirs(cwd).slice(0, 200)) {
-    const num = (d.name.match(/^(\d+(?:\.\d+)*)/) || [])[1];
-    if (!num) continue;
-    let g;
-    try { g = phaseGate(cwd, num, { mode: 'warn' }); } catch { continue; }
-    if (!g || g.error) continue;
-    phases++;
-    if (g.ok) ok++;
-    for (const r of g.reasons || []) bump(refusals, inVocab(r.code, GATE_CODES));
-    for (const n of g.not_checked || []) bump(notChecked, inVocab(n.check, GATE_CHECKS));
-  }
+  withCommitLogCache(() => {
+    for (const d of dirs.slice(0, 200)) {
+      if (!d.num) continue;
+      let g;
+      try { g = phaseGate(cwd, d.num, { mode: 'warn' }); } catch { continue; }
+      if (!g || g.error) continue;
+      phases++;
+      if (g.ok) ok++;
+      for (const r of g.reasons || []) bump(refusals, inVocab(r.code, GATE_CODES));
+      for (const n of g.not_checked || []) bump(notChecked, inVocab(n.check, GATE_CHECKS));
+    }
+  });
   return { phases, ok, refusals, not_checked: notChecked };
 }
 
 function collectJudges(cwd, agents, since) {
   const F = require('./findings.cjs');
   const V = require('./verdict.cjs');
-  const { rows } = F.readLedger(cwd);
-  const fold = F.foldFindings(rows.filter((r) => !r.ts || Date.parse(r.ts) >= since));
+  // Fold the whole ledger, then keep what was active in the window: a finding raised earlier
+  // and dismissed, fixed or reported again inside it is part of what the user did.
+  const fold = F.foldFindings(F.readLedger(cwd).rows);
+  const active = (f) => !f.first_seen || [f.first_seen, f.last_reported, f.disposed_at].some((ts) => ts && inWindow(ts, since));
   const judges = {};
   const judge = (a) => {
     const name = agents.includes(a) ? a : 'other';
@@ -197,6 +238,7 @@ function collectJudges(cwd, agents, since) {
     return judges[name];
   };
   for (const v of fold.verdicts) {
+    if (!inWindow(v.ts, since)) continue;
     const j = judge(v.agent);
     j.verdicts++;
     bump(j.outcomes, inVocab(v.outcome, ['pass', 'fail', 'needs_human']));
@@ -205,6 +247,7 @@ function collectJudges(cwd, agents, since) {
     for (const l of Array.isArray(v.lowered_by) ? v.lowered_by : []) bump(j.lowered_by, typeof l === 'string' && /^[a-z_]{2,32}$/.test(l) ? l : 'other');
   }
   for (const f of fold.findings.values()) {
+    if (!active(f)) continue;
     const j = judge(f.agent);
     j.findings++;
     const cls = inVocab(f.class, V.FINDING_CLASSES);
@@ -216,16 +259,22 @@ function collectJudges(cwd, agents, since) {
   return judges;
 }
 
-function collectExecution(cwd) {
+function collectExecution(dirs, since) {
   const test = { runs: 0, by_status: {}, by_source: {}, regressions: 0, preexisting: 0, timed_out: 0 };
   const mutation = { reports: 0, score: {} };
-  for (const d of phaseDirs(cwd)) {
+  // A record's time: its own start, else the file's.
+  const before = (r, file) => {
+    let t = Date.parse(r.started_at);
+    if (!Number.isFinite(t)) { try { t = fs.statSync(file).mtimeMs; } catch { return false; } }
+    return t < since;
+  };
+  for (const d of dirs) {
     let files = [];
     try { files = fs.readdirSync(d.abs); } catch { continue; }
     for (const f of files) {
       if (/-test-run\.json$/.test(f)) {
         const r = readJson(path.join(d.abs, f));
-        if (!r) continue;
+        if (!r || before(r, path.join(d.abs, f))) continue;
         test.runs++;
         bump(test.by_status, inVocab(r.status, TEST_STATUSES));
         bump(test.by_source, r.source ? inVocab(r.source, TEST_SOURCES) : 'none');
@@ -234,7 +283,7 @@ function collectExecution(cwd) {
         if (r.timed_out) test.timed_out++;
       } else if (/-mutation\.json$/.test(f)) {
         const r = readJson(path.join(d.abs, f));
-        if (!r) continue;
+        if (!r || before(r, path.join(d.abs, f))) continue;
         mutation.reports++;
         const s = typeof r.score === 'number' ? r.score : null;
         bump(mutation.score, s === null ? 'not_scored' : s >= 0.8 ? '80–100%' : s >= 0.5 ? '50–80%' : '<50%');
@@ -244,16 +293,21 @@ function collectExecution(cwd) {
   return { test, mutation };
 }
 
-function collectCost(cwd, agents, since) {
+function collectCost(cwd, dirs, agents, since) {
   const C = require('./cost.cjs');
   const { loadConfig } = require('./core.cjs');
   const rates = C.effectiveRates(loadConfig(cwd));
   const byAgent = {};
   const byTier = {};
   let total = 0;
-  for (const r of C.readRecords(cwd)) {
+  // The phases that spent inside the window: only their budget and forecast are reported.
+  const spentIn = new Set();
+  // Read once: the per-phase budget and forecast below take the rows instead of re-reading.
+  const records = C.readRecords(cwd);
+  for (const r of records) {
     if (C.isSuspectRecord(r) || C.isEmptyRecord(r)) continue;
-    if (r.ts && Date.parse(r.ts) < since) continue;
+    if (!inWindow(r.ts, since)) continue;
+    spentIn.add(C.samePhaseKey(r.phase));
     const usd = typeof r.cost_usd === 'number' ? r.cost_usd : C.computeCost(r, rates);
     if (typeof usd !== 'number') continue;
     total += usd;
@@ -262,16 +316,16 @@ function collectCost(cwd, agents, since) {
   }
   const budget = { phases: 0, ok: 0, near: 0, over: 0, off: 0 };
   const forecast = { checked: 0, below_p10: 0, within: 0, above_p90: 0 };
-  for (const d of phaseDirs(cwd)) {
-    const num = (d.name.match(/^(\d+(?:\.\d+)*)/) || [])[1];
-    if (!num) continue;
-    const b = C.phaseBudget(cwd, num);
+  for (const d of dirs) {
+    const num = d.num;
+    if (!num || !spentIn.has(C.samePhaseKey(num))) continue;
+    const b = C.phaseBudget(cwd, num, { records });
     if (!(b.spent_usd > 0)) continue;
     budget.phases++;
     bump(budget, b.status);
     let plans = 0;
     try { plans = fs.readdirSync(d.abs).filter((f) => /-plan\.md$/i.test(f)).length; } catch { /* none */ }
-    const fc = C.costForecast(cwd, { plans, excludePhase: num });
+    const fc = C.costForecast(cwd, { plans, excludePhase: num, records });
     if (fc.phase && fc.phase.status === 'ok') {
       forecast.checked++;
       if (b.spent_usd < fc.phase.p10) forecast.below_p10++;
@@ -283,9 +337,8 @@ function collectCost(cwd, agents, since) {
   return { total: usdBucket(total), by_agent: usd(byAgent), by_tier: usd(byTier), budget: coarse(budget), forecast };
 }
 
-function collectUsage(cwd, inventory) {
-  const { usageCensus } = require('./usage.cjs');
-  const u = usageCensus(cwd, { inventory });
+function collectUsage(cwd, inv, since) {
+  const u = usageCensus(cwd, { inv, since });
   return {
     commands_installed: u.commands.installed,
     commands_used: u.commands.used.map((c) => c.name).filter((n) => /^[a-z0-9-]+$/.test(n)).sort(),
@@ -298,7 +351,7 @@ function collectUsage(cwd, inventory) {
 function collectGuard(cwd, since) {
   const out = {};
   for (const r of readJsonl(planningPath(cwd, 'guard.jsonl'))) {
-    if (r.ts && Date.parse(r.ts) < since) continue;
+    if (!inWindow(r.ts, since)) continue;
     const rule = inVocab(r.rule, GUARD_RULES);
     if (!out[rule]) out[rule] = {};
     bump(out[rule], inVocab(r.action, GUARD_ACTIONS));
@@ -316,7 +369,7 @@ function collectTrace(cwd, since, withToolErrors) {
   try { names = fs.readdirSync(root).filter((n) => n.startsWith('sess_')); } catch { /* no traces */ }
   const { EVENT_TYPES } = require('./optimize.cjs');
   for (const n of names) {
-    const events = readJsonl(path.join(root, n, 'trace.jsonl')).filter((e) => !e.ts || Date.parse(e.ts) >= since);
+    const events = readJsonl(path.join(root, n, 'trace.jsonl')).filter((e) => inWindow(e.ts, since));
     if (!events.length) continue;
     sessions++;
     for (const e of events) {
@@ -324,12 +377,16 @@ function collectTrace(cwd, since, withToolErrors) {
       bump(byCategory, inVocab(e.category, TRACE_CATEGORIES));
       if (withToolErrors && e.category === 'tool_error' && e.context && typeof e.context === 'object') {
         const c = e.context;
-        const sig = typeof c.message_sig === 'string' && /^[0-9a-f]{12}$/.test(c.message_sig) ? c.message_sig : 'none';
-        const key = [inVocab(c.tool, HOST_TOOLS), inVocab(c.error_class, TOOL_ERROR_CLASSES), Number.isInteger(c.exit_code) && c.exit_code >= 0 && c.exit_code < 256 ? c.exit_code : null, sig].join('|');
-        const g = tools.get(key);
+        const entry = {
+          tool: inVocab(c.tool, HOST_TOOLS),
+          class: inVocab(c.error_class, TOOL_ERROR_CLASSES),
+          exit_code: Number.isInteger(c.exit_code) && c.exit_code >= 0 && c.exit_code < 256 ? c.exit_code : null,
+          sig: typeof c.message_sig === 'string' && /^[0-9a-f]{12}$/.test(c.message_sig) ? c.message_sig : 'none',
+        };
+        const key = [entry.tool, entry.class, entry.exit_code, entry.sig].join('|');
         const cnt = Number.isInteger(c.count) && c.count > 0 ? c.count : 1;
-        if (g) g.count += cnt;
-        else tools.set(key, { tool: inVocab(c.tool, HOST_TOOLS), class: inVocab(c.error_class, TOOL_ERROR_CLASSES), exit_code: Number.isInteger(c.exit_code) && c.exit_code >= 0 && c.exit_code < 256 ? c.exit_code : null, sig, count: cnt });
+        if (tools.has(key)) tools.get(key).count += cnt;
+        else tools.set(key, { ...entry, count: cnt });
       }
     }
   }
@@ -341,8 +398,11 @@ function collectTrace(cwd, since, withToolErrors) {
 
 function suggestions(m) {
   const out = [];
+  // `other` folds judges PAN does not ship and classes it does not know: nothing to act on.
   for (const [agent, j] of Object.entries(m.judges || {})) {
+    if (agent === 'other') continue;
     for (const [cls, c] of Object.entries(j.by_class || {})) {
+      if (cls === 'other') continue;
       const dismissed = c.dismissed || 0;
       if (c.total >= 10 && dismissed / c.total >= 0.6) {
         out.push({ id: 'judge_noise', text: `${agent} \`${cls}\` findings were dismissed ${pctBucket(dismissed, c.total)} of the time: a candidate for that judge's noise list.`, evidence: { agent, class: cls, total: small(c.total), dismissed: small(dismissed) } });
@@ -372,27 +432,30 @@ function suggestions(m) {
 /**
  * The report's data, from closed vocabularies only.
  * @param {string} cwd
- * @param {{days?: number, toolErrors?: boolean, now?: Date, inventory?: string}} [opts]
+ * @param {{days?: number, toolErrors?: boolean, now?: Date, inventory?: string,
+ *   inv?: {commands: string[], agents: string[]}, dirs?: object[]}} [opts]
+ *   inv and dirs: the inventory and phase directories, when the caller has read them already
  */
 function collect(cwd, opts = {}) {
   const now = opts.now || new Date();
-  const days = Number.isFinite(opts.days) && opts.days > 0 ? opts.days : DEFAULT_DAYS;
+  const days = Number.isFinite(opts.days) && opts.days > 0 && opts.days <= MAX_DAYS ? opts.days : DEFAULT_DAYS;
   const since = now.getTime() - days * 86400000;
   const inventory = opts.inventory || INVENTORY_ROOT;
-  const { readInventory } = require('./usage.cjs');
-  const agents = readInventory(inventory).agents.filter((a) => /^pan-[a-z0-9_-]+$/.test(a));
+  const inv = opts.inv || readInventory(inventory);
+  const dirs = opts.dirs || phaseDirs(cwd);
+  const agents = inv.agents.filter((a) => /^pan-[a-z0-9_-]+$/.test(a));
   const nodeMajor = Number(process.versions.node.split('.')[0]);
   const m = {
     schema: SCHEMA,
-    pan: collectInstall(cwd),
+    pan: collectInstall(cwd, inventory),
     env: { os: inVocab(process.platform, OS_FAMILIES), node: nodeMajor },
     window: { from: isoWeek(new Date(since)), to: isoWeek(now), days },
     config: collectConfig(cwd),
-    gate: collectGate(cwd),
+    gate: collectGate(cwd, dirs),
     judges: collectJudges(cwd, agents, since),
-    execution: collectExecution(cwd),
-    cost: collectCost(cwd, agents, since),
-    usage: collectUsage(cwd, inventory),
+    execution: collectExecution(dirs, since),
+    cost: collectCost(cwd, dirs, agents, since),
+    usage: collectUsage(cwd, inv, since),
     guard: collectGuard(cwd, since),
     trace: collectTrace(cwd, since, !!opts.toolErrors),
   };
@@ -459,15 +522,10 @@ function render(m, opts = {}) {
   return L.join('\n');
 }
 
-function phaseSlugs(cwd) {
-  return phaseDirs(cwd).map((d) => d.name.replace(/^\d+(?:\.\d+)*-?/, '')).filter(Boolean);
+function phaseSlugs(dirs) {
+  return dirs.map((d) => d.name.replace(/^\d+(?:\.\d+)*-?/, '')).filter(Boolean);
 }
 
-/**
- * Scan a rendered report. A hit refuses it; the result names rules, never text.
- * A canary that is one of PAN's own words (a project named `review`, a branch named
- * `quick`) would refuse every report and identify nothing, so it is skipped and counted.
- */
 /**
  * The words the report's own template prints, whatever the project: the skeleton model
  * fills every section with PAN's own vocabulary, so nothing here comes from a project.
@@ -504,11 +562,57 @@ function templateWords() {
   return templateWordsCache;
 }
 
+/**
+ * Every word the report can print that is PAN's own: each vocabulary above and PAN's
+ * (finding classes, severities, statuses, trace event types), every key PAN defines in
+ * config.json, the shipped command and agent names, and the template's words. Each value
+ * is also split where the canary match splits (`model_profile` gives `model` and
+ * `profile`), because `scanText` matches a canary between any two non-alphanumerics.
+ */
+let baseWordsCache = null;
+function ownWords(vocabulary = []) {
+  const addAll = (words, list) => {
+    for (const v of list) {
+      const s = String(v).toLowerCase();
+      words.add(s);
+      for (const part of s.split(/[^a-z0-9]+/)) if (part) words.add(part);
+    }
+  };
+  if (!baseWordsCache) {
+    const V = require('./verdict.cjs');
+    const F = require('./findings.cjs');
+    const { EVENT_TYPES } = require('./optimize.cjs');
+    const { knownConfigKeys } = require('./config.cjs');
+    const { top, sections } = knownConfigKeys();
+    baseWordsCache = new Set();
+    for (const list of [
+      RUNTIMES, SCOPES, OS_FAMILIES, TIERS, TEST_STATUSES, TEST_SOURCES, GATE_CODES, GATE_CHECKS, GUARD_RULES, GUARD_ACTIONS,
+      TOOL_ERROR_CLASSES, HOST_TOOLS, TRACE_CATEGORIES, Object.keys(CONFIG_ENUMS), ...Object.values(CONFIG_ENUMS), CONFIG_NUMBERS,
+      OUTCOMES, BUDGET_STATUSES, MUTATION_BUCKETS, V.FINDING_CLASSES, V.SEVERITIES, F.STATUSES, EVENT_TYPES,
+      [...top], ...[...sections.values()].map((s) => [...s]), [...templateWords()],
+    ]) addAll(baseWordsCache, list);
+  }
+  const words = new Set(baseWordsCache);
+  addAll(words, vocabulary);
+  return words;
+}
+
+/**
+ * Scan a rendered report. A hit refuses it; the result names rules, never text.
+ * A canary that is one of PAN's own words (a project named `review`, a phase named
+ * `profile`, an OS user called `node`) would refuse every report and identify nothing,
+ * so it is skipped and counted.
+ */
 function finalize(text, canaries, vocabulary = []) {
-  const own = new Set([...GATE_CODES, ...GATE_CHECKS, ...TRACE_CATEGORIES, ...GUARD_RULES, ...TEST_SOURCES, ...TOOL_ERROR_CLASSES, ...HOST_TOOLS, ...RUNTIMES, ...vocabulary, ...templateWords()].map((s) => String(s).toLowerCase()));
+  const own = ownWords(vocabulary);
   const usable = canaries.filter((c) => !own.has(c.value.toLowerCase()));
   const hits = scanText(text, { canaries: usable, allowed: [ISSUE_URL] });
   return { ok: hits.length === 0, rules: hits, canaries_checked: usable.length, canaries_skipped: canaries.length - usable.length };
+}
+
+/** Whether the user's note alone would be refused, judged exactly as the report is. */
+function noteRefused(note, canaries, vocabulary = []) {
+  return !!note && !finalize(String(note), canaries, vocabulary).ok;
 }
 
 /**
@@ -518,14 +622,15 @@ function finalize(text, canaries, vocabulary = []) {
 function buildReport(cwd, opts = {}) {
   if (!fs.existsSync(planningPath(cwd))) return { ok: false, error: 'not_a_pan_project', rules: [], reason: 'no .planning/ directory here' };
   const note = opts.note == null ? null : String(opts.note).replace(/\r\n/g, '\n').trim().slice(0, NOTE_MAX);
-  const model = collect(cwd, opts);
-  const text = render(model, { note });
-  const canaries = projectCanaries(cwd, { phaseSlugs: phaseSlugs(cwd) });
-  const { readInventory } = require('./usage.cjs');
   const inv = readInventory(opts.inventory || INVENTORY_ROOT);
-  const scan = finalize(text, canaries, [...inv.commands, ...inv.agents]);
+  const dirs = phaseDirs(cwd);
+  const model = collect(cwd, { ...opts, inv, dirs });
+  const text = render(model, { note });
+  const canaries = projectCanaries(cwd, { phaseSlugs: phaseSlugs(dirs) });
+  const vocabulary = [...inv.commands, ...inv.agents];
+  const scan = finalize(text, canaries, vocabulary);
   if (!scan.ok) {
-    const fromNote = note && scanText(note, { canaries }).length > 0;
+    const fromNote = noteRefused(note, canaries, vocabulary);
     return {
       ok: false,
       error: 'feedback_refused',
@@ -538,9 +643,16 @@ function buildReport(cwd, opts = {}) {
   return { ok: true, text, model, scan };
 }
 
+/**
+ * `pan-tools feedback`. A flag given without its value arrives as '' (pan-tools.cjs) and is
+ * an error, never a silent default.
+ */
 function cmdFeedback(cwd, opts, raw) {
+  const fail = (error, reason) => { output({ error, reason }, raw); process.exitCode = 1; };
   const days = opts.days != null ? Number(opts.days) : undefined;
-  if (opts.days != null && !(days > 0)) { output({ error: 'invalid_days', reason: '--days must be a positive number' }, raw); process.exitCode = 1; return; }
+  if (opts.days != null && !(opts.days !== '' && Number.isFinite(days) && days > 0 && days <= MAX_DAYS)) return fail('invalid_days', `--days must be a number above 0 and at most ${MAX_DAYS}`);
+  if (opts.note === '') return fail('invalid_note', '--note needs your words after it, in quotes');
+  if (opts.format != null && !['md', 'json'].includes(opts.format)) return fail('invalid_format', '--format must be md or json');
   const r = buildReport(cwd, { note: opts.note, toolErrors: !!opts.toolErrors, days });
   if (!r.ok) {
     process.stdout.write(JSON.stringify({ error: r.error, rules: r.rules, reason: r.reason }, null, 2) + '\n');
@@ -552,4 +664,4 @@ function cmdFeedback(cwd, opts, raw) {
   process.stdout.write(r.text + '\n');
 }
 
-module.exports = { SCHEMA, ISSUE_URL, collect, render, finalize, templateWords, buildReport, cmdFeedback, suggestions, usdBucket, isoWeek, small };
+module.exports = { SCHEMA, ISSUE_URL, collect, collectInstall, render, finalize, noteRefused, templateWords, buildReport, cmdFeedback, suggestions, usdBucket, isoWeek, small };

@@ -11,8 +11,9 @@
  *   --write   regenerate the registry. Rules already marked `baseline` keep the mark;
  *             with --baseline every rule gets it (how the registry was first created).
  *   --check   exit 1 when the registry is stale, when a rule that is neither baseline nor
- *             claimed has no reason in tests/fixtures/prompt-rules-allowlist.json, or when
- *             a scenario claims a rule that does not exist.
+ *             claimed has no reason in tests/fixtures/prompt-rules-allowlist.json, when
+ *             a scenario claims a rule that does not exist, or when an allowlist entry
+ *             names a rule that does not exist.
  *   --list    print the rules (id, file, text) as JSON.
  *
  * `harness run --prompt-mutant <id>` deletes one rule's line from the packed package
@@ -108,7 +109,10 @@ function checkRegistry(root) {
   const unclaimed = reg.filter((r) => !r.baseline && !claimed.has(r.id) && !allow.has(r.id));
   const dangling = [];
   for (const s of scenarios) for (const id of (Array.isArray(s.covers) ? s.covers : [])) if (!nowIds.has(id)) dangling.push({ scenario: s.id, id });
-  return { rules: now.length, stale, unclaimed, dangling, claimed: [...claimed].filter((id) => nowIds.has(id)).length };
+  // An excuse for a rule that no longer exists: it would silently excuse a future rule
+  // that happened to reuse the id, and it hides that the rule went away.
+  const staleAllowed = [...allow.keys()].filter((id) => !nowIds.has(id));
+  return { rules: now.length, stale, unclaimed, dangling, staleAllowed, claimed: [...claimed].filter((id) => nowIds.has(id)).length };
 }
 
 /** Delete the first line whose normalised text is the rule. Null when it is not there. */
@@ -150,6 +154,7 @@ if (require.main === module) {
     if (r.stale) problems.push(`${REGISTRY} is stale: run node scripts/prompt-rules.cjs --write`);
     for (const u of r.unclaimed) problems.push(`unclaimed rule ${u.id} (${u.file}): "${u.text.slice(0, 80)}" — add it to a scenario's covers, or to ${ALLOWLIST} with a reason`);
     for (const d of r.dangling) problems.push(`scenario ${d.scenario} covers ${d.id}, which is no rule`);
+    for (const id of r.staleAllowed) problems.push(`allowlist entry ${id} names no rule: remove it from ${ALLOWLIST}`);
     if (problems.length) { console.log(problems.join('\n')); process.exit(1); }
     console.log(`prompt-rule registry current: ${r.rules} rules, ${r.claimed} claimed by a scenario`);
   }

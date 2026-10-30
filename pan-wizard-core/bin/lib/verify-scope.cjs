@@ -66,12 +66,32 @@ function exclusionReason(file, planningPrefix) {
   return null;
 }
 
+// Set only inside withCommitLogCache: one `git log` per project for every phase it checks.
+let logCache = null;
+
+function commitLog(cwd) {
+  if (logCache && logCache.has(cwd)) return logCache.get(cwd);
+  const r = execGit(cwd, ['-c', 'core.quotepath=off', 'log', '--no-merges', '-n', String(COMMIT_SCAN_LIMIT), '--relative', '--name-only', '--format=@@%H%x09%s']);
+  if (logCache) logCache.set(cwd, r);
+  return r;
+}
+
+/**
+ * Run `fn` with the commit log read once per project (a report that gates many phases).
+ * Nested calls share the outer cache; it ends when the outermost call returns.
+ */
+function withCommitLogCache(fn) {
+  const outer = logCache;
+  logCache = outer || new Map();
+  try { return fn(); } finally { logCache = outer; }
+}
+
 /**
  * Files the phase's plan commits touched, paths relative to `cwd` (git's --relative).
  * @returns {{git: boolean, commits: number, files: Set<string>, hashes: string[]}} hashes newest first
  */
 function committedFiles(cwd, phaseNumber) {
-  const r = execGit(cwd, ['-c', 'core.quotepath=off', 'log', '--no-merges', '-n', String(COMMIT_SCAN_LIMIT), '--relative', '--name-only', '--format=@@%H%x09%s']);
+  const r = commitLog(cwd);
   if (r.exitCode !== 0) return { git: false, commits: 0, files: new Set(), hashes: [] };
   // `{type}({phase}-{plan}):` with the phase's zero padding optional ("feat(03-01):", "fix(3-02)!:").
   const unpadded = String(phaseNumber).replace(/^0+(?=\d)/, '');
@@ -365,4 +385,4 @@ function cmdVerifyStale(cwd, phase, raw) {
   output(r, raw, r.error ? undefined : r.state);
 }
 
-module.exports = { scopePhase, cmdVerifyScope, reviewScope, cmdReviewScope, workingTreeFiles, sectionBody, verificationFreshness, cmdVerifyStale, coveredFiles, committedFiles, LOCKFILES, TEST_PATH_RE, TEST_FILE_RE };
+module.exports = { scopePhase, cmdVerifyScope, reviewScope, cmdReviewScope, workingTreeFiles, sectionBody, verificationFreshness, cmdVerifyStale, coveredFiles, committedFiles, withCommitLogCache, LOCKFILES, TEST_PATH_RE, TEST_FILE_RE };

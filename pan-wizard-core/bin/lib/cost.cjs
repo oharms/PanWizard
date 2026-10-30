@@ -689,15 +689,16 @@ function phaseBudgetUsd(cwd) {
 
 /**
  * A phase's spend against its budget.
+ * @param {{records?: object[]}} [opts] records: the ledger already read (a caller that checks many phases)
  * @returns {{phase, budget_usd, spent_usd, pct, status: 'off'|'ok'|'near'|'over', mode: 'warn', warn_at_pct, unpriced}}
  */
-function phaseBudget(cwd, phase) {
+function phaseBudget(cwd, phase, opts = {}) {
   const budget = phaseBudgetUsd(cwd);
   const rates = effectiveRates(loadConfig(cwd));
   const key = samePhaseKey(phase);
   let spent = 0;
   let unpriced = 0;
-  for (const r of readRecords(cwd)) {
+  for (const r of opts.records || readRecords(cwd)) {
     if (samePhaseKey(r.phase) !== key || isSuspectRecord(r) || isEmptyRecord(r)) continue;
     const usd = typeof r.cost_usd === 'number' ? r.cost_usd : computeCost(r, rates);
     if (typeof usd === 'number') spent += usd;
@@ -764,13 +765,13 @@ const samePhaseKey = (p) => String(p == null ? '' : p).replace(/^0+(?=\d)/, '');
  *   draw per plan, `FORECAST_ITERATIONS` times, seeded.
  *
  * @param {string} cwd
- * @param {{plans?: number, tier?: string, excludePhase?: string, seed?: number}} [opts]
+ * @param {{plans?: number, tier?: string, excludePhase?: string, seed?: number, records?: object[]}} [opts] records: the ledger already read (a caller that forecasts many phases)
  */
 function costForecast(cwd, opts = {}) {
   const rates = effectiveRates(loadConfig(cwd));
   const exclude = opts.excludePhase != null ? samePhaseKey(opts.excludePhase) : null;
   const rows = [];
-  for (const r of readRecords(cwd)) {
+  for (const r of opts.records || readRecords(cwd)) {
     if (isSuspectRecord(r) || isEmptyRecord(r)) continue;
     if (exclude != null && samePhaseKey(r.phase) === exclude) continue;
     const usd = typeof r.cost_usd === 'number' ? r.cost_usd : computeCost(r, rates);
@@ -1051,6 +1052,7 @@ function cmdModelsCheck(raw) {
 module.exports = {
   computeCost,
   phaseBudget,
+  samePhaseKey,
   cmdCostBudget,
   DEFAULT_PHASE_BUDGET_USD,
   costForecast,

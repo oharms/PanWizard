@@ -86,4 +86,37 @@ describe('usage census (L9)', () => {
     assert.ok(out.commands.never_used.includes('exec-phase'), 'the inventory is the shipped command set');
     assert.match(runPanTools('usage --raw', dir).output, /^\d+ of \d+ commands used, \d+ unfinished; \d+ of \d+ agents used$/);
   });
+
+  test("the inventory reads every runtime's layout: Gemini TOML commands, OpenCode flat commands, Copilot .agent.md agents", () => {
+    const g = path.join(dir, 'gem');
+    fs.mkdirSync(path.join(g, 'commands', 'pan'), { recursive: true });
+    fs.writeFileSync(path.join(g, 'commands', 'pan', 'quick.toml'), '');
+    const o = path.join(dir, 'oc');
+    fs.mkdirSync(path.join(o, 'commands'), { recursive: true });
+    fs.writeFileSync(path.join(o, 'commands', 'pan-quick.md'), '');
+    fs.writeFileSync(path.join(o, 'commands', 'other.md'), '');
+    const c = path.join(dir, 'cp');
+    fs.mkdirSync(path.join(c, 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(c, 'agents', 'pan-planner.agent.md'), '');
+    assert.deepEqual(U.readInventory(g).commands, ['quick']);
+    assert.deepEqual(U.readInventory(o).commands, ['quick']);
+    assert.deepEqual(U.readInventory(c).agents, ['pan-planner']);
+  });
+
+  test('Codex and --unified-skills: the commands are skills in the shared .agents/skills next to the runtime directory', () => {
+    const codex = path.join(dir, 'proj', '.codex');
+    fs.mkdirSync(path.join(codex, 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(codex, 'agents', 'pan-planner.toml'), '');
+    fs.mkdirSync(path.join(dir, 'proj', '.agents', 'skills', 'pan-quick'), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'proj', '.agents', 'skills', 'someone-else'), { recursive: true });
+    assert.deepEqual(U.readInventory(codex), { commands: ['quick'], agents: ['pan-planner'] });
+  });
+
+  test('since: rows and sessions older than the window are left out', () => {
+    ledger([{ ts: '2020-01-01T00:00:00Z', command: 'quick', agent: 'pan-planner' }, { ts: '2026-10-20T00:00:00Z', command: 'army' }]);
+    session('sess_old', { command: 'exec-phase', started_at: '2020-01-01T00:00:00Z', ended_at: null });
+    const r = U.usageCensus(dir, { inventory: inv, now: '2026-10-30T00:00:00Z', since: Date.parse('2026-10-01T00:00:00Z') });
+    assert.deepEqual(r.commands.used.map((x) => x.name), ['army']);
+    assert.deepEqual([r.commands.unfinished, r.agents.used], [[], []]);
+  });
 });

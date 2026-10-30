@@ -463,11 +463,12 @@ function main(argv) {
     // H6: the prompt-rule rows. A rule that is neither grandfathered nor claimed by a
     // scenario's covers (or allowlisted with a reason) fails, as does a stale registry.
     const rules = require('./prompt-rules.cjs').checkRegistry(ROOT);
-    const ok = surfaceOk && !rules.stale && !rules.unclaimed.length && !rules.dangling.length;
+    const ok = surfaceOk && !rules.stale && !rules.unclaimed.length && !rules.dangling.length && !rules.staleAllowed.length;
     if (ok) { console.log('surface registry matches the code; every command, agent, verb and config key is alive; every new prompt rule is claimed'); return 0; }
     if (rules.stale) console.error('prompt-rule registry is stale — run `node scripts/prompt-rules.cjs --write` and commit it');
     for (const u of rules.unclaimed) console.error(`  unclaimed prompt rule ${u.id}: "${u.text.slice(0, 80)}"`);
     for (const x of rules.dangling) console.error(`  scenario ${x.scenario} covers ${x.id}, which is no rule`);
+    for (const id of rules.staleAllowed) console.error(`  prompt-rule allowlist entry ${id} names no rule`);
     if (d.added.length || d.removed.length) {
       console.error(`surface registry is stale — run \`node scripts/test-surface.cjs --write\` and commit it`);
       for (const x of d.added) console.error(`  + ${x}`);

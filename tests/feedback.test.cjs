@@ -266,4 +266,225 @@ describe('feedback report: edges and the CLI', () => {
       assert.ok(!bad.out.includes('jane@'), 'the refusal never repeats what it refused');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
+
+  test('CLI: --days beyond the date range or infinite is refused, not printed as NaN', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-fb-d-'));
+    try {
+      fs.mkdirSync(path.join(dir, '.planning'));
+      for (const d of ['1e9', 'Infinity']) {
+        const r = cli(dir, '--days', d);
+        assert.equal(r.code, 1, `--days ${d}: ${r.out}`);
+        assert.equal(JSON.parse(r.out).error, 'invalid_days');
+      }
+      const most = cli(dir, '--days', '100000');
+      assert.equal(most.code, 0, most.out);
+      assert.doesNotMatch(most.out, /NaN/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+/** A bare project: config, phase directories, and optional extra files. */
+function bare(config, phases = [], extra = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-fb-b-'));
+  fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.planning', 'config.json'), JSON.stringify(config));
+  for (const p of phases) fs.mkdirSync(path.join(dir, '.planning', 'phases', p), { recursive: true });
+  for (const [rel, text] of Object.entries(extra)) {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), text);
+  }
+  return dir;
+}
+
+describe('feedback report: settings never name a key the user chose', () => {
+  test('x- keys and keys inside open sections are counted, not printed', () => {
+    const dir = bare({ 'x-acmecorp': true, model_overrides: { acme_client_bot: true }, focus: { acme_area: true }, cache: { acme_cache: true }, commit_docs: true });
+    try {
+      const r = FB.buildReport(dir, {});
+      assert.equal(r.ok, true, JSON.stringify(r));
+      assert.doesNotMatch(r.text, /acme/i);
+      assert.equal(r.model.config.values.commit_docs, true, 'a closed PAN key is still reported');
+      assert.equal(r.model.config.other_keys, 4);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('feedback report: a phase named like PAN\'s own words does not refuse the report', () => {
+  const now = new Date().toISOString();
+  const cases = [
+    ['part of a printed key (model_profile)', { model_profile: 'balanced' }, ['03-profile'], {}],
+    ['a config section the report prints (routing.strategy)', { routing: { strategy: 'static' } }, ['03-routing'], {}],
+    ['a config section the report prints (hooks.guard)', { hooks: { guard: 'enforce' } }, ['04-hooks'], {}],
+    ['part of a trace event type (memory_hit)', {}, ['05-memory'], { '.planning/optimization/traces/sess_1/trace.jsonl': JSON.stringify({ ts: now, type: 'memory_hit', category: 'context' }) + '\n' }],
+    ['a finding class (partial)', {}, ['06-partial'], { '.planning/findings.jsonl': JSON.stringify({ kind: 'finding', ts: now, id: 'f_0000000001', phase: '06', agent: 'pan-verifier', class: 'partial', severity: 'medium' }) + '\n' }],
+  ];
+  for (const [name, config, phases, extra] of cases) {
+    test(name, () => {
+      const dir = bare(config, phases, extra);
+      try {
+        const r = FB.buildReport(dir, {});
+        assert.equal(r.ok, true, JSON.stringify({ error: r.error, rules: r.rules }));
+      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+  }
+
+  test('a phase name that is not PAN\'s still refuses when it leaks', () => {
+    const r = FB.finalize('model_profile=balanced acme-billing', [{ kind: 'phase_name', value: 'acme-billing' }, { kind: 'phase_name', value: 'profile' }]);
+    assert.deepEqual([r.ok, r.rules, r.canaries_skipped], [false, ['canary:phase_name'], 1]);
+  });
+});
+
+describe('feedback report: the refusal blames --note only for what finalize matched', () => {
+  test('a note holding a skipped canary is not blamed; one holding a path is', () => {
+    const canaries = [{ kind: 'os_user', value: 'node' }];
+    assert.equal(FB.noteRefused('node 22 crashed on review', canaries), false);
+    assert.equal(FB.noteRefused(`see ${FB.ISSUE_URL}`, canaries), false);
+    assert.equal(FB.noteRefused('it failed in C:\\Users\\jane\\acme', canaries), true);
+    assert.equal(FB.noteRefused(null, canaries), false);
+  });
+});
+
+describe('feedback report: the window applies to test runs, mutation reports and usage', () => {
+  test('records older than --days are left out', () => {
+    const old = '2020-01-06T10:00:00.000Z';
+    const dir = bare({}, ['01-old'], {
+      '.planning/phases/01-old/01-test-run.json': JSON.stringify({ status: 'failed', source: 'config', started_at: old }),
+      '.planning/phases/01-old/01-mutation.json': JSON.stringify({ score: 0.9 }),
+      '.planning/optimization/traces/sess_old/session.json': JSON.stringify({ session_id: 'sess_old', command: 'exec-phase', started_at: old, ended_at: null }),
+      '.planning/optimization/traces/sess_old/trace.jsonl': '',
+    });
+    try {
+      const mut = path.join(dir, '.planning', 'phases', '01-old', '01-mutation.json');
+      fs.utimesSync(mut, new Date(old), new Date(old));
+      const all = FB.collect(dir, { days: 100000 });
+      assert.deepEqual([all.execution.test.runs, all.execution.mutation.reports, all.usage.commands_used], ['<3', '<3', ['exec-phase']]);
+      const recent = FB.collect(dir, { days: 30 });
+      assert.deepEqual([recent.execution.test.runs, recent.execution.mutation.reports, recent.usage.commands_used, recent.usage.commands_unfinished], [0, 0, [], []]);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('feedback report: the install it runs from', () => {
+  const make = (rel, files) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-fb-i-'));
+    const dir = path.join(root, rel);
+    for (const [f, text] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+      fs.writeFileSync(path.join(dir, f), text);
+    }
+    return { root, dir };
+  };
+  const cases = [
+    ['global Copilot (~/.copilot)', '.copilot', { 'pan-file-manifest.json': '{}', 'agents/pan-planner.agent.md': '' }, 'copilot'],
+    ['global OpenCode (~/.config/opencode)', path.join('.config', 'opencode'), { 'pan-file-manifest.json': '{}', 'commands/pan-quick.md': '' }, 'opencode'],
+    ['a --config-dir with any name (Gemini)', 'gemini-work', { 'pan-file-manifest.json': '{}', 'commands/pan/quick.toml': '' }, 'gemini'],
+    ['a --config-dir with any name (Codex)', 'codex-work', { 'pan-file-manifest.json': '{}', 'config.toml': '' }, 'codex'],
+  ];
+  for (const [name, rel, files, runtime] of cases) {
+    test(name, () => {
+      const { root, dir } = make(rel, files);
+      const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-fb-p-'));
+      try {
+        const pan = FB.collectInstall(proj, dir);
+        assert.deepEqual([pan.runtimes, pan.scope], [[runtime], 'global']);
+      } finally { fs.rmSync(root, { recursive: true, force: true }); fs.rmSync(proj, { recursive: true, force: true }); }
+    });
+  }
+
+  test('local when the install is inside the project, whatever the drive-letter case', () => {
+    const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-fb-p-'));
+    try {
+      fs.mkdirSync(path.join(proj, '.claude'));
+      fs.writeFileSync(path.join(proj, '.claude', 'pan-file-manifest.json'), '{}');
+      const flip = process.platform === 'win32' ? proj.replace(/^[a-z]/i, (c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase())) : proj;
+      const pan = FB.collectInstall(flip, path.join(proj, '.claude'));
+      assert.deepEqual([pan.runtimes, pan.scope], [['claude'], 'local']);
+    } finally { fs.rmSync(proj, { recursive: true, force: true }); }
+  });
+
+  test('a checkout with no manifest is the source', () => {
+    assert.equal(FB.collectInstall(os.tmpdir(), path.join(__dirname, '..')).scope, 'source');
+  });
+});
+
+describe('feedback report: the window, applied the same way everywhere', () => {
+  const now = new Date().toISOString();
+  const old = '2020-01-06T10:00:00.000Z';
+  const jsonl = (rows) => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+
+  test('a finding raised before the window and dismissed inside it counts', () => {
+    const dir = bare({}, [], {
+      '.planning/findings.jsonl': jsonl([
+        { kind: 'finding', ts: old, id: 'f_0000000001', phase: '01', agent: 'pan-reviewer', class: 'quality', severity: 'low' },
+        { kind: 'verdict', ts: old, verdict_id: 'v_1', phase: '01', agent: 'pan-reviewer', outcome: 'fail', finding_ids: ['f_0000000001'] },
+        { kind: 'disposition', ts: now, id: 'f_0000000001', disposition: 'dismissed', reason: 'noise' },
+        { kind: 'finding', ts: old, id: 'f_0000000002', phase: '01', agent: 'pan-reviewer', class: 'defect', severity: 'low' },
+      ]),
+    });
+    try {
+      const j = FB.collect(dir, { days: 30 }).judges;
+      assert.deepEqual(j['pan-reviewer'].by_class, { quality: { total: '<3', dismissed: '<3' } }, 'the untouched old finding stays out');
+      assert.equal(j['pan-reviewer'].verdicts, 0, 'the old verdict stays out');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('a timestamp that does not parse is kept by every section alike', () => {
+    const bad = 'not-a-date';
+    const dir = bare({}, [], {
+      '.planning/findings.jsonl': jsonl([{ kind: 'finding', ts: bad, id: 'f_0000000003', phase: '01', agent: 'pan-reviewer', class: 'quality', severity: 'low' }]),
+      '.planning/guard.jsonl': jsonl([{ ts: bad, rule: 'secret_write', action: 'denied' }]),
+      '.planning/optimization/traces/sess_1/trace.jsonl': jsonl([{ ts: bad, type: 'error', category: 'tool_error' }]),
+    });
+    try {
+      const m = FB.collect(dir, { days: 30 });
+      assert.ok(m.judges['pan-reviewer'], 'findings');
+      assert.ok(m.guard.secret_write, 'guard');
+      assert.equal(m.trace.sessions, '<3', 'trace');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('phase budget and forecast count only phases that spent inside the window', () => {
+    const dir = bare({}, ['01-old'], {
+      '.planning/metrics/tokens.jsonl': jsonl([{ ts: old, agent: 'pan-executor', tier: 'mid', model: 'm', phase: '01', cost_usd: 4, output_tokens: 1 }]),
+    });
+    try {
+      assert.equal(FB.collect(dir, { days: 100000 }).cost.budget.phases, '<3');
+      assert.equal(FB.collect(dir, { days: 30 }).cost.budget.phases, 0);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('feedback report: suggestions name PAN\'s judges and classes only', () => {
+  test('no judge_noise for the other bucket, judge or class', () => {
+    const many = { total: 12, dismissed: 10 };
+    const s = FB.suggestions({ judges: { other: { by_class: { quality: many } }, 'pan-reviewer': { by_class: { other: many, quality: many } } } });
+    assert.deepEqual(s.map((x) => [x.id, x.evidence.agent, x.evidence.class]), [['judge_noise', 'pan-reviewer', 'quality']]);
+  });
+});
+
+describe('feedback report: CLI flags without their value are errors', () => {
+  test('--note or --days with no value, or followed by another flag, and an unknown --format, exit 1', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-fb-f-'));
+    try {
+      fs.mkdirSync(path.join(dir, '.planning'));
+      for (const [args, error] of [[['--note'], 'invalid_note'], [['--note', '--tool-errors'], 'invalid_note'], [['--days'], 'invalid_days'], [['--days', '--tool-errors'], 'invalid_days'], [['--format', 'jsn'], 'invalid_format'], [['--format'], 'invalid_format']]) {
+        const r = cli(dir, ...args);
+        assert.equal(r.code, 1, `${args.join(' ')}: ${r.out}`);
+        assert.equal(JSON.parse(r.out).error, error, args.join(' '));
+      }
+      assert.equal(cli(dir, '--format', 'md').code, 0);
+      const dashed = cli(dir, '--note', '--force felt slow');
+      assert.equal(dashed.code, 0, 'a note that starts with dashes is still a note');
+      assert.match(dashed.out, /> --force felt slow/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('feedback command: the note never reaches the shell unquoted', () => {
+  test('the prompt builds the command with the note in single quotes, not $ARGUMENTS', () => {
+    const md = fs.readFileSync(path.join(__dirname, '..', 'commands', 'pan', 'feedback.md'), 'utf-8');
+    assert.doesNotMatch(md, /feedback \$ARGUMENTS/);
+    assert.match(md, /single quotes/);
+    assert.ok(md.includes(`'\\''`), 'says how to write an apostrophe inside the quotes');
+  });
 });

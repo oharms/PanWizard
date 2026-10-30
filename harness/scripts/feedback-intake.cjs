@@ -9,7 +9,8 @@
  *
  * Reads pasted reports (issue bodies, files, or stdin with `-`), takes each fenced
  * `pan-feedback` block, rejects any block whose schema is not `pan-feedback/1` or
- * whose top-level fields differ from the schema's, drops exact duplicates, and prints
+ * whose top-level fields differ from the schema's or have the wrong type, keeps only PAN
+ * tokens (names, codes, versions) from the rest, drops exact duplicates, and prints
  * what recurs across reports: gate refusals, judge classes users dismiss, forecast
  * misses, unfinished commands, and the suggested learnings that at least
  * MIN_REPORTS reports share. `--inbox` appends those to
@@ -28,6 +29,15 @@ const MIN_REPORTS = 3;
 const INBOX = path.join(__dirname, '..', 'autopilot', 'state', 'inbox.md');
 
 const num = (v) => (typeof v === 'number' ? v : v === '<3' ? 1 : 0);
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const obj = (v) => (isObj(v) ? v : {});
+const arr = (v) => (Array.isArray(v) ? v : []);
+// What each top-level field must be; a report is pasted by anyone, so nothing is assumed.
+const SHAPES = { pan: isObj, env: isObj, window: isObj, config: isObj, gate: isObj, judges: isObj, execution: isObj, cost: isObj, usage: isObj, guard: isObj, trace: isObj, suggestions: Array.isArray };
+// A PAN name, code or version: the only strings that may reach the output or the inbox.
+const tok = (v) => typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(v);
+// The suggestions the engine makes (feedback.cjs suggestions()), and the evidence that names each.
+const SUGGESTION_KEYS = { judge_noise: ['agent', 'class'], gate_top_refusal: ['code'], forecast_low: [], no_test_command: [], command_unfinished: ['command'] };
 
 /** Every pan-feedback block in a text, parsed and checked. */
 function extract(text) {
@@ -38,10 +48,13 @@ function extract(text) {
     let block;
     try { block = JSON.parse(m[1]); } catch { out.push({ ok: false, why: 'not JSON' }); continue; }
     if (!block || block.schema !== SCHEMA) { out.push({ ok: false, why: `schema ${block && block.schema}` }); continue; }
-    const keys = Object.keys(block).filter((k) => k !== 'tool_errors');
+    const keys = Object.keys(block);
     const extra = keys.filter((k) => !FIELDS.includes(k));
     const missing = FIELDS.filter((k) => !keys.includes(k));
     if (extra.length || missing.length) { out.push({ ok: false, why: `fields: extra ${extra.join(',') || '-'}, missing ${missing.join(',') || '-'}` }); continue; }
+    const misshapen = Object.keys(SHAPES).filter((k) => !SHAPES[k](block[k]));
+    if (block.usage && block.usage.commands_unfinished !== undefined && !Array.isArray(block.usage.commands_unfinished)) misshapen.push('usage.commands_unfinished');
+    if (misshapen.length) { out.push({ ok: false, why: `wrong type: ${misshapen.join(',')}` }); continue; }
     out.push({ ok: true, block, hash: crypto.createHash('sha256').update(JSON.stringify(block)).digest('hex').slice(0, 16) });
   }
   return out;
@@ -51,25 +64,34 @@ function extract(text) {
 function aggregate(blocks) {
   const add = (o, k, n = 1) => { o[k] = (o[k] || 0) + n; };
   const a = { reports: blocks.length, versions: {}, runtimes: {}, gate_refusals: {}, judge_classes: {}, forecast: { checked: 0, above_p90: 0 }, unfinished: {}, suggestions: {} };
+  // Every string kept is a PAN token (tok): a pasted report cannot put prose, newlines or
+  // instructions into the aggregate, or through --inbox into a file a model skill reads.
   for (const b of blocks) {
-    add(a.versions, b.pan.version);
-    for (const r of b.pan.runtimes || []) add(a.runtimes, r);
-    for (const [code, n] of Object.entries((b.gate && b.gate.refusals) || {})) add(a.gate_refusals, code, num(n));
-    for (const [agent, j] of Object.entries(b.judges || {})) {
-      for (const [cls, c] of Object.entries(j.by_class || {})) {
+    const pan = obj(b.pan);
+    add(a.versions, tok(pan.version) ? pan.version : 'other');
+    for (const r of arr(pan.runtimes).filter(tok)) add(a.runtimes, r);
+    for (const [code, n] of Object.entries(obj(obj(b.gate).refusals))) if (tok(code)) add(a.gate_refusals, code, num(n));
+    for (const [agent, j] of Object.entries(obj(b.judges))) {
+      if (!tok(agent)) continue;
+      for (const [cls, c] of Object.entries(obj(obj(j).by_class))) {
+        if (!tok(cls)) continue;
         const key = `${agent} ${cls}`;
         if (!a.judge_classes[key]) a.judge_classes[key] = { total: 0, dismissed: 0, reports: 0 };
-        a.judge_classes[key].total += num(c.total);
-        a.judge_classes[key].dismissed += num(c.dismissed);
+        a.judge_classes[key].total += num(obj(c).total);
+        a.judge_classes[key].dismissed += num(obj(c).dismissed);
         a.judge_classes[key].reports++;
       }
     }
-    a.forecast.checked += num(b.cost && b.cost.forecast && b.cost.forecast.checked);
-    a.forecast.above_p90 += num(b.cost && b.cost.forecast && b.cost.forecast.above_p90);
-    for (const c of (b.usage && b.usage.commands_unfinished) || []) add(a.unfinished, c);
+    const forecast = obj(obj(b.cost).forecast);
+    a.forecast.checked += num(forecast.checked);
+    a.forecast.above_p90 += num(forecast.above_p90);
+    for (const c of arr(obj(b.usage).commands_unfinished).filter(tok)) add(a.unfinished, c);
     const seen = new Set();
-    for (const s of b.suggestions || []) {
-      const key = s.id + (s.evidence && s.evidence.agent ? ` ${s.evidence.agent} ${s.evidence.class}` : s.evidence && s.evidence.code ? ` ${s.evidence.code}` : s.evidence && s.evidence.command ? ` ${s.evidence.command}` : '');
+    for (const s of arr(b.suggestions)) {
+      if (!isObj(s) || !Object.prototype.hasOwnProperty.call(SUGGESTION_KEYS, s.id)) continue;
+      const parts = SUGGESTION_KEYS[s.id].map((k) => obj(s.evidence)[k]);
+      if (!parts.every(tok)) continue;
+      const key = [s.id, ...parts].join(' ');
       if (!seen.has(key)) { seen.add(key); add(a.suggestions, key); }
     }
   }

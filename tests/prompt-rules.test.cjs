@@ -83,6 +83,14 @@ describe('--check (H6)', () => {
     assert.deepEqual(PR.checkRegistry(dir).dangling, [{ scenario: 's1', id: 'agents/pan-x:deadbeef' }]);
   });
 
+  test('an allowlist entry that names no rule is reported, so a removed rule cannot leave its excuse behind', () => {
+    repo({ 'agents/pan-x.md': AGENT });
+    PR.writeRegistry(dir, { baseline: true });
+    const live = PR.extractRules(dir)[0].id;
+    fs.writeFileSync(path.join(dir, 'tests', 'fixtures', 'prompt-rules-allowlist.json'), JSON.stringify([{ id: live, reason: 'kept' }, { id: 'agents/pan-x:deadbeef', reason: 'gone' }]));
+    assert.deepEqual(PR.checkRegistry(dir).staleAllowed, ['agents/pan-x:deadbeef']);
+  });
+
   test('the repository\'s registry is current and every new rule is claimed', () => {
     const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'prompt-rules.cjs'), '--check'], { cwd: ROOT, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);

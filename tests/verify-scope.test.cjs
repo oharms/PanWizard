@@ -216,3 +216,24 @@ describe('verify stale — a verification tied to the commit it checked (M27)', 
     assert.equal(runPanTools('verify stale', dir).success, false, 'a missing phase argument is an error');
   });
 });
+
+describe('verify scope — the commit log read once for many phases', () => {
+  beforeEach(() => {
+    git('init', '-q');
+    git('config', 'user.email', 'scope@test.invalid');
+    git('config', 'user.name', 'scope test');
+    git('config', 'commit.gpgsign', 'false');
+    commit('feat(03-01): add login', ['src/login.ts']);
+  });
+
+  test('inside withCommitLogCache the log is read once per project; outside it is read every time', () => {
+    const S = require('../pan-wizard-core/bin/lib/verify-scope.cjs');
+    const seen = S.withCommitLogCache(() => {
+      const a = S.committedFiles(dir, '03').commits;
+      commit('feat(03-02): add session', ['src/session.ts']);
+      return [a, S.committedFiles(dir, '03').commits];
+    });
+    assert.deepEqual(seen, [1, 1], 'the second call reuses the log read by the first');
+    assert.equal(S.committedFiles(dir, '03').commits, 2, 'the cache ends with the scope');
+  });
+});

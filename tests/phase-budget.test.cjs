@@ -84,3 +84,14 @@ describe('phase budget', () => {
     assert.equal(runPanTools('cost budget --raw', dir).success, false, 'a phase is required');
   });
 });
+
+describe('phase budget and forecast: records read once by the caller', () => {
+  test('opts.records gives the same answer as reading the ledger, and is used instead of it', () => {
+    ledger([{ phase: '3', agent: 'pan-executor', cost_usd: 4 }, { phase: '4', agent: 'pan-executor', cost_usd: 2 }]);
+    const records = C.readRecords(dir);
+    assert.deepEqual(C.phaseBudget(dir, '3', { records }), C.phaseBudget(dir, '3'));
+    assert.deepEqual(C.costForecast(dir, { plans: 2, records }), C.costForecast(dir, { plans: 2 }));
+    assert.equal(C.phaseBudget(dir, '3', { records: [] }).spent_usd, 0, 'the given records are the ones counted');
+    assert.equal(C.costForecast(dir, { records: [] }).per_plan.n, 0);
+  });
+});

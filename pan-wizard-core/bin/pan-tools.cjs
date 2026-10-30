@@ -1459,11 +1459,19 @@ async function main() {
     case 'feedback': {
       // What PAN learned here, as a report the user may share; built from counts and codes
       // only and refused rather than printed if the privacy scan matches anything.
+      // A flag with no value, or followed by another of these flags, reads '' (an error),
+      // so `--note --tool-errors` never prints a flag name as the user's note.
+      const FEEDBACK_FLAGS = ['--note', '--tool-errors', '--days', '--format', '--self-check'];
+      const flagValue = (flag) => {
+        if (!args.includes(flag)) return undefined;
+        const v = getArgValue(args, flag);
+        return v == null || FEEDBACK_FLAGS.includes(v) ? '' : v;
+      };
       require('./lib/feedback.cjs').cmdFeedback(cwd, {
-        note: getArgValue(args, '--note'),
+        note: flagValue('--note'),
         toolErrors: args.includes('--tool-errors'),
-        days: getArgValue(args, '--days'),
-        format: getArgValue(args, '--format'),
+        days: flagValue('--days'),
+        format: flagValue('--format'),
         selfCheck: args.includes('--self-check'),
       }, raw);
       break;

@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.38.0] - 2026-10-30
+
+Share what PAN learned on your project with its developers, without sharing the project. `/pan:feedback` prints a report built from counts, codes and PAN's own names, scanned before it prints; nothing is sent.
+
 ### Added
 
 - **`/pan:feedback`: share what PAN learned on your project, safely.** It prints a report into the chat that you can paste into a GitHub issue for the PAN developers (new `feedback` issue template); nothing is sent. It covers phase-gate refusals, what each judge found and what you did with it (the classes you dismiss as noise are the main signal), test runs, mutation scores, spend, phase-budget status and forecast accuracy, the commands you used or never finished, guard hits and, with `--tool-errors`, tool-error signatures, plus suggested learnings from fixed rules and a versioned `pan-feedback/1` JSON block. It is built in code (`pan-tools feedback`) from counts, codes and PAN's own names only, counts and money are coarsened, and the finished text is scanned for credentials, e-mails, URLs, paths, addresses and the project's own names (directory, git remote, branch, git user, host, phase names); any hit refuses the report instead of printing it. `--note` adds your own words, checked the same way. For the developers, `harness/scripts/feedback-intake.cjs` aggregates pasted reports and surfaces what recurs across three or more.
+
+### Fixed
+
+- **`pan-tools usage` sees every runtime's install.** It read only Claude's layout, so Gemini (TOML commands), OpenCode (flat `commands/pan-*.md`), Copilot (`.agent.md` agents) and Codex (skills in the shared `.agents/skills`) reported commands or agents as never installed. The census behind it also takes a time window, which `/pan:feedback --days` uses.
+- **The prompt-rule check fails on an allowlist entry that names no rule.** A rule that was edited or removed left its excuse behind, where it could silently excuse a later rule with the same id.
 
 ## [3.37.0] - 2026-10-25
 

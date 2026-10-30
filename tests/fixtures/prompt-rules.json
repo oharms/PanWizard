@@ -1369,6 +1369,12 @@
    "baseline": false
   },
   {
+   "id": "commands/pan/feedback:176d9dc7",
+   "file": "commands/pan/feedback.md",
+   "text": "Run the engine with the flags the user gave (`--tool-errors`, `--days <N>`, `--format json`). If they gave a note, pass it after `--note` in single quotes, writing each `'` inside it as `'\\''`, so the shell reads none of it: never in double quotes or backticks.",
+   "baseline": false
+  },
+  {
    "id": "commands/pan/feedback:5fd37dfa",
    "file": "commands/pan/feedback.md",
    "text": "**Exit 0:** show the output to the user **verbatim**, in full, as one block. Do not summarise it, reword it, translate it, add anything to it, or remove anything from it, and do not quote anything from the project next to it. The report is only safe because code built it; a paraphrase could carry project details into it.",

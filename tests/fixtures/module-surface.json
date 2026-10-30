@@ -394,6 +394,7 @@
     "renderChart:function",
     "renderTable:function",
     "resolveRate:function",
+    "samePhaseKey:function",
     "weeklyLimitStop:function"
   ],
   "cross-family.cjs": [
@@ -475,8 +476,10 @@
     "buildReport:function",
     "cmdFeedback:function",
     "collect:function",
+    "collectInstall:function",
     "finalize:function",
     "isoWeek:function",
+    "noteRefused:function",
     "render:function",
     "small:function",
     "suggestions:function",
@@ -1113,6 +1116,7 @@
     "UNFINISHED_AFTER_MS:number",
     "cmdUsage:function",
     "commandName:function",
+    "inWindow:function",
     "readInventory:function",
     "usageCensus:function"
   ],
@@ -1219,6 +1223,7 @@
     "scopePhase:function",
     "sectionBody:function",
     "verificationFreshness:function",
+    "withCommitLogCache:function",
     "workingTreeFiles:function"
   ],
   "verify.cjs": [
