@@ -480,6 +480,7 @@
     "render:function",
     "small:function",
     "suggestions:function",
+    "templateWords:function",
     "usdBucket:function"
   ],
   "findings.cjs": [

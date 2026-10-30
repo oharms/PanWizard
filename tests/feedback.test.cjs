@@ -193,6 +193,14 @@ describe('feedback report: fail closed', () => {
     assert.deepEqual(r.rules.sort(), ['canary:project_dir', 'email', 'unix_path']);
   });
 
+  test('a canary that is one of the report template\'s own words (an OS user called node) is skipped', () => {
+    const r = FB.finalize('PAN 3.37.0 · claude · local · linux · node 22 · weeks 2026-W31 to 2026-W44', [{ kind: 'os_user', value: 'node' }, { kind: 'host', value: 'tests' }]);
+    assert.deepEqual([r.ok, r.canaries_skipped], [true, 2], JSON.stringify(r));
+    assert.ok(FB.templateWords().has('node') && FB.templateWords().has('phase'));
+    const leak = FB.finalize('report for acme-billing', [{ kind: 'os_user', value: 'acme-billing' }]);
+    assert.equal(leak.ok, false, 'a name that is not a template word still refuses');
+  });
+
   test('a canary that is one of PAN\'s own words is skipped, not matched', () => {
     const r = FB.finalize('Commands used: `quick`', [{ kind: 'project_dir', value: 'quick' }], ['quick']);
     assert.deepEqual([r.ok, r.canaries_skipped], [true, 1]);

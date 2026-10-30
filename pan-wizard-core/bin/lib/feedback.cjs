@@ -468,8 +468,44 @@ function phaseSlugs(cwd) {
  * A canary that is one of PAN's own words (a project named `review`, a branch named
  * `quick`) would refuse every report and identify nothing, so it is skipped and counted.
  */
+/**
+ * The words the report's own template prints, whatever the project: the skeleton model
+ * fills every section with PAN's own vocabulary, so nothing here comes from a project.
+ * A canary that is one of them (an OS user called `node`, a host called `tests`) could
+ * not identify anyone, and would refuse every report.
+ */
+let templateWordsCache = null;
+function templateWords() {
+  if (templateWordsCache) return templateWordsCache;
+  const counts = { a: 3 };
+  const skeleton = {
+    schema: SCHEMA,
+    pan: { version: '0.0.0', runtimes: RUNTIMES, scope: 'local' },
+    env: { os: 'linux', node: 22 },
+    window: { from: '2026-W01', to: '2026-W02', days: DEFAULT_DAYS },
+    config: { values: { model_profile: 'balanced' }, other_keys: 3 },
+    gate: { phases: 3, ok: 3, refusals: { no_plans: 3 }, not_checked: { tests: 3 } },
+    judges: { 'pan-reviewer': { verdicts: 3, outcomes: counts, findings: 3, by_class: { quality: { total: 3, fixed: 3, deferred: 3, dismissed: 3, decision: 3, open: 3 } }, by_severity: counts, suppressed: 3, returned: 3, lowered_by: { test_gate: 3 } } },
+    execution: { test: { runs: 3, by_status: { passed: 3 }, by_source: { config: 3 }, regressions: 3, preexisting: 3, timed_out: 3 }, mutation: { reports: 3, score: { '<50%': 3 } } },
+    cost: { total: '$1–2', by_agent: { main: '$1–2' }, by_tier: { mid: '$1–2' }, budget: counts, forecast: { checked: 3, below_p10: 3, within: 3, above_p90: 3 } },
+    usage: { commands_installed: 3, commands_used: ['quick'], commands_never_used: 3, commands_unfinished: ['quick'], agents_used: [] },
+    guard: { secret_write: { reported: 3 } },
+    trace: { sessions: 3, by_type: { error: 3 }, by_category: { tool_error: 3 }, tool_errors: [{ tool: 'Bash', class: 'exit_code', exit_code: 1, sig: 'none', count: 3 }] },
+    suggestions: [],
+  };
+  skeleton.suggestions = [
+    { text: 'pan-reviewer `quality` findings were dismissed 60% of the time: a candidate for that judge\'s noise list.' },
+    { text: 'The phase gate\'s most common refusal is `no_plans`.' },
+    { text: 'Phases cost more than the forecast\'s p90 30% of the time: the forecast underestimates here.' },
+    { text: 'No test command was detected in any phase: a candidate for test-runner detection.' },
+    { text: '`/pan:quick` was started and never finished.' },
+  ];
+  templateWordsCache = new Set((render(skeleton, { note: ' ' }).toLowerCase().match(/[a-z][a-z0-9_-]*/g) || []));
+  return templateWordsCache;
+}
+
 function finalize(text, canaries, vocabulary = []) {
-  const own = new Set([...GATE_CODES, ...GATE_CHECKS, ...TRACE_CATEGORIES, ...GUARD_RULES, ...TEST_SOURCES, ...TOOL_ERROR_CLASSES, ...HOST_TOOLS, ...RUNTIMES, ...vocabulary].map((s) => String(s).toLowerCase()));
+  const own = new Set([...GATE_CODES, ...GATE_CHECKS, ...TRACE_CATEGORIES, ...GUARD_RULES, ...TEST_SOURCES, ...TOOL_ERROR_CLASSES, ...HOST_TOOLS, ...RUNTIMES, ...vocabulary, ...templateWords()].map((s) => String(s).toLowerCase()));
   const usable = canaries.filter((c) => !own.has(c.value.toLowerCase()));
   const hits = scanText(text, { canaries: usable, allowed: [ISSUE_URL] });
   return { ok: hits.length === 0, rules: hits, canaries_checked: usable.length, canaries_skipped: canaries.length - usable.length };
@@ -516,4 +552,4 @@ function cmdFeedback(cwd, opts, raw) {
   process.stdout.write(r.text + '\n');
 }
 
-module.exports = { SCHEMA, ISSUE_URL, collect, render, finalize, buildReport, cmdFeedback, suggestions, usdBucket, isoWeek, small };
+module.exports = { SCHEMA, ISSUE_URL, collect, render, finalize, templateWords, buildReport, cmdFeedback, suggestions, usdBucket, isoWeek, small };
