@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.39.0] - 2026-10-31
+
 Your coding tool now learns, from the project's own instructions file, which PAN command a plain request belongs to: "fix the failing login test" reaches `debug`, a small change reaches `quick`.
 
 ### Added
@@ -17,6 +19,13 @@ Your coding tool now learns, from the project's own instructions file, which PAN
 - **`host-memory-routing` in `/pan:hygiene`.** A read-only `info` finding for a Claude Code memory note that describes doing PAN's work another way (editing `.planning/` by hand, skipping the plan, a commit cadence, avoiding PAN), named by file and rule id, never by its text.
 - **`unrouted_write` guard rule.** In `exclusive` routing only: a write outside the planning tree while no PAN task is in flight is reported, and denied under `hooks.guard: enforce` with a message naming the `quick` and `debug` commands. `instructions.routing_exempt` globs are left alone; the rule fails open on what it cannot read; OpenCode has no pre-tool hook.
 - **Harness gates that ask the hosts.** `live-gate-routing-codex` checks the prompt Codex builds carries the table (`codex debug prompt-input`), `live-gate-routing-copilot` that Copilot lists AGENTS.md and no GEMINI.md (`copilot instruction list`), and `live-gate-gemini` the `context.fileName` entry; all model-free, each with a control that must turn it red.
+
+### Fixed
+
+- **`/pan:feedback` never suggests the opt-in flags.** Its example showed `--tool-errors`, which a model could copy into the user's run; the examples are now a bare run and a `--note` run, with PowerShell quoting for a note.
+- **`pan-tools usage` on unified-skills and mixed installs.** A runtime with its own commands no longer also counts the shared `.agents/skills`, and agents are found in the unified-skills shared core.
+- **`/pan:feedback` in a project at a drive root** reads its install as local; the report loads the config and the known config keys once.
+- **Feedback intake knows every suggestion the engine makes** (a test keeps the two lists in step), and the prompt-rule check reports a dead allowlist entry that has no reason too.
 
 ## [3.38.0] - 2026-10-30
 
