@@ -79,6 +79,25 @@
         "stderr~pan: .*\\(stdio\\) - Connected"
       ],
       "why": "The measurement: once the workspace is trusted, Gemini loads PAN's registration, starts the server, and connects to it. `Connected`, not merely not-Disabled. A broken registration (a wrong server path, measured 2026-09-29) lists as `✗ pan: … - Disconnected` with exit 0, which the old not-Disabled check would have passed."
+    },
+    {
+      "kind": "fs",
+      "read": ".gemini/settings.json",
+      "expect": [
+        "json:context.fileName.0=AGENTS.md",
+        "json:context.fileName.1=GEMINI.md",
+        "absent:GEMINI.md"
+      ],
+      "why": "Project memory routing (ADR-0050): the install names AGENTS.md in context.fileName, in the same project settings file the trusted listing above proves Gemini reads, and writes no GEMINI.md, which Copilot would also load. Gemini 0.64.0 hands settings.context.fileName (merged settings; a string or an array) to setGeminiMdFilename (read from its bundle 2026-10-31). Listing the files it loaded needs a login, so that last link is read from the code, not observed."
+    },
+    {
+      "kind": "fs",
+      "read": "AGENTS.md",
+      "expect": [
+        "stdout~### When to use PAN in this project",
+        "stdout~\\| fix a bug, an error or a failing test \\| `debug` \\|"
+      ],
+      "why": "The file context.fileName points at carries the routing table in the default advisory mode."
     }
   ],
   "controls": [

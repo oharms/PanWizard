@@ -16,6 +16,7 @@ Your coding tool now learns, from the project's own instructions file, which PAN
 - **Projects served by a global install get the section.** `/pan:new-project` ends with `pan-tools memory rebuild --apply --only agents-md`, which also writes the `CLAUDE.md` bridge when a global Claude install is visible. `--only agents-md` leaves state.md alone; a section the project edited is reported as `kept_edited`.
 - **`host-memory-routing` in `/pan:hygiene`.** A read-only `info` finding for a Claude Code memory note that describes doing PAN's work another way (editing `.planning/` by hand, skipping the plan, a commit cadence, avoiding PAN), named by file and rule id, never by its text.
 - **`unrouted_write` guard rule.** In `exclusive` routing only: a write outside the planning tree while no PAN task is in flight is reported, and denied under `hooks.guard: enforce` with a message naming the `quick` and `debug` commands. `instructions.routing_exempt` globs are left alone; the rule fails open on what it cannot read; OpenCode has no pre-tool hook.
+- **Harness gates that ask the hosts.** `live-gate-routing-codex` checks the prompt Codex builds carries the table (`codex debug prompt-input`), `live-gate-routing-copilot` that Copilot lists AGENTS.md and no GEMINI.md (`copilot instruction list`), and `live-gate-gemini` the `context.fileName` entry; all model-free, each with a control that must turn it red.
 
 ## [3.38.0] - 2026-10-30
 

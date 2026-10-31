@@ -1,0 +1,20 @@
+{
+  "id": "live-gate-routing-copilot",
+  "tier": 0,
+  "description": "Install PAN for Copilot CLI locally and confirm, without a model, that Copilot lists the project's AGENTS.md among the instruction sources a session would load, and no GEMINI.md.",
+  "why": "Project memory routing (ADR-0050): Copilot CLI reads AGENTS.md natively, and also CLAUDE.md and GEMINI.md, so PAN points Gemini at AGENTS.md through its settings rather than writing a GEMINI.md that Copilot would load as a further copy. `copilot instruction list` prints the sources a session would load without starting one; first measured on Copilot CLI 1.0.103 (2026-10-31). SKIPPED with reason when the CLI is absent.",
+  "seed": "empty",
+  "install": ["--copilot", "--local"],
+  "requires": { "cli": "copilot" },
+  "budget": { "maxUsd": 0, "maxMinutes": 6, "maxStepMinutes": 3 },
+  "steps": [
+    { "kind": "fs", "read": "AGENTS.md", "expect": ["stdout~### When to use PAN in this project", "absent:GEMINI.md"],
+      "why": "The installer's contract: PAN's section with its routing table, and no GEMINI.md." },
+    { "kind": "cli", "bin": "copilot", "args": ["instruction", "list"],
+      "expect": ["exit:0", "stdout~\\bAGENTS\\.md\\b", "stdout~^(?![\\s\\S]*GEMINI\\.md)"],
+      "why": "The measurement: Copilot's own list of the instruction sources it would load names AGENTS.md and no GEMINI.md." }
+  ],
+  "controls": [
+    {"id":"no-agents-md","after":0,"delete":"AGENTS.md","why":"With AGENTS.md gone, Copilot's list must not name it, which shows the listing reads this workspace."}
+  ]
+}

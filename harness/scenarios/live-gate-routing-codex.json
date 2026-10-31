@@ -1,0 +1,22 @@
+{
+  "id": "live-gate-routing-codex",
+  "tier": 0,
+  "description": "Install PAN for Codex locally and confirm, without a model, that the prompt Codex builds for this project carries PAN's AGENTS.md section with its routing table, next to the project's own notes.",
+  "why": "Project memory routing (ADR-0050): the routing table only helps if the host puts it in front of the model. `codex debug prompt-input` renders the model-visible prompt input without sending it, so no login and no model; first measured on Codex CLI 0.163.0 (2026-10-31). Every codex step runs with CODEX_HOME at a scratch home under <other>, so the user's ~/.codex is never read or written. SKIPPED with reason when the CLI is absent.",
+  "seed": "empty",
+  "install": ["--codex", "--local"],
+  "requires": { "cli": "codex" },
+  "budget": { "maxUsd": 0, "maxMinutes": 6, "maxStepMinutes": 3 },
+  "steps": [
+    { "kind": "sh", "script": "scratch-home.cjs", "args": ["<other>/codex-home"], "expect": ["exit:0", "json:home"],
+      "why": "Codex refuses a CODEX_HOME that does not exist yet, so the scratch home is created first. The script refuses the real home and its dot-directories." },
+    { "kind": "fs", "read": "AGENTS.md", "expect": ["stdout~<!-- BEGIN PAN WIZARD -->", "stdout~### When to use PAN in this project"],
+      "why": "The installer's contract: PAN's section, in the default advisory mode, is on disk." },
+    { "kind": "cli", "bin": "codex", "args": ["debug", "prompt-input"], "env": { "CODEX_HOME": "<other>/codex-home" },
+      "expect": ["exit:0", "stdout~When to use PAN in this project", "stdout~fix a bug, an error or a failing test"],
+      "why": "The measurement: Codex read the project's AGENTS.md into the prompt it would send, table included. A section Codex cut for its byte budget, or a file it did not find, fails here." }
+  ],
+  "controls": [
+    {"id":"no-routing-table","after":1,"replace":{"path":"AGENTS.md","find":"### When to use PAN in this project","with":"### Something else"},"why":"With the table's heading gone from the file after the file check, Codex's prompt must turn red, which shows the prompt check reads this workspace's AGENTS.md."}
+  ]
+}
