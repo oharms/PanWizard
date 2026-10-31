@@ -54,8 +54,16 @@ describe('memory-rebuild — units', () => {
 
 describe('memory rebuild — command (dispatcher)', () => {
   let cwd;
-  beforeEach(() => { cwd = createTempProject(); });
-  afterEach(() => { cleanup(cwd); });
+  let userDir;
+  const priorConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  // A global Claude install also earns the bridge: point the Claude user directory at
+  // an empty one, so a developer machine's own install cannot change these results.
+  beforeEach(() => { cwd = createTempProject(); userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pan-claude-user-')); process.env.CLAUDE_CONFIG_DIR = userDir; });
+  afterEach(() => {
+    cleanup(cwd);
+    fs.rmSync(userDir, { recursive: true, force: true });
+    if (priorConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = priorConfigDir;
+  });
 
   const run = (args = '') => {
     const r = runPanTools(`memory rebuild ${args}`.trim(), cwd);

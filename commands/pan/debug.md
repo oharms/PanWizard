@@ -2,6 +2,7 @@
 name: pan:debug
 group: System
 description: Systematic debugging with persistent state across context resets
+route: fix a bug, an error or a failing test
 argument-hint: "[issue description]"
 allowed-tools:
   - Read

@@ -37,3 +37,8 @@ fields:
   type:
     required: false
     type: string
+  # When to use the command, in the user's words: the AGENTS.md routing table
+  # (project memory routing; agents-md.cjs ROUTES must match).
+  route:
+    required: false
+    type: string

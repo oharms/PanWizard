@@ -31,6 +31,7 @@ Parse current values (when a key is absent, use PAN's default: `false` for resea
 - `workflow.nyquist_validation` — validation architecture research during plan-phase
 - `model_profile` — how much ceremony and which model each agent uses (default: `balanced`; `quality` keeps the full ceremony everywhere)
 - `routing.strategy` — not asked here (default: `static`). The `complexity` strategy reaches no workflow, so offering it would be a choice that changes nothing; `config-set routing.strategy complexity` still sets it for `resolve-model --metadata` callers. A `quality` profile in an existing config keeps working: it is identical to `balanced`
+- `instructions.routing` — how PAN's AGENTS.md section steers plain requests to PAN commands (default: `advisory`; `exclusive`; `off`)
 - `cost.phase_budget_usd` — spend per phase PAN warns about, in API-equivalent dollars (default: `20`; `0` = off). It never stops a run
 - `branching_strategy` — branching approach (default: `"none"`; a top-level key — a nested `git.branching_strategy` is ignored when the top-level key exists, as it does in every config `config-ensure-section` creates — write the top-level key)
 </step>
@@ -127,6 +128,23 @@ AskUserQuestion([
 ```
 
 A dollar amount typed under Other is used as given.
+
+Then one more question:
+
+```
+AskUserQuestion([
+  {
+    question: "How strongly should this project's AGENTS.md steer plain requests to PAN commands?",
+    header: "Routing",
+    multiSelect: false,
+    options: [
+      { label: "Advisory (Recommended)", description: "A short table maps requests (fix a bug, small change, plan, build, check) to PAN commands" },
+      { label: "Exclusive", description: "The table, plus: this project does that work only through PAN; with hooks.guard enforce, a source edit outside any PAN task is refused" },
+      { label: "Off", description: "No table; the section only says the project uses PAN" }
+    ]
+  }
+])
+```
 ```
 </step>
 
@@ -142,7 +160,16 @@ node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.auto_advanc
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set workflow.nyquist_validation <true|false>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set branching_strategy <none|phase|milestone>
 node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set cost.phase_budget_usd <20|50|10|0|amount>
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs config-set instructions.routing <advisory|exclusive|off>
 ```
+
+When the routing answer changed, rewrite PAN's section of AGENTS.md to match (a section the project edited is kept and reported):
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory rebuild --apply --only agents-md
+```
+
+When the answer is Exclusive, tell the user once that the host tools also keep memory of their own, which PAN does not edit: Claude Code's auto memory can be turned off for this project with `"autoMemoryEnabled": false` in `.claude/settings.json`, and Copilot's with `/memory off`. Leave both to the user.
 </step>
 
 <step name="save_as_defaults">
@@ -208,6 +235,7 @@ Display:
 | Git Branching        | {None/Per Phase/Per Milestone} |
 | Routing Strategy     | {Static/Complexity} |
 | Phase Budget         | {$N per phase (warn only)/Off} |
+| Request Routing      | {Advisory/Exclusive/Off} |
 | Saved as Defaults    | {Yes/No} |
 
 These settings apply to future /pan:plan-phase and /pan:exec-phase runs.

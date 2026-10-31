@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Your coding tool now learns, from the project's own instructions file, which PAN command a plain request belongs to: "fix the failing login test" reaches `debug`, a small change reaches `quick`.
+
+### Added
+
+- **Request routing in `AGENTS.md`.** PAN's section carries a short table of intents and the PAN command for each, built from a new `route:` line in the routed commands' frontmatter and kept under 2 KB. `instructions.routing` in `.planning/config.json` sets the mode: `advisory` (default, the table), `exclusive` (the table, plus a line saying the project does this work only through PAN), or `off`. `/pan:settings` asks for it and rewrites the section.
+- **Gemini CLI loads PAN's section.** A Gemini install adds `AGENTS.md` to `context.fileName` in `.gemini/settings.json` (a string becomes a list; a list gets it appended), records what it found in `pan-config-edits.json`, and uninstall restores exactly that. No `GEMINI.md` is written, which Copilot CLI would also load.
+- **Projects served by a global install get the section.** `/pan:new-project` ends with `pan-tools memory rebuild --apply --only agents-md`, which also writes the `CLAUDE.md` bridge when a global Claude install is visible. `--only agents-md` leaves state.md alone; a section the project edited is reported as `kept_edited`.
+- **`host-memory-routing` in `/pan:hygiene`.** A read-only `info` finding for a Claude Code memory note that describes doing PAN's work another way (editing `.planning/` by hand, skipping the plan, a commit cadence, avoiding PAN), named by file and rule id, never by its text.
+- **`unrouted_write` guard rule.** In `exclusive` routing only: a write outside the planning tree while no PAN task is in flight is reported, and denied under `hooks.guard: enforce` with a message naming the `quick` and `debug` commands. `instructions.routing_exempt` globs are left alone; the rule fails open on what it cannot read; OpenCode has no pre-tool hook.
+
 ## [3.38.0] - 2026-10-30
 
 Share what PAN learned on your project with its developers, without sharing the project. `/pan:feedback` prints a report built from counts, codes and PAN's own names, scanned before it prints; nothing is sent.

@@ -32,7 +32,8 @@ const EDITED = `# My project\n\n${B}\n## PAN Wizard (corrected 2026-09-23)\n\nOu
 const OLD_PAN = `${B}\n## PAN Wizard\n\nThis project uses PAN Wizard for structured, phase-based planning and execution.\n\n- \`.planning/\` is PAN's state directory (state.md, roadmap.md, phase directories). Treat it as the source of truth for planning state and modify it through PAN commands, not by hand.\n- PAN commands install as \`pan-*\` skills/commands (for example \`/pan-help\`, \`/pan-new-project\`, \`/pan-exec-phase\`). Start with \`/pan-help\`.\n- The \`pan-tools\` dispatcher backs every command; it lives under \`pan-wizard-core/\` inside the runtime's config directory (or \`.agents/\` for unified installs).\n${E}`;
 
 // This release's texts (sha256 prefix of the text between the markers, LF, trimmed).
-const CURRENT_AGENTS = '6191107fdcdf7f6e';
+// One text per routing mode (instructions.routing); `off` is the text before routing.
+const CURRENT_AGENTS = { off: '6191107fdcdf7f6e', advisory: 'a44ee4bda30af482', exclusive: 'f491ae17890fa48b' };
 const CURRENT_BRIDGE = '9d0a2baa7efba28e';
 
 const dirs = [];
@@ -106,7 +107,10 @@ describe('the known-text lists stay complete', () => {
     const crypto = require('crypto');
     const inner = (t) => t.slice(t.indexOf(B) + B.length, t.indexOf(E)).replace(/\r\n/g, '\n').trim();
     const h = (t) => crypto.createHash('sha256').update(inner(t)).digest('hex').slice(0, 16);
-    assert.equal(h(A.buildAgentsMdSection()), CURRENT_AGENTS, 'the AGENTS.md section changed: add the old hash to PRIOR_AGENTS_SECTIONS, then update this pin');
+    for (const mode of A.ROUTING_MODES) {
+      assert.equal(h(A.buildAgentsMdSection({ mode })), CURRENT_AGENTS[mode], `the AGENTS.md section (${mode}) changed: add the old hash to PRIOR_AGENTS_SECTIONS, then update this pin`);
+    }
+    assert.equal(h(A.buildAgentsMdSection()), CURRENT_AGENTS[A.DEFAULT_ROUTING_MODE], 'no mode is the default mode');
     assert.equal(h(A.buildClaudeMdBridge()), CURRENT_BRIDGE, 'the CLAUDE.md block changed: add the old hash to PRIOR_CLAUDE_BRIDGES, then update this pin');
   });
 });

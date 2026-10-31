@@ -49,7 +49,7 @@ const TEST_STATUSES = ['passed', 'failed', 'skipped'];
 const TEST_SOURCES = ['flag', 'config', 'package.json', 'pytest', 'go.mod', 'Cargo.toml', 'pom.xml', 'gradle', 'Makefile'];
 const GATE_CODES = ['no_plans', 'missing_summary', 'no_verification', 'verification_unreadable', 'verification_failed', 'human_needed_unapproved', 'verification_stale', 'reconcile_contradiction', 'test_failed', 'open_findings', 'stubs_found', 'integrity_violation'];
 const GATE_CHECKS = ['freshness', 'stubs', 'test_integrity', 'tests', 'verification'];
-const GUARD_RULES = ['secret_write', 'state_write', 'judge_write', 'undeclared_test_edit'];
+const GUARD_RULES = ['secret_write', 'state_write', 'judge_write', 'undeclared_test_edit', 'unrouted_write'];
 const GUARD_ACTIONS = ['reported', 'denied'];
 const TOOL_ERROR_CLASSES = ['exit_code', 'permission_denied', 'edit_precondition', 'not_found', 'network_or_timeout', 'user_rejected', 'tool_input', 'other'];
 const HOST_TOOLS = ['Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'Task', 'Agent', 'NotebookEdit', 'TodoWrite', 'Skill', 'shell', 'apply_patch', 'read_file', 'write_file', 'run_shell_command'];
@@ -63,6 +63,7 @@ const CONFIG_ENUMS = {
   'workflow.phase_gate': ['warn', 'enforce'],
   'workflow.mutation_gate': ['off', 'report', 'gate'],
   'hooks.guard': ['off', 'report', 'enforce'],
+  'instructions.routing': ['off', 'advisory', 'exclusive'],
   'routing.strategy': ['static', 'complexity'],
   'routing.provider': ['auto', 'anthropic', 'openai', 'google'],
   'execution.default_mode': ['wave_order', 'sequential'],

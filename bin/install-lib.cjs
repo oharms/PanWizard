@@ -1521,6 +1521,68 @@ function stripOpencodePermissions(existing) {
   return { config, modified };
 }
 
+// ─── Gemini CLI context.fileName (project memory routing) ──────────────────
+// Gemini CLI loads GEMINI.md by default and not AGENTS.md, where PAN's section lives.
+// `context.fileName` (a string or an array) names the files it loads instead. PAN adds
+// AGENTS.md there rather than writing a GEMINI.md: Copilot CLI loads GEMINI.md too, and
+// would get PAN's section a third time.
+const GEMINI_DEFAULT_CONTEXT_FILE = 'GEMINI.md';
+
+/**
+ * Add AGENTS.md to a Gemini settings object's `context.fileName`, in place.
+ * Absent → `["AGENTS.md", "GEMINI.md"]` (GEMINI.md is what Gemini loaded before);
+ * a string → `[it, "AGENTS.md"]`; an array without AGENTS.md → appended. A value of
+ * another type, or a `context` that is not an object, is the user's and left alone.
+ * @returns {{changed: boolean, before: (string|string[]|null)}} `before` is the value
+ *   PAN found (null when absent): the record stripGeminiContextFileName needs
+ */
+function mergeGeminiContextFileName(settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return { changed: false, before: null };
+  if (settings.context !== undefined && (!settings.context || typeof settings.context !== 'object' || Array.isArray(settings.context))) return { changed: false, before: null };
+  const ctx = settings.context || {};
+  const v = ctx.fileName;
+  if (v === undefined) {
+    ctx.fileName = ['AGENTS.md', GEMINI_DEFAULT_CONTEXT_FILE];
+    settings.context = ctx;
+    return { changed: true, before: null };
+  }
+  if (typeof v === 'string') {
+    if (v === 'AGENTS.md') return { changed: false, before: v };
+    ctx.fileName = [v, 'AGENTS.md'];
+    return { changed: true, before: v };
+  }
+  if (Array.isArray(v) && !v.includes('AGENTS.md')) {
+    const before = [...v];
+    v.push('AGENTS.md');
+    return { changed: true, before };
+  }
+  return { changed: false, before: Array.isArray(v) ? [...v] : null };
+}
+
+/**
+ * Undo mergeGeminiContextFileName, in place, given what it found (`record.before`).
+ * Removes AGENTS.md from the array; puts back an absent key or a string when what is
+ * left is exactly what PAN made of it. A value the user changed since is left as it is,
+ * less AGENTS.md. No record (PAN did not add it) → nothing.
+ * @returns {boolean} whether settings changed
+ */
+function stripGeminiContextFileName(settings, record) {
+  if (!record || !settings || typeof settings !== 'object' || !settings.context || typeof settings.context !== 'object') return false;
+  const ctx = settings.context;
+  if (!Array.isArray(ctx.fileName) || !ctx.fileName.includes('AGENTS.md')) return false;
+  const left = ctx.fileName.filter((f) => f !== 'AGENTS.md');
+  const before = record.before;
+  if (before == null && left.length === 1 && left[0] === GEMINI_DEFAULT_CONTEXT_FILE) {
+    delete ctx.fileName;
+    if (Object.keys(ctx).length === 0) delete settings.context;
+  } else if (typeof before === 'string' && left.length === 1 && left[0] === before) {
+    ctx.fileName = before;
+  } else {
+    ctx.fileName = left;
+  }
+  return true;
+}
+
 /**
  * Remove PAN's MCP server from a config object, preserving foreign entries.
  * Empties the container key when PAN was its only member, so uninstall does not
@@ -2709,6 +2771,7 @@ const {
   removeAgentsMdSection,
   ensureClaudeMdImport,
   removeClaudeMdImport,
+  readRoutingMode,
 } = require('../pan-wizard-core/bin/lib/agents-md.cjs');
 
 // ─── Exports ────────────────────────────────────────────────────────────────
@@ -2781,6 +2844,8 @@ module.exports = {
   stripMcpRegistration,
   addOpencodePermissions,
   stripOpencodePermissions,
+  mergeGeminiContextFileName,
+  stripGeminiContextFileName,
   buildCodexMcpSnippet,
   removeCodexPanHooks,
   buildNativeWorkflowScripts,
@@ -2819,6 +2884,7 @@ module.exports = {
   removeAgentsMdSection,
   ensureClaudeMdImport,
   removeClaudeMdImport,
+  readRoutingMode,
   PAN_AGENTS_BEGIN,
   PAN_AGENTS_END,
 };

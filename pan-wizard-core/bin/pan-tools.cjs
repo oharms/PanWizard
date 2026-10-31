@@ -1286,6 +1286,7 @@ async function main() {
       } else if (subcommand === 'rebuild') {
         require('./lib/memory-rebuild.cjs').cmdMemoryRebuild(cwd, {
           apply: args.includes('--apply'),
+          only: getArgValue(args, '--only'),
         }, raw);
       } else {
         error('Unknown memory subcommand. Available: read, append, list, compact, select, record, prune, budget, optimize, rebuild');

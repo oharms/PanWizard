@@ -162,5 +162,13 @@
   {
     "id": "commands/pan/feedback:176d9dc7",
     "reason": "/pan:feedback (2026-10-30 review): how the host quotes the user's note so the shell reads none of it. tests/feedback.test.cjs pins the prompt text (no $ARGUMENTS, single quotes, the escape for an apostrophe) and the engine refuses a --note with no value; a model following the quoting can only be tested at tier 2."
+  },
+  {
+    "id": "commands/pan/hygiene:c142faa8",
+    "reason": "Project memory routing (ADR-0050): host-memory-routing is read-only in code; checkHostMemoryRouting writes nothing and returns fixable:false findings that name the file and rule ids, never the note text (tests/project-memory-routing.test.cjs, hygiene H-12)."
+  },
+  {
+    "id": "commands/pan/hygiene:a8a84847",
+    "reason": "The summary step gained the host-memory-routing sentence (ADR-0050); the \"PAN never edits it\" clause it already held is enforced in code: the host-memory checks only read (tests/hygiene.test.cjs host-memory, tests/project-memory-routing.test.cjs H-12)."
   }
 ]

@@ -69,7 +69,7 @@ Initialize a new project with deep context gathering and project.md
 
 **Tools:** Read, Bash, Write, Task, AskUserQuestion  
 **Group:** Getting Started  
-**Lines:** 110
+**Lines:** 111
 
 ---
 
@@ -130,7 +130,7 @@ Execute all plans in a phase with wave-based parallelization
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, TodoWrite, AskUserQuestion  
 **Group:** Phase Lifecycle  
-**Lines:** 135
+**Lines:** 136
 
 #### /pan:plan-phase
 
@@ -142,7 +142,7 @@ Create detailed phase plan (plan.md) with verification loop
 
 **Tools:** Read, Write, Bash, Glob, Grep, Task, WebFetch, mcp__context7__*  
 **Group:** Phase Lifecycle  
-**Lines:** 139
+**Lines:** 140
 
 #### /pan:verify-phase
 
@@ -154,7 +154,7 @@ Re-run goal-backward verification of a phase with a test-suite gate and list its
 
 **Tools:** Read, Bash, Glob, Grep, Edit, Write, Task  
 **Group:** Phase Lifecycle  
-**Lines:** 84
+**Lines:** 85
 
 ---
 
@@ -179,7 +179,7 @@ Add phase to end of current milestone in roadmap
 
 **Tools:** Read, Write, Bash  
 **Group:** Phase Management  
-**Lines:** 44
+**Lines:** 45
 
 #### /pan:assumptions
 
@@ -386,7 +386,7 @@ Check project progress, show context, and route to next action (execute or plan)
 
 **Tools:** Read, Bash, Grep, Glob, SlashCommand  
 **Group:** Session & Progress  
-**Lines:** 25
+**Lines:** 26
 
 #### /pan:quick
 
@@ -398,7 +398,7 @@ Execute a quick task with PAN guarantees (atomic commits, state tracking) but sk
 
 **Tools:** Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion  
 **Group:** Session & Progress  
-**Lines:** 57
+**Lines:** 58
 
 #### /pan:resume
 
@@ -410,7 +410,7 @@ Resume work from previous session with full context restoration
 
 **Tools:** Read, Bash, Write, AskUserQuestion, SlashCommand  
 **Group:** Session & Progress  
-**Lines:** 99
+**Lines:** 100
 
 ---
 
@@ -439,7 +439,7 @@ Systematic debugging with persistent state across context resets
 
 **Tools:** Read, Bash, Task, AskUserQuestion  
 **Group:** System  
-**Lines:** 240
+**Lines:** 241
 
 #### /pan:feedback
 
@@ -487,7 +487,7 @@ Scan the project for PAN version drift and stale artifacts (legacy filenames, me
 
 **Tools:** Read, Bash, AskUserQuestion  
 **Group:** System  
-**Lines:** 82
+**Lines:** 83
 
 #### /pan:patches
 

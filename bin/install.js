@@ -1555,6 +1555,15 @@ function uninstall(isGlobal, runtime = 'claude') {
       delete settings.hooks;
     }
 
+    // Remove AGENTS.md from Gemini's context.fileName when PAN put it there.
+    const editsPath = path.join(targetDir, CONFIG_EDITS_NAME);
+    let edits = null;
+    try { edits = JSON.parse(fs.readFileSync(editsPath, 'utf8')); } catch { /* none recorded */ }
+    if (edits && lib.stripGeminiContextFileName(settings, edits['context.fileName'])) {
+      settingsModified = true;
+      console.log(`  ${green}✓${reset} Removed AGENTS.md from Gemini's context.fileName`);
+    }
+
     // Remove Gemini experimental.enableAgents if PAN set it
     if (settings.experimental && settings.experimental.enableAgents === true) {
       delete settings.experimental.enableAgents;
@@ -1643,6 +1652,12 @@ function uninstall(isGlobal, runtime = 'claude') {
     try { fs.unlinkSync(manifestPath); } catch {}
     removedCount++;
     console.log(`  ${green}✓${reset} Removed ${MANIFEST_NAME}`);
+  }
+  // Its record of shared settings edits goes too, unless the settings could not be read
+  // (then the edit is still in them, and a later uninstall needs the record).
+  const configEditsPath = path.join(targetDir, CONFIG_EDITS_NAME);
+  if (fs.existsSync(configEditsPath) && !skipSettingsCleanup) {
+    try { fs.unlinkSync(configEditsPath); removedCount++; } catch {}
   }
 
   // 7b. AGENTS.md / CLAUDE.md rules layer (ADR-0028 Phase 3): strip the PAN
@@ -1865,6 +1880,9 @@ const PATCHES_DIR_NAME = 'pan-local-patches';
 // the patches tree stays self-contained.
 const EXTERNAL_PATCHES_SUBDIR = '_external';
 const MANIFEST_NAME = 'pan-file-manifest.json';
+// What PAN changed in a settings value it shares with the user (Gemini's context.fileName),
+// as PAN found it, so uninstall restores exactly that. Beside the manifest, in the config dir.
+const CONFIG_EDITS_NAME = 'pan-config-edits.json';
 // PAN's OpenCode plugin, installed as <opencode dir>/plugins/pan-wizard.js (O12).
 const OPENCODE_PLUGIN_FILE = 'pan-wizard.js';
 
@@ -2715,7 +2733,7 @@ function install(isGlobal, runtime = 'claude') {
         // generic text back over it (field report, 2026-10-21).
         console.log(`  ${yellow}!${reset} AGENTS.md: kept the PAN section this project edited. To take PAN's current text, delete the section between the PAN WIZARD markers and run the installer again.`);
       } else {
-        fs.writeFileSync(agentsMdPath, lib.upsertAgentsMdSection(agentsExisting, lib.buildAgentsMdSection()));
+        fs.writeFileSync(agentsMdPath, lib.upsertAgentsMdSection(agentsExisting, lib.buildAgentsMdSection({ mode: lib.readRoutingMode(process.cwd()) })));
         console.log(`  ${green}✓${reset} ${agentsExisting === null ? 'Created' : 'Updated'} AGENTS.md (PAN section)`);
       }
 
@@ -2928,6 +2946,19 @@ function install(isGlobal, runtime = 'claude') {
     if (!settings.experimental.enableAgents) {
       settings.experimental.enableAgents = true;
       console.log(`  ${green}✓${reset} Enabled experimental agents`);
+    }
+    // Gemini CLI loads GEMINI.md, not AGENTS.md where PAN's section is: name AGENTS.md
+    // in context.fileName. What PAN found is recorded beside the manifest, so uninstall
+    // takes out PAN's entry and nothing else; a reinstall that changes nothing keeps the
+    // first record.
+    const merged = lib.mergeGeminiContextFileName(settings);
+    if (merged.changed) {
+      try {
+        fs.writeFileSync(path.join(targetDir, CONFIG_EDITS_NAME), JSON.stringify({ 'context.fileName': { before: merged.before } }, null, 2) + '\n');
+        console.log(`  ${green}✓${reset} Gemini CLI now loads AGENTS.md (context.fileName)`);
+      } catch (e) {
+        pushInstallWarning('geminiContext', CONFIG_EDITS_NAME, e);
+      }
     }
   }
 

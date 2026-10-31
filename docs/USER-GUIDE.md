@@ -586,7 +586,9 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `workflow.verifier` | `true`, `false` | `true` | Post-execution verification against phase goals |
 | `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; at a phase boundary a chain that `/pan:plan-phase` drives stops (it runs exec-phase with `--no-transition`) and prints the next command; PAN's stop guard then blocks the session's stop once and tells the agent to spawn the next phase; a direct `/pan:exec-phase --auto` hands over to `transition.md`, which spawns the next phase as a Task subagent and, at the end of the milestone, turns `auto_advance` off and stops, showing `/pan:milestone-done` as the next step. Equivalent to passing `--auto` to `/pan:discuss-phase`, `/pan:plan-phase` and `/pan:exec-phase`. |
-| `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write, the direct state write (state.md goes through `pan-tools state` verbs), and a judge agent's write outside `.planning/`. |
+| `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write, the direct state write (state.md goes through `pan-tools state` verbs), and a judge agent's write outside `.planning/`. In `exclusive` request routing it also reports, and under `enforce` denies, a source edit while no PAN task is in flight (`unrouted_write`). |
+| `instructions.routing` | `off`, `advisory`, `exclusive` | `advisory` | What PAN's section of `AGENTS.md` says about which PAN command a plain request belongs to. See [How PAN tells your tool to use it](#how-pan-tells-your-tool-to-use-it). Set with `/pan:settings`, which rewrites the section |
+| `instructions.routing_exempt` | list of globs | `[]` | Files the `exclusive` guard rule leaves alone, for example `["docs/**", "*.md"]` |
 | `workflow.phase_gate` | `enforce`, `warn` | `enforce` | The phase gate `phase complete` runs first: summaries for every plan, a passing and fresh verification, approved human items, a clean reconcile, no open critical or high finding, no committed stub, no weakened test. `warn` marks the phase complete and reports what failed (exec-phase then does not auto-advance); `enforce` refuses until each reason is fixed, or until `phase complete <N> --force --reason "<why>"`, which records the override. `pan-tools phase gate <N>` runs the gate alone. |
 | `workflow.mutation_gate` | `off`, `report`, `gate` | `report` | The mutation report `/pan:verify-phase` runs on the phase's changed lines once the test gate passes (`pan-tools verify mutate`). `report` lists the mutants the suite did not kill and never refuses; `off` runs nothing; `gate` (opt-in) turns a score below `workflow.mutation_floor` into gaps: the verification goes to `gaps_found`, and `verify reconcile` refuses a passed one |
 | `workflow.mutation_floor` | 0 to 1 | `0.6` | The share of sampled mutants the suite must kill in `gate` mode |
@@ -901,6 +903,22 @@ The experiment runner uses `spawnSync` to invoke external AI runtimes headlessly
 
 - Design: `docs/specs/self_improvement_loop_featureai.md`
 - Decisions: `docs/decisions/ADR-0026-self-improvement-loop.md`
+
+### How PAN tells your tool to use it
+
+Each coding tool loads a project instructions file at the start of every session, and some keep a memory of their own. PAN writes one marked section into the project's `AGENTS.md`, and nothing outside its markers:
+
+| Tool | How it reads PAN's section |
+|---|---|
+| Claude Code | `CLAUDE.md` imports `AGENTS.md` (PAN adds the `@AGENTS.md` line) |
+| Codex, OpenCode, Copilot CLI | `AGENTS.md` directly |
+| Gemini CLI | `AGENTS.md`, named in `context.fileName` in `.gemini/settings.json` (PAN adds it, and takes it out on uninstall). PAN writes no `GEMINI.md`, which Copilot would also load |
+
+With `instructions.routing: advisory` (the default) the section carries a short table: fix a bug → `debug`, small change → `quick`, plan → `plan-phase`, build → `exec-phase`, check → `verify-phase`, and so on, so a request in plain words reaches the PAN command. `exclusive` adds that the project does this work only through PAN; with `hooks.guard: enforce` the guard then refuses a source edit made while no PAN task is in flight. `off` leaves the table out. A section you edited yourself is never replaced.
+
+A global install writes nothing into a project. `/pan:new-project` writes the section when it sets one up; for an existing project, run `pan-tools memory rebuild --apply --only agents-md`.
+
+The tools' own memories are theirs, and PAN does not edit them. A saved note such as "skip the plan for small fixes" can outweigh `AGENTS.md`, so `/pan:hygiene` reports Claude Code memory notes that describe doing PAN's work another way (`host-memory-routing`), naming the file, not its text. To stop a tool from keeping such notes for a project: `"autoMemoryEnabled": false` in `.claude/settings.json` for Claude Code, `/memory off` in Copilot CLI.
 
 ### AI Agent Guardrails
 

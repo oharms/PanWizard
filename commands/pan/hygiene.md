@@ -17,6 +17,7 @@ Keep a PAN-managed project aligned with the latest PAN version and free of accum
 - cost ledgers poisoned by pre-v3.12.4 telemetry, stale optimization trace sessions and reports, and stray fragment `.planning/` directories;
 - a planning tree another tool writes into too (`shared-planning-tree`) or owns (`foreign-planning-tree`);
 - Claude Code's own memory index past or near its load limit, or holding content where a one-line pointer belongs (`host-memory`). PAN only reports this one: it never writes the host's memory.
+- Claude Code memory notes that describe doing PAN's work another way, such as editing `.planning/` by hand or skipping the plan (`host-memory-routing`). Reported by file and rule, not by text; PAN never edits them.
 </objective>
 
 <process>
@@ -69,7 +70,7 @@ Safe fixes are: lowercase renames of legacy planning filenames, deletion of aged
 
 ## 4. Report
 
-Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the token cost its detail names and who pays it: state.md is re-read on **every** agent call, the project's largest recurring expense, while roadmap.md and requirements.md cost only when the roadmapper or milestone work reads them whole. If a `host-memory` finding appeared, name the index and the lines it flags so the user can tidy them: Claude Code loads only the head of that index, and PAN never edits it. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.
+Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the token cost its detail names and who pays it: state.md is re-read on **every** agent call, the project's largest recurring expense, while roadmap.md and requirements.md cost only when the roadmapper or milestone work reads them whole. If a `host-memory` finding appeared, name the index and the lines it flags so the user can tidy them: Claude Code loads only the head of that index, and PAN never edits it. If a `host-memory-routing` finding appeared, name the file and suggest the user read it and delete what is out of date: such a note can outweigh the project's AGENTS.md. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.
 
 </process>
 

@@ -11,10 +11,10 @@
  * Three derived targets:
  *   1. AGENTS.md — the universal, cross-runtime tools memory. PAN owns exactly
  *      the marker-fenced `<!-- BEGIN/END PAN WIZARD -->` section (Codex, Copilot and
- *      OpenCode read AGENTS.md natively; Claude via the CLAUDE.md bridge; Gemini reads GEMINI.md by default). User content
+ *      OpenCode read AGENTS.md natively; Claude via the CLAUDE.md bridge; Gemini through the context.fileName entry its install adds). User content
  *      outside the markers is preserved byte-for-byte.
  *   2. CLAUDE.md — the Claude bridge (`@AGENTS.md` import), regenerated only
- *      when the Claude runtime is installed here.
+ *      when a Claude install is visible: in the project, or a global one.
  *   3. state.md — its YAML frontmatter is re-derived from the body (phase
  *      progress, status). The body prose is never touched.
  *
@@ -31,6 +31,9 @@ const {
   buildAgentsMdSection,
   upsertAgentsMdSection,
   ensureClaudeMdImport,
+  sectionState,
+  routingModeOf,
+  DEFAULT_ROUTING_MODE,
 } = require('./agents-md.cjs');
 const { isSuspiciousDirective } = require('./memory-optimize.cjs');
 
@@ -94,6 +97,24 @@ function detectRuntimes(cwd) {
     .map(([name]) => name);
 }
 
+// `--only agents-md`: the tools memory alone (AGENTS.md and the Claude bridge), as
+// new-project and /pan:settings ask for it; state.md is left alone.
+const ONLY_TARGETS = ['agents-md'];
+
+/**
+ * True when a user-level Claude Code install of PAN is visible: this engine runs from
+ * one, or the Claude user directory (CLAUDE_CONFIG_DIR, else ~/.claude) holds a core.
+ * A global install writes nothing into projects, so this is how a project it serves
+ * gets the CLAUDE.md bridge. `opts.homeDir` / `opts.claudeConfigDir` are test seams.
+ */
+function globalClaudeInstall(opts = {}) {
+  const userDir = opts.claudeConfigDir !== undefined
+    ? opts.claudeConfigDir
+    : (opts.homeDir ? path.join(opts.homeDir, '.claude') : (process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude')));
+  if (!opts.homeDir && opts.claudeConfigDir === undefined && path.basename(PAN_SOURCE_ROOT) === '.claude') return true;
+  try { return !!userDir && fs.statSync(path.join(userDir, 'pan-wizard-core')).isDirectory(); } catch { return false; }
+}
+
 /**
  * Rebuild one file: compute the desired content from `existing`, compare, and
  * (on apply) write only when it differs. Returns a per-target status.
@@ -122,21 +143,31 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
     return;
   }
 
+  if (opts.only != null && !ONLY_TARGETS.includes(opts.only)) {
+    output({ error: 'bad_only', rebuilt: [] }, raw, `--only takes one of: ${ONLY_TARGETS.join(', ')}`);
+    return;
+  }
   const runtimes = detectRuntimes(cwd);
   const targets = [];
   const warnings = [];
+  let routing = DEFAULT_ROUTING_MODE;
+  try { routing = routingModeOf(JSON.parse(fs.readFileSync(path.join(planningPath(cwd), 'config.json'), 'utf8'))); } catch { /* no config: the default */ }
 
   // 1. AGENTS.md — universal PAN section (Claude Code reads it through the bridge in step 2).
   {
     const p = path.join(cwd, 'AGENTS.md');
     const existing = safeReadFile(p);
-    const desired = upsertAgentsMdSection(existing, buildAgentsMdSection());
-    targets.push({ file: 'AGENTS.md', ...rebuildFile(p, existing, desired, apply) });
+    const desired = upsertAgentsMdSection(existing, buildAgentsMdSection({ mode: routing }));
+    // A section the project wrote for itself is kept; say so rather than "unchanged".
+    const kept = sectionState(existing, 'agents') === 'edited';
+    targets.push({ file: 'AGENTS.md', ...(kept ? { action: 'kept_edited', wrote: false } : rebuildFile(p, existing, desired, apply)) });
     scanForDirectives('AGENTS.md', desired, warnings);
   }
 
-  // 2. CLAUDE.md — Claude bridge, only when the Claude runtime is installed.
-  if (runtimes.includes('claude')) {
+  // 2. CLAUDE.md — Claude bridge, when a Claude install is visible here: in the project,
+  // or the user-level one a global install puts every project's commands in.
+  const claude = runtimes.includes('claude') || globalClaudeInstall(opts);
+  if (claude) {
     const p = path.join(cwd, 'CLAUDE.md');
     const existing = safeReadFile(p);
     const desired = ensureClaudeMdImport(existing);
@@ -145,7 +176,7 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
   }
 
   // 3. state.md — re-derive YAML frontmatter from the body (progress/status).
-  {
+  if (opts.only !== 'agents-md') {
     const p = path.join(planningPath(cwd), 'state.md');
     const existing = safeReadFile(p);
     if (existing != null) {
@@ -161,10 +192,12 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
     }
   }
 
-  const changed = targets.filter((t) => t.action !== 'unchanged');
+  const changed = targets.filter((t) => t.action !== 'unchanged' && t.action !== 'kept_edited');
   const result = {
     apply,
     runtimes,
+    routing,
+    claude_bridge: claude,
     rebuilt: targets,
     changed_count: changed.length,
     directive_warnings: warnings,
@@ -179,6 +212,8 @@ function cmdMemoryRebuild(cwd, opts = {}, raw) {
 module.exports = {
   cmdMemoryRebuild,
   detectRuntimes,
+  globalClaudeInstall,
+  ONLY_TARGETS,
   isInsideSourceRepo,
   rebuildFile,
   scanForDirectives,

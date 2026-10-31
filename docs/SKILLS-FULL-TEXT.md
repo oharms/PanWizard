@@ -14,13 +14,14 @@ These are installed into host projects via the PAN installer.
 
 ---
 
-### /pan:add-phase (44 lines)
+### /pan:add-phase (45 lines)
 
 ```markdown
 ---
 name: pan:add-phase
 group: Phase Management
 description: Add phase to end of current milestone in roadmap
+route: add a new piece of work to the roadmap
 argument-hint: <description>
 allowed-tools:
   - Read
@@ -620,13 +621,14 @@ The aggregator is runtime-agnostic. What varies across runtimes is how records *
 
 ---
 
-### /pan:debug (240 lines)
+### /pan:debug (241 lines)
 
 ````markdown
 ---
 name: pan:debug
 group: System
 description: Systematic debugging with persistent state across context resets
+route: fix a bug, an error or a failing test
 argument-hint: "[issue description]"
 allowed-tools:
   - Read
@@ -1055,13 +1057,14 @@ Generate 3-4 **phase-specific** gray areas, not generic categories.
 
 ---
 
-### /pan:exec-phase (135 lines)
+### /pan:exec-phase (136 lines)
 
 ````markdown
 ---
 name: pan:exec-phase
 group: Phase Lifecycle
 description: Execute all plans in a phase with wave-based parallelization
+route: build a phase that is planned
 argument-hint: "<phase-number> [--plan <id>] [--gaps-only] [--skip-tests] [--skip-review] [--fast] [--deep-review] [--hierarchical] [--auto] [--quality]"
 allowed-tools:
   - Read
@@ -3741,7 +3744,7 @@ The aggregator and renderer are pure, zero-dependency, runtime-agnostic CommonJS
 
 ---
 
-### /pan:hygiene (82 lines)
+### /pan:hygiene (83 lines)
 
 ````markdown
 ---
@@ -3763,6 +3766,7 @@ Keep a PAN-managed project aligned with the latest PAN version and free of accum
 - cost ledgers poisoned by pre-v3.12.4 telemetry, stale optimization trace sessions and reports, and stray fragment `.planning/` directories;
 - a planning tree another tool writes into too (`shared-planning-tree`) or owns (`foreign-planning-tree`);
 - Claude Code's own memory index past or near its load limit, or holding content where a one-line pointer belongs (`host-memory`). PAN only reports this one: it never writes the host's memory.
+- Claude Code memory notes that describe doing PAN's work another way, such as editing `.planning/` by hand or skipping the plan (`host-memory-routing`). Reported by file and rule, not by text; PAN never edits them.
 </objective>
 
 <process>
@@ -3815,7 +3819,7 @@ Safe fixes are: lowercase renames of legacy planning filenames, deletion of aged
 
 ## 4. Report
 
-Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the token cost its detail names and who pays it: state.md is re-read on **every** agent call, the project's largest recurring expense, while roadmap.md and requirements.md cost only when the roadmapper or milestone work reads them whole. If a `host-memory` finding appeared, name the index and the lines it flags so the user can tidy them: Claude Code loads only the head of that index, and PAN never edits it. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.
+Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the token cost its detail names and who pays it: state.md is re-read on **every** agent call, the project's largest recurring expense, while roadmap.md and requirements.md cost only when the roadmapper or milestone work reads them whole. If a `host-memory` finding appeared, name the index and the lines it flags so the user can tidy them: Claude Code loads only the head of that index, and PAN never edits it. If a `host-memory-routing` finding appeared, name the file and suggest the user read it and delete what is out of date: such a note can outweigh the project's AGENTS.md. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.
 
 </process>
 
@@ -4637,13 +4641,14 @@ Preserve all workflow gates (validation, questioning, research, requirements, ro
 
 ---
 
-### /pan:new-project (110 lines)
+### /pan:new-project (111 lines)
 
 ````markdown
 ---
 name: pan:new-project
 group: Getting Started
 description: Initialize a new project with deep context gathering and project.md
+route: start a new project from an idea
 argument-hint: "[--auto] [--research [market]]"
 allowed-tools:
   - Read
@@ -5045,13 +5050,14 @@ Preserve all workflow gates (classification approval, test plan approval, RED-GR
 
 ---
 
-### /pan:plan-phase (139 lines)
+### /pan:plan-phase (140 lines)
 
 ````markdown
 ---
 name: pan:plan-phase
 group: Phase Lifecycle
 description: Create detailed phase plan (plan.md) with verification loop
+route: plan the next phase
 argument-hint: "[phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only] [--quality]"
 agent: pan-planner
 allowed-tools:
@@ -5313,13 +5319,14 @@ The data layer (`pan-tools preview …`) works identically on all runtimes. What
 
 ---
 
-### /pan:progress (25 lines)
+### /pan:progress (26 lines)
 
 ```markdown
 ---
 name: pan:progress
 group: Session & Progress
 description: Check project progress, show context, and route to next action (execute or plan)
+route: see where the project stands
 allowed-tools:
   - Read
   - Bash
@@ -5346,13 +5353,14 @@ Preserve all routing logic (Routes A through F) and edge case handling.
 
 ---
 
-### /pan:quick (57 lines)
+### /pan:quick (58 lines)
 
 ```markdown
 ---
 name: pan:quick
 group: Session & Progress
 description: Execute a quick task with PAN guarantees (atomic commits, state tracking) but skip optional agents
+route: make a small change or add a small feature
 argument-hint: "[--full] [--quality] [description]"
 allowed-tools:
   - Read
@@ -5526,13 +5534,14 @@ pan-tools report all        [--open]
 
 ---
 
-### /pan:resume (99 lines)
+### /pan:resume (100 lines)
 
 ````markdown
 ---
 name: pan:resume
 group: Session & Progress
 description: Resume work from previous session with full context restoration
+route: pick up work where it stopped
 allowed-tools:
   - Read
   - Bash
@@ -6026,13 +6035,14 @@ The workflow handles all logic including:
 
 ---
 
-### /pan:verify-phase (84 lines)
+### /pan:verify-phase (85 lines)
 
 ````markdown
 ---
 name: pan:verify-phase
 group: Phase Lifecycle
 description: Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat
+route: check finished work against its goal
 argument-hint: "[phase number, e.g., '4'] [--uat]"
 allowed-tools:
   - Read

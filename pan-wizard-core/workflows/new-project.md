@@ -900,6 +900,22 @@ Run /pan:health --standards to check compliance anytime.
 
 **If command fails** (no project.md or no recommendations): Skip silently — standards are optional.
 
+## 8.8. Tell the host tools this project uses PAN
+
+A global install writes nothing into a project, so this project's `AGENTS.md` (and, with a Claude install, the `CLAUDE.md` bridge) may not carry PAN's section yet. Write it, with the routing table the config's `instructions.routing` asks for; user content outside PAN's markers, and a section the project edited, are kept:
+
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs memory rebuild --apply --only agents-md
+```
+
+Commit what it changed with the project files:
+
+```bash
+if [ "$(git status --porcelain AGENTS.md CLAUDE.md 2>/dev/null)" ]; then
+  node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "docs: add PAN's section to the agent instructions" --files AGENTS.md CLAUDE.md
+fi
+```
+
 ## 8.9. Safety-Net Commit (P-EXP-001 fix)
 
 **MANDATORY in auto mode, optional in interactive.** Defensive sweep — if any prior commit step was skipped (auto mode hit context budget early, interactive user dismissed a prompt, etc.), fold any uncommitted `.planning/` artifacts into a single bundle commit so the next workflow run starts from a clean tree.

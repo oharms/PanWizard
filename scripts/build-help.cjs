@@ -28,7 +28,7 @@ const GROUP_ORDER = [
   'External tools', 'System', 'Community',
 ];
 
-/** Every shipped command as {name, group, description}, sorted by name. */
+/** Every shipped command as {name, group, description, route}, sorted by name. */
 function readCommands(root = ROOT) {
   const dir = path.join(root, 'commands', 'pan');
   return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().map((f) => {
@@ -38,6 +38,8 @@ function readCommands(root = ROOT) {
       name: `pan:${f.replace(/\.md$/, '')}`,
       group: String(fm.group || '').trim(),
       description: String(fm.description || '').replace(/\s+/g, ' ').trim(),
+      // When to use it, in the user's words: the AGENTS.md routing table (agents-md.cjs ROUTES).
+      route: String(fm.route || '').trim(),
     };
   });
 }

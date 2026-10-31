@@ -85,6 +85,11 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
     // A7: the pre-tool guard. `report` logs to <planning>/guard.jsonl; `enforce` also
     // denies a write that puts a credential in a file; `off` disables it.
     hooks: { guard: 'report' },
+    // Project memory routing: what PAN's AGENTS.md section says about which command a
+    // plain request belongs to. `off` (no table), `advisory` (the table), `exclusive` (the
+    // table, and the guard's unrouted_write rule; files matching `routing_exempt` globs are
+    // left alone by it). Not `routing.*`: that section is model routing.
+    instructions: { routing: 'advisory', routing_exempt: [] },
     // Spend per phase, in API-equivalent dollars. It only warns (80% and over); 0 = off.
     cost: { phase_budget_usd: 20 },
     brave_search: hasBraveSearch,
@@ -135,6 +140,7 @@ function buildConfigDefaults(hasBraveSearch, userDefaults) {
     commit: { ...hardcoded.commit, ...(userDefaults.commit || {}) },
     execution: { ...hardcoded.execution, ...(userDefaults.execution || {}) },
     routing: { ...hardcoded.routing, ...(userDefaults.routing || {}) },
+    instructions: { ...hardcoded.instructions, ...(userDefaults.instructions || {}) },
   };
 }
 

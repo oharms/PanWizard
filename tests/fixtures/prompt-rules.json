@@ -1645,6 +1645,12 @@
    "baseline": true
   },
   {
+   "id": "commands/pan/hygiene:c142faa8",
+   "file": "commands/pan/hygiene.md",
+   "text": "Claude Code memory notes that describe doing PAN's work another way, such as editing `.planning/` by hand or skipping the plan (`host-memory-routing`). Reported by file and rule, not by text; PAN never edits them.",
+   "baseline": false
+  },
+  {
    "id": "commands/pan/hygiene:e0608fd9",
    "file": "commands/pan/hygiene.md",
    "text": "**Always state which trees were scanned** — read `roots_scanned[]` and name them. If `summary.total` is 0, report \"Project is clean and aligned\" *together with* the list of trees that were read. A clean verdict without its scope is what let stale debris hide in an unscanned track; never report one without the other.",
@@ -1663,10 +1669,10 @@
    "baseline": true
   },
   {
-   "id": "commands/pan/hygiene:f0be8bee",
+   "id": "commands/pan/hygiene:a8a84847",
    "file": "commands/pan/hygiene.md",
-   "text": "Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the token cost its detail names and who pays it: state.md is re-read on **every** agent call, the project's largest recurring expense, while roadmap.md and requirements.md cost only when the roadmapper or milestone work reads them whole. If a `host-memory` finding appeared, name the index and the lines it flags so the user can tidy them: Claude Code loads only the head of that index, and PAN never edits it. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.",
-   "baseline": true
+   "text": "Summarize: the trees scanned, fixes executed / failed / left manual (attributed per track), plus the installer command if version drift remains. If a `cache-context` finding appeared, state the token cost its detail names and who pays it: state.md is re-read on **every** agent call, the project's largest recurring expense, while roadmap.md and requirements.md cost only when the roadmapper or milestone work reads them whole. If a `host-memory` finding appeared, name the index and the lines it flags so the user can tidy them: Claude Code loads only the head of that index, and PAN never edits it. If a `host-memory-routing` finding appeared, name the file and suggest the user read it and delete what is out of date: such a note can outweigh the project's AGENTS.md. Recommend re-running `/pan:hygiene` after the installer to confirm alignment.",
+   "baseline": false
   },
   {
    "id": "commands/pan/hygiene:6885949a",

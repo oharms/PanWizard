@@ -2,6 +2,7 @@
 name: pan:plan-phase
 group: Phase Lifecycle
 description: Create detailed phase plan (plan.md) with verification loop
+route: plan the next phase
 argument-hint: "[phase] [--auto] [--research] [--skip-research] [--gaps] [--skip-verify] [--prd <file>] [--research-only] [--quality]"
 agent: pan-planner
 allowed-tools:

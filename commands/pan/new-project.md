@@ -2,6 +2,7 @@
 name: pan:new-project
 group: Getting Started
 description: Initialize a new project with deep context gathering and project.md
+route: start a new project from an idea
 argument-hint: "[--auto] [--research [market]]"
 allowed-tools:
   - Read

@@ -1,14 +1,20 @@
 {
   "agents-md.cjs": [
+    "DEFAULT_ROUTING_MODE:string",
     "PAN_AGENTS_BEGIN:string",
     "PAN_AGENTS_END:string",
     "PRIOR_AGENTS_SECTIONS:object",
     "PRIOR_CLAUDE_BRIDGES:object",
+    "ROUTES:object",
+    "ROUTING_MODES:object",
     "buildAgentsMdSection:function",
     "buildClaudeMdBridge:function",
+    "buildRoutingLines:function",
     "ensureClaudeMdImport:function",
+    "readRoutingMode:function",
     "removeAgentsMdSection:function",
     "removeClaudeMdImport:function",
+    "routingModeOf:function",
     "sectionState:function",
     "upsertAgentsMdSection:function"
   ],
@@ -596,11 +602,13 @@
     "telemetryBySquad:function"
   ],
   "hygiene.cjs": [
+    "HOST_MEMORY_ROUTING_RULES:object",
     "LEGACY_UPPERCASE_FILES:object",
     "RUNTIME_DIRS:object",
     "checkCachedContext:function",
     "checkCostLedger:function",
     "checkHostMemory:function",
+    "checkHostMemoryRouting:function",
     "checkLegacyUppercase:function",
     "checkMemoryLogs:function",
     "checkPlanningFragment:function",
@@ -704,10 +712,12 @@
     "reconcileBullets:function"
   ],
   "memory-rebuild.cjs": [
+    "ONLY_TARGETS:object",
     "PAN_SOURCE_ROOT:string",
     "RUNTIME_DIRS:object",
     "cmdMemoryRebuild:function",
     "detectRuntimes:function",
+    "globalClaudeInstall:function",
     "isInsideSourceRepo:function",
     "rebuildFile:function",
     "scanForDirectives:function"

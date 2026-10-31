@@ -601,6 +601,8 @@
     "execution.error_pattern_learning",
     "execution.rollback_snapshots",
     "hooks.guard",
+    "instructions.routing",
+    "instructions.routing_exempt",
     "milestone_branch_template",
     "model_profile",
     "parallelization",

@@ -2,6 +2,7 @@
 name: pan:add-phase
 group: Phase Management
 description: Add phase to end of current milestone in roadmap
+route: add a new piece of work to the roadmap
 argument-hint: <description>
 allowed-tools:
   - Read

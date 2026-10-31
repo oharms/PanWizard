@@ -17,12 +17,17 @@
 //                         agent (`agent_type`) only on hosts that say so
 //   undeclared_test_edit  a test file the phase in flight does not declare in any
 //                         unfinished plan's files_modified
+//   unrouted_write        only when config.json `instructions.routing` is `exclusive`: a
+//                         write outside the planning tree while no PAN unit of work is in
+//                         flight (no unfinished plan in the current phase, no open quick
+//                         task or debug session, not a PAN agent); files matching
+//                         `instructions.routing_exempt` globs are left alone
 //
 // Mode, from the planning tree's config.json `hooks.guard`:
 //   off      nothing
 //   report   (default) every match is appended to <planning>/guard.jsonl, the call proceeds
-//   enforce  as report, and secret_write, state_write and judge_write are denied (the
-//            writers of state.md go through pan-tools verbs since A7b);
+//   enforce  as report, and secret_write, state_write, judge_write and unrouted_write
+//            are denied (the writers of state.md go through pan-tools verbs since A7b);
 //            undeclared_test_edit still only reports
 //
 // Inert outside a PAN project. Fail-open on anything it cannot parse; never fail-open
@@ -38,7 +43,7 @@ const TEST_FILE_RE = /(\.(test|spec)\.[a-z0-9]+|(^|\/)test_[^/]+\.py|_test\.(py|
 const MODES = ['off', 'report', 'enforce'];
 // The agents that judge work and must not change it. Their reports go in the planning tree.
 const JUDGES = new Set(['pan-verifier', 'pan-reviewer', 'pan-plan-checker', 'pan-design-checker']);
-const DENIED = ['secret_write', 'state_write', 'judge_write'];
+const DENIED = ['secret_write', 'state_write', 'judge_write', 'unrouted_write'];
 
 // ─── R39: one run per hook when Claude and Copilot share a project ───────────
 // Copilot CLI also runs the hooks in a repository's .claude/settings.json and
@@ -182,8 +187,54 @@ function declaredFiles(projectDir, planningRel) {
   return plans ? out : null;
 }
 
+/** A routing_exempt glob as a RegExp over project-relative POSIX paths (`*`, `**`, `?`). */
+function globRe(glob) {
+  let re = '';
+  const g = String(glob).replace(/\\/g, '/').replace(/^\.\//, '');
+  for (let i = 0; i < g.length; i++) {
+    const c = g[i];
+    if (c === '*' && g[i + 1] === '*') { re += '.*'; i++; if (g[i + 1] === '/') i++; }
+    else if (c === '*') re += '[^/]*';
+    else if (c === '?') re += '[^/]';
+    else re += /[.+^${}()|[\]\\]/.test(c) ? '\\' + c : c;
+  }
+  return new RegExp('^' + re + '$');
+}
+
+/**
+ * Whether a PAN unit of work is in flight: an unfinished plan in the phase state.md
+ * names, an open quick task (a plan with no summary), or an unresolved debug session.
+ * Throws on what it cannot read beyond a missing directory; the caller fails open.
+ */
+function workInFlight(projectDir, planningRel) {
+  if (declaredFiles(projectDir, planningRel)) return true;
+  const list = (d) => { try { return fs.readdirSync(d); } catch (e) { if (e.code === 'ENOENT') return []; throw e; } };
+  const quick = path.join(projectDir, planningRel, 'quick');
+  for (const task of list(quick)) {
+    let names;
+    try { names = fs.readdirSync(path.join(quick, task)); } catch (e) { if (e.code === 'ENOTDIR') continue; throw e; }
+    const done = new Set(names.filter((n) => n.endsWith('-summary.md')).map((n) => n.replace(/-summary\.md$/, '')));
+    if (names.some((n) => n.endsWith('-plan.md') && !done.has(n.replace(/-plan\.md$/, '')))) return true;
+  }
+  return list(path.join(projectDir, planningRel, 'debug')).some((n) => n.endsWith('.md'));
+}
+
+/** unrouted_write: in exclusive routing, the writes outside the planning tree while nothing PAN runs is in flight. */
+function unroutedWrites(call, projectDir, planningRel, cfg) {
+  const instructions = cfg && cfg.instructions;
+  if (!instructions || instructions.routing !== 'exclusive' || !call.writes.length) return [];
+  if (call.agent && call.agent.startsWith('pan-')) return [];
+  const exempt = (Array.isArray(instructions.routing_exempt) ? instructions.routing_exempt : [])
+    .filter((g) => typeof g === 'string' && g).map(globRe);
+  const outside = call.writes.map((w) => rel(projectDir, w.path))
+    .filter((r) => r && r !== planningRel && !r.startsWith(`${planningRel}/`) && !exempt.some((re) => re.test(r)));
+  if (!outside.length) return [];
+  try { if (workInFlight(projectDir, planningRel)) return []; } catch { return []; } // fail open
+  return outside.map((r) => ({ rule: 'unrouted_write', path: r }));
+}
+
 /** The rule matches for one normalised call. */
-function evaluate(call, projectDir, planningRel) {
+function evaluate(call, projectDir, planningRel, cfg = {}) {
   const hits = [];
   const declared = call.writes.length ? declaredFiles(projectDir, planningRel) : null;
   const ownState = new Set([`${planningRel}/state.md`, `${planningRel}/findings.jsonl`, `${planningRel}/metrics/tokens.jsonl`]);
@@ -195,6 +246,7 @@ function evaluate(call, projectDir, planningRel) {
     if (call.agent && JUDGES.has(call.agent) && !(r === planningRel || r.startsWith(`${planningRel}/`))) hits.push({ rule: 'judge_write', path: r, agent: call.agent });
     if (declared && isTestFile(r) && !declared.has(r)) hits.push({ rule: 'undeclared_test_edit', path: r });
   }
+  hits.push(...unroutedWrites(call, projectDir, planningRel, cfg));
   return hits;
 }
 
@@ -217,6 +269,9 @@ function hostOf(payload, flagHost) {
 function denyReason(deny) {
   if (deny.rule === 'state_write') {
     return `PAN guard: ${deny.path} is PAN's own state. Write it through pan-tools (\`pan-tools state init|section|apply|patch|update\`, \`findings record\`), which keeps it consistent, then retry. (hooks.guard: enforce)`;
+  }
+  if (deny.rule === 'unrouted_write') {
+    return `PAN guard: this project does its work through PAN (instructions.routing: exclusive), and no PAN task is in flight for ${deny.path}. Start one with the quick command (or debug for a bug fix), then retry. (hooks.guard: enforce)`;
   }
   if (deny.rule === 'judge_write') {
     return `PAN guard: ${deny.agent} is a judge and does not change the work it judges (${deny.path}). Report the defect in your verdict instead; your own report goes in the planning tree. (hooks.guard: enforce)`;
@@ -244,7 +299,7 @@ function main() {
   const mode = MODES.includes(cfg.hooks && cfg.hooks.guard) ? cfg.hooks.guard : 'report';
   if (mode === 'off') return;
   let hits = [];
-  try { hits = evaluate(normalise(payload), projectDir, planningRel); } catch { return; } // fail open
+  try { hits = evaluate(normalise(payload), projectDir, planningRel, cfg); } catch { return; } // fail open
   if (!hits.length) return;
   const deny = decide(hits, mode);
   try {
@@ -264,4 +319,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { normalise, evaluate, decide, hasSecret, declaredFiles, isTestFile, hostOf, deferToClaudeRegistration };
+module.exports = { normalise, evaluate, decide, hasSecret, declaredFiles, isTestFile, hostOf, deferToClaudeRegistration, workInFlight, globRe };

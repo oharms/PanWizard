@@ -1,6 +1,6 @@
 # Project Memory Routing — Feature Investigation & Spec
 
-**Date:** `2026-10-31` · **Status:** Proposed (not implemented). Implementation should record the decision as an ADR.
+**Date:** `2026-10-31` · **Status:** Implemented `2026-10-31`, decision in `docs/decisions/ADR-0050-project-memory-routing.md`. Not built yet: the tier-0 live-gate assertions and the paid tier-1 `routing-plain-words` scenario (§3.8), Gemini's private memory in H-12 (its path is unverified), and the OpenCode 2 `instructions.entry` copy (WATCH). `/pan:settings` names the host memory switches but does not offer to write the Claude key.
 
 In a project that uses PAN, the host tool (Claude Code, Codex, Gemini CLI, OpenCode, Copilot CLI) should reach for PAN's commands for the work PAN owns (planning, running a phase, a quick fix, debugging, verifying, resuming), not improvise. Today PAN tells each host *that* the project uses PAN, never *when* to use which command. In three cases it tells the host nothing: Gemini CLI, any global install, and a project set up before the first local install. Each host also keeps a memory of its own that can teach it a different way of working, and PAN neither steers that memory nor sees it.
 

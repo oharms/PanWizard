@@ -2,6 +2,7 @@
 name: pan:verify-phase
 group: Phase Lifecycle
 description: Re-run goal-backward verification of a phase with a test-suite gate and list its gaps, or walk its UAT with --uat
+route: check finished work against its goal
 argument-hint: "[phase number, e.g., '4'] [--uat]"
 allowed-tools:
   - Read

@@ -2,6 +2,7 @@
 name: pan:resume
 group: Session & Progress
 description: Resume work from previous session with full context restoration
+route: pick up work where it stopped
 allowed-tools:
   - Read
   - Bash

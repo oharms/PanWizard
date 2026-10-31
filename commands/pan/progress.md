@@ -2,6 +2,7 @@
 name: pan:progress
 group: Session & Progress
 description: Check project progress, show context, and route to next action (execute or plan)
+route: see where the project stands
 allowed-tools:
   - Read
   - Bash

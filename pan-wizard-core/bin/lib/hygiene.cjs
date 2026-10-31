@@ -356,6 +356,44 @@ function checkHostMemory(cwd, opts = {}) {
   return { findings, host_memory: { dir: loc.display, source: loc.source, index: true, lines: lines.length, bytes, long_lines: long.length } };
 }
 
+// H-12: phrases in a host's own memory that send work PAN owns somewhere else. A note
+// like "edit .planning/state.md by hand" or "skip the plan for small fixes" outlives the
+// install and quietly beats PAN's AGENTS.md section, since no host defines which wins.
+const HOST_MEMORY_ROUTING_RULES = Object.freeze([
+  ['planning_edit', /\b(edit|update|write|change|modify)\s+(the\s+)?[`'"]?\.planning\//i],
+  ['state_edit', /\b(edit|update|write|change|modify)\s+(the\s+)?[`'"]?(state|roadmap)\.md\b/i],
+  ['commit_cadence', /\bcommit\s+(directly\s+)?(after|on)\s+(each|every)\b/i],
+  ['skip_step', /\bskip\s+(the\s+)?(plan|planning|verification|verifier|verify|review|phase\s+gate)\b/i],
+  ['avoid_pan', /\b(without|instead\s+of|bypass(ing)?|don'?t\s+use|do\s+not\s+use|not\s+through)\s+(the\s+)?(PAN|pan-tools|\/pan[:-])/i],
+]);
+
+/**
+ * H-12: notes in Claude Code's auto memory for this project that route a PAN-owned
+ * action elsewhere. Read-only; reports the file and the rule ids, never the text.
+ * Codex's memories are machine-wide and not read; Copilot's live on a server.
+ * @param {string} cwd
+ * @param {{homeDir?: string, configDir?: string}} [opts]
+ */
+function checkHostMemoryRouting(cwd, opts = {}) {
+  const findings = [];
+  const home = opts.homeDir || require('os').homedir();
+  const configDir = opts.configDir !== undefined ? opts.configDir : (opts.homeDir ? '' : (process.env.CLAUDE_CONFIG_DIR || ''));
+  const loc = hostMemoryDir(cwd, home, configDir);
+  let names = [];
+  try { names = fs.readdirSync(loc.dir).filter((n) => n.endsWith('.md')).sort(); } catch { return { findings }; }
+  for (const name of names) {
+    const text = safeReadFile(path.join(loc.dir, name));
+    if (text == null) continue;
+    const rules = HOST_MEMORY_ROUTING_RULES.filter(([, re]) => text.split(/\r?\n/).some((l) => re.test(l))).map(([id]) => id);
+    if (!rules.length) continue;
+    findings.push(mkFinding('host-memory-routing', 'info', `${loc.display}/${name}`,
+      `Claude Code's memory note ${name} describes doing PAN's work another way (${rules.join(', ')}); `
+      + 'it can outweigh AGENTS.md, so review it and delete what is out of date (PAN does not edit this store)',
+      null));
+  }
+  return { findings };
+}
+
 /**
  * Thousands separator that does not depend on the host locale. `toLocaleString()`
  * emits a narrow no-break space in some locales and a comma in others, which
@@ -722,7 +760,8 @@ function scanHygiene(cwd, opts) {
   const host = checkHostMemory(cwd, { homeDir: opts?.homeDir });
   const roots = planningRoots(cwd, { allTracks: !!opts?.allTracks });
 
-  const findings = [...version.findings, ...host.findings];
+  const hostRouting = checkHostMemoryRouting(cwd, { homeDir: opts?.homeDir });
+  const findings = [...version.findings, ...host.findings, ...hostRouting.findings];
   const scanned = [];
   let planningExists = false;
 
@@ -998,6 +1037,8 @@ module.exports = {
   checkTmpOrphans,
   checkMemoryLogs,
   checkHostMemory,
+  checkHostMemoryRouting,
+  HOST_MEMORY_ROUTING_RULES,
   hostMemoryDir,
   checkCostLedger,
   checkStaleTraces,
