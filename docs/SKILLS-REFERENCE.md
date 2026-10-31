@@ -451,7 +451,7 @@ Print a privacy-safe report of what PAN learned on this project, to paste into a
 
 **Tools:** Bash  
 **Group:** System  
-**Lines:** 34
+**Lines:** 44
 
 #### /pan:health
 

@@ -90,4 +90,12 @@ describe('feedback intake', () => {
     const unfinished = I.aggregate([1, 2, 3].map((n) => I.extract(report({ usage: { commands_unfinished: ['exec-phase', 'x\ny'] }, env: { os: 'linux', node: n } }))[0].block)).unfinished;
     assert.deepEqual(unfinished, { 'exec-phase': 3 });
   });
+
+  test('intake knows every suggestion the engine makes: a new one would otherwise be dropped from every aggregate', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'pan-wizard-core', 'bin', 'lib', 'feedback.cjs'), 'utf-8');
+    const body = src.slice(src.indexOf('function suggestions('), src.indexOf('\n}\n', src.indexOf('function suggestions(')));
+    const ids = [...body.matchAll(/\bid: '([a-z_]+)'/g)].map((m) => m[1]).sort();
+    assert.ok(ids.length > 0);
+    assert.deepEqual(ids, Object.keys(I.SUGGESTION_KEYS).sort());
+  });
 });

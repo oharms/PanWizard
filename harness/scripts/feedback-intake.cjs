@@ -129,4 +129,4 @@ function main(argv) {
 
 if (require.main === module) main(process.argv.slice(2));
 
-module.exports = { extract, aggregate, SCHEMA, FIELDS, MIN_REPORTS };
+module.exports = { extract, aggregate, SCHEMA, FIELDS, MIN_REPORTS, SUGGESTION_KEYS };

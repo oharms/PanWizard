@@ -165,7 +165,10 @@ function collectInstall(cwd, root = INVENTORY_ROOT) {
   const engine = installed ? installRuntime(root) : null;
   if (engine) runtimes.add(engine);
   const norm = (p) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
-  const local = norm(root).startsWith(norm(cwd) + path.sep);
+  // Inside the project: a relative path that does not climb out (a cwd at a drive or
+  // filesystem root already ends in a separator, so a prefix test would miss it).
+  const rel = path.relative(norm(cwd), norm(root));
+  const local = !!rel && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel);
   return { version: panVersion(root), runtimes: RUNTIMES.filter((r) => runtimes.has(r)), scope: installed ? (local ? 'local' : 'global') : 'source' };
 }
 
@@ -187,13 +190,20 @@ function collectConfig(cwd) {
   // Any other key PAN itself defines (config.cjs) with a boolean value: the key name is PAN's,
   // the value says nothing. Not a user's `x-` key, and nothing inside an open section
   // (model_overrides, focus …), whose key names the user chooses: those are counted.
-  const { isKnownConfigPath, OPEN_CONFIG_SECTIONS } = require('./config.cjs');
+  // The known keys are built once here, not per key (config.cjs isKnownConfigPath rebuilds them).
+  const { knownConfigKeys, OPEN_CONFIG_SECTIONS } = require('./config.cjs');
+  const { top, sections } = knownConfigKeys();
+  const isPans = (key) => {
+    const [head, sub] = key.split('.');
+    if (!top.has(head) || OPEN_CONFIG_SECTIONS.includes(head)) return false;
+    return sub === undefined || !sections.has(head) || sections.get(head).has(sub);
+  };
   const walk = (o, prefix, depth) => {
     for (const [k, v] of Object.entries(o || {})) {
       const key = prefix ? `${prefix}.${k}` : k;
       if (Object.prototype.hasOwnProperty.call(out, key)) continue;
       if (v && typeof v === 'object' && !Array.isArray(v) && depth < 1) { walk(v, key, depth + 1); continue; }
-      if (typeof v === 'boolean' && /^[a-z_]+(\.[a-z_]+)?$/.test(key) && !OPEN_CONFIG_SECTIONS.includes(key.split('.')[0]) && isKnownConfigPath(key)) out[key] = v;
+      if (typeof v === 'boolean' && /^[a-z_]+(\.[a-z_]+)?$/.test(key) && isPans(key)) out[key] = v;
       else other++;
     }
   };
@@ -296,13 +306,15 @@ function collectExecution(dirs, since) {
 function collectCost(cwd, dirs, agents, since) {
   const C = require('./cost.cjs');
   const { loadConfig } = require('./core.cjs');
-  const rates = C.effectiveRates(loadConfig(cwd));
+  // Read once: the per-phase budget and forecast below take the config and rows instead of
+  // re-reading them for every phase.
+  const config = loadConfig(cwd);
+  const rates = C.effectiveRates(config);
   const byAgent = {};
   const byTier = {};
   let total = 0;
   // The phases that spent inside the window: only their budget and forecast are reported.
   const spentIn = new Set();
-  // Read once: the per-phase budget and forecast below take the rows instead of re-reading.
   const records = C.readRecords(cwd);
   for (const r of records) {
     if (C.isSuspectRecord(r) || C.isEmptyRecord(r)) continue;
@@ -319,13 +331,13 @@ function collectCost(cwd, dirs, agents, since) {
   for (const d of dirs) {
     const num = d.num;
     if (!num || !spentIn.has(C.samePhaseKey(num))) continue;
-    const b = C.phaseBudget(cwd, num, { records });
+    const b = C.phaseBudget(cwd, num, { records, config });
     if (!(b.spent_usd > 0)) continue;
     budget.phases++;
     bump(budget, b.status);
     let plans = 0;
     try { plans = fs.readdirSync(d.abs).filter((f) => /-plan\.md$/i.test(f)).length; } catch { /* none */ }
-    const fc = C.costForecast(cwd, { plans, excludePhase: num, records });
+    const fc = C.costForecast(cwd, { plans, excludePhase: num, records, config });
     if (fc.phase && fc.phase.status === 'ok') {
       forecast.checked++;
       if (b.spent_usd < fc.phase.p10) forecast.below_p10++;

@@ -39,18 +39,23 @@ function commandName(s) {
 /**
  * The installed commands and agents, in every runtime's layout: commands/pan/*.md (Claude),
  * commands/pan/*.toml (Gemini), commands/pan-*.md (OpenCode), skills/pan-* (Copilot), the
- * shared .agents/skills/pan-* beside the runtime directory (Codex, and every runtime under
- * --unified-skills), and agents/pan-*.md, .toml or .agent.md (Copilot).
+ * shared .agents/skills/pan-* beside the runtime directory (Codex, whose directory holds no
+ * commands of its own), and agents/pan-*.md, .toml or .agent.md (Copilot). The shared
+ * .agents/ core of a --unified-skills install keeps its skills in skills/ and the shipped
+ * agents in pan-wizard-core/agents/.
  */
 function readInventory(root) {
   const list = (d, re) => { try { return fs.readdirSync(d).filter((f) => re.test(f)); } catch { return []; } };
   const commands = new Set(list(path.join(root, 'commands', 'pan'), /\.(md|toml)$/).map((f) => f.replace(/\.(md|toml)$/, '')));
   for (const f of list(path.join(root, 'commands'), /^pan-.*\.md$/)) commands.add(commandName(f.replace(/\.md$/, '')));
-  for (const skills of [path.join(root, 'skills'), path.join(root, '..', '.agents', 'skills')]) {
-    for (const d of list(skills, /^pan-/)) commands.add(commandName(d));
-  }
-  const agents = new Set(list(path.join(root, 'agents'), /^pan-.*\.(md|toml)$/).map((f) => f.replace(/(\.agent)?\.(md|toml)$/, '')));
-  return { commands: [...commands].sort(), agents: [...agents].sort() };
+  for (const d of list(path.join(root, 'skills'), /^pan-/)) commands.add(commandName(d));
+  // Only a runtime with no commands of its own reads the shared tree: another runtime's
+  // install beside this one (perhaps another version) is not this engine's inventory.
+  if (!commands.size) for (const d of list(path.join(root, '..', '.agents', 'skills'), /^pan-/)) commands.add(commandName(d));
+  const agentFiles = (d) => list(d, /^pan-.*\.(md|toml)$/).map((f) => f.replace(/(\.agent)?\.(md|toml)$/, ''));
+  let agents = agentFiles(path.join(root, 'agents'));
+  if (!agents.length) agents = agentFiles(path.join(root, 'pan-wizard-core', 'agents'));
+  return { commands: [...commands].sort(), agents: [...new Set(agents)].sort() };
 }
 
 function readSessions(cwd) {

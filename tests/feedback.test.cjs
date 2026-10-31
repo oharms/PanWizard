@@ -405,6 +405,13 @@ describe('feedback report: the install it runs from', () => {
   test('a checkout with no manifest is the source', () => {
     assert.equal(FB.collectInstall(os.tmpdir(), path.join(__dirname, '..')).scope, 'source');
   });
+
+  test('a project at a drive or filesystem root still has its install read as local', () => {
+    // The root path already ends in a separator; a shared .agents core needs no manifest, so nothing is written.
+    const fsRoot = path.parse(os.tmpdir()).root;
+    assert.equal(FB.collectInstall(fsRoot, path.join(fsRoot, 'pan-fb-none', '.agents')).scope, 'local');
+    assert.equal(FB.collectInstall(path.join(fsRoot, 'pan-fb-a'), path.join(fsRoot, 'pan-fb-ab', '.agents')).scope, 'global');
+  });
 });
 
 describe('feedback report: the window, applied the same way everywhere', () => {
@@ -486,5 +493,14 @@ describe('feedback command: the note never reaches the shell unquoted', () => {
     assert.doesNotMatch(md, /feedback \$ARGUMENTS/);
     assert.match(md, /single quotes/);
     assert.ok(md.includes(`'\\''`), 'says how to write an apostrophe inside the quotes');
+    assert.ok(md.includes(`didn''t`), 'and how PowerShell writes one');
+  });
+
+  test('no example opts the user into --tool-errors: a model copying it would add data the user did not ask for', () => {
+    const md = fs.readFileSync(path.join(__dirname, '..', 'commands', 'pan', 'feedback.md'), 'utf-8');
+    const commands = md.split('\n').filter((l) => /pan-tools\.cjs feedback/.test(l));
+    assert.ok(commands.length >= 2);
+    assert.ok(commands.some((l) => /feedback\s*$/.test(l)), 'the bare command is shown');
+    for (const l of commands) assert.doesNotMatch(l, /--tool-errors/);
   });
 });

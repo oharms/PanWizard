@@ -679,9 +679,9 @@ function aggregate(cwd, opts) {
 const DEFAULT_PHASE_BUDGET_USD = 20;
 const PHASE_BUDGET_WARN_PCT = 80;
 
-function phaseBudgetUsd(cwd) {
+function phaseBudgetUsd(cwd, config) {
   let v;
-  try { v = loadConfig(cwd)?.cost?.phase_budget_usd; } catch { /* defaults */ }
+  try { v = (config || loadConfig(cwd))?.cost?.phase_budget_usd; } catch { /* defaults */ }
   if (v === false || v === 0 || v === '0') return 0;
   const n = Number(v);
   return v != null && Number.isFinite(n) && n > 0 ? n : DEFAULT_PHASE_BUDGET_USD;
@@ -689,12 +689,14 @@ function phaseBudgetUsd(cwd) {
 
 /**
  * A phase's spend against its budget.
- * @param {{records?: object[]}} [opts] records: the ledger already read (a caller that checks many phases)
+ * @param {{records?: object[], config?: object}} [opts] records and config: the ledger and
+ *   config.json already read (a caller that checks many phases)
  * @returns {{phase, budget_usd, spent_usd, pct, status: 'off'|'ok'|'near'|'over', mode: 'warn', warn_at_pct, unpriced}}
  */
 function phaseBudget(cwd, phase, opts = {}) {
-  const budget = phaseBudgetUsd(cwd);
-  const rates = effectiveRates(loadConfig(cwd));
+  const config = opts.config || loadConfig(cwd);
+  const budget = phaseBudgetUsd(cwd, config);
+  const rates = effectiveRates(config);
   const key = samePhaseKey(phase);
   let spent = 0;
   let unpriced = 0;
@@ -765,10 +767,11 @@ const samePhaseKey = (p) => String(p == null ? '' : p).replace(/^0+(?=\d)/, '');
  *   draw per plan, `FORECAST_ITERATIONS` times, seeded.
  *
  * @param {string} cwd
- * @param {{plans?: number, tier?: string, excludePhase?: string, seed?: number, records?: object[]}} [opts] records: the ledger already read (a caller that forecasts many phases)
+ * @param {{plans?: number, tier?: string, excludePhase?: string, seed?: number, records?: object[], config?: object}} [opts]
+ *   records and config: the ledger and config.json already read (a caller that forecasts many phases)
  */
 function costForecast(cwd, opts = {}) {
-  const rates = effectiveRates(loadConfig(cwd));
+  const rates = effectiveRates(opts.config || loadConfig(cwd));
   const exclude = opts.excludePhase != null ? samePhaseKey(opts.excludePhase) : null;
   const rows = [];
   for (const r of opts.records || readRecords(cwd)) {

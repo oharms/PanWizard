@@ -1432,7 +1432,7 @@ Works in all 5 runtimes (Claude / Codex / Gemini / OpenCode / Copilot). The W2 e
 
 ---
 
-### /pan:feedback (34 lines)
+### /pan:feedback (44 lines)
 
 ````markdown
 ---
@@ -1452,9 +1452,19 @@ The engine builds the report from counts, codes and PAN's own command and agent 
 <process>
 1. Run the engine with the flags the user gave (`--tool-errors`, `--days <N>`, `--format json`). If they gave a note, pass it after `--note` in single quotes, writing each `'` inside it as `'\''`, so the shell reads none of it: never in double quotes or backticks.
 
+   Add only the flags the user gave. With none, the command is just:
+
    ```bash
-   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs feedback --tool-errors --note 'the review step didn'\''t finish'
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs feedback
    ```
+
+   With a note (here the user wrote: the review step didn't finish):
+
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs feedback --note 'the review step didn'\''t finish'
+   ```
+
+   In PowerShell (Codex or Copilot on Windows), write each `'` inside the note as `''` instead: `--note 'the review step didn''t finish'`.
 
 2. **Exit 0:** show the output to the user **verbatim**, in full, as one block. Do not summarise it, reword it, translate it, add anything to it, or remove anything from it, and do not quote anything from the project next to it. The report is only safe because code built it; a paraphrase could carry project details into it.
 

@@ -112,6 +112,22 @@ describe('usage census (L9)', () => {
     assert.deepEqual(U.readInventory(codex), { commands: ['quick'], agents: ['pan-planner'] });
   });
 
+  test("a runtime with its own commands does not take the shared tree's: another install beside it is not its inventory", () => {
+    const claude = path.join(dir, 'mixed', '.claude');
+    fs.mkdirSync(path.join(claude, 'commands', 'pan'), { recursive: true });
+    fs.writeFileSync(path.join(claude, 'commands', 'pan', 'quick.md'), '');
+    fs.mkdirSync(path.join(dir, 'mixed', '.agents', 'skills', 'pan-army'), { recursive: true });
+    assert.deepEqual(U.readInventory(claude).commands, ['quick']);
+  });
+
+  test('--unified-skills: the shared .agents core lists its skills and the agents in pan-wizard-core/agents', () => {
+    const shared = path.join(dir, 'uni', '.agents');
+    fs.mkdirSync(path.join(shared, 'skills', 'pan-quick'), { recursive: true });
+    fs.mkdirSync(path.join(shared, 'pan-wizard-core', 'agents'), { recursive: true });
+    fs.writeFileSync(path.join(shared, 'pan-wizard-core', 'agents', 'pan-planner.md'), '');
+    assert.deepEqual(U.readInventory(shared), { commands: ['quick'], agents: ['pan-planner'] });
+  });
+
   test('since: rows and sessions older than the window are left out', () => {
     ledger([{ ts: '2020-01-01T00:00:00Z', command: 'quick', agent: 'pan-planner' }, { ts: '2026-10-20T00:00:00Z', command: 'army' }]);
     session('sess_old', { command: 'exec-phase', started_at: '2020-01-01T00:00:00Z', ended_at: null });

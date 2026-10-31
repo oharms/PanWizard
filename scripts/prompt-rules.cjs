@@ -105,13 +105,15 @@ function checkRegistry(root) {
   const stale = reg.length !== now.length || now.some((r) => !regIds.has(r.id));
   const scenarios = loadScenarios(root);
   const claimed = new Set(scenarios.flatMap((s) => (Array.isArray(s.covers) ? s.covers : [])));
-  const allow = new Map((readJson(path.join(root, ALLOWLIST), []) || []).filter((e) => e && e.id && e.reason).map((e) => [e.id, e.reason]));
+  const allowRows = (readJson(path.join(root, ALLOWLIST), []) || []).filter((e) => e && e.id);
+  const allow = new Map(allowRows.filter((e) => e.reason).map((e) => [e.id, e.reason]));
   const unclaimed = reg.filter((r) => !r.baseline && !claimed.has(r.id) && !allow.has(r.id));
   const dangling = [];
   for (const s of scenarios) for (const id of (Array.isArray(s.covers) ? s.covers : [])) if (!nowIds.has(id)) dangling.push({ scenario: s.id, id });
   // An excuse for a rule that no longer exists: it would silently excuse a future rule
   // that happened to reuse the id, and it hides that the rule went away.
-  const staleAllowed = [...allow.keys()].filter((id) => !nowIds.has(id));
+  // Every entry counts here, with a reason or not: one without is no excuse, but still dead weight.
+  const staleAllowed = [...new Set(allowRows.map((e) => e.id))].filter((id) => !nowIds.has(id));
   return { rules: now.length, stale, unclaimed, dangling, staleAllowed, claimed: [...claimed].filter((id) => nowIds.has(id)).length };
 }
 
