@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Focus runs are now recorded in the same state as everything else PAN does, so `/pan:resume`, state.md and the guard see them.
+
+### Added
+
+- **`pan-tools focus open` and `focus close`.** A focus run that edits files registers each cycle as a quick task, `.planning/quick/<n>-focus-<kind>-<date>/`, numbered alongside `/pan:quick` (one shared `nextQuickNum`). `focus open` writes the plan (the batch's item ids, the source files they name) and runs the project's test command for `tests_before`; it refuses while another focus cycle is open. `focus close` runs the tests again, writes the summary, records each item's result in the batch file under `results` (the scan-time `status` is left alone), moves finished todos to `todos/completed/`, and adds one row to state.md's Quick Tasks table. A `verified` claim with no measured count, or with a suite that did not pass, is recorded as `partial`.
+
+### Changed
+
+- **`/pan:focus-auto` and `--step exec` open and close every cycle, and commit through `pan-tools commit`** instead of staging and committing with git directly, so the sensitive-pattern check applies. The `focus-docs` modes that write (`--fix`, `--sync --all`, drift `--create`/`--repair`) bracket their edits the same way. Under `instructions.routing: exclusive` with `hooks.guard: enforce`, the guard no longer denies a focus run's own edits: an open cycle is work in flight, with no change to the guard.
+- **`focus auto --update` takes a closed cycle's counts.** The items done and failed and both test counts come from the cycle `focus close` recorded, with `tests_verified: true`, whatever the flags say; the flags remain for a cycle that never opened. `focus auto --stop` closes a cycle left open as `failed`.
+
+### Removed
+
+- **`pan-tools batch-commit`.** No shipped prompt called it; focus cycles commit through `pan-tools commit` and record themselves through `focus close`.
+
 ## [3.39.0] - 2026-10-31
 
 Your coding tool now learns, from the project's own instructions file, which PAN command a plain request belongs to: "fix the failing login test" reaches `debug`, a small change reaches `quick`.

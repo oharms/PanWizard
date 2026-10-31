@@ -194,9 +194,14 @@ This catches emergent interactions: 5 "add try-catch" fixes might reveal the mod
 ## Stage 1: Session Start
 
 1. **Check Project Status** — git status, recent commits
-2. **Test Baseline** — run test suite, record current counts
+2. **Test Baseline** — run test suite; it must pass before anything is edited
 3. **Create rollback snapshot** — git tag for safety
-4. **Report** — Output session start summary
+4. **Open the cycle** — before the first edit:
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus open
+   ```
+   It registers this run as a quick task (`.planning/quick/<n>-focus-exec-<date>/`) for the newest batch, so state.md, `/pan:resume` and the guard see the work, and it records `tests_before` by running the test command. Keep its `dir`. If it refuses with `cycle_open`, an earlier run never closed: close that one with `focus close --dir <its dir> --status failed`, then open again
+5. **Report** — Output session start summary
 
 **Circular optimization — init trace:**
 ```bash
@@ -377,14 +382,17 @@ Before committing, run through ALL checks. Do not commit until every check passe
 If any check fails: fix the issue and re-run all checks. Only proceed to commit when all 6 pass.
 
 ### 6.2 Commit Changes
-Unless `--no-commit`:
-1. Stage modified files (specific paths, not `git add -A`)
-2. Create commit with accurate message listing verified items
-3. Verify commit succeeded
+Unless `--no-commit`, commit the modified files by path, with a message listing only verified items:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs commit "fix(focus-<n>): <verified items>" --files <modified files>
+```
+The commit verb unstages anything matching a sensitive pattern. Check that it reports a hash.
 
-### 6.3 Record Session
-- Record session summary (items completed, tests before/after, budget used)
-- Append error patterns if any failures occurred
+### 6.3 Close the Cycle
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed --commit <hash> --done <ids> --failed "<id>=<reason>,..."
+```
+`verified`: every item done and the suite passes; `partial`: some failed; `failed`: none done. Leave out `--commit` under `--no-commit`. The close runs the test command again for `tests_after`, writes the cycle's summary (items, tests before and after), records each item's result in the batch file, completes the todos it finished, and adds the cycle to state.md's Quick Tasks table. Then append error patterns if any failures occurred.
 
 ### 6.3.5 Circular optimization — end trace
 ```bash

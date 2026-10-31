@@ -642,13 +642,6 @@ describe('a negative ANSWER keeps exit 0', () => {
     assert.equal(body.status, 'ready_for_verification');
   });
 
-  test('batch-commit with an empty item list', () => {
-    execSync('git init', { cwd: tmpDir, stdio: 'pipe' });
-    const r = run(['batch-commit', '[]'], tmpDir);
-    assert.equal(r.status, 0, 'an empty batch is a legitimate no-op');
-    assert.equal(JSON.parse(r.stdout).reason, 'no_items');
-  });
-
   test('scaffold when the file already exists (idempotent)', () => {
     fs.mkdirSync(path.join(tmpDir, '.planning', 'phases', '01-setup'), { recursive: true });
     const first = run(['scaffold', 'context', '--phase', '1'], tmpDir);

@@ -203,10 +203,31 @@ function detectPlanningModel(planningDir) {
   return { model: entries.length ? 'fragment' : 'empty', evidence: [], entries: entries.length };
 }
 
+/**
+ * The next quick-task number: one more than the highest `<n>-` directory under
+ * .planning/quick/, or 1. `/pan:quick` (through `init quick`) and focus cycles
+ * (`focus open`) share it, so the two never pick the same number.
+ * @param {string} cwd - Project root
+ * @returns {number}
+ */
+function nextQuickNum(cwd) {
+  const { QUICK_DIR } = require('./constants.cjs');
+  try {
+    const nums = fs.readdirSync(planningPath(cwd, QUICK_DIR))
+      .filter(entry => /^\d+-/.test(entry))
+      .map(entry => parseInt(entry.split('-')[0], 10))
+      .filter(num => !isNaN(num));
+    return nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  } catch {
+    return 1; // no quick directory yet
+  }
+}
+
 module.exports = {
   readJsonFile,
   removeQuotes,
   planningPath,
+  nextQuickNum,
   detectPlanningModel,
   planningRel,
   phasesPath,

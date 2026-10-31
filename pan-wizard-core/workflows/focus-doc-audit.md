@@ -341,6 +341,13 @@ Score each as: GOOD / ACCEPTABLE / POOR
 
 ## Phase 5: Auto-Fix (requires --fix)
 
+### 5.0 Register the Edits
+Before the first fix, open a docs cycle:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus open --kind docs
+```
+It registers the run as a quick task, so state.md and resume see it and exclusive routing allows the edits. Keep its `dir`; 5.3 closes it. An audit without `--fix` edits nothing and opens nothing.
+
 ### 5.1 Auto-Fixable Issues
 
 | Issue Type | Fix Strategy | Risk |
@@ -371,6 +378,7 @@ Score each as: GOOD / ACCEPTABLE / POOR
 3. Make minimal changes — don't rewrite paragraphs
 4. If a fix is ambiguous, flag for manual review instead
 5. Report all fixes in the audit output
+6. Close the cycle after the last fix: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from 5.0> --status verified|partial|failed` (`partial` when any fix was skipped or flagged for manual review, `failed` when none applied)
 
 ---
 

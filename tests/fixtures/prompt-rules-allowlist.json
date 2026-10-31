@@ -170,5 +170,17 @@
   {
     "id": "commands/pan/hygiene:a8a84847",
     "reason": "The summary step gained the host-memory-routing sentence (ADR-0050); the \"PAN never edits it\" clause it already held is enforced in code: the host-memory checks only read (tests/hygiene.test.cjs host-memory, tests/project-memory-routing.test.cjs H-12)."
+  },
+  {
+    "id": "commands/pan/focus-auto:b393bb2b",
+    "reason": "Focus cycles as quick tasks (spec focus_phase_integration_featureai.md, Stage A): what focus open does is engine code, not model behaviour. tests/focus-integration.test.cjs checks the quick-task directory and plan, the measured tests_before, the cycle_open refusal, and that the guard treats the open cycle as work in flight on all four hook hosts."
+  },
+  {
+    "id": "commands/pan/focus-auto:c1648b6f",
+    "reason": "Focus cycles as quick tasks (Stage A): focus auto --update reading the closed cycle instead of the flags is engine code; tests/focus-integration.test.cjs records a cycle whose flags disagree with the measurement and asserts the measured counts, tests_verified true and the regression stop."
+  },
+  {
+    "id": "pan-wizard-core/workflows/focus-exec:be42dc3f",
+    "reason": "Focus cycles as quick tasks (Stage A): the same focus open behaviour as the focus-auto rule, from the --step exec workflow; tests/focus-integration.test.cjs covers it, and its prompt-contract test pins that focus-exec opens before its commit and closes after."
   }
 ]

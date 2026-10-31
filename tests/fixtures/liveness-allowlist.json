@@ -212,10 +212,6 @@
     "reason": "No harness scenario spawns this agent yet. A scenario that drives the command or workflow that spawns it removes this entry."
   },
   {
-    "id": "caller:verb:batch-commit",
-    "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
-  },
-  {
     "id": "caller:verb:cache",
     "reason": "Human-facing: documented in docs/CLI-REFERENCE.md, and no shipped prompt, native workflow or MCP tool runs it."
   },

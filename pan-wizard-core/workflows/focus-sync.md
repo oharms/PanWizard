@@ -28,6 +28,12 @@ This command synchronizes the **host project's documentation** — NOT PAN Wizar
 /pan:focus-docs --sync --all            # Full sync of everything + auto-fix
 ```
 
+Only `--all` edits files. Before its first edit, open a docs cycle, which registers the run as a quick task so state.md and resume see it and exclusive routing allows the edits:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus open --kind docs
+```
+After the last edit, close it: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed` (`partial` when some stale entries were left for manual review). The report-only modes open nothing.
+
 ---
 
 ## Sync Operations

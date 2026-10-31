@@ -307,6 +307,16 @@ Stated: A → B → D (missing C in the chain)
 
 ---
 
+## Registering the Edits (--create or --repair)
+
+Phases 5 to 7 write only with `--create` or `--repair`. Before the first write, open a docs cycle, which registers the run as a quick task so state.md and resume see it and exclusive routing allows the edits:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus open --kind docs
+```
+Keep its `dir`; "Closing the Edits" below closes it. Without either flag nothing is written and nothing is opened.
+
+---
+
 ## Phase 5: Missing Documentation Creation (requires --create)
 
 For Tier 1 and Tier 2 directories without documentation:
@@ -412,6 +422,12 @@ When root docs and sub-docs disagree:
 | Root says A depends on B, sub-B says no | Check actual imports — update wrong doc |
 | Root lists N modules, actual count is M | Update root to M |
 | Sub has local convention not in root | Keep in sub — local conventions are sub's truth |
+
+---
+
+## Closing the Edits (--create or --repair, with or without --quick)
+
+After the last write: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --status verified|partial|failed` (`partial` when some drift was left for manual review, `failed` when nothing was written).
 
 ---
 

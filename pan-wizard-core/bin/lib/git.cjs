@@ -17,8 +17,8 @@ const { runCommitSafetyChecks, VALID_COMMIT_TYPES } = require('./commands.cjs');
 //   • a stable code (`error: 'push_failed'`) — the form the query subcommands in
 //     this file already used (`error: 'status_failed', detail: r.stderr`);
 //   • stderr with a fallback (`error: r.stderr || 'unknown git error'`) — used by
-//     `commit` only, so all three of PAN's commit paths (this one, cmdCommit and
-//     cmdBatchCommit in commands.cjs) report a refused commit identically.
+//     `commit` only, so both of PAN's commit paths (this one and cmdCommit in
+//     commands.cjs) report a refused commit identically.
 // The stderr text stays in `detail` where it always was, so existing consumers
 // keep reading the same field.
 
@@ -94,8 +94,8 @@ function cmdGitCommit(cwd, opts, raw) {
     }
     // `|| 'unknown git error'` is load-bearing: the exit code is derived from a
     // TRUTHY error key and git does not always write to stderr, so an empty string
-    // would launder this real failure back into exit 0. Same shape as the two
-    // sibling commit paths in commands.cjs (cmdCommit, cmdBatchCommit).
+    // would launder this real failure back into exit 0. Same shape as the
+    // sibling commit path in commands.cjs (cmdCommit).
     output({ committed: false, reason: 'commit_failed', error: r.stderr || 'unknown git error', detail: r.stderr }, raw, 'commit failed');
     return;
   }

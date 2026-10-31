@@ -167,6 +167,11 @@
  *   focus auto [--category CAT]        Auto-runner: init, status, update, stop
  *     [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N]
  *     [--status] [--stop] [--update] [--continue] [--dry-run]
+ *   focus open [--batch F] [--kind exec|docs] [--run ID]
+ *                                      Register a focus cycle as a quick task
+ *   focus close --dir D --status verified|partial|failed
+ *     [--commit SHA] [--done ids] [--failed id=reason,...]
+ *                                      Close the cycle: summary, batch results, state row
  *   focus design                       Route to 10-phase investigation workflow
  *
  * Pre-Flight & Dashboard:
@@ -392,7 +397,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, batch-commit, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -1080,18 +1085,6 @@ async function main() {
       break;
     }
 
-    case 'batch-commit': {
-      const itemsJson = args[1];
-      // Report a malformed payload rather than silently reporting 'no_items':
-      // a caller whose JSON was garbled (e.g. shell-stripped quotes) must not be
-      // told there was nothing to commit. Absent arg → genuine empty batch.
-      const items = itemsJson === undefined || itemsJson === ''
-        ? []
-        : parseJsonOrError(itemsJson, 'batch-commit');
-      commands.cmdBatchCommit(cwd, items, raw);
-      break;
-    }
-
     case 'websearch': {
       const query = args[1];
       await commands.cmdWebsearch(query, {
@@ -1113,6 +1106,10 @@ async function main() {
         focus.cmdFocusExec(cwd, raw, ...args.slice(2));
       } else if (subcommand === 'auto') {
         focus.cmdFocusAuto(cwd, raw, ...args.slice(2));
+      } else if (subcommand === 'open') {
+        focus.cmdFocusOpen(cwd, raw, ...args.slice(2));
+      } else if (subcommand === 'close') {
+        focus.cmdFocusClose(cwd, raw, ...args.slice(2));
       } else if (subcommand === 'design') {
         // design is a workflow-only command (no core function)
         // The AI reads commands/pan/focus-design.md directly
@@ -1155,7 +1152,7 @@ async function main() {
           { tier: payload.tier }
         ), raw);
       } else {
-        error('Unknown focus subcommand. Available: scan, plan, sync, exec, auto, design, classify-stages, reflection');
+        error('Unknown focus subcommand. Available: scan, plan, sync, exec, auto, open, close, design, classify-stages, reflection');
       }
       break;
     }

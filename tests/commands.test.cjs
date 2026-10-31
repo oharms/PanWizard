@@ -931,13 +931,6 @@ describe('router error paths', () => {
     }
   });
 
-  test('batch-commit reports a parse error for malformed JSON (L16 regression)', () => {
-    // Previously swallowed → misleading 'no_items'. Must surface the parse error.
-    const result = runPanTools('batch-commit not-valid-json');
-    assert.strictEqual(result.success, false);
-    assert.ok(/Invalid JSON for batch-commit/.test(result.error), 'should report the parse failure');
-  });
-
   test('unknown validate subcommand returns error', () => {
     const result = runPanTools('validate bogus');
     assert.strictEqual(result.success, false);

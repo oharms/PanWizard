@@ -1,7 +1,6 @@
 {
   "verbs": [
     "autodev",
-    "batch-commit",
     "bus",
     "cache",
     "campaign",
@@ -121,8 +120,10 @@
     "findings suppressions",
     "focus auto",
     "focus classify-stages",
+    "focus close",
     "focus design",
     "focus exec",
+    "focus open",
     "focus plan",
     "focus reflection",
     "focus scan",
@@ -288,7 +289,6 @@
   ],
   "case_arms": [
     "autodev",
-    "batch-commit",
     "bus",
     "cache",
     "campaign",

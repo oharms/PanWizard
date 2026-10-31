@@ -851,15 +851,14 @@ function renderHealthReport(cwd, { phasesDir, phases, totalPlans, totalSummaries
 
 /**
  * Move a todo from pending to completed, adding a completion timestamp.
+ * Returns an error instead of exiting, so a caller that completes todos as one
+ * step of a larger write (`focus close`) can report a failure and carry on.
  * @param {string} cwd - Working directory path
  * @param {string} filename - Filename of the todo in the pending directory
- * @param {boolean} raw - If true, output raw value instead of JSON
- * @returns {void}
+ * @returns {{completed: true, file: string, date: string}|{error: string}}
  */
-function cmdTodoComplete(cwd, filename, raw) {
-  if (!filename) {
-    error('filename required for todo complete');
-  }
+function completeTodo(cwd, filename) {
+  if (!filename) return { error: 'filename required for todo complete' };
 
   const pendingDir = planningPath(cwd, 'todos', 'pending');
   const completedDir = planningPath(cwd, 'todos', 'completed');
@@ -869,14 +868,13 @@ function cmdTodoComplete(cwd, filename, raw) {
   try {
     content = fs.readFileSync(sourcePath, 'utf-8');
   } catch {
-    error(`Todo not found: ${filename}`);
+    return { error: `Todo not found: ${filename}` };
   }
 
-  // Ensure completed directory exists
   try {
     fs.mkdirSync(completedDir, { recursive: true });
   } catch (e) {
-    error(`Failed to create completed directory: ${e.message}`);
+    return { error: `Failed to create completed directory: ${e.message}` };
   }
 
   const today = new Date().toISOString().split('T')[0];
@@ -891,15 +889,27 @@ function cmdTodoComplete(cwd, filename, raw) {
   try {
     fs.writeFileSync(path.join(completedDir, filename), content, 'utf-8');
   } catch (e) {
-    error(`Failed to write completed todo: ${e.message}`);
+    return { error: `Failed to write completed todo: ${e.message}` };
   }
   try {
     fs.unlinkSync(sourcePath);
   } catch (e) {
-    error(`Failed to remove pending todo: ${e.message}`);
+    return { error: `Failed to remove pending todo: ${e.message}` };
   }
+  return { completed: true, file: filename, date: today };
+}
 
-  output({ completed: true, file: filename, date: today }, raw, 'completed');
+/**
+ * `todo complete <file>`: completeTodo, exiting non-zero on an error.
+ * @param {string} cwd - Working directory path
+ * @param {string} filename - Filename of the todo in the pending directory
+ * @param {boolean} raw - If true, output raw value instead of JSON
+ * @returns {void}
+ */
+function cmdTodoComplete(cwd, filename, raw) {
+  const r = completeTodo(cwd, filename);
+  if (r.error) error(r.error);
+  output(r, raw, 'completed');
 }
 
 /**
@@ -1032,55 +1042,6 @@ function cmdRollbackSnapshot(cwd, phase, raw) {
 }
 
 /**
- * Create a single commit summarizing batch results (for orchestrators like focus-exec).
- * Only commits .planning/ metadata.
- * @param {string} cwd - Working directory
- * @param {Array<{title: string}>} items - Completed batch items
- * @param {boolean} raw - Raw output mode
- * @returns {void}
- */
-function cmdBatchCommit(cwd, items, raw) {
-  if (!isGitRepo(cwd)) {
-    output({ committed: false, reason: 'not_a_git_repo' }, raw, 'not a git repo');
-    return;
-  }
-  if (!Array.isArray(items) || items.length === 0) {
-    // No error key, exit 0: an empty batch is a legitimate no-op.
-    output({ committed: false, reason: 'no_items' }, raw, 'no items');
-    return;
-  }
-
-  const config = loadConfig(cwd);
-  if (!config.commit_docs) {
-    output({ committed: false, reason: 'skipped_commit_docs_false' }, raw, 'skipped');
-    return;
-  }
-
-  // Stage .planning/ only
-  execGit(cwd, ['add', planningRel() + '/']);
-
-  // Check if there's anything to commit
-  const statusResult = execGit(cwd, ['diff', '--cached', '--name-only']);
-  if (statusResult.exitCode !== 0 || !statusResult.stdout) {
-    output({ committed: false, reason: 'nothing_to_commit' }, raw, 'nothing');
-    return;
-  }
-
-  const titles = items.map(i => '- ' + (i.title || 'untitled')).join('\n');
-  const message = 'docs: focus-exec batch — ' + items.length + ' items completed\n\n' + titles;
-  const commitResult = execGit(cwd, ['commit', '-m', message]);
-  if (commitResult.exitCode !== 0) {
-    // See cmdCommitDocs above: a truthy error key is what makes this exit non-zero.
-    output({ committed: false, reason: 'commit_failed', error: commitResult.stderr || 'unknown git error' }, raw, 'failed');
-    return;
-  }
-
-  const hashResult = execGit(cwd, ['rev-parse', '--short', 'HEAD']);
-  const hash = hashResult.exitCode === 0 ? hashResult.stdout : null;
-  output({ committed: true, hash, reason: 'committed', items_count: items.length }, raw, hash || 'committed');
-}
-
-/**
  * Check if all modified files are markdown (.md) — used to skip test verification.
  * @param {string[]} files - List of file paths
  * @returns {boolean} true if ALL files are .md (or list is empty)
@@ -1185,9 +1146,9 @@ module.exports = {
   braveFreshness,
   cmdProgressRender,
   cmdTodoComplete,
+  completeTodo,
   cmdScaffold,
   cmdRollbackSnapshot,
-  cmdBatchCommit,
   shouldSkipTests,
   readErrorPatterns,
   appendErrorPattern,

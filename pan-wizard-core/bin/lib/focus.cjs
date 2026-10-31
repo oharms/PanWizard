@@ -11,7 +11,7 @@ const path = require('path');
 const { output, EXIT_OK, error, safeReadFile, loadConfig, scanPendingTodos, scanSourceTodos, toPosix, isGitRepo, execGit, escapeRegex, normalizePhaseName } = require('./core.cjs');
 const {
   PHASES_DIR, ROADMAP_FILE, PATTERNS_FILE, EFFORT_POINTS, PRIORITY_LEVELS, EFFORT_SIZES,
-  FOCUS_MODES, FOCUS_TIERS, FOCUS_DIR,
+  FOCUS_MODES, FOCUS_TIERS, FOCUS_DIR, QUICK_DIR,
   BUDGET_LIMIT_BUGFIX, BUDGET_LIMIT_FULL, STABILITY_RATIO, FEATURE_RATIO,
   DIMINISHING_RETURNS_THRESHOLD,
   AUTO_RUN_FILE, FOCUS_CATEGORIES, FOCUS_SOURCES, CATEGORY_PRIORITY_RANGE, CATEGORY_DEFAULTS,
@@ -23,7 +23,7 @@ const { extractFrontmatter, extractPriorityEffort } = require('./frontmatter.cjs
 const { enumerateRoadmapPhases } = require('./roadmap.cjs');
 const { readErrorPatterns } = require('./commands.cjs');
 const { weeklyLimitStop } = require('./cost.cjs');
-const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel } = require('./utils.cjs');
+const { planningPath, listPhaseDirs, classifyPhaseStatus, filterPlanFiles, filterSummaryFiles, planningRel, nextQuickNum } = require('./utils.cjs');
 
 // ─── Scan helpers ───────────────────────────────────────────────────────────
 
@@ -627,10 +627,21 @@ function readLatestBatch(cwd) {
   const files = listBatchFiles(cwd);
   if (files.length === 0) return null;
   const file = files[files.length - 1];
+  return readBatchFile(path.join(planningPath(cwd, FOCUS_DIR), file), file);
+}
+
+/**
+ * Read one batch file, with its items as `.batch` whatever key holds them (see
+ * readLatestBatch). A file that cannot be used comes back with `.error`.
+ * @param {string} absPath - The batch file
+ * @param {string} [file] - The name to report; the base name by default
+ * @returns {Object}
+ */
+function readBatchFile(absPath, file = path.basename(absPath)) {
   const unusable = (why) => ({ file, error: `${file} ${why}`, batch: [], items_key: null });
   let data;
   try {
-    data = JSON.parse(safeReadFile(path.join(planningPath(cwd, FOCUS_DIR), file)));
+    data = JSON.parse(safeReadFile(absPath));
   } catch {
     return unusable('is not valid JSON');
   }
@@ -702,6 +713,429 @@ function cmdFocusExec(cwd, raw, ...args) {
   };
 
   output(result, raw);
+}
+
+// ─── Focus cycles: registered as quick tasks ────────────────────────────────
+//
+// A focus run that writes code or docs opens a cycle first and closes it after its
+// commit. The cycle is a quick-task record, `.planning/quick/<n>-focus-<kind>-<date>/`
+// holding `<n>-plan.md` and, once closed, `<n>-summary.md`. That is the record
+// /pan:quick keeps, so state.md's Quick Tasks table, resume and the guard's
+// "work in flight" check (hooks/pan-guard.js workInFlight: a plan with no summary)
+// see focus work with no focus-specific code. auto-run.json and batch files are not
+// in-flight markers: a crash leaves the first `in_progress` for good, and nothing
+// marks the second finished (spec focus_phase_integration_featureai.md, D2).
+
+const FOCUS_CYCLE_KINDS = ['exec', 'docs'];
+const FOCUS_CYCLE_STATUSES = ['verified', 'partial', 'failed'];
+const FOCUS_CYCLE_RE = /^(\d+)-focus-(exec|docs)-/;
+
+/** Strip one pair of quotes and read "null" as null: frontmatter scalars come back as strings. */
+function fmScalar(v) {
+  if (v == null) return null;
+  let s = String(v).trim();
+  if (s === 'null') return null;
+  if (/^".*"$/.test(s)) { try { s = JSON.parse(s); } catch { s = s.slice(1, -1); } } // focusCyclePlan writes JSON strings
+  else s = s.replace(/^'(.*)'$/, '$1');
+  return s === '' ? null : s;
+}
+function fmNumber(v) {
+  const s = fmScalar(v);
+  return s != null && /^-?\d+$/.test(s) ? Number(s) : null;
+}
+function fmList(v) {
+  if (Array.isArray(v)) return v.map(fmScalar).filter((x) => x != null);
+  const s = fmScalar(v);
+  return s ? [s] : [];
+}
+
+/**
+ * The focus cycles under .planning/quick/, oldest first.
+ * @param {string} cwd - Project root
+ * @returns {Array<{name, num, kind, dir, rel, plan, summary, open}>}
+ */
+function listFocusCycles(cwd) {
+  const quickDir = planningPath(cwd, QUICK_DIR);
+  let names;
+  try { names = fs.readdirSync(quickDir); } catch { return []; }
+  const cycles = [];
+  for (const name of names) {
+    const m = FOCUS_CYCLE_RE.exec(name);
+    if (!m) continue;
+    const dir = path.join(quickDir, name);
+    let files;
+    try { files = fs.readdirSync(dir); } catch { continue; }
+    const plan = `${m[1]}-plan.md`;
+    const summary = `${m[1]}-summary.md`;
+    if (!files.includes(plan)) continue;
+    cycles.push({
+      name, num: Number(m[1]), kind: m[2], dir, rel: planningRel(QUICK_DIR, name),
+      plan: path.join(dir, plan), summary: path.join(dir, summary), open: !files.includes(summary),
+    });
+  }
+  return cycles.sort((a, b) => a.num - b.num);
+}
+
+/** The open focus cycle, or null. There is at most one: `focus open` refuses a second. */
+function openFocusCycle(cwd) {
+  return listFocusCycles(cwd).find((c) => c.open) || null;
+}
+
+/**
+ * The source files a batch's items name, for the plan's files_modified. Pointers into
+ * the planning tree (a code-planned item's `file` is its phase directory, todo file
+ * or patterns.md) are not files the cycle changes, so they are left out.
+ * @param {Array} items - Batch items
+ * @returns {string[]}
+ */
+function focusCycleFiles(items) {
+  const root = planningRel();
+  const out = new Set();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item !== 'object') continue;
+    const named = [].concat(item.file || [], item.files || []);
+    for (const f of named) {
+      if (typeof f !== 'string' || !f.trim()) continue;
+      const p = toPosix(f.trim()).replace(/^\.\//, '');
+      if (p === root || p.startsWith(`${root}/`)) continue;
+      out.add(p);
+    }
+  }
+  return [...out];
+}
+
+/** An item's id, or a positional one for an agent-written entry with none. */
+function focusItemId(item, i) {
+  if (item && typeof item === 'object' && item.id != null && String(item.id).trim()) return String(item.id).trim();
+  return `item-${i + 1}`;
+}
+
+/**
+ * The plan of a focus cycle, in the lean quick plan's shape (sizing.cjs leanQuickPlan)
+ * plus the focus keys `focus close` and `focus auto --update` read back. Pure.
+ * @param {Object} o
+ * @param {number} o.num - Quick-task number
+ * @param {string} o.kind - exec | docs
+ * @param {Array} o.items - Batch items
+ * @param {string|null} [o.batchFile] - Batch file, relative to the project
+ * @param {string|null} [o.runId] - The auto run this cycle belongs to
+ * @param {string|null} [o.category] - The run's category, if any
+ * @param {{passed: number|null, command: string|null, status: string}|null} [o.tests] - Measured at open
+ * @param {string} [o.openedAt] - ISO timestamp
+ * @returns {string}
+ */
+function focusCyclePlan(o) {
+  const items = Array.isArray(o.items) ? o.items : [];
+  const ids = items.map(focusItemId);
+  const files = focusCycleFiles(items);
+  const tests = o.tests || null;
+  const verify = (tests && tests.command) || 'the project\'s tests';
+  const esc = (t) => String(t == null ? '' : t).replace(/</g, '&lt;').replace(/\r?\n+/g, ' ');
+  const q = (v) => (v == null ? 'null' : JSON.stringify(String(v)));
+  const label = o.category ? `${o.kind}, ${o.category}` : o.kind;
+  const objective = items.length
+    ? `Focus cycle ${o.num} (${label}): work the ${items.length} item(s) of ${o.batchFile || 'the batch'}. Each item ends done with its tests passing, or reverted and reported failed.`
+    : `Focus cycle ${o.num} (${label}): the edits of one focus-docs run.`;
+  const lines = [
+    '---', 'phase: quick', `plan: ${String(o.num).padStart(2, '0')}`, 'type: execute', 'wave: 1', 'depends_on: []',
+    `files_modified: [${files.join(', ')}]`, 'autonomous: true', 'tier: micro',
+    'source: focus', `focus_kind: ${o.kind}`, `batch_file: ${q(o.batchFile)}`, `run_id: ${q(o.runId)}`,
+    `category: ${q(o.category)}`, `items: [${ids.map((id) => JSON.stringify(id)).join(', ')}]`,
+    `tests_before: ${tests && tests.passed != null ? tests.passed : 'null'}`, `test_command: ${q(tests && tests.command)}`,
+    `opened_at: ${o.openedAt || new Date().toISOString()}`,
+    'must_haves:', '  truths:', '    - "Every item reported done passes its tests; every other item is reverted and reported failed with a reason"',
+    '---', '', '<objective>', esc(objective), '',
+    'Registered by `focus open` so state.md, resume and the guard see this cycle as work in flight. `focus close` ends it.', '</objective>', '',
+    '<tasks>', '',
+  ];
+  items.forEach((item, i) => {
+    const it = item && typeof item === 'object' ? item : { title: String(item) };
+    const itemFiles = focusCycleFiles([it]);
+    lines.push(
+      '<task type="auto">', `  <name>${esc(ids[i])}: ${esc(it.title || it.description || ids[i]).slice(0, 120)}</name>`,
+      `  <files>${itemFiles.join(', ') || 'the files the item names'}</files>`,
+      `  <action>${esc(it.fix || it.title || it.description || 'Do what the item says; do not widen it.')}</action>`,
+      `  <verify>${esc(verify)}</verify>`, '  <done>The item\'s fix holds and the tests pass; otherwise it is reverted and reported failed.</done>', '</task>', '',
+    );
+  });
+  if (!items.length) {
+    lines.push('<task type="auto">', '  <name>Documentation edits</name>', '  <files>the documents the run names</files>',
+      '  <action>Edit only the documents the run reported; never source code.</action>', '  <verify>the run\'s own checks</verify>',
+      '  <done>The edits are committed.</done>', '</task>', '');
+  }
+  lines.push('</tasks>', '');
+  return lines.join('\n');
+}
+
+/**
+ * Run the project's test command once (test-gate.cjs), for a cycle's before/after count.
+ * `passed` is null when there is no test command or the output gave no count.
+ */
+function measureTests(cwd) {
+  const r = require('./test-gate.cjs').runTests(cwd, { kind: 'run' });
+  return { passed: r.passed != null ? r.passed : null, total: r.total != null ? r.total : null, status: r.status, command: r.command || null, reason: r.reason || null };
+}
+
+/** The auto run a new cycle belongs to: the current one, while it is live. */
+function liveRunId(cwd) {
+  const run = readAutoRun(cwd);
+  if (!run || !run.run_id) return null;
+  return run.status === AUTORUN_STATUSES.IN_PROGRESS || run.status === AUTORUN_STATUSES.INITIALIZED ? run.run_id : null;
+}
+
+/**
+ * `focus open`: register a focus cycle as a quick task before its first edit.
+ * @param {string} cwd
+ * @param {{batch?: string, kind?: string, run?: string, measure?: Function, now?: Date}} opts
+ * @returns {Object} `{opened, dir, plan, num, items, files_modified, tests_before, ...}` or `{error, reason}`
+ */
+function focusOpen(cwd, opts = {}) {
+  const kind = opts.kind || 'exec';
+  if (!FOCUS_CYCLE_KINDS.includes(kind)) return { error: 'invalid_kind', reason: `--kind must be one of: ${FOCUS_CYCLE_KINDS.join(', ')}` };
+  const open = openFocusCycle(cwd);
+  if (open) return { error: 'cycle_open', reason: `focus cycle ${open.rel} is still open: close it with \`focus close --dir ${open.rel} --status ...\` first`, dir: open.rel };
+
+  let batch = null;
+  let batchAbs = null;
+  if (opts.batch) {
+    batchAbs = path.isAbsolute(opts.batch) ? opts.batch : path.resolve(cwd, opts.batch);
+    if (!fs.existsSync(batchAbs)) {
+      const inFocus = planningPath(cwd, FOCUS_DIR, opts.batch);
+      if (fs.existsSync(inFocus)) batchAbs = inFocus;
+      else return { error: 'batch_not_found', reason: `batch file not found: ${opts.batch}` };
+    }
+    batch = readBatchFile(batchAbs);
+  } else if (kind === 'exec') {
+    batch = readLatestBatch(cwd);
+    if (!batch) return { error: 'no_batch', reason: 'No batch file found. Run focus plan first.' };
+    batchAbs = planningPath(cwd, FOCUS_DIR, batch.file);
+  }
+  if (batch && batch.error) return { error: 'batch_unusable', reason: batch.error };
+  if (kind === 'exec' && batch.batch.length === 0) return { error: 'batch_empty', reason: `${batch.file} has no items` };
+
+  const items = batch ? batch.batch : [];
+  const batchFile = batchAbs ? toPosix(path.relative(cwd, batchAbs)) : null;
+  const runId = opts.run || liveRunId(cwd);
+  const run = runId ? readAutoRun(cwd) : null;
+  const category = run && run.run_id === runId ? (run.category || run.source || null) : (batch && batch.mode ? `mode ${batch.mode}` : null);
+  // A docs cycle edits documents only; the suite says nothing about it.
+  const tests = kind === 'exec' ? (opts.measure || measureTests)(cwd) : null;
+
+  const now = opts.now || new Date();
+  const date = now.toISOString().slice(0, 10);
+  const num = nextQuickNum(cwd);
+  const name = `${num}-focus-${kind}-${date}`;
+  const dir = planningPath(cwd, QUICK_DIR, name);
+  try {
+    fs.mkdirSync(planningPath(cwd, QUICK_DIR), { recursive: true });
+    fs.mkdirSync(dir); // not recursive: an existing directory is a collision, never overwritten
+  } catch (e) {
+    return { error: 'mkdir_failed', reason: `could not create ${planningRel(QUICK_DIR, name)}: ${e.code || e.message}` };
+  }
+  const planText = focusCyclePlan({ num, kind, items, batchFile, runId, category, tests, openedAt: now.toISOString() });
+  const planPath = path.join(dir, `${num}-plan.md`);
+  fs.writeFileSync(planPath, planText, 'utf-8');
+  return {
+    opened: true, num, kind, dir: planningRel(QUICK_DIR, name), plan: toPosix(path.relative(cwd, planPath)),
+    batch_file: batchFile, run_id: runId, items: items.map(focusItemId), files_modified: focusCycleFiles(items),
+    tests_before: tests ? tests.passed : null, test_status: tests ? tests.status : null, test_command: tests ? tests.command : null,
+  };
+}
+
+/** Find a cycle by `--dir`: its path, its directory name, or its number. */
+function findFocusCycle(cwd, ref) {
+  const want = toPosix(String(ref || '').trim()).replace(/\/+$/, '');
+  if (!want) return null;
+  const base = want.split('/').pop();
+  return listFocusCycles(cwd).find((c) => c.rel === want || c.name === base || String(c.num) === base) || null;
+}
+
+/** `--failed "a=why,b=why"` (repeatable) into {id: reason}; a comma splits only before another `id=`. */
+function parseFailed(values) {
+  const out = {};
+  for (const v of [].concat(values || [])) {
+    for (const part of String(v).split(/,(?=\s*[^,=\s]+=)/)) {
+      const at = part.indexOf('=');
+      const id = (at === -1 ? part : part.slice(0, at)).trim();
+      if (id) out[id] = at === -1 ? 'no reason given' : (part.slice(at + 1).trim() || 'no reason given');
+    }
+  }
+  return out;
+}
+
+/** `--done a,b` (repeatable) into ids. */
+function parseDone(values) {
+  return [...new Set([].concat(values || []).flatMap((v) => String(v).split(',')).map((s) => s.trim()).filter(Boolean))];
+}
+
+/** Read a cycle's plan frontmatter into the keys close and --update use. */
+function readCyclePlan(cycle) {
+  const fm = extractFrontmatter(safeReadFile(cycle.plan) || '');
+  return {
+    source: fmScalar(fm.source), kind: fmScalar(fm.focus_kind) || cycle.kind, batch_file: fmScalar(fm.batch_file),
+    run_id: fmScalar(fm.run_id), category: fmScalar(fm.category), items: fmList(fm.items),
+    tests_before: fmNumber(fm.tests_before), test_command: fmScalar(fm.test_command),
+  };
+}
+
+/** Read a closed cycle's summary frontmatter. */
+function readCycleSummary(cycle) {
+  const fm = extractFrontmatter(safeReadFile(cycle.summary) || '');
+  return {
+    status: fmScalar(fm.status), commit: fmScalar(fm.commit), items_done: fmList(fm.items_done), items_failed: fmList(fm.items_failed),
+    tests_before: fmNumber(fm.tests_before), tests_after: fmNumber(fm.tests_after), run_id: fmScalar(fm.run_id), batch_file: fmScalar(fm.batch_file),
+  };
+}
+
+/**
+ * `focus close`: end a focus cycle after its commit. Measures the tests again, writes
+ * the summary, records each item's result in the batch file, completes the todos it
+ * finished, and adds the cycle to state.md's Quick Tasks table.
+ * @param {string} cwd
+ * @param {{dir: string, status: string, commit?: string, done?: string[], failed?: Object, measure?: Function|false, now?: Date}} opts
+ * @returns {Object}
+ */
+function focusClose(cwd, opts = {}) {
+  if (!FOCUS_CYCLE_STATUSES.includes(opts.status)) return { error: 'invalid_status', reason: `--status must be one of: ${FOCUS_CYCLE_STATUSES.join(', ')}` };
+  const cycle = findFocusCycle(cwd, opts.dir);
+  if (!cycle) return { error: 'not_a_focus_cycle', reason: `no focus cycle matches --dir ${opts.dir || '(missing)'}: expected ${planningRel(QUICK_DIR)}/<n>-focus-<kind>-<date>` };
+  if (!cycle.open) return { error: 'cycle_closed', reason: `${cycle.rel} is already closed` };
+  const plan = readCyclePlan(cycle);
+  if (plan.source !== 'focus') return { error: 'not_a_focus_cycle', reason: `${cycle.rel} has no \`source: focus\` plan` };
+
+  const done = opts.done || [];
+  const failed = opts.failed || {};
+  const both = done.filter((id) => id in failed);
+  if (both.length) return { error: 'conflicting_items', reason: `reported both done and failed: ${both.join(', ')}` };
+  if (plan.items.length) {
+    const known = new Set(plan.items);
+    const unknown = [...done, ...Object.keys(failed)].filter((id) => !known.has(id));
+    if (unknown.length) return { error: 'unknown_items', reason: `not items of ${cycle.rel}: ${unknown.join(', ')}` };
+  }
+  const notReported = plan.items.filter((id) => !done.includes(id) && !(id in failed));
+
+  const tests = plan.kind === 'exec' && opts.measure !== false ? (opts.measure || measureTests)(cwd) : null;
+  const testsAfter = tests ? tests.passed : null;
+  // The claim is capped by what was measured: no count at either end, or a suite that
+  // did not pass, is at most partial (as quick and phase tests treat a project without tests).
+  let status = opts.status;
+  const capReasons = [];
+  if (status === 'verified' && plan.kind === 'exec') {
+    if (plan.tests_before == null || testsAfter == null) capReasons.push('no measured test count');
+    else if (tests.status !== 'passed') capReasons.push(`the test run ${tests.status}${tests.reason ? `: ${tests.reason}` : ''}`);
+    if (capReasons.length) status = 'partial';
+  }
+
+  const now = opts.now || new Date();
+  const date = now.toISOString().slice(0, 10);
+  const failedIds = Object.keys(failed);
+  const q = (v) => (v == null ? 'null' : JSON.stringify(String(v)));
+  const list = (a) => `[${a.map((x) => JSON.stringify(x)).join(', ')}]`;
+  const cell = (t) => String(t).replace(/\|/g, '\\|').replace(/\r?\n+/g, ' ');
+  const summary = [
+    '---', 'phase: quick', `plan: ${String(cycle.num).padStart(2, '0')}`, 'source: focus', `focus_kind: ${plan.kind}`,
+    `status: ${status}`, `commit: ${q(opts.commit)}`, `run_id: ${q(plan.run_id)}`, `batch_file: ${q(plan.batch_file)}`,
+    `items_done: ${list(done)}`, `items_failed: ${list(failedIds)}`, `items_not_reported: ${list(notReported)}`,
+    `tests_before: ${plan.tests_before == null ? 'null' : plan.tests_before}`, `tests_after: ${testsAfter == null ? 'null' : testsAfter}`,
+    `closed_at: ${now.toISOString()}`, '---', '',
+    `# Focus cycle ${cycle.num} (${plan.kind}): ${status}`, '',
+    ...(capReasons.length ? [`Reported verified; recorded partial: ${capReasons.join('; ')}.`, ''] : []),
+    '| Item | Result | Reason |', '|------|--------|--------|',
+    ...done.map((id) => `| ${cell(id)} | done | |`),
+    ...failedIds.map((id) => `| ${cell(id)} | failed | ${cell(failed[id])} |`),
+    ...notReported.map((id) => `| ${cell(id)} | not reported | |`),
+    '',
+    plan.kind === 'exec'
+      ? `Tests (measured by \`focus open\` and \`focus close\`): ${plan.tests_before == null ? 'none' : plan.tests_before} passing before, ${testsAfter == null ? 'none' : testsAfter} after${plan.test_command ? ` (\`${plan.test_command}\`)` : ''}.`
+      : 'Tests: not run for a docs cycle.',
+    `Commit: ${opts.commit || 'none'}.`, '',
+  ].join('\n');
+  fs.writeFileSync(cycle.summary, summary, 'utf-8');
+
+  // The batch keeps its scan-time `status` per item; results go under their own key.
+  let batchResults = null;
+  if (plan.batch_file) {
+    const abs = path.resolve(cwd, plan.batch_file);
+    try {
+      const data = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        data.results = { ...(data.results || {}) };
+        for (const id of done) data.results[id] = 'done';
+        for (const id of failedIds) data.results[id] = 'failed';
+        if (failedIds.length) data.result_reasons = { ...(data.result_reasons || {}), ...failed };
+        fs.writeFileSync(abs, JSON.stringify(data, null, 2), 'utf-8');
+        batchResults = 'written';
+      }
+    } catch (e) {
+      batchResults = `skipped: ${e.code || 'not valid JSON'}`;
+    }
+  }
+
+  // Todos the cycle finished leave the pending list.
+  const todos = [];
+  if (done.length && plan.batch_file) {
+    const batch = readBatchFile(path.resolve(cwd, plan.batch_file));
+    const byId = new Map((batch.batch || []).map((it, i) => [focusItemId(it, i), it]));
+    const { completeTodo } = require('./commands.cjs');
+    for (const id of done) {
+      const it = byId.get(id);
+      const isTodo = (it && it.source === 'todo') || /^todo-/.test(id);
+      if (!isTodo) continue;
+      const file = it && typeof it.file === 'string' && /todos\/pending\//.test(toPosix(it.file)) ? path.basename(it.file) : id.replace(/^todo-/, '');
+      const r = completeTodo(cwd, file);
+      todos.push(r.error ? { file, error: r.error } : { file, completed: true });
+    }
+  }
+
+  // state.md: one Quick Tasks row per cycle, and Last Activity.
+  const total = plan.items.length;
+  const label = plan.category || plan.kind;
+  const description = total ? `focus: ${label} — ${done.length} of ${total} items` : `focus: ${label} — docs edits`;
+  const sw = require('./state-write.cjs');
+  const row = sw.stateQuickTask(cwd, { description, commit: opts.commit || '', status, date, directory: `[${cycle.name}](./${QUICK_DIR}/${cycle.name}/)` });
+  if (!row.error) sw.stateApply(cwd, { fields: { 'Last Activity': date, 'Last Activity Description': `Closed focus cycle ${cycle.num}: ${description}` } });
+
+  return {
+    closed: true, dir: cycle.rel, summary: toPosix(path.relative(cwd, cycle.summary)), status, reported_status: opts.status,
+    capped: capReasons.length ? capReasons : undefined, items_done: done, items_failed: failedIds, items_not_reported: notReported,
+    tests_before: plan.tests_before, tests_after: testsAfter, batch_results: batchResults, todos_completed: todos,
+    state: row.error ? row.error : 'recorded', state_row: row.row || null,
+  };
+}
+
+/**
+ * The newest closed cycle of a run that `focus auto --update` has not recorded yet.
+ * @param {string} cwd
+ * @param {Object} run - auto-run.json
+ * @returns {Object|null} the summary's facts plus `rel`
+ */
+function unrecordedClosedCycle(cwd, run) {
+  if (!run || !run.run_id) return null;
+  const recorded = new Set((run.cycles || []).map((c) => c.cycle_dir).filter(Boolean));
+  const closed = listFocusCycles(cwd).filter((c) => !c.open && c.kind === 'exec' && !recorded.has(c.rel));
+  for (let i = closed.length - 1; i >= 0; i--) {
+    const s = readCycleSummary(closed[i]);
+    if (s.run_id === run.run_id) return { ...s, rel: closed[i].rel };
+  }
+  return null;
+}
+
+function cmdFocusOpen(cwd, raw, ...args) {
+  const getVal = (flag) => { const i = args.indexOf(flag); return i !== -1 && i + 1 < args.length ? args[i + 1] : undefined; };
+  const r = focusOpen(cwd, { batch: getVal('--batch'), kind: getVal('--kind'), run: getVal('--run') });
+  if (r.error) return output(r, raw, r.reason, 1);
+  return output(r, raw, r.dir);
+}
+
+function cmdFocusClose(cwd, raw, ...args) {
+  const all = (flag) => args.flatMap((a, i) => (a === flag && i + 1 < args.length ? [args[i + 1]] : []));
+  const getVal = (flag) => all(flag)[0];
+  const r = focusClose(cwd, {
+    dir: getVal('--dir'), status: getVal('--status'), commit: getVal('--commit'),
+    done: parseDone(all('--done')), failed: parseFailed(all('--failed')),
+  });
+  if (r.error) return output(r, raw, r.reason, 1);
+  return output(r, raw, r.status);
 }
 
 // ─── Focus Auto-Runner ──────────────────────────────────────────────────────
@@ -810,10 +1244,15 @@ function focusAutoStop(cwd, raw) {
   run.status = AUTORUN_STATUSES.STOPPED;
   run.stop_reason = 'user_stop';
   writeAutoRun(cwd, run);
+  // A cycle left open would keep counting as work in flight; stopping ends it as failed,
+  // with no test run (the run is being abandoned, not verified).
+  const open = openFocusCycle(cwd);
+  const closed = open ? focusClose(cwd, { dir: open.rel, status: 'failed', measure: false }) : null;
   return output({
     run_id: run.run_id, status: AUTORUN_STATUSES.STOPPED, stop_reason: 'user_stop',
     cycles_completed: run.totals ? run.totals.cycles_completed : 0,
     total_items_completed: run.totals ? run.totals.items_completed : 0,
+    closed_cycle: closed ? (closed.error ? { dir: open.rel, error: closed.reason } : closed.dir) : null,
   }, raw);
 }
 
@@ -881,11 +1320,31 @@ function focusAutoUpdate(cwd, raw, getVal) {
   const promptsRemainingRaw = getVal('--prompts-remaining', null);
   cycle.prompts_remaining = promptsRemainingRaw != null ? Number(promptsRemainingRaw) : null;
 
-  // Anti-fake: re-run the suite when verification is enabled; else record that
-  // this count was self-reported (tests_verified:false) so the trust is visible.
-  const tv = verifyTestCount(cwd, loadConfig(cwd), cycle.tests_after);
-  cycle.tests_after = tv.tests_after;
-  cycle.tests_verified = tv.verified;
+  // The cycle `focus close` recorded is the source of truth: its item results, and
+  // the test counts `focus open` and `focus close` measured. The flags stand only for
+  // a cycle that was not registered (an older prompt, or nothing to execute).
+  const closed = unrecordedClosedCycle(cwd, run);
+  let measured = false;
+  if (closed) {
+    cycle.cycle_dir = closed.rel;
+    cycle.items_completed = closed.items_done.length;
+    cycle.items_failed = closed.items_failed.length;
+    if (!cycle.batch_file && closed.batch_file) cycle.batch_file = closed.batch_file;
+    if (closed.tests_before != null && closed.tests_after != null) {
+      cycle.tests_before = closed.tests_before;
+      cycle.tests_after = closed.tests_after;
+      measured = true;
+    }
+  }
+  if (measured) {
+    cycle.tests_verified = true;
+  } else {
+    // Anti-fake: re-run the suite when verification is enabled; else record that
+    // this count was self-reported (tests_verified:false) so the trust is visible.
+    const tv = verifyTestCount(cwd, loadConfig(cwd), cycle.tests_after);
+    cycle.tests_after = tv.tests_after;
+    cycle.tests_verified = tv.verified;
+  }
 
   if (!run.cycles) run.cycles = [];
 
@@ -1255,6 +1714,19 @@ module.exports = {
   cmdFocusExec,
   listBatchFiles,
   readLatestBatch,
+  readBatchFile,
+  // Cycles
+  focusCyclePlan,
+  focusCycleFiles,
+  listFocusCycles,
+  openFocusCycle,
+  focusOpen,
+  focusClose,
+  cmdFocusOpen,
+  cmdFocusClose,
+  parseFailed,
+  parseDone,
+  unrecordedClosedCycle,
   // Auto
   categoryFilter,
   readAutoRun,
