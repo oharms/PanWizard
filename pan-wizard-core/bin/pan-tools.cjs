@@ -167,6 +167,7 @@
  *   focus auto [--category CAT]        Auto-runner: init, status, update, stop
  *     [--mode MODE] [--budget N] [--max-cycles N] [--total-budget N]
  *     [--status] [--stop] [--update] [--continue] [--dry-run]
+ *   focus route [--batch F]            Stamp each batch item's owner; hand phase work off
  *   focus open [--batch F] [--kind exec|docs] [--run ID]
  *                                      Register a focus cycle as a quick task
  *   focus close --dir D --status verified|partial|failed
@@ -1110,6 +1111,8 @@ async function main() {
         focus.cmdFocusOpen(cwd, raw, ...args.slice(2));
       } else if (subcommand === 'close') {
         focus.cmdFocusClose(cwd, raw, ...args.slice(2));
+      } else if (subcommand === 'route') {
+        focus.cmdFocusRoute(cwd, raw, ...args.slice(2));
       } else if (subcommand === 'design') {
         // design is a workflow-only command (no core function)
         // The AI reads commands/pan/focus-design.md directly
@@ -1152,7 +1155,7 @@ async function main() {
           { tier: payload.tier }
         ), raw);
       } else {
-        error('Unknown focus subcommand. Available: scan, plan, sync, exec, auto, open, close, design, classify-stages, reflection');
+        error('Unknown focus subcommand. Available: scan, plan, sync, exec, auto, route, open, close, design, classify-stages, reflection');
       }
       break;
     }

@@ -1477,6 +1477,12 @@
    "baseline": true
   },
   {
+   "id": "commands/pan/focus-auto:a9e0bd93",
+   "file": "commands/pan/focus-auto.md",
+   "text": "It stamps each item's `owner` and returns `execute` and `handoff`. A `handoff` item is a roadmap phase, a plan inside one, or a requirement the traceability table maps to a phase: its plan check, verification and requirement tick belong to `/pan:plan-phase` and `/pan:exec-phase`, so do not implement it. Show each one with its `command` in the cycle summary. `focus open` registers only the `execute` items (and refuses with `all_routed` when there are none: record the cycle with no items done and move on). A requirement mapped to no phase stays a focus item; leave its checkbox alone.",
+   "baseline": false
+  },
+  {
    "id": "commands/pan/focus-auto:b393bb2b",
    "file": "commands/pan/focus-auto.md",
    "text": "It registers the cycle as a quick task (`.planning/quick/<n>-focus-exec-<date>/`), so state.md, `/pan:resume` and the guard see it as PAN work in flight, and it runs the project's test command once to record `tests_before`. Keep its `dir` for the close. If it refuses with `cycle_open`, an earlier cycle never closed (a crash): close that one with `focus close --dir <its dir> --status failed`, then open again.",
@@ -2236,6 +2242,12 @@
    "id": "pan-wizard-core/workflows/focus-exec:be42dc3f",
    "file": "pan-wizard-core/workflows/focus-exec.md",
    "text": "It registers this run as a quick task (`.planning/quick/<n>-focus-exec-<date>/`) for the newest batch, so state.md, `/pan:resume` and the guard see the work, and it records `tests_before` by running the test command. Keep its `dir`. If it refuses with `cycle_open`, an earlier run never closed: close that one with `focus close --dir <its dir> --status failed`, then open again",
+   "baseline": false
+  },
+  {
+   "id": "pan-wizard-core/workflows/focus-exec:a9e0bd93",
+   "file": "pan-wizard-core/workflows/focus-exec.md",
+   "text": "It stamps each item's `owner` and returns `execute` and `handoff`. A `handoff` item is a roadmap phase, a plan inside one, or a requirement the traceability table maps to a phase: its plan check, verification and requirement tick belong to `/pan:plan-phase` and `/pan:exec-phase`, so do not implement it. Show each one with its `command` in the cycle summary. `focus open` registers only the `execute` items (and refuses with `all_routed` when there are none: record the cycle with no items done and move on). A requirement mapped to no phase stays a focus item; leave its checkbox alone.",
    "baseline": false
   },
   {

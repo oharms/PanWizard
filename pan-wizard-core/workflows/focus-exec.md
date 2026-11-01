@@ -229,7 +229,11 @@ Pick the newest. If none exists, tell user to run `/pan:focus-auto --step plan` 
 
 ### 2.2 Read and Validate the Batch
 Extract all items: ID, Title, Priority, Effort, Points, Tier, Files.
-Verify total points within budget.
+Verify total points within budget. Then route it, so phase work goes to the phase system:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus route --batch <the batch file>
+```
+It stamps each item's `owner` and returns `execute` and `handoff`. A `handoff` item is a roadmap phase, a plan inside one, or a requirement the traceability table maps to a phase: its plan check, verification and requirement tick belong to `/pan:plan-phase` and `/pan:exec-phase`, so do not implement it. Show each one with its `command` in the cycle summary. `focus open` registers only the `execute` items (and refuses with `all_routed` when there are none: record the cycle with no items done and move on). A requirement mapped to no phase stays a focus item; leave its checkbox alone.
 
 ### 2.3 Show Batch Table
 Display the execution batch to user, then continue automatically.

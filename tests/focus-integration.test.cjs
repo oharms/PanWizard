@@ -84,13 +84,14 @@ describe('focus open', () => {
     const out = json(r);
     assert.equal(out.num, 4);
     assert.match(out.dir, /^\.planning\/quick\/4-focus-exec-\d{4}-\d{2}-\d{2}$/);
-    assert.deepEqual(out.items, ['P1-1', 'P2-2', 'phase-2', 'todo-fix-login.md']);
+    assert.deepEqual(out.items, ['P1-1', 'P2-2', 'todo-fix-login.md'], 'the phase item is the phase system\'s');
+    assert.deepEqual(out.handoff, [{ id: 'phase-2', phase: '2', command: '/pan:plan-phase 2' }]);
     assert.deepEqual(out.files_modified, ['src/a.js', 'src/b.js', 'lib/c.js'], 'pointers into .planning/ are not files the cycle changes');
     assert.equal(out.tests_before, 5, 'measured by running the test command');
     const plan = read(dir, out.plan);
     assert.match(plan, /^source: focus$/m);
     assert.match(plan, /^focus_kind: exec$/m);
-    assert.match(plan, /^items:\n  - "P1-1"\n  - "P2-2"\n  - "phase-2"\n  - "todo-fix-login\.md"$/m);
+    assert.match(plan, /^items:\n  - "P1-1"\n  - "P2-2"\n  - "todo-fix-login\.md"$/m);
     assert.match(plan, /^files_modified:\n  - "src\/a\.js"\n  - "src\/b\.js"\n  - "lib\/c\.js"$/m);
     assert.match(plan, /^tests_before: 5$/m);
     assert.equal(focus.openFocusCycle(dir).num, 4);
@@ -164,7 +165,7 @@ describe('focus close', () => {
     assert.doesNotMatch(git(dir, 'status --porcelain'), /\.planning\//, 'the todo move and the record are committed, nothing left behind');
     assert.deepEqual(out.items_done, ['P1-1', 'todo-fix-login.md']);
     assert.deepEqual(out.items_failed, ['P2-2']);
-    assert.deepEqual(out.items_not_reported, ['phase-2']);
+    assert.deepEqual(out.items_not_reported, []);
     assert.equal(out.tests_before, 5);
     assert.equal(out.tests_after, 7);
 
@@ -174,7 +175,7 @@ describe('focus close', () => {
     assert.match(summary, /\| P2-2 \| failed \| the fix broke b, reverted \|/);
 
     const state = read(dir, '.planning/state.md');
-    assert.match(state, /\| focus: mode balanced — 2 of 4 items \| \d{4}-\d{2}-\d{2} \| [0-9a-f]{7,} \| partial \| \[4?\d*-focus-exec-[\d-]+\]\(\.\/quick\/\d+-focus-exec-[\d-]+\/\) \|/);
+    assert.match(state, /\| focus: mode balanced — 2 of 3 items \| \d{4}-\d{2}-\d{2} \| [0-9a-f]{7,} \| partial \| \[4?\d*-focus-exec-[\d-]+\]\(\.\/quick\/\d+-focus-exec-[\d-]+\/\) \|/);
     assert.match(state, /\*\*Last Activity Description:\*\* Closed focus cycle \d+: focus: mode balanced/);
 
     const batch = JSON.parse(read(dir, '.planning/focus/batch-2026-10-31.json'));
@@ -226,8 +227,8 @@ describe('focus close', () => {
 
   test('a flag with no value takes none; spaced ids and an unquoted reason are kept', () => {
     const opened = json(runPanTools('focus open', dir));
-    const out = json(runPanTools(`focus close --dir ${opened.dir} --status partial --commit --done P1-1 phase-2 --failed P2-2=broke the build`, dir));
-    assert.deepEqual(out.items_done, ['P1-1', 'phase-2']);
+    const out = json(runPanTools(`focus close --dir ${opened.dir} --status partial --commit --done P1-1 todo-fix-login.md --failed P2-2=broke the build`, dir));
+    assert.deepEqual(out.items_done, ['P1-1', 'todo-fix-login.md']);
     assert.deepEqual(out.items_failed, ['P2-2']);
     assert.match(read(dir, out.summary), /^commit: null$/m, '--commit did not swallow --done');
     assert.match(read(dir, out.summary), /\| P2-2 \| failed \| broke the build \|/);
@@ -425,10 +426,78 @@ describe('focus close derives the status from the measurements (A1-S)', () => {
   test('--status is optional for an exec cycle and required for a docs cycle', () => {
     withSuite(dir, 5);
     const exec = json(runPanTools('focus open', dir));
-    assert.equal(json(runPanTools(`focus close --dir ${exec.dir} --done P1-1 P2-2 phase-2 todo-fix-login.md`, dir)).status, 'verified');
+    assert.equal(json(runPanTools(`focus close --dir ${exec.dir} --done P1-1 P2-2 todo-fix-login.md`, dir)).status, 'verified');
     const docs = json(runPanTools('focus open --kind docs', dir));
     assert.equal(json(runPanTools(`focus close --dir ${docs.dir}`, dir)).error, 'invalid_status');
     assert.equal(json(runPanTools(`focus close --dir ${docs.dir} --status verified`, dir)).status, 'verified');
+  });
+});
+
+describe('ownership: focus executes its own items and hands phase work off (D1)', () => {
+  let dir;
+  beforeEach(() => { dir = createTempProject(); seed(dir); });
+  afterEach(() => cleanup(dir));
+
+  const REQS = '# Requirements\n\n- [ ] **AUTH-01**: login\n- [ ] **AUTH-02**: logout\n- [ ] **AUTH-03**: reset\n\n## Traceability\n\n| Requirement | Phase | Status |\n|---|---|---|\n| AUTH-01 | Phase 2 | Pending |\n| AUTH-02 | — | Pending |\n';
+
+  test('classifyOwner: a phase, a mapped requirement, an unmapped one, one missing from the table, a todo and a pattern', () => {
+    const trace = focus.parseTraceability(REQS);
+    const owner = (item) => { const c = focus.classifyOwner(item, trace); return [c.owner, c.phase || null]; };
+    assert.deepEqual(owner({ id: 'phase-3', source: 'phase' }), ['phase', '3']);
+    assert.deepEqual(owner({ id: 'X', title: 'a plan', file: '.planning/phases/04.1-hotfix/04.1-01-plan.md' }), ['phase', '4.1']);
+    assert.deepEqual(owner({ id: 'AUTH-01' }), ['phase', '2']);
+    assert.deepEqual(owner({ id: 'r1', source: 'requirement', requirement: 'AUTH-01' }), ['phase', '2']);
+    assert.deepEqual(owner({ id: 'AUTH-02' }), ['focus', null], 'listed with no phase');
+    assert.deepEqual(owner({ id: 'AUTH-03' }), ['focus', null], 'missing from the table');
+    assert.deepEqual(owner({ id: 'todo-a.md', source: 'todo' }), ['focus', null]);
+    assert.deepEqual(owner({ id: 'pattern-7', source: 'pattern', file: '.planning/patterns.md' }), ['focus', null]);
+    assert.deepEqual(owner({ id: 'P1-1', file: 'src/a.js' }), ['focus', null], 'a scan id shaped like a requirement id is not one');
+  });
+
+  test('focus route stamps owners, records the hand-offs and keeps the batch mtime; focus open registers only the rest', () => {
+    write(dir, '.planning/requirements.md', REQS);
+    write(dir, '.planning/phases/02-api/02-01-plan.md', '# plan\n');
+    write(dir, '.planning/focus/batch-2026-10-31.json', JSON.stringify({ items: [{ id: 'AUTH-01' }, { id: 'AUTH-02', file: 'src/b.js' }, { id: 'phase-2', source: 'phase' }, { id: 'P1-1', file: 'src/a.js' }] }));
+    const abs = path.join(dir, '.planning', 'focus', 'batch-2026-10-31.json');
+    const old = new Date('2026-10-31T08:00:00Z');
+    fs.utimesSync(abs, old, old);
+    const r = runPanTools('focus route', dir);
+    assert.ok(r.success, r.output);
+    const out = json(r);
+    assert.deepEqual(out.execute, ['AUTH-02', 'P1-1']);
+    assert.deepEqual(out.handoff.map((h) => [h.id, h.phase, h.command]), [['AUTH-01', '2', '/pan:exec-phase 2'], ['phase-2', '2', '/pan:exec-phase 2']]);
+    const batch = JSON.parse(read(dir, '.planning/focus/batch-2026-10-31.json'));
+    assert.deepEqual(batch.items.map((i) => i.owner), ['phase', 'focus', 'phase', 'focus']);
+    assert.deepEqual(batch.results, { 'AUTH-01': 'routed', 'phase-2': 'routed' });
+    assert.equal(batch.routes['AUTH-01'].command, '/pan:exec-phase 2');
+    assert.equal(fs.statSync(abs).mtimeMs, old.getTime());
+
+    const opened = json(runPanTools('focus open', dir));
+    assert.deepEqual(opened.items, ['AUTH-02', 'P1-1']);
+    assert.deepEqual(opened.files_modified, ['src/b.js', 'src/a.js']);
+  });
+
+  test('a batch of only phase work opens no cycle and names the commands', () => {
+    write(dir, '.planning/focus/batch-2026-10-31.json', JSON.stringify({ batch: [{ id: 'phase-2', source: 'phase' }] }));
+    const r = runPanTools('focus open', dir);
+    assert.equal(r.success, false);
+    const out = json(r);
+    assert.equal(out.error, 'all_routed');
+    assert.deepEqual(out.handoff, [{ id: 'phase-2', phase: '2', command: '/pan:plan-phase 2' }]);
+    assert.equal(fs.existsSync(path.join(dir, '.planning', 'quick')), false);
+  });
+
+  test('focus plan stamps each item\'s owner', () => {
+    write(dir, '.planning/roadmap.md', '# Roadmap\n\n### Phase 2: API\n\n**Goal:** an API\n');
+    write(dir, '.planning/phases/02-api/02-01-plan.md', '---\npriority: P1\neffort: S\n---\n# plan\n');
+    const out = json(runPanTools('focus plan', dir));
+    const owners = Object.fromEntries(out.batch.map((i) => [i.id, i.owner]));
+    assert.equal(owners['phase-2'], 'phase');
+    assert.equal(owners['todo-fix-login.md'], 'focus');
+  });
+
+  test('focus route refuses a missing batch', () => {
+    assert.equal(json(runPanTools('focus route --batch nope.json', dir)).error, 'batch_not_found');
   });
 });
 

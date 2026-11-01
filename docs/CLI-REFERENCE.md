@@ -346,175 +346,176 @@ Quick reference of all CLI commands grouped by category.
 | 81 | `focus sync` | Focus | focus.cjs |
 | 82 | `focus exec` | Focus | focus.cjs |
 | 83 | `focus auto` | Focus | focus.cjs |
-| 84 | `focus open` | Focus | focus.cjs |
-| 85 | `focus close` | Focus | focus.cjs |
-| 86 | `focus design` | Focus | pan-tools.cjs (answered inline) |
-| 87 | `standards list` | Standards | config.cjs |
-| 88 | `standards select` | Standards | config.cjs |
-| 89 | `standards remove` | Standards | config.cjs |
-| 90 | `standards status` | Standards | config.cjs |
-| 91 | `standards recommend` | Standards | config.cjs |
-| 92 | `standards phase-track` | Standards | config.cjs |
-| 93 | `standards tools` | Standards | config.cjs |
-| 94 | `preflight` | Operations | verify-preflight.cjs |
-| 95 | `dashboard` | Operations | state.cjs |
-| 96 | `learnings extract` | Operations | commands-learnings.cjs |
-| 97 | `learnings list` | Operations | commands-learnings.cjs |
-| 98 | `learnings prune` | Operations | commands-learnings.cjs |
-| 99 | `deps validate` | Operations | verify-preflight.cjs |
-| 100 | `drift-check` | Operations | verify-drift.cjs |
-| 101 | `retro` | Operations | verify-retro.cjs |
-| 102 | `codebase detect-languages` | Codebase | codebase.cjs |
-| 103 | `codebase analyze-imports` | Codebase | codebase.cjs |
-| 104 | `codebase best-practices` | Codebase | codebase.cjs |
-| 105 | `codebase estimate-size` | Spec A E-2 | codebase.cjs |
-| 106 | `memory read` | Spec A E-4 | memory.cjs |
-| 107 | `memory append` | Spec A E-4 | memory.cjs |
-| 108 | `memory list` | Spec A E-4 | memory.cjs |
-| 109 | `memory compact` | Spec A E-4 | memory.cjs |
-| 110 | `cache prime` | Spec A E-1 | core.cjs |
-| 111 | `focus classify-stages` | Spec A E-6 | focus.cjs |
-| 112 | `focus reflection` | Spec A E-10 | focus.cjs |
-| 113 | `cost report` | Spec B v2 Y-6 | cost.cjs |
-| 114 | `cost append` | Spec B v2 Y-6 | cost.cjs |
-| 115 | `cost clear` | Spec B v2 Y-6 | cost.cjs |
-| 116 | `bus publish` | Spec B v2 Y-7 | bus.cjs |
-| 117 | `bus drain` | Spec B v2 Y-7 | bus.cjs |
-| 118 | `bus list` | Spec B v2 Y-7 | bus.cjs |
-| 119 | `preview phase` | Spec B v2 Y-1 | preview.cjs |
-| 120 | `preview phases` | Spec B v2 Y-1 | preview.cjs |
-| 121 | `preview milestone` | Spec B v2 Y-1 | preview.cjs |
-| 122 | `review-deep merge` | Spec B v2 Y-2 | review-deep.cjs |
-| 123 | `review-deep analyze` | Spec B v2 Y-2 | review-deep.cjs |
-| 124 | `knowledge ask` | Spec B v2 Y-3 | knowledge.cjs |
-| 125 | `knowledge discuss` | Spec B v2 Y-3 | knowledge.cjs |
-| 126 | `knowledge playbook` | Spec B v2 Y-3 | knowledge.cjs |
-| 127 | `whatif prepare` | Spec B v2 Y-4 | whatif.cjs |
-| 128 | `whatif report` | Spec B v2 Y-4 | whatif.cjs |
-| 129 | `whatif cleanup` | Spec B v2 Y-4 | whatif.cjs |
-| 130 | `optimize trace init` | Optimization | optimize.cjs |
-| 131 | `optimize trace end` | Optimization | optimize.cjs |
-| 132 | `optimize trace current` | Optimization | optimize.cjs |
-| 133 | `optimize trace list` | Optimization | optimize.cjs |
-| 134 | `optimize trace log` | Optimization | optimize.cjs |
-| 135 | `optimize learn` | Optimization | optimize.cjs |
-| 136 | `optimize apply` | Optimization | optimize.cjs |
-| 137 | `optimize list` | Optimization | optimize.cjs |
-| 138 | `optimize stats` | Optimization | optimize.cjs |
-| 139 | `learn` (alias) | Optimization | optimize.cjs |
-| 140 | `git commit` | Git | git.cjs |
-| 141 | `git branch` | Git | git.cjs |
-| 142 | `git push` | Git | git.cjs |
-| 143 | `git status` | Git | git.cjs |
-| 144 | `git log` | Git | git.cjs |
-| 145 | `git stash` | Git | git.cjs |
-| 146 | `git diff` | Git | git.cjs |
-| 147 | `git rollback` | Git | git.cjs |
-| 148 | `git tag` | Git | git.cjs |
-| 149 | `git sync` | Git | git.cjs |
-| 150 | `distill scan` | Distill | distill.cjs |
-| 151 | `distill analyze` | Distill | distill.cjs |
-| 152 | `distill report` | Distill | distill.cjs |
-| 153 | `experiment new` | Self-Improvement Loop | experiment.cjs |
-| 154 | `experiment list` | Self-Improvement Loop | experiment.cjs |
-| 155 | `experiment manifest` | Self-Improvement Loop | experiment.cjs |
-| 156 | `experiment run` | Self-Improvement Loop | runner.cjs |
-| 157 | `experiment status` | Self-Improvement Loop | runner.cjs |
-| 158 | `experiment stop` | Self-Improvement Loop | runner.cjs |
-| 159 | `experiment harvest` | Self-Improvement Loop | experiment.cjs |
-| 160 | `experiment prune` | Self-Improvement Loop | experiment.cjs |
-| 161 | `doc-lint <dir>` | Doc-Lint | doc-lint.cjs |
-| 162 | `doc-lint schema-check` | Doc-Lint | doc-lint.cjs |
-| 163 | `learn promote` | Learnings | optimize.cjs |
-| 164 | `learn unpromote` | Learnings | optimize.cjs |
-| 165 | `learn list-promoted` | Learnings | optimize.cjs |
-| 166 | `learn lint` | Learnings | learn-lint.cjs |
-| 167 | `learn build-index` | Learnings | learn-index.cjs |
-| 168 | `learn topics-for` | Learnings | learn-index.cjs |
-| 169 | `links validate` | Doc-Code Link Graph | links.cjs |
-| 170 | `squad list` | Bot Army | squads.cjs |
-| 171 | `squad show` | Bot Army | squads.cjs |
-| 172 | `worktree list` | Bot Army | worktree.cjs |
-| 173 | `worktree create` | Bot Army | worktree.cjs |
-| 174 | `worktree remove` | Bot Army | worktree.cjs |
-| 175 | `worktree cleanup` | Bot Army | worktree.cjs |
-| 176 | `campaign schedule` | Bot Army | campaign.cjs |
-| 177 | `campaign status` | Bot Army | campaign.cjs |
-| 178 | `campaign due` | Bot Army | campaign.cjs |
-| 179 | `campaign record-run` | Bot Army | campaign.cjs |
-| 180 | `hud` | Observability | hud.cjs |
-| 181 | `models check` | Cost | cost.cjs |
-| 182 | `skills index` | Planning (SAD) | skill-align.cjs |
-| 183 | `skills align` | Planning (SAD) | skill-align.cjs |
-| 184 | `hygiene scan` | System | hygiene.cjs |
-| 185 | `hygiene clean` | System | hygiene.cjs |
-| 186 | `report phase <N>` | Observability | phase-report.cjs |
-| 187 | `report index` | Observability | phase-report.cjs |
-| 188 | `report all` | Observability | phase-report.cjs |
-| 189 | `memory optimize` | Memory | memory-optimize.cjs |
-| 190 | `memory rebuild` | Memory | memory-rebuild.cjs |
-| 191 | `optimize trace reconcile` | Optimization | optimize.cjs |
-| 192 | `verify reconcile` | Verification | verify.cjs |
-| 193 | `verify stubs` | Verification | verify.cjs |
-| 194 | `memory select` | Memory | memory.cjs |
-| 195 | `memory budget` | Memory | memory.cjs |
-| 196 | `doc-lint counts` | Linting | doc-lint.cjs |
-| 197 | `doc-lint flags` | Linting | doc-lint.cjs |
-| 198 | `state compact` | State Progression | state-compact.cjs |
-| 199 | `optimize trace show` | Optimization | optimize.cjs |
-| 200 | `cost rebuild` | Cost | cost-rebuild.cjs |
-| 201 | `findings record` | Evidence loop | findings.cjs |
-| 202 | `findings list` | Evidence loop | findings.cjs |
-| 203 | `findings dispose` | Evidence loop | findings.cjs |
-| 204 | `findings debt` | Evidence loop | findings.cjs |
-| 205 | `verify scope` | Verification | verify-scope.cjs |
-| 206 | `optimize revert` | Optimization | optimize.cjs |
-| 207 | `verify stale` | Verification | verify-scope.cjs |
-| 208 | `version` | Utility | commands.cjs |
-| 209 | `roadmap slice` | Roadmap | roadmap.cjs |
-| 210 | `roadmap compact` | Roadmap | roadmap-compact.cjs |
-| 211 | `memory prune` | Memory | memory.cjs |
-| 212 | `memory record` | Memory | memory.cjs |
-| 213 | `cost limits` | Cost | cost.cjs |
-| 214 | `verify plan-set` | Verification | verify-plan-set.cjs |
-| 215 | `verify test-integrity` | Verification | verify-integrity.cjs |
-| 216 | `phase gate` | Phase Ops | phase-gate.cjs |
-| 217 | `test run` | Verification | test-gate.cjs |
-| 218 | `test detect` | Verification | test-gate.cjs |
-| 219 | `verify red` | Verification | verify-red.cjs |
-| 220 | `verify mutate` | Verification | mutate.cjs |
-| 221 | `review scope` | Verification | verify-scope.cjs |
-| 222 | `findings suppressions` | Evidence loop | findings.cjs |
-| 223 | `verify review-focus` | Verification | plan-lint.cjs |
-| 224 | `verify decisions` | Verification | plan-lint.cjs |
-| 225 | `research lint` | Verification | research-lint.cjs |
-| 226 | `state snapshot` (alias of `state-snapshot`) | State | state.cjs |
-| 227 | `cost budget` | Cost | cost.cjs |
-| 228 | `usage` | Observability | usage.cjs |
-| 229 | `autodev run` | Autonomy | autodev.cjs |
-| 230 | `autodev resume` | Autonomy | autodev.cjs |
-| 231 | `autodev status` | Autonomy | autodev.cjs |
-| 232 | `autodev report` | Autonomy | autodev-report.cjs |
-| 233 | `autodev replay` | Autonomy | autodev-report.cjs |
-| 234 | `worktree preflight` | Autonomy | worktree.cjs |
-| 235 | `review cross-family` | Verification | cross-family.cjs |
-| 236 | `review vote` | Verification | review-vote.cjs |
-| 237 | `findings prove` | Evidence loop | findings.cjs |
-| 238 | `verify gates` | Verification | plan-lint.cjs |
-| 239 | `verify requirements` | Verification | requirements-lint.cjs |
-| 240 | `verify traceability` | Verification | requirements-lint.cjs |
-| 241 | `state init` | State | state-write.cjs |
-| 242 | `state section` | State | state-write.cjs |
-| 243 | `state quick-task` | State | state-write.cjs |
-| 244 | `state apply` | State | state-write.cjs |
-| 245 | `merge request` | Bot Army | merge.cjs |
-| 246 | `merge confirm` | Bot Army | merge.cjs |
-| 247 | `uat record` | Verification | uat.cjs |
-| 248 | `uat status` | Verification | uat.cjs |
-| 249 | `debug repro` | Verification | debug-cases.cjs |
-| 250 | `debug similar` | Verification | debug-cases.cjs |
-| 251 | `research check` | Verification | research-lint.cjs |
-| 252 | `feedback` | Observability | feedback.cjs |
+| 84 | `focus route` | Focus | focus.cjs |
+| 85 | `focus open` | Focus | focus.cjs |
+| 86 | `focus close` | Focus | focus.cjs |
+| 87 | `focus design` | Focus | pan-tools.cjs (answered inline) |
+| 88 | `standards list` | Standards | config.cjs |
+| 89 | `standards select` | Standards | config.cjs |
+| 90 | `standards remove` | Standards | config.cjs |
+| 91 | `standards status` | Standards | config.cjs |
+| 92 | `standards recommend` | Standards | config.cjs |
+| 93 | `standards phase-track` | Standards | config.cjs |
+| 94 | `standards tools` | Standards | config.cjs |
+| 95 | `preflight` | Operations | verify-preflight.cjs |
+| 96 | `dashboard` | Operations | state.cjs |
+| 97 | `learnings extract` | Operations | commands-learnings.cjs |
+| 98 | `learnings list` | Operations | commands-learnings.cjs |
+| 99 | `learnings prune` | Operations | commands-learnings.cjs |
+| 100 | `deps validate` | Operations | verify-preflight.cjs |
+| 101 | `drift-check` | Operations | verify-drift.cjs |
+| 102 | `retro` | Operations | verify-retro.cjs |
+| 103 | `codebase detect-languages` | Codebase | codebase.cjs |
+| 104 | `codebase analyze-imports` | Codebase | codebase.cjs |
+| 105 | `codebase best-practices` | Codebase | codebase.cjs |
+| 106 | `codebase estimate-size` | Spec A E-2 | codebase.cjs |
+| 107 | `memory read` | Spec A E-4 | memory.cjs |
+| 108 | `memory append` | Spec A E-4 | memory.cjs |
+| 109 | `memory list` | Spec A E-4 | memory.cjs |
+| 110 | `memory compact` | Spec A E-4 | memory.cjs |
+| 111 | `cache prime` | Spec A E-1 | core.cjs |
+| 112 | `focus classify-stages` | Spec A E-6 | focus.cjs |
+| 113 | `focus reflection` | Spec A E-10 | focus.cjs |
+| 114 | `cost report` | Spec B v2 Y-6 | cost.cjs |
+| 115 | `cost append` | Spec B v2 Y-6 | cost.cjs |
+| 116 | `cost clear` | Spec B v2 Y-6 | cost.cjs |
+| 117 | `bus publish` | Spec B v2 Y-7 | bus.cjs |
+| 118 | `bus drain` | Spec B v2 Y-7 | bus.cjs |
+| 119 | `bus list` | Spec B v2 Y-7 | bus.cjs |
+| 120 | `preview phase` | Spec B v2 Y-1 | preview.cjs |
+| 121 | `preview phases` | Spec B v2 Y-1 | preview.cjs |
+| 122 | `preview milestone` | Spec B v2 Y-1 | preview.cjs |
+| 123 | `review-deep merge` | Spec B v2 Y-2 | review-deep.cjs |
+| 124 | `review-deep analyze` | Spec B v2 Y-2 | review-deep.cjs |
+| 125 | `knowledge ask` | Spec B v2 Y-3 | knowledge.cjs |
+| 126 | `knowledge discuss` | Spec B v2 Y-3 | knowledge.cjs |
+| 127 | `knowledge playbook` | Spec B v2 Y-3 | knowledge.cjs |
+| 128 | `whatif prepare` | Spec B v2 Y-4 | whatif.cjs |
+| 129 | `whatif report` | Spec B v2 Y-4 | whatif.cjs |
+| 130 | `whatif cleanup` | Spec B v2 Y-4 | whatif.cjs |
+| 131 | `optimize trace init` | Optimization | optimize.cjs |
+| 132 | `optimize trace end` | Optimization | optimize.cjs |
+| 133 | `optimize trace current` | Optimization | optimize.cjs |
+| 134 | `optimize trace list` | Optimization | optimize.cjs |
+| 135 | `optimize trace log` | Optimization | optimize.cjs |
+| 136 | `optimize learn` | Optimization | optimize.cjs |
+| 137 | `optimize apply` | Optimization | optimize.cjs |
+| 138 | `optimize list` | Optimization | optimize.cjs |
+| 139 | `optimize stats` | Optimization | optimize.cjs |
+| 140 | `learn` (alias) | Optimization | optimize.cjs |
+| 141 | `git commit` | Git | git.cjs |
+| 142 | `git branch` | Git | git.cjs |
+| 143 | `git push` | Git | git.cjs |
+| 144 | `git status` | Git | git.cjs |
+| 145 | `git log` | Git | git.cjs |
+| 146 | `git stash` | Git | git.cjs |
+| 147 | `git diff` | Git | git.cjs |
+| 148 | `git rollback` | Git | git.cjs |
+| 149 | `git tag` | Git | git.cjs |
+| 150 | `git sync` | Git | git.cjs |
+| 151 | `distill scan` | Distill | distill.cjs |
+| 152 | `distill analyze` | Distill | distill.cjs |
+| 153 | `distill report` | Distill | distill.cjs |
+| 154 | `experiment new` | Self-Improvement Loop | experiment.cjs |
+| 155 | `experiment list` | Self-Improvement Loop | experiment.cjs |
+| 156 | `experiment manifest` | Self-Improvement Loop | experiment.cjs |
+| 157 | `experiment run` | Self-Improvement Loop | runner.cjs |
+| 158 | `experiment status` | Self-Improvement Loop | runner.cjs |
+| 159 | `experiment stop` | Self-Improvement Loop | runner.cjs |
+| 160 | `experiment harvest` | Self-Improvement Loop | experiment.cjs |
+| 161 | `experiment prune` | Self-Improvement Loop | experiment.cjs |
+| 162 | `doc-lint <dir>` | Doc-Lint | doc-lint.cjs |
+| 163 | `doc-lint schema-check` | Doc-Lint | doc-lint.cjs |
+| 164 | `learn promote` | Learnings | optimize.cjs |
+| 165 | `learn unpromote` | Learnings | optimize.cjs |
+| 166 | `learn list-promoted` | Learnings | optimize.cjs |
+| 167 | `learn lint` | Learnings | learn-lint.cjs |
+| 168 | `learn build-index` | Learnings | learn-index.cjs |
+| 169 | `learn topics-for` | Learnings | learn-index.cjs |
+| 170 | `links validate` | Doc-Code Link Graph | links.cjs |
+| 171 | `squad list` | Bot Army | squads.cjs |
+| 172 | `squad show` | Bot Army | squads.cjs |
+| 173 | `worktree list` | Bot Army | worktree.cjs |
+| 174 | `worktree create` | Bot Army | worktree.cjs |
+| 175 | `worktree remove` | Bot Army | worktree.cjs |
+| 176 | `worktree cleanup` | Bot Army | worktree.cjs |
+| 177 | `campaign schedule` | Bot Army | campaign.cjs |
+| 178 | `campaign status` | Bot Army | campaign.cjs |
+| 179 | `campaign due` | Bot Army | campaign.cjs |
+| 180 | `campaign record-run` | Bot Army | campaign.cjs |
+| 181 | `hud` | Observability | hud.cjs |
+| 182 | `models check` | Cost | cost.cjs |
+| 183 | `skills index` | Planning (SAD) | skill-align.cjs |
+| 184 | `skills align` | Planning (SAD) | skill-align.cjs |
+| 185 | `hygiene scan` | System | hygiene.cjs |
+| 186 | `hygiene clean` | System | hygiene.cjs |
+| 187 | `report phase <N>` | Observability | phase-report.cjs |
+| 188 | `report index` | Observability | phase-report.cjs |
+| 189 | `report all` | Observability | phase-report.cjs |
+| 190 | `memory optimize` | Memory | memory-optimize.cjs |
+| 191 | `memory rebuild` | Memory | memory-rebuild.cjs |
+| 192 | `optimize trace reconcile` | Optimization | optimize.cjs |
+| 193 | `verify reconcile` | Verification | verify.cjs |
+| 194 | `verify stubs` | Verification | verify.cjs |
+| 195 | `memory select` | Memory | memory.cjs |
+| 196 | `memory budget` | Memory | memory.cjs |
+| 197 | `doc-lint counts` | Linting | doc-lint.cjs |
+| 198 | `doc-lint flags` | Linting | doc-lint.cjs |
+| 199 | `state compact` | State Progression | state-compact.cjs |
+| 200 | `optimize trace show` | Optimization | optimize.cjs |
+| 201 | `cost rebuild` | Cost | cost-rebuild.cjs |
+| 202 | `findings record` | Evidence loop | findings.cjs |
+| 203 | `findings list` | Evidence loop | findings.cjs |
+| 204 | `findings dispose` | Evidence loop | findings.cjs |
+| 205 | `findings debt` | Evidence loop | findings.cjs |
+| 206 | `verify scope` | Verification | verify-scope.cjs |
+| 207 | `optimize revert` | Optimization | optimize.cjs |
+| 208 | `verify stale` | Verification | verify-scope.cjs |
+| 209 | `version` | Utility | commands.cjs |
+| 210 | `roadmap slice` | Roadmap | roadmap.cjs |
+| 211 | `roadmap compact` | Roadmap | roadmap-compact.cjs |
+| 212 | `memory prune` | Memory | memory.cjs |
+| 213 | `memory record` | Memory | memory.cjs |
+| 214 | `cost limits` | Cost | cost.cjs |
+| 215 | `verify plan-set` | Verification | verify-plan-set.cjs |
+| 216 | `verify test-integrity` | Verification | verify-integrity.cjs |
+| 217 | `phase gate` | Phase Ops | phase-gate.cjs |
+| 218 | `test run` | Verification | test-gate.cjs |
+| 219 | `test detect` | Verification | test-gate.cjs |
+| 220 | `verify red` | Verification | verify-red.cjs |
+| 221 | `verify mutate` | Verification | mutate.cjs |
+| 222 | `review scope` | Verification | verify-scope.cjs |
+| 223 | `findings suppressions` | Evidence loop | findings.cjs |
+| 224 | `verify review-focus` | Verification | plan-lint.cjs |
+| 225 | `verify decisions` | Verification | plan-lint.cjs |
+| 226 | `research lint` | Verification | research-lint.cjs |
+| 227 | `state snapshot` (alias of `state-snapshot`) | State | state.cjs |
+| 228 | `cost budget` | Cost | cost.cjs |
+| 229 | `usage` | Observability | usage.cjs |
+| 230 | `autodev run` | Autonomy | autodev.cjs |
+| 231 | `autodev resume` | Autonomy | autodev.cjs |
+| 232 | `autodev status` | Autonomy | autodev.cjs |
+| 233 | `autodev report` | Autonomy | autodev-report.cjs |
+| 234 | `autodev replay` | Autonomy | autodev-report.cjs |
+| 235 | `worktree preflight` | Autonomy | worktree.cjs |
+| 236 | `review cross-family` | Verification | cross-family.cjs |
+| 237 | `review vote` | Verification | review-vote.cjs |
+| 238 | `findings prove` | Evidence loop | findings.cjs |
+| 239 | `verify gates` | Verification | plan-lint.cjs |
+| 240 | `verify requirements` | Verification | requirements-lint.cjs |
+| 241 | `verify traceability` | Verification | requirements-lint.cjs |
+| 242 | `state init` | State | state-write.cjs |
+| 243 | `state section` | State | state-write.cjs |
+| 244 | `state quick-task` | State | state-write.cjs |
+| 245 | `state apply` | State | state-write.cjs |
+| 246 | `merge request` | Bot Army | merge.cjs |
+| 247 | `merge confirm` | Bot Army | merge.cjs |
+| 248 | `uat record` | Verification | uat.cjs |
+| 249 | `uat status` | Verification | uat.cjs |
+| 250 | `debug repro` | Verification | debug-cases.cjs |
+| 251 | `debug similar` | Verification | debug-cases.cjs |
+| 252 | `research check` | Verification | research-lint.cjs |
+| 253 | `feedback` | Observability | feedback.cjs |
 
 ---
 
@@ -3185,6 +3186,7 @@ pan-tools focus plan [--budget N] [--mode MODE] [--priority P0-P6] [--lean] [--r
 - `items_selected`, `items_remaining` — Batch sizing
 - `batch[]` — Selected items with a `tier` field, plus a `track` (`mandatory`, `stability` or `feature`) in `balanced` and `features` mode
 - `batch_file` — Path to saved batch JSON
+- Each `batch[]` item carries its `owner` (`phase` or `focus`, see `focus route`)
 
 **Writes:** `.planning/focus/batch-YYYY-MM-DD.json`
 
@@ -3257,6 +3259,28 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
 
 ---
 
+### `focus route`
+
+Decide who owns each item of a batch, so a focus run never does the phase system's work. A roadmap phase (`phase-N`, `source: phase`), a plan inside one (a `file` under `.planning/phases/`), and a requirement that requirements.md's traceability table maps to a phase belong to the phase system. Everything else is focus's: a requirement the table maps to no phase or does not list (executed, its checkbox left alone), a todo, a pattern, a scan, docs or debt item.
+
+```bash
+pan-tools focus route [--batch <file>] [--raw]
+```
+
+- `--batch`: a path, or a name under `.planning/focus/`. Default: the newest batch
+- Stamps `owner` on each item, and records each hand-off as `results[id] = "routed"` and `routes[id] = {phase, command, reason}`, keeping the batch file's modification time
+- A hand-off's `command` is `/pan:exec-phase N` when the phase has plans, else `/pan:plan-phase N`
+
+`focus open` applies the same split itself, so routing first only makes the hand-offs visible; it is never what keeps phase work out of a cycle.
+
+**JSON output:** `{ batch_file, execute: [ids], handoff: [{id, title, phase, command, reason}] }`
+
+**Refusals (exit 1):** `no_batch`, `batch_not_found`, `batch_unusable`, `batch_unwritable`.
+
+**`--raw` output:** `<n> execute, <n> handoff`.
+
+---
+
 ### `focus open`
 
 Register a focus cycle as a quick task before its first edit. Creates `.planning/quick/<n>-focus-<kind>-<date>/<n>-plan.md`, numbered after the newest quick task (the same numbering `init quick` gives `/pan:quick`). An open quick plan counts as work in flight, so state.md, resume and the guard's `unrouted_write` rule see the cycle. For an `exec` cycle it runs the project's test command once (the one `test run` uses), records the pass count as `tests_before`, and keeps the whole record, failing tests included, as `<n>-test-baseline.json` for the close to compare against. Inside a live auto run it sets the run's `current_cycle`.
@@ -3269,11 +3293,11 @@ pan-tools focus open [--batch <file>] [--kind exec|docs] [--run <run_id>] [--raw
 - `--kind`: `exec` (default) or `docs`. A docs cycle runs no tests
 - `--run`: the auto run the cycle belongs to. Default: the run in `auto-run.json` while it is `initialized` or `in_progress`
 
-The plan's frontmatter carries `source: focus`, `focus_kind`, `batch_file`, `run_id`, `items` (the batch's ids), `files_modified` (the items' `file`/`files` values, leaving out pointers into `.planning/`), `tests_before` and `test_command`.
+The cycle registers only the items focus owns (`focus route`); the phase-owned ones come back in `handoff`. The plan's frontmatter carries `source: focus`, `focus_kind`, `batch_file`, `run_id`, `items` (the ids of the focus-owned items), `files_modified` (the items' `file`/`files` values, leaving out pointers into `.planning/`), `tests_before` and `test_command`.
 
-**JSON output:** `{ opened, num, kind, dir, plan, batch_file, run_id, items, files_modified, tests_before, test_status, test_command }`
+**JSON output:** `{ opened, num, kind, dir, plan, batch_file, run_id, items, handoff: [{id, phase, command}], files_modified, tests_before, test_status, test_command }`
 
-**Refusals (exit 1):** `cycle_open` (another focus cycle is open; `dir` names it), `no_batch`, `batch_not_found`, `batch_unusable` (the batch reader's message), `batch_empty`, `invalid_kind`, `mkdir_failed` (the directory exists: never overwritten). No refusal creates a directory.
+**Refusals (exit 1):** `cycle_open` (another focus cycle is open; `dir` names it), `no_batch`, `batch_not_found`, `batch_unusable` (the batch reader's message), `batch_empty`, `all_routed` (every item belongs to the phase system; `handoff` lists them), `invalid_kind`, `mkdir_failed` (the directory exists: never overwritten). No refusal creates a directory.
 
 **`--raw` output:** The cycle directory.
 

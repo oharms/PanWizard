@@ -143,8 +143,9 @@ When `--source backlog` is set, work is selected from the **curated planning sur
 
 1. **Read the backlog once** at Phase 0: actionable items are unchecked rows in `roadmap.md` (phase/plan checkboxes) and unmet `requirements.md` REQ rows. Skip anything struck, completed, or marked blocked.
 2. **Score from the CURRENT document — never a hardcoded ID list.** For each item, derive `RS = (UserValue + TimeCriticality + RiskReduction) / Effort` (1–5 each; Effort from the row's size tag). Sort by wave/priority ascending → RS descending → effort ascending. This re-derives the order from whatever the roadmap says today, so it never goes stale.
-3. **Pop the top survivor each cycle**; re-rank only if a landing changed a dependency. The same budget/cycle stops and safety harness apply unchanged.
-4. The backlog ranker reads only PAN's planning files — it embeds **no** project-specific item IDs, test counts, or build commands. A project with no actionable backlog items is a clean stop (`scan returns zero items` equivalent).
+3. **Route before working.** Most backlog rows are phase work. `focus route` hands each one to its phase command, and a cycle executes only what focus owns: unmapped requirements, todos, patterns, debt (amends ADR-0031: backlog selects phase work, and routes it)
+4. **Pop the top survivor each cycle**; re-rank only if a landing changed a dependency. The same budget/cycle stops and safety harness apply unchanged.
+5. The backlog ranker reads only PAN's planning files — it embeds **no** project-specific item IDs, test counts, or build commands. A project with no actionable backlog items is a clean stop (`scan returns zero items` equivalent).
 
 ## Concurrency model (when `--parallel-research` / `--parallel-verify`, ADR-0031)
 
@@ -285,9 +286,15 @@ Write batch to `.planning/focus/batch-<YYYY-MM-DD>-<category>.json`:
   "deferred": [{ "id": "...", "title": "...", "reason": "..." }] }
 ```
 
+Then route it, so phase work goes to the phase system:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus route --batch <the batch file>
+```
+It stamps each item's `owner` and returns `execute` and `handoff`. A `handoff` item is a roadmap phase, a plan inside one, or a requirement the traceability table maps to a phase: its plan check, verification and requirement tick belong to `/pan:plan-phase` and `/pan:exec-phase`, so do not implement it. Show each one with its `command` in the cycle summary. `focus open` registers only the `execute` items (and refuses with `all_routed` when there are none: record the cycle with no items done and move on). A requirement mapped to no phase stays a focus item; leave its checkbox alone.
+
 #### Step 2.3: Execute (INLINE — do NOT invoke /pan:focus-auto --step exec)
 
-Implement each item from the batch created in Step 2.2.
+Implement each `execute` item from the batch routed in Step 2.2.
 
 **Open the cycle before the first edit:**
 ```bash

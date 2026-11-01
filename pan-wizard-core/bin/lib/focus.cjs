@@ -386,6 +386,9 @@ function cmdFocusPlan(cwd, raw, ...args) {
 
   const sorted = sortByPriority(filtered);
   const { batch, allocated, remaining } = allocateBudget(sorted, budget, mode);
+  // Each item carries its owner (D1); `focus open` registers only the focus-owned ones.
+  const trace = parseTraceability(safeReadFile(planningPath(cwd, 'requirements.md')));
+  batch.forEach((item, i) => { item.owner = classifyOwner(item, trace, i).owner; });
 
   // Write batch file
   const focusDir = planningPath(cwd, FOCUS_DIR);
@@ -726,6 +729,178 @@ function cmdFocusExec(cwd, raw, ...args) {
 // in-flight markers: a crash leaves the first `in_progress` for good, and nothing
 // marks the second finished (spec focus_phase_integration_featureai.md, D2).
 
+
+// ─── Ownership (spec focus_phase_integration_featureai.md, D1) ──────────────
+//
+// Every item a focus run could pick has one owner. Roadmap phases, the plans inside
+// them, and requirements the traceability table maps to a phase belong to the phase
+// system, whose gates (plan check, verification, the EARS-gated requirement tick) a
+// focus cycle does not run. Focus hands those off and executes the rest: unmapped
+// requirements (left unticked), todos, patterns, scan and debt items. The engine
+// decides, so an in-session agent never does (amends ADR-0031: backlog still selects
+// phase work, and routes it).
+
+const PHASE_DIR_RE = /(?:^|\/)phases\/(\d+(?:\.\d+)?)-[^/]*/;
+
+/**
+ * Requirement → phase from requirements.md's traceability table (`| AUTH-01 | Phase 1 | … |`).
+ * A requirement the table does not list, or lists with no phase, is unmapped. Pure.
+ * @param {string|null} text - requirements.md
+ * @returns {{known: Set<string>, phaseOf: Map<string, string>}}
+ */
+function parseTraceability(text) {
+  const known = new Set();
+  const phaseOf = new Map();
+  for (const line of toPosix(String(text || '')).replace(/\r\n/g, '\n').split('\n')) {
+    const req = /^\s*- (?:\[[ xX]\] )?\*\*([A-Z][A-Z0-9]*-\d+)\*\*/.exec(line);
+    if (req) { known.add(req[1]); continue; }
+    const row = /^\|\s*([A-Z][A-Z0-9]*-\d+)\s*\|\s*([^|]*?)\s*\|/.exec(line);
+    if (!row) continue;
+    known.add(row[1]);
+    const ph = /(?:^|\bphase\s*)(\d+(?:\.\d+)?)\b/i.exec(row[2]);
+    if (ph) phaseOf.set(row[1], String(parseFloat(ph[1])));
+  }
+  return { known, phaseOf };
+}
+
+/** The phase number an item names: a `phase-N` id, a `phase` key, or a path into phases/. */
+function itemPhase(item, id) {
+  const m = /^phase-(\d+(?:\.\d+)?)$/.exec(id);
+  if (m) return String(parseFloat(m[1]));
+  if (item.phase != null && /^\d+(?:\.\d+)?$/.test(String(item.phase).trim())) return String(parseFloat(item.phase));
+  for (const f of [].concat(item.file || [], item.files || [])) {
+    const p = typeof f === 'string' ? PHASE_DIR_RE.exec(toPosix(f)) : null;
+    if (p && toPosix(f).includes(`${planningRel()}/`)) return String(parseFloat(p[1]));
+  }
+  return null;
+}
+
+/**
+ * Who owns a batch item. Pure.
+ * @param {Object} item - A batch item
+ * @param {{known?: Set<string>, phaseOf?: Map<string, string>}} trace - parseTraceability's result
+ * @param {number} [i] - The item's position, for an id-less item
+ * @returns {{id: string, owner: 'phase'|'focus', phase?: string, requirement?: string, reason: string}}
+ */
+function classifyOwner(item, trace = {}, i = 0) {
+  const it = item && typeof item === 'object' ? item : {};
+  const id = focusItemId(it, i);
+  const known = trace.known || new Set();
+  const phaseOf = trace.phaseOf || new Map();
+  if (it.source === 'phase' || it.source === 'plan' || /^phase-/.test(id)) {
+    const phase = itemPhase(it, id);
+    return { id, owner: 'phase', phase: phase || undefined, reason: 'a roadmap phase or a plan inside one' };
+  }
+  const phase = itemPhase(it, id);
+  if (phase) return { id, owner: 'phase', phase, reason: 'it points into a phase directory' };
+  const reqId = [it.requirement, it.req, id].find((x) => typeof x === 'string' && known.has(x.trim()));
+  const isReq = it.source === 'requirement' || !!reqId;
+  if (isReq) {
+    const req = (reqId || String(it.requirement || id)).trim();
+    if (phaseOf.has(req)) return { id, owner: 'phase', phase: phaseOf.get(req), requirement: req, reason: `requirement ${req} is mapped to phase ${phaseOf.get(req)}` };
+    return { id, owner: 'focus', requirement: req, reason: `requirement ${req} is mapped to no phase; focus executes it and leaves it unticked` };
+  }
+  if (it.source === 'todo' || /^todo-/.test(id)) return { id, owner: 'focus', reason: 'a pending todo' };
+  return { id, owner: 'focus', reason: 'a scan, pattern, docs or debt item' };
+}
+
+/** The command that carries a phase forward: execute its plans, or plan it first. */
+function phaseCommand(cwd, phase) {
+  if (!phase) return '/pan:progress';
+  const want = normalizePhaseName(phase);
+  let dir;
+  try { dir = fs.readdirSync(planningPath(cwd, PHASES_DIR)).find((d) => d === want || d.startsWith(`${want}-`)); } catch { /* no phases yet */ }
+  if (dir) {
+    let names = [];
+    try { names = fs.readdirSync(planningPath(cwd, PHASES_DIR, dir)); } catch { /* unreadable */ }
+    if (filterPlanFiles(names).length) return `/pan:exec-phase ${phase}`;
+  }
+  return `/pan:plan-phase ${phase}`;
+}
+
+/**
+ * Split items into the ones focus executes and the ones it hands to the phase system.
+ * @param {string} cwd
+ * @param {Array} items - Batch items
+ * @returns {{execute: Object[], handoff: Object[]}} each entry classifyOwner's result, handoffs with `command`
+ */
+function routeItems(cwd, items) {
+  const trace = parseTraceability(safeReadFile(planningPath(cwd, 'requirements.md')));
+  const execute = [];
+  const handoff = [];
+  (Array.isArray(items) ? items : []).forEach((item, i) => {
+    const c = classifyOwner(item, trace, i);
+    if (c.owner === 'phase') handoff.push({ ...c, title: item && item.title ? String(item.title) : c.id, command: phaseCommand(cwd, c.phase) });
+    else execute.push(c);
+  });
+  return { execute, handoff };
+}
+
+/**
+ * `focus route`: stamp each batch item's owner and record the hand-offs in the batch
+ * (`results[id] = "routed"`, `routes[id] = {phase, command, reason}`), keeping the
+ * file's mtime. `focus open` registers only the items focus executes either way.
+ * @param {string} cwd
+ * @param {{batch?: string}} opts
+ * @returns {Object}
+ */
+function focusRoute(cwd, opts = {}) {
+  const found = resolveBatch(cwd, opts.batch);
+  if (found.error) return found;
+  const { batch, abs } = found;
+  if (batch.error) return { error: 'batch_unusable', reason: batch.error };
+  const routed = routeItems(cwd, batch.batch);
+  try {
+    const data = JSON.parse(fs.readFileSync(abs, 'utf-8'));
+    const list = data[batch.items_key];
+    const owners = new Map([...routed.execute, ...routed.handoff].map((c) => [c.id, c]));
+    list.forEach((item, i) => {
+      if (item && typeof item === 'object') item.owner = owners.get(focusItemId(item, i)).owner;
+    });
+    if (routed.handoff.length) {
+      data.results = { ...(data.results || {}) };
+      data.routes = { ...(data.routes || {}) };
+      for (const h of routed.handoff) {
+        data.results[h.id] = 'routed';
+        data.routes[h.id] = { phase: h.phase || null, command: h.command, reason: h.reason };
+      }
+    }
+    const st = fs.statSync(abs);
+    fs.writeFileSync(abs, JSON.stringify(data, null, 2), 'utf-8');
+    fs.utimesSync(abs, st.atime, st.mtime);
+  } catch (e) {
+    return { error: 'batch_unwritable', reason: `could not record the routes in ${batch.file}: ${e.code || e.message}` };
+  }
+  return {
+    batch_file: toPosix(path.relative(cwd, abs)),
+    execute: routed.execute.map((c) => c.id),
+    handoff: routed.handoff.map((h) => ({ id: h.id, title: h.title, phase: h.phase || null, command: h.command, reason: h.reason })),
+  };
+}
+
+/** A batch by `--batch` (a path, or a name under the focus directory), else the newest. */
+function resolveBatch(cwd, ref) {
+  if (ref) {
+    let abs = path.isAbsolute(ref) ? ref : path.resolve(cwd, ref);
+    if (!fs.existsSync(abs)) {
+      const inFocus = planningPath(cwd, FOCUS_DIR, ref);
+      if (fs.existsSync(inFocus)) abs = inFocus;
+      else return { error: 'batch_not_found', reason: `batch file not found: ${ref}` };
+    }
+    return { batch: readBatchFile(abs), abs };
+  }
+  const batch = readLatestBatch(cwd);
+  if (!batch) return { error: 'no_batch', reason: 'No batch file found. Run focus plan first.' };
+  return { batch, abs: planningPath(cwd, FOCUS_DIR, batch.file) };
+}
+
+function cmdFocusRoute(cwd, raw, ...args) {
+  const r = focusRoute(cwd, { batch: flagValues(args, '--batch')[0] });
+  if (r.error) return output(r, raw, r.reason, 1);
+  return output(r, raw, `${r.execute.length} execute, ${r.handoff.length} handoff`);
+}
+
+
 const FOCUS_CYCLE_KINDS = ['exec', 'docs'];
 const FOCUS_CYCLE_STATUSES = ['verified', 'partial', 'failed'];
 const FOCUS_CYCLE_RE = /^(\d+)-focus-(exec|docs)-\d{4}-\d{2}-\d{2}$/;
@@ -839,7 +1014,7 @@ function focusItemId(item, i) {
  */
 function focusCyclePlan(o) {
   const items = Array.isArray(o.items) ? o.items : [];
-  const ids = items.map(focusItemId);
+  const ids = Array.isArray(o.ids) && o.ids.length === items.length ? o.ids : items.map(focusItemId);
   const files = focusCycleFiles(items);
   const tests = o.tests || null;
   const verify = (tests && tests.command) || 'the project\'s tests';
@@ -940,23 +1115,25 @@ function focusOpen(cwd, opts = {}) {
 
   let batch = null;
   let batchAbs = null;
-  if (opts.batch) {
-    batchAbs = path.isAbsolute(opts.batch) ? opts.batch : path.resolve(cwd, opts.batch);
-    if (!fs.existsSync(batchAbs)) {
-      const inFocus = planningPath(cwd, FOCUS_DIR, opts.batch);
-      if (fs.existsSync(inFocus)) batchAbs = inFocus;
-      else return { error: 'batch_not_found', reason: `batch file not found: ${opts.batch}` };
-    }
-    batch = readBatchFile(batchAbs);
-  } else if (kind === 'exec') {
-    batch = readLatestBatch(cwd);
-    if (!batch) return { error: 'no_batch', reason: 'No batch file found. Run focus plan first.' };
-    batchAbs = planningPath(cwd, FOCUS_DIR, batch.file);
+  if (opts.batch || kind === 'exec') {
+    const found = resolveBatch(cwd, opts.batch);
+    if (found.error) return found;
+    batch = found.batch;
+    batchAbs = found.abs;
   }
   if (batch && batch.error) return { error: 'batch_unusable', reason: batch.error };
   if (kind === 'exec' && batch.batch.length === 0) return { error: 'batch_empty', reason: `${batch.file} has no items` };
 
-  const items = batch ? batch.batch : [];
+  // The cycle registers only the items focus owns: phase work is handed off (D1),
+  // whether or not the prompt ran `focus route` first.
+  const routed = batch ? routeItems(cwd, batch.batch) : { execute: [], handoff: [] };
+  const handedOff = new Set(routed.handoff.map((h) => h.id));
+  const items = batch ? batch.batch.filter((it, i) => !handedOff.has(focusItemId(it, i))) : [];
+  const ids = batch ? batch.batch.map(focusItemId).filter((id) => !handedOff.has(id)) : [];
+  const handoff = routed.handoff.map((h) => ({ id: h.id, phase: h.phase || null, command: h.command }));
+  if (kind === 'exec' && items.length === 0) {
+    return { error: 'all_routed', reason: `every item of ${batch.file} belongs to the phase system: ${handoff.map((h) => `${h.id} → ${h.command}`).join(', ')}`, handoff };
+  }
   const batchFile = batchAbs ? toPosix(path.relative(cwd, batchAbs)) : null;
   const runId = opts.run || liveRunId(cwd);
   const run = runId ? readAutoRun(cwd) : null;
@@ -975,7 +1152,7 @@ function focusOpen(cwd, opts = {}) {
   } catch (e) {
     return { error: 'mkdir_failed', reason: `could not create ${planningRel(QUICK_DIR, name)}: ${e.code || e.message}` };
   }
-  const planText = focusCyclePlan({ num, kind, items, batchFile, runId, category, tests, openedAt: now.toISOString() });
+  const planText = focusCyclePlan({ num, kind, items, ids, batchFile, runId, category, tests, openedAt: now.toISOString() });
   const planPath = path.join(dir, `${num}-plan.md`);
   fs.writeFileSync(planPath, planText, 'utf-8');
   if (tests && tests.command) fs.writeFileSync(path.join(dir, `${num}-test-baseline.json`), JSON.stringify(tests, null, 2), 'utf-8');
@@ -983,7 +1160,7 @@ function focusOpen(cwd, opts = {}) {
   if (run && run.run_id === runId) writeAutoRun(cwd, { ...run, current_cycle: planningRel(QUICK_DIR, name) });
   return {
     opened: true, num, kind, dir: planningRel(QUICK_DIR, name), plan: toPosix(path.relative(cwd, planPath)),
-    batch_file: batchFile, run_id: runId, items: items.map(focusItemId), files_modified: focusCycleFiles(items),
+    batch_file: batchFile, run_id: runId, items: ids, handoff, files_modified: focusCycleFiles(items),
     tests_before: tests ? tests.passed : null, test_status: tests ? tests.status : null, test_command: tests ? tests.command : null,
   };
 }
@@ -1890,6 +2067,11 @@ module.exports = {
   focusClose,
   cmdFocusOpen,
   cmdFocusClose,
+  cmdFocusRoute,
+  focusRoute,
+  classifyOwner,
+  parseTraceability,
+  routeItems,
   parseFailed,
   parseDone,
   deriveCycleStatus,

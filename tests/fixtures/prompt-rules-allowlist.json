@@ -194,5 +194,13 @@
   {
     "id": "pan-wizard-core/workflows/resume-project:c76463f9",
     "reason": "Focus Stage A.1 (A1-R): open_work comes from open-work.cjs through init resume; tests/open-work.test.cjs pins it to the guard's workInFlight on every fixture and asserts the prompt reads open_work."
+  },
+  {
+    "id": "commands/pan/focus-auto:a9e0bd93",
+    "reason": "Focus Stage B (D1 ownership): the split is engine code, not the prompt's judgement. focus route stamps owners and records hand-offs, and focus open registers only focus-owned items whether or not the prompt routed (all_routed when none); tests/focus-integration.test.cjs (ownership describe) pins classifyOwner, the routed batch and the open."
+  },
+  {
+    "id": "pan-wizard-core/workflows/focus-exec:a9e0bd93",
+    "reason": "Focus Stage B (D1 ownership): the split is engine code, not the prompt's judgement. focus route stamps owners and records hand-offs, and focus open registers only focus-owned items whether or not the prompt routed (all_routed when none); tests/focus-integration.test.cjs (ownership describe) pins classifyOwner, the routed batch and the open."
   }
 ]
