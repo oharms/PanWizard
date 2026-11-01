@@ -191,7 +191,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `template.cjs` | Template selection and filling |
 | `milestone.cjs` | Milestone archival and requirements |
 | `context-budget.cjs` | Context window utilization (cache metrics surfaced in health output; cache block classified `ok`/`warn`/`critical`/`absent` with remediation advice) |
-| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto (the dispatcher answers `focus design` itself), `focus classify-stages`, `focus reflection` |
+| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto, `focus route`/`open`/`close` (the cycle as a quick task: ownership, open, measured close) (the dispatcher answers `focus design` itself), `focus classify-stages`, `focus reflection` |
 | `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices, `codebase estimate-size` |
 | `memory.cjs` | **(E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact`, `memory select`, `memory record`, `memory prune`, `memory budget` |
 | `memory-optimize.cjs` | Reconcile the always-loaded project memory: `memory optimize [--apply] [--keep N]` (dedupe / placeholder-strip / cap-with-archive state.md); also runs automatically in the focus + normal flows |
@@ -246,7 +246,8 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `ci.cjs` | **(program A2)** CI as autodev's oracle: `gh pr checks` (`--ci`), or the project's own `npm run ci:local`/`npm test` (`--ci local`); fix rounds and a breaker. No CLI surface of its own. |
 | `hosts.cjs` | **(program A0)** One table of how PAN runs each host CLI: the autonomous runner argv, the model family, the read-only review argv, the headless harness argv. No CLI surface. |
 | `design-handoff.cjs` | `design paths`, `design handoff`: where `/pan:focus-design` writes its spec, ADR and checker verdict (`docs/specs/` and `docs/decisions/` when the project has both, else `.planning/designs/<slug>/`), and the hand-off of a finished design to a roadmap phase (planned with `--prd <spec>`) or to focus. |
-| `next-action.cjs` | **(program L7)** `next-action`: reads roadmap.md and the phase directories into the MCP orchestrator's snapshot and maps its decision to a command. |
+| `next-action.cjs` | **(program L7)** `next-action`: reads roadmap.md and the phase directories into the MCP orchestrator's snapshot and maps its decision to a command; an open focus cycle or a stale focus run comes first (`action: "focus"`). |
+| `open-work.cjs` | Work started and not finished (unsummarised phase plans, open quick tasks and focus cycles, debug sessions, `.continue-here` files): the `open_work` block of `init resume`. |
 | `sizing.cjs` | Right-sized ceremony: `size phase/task` decide lean or full per piece of work, `size phase-plan` writes a lean phase's plans from its requirements (in waves, at most `workflow.lean_max_requirements` tasks each) and records their check, `size quick-plan` writes a lean quick task's plan, `size plan-check` is the lean path's plan check in code. |
 | `cross-family.cjs` | **(program R4)** `review cross-family <phase>`: one read-only review on another host's CLI, off unless `workflow.cross_family_review` names a host. |
 | `review-vote.cjs` | **(program R2)** `review vote`: merges k reviewer passes; a finding survives only with a quorum. |
@@ -519,6 +520,11 @@ Quick reference of all CLI commands grouped by category.
 | 253 | `debug similar` | Verification | debug-cases.cjs |
 | 254 | `research check` | Verification | research-lint.cjs |
 | 255 | `feedback` | Observability | feedback.cjs |
+| 256 | `size phase` | Right-sized ceremony | sizing.cjs |
+| 257 | `size task` | Right-sized ceremony | sizing.cjs |
+| 258 | `size phase-plan` | Right-sized ceremony | sizing.cjs |
+| 259 | `size quick-plan` | Right-sized ceremony | sizing.cjs |
+| 260 | `size plan-check` | Right-sized ceremony | sizing.cjs |
 
 ---
 
@@ -2107,6 +2113,8 @@ Writes `.planning/autodev/<run>/run.json` and `ledger.jsonl`: a `started` row be
 
 **Failures (A4, `failure-class.cjs`).** A failed session is classified: `compile` and `assertion` are retried with the error tail in the prompt, then at the next tier (Claude gets `--model`); `timeout` and `unknown` are restarted once; `flake` is quarantined; `missing_env`, `merge_conflict`, `integrity_violation` and `scope_violation` stop with `human_needed`; `budget` stops with `budget_usd`. The ledger row carries `failure_class` and `policy`.
 
+**Resume.** `autodev resume` with no run to resume is refused with `no_run`.
+
 **Beside focus.** A fresh run is refused with `focus_active` (`focus_run`, `open_cycle`, and the command to clear it in `reason`) while a focus cycle is open or a focus run is live and not stale; a resumed run is not checked.
 
 **Spend (A6).** A run needs a cap: `--max-usd` or `budget.max_usd_run`, else `budget_required`. `--max-usd-day` or `budget.max_usd_day` caps today's spend across runs (UTC). Claude sessions get the remainder as `--max-budget-usd`. An execute unit that costs more than the P6 p90 forecast (per-plan p90 × the phase's plans, when the forecast has enough samples) stops the run with `forecast_exceeded`.
@@ -2178,7 +2186,7 @@ pan-tools design handoff <spec> --as phase|focus [--raw]
 - `--as phase`: adds a roadmap phase titled from the spec's first heading, its Goal the first sentence of the spec's problem statement, and a `**Design:** <spec>` line under it, then returns `/pan:plan-phase <N> --prd <spec>`, so plan-phase takes the spec as the phase's context
 - `--as focus`: changes nothing and returns `/pan:focus-auto --step plan --mode features`
 
-**JSON output:** `{ as, spec, title, phase_number?, directory?, command }`. **Refusals (exit 1):** `invalid_as`, `spec_required`, `spec_not_found`, `spec_outside_project`, `no_roadmap` (start with `/pan:new-project`, or hand the design to focus), `already_handed_off` (the roadmap already names this spec). **`--raw`:** the command.
+**JSON output:** `{ as, spec, title, phase_number?, directory?, command, note? }` (`note` only with `--as focus`). **Refusals (exit 1):** `invalid_as`, `spec_required`, `spec_not_found`, `spec_outside_project`, `no_roadmap` (start with `/pan:new-project`, or hand the design to focus), `already_handed_off` (the roadmap already names this spec), and `phase add`'s own refusals (`roadmap_not_found`, `mkdir_failed`, `write_failed`). An unknown `design` subcommand is refused with `unknown_subcommand`. **`--raw`:** the command.
 
 **Module:** `design-handoff.cjs`
 
@@ -3366,7 +3374,7 @@ pan-tools focus close --dir <dir|name|number> [--status verified|partial|failed]
 
 ### `focus design`
 
-Workflow-only command that routes to the 10-phase investigation pipeline.
+Workflow-only command that routes to the multi-phase investigation pipeline.
 
 ```bash
 pan-tools focus design [--raw]

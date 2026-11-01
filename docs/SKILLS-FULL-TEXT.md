@@ -1487,7 +1487,7 @@ The engine builds the report from counts, codes and PAN's own command and agent 
 
 ---
 
-### /pan:focus-auto (701 lines)
+### /pan:focus-auto (722 lines)
 
 ````markdown
 ---
@@ -1635,8 +1635,9 @@ When `--source backlog` is set, work is selected from the **curated planning sur
 
 1. **Read the backlog once** at Phase 0: actionable items are unchecked rows in `roadmap.md` (phase/plan checkboxes) and unmet `requirements.md` REQ rows. Skip anything struck, completed, or marked blocked.
 2. **Score from the CURRENT document — never a hardcoded ID list.** For each item, derive `RS = (UserValue + TimeCriticality + RiskReduction) / Effort` (1–5 each; Effort from the row's size tag). Sort by wave/priority ascending → RS descending → effort ascending. This re-derives the order from whatever the roadmap says today, so it never goes stale.
-3. **Pop the top survivor each cycle**; re-rank only if a landing changed a dependency. The same budget/cycle stops and safety harness apply unchanged.
-4. The backlog ranker reads only PAN's planning files — it embeds **no** project-specific item IDs, test counts, or build commands. A project with no actionable backlog items is a clean stop (`scan returns zero items` equivalent).
+3. **Route before working.** Most backlog rows are phase work. `focus route` hands each one to its phase command, and a cycle executes only what focus owns: unmapped requirements, todos, patterns, debt (amends ADR-0031: backlog selects phase work, and routes it)
+4. **Pop the top survivor each cycle**; re-rank only if a landing changed a dependency. The same budget/cycle stops and safety harness apply unchanged.
+5. The backlog ranker reads only PAN's planning files — it embeds **no** project-specific item IDs, test counts, or build commands. A project with no actionable backlog items is a clean stop (`scan returns zero items` equivalent).
 
 ## Concurrency model (when `--parallel-research` / `--parallel-verify`, ADR-0031)
 
@@ -1659,7 +1660,7 @@ The proven shape is **parallel read-only research → exactly ONE serial impleme
 1. Parse arguments from `$ARGUMENTS`
 2. Handle quick operations first:
    - If `--status`: run `pan-tools focus auto --status`, display result, STOP
-   - If `--stop`: run `pan-tools focus auto --stop`, display result, STOP
+   - If `--stop`: run `pan-tools focus auto --stop` (it also closes a cycle left open, as `failed`), display result, STOP
 3. If `--continue`:
    - Run `pan-tools focus auto --continue` to resume
    - Read the restored state to get category, mode, budget, etc.
@@ -1777,9 +1778,21 @@ Write batch to `.planning/focus/batch-<YYYY-MM-DD>-<category>.json`:
   "deferred": [{ "id": "...", "title": "...", "reason": "..." }] }
 ```
 
+Then route it, so phase work goes to the phase system:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus route --batch <the batch file>
+```
+It stamps each item's `owner` and returns `execute` and `handoff`. A `handoff` item is a roadmap phase, a plan inside one, or a requirement the traceability table maps to a phase: its plan check, verification and requirement tick belong to `/pan:plan-phase` and `/pan:exec-phase`, so do not implement it. Show each one with its `command` in the cycle summary. `focus open` registers only the `execute` items (and refuses with `all_routed` when there are none: record the cycle with no items done and move on). A requirement mapped to no phase stays a focus item; leave its checkbox alone.
+
 #### Step 2.3: Execute (INLINE — do NOT invoke /pan:focus-auto --step exec)
 
-Implement each item from the batch created in Step 2.2. Record `tests_before` by running the test suite first.
+Implement each `execute` item from the batch routed in Step 2.2.
+
+**Open the cycle before the first edit:**
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus open --batch <batch file from Step 2.2>
+```
+It registers the cycle as a quick task (`.planning/quick/<n>-focus-exec-<date>/`), so state.md, `/pan:resume` and the guard see it as PAN work in flight, and it runs the project's test command once to record `tests_before`. Keep its `dir` for the close. If it refuses with `cycle_open`, an earlier cycle never closed (a crash): close that one with `focus close --dir <its dir> --status failed`, then open again.
 
 **For each item in execution order:**
 
@@ -1812,17 +1825,21 @@ A failed item never blocks subsequent items.
 
 **After all items in the batch:**
 1. Run full test suite — ALL tests must pass
-2. Record `tests_after` from the summary line
-3. If `tests_after < tests_before`: REGRESSION — revert all changes for this cycle, mark all items FAILED
-4. Update the scan file: mark completed/failed items
-5. Stage specific changed files (not `git add -A`) and commit with accurate message listing only verified items
-6. Count: `items_completed`, `items_failed`, `points_used`
+2. If fewer tests pass than `focus open` recorded in `tests_before`: REGRESSION — revert all changes for this cycle, mark all items FAILED
+3. Update the scan file: mark completed/failed items
+4. With `--deep-review` on, run it now (below), on the cycle's uncommitted changes, before the close: the close commits and records the cycle
+5. Close the cycle with what happened, item by item. The close commits the files you name, with a message built from the done items, then records the cycle:
+   ```bash
+   node ~/.claude/pan-wizard-core/bin/pan-tools.cjs focus close --dir <dir from focus open> --files <changed files> --done <ids> --failed "<id>=<reason>,..."
+   ```
+   The close measures the tests against the baseline `focus open` kept and derives the status: `verified` only when every item is done and nothing regressed (a test already failing when the cycle opened does not count against it). `--status` can only lower that, for example to `partial` after a deep-review finding. It never commits a regression: revert the cycle's changes and close with every item failed. With no item done, leave out `--files`. If the close refuses with `commit_blocked` (a named path matched `commit.sensitive_patterns`, or the commit would delete a file), it wrote nothing and the cycle stays open: fix the cause (rename the file, or narrow the pattern in `.planning/config.json`) and close again, or commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`. It writes the summary, records each item's result in the batch file, completes the todos it finished, adds the cycle to state.md's Quick Tasks table, and commits that record
+6. Count `points_used`
 
-**If `--deep-review` flag is active (run after commit, before recording cycle):**
+**If `--deep-review` flag is active (step 4: on the cycle's uncommitted changes, before the close in step 5):**
 
-Get changed files from this cycle's commit:
+Get the cycle's changed files:
 ```bash
-CHANGED=$(git diff HEAD~1 --name-only 2>/dev/null | grep -E '\.(js|ts|jsx|tsx|py|go|rb|java|php)$')
+CHANGED=$(git diff HEAD --name-only 2>/dev/null | grep -E '\.(js|ts|jsx|tsx|py|go|rb|java|php)$')
 ```
 
 Run inline OWASP security check on changed files only:
@@ -1837,7 +1854,7 @@ Run inline OWASP security check on changed files only:
 
 | Severity found | Verdict | Action |
 |---------------|---------|--------|
-| Critical pattern in changed file | `block` | STOP campaign — do NOT record cycle, revert last commit, present finding to user |
+| Critical pattern in changed file | `block` | STOP campaign — revert the cycle's changes, close the cycle without `--files` and every item failed with the finding as its reason, skip Step 2.4, present finding to user |
 | High pattern in changed file | `review_required` | STOP campaign — record cycle as completed, flag finding, recommend manual review |
 | Medium/low only | `ok_with_minor` | Continue — append findings to `.planning/focus/security-log-<date>.md` |
 | No patterns | `ok` | Continue silently |
@@ -1847,6 +1864,8 @@ Write all non-ok findings to `.planning/focus/security-log-<date>.md` with file:
 #### Step 2.4: Record Cycle
 
 Run: `pan-tools focus auto --update --items-completed N --items-failed N --points-used N --tests-before N --tests-after N --batch-file <path>`
+
+`--update` records the cycle this run's `focus open` registered: its item counts, the measured test counts (`tests_verified: true`), its status and its regressions come from the summary, and the flags stand only for a cycle that never opened (an empty scan). It refuses while that cycle is still open, so close it first. A cycle whose items all failed stops the run as `stopped` (`cycle_failed` or `all_failed`), resumable with `--continue`.
 
 Check the response for stop conditions:
 - `regression`: Tests decreased — STOP IMMEDIATELY
@@ -1928,7 +1947,7 @@ Then continue immediately to the next cycle (back to Step 2.1).
 | Iteration limit | `--max-cycles N` | Hard stop on loop count |
 | Regression circuit breaker | tests_after < tests_before | Immediate stop, status=stopped |
 | Zero-completed guard | 0 items done in a cycle | Stop — further cycles won't help |
-| Security gate (`--deep-review`) | Critical/high OWASP pattern in changed files | Revert last commit (critical) or flag for manual review (high), stop campaign |
+| Security gate (`--deep-review`) | Critical/high OWASP pattern in changed files | Revert the cycle's changes (critical) or flag for manual review (high), stop campaign |
 
 ## Behavioral Rules
 
@@ -2177,7 +2196,8 @@ This prevents the campaign from burning budget on items that will predictably fa
 - Spend more points than --total-budget when the budget is enforced (`--enforce-budget` or config `budget.enforce: true`) — the enforced cap is the user's cost control mechanism
 - Skip recording cycle results via --update — unrecorded cycles break resume, status, and stop-condition checks
 - Change test expectations to match broken code — this hides bugs instead of fixing them
-- Use `git add -A` or `git add .` — bulk staging can accidentally commit secrets, build artifacts, or unrelated changes
+- Commit outside the cycle's close — bulk staging can accidentally commit secrets, build artifacts, or unrelated changes; `focus close --files` stages only the paths you name and refuses sensitive ones. The one exception: after a `commit_blocked`, commit exactly the reported paths yourself and close with `--commit <sha>`
+- Edit source files before `focus open` or leave a cycle open — an unregistered edit is invisible to state.md and resume, and exclusive routing denies it
 
 ## ALWAYS DO
 
@@ -2190,19 +2210,21 @@ This prevents the campaign from burning budget on items that will predictably fa
 - Revert fast when stuck (5 min limit)
 - Display one-line cycle summary between cycles
 - Display campaign summary table at end
-- Commit once per cycle with accurate item list
+- Commit once per cycle through `focus close --files`, whose message names only the done items
+- Open each exec cycle with `focus open` and close it with `focus close`
 ````
 
 
 ---
 
-### /pan:focus-design (1118 lines)
+### /pan:focus-design (1132 lines)
 
 ````markdown
 ---
 name: focus-design
 group: Focus
 description: Strategic 10-phase feature investigation, design, and specification pipeline
+route: investigate and design a feature before building it
 argument-hint: "<feature description> [--full | --internal | --outward | --spike] [--gate] [--audit] [--mvp]"
 allowed-tools:
   - Read
@@ -2212,6 +2234,7 @@ allowed-tools:
   - Grep
   - Glob
   - Agent
+  - AskUserQuestion
   - WebSearch
   - WebFetch
   - mcp__context7__resolve-library-id
@@ -3243,14 +3266,18 @@ Test these boundary conditions (adapt to project domain):
 ## Phase 10: Output Artifacts
 
 ### 10.1 Save Specification Document
-Write complete spec to: `docs/specs/<feature_name>_featureai.md`
+Ask the engine where this project keeps designs:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs design paths "<feature_name>"
+```
+It returns `spec`, `decision` and `check`. A project with both `docs/specs/` and `docs/decisions/` gets those (and `adr_number`, the next ADR number); any other project gets `.planning/designs/<slug>/`, where focus-plan looks. Write the complete spec to `spec`.
 
 ### 10.2 Save ADR
-Write ADR to: `docs/decisions/ADR-NNNN-<feature_name>.md`
+Write the ADR to `decision`.
 
 **ADR completeness gate:** Before saving, verify the ADR passes ALL checks from Phase 5.2. The ADR file must contain every section defined in Phase 5.1 with substantive content — no placeholder brackets, no skeleton sections, no missing tables. If any section would be empty, go back to the relevant phase and extract the content.
 
-**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design to `/pan:focus-auto --step plan`.
+**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design on. Write the checker's final verdict block, with any caveats, to `check`, so the verdict outlives the session.
 
 **Minimum ADR size:** A proper ADR for a `--full` mode investigation should be 80-200+ lines. If the ADR is under 60 lines, it is almost certainly missing required sections. For `--internal` mode, minimum 60 lines. For `--outward` mode, minimum 70 lines.
 
@@ -3267,8 +3294,16 @@ Output a complete summary with:
 - **Adoption** — discovery, learning curve, aha moment
 - **Informed Questions** — count asked, what they clarified
 - **Acceptance Criteria** — count, how many are machine-checkable
-- **Documents Created** — spec path, ADR path, command .md path (if applicable)
-- **Next Step** — recommended follow-up command
+- **Documents Created** — spec path, ADR path, checker verdict path, command .md path (if applicable)
+- **Next Step** — the hand-off below
+
+### 10.4 Hand the Design Off
+Ask the user (AskUserQuestion, or the runtime's question tool) where the design goes next, with these options:
+- **Plan it as a phase** — `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs design handoff <spec> --as phase` adds a roadmap phase whose entry names the spec, and returns `/pan:plan-phase <N> --prd <spec>`: the spec becomes that phase's context, its decisions locked
+- **Build it with focus** — `design handoff <spec> --as focus` returns the focus-auto plan step that reads the spec
+- **Leave it for now** — nothing is added; the spec stays where it was written
+
+Run only what the user chose, then show the returned `command`. A refusal names its cause: `no_roadmap` (start with `/pan:new-project`, or choose focus), `already_handed_off` (the roadmap already has this design's phase). In `--spike` mode, with no ADR, ask the same question.
 
 ---
 

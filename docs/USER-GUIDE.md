@@ -139,7 +139,7 @@ On lower tiers (mid/fast models) and non-Claude runtimes, features degrade grace
 
 ### Spec B v2 features
 
-Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purpose. None modify the focus system. v3.5 added `/pan:learn`, `/pan:learn --optimize` and `/pan:git`, and the `security` and `distill` focus-auto categories.
+Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purpose. v3.5 added `/pan:learn`, `/pan:learn --optimize` and `/pan:git`, and the `security` and `distill` focus-auto categories.
 
 - **`/pan:cost` (v3.0)** — token usage + estimated cost across all PAN invocations. Three output formats (`json`/`table`/`chart`). Auto-populated since v3.4 by the SubagentStop hook on Claude Code, Codex and Copilot CLI (not Gemini CLI or OpenCode); no manual instrumentation needed. Time-windowed with `--since YYYY-MM-DD --until YYYY-MM-DD`. `pan-tools cost budget --phase N` shows a phase's spend against `cost.phase_budget_usd` ($20 by default, warn only).
 - **`/pan:preview phase <N> | phases | milestone` (v3.1)** — read-only foresight. Three modes:
@@ -159,7 +159,7 @@ Spec B v2 (v3.0-v3.4) added a wave of new commands. Each has a clear single purp
 - **`--deep-review` flag on `/pan:exec-phase` and `/pan:focus-auto --step exec` (v3.4)** — on `/pan:exec-phase`, run the `/pan:review-deep` process inline after the normal reviewer step, before verification; on `/pan:focus-auto --step exec`, run the hardener and meta-reviewer on each high-stakes item's changed files and merge them under the item's id (no first-pass review). Recommended for high-stakes batches.
 - **Automatic cost logging (v3.4)** — `hooks/pan-cost-logger.js` registered as a SubagentStop hook. Every sub-agent completion appends a record to `.planning/metrics/tokens.jsonl`. Visible in `/pan:cost report` without any manual `cost append` calls.
 
-All Spec B v2 commands interoperate with the focus system via read boundaries and optional flags — no focus command was modified.
+All Spec B v2 commands interoperate with the focus system via read boundaries and optional flags, such as `--deep-review` on `/pan:focus-auto --step exec`.
 
 ---
 
@@ -430,10 +430,12 @@ pan-tools learnings list --raw   # Review what's been learned
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
 | `/pan:focus-auto` | Continuous scan→plan→exec loop with a layered safety harness; `--step scan\|plan\|exec\|drift` runs one stage (classify work items, budget a batch, execute it, or repair doc-code drift) | Hands-off batch work across categories, or one stage at a time |
-| `/pan:focus-design` | Multi-phase strategic feature investigation | Before building a new feature |
+| `/pan:focus-design` | Multi-phase strategic feature investigation; writes the spec and ADR where `pan-tools design paths` says (`docs/specs/` and `docs/decisions/` when the project has both, else `.planning/designs/<slug>/`), then hands the design off with `design handoff` as a roadmap phase or a focus plan | Before building a new feature |
 | `/pan:focus-docs` | Multi-dimensional document audit with weighted quality scoring; `--sync` detects stale documentation counts | Quality assurance: "how trustworthy are my docs?", or after changes to check docs match code |
 
 **Focus workflow:** `/pan:focus-auto --step scan` → `--step plan` → `--step exec`, then `/pan:focus-docs --sync`. Scan collects work from phases, todos, and error patterns. Plan budgets items using one of 4 modes (bugfix/balanced/features/full). Exec provides the execution pipeline. Sync verifies documentation stays current. Or use `focus-auto` to run continuous scan→plan→exec cycles across the supported categories (cleanup, tests, stability, features, docs, optimize, prompts, security, distill). Use `/pan:focus-auto --step drift` to detect and repair documentation-code drift across all directories. Use `/pan:focus-docs` for deep quality audits with per-file scoring. The `security` category targets OWASP Top 10 + STRIDE issues; the `distill` category targets AI-generated code bloat with a 5-pass deterministic→AST→graph→LLM→memory pipeline.
+
+**Phases and focus are one system.** Phases carry roadmap work; focus runs upkeep campaigns, and both write the same state. Before a cycle works a batch, `pan-tools focus route` hands each item that belongs to a roadmap phase (a phase, a plan inside one, or a requirement the traceability table maps to a phase) to `/pan:plan-phase` or `/pan:exec-phase` instead of doing it; focus executes only what it owns (unmapped requirements, todos, error patterns, debt). `next-action` (what `/pan:progress` and `/pan:resume` follow) puts an open focus cycle or a stale focus run first. `/pan:autodev` will not start while a focus run or an open focus cycle is live, and `focus auto` will not run beside a live autodev run.
 
 **Focus work is recorded like any other task.** Every focus run that edits files (each `focus-auto` cycle, `--step exec`, and `focus-docs` with `--fix`, `--sync --all`, or drift `--create`/`--repair`) opens a cycle with `pan-tools focus open` before its first edit and closes it with `pan-tools focus close` after its commit. The cycle is a quick task, `.planning/quick/<n>-focus-<kind>-<date>/`, numbered alongside `/pan:quick`: state.md's Quick Tasks table gets one row per cycle (`focus: <category> — X of Y items`, the commit, the status), `/pan:resume` sees an open one, and under exclusive routing the guard counts it as PAN work. The test counts the campaign's regression breaker compares are measured by `focus open` and `focus close`, not reported by the session; each item's result goes into the batch file under `results`, and finished todos move to `todos/completed/`. Commits go through `pan-tools commit`, which unstages anything matching a sensitive pattern. `/pan:focus-auto --stop` closes a cycle left open as failed.
 
@@ -1407,7 +1409,8 @@ For reference, here is what PAN creates in your project:
   debug/                  # Active debug sessions
     resolved/             # Archived debug sessions
   codebase/               # Brownfield codebase mapping (from /pan:map-codebase)
-  quick/                  # Quick mode task plans and summaries
+  quick/                  # Quick task plans and summaries, including focus cycles (<n>-focus-<kind>-<date>/)
+  designs/                # /pan:focus-design specs when the project has no docs/specs/ and docs/decisions/
   phases/
     XX-phase-name/
       XX-YY-plan.md       # Atomic execution plans

@@ -18,6 +18,7 @@ This guide covers root causes, diagnostic steps, and recovery procedures for sce
 - [Git Integration](#git-integration)
 - [Models and Cost](#models-and-cost)
 - [Context and Sessions](#context-and-sessions)
+- [Focus Runs](#focus-runs)
 - [Cross-Platform Issues](#cross-platform-issues)
 - [Diagnostic Commands](#diagnostic-commands)
 - [Spec B v2 Troubleshooting](#spec-b-v2-troubleshooting)
@@ -846,6 +847,64 @@ The installed `plugins/pan-wizard.js` predates OpenCode 2 support. OpenCode 2's 
 **Why this is expected:** A unified-skills install ships the whole command set as skills, and only a few are used in any one session. Until a skill is invoked it costs its `description` line and nothing else — PAN's descriptions are short by design, and the tool's per-skill figure is that line, not the body.
 
 **Fix, if you want a shorter list:** use Claude Code's `skillOverrides` setting to mark individual skills `hidden` or `collapsed` rather than deleting their files — PAN's manifest tracks every installed file, and a deleted skill comes back on the next upgrade and fails verification until then.
+
+## Focus Runs
+
+### `focus open` refuses with `cycle_open`
+
+**Symptom:** `pan-tools focus open` (or a focus run's first step) exits 1 with `error: "cycle_open"` and names a directory under `.planning/quick/`.
+
+**Root cause:** An earlier focus cycle never reached `focus close`, usually because the session ended mid-run. Only one focus cycle is open at a time.
+
+**Fix:** `pan-tools next-action` names the step. If the cycle's run is still live, let it finish; if it went stale, `pan-tools focus auto --stop` closes its cycle. Otherwise revert or commit the cycle's edits, then `pan-tools focus close --dir <dir> --status failed`.
+
+### `focus open` refuses with `all_routed`
+
+**Symptom:** `focus open` exits 1 with `error: "all_routed"` and a `handoff` list.
+
+**Root cause:** Every item in the batch belongs to the phase system: a roadmap phase, a plan inside one, or a requirement the traceability table maps to a phase. Focus hands those off instead of executing them.
+
+**Fix:** Run the `command` each hand-off names (`/pan:plan-phase N` or `/pan:exec-phase N`). For focus work, plan a batch of items focus owns: todos, patterns, scan findings, or requirements mapped to no phase.
+
+### `focus close` refuses with `commit_blocked`
+
+**Symptom:** `focus close --files …` exits 1 with `error: "commit_blocked"`, a `reason` of `sensitive_file_detected` or `deleted_files_detected`, and `safety_checks`.
+
+**Root cause:** A named path matched `commit.sensitive_patterns` (matched on the path, not the content: `token`, `secret`, `password` and `credentials` are bare words), or the commit would delete a file. Nothing was written and the cycle is still open; the paths the close staged are unstaged again.
+
+**Fix:** For a false positive, rename the file or narrow `commit.sensitive_patterns` in `.planning/config.json`, then close again. Otherwise commit exactly the reported paths yourself and close with `--commit <sha>` in place of `--files`.
+
+### A focus cycle is recorded `partial` or `failed` although every item worked
+
+**Symptom:** `focus close` reports `status: "partial"` (or `failed`) with `reported_status: "verified"` and a `derived_from` list.
+
+**Root cause:** The status comes from what the close measured, and a claim can only lower it. `no measured test count` means the project has no test command PAN detects, or its output gave no count; a regression or fewer passing tests than at `focus open` makes it `failed`. A test already failing when the cycle opened does not count against it.
+
+**Fix:** Give the project a test command (`workflow.test_command` in `.planning/config.json`, or a `test` script), or accept `partial` for a project without tests.
+
+### Autodev refuses with `focus_active`, or `focus auto` with `autodev_active`
+
+**Symptom:** `pan-tools autodev run` returns `error: "focus_active"`, or `focus auto` (start or `--continue`) exits 1 with `error: "autodev_active"`.
+
+**Root cause:** Both edit the tree, so neither starts while the other is working: a focus cycle is open or a focus run is live, or the newest autodev run has not stopped.
+
+**Fix:** Let the other run finish, or stop it: `pan-tools focus auto --stop` for focus; `pan-tools autodev status` shows the autodev run. A run with nothing recorded for `focus.stale_hours` (default 12) no longer blocks either side.
+
+### `next-action` says `focus_run_stale`
+
+**Symptom:** `/pan:progress` or `/pan:resume` offers `pan-tools focus auto --stop` before any phase work, and `/pan:hygiene` reports `focus-stale-run`.
+
+**Root cause:** A focus run is `in_progress` but recorded nothing for `focus.stale_hours`: its session ended without `--stop`.
+
+**Fix:** `pan-tools focus auto --stop` (it closes the run's open cycle as `failed`), then `/pan:focus-auto --continue` to resume the campaign. Raise `focus.stale_hours` if your cycles legitimately run longer.
+
+### `design handoff` refuses with `no_roadmap` or `already_handed_off`
+
+**Symptom:** At the end of `/pan:focus-design`, handing the design off as a phase fails.
+
+**Root cause:** `no_roadmap`: the project has no `roadmap.md` to add a phase to. `already_handed_off`: the roadmap already has a phase whose entry names this spec (`**Design:**`).
+
+**Fix:** For `no_roadmap`, start the project with `/pan:new-project`, or hand the design to focus (`--as focus`). For `already_handed_off`, plan the existing phase with `/pan:plan-phase <N> --prd <spec>`.
 
 ---
 

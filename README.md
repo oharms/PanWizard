@@ -687,8 +687,8 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 
 | Command | What it does |
 |---------|--------------|
-| `/pan:focus-auto` | Continuous scan→plan→exec loop with purpose-driven categories and a layered safety harness; `--step scan\|plan\|exec\|drift` runs one stage: scan collects and prioritizes work items with a Reality Score, plan builds a capacity-budgeted batch (modes: bugfix, balanced, features, full), exec runs the batch with tier-based test cadence, drift walks the tree to find and repair doc-code drift |
-| `/pan:focus-design` | Multi-phase strategic feature investigation pipeline |
+| `/pan:focus-auto` | Continuous scan→plan→exec loop with purpose-driven categories and a layered safety harness; `--step scan\|plan\|exec\|drift` runs one stage: scan collects and prioritizes work items with a Reality Score, plan builds a capacity-budgeted batch (modes: bugfix, balanced, features, full), exec runs the batch with tier-based test cadence, drift walks the tree to find and repair doc-code drift. Focus runs inside the phase system: each exec cycle is recorded as a quick task (`.planning/quick/`) that state, `/pan:progress` and `/pan:resume` see, and `focus route` hands roadmap phases, their plans and phase-mapped requirements to `/pan:plan-phase` / `/pan:exec-phase` instead of implementing them |
+| `/pan:focus-design` | Multi-phase strategic feature investigation pipeline; writes the design to `docs/specs/` and `docs/decisions/` when the project has both (else `.planning/designs/<slug>/`), and `pan-tools design handoff --as phase` adds a roadmap phase for it, planned with `/pan:plan-phase <N> --prd <spec>` |
 | `/pan:focus-docs` | Multi-dimensional document audit with a quality score per dimension; `--sync` detects stale documentation (counts, missing commands, outdated references), and `--sync --all` also fixes it |
 
 ### Cost, Foresight & Review

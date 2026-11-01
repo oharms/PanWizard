@@ -248,7 +248,7 @@ Remove a future phase from roadmap and renumber subsequent phases
 | Skill | Tools | Description |
 |-------|-------|-------------|
 | `/pan:focus-auto` | Read, Write, Edit, Bash, Grep, Glob, Agent | Continuous scan-plan-exec loop with purpose-driven categories and a layered safety harness |
-| `/pan:focus-design` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs | Strategic 10-phase feature investigation, design, and specification pipeline |
+| `/pan:focus-design` | Read, Write, Edit, Bash, Grep, Glob, Agent, AskUserQuestion, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs | Strategic 10-phase feature investigation, design, and specification pipeline |
 | `/pan:focus-docs` | Read, Write, Edit, Bash, Grep, Glob, Agent, WebFetch | Documentation audit and sync — accuracy, freshness, links, cross-consistency and structure; --sync updates stale docs after changes |
 
 #### /pan:focus-auto
@@ -261,7 +261,7 @@ Continuous scan-plan-exec loop with purpose-driven categories and a layered safe
 
 **Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent  
 **Group:** Focus  
-**Lines:** 701
+**Lines:** 722
 
 #### /pan:focus-design
 
@@ -271,9 +271,9 @@ Strategic 10-phase feature investigation, design, and specification pipeline
 /pan:focus-design <feature description> [--full | --internal | --outward | --spike] [--gate] [--audit] [--mvp]
 ```
 
-**Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs  
+**Tools:** Read, Write, Edit, Bash, Grep, Glob, Agent, AskUserQuestion, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__get-library-docs  
 **Group:** Focus  
-**Lines:** 1118
+**Lines:** 1132
 
 #### /pan:focus-docs
 
@@ -995,7 +995,7 @@ Which tools each shipped skill can use:
 | experiment | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
 | feedback |  |  |  | x |  |  |  |  |  |  |  |  |  |  |
 | focus-auto | x | x | x | x | x | x | x |  |  |  |  |  |  |  |
-| focus-design | x | x | x | x | x | x | x |  |  |  |  | x | x | x |
+| focus-design | x | x | x | x | x | x | x |  |  | x |  | x | x | x |
 | focus-docs | x | x | x | x | x | x | x |  |  |  |  |  | x |  |
 | git | x | x | x | x | x | x |  |  |  |  |  |  |  |  |
 | health | x | x |  | x |  |  |  |  |  | x |  |  |  |  |
