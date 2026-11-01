@@ -190,11 +190,11 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
              │  └──────────┬─────────┘    │
              │             │              │
              │  ┌──────────▼─────────┐    │
-             │  │ /pan:exec-phase │    │  <- Parallel execution
+             │  │ /pan:exec-phase    │    │  <- Parallel execution
              │  └──────────┬─────────┘    │
              │             │              │
              │  ┌──────────▼─────────┐    │
-             │  │ /pan:verify-phase   │    │  <- Goal-backward verify
+             │  │ /pan:verify-phase  │    │  <- Goal-backward verify
              │  └──────────┬─────────┘    │
              │             │              │
              │     Next Phase?────────────┘
@@ -203,7 +203,7 @@ All Spec B v2 commands interoperate with the focus system via read boundaries an
                             │
             ┌───────────────▼──────────────┐
             │  /pan:milestone-audit        │
-            │  /pan:milestone-done     │
+            │  /pan:milestone-done         │
             └───────────────┬──────────────┘
                             │
                    Another milestone?
@@ -522,6 +522,7 @@ PAN stores project settings in `.planning/config.json`. Configure during `/pan:n
   },
   "parallelization": true,
   "hooks": { "guard": "report" },
+  "instructions": { "routing": "advisory", "routing_exempt": [] },
   "cost": { "phase_budget_usd": 20 },
   "brave_search": false,
   "budget": {
@@ -591,7 +592,7 @@ This is what `config-ensure-section` writes (`buildConfigDefaults()` in `config.
 | `workflow.verifier` | `true`, `false` | `true` | Post-execution verification against phase goals |
 | `workflow.nyquist_validation` | `true`, `false` | `false` | Validation architecture research during plan-phase; adds the Nyquist plan-check dimension. Off by default — opt-in via `pan-tools config-set workflow.nyquist_validation true`. |
 | `workflow.auto_advance` | `true`, `false` | `false` | Chain discuss → plan → execute → verify → transition without prompting. **Scope:** within a phase the chain is automatic; at a phase boundary a chain that `/pan:plan-phase` drives stops (it runs exec-phase with `--no-transition`) and prints the next command; PAN's stop guard then blocks the session's stop once and tells the agent to spawn the next phase; a direct `/pan:exec-phase --auto` hands over to `transition.md`, which spawns the next phase as a Task subagent and, at the end of the milestone, turns `auto_advance` off and stops, showing `/pan:milestone-done` as the next step. Equivalent to passing `--auto` to `/pan:discuss-phase`, `/pan:plan-phase` and `/pan:exec-phase`. |
-| `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write, the direct state write (state.md goes through `pan-tools state` verbs), and a judge agent's write outside `.planning/`. In `exclusive` request routing it also reports, and under `enforce` denies, a source edit while no PAN task is in flight (`unrouted_write`). |
+| `hooks.guard` | `off`, `report`, `enforce` | `report` | The pre-tool guard hook (Claude Code, Codex, Gemini CLI, Copilot CLI). `report` logs each credential written into a file, direct write to PAN's state, judge agent's write outside `.planning/`, or edit to a test the phase does not declare, to `.planning/guard.jsonl`; `enforce` also denies the credential write, the direct state write (state.md goes through `pan-tools state` verbs), and a judge agent's write outside `.planning/`. In `exclusive` request routing it also reports, and under `enforce` denies, a source edit while no PAN task is in flight (`unrouted_write`). |
 | `instructions.routing` | `off`, `advisory`, `exclusive` | `advisory` | What PAN's section of `AGENTS.md` says about which PAN command a plain request belongs to. See [How PAN tells your tool to use it](#how-pan-tells-your-tool-to-use-it). Set with `/pan:settings`, which rewrites the section |
 | `instructions.routing_exempt` | list of globs | `[]` | Files the `exclusive` guard rule leaves alone, for example `["docs/**", "*.md"]` |
 | `workflow.phase_gate` | `enforce`, `warn` | `enforce` | The phase gate `phase complete` runs first: summaries for every plan, a passing and fresh verification, approved human items, a clean reconcile, no open critical or high finding, no committed stub, no weakened test. `warn` marks the phase complete and reports what failed (exec-phase then does not auto-advance); `enforce` refuses until each reason is fixed, or until `phase complete <N> --force --reason "<why>"`, which records the override. `pan-tools phase gate <N>` runs the gate alone. |
@@ -713,13 +714,13 @@ claude --dangerously-skip-permissions
 /clear
 /pan:discuss-phase 1        # Lock in your preferences
 /pan:plan-phase 1           # Plan + verify (add --research to research first)
-/pan:exec-phase 1        # Parallel execution
-/pan:verify-phase 1          # Goal-backward verify + test gate
+/pan:exec-phase 1           # Parallel execution
+/pan:verify-phase 1         # Goal-backward verify + test gate
 /clear
 /pan:discuss-phase 2        # Repeat for each phase
 ...
 /pan:milestone-audit        # Check everything shipped
-/pan:milestone-done 1.0 # Archive, tag, done
+/pan:milestone-done 1.0     # Archive, tag, done
 ```
 
 ### New Project from Existing Document
@@ -750,15 +751,15 @@ claude --dangerously-skip-permissions
 ```bash
 /pan:progress               # See where you left off and what's next
 # or
-/pan:resume            # Full context restoration from last session
+/pan:resume                 # Full context restoration from last session
 ```
 
 ### Preparing for Release
 
 ```bash
 /pan:milestone-audit        # Check requirements coverage, detect stubs
-/pan:milestone-audit --gaps    # If audit found gaps, create phases to close them
-/pan:milestone-done 1.0 # Archive, tag, done
+/pan:milestone-audit --gaps # If audit found gaps, create phases to close them
+/pan:milestone-done 1.0     # Archive, tag, done
 ```
 
 ### Speed vs Quality Presets
@@ -954,6 +955,9 @@ The `/pan:plan-phase` command accepts several flags to customize planning behavi
 | `--research` | Research this phase (research is opt-in); also re-researches when research.md already exists |
 | `--gaps` | Gap closure mode: reads verification.md and creates fix plans |
 | `--skip-verify` | Skip the plan verification loop |
+| `--research-only` | Run the research step alone, without planning (the old `/pan:research-phase`) |
+| `--quality` | Full ceremony for this run, without changing models |
+| `--auto` | Chain into execution and verification without prompting (as `workflow.auto_advance`) |
 
 Example:
 
@@ -1087,7 +1091,7 @@ Example: `feat(03-02): add login endpoint`
 |-------|--------|
 | Each completed task | Individual commit by default (the executor may fold adjacent trivial tasks of one type, never `feat` or `fix`, into one commit) |
 | Plan completion | Metadata commit (`docs(XX-YY): complete <plan-name> plan`) |
-| Project init | `docs: initialize project`, `chore: add project config`, `docs: complete project research` (when research runs), `docs: define v1 requirements`, then `docs: create roadmap (N phases)` |
+| Project init | `docs: initialize project`, `chore: add project config`, `docs: answer research questions` (when research runs), `docs: define v1 requirements`, then `docs: create roadmap (N phases)` |
 | Planning docs | Controlled by `commit_docs` config |
 
 **Branching Strategies (Detailed):**
@@ -1378,7 +1382,7 @@ Codex and Copilot CLI use a "skills" format rather than slash commands. Each com
 | Bot-army campaigns (`/pan:army`) | Yes | No gate or fallback | No gate or fallback | No gate or fallback | No gate or fallback |
 | `--dangerously-skip-permissions` | Yes | N/A | N/A | N/A | N/A |
 
-Hooks are supported by Claude Code, Gemini CLI, Codex (since June 2026, via `.codex/hooks.json` with Claude-compatible event names), and Copilot CLI. OpenCode runs no command hooks; instead PAN installs one OpenCode plugin, `.opencode/plugins/pan-wizard.js`, which adds PAN's position to the compaction prompt. On Gemini CLI PAN registers the update check (`SessionStart`), the stop guard (`AfterAgent`, Gemini's end-of-turn event) and the state re-injection's two steps (`PreCompress` and `AfterTool`). Gemini exposes no context-window usage to hooks and has no subagent-completion event, so the context monitor and the cost and trace loggers do not run there. Two trust gates can keep registered hooks from running: headless Copilot (`copilot -p`) loads repository hooks only in a trusted folder (see [Troubleshooting](TROUBLESHOOTING.md#pans-hooks-do-not-run-under-copilot--p)), and Codex skips a new or changed hook until you trust it in `/hooks` — repeat that after a PAN upgrade that changes the hooks.
+Hooks are supported by Claude Code, Gemini CLI, Codex (since June 2026, via `.codex/hooks.json` with Claude-compatible event names), and Copilot CLI. OpenCode runs no command hooks; instead PAN installs one OpenCode plugin, `.opencode/plugins/pan-wizard.js`, which adds PAN's position to the compaction prompt. On Gemini CLI PAN registers the update check (`SessionStart`), the pre-tool guard (`BeforeTool`), the stop guard (`AfterAgent`, Gemini's end-of-turn event) and the state re-injection's two steps (`PreCompress` and `AfterTool`). Gemini exposes no context-window usage to hooks and has no subagent-completion event, so the context monitor and the cost and trace loggers do not run there. Two trust gates can keep registered hooks from running: headless Copilot (`copilot -p`) loads repository hooks only in a trusted folder (see [Troubleshooting](TROUBLESHOOTING.md#pans-hooks-do-not-run-under-copilot--p)), and Codex skips a new or changed hook until you trust it in `/hooks` — repeat that after a PAN upgrade that changes the hooks.
 
 **Copilot CLI interaction handling:** Copilot CLI has no structured input controls (no checkboxes, radio buttons, or multi-select). PAN Wizard's install-time converter automatically rewrites `AskUserQuestion` blocks into numbered text menus with clear selection instructions. Single-select questions show "Type a number or label to choose", multi-select shows "Type the numbers you want, separated by commas (e.g., 1,3)". This runs transparently during installation — no user configuration needed.
 

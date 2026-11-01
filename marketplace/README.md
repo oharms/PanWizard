@@ -62,9 +62,9 @@ So plugin content **may** reference the plugin root directly, PAN's existing
 content rewrite is correct as it stands, and **marketplace publishing is
 unblocked**.
 
-> **The sharpest finding is probe 2, and it corrects this document's own case-B
-> description below.** That text claimed a *shell* command inside content would
-> still work under case B "because the shell expands the variable". It would not:
+> **The sharpest finding is probe 2, and it narrows the case-B description below.**
+> That case assumes a *shell* command inside content would still work "because the
+> shell expands the variable". On the build measured it would not:
 > `CLAUDE_PLUGIN_ROOT` is **not** exported into the Bash tool's environment, so a
 > shell evaluating `$CLAUDE_PLUGIN_ROOT` at runtime gets an empty string. The two
 > mechanisms are **not interchangeable**. Generated content must keep using the
@@ -88,7 +88,7 @@ nothing about markdown.
 | Verdict | Meaning | What it unblocks |
 |---|---|---|
 | **case A** | Markdown *is* substituted | Content may address the plugin root directly. PAN's existing content rewrite is correct as-is, and marketplace publishing is unblocked |
-| **case B** | Not substituted, but the env var is set | A *shell* command inside content still works, because the shell expands it. Anything resolved as a path by something that is not a shell — an `@` file import, notably — breaks. PAN's content rewrite would need narrowing to shell invocations only |
+| **case B** | Not substituted, but the env var is set | A *shell* command inside content works only if the variable also reaches the Bash tool, which probe 2 found it does not (the self-test tells you to confirm that before relying on it). Anything resolved as a path by something that is not a shell — an `@` file import, notably — breaks. PAN's content rewrite would need narrowing to shell invocations only |
 | **case C** | Neither | Content cannot address the plugin root at all. PAN would need runtime path resolution, and publishing stays gated |
 
 The answer is recorded in `docs/ECOSYSTEM-REVIEW-2026-08.md` §7 and in the header of

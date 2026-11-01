@@ -103,9 +103,9 @@ The hook is non-blocking and is registered on Claude Code, Codex and Copilot CLI
 ### Shipped hooks
 
 - `pan-statusline.js` (Claude Code and Copilot CLI; Gemini CLI has no statusline command)
-- `pan-context-monitor.js` (reads the session transcript when no status line runs, as in headless `claude -p`; not registered on Gemini CLI, which gives hooks no context metric)
+- `pan-context-monitor.js` (reads the session transcript when no status line runs, as in headless `claude -p`; registered on Claude Code only: Gemini CLI gives hooks no context metric, and the Codex and Copilot CLI installs register no post-tool event for it)
 - `pan-check-update.js` (unchanged)
-- `pan-guard.js` (pre-tool guard — `PreToolUse` on Claude Code and Codex, `BeforeTool` on Gemini CLI, `preToolUse` on Copilot CLI; reports a credential written into a file, direct writes to PAN's state and undeclared test edits, and under `hooks.guard: enforce` denies the credential write)
+- `pan-guard.js` (pre-tool guard — `PreToolUse` on Claude Code and Codex, `BeforeTool` on Gemini CLI, `preToolUse` on Copilot CLI; reports a credential written into a file, a direct write to PAN's state, a judge agent writing outside the planning tree, an undeclared test edit, and (under `instructions.routing: exclusive`) a write while no PAN work is in flight; under `hooks.guard: enforce` it denies all of these except the test edit)
 - `pan-cost-logger.js` (new in v3.4)
 - `pan-trace-logger.js` (new in v3.5 — circular optimization tracing)
 - `pan-stop-guard.js` (Stop hook — `AfterAgent` on Gemini CLI — added in v3.24; blocks the auto-advance boundary drop once)
@@ -204,9 +204,9 @@ Your `.planning/` data survives the uninstall. New directories (`metrics/`, `bus
 ### Partial rollback (keep v3.5 but disable specific features)
 
 - **Disable auto cost logging:** remove the `pan-cost-logger.js` entry under `SubagentStop` in `.claude/settings.json` (the `pan-trace-logger.js` entry beside it is the trace logger); re-running the installer adds it back
-- **Disable `--hierarchical`:** simply don't pass the flag; there's no global setting
+- **Disable `--hierarchical`:** don't pass the flag; there's no global setting
 - **Disable `--deep-review`:** same — flag-controlled
-- **Stop using a specific command:** just don't invoke it; no uninstall needed
+- **Stop using a specific command:** don't invoke it; no uninstall needed
 
 ### Clean up new `.planning/` subdirectories
 

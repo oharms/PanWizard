@@ -46,10 +46,13 @@ before ADR-0028.
   caps + regression circuit-breaker), exposed as native MCP tools via
   `pan-wizard-core/mcp/native-tools.cjs`.
 - **M3 — content port.** `lib/convert-agent.cjs` — Claude agents → ZCode subagents (reusing the
-  installer's frontmatter helpers): drops `Task` (no nesting), maps PAN tiers → `inherit`,
+  installer's frontmatter helpers): drops `Task` (no nesting) and host-specific `mcp__` tools, maps PAN tiers → `inherit`,
   preserves the body; plus a command → skill wrapper.
-- **M4 — bundle + install.** `bin/install-zcode.js` — assembles `agents/` + `pan-mcp.json` +
-  manifest + `INSTALL-ZCODE.md` into a `--target` dir; refuses to write inside the source repo;
+- **M4 — bundle + install.** `bin/install-zcode.js --target <dir> [--project-root <dir>]` —
+  assembles `agents/` + `pan-mcp.json` (a `pan-mcp` server running
+  `pan-wizard-core/mcp/server.cjs`, with `PAN_TOOLS_PATH` and `PAN_PROJECT_ROOT` set; the
+  project root defaults to `.`) + `pan-zcode-manifest.json` + `INSTALL-ZCODE.md` into the
+  target; refuses to write inside the source repo;
   leaves the finish to the human in ZCode's own Settings and Import, following `INSTALL-ZCODE.md`.
 - **M5 — hardening + docs.** Full test matrix + [`KNOWN-BETA-RISKS.md`](KNOWN-BETA-RISKS.md)
   (the beta-churn ledger + the M0 go/no-go questions).

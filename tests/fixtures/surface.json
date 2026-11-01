@@ -102,6 +102,8 @@
     "debug repro",
     "debug similar",
     "deps validate",
+    "design handoff",
+    "design paths",
     "distill analyze",
     "distill report",
     "distill scan",

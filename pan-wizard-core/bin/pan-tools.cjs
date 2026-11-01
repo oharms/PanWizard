@@ -934,6 +934,7 @@ async function main() {
     }
 
     case 'design': {
+      if (args[1] !== 'paths' && args[1] !== 'handoff') error('Unknown design subcommand. Available: paths, handoff');
       require('./lib/design-handoff.cjs').cmdDesign(cwd, args[1], args.slice(2), raw);
       break;
     }

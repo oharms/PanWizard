@@ -34,7 +34,7 @@ npx pan-wizard@latest
 
 ## What is PAN Wizard?
 
-PAN (Project Automation Navigator) is a structured workflow system that helps you build software projects with AI coding assistants. The complexity is in the system, not in your workflow. Behind the scenes: context engineering, XML prompt formatting, subagent orchestration, state management. What you see: a few commands that just work.
+PAN (Project Automation Navigator) is a structured workflow system that helps you build software projects with AI coding assistants. The complexity is in the system, not in your workflow. Behind the scenes: context engineering, XML prompt formatting, subagent orchestration, state management. What you see: a few commands.
 
 The system gives Claude everything it needs to do the work *and* verify it. Describe your idea, let the system extract everything it needs to know, and let Claude Code get to work.
 
@@ -480,7 +480,7 @@ Use for: bug fixes, small features, config changes, one-off tasks.
 
 ### Context Engineering
 
-Claude Code is incredibly powerful *if* you give it the context it needs. Most people don't.
+Claude Code does good work *if* you give it the context it needs. Most people don't.
 
 PAN handles it for you:
 
@@ -609,7 +609,7 @@ PAN is not a replacement for your IDE or AI agent — it's the orchestration lay
 | `/pan:plan-phase [N] [--auto]` | Plan + verify for a phase (research with `--research`); `--research-only <N>` runs the research step alone |
 | `/pan:exec-phase <N>` | Execute all plans in parallel waves, verify when complete |
 | `/pan:verify-phase [N] [--uat]` | Re-run goal-backward verification with a test-suite gate; lists gaps for `/pan:plan-phase N --gaps` ¹. `--uat` walks you through the phase's acceptance tests instead, on every runtime |
-| `/pan:autodev [run\|resume\|status]` | Run the roadmap unattended: a deterministic loop plans, executes, verifies and completes each phase, each step in a fresh host session (a lean phase is planned by the engine and built, reviewed and verified in one session), and stops in code (done, human needed, gate failed, CI failed, forecast exceeded, budget, turns, no progress) |
+| `/pan:autodev [run\|resume\|status\|report\|replay]` | Run the roadmap unattended: a deterministic loop plans, executes, verifies and completes each phase, each step in a fresh host session (a lean phase is planned by the engine and built, reviewed and verified in one session), and stops in code (done, human needed, gate failed, CI failed, forecast exceeded, budget, turns, no progress) |
 | `/pan:milestone-audit` | Verify milestone achieved its definition of done; `--gaps` creates phases to close the gaps the audit found |
 | `/pan:milestone-done <version>` | Archive milestone, tag release; `--cleanup` archives accumulated phase directories from completed milestones |
 | `/pan:milestone-new [name]` | Start next version: questions → research (opt-in) → requirements → roadmap |

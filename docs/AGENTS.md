@@ -49,7 +49,7 @@ PAN uses specialized agents, each running as a subagent in a fresh context windo
 | `pan-plan-checker` | Validates plans against phase goals across multiple dimensions | `/pan:plan-phase`, `/pan:quick --full` | Read, Bash, Glob, Grep | green |
 | `pan-executor` | Executes plans with atomic commits and deviation handling | `/pan:exec-phase`, `/pan:quick`, `/pan:army`, native `/pan-exec-waves` script (Claude Code) | Read, Write, Edit, Bash, Grep, Glob | yellow |
 | `pan-verifier` | Verifies phase delivered what it promised | `/pan:exec-phase` and the native `/pan-exec-waves` script on Claude Code (both skip it when `workflow.verifier` is false), autodev's `exec-lean` workflow (lean phase), `/pan:quick --full` | Read, Write, Bash, Grep, Glob | green |
-| `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase`, autodev's `exec-lean` workflow (lean phase), native `/pan-review-pipeline` script (Claude Code) | Read, Grep, Glob, Bash | yellow |
+| `pan-reviewer` | Read-only code review (conventions, security, quality) | `/pan:exec-phase`, autodev's `exec-lean` workflow (lean phase), native `/pan-exec-waves` and `/pan-review-pipeline` scripts (Claude Code) | Read, Grep, Glob, Bash | yellow |
 | `pan-integration-checker` | Verifies cross-phase wiring and E2E flows | `/pan:milestone-audit` | Read, Bash, Grep, Glob | blue |
 | `pan-debugger` | Systematic bug investigation with persistent state | `/pan:debug`, `/pan:verify-phase --uat` (the `diagnose-issues` workflow), native `/pan-diagnose-issues` script (Claude Code) | Read, Write, Edit, Bash, Grep, Glob, WebSearch | orange |
 
@@ -100,7 +100,7 @@ For a bot-army campaign (`/pan:army`), the agents are organized into role-scoped
 
 **Squad tier is not profile tier.** The tier column above is a `squads.cjs` grouping attribute — what `pan-tools squad list` reports — and it is not an agent's profile tier, which is what `resolve-model` reports from the active `model_profile` (`quality` is `reasoning` for every agent; `balanced` runs the researchers and the plan checker on `mid`; `budget` down-tiers further). `/pan:army` applies neither: its spawns pass no model, so a squad agent runs on its own `model:` pin, else the session model, under every profile. So the `mid` on the Quality and Release rows does not describe what those agents run. See [Model Profiles](#model-profiles) for the per-agent matrix.
 
-Outside the squads sit the coordinator (`pan-conductor`, Tier 0) and the worker/utility agents — `pan-document_code`, `pan-distiller` (narrow, high-volume jobs — the `budget` profile is the only one that drops them to the fast tier), plus `pan-optimizer`, `pan-knowledge`, `pan-counterfactual`, `pan-previewer` (invoked directly by their own commands, not delegated through a squad) and `pan-experiment-runner` (no shipped command spawns it — see its row above). A drift test pins squad roster ⇄ agent files ⇄ `AGENT_BASE_EFFORT`, so every shipped agent is accounted for in exactly one place.
+Outside the squads sit the coordinator (`pan-conductor`, Tier 0) and the worker/utility agents — `pan-document_code`, `pan-distiller` (narrow, high-volume jobs — the `budget` profile is the only one that drops them to the fast tier), plus `pan-optimizer`, `pan-knowledge`, `pan-counterfactual`, `pan-previewer` (invoked directly by their own commands, not delegated through a squad) and `pan-experiment-runner` (no shipped command spawns it — see its row above). Drift tests pin the squad roster to the agent files (`tests/squads.test.cjs`: every agent is the coordinator, a worker or in exactly one squad) and each agent's `effort:` to `AGENT_BASE_EFFORT` (`tests/core.test.cjs`).
 
 ---
 
@@ -269,7 +269,7 @@ Agents are ordered by workflow stage: project init → brownfield → phase plan
 - `.planning/research/research-summary.md` (if it exists: a question it already answers is copied, not searched again)
 
 **Outputs:**
-- `.planning/phases/XX-name/{phase_num}-research.md` — `<user_constraints>` (when context.md exists), the answers table `| # | Question | Answer | Source | Confidence | Decision it settles |`, `## Ideas (v2 candidates)`, and `## Validation Architecture` only when `nyquist_validation` is on (the plan-phase orchestrator, step 5.5, then writes `{padded_phase}-validation.md` from `templates/validation.md`)
+- `.planning/phases/XX-name/{padded_phase}-research.md` — `<user_constraints>` (when context.md exists), the answers table `| # | Question | Answer | Source | Confidence | Decision it settles |`, `## Ideas (v2 candidates)`, and `## Validation Architecture` only when `nyquist_validation` is on (the plan-phase orchestrator, step 5.5, then writes `{padded_phase}-validation.md` from `templates/validation.md`)
 
 **Key Behaviors:**
 - At most 4 searches or fetches per question, then stop: an unsettled question is `unknown` with the assumption the plan uses
@@ -335,7 +335,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 **Purpose:** Validates that plans WILL achieve the phase goal before execution begins. Catches structural issues that would waste executor context windows.
 
-**Spawned by:** `/pan:plan-phase` (after planner creates plan.md; `MAX_CHECKS`: 2 checks, one revision, on the sized ceremony, 3 checks, two revisions, under `quality`, `workflow.ceremony: full` or `--quality`) and `/pan:quick --full` (on the quick task's plan, 2 checks, one revision)
+**Spawned by:** `/pan:plan-phase` (after planner creates plan.md; `MAX_CHECKS`: 2 checks, one revision, on the sized ceremony, 3 checks, two revisions, under `quality`, `workflow.ceremony: full`, `--quality` or `--full`) and `/pan:quick --full` (on the quick task's plan, 2 checks, one revision)
 
 **Tools:** Read, Bash, Glob, Grep (read-only — cannot modify plans)
 
@@ -434,7 +434,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 **Purpose:** Verifies that a phase achieved its GOAL, not just completed its TASKS. Works backwards from what the phase should deliver and checks that it actually exists, is substantive, and is wired correctly.
 
-**Spawned by:** Verification workflow after `/pan:exec-phase` (skipped, and said so, when `workflow.verifier` is false); also `/pan:quick --full`, and the `exec-lean` workflow autodev runs for a lean phase (one session does the executor's work, then one reviewer pass, then this verifier)
+**Spawned by:** Verification workflow after `/pan:exec-phase` (skipped, and said so, when `workflow.verifier` is false); also `/pan:quick --full`, and the `exec-lean` workflow autodev runs for a lean phase (one session does the executor's work, then one reviewer pass, then this verifier); on Claude Code also the native `/pan-exec-waves` script
 
 **Tools:** Read, Write, Bash, Grep, Glob
 
@@ -474,7 +474,7 @@ Each plan contains 2-3 XML-structured tasks with: `<name>`, `<files>`, `<action>
 
 **Purpose:** Performs read-only code review on files changed during phase execution. Checks convention compliance, security patterns, and code quality before verification begins.
 
-**Spawned by:** `/pan:exec-phase` (after test generation, before verification — skippable via `--skip-review` or `--fast`; a lean phase skips only the test-generation agent and keeps this pass), and the `exec-lean` workflow autodev runs for a lean phase (one pass, one fix round)
+**Spawned by:** `/pan:exec-phase` (after test generation, before verification — skippable via `--skip-review` or `--fast`; a lean phase skips only the test-generation agent and keeps this pass), and the `exec-lean` workflow autodev runs for a lean phase (one pass, one fix round); on Claude Code also the native `/pan-exec-waves` and `/pan-review-pipeline` scripts
 
 **Tools:** Read, Grep, Glob, Bash (read-only — cannot modify files)
 
@@ -635,7 +635,7 @@ Each agent is assigned a model tier based on the active profile in `.planning/co
 **Tier mapping by provider:** Anthropic: reasoning → `inherit` (the model your session runs on), mid → Sonnet, fast → Haiku. OpenAI/Google: reasoning → inherit, mid/fast → provider equivalents. Legacy names (`opus`, `sonnet`, `haiku`) still work as aliases.
 
 **Design rationale (cost reset 2026-07, right-sized ceremony 2026-10-24):**
-- **quality inherits everywhere; balanced inherits for the agents that plan, write and judge code** — those run on the model you launched with, and since right-sized ceremony `balanced` runs only the researchers and the plan checker on the mid tier. The other exceptions are `pan-reviewer`, `pan-hardener` and `pan-meta-reviewer`, which pin `model: opus` in their own frontmatter. On Claude Code the pin holds where a spawn passes no model (`/pan:review-deep`, `/pan:focus-auto`); `/pan:exec-phase` passes the resolved tier, so under `budget` its review spawns run on the fast tier. The installer drops the pin from the other runtimes' agent files, so there these agents inherit the session model like the rest. Context isolation, not a weaker model, keeps the main conversation clean.
+- **quality inherits everywhere; balanced inherits for the agents that plan, write and judge code** — those run on the model you launched with, and since right-sized ceremony `balanced` runs only the researchers and the plan checker on the mid tier. The other exceptions are `pan-reviewer`, `pan-hardener` and `pan-meta-reviewer`, which pin `model: opus` in their own frontmatter. On Claude Code the pin holds where a spawn passes no model (`/pan:review-deep`, `/pan:focus-auto`); `/pan:exec-phase` and autodev's `exec-lean` workflow pass the resolved tier, so under `budget` their review spawns run on the fast tier. The installer drops the pin from the other runtimes' agent files, so there these agents inherit the session model like the rest. Context isolation, not a weaker model, keeps the main conversation clean.
 - **budget is the opt-in cheap mode** — mid for the planning, orchestration and code-writing agents, fast for research, review, verification and the utility agents; choose it explicitly for high-volume work.
 - Tiering takes effect where a PAN workflow passes the resolved tier as a Task spawn's `model` (from `init` or `resolve-model`), and it is what `pan-tools estimate-cost` (shown by `/pan:settings --profile`) prices — `/pan:cost` does not use it, since the hooks take each record's tier from the model id they record; a spawn that passes no model uses the agent file's static `model:` (unset → `inherit`).
 

@@ -55,7 +55,7 @@ node <path-to-clone>/bin/install.js --claude --global  # Install to ~/.claude/
 
 ### Building Hooks
 
-PAN's hooks are pure Node.js with zero dependencies, so `build:hooks` simply
+PAN's hooks are pure Node.js with zero dependencies, so `build:hooks`
 copies the hooks listed in `HOOKS_TO_COPY` (`scripts/build-hooks.js`) to `hooks/dist/` — there is no bundler or compile step.
 After modifying `hooks/`:
 
@@ -164,7 +164,6 @@ and rejects the shapes that have passed while the feature they named was broken:
 Write assertions from **measured** output, never from what a verb ought to emit: run the
 command, look at the real payload and exit code, then assert those. Several tests here
 were written the other way round and had to be corrected once the behaviour was checked.
-
 
 ### Cross-Platform Considerations
 

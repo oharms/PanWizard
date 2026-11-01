@@ -17,7 +17,7 @@ pan-wizard/
   pan-wizard-core/
     bin/
       pan-tools.cjs           # CLI dispatcher — all commands/agents call this
-      lib/                    # Core CJS modules (responsibilities and the dependency graph: ARCHITECTURE.md)
+      lib/                    # Core CJS modules, a selection below (responsibilities and the dependency graph: ARCHITECTURE.md)
         constants.cjs         # Shared path constants, file patterns, regex, FOREIGN_PLANNING_MARKERS
         core.cjs              # Model profiles, output()/error() exit-code contract, toPosix(), loadConfig(), toLf()/dominantEol()/withEol()
         utils.cjs             # readJsonFile, planningPath()/planningRel() (built on planning-root), listPhaseDirs
@@ -127,7 +127,7 @@ pan-wizard/
   .github/plugin/marketplace.json    # Copilot marketplace → ./dist/pan-agent-plugin (its version is pinned to package.json by a test)
   pan-zcode/                  # Experimental: ZCode subsystem — a consumer of the shared MCP bridge, with its own installer
   tests/                      # Test suite (node:test + node:assert)
-    helpers.cjs               # runPanTools(), createTempProject(), cleanup(), buildPluginInto(), buildAgentPluginInto()
+    helpers.cjs               # runPanTools(), createTempProject(), cleanup(), gateOff(), buildPluginInto(), buildAgentPluginInto(), … (see Test Helpers)
     *.test.cjs                # Unit test files
     scenarios/                # Scenario test files (installer + integration + workflow)
     fixtures/                 # Pinned fixtures (module export surfaces, Agent Plugins schemas, …)
@@ -167,7 +167,7 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 3. Commands should be thin orchestrators — read state, spawn agents, route results
 4. Call pan-tools for state operations: `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs <cmd> [args]`
 5. Reference a workflow if multi-step logic is needed
-6. No installer edit is needed — the installer copies `commands/pan/` recursively, so new command files ship automatically. Give the file frontmatter that `pan-tools doc-lint commands/pan` accepts, with a `group` and a `description` (the `/pan:help` index is generated from them), run `node scripts/build-help.cjs --write` and `node scripts/test-surface.cjs --write` (the surface registry lists every command file), name the command in a harness scenario or give it a reason in `tests/fixtures/liveness-allowlist.json`, and refresh the Commands row of the counts table in `CLAUDE.md`, or `npm test` fails (`tests/doc-lint.test.cjs`, `tests/help-generated.test.cjs`, `tests/surface-map.test.cjs`, `tests/claude-md-counts.test.cjs`)
+6. No installer edit is needed — the installer copies `commands/pan/` recursively, so new command files ship automatically. Give the file frontmatter that `pan-tools doc-lint commands/pan` accepts, with a `group` and a `description` (the `/pan:help` index is generated from them), run `node scripts/build-help.cjs --write` and `node scripts/test-surface.cjs --write` (the surface registry lists every command file), name the command in a harness scenario or give it a reason in `tests/fixtures/liveness-allowlist.json`, run `node scripts/prompt-rules.cjs --write` (every normative line — MUST, NEVER, always, do not — becomes a rule that a harness scenario must claim with `covers`, or `tests/fixtures/prompt-rules-allowlist.json` must excuse with a reason), and refresh the Commands row of the counts table in `CLAUDE.md`, or `npm test` fails (`tests/doc-lint.test.cjs`, `tests/help-generated.test.cjs`, `tests/surface-map.test.cjs`, `tests/prompt-rules.test.cjs`, `tests/claude-md-counts.test.cjs`). `tests/prompt-lint.test.cjs` also checks the new file's `pan-tools` calls, spawns and AskUserQuestion options
 
 ## How to Add a New Agent
 
@@ -175,7 +175,7 @@ cd ../pan-test && node ../PanWizard/bin/install.js --claude --global   # → ~/.
 2. Define role, context requirements, constraints, output format using XML structure
 3. Add the agent to `MODEL_PROFILES` and `AGENT_BASE_EFFORT` in `core.cjs`, and set the agent's `effort:` frontmatter to that base effort (`tests/core.test.cjs` pins all three)
 4. Reference from workflow .md that spawns it via Task tool
-5. No installer edit is needed — the installer copies every top-level `agents/*.md` file (subdirectories are not scanned), so new agent files ship automatically. Run `node scripts/test-surface.cjs --write` (the surface registry lists every agent file), name the agent in a harness scenario or give it a reason in `tests/fixtures/liveness-allowlist.json`, and refresh the Agents row of the counts table in `CLAUDE.md`, and place the agent in a squad or the worker list in `pan-wizard-core/bin/lib/squads.cjs`, or `npm test` fails (`tests/surface-map.test.cjs`, `tests/claude-md-counts.test.cjs`, `tests/squads.test.cjs`)
+5. No installer edit is needed — the installer copies every top-level `agents/*.md` file (subdirectories are not scanned), so new agent files ship automatically. Run `node scripts/test-surface.cjs --write` (the surface registry lists every agent file), name the agent in a harness scenario or give it a reason in `tests/fixtures/liveness-allowlist.json`, run `node scripts/prompt-rules.cjs --write` and claim or allowlist its new rules (as for a command), place the agent in a squad or the `WORKERS` list in `pan-wizard-core/bin/lib/squads.cjs`, and refresh the Agents row of the counts table in `CLAUDE.md`, or `npm test` fails (`tests/surface-map.test.cjs`, `tests/prompt-rules.test.cjs`, `tests/squads.test.cjs`, `tests/claude-md-counts.test.cjs`)
 
 ## How to Add a Core Module Function
 
@@ -218,6 +218,7 @@ describe('your feature', () => {
 - `runPanTools(argsString, cwd)` — runs `pan-tools.cjs` with a pre-joined argument string; returns `{ success, output, error? }` where `output` is the raw stdout (`JSON.parse` it yourself)
 - `createTempProject()` — creates a temp directory containing an empty `.planning/phases/` scaffold (no options)
 - `cleanup(dir)` — Recursively removes temp directory
+- `gateOff(dir)` — sets `workflow.phase_gate: warn` in the fixture's `.planning/config.json`, for tests of what `phase complete` does once the gate lets it through
 - `createScenarioRunner(runtime)` — installs PAN for `'claude'|'opencode'|'gemini'|'codex'|'copilot'` into a temp dir; returns `{ tmpDir, installedToolsPath, configDir, run(args, cwd?), cleanup() }`
 - `buildPluginInto()` / `buildAgentPluginInto()` — build the two distribution bundles into a fresh private temp directory and return its path (never into `dist/`); the caller owns `cleanup(dir)`
 - `TOOLS_PATH`, `INSTALLER_PATH` — absolute paths to `pan-tools.cjs` and `bin/install.js`; `RUNTIME_DIR` — the runtime → config-directory-name map (`claude` → `.claude`, …, `copilot` → `.github`) mirroring the installer's `getDirName`
@@ -245,6 +246,7 @@ One more check is **not** part of the gate and is run by hand: `npm run test:mut
 npm test                                    # Unit tests (npm run test:all adds the scenarios)
 node --test tests/phase.test.cjs            # Single file
 node scripts/run-tests.cjs tests            # Cross-platform runner; a tests/*.test.cjs glob only expands on bash or Node 22+
+npm run test:watch                          # Unit and scenario tests, re-run on change (through run-tests.cjs --watch)
 npm run test:surface                        # The committed surface registry still matches the code
 npm run test:coverage                       # The suite under coverage: dispatcher arms + per-group floors (Node 22+)
 npm run harness                             # Tier 0 of the PAN Harness: behavioural, model-free, free
@@ -269,7 +271,7 @@ npm run test:mutate                         # Report-only: which deliberate brea
 | `codescan` | Only with `--codescan`: the CodeQL CLI's `security-extended` suite over the whole tree when it is installed, failing on a result at error level or with a security severity of high or above (what GitHub's code-scanning check blocked on) unless its rule and file are accepted, with a reason, in `.codeql-accepted.json` (seeded from the alerts dismissed on GitHub; an acceptance that no longer matches is reported stale); else Semgrep in Docker (`p/javascript`, `p/nodejs`) on the JavaScript files changed against `main` (`--codescan-all` for the whole tree). `--codescan=codeql` or `=semgrep` picks one | the CodeQL CLI, or Docker |
 | `clean-tree` | After every other gate: the working tree is as it was when the run started. Work you had not committed is fine; a gate that writes into the checkout is not | git |
 
-Whole-suite runs are scheduled so they do not starve each other: the three containers run first, together, then the host suite runs (one per Node version, then the coverage gate, which runs the suite again under instrumentation) one at a time. A host suite run beside another one, or beside the containers, times its 30-second setup hooks out. The harness and the light gates run beside all of it. Each host suite run also caps how many test files run at once (`PAN_TEST_CONCURRENCY`, read by `scripts/run-tests.cjs`; half the cores, at most 16): Node's default of one file per core but one made the Node 22 suite's wall-clock checks miss their bounds on a 40-core machine even alone, which GitHub's 4-core runners never saw. Each gate gets its own temp directory, so a test that uses a fixed name under the OS temp directory never meets another gate's copy of itself; a failed gate's temp directory is kept. One run per checkout: `.ci-local/run.lock` refuses a second.
+Whole-suite runs are scheduled so they do not starve each other: the three containers run first, together, then the host suite runs (one per Node version, then the coverage gate, which runs the suite again under instrumentation) one at a time. A host suite run beside another one, or beside the containers, times its 30-second setup hooks out. The harness and the light gates run beside all of it. Each host suite run also caps how many test files run at once (`PAN_TEST_CONCURRENCY`, read by `scripts/run-tests.cjs`; half the cores, at least 2 and at most 16): Node's default of one file per core but one made the Node 22 suite's wall-clock checks miss their bounds on a 40-core machine even alone, which GitHub's 4-core runners never saw. Each gate gets its own temp directory, so a test that uses a fixed name under the OS temp directory never meets another gate's copy of itself; a failed gate's temp directory is kept. One run per checkout: `.ci-local/run.lock` refuses a second.
 
 A tool that is not installed is reported **SKIP** with how to install it, never PASS, and the summary says skipped gates did not run. Any FAIL exits 1; `--strict` makes a skip fail too. Other flags: `--only host,gitleaks` (gates whose id starts with a listed name), `--no-docker`, `--jobs N` (light gates at once, default 6), `--root <dir>`, `--out <dir>` (report, logs and lock somewhere other than `.ci-local/`), `--json`.
 
@@ -299,7 +301,7 @@ With no pull request, a change goes branch → `ci:local` → `land`:
 
 1. Work on a branch. Keep it up to date with `origin/main` (merge or rebase).
 2. Commit everything, then run the full `npm run ci:local` on that commit. It has to start from a clean tree: uncommitted work means the gates did not test the commit alone, and `land` refuses that verdict.
-3. `npm run land -- <branch>` (`scripts/land.cjs`). It refuses unless the full run passed on the branch's current HEAD with no gate skipped (`--allow-skips` overrides that one) and the branch contains `origin/main`. Then it fetches, fast-forwards `main` to `origin/main` in the checkout that has `main` (or a temporary worktree), squash-merges the branch, checks that the result is exactly the tree `ci:local` passed, commits it with the branch's summary (the first commit's subject, or `--title`; the body lists every commit), and pushes `main` to `origin`. It never force-pushes; a rejected push leaves the commit on the local `main` and says so. `--dry-run` shows the commit without making it, `--no-push` stops before the push.
+3. `npm run land -- <branch>` (`scripts/land.cjs`). It refuses unless the full run passed on the branch's current HEAD with no gate skipped (`--allow-skips` overrides that one) and the branch contains `origin/main`. Then it fetches, fast-forwards `main` to `origin/main` in the checkout that has `main` (or a temporary worktree), squash-merges the branch, checks that the result is exactly the tree `ci:local` passed, commits it with the branch's summary (the first commit's subject, or `--title`; the body lists every commit), and pushes `main` to `origin`. It never force-pushes; a rejected push leaves the commit on the local `main` and says so. `--dry-run` shows the commit without making it, `--no-push` stops before the push, and `--remote` / `--main` name another remote or main branch (defaults `origin`, `main`).
 
 GitHub is the mirror and the publisher. Since `2026-10-22`, branch protection on `main` requires only the three macOS `test` jobs, and no pull request, so `land` can push; a required check GitHub no longer runs would reject every push. The first changes landed this way were the H10 pairs (`0bb48b7`, `45323c9`).
 
@@ -313,7 +315,7 @@ GitHub is the mirror and the publisher. Since `2026-10-22`, branch protection on
 | `PanWizard-outdated` | Monday 09:00 | `npm outdated`, as a table of current, wanted and latest versions |
 | `PanWizard-market-watch` | Monday 09:10 | `harness/autopilot/market-watch.cjs` |
 
-A run missed while the machine was off starts when it is next on. The tasks run in the repository's main worktree (`--root` picks another checkout; `--node` another `node.exe`) and write to `.ci-local/scheduled/<task>/` there: a dated `.md` summary, its `.log`, and `last-run.json`, which the weekly State of PAN (`harness/autopilot/state-of-pan.cjs`) links. `--list` shows the tasks, their last result and the latest reports; `--uninstall` removes exactly the tasks `--install` added; `--run <codescan|outdated|market-watch>` runs one by hand. Off Windows, `--install` prints the equivalent crontab lines.
+A run missed while the machine was off starts when it is next on. The tasks run in the repository's main worktree (`--root` picks another checkout; `--node` another `node.exe`) and write to `.ci-local/scheduled/<job>/` there (`codescan`, `outdated`, `market-watch`): a dated `.md` summary, its `.log`, and `last-run.json`, which the weekly State of PAN (`harness/autopilot/state-of-pan.cjs`) links. `--list` shows the tasks, their last result and the latest reports; `--uninstall` removes exactly the tasks `--install` added; `--run <codescan|outdated|market-watch>` runs one by hand. Off Windows, `--install` prints the equivalent crontab lines.
 
 **Pre-push hook.** `scripts/git-hooks/pre-push` runs `local-ci.cjs --fast` (`npm run ci:local:fast`): the suite on the current Node, the harness at tier 0 and gitleaks. It is tracked, but does nothing until you opt in for your clone with `npm run hooks:pre-push` (sets `git config pan.prePush true`; `npm run hooks:pre-push -- --off` clears it). Bypass once with `SKIP_PREPUSH=1 git push` or `git push --no-verify`.
 
@@ -353,7 +355,7 @@ Workflows are the Layer 2 orchestration files in `pan-wizard-core/workflows/`. T
 1. Create `pan-wizard-core/workflows/your-workflow.md`
 2. Structure it with XML steps that load state, spawn agents, and route results
 3. Reference it from your command .md file via `@~/.claude/pan-wizard-core/workflows/your-workflow.md`
-4. No installer edit is needed — the installer copies `pan-wizard-core/workflows/` recursively, so new workflows ship automatically. Run `node scripts/test-surface.cjs --write` (the surface registry lists every workflow file) and refresh the Workflows row of the counts table in `CLAUDE.md`, or `npm test` fails (`tests/surface-map.test.cjs`, `tests/claude-md-counts.test.cjs`)
+4. No installer edit is needed — the installer copies `pan-wizard-core/workflows/` recursively, so new workflows ship automatically. Run `node scripts/test-surface.cjs --write` (the surface registry lists every workflow file) and `node scripts/prompt-rules.cjs --write` (claim or allowlist the new rules, as for a command), and refresh the Workflows row of the counts table in `CLAUDE.md`, or `npm test` fails (`tests/surface-map.test.cjs`, `tests/prompt-rules.test.cjs`, `tests/claude-md-counts.test.cjs`)
 
 **Workflow structure:**
 ```markdown
@@ -383,7 +385,7 @@ References are knowledge documents in `pan-wizard-core/references/` that agents 
 1. Create `pan-wizard-core/references/your-reference.md`
 2. Use XML tags for structured sections: `<overview>`, `<rules>`, `<examples>`, `<anti_patterns>`
 3. Reference from agent .md files: `@~/.claude/pan-wizard-core/references/your-reference.md`
-4. No installer edit is needed — the installer copies `pan-wizard-core/references/` recursively, so new references ship automatically. Refresh the References row of the counts table in `CLAUDE.md` (`tests/claude-md-counts.test.cjs` fails until you do) and add the file to the table below
+4. No installer edit is needed — the installer copies `pan-wizard-core/references/` recursively, so new references ship automatically. Run `node scripts/prompt-rules.cjs --write` and claim or allowlist the new rules (the registry reads `references/` too; `tests/prompt-rules.test.cjs`), refresh the References row of the counts table in `CLAUDE.md` (`tests/claude-md-counts.test.cjs` fails until you do), and add the file to the table below
 
 **Current references:**
 
@@ -426,7 +428,7 @@ Templates in `pan-wizard-core/templates/` scaffold new project files. Agents rea
 | Phase | context.md, phase-prompt.md, discovery.md (research.md is unreferenced by shipped content) | `/pan:discuss-phase`, `/pan:plan-phase` (pan-planner follows discovery.md for Level 2 research) |
 | Codebase | architecture.md, stack.md, conventions.md, concerns.md, integrations.md, structure.md, testing.md, relationships.md, best-practices.md | `/pan:map-codebase` |
 | Summary | summary.md (summary-minimal.md, summary-standard.md and summary-complex.md are named only by `pan-tools template select`, which no shipped prompt runs) | pan-executor |
-| Verification | validation.md, verification-report.md (uat.md is unreferenced by shipped content) | the `plan-phase` workflow (validation.md); pan-verifier through the `verify-phase` workflow (verification-report.md) |
+| Verification | validation.md, verification-report.md (uat.md is loaded by no prompt; `uat.cjs` cites it as the shape of the `{phase}-uat.md` file it parses) | the `plan-phase` workflow (validation.md); pan-verifier through the `verify-phase` workflow (verification-report.md) |
 | Debug | debug-subagent-prompt.md (debug.md is named only by `/pan:debug`, as the format of the debug file its continuation agent parses) | the `diagnose-issues` workflow (the native `/pan-diagnose-issues` script carries its own inline prompt) |
 | Planning / execution | user-setup.md (planner-subagent-prompt.md and standards.md are unreferenced by shipped content) | `execute-plan.md` writes `{phase}-USER-SETUP.md` from user-setup.md |
 | Lifecycle | milestone-archive.md, milestone.md (retrospective.md is unreferenced by shipped content; continue-here.md is named only by `/pan:pause`, which writes `.continue-here.md` from its own `<handoff_schema>` in place of both that template and the `pause.md` workflow's inline format) | `/pan:milestone-done` |
@@ -483,7 +485,7 @@ Releases are published by CI from a tag; nothing is published from a laptop. The
 3. **Bump the version** in `package.json` and `package-lock.json` — and the `version` of the `pan-wizard` entry in `.github/plugin/marketplace.json`, which a test pins to it.
 4. **Turn `## [Unreleased]` into `## [x.y.z] - YYYY-MM-DD`** in `CHANGELOG.md`.
 5. **Commit as `release(x.y.z): …`** on a `release/vx.y.z` branch, run the full `npm run ci:local` on it, and land it with `npm run land -- release/vx.y.z` (see Landing a change). The macOS jobs in `ci.yml` run on the push to `main`.
-6. **Tag the merge commit and push the tag by explicit refspec:**
+6. **Tag the squash commit `land` pushed to `main`, and push the tag by explicit refspec:**
 
    ```bash
    git tag vx.y.z && git push origin refs/tags/vx.y.z

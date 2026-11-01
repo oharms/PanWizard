@@ -139,7 +139,7 @@ Ideas that originated within PAN Wizard (not borrowed from external sources):
 | Wave-based parallel agent execution | Multi-agent orchestration with dependency-aware parallelization | Present since PAN's first release (0.1.0); Cursor 2.0 and Windsurf Wave 13 already had parallel agents then ([ADR-0001](docs/decisions/ADR-0001-strategic-feature-prioritization.md)), so it is not a differentiator — see [COMPARISON.md](docs/COMPARISON.md) |
 | 5-runtime installer | Single `npx` command installs to Claude Code, OpenCode, Gemini, Codex, Copilot CLI | Spec-driven peers also install into many runtimes — see [COMPARISON.md](docs/COMPARISON.md) |
 | Zero runtime dependencies | Entire system runs on Node.js built-ins only | Architectural constraint, not found in competitors |
-| Reality Score prioritization | Mathematical scoring formula for work item prioritization (UV, TC, RR, JS) | focus-scan command |
+| Reality Score prioritization | Mathematical scoring formula for work item prioritization (UV, TC, RR, JS) | `/pan:focus-auto --step scan` (formerly `/pan:focus-scan`) |
 | Budget point system | Token-agnostic capacity planning (XS=1, S=2, M=4, L=10, XL=20) | [ADR-0003](docs/decisions/ADR-0003-smart-execution.md) |
 | Advisory standards compliance | 12-standard catalog that advises without blocking | [ADR-0010](docs/decisions/ADR-0010-standards-integration.md) |
 

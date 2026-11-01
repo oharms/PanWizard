@@ -38,7 +38,7 @@ Each phase goes through several agent stages. Approximate token usage per stage:
 
 | Stage | Agents spawned | Approximate tokens | Skippable? |
 |-------|---------------|-------------------|------------|
-| Research (new-project) | 1 project researcher, at most 5 questions | small, bounded | Off by default: runs only with `--research` (or `--research market`) or idea frontmatter `research_enabled: true` |
+| Research (new-project) | 1 project researcher, at most 5 questions | small, bounded | Off by default: runs only with `--research` (or `--research market`), idea frontmatter `research_enabled: true`, or when you choose it at new-project's research question |
 | Research (plan-phase) | 1 phase researcher, at most 5 questions | small, bounded | Off by default: runs only with `--research` or `workflow.research: true` |
 | Planning | 1 planner + 1 plan-checker (2 checks on the sized ceremony, 3 under `quality`); a precisely specified small phase is planned and checked by the engine, with neither | 20-40K | Checker skippable (`plan_check: false`) |
 | Execution | 1 executor per plan (fresh context each) | 20-80K per plan | No |
@@ -101,7 +101,7 @@ Yes. Each task gets its own atomic commit immediately after completion; consecut
 
 ### What happens when context runs out?
 
-The host compacts the session on its own before the window fills, and PAN restores the planning position afterwards (on Claude Code, Codex, Gemini CLI, Copilot CLI and OpenCode). Before that, on Claude Code, PAN's context monitor tells the agent compaction is coming: it reads PAN's status line, or the session transcript where no status line runs (headless `claude -p`). Gemini CLI and OpenCode do not run the monitor, and on Codex, which gets no PAN status line and whose transcript has another shape than the Claude Code records the monitor reads, it stays silent. Under PAN's Copilot CLI registration it stays silent: Copilot's documented hook payload names the session `sessionId`, and the monitor reads only `session_id`. In a project that also has the Claude Code install, that copy steps aside for the Claude Code registration, and what Copilot passes that one has not been observed. It measures the room left before the host compacts, not before the window is full:
+The host compacts the session on its own before the window fills, and PAN restores the planning position afterwards (on Claude Code, Codex, Gemini CLI, Copilot CLI and OpenCode). Before that, on Claude Code, PAN's context monitor tells the agent compaction is coming: it reads PAN's status line, or the session transcript where no status line runs (headless `claude -p`). PAN registers the monitor on Claude Code only. Gemini CLI and OpenCode do not run it, and on Codex and Copilot CLI it could not measure, so PAN registers none there: Codex gets no PAN status line and its transcript has another shape than the Claude Code records the monitor reads, and Copilot's hook payload names the session `sessionId` where the monitor reads only `session_id`. In a project that also has the Claude Code install, Copilot can load that install's hooks from `.claude/settings.json`, and what Copilot passes them has not been observed. The monitor measures the room left before the host compacts, not before the window is full:
 - At **35% of that room left**: a note asking for a checkpoint in `.planning/state.md` at the next natural stopping point
 - At **25% left**: the same, before the next step
 
@@ -239,7 +239,7 @@ Or override specific agents in `.planning/config.json`. The values are tiers, no
 
 1. Restart your runtime to reload commands
 2. Verify files exist in `~/.claude/commands/pan/` (global) or `.claude/commands/pan/` (local) — after a `--unified-skills` install, in `~/.claude/skills/pan-*/SKILL.md` (global) or `.claude/skills/pan-*/SKILL.md` (local) (commands are then `/pan-<name>`)
-3. For Codex, check `~/.agents/skills/pan-*/SKILL.md` (global) or `./.agents/skills/pan-*/SKILL.md` (local)
+3. For Codex, check `~/.agents/skills/pan-*/SKILL.md` (global) or `./.agents/skills/pan-*/SKILL.md` (local); for Copilot CLI, `~/.copilot/skills/pan-*/SKILL.md` (global) or `.github/skills/pan-*/SKILL.md` (local); for OpenCode, `pan-*.md` in its `commands/` directory
 4. Re-run `npx pan-wizard` to reinstall
 
 ### Context degradation during long sessions

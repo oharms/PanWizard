@@ -4,6 +4,13 @@ This ports the new brand system into the **PanWizard repo**. Each step below is 
 copy-paste prompt for Claude Code, run from the repo root. Do them in order; each is
 self-contained and safe to commit on its own.
 
+> **Status (checked `2026-11-01`):** Steps 1–4 have landed. The assets are in the
+> repo's `assets/`; `README.md` uses `assets/pan-readme-hero.png` (not `pan-hero.png`) and
+> has the Brand section; `hud.cjs` carries the light `:root` palette, `pipelineStage()`,
+> `renderNowBuilding()` and the `now-building` section, with a test in `tests/hud.test.cjs`.
+> The HUD now colours squads by brand colour rather than by model tier, so the
+> `TIER_COLOR` map Step 3 names no longer exists. Kept as the record of the handoff.
+
 > Design source of truth lives in this design project:
 > `PanWizard Brand.dc.html` · `PanWizard UI Kit.dc.html` · `PanWizard HUD.dc.html`
 > Generated art + SVGs are in `assets/`. Drop those files into the repo's `assets/`

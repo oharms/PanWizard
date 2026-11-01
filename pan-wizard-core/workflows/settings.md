@@ -30,7 +30,7 @@ Parse current values (when a key is absent, use PAN's default: `false` for resea
 - `workflow.verifier` — spawn verifier during execute-phase
 - `workflow.nyquist_validation` — validation architecture research during plan-phase
 - `model_profile` — how much ceremony and which model each agent uses (default: `balanced`; `quality` keeps the full ceremony everywhere)
-- `routing.strategy` — not asked here (default: `static`). The `complexity` strategy reaches no workflow, so offering it would be a choice that changes nothing; `config-set routing.strategy complexity` still sets it for `resolve-model --metadata` callers. A `quality` profile in an existing config keeps working: it is identical to `balanced`
+- `routing.strategy` — not asked here (default: `static`). The `complexity` strategy reaches no workflow, so offering it would be a choice that changes nothing; `config-set routing.strategy complexity` still sets it for `resolve-model --metadata` callers.
 - `instructions.routing` — how PAN's AGENTS.md section steers plain requests to PAN commands (default: `advisory`; `exclusive`; `off`)
 - `cost.phase_budget_usd` — spend per phase PAN warns about, in API-equivalent dollars (default: `20`; `0` = off). It never stops a run
 - `branching_strategy` — branching approach (default: `"none"`; a top-level key — a nested `git.branching_strategy` is ignored when the top-level key exists, as it does in every config `config-ensure-section` creates — write the top-level key)
@@ -144,7 +144,6 @@ AskUserQuestion([
     ]
   }
 ])
-```
 ```
 </step>
 

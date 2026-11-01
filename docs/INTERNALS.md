@@ -395,7 +395,8 @@ PAN's project initialization uses a collaborative discussion model, not a requir
 1. **Start open:** Let them dump everything -- what they're building, why, for whom
 2. **Follow energy:** What excited them? Dig deeper there
 3. **Challenge vagueness:** "What does 'fast' mean?" turns into "Sub-200ms API response"
-4. **Confirm scope:** "So the MVP is X, Y, Z -- does that capture it?"
+4. **Make it concrete and clarify:** "Walk me through using this"; "When you say Z, do you mean A or B?"
+5. **Know when to stop:** once you know what they want, why, for whom and what done looks like, offer to proceed
 
 ### Question Types
 

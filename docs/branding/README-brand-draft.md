@@ -39,7 +39,7 @@ context engineering, XML prompt formatting, subagent orchestration, state
 management. What you see — a few commands that just work.
 
 ```text
-planner ──▶ executor ──▶ verifier      each in a fresh 200K context window
+planner ──▶ executor ──▶ verifier      each in a fresh context window
    │            │            │
    └────────────┴────────────┘
               .planning/   ← persistent state: project.md · roadmap.md · state.md
@@ -50,7 +50,7 @@ planner ──▶ executor ──▶ verifier      each in a fresh 200K context 
 - **Thin commands.** A handful of `/pan:` commands orchestrate everything. You
   describe; it builds.
 - **Specialist agents.** Planner, executor, verifier, researcher, debugger — each
-  spawned in a fresh 200K window so quality never degrades mid-task.
+  spawned in a fresh context window so quality never degrades mid-task.
 - **Durable state.** Plans, roadmap and progress live in `.planning/` and survive
   context resets, restarts and new sessions.
 - **Zero runtime dependencies.** Cross-platform CLI core. MIT licensed.
@@ -90,10 +90,10 @@ Seven-stage loop: **Muster → Plan → Delegate → Execute → Review → Inte
 
 ```bash
 npx pan-wizard@latest          # choose runtime + global/local
-/pan:new-project               # questions → research → requirements → roadmap
-/pan:plan-phase 1              # research → atomic plans → verify
-/pan:exec-phase 1              # planner → executor → verifier
-/pan:hud                       # context budget · progress · cost
+/pan:new-project               # questions → requirements → roadmap (research opt-in)
+/pan:plan-phase 1              # atomic plans → plan check
+/pan:exec-phase 1              # executor → reviewer → verifier → phase gate
+/pan:hud                       # HTML dashboard: progress · army · cost
 ```
 
 ## Brand

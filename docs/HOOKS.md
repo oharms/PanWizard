@@ -8,10 +8,10 @@ PAN ships a small set of built-in hooks that enhance the development experience 
 |------|-----------|---------|
 | `pan-statusline.js` | `statusLine` | Displays context window usage in the status bar and writes metrics to a bridge file |
 | `pan-context-monitor.js` | `PostToolUse` | Reads the bridge file, or the session transcript when there is none, and injects a note into the agent's context when the host will compact it soon |
-| `pan-check-update.js` | `SessionStart` | Checks for PAN updates in the background, caches result |
+| `pan-check-update.js` | `SessionStart` (Copilot CLI: `sessionStart`) | Checks for PAN updates in the background, caches result |
 | `pan-guard.js` | `PreToolUse` (Gemini CLI: `BeforeTool`; Copilot CLI: `preToolUse`) | Checks each file a tool call is about to write: a credential in the written text, a direct write to PAN's own state (`state.md`, `findings.jsonl`, the token ledger), a judge agent writing outside the planning tree, a test file the phase in flight does not declare, and, with `instructions.routing: exclusive`, a write outside the planning tree while no PAN unit of work is in flight. `hooks.guard: report` (the default) logs each match to `.planning/guard.jsonl`; `enforce` also denies a credential write, a state write, a judge write and an unrouted write. |
-| `pan-cost-logger.js` | `SubagentStop` | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
-| `pan-trace-logger.js` | `SubagentStop` | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:learn --optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
+| `pan-cost-logger.js` | `SubagentStop` (Copilot CLI: `subagentStop`) | Appends per-spawn cost records to `.planning/metrics/tokens.jsonl` — consumed by `/pan:cost` |
+| `pan-trace-logger.js` | `SubagentStop` (Copilot CLI: `subagentStop`) | Appends decision/error/redundancy events to `.planning/optimization/traces/<session>/trace.jsonl` — consumed by `/pan:learn` and `/pan:learn --optimize`. Auto-creates a day-scoped session if no explicit `optimize trace init` is active. |
 | `pan-stop-guard.js` | `Stop` (Gemini CLI: `AfterAgent`; Copilot CLI: `agentStop`) | Blocks a session stop **once** when the auto-advance chain dropped at a phase boundary — autonomy armed on disk (`workflow.auto_advance` or `mode: yolo`), no failure/gaps/blocker recorded in `state.md`, roadmap phases unbuilt — and tells the agent to continue the chain (P-1809/P-1810/P-1812). |
 | `pan-state-reinject.js` | `SessionStart`, matcher `compact` (Claude Code, Codex); `PreCompress` + `AfterTool` (Gemini CLI); `preCompact` + `postToolUse` (Copilot CLI) | After a context compaction, hands the model the phase, plan, status and stop point from `.planning/state.md` as `additionalContext`, so a summarised session resumes the work in flight instead of re-planning it. Silent without a current phase and an unbuilt roadmap phase; never writes into the project. |
 
@@ -320,7 +320,7 @@ Checked live on Copilot CLI 1.0.88 (`2026-10-03`): a manual `/compact` fired `pr
 **What it does:** reads the tool call (`tool_name` and `tool_input` on Claude, Codex and Gemini; `toolName` and the JSON string `toolArgs` on Copilot; Codex's `apply_patch` text for the files a patch adds or updates) and checks each file about to be written:
 
 - **secret_write**: the written text holds a credential, a known token shape (`ghp_`, `sk-ant-`, `AKIA`, a private key block …) or a quoted key=value secret (`api_key`, `password`, `client_secret` …) of twelve or more characters, mixing letters and digits, that is not a placeholder (`process.env`, `${VAR}`, `your-…`); unquoted `.env`-style values are not matched;
-- **state_write**: a direct write to `state.md`, `findings.jsonl` or `metrics/tokens.jsonl`, which pan-tools owns (state.md through `pan-tools state init|section|quick-task|apply|patch|update`);
+- **state_write**: a direct write to `state.md`, `findings.jsonl` or `metrics/tokens.jsonl`, which pan-tools owns (state.md through the `pan-tools state` verbs, `findings.jsonl` through `findings record`);
 - **judge_write**: a judge (`pan-verifier`, `pan-reviewer`, `pan-plan-checker`, `pan-design-checker`) writing outside the planning tree. It needs the agent's name in the payload (`agent_type`, which Claude Code sends inside a subagent); where the host sends none, the rule never matches;
 - **undeclared_test_edit**: a test file that no unfinished plan of the phase in flight (`**Current Phase:**` in state.md) lists in `files_modified`;
 - **unrouted_write**: only with `instructions.routing: exclusive`, a write outside the planning tree while no PAN unit of work is in flight: no unfinished plan in the current phase, no open quick task (a plan in `.planning/quick/` with no summary, which includes a focus cycle `focus open` registered and `focus close` has not closed), no unresolved debug session in `.planning/debug/`, and not a PAN agent (`agent_type` `pan-*`). Files matching `instructions.routing_exempt` globs are left alone; anything it cannot read counts as in flight. The hook cannot require core, so its `workInFlight()` is its own copy; `tests/open-work.test.cjs` pins it to the `in_flight` answer of `open-work.cjs` `openWork()`.
@@ -356,7 +356,7 @@ Tool call about to write a file (PreToolUse; Gemini BeforeTool, Copilot preToolU
     |
     v
 Guard (pan-guard.js)
-    | appends each match → .planning/guard.jsonl; under hooks.guard: enforce, denies a credential, state or judge write
+    | appends each match → .planning/guard.jsonl; under hooks.guard: enforce, denies a credential, state, judge or unrouted write
 
 Sub-agent finishes
     |
@@ -509,7 +509,7 @@ Build command:
 npm run build:hooks    # Copies hooks from hooks/ to hooks/dist/
 ```
 
-The build script (`scripts/build-hooks.js`) simply copies the files named in its `HOOKS_TO_COPY` list (a new hook must be added there) — no bundling or transpilation needed since hooks are pure Node.js with zero dependencies.
+The build script (`scripts/build-hooks.js`) copies the files named in its `HOOKS_TO_COPY` list (a new hook must be added there) — no bundling or transpilation needed since hooks are pure Node.js with zero dependencies.
 
 ## Hook Runtime Support
 

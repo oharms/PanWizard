@@ -45,8 +45,9 @@ When the conversation is complete PAN creates:
 /pan:discuss-phase 1
 ```
 
-PAN picks the gray areas of Phase 1 that would change what you get, such as
-output format, flag design and error handling, and asks about those. It does not
+PAN finds the gray areas of Phase 1 that would change what you get, such as
+output format, flag design and error handling, lets you pick which to discuss,
+and asks about those. It does not
 ask about technical choices like the database schema or the CLI library; planning
 (and research, when you ask for it) settles those unless you state a preference. Your answers are
 recorded in `.planning/phases/01-{name}/01-context.md` as decisions.
@@ -140,8 +141,8 @@ Each phase builds on the verified output of the previous one.
 ```
 
 Once all three phases are verified, `/pan:milestone-done 0.1.0` archives the
-milestone's roadmap and requirements to `.planning/milestones/`, tags the release (`v0.1.0`), and updates
-`.planning/roadmap.md` to mark the milestone complete.
+milestone's roadmap and requirements to `.planning/milestones/`, tags the release (`v0.1.0`), and collapses
+the milestone in `.planning/roadmap.md` to a one-line summary that links the archive.
 
 ---
 
@@ -214,14 +215,15 @@ A user reports that dates are displayed in UTC instead of local time.
 ```
 
 ```text
-PAN: What do you need?
+PAN: What do you want to do?
 You: The task list shows due dates in UTC. They should display in the
      user's local timezone. The relevant code is in src/display.py.
 ```
 
 PAN reads the file, identifies the formatting call, applies the fix, and
-runs existing tests. No research phase, plan checker or verifier (the test run is the check) -- a short plan and summary go to `.planning/quick/` -- just a focused
-change with verification.
+runs existing tests. No research, plan checker or verifier: the test run is the
+check. A short plan and summary go to `.planning/quick/`, and the task gets a
+row in `state.md`.
 
 ```text
 PAN: Fixed. Changed `task.due_date.strftime(...)` to
@@ -341,7 +343,8 @@ PAN: Spawn Plan Checker? (verifies plans before execution)
 You: No
 PAN: Spawn Execution Verifier? (verifies phase completion)
 You: Yes
-(auto-advance, Nyquist, branching and phase-budget questions follow, each with your current value pre-selected)
+(auto-advance, Nyquist, branching and phase-budget questions follow, each with your current value pre-selected,
+then the AGENTS.md routing question and whether to save the answers as defaults for new projects)
 ```
 
 With these off (research is already off by default), `plan-phase` skips the researcher agent and the
@@ -581,4 +584,4 @@ The playbook command reads every agent log in `.planning/memory/` (`memory list`
 - 2026-04-15: Chose Redis over Memcached — Redis AOF gives durability at our write rate _— from `pan-planner`_
 ```
 
-New team members run `/pan:knowledge ask "what should I know before editing the cache layer?"` and get grounded answers citing the agents' memory files (the source the playbook is built from) plus relevant ADRs.
+New team members run `/pan:knowledge ask "what should I know before editing the cache layer?"` and get grounded answers citing the project's own files: the planning documents and phase files, the agents' memory files (the source the playbook is built from), and `docs/` (ADRs included), `README.md` and `CHANGELOG.md`.

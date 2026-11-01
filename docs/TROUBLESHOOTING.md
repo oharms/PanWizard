@@ -29,7 +29,7 @@ This guide covers root causes, diagnostic steps, and recovery procedures for sce
 
 ### Plan frontmatter validation fails
 
-**Symptom:** Plan checker rejects your plan with "Missing required frontmatter field: <name>" errors.
+**Symptom:** Plan checker rejects your plan with "Missing required frontmatter field: <name>" or "Has checkpoint tasks but autonomous is not false" errors.
 
 **Required frontmatter fields:**
 
@@ -105,6 +105,7 @@ must_haves: []
 1. Review the `wave` field in the frontmatter of each plan in the affected phase — `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs phase-plan-index N` lists the phase's plans grouped by wave (roadmap.md lists the plans, not their waves)
 2. Check each plan's `depends_on` frontmatter field -- missing dependencies cause this issue
 3. Look for shared file references across plans in the same wave using the `<files>` elements
+4. Run `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs verify plan-set N` -- it reports two plans in one wave that modify the same file (`same_wave_overlap`) and a `depends_on` naming a plan in the same or a later wave (`future_reference`); plan-phase runs it before the checker
 
 **Fix:** Increase the wave number of the dependent plan. Wave 1 runs first, wave 2 after wave 1 completes, and so on. If Plan B depends on Plan A, Plan B must be in a higher wave than Plan A.
 
@@ -134,6 +135,7 @@ must_haves: []
 
 - `verify review-focus <phase>` — each plan needs a `## Review Focus` section with at most five items, each naming its owning task (`Task N`, one of the plan's tasks) and a test, or one `None — <reason>` line.
 - `verify decisions <phase>` — a plan cites a `DD-N` id the phase's design does not record, a recorded decision no plan cites, or the design records one id twice. A phase with no design passes; a design with no `DD-N` ids only warns (`decisions_without_ids`).
+- `verify plan-set <phase>` runs with them and sends plans back the same way, for the plan set as a whole: a roadmap requirement no plan lists, a same-wave file overlap, a bad `depends_on`, or a cycle (see [Wave dependency conflicts](#wave-dependency-conflicts)).
 
 When the checker runs, `research lint <phase|path>` runs just before it but never blocks: claims in the research file's `## Claims` table with no source or checked date, and stale ones past their type's freshness window, go to the checker to weigh.
 
@@ -254,7 +256,7 @@ The limit is per task: three auto-fix attempts in all, whichever of Rules 1-3 th
 
 ### config.json will not parse
 
-**Symptom:** Commands fail with "Failed to read config.json" or similar JSON parse errors.
+**Symptom:** `pan-tools config-get` and `config-set` fail with "Failed to read config.json: …", and `/pan:health` reports `E005: config.json: JSON parse error - …`. Most other commands do not fail: they read an unparseable config.json as missing and run on the built-in defaults, so your settings silently stop applying.
 
 **Common causes:**
 
@@ -273,7 +275,7 @@ The limit is per task: three auto-fix attempts in all, whichever of Rules 1-3 th
 **Fix:**
 
 1. Correct the JSON syntax error
-2. If the file is badly corrupted, delete it and run `/pan:health --repair` (or `pan-tools config-ensure-section`) to recreate it with defaults -- other commands fall back to in-memory defaults, and `config-set` writes a config.json holding only the key it sets
+2. If the file is badly corrupted, run `/pan:health --repair`, which overwrites an unparseable config.json with defaults (or delete it and run `pan-tools config-ensure-section`) -- other commands fall back to in-memory defaults, and `config-set` on a missing file writes a config.json holding only the key it sets
 3. Then use `/pan:settings` to reconfigure your preferences
 
 ### .planning/ directory missing or inaccessible
@@ -712,7 +714,7 @@ So if the symptom is "an agent ran on a weaker model", the profile to look at is
 
 **Causes, in the order to check them:**
 
-1. **Stale rate table.** `pan-tools models check` prints when the built-in rates were last verified and flags the table once it is old. Provider prices move faster than PAN releases; if it says STALE, the fix is a rate refresh, not a config change.
+1. **Stale rate table.** `pan-tools models check` prints when the built-in rates were last verified and flags the table once it is old (`"stale": true`, or STALE in its `--raw` line). Provider prices move faster than PAN releases; if it is stale, the fix is a rate refresh, not a config change.
 2. **Cache-read pricing on the newest Fable-tier model.** Its cache reads bill at a quarter of the standard Claude cache-read multiplier. PAN carries a dedicated rate row for it (see `DEFAULT_RATES` in `cost.cjs`); releases before that row existed priced its reads at the previous Fable model's rate, high by roughly four times on the line that dominates PAN's traffic.
 3. **The newest Opus-tier model, now the default everywhere.** Claude Code `2.1.280` made it the default model on every plan, and its cache reads bill at half the standard multiplier — a third cache-read rate in the current lineup. Releases before PAN carried its row priced it through the family-prefix fallback at the previous Opus row: cache reads high by two and a half times, input, output and cache writes by a quarter. Upgrade PAN; `pan-tools models check` (without `--raw`, which prints only the one-line verdict) lists the model ids the table prices under `models`.
 4. **Contracted rates.** If your organisation pins `modelPricing` in Claude Code's managed settings, PAN reads the same block and prices with it — its `overrides` rows, and its `multiplier` over every model, as Claude Code applies them; `pan-tools models check` (JSON output, not `--raw`) lists the model ids it found under `managed_model_pricing` and the multiplier under `managed_pricing_multiplier`. PAN 3.30.0 and earlier read a row shape the documentation does not describe, and so priced a real policy file at list price. Precedence is `.planning/config.json → cost.rates`, then managed `modelPricing`, then the built-in table. If the list is empty on a machine where the policy should apply, check that the file sits where Claude Code reads it (its managed-settings documentation gives the per-OS directory; the legacy Windows `ProgramData` path is read by neither tool), or point PAN at a relocated directory with `PAN_MANAGED_SETTINGS_DIR`.

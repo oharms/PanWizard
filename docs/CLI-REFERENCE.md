@@ -1,6 +1,6 @@
 # pan-tools.cjs CLI Reference
 
-Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Shipped commands, workflows and agents call pan-tools for state management, verification, scaffolding, context gathering, prompt-cache measurement, cross-phase memory, model-capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree, MCP bridge), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`) plus vendored markdown linter (`doc-lint`).
+Complete reference for `pan-tools.cjs`, the central CLI dispatcher behind PAN Wizard workflows. The dispatcher routes top-level commands and nested subcommands to core modules. Shipped commands, workflows and agents call pan-tools for state management, verification, scaffolding, context gathering, prompt-cache measurement, cross-phase memory, model-capability routing, the Spec B v2 feature set (cost dashboard, bus infrastructure, foresight previews, deep-review merge, knowledge retrieval, counterfactual worktree), the optimization additions (circular optimization loop, `/pan:git` family, `distill` AI code-bloat optimizer), and the self-improvement loop (`experiment`) plus vendored markdown linter (`doc-lint`).
 
 ```bash
 node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
@@ -53,7 +53,7 @@ node pan-tools.cjs <command> [args] [--raw] [--verbose] [--cwd <path>]
 
 ### Output Contracts (`contract`)
 
-Some machine-readable outputs carry a `contract` field: a version string for their shape. The outputs are `state` (`state load`), `state json`, `progress` (`progress json`), every `findings` output, and the MCP resources `pan://state`, `pan://progress` and `pan://findings` that wrap them. The judges' `pan-verdict` block has one too. The rule is additive: fields are added within a major version (`1.x`) and never renamed or removed; a rename or removal is a major bump. Consumers pin the major, accept any `1.x`, and ignore fields they do not know. The key=value `--raw` form of `state load` carries no `contract` line, and no error payload (`{"error": …}`) from any of these outputs carries one.
+Some machine-readable outputs carry a `contract` field: a version string for their shape. The outputs are `state` (`state load`), `state json`, `progress` (`progress json`), every `findings` output except `findings prove`, and the MCP resources `pan://state`, `pan://progress` and `pan://findings` that wrap them. The judges' `pan-verdict` block has one too. The rule is additive: fields are added within a major version (`1.x`) and never renamed or removed; a rename or removal is a major bump. Consumers pin the major, accept any `1.x`, and ignore fields they do not know. The key=value `--raw` form of `state load` carries no `contract` line, and no error payload (`{"error": …}`) from any of these outputs carries one.
 
 ### Debug Logging
 
@@ -191,21 +191,21 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `template.cjs` | Template selection and filling |
 | `milestone.cjs` | Milestone archival and requirements |
 | `context-budget.cjs` | Context window utilization (cache metrics surfaced in health output; cache block classified `ok`/`warn`/`critical`/`absent` with remediation advice) |
-| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto, `focus route`/`open`/`close` (the cycle as a quick task: ownership, open, measured close) (the dispatcher answers `focus design` itself), `focus classify-stages`, `focus reflection` |
+| `focus.cjs` | Focus workflow scan/plan/sync/exec/auto; `focus route`/`open`/`close` (the cycle as a quick task: ownership, open, measured close); the functions behind `focus classify-stages` and `focus reflection`. The dispatcher answers `focus design` itself. |
 | `codebase.cjs` | Codebase analysis: detect-languages, analyze-imports, best-practices, `codebase estimate-size` |
 | `memory.cjs` | **(E-4)** Cross-phase agent memory: `memory read`, `memory append`, `memory list`, `memory compact`, `memory select`, `memory record`, `memory prune`, `memory budget` |
 | `memory-optimize.cjs` | Reconcile the always-loaded project memory: `memory optimize [--apply] [--keep N]` (dedupe / placeholder-strip / cap-with-archive state.md); also runs automatically in the focus + normal flows |
 | `memory-rebuild.cjs` | Regenerate derived tools-memory: `memory rebuild [--apply] [--only agents-md]` (AGENTS.md PAN section in the project's routing mode, CLAUDE.md bridge when a local or global Claude install is visible, state.md frontmatter) |
 | `agents-md.cjs` | Single source for the AGENTS.md PAN section and PAN's CLAUDE.md block (the `@AGENTS.md` import plus a `# Compact instructions` section Claude Code reads when it compacts), shared by the installer and `memory rebuild` |
 | `core.cjs` (CLI surface) | **(E-1)** Cached context: `cache prime [--summary]` lists the stable planning files agents re-read (wraps `buildCachedContext`). It measures them and primes nothing: the host caches each agent's prompt prefix itself. |
-| `cost.cjs` | **(Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, `cost limits` (the host's usage-limit windows as the status line last saw them), plus `models check` rate-table staleness. Log at `.planning/metrics/tokens.jsonl`. |
+| `cost.cjs` | **(Y-6)** Cost dashboard: `cost report`, `cost append`, `cost clear`, `cost limits` (the host's usage-limit windows as the status line last saw them), `cost budget --phase N` (a phase's spend against `cost.phase_budget_usd`; it warns, never stops), plus `models check` rate-table staleness. Log at `.planning/metrics/tokens.jsonl`. |
 | `cost-rebuild.cjs` | `cost rebuild`: rebuilds the ledger from Claude Code's session and per-agent transcripts (usage deduped per turn, agents typed from the main thread's `Agent` calls, Workflow-tool subagents included, one main-thread row per session); supersedes hook rows of rebuilt sessions, keeps the rest, moves the old ledger aside. |
 | `bus.cjs` | **(Y-7)** Agent message channels: `bus publish`, `bus drain`, `bus list`. Channels at `.planning/bus/<channel>.jsonl`. |
 | `preview.cjs` | **(Y-1)** Foresight: `preview phase <N>`, `preview phases`, `preview milestone`. |
 | `review-deep.cjs` | **(Y-2)** Deep review merge: `review-deep merge`, `review-deep analyze`. |
 | `knowledge.cjs` | **(Y-3)** Grounded Q&A: `knowledge ask`, `knowledge discuss`, `knowledge playbook`. |
 | `whatif.cjs` | **(Y-4)** Counterfactual worktree: `whatif prepare`, `whatif report`, `whatif cleanup`. |
-| `optimize.cjs` | Circular optimization loop: `optimize trace init/end/current/list/show/log/reconcile`, `optimize learn`, `optimize apply`, `optimize revert`, `optimize list`, `optimize stats`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
+| `optimize.cjs` | Circular optimization loop: `optimize trace init/end/current/list/show/log/reconcile`, `optimize learn`, `optimize apply`, `optimize revert`, `optimize list`, `optimize stats`, the bare `learn` alias, and `learn promote/unpromote/list-promoted`. Logs at `.planning/optimization/traces/<session>/trace.jsonl`. `reconcile` rewrites `session.json` counters from `trace.jsonl` so hook-driven auto-sessions report real numbers. |
 | `git.cjs` | Phase-aware git workflow: `git commit/branch/push/status/log/stash/diff/rollback/tag/sync`. Reuses `runCommitSafetyChecks` for commit hardening. |
 | `distill.cjs` | AI code-bloat optimizer (multi-pass pipeline): `distill scan/analyze/report`. Cross-session memory at `.planning/memory/distill-patterns.md`. |
 | `doc-lint.cjs` | Markdown frontmatter + structure linter: `doc-lint <dir>`, `doc-lint schema-check`, `doc-lint counts <dir>`, `doc-lint flags`. |
@@ -214,7 +214,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 | `learn-lint.cjs` | Learnings-store integrity linter: `learn lint`. Checks L-001..L-007 (duplicate IDs, dangling cross-refs, empty source_experiments, PAN-internal terms in universal-scope rules, revision marker without `superseded_by`, universal-scope pattern citing an internal pattern id, a `cites` entry whose file or symbol is gone). |
 | `learn-index.cjs` | Learnings index + queries: `learn build-index` (writes `pan-wizard-core/learnings/index.json` with topic→agent-relevance map), `learn topics-for --agent <role> [--cue <text>]` (budget-aware topic selection per agent role; with a cue, topics are ranked by how well they match it, falling back to the role when nothing matches). Replaces "skim universal/" with targeted load. |
 | `squads.cjs` | **(ADR-0032)** Bot-army squad registry: `squad list`, `squad show <name>`. Role-scoped squads (`squad list` enumerates them), each carrying a model tier + an **advisory** access contract — the module's own header says it "modifies no agent and changes no execution path", so those labels are the contract the conductor is instructed to honour and the enforced grant stays each agent's `tools:` frontmatter. Registry only — drives `/pan:army` and `pan-conductor` campaign mode. |
-| `worktree.cjs` | **(ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`), `worktree cleanup` (`--force`; campaign teardown sweep, v3.25+). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
+| `worktree.cjs` | **(ADR-0033)** Branch-per-agent isolation: `worktree list`, `worktree create <task>` (`--base`), `worktree remove <path>` (`--branch`, `--force`), `worktree cleanup` (`--force`; campaign teardown sweep, v3.25+), `worktree preflight` (`--base`, `--test`, `--branches a,b`; program A3: shadow-merges the branches onto the base in a throwaway worktree and runs the test oracle). `army/<task>` branches + isolated git worktrees so parallel builders never collide. |
 | `campaign.cjs` | **(ADR-0034)** Scheduled self-resuming campaigns: `campaign schedule` (arm: `--cadence`/`--daily-budget`/`--goal`/`--source`/`--pause`/`--resume`/`--disable`/`--enforce-budget`/`--advisory-budget`), `campaign status`, `campaign due` (host-scheduler gate), `campaign record-run`. Descriptor at `.planning/orchestration/schedule.json`; PAN owns the due-check, the host fires `/pan:army --continue`. Merge gate unaffected. |
 | `hud.cjs` | **(ADR-0035)** Single-page HTML dashboard: `hud` (`--out`/`--open`/`--stdout`). Aggregates project + army state (mission, command stack, campaign, safety harness, worktrees, roadmap, telemetry, requirements/quality, activity) into one self-contained file (default `.planning/hud.html`). Read-only view — no new state; army panels self-hide on plain projects. |
 | `skill-align.cjs` | **(ADR-0038)** Skill-Aligned Decomposition pass: `skills index` (on-the-fly index of commands/templates/references/learnings), `skills align --draft-file <p>` (score draft planner tasks against the skill surface, return budget-bounded vocabulary hints). Advisory, fail-open; used by `pan-planner` before grouping tasks into plans. |
@@ -261,7 +261,7 @@ The dispatcher (`pan-tools.cjs`) routes commands to the core modules:
 
 ## Command Index
 
-Quick reference of all CLI commands grouped by category.
+Quick reference of every CLI command and subcommand, with its category and the module that implements it. Rows are not sorted by category; search the Category column.
 
 | # | Command | Category | Module |
 |---|---------|----------|--------|
@@ -731,7 +731,7 @@ pan-tools state compact --keep-days 90
 
 ### `state advance-plan`
 
-Increment the current plan counter. If the last plan is reached, set status to "ready for verification".
+Increment the current plan counter (setting `Status` to `Ready to execute`). If the last plan is reached, set `Status` to `Phase complete — ready for verification` instead. Both update `Last Activity`; a state.md without parsable `Current Plan` and `Total Plans in Phase` fields exits 1 with an `error`.
 
 ```bash
 pan-tools state advance-plan [--raw]
@@ -1101,18 +1101,22 @@ pan-tools phase-plan-index 5 --failed 05-01,05-02
       "files_modified": ["src/db/schema.ts"],
       "depends_on": [],
       "task_count": 3,
-      "has_summary": true
+      "has_summary": true,
+      "sub_wave": 0
     }
   ],
   "waves": { "1": ["05-01", "05-02"], "2": ["05-03"] },
+  "sub_waves": { "1": [["05-01", "05-02"]], "2": [["05-03"]] },
   "incomplete": ["05-03"],
   "has_checkpoints": false
 }
 ```
 
+A phase that is not found (or whose directory cannot be read) exits 1 with an `error` and empty `plans`.
+
 **`--failed <ids>`** (comma-separated plan ids) adds `failed` and `blocked`. `blocked` is `[{id, blocked_by[]}]`: every unfinished plan whose `depends_on` reaches a failed plan, directly or through another blocked plan, with the failed plans behind it. A `depends_on` entry may be the full id (`05-01`) or the plan number (`01`). `/pan:exec-phase` uses it after a failed plan, so continuing never runs a plan whose dependency failed.
 
-**Note:** Plans within the same wave can execute in parallel (via parallel agents). Plans in wave 2 depend on wave 1 completion.
+**Note:** Plans within the same wave can execute in parallel (via parallel agents). Plans in wave 2 depend on wave 1 completion. Within a wave, plans whose `files_modified` overlap land in different `sub_waves` entries (each plan's `sub_wave` is its index), so they never run at the same time; a plan that declares no files runs alone.
 
 ---
 
@@ -1575,7 +1579,7 @@ pan-tools validate deployment [--raw]
 
 Commands for verifying plan structure, phase completeness, file references, git commits, and build artifacts. Used by the pan-verifier and pan-plan-checker agents.
 
-**Exit code:** these verdict commands exit `0` whether the verdict passes or fails (exit `1` comes only from an unreadable input — `File not found` for `plan-structure`/`references`/`artifacts`/`key-links`, `Phase not found` or an unreadable phase directory for `phase-completeness` — and from usage errors; `verify-summary` reports a missing summary as `passed: false` at exit `0`) — gate on each command's verdict field, not the exit code: `passed` (`verify-summary`), `valid` (`plan-structure`, `references`), `complete` (`phase-completeness`), `all_valid` (`commits`, whose `valid` is the list of hashes found), `all_passed` (`artifacts`), `all_verified` (`key-links`). `verify reconcile` and `verify stubs --gate` are the exceptions and set the code explicitly; `verify scope` and `verify stale` exit `1` for a missing or unknown phase.
+**Exit code:** these verdict commands exit `0` whether the verdict passes or fails (exit `1` comes only from an unreadable input — `File not found` for `plan-structure`/`references`/`artifacts`/`key-links`, `Phase not found` or an unreadable phase directory for `phase-completeness` — and from usage errors; `verify-summary` reports a missing summary as `passed: false` at exit `0`) — gate on each command's verdict field, not the exit code: `passed` (`verify-summary`), `valid` (`plan-structure`, `references`), `complete` (`phase-completeness`), `all_valid` (`commits`, whose `valid` is the list of hashes found), `all_passed` (`artifacts`), `all_verified` (`key-links`). `verify reconcile` and `verify stubs --gate` are the exceptions and set the code explicitly; `verify scope` and `verify stale` exit `1` for a missing or unknown phase. The checks from `verify plan-set` on set their exit code from the verdict, as each entry below says.
 
 ### `verify-summary <path> [--check-count N]`
 
@@ -1633,7 +1637,7 @@ pan-tools verify plan-structure .planning/phases/05-setup/05-01-plan.md [--raw]
 
 **Required frontmatter:** `phase`, `plan`, `type`, `wave`, `depends_on`, `files_modified`, `autonomous`, `must_haves`.
 
-**Tasks.** An auto task needs `<name>` and `<action>` (errors) and should have `<verify>`, `<done>` and `<files>` (warnings). A checkpoint is checked against its own shape instead: `checkpoint:human-verify` needs `<what-built>` and `<how-to-verify>`, `checkpoint:decision` needs `<decision>` and `<options>` with at least one `<option id="…">`, and `checkpoint:human-action` needs `<action>`. A decision's optional `auto_select` must name one of its option ids (error), and a decision without it is a warning, because auto mode stops there for a human (market item M22). A fenced code block of more than 20 lines in an auto task's `<action>` is a warning: a plan records decisions, not implementation (M32). A plan with checkpoint tasks must set `autonomous: false` (error). A plan in wave 2 or later with an empty `depends_on` gets a warning.
+**Tasks.** An auto task needs `<name>` and `<action>` (errors) and should have `<verify>`, `<done>` and `<files>` (warnings). A checkpoint is checked against its own shape instead: `checkpoint:human-verify` needs `<what-built>` and `<how-to-verify>`, `checkpoint:decision` needs `<decision>` and `<options>` with at least one `<option id="…">`, and `checkpoint:human-action` needs `<action>`. A decision's optional `auto_select` must name one of its option ids (error), and a decision without it is a warning, because auto mode stops there for a human (market item M22). A fenced code block of more than 20 lines in an auto task's `<action>` is a warning: a plan records decisions, not implementation (M32). A plan with checkpoint tasks must set `autonomous: false` (error). A plan in wave 2 or later with an empty `depends_on` gets a warning, and so does a plan with no `<task>` element. A plan that looks cut off (a `<tasks>`, `<task>`, `<name>`, `<files>`, `<action>`, `<verify>` or `<done>` still open at the end of the file, or a continuation marker such as `[truncated]`) is an error, checked first (M47).
 
 **`--raw` output:** `valid` or `invalid`.
 
@@ -1759,7 +1763,7 @@ pan-tools verify key-links .planning/phases/05-setup/05-01-plan.md [--raw]
 
 ### `verify reconcile <phase>`
 
-Cross-check a phase's recorded verification against the mechanical checks of every plan's `must_haves`, so a verification.md whose `status` claims a pass while an artifact substance check fails or a key link is unwired is caught (each artifact and link in the result names its `plan`). Exits `1` on a contradiction (and the phase gate refuses with `reconcile_contradiction`) and `0` otherwise, including a phase with no directory, no verification.md or no `must_haves`, which report `reconciled: true` with a `note`.
+Cross-check a phase's recorded verification against the mechanical checks of every plan's `must_haves`, so a verification.md whose `status` claims a pass while an artifact substance check fails or a key link is unwired is caught (each artifact and link in the result names its `plan`). It also reports a `test_gate` in verification.md that disagrees with the engine's test run (`test run`), a passing status over a failed run, and, under `workflow.mutation_gate: gate`, a passing status over a failed mutation gate. Exits `1` on a contradiction (and the phase gate refuses with `reconcile_contradiction`) and `0` otherwise, including a phase with no directory, no verification.md or no `must_haves`, which report `reconciled: true` with a `note`.
 
 ```bash
 pan-tools verify reconcile 5 [--raw]
@@ -1805,9 +1809,9 @@ pan-tools verify plan-set 3          # {phase, ok, errors[], warnings[], plans, 
 pan-tools verify plan-set 3 --raw    # valid | invalid
 ```
 
-**Errors** (exit 1): `uncovered_requirement` (a roadmap requirement for the phase that no plan lists), `same_wave_overlap` (two plans in one wave modifying the same file with no dependency between them), `missing_reference` (a `depends_on` that names no plan of the phase), `self_reference`, `future_reference` (a dependency in the same or a later wave), `cycle`. **Warnings**: `unknown_requirement` (a plan lists a requirement the roadmap does not give the phase) and `wave_gap` (a plan later than its dependencies need). A dependency on another phase's plan (`02-04` from phase 3) is not checked.
+**Errors** (exit 1): `uncovered_requirement` (a roadmap requirement for the phase that no plan lists), `same_wave_overlap` (two plans in one wave modifying the same file with no dependency between them), `missing_reference` (a `depends_on` that names no plan of the phase), `self_reference`, `future_reference` (a dependency in the same or a later wave), `cycle`, `missing_property_task` (a requirement whose criterion states a validation rule — `IF … THEN`, a claim over any, every, all or each input, or a "never" — covered by no plan with a property-test task: `property="true"` on a task, or "property test" / "property-based" in the plan). **Warnings**: `unknown_requirement` (a plan lists a requirement the roadmap does not give the phase) and `wave_gap` (a plan later than its dependencies need). A dependency on another phase's plan (`02-04` from phase 3) is not checked.
 
-`plan_check` says whether the plans are the ones that passed the plan check. The recorder stores a hash of the phase's plan files (`plans_sha`, line endings normalised) with every `pan-plan-checker` verdict. `status` is `ok`, `stale` (edited since the check), `failed`, `missing`, `legacy` (recorded before hashing; a warning) or `disabled` (`workflow.plan_check` is off). `drift` lists, for each plan without a summary that records `planned_commit`, the `files_modified` that changed between that commit and `HEAD`. `init execute-phase` carries the same two as `plan_check` and `plan_drift`, and exec-phase stops on `stale`, `failed` or `missing` unless the user gives a reason. Exits 1 for an unknown phase or a phase with no plans.
+`plan_check` says whether the plans are the ones that passed the plan check. The recorder stores a hash of the phase's plan files (`plans_sha`, line endings normalised) with every `pan-plan-checker` verdict. `status` is `ok`, `stale` (edited since the check), `failed`, `missing`, `legacy` (recorded before hashing; a warning) or `disabled` (`workflow.plan_check` is off). `drift` lists, for each plan without a summary that records `planned_commit`, the `files_modified` that changed between that commit and `HEAD`. `init execute-phase` carries the same two as `plan_check` and `plan_drift`, and exec-phase stops on `stale`, `failed` or `missing` unless the user gives a reason. Exits 1 for an unknown phase (`phase_not_found`), an unreadable phase directory (`unreadable_phase`) or a phase with no plans (`no_plans`).
 
 ### `verify review-focus <phase>`
 
@@ -1833,7 +1837,7 @@ pan-tools verify decisions 3 --raw    # valid | invalid
 
 ### `verify gates <phase>`
 
-Runs each backticked command in every task's `<verify>` before any work. A gate that already passes (`gate_vacuous`, unless the verify text marks it a regression guard) or whose pattern does not compile (`gate_invalid`) is an error (exit 1).
+Checks each backticked command in every task's `<verify>` against the tree as it is, before any work (M48). Only simple grep gates are checked — `grep`, `rg` or `git grep` with single-letter flags, a pattern and paths — and they are interpreted in Node, never run through a shell; anything else is `not_checkable`. A gate's `status` is `passes_now`, `fails_now`, `target_missing`, `invalid` or `not_checkable`. A gate that already passes (`gate_vacuous`, unless the verify text calls it a regression guard: "regression guard", "already passes" or "must still pass") or whose pattern does not compile (`gate_invalid`) is an error (exit 1).
 
 ```bash
 pan-tools verify gates 3          # {phase, ok, gates: [{plan, task, command, status, regression_guard?}], errors[]}
@@ -1861,7 +1865,7 @@ pan-tools verify traceability        # {requirements: [{id, status, tests}], pas
 
 ### `debug repro <slug> [--timeout <ms>]` · `debug similar "<symptom>" [--limit N]` (program P5)
 
-`repro` runs the `command:` in a debug session's `## Reproduction` (`.planning/debug/<slug>.md`, or `resolved/`): `{slug, result, closable, requirement, command, exit}`; `result` is `green` (exit 0), `red` or `none` (no command recorded; exit 1 unless green). `similar` ranks the resolved sessions by token overlap with the symptom: `{symptom, cases: [{slug, score, root_cause, fix, reproduction}]}` (top 5 by default; `--raw`: the slugs).
+`repro` runs the `command:` in a debug session's `## Reproduction` (`.planning/debug/<slug>.md`, or `resolved/`): `{slug, result, closable, requirement, command, exit}`; `result` is `green`, `red` or `none` (no command recorded), and the command exits 1 unless it is `green` (`--raw`: the result). A slug that is not letters, digits, dots, dashes and underscores is `invalid_slug`, and a missing session `session_not_found` (exit 1). `similar` ranks the resolved sessions by token overlap with the symptom: `{symptom, cases: [{slug, score, root_cause, fix, reproduction}]}` (top 5 by default; `--raw`: the slugs).
 
 **Module:** `debug-cases.cjs`
 
@@ -1923,7 +1927,7 @@ pan-tools verify test-integrity 3          # {phase, checked, ok, commits, viola
 pan-tools verify test-integrity 3 --raw    # clean | violated | not_checked
 ```
 
-**Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/` or `spec/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test(s).java`/`.kt`/`.cs`, or a Rust file holding `#[test]` or `#[cfg(test)]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
+**Violations** (exit 1), each `{code, file, commit, detail}`: `test_deleted`; `skip_marker_added` (`.skip`/`.only`/`.todo`, `xit`, a node:test `skip` option, `@pytest.mark.skip`/`skipif`/`xfail`, `pytest.skip()`, `@unittest.skip`, `t.Skip`, `#[ignore]`, `@Disabled`/`@Ignore`); `assertions_dropped` (more assertion lines removed than added in one file); `undeclared_test_edit` (an existing assertion changed in a test no plan lists in `files_modified`); `snapshot_rewritten` (an undeclared snapshot changed or deleted); `always_true_assert` (`assert(true)`, `expect(true).toBe(true)`, `assert True`, `assert!(true)` …). **Warnings:** `test_renamed`. A test file is a path under `test/`, `tests/`, `__tests__/`, `spec/` or `specs/`, a `*.test.*`/`*.spec.*` file, `test_*.py`, `*_test.py`/`*_test.go`, `*Test(s).java`/`.kt`/`.cs`, or a Rust file holding `#[test]` or `#[cfg(test)]`. With no git or no plan commits for the phase it reports `checked: false` with a `reason` and exits 0: not checked is never a violation.
 
 ### `review scope <phase>`
 
@@ -1944,7 +1948,7 @@ Off unless `workflow.cross_family_review` names a host (`claude`, `codex`, `copi
 
 On Windows a host binary that resolves to an `.exe` or `.com` is launched directly by its path; anything else (an npm `.cmd` shim) goes through cmd.exe, with each argument holding whitespace, a quote or a cmd operator quoted. A prompt passed as an argument goes through `cross-family-<host>-prompt.md` (the argument tells the host to read it) when it runs through cmd.exe or is too long for a command line.
 
-Writes `.planning/reviews/<NN>/cross-family-<host>.md` with the host's answer. `review-deep merge … --cross-file <that file>` merges its findings as a fourth source (`coverage.by_source.cross_family`).
+Writes `.planning/reviews/<NN>/cross-family-<host>.md` with the host's answer. `review-deep merge … --cross-file <that file>` merges its findings as a fourth source (`coverage.by_source.cross_family`). Exits 1 with `phase_required`, `unknown_host` (a host with no review lane), `standin_missing` or `spawn_failed`.
 
 **Module:** `cross-family.cjs`
 
@@ -1985,7 +1989,7 @@ pan-tools verify mutate --phase 3 --raw      # "3/5 killed" | aborted:flaky | ab
 
 It takes the lines the phase's plan commits changed (`git diff` from the phase's base, as `verify red` finds it) in source files that are not tests, and swaps one thing at a time on a changed line, outside comments and strings: a comparison flipped (`>=`/`>`, `<=`/`<`), equality inverted (`===`/`!==` in JS and TS, `==`/`!=` in C-family languages and Python), `&&`/`||` (`and`/`or` in Python), a boolean return inverted, `+ 1` for `- 1`. A seeded sample (`--max`, default 8; `--seed`, default 1) runs in a throwaway worktree at HEAD (uncommitted changes are not measured), the project's whole test suite once per mutant: **killed** when it fails or times out, **survived** otherwise.
 
-Before any mutant, the unmutated suite runs twice: if it fails, the report aborts (`suite_fails`), and if one run passes and the other fails, it aborts as `flaky`, since no mutant could be read against it. The record holds `phase`, `mode`, `seed`, `checked`, `base`, `head`, `command`, `candidates`, `sampled`, `killed`, `survived`, `score` and `survivors[]` (each `{file, line, op, before, after}`); an aborted or unchecked run carries `aborted` and/or `reason` in place of `sampled`, `killed`, `survived` and `score`. The printed result adds `record`, the path it wrote. The phase may also be given positionally (`verify mutate 3`). An unknown phase exits 1; every report exits 0.
+Before any mutant, the unmutated suite runs twice: if it fails, the report aborts (`suite_fails`), and if one run passes and the other fails, it aborts as `flaky`, since no mutant could be read against it. The record holds `phase`, `mode`, `seed`, `checked`, `base`, `head`, `command`, `candidates`, `sampled`, `killed`, `survived`, `score` and `survivors[]` (each `{file, line, op, before, after}`); an aborted or unchecked run carries `aborted` and/or `reason` in place of `sampled`, `killed`, `survived` and `score`. The printed result adds `record`, the path it wrote. The phase may also be given positionally (`verify mutate 3`). An unknown phase exits 1; every report exits 0 except a failed gate (below), which `--raw` marks `(gate failed)`.
 
 `workflow.mutation_gate` in config.json: `report` (the default; a report, never a refusal), `off` (runs nothing), `gate` (V5G, opt-in: the result carries `gate: {floor, failed}`, the command exits 1 when the score is below `workflow.mutation_floor` (0.6), and `verify reconcile` reports a passed verification over a failed gate as a contradiction, so the phase gate refuses). verify-phase runs it with `--max 5` after a passing test gate and lists survivors under **Test strength**.
 
@@ -2009,7 +2013,7 @@ pan-tools test run --phase 3 --raw         # passed | failed | skipped
 | `status` | When |
 |---|---|
 | `passed` | the suite exited 0; or, against a baseline, every failure was already failing at the baseline (`preexisting_failures`) |
-| `failed` | a failing test the baseline did not have (`regressions`); a failure with no baseline; or the suite did not run: a non-zero exit with no failing test reported, a crash, a build error, a timeout (`reason: "suite did not run: …"`) |
+| `failed` | a failing test the baseline did not have (`regressions`); a failure with no baseline; a runner that exited 0 but reported failures; or the suite did not run: a non-zero exit with no failing test reported, a crash or a build error (`reason: "suite did not run: …"`), or a timeout (`reason: "the suite timed out"`) |
 | `skipped` | nothing to run: no test command, or one that ran no tests |
 
 A `--baseline` run keeps an existing baseline (`kept_existing: true`, nothing run) unless `--rebaseline`: a resumed run or a gaps-only round compares against the phase's start. The record holds `version`, `kind` (`run` or `baseline`), `phase`, `command`, `source` (`flag` under `--command`), `head`, `started_at`, `exit`, `timed_out` (only when it did), `duration_ms`, `runner`, `parsed`, `total`, `passed`, `failed`, `skipped`, `failing[]`, `status`, `reason`, `regressions[]`, `preexisting_failures[]`, `baseline` (`{head, status, failing}`, `failing` being its failure count, when compared with one) and `output_tail` (with no test command, `timed_out`, `baseline` and `output_tail` are absent); with `--phase` the printed result adds `record`, the path it wrote. The command exits 0 whatever the `status`: callers read `status` (an unknown `--phase` exits 1). The verifier copies `test_gate` from it, `verify reconcile` reports a verification whose `test_gate` disagrees with it, the verdict recorder lowers a verifier's pass over a failed run, and `phase gate` refuses on it. `validate health --full` runs the same gate.
@@ -2113,7 +2117,7 @@ Writes `.planning/autodev/<run>/run.json` and `ledger.jsonl`: a `started` row be
 
 **Failures (A4, `failure-class.cjs`).** A failed session is classified: `compile` and `assertion` are retried with the error tail in the prompt, then at the next tier (Claude gets `--model`); `timeout` and `unknown` are restarted once; `flake` is quarantined; `missing_env`, `merge_conflict`, `integrity_violation` and `scope_violation` stop with `human_needed`; `budget` stops with `budget_usd`. The ledger row carries `failure_class` and `policy`.
 
-**Resume.** `autodev resume` with no run to resume is refused with `no_run`.
+**Resume.** `autodev resume` with no run to resume is refused with `no_run`, and so is `autodev status` before any run. An unknown subcommand is refused with `unknown_subcommand`.
 
 **Beside focus.** A fresh run is refused with `focus_active` (`focus_run`, `open_cycle`, and the command to clear it in `reason`) while a focus cycle is open or a focus run is live and not stale; a resumed run is not checked.
 
@@ -2129,15 +2133,11 @@ Writes `.planning/autodev/<run>/run.json` and `ledger.jsonl`: a `started` row be
 
 **Module:** `autodev.cjs`, `failure-class.cjs`, `autodev-report.cjs`, `ci.cjs`
 
-### `worktree preflight --branches a,b [--base REF] [--test CMD]`
-
-The shadow-merge preflight (program A3). In a throwaway worktree at `--base` (HEAD), merges each branch in order and runs the test command (`--test`, else the project's). `verdict`: `clean`, `conflict` (with `conflict.branch` and `conflict.files`), `break_together` (each branch passes alone, `alone` says so, but merged they fail), `branch_fails` (`failing` lists the branches red on their own), `base_failing`, or `no_test`. The checkout is never touched.
-
-**Module:** `worktree.cjs`
+The shadow-merge check `--worktrees` runs before merging a group back is `worktree preflight` (section 29).
 
 ### `size phase <N>` · `size task "<description>"` · `size phase-plan <N>` · `size quick-plan --out <file> [--num N] "<description>"` · `size plan-check <N>` (right-sized ceremony)
 
-Decides in code how much process a piece of work gets (`docs/specs/right-sized-ceremony.md`). `phase` and `task` print `{path, mode, reasons}` (`phase` adds `phase` and `metrics`: `{requirements, unspecified, lean_max_requirements}`; `task --file <path>` sizes a document, such as new-project's brief, instead of a description) (`--raw`: `lean` or `full`): a phase whose requirements (at least one, at most three times `workflow.lean_max_requirements`) each have an acceptance criterion or name what to build is `lean`, and so is a quick task whose description names an artifact and runs to 15 words or more. `mode` is `full` under the `quality` profile, `workflow.ceremony: full` or `--quality`, and then the path is always `full`; `--full` makes one call `full`. `phase-plan` plans a lean phase with no planner session: one task per requirement, in plans of at most `workflow.lean_max_requirements` (5) tasks, each in a wave after the one before (the task's action is the requirement's own text; a requirement that migrates or changes behaviour already built also declares the existing tests that cover the changed files as `supersedes_tests`), checked like `plan-check`, recorded as the phase's plan check and committed when `commit_docs` is on; it prints `{ok, written, path, paths, plan_dir, requirements, plan_check: "recorded", commit}` (`paths` lists every plan written, `path` the first; `supersedes_tests` when it declared any; `commit: null` with `commit_error` when the plan stands but its commit failed), and exits 1 with `not_lean`, `has_plans` or `check_failed` (with the check's `errors`), writing nothing. `autodev` runs it for a lean phase's `plan` unit, at $0. `quick-plan` writes the lean quick task's one-task plan from its description to `--out` (`--num N` numbers it) and prints `{written: true, path}`. `plan-check` runs the plan set, every plan's structure and the plans' grep gates; when all pass it records the phase's plan check from the engine (exit 0, `recorded: true`), otherwise it records nothing and exits 1 with `errors`.
+Decides in code how much process a piece of work gets (`docs/specs/right-sized-ceremony.md`). `phase` and `task` print `{path, mode, reasons}` (`phase` adds `phase` and `metrics`: `{requirements, unspecified, lean_max_requirements}`; `task --file <path>` sizes a document, such as new-project's brief, instead of a description) (`--raw`: `lean` or `full`): a phase whose requirements (at least one, at most three times `workflow.lean_max_requirements`) each have an acceptance criterion or name what to build is `lean`, and so is a quick task whose description names an artifact and runs to 15 words or more. `mode` is `full` under the `quality` profile, `workflow.ceremony: full` or `--quality`, and then the path is always `full`; `--full` makes one call `full`. `phase-plan` plans a lean phase with no planner session: one task per requirement, in plans of at most `workflow.lean_max_requirements` (5) tasks, each in a wave after the one before (the task's action is the requirement's own text; a requirement that migrates or changes behaviour already built also declares the existing tests that cover the changed files as `supersedes_tests`), checked like `plan-check`, recorded as the phase's plan check and committed when `commit_docs` is on; it prints `{ok, written, path, paths, plan_dir, requirements, plan_check: "recorded", commit}` (`paths` lists every plan written, `path` the first; `supersedes_tests` when it declared any; `commit: null` with `commit_error` when the plan stands but its commit failed), and exits 1 with `not_lean`, `phase_not_found`, `has_plans` or `check_failed` (with the check's `errors`), writing nothing. `autodev` runs it for a lean phase's `plan` unit, at $0. `quick-plan` writes the lean quick task's one-task plan from its description to `--out` (`--num N` numbers it) and prints `{written: true, path}`. `plan-check` runs the plan set, every plan's structure and the plans' grep gates; when all pass it records the phase's plan check from the engine (exit 0, `recorded: true`), otherwise it records nothing and exits 1 with `errors`.
 
 ```bash
 pan-tools size phase 2 --raw        # lean
@@ -2157,7 +2157,7 @@ pan-tools next-action
 
 `action` is one of `plan`, `execute`, `verify`, `complete_phase`, `plan_gaps`, `audit_milestone`, `new_milestone`, `new_project` (no roadmap) or `stop`; `command` is the command that carries it out (for example `/pan:plan-phase 3`).
 
-Focus work comes first, as `action: "focus"` with `detail` and a `focus` object (the run and the open cycle): `focus_cycle_in_progress` (the live run that opened the cycle is working it: `pan-tools focus auto --status`), `focus_run_stale` (the run recorded nothing for `focus.stale_hours`: `pan-tools focus auto --stop`, which closes its cycle, then `/pan:focus-auto --continue`) and `focus_cycle_open` (a cycle no live run owns: `pan-tools focus close --dir <dir> --status failed` once its edits are reverted or committed). With no focus work the output is unchanged. Autodev reads the phase router directly.
+Focus work comes first, as `action: "focus"` with `detail` and a `focus` object (the run and the open cycle), its `reason` one of: `focus_cycle_in_progress` (the live run that opened the cycle is working it: `pan-tools focus auto --status`), `focus_run_stale` (the run recorded nothing for `focus.stale_hours`: `pan-tools focus auto --stop`, which closes its cycle, then `/pan:focus-auto --continue`) and `focus_cycle_open` (a cycle no live run owns: `pan-tools focus close --dir <dir> --status failed` once its edits are reverted or committed). With no focus work the output is unchanged. Autodev reads the phase router directly.
 
 **Module:** `next-action.cjs`
 
@@ -2186,7 +2186,7 @@ pan-tools design handoff <spec> --as phase|focus [--raw]
 - `--as phase`: adds a roadmap phase titled from the spec's first heading, its Goal the first sentence of the spec's problem statement, and a `**Design:** <spec>` line under it, then returns `/pan:plan-phase <N> --prd <spec>`, so plan-phase takes the spec as the phase's context
 - `--as focus`: changes nothing and returns `/pan:focus-auto --step plan --mode features`
 
-**JSON output:** `{ as, spec, title, phase_number?, directory?, command, note? }` (`note` only with `--as focus`). **Refusals (exit 1):** `invalid_as`, `spec_required`, `spec_not_found`, `spec_outside_project`, `no_roadmap` (start with `/pan:new-project`, or hand the design to focus), `already_handed_off` (the roadmap already names this spec), and `phase add`'s own refusals (`roadmap_not_found`, `mkdir_failed`, `write_failed`). An unknown `design` subcommand is refused with `unknown_subcommand`. **`--raw`:** the command.
+**JSON output:** `{ as, spec, title, phase_number?, directory?, command, note? }` (`note` only with `--as focus`). **Refusals (exit 1):** `invalid_as`, `spec_required`, `spec_not_found`, `spec_outside_project`, `no_roadmap` (start with `/pan:new-project`, or hand the design to focus), `already_handed_off` (the roadmap already names this spec), and `phase add`'s own refusals (`roadmap_not_found`, `mkdir_failed`, `write_failed`). Any other `design` subcommand exits 1 with `Error: Unknown design subcommand. Available: paths, handoff` on stderr. **`--raw`:** the command.
 
 **Module:** `design-handoff.cjs`
 
@@ -2226,7 +2226,9 @@ The `cache` block classifies the cached context (`status` of `ok` / `warn` / `cr
 }
 ```
 
-*The `cache` object is abbreviated here — its full field list (`block_count`, `block_paths`, `block_tokens`, `total_bytes`, `total_tokens`, `eligible_pct`, `status`, `warn_tokens`, `crit_tokens`, `file_warn_tokens`, `advice`, `ttl.*`, `sha`) is listed here; the paragraph above describes `status`, `advice` and `ttl`.*
+*The `cache` object is abbreviated here. Its full field list is `block_count`, `block_paths`, `block_tokens`, `total_bytes`, `total_tokens`, `eligible_pct`, `status`, `warn_tokens`, `crit_tokens`, `file_warn_tokens`, `advice`, `ttl` and `sha`; the paragraph above describes `status`, `advice` and `ttl`. `cache` is `null` when the cached context cannot be built.*
+
+Without a `.planning/` directory it prints `{error: ".planning/ directory not found", hint}` and exits 1.
 
 **Status thresholds:**
 
@@ -2258,7 +2260,7 @@ pan-tools todo complete improve-error-handling.md [--raw]
 
 **`--raw` output:** `completed`.
 
-A file not in `pending/` prints `Error: Todo not found: <filename>` on stderr and exits 1.
+A file not in `pending/` prints `Error: Todo not found: <filename>` on stderr and exits 1; so does a name holding a path separator (`Not a todo file name`).
 
 ---
 
@@ -2296,7 +2298,7 @@ pan-tools list-todos refactoring [--raw]
 
 ## 12. Scaffolding
 
-Commands for creating template files in phase directories. All scaffold commands use the same module entry point with type dispatch.
+Commands for creating template files in phase directories. All scaffold commands use the same module entry point with type dispatch. `context`, `uat` and `verification` need `--phase` naming an existing phase directory (else exit 1), never overwrite a file that exists (`{ "created": false, "reason": "already_exists", "path": … }`, exit `0`), and take `--name "..."` to override the phase name written into the template; their `--raw` output is the created path, or `exists`. An unknown type exits 1.
 
 ### `scaffold context --phase <N>`
 
@@ -2310,8 +2312,6 @@ pan-tools scaffold context --phase 5 [--raw]
 ```json
 { "created": true, "path": ".planning/phases/05-setup/05-context.md" }
 ```
-
-If the file already exists: `{ "created": false, "reason": "already_exists", "path": … }` (exit `0`, nothing overwritten). `--name "..."` overrides the phase name written into the template.
 
 ---
 
@@ -2406,7 +2406,7 @@ With `--field`, `--raw` prints the value JSON-encoded (a string keeps its quotes
 
 ### `frontmatter set <file> --field <key> --value <jsonVal>`
 
-Update a single frontmatter field. The value is JSON-parsed (so `"true"` becomes boolean `true`, `"[1,2]"` becomes an array).
+Update a single frontmatter field. The value is JSON-parsed (so `"true"` becomes boolean `true`, `"[1,2]"` becomes an array); a value that is not valid JSON is stored as the plain string. A missing file exits 1 with `error: "File not found"`.
 
 ```bash
 pan-tools frontmatter set path/to/plan.md --field wave --value 2 [--raw]
@@ -2435,7 +2435,7 @@ pan-tools frontmatter merge path/to/plan.md --data '{"wave": 2, "autonomous": fa
 { "merged": true, "fields": ["wave", "autonomous"] }
 ```
 
-**`--raw` output:** `true`.
+**`--raw` output:** `true`. `--data` that is not valid JSON prints `Error: Invalid JSON for --data` on stderr and exits 1.
 
 ---
 
@@ -2471,7 +2471,7 @@ pan-tools frontmatter validate path/to/plan.md --schema plan [--raw]
 
 ## 14. Template Operations
 
-Commands for selecting and filling plan/summary/verification templates.
+Commands for selecting and filling plan/summary/verification templates. `template fill` never overwrites: a file that exists exits 1 with `error: "File already exists"`, and a phase with no directory exits 1 with `error: "Phase not found"`. Its `--raw` output is the created path.
 
 ### `template select <plan-path>`
 
@@ -2580,7 +2580,7 @@ pan-tools config-ensure-section [--raw]
 
 **`--raw` output:** `created` or `exists`.
 
-**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`enforce`), `hooks.guard` (`report`), `budget.default_points`/micro thresholds/`verify_reserve`, and the `commit`, `execution` and `routing` blocks):
+**Selected default config values** (see `buildConfigDefaults()` in `config.cjs` for the full set — it also writes `search_gitignored`, the two branch templates, `workflow.verifier`/`nyquist_validation`/`phase_record_compact`/`phase_gate` (`enforce`)/`mutation_gate` (`report`)/`mutation_floor` (`0.6`)/`review_mode` (`single`)/`cross_family_review` (`off`)/`worktree_isolation` (`false`), `hooks.guard` (`report`), `instructions` (`routing: advisory`), `cost.phase_budget_usd` (`20`), `budget.default_points`/micro thresholds/`max_usd_run`/`max_usd_day` (`null`), and the `commit`, `execution` and `routing` blocks):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -2616,13 +2616,13 @@ pan-tools config-get workflow.research [--raw]
 
 **`--raw` output:** The value as a string; an object or array prints as JSON.
 
-A key that is not set, including a default PAN applies without writing it (such as `cost.phase_budget_usd` or `workflow.phase_gate` in a config that never set them), prints `Error: Key not found: <key>` on stderr and exits 1; a project with no config.json prints `Error: No config.json found at <path>` and exits 1. The command reads the file, not the effective value.
+A key that is not set, including a default PAN applies without writing it (such as `memory.auto_optimize`, or `workflow.phase_gate` in a config written before that default existed), prints `Error: Key not found: <key>` on stderr and exits 1; a project with no config.json prints `Error: No config.json found at <path>` and exits 1. The command reads the file, not the effective value.
 
 ---
 
 ### `config-set <key.path> <value>`
 
-Write a value to `.planning/config.json`. Supports dot-notation for nested keys. Automatically parses `true`/`false` as booleans and numeric strings as numbers. Creates config.json if it does not exist (`.planning/` must exist already; `config-ensure-section` creates both), and refuses (exit 1, stderr) when the existing file is valid JSON but not an object.
+Write a value to `.planning/config.json`. Supports dot-notation for nested keys. Automatically parses `true`/`false` as booleans and numeric strings as numbers. Creates config.json if it does not exist (`.planning/` must exist already; `config-ensure-section` creates both), and refuses (exit 1, stderr) when the existing file is valid JSON but not an object, when the value is missing, or when a key segment is `__proto__`, `constructor` or `prototype`.
 
 ```bash
 pan-tools config-set model_profile quality [--raw]
@@ -2755,7 +2755,7 @@ pan-tools rollback-snapshot 5.1
 { "tag": "pan-rollback-5-20260301T120000", "hash": "abc1234", "phase": "5" }
 ```
 
-**Not a git repo (or no commits):** Returns `{ "tag": null, "hash": null, "phase": "5", "warning": "Not a git repository or no commits" }` (exit 0; `--raw` prints nothing).
+**Not a git repo (or no commits):** Returns `{ "tag": null, "hash": null, "phase": "5", "warning": "Not a git repository or no commits" }` (exit 0; `--raw` prints nothing). When neither tag name can be created, `tag` is `null` with `warning: "Failed to create tag: …"`, also at exit 0.
 
 **`--raw` output:** The tag name.
 
@@ -2776,13 +2776,13 @@ pan-tools estimate-cost [--raw]
 {
   "estimates": [
     { "profile": "quality", "total": <N>, "average": 15.0, "agentCount": <N> },
-    { "profile": "balanced", "total": <N>, "average": 15.0, "agentCount": <N> },
+    { "profile": "balanced", "total": <N>, "average": 13.4, "agentCount": <N> },
     { "profile": "budget", "total": <N>, "average": 1.6, "agentCount": <N> }
   ]
 }
 ```
 
-`quality` and `balanced` report the same average by design — post cost reset both put every agent on the reasoning tier (15× baseline). `budget` is the only profile that down-tiers, so it's the only one that moves the number.
+Each agent counts at its tier's multiplier for the profile (`COST_MULTIPLIERS` in `core.cjs`; the reasoning tier is 15×). `quality` puts every agent on the reasoning tier, so its average is 15×; `balanced` runs the plan-checker and the two researchers on the mid tier, so it sits a little below; `budget` down-tiers every agent.
 
 **`--raw` output:** One line per profile: `quality: ~15x baseline (<N> agents)`.
 
@@ -2947,13 +2947,13 @@ pan-tools websearch "Node.js stream backpressure" --limit 5 --freshness week
 }
 ```
 
-If `BRAVE_API_KEY` is not set: `{ "available": false, "reason": "BRAVE_API_KEY not set" }`.
+If `BRAVE_API_KEY` is not set: `{ "available": false, "reason": "BRAVE_API_KEY not set" }` (exit 0: callers fall back to their own search). With a key, a missing query, an invalid `--freshness`, an API error status or a network failure is `{ "available": false, "error": … }` and exits 1. **`--raw` output:** each result's title, URL and description, results separated by a blank line.
 
 ---
 
 ## 17. Compound Init Commands
 
-These commands gather all context needed for a specific workflow in a single call, avoiding multiple round trips. Each init command resolves models, checks file existence, reads state, and returns a comprehensive JSON object that the workflow's command `.md` file consumes.
+These commands gather all context needed for a specific workflow in a single call, avoiding multiple round trips. Each init command checks file existence, reads state (most also resolve the models their workflow spawns), and returns a comprehensive JSON object that the workflow's command `.md` file consumes.
 
 All init commands accept `--raw` (no effect — init output is always JSON) and `--cwd <path>`.
 
@@ -2970,7 +2970,7 @@ pan-tools init execute-phase 5 --dry-run --budget 25
 
 **Arguments:**
 - `--dry-run` — Preview execution plan without spawning agents. Sets `dry_run: true` in output.
-- `--budget N` — Override budget points (default: `budget.default_points` from config.json, 50 when unset; below 1 is an error, above 200 is capped at 200). Plans exceeding budget set `budget_exceeded: true`.
+- `--budget N` — Override budget points (default: `budget.default_points` from config.json, 50 when unset; a value that is not a number or is below 1 is an error, above 200 is capped at 200). Plans exceeding budget set `budget_exceeded: true`.
 
 **Key output fields:**
 - `executor_model`, `verifier_model`, `reviewer_model` — Resolved model names
@@ -3198,7 +3198,7 @@ pan-tools focus scan [--lean] [--raw]
 - Error patterns (`.planning/patterns.md`)
 
 **Key output fields:**
-- `items[]` — Sorted work items with `id`, `title`, `source`, `priority`, `effort`, `points`, `realityScore`
+- `items[]` — Sorted work items (priority, then smallest effort first) with `id`, `title`, `source`, `priority`, `effort`, `points`, `status`, `file`, and a `realityScore` on P3–P6 items
 - `sources` — Count per source type: `{phases, todos, patterns}`
 - `total` — Total item count
 - `priorities` — Count per priority level: `{P0: N, P1: N, ...}`
@@ -3220,10 +3220,12 @@ pan-tools focus plan [--budget N] [--mode MODE] [--priority P0-P6] [--lean] [--r
 **Modes:**
 | Mode | Budget | Algorithm |
 |------|--------|-----------|
-| `bugfix` | 40 pts | Single greedy pass over P0 → P4 in priority order (P5–P6 excluded; no item-type filter) |
-| `balanced` | 50 pts | Stability (60%) + Feature (40%) split |
+| `bugfix` | at most 40 pts | Single greedy pass over P0 → P4 in priority order (P5–P6 excluded; no item-type filter) |
+| `balanced` | 50 pts | 60% stability (P0–P2), then 40% features (P3–P6) |
 | `features` | 50 pts | P0 first (mandatory), then what that pass left splits 80% features (P3–P5) / 20% stability (P1–P2) |
-| `full` | 60 pts | One greedy pass over all priorities in priority order (P0 first, smallest effort first within a priority) |
+| `full` | at least 60 pts | One greedy pass over all priorities in priority order (P0 first, smallest effort first within a priority) |
+
+`--budget` defaults to 50 and is ignored outside 5–100; `bugfix` caps it at 40 and `full` raises it to 60. `--mode` defaults to `balanced`. `--priority P<n>` keeps only items at that priority or higher (P0 is highest). `--lean` drops P3–P6 items with a Reality Score below 1.5. With no work item it prints `{error: "No work items found. …"}` and exits 0, writing nothing.
 
 **Key output fields:**
 - `mode`, `budget`, `allocated` — Budget allocation
@@ -3232,28 +3234,28 @@ pan-tools focus plan [--budget N] [--mode MODE] [--priority P0-P6] [--lean] [--r
 - `batch_file` — Path to saved batch JSON
 - Each `batch[]` item carries its `owner` (`phase` or `focus`, see `focus route`)
 
-**Writes:** `.planning/focus/batch-YYYY-MM-DD.json`
+**Writes:** `.planning/focus/batch-YYYY-MM-DD.json` (a second plan the same day overwrites it)
 
 ### `focus sync`
 
-Check documentation staleness by comparing actual file counts against documented counts.
+Check documentation staleness: the first "N commands", "N agents" and "N modules" in `README.md`, `docs/DEVELOPMENT.md`, `docs/CLI-REFERENCE.md`, `docs/USER-GUIDE.md` and `docs/ARCHITECTURE.md` against the files in `commands/pan/`, `agents/` and `pan-wizard-core/bin/lib/` (each check runs only when its directory exists, so an installed project skips them), plus renamed `/pan:` command names and the `package.json` version against the newest `CHANGELOG.md` heading. Read-only.
 
 ```bash
 pan-tools focus sync [--check-only] [--tests N] [--suites N] [--raw]   # --tests/--suites supply live counts to reconcile against the docs
 ```
 
 **Key output fields:**
-- `actuals` — `{commands, agents, modules}` actual counts
-- `stale[]` — Stale entries with `{file, entity, documented, actual}`
-- `current[]` — Current entries
-- `stale_count`, `needs_sync` — Summary
+- `actuals` — `{commands, agents, modules}` actual counts (0 for a directory that does not exist)
+- `stale[]` — Stale entries: `{file, entity, documented, actual}` for a count or the version, `{file, entity: "renamed_command", old, new}` for an old command name
+- `current[]` — Entries that match, `{file, entity, count}`
+- `stale_count`, `needs_sync`, `check_only` — Summary
 
 ### `focus exec`
 
-Load the newest batch in `.planning/focus/` and classify its items by execution tier. Newest means the date in the file name (`batch-YYYY-MM-DD.json` from `focus plan`, or `batch-YYYY-MM-DD-<slug>.json`), then the time the file was written for batches from the same day. That is the batch `/pan:focus-auto --step exec` runs. The items come from a `batch` array, or from `items`, which `/pan:focus-auto` and agent-written batches use. A newest batch with neither list, or one that is not valid JSON, is refused with an error that names the file; an older batch never stands in.
+Load the newest batch in `.planning/focus/` and classify its items by execution tier. Newest means the date in the file name (`batch-YYYY-MM-DD.json` from `focus plan`, or `batch-YYYY-MM-DD-<slug>.json`), then the time the file was written for batches from the same day. That is the batch `/pan:focus-auto --step exec` runs. The items come from a `batch` array, or from `items`, which `/pan:focus-auto` and agent-written batches use. A newest batch with neither list, or one that is not valid JSON, is refused with an error that names the file; an older batch never stands in. No batch file, or an empty item list, also prints an `error` instead of the fields below; every refusal exits 1.
 
 ```bash
-pan-tools focus exec [--dry-run] [--force] [--raw]   # refuses with dirty_working_tree on uncommitted changes unless --dry-run or --force
+pan-tools focus exec [--dry-run] [--force] [--raw]   # in a git repository, refuses with dirty_working_tree (and uncommitted_count) on uncommitted changes unless --dry-run or --force
 ```
 
 **Key output fields:**
@@ -3281,22 +3283,22 @@ pan-tools focus auto [--source scan|backlog] [--category CAT] [--mode MODE] [--b
 **Work source (ADR-0031):** `--source scan` (default) selects work by category code-scan; `--source backlog` ranks actionable `roadmap.md`/`requirements.md` items by value/effort. `--parallel-research`/`--parallel-verify` fan those stages out via the Workflow tool (implement/exec stays serial); `--clean-seal` runs one clean build + full verification after the last item. All default off.
 
 **Operations:**
-- Default: Initialize new auto-run with category defaults. Defaults: `--max-cycles` 10 (1–50), `--total-budget` 500 (5–5000), `--budget` per category (5–100). Refused with `autodev_active` (exit 1, the run in `run`) while the newest autodev run has not stopped and recorded something within `focus.stale_hours`; `--continue` is refused the same way
+- Default: Initialize new auto-run with category defaults (no `--category`: mode `balanced`, budget 50, all priorities). Refused while another focus run is `initialized` or `in_progress`. Defaults: `--max-cycles` 10 (1–50), `--total-budget` 500 (5–5000), `--budget` per category (5–100). Refused with `autodev_active` (exit 1, the run in `run`) while the newest autodev run has not stopped and recorded something within `focus.stale_hours`; `--continue` is refused the same way
 - `--status`: Show current run state with computed budget/cycles remaining, `stale` (the run is `initialized` or `in_progress` and its newest record, the last cycle or the start, is older than `stale_hours`: `focus.stale_hours`, default 12), and `unrecorded_cycles`: closed focus cycles of this run that no `--update` recorded (a crash between the close and the update)
-- `--update`: Record cycle results (pass `--items-completed`, `--items-failed`, `--points-used`, `--tests-before`, `--tests-after`, `--batch-file`, `--command`, and — for the `prompts` category — `--prompts-remaining N`). `focus open` names its cycle in the run's `current_cycle`, and `--update` records that cycle and no other: the item counts, both test counts, its `status` and its `regressions` come from its summary instead of the flags, with `tests_verified: true` and the cycle's directory in `cycle_dir`. While that cycle is still open, `--update` exits 1. A cycle with a regression stops the run (`regression`), and a failed cycle or one whose items all failed stops it as `stopped` (`cycle_failed`, `all_failed`), resumable with `--continue`; `zero_completed` is left for a cycle that attempted nothing. **Side effect:** in a git repository, each update runs the memory auto-optimize, regenerates the HTML reports when `workflow.phase_reports.enabled`, and checkpoint-commits `.planning/` (`commit_hash` in the output). None of the three happens when `focus.auto_commit` or `commit_docs` is false, or outside a git repository
+- `--update`: Record cycle results (pass `--items-completed`, `--items-failed`, `--points-used`, `--tests-before`, `--tests-after`, `--batch-file`, `--command`, and — for the `prompts` category — `--prompts-remaining N`). `focus open` names its cycle in the run's `current_cycle`, and `--update` records that cycle and no other: the item counts, its `status` and its `regressions` come from its summary instead of the flags, and so do both test counts when the cycle measured them (`tests_verified: true`); the cycle's directory goes in `cycle_dir`. Test counts that come from the flags are re-measured with `node --test` when `focus.verify_tests` is on, else recorded with `tests_verified: false`. While that cycle is still open, `--update` exits 1. A cycle with a regression stops the run (`regression`), and a failed cycle or one whose items all failed stops it as `stopped` (`cycle_failed`, `all_failed`), resumable with `--continue`; `zero_completed` is left for a cycle that attempted nothing. **Side effect:** in a git repository, each update runs the memory auto-optimize, regenerates the HTML reports when `workflow.phase_reports.enabled`, and checkpoint-commits `.planning/` (`commit_hash` in the output). None of the three happens when `focus.auto_commit` or `commit_docs` is false, or outside a git repository
 - `--stop`: Gracefully stop an active run; the run's own cycle, if still open, is closed as `failed` (`closed_cycle` in the output). A cycle the run did not open is left alone
 - `--continue`: Resume a stopped/initialized run
 - `--dry-run`: Show what would be initialized without writing
 
 **Stop conditions (auto-detected on --update):**
-- `regression` — tests decreased between cycles
+- `regression` — the cycle ended with fewer passing tests than it started with, or its summary records a regression
 - `budget_cap` — cumulative points reached `--total-budget`; fires only when enforcement is on (`--enforce-budget` or config `budget.enforce`) — the budget is advisory otherwise
 - `budget_reserve_reached` — under enforcement, spend crossed into the verify reserve (`--verify-reserve`, default `budget.verify_reserve`)
 - `security_complete` / `distill_complete` — a cycle completed nothing in that category (the category-specific form of `zero_completed`)
 - `prompts_complete` — the `prompts` category has no prompts remaining
 - `max_cycles` — iteration limit reached
 - `zero_completed` — no items completed in a cycle
-- `diminishing_returns` — optimize only: cycle efficiency < 30% of previous cycle
+- `diminishing_returns` — optimize only: items per point fell below 30% of the previous cycle's
 - `weekly_limit` — a fresh `cost limits` reading puts Claude Code's 7-day usage window at or past `cost.weekly_limit_stop_pct` (default 90; `0` turns it off). Like `regression`, the run is stopped rather than completed, and `--continue` resumes it
 
 **State file:** `.planning/focus/auto-run.json`
@@ -3313,7 +3315,7 @@ pan-tools focus route [--batch <file>] [--raw]
 
 - `--batch`: a path, or a name under `.planning/focus/`. Default: the newest batch
 - Stamps `owner` on each item, and records each hand-off as `results[id] = "routed"` and `routes[id] = {phase, command, reason}`, keeping the batch file's modification time
-- A hand-off's `command` is `/pan:exec-phase N` when the phase has plans, else `/pan:plan-phase N`
+- A hand-off's `command` is `/pan:exec-phase N` when the phase has plans, else `/pan:plan-phase N`; `/pan:progress` when the item names no phase
 
 `focus open` applies the same split itself, so routing first only makes the hand-offs visible; it is never what keeps phase work out of a cycle.
 
@@ -3327,7 +3329,7 @@ pan-tools focus route [--batch <file>] [--raw]
 
 ### `focus open`
 
-Register a focus cycle as a quick task before its first edit. Creates `.planning/quick/<n>-focus-<kind>-<date>/<n>-plan.md`, numbered after the newest quick task (the same numbering `init quick` gives `/pan:quick`). An open quick plan counts as work in flight, so state.md, resume and the guard's `unrouted_write` rule see the cycle. For an `exec` cycle it runs the project's test command once (the one `test run` uses), records the pass count as `tests_before`, and keeps the whole record, failing tests included, as `<n>-test-baseline.json` for the close to compare against. Inside a live auto run it sets the run's `current_cycle`.
+Register a focus cycle as a quick task before its first edit. Creates `.planning/quick/<n>-focus-<kind>-<date>/<n>-plan.md`, numbered after the newest quick task (the same numbering `init quick` gives `/pan:quick`). An open quick plan counts as work in flight, so state.md, resume and the guard's `unrouted_write` rule see the cycle. For an `exec` cycle it runs the project's test command once (the one `test run` uses), records the pass count as `tests_before`, and, when the project has a test command, keeps the whole record, failing tests included, as `<n>-test-baseline.json` for the close to compare against. Inside a live auto run it sets the run's `current_cycle`.
 
 ```bash
 pan-tools focus open [--batch <file>] [--kind exec|docs] [--run <run_id>] [--raw]
@@ -3337,7 +3339,7 @@ pan-tools focus open [--batch <file>] [--kind exec|docs] [--run <run_id>] [--raw
 - `--kind`: `exec` (default) or `docs`. A docs cycle runs no tests
 - `--run`: the auto run the cycle belongs to. Default: the run in `auto-run.json` while it is `initialized` or `in_progress`
 
-The cycle registers only the items focus owns (`focus route`); the phase-owned ones come back in `handoff`. The plan's frontmatter carries `source: focus`, `focus_kind`, `batch_file`, `run_id`, `items` (the ids of the focus-owned items), `files_modified` (the items' `file`/`files` values, leaving out pointers into `.planning/`), `tests_before` and `test_command`.
+The cycle registers only the items focus owns (`focus route`); the phase-owned ones come back in `handoff`. The plan's frontmatter carries `source: focus`, `focus_kind`, `batch_file`, `run_id`, `category`, `items` (the ids of the focus-owned items), `files_modified` (the items' `file`/`files` values, leaving out pointers into `.planning/`), `tests_before`, `test_command` and `opened_at`.
 
 **JSON output:** `{ opened, num, kind, dir, plan, batch_file, run_id, items, handoff: [{id, phase, command}], files_modified, tests_before, test_status, test_command }`
 
@@ -3452,6 +3454,10 @@ pan-tools standards remove owasp-top10
 }
 ```
 
+`standards_file` is `null` once the last standard is removed.
+
+**Errors (exit 1):** no `standards.md`, a standard that is not selected.
+
 ### `standards status`
 
 Report compliance status for all selected standards. Counts checked vs unchecked items.
@@ -3508,8 +3514,8 @@ pan-tools standards phase-track <phase-number> [--raw]
   "phase_name": "auth-setup",
   "relevant_standards": ["owasp-top10", "owasp-asvs-l1"],
   "compliance": [
-    { "standard_id": "owasp-top10", "standard_name": "OWASP Top 10 (2025)", "selected": true, "status": "configured", "checklist_items": 10, "verified_items": 0, "coverage": "0%" },
-    { "standard_id": "owasp-asvs-l1", "standard_name": "OWASP ASVS Level 1", "selected": false, "status": "not_selected", "action": "Consider selecting with: pan-tools standards select owasp-asvs-l1" }
+    { "standard_id": "owasp-top10", "standard_name": "OWASP Top 10 (2025)", "category": "security", "selected": true, "status": "configured", "checklist_items": 10, "verified_items": 0, "coverage": "0%" },
+    { "standard_id": "owasp-asvs-l1", "standard_name": "OWASP ASVS Level 1", "category": "security", "selected": false, "status": "not_selected", "coverage": null, "action": "Consider selecting with: pan-tools standards select owasp-asvs-l1" }
   ]
 }
 ```
@@ -3566,18 +3572,22 @@ pan-tools preflight [target] [--raw]
 |-------|-------------------|
 | `planning_dir` | `.planning/` directory exists |
 | `state_readable` | `state.md` can be parsed |
-| `no_blockers` | No open bullets under state.md's `### Blockers/Concerns` section (or a legacy `## Blockers` heading), where `state add-blocker` writes |
-| `git_clean` | Git working tree is clean |
-| `error_patterns` | Reports count of known error patterns |
+| `no_blockers` | No open bullets under state.md's `### Blockers/Concerns` section (or a legacy `## Blockers` heading), where `state add-blocker` writes. Runs only when state.md is readable |
+| `git_clean` | Git working tree is clean (passes outside a git repository) |
+| `error_patterns` | Reports count of known error patterns; never fails |
 | `config_exists` | `config.json` exists |
-| `batch_exists` / `target_phase` | Target-specific check (if target provided) |
+| `batch_exists` / `target_phase` | Target-specific check, only when a target is given and state.md is readable. `batch_exists` names the newest batch, the one `focus exec` runs |
+
+`ready` is true when no check added a blocker; each failed check adds one line to `blockers`. `--raw` prints `ready` or `blocked`.
 
 **JSON output:**
 ```json
 {
   "ready": true,
+  "target": null,
   "checks": [
-    { "name": "state_readable", "passed": true, "detail": "..." }
+    { "name": "state_readable", "passed": true },
+    { "name": "error_patterns", "passed": true, "detail": "0 known pattern(s)" }
   ],
   "blockers": [],
   "passed": 6,
@@ -3589,7 +3599,7 @@ pan-tools preflight [target] [--raw]
 
 Aggregated project overview showing phase progress, the next phase, and the number of open blockers in state.md.
 
-> **Not the HTML dashboard.** `pan-tools dashboard` emits a compact **JSON** project overview (this command, `state.cjs`). For the single-page **HTML** army dashboard, see the `hud` command (`hud.cjs`). The slash command `/pan:hud` is a discoverability **alias for `/pan:hud`** (the HTML view) — not for this JSON command.
+> **Not the HTML dashboard.** `pan-tools dashboard` emits a compact **JSON** project overview (this command, `state.cjs`). For the single-page **HTML** army dashboard, see the `hud` command (`hud.cjs`). The slash command `/pan:dashboard` is a discoverability **alias for `/pan:hud`** (the HTML view) — not for this JSON command.
 
 **Module:** `state.cjs`
 
@@ -3607,9 +3617,12 @@ pan-tools dashboard [--raw]
   "progress": { "phases_completed": 2, "phases_total": 5, "plans_total": 6, "plans_completed": 4 },
   "milestone": { "version": "v1.0", "name": "Initial Release" },
   "next_phase": { "number": "04", "name": "testing" },
-  "last_activity": "2026-03-03"
+  "last_activity": "2026-03-03",
+  "last_activity_description": "Completed 03-02-plan.md"
 }
 ```
+
+`blocker_list` (the open blockers' text) is added when `blockers` is above 0. A value state.md or the roadmap does not give is `null`.
 
 ### `learnings extract`
 
@@ -3660,6 +3673,8 @@ pan-tools learnings list [--raw]
 }
 ```
 
+With no learnings it prints `{ "learnings": [], "count": 0 }`, without `by_type`.
+
 ### `learnings prune`
 
 Remove learnings by age or specific ID.
@@ -3674,6 +3689,8 @@ pan-tools learnings prune --id LEARN-NNN [--raw]
 **Flags:**
 - `--days N` — Remove entries with dates older than N days
 - `--id LEARN-NNN` — Remove a specific entry by ID
+
+One of the two is required (exit 1 otherwise). With no `learnings.md` it prints `{ "pruned": 0, "remaining": 0 }`.
 
 **JSON output:**
 ```json
@@ -3693,6 +3710,8 @@ Validate the doc–code link graph (ADR-0027). Walks `docs/`, `pan-wizard-core/{
 pan-tools links validate [--strict] [--doc-root <p>] [--source-root <p>] [--raw]
 ```
 
+`validate` is the default: `pan-tools links` and `pan-tools links --strict` run it too.
+
 **Flags:**
 - `--strict` — fail on real warnings, not only errors. (B-002 single-source informational warning is exempt.)
 - `--doc-root <path>` — override default doc roots; repeatable.
@@ -3704,7 +3723,7 @@ pan-tools links validate [--strict] [--doc-root <p>] [--source-root <p>] [--raw]
 
 **JSON output:** `{ ok, summary: { total_findings, errors, warnings, status, doc_files_scanned, source_files_scanned, anchors_found, forward_links_found, backlink_contracts_checked }, findings: [{ code, severity, source, source_line, target, detail }] }`
 
-**Finding codes:** F-001/F-002 (broken inline / section refs, error), F-003/F-004 (key_links path / regex, warning), B-001 (uncovered `require-code-mention`, error), B-002 (single-source informational, warning), A-001/A-002/A-004 (stale anchor target / section / empty id).
+**Finding codes:** F-001/F-002 (broken inline / section refs, error), F-003/F-004 (key_links path / regex, warning), B-001 (uncovered `require-code-mention`, error), B-002 (single-source informational, warning), A-001 (stale anchor target, error), A-002/A-004 (missing anchor section / empty id, warning).
 
 See ADR-0027 and `docs/specs/doc_code_link_graph_featureai.md` for the wire-level spec.
 
@@ -3894,6 +3913,8 @@ pan-tools memory compact <agent> 50
 ```json
 { "compacted": true, "kept": 50, "removed": 42, "archived": 42, "archive": ".planning/memory/archive/pan-planner.md" }
 ```
+
+`archived` and `archive` are left out when nothing was removed.
 
 ### `memory select <agent> [--cue <text>] [--token-budget N] [--recency-floor N] [--all] [--mark-used] [--days N]`
 
@@ -4104,13 +4125,13 @@ pan-tools focus classify-stages [--stdin] [--raw]
 }
 ```
 
-Hint values: `emit-micro-in-parallel`, `emit-standard-in-parallel`, `sequential`.
+Waves: every `MICRO` item, then every `STANDARD` item, then each `FULL` item in a wave of its own; an item with no `tier` lands in no wave. Hint values: `emit-micro-in-parallel` (two or more MICRO items), else `emit-standard-in-parallel` (two or more STANDARD items), else `sequential`. With no batch file, or an unusable newest batch, it prints `{error}` and exits 1.
 
 ---
 
 ### `focus reflection`
 
-Emit a reflection prompt between focus-auto cycles. Reads `{run, cycle, batch, tier}` from stdin.
+Emit a reflection prompt between focus-auto cycles. Reads `{run, cycle, batch, tier}` from stdin (`tier` defaults to `mid`; stdin that is not JSON exits 1).
 
 **Module:** `focus.cjs`
 
@@ -4217,6 +4238,8 @@ pan-tools cost report [--format json|table|chart] [--since YYYY-MM-DD] [--until 
 
 Reads `.planning/metrics/tokens.jsonl` (append-only log — populated automatically since v3.4 by the `pan-cost-logger` SubagentStop hook, and manually via `cost append`). Aggregates by agent / command / tier / day, computes cache hit rate, and surfaces an overall USD estimate with the default rate table or `cost.rates` overrides. Three kinds of row never reach the totals and are counted instead: `suspect_excluded` (the oversum signature — more than 500M cache-read or 10M output tokens, a span over six hours, or, for a row the hook could not time, cache reads dwarfing input and output; rows measured from a single actor's own transcript, `token_source` `agent-transcript` or `session-transcript`, are exempt because they cannot carry anyone else's usage), `empty_excluded` (no tokens on any axis and no model — an unmeasured spawn), and `malformed_skipped` (unparseable lines). The table format prints them beside `Calls`.
 
+`report` is the default subcommand: `pan-tools cost` and `pan-tools cost --format chart` run it.
+
 Three formats:
 - `json` (default) — machine-readable, full payload
 - `table` — aligned columns with section-by-section breakdown
@@ -4238,7 +4261,7 @@ Missing fields default to `null` or `0`. Cost is auto-computed when `model` or `
 
 ### `cost clear` (Y-6)
 
-Delete the cost log. Useful at the start of a billing cycle.
+Delete the cost log after copying it to `tokens.jsonl.bak-<timestamp>` beside it. Returns `{cleared: true, file, backup}`; with no ledger to clear it returns `{cleared: false, error}` and exits 1. Useful at the start of a billing cycle.
 
 ### `cost rebuild [--apply] [--no-main-thread] [--claude-dir <path>]`
 
@@ -4311,7 +4334,7 @@ Returns `{entries, total, offset, more, mode}`; `--limit` defaults to 1000. A ma
 
 ### `bus list` (Y-7)
 
-List all channels with message counts + byte sizes + active/archive flag.
+List all channels with message counts + byte sizes + active/archive flag: `{channels: [{channel, messages, bytes, archive}]}`, archived files listed under their channel's name after the active one.
 
 ### `preview phase <N>` (Y-1)
 
@@ -4337,15 +4360,15 @@ Milestone completion ETA with velocity + confidence + bottleneck identification.
 
 ### `review-deep merge <phase> --reviewer-file X --hardener-file Y [--meta-file Z]` (Y-2)
 
-Merge reviewer + hardener + meta-reviewer findings into a consolidated `.planning/reviews/<phase>/deep-review.md` with verdict ladder (ok < ok_with_minor < fix_before_merge < review_required < block).
+Merge reviewer + hardener + meta-reviewer findings, plus the cross-family review's with `--cross-file W` (the file `/pan:review-deep` writes when `workflow.cross_family_review` names a host), into a consolidated `.planning/reviews/<phase>/deep-review.md`. The highest severity sets the verdict: ok < ok_with_minor (low) < fix_before_merge (medium) < review_required (high) < block (critical). Relative paths resolve against the project root. Returns `{written, file, verdict, coverage, conflicts}`; with no readable input file it prints `{error}` and exits 1.
 
 **Module:** `review-deep.cjs`
 
-Publishes an audit entry to the `review-handoff` bus channel via `bus.cjs`.
+`deep-review.md` is the record; nothing is published to the bus.
 
 ### `review-deep analyze <phase> ...` (Y-2)
 
-Same merge logic as above but returns the payload without writing a file. Useful for piping.
+Same merge logic as above (same flags, `--cross-file` included) but returns the payload, `{findings, conflicts, coverage, verdict}`, without writing a file. Useful for piping.
 
 ### `knowledge ask <question> [--max-sources N] [--recall-cue <text>]` (Y-3)
 
@@ -4375,11 +4398,11 @@ Cluster the agent logs in `.planning/memory/` (those `memory list` lists; PAN's 
 
 ### `whatif prepare <phase> <scenario>` (Y-4)
 
-Creates an isolated git worktree for counterfactual phase replay. Returns `{phase, scenario, slug, worktree: {worktree_path, branch, base}}`.
+Creates an isolated git worktree for counterfactual phase replay. Returns the phase context, `{phase, phase_name, directory, scenario, slug, plans, summaries, has_executed}`, plus `worktree: {worktree_path, branch, base}`. When the worktree cannot be created it returns the context with `worktree_error` instead and exits 1.
 
 **Module:** `whatif.cjs`
 
-Requires git repo. Worktree default location: sibling of main repo, branch prefixed `pan-whatif/`.
+Requires a git repo with a commit. Worktree default location: `../pan-whatif-<phase>-<slug>-<timestamp>`, a sibling of the project, on a branch prefixed `pan-whatif/`.
 
 ### `whatif report <phase> <scenario> --comparison <json>` (Y-4)
 
@@ -4397,7 +4420,7 @@ Remove the worktree and, with `--branch`, delete that branch. It refuses (exit 1
 
 The autonomous external-build loop: scaffold an experiment folder, drive an external runtime against an idea.md, observe and harvest learnings. See ADR-0026 for design.
 
-**Modules:** `experiment.cjs` (lifecycle), `runner.cjs` (execution); the `learn` verbs below are in `optimize.cjs` (`promote`, `unpromote`, `list-promoted`), `learn-lint.cjs` (`lint`) and `learn-index.cjs` (`build-index`, `topics-for`).
+**Modules:** `experiment.cjs` (lifecycle), `runner.cjs` (execution); the `learn` verbs below are in `optimize.cjs` (`promote`, `unpromote`, `list-promoted`), `learn-lint.cjs` (`lint`) and `learn-index.cjs` (`build-index`, `topics-for`). Every `learn` verb takes `--source-root <path>`, the root whose `pan-wizard-core/learnings/` it works on (default: the PAN root the module runs from). Bare `learn`, or `learn` followed only by flags, is an alias for `optimize learn`; an unknown subcommand exits 1.
 
 ### `experiment new <slug> --idea <path> [--root <dir>] [--runtime <name>] [--budget N] [--skip-installer]`
 
@@ -4413,7 +4436,7 @@ Print the experiment's `experiment.json` manifest.
 
 ### `experiment run <slug> [--root <dir>] [--prompt <text>] [--timeout <seconds>]`
 
-Spawn the runtime adapter against the experiment via `spawnSync`, observe via `run-state.json`, return final status. Adapters live in `runner.cjs#RUNTIME_RUNNERS` — claude/codex/gemini/opencode supported, copilot is null. Default prompt: `/pan:new-project --auto @.planning/idea.md`. `--timeout` is in seconds; default 3600 (60 min).
+Spawn the runtime adapter against the experiment via `spawnSync`, observe via `run-state.json`, return final status. Adapters live in `runner.cjs#RUNTIME_RUNNERS` — claude/codex/gemini/opencode supported, copilot is null. Default prompt: `/pan:new-project --auto @.planning/idea.md`. `--timeout` is in seconds; default 3600 (60 min). `--runtime-override <bin>:<arg1>,<arg2>` replaces the runtime binary and its arguments, for tests.
 
 **Incomplete-run detection:** When `exit_code: 0` but `state.md` shows `status != completed`, the runner returns `stop_reason: "incomplete"` (not `success`). Distinguishes real milestone-done from premature exits.
 
@@ -4425,15 +4448,15 @@ Read snapshot from `<expPath>/.planning/run-state.json`: status, started_at, end
 
 ### `experiment stop <slug> [--root <dir>]`
 
-Finalize/record a stopped experiment in `run-state.json`. This **cannot** terminate an already-running synchronous experiment: the runner blocks while a run is in flight and no pid is recorded to signal, so `stop` only reconciles the run-state after the run has exited. If no pid is recorded (an in-flight run), it returns an error and writes nothing.
+Finalize/record a stopped experiment in `run-state.json`. This **cannot** terminate an already-running synchronous experiment: the runner blocks while a run is in flight and no pid is recorded to signal, so `stop` only reconciles the run-state after the run has exited. If no pid is recorded (an in-flight run), it returns an error and writes nothing. A run that already finished comes back unchanged, and an experiment with no `run-state.json` is an error.
 
 ### `experiment harvest <slug> [--root <dir>] [--source-root <dir>] [--force]`
 
-Copy `.planning/idea.md`, `experiment.json`, `state.md`, `run-state.json`, `agent-history.json`, `optimization/` (traces + reports) and `phases/` back into a fixed destination at `<source-root>/experiments/<slug>/`. `--source-root` selects the PAN source root (destination base); `--force` overwrites an existing harvest at that path. Non-destructive — leaves the experiment folder intact for re-runs.
+Copy `.planning/idea.md`, `experiment.json`, `state.md`, `run-state.json`, `agent-history.json`, `optimization/` (traces + reports) and `phases/` back into a fixed destination at `<source-root>/experiments/<slug>/`. `--source-root` selects the PAN source root (destination base); `--force` overwrites an existing harvest at that path; without it an existing harvest is an error. Non-destructive — leaves the experiment folder intact for re-runs.
 
 ### `experiment prune <slug> [--root <dir>] [--hard]`
 
-Remove the experiment. Default is a soft prune — the experiment folder is archive-renamed (preserved, not deleted). With `--hard`, the folder is permanently deleted.
+Remove the experiment. Default is a soft prune — the experiment folder is renamed to `<root>/<slug>-archived-<timestamp>` (preserved, not deleted, and left out of `experiment list` unless `--include-archived`). With `--hard`, the folder is permanently deleted.
 
 ### `learn promote --pattern <id> --scope <s> --topic <t> --summary <text> --rule <text> [--evidence <text>] [--applies-in <text>] [--source-experiments csv] [--cites <path[#symbol]>,...] [--source-root <path>]`
 
@@ -4457,7 +4480,7 @@ Generate `pan-wizard-core/learnings/index.json` with topic→agent-relevance map
 
 ### `learn topics-for --agent <role> [--cue <text>] [--min-relevance high|medium|low] [--token-budget N]`
 
-Query the index for the topics to load within a token budget. It returns `{mode, selected: [...], dropped: [...], total_tokens}`. The workflow files (`plan-phase.md`, `exec-phase.md`, `verify-phase.md`, `execute-plan.md`) use it to load only relevant patterns instead of skimming the folder, which addresses the P-RES-002 distractor-density anti-pattern. Default budget 5000 tokens.
+Query the index for the topics to load within a token budget. It returns `{agent, min_relevance, token_budget, mode, cue?, selected: [...], dropped: [...], total_tokens}`. The workflow files (`plan-phase.md`, `exec-phase.md`, `verify-phase.md`, `execute-plan.md`) use it to load only relevant patterns instead of skimming the folder, which addresses the P-RES-002 distractor-density anti-pattern. Default budget 5000 tokens.
 
 **`--cue` (mode `cue`)** is the task: the phase goal or plan objective, and the files it touches. The workflows pass it.
 - **Matching:** the cue's words are matched against each topic's name (counting double) and its patterns' summaries and rules. Common words are ignored, and a word meets its own inflections.
@@ -4492,7 +4515,7 @@ Scan `<dir>` for embedded numeric counts that violate the single-source-of-truth
 
 ### `doc-lint flags [--doc-dir <dir>]`
 
-Detect aspirational or stale `--flags` documented for the PAN CLI that never appear as literals in the source (`pan-wizard-core/bin`, `bin`). `--doc-dir <dir>` (repeatable; a path relative to the project root, or an absolute path) replaces the default `docs`, so list `docs` again to keep it; a missing directory is skipped. Only lines that mention `pan-tools` are checked, and findings are reported relative to the project root. Exits 1 when any doc-only flag is found. Reports each doc-only flag with its file and line.
+Detect aspirational or stale flags documented for the PAN CLI that never appear as literals in the source (`pan-wizard-core/bin`, `bin`). `--doc-dir <dir>` (repeatable; a path relative to the project root, or an absolute path) replaces the default `docs`, so list `docs` again to keep it; a missing directory is skipped. Only lines that mention `pan-tools` are checked, and findings are reported relative to the project root. Exits 1 when any doc-only flag is found. Reports each doc-only flag with its file and line.
 
 ---
 
@@ -4670,6 +4693,18 @@ Branch-per-agent git worktrees for the Build squad — each builder gets its own
 `worktree cleanup [--force]` is the campaign teardown sweep: removes every registered army worktree, prunes stale registrations, and deletes `army/*` branches — but a branch whose tip is **not reachable from HEAD** (squash-merged, or aborted work that exists nowhere else) is *kept* by default and listed with the exact command to delete it; a dirty worktree is likewise kept. `--force` sweeps both. The result reports `removed_worktrees`, `deleted_branches`, `kept` (each with a reason), `pruned`, and `clean`. Run it at campaign end and on any abort path; the per-task `worktree remove <path> --branch <name>` right after a squash-merge lands is the always-correct deletion, since at that moment the merge is the permanent artifact.
 
 **Module:** `worktree.cjs`
+
+### `worktree preflight --branches <a,b,...> [--base <ref>] [--test <command>]` (program A3)
+
+Shadow-merge check before a group of branches is merged back (`/pan:autodev --worktrees` runs it). It adds a throwaway detached worktree at `--base` (default `HEAD`) under the OS temp directory, runs the test command there, merges each branch in order with `--no-ff`, and runs the tests again; the worktree is removed afterwards. `--test` defaults to the project's detected test command. Returns `{ok, verdict, base, branches, test, merged, alone}`, where `verdict` is one of:
+- `clean` — every branch merged and the tests pass (`ok: true`)
+- `conflict` — a merge conflicted; `conflict: {branch, files, after}` names it and the branches merged before it
+- `break_together` — each branch passes alone, merged together they fail
+- `branch_fails` — the branches in `failing` fail on their own (`alone` maps each branch to its result)
+- `base_failing` — the tests already fail on the base, so no merge can be judged
+- `no_test` — no test command was given or detected
+
+A verdict exits 0, whatever it is. Outside a git repository it prints `{error: "not_git"}`, and `{error: "worktree_failed"}` when the worktree cannot be added; both exit 1. `--raw` prints the verdict.
 
 ### `merge request <branch> [--phase N] [--ci-green]` · `merge confirm <branch>` (program L6a)
 
