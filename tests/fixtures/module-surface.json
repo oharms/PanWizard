@@ -420,6 +420,13 @@
     "reproCheck:function",
     "similarCases:function"
   ],
+  "design-handoff.cjs": [
+    "cmdDesign:function",
+    "designHandoff:function",
+    "designPaths:function",
+    "nextAdrNumber:function",
+    "readSpecHeadline:function"
+  ],
   "distill.cjs": [
     "DEFAULT_BLOAT_THRESHOLD:number",
     "MAX_FUNCTION_LOC:number",
@@ -904,6 +911,7 @@
     "markPhaseCompleteInRoadmap:function",
     "markRequirementsCompleteForPhase:function",
     "partitionWave:function",
+    "phaseAdd:function",
     "removePhaseFromDisk:function",
     "renumberDecimalPhases:function",
     "renumberIntegerPhases:function",

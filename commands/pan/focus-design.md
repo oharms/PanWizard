@@ -11,6 +11,7 @@ allowed-tools:
   - Grep
   - Glob
   - Agent
+  - AskUserQuestion
   - WebSearch
   - WebFetch
   - mcp__context7__resolve-library-id
@@ -1042,14 +1043,18 @@ Test these boundary conditions (adapt to project domain):
 ## Phase 10: Output Artifacts
 
 ### 10.1 Save Specification Document
-Write complete spec to: `docs/specs/<feature_name>_featureai.md`
+Ask the engine where this project keeps designs:
+```bash
+node ~/.claude/pan-wizard-core/bin/pan-tools.cjs design paths "<feature_name>"
+```
+It returns `spec`, `decision` and `check`. A project with both `docs/specs/` and `docs/decisions/` gets those (and `adr_number`, the next ADR number); any other project gets `.planning/designs/<slug>/`, where focus-plan looks. Write the complete spec to `spec`.
 
 ### 10.2 Save ADR
-Write ADR to: `docs/decisions/ADR-NNNN-<feature_name>.md`
+Write the ADR to `decision`.
 
 **ADR completeness gate:** Before saving, verify the ADR passes ALL checks from Phase 5.2. The ADR file must contain every section defined in Phase 5.1 with substantive content — no placeholder brackets, no skeleton sections, no missing tables. If any section would be empty, go back to the relevant phase and extract the content.
 
-**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design to `/pan:focus-auto --step plan`.
+**Independent verification gate:** The final artifact must have PASSED `pan-design-checker` in Phase 5.4 (or reached the 2-iteration cap with remaining gaps recorded as caveats). Re-run the checker here on the *saved* spec + ADR as a final gate — the independent pass, not just the 5.2 self-check, is what authorizes handing this design on. Write the checker's final verdict block, with any caveats, to `check`, so the verdict outlives the session.
 
 **Minimum ADR size:** A proper ADR for a `--full` mode investigation should be 80-200+ lines. If the ADR is under 60 lines, it is almost certainly missing required sections. For `--internal` mode, minimum 60 lines. For `--outward` mode, minimum 70 lines.
 
@@ -1066,8 +1071,16 @@ Output a complete summary with:
 - **Adoption** — discovery, learning curve, aha moment
 - **Informed Questions** — count asked, what they clarified
 - **Acceptance Criteria** — count, how many are machine-checkable
-- **Documents Created** — spec path, ADR path, command .md path (if applicable)
-- **Next Step** — recommended follow-up command
+- **Documents Created** — spec path, ADR path, checker verdict path, command .md path (if applicable)
+- **Next Step** — the hand-off below
+
+### 10.4 Hand the Design Off
+Ask the user (AskUserQuestion, or the runtime's question tool) where the design goes next, with these options:
+- **Plan it as a phase** — `node ~/.claude/pan-wizard-core/bin/pan-tools.cjs design handoff <spec> --as phase` adds a roadmap phase whose entry names the spec, and returns `/pan:plan-phase <N> --prd <spec>`: the spec becomes that phase's context, its decisions locked
+- **Build it with focus** — `design handoff <spec> --as focus` returns the focus-auto plan step that reads the spec
+- **Leave it for now** — nothing is added; the spec stays where it was written
+
+Run only what the user chose, then show the returned `command`. A refusal names its cause: `no_roadmap` (start with `/pan:new-project`, or choose focus), `already_handed_off` (the roadmap already has this design's phase). In `--spike` mode, with no ADR, ask the same question.
 
 ---
 

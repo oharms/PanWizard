@@ -40,6 +40,8 @@
  * Phase Operations:
  *   phase next-decimal <phase>         Calculate next decimal phase number
  *   phase add <description>            Append new phase to roadmap + create dir
+ *   design paths <name>                Where focus-design writes its spec, ADR and checker verdict
+ *   design handoff <spec> --as phase|focus  Add a phase for a design, or hand it to focus
  *   phase insert <after> <description> Insert decimal phase after existing
  *   phase remove <phase> [--force] [--with-decimals]
  *                                      Remove phase, renumber all subsequent
@@ -398,7 +400,7 @@ async function main() {
     + '  --planning-dir <path>  act on an arbitrary project-relative planning tree\n'
     + '  --all-tracks           (hygiene) act on the root tree AND every discovered track\n'
     + '  env: PAN_TRACK, PAN_PLANNING_DIR (flags win)\n'
-    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
+    + '\nCommands: state, resolve-model, estimate-cost, find-phase, git, distill, experiment, commit, verify-summary, template, frontmatter, verify, test, review, debug, uat, merge, research, usage, feedback, generate-slug, current-timestamp, list-todos, verify-path-exists, config-ensure-section, config-set, config-get, history-digest, phases, roadmap, requirements, phase, milestone, validate, progress, next-action, design, size, autodev, context-budget, todo, scaffold, init, phase-plan-index, state-snapshot, summary-extract, rollback-snapshot, websearch, focus, preflight, dashboard, hud, report, learnings, deps, drift-check, memory, whatif, knowledge, skills, hygiene, review-deep, findings, preview, cost, models, squad, worktree, campaign, bus, cache, retro, codebase, standards, optimize, doc-lint, learn, links, version';
 
   if (!command) {
     error(USAGE);
@@ -928,6 +930,11 @@ async function main() {
         maxTurns: getArgValue(args, '--max-turns'), run: getArgValue(args, '--run'), worktrees: args.includes('--worktrees'), quality: args.includes('--quality'),
         ci: args.includes('--ci') ? (getArgValue(args, '--ci') === 'local' ? 'local' : 'pr') : false, ciRounds: getArgValue(args, '--ci-rounds'), ciPush: args.includes('--ci-push'), ciBase: getArgValue(args, '--ci-base'),
       }, raw);
+      break;
+    }
+
+    case 'design': {
+      require('./lib/design-handoff.cjs').cmdDesign(cwd, args[1], args.slice(2), raw);
       break;
     }
 

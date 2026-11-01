@@ -491,23 +491,24 @@ function insertPhaseChecklistEntry(content, basePhase, phaseNum, name) {
 }
 
 /**
- * Append a new phase to the end of the roadmap and create its directory.
+ * Append a new phase to the end of the roadmap and create its directory. Returns the
+ * result or `{error, reason}`; cmdPhaseAdd is the CLI wrapper and `design handoff`
+ * adds a designed phase through it.
  * @param {string} cwd - Working directory path
  * @param {string} description - Human-readable phase description
- * @param {boolean} raw - If true, output raw value instead of JSON
- * @returns {void}
+ * @param {{goal?: string, design?: string}} [opts] - the Goal line (else "[To be planned]"),
+ *   and a design spec to name under it (`**Design:** <path>`)
+ * @returns {Object}
  */
-function cmdPhaseAdd(cwd, description, raw) {
-  if (!description) {
-    error('description required for phase add');
-  }
+function phaseAdd(cwd, description, opts = {}) {
+  if (!description) return { error: 'description_required', reason: 'description required for phase add' };
 
   const roadmapPath = path.join(planningPath(cwd), ROADMAP_FILE);
   let content;
   try {
     content = fs.readFileSync(roadmapPath, 'utf-8');
   } catch {
-    error('roadmap.md not found');
+    return { error: 'roadmap_not_found', reason: 'roadmap.md not found' };
   }
   const slug = generateSlugInternal(description);
 
@@ -530,11 +531,14 @@ function cmdPhaseAdd(cwd, description, raw) {
     fs.mkdirSync(dirPath, { recursive: true });
     fs.writeFileSync(path.join(dirPath, '.gitkeep'), '');
   } catch (e) {
-    error(`Failed to create phase directory: ${e.message}`);
+    return { error: 'mkdir_failed', reason: `Failed to create phase directory: ${e.message}` };
   }
 
   // Build phase entry
-  const phaseEntry = `\n### Phase ${newPhaseNum}: ${description}\n\n**Goal:** [To be planned]\n**Requirements**: TBD\n**Depends on:** Phase ${maxPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /pan:plan-phase ${newPhaseNum} to break down)\n`;
+  const oneLine = (t) => String(t).replace(/\r?\n+/g, ' ').trim();
+  const goal = opts.goal ? oneLine(opts.goal) : '[To be planned]';
+  const design = opts.design ? `**Design:** ${oneLine(opts.design)}\n` : '';
+  const phaseEntry = `\n### Phase ${newPhaseNum}: ${description}\n\n**Goal:** ${goal}\n${design}**Requirements**: TBD\n**Depends on:** Phase ${maxPhase}\n**Plans:** 0 plans\n\nPlans:\n- [ ] TBD (run /pan:plan-phase ${newPhaseNum} to break down)\n`;
 
   // Find insertion point: before last "---" or at end
   let updatedContent;
@@ -555,18 +559,29 @@ function cmdPhaseAdd(cwd, description, raw) {
   try {
     fs.writeFileSync(roadmapPath, updatedContent, 'utf-8');
   } catch (e) {
-    error(`Failed to write roadmap.md: ${e.message}`);
+    return { error: 'write_failed', reason: `Failed to write roadmap.md: ${e.message}` };
   }
 
-  const result = {
+  return {
     phase_number: newPhaseNum,
     padded: paddedNum,
     name: description,
     slug,
     directory: `.planning/${PHASES_DIR}/${dirName}`,
   };
+}
 
-  output(result, raw, paddedNum);
+/**
+ * `phase add <description>`: phaseAdd, exiting non-zero on an error.
+ * @param {string} cwd - Working directory path
+ * @param {string} description - Human-readable phase description
+ * @param {boolean} raw - If true, output raw value instead of JSON
+ * @returns {void}
+ */
+function cmdPhaseAdd(cwd, description, raw) {
+  const r = phaseAdd(cwd, description);
+  if (r.error) error(r.reason);
+  output(r, raw, r.padded);
 }
 
 /**
@@ -1078,6 +1093,7 @@ module.exports = {
   buildPlanIndex,
   dependencyNames,
   cmdPhaseAdd,
+  phaseAdd,
   cmdPhaseInsert,
   cmdPhaseRemove,
   cmdPhaseComplete,
