@@ -1,6 +1,6 @@
 # ADR-0015: Focus Auto-Runner — Continuous Categorized Execution
 
-**Status:** Accepted (shipped in v2.3.0 — 2026-03-03)
+**Status:** Accepted (shipped in v2.3.0 — 2026-03-03). Amended by ADR-0051 (2026-11-01): each cycle is a registered quick task, the engine records its commit, status and counts, and next-action, resume and the HUD see focus runs.
 **Date:** 2026-03-03
 **Context:** Strategic Feature Spec — `docs/specs/focus_auto_runner_featureai.md`
 **Competitive Research:** `docs/specs/continuous_autonomous_execution_featureai.md`

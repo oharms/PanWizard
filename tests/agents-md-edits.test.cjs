@@ -33,7 +33,7 @@ const OLD_PAN = `${B}\n## PAN Wizard\n\nThis project uses PAN Wizard for structu
 
 // This release's texts (sha256 prefix of the text between the markers, LF, trimmed).
 // One text per routing mode (instructions.routing); `off` is the text before routing.
-const CURRENT_AGENTS = { off: '6191107fdcdf7f6e', advisory: 'a44ee4bda30af482', exclusive: 'f491ae17890fa48b' };
+const CURRENT_AGENTS = { off: '6191107fdcdf7f6e', advisory: '48eb4d62b8eaf2af', exclusive: 'b243ed889b791e43' };
 const CURRENT_BRIDGE = '9d0a2baa7efba28e';
 
 const dirs = [];

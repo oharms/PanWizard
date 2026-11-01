@@ -1,7 +1,7 @@
 # ADR-0031: Backlog Source + Parallel-Research/Serial-Build/Parallel-Verify for `/pan:focus-auto`
 
 ## Status
-Accepted — 2026-06-12. Folds the genuinely-new ideas from a project-local `/focus-loop` campaign command (built in the MontyHall compiler project) into the existing `/pan:focus-auto` runner, generalized and opt-in.
+Accepted — 2026-06-12. Amended by ADR-0051 (2026-11-01): backlog still selects phase work, but routes phase-owned items (a roadmap phase, a plan inside one, a requirement mapped to a phase) to the phase commands instead of implementing them. Folds the genuinely-new ideas from a project-local `/focus-loop` campaign command (built in the MontyHall compiler project) into the existing `/pan:focus-auto` runner, generalized and opt-in.
 
 ## Context
 

@@ -1,0 +1,10 @@
+{
+  "model_profile": "balanced",
+  "commit_docs": false,
+  "instructions": {
+    "routing": "exclusive"
+  },
+  "hooks": {
+    "guard": "enforce"
+  }
+}

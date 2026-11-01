@@ -1,0 +1,9 @@
+{
+  "name": "focus-batch-seed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic seed for the focus cycle scenario (PAN Harness).",
+  "scripts": {
+    "test": "node --test"
+  }
+}

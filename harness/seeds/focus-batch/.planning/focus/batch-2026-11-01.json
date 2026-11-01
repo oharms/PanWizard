@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-01",
+  "mode": "balanced",
+  "budget": 10,
+  "allocated": 4,
+  "batch": [
+    {
+      "id": "P2-1",
+      "title": "Guard a() against a missing input",
+      "file": "src/a.js",
+      "tier": "MICRO",
+      "priority": "P2",
+      "effort": "S",
+      "points": 2
+    },
+    {
+      "id": "P3-1",
+      "title": "Name the export",
+      "file": "src/a.js",
+      "tier": "MICRO",
+      "priority": "P3",
+      "effort": "S",
+      "points": 2
+    }
+  ]
+}

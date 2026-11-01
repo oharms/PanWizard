@@ -2,6 +2,7 @@
 name: focus-design
 group: Focus
 description: Strategic 10-phase feature investigation, design, and specification pipeline
+route: investigate and design a feature before building it
 argument-hint: "<feature description> [--full | --internal | --outward | --spike] [--gate] [--audit] [--mvp]"
 allowed-tools:
   - Read

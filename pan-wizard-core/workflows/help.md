@@ -9,9 +9,9 @@ Display the PAN command reference. Output ONLY the reference content. Do NOT add
 
 ---
 
-## Two Workflows — Pick One
+## One System, Two Ways In
 
-PAN has two distinct workflows. Pick the one that fits your situation.
+Phases carry roadmap work; focus runs upkeep campaigns. Both write the same state: a focus cycle is a quick task in `.planning/quick/`, so `/pan:progress`, `/pan:resume`, state.md and the guard see it, and a focus run hands any phase work it finds to the phase commands instead of doing it. `/pan:focus-design` feeds either one: it ends by adding a roadmap phase planned from the spec, or by handing the spec to focus.
 
 ### Workflow A: Phase Lifecycle (Greenfield / Milestone-Driven)
 
@@ -33,7 +33,7 @@ Best for: new projects, structured milestones, large multi-phase builds.
 
 ### Workflow B: Focus Commands (Iterative / Brownfield)
 
-Best for: existing projects, ongoing maintenance, iterative improvement, batch work sessions.
+Best for: existing projects, ongoing maintenance, iterative improvement, batch work sessions. Each cycle is registered as a quick task and closed with its commit; roadmap phases and requirements mapped to a phase are routed to `/pan:plan-phase` or `/pan:exec-phase`.
 
 ```
 /pan:focus-auto --step scan            # 1. SCAN — find all work items, prioritize, score
@@ -45,11 +45,12 @@ Best for: existing projects, ongoing maintenance, iterative improvement, batch w
 /pan:focus-docs --sync            # 4. SYNC — update docs to match changes
 ```
 
-**focus-design** is a standalone command for deep feature investigation:
+**focus-design** investigates and designs a feature, then hands it on:
 ```
-/pan:focus-design "Add webhook support"  # Research, design, spec, ADR
+/pan:focus-design "Add webhook support"  # Research, design, spec, ADR, then the hand-off question
   /clear
-/pan:focus-auto --step scan                          # Re-scan to pick up new tasks
+/pan:plan-phase <N> --prd <spec>         # if handed off as a phase
+/pan:focus-auto --step plan              # if handed off to focus
 ```
 
 **Documentation quality commands:**

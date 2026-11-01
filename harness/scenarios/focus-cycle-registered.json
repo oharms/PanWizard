@@ -1,0 +1,111 @@
+{
+  "id": "focus-cycle-registered",
+  "tier": 0,
+  "description": "On a project under exclusive routing with the guard enforcing, `focus open` registers a focus cycle as a quick task, the installed guard lets a source write through while it is open, `focus close` records it in state.md and the batch, and the same write is denied once it is closed.",
+  "why": "Focus–phase integration (spec D2): a focus run used to be invisible to PAN, so exclusive routing would deny its own edits. A cycle is now a quick-task record that the guard counts as work in flight with no guard change. Unit tests prove it against the source hook; this proves it against the packed install, and the control proves the allow comes from the open cycle.",
+  "seed": "focus-batch",
+  "install": [
+    "--claude"
+  ],
+  "budget": {
+    "maxUsd": 0,
+    "maxMinutes": 4,
+    "maxStepMinutes": 2
+  },
+  "steps": [
+    {
+      "kind": "pan",
+      "argv": [
+        "focus",
+        "open"
+      ],
+      "expect": [
+        "exit:0",
+        "json:opened=true",
+        "json:num=1",
+        "json:items.0=P2-1",
+        "glob:.planning/quick/1-focus-exec-*/1-plan.md",
+        "json:tests_before=1"
+      ],
+      "why": "The installed engine registers the batch as quick task 1, before any edit."
+    },
+    {
+      "kind": "sh",
+      "script": "guard-write.cjs",
+      "args": [
+        "<ws>",
+        ".claude",
+        "src/a.js"
+      ],
+      "expect": [
+        "exit:0",
+        "json:decision=allow"
+      ],
+      "why": "An open focus cycle is work in flight: the installed guard lets the write to src/a.js through under exclusive routing and enforce."
+    },
+    {
+      "kind": "pan",
+      "argv": [
+        "focus",
+        "close",
+        "--dir",
+        "1",
+        "--done",
+        "P2-1",
+        "--failed",
+        "P3-1=left for later"
+      ],
+      "expect": [
+        "exit:0",
+        "json:closed=true",
+        "json:status=partial",
+        "json:tests_after=1"
+      ],
+      "why": "The close measures the tests again (1 passing before and after) and derives the status: one item failed, so the cycle is partial. It writes the summary, the batch results and the state row."
+    },
+    {
+      "kind": "sh",
+      "script": "quick-task-recorded.cjs",
+      "args": [
+        "<ws>"
+      ],
+      "expect": [
+        "exit:0",
+        "json:recorded=true"
+      ],
+      "why": "state.md gains a Quick Tasks row that links the cycle directory."
+    },
+    {
+      "kind": "fs",
+      "read": ".planning/focus/batch-2026-11-01.json",
+      "expect": [
+        "json:results.P2-1=done",
+        "json:results.P3-1=failed",
+        "json:result_reasons.P3-1=left for later"
+      ],
+      "why": "The batch records each item's result under its own key."
+    },
+    {
+      "kind": "sh",
+      "script": "guard-write.cjs",
+      "args": [
+        "<ws>",
+        ".claude",
+        "src/a.js"
+      ],
+      "expect": [
+        "exit:0",
+        "json:decision=deny"
+      ],
+      "why": "With the cycle closed nothing is in flight: the same write is denied."
+    }
+  ],
+  "controls": [
+    {
+      "id": "cycle-not-registered",
+      "after": 0,
+      "delete": ".planning/quick",
+      "why": "Without the registered cycle nothing is in flight, so the first guard step must see a deny: the allow comes from the open cycle, not from the guard being off."
+    }
+  ]
+}

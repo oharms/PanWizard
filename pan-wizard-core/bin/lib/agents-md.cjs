@@ -32,6 +32,8 @@ const PRIOR_AGENTS_SECTIONS = Object.freeze([
   'a92a7488b866611d', // to 2026-10-03: "PAN commands install as pan-* skills/commands"
   'c66f9afd44d80489', // 2026-10-03 to 2026-10-21: commands named per runtime (M34)
   '6191107fdcdf7f6e', // 2026-10-21 to 2026-10-31: no routing table (today's `off` mode)
+  'a44ee4bda30af482', // 2026-10-31 to 2026-11-01: routing table without focus-design (advisory)
+  'f491ae17890fa48b', // 2026-10-31 to 2026-11-01: routing table without focus-design (exclusive)
 ]);
 const PRIOR_CLAUDE_BRIDGES = Object.freeze([
   '918b1c90559355ef', // the @AGENTS.md import alone
@@ -53,6 +55,9 @@ const ROUTES = Object.freeze([
   ['resume', 'pick up work where it stopped'],
   ['new-project', 'start a new project from an idea'],
   ['add-phase', 'add a new piece of work to the roadmap'],
+  // focus-auto has no row: a campaign is a deliberate, budgeted start, and routing
+  // plain requests into an autonomous loop is the over-routing ADR-0050 warns of.
+  ['focus-design', 'investigate and design a feature before building it'],
 ]);
 // `instructions.routing` in the planning config: `off` leaves the table out, `advisory`
 // (default) adds it, `exclusive` also says the project does this work only through PAN
